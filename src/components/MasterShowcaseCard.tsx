@@ -144,7 +144,7 @@ export default function MasterShowcaseCard({
           <button
             type="button"
             onClick={() => onBrowseDeck(master)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 text-[11px] text-aura-champagne/65 transition-colors hover:text-aura-champagne"
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-aura-gold/25 bg-aura-gold/5 py-2 text-xs text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 hover:text-aura-gold"
           >
             <Layers className="h-3.5 w-3.5" />
             Вся колода · {deckCount} {deckUnit}

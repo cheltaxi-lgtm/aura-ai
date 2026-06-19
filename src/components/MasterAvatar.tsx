@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, type CSSProperties } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
 import { getMasterAvatarSlot, masterPortraitSrc } from "@/data/master-avatars";
 
 export type MasterAvatarSize = "xs" | "sm" | "md" | "lg" | "xl" | "showcase";
@@ -37,8 +37,26 @@ export default function MasterAvatar({
   const slot = getMasterAvatarSlot(masterId);
   const src = masterPortraitSrc(masterId, thumb);
   const [failed, setFailed] = useState(false);
+  const isSvg = src.endsWith(".svg");
 
   const label = masterName ?? masterId;
+
+  // #region agent log
+  useEffect(() => {
+    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+      body: JSON.stringify({
+        sessionId: "f9adef",
+        hypothesisId: "A",
+        location: "MasterAvatar.tsx:mount",
+        message: "avatar render",
+        data: { masterId, src, thumb, size, failed },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, [masterId, src, thumb, size, failed]);
+  // #endregion
 
   return (
     <div
@@ -48,6 +66,48 @@ export default function MasterAvatar({
       <div className="master-avatar__frame" aria-hidden />
       <div className="master-avatar__vignette" aria-hidden />
       {!failed ? (
+        isSvg ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt=""
+            className="master-avatar__img master-avatar__img--svg"
+            loading={priority ? "eager" : "lazy"}
+            onError={() => {
+              // #region agent log
+              fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+                body: JSON.stringify({
+                  sessionId: "f9adef",
+                  hypothesisId: "A-F",
+                  location: "MasterAvatar.tsx:onError",
+                  message: "avatar svg failed",
+                  data: { masterId, src },
+                  timestamp: Date.now(),
+                }),
+              }).catch(() => {});
+              // #endregion
+              setFailed(true);
+            }}
+            onLoad={() => {
+              // #region agent log
+              fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+                body: JSON.stringify({
+                  sessionId: "f9adef",
+                  hypothesisId: "F",
+                  location: "MasterAvatar.tsx:onLoad",
+                  message: "avatar svg loaded",
+                  data: { masterId, src, isSvg: true },
+                  timestamp: Date.now(),
+                }),
+              }).catch(() => {});
+              // #endregion
+            }}
+          />
+        ) : (
         <Image
           src={src}
           alt=""
@@ -64,8 +124,41 @@ export default function MasterAvatar({
           className="master-avatar__img object-cover object-[center_18%]"
           loading={priority ? undefined : "lazy"}
           priority={priority}
-          onError={() => setFailed(true)}
+          onError={() => {
+            // #region agent log
+            fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+              body: JSON.stringify({
+                sessionId: "f9adef",
+                hypothesisId: "A",
+                location: "MasterAvatar.tsx:onError",
+                message: "avatar image failed",
+                data: { masterId, src },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+            // #endregion
+            setFailed(true);
+          }}
+          onLoad={() => {
+            // #region agent log
+            fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+              body: JSON.stringify({
+                sessionId: "f9adef",
+                hypothesisId: "A",
+                location: "MasterAvatar.tsx:onLoad",
+                message: "avatar image loaded",
+                data: { masterId, src },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+            // #endregion
+          }}
         />
+        )
       ) : (
         <div
           className="master-avatar__fallback"

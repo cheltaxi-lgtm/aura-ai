@@ -3,25 +3,41 @@
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#2a1438"/>
-      <stop offset="55%" stop-color="#5c2a52"/>
-      <stop offset="100%" stop-color="#08060e"/>
+      <stop offset="50%" stop-color="#4a2048"/>
+      <stop offset="100%" stop-color="#06040c"/>
     </linearGradient>
     <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#E8C77E"/>
       <stop offset="100%" stop-color="#C9A24A"/>
     </linearGradient>
-    <radialGradient id="sil" cx="50%" cy="35%" r="65%">
-      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="#0a0812" stop-opacity="0.95"/>
+    <radialGradient id="sil" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.65"/>
+      <stop offset="55%" stop-color="#2a1438" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#06040c" stop-opacity="1"/>
     </radialGradient>
-    <radialGradient id="glow" cx="50%" cy="30%" r="50%">
-      <stop offset="0%" stop-color="#e8c77e" stop-opacity="0.25"/>
+    <radialGradient id="glow" cx="50%" cy="22%" r="55%">
+      <stop offset="0%" stop-color="#e8c77e" stop-opacity="0.35"/>
       <stop offset="100%" stop-color="transparent"/>
     </radialGradient>
+    <linearGradient id="face" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#0a0812" stop-opacity="0.85"/>
+    </linearGradient>
   </defs>
   <rect width="100%" height="100%" fill="url(#bg)"/>
   <rect width="100%" height="100%" fill="url(#glow)"/>
-  <ellipse cx="200" cy="200" rx="55" ry="68" fill="url(#sil)" opacity="0.82"/>
-  <text x="50%" y="88%" text-anchor="middle" font-family="Georgia, serif" font-size="72" fill="url(#gold)" opacity="0.9">V</text>
-  <rect x="8" y="8" width="384" height="504" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.45" rx="4"/>
+  
+  <g opacity="0.5">
+    <rect x="88" y="300" width="52" height="78" rx="4" fill="#1a1028" stroke="url(#gold)" stroke-width="1"/>
+    <rect x="118" y="288" width="52" height="78" rx="4" fill="#221430" stroke="url(#gold)" stroke-width="1"/>
+    <rect x="148" y="276" width="52" height="78" rx="4" fill="#2a1838" stroke="url(#gold)" stroke-width="1.2"/>
+    <rect x="228" y="278" width="52" height="78" rx="4" fill="#2a1838" stroke="url(#gold)" stroke-width="1"/>
+    <rect x="258" y="290" width="52" height="78" rx="4" fill="#221430" stroke="url(#gold)" stroke-width="1"/>
+  </g>
+  <path d="M200 225c-55 0-95 35-95 72v40c0 8 85 12 95 12s95-4 95-12v-40c0-37-40-72-95-72z" fill="url(#sil)" opacity="0.82"/>
+  <ellipse cx="200" cy="175" rx="52" ry="62" fill="url(#face)" opacity="0.92"/>
+  <text x="50%" y="92%" text-anchor="middle" font-family="Georgia, serif" font-size="64" fill="url(#gold)" opacity="0.85">V</text>
+  <text x="50%" y="97%" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="url(#gold)" opacity="0.45">Вероника</text>
+  <rect x="6" y="6" width="388" height="508" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.5" rx="6"/>
+  <rect x="12" y="12" width="376" height="496" fill="none" stroke="url(#gold)" stroke-width="0.8" opacity="0.2" rx="4"/>
 </svg>
