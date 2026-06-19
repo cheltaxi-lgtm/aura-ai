@@ -15,6 +15,7 @@ import {
   tarotMinorSource,
 } from "./deck-assets-data.mjs";
 import { MIN_DECK_BACK_BYTES, writeProgrammaticBack } from "./deck-back-art.mjs";
+import { normalizeDeckCardFile } from "./deck-card-normalize.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -102,13 +103,7 @@ function writeManifest(dir, manifest) {
 }
 
 async function optimizePng(filePath) {
-  const sharp = (await import("sharp")).default;
-  const tmp = filePath + ".opt";
-  await sharp(filePath)
-    .resize({ height: 800, fit: "inside", withoutEnlargement: true })
-    .png({ quality: 85, compressionLevel: 9 })
-    .toFile(tmp);
-  fs.renameSync(tmp, filePath);
+  await normalizeDeckCardFile(filePath, { force: true });
 }
 
 async function downloadBuffer(url) {

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "build:decks": "node scripts/build-decks.mjs",
+    "normalize:deck-cards": "node scripts/deck-card-normalize.mjs",
     "generate:deck-backs": "node scripts/deck-back-art.mjs",
     "generate:avatars": "node scripts/generate-master-avatars.mjs"
   },

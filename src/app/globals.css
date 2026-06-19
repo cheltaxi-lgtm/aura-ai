@@ -1255,7 +1255,6 @@
 
   .lux-tarot-card__image {
     object-position: center center;
-    transform: scale(1.06);
   }
 
   .lux-deck-card--sm .lux-tarot-card__image-wrap {
