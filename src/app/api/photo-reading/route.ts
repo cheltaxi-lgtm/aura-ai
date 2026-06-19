@@ -4,11 +4,9 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { hasPaidAccess, saveMessage } from "@/lib/session";
 import { buildPhotoReadingUserMessage } from "@/lib/photo-chat";
 import {
-  generatePhotoReading,
-  parsePhotoReadingResponse,
+  generatePhotoInterpretation,
   photoReadingFallback,
   resolvePhotoReadingPrompt,
-  stripPhotoReadingHeader,
 } from "@/lib/photo-reading-prompts";
 import { createHistoryEntry } from "@/lib/users";
 import { getUserById, serializeUserProfile } from "@/lib/users";
@@ -20,10 +18,15 @@ import {
 import { canAfford, spendRunes, refundRunes } from "@/lib/rune-service";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { resolveSessionForUser } from "@/lib/session-access";
-import { enforceChatRateLimit, MAX_IMAGE_BYTES, validateImageMime, validateImageBase64Payload } from "@/lib/api-guards";
+import { enforceChatRateLimit } from "@/lib/api-guards";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
-
-const MAX_IMAGE_BYTES_LOCAL = MAX_IMAGE_BYTES;
+import {
+  buildSpreadSummaryForLlm,
+  isRecognizedSpread,
+  normalizeRedrawSpreadInput,
+  redrawSpreadToTarotCards,
+  type RedrawSpread,
+} from "@/lib/photo-spread-redraw";
 
 export async function POST(request: NextRequest) {
   const auth = await requireUserAuth();
@@ -37,35 +40,41 @@ export async function POST(request: NextRequest) {
   let spentRunes = 0;
 
   let characterId = "veronika";
-  let imageBase64 = "";
-  let mimeType = "image/jpeg";
   let question = "";
   let sessionId: string | undefined;
+  let confirmedSpread: RedrawSpread | null = null;
 
   try {
     const body = await request.json();
     characterId = await resolveApiCharacterId(body.characterId);
-    imageBase64 = body.imageBase64 ?? "";
-    mimeType = body.mimeType ?? mimeType;
     question = sanitizeTextField(body.question, 500) ?? "";
     sessionId = body.sessionId;
+
+    if (body.confirmedSpread?.cards?.length) {
+      confirmedSpread = normalizeRedrawSpreadInput(body.confirmedSpread, characterId);
+    }
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!imageBase64?.trim()) {
-    return NextResponse.json({ error: "Загрузите фото расклада" }, { status: 400 });
+  if (!confirmedSpread?.cards?.length) {
+    return NextResponse.json(
+      {
+        error: "CONFIRMATION_REQUIRED",
+        message: "Подтвердите перерисованный расклад перед расшифровкой.",
+      },
+      { status: 400 }
+    );
   }
 
-  const rawSize = Math.ceil((imageBase64.length * 3) / 4);
-  if (rawSize > MAX_IMAGE_BYTES_LOCAL) {
-    return NextResponse.json({ error: "Фото слишком большое (макс. 5 МБ)" }, { status: 400 });
+  const spreadCheck = isRecognizedSpread({
+    detectedCards: confirmedSpread.cards.map((c) => c.name),
+    deckType: confirmedSpread.deckType,
+    spreadType: confirmedSpread.spreadType,
+  });
+  if (!spreadCheck.ok) {
+    return NextResponse.json({ error: "NOT_A_SPREAD", message: spreadCheck.reason }, { status: 422 });
   }
-
-  const mimeErr = validateImageMime(mimeType);
-  if (mimeErr) return mimeErr;
-  const imageErr = validateImageBase64Payload(imageBase64);
-  if (imageErr) return imageErr;
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   const profileRow = profileUserId ? await getUserById(profileUserId) : null;
@@ -147,6 +156,12 @@ export async function POST(request: NextRequest) {
     question,
   };
 
+  const detectedCards = confirmedSpread.cards.map((c) =>
+    c.reversed ? `${c.name} (перев.)` : c.name
+  );
+  const tarotCards = redrawSpreadToTarotCards(confirmedSpread);
+  const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread);
+
   try {
     let systemPrompt = await resolvePhotoReadingPrompt(characterId, ctx, referrerSlug);
 
@@ -157,16 +172,13 @@ export async function POST(request: NextRequest) {
       systemPrompt = appendUserMemoryToPrompt(systemPrompt, memoryBlock);
     }
 
-    const llmAnalysis = await generatePhotoReading(
-        systemPrompt,
-        imageBase64,
-        question.trim()
-          ? `Мой вопрос: ${question.trim()}. Определи колоду и тип расклада, разбери все видимые карты.`
-          : "Определи тип колоды и схему расклада, разбери все видимые карты и дай расшифровку.",
-        mimeType
-      );
+    const llmAnalysis = await generatePhotoInterpretation(
+      systemPrompt,
+      spreadSummary,
+      question.trim() || undefined
+    );
     const usedLlmFallback = !llmAnalysis;
-    let analysis = llmAnalysis ?? photoReadingFallback(ctx.userName);
+    const analysisBody = llmAnalysis ?? photoReadingFallback(ctx.userName);
 
     if (usedLlmFallback && profileUserId && spentRunes > 0) {
       try {
@@ -182,25 +194,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { deckType, spreadType, detectedCards } = parsePhotoReadingResponse(analysis);
-
-    const analysisBody = stripPhotoReadingHeader(analysis);
+    let historyId: string | undefined;
 
     if (profileUserId && (await ensureDb())) {
-      await createHistoryEntry({
+      const entry = await createHistoryEntry({
         userId: profileUserId,
         characterName: characterId,
         contextData: {
           type: "photo_reading",
           analysis: analysisBody,
           detectedCards,
-          deckType,
-          spreadType,
+          deckType: confirmedSpread.deckType,
+          spreadType: confirmedSpread.spreadType,
+          deckSystem: confirmedSpread.system,
+          tarotCards,
+          redrawSpread: confirmedSpread,
           question: question.trim() || undefined,
           userName: ctx.userName,
         },
         isPaid,
       });
+      historyId = entry?.id;
     }
 
     if (sessionId && (await ensureDb())) {
@@ -216,11 +230,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       analysis: analysisBody,
       detectedCards,
-      deckType,
-      spreadType,
+      deckType: confirmedSpread.deckType,
+      spreadType: confirmedSpread.spreadType,
+      deckSystem: confirmedSpread.system,
+      redrawSpread: confirmedSpread,
+      tarotCards,
       characterId,
       isPaid,
       saved: Boolean(profileUserId),
+      historyId,
       runeBalance,
     });
   } catch (error) {
@@ -237,7 +255,9 @@ export async function POST(request: NextRequest) {
         console.error("Photo reading refund failed:", refundErr);
       }
     }
-    const analysis = photoReadingFallback(ctx.userName);
-    return NextResponse.json({ analysis, detectedCards: [], fallback: true });
+    return NextResponse.json(
+      { error: "Не удалось расшифровать расклад. Руны возвращены на баланс." },
+      { status: 500 }
+    );
   }
 }

@@ -825,6 +825,96 @@
   }
 }
 
+/* ── Photo spread redraw preview ── */
+.photo-spread-preview__grid {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  justify-items: center;
+}
+
+.photo-spread-preview__grid--1 {
+  grid-template-columns: 1fr;
+  max-width: 180px;
+  margin-inline: auto;
+}
+
+.photo-spread-preview__grid--2,
+.photo-spread-preview__grid--3 {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.photo-spread-preview__grid--4,
+.photo-spread-preview__grid--5 {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.photo-spread-preview__item {
+  width: 100%;
+  max-width: 168px;
+}
+
+.photo-spread-preview__card {
+  position: relative;
+  transition: transform 0.35s ease;
+}
+
+.photo-spread-preview__card--reversed {
+  transform: rotate(180deg);
+}
+
+.photo-spread-preview__card--reversed .lux-label,
+.photo-spread-preview__card--reversed + p,
+.photo-spread-preview__card--reversed ~ p {
+  transform: rotate(180deg);
+}
+
+.photo-spread-preview__placeholder {
+  position: absolute;
+  bottom: 0.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.55);
+  pointer-events: none;
+}
+
+.photo-spread-preview__tool {
+  @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-aura-gold/20 bg-black/30 text-aura-champagne/70 transition-colors hover:border-aura-gold/40 hover:text-aura-champagne disabled:opacity-30;
+}
+
+.photo-spread-preview__tool--danger {
+  @apply border-red-500/20 text-red-300/70 hover:border-red-400/40 hover:text-red-200;
+}
+
+.my-spreads-gallery {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .my-spreads-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .my-spreads-gallery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.my-spreads-card {
+  @apply flex h-full flex-col overflow-hidden rounded-2xl border border-aura-gold/15 bg-black/25 p-4 transition-colors hover:border-aura-gold/25;
+}
+
+.my-spreads-card__preview {
+  @apply mb-3 overflow-hidden rounded-xl border border-aura-gold/10 bg-black/30 p-3;
+}
+
 /* ── Daily spread aligned grid ── */
 .lux-spread-grid {
   display: grid;

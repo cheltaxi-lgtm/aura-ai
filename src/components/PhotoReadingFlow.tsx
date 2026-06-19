@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera,
@@ -10,6 +10,7 @@ import {
   X,
   MessageCircle,
   AlertCircle,
+  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
@@ -18,13 +19,21 @@ import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import { buildPhotoReadingChatMessages } from "@/lib/photo-chat";
 import { saveChatCache } from "@/lib/chat-cache";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { resolveMasterDeckSystem } from "@/lib/decks";
+import { DECK_SYSTEM_DISPLAY, type RedrawSpread } from "@/lib/photo-spread-redraw";
+import { masterQuestionUnit } from "@/lib/master-pricing";
+import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
+import DeckCardsRow from "@/components/DeckCardsRow";
 
 export const PHOTO_READING_RETURN = "/?photo=1";
+
+type FlowStep = "upload" | "confirm" | "result";
 
 export interface PhotoReadingChatPayload {
   analysis: string;
   question?: string;
   detectedCards: string[];
+  redrawSpread?: RedrawSpread;
 }
 
 interface PhotoReadingFlowProps {
@@ -56,6 +65,19 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mimeType: strin
   });
 }
 
+function masterOptionLabel(m: ShowcaseMaster): string {
+  const system = m.system ?? resolveMasterDeckSystem(m.id);
+  const theme = DECK_SYSTEM_DISPLAY[system] ?? m.title;
+  return `${m.name} — ${theme}`;
+}
+
+function systemHint(master: ShowcaseMaster | undefined): string {
+  if (!master) return "Загрузите фото расклада — мы перерисуем его колодой Aura.";
+  const system = master.system ?? resolveMasterDeckSystem(master.id);
+  const unit = masterQuestionUnit(system);
+  return `Мастер читает ${unit.replace("за вопрос", "на фото")}. После распознавания вы подтвердите перерисованный расклад.`;
+}
+
 export default function PhotoReadingFlow({
   open,
   onClose,
@@ -63,34 +85,38 @@ export default function PhotoReadingFlow({
   isLoggedIn,
   defaultMasterId = "veronika",
   sessionId,
-  userName,
   onContinueChat,
   onInsufficientRunes,
 }: PhotoReadingFlowProps) {
   const { config: runeConfig, cost: runeCost, formatRunes, formatRunesWithRub } = useRuneConfig();
-  const photoCost = runeCost("VISION_ANALYSIS");
-  const photoPriceLabel = formatRunesWithRub(photoCost);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
   const isMobile =
     typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
 
+  const [step, setStep] = useState<FlowStep>("upload");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageData, setImageData] = useState<{ base64: string; mimeType: string } | null>(null);
   const [masterId, setMasterId] = useState(defaultMasterId);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [redrawSpread, setRedrawSpread] = useState<RedrawSpread | null>(null);
   const [result, setResult] = useState<{
     analysis: string;
     detectedCards: string[];
     deckType?: string;
     spreadType?: string;
     saved: boolean;
+    historyId?: string;
   } | null>(null);
 
   const selectedMaster = findShowcaseMaster(masterId, masters);
+  const masterSystem = selectedMaster?.system ?? resolveMasterDeckSystem(masterId);
+  const photoCost = runeCost("VISION_ANALYSIS");
+  const photoPriceLabel = formatRunesWithRub(photoCost);
+  const priceUnit = masterQuestionUnit(masterSystem);
 
   useEffect(() => {
     if (open) setMasterId(defaultMasterId);
@@ -98,16 +124,17 @@ export default function PhotoReadingFlow({
 
   useEffect(() => {
     if (open) return;
-
     if (previewObjectUrlRef.current) {
       URL.revokeObjectURL(previewObjectUrlRef.current);
       previewObjectUrlRef.current = null;
     }
     setPreviewUrl(null);
     setImageData(null);
+    setRedrawSpread(null);
     setResult(null);
     setError("");
     setQuestion("");
+    setStep("upload");
     setLoading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
@@ -115,15 +142,12 @@ export default function PhotoReadingFlow({
 
   useEffect(() => {
     if (!open) return;
-
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !loading) onClose();
     };
-
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
-
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener("keydown", onKeyDown);
@@ -137,6 +161,8 @@ export default function PhotoReadingFlow({
     }
     setError("");
     setResult(null);
+    setRedrawSpread(null);
+    setStep("upload");
     const data = await readFileAsBase64(file);
     setImageData(data);
     if (previewObjectUrlRef.current) URL.revokeObjectURL(previewObjectUrlRef.current);
@@ -152,12 +178,14 @@ export default function PhotoReadingFlow({
     }
     setPreviewUrl(null);
     setImageData(null);
+    setRedrawSpread(null);
     setResult(null);
+    setStep("upload");
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
-  const analyze = async () => {
+  const recognize = async () => {
     if (!isLoggedIn) {
       window.location.href = `/auth/user/register?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`;
       return;
@@ -171,7 +199,7 @@ export default function PhotoReadingFlow({
     setError("");
 
     try {
-      const res = await fetch("/api/photo-reading", {
+      const res = await fetch("/api/photo-reading/recognize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -179,7 +207,6 @@ export default function PhotoReadingFlow({
           imageBase64: imageData.base64,
           mimeType: imageData.mimeType,
           question: question.trim() || undefined,
-          sessionId,
         }),
       });
 
@@ -190,33 +217,78 @@ export default function PhotoReadingFlow({
         return;
       }
 
-      if (res.status === 402 && data.error === "INSUFFICIENT_RUNES") {
-        onInsufficientRunes?.({
-          balance: data.balance ?? 0,
-          required: data.required ?? runeCost("VISION_ANALYSIS"),
-        });
-        setError(data.message ?? "Недостаточно рун для анализа фото");
+      if (res.status === 422) {
+        setError(data.message ?? "На фото не удалось распознать расклад");
         return;
       }
 
       if (!res.ok) {
-        setError(data.error ?? "Не удалось разобрать расклад");
+        setError(data.error ?? data.message ?? "Не удалось распознать расклад");
         return;
       }
 
-      const bodyText = data.analysis?.trim() ?? "";
+      setRedrawSpread(data.redrawSpread as RedrawSpread);
+      setPreviewUrl(null);
+      setImageData(null);
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+        previewObjectUrlRef.current = null;
+      }
+      setStep("confirm");
+    } catch {
+      setError("Ошибка сети. Попробуйте ещё раз.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const interpret = async () => {
+    if (!redrawSpread?.cards.length) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/photo-reading", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterId: masterId,
+          question: question.trim() || undefined,
+          sessionId,
+          confirmedSpread: redrawSpread,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 402 && data.error === "INSUFFICIENT_RUNES") {
+        onInsufficientRunes?.({
+          balance: data.balance ?? 0,
+          required: data.required ?? photoCost,
+        });
+        setError(data.message ?? "Недостаточно рун для расшифровки");
+        return;
+      }
+
+      if (!res.ok) {
+        setError(data.message ?? data.error ?? "Не удалось расшифровать расклад");
+        return;
+      }
 
       setResult({
-        analysis: bodyText || data.analysis,
+        analysis: data.analysis,
         detectedCards: data.detectedCards ?? [],
         deckType: data.deckType,
         spreadType: data.spreadType,
         saved: data.saved ?? false,
+        historyId: data.historyId,
       });
+      setStep("result");
 
-      if (onContinueChat && bodyText) {
+      if (onContinueChat && data.analysis) {
         const chatMessages = buildPhotoReadingChatMessages(
-          bodyText,
+          data.analysis,
           question,
           data.detectedCards ?? []
         );
@@ -235,9 +307,19 @@ export default function PhotoReadingFlow({
       analysis: result.analysis,
       question: question.trim() || undefined,
       detectedCards: result.detectedCards,
+      redrawSpread: redrawSpread ?? undefined,
     });
     onClose();
   };
+
+  const resultCards = useMemo(
+    () =>
+      redrawSpread?.cards.map((c) => ({
+        name: c.reversed ? `${c.name} (перев.)` : c.name,
+        meaning: c.shortMeaning,
+      })) ?? [],
+    [redrawSpread]
+  );
 
   return (
     <AnimatePresence>
@@ -263,26 +345,20 @@ export default function PhotoReadingFlow({
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
-            transition={{ duration: 0.22 }}
           >
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
               <div className="min-w-0 pr-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 id="photo-reading-title" className="font-display text-xl font-semibold text-white sm:text-2xl">
-                    Прочитай мой расклад
-                  </h2>
-                  {runeConfig.enabled && (
-                    <span className="rounded-full border border-aura-gold/40 bg-aura-gold/10 px-2.5 py-0.5 text-xs font-medium text-aura-gold">
-                      {photoPriceLabel}
-                    </span>
-                  )}
-                </div>
+                <h2 id="photo-reading-title" className="font-display text-xl font-semibold text-white sm:text-2xl">
+                  Прочитай мой расклад
+                </h2>
                 <p className="mt-1 text-xs text-gray-500 sm:text-sm">
-                  Любая колода и любой расклад — фото карт или скриншот из приложения
-                  {runeConfig.enabled && (
-                    <span className="text-aura-gold/90"> · оплата рунами за разбор</span>
-                  )}
+                  {systemHint(selectedMaster)}
                 </p>
+                {runeConfig.enabled && step !== "result" && (
+                  <p className="mt-1 text-xs text-aura-gold/90">
+                    {formatRunes(photoCost)} (~{Math.round(photoCost * runeConfig.rubPerRune)} ₽) · {priceUnit}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -296,11 +372,11 @@ export default function PhotoReadingFlow({
             </div>
 
             <div className="overflow-y-auto px-5 py-5 sm:px-6">
-              <div className="flow-panel border-0 bg-transparent p-0 shadow-none">
-                {!result ? (
-                  <>
-                    {!previewUrl ? (
-                      <div className="grid gap-4 sm:grid-cols-2">
+              {step === "upload" && (
+                <>
+                  {!previewUrl ? (
+                    <div className={`grid gap-4 ${isMobile ? "sm:grid-cols-2" : ""}`}>
+                      {isMobile && (
                         <button
                           type="button"
                           onClick={() => cameraInputRef.current?.click()}
@@ -308,210 +384,232 @@ export default function PhotoReadingFlow({
                         >
                           <Camera className="h-10 w-10 text-aura-neon" />
                           <span className="text-sm font-medium text-white">Сделать фото</span>
-                          <span className="text-xs text-gray-500">Камера телефона</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/20 bg-black/20 p-8 transition-colors hover:border-white/40 hover:bg-black/30"
-                        >
-                          <ImagePlus className="h-10 w-10 text-gray-400" />
-                          <span className="text-sm font-medium text-white">Загрузить фото</span>
-                          <span className="text-xs text-gray-500">JPG, PNG, скриншот</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="relative mb-6 overflow-hidden rounded-2xl border border-white/10">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={previewUrl}
-                          alt="Ваш расклад"
-                          className="max-h-80 w-full object-contain bg-black/40"
-                        />
-                        <button
-                          type="button"
-                          onClick={clearImage}
-                          className="absolute right-3 top-3 rounded-full bg-black/60 p-2 text-gray-300 hover:text-white"
-                          aria-label="Удалить фото"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
-
-                    <input
-                      ref={cameraInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture={isMobile ? "environment" : undefined}
-                      className="hidden"
-                      onChange={(e) => void handleFile(e.target.files?.[0])}
-                    />
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/*"
-                      className="hidden"
-                      onChange={(e) => void handleFile(e.target.files?.[0])}
-                    />
-
-                    <div className="mt-6 space-y-4">
-                      <div>
-                        <label className="mb-2 block text-xs text-gray-500">Мастер</label>
-                        <select
-                          value={masterId}
-                          onChange={(e) => setMasterId(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white"
-                        >
-                          {masters.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.emoji} {m.name} — {m.specialty}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-xs text-gray-500">
-                          Ваш вопрос к раскладу (необязательно)
-                        </label>
-                        <textarea
-                          value={question}
-                          onChange={(e) => setQuestion(e.target.value)}
-                          placeholder="Например: что означает этот расклад для моих отношений?"
-                          rows={2}
-                          className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder-gray-600"
-                        />
-                      </div>
-                    </div>
-
-                    {error && (
-                      <p className="mt-4 flex items-center gap-2 text-sm text-red-400">
-                        <AlertCircle className="h-4 w-4 shrink-0" />
-                        {error}
-                      </p>
-                    )}
-
-                    {!isLoggedIn && (
-                      <p className="mt-4 text-center text-sm text-gray-500">
-                        <Link
-                          href={`/auth/user/register?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`}
-                          className="text-aura-neon hover:underline"
-                        >
-                          Зарегистрируйтесь
-                        </Link>
-                        , чтобы получить расшифровку
-                      </p>
-                    )}
-
-
-                    {isLoggedIn && runeConfig.enabled && (
-                      <p className="mt-4 text-center text-sm text-aura-gold">
-                        Стоимость разбора: {photoPriceLabel}
-                      </p>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => void analyze()}
-                      disabled={!imageData || loading}
-                      className="btn-neon mt-6 flex w-full items-center justify-center gap-2 py-3.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          {selectedMaster?.name ?? "Мастер"} изучает карты…
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4" />
-                          {runeConfig.enabled
-                            ? `Разобрать расклад — ${formatRunes(photoCost)}`
-                            : "Разобрать мой расклад"}
-                        </>
-                      )}
-                    </button>
-
-                    <p className="mt-4 text-center text-[10px] text-gray-600">
-                      Любая колода и расклад · хороший свет · все карты в кадре · без бликов
-                    </p>
-                  </>
-                ) : (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                    <div className="mb-4 flex items-center gap-3">
-                      <span className="text-3xl">{selectedMaster?.emoji}</span>
-                      <div>
-                        <p className="font-display font-semibold text-white">
-                          {selectedMaster?.name ?? "Мастер"}
-                        </p>
-                        <p className="text-xs text-gray-500">Расшифровка вашего фото-расклада</p>
-                      </div>
-                    </div>
-
-                    {result.deckType && (
-                      <p className="mb-2 text-xs text-gray-500">
-                        <span className="text-aura-emerald">Колода:</span> {result.deckType}
-                      </p>
-                    )}
-                    {result.spreadType && (
-                      <p className="mb-4 text-xs text-gray-500">
-                        <span className="text-aura-emerald">Расклад:</span> {result.spreadType}
-                      </p>
-                    )}
-
-                    {result.detectedCards.length > 0 && (
-                      <div className="mb-5 flex flex-wrap gap-2">
-                        {result.detectedCards.map((card) => (
-                          <span
-                            key={card}
-                            className="rounded-full border border-aura-gold/30 bg-aura-gold/10 px-3 py-1 text-xs text-aura-gold"
-                          >
-                            {card}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
-                        {result.analysis}
-                      </p>
-                      <MessageAudioPlayer text={result.analysis} characterId={masterId} />
-                    </div>
-
-                    {!result.saved && (
-                      <p className="mt-3 text-xs text-gray-500">
-                        Заполните профиль в{" "}
-                        <Link href="/cabinet" className="text-aura-neon hover:underline">
-                          кабинете
-                        </Link>
-                        , чтобы сохранять фото-расклады в историю.
-                      </p>
-                    )}
-
-                    <div className="mt-6 flex flex-wrap gap-3">
-                      {onContinueChat && (
-                        <button
-                          type="button"
-                          onClick={handleContinueChat}
-                          className="btn-neon flex items-center gap-2 px-5 py-2.5 text-sm"
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                          Перейти в чат с мастером
                         </button>
                       )}
                       <button
                         type="button"
-                        onClick={() => {
-                          setResult(null);
-                          clearImage();
-                        }}
-                        className="rounded-xl border border-white/10 px-5 py-2.5 text-sm text-gray-400 hover:text-white"
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/20 bg-black/20 p-8 transition-colors hover:border-white/40 hover:bg-black/30 ${!isMobile ? "col-span-full" : ""}`}
                       >
-                        Новое фото
+                        <ImagePlus className="h-10 w-10 text-gray-400" />
+                        <span className="text-sm font-medium text-white">Загрузить фото</span>
+                        <span className="text-xs text-gray-500">JPG, PNG, скриншот</span>
                       </button>
                     </div>
-                  </motion.div>
+                  ) : (
+                    <div className="relative mb-6 overflow-hidden rounded-2xl border border-white/10">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={previewUrl}
+                        alt="Ваш расклад"
+                        className="max-h-64 w-full object-contain bg-black/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={clearImage}
+                        className="absolute right-3 top-3 rounded-full bg-black/60 p-2 text-gray-300 hover:text-white"
+                        aria-label="Удалить фото"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture={isMobile ? "environment" : undefined}
+                    className="hidden"
+                    onChange={(e) => void handleFile(e.target.files?.[0])}
+                  />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/*"
+                    className="hidden"
+                    onChange={(e) => void handleFile(e.target.files?.[0])}
+                  />
+
+                  <div className="mt-6 space-y-4">
+                    <div>
+                      <label className="mb-2 block text-xs text-gray-500">Мастер</label>
+                      <select
+                        value={masterId}
+                        onChange={(e) => setMasterId(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white"
+                      >
+                        {masters.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {masterOptionLabel(m)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs text-gray-500">
+                        Ваш вопрос к раскладу (необязательно)
+                      </label>
+                      <textarea
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        placeholder="Например: что означает этот расклад для моих отношений?"
+                        rows={2}
+                        className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder-gray-600"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {step === "confirm" && redrawSpread && (
+                <PhotoSpreadPreview
+                  spread={redrawSpread}
+                  masterId={masterId}
+                  onChange={setRedrawSpread}
+                />
+              )}
+
+              {step === "result" && result && redrawSpread && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                  <p className="mb-4 font-display text-lg font-semibold text-white">
+                    {selectedMaster?.name ?? "Мастер"}
+                  </p>
+
+                  {resultCards.length > 0 && (
+                    <div className="mb-5 rounded-2xl border border-aura-gold/15 bg-black/20 p-4">
+                      <DeckCardsRow
+                        cards={resultCards}
+                        system={redrawSpread.system}
+                        masterId={masterId}
+                        size="md"
+                        aligned
+                        enableDetail
+                      />
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
+                      {result.analysis}
+                    </p>
+                    <MessageAudioPlayer text={result.analysis} characterId={masterId} />
+                  </div>
+
+                  {result.saved && (
+                    <p className="mt-3 text-xs text-aura-emerald">
+                      Расклад сохранён в{" "}
+                      <Link href="/cabinet#мои-расклады" className="underline">
+                        личном кабинете
+                      </Link>
+                      .
+                    </p>
+                  )}
+                </motion.div>
+              )}
+
+              {error && (
+                <p className="mt-4 flex items-center gap-2 text-sm text-red-400">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {error}
+                </p>
+              )}
+
+              {!isLoggedIn && step === "upload" && (
+                <p className="mt-4 text-center text-sm text-gray-500">
+                  <Link
+                    href={`/auth/user/register?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`}
+                    className="text-aura-neon hover:underline"
+                  >
+                    Зарегистрируйтесь
+                  </Link>
+                  , чтобы получить расшифровку
+                </p>
+              )}
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                {step === "upload" && (
+                  <button
+                    type="button"
+                    onClick={() => void recognize()}
+                    disabled={!imageData || loading}
+                    className="btn-primary flex flex-1 items-center justify-center gap-2 py-3.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Распознаём и перерисовываем…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Распознать расклад
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {step === "confirm" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void interpret()}
+                      disabled={!redrawSpread?.cards.length || loading}
+                      className="btn-primary flex flex-1 items-center justify-center gap-2 py-3.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {selectedMaster?.name ?? "Мастер"} расшифровывает…
+                        </>
+                      ) : (
+                        <>
+                          Подтвердить и расшифровать
+                          <ArrowRight className="h-4 w-4" />
+                          {runeConfig.enabled ? formatRunes(photoCost) : ""}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStep("upload");
+                        setRedrawSpread(null);
+                      }}
+                      disabled={loading}
+                      className="btn-ghost px-5 py-3 text-sm"
+                    >
+                      Другое фото
+                    </button>
+                  </>
+                )}
+
+                {step === "result" && (
+                  <>
+                    {onContinueChat && (
+                      <button
+                        type="button"
+                        onClick={handleContinueChat}
+                        className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Перейти в чат
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResult(null);
+                        setRedrawSpread(null);
+                        setStep("upload");
+                        clearImage();
+                      }}
+                      className="btn-ghost px-5 py-2.5 text-sm"
+                    >
+                      Новое фото
+                    </button>
+                  </>
                 )}
               </div>
             </div>

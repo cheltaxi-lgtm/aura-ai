@@ -167,6 +167,69 @@ export function photoReadingFallback(userName?: string): string {
 ${name}, связь с образом прервалась — не могу чётко разобрать карты на фото. Сделайте снимок при хорошем свете: все карты целиком в кадре, без бликов, сверху. Подойдут любые колоды — таро, Ленорман, оракулы, скриншот из приложения. Или опишите расклад текстом в чате с мастером.`;
 }
 
+const PHOTO_RECOGNITION_ONLY = `
+РЕЖИМ: ТОЛЬКО РАСПОЗНАВАНИЕ (без расшифровки).
+Верни ТОЛЬКО три служебные строки в начале — без абзацев расшифровки:
+КОЛОДА: [тип/название · уверенность: высокая/средняя/низкая]
+РАСКЛАД: [название или описание · N карт · назначение если ясно]
+КАРТЫ: «Символ1» · «Символ2 (перев.)» · …
+Правила:
+- Перечисли ВСЕ различимые символы слева направо / сверху вниз по порядку на фото.
+- Перевёрнутые — «(перев.)» после названия.
+- Если это не расклад (портрет, пейзаж, случайное фото) — КАРТЫ: не удалось распознать
+- Не пиши расшифровку и не обращайся к клиенту — только метаданные.`;
+
+export async function generatePhotoRecognition(
+  systemPrompt: string,
+  imageBase64: string,
+  userText: string,
+  mimeType?: string
+): Promise<string | null> {
+  const fullPrompt = await wrapSystemPrompt(`${systemPrompt}\n\n${PHOTO_RECOGNITION_ONLY}`);
+  const messages: ChatMessage[] = [
+    { role: "system", content: fullPrompt },
+    buildPhotoVisionMessage(
+      userText ||
+        "Распознай колоду, схему расклада и все видимые символы. Только строки КОЛОДА/РАСКЛАД/КАРТЫ.",
+      imageBase64,
+      mimeType ?? "image/jpeg"
+    ),
+  ];
+
+  return completeChat({
+    messages,
+    maxTokens: 600,
+    temperature: 0.35,
+    vision: true,
+  });
+}
+
+export async function generatePhotoInterpretation(
+  systemPrompt: string,
+  spreadSummary: string,
+  question?: string
+): Promise<string | null> {
+  const fullPrompt = await wrapSystemPrompt(systemPrompt);
+  const userBlock = [
+    "Клиент подтвердил перерисованный расклад Aura:",
+    spreadSummary,
+    question?.trim() ? `Вопрос клиента: «${question.trim()}»` : "Отдельный вопрос не задан.",
+    "Дай полную персональную расшифровку от лица мастера (4–8 абзацев, без markdown). Не упоминай AI или vision.",
+  ].join("\n\n");
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: fullPrompt },
+    { role: "user", content: userBlock },
+  ];
+
+  return completeChat({
+    messages,
+    maxTokens: 1800,
+    temperature: 0.65,
+    vision: false,
+  });
+}
+
 export async function resolvePhotoReadingPrompt(
   characterId: string,
   ctx: PhotoReadingContext,

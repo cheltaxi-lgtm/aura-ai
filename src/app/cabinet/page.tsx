@@ -23,6 +23,8 @@ import ReadingActions from "@/components/ReadingActions";
 import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import SceneImage from "@/components/SceneImage";
 import TarotCardsRow from "@/components/TarotCardsRow";
+import MySpreadsGallery from "@/components/MySpreadsGallery";
+import type { RedrawSpread } from "@/lib/photo-spread-redraw";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { requestSceneImage, tarotCardNames } from "@/lib/scene-images-client";
@@ -50,8 +52,10 @@ interface ReadingEntry {
     detectedCards?: string[];
     deckType?: string;
     spreadType?: string;
-    tarotCards?: { name: string; meaning?: string }[];
+    tarotCards?: { name: string; meaning?: string; reversed?: boolean }[];
     deckSystem?: DeckSystem;
+    redrawSpread?: RedrawSpread;
+    question?: string;
     teaser?: string;
     sceneArt?: SceneArt;
     interpretation?: { text: string; masterId?: string; savedAt?: string };
@@ -260,7 +264,10 @@ function readingSharePayload(entry: ReadingEntry, masters?: Map<string, MasterIn
     masterName:
       entry.characterName !== "triplet" ? masterLabel(entry.characterName, masters) : undefined,
     date,
-    cards: entry.contextData.tarotCards,
+    cards: entry.contextData.tarotCards ?? entry.contextData.redrawSpread?.cards.map((c) => ({
+      name: c.reversed ? `${c.name} (перев.)` : c.name,
+      meaning: c.shortMeaning,
+    })),
     detectedCards: entry.contextData.detectedCards,
     deckType: entry.contextData.deckType,
     spreadType: entry.contextData.spreadType,
@@ -405,6 +412,12 @@ export default function UserCabinetPage() {
   const cardDraws = collectCardDraws(data.readings);
   const masterMap = buildMasterMap(masters);
   const historyReadings = dedupeHistoryReadings(data.readings);
+  const mySpreads = data.readings.filter((r) => r.contextData.type === "photo_reading");
+
+  const openSpreadReading = (id: string) => {
+    setExpandedReadingId(id);
+    document.getElementById(`reading-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <div className="min-h-screen px-6 py-12">
@@ -576,6 +589,17 @@ export default function UserCabinetPage() {
           )}
         </section>
 
+        <section id="мои-расклады" className="mb-8 scroll-mt-24">
+          <h2 className="font-display mb-4 flex items-center gap-2 text-xl text-gray-300">
+            <Layers className="h-5 w-5" /> Мои расклады
+          </h2>
+          <MySpreadsGallery
+            entries={mySpreads}
+            masterLabel={(id) => masterLabel(id, masterMap)}
+            onOpen={openSpreadReading}
+          />
+        </section>
+
         <div className="mb-8 grid gap-4 sm:grid-cols-2">
           <div className="glass-panel flex items-center gap-4 p-5">
             <Crown className="h-8 w-8 text-aura-gold" />
@@ -624,7 +648,7 @@ export default function UserCabinetPage() {
                   entry.contextData.type === "reading" && entry.characterName !== "triplet";
 
                 return (
-                  <article key={entry.id} className="glass-panel p-5">
+                  <article key={entry.id} id={`reading-${entry.id}`} className="glass-panel p-5">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
                       <span className="inline-flex items-center gap-2 font-medium text-aura-gold">
                         {isMasterReading && (
@@ -651,22 +675,27 @@ export default function UserCabinetPage() {
                       </p>
                     )}
 
-                    {entry.contextData.detectedCards && entry.contextData.detectedCards.length > 0 && (
-                      <div className="mb-3 flex flex-wrap gap-2">
-                        {entry.contextData.detectedCards.map((card) => (
-                          <span
-                            key={card}
-                            className="rounded-full border border-aura-gold/30 bg-aura-gold/10 px-2.5 py-0.5 text-[10px] text-aura-gold"
-                          >
-                            {card}
-                          </span>
-                        ))}
+                    {(cards.length > 0 || entry.contextData.redrawSpread?.cards.length) &&
+                      (isTriplet || isMasterReading || entry.contextData.type === "photo_reading") && (
+                      <div className="mb-4 rounded-2xl border border-aura-gold/15 bg-black/20 p-4">
+                        <TarotCardsRow
+                          cards={
+                            cards.length > 0
+                              ? cards
+                              : (entry.contextData.redrawSpread?.cards.map((c) => ({
+                                  name: c.reversed ? `${c.name} (перев.)` : c.name,
+                                  meaning: c.shortMeaning,
+                                })) ?? [])
+                          }
+                          system={deckSystem}
+                          masterId={entry.characterName !== "triplet" ? entry.characterName : undefined}
+                          size="md"
+                          aligned={entry.contextData.type === "photo_reading"}
+                          enableDetail
+                        />
                       </div>
                     )}
 
-                    {cards.length > 0 && (isTriplet || isMasterReading) && (
-                      <TarotCardsRow cards={cards} system={deckSystem} enableDetail />
-                    )}
                     {!isTriplet && <SceneArtRow sceneArt={entry.contextData.sceneArt} />}
 
                     <p
