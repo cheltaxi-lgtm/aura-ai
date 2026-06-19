@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { DeckSystem } from "@/lib/decks/types";
 import { getDeckPositions } from "@/lib/decks";
-import { listDeckCards, resolveDeckCard } from "@/lib/deck-card-utils";
+import { resolveDeckCard } from "@/lib/deck-card-utils";
 import DeckCard from "@/components/DeckCard";
 import CardDetailModal from "@/components/CardDetailModal";
 
@@ -13,8 +13,9 @@ interface DeckCardsRowProps {
   masterId?: string;
   showMeaning?: boolean;
   size?: "sm" | "md" | "lg";
-  /** Enable detail modal on card click (browse-only, no draw) */
   enableDetail?: boolean;
+  /** Aligned spread layout with fixed caption baselines */
+  aligned?: boolean;
 }
 
 export default function DeckCardsRow({
@@ -24,6 +25,7 @@ export default function DeckCardsRow({
   showMeaning = true,
   size = "md",
   enableDetail = true,
+  aligned = false,
 }: DeckCardsRowProps) {
   const [modalIndex, setModalIndex] = useState<number | null>(null);
 
@@ -36,9 +38,58 @@ export default function DeckCardsRow({
 
   if (!cards.length) return null;
 
+  if (aligned) {
+    return (
+      <>
+        <div className="lux-spread-grid">
+          {cards.map((card, i) => {
+            const resolved = system ? resolveDeckCard(system, card) : null;
+            const meaning = resolved?.shortMeaning ?? card.meaning ?? "";
+            return (
+              <div key={`${card.name}-${i}`} className="lux-spread-col">
+                <p className="lux-label lux-spread-col__position">
+                  {positions[i] ?? `Символ ${i + 1}`}
+                </p>
+                <div className="lux-spread-col__card">
+                  <DeckCard
+                    card={card}
+                    system={system}
+                    masterId={masterId}
+                    showMeaning={false}
+                    hideCaption
+                    size={size}
+                    onClick={
+                      enableDetail && system ? () => setModalIndex(i) : undefined
+                    }
+                    className="mx-auto w-full max-w-[180px]"
+                  />
+                </div>
+                <p className="lux-spread-col__title">{resolved?.name ?? card.name}</p>
+                {showMeaning && (
+                  <p className="lux-spread-col__meaning">{meaning}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {enableDetail && system && modalIndex !== null && (
+          <CardDetailModal
+            open
+            cards={resolvedSpread}
+            index={modalIndex}
+            onIndexChange={setModalIndex}
+            onClose={() => setModalIndex(null)}
+            positionLabel={positions[modalIndex]}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="grid grid-cols-3 gap-3 sm:gap-6 md:gap-8">
+      <div className="grid grid-cols-3 items-start gap-3 sm:gap-6 md:gap-8">
         {cards.map((card, i) => (
           <DeckCard
             key={`${card.name}-${i}`}
@@ -49,9 +100,7 @@ export default function DeckCardsRow({
             showMeaning={showMeaning}
             size={size}
             onClick={
-              enableDetail && system
-                ? () => setModalIndex(i)
-                : undefined
+              enableDetail && system ? () => setModalIndex(i) : undefined
             }
           />
         ))}
@@ -71,5 +120,4 @@ export default function DeckCardsRow({
   );
 }
 
-/** @deprecated use DeckCardsRow */
 export { DeckCardsRow as TarotCardsRow };

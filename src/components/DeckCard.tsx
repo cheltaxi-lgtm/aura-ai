@@ -18,6 +18,8 @@ export interface DeckCardProps {
   size?: "sm" | "md" | "lg";
   className?: string;
   faceDown?: boolean;
+  /** Hide name caption inside card (used by aligned spread row) */
+  hideCaption?: boolean;
   /** Opens detail modal — gallery & daily spread */
   onClick?: () => void;
   interactive?: boolean;
@@ -38,6 +40,7 @@ export default function DeckCard({
   size = "md",
   className = "",
   faceDown = false,
+  hideCaption = false,
   onClick,
   interactive = false,
 }: DeckCardProps) {
@@ -89,7 +92,7 @@ export default function DeckCard({
             <div className="lux-tarot-card__image-vignette" aria-hidden />
           </div>
 
-          {!faceDown && (
+          {!faceDown && !hideCaption && (
             <p className="font-display text-center text-xs font-semibold leading-tight text-[#EDE6DA]">
               {resolved.name}
             </p>
@@ -98,7 +101,7 @@ export default function DeckCard({
         <div className="lux-tarot-card__sheen" aria-hidden />
       </div>
 
-      {showMeaning && !faceDown && meaning && (
+      {showMeaning && !faceDown && !hideCaption && meaning && (
         <p
           className={`${meaningWidth} mt-2 text-center text-[10px] leading-relaxed text-aura-ivory/50`}
         >

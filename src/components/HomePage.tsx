@@ -44,12 +44,14 @@ import {
 } from "@/lib/triplet-limit";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
-import { DEFAULT_DECK_SYSTEM, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
+import { DEFAULT_DECK_SYSTEM, getDeckPositions, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
 import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
 import { requestSceneImage, tarotCardNames } from "@/lib/scene-images-client";
 import type { CharacterVisualKey } from "@/lib/image-prompts";
 import type { Message } from "@/types";
 import { loadGuestTriplet, mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
+import { buildSpreadTeaser } from "@/lib/spread-teaser";
+import { useTripletCountdown } from "@/hooks/useTripletCountdown";
 
 const PROFILE_KEY = "aura_profile";
 const FLOW_STEP_KEY = "aura_flow_step";
@@ -686,12 +688,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     return fromProfile.map((card) => resolveSpreadSymbol(profileSystem, card));
   }, [profile?.tarotCards, profile?.deckSystem, savedReadings]);
 
+  const tripletCountdown = useTripletCountdown(tripletCooldown?.nextAvailableAt);
+
   const tripletCooldownHint = useMemo(() => {
+    if (tripletCountdown.isOnCooldown && tripletCountdown.hintRu) return tripletCountdown.hintRu;
     if (!tripletCooldown?.nextAvailableAt) return undefined;
     return `Новый расклад из 3 карт ${formatTripletCooldownRu(tripletCooldown.nextAvailableAt)}`;
-  }, [tripletCooldown]);
-
-  const canStartNewTriplet = !tripletCooldownReady || tripletCooldown?.allowed !== false;
+  }, [tripletCountdown.isOnCooldown, tripletCountdown.hintRu, tripletCooldown?.nextAvailableAt, tripletCountdown.tick]);
 
   const persistProfile = (data: StoredProfile) => {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
@@ -1011,9 +1014,16 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const handleNewReading = async () => {
     setTripletNotice(null);
+    if (!tripletCooldownReady || tripletCountdown.isOnCooldown) {
+      const hint = tripletCooldown?.nextAvailableAt
+        ? `Новый расклад из 3 карт ${formatTripletCooldownRu(tripletCooldown.nextAvailableAt)}`
+        : "Новый расклад из 3 карт доступен один раз в сутки";
+      setTripletNotice(hint);
+      return;
+    }
     const synced = await syncProfileFromServer({ keepSpread: true });
     const cooldown = synced?.cooldown ?? tripletCooldown;
-    if (!cooldown?.allowed) {
+    if (!cooldown?.allowed || (cooldown.nextAvailableAt && new Date(cooldown.nextAvailableAt).getTime() > Date.now())) {
       const hint = cooldown?.nextAvailableAt
         ? `Новый расклад из 3 карт ${formatTripletCooldownRu(cooldown.nextAvailableAt)}`
         : "Новый расклад из 3 карт доступен один раз в сутки";
@@ -1879,6 +1889,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       ? recommendShowcaseMaster(profile.tarotCards, masters)
       : undefined;
 
+  const recapMasterName = useMemo(() => {
+    const id = recapContinueMasterId ?? recommendedId;
+    if (!id) return undefined;
+    return findShowcaseMaster(id, masters)?.name ?? getCharacterById(id)?.name;
+  }, [recapContinueMasterId, recommendedId, masters]);
+
   const selectedMaster = selectedCharacter
     ? findShowcaseMaster(selectedCharacter, masters)
     : undefined;
@@ -2024,6 +2040,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                       userName={profile.name}
                       zodiac={profile.zodiac}
                       system={tripletSystem}
+                      masterName={recapMasterName}
                       initialCards={
                         newTripletDraft
                           ? undefined
@@ -2073,7 +2090,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 ) : null}
                 <ReadingRecap
                   userName={profile.name}
-                  zodiac={profile.zodiac}
+                  birthDate={profile.birthDate}
                   tarotCards={displayTarotCards}
                   deckSystem={profile.deckSystem ?? tripletSystem}
                   teaser={profile.teaser}
@@ -2085,8 +2102,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                       : undefined
                   }
                   onNewReading={handleNewReading}
-                  newReadingAllowed={canStartNewTriplet}
-                  newReadingCooldownHint={tripletCooldownHint}
+                  cooldownReady={tripletCooldownReady}
+                  nextAvailableAt={tripletCooldown?.nextAvailableAt}
                   onUnlock={
                     session?.sessionId && !session.hasAccess && !runeConfig.enabled
                       ? () => setShowPaywall(true)
@@ -2127,6 +2144,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 )}
 
                 <MastersShowcase
+                  className="mt-2"
                   masters={masters}
                   onSelect={(id) => void handleMasterPick(id)}
                   recommendedId={recommendedId}

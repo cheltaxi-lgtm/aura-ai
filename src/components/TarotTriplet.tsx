@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { DeckSystem } from "@/lib/decks/types";
 import { drawSpread, getDeckPositions } from "@/lib/decks";
+import { buildSpreadTeaser } from "@/lib/spread-teaser";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
 import SceneImage from "@/components/SceneImage";
@@ -13,6 +14,7 @@ interface TarotTripletProps {
   userName: string;
   zodiac?: string;
   system: DeckSystem;
+  masterName?: string;
   initialCards?: SpreadSymbol[];
   onComplete: (cards: SpreadSymbol[], teaser: string) => void;
 }
@@ -21,6 +23,7 @@ export default function TarotTriplet({
   userName,
   zodiac,
   system,
+  masterName,
   initialCards,
   onComplete,
 }: TarotTripletProps) {
@@ -60,7 +63,12 @@ export default function TarotTriplet({
   };
 
   const handleFinish = () => {
-    const teaser = `${userName}, три символа легли на ваш астральный стол: «${deck[0].name}» (${positions[0]}), «${deck[1].name}» (${positions[1]}) и «${deck[2].name}» (${positions[2]}). Энергия ${deck[1].name} сейчас доминирует — выберите наставника, чтобы услышать полную расшифровку.`;
+    const teaser = buildSpreadTeaser({
+      userName,
+      cards: deck,
+      positions: [...positions],
+      masterName,
+    });
     onComplete(deck, teaser);
   };
 

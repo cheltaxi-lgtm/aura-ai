@@ -1,17 +1,23 @@
 "use client";
 
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { RefreshCw, Sparkles, Layers } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
-import { resolveMasterDeckSystem } from "@/lib/decks";
+import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
+import { buildSpreadTeaser } from "@/lib/spread-teaser";
+import { getZodiacFromDate } from "@/utils/zodiac";
+import { useTripletCountdown } from "@/hooks/useTripletCountdown";
 import DeckCardsRow from "@/components/DeckCardsRow";
+import ZodiacGlyph from "@/components/ZodiacGlyph";
+import MasterSigil from "@/components/MasterSigil";
 
 interface ReadingRecapProps {
   userName: string;
-  zodiac: string;
+  birthDate?: string;
   tarotCards: SpreadSymbol[];
   deckSystem?: DeckSystem;
   teaser?: string;
@@ -19,17 +25,24 @@ interface ReadingRecapProps {
   masters?: ShowcaseMaster[];
   onContinue?: () => void;
   onNewReading: () => void;
-  newReadingAllowed?: boolean;
-  newReadingCooldownHint?: string;
+  cooldownReady?: boolean;
+  nextAvailableAt?: string | null;
   onUnlock?: () => void;
   unlockLabel?: string;
   readingHint?: string;
   onOpenGallery?: () => void;
 }
 
+function zodiacFromBirthDate(birthDate?: string) {
+  if (!birthDate?.trim()) return null;
+  const d = new Date(birthDate);
+  if (Number.isNaN(d.getTime())) return null;
+  return getZodiacFromDate(birthDate);
+}
+
 export default function ReadingRecap({
   userName,
-  zodiac,
+  birthDate,
   tarotCards,
   deckSystem,
   teaser,
@@ -37,13 +50,16 @@ export default function ReadingRecap({
   masters,
   onContinue,
   onNewReading,
-  newReadingAllowed = true,
-  newReadingCooldownHint,
+  cooldownReady = true,
+  nextAvailableAt,
   onUnlock,
   unlockLabel = "199 ₽",
   readingHint,
   onOpenGallery,
 }: ReadingRecapProps) {
+  const countdown = useTripletCountdown(nextAvailableAt);
+  const newReadingAllowed = cooldownReady && !countdown.isOnCooldown;
+
   const lastMaster = lastMasterId
     ? findShowcaseMaster(lastMasterId, masters) ?? getCharacterById(lastMasterId)
     : null;
@@ -54,47 +70,81 @@ export default function ReadingRecap({
     masters?.[0];
 
   const system = deckSystem ?? (galleryMaster ? resolveMasterDeckSystem(galleryMaster.id) : undefined);
+  const positions = system
+    ? [...getDeckPositions(system)]
+    : ["Прошлое", "Настоящее", "Будущее"];
+
+  const zodiacSign = zodiacFromBirthDate(birthDate);
+
+  const teaserText = useMemo(() => {
+    if (tarotCards.length >= 3) {
+      return buildSpreadTeaser({
+        userName,
+        cards: tarotCards,
+        positions,
+        masterName: lastMaster?.name,
+      });
+    }
+    return (
+      teaser ??
+      (lastMaster
+        ? `${userName}, продолжите с ${lastMaster.name}, чтобы услышать полную расшифровку.`
+        : "Выберите мастера ниже — он расшифрует ваш расклад и ответит на вопросы.")
+    );
+  }, [tarotCards, userName, positions, lastMaster, teaser]);
+
+  const handleNewReading = () => {
+    if (!newReadingAllowed) return;
+    onNewReading();
+  };
 
   return (
     <motion.div
       id="мой-расклад"
-      className="glass-panel mx-auto mb-10 max-w-3xl p-6"
+      className="glass-panel mx-auto mb-6 max-w-3xl p-6"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
     >
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs text-gray-500">Три карты дня</p>
-          <p className="font-display text-lg font-semibold text-white">
-            {userName} · {zodiac}
+          <p className="font-display text-lg font-semibold text-white sm:text-xl">
+            Ваш расклад готов
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 font-display text-sm text-aura-ivory/85">
+            <span className="uppercase tracking-wide">{userName}</span>
+            {zodiacSign ? (
+              <>
+                <span className="text-aura-champagne/50">·</span>
+                <span className="inline-flex items-center gap-1">
+                  {zodiacSign.name}
+                  <ZodiacGlyph signName={zodiacSign.name} className="h-3.5 w-3.5" />
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
         <button
           type="button"
-          onClick={onNewReading}
+          onClick={handleNewReading}
           disabled={!newReadingAllowed}
-          title={newReadingCooldownHint}
-          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${
-            newReadingAllowed
-              ? "border-white/10 text-gray-400 hover:border-white/25 hover:text-white"
-              : "cursor-not-allowed border-white/5 text-gray-600"
-          }`}
+          title={countdown.tooltip || "Выпустить новый расклад из 3 карт"}
+          className={`btn-new-spread ${newReadingAllowed ? "btn-new-spread--active" : "btn-new-spread--cooldown"}`}
         >
-          <RefreshCw className="h-3.5 w-3.5" />
+          <RefreshCw className={`h-3.5 w-3.5 ${newReadingAllowed ? "" : "opacity-60"}`} />
           Новый расклад
         </button>
       </div>
 
-      {!newReadingAllowed && newReadingCooldownHint && (
-        <p className="-mt-2 mb-4 text-right text-[10px] text-aura-champagne/70">
-          {newReadingCooldownHint}
+      {!newReadingAllowed && countdown.hintRu ? (
+        <p className="-mt-1 mb-4 text-right text-xs tabular-nums text-aura-champagne/80">
+          {countdown.hintRu}
         </p>
-      )}
+      ) : null}
 
       {tarotCards.length >= 3 ? (
-        <div className="mb-6 rounded-2xl border border-aura-gold/15 bg-black/20 p-4 sm:p-5">
+        <div className="mb-5 rounded-2xl border border-aura-gold/15 bg-black/20 p-4 sm:p-5">
           <p className="mb-4 text-center text-xs uppercase tracking-widest text-aura-gold">
-            Ваш расклад · нажмите на карту для подробностей
+            Нажмите на карту для подробностей
           </p>
           <DeckCardsRow
             cards={tarotCards.slice(0, 3)}
@@ -102,9 +152,10 @@ export default function ReadingRecap({
             masterId={galleryMaster?.id}
             size="lg"
             enableDetail
+            aligned
           />
-          {onOpenGallery && galleryMaster && system && (
-            <div className="mt-5 text-center">
+          {onOpenGallery && galleryMaster && system ? (
+            <div className="mt-4 text-center">
               <button
                 type="button"
                 onClick={onOpenGallery}
@@ -114,7 +165,7 @@ export default function ReadingRecap({
                 Вся колода {galleryMaster.name}
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       ) : (
         <p className="mb-4 text-sm text-amber-400/90">
@@ -122,19 +173,23 @@ export default function ReadingRecap({
         </p>
       )}
 
-      <p className="text-sm leading-relaxed text-gray-300">
-        {teaser ?? "Выберите мастера ниже — он расшифрует ваш расклад и ответит на вопросы."}
-      </p>
+      <p className="text-sm leading-relaxed text-gray-300">{teaserText}</p>
 
-      {readingHint && <p className="mt-3 text-xs text-aura-gold">{readingHint}</p>}
+      {readingHint ? (
+        <p className="mt-3 text-xs text-aura-gold/90">{readingHint}</p>
+      ) : null}
 
       <div className="mt-5 flex flex-wrap gap-3">
-        {lastMaster && onContinue && (
-          <button onClick={onContinue} className="btn-neon px-5 py-2.5 text-sm">
-            Продолжить с {lastMaster.name} {lastMaster.emoji}
+        {lastMaster && onContinue ? (
+          <button
+            onClick={onContinue}
+            className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+          >
+            Продолжить с {lastMaster.name}
+            <MasterSigil masterId={lastMaster.id} className="h-4 w-4 text-[#1a1208]/80" />
           </button>
-        )}
-        {onUnlock && (
+        ) : null}
+        {onUnlock ? (
           <button
             onClick={onUnlock}
             className="flex items-center gap-2 rounded-xl border border-aura-gold/30 px-5 py-2.5 text-sm text-aura-gold transition-colors hover:border-aura-gold/60"
@@ -142,9 +197,8 @@ export default function ReadingRecap({
             <Sparkles className="h-4 w-4" />
             Открыть полный разбор — {unlockLabel}
           </button>
-        )}
+        ) : null}
       </div>
     </motion.div>
   );
 }
-
