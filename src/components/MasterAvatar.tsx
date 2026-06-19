@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { getMasterAvatarSlot, masterPortraitSrc, masterPortraitSvgFallback } from "@/data/master-avatars";
 
-export type MasterAvatarSize = "xs" | "sm" | "md" | "lg" | "xl" | "showcase";
+export type MasterAvatarSize = "xs" | "sm" | "md" | "lg" | "xl" | "grid" | "showcase";
 
 const SIZE_CLASS: Record<MasterAvatarSize, string> = {
   xs: "master-avatar--xs",
@@ -12,6 +12,7 @@ const SIZE_CLASS: Record<MasterAvatarSize, string> = {
   md: "master-avatar--md",
   lg: "master-avatar--lg",
   xl: "master-avatar--xl",
+  grid: "master-avatar--grid",
   showcase: "master-avatar--showcase",
 };
 
@@ -83,13 +84,21 @@ export default function MasterAvatar({
             sizes={
               size === "showcase"
                 ? "(max-width: 640px) 100vw, 320px"
-                : size === "xl"
+                : size === "grid"
+                  ? "72px"
+                  : size === "xl"
                   ? "96px"
                   : size === "lg"
                     ? "72px"
                     : "48px"
             }
-            className={`master-avatar__img ${size === "showcase" ? "object-cover object-[center_14%]" : "object-cover object-[center_18%]"}`}
+            className={`master-avatar__img ${
+              size === "showcase"
+                ? "object-cover object-[center_14%]"
+                : size === "grid"
+                  ? "object-cover object-[center_22%]"
+                  : "object-cover object-[center_18%]"
+            }`}
             loading={priority ? undefined : "lazy"}
             priority={priority}
             onError={handleError}
