@@ -441,26 +441,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, []);
 
   const handleBrowseDeck = useCallback((master: ShowcaseMaster) => {
-    // #region agent log
-    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-      body: JSON.stringify({
-        sessionId: "f9adef",
-        hypothesisId: "C",
-        location: "HomePage.tsx:handleBrowseDeck",
-        message: "browse deck clicked",
-        data: { masterId: master.id, system: master.system, step },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     setBrowseDeckMaster(master);
     setDeckGalleryOpen(true);
     requestAnimationFrame(() => {
       document.getElementById("колода")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-  }, [step]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -805,30 +791,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     }
     return spreadCardsKey;
   }, [chatSpread, spreadCardsKey]);
-
-  // #region agent log
-  useEffect(() => {
-    if (!selectedCharacter || !chatSpread) return;
-    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-      body: JSON.stringify({
-        sessionId: "f9adef",
-        hypothesisId: "H",
-        location: "HomePage.tsx:chatSpread",
-        message: "chat spread aligned",
-        data: {
-          masterId: selectedCharacter,
-          system: chatSpread.system,
-          cardNames: chatSpread.cards.map((c) => c.name),
-          recapNames: displayTarotCards.map((c) => c.name),
-          profileDeckSystem: profile?.deckSystem,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  }, [selectedCharacter, chatSpread, displayTarotCards, profile?.deckSystem]);
-  // #endregion
 
   const applyDestinyCardToChat = useCallback(
     (url: string, characterId?: string | null) => {
@@ -1973,32 +1935,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const showLanding = step === "intro";
   const inPersonalFlow = isLoggedIn && step !== "intro";
-
-  // #region agent log
-  useEffect(() => {
-    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-      body: JSON.stringify({
-        sessionId: "f9adef",
-        hypothesisId: "B-E",
-        location: "HomePage.tsx:flow",
-        message: "page flow state",
-        data: {
-          step,
-          showLanding,
-          inPersonalFlow,
-          selectedCharacter,
-          deckGalleryOpen,
-          mastersCount: masters.length,
-          rendersDecksOnLanding: !selectedCharacter && !inPersonalFlow && showLanding,
-          rendersDecksOnMastersStep: step === "masters" && Boolean(profile),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  }, [step, showLanding, inPersonalFlow, selectedCharacter, deckGalleryOpen, masters.length, profile]);
-  // #endregion
 
   if (sessionLoading || authLoading) {
     return (

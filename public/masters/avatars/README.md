@@ -1,29 +1,27 @@
 # Master avatar assets
 
-Unified portrait slots for Aura masters. Drop final artwork as WebP without code changes.
+AI-generated portraits via OpenRouter (Seedream 4.5), unified Aura gallery style.
 
-## Files per master
+## Generate / regenerate
 
-| Master ID | Portrait | Thumb | Final art slot |
-|-----------|----------|-------|----------------|
-| `ragnar` | `ragnar.svg` | `ragnar-thumb.svg` | `ragnar.webp` (400×520) |
-| `veronika` | `veronika.svg` | `veronika-thumb.svg` | `veronika.webp` |
-| `agafya` | `agafya.svg` | `agafya-thumb.svg` | `agafya.webp` |
-| `shri-raj` | `shri-raj.svg` | `shri-raj-thumb.svg` | `shri-raj.webp` |
-| `gadalka_marina` | `marina.svg` | `marina-thumb.svg` | `marina.webp` |
-
-Art direction for each master is documented in `src/data/master-avatars.ts`.
-
-## Regenerate SVG placeholders
+Requires `OPENROUTER_API_KEY` in `.env.local` (same as deck builder).
 
 ```bash
-npm run generate:avatars
+npm run generate:avatars          # skip existing .webp
+npm run generate:avatars -- --force   # regenerate all
+npm run generate:avatars -- --only=ragnar
 ```
 
-## Style guide
+Outputs `public/masters/avatars/{master}.webp` + `{master}-thumb.webp` (400×520 / 120×120).
 
-- Same portrait crop (head + shoulders, center-top focal point)
-- Gold frame gradient `#E8C77E` → `#C9A24A`, subtle glow, dark mystical backdrop
-- One cohesive illustration style across all masters
+## Files
 
-When adding `.webp` files, update `portrait` / `thumb` paths in `master-avatars.ts` or add a build step that prefers WebP if present.
+| Master ID | Portrait | Thumb |
+|-----------|----------|-------|
+| `ragnar` | `ragnar.webp` | `ragnar-thumb.webp` |
+| `veronika` | `veronika.webp` | `veronika-thumb.webp` |
+| `agafya` | `agafya.webp` | `agafya-thumb.webp` |
+| `shri-raj` | `shri-raj.webp` | `shri-raj-thumb.webp` |
+| `gadalka_marina` | `marina.webp` | `marina-thumb.webp` |
+
+Registry: `src/data/master-avatars.ts`. SVG files remain as offline fallback only.

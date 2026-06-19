@@ -1,162 +1,226 @@
 #!/usr/bin/env node
-import { writeFileSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+/**
+ * Generate master portrait avatars via OpenRouter (Seedream 4.5).
+ * Unified style — one cohesive gallery; outputs .webp + thumb in public/masters/avatars/
+ */
+import fs from "fs";
+import path from "path";
 import { fileURLToPath } from "url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT = join(__dirname, "..", "public", "masters", "avatars");
-mkdirSync(OUT, { recursive: true });
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, "..");
+const OUT = path.join(ROOT, "public", "masters", "avatars");
+const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_API = "https://openrouter.ai/api/v1/models";
+const MAX_RETRIES = 3;
 
-const masters = [
+const STYLE_PREFIX = `Premium unified portrait series for mystical app "Aura".
+Same cohesive painterly digital art style for every character: cinematic head-and-shoulders portrait,
+subject emerging from deep shadow into soft golden rim light, dark cosmic mystical backdrop,
+subtle gold gradient frame (#E8C77E to #C9A24A) at edges, atmospheric, photorealistic face detail,
+no text, no watermark, no logo, vertical portrait composition.`;
+
+const MASTERS = [
   {
     file: "ragnar",
-    monogram: "R",
-    from: "#1a2838",
-    to: "#2d4a62",
-    accent: "#94a3b8",
-    accent2: "#e8c77e",
-    motif: "runes",
-    label: "Рагнар",
+    id: "ragnar",
+    name: "Ragnar",
+    prompt: `${STYLE_PREFIX} Character: stern northern Scandinavian man, grey beard, fur cloak, rune stones nearby, aurora borealis glow, cold steel-blue and gold palette, rune master.`,
   },
   {
     file: "veronika",
-    monogram: "V",
-    from: "#2a1438",
-    to: "#4a2048",
-    accent: "#c084fc",
-    accent2: "#e8c77e",
-    motif: "tarot",
-    label: "Вероника",
+    id: "veronika",
+    name: "Veronika",
+    prompt: `${STYLE_PREFIX} Character: refined elegant woman, soft intelligent gaze, holding tarot cards, warm candlelight, wine red and gold palette, psychological tarot reader.`,
   },
   {
     file: "agafya",
-    monogram: "А",
-    from: "#1a2818",
-    to: "#2d4020",
-    accent: "#6b8f5e",
-    accent2: "#d4a574",
-    motif: "herbs",
-    label: "Агафья",
+    id: "agafya",
+    name: "Agafya",
+    prompt: `${STYLE_PREFIX} Character: wise Slavic folk healer woman, headscarf, dried herbs, candle glow, earthy warm green and amber palette, gentle mysterious smile.`,
   },
   {
     file: "shri-raj",
-    monogram: "Ш",
-    from: "#0f1a3d",
-    to: "#1a3070",
-    accent: "#f59e0b",
-    accent2: "#e8c77e",
-    motif: "stars",
-    label: "Шри Радж",
+    id: "shri-raj",
+    name: "Guru Shri Raj",
+    prompt: `${STYLE_PREFIX} Character: calm Indian Vedic astrologer man, turban, mandala and star chart motifs in background, deep indigo and gold palette, serene expression.`,
   },
   {
     file: "marina",
-    monogram: "M",
-    from: "#1a1408",
-    to: "#302510",
-    accent: "#ec4899",
-    accent2: "#e8c77e",
-    motif: "moon",
-    label: "Marina",
+    id: "gadalka_marina",
+    name: "Marina",
+    prompt: `${STYLE_PREFIX} Character: modern elegant young woman tarot reader, stylish dark clothing, moonlit tarot cards, dark golden mystique palette, confident intuitive gaze.`,
   },
 ];
 
-function motifLayer(m) {
-  switch (m.motif) {
-    case "runes":
-      return `
-  <g opacity="0.55" fill="none" stroke="url(#gold)" stroke-width="1.2">
-    <rect x="62" y="320" width="28" height="38" rx="2" transform="rotate(-8 76 339)"/>
-    <rect x="108" y="308" width="26" height="36" rx="2"/>
-    <rect x="268" y="312" width="28" height="38" rx="2" transform="rotate(6 282 331)"/>
-    <rect x="312" y="328" width="26" height="34" rx="2" transform="rotate(-4 325 345)"/>
-  </g>
-  <path d="M40 120 Q200 40 360 100" fill="none" stroke="#7dd3fc" stroke-width="1.5" opacity="0.35"/>
-  <path d="M30 90 Q200 20 370 80" fill="none" stroke="#a5f3fc" stroke-width="1" opacity="0.25"/>`;
-    case "tarot":
-      return `
-  <g opacity="0.5">
-    <rect x="88" y="300" width="52" height="78" rx="4" fill="#1a1028" stroke="url(#gold)" stroke-width="1"/>
-    <rect x="118" y="288" width="52" height="78" rx="4" fill="#221430" stroke="url(#gold)" stroke-width="1"/>
-    <rect x="148" y="276" width="52" height="78" rx="4" fill="#2a1838" stroke="url(#gold)" stroke-width="1.2"/>
-    <rect x="228" y="278" width="52" height="78" rx="4" fill="#2a1838" stroke="url(#gold)" stroke-width="1"/>
-    <rect x="258" y="290" width="52" height="78" rx="4" fill="#221430" stroke="url(#gold)" stroke-width="1"/>
-  </g>`;
-    case "herbs":
-      return `
-  <g opacity="0.45" stroke="${m.accent}" stroke-width="1.2" fill="none">
-    <path d="M70 360 Q90 320 85 280"/><path d="M330 365 Q310 325 315 285"/>
-    <circle cx="72" cy="368" r="4" fill="${m.accent}" opacity="0.6"/>
-    <circle cx="328" cy="370" r="4" fill="${m.accent}" opacity="0.6"/>
-  </g>
-  <ellipse cx="200" cy="400" rx="90" ry="12" fill="#000" opacity="0.35"/>`;
-    case "stars":
-      return `
-  <circle cx="200" cy="200" r="95" fill="none" stroke="url(#gold)" stroke-width="0.8" opacity="0.35"/>
-  <circle cx="200" cy="200" r="72" fill="none" stroke="url(#gold)" stroke-width="0.6" opacity="0.25"/>
-  <circle cx="200" cy="200" r="48" fill="none" stroke="${m.accent}" stroke-width="0.5" opacity="0.4"/>
-  <g fill="${m.accent}" opacity="0.7">
-    <circle cx="200" cy="118" r="2.5"/><circle cx="268" cy="168" r="2"/><circle cx="132" cy="168" r="2"/>
-    <circle cx="248" cy="248" r="1.8"/><circle cx="152" cy="248" r="1.8"/>
-  </g>`;
-    default:
-      return `
-  <circle cx="200" cy="130" r="38" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.4"/>
-  <path d="M170 420 Q200 380 230 420" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.35"/>`;
+function loadEnvFile(name) {
+  const p = path.join(ROOT, name);
+  if (!fs.existsSync(p)) return;
+  for (const line of fs.readFileSync(p, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!m || process.env[m[1]]) continue;
+    let val = m[2].trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    process.env[m[1]] = val;
   }
 }
 
-function portrait(m, w, h, fontSize, compact) {
-  const headY = compact ? 58 : 175;
-  const headRx = compact ? 22 : 52;
-  const headRy = compact ? 26 : 62;
-  const shoulders = compact
-    ? `<ellipse cx="200" cy="${headY + 38}" rx="38" ry="22" fill="url(#sil)" opacity="0.75"/>`
-    : `<path d="M200 ${headY + 50}c-55 0-95 35-95 72v40c0 8 85 12 95 12s95-4 95-12v-40c0-37-40-72-95-72z" fill="url(#sil)" opacity="0.82"/>`;
+loadEnvFile(".env.local");
+loadEnvFile(".env");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="${m.from}"/>
-      <stop offset="50%" stop-color="${m.to}"/>
-      <stop offset="100%" stop-color="#06040c"/>
-    </linearGradient>
-    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#E8C77E"/>
-      <stop offset="100%" stop-color="#C9A24A"/>
-    </linearGradient>
-    <radialGradient id="sil" cx="50%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="${m.accent}" stop-opacity="0.65"/>
-      <stop offset="55%" stop-color="${m.from}" stop-opacity="0.9"/>
-      <stop offset="100%" stop-color="#06040c" stop-opacity="1"/>
-    </radialGradient>
-    <radialGradient id="glow" cx="50%" cy="22%" r="55%">
-      <stop offset="0%" stop-color="${m.accent2}" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="transparent"/>
-    </radialGradient>
-    <linearGradient id="face" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="${m.accent}" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#0a0812" stop-opacity="0.85"/>
-    </linearGradient>
-  </defs>
-  <rect width="100%" height="100%" fill="url(#bg)"/>
-  <rect width="100%" height="100%" fill="url(#glow)"/>
-  ${motifLayer(m)}
-  ${shoulders}
-  <ellipse cx="200" cy="${headY}" rx="${headRx}" ry="${headRy}" fill="url(#face)" opacity="0.92"/>
-  ${compact ? "" : `<text x="50%" y="92%" text-anchor="middle" font-family="Georgia, serif" font-size="${fontSize}" fill="url(#gold)" opacity="0.85">${m.monogram}</text>`}
-  ${compact ? "" : `<text x="50%" y="97%" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="url(#gold)" opacity="0.45">${m.label}</text>`}
-  <rect x="6" y="6" width="${w - 12}" height="${h - 12}" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.5" rx="6"/>
-  <rect x="12" y="12" width="${w - 24}" height="${h - 24}" fill="none" stroke="url(#gold)" stroke-width="0.8" opacity="0.2" rx="4"/>
-</svg>`;
+function headers() {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) throw new Error("OPENROUTER_API_KEY is not set — add it to .env.local");
+  const h = {
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+  };
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  h["HTTP-Referer"] = appUrl;
+  h["X-Title"] = "Aura Master Avatars";
+  return h;
 }
 
-for (const m of masters) {
-  writeFileSync(join(OUT, `${m.file}.svg`), portrait(m, 400, 520, 64, false));
-  writeFileSync(join(OUT, `${m.file}-thumb.svg`), portrait(m, 120, 120, 24, true));
+async function resolveSeedreamModel() {
+  const env = process.env.OPENROUTER_IMAGE_MODEL?.trim();
+  if (env) return env;
+  const res = await fetch(MODELS_API, { headers: headers() });
+  if (!res.ok) return "bytedance-seed/seedream-4.5";
+  const data = await res.json();
+  const models = data.data ?? data.models ?? [];
+  const match =
+    models.find((m) => {
+      const name = `${m.id ?? ""} ${m.name ?? ""}`.toLowerCase();
+      return /seedream/.test(name) && /4\.5|4-5|45/.test(name);
+    }) ?? models.find((m) => `${m.id ?? ""}`.toLowerCase().includes("seedream"));
+  return match?.id ?? "bytedance-seed/seedream-4.5";
 }
 
-writeFileSync(join(OUT, "default.svg"), portrait(masters[1], 400, 520, 64, false));
-writeFileSync(join(OUT, "default-thumb.svg"), portrait(masters[1], 120, 120, 24, true));
+function extractImageUrl(message) {
+  if (!message) return null;
+  const images = message.images;
+  if (Array.isArray(images) && images.length) {
+    return images[0]?.image_url?.url ?? images[0]?.imageUrl?.url ?? null;
+  }
+  const parts = message.content;
+  if (Array.isArray(parts)) {
+    for (const p of parts) {
+      if (p.type === "image_url" && p.image_url?.url) return p.image_url.url;
+    }
+  }
+  return null;
+}
 
-console.log("Generated master avatar placeholders in", OUT);
+async function downloadBuffer(url) {
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+async function generateImage(model, prompt) {
+  const res = await fetch(OPENROUTER_API, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      modalities: ["image"],
+      image_config: {
+        aspect_ratio: "2:3",
+        image_size: "2K",
+      },
+    }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  const payload = await res.json();
+  if (!res.ok) throw new Error(payload.error?.message ?? `HTTP ${res.status}`);
+  const url = extractImageUrl(payload.choices?.[0]?.message);
+  if (!url) throw new Error("No image in response");
+  if (url.startsWith("data:")) {
+    const b64 = url.split(",")[1];
+    return Buffer.from(b64, "base64");
+  }
+  return downloadBuffer(url);
+}
+
+async function savePortraitAndThumb(buffer, baseName) {
+  const sharp = (await import("sharp")).default;
+  fs.mkdirSync(OUT, { recursive: true });
+
+  const portraitPath = path.join(OUT, `${baseName}.webp`);
+  const thumbPath = path.join(OUT, `${baseName}-thumb.webp`);
+
+  await sharp(buffer)
+    .resize(400, 520, { fit: "cover", position: "top" })
+    .webp({ quality: 88 })
+    .toFile(portraitPath);
+
+  await sharp(buffer)
+    .resize(120, 120, { fit: "cover", position: "top" })
+    .webp({ quality: 85 })
+    .toFile(thumbPath);
+
+  return { portraitPath, thumbPath };
+}
+
+async function generateMaster(model, master, force) {
+  const portraitExists = fs.existsSync(path.join(OUT, `${master.file}.webp`));
+  if (portraitExists && !force) {
+    console.log(`  skip ${master.name} (already exists, use --force to regenerate)`);
+    return "skipped";
+  }
+
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`  generating ${master.name} (attempt ${attempt})…`);
+      const buf = await generateImage(model, master.prompt);
+      const { portraitPath, thumbPath } = await savePortraitAndThumb(buf, master.file);
+      console.log(`  ✓ ${master.name} → ${path.basename(portraitPath)}, ${path.basename(thumbPath)}`);
+      return "generated";
+    } catch (e) {
+      lastErr = e;
+      console.warn(`  retry ${attempt}/${MAX_RETRIES}: ${e.message}`);
+      await new Promise((r) => setTimeout(r, 2500 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
+async function main() {
+  const force = process.argv.includes("--force");
+  const only = process.argv.find((a) => a.startsWith("--only="))?.split("=")[1];
+
+  console.log("Aura master avatars — OpenRouter generation");
+  const model = await resolveSeedreamModel();
+  console.log(`Model: ${model}`);
+
+  const list = only ? MASTERS.filter((m) => m.file === only || m.id === only) : MASTERS;
+  if (!list.length) {
+    console.error(`Unknown master: ${only}`);
+    process.exit(1);
+  }
+
+  const results = { generated: 0, skipped: 0, failed: 0 };
+
+  for (const master of list) {
+    try {
+      const status = await generateMaster(model, master, force);
+      if (status === "generated") results.generated++;
+      else results.skipped++;
+    } catch (e) {
+      console.error(`  ✗ ${master.name}: ${e.message}`);
+      results.failed++;
+    }
+  }
+
+  console.log("\nDone:", results);
+  if (results.failed > 0) process.exit(1);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

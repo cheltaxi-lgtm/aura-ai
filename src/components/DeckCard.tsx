@@ -88,29 +88,6 @@ export default function DeckCard({
               sizes={size === "lg" ? "180px" : size === "sm" ? "120px" : "156px"}
               className="lux-tarot-card__image object-cover"
               unoptimized
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                // #region agent log
-                fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-                  body: JSON.stringify({
-                    sessionId: "f9adef",
-                    hypothesisId: "G",
-                    location: "DeckCard.tsx:onLoad",
-                    message: "deck card image loaded",
-                    data: {
-                      name: resolved.name,
-                      system,
-                      naturalW: img.naturalWidth,
-                      naturalH: img.naturalHeight,
-                      src: imageSrc,
-                    },
-                    timestamp: Date.now(),
-                  }),
-                }).catch(() => {});
-                // #endregion
-              }}
             />
             <div className="lux-tarot-card__image-vignette" aria-hidden />
           </div>

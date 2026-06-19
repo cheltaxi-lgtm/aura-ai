@@ -16,11 +16,21 @@ export interface MasterAvatarSlot {
 
 const AVATAR_BASE = "/masters/avatars";
 
+/** Prefer generated OpenRouter .webp; SVG kept as build-time fallback only. */
+function avatarPaths(base: string) {
+  return {
+    portrait: `${AVATAR_BASE}/${base}.webp`,
+    thumb: `${AVATAR_BASE}/${base}-thumb.webp`,
+    svgPortrait: `${AVATAR_BASE}/${base}.svg`,
+    svgThumb: `${AVATAR_BASE}/${base}-thumb.svg`,
+  };
+}
+
 export const MASTER_AVATAR_SLOTS: Record<string, MasterAvatarSlot> = {
   ragnar: {
     id: "ragnar",
-    portrait: `${AVATAR_BASE}/ragnar.svg`,
-    thumb: `${AVATAR_BASE}/ragnar-thumb.svg`,
+    portrait: avatarPaths("ragnar").portrait,
+    thumb: avatarPaths("ragnar").thumb,
     monogram: "R",
     artDirection:
       "Stern northern man, beard, furs, rune stones, aurora; cold steel-blue + gold. Drop-in: ragnar.webp (400×520 portrait).",
@@ -30,8 +40,8 @@ export const MASTER_AVATAR_SLOTS: Record<string, MasterAvatarSlot> = {
   },
   veronika: {
     id: "veronika",
-    portrait: `${AVATAR_BASE}/veronika.svg`,
-    thumb: `${AVATAR_BASE}/veronika-thumb.svg`,
+    portrait: avatarPaths("veronika").portrait,
+    thumb: avatarPaths("veronika").thumb,
     monogram: "V",
     artDirection:
       "Refined woman, soft gaze, tarot cards, warm light; wine + gold. Drop-in: veronika.webp.",
@@ -41,8 +51,8 @@ export const MASTER_AVATAR_SLOTS: Record<string, MasterAvatarSlot> = {
   },
   agafya: {
     id: "agafya",
-    portrait: `${AVATAR_BASE}/agafya.svg`,
-    thumb: `${AVATAR_BASE}/agafya-thumb.svg`,
+    portrait: avatarPaths("agafya").portrait,
+    thumb: avatarPaths("agafya").thumb,
     monogram: "А",
     artDirection:
       "Wise folk healer, headscarf, herbs, candles; earthy warm. Drop-in: agafya.webp.",
@@ -52,8 +62,8 @@ export const MASTER_AVATAR_SLOTS: Record<string, MasterAvatarSlot> = {
   },
   "shri-raj": {
     id: "shri-raj",
-    portrait: `${AVATAR_BASE}/shri-raj.svg`,
-    thumb: `${AVATAR_BASE}/shri-raj-thumb.svg`,
+    portrait: avatarPaths("shri-raj").portrait,
+    thumb: avatarPaths("shri-raj").thumb,
     monogram: "Ш",
     artDirection:
       "Indian astrologer, mandala, star chart, calm; deep blue + gold. Drop-in: shri-raj.webp.",
@@ -63,8 +73,8 @@ export const MASTER_AVATAR_SLOTS: Record<string, MasterAvatarSlot> = {
   },
   gadalka_marina: {
     id: "gadalka_marina",
-    portrait: `${AVATAR_BASE}/marina.svg`,
-    thumb: `${AVATAR_BASE}/marina-thumb.svg`,
+    portrait: avatarPaths("marina").portrait,
+    thumb: avatarPaths("marina").thumb,
     monogram: "M",
     artDirection:
       "Modern elegant tarot reader, cards; dark golden mystique. Drop-in: marina.webp or gadalka_marina.webp.",
@@ -76,8 +86,8 @@ export const MASTER_AVATAR_SLOTS: Record<string, MasterAvatarSlot> = {
 
 const DEFAULT_SLOT: MasterAvatarSlot = {
   id: "_default",
-  portrait: `${AVATAR_BASE}/default.svg`,
-  thumb: `${AVATAR_BASE}/default-thumb.svg`,
+  portrait: avatarPaths("default").portrait,
+  thumb: avatarPaths("default").thumb,
   monogram: "✦",
   artDirection: "Generic Aura master placeholder.",
   moodFrom: "#12101a",
@@ -90,10 +100,16 @@ export function getMasterAvatarSlot(masterId?: string | null): MasterAvatarSlot 
   return MASTER_AVATAR_SLOTS[masterId] ?? DEFAULT_SLOT;
 }
 
-/** Prefer final .webp if present in public (convention); client uses SVG until uploaded. */
+/** Portrait URL — OpenRouter .webp; SVG fallback path in slot for onError. */
 export function masterPortraitSrc(masterId?: string | null, thumb = false): string {
   const slot = getMasterAvatarSlot(masterId);
   return thumb ? slot.thumb : slot.portrait;
+}
+
+export function masterPortraitSvgFallback(masterId?: string | null, thumb = false): string {
+  const slot = getMasterAvatarSlot(masterId);
+  const base = slot.id === "gadalka_marina" ? "marina" : slot.id === "_default" ? "default" : slot.id;
+  return thumb ? `${AVATAR_BASE}/${base}-thumb.svg` : `${AVATAR_BASE}/${base}.svg`;
 }
 
 export function masterTagline(masterId: string, title?: string): string {
