@@ -16,6 +16,7 @@ import RuneShopModal from "@/components/RuneShopModal";
 import { type FlowStep } from "@/components/FlowStepper";
 import LandingHero from "@/components/LandingHero";
 import ReadingRecap from "@/components/ReadingRecap";
+import DeckGallery from "@/components/DeckGallery";
 import LandingSections from "@/components/LandingSections";
 import PhotoReadingFlow from "@/components/PhotoReadingFlow";
 import { buildPhotoReadingChatMessages } from "@/lib/photo-chat";
@@ -277,6 +278,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const [lastMasterId, setLastMasterId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [deckGalleryOpen, setDeckGalleryOpen] = useState(false);
   const [showRuneShop, setShowRuneShop] = useState(false);
   const [insufficientRunes, setInsufficientRunes] = useState<{
     balance: number;
@@ -2100,7 +2102,29 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                       ? `Расшифровка у мастера — ${formatRunes(runeCost("READING"))} · вопросы после ${runeConfig.freeQuestions} бесплатных — ${formatRunes(runeCost("QUESTION"))}`
                       : undefined
                   }
+                  onOpenGallery={() => {
+                    setDeckGalleryOpen(true);
+                    requestAnimationFrame(() => {
+                      document.getElementById("колода")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                  }}
                 />
+
+                {deckGalleryOpen && profile && (
+                  <DeckGallery
+                    system={profile.deckSystem ?? tripletSystem}
+                    masterName={
+                      findShowcaseMaster(recapContinueMasterId ?? recommendedId ?? "", masters)?.name ??
+                      getCharacterById(recommendedId ?? "")?.name ??
+                      "мастера"
+                    }
+                    masterId={recapContinueMasterId ?? recommendedId ?? undefined}
+                    onBack={() => {
+                      setDeckGalleryOpen(false);
+                      document.getElementById("мой-расклад")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  />
+                )}
 
                 <MastersShowcase
                   masters={masters}

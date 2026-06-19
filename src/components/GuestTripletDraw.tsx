@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { drawSpread, getDeckPositions, DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import SymbolCardFace from "@/components/SymbolCardFace";
+import DeckCard from "@/components/DeckCard";
 
 export default function GuestTripletDraw() {
   const system = DEFAULT_DECK_SYSTEM;
@@ -60,7 +60,7 @@ export default function GuestTripletDraw() {
                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               >
                 <div className="absolute inset-0 backface-hidden">
-                  <SymbolCardFace
+                  <DeckCard
                     card={card}
                     system={system}
                     faceDown
@@ -70,7 +70,7 @@ export default function GuestTripletDraw() {
                   />
                 </div>
                 <div className="absolute inset-0 backface-hidden rotate-y-180">
-                  <SymbolCardFace
+                  <DeckCard
                     card={card}
                     system={system}
                     showMeaning={false}

@@ -1,12 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw, Sparkles, Layers } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
-import TarotCardsRow from "@/components/TarotCardsRow";
+import { resolveMasterDeckSystem } from "@/lib/decks";
+import DeckCardsRow from "@/components/DeckCardsRow";
 
 interface ReadingRecapProps {
   userName: string;
@@ -18,15 +19,12 @@ interface ReadingRecapProps {
   masters?: ShowcaseMaster[];
   onContinue?: () => void;
   onNewReading: () => void;
-  /** Можно ли начать новый расклад (лимит 1 раз в сутки) */
   newReadingAllowed?: boolean;
-  /** Подпись, когда расклад временно недоступен */
   newReadingCooldownHint?: string;
   onUnlock?: () => void;
-  /** Подпись кнопки разблокировки (руны или ₽) */
   unlockLabel?: string;
-  /** Подсказка о цене, если кнопка ₽ скрыта */
   readingHint?: string;
+  onOpenGallery?: () => void;
 }
 
 export default function ReadingRecap({
@@ -44,10 +42,18 @@ export default function ReadingRecap({
   onUnlock,
   unlockLabel = "199 ₽",
   readingHint,
+  onOpenGallery,
 }: ReadingRecapProps) {
   const lastMaster = lastMasterId
     ? findShowcaseMaster(lastMasterId, masters) ?? getCharacterById(lastMasterId)
     : null;
+
+  const galleryMaster =
+    lastMaster ??
+    masters?.find((m) => m.system === deckSystem) ??
+    masters?.[0];
+
+  const system = deckSystem ?? (galleryMaster ? resolveMasterDeckSystem(galleryMaster.id) : undefined);
 
   return (
     <motion.div
@@ -58,7 +64,7 @@ export default function ReadingRecap({
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs text-gray-500">Ваш расклад готов</p>
+          <p className="text-xs text-gray-500">Три карты дня</p>
           <p className="font-display text-lg font-semibold text-white">
             {userName} · {zodiac}
           </p>
@@ -80,15 +86,35 @@ export default function ReadingRecap({
       </div>
 
       {!newReadingAllowed && newReadingCooldownHint && (
-        <p className="-mt-2 mb-4 text-right text-[10px] text-gray-600">{newReadingCooldownHint}</p>
+        <p className="-mt-2 mb-4 text-right text-[10px] text-aura-champagne/70">
+          {newReadingCooldownHint}
+        </p>
       )}
 
       {tarotCards.length >= 3 ? (
         <div className="mb-6 rounded-2xl border border-aura-gold/15 bg-black/20 p-4 sm:p-5">
           <p className="mb-4 text-center text-xs uppercase tracking-widest text-aura-gold">
-            Три карты вашего расклада
+            Ваш расклад · нажмите на карту для подробностей
           </p>
-          <TarotCardsRow cards={tarotCards.slice(0, 3)} system={deckSystem} size="lg" />
+          <DeckCardsRow
+            cards={tarotCards.slice(0, 3)}
+            system={system}
+            masterId={galleryMaster?.id}
+            size="lg"
+            enableDetail
+          />
+          {onOpenGallery && galleryMaster && system && (
+            <div className="mt-5 text-center">
+              <button
+                type="button"
+                onClick={onOpenGallery}
+                className="inline-flex items-center gap-2 text-xs text-aura-champagne/80 underline-offset-4 transition-colors hover:text-aura-champagne hover:underline"
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Вся колода {galleryMaster.name}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <p className="mb-4 text-sm text-amber-400/90">
@@ -100,9 +126,7 @@ export default function ReadingRecap({
         {teaser ?? "Выберите мастера ниже — он расшифрует ваш расклад и ответит на вопросы."}
       </p>
 
-      {readingHint && (
-        <p className="mt-3 text-xs text-aura-gold">{readingHint}</p>
-      )}
+      {readingHint && <p className="mt-3 text-xs text-aura-gold">{readingHint}</p>}
 
       <div className="mt-5 flex flex-wrap gap-3">
         {lastMaster && onContinue && (
@@ -123,3 +147,4 @@ export default function ReadingRecap({
     </motion.div>
   );
 }
+

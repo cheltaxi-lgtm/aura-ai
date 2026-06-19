@@ -23,6 +23,8 @@ import ReadingActions from "@/components/ReadingActions";
 import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import SceneImage from "@/components/SceneImage";
 import TarotCardsRow from "@/components/TarotCardsRow";
+import type { DeckSystem } from "@/lib/decks/types";
+import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { requestSceneImage, tarotCardNames } from "@/lib/scene-images-client";
 import { resolveSceneArtDisplayUrl } from "@/lib/scene-art-url";
 import {
@@ -49,6 +51,7 @@ interface ReadingEntry {
     deckType?: string;
     spreadType?: string;
     tarotCards?: { name: string; meaning?: string }[];
+    deckSystem?: DeckSystem;
     teaser?: string;
     sceneArt?: SceneArt;
     interpretation?: { text: string; masterId?: string; savedAt?: string };
@@ -481,6 +484,7 @@ export default function UserCabinetPage() {
             <div className="space-y-4">
               {cardDraws.map((entry) => {
                 const cards = entry.contextData.tarotCards ?? [];
+                const deckSystem = entry.contextData.deckSystem ?? DEFAULT_DECK_SYSTEM;
                 const zodiac =
                   entry.contextData.onboarding?.zodiac ?? data.astroProfile?.zodiac ?? "";
                 const interpretedBy = mastersForTriplet(data.readings, cards);
@@ -507,7 +511,7 @@ export default function UserCabinetPage() {
 
                     {cards.length >= 3 && (
                       <div className="mb-4 rounded-2xl border border-aura-gold/15 bg-black/20 p-4">
-                        <TarotCardsRow cards={cards.slice(0, 3)} size="md" />
+                        <TarotCardsRow cards={cards.slice(0, 3)} system={deckSystem} size="md" enableDetail />
                       </div>
                     )}
 
@@ -612,6 +616,7 @@ export default function UserCabinetPage() {
             <div className="space-y-4">
               {historyReadings.map((entry) => {
                 const cards = entry.contextData.tarotCards ?? [];
+                const deckSystem = entry.contextData.deckSystem ?? DEFAULT_DECK_SYSTEM;
                 const fullText = readingPreview(entry);
                 const expanded = expandedReadingId === entry.id;
                 const isTriplet = entry.characterName === "triplet";
@@ -660,7 +665,7 @@ export default function UserCabinetPage() {
                     )}
 
                     {cards.length > 0 && (isTriplet || isMasterReading) && (
-                      <TarotCardsRow cards={cards} />
+                      <TarotCardsRow cards={cards} system={deckSystem} enableDetail />
                     )}
                     {!isTriplet && <SceneArtRow sceneArt={entry.contextData.sceneArt} />}
 

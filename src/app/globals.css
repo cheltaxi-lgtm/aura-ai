@@ -402,6 +402,61 @@
     @apply px-0.5;
   }
 
+  /* Unified deck card — per-system accents */
+  .lux-deck-card--sm {
+    max-width: 120px;
+  }
+
+  .lux-deck-card--interactive:hover .lux-tarot-card {
+    transform: translateY(-4px);
+    box-shadow:
+      0 20px 40px -14px rgba(0, 0, 0, 0.7),
+      0 0 32px rgba(201, 162, 74, 0.22);
+  }
+
+  .lux-deck-card--runes .lux-tarot-card__frame {
+    border-color: rgba(180, 190, 200, 0.45);
+    box-shadow:
+      0 0 0 1px rgba(160, 170, 185, 0.12) inset,
+      inset 0 0 24px rgba(120, 130, 150, 0.08),
+      0 0 20px rgba(201, 162, 74, 0.12);
+  }
+
+  .lux-deck-card--tarot-veronika .lux-tarot-card__frame {
+    border-color: rgba(232, 199, 126, 0.42);
+    box-shadow:
+      0 0 0 1px rgba(255, 220, 160, 0.1) inset,
+      inset 0 0 28px rgba(232, 199, 126, 0.1);
+  }
+
+  .lux-deck-card--tarot-marina .lux-tarot-card__frame {
+    border-color: rgba(120, 160, 220, 0.45);
+    box-shadow:
+      0 0 0 1px rgba(100, 140, 210, 0.12) inset,
+      inset 0 0 28px rgba(80, 120, 200, 0.12),
+      0 0 24px rgba(201, 162, 74, 0.14);
+  }
+
+  .lux-deck-card--slavic .lux-tarot-card__frame {
+    border-color: rgba(180, 70, 60, 0.5);
+    box-shadow:
+      0 0 0 1px rgba(160, 50, 45, 0.15) inset,
+      inset 0 0 28px rgba(140, 40, 35, 0.1),
+      0 0 20px rgba(201, 162, 74, 0.12);
+  }
+
+  .lux-deck-card--astrology .lux-tarot-card__frame {
+    border-color: rgba(100, 80, 180, 0.45);
+    box-shadow:
+      0 0 0 1px rgba(80, 60, 160, 0.12) inset,
+      inset 0 0 32px rgba(60, 40, 140, 0.14),
+      0 0 28px rgba(201, 162, 74, 0.1);
+  }
+
+  .lux-deck-card--lg {
+    max-width: 220px;
+  }
+
   /* Card back (flip deck) */
   .lux-tarot-back {
     @apply relative flex h-full w-full items-center justify-center overflow-hidden;

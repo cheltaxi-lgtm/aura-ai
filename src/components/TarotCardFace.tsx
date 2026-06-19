@@ -1,2 +1,2 @@
-export { default } from "./SymbolCardFace";
-export type { SymbolCardFaceProps } from "./SymbolCardFace";
+export { default } from "./DeckCard";
+export type { DeckCardProps as SymbolCardFaceProps } from "./DeckCard";

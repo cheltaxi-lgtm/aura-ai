@@ -7,7 +7,7 @@ import { drawSpread, getDeckPositions } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
 import SceneImage from "@/components/SceneImage";
-import SymbolCardFace from "@/components/SymbolCardFace";
+import DeckCard from "@/components/DeckCard";
 
 interface TarotTripletProps {
   userName: string;
@@ -106,26 +106,13 @@ export default function TarotTriplet({
                 style={{ transformStyle: "preserve-3d" }}
               >
                 <div className="absolute inset-0" style={{ backfaceVisibility: "hidden" }}>
-                  <SymbolCardFace
-                    card={card}
-                    system={system}
-                    faceDown
-                    showMeaning={false}
-                    size="md"
-                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                  />
+                  <DeckCard card={card} system={system} faceDown showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none" />
                 </div>
                 <div
                   className="absolute inset-0"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
                 >
-                  <SymbolCardFace
-                    card={card}
-                    system={system}
-                    showMeaning={false}
-                    size="md"
-                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                  />
+                  <DeckCard card={card} system={system} showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none" />
                 </div>
               </motion.div>
             </button>
