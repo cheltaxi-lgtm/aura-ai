@@ -17,6 +17,7 @@ import { type FlowStep } from "@/components/FlowStepper";
 import LandingHero from "@/components/LandingHero";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
+import MasterDecksSection from "@/components/MasterDecksSection";
 import LandingSections from "@/components/LandingSections";
 import PhotoReadingFlow from "@/components/PhotoReadingFlow";
 import { buildPhotoReadingChatMessages } from "@/lib/photo-chat";
@@ -281,6 +282,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [showPaywall, setShowPaywall] = useState(false);
   const [deckGalleryOpen, setDeckGalleryOpen] = useState(false);
+  const [browseDeckMaster, setBrowseDeckMaster] = useState<ShowcaseMaster | null>(null);
   const [showRuneShop, setShowRuneShop] = useState(false);
   const [insufficientRunes, setInsufficientRunes] = useState<{
     balance: number;
@@ -431,6 +433,14 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const closePhotoReading = useCallback(() => {
     setPhotoReadingOpen(false);
+  }, []);
+
+  const handleBrowseDeck = useCallback((master: ShowcaseMaster) => {
+    setBrowseDeckMaster(master);
+    setDeckGalleryOpen(true);
+    requestAnimationFrame(() => {
+      document.getElementById("колода")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }, []);
 
   useEffect(() => {
@@ -2127,19 +2137,31 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   }}
                 />
 
-                {deckGalleryOpen && profile && (
+                {deckGalleryOpen && (profile || browseDeckMaster) && (
                   <DeckGallery
-                    system={profile.deckSystem ?? tripletSystem}
+                    system={
+                      browseDeckMaster?.system ??
+                      profile?.deckSystem ??
+                      tripletSystem
+                    }
                     masterName={
+                      browseDeckMaster?.name ??
                       findShowcaseMaster(recapContinueMasterId ?? recommendedId ?? "", masters)?.name ??
                       getCharacterById(recommendedId ?? "")?.name ??
                       "мастера"
                     }
-                    masterId={recapContinueMasterId ?? recommendedId ?? undefined}
+                    masterId={
+                      browseDeckMaster?.id ??
+                      recapContinueMasterId ??
+                      recommendedId ??
+                      undefined
+                    }
                     onBack={() => {
                       setDeckGalleryOpen(false);
+                      setBrowseDeckMaster(null);
                       document.getElementById("мой-расклад")?.scrollIntoView({ behavior: "smooth" });
                     }}
+                    backLabel={browseDeckMaster ? "К витрине мастеров" : "К моему раскладу"}
                   />
                 )}
 
@@ -2147,6 +2169,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   className="mt-2"
                   masters={masters}
                   onSelect={(id) => void handleMasterPick(id)}
+                  onBrowseDeck={handleBrowseDeck}
                   recommendedId={recommendedId}
                   continueMasterIds={continueMasterIds}
                   spreadReadingDone={spreadReadingDone}
@@ -2189,6 +2212,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             <MastersShowcase
               masters={masters}
               onSelect={(id) => void handleMasterPick(id)}
+              onBrowseDeck={handleBrowseDeck}
               recommendedId={recommendedId}
               continueMasterIds={continueMasterIds}
               runesEnabled={runeConfig.enabled}
@@ -2198,6 +2222,22 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               title="Витрина мастеров Aura"
               subtitle="AI-наставники платформы и живые эксперты с авторским стилем"
             />
+
+            <MasterDecksSection masters={masters} onBrowseDeck={handleBrowseDeck} />
+
+            {deckGalleryOpen && browseDeckMaster && (
+              <DeckGallery
+                system={browseDeckMaster.system}
+                masterName={browseDeckMaster.name}
+                masterId={browseDeckMaster.id}
+                onBack={() => {
+                  setDeckGalleryOpen(false);
+                  setBrowseDeckMaster(null);
+                  document.getElementById("колоды")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                backLabel="К колодам мастеров"
+              />
+            )}
 
             <LandingSections
               hasSession={Boolean(session?.sessionId)}

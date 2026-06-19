@@ -226,6 +226,187 @@
       0 0 0 1px rgba(232, 199, 126, 0.12) inset;
   }
 
+  .master-showcase-card--gallery {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .master-showcase-card__portrait-wrap {
+    @apply relative w-full shrink-0 overflow-hidden;
+    border-bottom: 1px solid rgba(232, 199, 126, 0.12);
+  }
+
+  .master-showcase-card__badges-overlay {
+    @apply absolute right-3 top-3 z-10 flex max-w-[55%] flex-col items-end gap-1.5;
+  }
+
+  .master-showcase-card__system {
+    @apply font-medium tracking-wide;
+  }
+
+  .master-showcase-card__tagline {
+    display: -webkit-box;
+    min-height: 2.5rem;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .master-showcase-stats--compact {
+    margin-bottom: 0;
+  }
+
+  .master-avatar {
+    @apply relative overflow-hidden;
+    aspect-ratio: 400 / 520;
+    width: 100%;
+    background: #0a0812;
+  }
+
+  .master-avatar--xs {
+    width: 2rem;
+    aspect-ratio: 1 / 1;
+    border-radius: 0.5rem;
+  }
+
+  .master-avatar--sm {
+    width: 2.75rem;
+    aspect-ratio: 1 / 1;
+    border-radius: 0.625rem;
+  }
+
+  .master-avatar--md {
+    width: 3.5rem;
+    aspect-ratio: 400 / 520;
+    border-radius: 0.75rem;
+  }
+
+  .master-avatar--lg {
+    width: 100%;
+    max-width: 140px;
+    margin-inline: auto;
+    border-radius: 0.875rem;
+  }
+
+  .master-avatar--xl {
+    width: 4.5rem;
+    border-radius: 0.75rem;
+  }
+
+  .master-avatar--showcase {
+    width: 100%;
+    max-height: 220px;
+    aspect-ratio: 400 / 520;
+    border-radius: 0;
+  }
+
+  .master-avatar__frame {
+    @apply pointer-events-none absolute inset-0 z-[3];
+    border: 1px solid rgba(232, 199, 126, 0.35);
+    box-shadow:
+      inset 0 0 40px rgba(201, 162, 74, 0.08),
+      0 0 24px var(--master-avatar-glow, rgba(201, 162, 74, 0.15));
+  }
+
+  .master-avatar--showcase .master-avatar__frame {
+    border-width: 0 0 1px;
+    box-shadow: inset 0 -24px 48px rgba(0, 0, 0, 0.45);
+  }
+
+  .master-avatar__vignette {
+    @apply pointer-events-none absolute inset-0 z-[2];
+    background: linear-gradient(
+      180deg,
+      transparent 45%,
+      rgba(8, 6, 14, 0.55) 78%,
+      rgba(8, 6, 14, 0.92) 100%
+    );
+  }
+
+  .master-avatar__img {
+    @apply relative z-[1] transition-transform duration-500 ease-out;
+  }
+
+  .master-avatar--hover-zoom:hover .master-avatar__img {
+    transform: scale(1.06);
+  }
+
+  .master-avatar__fallback {
+    @apply absolute inset-0 z-[1] flex items-center justify-center;
+  }
+
+  .master-avatar__monogram {
+    @apply text-4xl text-aura-champagne;
+    opacity: 0.85;
+  }
+
+  .master-avatar--xs .master-avatar__monogram,
+  .master-avatar--sm .master-avatar__monogram {
+    @apply text-lg;
+  }
+
+  .master-decks-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  @media (min-width: 640px) {
+    .master-decks-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .master-decks-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.25rem;
+    }
+  }
+
+  .master-decks-card {
+    @apply flex flex-col items-center rounded-2xl border border-aura-gold/15 bg-black/25 p-5 text-center transition-colors hover:border-aura-gold/30;
+  }
+
+  .master-decks-card__body {
+    @apply mt-4 flex w-full flex-col;
+  }
+
+  .master-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .master-picker__option {
+    @apply flex w-full items-center gap-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-left transition-colors;
+  }
+
+  .master-picker__option:hover:not(:disabled) {
+    @apply border-aura-gold/25 bg-black/35;
+  }
+
+  .master-picker__option--selected {
+    @apply border-aura-gold/40 bg-aura-gold/10 ring-1 ring-aura-gold/20;
+  }
+
+  .master-picker__option:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .master-picker__label {
+    @apply flex min-w-0 flex-col;
+  }
+
+  .master-picker__name {
+    @apply truncate text-sm font-medium text-white;
+  }
+
+  .master-picker__system {
+    @apply truncate text-[11px] text-gray-500;
+  }
+
   .master-showcase-card__glow {
     position: absolute;
     inset: -1px;

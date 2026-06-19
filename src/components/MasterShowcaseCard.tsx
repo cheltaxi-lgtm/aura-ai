@@ -2,10 +2,13 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Bot, Star, UserRound } from "lucide-react";
-import MasterSigil from "@/components/MasterSigil";
+import { ArrowRight, Bot, Layers, Star, UserRound } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { formatMasterPriceDisplay } from "@/lib/master-pricing";
+import { masterTagline } from "@/data/master-avatars";
+import { getDeckDefinition } from "@/lib/decks";
+import { DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
+import MasterAvatar from "@/components/MasterAvatar";
 
 function CardBadge({
   children,
@@ -35,6 +38,7 @@ export interface MasterShowcaseCardProps {
   runesEnabled?: boolean;
   formatRunes?: (amount: number) => string;
   onSelect: (masterId: string) => void;
+  onBrowseDeck?: (master: ShowcaseMaster) => void;
 }
 
 export default function MasterShowcaseCard({
@@ -48,6 +52,7 @@ export default function MasterShowcaseCard({
   runesEnabled = false,
   formatRunes,
   onSelect,
+  onBrowseDeck,
 }: MasterShowcaseCardProps) {
   const price = formatMasterPriceDisplay({
     system: master.system,
@@ -60,10 +65,12 @@ export default function MasterShowcaseCard({
   });
 
   const ctaLabel = canContinue ? "Продолжить" : "Начать сеанс";
+  const deckCount = getDeckDefinition(master.system).symbols.length;
+  const deckUnit = DECK_SYSTEM_LABEL[master.system];
 
   return (
     <motion.article
-      className={`master-showcase-card group relative h-full ${
+      className={`master-showcase-card master-showcase-card--gallery group relative h-full overflow-hidden ${
         recommended ? "master-showcase-card--recommended" : ""
       }`}
       style={{ "--master-glow": master.glowColor } as CSSProperties}
@@ -75,48 +82,48 @@ export default function MasterShowcaseCard({
     >
       <div className="master-showcase-card__glow pointer-events-none" aria-hidden />
 
-      <div className="master-showcase-card__body relative z-10 p-6 sm:p-7">
-        <div className="master-showcase-card__header mb-5">
-          <div className="lux-master-avatar shrink-0">
-            <div className="lux-master-avatar__ring" aria-hidden />
-            <MasterSigil masterId={master.id} className="lux-master-avatar__sigil" />
-          </div>
-          <div className="master-showcase-card__badges">
-            {recommended ? <CardBadge variant="gold">Подходит вам</CardBadge> : null}
-            {canContinue ? <CardBadge variant="emerald">Расшифровка готова</CardBadge> : null}
-            <CardBadge variant={master.kind === "ai" ? "purple" : "emerald"}>
-              {master.kind === "ai" ? (
-                <>
-                  <Bot className="h-3 w-3" /> AI
-                </>
-              ) : (
-                <>
-                  <UserRound className="h-3 w-3" /> Эксперт
-                </>
-              )}
-            </CardBadge>
-          </div>
+      <div className="master-showcase-card__portrait-wrap">
+        <MasterAvatar
+          masterId={master.id}
+          masterName={master.name}
+          size="showcase"
+          hoverZoom
+          priority={index < 3}
+        />
+        <div className="master-showcase-card__badges-overlay">
+          {recommended ? <CardBadge variant="gold">Подходит вам</CardBadge> : null}
+          {canContinue ? <CardBadge variant="emerald">Расшифровка готова</CardBadge> : null}
+          <CardBadge variant={master.kind === "ai" ? "purple" : "emerald"}>
+            {master.kind === "ai" ? (
+              <>
+                <Bot className="h-3 w-3" /> AI
+              </>
+            ) : (
+              <>
+                <UserRound className="h-3 w-3" /> Эксперт
+              </>
+            )}
+          </CardBadge>
         </div>
+      </div>
 
-        <h3 className="font-display mb-1.5 text-xl font-semibold leading-tight tracking-tight text-aura-ivory sm:text-2xl">
+      <div className="master-showcase-card__body relative z-10 p-5 sm:p-6">
+        <h3 className="font-display mb-0.5 text-xl font-semibold leading-tight tracking-tight text-aura-ivory">
           {master.name}
         </h3>
-        <p className="master-showcase-card__theme mb-2 text-sm leading-relaxed tracking-wide text-aura-champagne/80">
+        <p className="master-showcase-card__system mb-2 text-sm text-aura-champagne/85">
           {master.title}
         </p>
-        <p className="master-showcase-card__desc text-sm leading-relaxed text-aura-ivory/65">
-          {master.specialty}
-        </p>
-        <p className="master-showcase-card__style mt-2 text-xs leading-relaxed text-aura-ivory/45">
-          {master.style}
+        <p className="master-showcase-card__tagline text-sm leading-relaxed text-aura-ivory/60">
+          {masterTagline(master.id, master.specialty)}
         </p>
 
-        <div className="lux-divider my-5" aria-hidden />
+        <div className="lux-divider my-4" aria-hidden />
 
-        <div className="master-showcase-stats">
+        <div className="master-showcase-stats master-showcase-stats--compact">
           <div className="master-stat-cell">
             <p className="lux-stat-label mb-1">Рейтинг</p>
-            <p className="master-stat__value flex items-center justify-start gap-1">
+            <p className="master-stat__value flex items-center gap-1">
               <Star className="lux-star h-3 w-3 shrink-0" aria-hidden />
               <span>{master.rating}</span>
             </p>
@@ -132,10 +139,21 @@ export default function MasterShowcaseCard({
           </div>
         </div>
 
+        {onBrowseDeck && (
+          <button
+            type="button"
+            onClick={() => onBrowseDeck(master)}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 text-[11px] text-aura-champagne/65 transition-colors hover:text-aura-champagne"
+          >
+            <Layers className="h-3.5 w-3.5" />
+            Вся колода · {deckCount} {deckUnit}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => onSelect(master.id)}
-          className={`master-showcase-card__cta ${
+          className={`master-showcase-card__cta mt-4 ${
             canContinue ? "btn-primary" : "btn-ghost"
           }`}
         >

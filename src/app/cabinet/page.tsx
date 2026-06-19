@@ -24,6 +24,7 @@ import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import SceneImage from "@/components/SceneImage";
 import TarotCardsRow from "@/components/TarotCardsRow";
 import MySpreadsGallery from "@/components/MySpreadsGallery";
+import { MasterAvatarInline } from "@/components/MasterAvatar";
 import type { RedrawSpread } from "@/lib/photo-spread-redraw";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
@@ -94,10 +95,6 @@ function buildMasterMap(masters: MasterInfo[]): Map<string, MasterInfo> {
 function masterLabel(id: string, masters?: Map<string, MasterInfo>) {
   if (id === "triplet") return "Расклад 3 карт";
   return masters?.get(id)?.name ?? CHARACTERS.find((c) => c.id === id)?.name ?? id;
-}
-
-function masterEmoji(id: string, masters?: Map<string, MasterInfo>) {
-  return masters?.get(id)?.emoji ?? CHARACTERS.find((c) => c.id === id)?.emoji ?? "🔮";
 }
 
 function readingPreview(entry: ReadingEntry): string {
@@ -563,7 +560,7 @@ export default function UserCabinetPage() {
                               href={`/?master=${encodeURIComponent(reading.characterName)}`}
                               className="inline-flex items-center gap-1.5 rounded-full border border-aura-purple/30 bg-aura-purple/10 px-3 py-1 text-xs text-aura-neon transition-colors hover:border-aura-purple/50"
                             >
-                              <span>{masterEmoji(reading.characterName, masterMap)}</span>
+                              <MasterAvatarInline masterId={reading.characterName} size="xs" />
                               {masterLabel(reading.characterName, masterMap)}
                             </Link>
                           ))}
@@ -652,9 +649,7 @@ export default function UserCabinetPage() {
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
                       <span className="inline-flex items-center gap-2 font-medium text-aura-gold">
                         {isMasterReading && (
-                          <span className="text-base leading-none">
-                            {masterEmoji(entry.characterName, masterMap)}
-                          </span>
+                          <MasterAvatarInline masterId={entry.characterName} size="xs" />
                         )}
                         {readingTitle(entry, masterMap)}
                       </span>
@@ -758,8 +753,8 @@ export default function UserCabinetPage() {
                   className={`glass-panel p-4 text-sm ${msg.role === "user" ? "border-l-2 border-aura-purple" : ""}`}
                 >
                   <div className="mb-1 flex justify-between text-xs text-gray-600">
-                    <span>
-                      {masterEmoji(msg.character_id, masterMap)}{" "}
+                    <span className="inline-flex items-center gap-2">
+                      <MasterAvatarInline masterId={msg.character_id} size="xs" />
                       {masterLabel(msg.character_id, masterMap)} · {msg.role === "user" ? "Вы" : "Мастер"}
                     </span>
                     <span>{new Date(msg.created_at).toLocaleString("ru")}</span>

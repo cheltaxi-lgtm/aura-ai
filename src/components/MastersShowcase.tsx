@@ -25,6 +25,7 @@ interface MastersShowcaseProps {
   subtitle?: string;
   showExpertCta?: boolean;
   className?: string;
+  onBrowseDeck?: (master: ShowcaseMaster) => void;
 }
 
 export default function MastersShowcase({
@@ -37,6 +38,7 @@ export default function MastersShowcase({
   questionCost,
   runesEnabled = false,
   formatRunes,
+  onBrowseDeck,
   title = "Мастера Aura",
   subtitle = "AI-наставники платформы и живые эксперты с авторским стилем",
   showExpertCta = true,
@@ -107,6 +109,7 @@ export default function MastersShowcase({
               questionCost={questionCost}
               runesEnabled={runesEnabled}
               formatRunes={formatRunes}
+              onBrowseDeck={onBrowseDeck}
               onSelect={onSelect}
             />
           );

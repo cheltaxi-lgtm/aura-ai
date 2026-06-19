@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { DAILY_CARDS, getCharacterById } from "@/lib/characters";
+import MasterAvatar from "@/components/MasterAvatar";
 
 interface DailyCardProps {
   sessionId?: string;
@@ -72,9 +73,7 @@ export default function DailyCard({
         >
           <div className="absolute inset-0 backface-hidden rounded-2xl border border-aura-purple/30 bg-gradient-to-br from-purple-950/80 via-aura-bg to-emerald-950/60 shadow-neon">
             <div className="flex h-full flex-col items-center justify-center gap-4 p-6">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full border border-aura-purple/40 bg-aura-purple/10">
-                <span className="text-4xl">{master?.emoji ?? "🃏"}</span>
-              </div>
+              <MasterAvatar masterId={characterId} masterName={master?.name} size="lg" />
               <p className="text-center text-sm text-gray-400">
                 Нажмите, чтобы
                 <br />

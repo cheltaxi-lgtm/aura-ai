@@ -16,12 +16,13 @@ import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import SceneImage from "@/components/SceneImage";
 import TarotCardsRow from "@/components/TarotCardsRow";
 import SessionFeedback from "@/components/SessionFeedback";
+import MasterAvatar from "@/components/MasterAvatar";
 import type { Message } from "@/types";
 
 interface MasterDisplay {
   name: string;
   title: string;
-  emoji: string;
+  emoji?: string;
 }
 
 interface ChatWindowProps {
@@ -82,22 +83,23 @@ export default function ChatWindow({
 
   useEffect(() => {
     if (isLoading) {
+      const name = character?.name ?? "Мастер";
       const statuses = [
-        "Считывает энергетику...",
-        "Соединяется с астральным планом...",
-        "Расшифровывает знаки...",
-        "Настраивает канал...",
+        `${name} вглядывается…`,
+        "Считывает энергетику…",
+        "Соединяется с астральным планом…",
+        "Расшифровывает знаки…",
       ];
       let i = 0;
+      setStatusText(statuses[0]!);
       const interval = setInterval(() => {
         i = (i + 1) % statuses.length;
-        setStatusText(statuses[i]);
+        setStatusText(statuses[i]!);
       }, 2000);
       return () => clearInterval(interval);
-    } else {
-      setStatusText("Готов к сеансу");
     }
-  }, [isLoading]);
+    setStatusText("Готов к сеансу");
+  }, [isLoading, character?.name]);
 
   const sessionExhausted =
     !hasFullAccess && !usesRuneBilling && questionsLeft === 0;
@@ -185,9 +187,7 @@ export default function ChatWindow({
           <ArrowLeft className="h-5 w-5" />
         </button>
 
-        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-gradient-to-br from-aura-purple/20 to-aura-emerald/20 text-3xl">
-          {character.emoji}
-        </div>
+        <MasterAvatar masterId={characterId} masterName={character.name} size="lg" priority />
 
         <div className="flex-1">
           <h2 className="font-display text-xl font-bold text-white">
@@ -269,7 +269,7 @@ export default function ChatWindow({
         >
           {messages.length === 0 && !isLoading && (
             <div className="flex min-h-[240px] flex-col items-center justify-center text-center text-gray-500">
-              <span className="mb-3 text-5xl">{character.emoji}</span>
+              <MasterAvatar masterId={characterId} masterName={character.name} size="xl" className="mb-4" />
               <p className="text-sm">
                 {character.name} готов к сеансу.
                 <br />
@@ -336,8 +336,9 @@ export default function ChatWindow({
               animate={{ opacity: 1 }}
               className="flex justify-start"
             >
-              <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-white/10 bg-black/40 px-4 py-3">
-                <Loader2 className="h-4 w-4 animate-spin text-aura-purple" />
+              <div className="flex items-center gap-3 rounded-2xl rounded-bl-md border border-white/10 bg-black/40 px-4 py-3">
+                <MasterAvatar masterId={characterId} masterName={character.name} size="sm" thumb />
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-aura-purple" />
                 <span className="text-sm text-gray-400">{statusText}</span>
               </div>
             </motion.div>

@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Sparkles } from "lucide-react";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
+import MasterAvatar from "@/components/MasterAvatar";
 
 interface WelcomeBackBannerProps {
   userName?: string;
@@ -27,8 +27,8 @@ export default function WelcomeBackBanner({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
     >
-      <div className="flex items-start gap-3">
-        <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-aura-gold" />
+      <div className="flex items-start gap-4">
+        <MasterAvatar masterId={masterId} masterName={master?.name} size="lg" hoverZoom />
         <div>
           <p className="font-display text-base font-semibold text-white">
             {userName ? `${userName}, добро пожаловать обратно` : "Добро пожаловать обратно"}

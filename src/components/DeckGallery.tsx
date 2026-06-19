@@ -7,6 +7,7 @@ import type { DeckSystem } from "@/lib/decks/types";
 import { listDeckCards, DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
 import DeckCard from "@/components/DeckCard";
 import CardDetailModal from "@/components/CardDetailModal";
+import MasterAvatar from "@/components/MasterAvatar";
 
 interface DeckGalleryProps {
   system: DeckSystem;
@@ -37,7 +38,11 @@ export default function DeckGallery({
       transition={{ duration: 0.4 }}
     >
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="flex items-start gap-4">
+          {masterId ? (
+            <MasterAvatar masterId={masterId} masterName={masterName} size="lg" />
+          ) : null}
+          <div>
           <p className="lux-label flex items-center gap-2">
             <Layers className="h-3.5 w-3.5" />
             Колода · {allCards.length} {systemLabel}
@@ -48,6 +53,7 @@ export default function DeckGallery({
           <p className="mt-1 text-xs text-aura-ivory/45">
             Просмотр колоды не расходует дневной расклад
           </p>
+          </div>
         </div>
         {onBack && (
           <button

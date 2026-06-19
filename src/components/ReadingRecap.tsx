@@ -13,7 +13,7 @@ import { getZodiacFromDate } from "@/utils/zodiac";
 import { useTripletCountdown } from "@/hooks/useTripletCountdown";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import ZodiacGlyph from "@/components/ZodiacGlyph";
-import MasterSigil from "@/components/MasterSigil";
+import MasterAvatar, { MasterAvatarInline } from "@/components/MasterAvatar";
 
 interface ReadingRecapProps {
   userName: string;
@@ -106,7 +106,11 @@ export default function ReadingRecap({
       animate={{ opacity: 1, y: 0 }}
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="flex items-start gap-4">
+          {lastMaster ? (
+            <MasterAvatar masterId={lastMaster.id} masterName={lastMaster.name} size="md" />
+          ) : null}
+          <div>
           <p className="font-display text-lg font-semibold text-white sm:text-xl">
             Ваш расклад готов
           </p>
@@ -122,6 +126,7 @@ export default function ReadingRecap({
               </>
             ) : null}
           </p>
+          </div>
         </div>
         <button
           type="button"
@@ -186,7 +191,7 @@ export default function ReadingRecap({
             className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
           >
             Продолжить с {lastMaster.name}
-            <MasterSigil masterId={lastMaster.id} className="h-4 w-4 text-[#1a1208]/80" />
+            <MasterAvatarInline masterId={lastMaster.id} masterName={lastMaster.name} size="xs" />
           </button>
         ) : null}
         {onUnlock ? (

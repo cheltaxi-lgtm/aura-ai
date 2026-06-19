@@ -24,6 +24,8 @@ import { DECK_SYSTEM_DISPLAY, type RedrawSpread } from "@/lib/photo-spread-redra
 import { masterQuestionUnit } from "@/lib/master-pricing";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
 import DeckCardsRow from "@/components/DeckCardsRow";
+import MasterAvatar from "@/components/MasterAvatar";
+import MasterPicker from "@/components/MasterPicker";
 
 export const PHOTO_READING_RETURN = "/?photo=1";
 
@@ -63,12 +65,6 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mimeType: strin
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-function masterOptionLabel(m: ShowcaseMaster): string {
-  const system = m.system ?? resolveMasterDeckSystem(m.id);
-  const theme = DECK_SYSTEM_DISPLAY[system] ?? m.title;
-  return `${m.name} — ${theme}`;
 }
 
 function systemHint(master: ShowcaseMaster | undefined): string {
@@ -347,7 +343,16 @@ export default function PhotoReadingFlow({
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
           >
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
-              <div className="min-w-0 pr-2">
+              <div className="flex min-w-0 items-start gap-3 pr-2">
+                {selectedMaster ? (
+                  <MasterAvatar
+                    masterId={masterId}
+                    masterName={selectedMaster.name}
+                    size="md"
+                    thumb
+                  />
+                ) : null}
+                <div className="min-w-0">
                 <h2 id="photo-reading-title" className="font-display text-xl font-semibold text-white sm:text-2xl">
                   Прочитай мой расклад
                 </h2>
@@ -359,6 +364,7 @@ export default function PhotoReadingFlow({
                     {formatRunes(photoCost)} (~{Math.round(photoCost * runeConfig.rubPerRune)} ₽) · {priceUnit}
                   </p>
                 )}
+                </div>
               </div>
               <button
                 type="button"
@@ -372,6 +378,23 @@ export default function PhotoReadingFlow({
             </div>
 
             <div className="overflow-y-auto px-5 py-5 sm:px-6">
+              {loading && (
+                <div className="mb-4 flex items-center gap-3 rounded-xl border border-aura-gold/20 bg-black/30 px-4 py-3">
+                  <MasterAvatar
+                    masterId={masterId}
+                    masterName={selectedMaster?.name}
+                    size="sm"
+                    thumb
+                  />
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-aura-gold" />
+                  <span className="text-sm text-gray-400">
+                    {step === "confirm"
+                      ? `${selectedMaster?.name ?? "Мастер"} расшифровывает…`
+                      : "Распознаём и перерисовываем…"}
+                  </span>
+                </div>
+              )}
+
               {step === "upload" && (
                 <>
                   {!previewUrl ? (
@@ -434,17 +457,12 @@ export default function PhotoReadingFlow({
                   <div className="mt-6 space-y-4">
                     <div>
                       <label className="mb-2 block text-xs text-gray-500">Мастер</label>
-                      <select
+                      <MasterPicker
+                        masters={masters}
                         value={masterId}
-                        onChange={(e) => setMasterId(e.target.value)}
-                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white"
-                      >
-                        {masters.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {masterOptionLabel(m)}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setMasterId}
+                        disabled={loading}
+                      />
                     </div>
 
                     <div>
@@ -473,9 +491,16 @@ export default function PhotoReadingFlow({
 
               {step === "result" && result && redrawSpread && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                  <p className="mb-4 font-display text-lg font-semibold text-white">
-                    {selectedMaster?.name ?? "Мастер"}
-                  </p>
+                  <div className="mb-4 flex items-center gap-3">
+                    <MasterAvatar
+                      masterId={masterId}
+                      masterName={selectedMaster?.name}
+                      size="md"
+                    />
+                    <p className="font-display text-lg font-semibold text-white">
+                      {selectedMaster?.name ?? "Мастер"}
+                    </p>
+                  </div>
 
                   {resultCards.length > 0 && (
                     <div className="mb-5 rounded-2xl border border-aura-gold/15 bg-black/20 p-4">
