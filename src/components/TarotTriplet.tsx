@@ -79,7 +79,16 @@ export default function TarotTriplet({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
-        {userName}, коснитесь колоды три раза — символы откроют {positions.join(", ")}
+        {masterName ? (
+          <>
+            {userName}, колода {masterName} — коснитесь три раза, символы откроют{" "}
+            {positions.join(", ")}
+          </>
+        ) : (
+          <>
+            {userName}, коснитесь колоды три раза — символы откроют {positions.join(", ")}
+          </>
+        )}
       </motion.p>
 
       {allRevealed && atmosphereLoading && !atmosphereFailed && (

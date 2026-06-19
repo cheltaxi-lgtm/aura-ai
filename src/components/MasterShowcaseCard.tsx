@@ -65,7 +65,7 @@ export default function MasterShowcaseCard({
     formatRunes,
   });
 
-  const ctaLabel = canContinue ? "Продолжить" : "Начать сеанс";
+  const ctaLabel = canContinue ? "Продолжить" : "Начать";
   const deckCount = getDeckDefinition(deckSystem).symbols.length;
   const deckUnit = DECK_SYSTEM_LABEL[deckSystem];
 
@@ -151,7 +151,7 @@ export default function MasterShowcaseCard({
         <button
           type="button"
           onClick={() => onSelect(master.id)}
-          className={`master-showcase-card__cta ${canContinue ? "btn-primary" : "btn-ghost"}`}
+          className="master-showcase-card__cta btn-primary"
         >
           <span>{ctaLabel}</span>
           <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden />

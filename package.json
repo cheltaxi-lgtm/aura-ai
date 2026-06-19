@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "build:decks": "node scripts/build-decks.mjs",
+    "generate:deck-backs": "node scripts/deck-back-art.mjs",
     "generate:avatars": "node scripts/generate-master-avatars.mjs"
   },
   "dependencies": {

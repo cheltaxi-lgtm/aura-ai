@@ -2,23 +2,22 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Sparkles, Layers } from "lucide-react";
+import { Sparkles, Layers, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 import OnboardingForm, { type OnboardingData } from "@/components/OnboardingForm";
 import TarotTriplet from "@/components/TarotTriplet";
-import MastersShowcase from "@/components/MastersShowcase";
+import MasterSelect from "@/components/MasterSelect";
 import ChatWindow from "@/components/ChatWindow";
 import Paywall from "@/components/Paywall";
 import AuthHeader from "@/components/AuthHeader";
 import RuneBalance, { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import RuneShopModal from "@/components/RuneShopModal";
 import { type FlowStep } from "@/components/FlowStepper";
-import LandingHero from "@/components/LandingHero";
+import AuraSellingLanding from "@/components/AuraSellingLanding";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
 import MasterDecksModal from "@/components/MasterDecksModal";
-import LandingSections from "@/components/LandingSections";
 import PhotoReadingFlow from "@/components/PhotoReadingFlow";
 import { buildPhotoReadingChatMessages } from "@/lib/photo-chat";
 import { useRuneConfig } from "@/lib/useRuneConfig";
@@ -34,7 +33,7 @@ import {
 import { getCharacterById } from "@/lib/characters";
 import RegisterGate from "@/components/RegisterGate";
 import WelcomeBackBanner from "@/components/WelcomeBackBanner";
-import Skeleton from "@/components/Skeleton";
+import AppBootstrapScreen from "@/components/AppBootstrapScreen";
 import { generateId } from "@/lib/id";
 import { loadChatCache, saveChatCache, clearChatCache, mastersWithCachedReading, chatHasSpreadReading } from "@/lib/chat-cache";
 import { mergeContinueMasterIds, latestTripletCreatedAt, primaryContinueMasterId, type StoredReadingRow } from "@/lib/reading-progress";
@@ -315,13 +314,48 @@ function persistStep(step: FlowStep) {
   localStorage.setItem(FLOW_STEP_KEY, step);
 }
 
+function readStoredProfile(): StoredProfile | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredProfile;
+  } catch {
+    return null;
+  }
+}
+
+function resolveDefaultTripletMasterId(
+  masters: ShowcaseMaster[],
+  options: {
+    pending?: string | null;
+    recapMasterId?: string | null;
+    tarotCards?: SpreadSymbol[];
+  }
+): string {
+  if (options.pending && findShowcaseMaster(options.pending, masters)) {
+    return options.pending;
+  }
+  if (options.recapMasterId && findShowcaseMaster(options.recapMasterId, masters)) {
+    return options.recapMasterId;
+  }
+  if (options.tarotCards?.length) {
+    const recommended = recommendShowcaseMaster(options.tarotCards, masters);
+    if (recommended && findShowcaseMaster(recommended, masters)) {
+      return recommended;
+    }
+  }
+  return masters[0]?.id ?? "";
+}
+
 export default function HomePage({ referrerSlug }: HomePageProps) {
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
   const { session, loading: sessionLoading, refresh, reconnectSession } = useAuraSession(referrerSlug);
   const { isLoggedIn, loading: authLoading, user: authUser } = useAuth();
   const [step, setStepState] = useState<FlowStep>("intro");
-  const [profile, setProfile] = useState<StoredProfile | null>(null);
+  const [profile, setProfile] = useState<StoredProfile | null>(readStoredProfile);
   const [tripletSystem, setTripletSystem] = useState<DeckSystem>(DEFAULT_DECK_SYSTEM);
+  const [tripletMasterId, setTripletMasterId] = useState("");
   const [masters, setMasters] = useState<ShowcaseMaster[]>(() => getAiMasters());
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [lastMasterId, setLastMasterId] = useState<string | null>(null);
@@ -651,27 +685,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           if (next.tarotCards.length < 3 && localCards >= 3) {
             clearSpreadSessionState(setLastMasterId);
           }
-          // #region agent log
-          fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-            body: JSON.stringify({
-              sessionId: "f9adef",
-              runId: "spread-sync",
-              hypothesisId: "A",
-              location: "HomePage.tsx:profile-sync",
-              message: "server profile merge",
-              data: {
-                serverCards: restored.tarotCards.length,
-                localCards,
-                resultCards: next.tarotCards.length,
-                deckSystem: next.deckSystem ?? null,
-                tripletDraft: newTripletInProgressRef.current,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion
           localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
           return next;
         });
@@ -845,60 +858,58 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     [hasActiveSpread, savedReadings, displayTarotCards, continueMasterIds, lastMasterId]
   );
 
-  const mastersShowcaseSubtitle = useMemo(() => {
-    if (hasActiveSpread) {
-      return spreadReadingDone
-        ? "Расшифровка расклада уже есть — продолжите с тем же мастером или начните свободный сеанс с другим"
-        : "Карты уже выпали — выберите, кто их расшифрует";
-    }
-    if (tripletCountdown.isOnCooldown && effectiveTripletCooldown.nextAvailableAt) {
-      return `Выберите мастера — новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`;
-    }
-    return "Выберите мастера и выпустите новый расклад из 3 карт";
-  }, [
-    hasActiveSpread,
-    spreadReadingDone,
-    tripletCountdown.isOnCooldown,
-    effectiveTripletCooldown.nextAvailableAt,
-  ]);
+  const applyTripletMaster = useCallback(
+    (masterId: string) => {
+      if (!masterId || !findShowcaseMaster(masterId, masters)) return;
+      setTripletMasterId(masterId);
+      const master = findShowcaseMaster(masterId, masters);
+      setTripletSystem(master?.system ?? resolveMasterDeckSystem(masterId));
+      localStorage.setItem(PENDING_MASTER_KEY, masterId);
+    },
+    [masters]
+  );
+
+  const canChangeTripletMaster = useMemo(() => {
+    if (newTripletDraft) return true;
+    if (!profile) return true;
+    return getSpreadForSystem(profile, tripletSystem).length < 3;
+  }, [newTripletDraft, profile, tripletSystem]);
+
+  const handleTripletMasterChange = useCallback(
+    (masterId: string) => {
+      if (!canChangeTripletMaster) return;
+      applyTripletMaster(masterId);
+    },
+    [canChangeTripletMaster, applyTripletMaster]
+  );
+
+  const handleTripletBack = useCallback(() => {
+    newTripletInProgressRef.current = false;
+    setNewTripletDraft(false);
+    setTripletNotice(null);
+    setStep("masters");
+  }, [setStep]);
 
   useEffect(() => {
-    if (!isLoggedIn || step !== "masters") return;
-    // #region agent log
-    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-      body: JSON.stringify({
-        sessionId: "f9adef",
-        runId: "continue-reset",
-        hypothesisId: "B-C",
-        location: "HomePage.tsx:continue-state",
-        message: "spread continue state",
-        data: {
-          hasActiveSpread,
-          cardsCount: displayTarotCards.length,
-          continueMasterIds,
-          recapContinueMasterId,
-          cooldownAllowed: effectiveTripletCooldown.allowed,
-          nextAvailableAt: effectiveTripletCooldown.nextAvailableAt,
-          profileAnchor: profile?.lastTripletDrawAt ?? null,
-          serverAllowed: tripletCooldown?.allowed ?? null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+    if (step !== "triplet" || masters.length === 0) return;
+    if (tripletMasterId && findShowcaseMaster(tripletMasterId, masters)) return;
+
+    const pending = localStorage.getItem(PENDING_MASTER_KEY);
+    const fallback = resolveDefaultTripletMasterId(masters, {
+      pending,
+      recapMasterId: recapContinueMasterId,
+      tarotCards: displayTarotCards,
+    });
+    if (fallback) {
+      applyTripletMaster(fallback);
+    }
   }, [
-    isLoggedIn,
     step,
-    hasActiveSpread,
-    displayTarotCards.length,
-    continueMasterIds,
+    masters,
+    tripletMasterId,
     recapContinueMasterId,
-    effectiveTripletCooldown.allowed,
-    effectiveTripletCooldown.nextAvailableAt,
-    profile?.lastTripletDrawAt,
-    tripletCooldown?.allowed,
+    displayTarotCards,
+    applyTripletMaster,
   ]);
 
   const spreadCardsKey = useMemo(() => spreadKey(displayTarotCards), [displayTarotCards]);
@@ -1002,6 +1013,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     if (existingCards.length >= 3) {
       setStep("masters");
       return;
+    }
+    const defaultMaster = resolveDefaultTripletMasterId(masters, {
+      pending: localStorage.getItem(PENDING_MASTER_KEY),
+      tarotCards: existingCards,
+    });
+    if (defaultMaster) {
+      applyTripletMaster(defaultMaster);
     }
     setStep("triplet");
   };
@@ -1143,11 +1161,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     persistProfile(updated);
     setStep("masters");
 
-    const pendingMaster = localStorage.getItem(PENDING_MASTER_KEY);
-    if (pendingMaster) {
+    const masterToBind =
+      tripletMasterId || localStorage.getItem(PENDING_MASTER_KEY);
+    if (masterToBind) {
       localStorage.removeItem(PENDING_MASTER_KEY);
-      await bindSessionToMaster(pendingMaster);
-      handleSelectCharacter(pendingMaster);
+      await bindSessionToMaster(masterToBind);
+      handleSelectCharacter(masterToBind);
       return;
     }
 
@@ -1171,27 +1190,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const handleNewReading = async () => {
     setTripletNotice(null);
-    // #region agent log
-    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-      body: JSON.stringify({
-        sessionId: "f9adef",
-        runId: "cooldown-guard",
-        hypothesisId: "A-B",
-        location: "HomePage.tsx:handleNewReading",
-        message: "new reading attempt",
-        data: {
-          cooldownReady: tripletCooldownReady,
-          effectiveAllowed: effectiveTripletCooldown.allowed,
-          isOnCooldown: tripletCountdown.isOnCooldown,
-          nextAvailableAt: effectiveTripletCooldown.nextAvailableAt,
-          profileAnchor: profile?.lastTripletDrawAt ?? null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     if (
       !tripletCooldownReady ||
       !effectiveTripletCooldown.allowed ||
@@ -1223,7 +1221,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     }
     readingInFlightRef.current = false;
     localStorage.removeItem(LAST_MASTER_KEY);
-    localStorage.removeItem(PENDING_MASTER_KEY);
     setLastMasterId(null);
     setSelectedCharacter(null);
     setMessages([]);
@@ -1231,6 +1228,16 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     setShowRuneShop(false);
     setInsufficientRunes(null);
     setChatHeaderImage(null);
+    const defaultMaster = resolveDefaultTripletMasterId(masters, {
+      pending: localStorage.getItem(PENDING_MASTER_KEY),
+      recapMasterId: recapContinueMasterId,
+      tarotCards: displayTarotCards,
+    });
+    if (defaultMaster) {
+      applyTripletMaster(defaultMaster);
+    } else {
+      localStorage.removeItem(PENDING_MASTER_KEY);
+    }
     newTripletInProgressRef.current = true;
     setNewTripletDraft(true);
     setStep("triplet");
@@ -1277,6 +1284,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       return;
     }
     if (effectiveBase?.birthDate) {
+      const defaultMaster = resolveDefaultTripletMasterId(masters, {
+        pending: localStorage.getItem(PENDING_MASTER_KEY),
+        tarotCards: effectiveBase?.tarotCards,
+      });
+      if (defaultMaster) {
+        applyTripletMaster(defaultMaster);
+      }
       setStep("triplet");
       return;
     }
@@ -1683,6 +1697,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
     if (!hasSpread) {
       localStorage.setItem(PENDING_MASTER_KEY, continueMaster);
+      applyTripletMaster(continueMaster);
       if (activeProfile?.birthDate) {
         setStep("triplet");
       } else {
@@ -1870,7 +1885,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         return;
       }
       setTripletNotice(null);
-      setTripletSystem(system);
+      applyTripletMaster(masterId);
       setStep("triplet");
       return;
     }
@@ -2092,28 +2107,37 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       ? recommendShowcaseMaster(profile.tarotCards, masters)
       : undefined;
 
-  const recapMasterName = useMemo(() => {
-    const id = recapContinueMasterId ?? recommendedId;
+  const tripletMasterName = useMemo(() => {
+    const id = tripletMasterId || recapContinueMasterId || recommendedId;
     if (!id) return undefined;
     return findShowcaseMaster(id, masters)?.name ?? getCharacterById(id)?.name;
-  }, [recapContinueMasterId, recommendedId, masters]);
+  }, [tripletMasterId, recapContinueMasterId, recommendedId, masters]);
 
   const selectedMaster = selectedCharacter
     ? findShowcaseMaster(selectedCharacter, masters)
     : undefined;
 
+  const effectiveProfile = useMemo((): StoredProfile => {
+    const stored = profile ?? readStoredProfile();
+    if (stored && (stored.name || stored.birthDate || (stored.tarotCards?.length ?? 0) > 0)) {
+      return stored;
+    }
+    return {
+      name: authUser?.name ?? stored?.name ?? "Гость",
+      gender: stored?.gender ?? "female",
+      birthDate: stored?.birthDate ?? "",
+      zodiac: stored?.zodiac ?? "",
+      tarotCards: stored?.tarotCards ?? [],
+      deckSystem: stored?.deckSystem,
+      deckSpreads: stored?.deckSpreads,
+      teaser: stored?.teaser,
+      userId: stored?.userId,
+    };
+  }, [profile, authUser?.name]);
+
   const showLanding = step === "intro";
   const inPersonalFlow = isLoggedIn && step !== "intro";
-
-  if (sessionLoading || authLoading) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-64" />
-        <p className="text-sm text-gray-500">Настраиваем канал...</p>
-      </div>
-    );
-  }
+  const bootstrapping = sessionLoading || authLoading;
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -2158,6 +2182,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
+              onClick={() => void startPersonalFlow()}
+              className="btn-primary hidden px-4 py-2 text-xs sm:inline-flex sm:text-sm"
+            >
+              Получить расклад
+            </button>
+            <button
+              type="button"
               onClick={openDecksModal}
               className="flex items-center gap-1.5 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2.5 py-1.5 text-xs text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
             >
@@ -2173,7 +2204,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       </header>
 
       <main className="relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12">
-        {selectedCharacter && !isLoggedIn ? (
+        {bootstrapping ? (
+          <AppBootstrapScreen embedded />
+        ) : selectedCharacter && !isLoggedIn ? (
           <RegisterGate
             compact
             title="Войдите для продолжения сеанса"
@@ -2215,7 +2248,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             onOpenPaywall={() => setShowPaywall(true)}
           />
         ) : inPersonalFlow ? (
-          <div className="mx-auto max-w-4xl">
+          <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
             {step === "onboarding" && (
               <section className="mb-12">
@@ -2226,8 +2259,29 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               </section>
             )}
 
-            {step === "triplet" && profile && (
+            {step === "triplet" && (
               <section className="flow-panel mb-12">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleTripletBack}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-aura-gold/25 hover:text-white"
+                  >
+                    <ArrowLeft className="h-4 w-4" aria-hidden />
+                    На главную
+                  </button>
+                  {masters.length > 0 &&
+                  tripletMasterId &&
+                  (!tripletCooldown || tripletCooldown.allowed) ? (
+                    <MasterSelect
+                      masters={masters}
+                      value={tripletMasterId}
+                      onChange={handleTripletMasterChange}
+                      disabled={!canChangeTripletMaster}
+                      className="ml-auto"
+                    />
+                  ) : null}
+                </div>
                 {tripletNotice ? (
                   <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
                     {tripletNotice}
@@ -2243,11 +2297,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                     </p>
                     <button
                       type="button"
-                      onClick={() => {
-                        newTripletInProgressRef.current = false;
-                        setNewTripletDraft(false);
-                        setStep("masters");
-                      }}
+                      onClick={handleTripletBack}
                       className="btn-neon px-6 py-2.5 text-sm"
                     >
                       К мастерам и текущему раскладу
@@ -2255,17 +2305,26 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   </div>
                 ) : (
                   <>
+                    {!canChangeTripletMaster ? (
+                      <p className="mb-4 text-center text-[11px] text-gray-500">
+                        Расклад уже выпал — сменить мастера можно после нового расклада
+                      </p>
+                    ) : null}
                     <TarotTriplet
-                      key={newTripletDraft ? `new-triplet-${tripletSystem}` : `triplet-${tripletSystem}`}
-                      userName={profile.name}
-                      zodiac={profile.zodiac}
+                      key={
+                        newTripletDraft
+                          ? `new-triplet-${tripletMasterId}-${tripletSystem}`
+                          : `triplet-${tripletMasterId}-${tripletSystem}`
+                      }
+                      userName={effectiveProfile.name}
+                      zodiac={effectiveProfile.zodiac}
                       system={tripletSystem}
-                      masterName={recapMasterName}
+                      masterName={tripletMasterName}
                       initialCards={
                         newTripletDraft
                           ? undefined
-                          : getSpreadForSystem(profile, tripletSystem).length >= 3
-                            ? getSpreadForSystem(profile, tripletSystem)
+                          : getSpreadForSystem(effectiveProfile, tripletSystem).length >= 3
+                            ? getSpreadForSystem(effectiveProfile, tripletSystem)
                             : displayTarotCards
                       }
                       onComplete={handleTripletComplete}
@@ -2274,11 +2333,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                       <div className="mt-6 text-center">
                         <button
                           type="button"
-                          onClick={() => {
-                            newTripletInProgressRef.current = false;
-                            setNewTripletDraft(false);
-                            setStep("masters");
-                          }}
+                          onClick={handleTripletBack}
                           className="text-sm text-gray-500 underline-offset-2 hover:text-gray-300 hover:underline"
                         >
                           Отмена — оставить текущий расклад
@@ -2290,11 +2345,11 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               </section>
             )}
 
-            {step === "masters" && profile && (
+            {step === "masters" && (
               <>
                 {showWelcomeBack && recapContinueMasterId ? (
                   <WelcomeBackBanner
-                    userName={profile.name}
+                    userName={effectiveProfile.name}
                     masterId={recapContinueMasterId}
                     masters={masters}
                     onContinue={(masterId) => {
@@ -2309,11 +2364,11 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   </div>
                 ) : null}
                 <ReadingRecap
-                  userName={profile.name}
-                  birthDate={profile.birthDate}
+                  userName={effectiveProfile.name || authUser?.name || "Гость"}
+                  birthDate={effectiveProfile.birthDate}
                   tarotCards={displayTarotCards}
-                  deckSystem={profile.deckSystem ?? tripletSystem}
-                  teaser={profile.teaser}
+                  deckSystem={effectiveProfile.deckSystem ?? tripletSystem}
+                  teaser={effectiveProfile.teaser}
                   lastMasterId={recapContinueMasterId}
                   masters={masters}
                   onContinue={
@@ -2380,58 +2435,39 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   />
                 )}
 
-                <MastersShowcase
-                  className="mt-2"
+                <AuraSellingLanding
+                  isLoggedIn={isLoggedIn}
                   masters={masters}
-                  onSelect={(id) => void handleMasterPick(id)}
+                  onStartReading={() => void startPersonalFlow()}
+                  onSelectMaster={(id) => void handleMasterPick(id)}
                   onBrowseDeck={handleBrowseDeck}
                   recommendedId={recommendedId}
                   continueMasterIds={continueMasterIds}
                   spreadReadingDone={spreadReadingDone}
-                  runesEnabled={runeConfig.enabled}
-                  readingCost={runeConfig.enabled ? runeCost("READING") : undefined}
-                  questionCost={runeConfig.enabled ? runeCost("QUESTION") : undefined}
-                  formatRunes={formatRunes}
-                  title="Выберите мастера"
-                  subtitle={mastersShowcaseSubtitle}
-                />
-
-                <LandingSections
-                  hasSession={Boolean(session?.sessionId)}
-                  isLoggedIn={isLoggedIn}
-                  onStartFlow={() => void startPersonalFlow()}
+                  showHero={false}
+                  showTariffs
                   onOpenPaywall={() => setShowPaywall(true)}
                   onOpenRuneShop={() => setShowRuneShop(true)}
                 />
               </>
             )}
           </div>
-        ) : (
+        ) : showLanding ? (
           <>
-            {showLanding && (
-              <LandingHero
-                isLoggedIn={isLoggedIn}
-                masterCount={masters.length || undefined}
-                onStart={() => void startPersonalFlow()}
-              />
-            )}
-          </>
-        )}
-
-        {!selectedCharacter && !inPersonalFlow && showLanding && (
-          <>
-            <MastersShowcase
+            <AuraSellingLanding
+              isLoggedIn={isLoggedIn}
               masters={masters}
-              onSelect={(id) => void handleMasterPick(id)}
+              onStartReading={() => void startPersonalFlow()}
+              onSelectMaster={(id) => void handleMasterPick(id)}
               onBrowseDeck={handleBrowseDeck}
               recommendedId={recommendedId}
               continueMasterIds={continueMasterIds}
-              runesEnabled={runeConfig.enabled}
-              readingCost={runeConfig.enabled ? runeCost("READING") : undefined}
-              questionCost={runeConfig.enabled ? runeCost("QUESTION") : undefined}
-              formatRunes={formatRunes}
-              title="Витрина мастеров Aura"
-              subtitle="AI-наставники платформы и живые эксперты с авторским стилем"
+              spreadReadingDone={spreadReadingDone}
+              showHero
+              showMasters
+              showTariffs
+              onOpenPaywall={() => setShowPaywall(true)}
+              onOpenRuneShop={() => setShowRuneShop(true)}
             />
 
             {deckGalleryOpen && browseDeckMaster && (
@@ -2449,16 +2485,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 backLabel="К колодам мастеров"
               />
             )}
-
-            <LandingSections
-              hasSession={Boolean(session?.sessionId)}
-              isLoggedIn={isLoggedIn}
-              onStartFlow={() => void startPersonalFlow()}
-              onOpenPaywall={() => setShowPaywall(true)}
-              onOpenRuneShop={() => setShowRuneShop(true)}
-            />
           </>
-        )}
+        ) : null}
       </main>
 
       <PhotoReadingFlow

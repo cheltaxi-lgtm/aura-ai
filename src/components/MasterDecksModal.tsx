@@ -38,42 +38,6 @@ export default function MasterDecksModal({
     };
   }, [isOpen, onClose]);
 
-  useEffect(() => {
-    if (!isOpen || !panelRef.current) return;
-    const logLayout = () => {
-      const el = panelRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      // #region agent log
-      fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-        body: JSON.stringify({
-          sessionId: "f9adef",
-          runId: "decks-modal-layout",
-          hypothesisId: "A",
-          location: "MasterDecksModal.tsx:layout",
-          message: "modal panel bounds",
-          data: {
-            left: Math.round(r.left),
-            top: Math.round(r.top),
-            width: Math.round(r.width),
-            height: Math.round(r.height),
-            centerOffsetX: Math.round(r.left + r.width / 2 - vw / 2),
-            centerOffsetY: Math.round(r.top + r.height / 2 - vh / 2),
-            viewportW: vw,
-            viewportH: vh,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-    };
-    requestAnimationFrame(logLayout);
-  }, [isOpen]);
-
   if (!mounted) return null;
 
   return createPortal(

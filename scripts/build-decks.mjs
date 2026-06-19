@@ -14,6 +14,7 @@ import {
   TAROT_SOURCE_FILES,
   tarotMinorSource,
 } from "./deck-assets-data.mjs";
+import { MIN_DECK_BACK_BYTES, writeProgrammaticBack } from "./deck-back-art.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -327,21 +328,37 @@ async function buildSystem(system, model) {
   await runPool(tasks, system.startsWith("tarot-marina") ? 1 : CONCURRENCY);
 
   const backDest = path.join(dir, "_back.png");
-  if (!fs.existsSync(backDest)) {
-    console.log(`  [${system}] _back.png`);
+  const backTooSmall = fs.existsSync(backDest) && fs.statSync(backDest).size < MIN_DECK_BACK_BYTES;
+  if (!fs.existsSync(backDest) || backTooSmall) {
+    if (backTooSmall) {
+      console.log(`  [${system}] _back.png too small — regenerating`);
+      fs.unlinkSync(backDest);
+    } else {
+      console.log(`  [${system}] _back.png`);
+    }
     try {
-      const backLocal = path.join(PUBLIC_TAROT, "_back.jpg");
-      if (system === "tarot-veronika" && fs.existsSync(backLocal)) {
-        await saveAsPng(await fs.promises.readFile(backLocal), backDest);
-        manifest.items._back = { name: "_back", file: "_back.png", source: "download" };
-        inc(system, "downloaded");
-        stats.downloaded++;
+      let source = "generated";
+      if (process.env.OPENROUTER_API_KEY) {
+        try {
+          await createBack(system, dir, model);
+        } catch (e) {
+          console.warn(`    AI back failed (${e.message}), using programmatic fallback`);
+          if (system === "tarot-veronika") {
+            await writeProgrammaticBack(system, backDest);
+            source = "programmatic";
+          } else {
+            throw e;
+          }
+        }
+      } else if (system === "tarot-veronika") {
+        await writeProgrammaticBack(system, backDest);
+        source = "programmatic";
       } else {
-        const { source } = await createBack(system, dir, model);
-        manifest.items._back = { name: "_back", file: "_back.png", source };
-        inc(system, "generated");
-        stats.generated++;
+        throw new Error("OPENROUTER_API_KEY not set and no programmatic back for this system");
       }
+      manifest.items._back = { name: "_back", file: "_back.png", source };
+      inc(system, source === "programmatic" ? "generated" : "generated");
+      stats.generated++;
     } catch (e) {
       console.error(`    back FAILED: ${e.message}`);
     }

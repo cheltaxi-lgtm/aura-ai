@@ -1,0 +1,127 @@
+"use client";
+
+import type { MouseEvent } from "react";
+import { motion } from "framer-motion";
+import { ChevronRight, Layers, Star } from "lucide-react";
+import type { ShowcaseMaster } from "@/lib/showcase-masters";
+import { formatMasterPriceDisplay } from "@/lib/master-pricing";
+import { getDeckDefinition, resolveMasterDeckSystem } from "@/lib/decks";
+import { DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
+import MasterAvatar from "@/components/MasterAvatar";
+
+export interface MasterListRowProps {
+  master: ShowcaseMaster;
+  index: number;
+  recommended?: boolean;
+  canContinue?: boolean;
+  sessionOnly?: boolean;
+  readingCost?: number;
+  questionCost?: number;
+  runesEnabled?: boolean;
+  formatRunes?: (amount: number) => string;
+  onSelect: (masterId: string) => void;
+  onBrowseDeck?: (master: ShowcaseMaster) => void;
+}
+
+export default function MasterListRow({
+  master,
+  index,
+  recommended = false,
+  canContinue = false,
+  sessionOnly = false,
+  readingCost,
+  questionCost,
+  runesEnabled = false,
+  formatRunes,
+  onSelect,
+  onBrowseDeck,
+}: MasterListRowProps) {
+  const deckSystem = master.system ?? resolveMasterDeckSystem(master.id);
+  const price = formatMasterPriceDisplay({
+    system: deckSystem,
+    priceFrom: master.priceFrom,
+    runesEnabled,
+    readingCost,
+    questionCost,
+    sessionOnly,
+    formatRunes,
+  });
+  const deckCount = getDeckDefinition(deckSystem).symbols.length;
+  const deckUnit = DECK_SYSTEM_LABEL[deckSystem];
+  const kindLabel = master.kind === "ai" ? "AI" : "Эксперт";
+
+  const openDeck = (event: MouseEvent) => {
+    event.stopPropagation();
+    onBrowseDeck?.(master);
+  };
+
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 8 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.35, delay: index * 0.03, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(master.id)}
+        className={`master-list-row ${recommended ? "master-list-row--recommended" : ""} ${
+          canContinue ? "master-list-row--continue" : ""
+        }`}
+      >
+        <span className="master-list-row__accent" aria-hidden />
+        <span className="master-list-row__portrait">
+          <MasterAvatar masterId={master.id} masterName={master.name} size="sm" priority={index < 4} />
+        </span>
+
+        <span className="master-list-row__copy">
+          <span className="master-list-row__line1">
+            <span className="master-list-row__name">{master.name}</span>
+            <span className="master-list-row__kind">{kindLabel}</span>
+            {recommended ? <span className="master-list-row__tag">Вам</span> : null}
+            {canContinue ? <span className="master-list-row__tag master-list-row__tag--continue">Разбор</span> : null}
+          </span>
+          <span className="master-list-row__line2">{master.title}</span>
+          <span className="master-list-row__line3">
+            <Star className="lux-star h-3 w-3 shrink-0" aria-hidden />
+            {master.rating}
+            <span className="master-list-row__dot" aria-hidden>
+              ·
+            </span>
+            {deckCount} {deckUnit}
+            {price.amount ? (
+              <>
+                <span className="master-list-row__dot" aria-hidden>
+                  ·
+                </span>
+                {price.amount}
+                {price.unit ? <span className="master-list-row__price-unit"> {price.unit}</span> : null}
+              </>
+            ) : null}
+          </span>
+        </span>
+
+        {onBrowseDeck ? (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={openDeck}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                onBrowseDeck(master);
+              }
+            }}
+            className="master-list-row__deck"
+            aria-label={`Колода ${master.name}`}
+          >
+            <Layers className="h-3.5 w-3.5" aria-hidden />
+          </span>
+        ) : null}
+
+        <ChevronRight className="master-list-row__chevron" aria-hidden />
+      </button>
+    </motion.li>
+  );
+}

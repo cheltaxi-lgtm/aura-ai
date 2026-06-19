@@ -43,45 +43,6 @@ export default function MasterAvatar({
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (size !== "showcase" || !rootRef.current) return;
-    const el = rootRef.current;
-    const parent = el.parentElement;
-    const logLayout = () => {
-      const er = el.getBoundingClientRect();
-      const pr = parent?.getBoundingClientRect();
-      // #region agent log
-      fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
-        body: JSON.stringify({
-          sessionId: "f9adef",
-          runId: "showcase-layout",
-          hypothesisId: "A-D",
-          location: "MasterAvatar.tsx:showcase-layout",
-          message: "showcase portrait dimensions",
-          data: {
-            masterId,
-            src: primarySrc,
-            avatarW: Math.round(er.width),
-            avatarH: Math.round(er.height),
-            wrapW: pr ? Math.round(pr.width) : null,
-            wrapH: pr ? Math.round(pr.height) : null,
-            ratio: er.width > 0 ? +(er.height / er.width).toFixed(3) : null,
-            expectedRatio: 1.3,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-    };
-    logLayout();
-    const ro = new ResizeObserver(logLayout);
-    ro.observe(el);
-    if (parent) ro.observe(parent);
-    return () => ro.disconnect();
-  }, [size, masterId, primarySrc]);
-
-  useEffect(() => {
     setSrc(primarySrc);
     setFailed(false);
   }, [primarySrc, masterId, thumb]);
