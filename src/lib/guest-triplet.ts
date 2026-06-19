@@ -1,9 +1,12 @@
-import type { TarotCard } from "@/lib/tarot";
+import type { SpreadSymbol } from "@/lib/decks/types";
+import type { DeckSystem } from "@/lib/decks/types";
+import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 
 export const GUEST_TRIPLET_KEY = "aura_guest_triplet";
 
 export interface GuestTripletDraft {
-  tarotCards: TarotCard[];
+  tarotCards: SpreadSymbol[];
+  deckSystem?: DeckSystem;
   teaser: string;
   completedAt: string;
 }
@@ -31,14 +34,15 @@ export function clearGuestTriplet(): void {
   localStorage.removeItem(GUEST_TRIPLET_KEY);
 }
 
-export function mergeGuestTripletIntoProfile<T extends { tarotCards?: TarotCard[]; teaser?: string }>(
-  profile: T
-): T {
+export function mergeGuestTripletIntoProfile<
+  T extends { tarotCards?: SpreadSymbol[]; deckSystem?: DeckSystem; teaser?: string },
+>(profile: T): T {
   const guest = loadGuestTriplet();
   if (!guest || profile.tarotCards?.length) return profile;
   return {
     ...profile,
     tarotCards: guest.tarotCards,
+    deckSystem: guest.deckSystem ?? DEFAULT_DECK_SYSTEM,
     teaser: guest.teaser,
   };
 }

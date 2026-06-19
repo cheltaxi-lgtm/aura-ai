@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "items": {
+    "fehu": {
+      "name": "Феху",
+      "file": "fehu.png",
+      "source": "generated"
+    },
+    "uruz": {
+      "name": "Уруз",
+      "file": "uruz.png",
+      "source": "generated"
+    },
+    "thurisaz": {
+      "name": "Турисаз",
+      "file": "thurisaz.png",
+      "source": "generated"
+    },
+    "ansuz": {
+      "name": "Ансуз",
+      "file": "ansuz.png",
+      "source": "generated"
+    },
+    "raido": {
+      "name": "Райдо",
+      "file": "raido.png",
+      "source": "generated"
+    },
+    "kenaz": {
+      "name": "Кеназ",
+      "file": "kenaz.png",
+      "source": "generated"
+    },
+    "gebo": {
+      "name": "Гебо",
+      "file": "gebo.png",
+      "source": "generated"
+    },
+    "wunjo": {
+      "name": "Вуньо",
+      "file": "wunjo.png",
+      "source": "generated"
+    },
+    "hagalaz": {
+      "name": "Хагалаз",
+      "file": "hagalaz.png",
+      "source": "generated"
+    },
+    "isa": {
+      "name": "Иса",
+      "file": "isa.png",
+      "source": "generated"
+    },
+    "nauthiz": {
+      "name": "Наутиз",
+      "file": "nauthiz.png",
+      "source": "generated"
+    },
+    "jera": {
+      "name": "Йера",
+      "file": "jera.png",
+      "source": "generated"
+    },
+    "eihwaz": {
+      "name": "Эйваз",
+      "file": "eihwaz.png",
+      "source": "generated"
+    },
+    "perthro": {
+      "name": "Перт",
+      "file": "perthro.png",
+      "source": "generated"
+    },
+    "algiz": {
+      "name": "Альгиз",
+      "file": "algiz.png",
+      "source": "generated"
+    },
+    "tiwaz": {
+      "name": "Тейваз",
+      "file": "tiwaz.png",
+      "source": "generated"
+    },
+    "sowilo": {
+      "name": "Соулу",
+      "file": "sowilo.png",
+      "source": "generated"
+    },
+    "berkano": {
+      "name": "Беркана",
+      "file": "berkano.png",
+      "source": "generated"
+    },
+    "ehwaz": {
+      "name": "Эваз",
+      "file": "ehwaz.png",
+      "source": "generated"
+    },
+    "mannaz": {
+      "name": "Манназ",
+      "file": "mannaz.png",
+      "source": "generated"
+    },
+    "laguz": {
+      "name": "Лагуз",
+      "file": "laguz.png",
+      "source": "generated"
+    },
+    "ingwaz": {
+      "name": "Ингуз",
+      "file": "ingwaz.png",
+      "source": "generated"
+    },
+    "dagaz": {
+      "name": "Дагаз",
+      "file": "dagaz.png",
+      "source": "generated"
+    },
+    "othala": {
+      "name": "Отал",
+      "file": "othala.png",
+      "source": "generated"
+    },
+    "_back": {
+      "name": "_back",
+      "file": "_back.png",
+      "source": "generated"
+    }
+  }
+}

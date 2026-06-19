@@ -1,0 +1,400 @@
+{
+  "version": 1,
+  "items": {
+    "the-fool": {
+      "name": "Шут",
+      "file": "the-fool.png",
+      "source": "generated"
+    },
+    "the-magician": {
+      "name": "Маг",
+      "file": "the-magician.png",
+      "source": "generated"
+    },
+    "the-high-priestess": {
+      "name": "Жрица",
+      "file": "the-high-priestess.png",
+      "source": "generated"
+    },
+    "the-empress": {
+      "name": "Императрица",
+      "file": "the-empress.png",
+      "source": "generated"
+    },
+    "the-emperor": {
+      "name": "Император",
+      "file": "the-emperor.png",
+      "source": "generated"
+    },
+    "the-hierophant": {
+      "name": "Иерофант",
+      "file": "the-hierophant.png",
+      "source": "generated"
+    },
+    "the-lovers": {
+      "name": "Влюблённые",
+      "file": "the-lovers.png",
+      "source": "generated"
+    },
+    "the-chariot": {
+      "name": "Колесница",
+      "file": "the-chariot.png",
+      "source": "generated"
+    },
+    "strength": {
+      "name": "Сила",
+      "file": "strength.png",
+      "source": "generated"
+    },
+    "the-hermit": {
+      "name": "Отшельник",
+      "file": "the-hermit.png",
+      "source": "generated"
+    },
+    "wheel-of-fortune": {
+      "name": "Колесо Фортуны",
+      "file": "wheel-of-fortune.png",
+      "source": "generated"
+    },
+    "justice": {
+      "name": "Справедливость",
+      "file": "justice.png",
+      "source": "generated"
+    },
+    "the-hanged-man": {
+      "name": "Повешенный",
+      "file": "the-hanged-man.png",
+      "source": "generated"
+    },
+    "death": {
+      "name": "Смерть",
+      "file": "death.png",
+      "source": "generated"
+    },
+    "temperance": {
+      "name": "Умеренность",
+      "file": "temperance.png",
+      "source": "generated"
+    },
+    "the-devil": {
+      "name": "Дьявол",
+      "file": "the-devil.png",
+      "source": "generated"
+    },
+    "the-tower": {
+      "name": "Башня",
+      "file": "the-tower.png",
+      "source": "generated"
+    },
+    "the-star": {
+      "name": "Звезда",
+      "file": "the-star.png",
+      "source": "generated"
+    },
+    "the-moon": {
+      "name": "Луна",
+      "file": "the-moon.png",
+      "source": "generated"
+    },
+    "the-sun": {
+      "name": "Солнце",
+      "file": "the-sun.png",
+      "source": "generated"
+    },
+    "judgement": {
+      "name": "Суд",
+      "file": "judgement.png",
+      "source": "generated"
+    },
+    "the-world": {
+      "name": "Мир",
+      "file": "the-world.png",
+      "source": "generated"
+    },
+    "ace-of-cups": {
+      "name": "ace-of-cups",
+      "file": "ace-of-cups.png",
+      "source": "generated"
+    },
+    "two-of-cups": {
+      "name": "two-of-cups",
+      "file": "two-of-cups.png",
+      "source": "generated"
+    },
+    "three-of-cups": {
+      "name": "three-of-cups",
+      "file": "three-of-cups.png",
+      "source": "generated"
+    },
+    "four-of-cups": {
+      "name": "four-of-cups",
+      "file": "four-of-cups.png",
+      "source": "generated"
+    },
+    "five-of-cups": {
+      "name": "five-of-cups",
+      "file": "five-of-cups.png",
+      "source": "generated"
+    },
+    "six-of-cups": {
+      "name": "six-of-cups",
+      "file": "six-of-cups.png",
+      "source": "generated"
+    },
+    "seven-of-cups": {
+      "name": "seven-of-cups",
+      "file": "seven-of-cups.png",
+      "source": "generated"
+    },
+    "eight-of-cups": {
+      "name": "eight-of-cups",
+      "file": "eight-of-cups.png",
+      "source": "generated"
+    },
+    "nine-of-cups": {
+      "name": "nine-of-cups",
+      "file": "nine-of-cups.png",
+      "source": "generated"
+    },
+    "ten-of-cups": {
+      "name": "ten-of-cups",
+      "file": "ten-of-cups.png",
+      "source": "generated"
+    },
+    "page-of-cups": {
+      "name": "page-of-cups",
+      "file": "page-of-cups.png",
+      "source": "generated"
+    },
+    "knight-of-cups": {
+      "name": "knight-of-cups",
+      "file": "knight-of-cups.png",
+      "source": "generated"
+    },
+    "queen-of-cups": {
+      "name": "queen-of-cups",
+      "file": "queen-of-cups.png",
+      "source": "generated"
+    },
+    "king-of-cups": {
+      "name": "king-of-cups",
+      "file": "king-of-cups.png",
+      "source": "generated"
+    },
+    "ace-of-wands": {
+      "name": "ace-of-wands",
+      "file": "ace-of-wands.png",
+      "source": "generated"
+    },
+    "two-of-wands": {
+      "name": "two-of-wands",
+      "file": "two-of-wands.png",
+      "source": "generated"
+    },
+    "three-of-wands": {
+      "name": "three-of-wands",
+      "file": "three-of-wands.png",
+      "source": "generated"
+    },
+    "four-of-wands": {
+      "name": "four-of-wands",
+      "file": "four-of-wands.png",
+      "source": "generated"
+    },
+    "five-of-wands": {
+      "name": "five-of-wands",
+      "file": "five-of-wands.png",
+      "source": "generated"
+    },
+    "six-of-wands": {
+      "name": "six-of-wands",
+      "file": "six-of-wands.png",
+      "source": "generated"
+    },
+    "seven-of-wands": {
+      "name": "seven-of-wands",
+      "file": "seven-of-wands.png",
+      "source": "generated"
+    },
+    "eight-of-wands": {
+      "name": "eight-of-wands",
+      "file": "eight-of-wands.png",
+      "source": "generated"
+    },
+    "nine-of-wands": {
+      "name": "nine-of-wands",
+      "file": "nine-of-wands.png",
+      "source": "generated"
+    },
+    "ten-of-wands": {
+      "name": "ten-of-wands",
+      "file": "ten-of-wands.png",
+      "source": "generated"
+    },
+    "page-of-wands": {
+      "name": "page-of-wands",
+      "file": "page-of-wands.png",
+      "source": "generated"
+    },
+    "knight-of-wands": {
+      "name": "knight-of-wands",
+      "file": "knight-of-wands.png",
+      "source": "generated"
+    },
+    "queen-of-wands": {
+      "name": "queen-of-wands",
+      "file": "queen-of-wands.png",
+      "source": "generated"
+    },
+    "king-of-wands": {
+      "name": "king-of-wands",
+      "file": "king-of-wands.png",
+      "source": "generated"
+    },
+    "ace-of-swords": {
+      "name": "ace-of-swords",
+      "file": "ace-of-swords.png",
+      "source": "generated"
+    },
+    "two-of-swords": {
+      "name": "two-of-swords",
+      "file": "two-of-swords.png",
+      "source": "generated"
+    },
+    "three-of-swords": {
+      "name": "three-of-swords",
+      "file": "three-of-swords.png",
+      "source": "generated"
+    },
+    "four-of-swords": {
+      "name": "four-of-swords",
+      "file": "four-of-swords.png",
+      "source": "generated"
+    },
+    "five-of-swords": {
+      "name": "five-of-swords",
+      "file": "five-of-swords.png",
+      "source": "generated"
+    },
+    "six-of-swords": {
+      "name": "six-of-swords",
+      "file": "six-of-swords.png",
+      "source": "generated"
+    },
+    "seven-of-swords": {
+      "name": "seven-of-swords",
+      "file": "seven-of-swords.png",
+      "source": "generated"
+    },
+    "eight-of-swords": {
+      "name": "eight-of-swords",
+      "file": "eight-of-swords.png",
+      "source": "generated"
+    },
+    "nine-of-swords": {
+      "name": "nine-of-swords",
+      "file": "nine-of-swords.png",
+      "source": "generated"
+    },
+    "ten-of-swords": {
+      "name": "ten-of-swords",
+      "file": "ten-of-swords.png",
+      "source": "generated"
+    },
+    "page-of-swords": {
+      "name": "page-of-swords",
+      "file": "page-of-swords.png",
+      "source": "generated"
+    },
+    "knight-of-swords": {
+      "name": "knight-of-swords",
+      "file": "knight-of-swords.png",
+      "source": "generated"
+    },
+    "queen-of-swords": {
+      "name": "queen-of-swords",
+      "file": "queen-of-swords.png",
+      "source": "generated"
+    },
+    "king-of-swords": {
+      "name": "king-of-swords",
+      "file": "king-of-swords.png",
+      "source": "generated"
+    },
+    "ace-of-pentacles": {
+      "name": "ace-of-pentacles",
+      "file": "ace-of-pentacles.png",
+      "source": "generated"
+    },
+    "two-of-pentacles": {
+      "name": "two-of-pentacles",
+      "file": "two-of-pentacles.png",
+      "source": "generated"
+    },
+    "three-of-pentacles": {
+      "name": "three-of-pentacles",
+      "file": "three-of-pentacles.png",
+      "source": "generated"
+    },
+    "four-of-pentacles": {
+      "name": "four-of-pentacles",
+      "file": "four-of-pentacles.png",
+      "source": "generated"
+    },
+    "five-of-pentacles": {
+      "name": "five-of-pentacles",
+      "file": "five-of-pentacles.png",
+      "source": "generated"
+    },
+    "six-of-pentacles": {
+      "name": "six-of-pentacles",
+      "file": "six-of-pentacles.png",
+      "source": "generated"
+    },
+    "seven-of-pentacles": {
+      "name": "seven-of-pentacles",
+      "file": "seven-of-pentacles.png",
+      "source": "generated"
+    },
+    "eight-of-pentacles": {
+      "name": "eight-of-pentacles",
+      "file": "eight-of-pentacles.png",
+      "source": "generated"
+    },
+    "nine-of-pentacles": {
+      "name": "nine-of-pentacles",
+      "file": "nine-of-pentacles.png",
+      "source": "generated"
+    },
+    "ten-of-pentacles": {
+      "name": "ten-of-pentacles",
+      "file": "ten-of-pentacles.png",
+      "source": "generated"
+    },
+    "page-of-pentacles": {
+      "name": "page-of-pentacles",
+      "file": "page-of-pentacles.png",
+      "source": "generated"
+    },
+    "knight-of-pentacles": {
+      "name": "knight-of-pentacles",
+      "file": "knight-of-pentacles.png",
+      "source": "generated"
+    },
+    "queen-of-pentacles": {
+      "name": "queen-of-pentacles",
+      "file": "queen-of-pentacles.png",
+      "source": "generated"
+    },
+    "king-of-pentacles": {
+      "name": "king-of-pentacles",
+      "file": "king-of-pentacles.png",
+      "source": "generated"
+    },
+    "_back": {
+      "name": "_back",
+      "file": "_back.png",
+      "source": "generated"
+    }
+  }
+}

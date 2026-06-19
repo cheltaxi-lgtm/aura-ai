@@ -2,21 +2,32 @@
 
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { drawRandomCards, TRIPLET_POSITIONS, type TarotCard } from "@/lib/tarot";
+import type { DeckSystem } from "@/lib/decks/types";
+import { drawSpread, getDeckPositions } from "@/lib/decks";
+import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
 import SceneImage from "@/components/SceneImage";
-import TarotCardFace from "@/components/TarotCardFace";
+import SymbolCardFace from "@/components/SymbolCardFace";
 
 interface TarotTripletProps {
   userName: string;
   zodiac?: string;
-  initialCards?: TarotCard[];
-  onComplete: (cards: TarotCard[], teaser: string) => void;
+  system: DeckSystem;
+  initialCards?: SpreadSymbol[];
+  onComplete: (cards: SpreadSymbol[], teaser: string) => void;
 }
 
-export default function TarotTriplet({ userName, zodiac, initialCards, onComplete }: TarotTripletProps) {
+export default function TarotTriplet({
+  userName,
+  zodiac,
+  system,
+  initialCards,
+  onComplete,
+}: TarotTripletProps) {
+  const positions = useMemo(() => getDeckPositions(system), [system]);
+
   const [deck] = useState(() =>
-    initialCards?.length === 3 ? initialCards : drawRandomCards(3)
+    initialCards?.length === 3 ? initialCards : drawSpread(system, 3)
   );
   const [revealed, setRevealed] = useState<boolean[]>(() =>
     initialCards?.length === 3 ? [true, true, true] : [false, false, false]
@@ -26,19 +37,21 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
   const allRevealed = revealedCount === 3;
 
   const cardNames = useMemo(
-    () => (allRevealed ? ([deck[0].name, deck[1].name, deck[2].name] as [string, string, string]) : undefined),
+    () =>
+      allRevealed
+        ? ([deck[0].name, deck[1].name, deck[2].name] as [string, string, string])
+        : undefined,
     [allRevealed, deck]
   );
 
-  const { imageUrl: atmosphereUrl, loading: atmosphereLoading, failed: atmosphereFailed } = useSceneImage(
-    allRevealed ? { scene: "tarot_atmosphere", cards: cardNames, zodiac } : null,
-    allRevealed
-  );
+  const { imageUrl: atmosphereUrl, loading: atmosphereLoading, failed: atmosphereFailed } =
+    useSceneImage(
+      allRevealed ? { scene: "tarot_atmosphere", cards: cardNames, zodiac } : null,
+      allRevealed
+    );
 
   const handleFlip = (index: number) => {
-    if (revealed[index]) {
-      return;
-    }
+    if (revealed[index]) return;
     setRevealed((prev) => {
       const next = [...prev];
       next[index] = true;
@@ -47,7 +60,7 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
   };
 
   const handleFinish = () => {
-    const teaser = `${userName}, три карты легли на ваш астральный стол: «${deck[0].name}» в прошлом, «${deck[1].name}» в настоящем и «${deck[2].name}» в будущем. Энергия ${deck[1].name} сейчас доминирует — выберите наставника, чтобы услышать полную расшифровку.`;
+    const teaser = `${userName}, три символа легли на ваш астральный стол: «${deck[0].name}» (${positions[0]}), «${deck[1].name}» (${positions[1]}) и «${deck[2].name}» (${positions[2]}). Энергия ${deck[1].name} сейчас доминирует — выберите наставника, чтобы услышать полную расшифровку.`;
     onComplete(deck, teaser);
   };
 
@@ -58,7 +71,7 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
-        {userName}, коснитесь колоды три раза — карты откроют Прошлое, Настоящее и Будущее
+        {userName}, коснитесь колоды три раза — символы откроют {positions.join(", ")}
       </motion.p>
 
       {allRevealed && atmosphereLoading && !atmosphereFailed && (
@@ -77,14 +90,14 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
       <div className="mb-8 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (
           <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
-            <p className="lux-label mb-1">{TRIPLET_POSITIONS[i]}</p>
+            <p className="lux-label mb-1">{positions[i]}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
               disabled={revealed[i]}
               className="lux-tarot-flip perspective-[900px] focus:outline-none disabled:cursor-default"
               style={{ width: 148, height: 236 }}
-              aria-label={revealed[i] ? card.name : `Открыть карту ${TRIPLET_POSITIONS[i]}`}
+              aria-label={revealed[i] ? card.name : `Открыть ${positions[i]}`}
             >
               <motion.div
                 className="relative h-full w-full"
@@ -92,17 +105,27 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
                 transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
                 style={{ transformStyle: "preserve-3d" }}
               >
-                <div
-                  className="absolute inset-0"
-                  style={{ backfaceVisibility: "hidden" }}
-                >
-                  <TarotCardFace card={card} faceDown showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none" />
+                <div className="absolute inset-0" style={{ backfaceVisibility: "hidden" }}>
+                  <SymbolCardFace
+                    card={card}
+                    system={system}
+                    faceDown
+                    showMeaning={false}
+                    size="md"
+                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                  />
                 </div>
                 <div
                   className="absolute inset-0"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
                 >
-                  <TarotCardFace card={card} showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none" />
+                  <SymbolCardFace
+                    card={card}
+                    system={system}
+                    showMeaning={false}
+                    size="md"
+                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                  />
                 </div>
               </motion.div>
             </button>
@@ -118,8 +141,9 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
             animate={{ opacity: 1, y: 0 }}
           >
             <p className="text-sm leading-relaxed text-aura-ivory/75">
-              Карты выпали: <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
-              Первая карта уже шепчет о вашем прошлом — полный разбор откроет наставник.
+              Выпало:{" "}
+              <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
+              Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
             </p>
             <button onClick={handleFinish} className="btn-primary mt-6 px-8 py-3 text-sm">
               Узнать смысл у мастера

@@ -1,0 +1,28 @@
+import type { SpreadSymbol } from "./types";
+
+export const RUNE_SYMBOLS: SpreadSymbol[] = [
+  { id: 0, name: "Феху", slug: "fehu", kind: "rune", meaning: "Богатство, скот, энергия, начало" },
+  { id: 1, name: "Уруз", slug: "uruz", kind: "rune", meaning: "Сила, выносливость, дикая природа" },
+  { id: 2, name: "Турисаз", slug: "thurisaz", kind: "rune", meaning: "Защита, гром, преграда, решимость" },
+  { id: 3, name: "Ансуз", slug: "ansuz", kind: "rune", meaning: "Мудрость, речь, божественное послание" },
+  { id: 4, name: "Райдо", slug: "raido", kind: "rune", meaning: "Путь, движение, путешествие, прогресс" },
+  { id: 5, name: "Кеназ", slug: "kenaz", kind: "rune", meaning: "Факел, знание, творческий огонь" },
+  { id: 6, name: "Гебо", slug: "gebo", kind: "rune", meaning: "Дар, обмен, партнёрство, баланс" },
+  { id: 7, name: "Вуньо", slug: "wunjo", kind: "rune", meaning: "Радость, гармония, исполнение" },
+  { id: 8, name: "Хагалаз", slug: "hagalaz", kind: "rune", meaning: "Град, разрушение, необходимый шок" },
+  { id: 9, name: "Наутиз", slug: "nauthiz", kind: "rune", meaning: "Нужда, ограничение, терпение" },
+  { id: 10, name: "Иса", slug: "isa", kind: "rune", meaning: "Лёд, застой, пауза, концентрация" },
+  { id: 11, name: "Йера", slug: "jera", kind: "rune", meaning: "Урожай, цикл, награда за труд" },
+  { id: 12, name: "Эйваз", slug: "eihwaz", kind: "rune", meaning: "Тис, защита, связь миров" },
+  { id: 13, name: "Перт", slug: "perthro", kind: "rune", meaning: "Судьба, тайна, скрытое знание" },
+  { id: 14, name: "Альгиз", slug: "algiz", kind: "rune", meaning: "Защита, инстинкт, высшее покровительство" },
+  { id: 15, name: "Соулу", slug: "sowilo", kind: "rune", meaning: "Солнце, победа, ясность, жизненная сила" },
+  { id: 16, name: "Тейваз", slug: "tiwaz", kind: "rune", meaning: "Воин, справедливость, честь" },
+  { id: 17, name: "Беркана", slug: "berkano", kind: "rune", meaning: "Берёза, рост, забота, возрождение" },
+  { id: 18, name: "Эваз", slug: "ehwaz", kind: "rune", meaning: "Конь, движение, доверие, союз" },
+  { id: 19, name: "Манназ", slug: "mannaz", kind: "rune", meaning: "Человек, сообщество, самопознание" },
+  { id: 20, name: "Лагуз", slug: "laguz", kind: "rune", meaning: "Вода, интуиция, поток, подсознание" },
+  { id: 21, name: "Ингуз", slug: "ingwaz", kind: "rune", meaning: "Плодородие, завершение, внутренняя сила" },
+  { id: 22, name: "Дагаз", slug: "dagaz", kind: "rune", meaning: "День, прорыв, трансформация, рассвет" },
+  { id: 23, name: "Отал", slug: "othala", kind: "rune", meaning: "Наследие, дом, корни, принадлежность" },
+];

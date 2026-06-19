@@ -1,0 +1,25 @@
+import type { SpreadSymbol } from "./types";
+
+export const ASTROLOGY_SYMBOLS: SpreadSymbol[] = [
+  { id: 0, name: "Сурья", slug: "surya", kind: "planet", meaning: "Солнце — душа, отец, власть, здоровье" },
+  { id: 1, name: "Чандра", slug: "chandra", kind: "planet", meaning: "Луна — ум, мать, эмоции, дом" },
+  { id: 2, name: "Мангала", slug: "mangala", kind: "planet", meaning: "Марс — энергия, смелость, конфликт" },
+  { id: 3, name: "Будха", slug: "budha", kind: "planet", meaning: "Меркурий — интеллект, речь, торговля" },
+  { id: 4, name: "Гуру", slug: "guru-jupiter", kind: "planet", meaning: "Юпитер — мудрость, удача, дharma" },
+  { id: 5, name: "Шукра", slug: "shukra", kind: "planet", meaning: "Венера — любовь, красота, наслаждение" },
+  { id: 6, name: "Шани", slug: "shani", kind: "planet", meaning: "Сатурн — карма, дисциплина, испытания" },
+  { id: 7, name: "Раху", slug: "rahu", kind: "planet", meaning: "Раху — амбиции, иллюзии, материальные желания" },
+  { id: 8, name: "Кету", slug: "ketu", kind: "planet", meaning: "Кету — духовность, прошлые кармы, отречение" },
+  { id: 9, name: "Овен", slug: "aries", kind: "zodiac", meaning: "Огонь, начало, смелость, лидерство" },
+  { id: 10, name: "Телец", slug: "taurus", kind: "zodiac", meaning: "Земля, стабильность, чувственность" },
+  { id: 11, name: "Близнецы", slug: "gemini", kind: "zodiac", meaning: "Воздух, общение, любопытство" },
+  { id: 12, name: "Рак", slug: "cancer", kind: "zodiac", meaning: "Вода, дом, эмоции, защита" },
+  { id: 13, name: "Лев", slug: "leo", kind: "zodiac", meaning: "Огонь, творчество, достоинство" },
+  { id: 14, name: "Дева", slug: "virgo", kind: "zodiac", meaning: "Земля, служение, анализ, порядок" },
+  { id: 15, name: "Весы", slug: "libra", kind: "zodiac", meaning: "Воздух, баланс, партнёрство, красота" },
+  { id: 16, name: "Скорпион", slug: "scorpio", kind: "zodiac", meaning: "Вода, трансформация, глубина" },
+  { id: 17, name: "Стрелец", slug: "sagittarius", kind: "zodiac", meaning: "Огонь, путь, философия, свобода" },
+  { id: 18, name: "Козерог", slug: "capricorn", kind: "zodiac", meaning: "Земля, амбиции, структура, время" },
+  { id: 19, name: "Водолей", slug: "aquarius", kind: "zodiac", meaning: "Воздух, новаторство, братство" },
+  { id: 20, name: "Рыбы", slug: "pisces", kind: "zodiac", meaning: "Вода, интуиция, сострадание, сны" },
+];

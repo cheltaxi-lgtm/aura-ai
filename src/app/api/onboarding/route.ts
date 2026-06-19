@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       sessionId: _sessionId,
       tarotCards,
       teaser,
+      deckSystem,
     } = await request.json();
     void _sessionId;
 
@@ -173,6 +174,7 @@ export async function POST(request: NextRequest) {
       contextData: {
         type: "triplet",
         tarotCards: tarotCards ?? [],
+        deckSystem: typeof deckSystem === "string" ? deckSystem : undefined,
         teaser,
         onboarding: {
           name,

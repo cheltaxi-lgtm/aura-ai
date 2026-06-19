@@ -11,6 +11,8 @@ export interface Character {
   priceFrom: string;
   rating: number;
   sessions: string;
+  /** Divination deck system for this master */
+  system: import("@/lib/decks/types").DeckSystem;
 }
 
 export interface Message {

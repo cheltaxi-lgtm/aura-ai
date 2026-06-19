@@ -67,6 +67,7 @@ export async function listHumanMasters(): Promise<ShowcaseMaster[]> {
       sessions: sessions > 0 ? `${sessions}+ сеансов` : "Новый мастер",
       styleNotes: row.style_notes ?? undefined,
       profilePath: `/master/${row.slug}`,
+      system: row.slug === "gadalka_marina" ? "tarot-marina" : "tarot-veronika",
     };
   });
 }

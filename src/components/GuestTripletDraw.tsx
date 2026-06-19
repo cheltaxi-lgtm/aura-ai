@@ -3,12 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { drawRandomCards, TRIPLET_POSITIONS, type TarotCard } from "@/lib/tarot";
+import { drawSpread, getDeckPositions, DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import type { SpreadSymbol } from "@/lib/decks/types";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import TarotCardFace from "@/components/TarotCardFace";
+import SymbolCardFace from "@/components/SymbolCardFace";
 
 export default function GuestTripletDraw() {
-  const [deck] = useState(() => drawRandomCards(3));
+  const system = DEFAULT_DECK_SYSTEM;
+  const positions = getDeckPositions(system);
+  const [deck] = useState(() => drawSpread(system, 3));
   const [revealed, setRevealed] = useState<boolean[]>([false, false, false]);
   const [done, setDone] = useState(false);
 
@@ -27,6 +30,7 @@ export default function GuestTripletDraw() {
     const teaser = `Три карты легли на ваш стол: «${deck[0].name}» · «${deck[1].name}» · «${deck[2].name}». Зарегистрируйтесь — мастер расшифрует расклад.`;
     saveGuestTriplet({
       tarotCards: deck,
+      deckSystem: system,
       teaser,
       completedAt: new Date().toISOString(),
     });
@@ -42,13 +46,13 @@ export default function GuestTripletDraw() {
       <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (
           <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
-            <p className="lux-label">{TRIPLET_POSITIONS[i]}</p>
+            <p className="lux-label">{positions[i]}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
               disabled={revealed[i]}
               className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
-              aria-label={revealed[i] ? card.name : `Открыть карту ${TRIPLET_POSITIONS[i]}`}
+              aria-label={revealed[i] ? card.name : `Открыть ${positions[i]}`}
             >
               <motion.div
                 className="relative h-full w-full preserve-3d"
@@ -56,8 +60,9 @@ export default function GuestTripletDraw() {
                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               >
                 <div className="absolute inset-0 backface-hidden">
-                  <TarotCardFace
+                  <SymbolCardFace
                     card={card}
+                    system={system}
                     faceDown
                     showMeaning={false}
                     size="md"
@@ -65,8 +70,9 @@ export default function GuestTripletDraw() {
                   />
                 </div>
                 <div className="absolute inset-0 backface-hidden rotate-y-180">
-                  <TarotCardFace
+                  <SymbolCardFace
                     card={card}
+                    system={system}
                     showMeaning={false}
                     size="md"
                     className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"

@@ -14,6 +14,7 @@ export const CHARACTERS: Character[] = [
     priceFrom: "1 490 ₽",
     rating: 4.9,
     sessions: "320+ сеансов",
+    system: "runes",
   },
   {
     id: "veronika",
@@ -28,6 +29,7 @@ export const CHARACTERS: Character[] = [
     priceFrom: "990 ₽",
     rating: 5.0,
     sessions: "580+ сеансов",
+    system: "tarot-veronika",
   },
   {
     id: "agafya",
@@ -42,6 +44,7 @@ export const CHARACTERS: Character[] = [
     priceFrom: "1 290 ₽",
     rating: 4.8,
     sessions: "410+ сеансов",
+    system: "slavic",
   },
   {
     id: "shri-raj",
@@ -56,6 +59,7 @@ export const CHARACTERS: Character[] = [
     priceFrom: "1 790 ₽",
     rating: 4.9,
     sessions: "260+ сеансов",
+    system: "astrology",
   },
 ];
 

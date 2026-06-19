@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "items": {
+    "mir": {
+      "name": "Мир",
+      "file": "mir.png",
+      "source": "generated"
+    },
+    "chernobog": {
+      "name": "Чернобог",
+      "file": "chernobog.png",
+      "source": "generated"
+    },
+    "alatyr": {
+      "name": "Алатырь",
+      "file": "alatyr.png",
+      "source": "generated"
+    },
+    "raduga": {
+      "name": "Радуга",
+      "file": "raduga.png",
+      "source": "generated"
+    },
+    "nuzhda": {
+      "name": "Нужда",
+      "file": "nuzhda.png",
+      "source": "generated"
+    },
+    "krada": {
+      "name": "Крада",
+      "file": "krada.png",
+      "source": "generated"
+    },
+    "treba": {
+      "name": "Треба",
+      "file": "treba.png",
+      "source": "generated"
+    },
+    "sila": {
+      "name": "Сила",
+      "file": "sila.png",
+      "source": "generated"
+    },
+    "veter": {
+      "name": "Ветер",
+      "file": "veter.png",
+      "source": "generated"
+    },
+    "bereginya": {
+      "name": "Берегиня",
+      "file": "bereginya.png",
+      "source": "generated"
+    },
+    "ud": {
+      "name": "Уд",
+      "file": "ud.png",
+      "source": "generated"
+    },
+    "rok": {
+      "name": "Рок",
+      "file": "rok.png",
+      "source": "generated"
+    },
+    "lelya": {
+      "name": "Леля",
+      "file": "lelya.png",
+      "source": "generated"
+    },
+    "opora": {
+      "name": "Опора",
+      "file": "opora.png",
+      "source": "generated"
+    },
+    "dazhbog": {
+      "name": "Даждьбог",
+      "file": "dazhbog.png",
+      "source": "generated"
+    },
+    "perun": {
+      "name": "Перун",
+      "file": "perun.png",
+      "source": "generated"
+    },
+    "est": {
+      "name": "Есть",
+      "file": "est.png",
+      "source": "generated"
+    },
+    "istok": {
+      "name": "Исток",
+      "file": "istok.png",
+      "source": "generated"
+    },
+    "_back": {
+      "name": "_back",
+      "file": "_back.png",
+      "source": "generated"
+    }
+  }
+}

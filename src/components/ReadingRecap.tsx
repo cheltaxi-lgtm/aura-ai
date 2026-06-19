@@ -4,13 +4,15 @@ import { motion } from "framer-motion";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
-import type { TarotCard } from "@/lib/tarot";
+import type { SpreadSymbol } from "@/lib/decks/types";
+import type { DeckSystem } from "@/lib/decks/types";
 import TarotCardsRow from "@/components/TarotCardsRow";
 
 interface ReadingRecapProps {
   userName: string;
   zodiac: string;
-  tarotCards: TarotCard[];
+  tarotCards: SpreadSymbol[];
+  deckSystem?: DeckSystem;
   teaser?: string;
   lastMasterId?: string | null;
   masters?: ShowcaseMaster[];
@@ -31,6 +33,7 @@ export default function ReadingRecap({
   userName,
   zodiac,
   tarotCards,
+  deckSystem,
   teaser,
   lastMasterId,
   masters,
@@ -85,7 +88,7 @@ export default function ReadingRecap({
           <p className="mb-4 text-center text-xs uppercase tracking-widest text-aura-gold">
             Три карты вашего расклада
           </p>
-          <TarotCardsRow cards={tarotCards.slice(0, 3)} size="lg" />
+          <TarotCardsRow cards={tarotCards.slice(0, 3)} system={deckSystem} size="lg" />
         </div>
       ) : (
         <p className="mb-4 text-sm text-amber-400/90">

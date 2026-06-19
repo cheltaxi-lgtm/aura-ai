@@ -35,6 +35,7 @@ interface ChatWindowProps {
   questionCost?: number;
   headerSceneUrl?: string | null;
   spreadCards?: { name: string; meaning?: string }[];
+  spreadDeckSystem?: import("@/lib/decks/types").DeckSystem;
   insufficientRunes?: { balance: number; required: number } | null;
   onOpenRuneShop?: () => void;
   onSendMessage: (content: string, imageBase64?: string) => void;
@@ -54,6 +55,7 @@ export default function ChatWindow({
   questionCost = 10,
   headerSceneUrl,
   spreadCards,
+  spreadDeckSystem,
   insufficientRunes,
   onOpenRuneShop,
   master,
@@ -246,7 +248,12 @@ export default function ChatWindow({
           <p className="mb-3 text-center text-[10px] uppercase tracking-widest text-aura-gold">
             Расклад 3 карт
           </p>
-          <TarotCardsRow cards={spreadCards.slice(0, 3)} size="md" />
+          <TarotCardsRow
+            cards={spreadCards.slice(0, 3)}
+            system={spreadDeckSystem}
+            masterId={characterId}
+            size="md"
+          />
         </div>
       )}
 

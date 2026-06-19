@@ -41,12 +41,13 @@ import {
   tripletCooldownFromLastDraw,
   type TripletCooldownStatus,
 } from "@/lib/triplet-limit";
-import { resolveTarotCard } from "@/lib/tarot-visuals";
+import type { SpreadSymbol } from "@/lib/decks/types";
+import type { DeckSystem } from "@/lib/decks/types";
+import { DEFAULT_DECK_SYSTEM, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
+import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
 import { requestSceneImage, tarotCardNames } from "@/lib/scene-images-client";
 import type { CharacterVisualKey } from "@/lib/image-prompts";
 import type { Message } from "@/types";
-import type { TarotCard } from "@/lib/tarot";
-import { tarotCardsKey } from "@/lib/tarot";
 import { loadGuestTriplet, mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
 
 const PROFILE_KEY = "aura_profile";
@@ -58,7 +59,9 @@ const PENDING_READING_KEY = "aura_pending_reading";
 
 export interface StoredProfile extends OnboardingData {
   userId?: string;
-  tarotCards: TarotCard[];
+  tarotCards: SpreadSymbol[];
+  deckSystem?: DeckSystem;
+  deckSpreads?: Partial<Record<DeckSystem, SpreadSymbol[]>>;
   teaser?: string;
 }
 
@@ -66,7 +69,7 @@ export interface HomePageProps {
   referrerSlug?: string;
 }
 
-function cardLabel(card: TarotCard | { name?: string } | string): string {
+function cardLabel(card: SpreadSymbol | { name?: string } | string): string {
   if (typeof card === "string") return card;
   return card?.name ?? "карта";
 }
@@ -116,7 +119,7 @@ function resolveDestinyCardUrl(
 
   for (const row of readings) {
     if (row.characterName !== characterId) continue;
-    if (tarotCardsKey(row.contextData?.tarotCards) !== cardsKey) continue;
+    if (spreadKey(row.contextData?.tarotCards) !== cardsKey) continue;
     const url = row.contextData?.sceneArt?.destiny_card;
     if (url) return url;
   }
@@ -133,6 +136,18 @@ function tripletCooldownFromProfileData(data: {
   return tripletCooldownFromLastDraw(latestTripletCreatedAt(rows) ?? null);
 }
 
+function getSpreadForSystem(
+  profile: StoredProfile | null | undefined,
+  system: DeckSystem
+): SpreadSymbol[] {
+  const fromSpreads = profile?.deckSpreads?.[system];
+  if (fromSpreads && fromSpreads.length >= 3) return fromSpreads;
+  if (profile?.deckSystem === system && profile.tarotCards?.length >= 3) {
+    return profile.tarotCards;
+  }
+  return [];
+}
+
 function profileFromApiPayload(data: {
   profile: Record<string, unknown>;
   profileUserId?: string;
@@ -140,7 +155,9 @@ function profileFromApiPayload(data: {
   keepSpread?: boolean;
 }): StoredProfile {
   const latestTriplet = data.readings?.find((r) => r.characterName === "triplet");
-  const cards = (latestTriplet?.contextData?.tarotCards as TarotCard[] | undefined) ?? [];
+  const cards = (latestTriplet?.contextData?.tarotCards as SpreadSymbol[] | undefined) ?? [];
+  const deckSystem =
+    (latestTriplet?.contextData?.deckSystem as DeckSystem | undefined) ?? DEFAULT_DECK_SYSTEM;
   const teaser =
     typeof latestTriplet?.contextData?.teaser === "string"
       ? latestTriplet.contextData.teaser
@@ -159,6 +176,7 @@ function profileFromApiPayload(data: {
     astroMeta: (p.astroMeta as StoredProfile["astroMeta"]) ?? undefined,
     userId: data.profileUserId,
     tarotCards: data.keepSpread === false ? [] : cards,
+    deckSystem: data.keepSpread === false ? undefined : deckSystem,
     teaser: data.keepSpread === false ? undefined : teaser,
   };
 }
@@ -190,9 +208,10 @@ function clearPendingReading() {
 
 function buildOnboardingPostBody(
   base: StoredProfile,
-  cards: TarotCard[],
+  cards: SpreadSymbol[],
   teaser: string,
-  sessionId?: string
+  sessionId?: string,
+  deckSystem?: DeckSystem
 ) {
   const birthTime = base.birthTime?.trim();
   const birthCity = base.birthCity?.trim();
@@ -210,7 +229,10 @@ function buildOnboardingPostBody(
       id: c.id,
       name: c.name,
       meaning: c.meaning,
+      ...(c.arcana ? { arcana: c.arcana } : {}),
+      ...(c.suit ? { suit: c.suit } : {}),
     })),
+    deckSystem: deckSystem ?? base.deckSystem ?? DEFAULT_DECK_SYSTEM,
     teaser,
   };
 }
@@ -249,6 +271,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const { isLoggedIn, loading: authLoading, user: authUser } = useAuth();
   const [step, setStepState] = useState<FlowStep>("intro");
   const [profile, setProfile] = useState<StoredProfile | null>(null);
+  const [tripletSystem, setTripletSystem] = useState<DeckSystem>(DEFAULT_DECK_SYSTEM);
   const [masters, setMasters] = useState<ShowcaseMaster[]>(() => getAiMasters());
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [lastMasterId, setLastMasterId] = useState<string | null>(null);
@@ -466,6 +489,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           birthDate: "",
           zodiac: "",
           tarotCards: guest.tarotCards,
+          deckSystem: guest.deckSystem ?? DEFAULT_DECK_SYSTEM,
           teaser: guest.teaser,
         };
         localStorage.setItem(PROFILE_KEY, JSON.stringify(draft));
@@ -545,7 +569,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         const latestTriplet = (data.readings as { characterName: string; contextData: Record<string, unknown> }[] | undefined)?.find(
           (r) => r.characterName === "triplet"
         );
-        const cards = (latestTriplet?.contextData?.tarotCards as TarotCard[] | undefined) ?? [];
+        const cards = (latestTriplet?.contextData?.tarotCards as SpreadSymbol[] | undefined) ?? [];
+        const deckSystemFromServer =
+          (latestTriplet?.contextData?.deckSystem as DeckSystem | undefined) ??
+          DEFAULT_DECK_SYSTEM;
         const teaserReading = (data.readings as { characterName: string; contextData: Record<string, unknown> }[] | undefined)?.find(
           (r) => r.contextData?.type === "reading"
         );
@@ -566,6 +593,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           astroMeta: data.profile.astroMeta ?? undefined,
           userId: data.profileUserId,
           tarotCards: cards,
+          deckSystem: deckSystemFromServer,
           teaser,
         };
 
@@ -631,24 +659,30 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     refreshSavedReadings();
   }, [isLoggedIn, step, refreshSavedReadings]);
 
-  const displayTarotCards = useMemo((): TarotCard[] => {
+  const displayTarotCards = useMemo((): SpreadSymbol[] => {
     const tripletRow = savedReadings.find(
       (row) =>
         row.characterName === "triplet" &&
         (row.contextData?.tarotCards?.length ?? 0) >= 3
     );
     const fromServer = tripletRow?.contextData?.tarotCards ?? [];
+    const tripletCtx = tripletRow?.contextData as Record<string, unknown> | undefined;
+    const system =
+      (tripletCtx?.deckSystem as DeckSystem | undefined) ??
+      profile?.deckSystem ??
+      DEFAULT_DECK_SYSTEM;
     if (fromServer.length >= 3) {
-      return fromServer.slice(0, 3).map((card) => resolveTarotCard(card));
+      return fromServer.slice(0, 3).map((card) => resolveSpreadSymbol(system, card));
     }
 
     const fromProfile = profile?.tarotCards ?? [];
+    const profileSystem = profile?.deckSystem ?? DEFAULT_DECK_SYSTEM;
     if (fromProfile.length >= 3) {
-      return fromProfile.slice(0, 3).map((card) => resolveTarotCard(card));
+      return fromProfile.slice(0, 3).map((card) => resolveSpreadSymbol(profileSystem, card));
     }
 
-    return fromProfile.map((card) => resolveTarotCard(card));
-  }, [profile?.tarotCards, savedReadings]);
+    return fromProfile.map((card) => resolveSpreadSymbol(profileSystem, card));
+  }, [profile?.tarotCards, profile?.deckSystem, savedReadings]);
 
   const tripletCooldownHint = useMemo(() => {
     if (!tripletCooldown?.nextAvailableAt) return undefined;
@@ -706,7 +740,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   );
 
   const continueMasterIds = useMemo(() => {
-    const cardsKey = tarotCardsKey(displayTarotCards);
+    const cardsKey = spreadKey(displayTarotCards);
     const aiMasterIds = masters.map((m) => m.id);
     const merged = mergeContinueMasterIds(savedReadings, displayTarotCards, {
       cachedMasterIds: mastersWithCachedReading(cardsKey, aiMasterIds),
@@ -727,7 +761,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     [savedReadings, displayTarotCards, continueMasterIds, lastMasterId]
   );
 
-  const spreadCardsKey = useMemo(() => tarotCardsKey(displayTarotCards), [displayTarotCards]);
+  const spreadCardsKey = useMemo(() => spreadKey(displayTarotCards), [displayTarotCards]);
 
   const applyDestinyCardToChat = useCallback(
     (url: string, characterId?: string | null) => {
@@ -820,7 +854,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     setStep("triplet");
   };
 
-  const handleTripletComplete = async (cards: TarotCard[], teaser: string) => {
+  const handleTripletComplete = async (cards: SpreadSymbol[], teaser: string) => {
     if (!isLoggedIn) {
       return;
     }
@@ -847,6 +881,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     const updated: StoredProfile = {
       ...base,
       tarotCards: cards,
+      deckSystem: tripletSystem,
+      deckSpreads: { ...base.deckSpreads, [tripletSystem]: cards },
       teaser,
     };
 
@@ -856,7 +892,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         base,
         cards,
         teaser,
-        session?.offline ? undefined : session?.sessionId
+        session?.offline ? undefined : session?.sessionId,
+        tripletSystem
       );
 
       const res = await fetch("/api/onboarding", {
@@ -1134,13 +1171,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         const activeProfile = getActiveProfile();
         if (!activeProfile?.tarotCards?.length) return;
 
-        const cardsKey = spreadCardsKey || tarotCardsKey(activeProfile.tarotCards);
+        const cardsKey = spreadCardsKey || spreadKey(activeProfile.tarotCards);
         const cachedReading = savedReadings.find(
           (row) =>
             row.characterName === characterId &&
             row.contextData?.type === "reading" &&
             typeof row.contextData.reading === "string" &&
-            tarotCardsKey(row.contextData.tarotCards) === cardsKey
+            spreadKey(row.contextData.tarotCards) === cardsKey
         );
 
         if (cachedReading?.contextData?.reading) {
@@ -1289,7 +1326,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       if (cached?.length && chatHasSpreadReading(cached)) return cached;
 
       const activeProfile = getActiveProfile();
-      const cardsKey = spreadCardsKey || tarotCardsKey(activeProfile?.tarotCards);
+      const cardsKey = spreadCardsKey || spreadKey(activeProfile?.tarotCards);
 
       try {
         const params = new URLSearchParams({ characterId });
@@ -1613,9 +1650,22 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       return;
     }
 
-    if (displayTarotCards.length < 3 && !activeProfile?.tarotCards?.length) {
+    const master = findShowcaseMaster(masterId, masters);
+    const system = master?.system ?? resolveMasterDeckSystem(masterId);
+    const masterSpread = getSpreadForSystem(activeProfile ?? profile, system);
+
+    if (masterSpread.length < 3) {
+      setTripletSystem(system);
       setStep("triplet");
       return;
+    }
+
+    if (profile && (profile.deckSystem !== system || profile.tarotCards !== masterSpread)) {
+      persistProfile({
+        ...profile,
+        tarotCards: masterSpread,
+        deckSystem: system,
+      });
     }
 
     localStorage.removeItem(PENDING_MASTER_KEY);
@@ -1917,6 +1967,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             onOpenRuneShop={() => setShowRuneShop(true)}
             headerSceneUrl={sessionOnlyChat ? null : chatHeaderImage}
             spreadCards={sessionOnlyChat ? undefined : displayTarotCards}
+            spreadDeckSystem={
+              selectedMaster?.system ?? profile?.deckSystem ?? DEFAULT_DECK_SYSTEM
+            }
             onSendMessage={handleSendMessage}
             onClose={handleCloseChat}
             sessionOffline={Boolean(session?.offline)}
@@ -1965,10 +2018,17 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 ) : (
                   <>
                     <TarotTriplet
-                      key={newTripletDraft ? "new-triplet" : "triplet"}
+                      key={newTripletDraft ? `new-triplet-${tripletSystem}` : `triplet-${tripletSystem}`}
                       userName={profile.name}
                       zodiac={profile.zodiac}
-                      initialCards={newTripletDraft ? undefined : displayTarotCards}
+                      system={tripletSystem}
+                      initialCards={
+                        newTripletDraft
+                          ? undefined
+                          : getSpreadForSystem(profile, tripletSystem).length >= 3
+                            ? getSpreadForSystem(profile, tripletSystem)
+                            : displayTarotCards
+                      }
                       onComplete={handleTripletComplete}
                     />
                     {newTripletDraft && displayTarotCards.length >= 3 ? (
@@ -2013,6 +2073,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   userName={profile.name}
                   zodiac={profile.zodiac}
                   tarotCards={displayTarotCards}
+                  deckSystem={profile.deckSystem ?? tripletSystem}
                   teaser={profile.teaser}
                   lastMasterId={recapContinueMasterId}
                   masters={masters}
