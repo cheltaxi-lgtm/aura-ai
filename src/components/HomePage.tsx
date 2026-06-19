@@ -47,6 +47,12 @@ import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM, getDeckPositions, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
 import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
+import {
+  getSpreadForSystem,
+  resolveMasterSpread,
+  resolveRecapSpread,
+  profilePayloadForMaster,
+} from "@/lib/spread-context";
 import { requestSceneImage, tarotCardNames } from "@/lib/scene-images-client";
 import type { CharacterVisualKey } from "@/lib/image-prompts";
 import type { Message } from "@/types";
@@ -87,7 +93,14 @@ function buildTeaser(profile: StoredProfile | null): string {
   return "Мастер на связи. Задайте вопрос — ответ придёт в чат.";
 }
 
-function profileApiPayload(profile: StoredProfile) {
+function profileApiPayload(
+  profile: StoredProfile,
+  masterId?: string,
+  mastersList?: ShowcaseMaster[]
+) {
+  if (masterId) {
+    return profilePayloadForMaster(profile, masterId, mastersList);
+  }
   return {
     userName: profile.name,
     gender: profile.gender === "male" ? "Мужской" : "Женский",
@@ -140,18 +153,6 @@ function tripletCooldownFromProfileData(data: {
   return tripletCooldownFromLastDraw(latestTripletCreatedAt(rows) ?? null);
 }
 
-function getSpreadForSystem(
-  profile: StoredProfile | null | undefined,
-  system: DeckSystem
-): SpreadSymbol[] {
-  const fromSpreads = profile?.deckSpreads?.[system];
-  if (fromSpreads && fromSpreads.length >= 3) return fromSpreads;
-  if (profile?.deckSystem === system && profile.tarotCards?.length >= 3) {
-    return profile.tarotCards;
-  }
-  return [];
-}
-
 function profileFromApiPayload(data: {
   profile: Record<string, unknown>;
   profileUserId?: string;
@@ -182,6 +183,10 @@ function profileFromApiPayload(data: {
     tarotCards: data.keepSpread === false ? [] : cards,
     deckSystem: data.keepSpread === false ? undefined : deckSystem,
     teaser: data.keepSpread === false ? undefined : teaser,
+    deckSpreads:
+      data.keepSpread === false || cards.length < 3
+        ? undefined
+        : { [deckSystem]: cards },
   };
 }
 
@@ -688,6 +693,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, [isLoggedIn, step, refreshSavedReadings]);
 
   const displayTarotCards = useMemo((): SpreadSymbol[] => {
+    const recap = resolveRecapSpread(profile, tripletSystem);
+    if (recap.cards.length >= 3) return recap.cards;
+
     const tripletRow = savedReadings.find(
       (row) =>
         row.characterName === "triplet" &&
@@ -703,14 +711,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       return fromServer.slice(0, 3).map((card) => resolveSpreadSymbol(system, card));
     }
 
-    const fromProfile = profile?.tarotCards ?? [];
-    const profileSystem = profile?.deckSystem ?? DEFAULT_DECK_SYSTEM;
-    if (fromProfile.length >= 3) {
-      return fromProfile.slice(0, 3).map((card) => resolveSpreadSymbol(profileSystem, card));
-    }
-
-    return fromProfile.map((card) => resolveSpreadSymbol(profileSystem, card));
-  }, [profile?.tarotCards, profile?.deckSystem, savedReadings]);
+    return recap.cards;
+  }, [profile, tripletSystem, savedReadings]);
 
   const tripletCountdown = useTripletCountdown(tripletCooldown?.nextAvailableAt);
 
@@ -792,6 +794,42 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const spreadCardsKey = useMemo(() => spreadKey(displayTarotCards), [displayTarotCards]);
 
+  const chatSpread = useMemo(() => {
+    if (!selectedCharacter) return null;
+    return resolveMasterSpread(profile, selectedCharacter, masters);
+  }, [selectedCharacter, profile, masters]);
+
+  const activeSpreadCardsKey = useMemo(() => {
+    if (chatSpread && chatSpread.cards.length >= 3 && chatSpread.cardsKey) {
+      return chatSpread.cardsKey;
+    }
+    return spreadCardsKey;
+  }, [chatSpread, spreadCardsKey]);
+
+  // #region agent log
+  useEffect(() => {
+    if (!selectedCharacter || !chatSpread) return;
+    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+      body: JSON.stringify({
+        sessionId: "f9adef",
+        hypothesisId: "H",
+        location: "HomePage.tsx:chatSpread",
+        message: "chat spread aligned",
+        data: {
+          masterId: selectedCharacter,
+          system: chatSpread.system,
+          cardNames: chatSpread.cards.map((c) => c.name),
+          recapNames: displayTarotCards.map((c) => c.name),
+          profileDeckSystem: profile?.deckSystem,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, [selectedCharacter, chatSpread, displayTarotCards, profile?.deckSystem]);
+  // #endregion
+
   const applyDestinyCardToChat = useCallback(
     (url: string, characterId?: string | null) => {
       setChatHeaderImage(url);
@@ -804,15 +842,15 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           i === idx ? { ...m, sceneImageUrl: url } : m
         );
         const cid = characterId ?? selectedCharacter;
-        if (cid) saveChatCache(cid, updated, spreadCardsKey);
+        if (cid) saveChatCache(cid, updated, activeSpreadCardsKey);
         return updated;
       });
     },
-    [selectedCharacter, spreadCardsKey]
+    [selectedCharacter, activeSpreadCardsKey]
   );
 
   useEffect(() => {
-    if (!selectedCharacter || !spreadCardsKey) return;
+    if (!selectedCharacter || !activeSpreadCardsKey) return;
 
     const firstAssistant = messages.find((m) => m.role === "assistant");
     if (firstAssistant?.sceneImageUrl) {
@@ -822,7 +860,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
     const savedUrl = resolveDestinyCardUrl(
       savedReadings,
-      spreadCardsKey,
+      activeSpreadCardsKey,
       selectedCharacter
     );
     if (savedUrl) {
@@ -832,7 +870,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     selectedCharacter,
     messages,
     savedReadings,
-    spreadCardsKey,
+    activeSpreadCardsKey,
     applyDestinyCardToChat,
   ]);
   const handleOnboardingComplete = async (data: OnboardingData) => {
@@ -1165,23 +1203,25 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         const updated = prev.map((m) =>
           m.id === messageId ? { ...m, sceneImageUrl: url } : m
         );
-        saveChatCache(characterId, updated, spreadCardsKey);
+        const ctx = resolveMasterSpread(activeProfile, characterId, masters);
+        const key = ctx.cards.length >= 3 ? ctx.cardsKey : spreadCardsKey;
+        saveChatCache(characterId, updated, key);
         return updated;
       });
     },
-    [getActiveProfile, spreadCardsKey]
+    [getActiveProfile, spreadCardsKey, masters]
   );
 
   useEffect(() => {
     if (sessionOnlyChat) return;
-    if (!selectedCharacter || !spreadCardsKey) return;
+    if (!selectedCharacter || !activeSpreadCardsKey) return;
 
     const firstAssistant = messages.find((m) => m.role === "assistant");
     if (!firstAssistant || firstAssistant.sceneImageUrl) return;
-    if (resolveDestinyCardUrl(savedReadings, spreadCardsKey, selectedCharacter)) return;
+    if (resolveDestinyCardUrl(savedReadings, activeSpreadCardsKey, selectedCharacter)) return;
     if (!firstAssistant.content || firstAssistant.content.length < 40) return;
 
-    const backfillKey = `${selectedCharacter}|${spreadCardsKey}`;
+    const backfillKey = `${selectedCharacter}|${activeSpreadCardsKey}`;
     if (destinyBackfillRef.current === backfillKey) return;
     destinyBackfillRef.current = backfillKey;
 
@@ -1193,7 +1233,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     ).then(() => refreshSavedReadings());
   }, [
     selectedCharacter,
-    spreadCardsKey,
+    activeSpreadCardsKey,
     messages,
     savedReadings,
     attachSceneToAssistantMessage,
@@ -1207,7 +1247,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         const activeProfile = getActiveProfile();
         if (!activeProfile?.tarotCards?.length) return;
 
-        const cardsKey = spreadCardsKey || spreadKey(activeProfile.tarotCards);
+        const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
+        const cardsForMaster =
+          masterCtx.cards.length >= 3 ? masterCtx.cards : activeProfile.tarotCards;
+        const cardsKey = spreadKey(cardsForMaster) || spreadCardsKey;
         const cachedReading = savedReadings.find(
           (row) =>
             row.characterName === characterId &&
@@ -1229,7 +1272,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             timestamp: readingTs,
           };
           setMessages([readingMsg]);
-          saveChatCache(characterId, [readingMsg], spreadCardsKey);
+          saveChatCache(characterId, [readingMsg], cardsKey);
           const savedUrl = resolveDestinyCardUrl(savedReadings, cardsKey, characterId);
           if (savedUrl) {
             applyDestinyCardToChat(savedUrl, characterId);
@@ -1256,7 +1299,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             body: JSON.stringify({
               characterId,
               sessionId: session?.offline ? undefined : session?.sessionId,
-              ...profileApiPayload(activeProfile),
+              ...profileApiPayload(activeProfile, characterId, masters),
             }),
           });
           const data = await res.json();
@@ -1309,11 +1352,11 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               timestamp: readingTs,
             };
             setMessages([readingMsg]);
-            saveChatCache(characterId, [readingMsg], spreadCardsKey);
+            saveChatCache(characterId, [readingMsg], cardsKey);
             refreshSavedReadings();
             const savedUrl = resolveDestinyCardUrl(
               savedReadings,
-              spreadCardsKey,
+              cardsKey,
               characterId
             );
             if (savedUrl) {
@@ -1353,16 +1396,21 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         setIsLoading(false);
       }
     },
-    [getActiveProfile, session?.offline, session?.sessionId, attachSceneToAssistantMessage, refreshSavedReadings, spreadCardsKey, runeCost, savedReadings, applyDestinyCardToChat]
+    [getActiveProfile, session?.offline, session?.sessionId, attachSceneToAssistantMessage, refreshSavedReadings, spreadCardsKey, runeCost, savedReadings, applyDestinyCardToChat, masters]
   );
 
   const restoreChatForCharacter = useCallback(
     async (characterId: string): Promise<Message[] | null> => {
-      const cached = loadChatCache(characterId, spreadCardsKey);
+      const activeProfile = getActiveProfile();
+      const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
+      const cacheKey =
+        masterCtx.cards.length >= 3 ? masterCtx.cardsKey : spreadCardsKey;
+      const cached = loadChatCache(characterId, cacheKey);
       if (cached?.length && chatHasSpreadReading(cached)) return cached;
 
-      const activeProfile = getActiveProfile();
-      const cardsKey = spreadCardsKey || spreadKey(activeProfile?.tarotCards);
+      const cardsForMaster =
+        masterCtx.cards.length >= 3 ? masterCtx.cards : activeProfile?.tarotCards;
+      const cardsKey = spreadKey(cardsForMaster) || spreadCardsKey;
 
       try {
         const params = new URLSearchParams({ characterId });
@@ -1387,13 +1435,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
         if (!chatHasSpreadReading(restored)) return null;
 
-        saveChatCache(characterId, restored, spreadCardsKey);
+        saveChatCache(characterId, restored, cacheKey);
         return restored;
       } catch {
         return null;
       }
     },
-    [getActiveProfile, session?.offline, session?.sessionId, spreadCardsKey]
+    [getActiveProfile, session?.offline, session?.sessionId, spreadCardsKey, masters]
   );
 
   useEffect(() => {
@@ -1405,7 +1453,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       return;
     }
 
-    const cached = loadChatCache(selectedCharacter, spreadCardsKey);
+    const cached = loadChatCache(selectedCharacter, activeSpreadCardsKey);
     if (cached?.length) {
       if (chatHasSpreadReading(cached) || sessionOnlyChat) {
         setMessages(cached);
@@ -1457,14 +1505,14 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     loadReading,
     restoreChatForCharacter,
     masters,
-    spreadCardsKey,
+    activeSpreadCardsKey,
   ]);
 
   useEffect(() => {
     if (selectedCharacter && messages.length && chatHasSpreadReading(messages)) {
-      saveChatCache(selectedCharacter, messages, spreadCardsKey);
+      saveChatCache(selectedCharacter, messages, activeSpreadCardsKey);
     }
-  }, [selectedCharacter, messages, spreadCardsKey]);
+  }, [selectedCharacter, messages, activeSpreadCardsKey]);
 
   const openChatWithCharacter = useCallback(
     async (
@@ -1714,7 +1762,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const handleCloseChat = () => {
     if (selectedCharacter && messages.length) {
-      saveChatCache(selectedCharacter, messages, spreadCardsKey);
+      saveChatCache(selectedCharacter, messages, activeSpreadCardsKey);
     }
     readingInFlightRef.current = false;
     setSessionOnlyChat(false);
@@ -2035,9 +2083,17 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             insufficientRunes={insufficientRunes}
             onOpenRuneShop={() => setShowRuneShop(true)}
             headerSceneUrl={sessionOnlyChat ? null : chatHeaderImage}
-            spreadCards={sessionOnlyChat ? undefined : displayTarotCards}
+            spreadCards={
+              sessionOnlyChat
+                ? undefined
+                : chatSpread && chatSpread.cards.length >= 3
+                  ? chatSpread.cards
+                  : displayTarotCards
+            }
             spreadDeckSystem={
-              selectedMaster?.system ?? profile?.deckSystem ?? DEFAULT_DECK_SYSTEM
+              chatSpread && chatSpread.cards.length >= 3
+                ? chatSpread.system
+                : profile?.deckSystem ?? DEFAULT_DECK_SYSTEM
             }
             onSendMessage={handleSendMessage}
             onClose={handleCloseChat}
