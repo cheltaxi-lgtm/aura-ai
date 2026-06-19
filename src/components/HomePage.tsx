@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Sparkles, Layers, ArrowLeft } from "lucide-react";
+import { Sparkles, Layers, ArrowLeft, Camera } from "lucide-react";
 import Link from "next/link";
 
 import OnboardingForm, { type OnboardingData } from "@/components/OnboardingForm";
@@ -2142,15 +2142,15 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   return (
     <div className="relative min-h-screen overflow-hidden">
       <header className="relative z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
           <motion.div
-            className="flex items-center gap-2"
+            className="flex min-w-0 shrink items-center gap-1.5 sm:gap-2"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
           >
-            <Sparkles className="h-7 w-7 text-aura-purple" />
-            <div>
-              <span className="font-display text-2xl font-bold tracking-wider text-white neon-text">
+            <Sparkles className="h-6 w-6 shrink-0 text-aura-purple sm:h-7 sm:w-7" />
+            <div className="min-w-0">
+              <span className="font-display text-xl font-bold tracking-wider text-white neon-text sm:text-2xl">
                 Aura
               </span>
               <span className="ml-2 hidden text-xs text-gray-600 sm:inline">эзотерический оракул</span>
@@ -2179,7 +2179,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             ))}
           </nav>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
             <button
               type="button"
               onClick={() => void startPersonalFlow()}
@@ -2189,16 +2189,26 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             </button>
             <button
               type="button"
-              onClick={openDecksModal}
-              className="flex items-center gap-1.5 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2.5 py-1.5 text-xs text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
+              onClick={openPhotoReading}
+              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] text-gray-300 transition-colors hover:border-aura-gold/30 hover:text-white md:hidden"
+              aria-label={photoNavLabel}
             >
-              <Layers className="h-3.5 w-3.5" />
-              Колоды
+              <Camera className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="max-[360px]:hidden">Фото</span>
+            </button>
+            <button
+              type="button"
+              onClick={openDecksModal}
+              className="flex items-center gap-1 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2 py-1.5 text-[11px] text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
+              aria-label="Колоды мастеров"
+            >
+              <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="max-[360px]:hidden">Колоды</span>
             </button>
             {isLoggedIn && (
-              <RuneBalance onBuyClick={() => setShowRuneShop(true)} />
+              <RuneBalance compact onBuyClick={() => setShowRuneShop(true)} />
             )}
-            <AuthHeader />
+            <AuthHeader compact />
           </div>
         </div>
       </header>

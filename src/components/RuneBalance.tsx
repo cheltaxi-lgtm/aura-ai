@@ -12,9 +12,10 @@ export function emitRuneBalanceUpdate(balance: number) {
 
 interface RuneBalanceProps {
   onBuyClick: () => void;
+  compact?: boolean;
 }
 
-export default function RuneBalance({ onBuyClick }: RuneBalanceProps) {
+export default function RuneBalance({ onBuyClick, compact = false }: RuneBalanceProps) {
   const [balance, setBalance] = useState<number | null>(null);
   const [prevBalance, setPrevBalance] = useState(0);
   const [showDiff, setShowDiff] = useState<number | null>(null);
@@ -55,17 +56,20 @@ export default function RuneBalance({ onBuyClick }: RuneBalanceProps) {
   const isLow = balance < 15;
 
   return (
-    <div className="relative flex items-center gap-2">
+    <div className="relative flex shrink-0 items-center gap-1 sm:gap-2">
       <button
         type="button"
         onClick={onBuyClick}
-        className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all hover:scale-105 active:scale-95 ${
+        className={`flex items-center gap-1 rounded-xl border font-semibold transition-all hover:scale-105 active:scale-95 ${
+          compact ? "px-2 py-1.5 text-[11px]" : "gap-1.5 px-3 py-1.5 text-xs"
+        } ${
           isLow
             ? "animate-pulse border-amber-500/60 bg-amber-500/15 text-amber-300"
             : "border-white/15 bg-white/5 text-white/80"
         }`}
+        aria-label={`Баланс рун: ${balance}`}
       >
-        <span className="text-base leading-none">ᚢ</span>
+        <span className={`leading-none ${compact ? "text-sm" : "text-base"}`}>ᚢ</span>
         <motion.span
           key={balance}
           initial={{ scale: 1.3, color: "#fbbf24" }}
