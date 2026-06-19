@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { drawRandomCards, TRIPLET_POSITIONS, type TarotCard } from "@/lib/tarot";
 import { useSceneImage } from "@/hooks/useSceneImage";
 import SceneImage from "@/components/SceneImage";
+import TarotCardFace from "@/components/TarotCardFace";
 
 interface TarotTripletProps {
   userName: string;
@@ -77,36 +78,29 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
       <div className="mb-8 flex flex-wrap items-end justify-center gap-6">
         {deck.map((card, i) => (
           <div key={card.id} className="flex flex-col items-center gap-3">
-            <p className="text-xs uppercase tracking-widest text-aura-gold">
-              {TRIPLET_POSITIONS[i]}
-            </p>
+            <p className="lux-label mb-1">{TRIPLET_POSITIONS[i]}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
               disabled={revealed[i]}
-              className="perspective-[800px] focus:outline-none disabled:cursor-default"
-              style={{ width: 140, height: 220 }}
+              className="lux-tarot-flip perspective-[900px] focus:outline-none disabled:cursor-default"
+              style={{ width: 148, height: 236 }}
             >
               <motion.div
                 className="relative h-full w-full"
                 animate={{ rotateY: revealed[i] ? 180 : 0 }}
-                transition={{ duration: 0.6, ease: "easeInOut" }}
+                transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
                 style={{ transformStyle: "preserve-3d" }}
               >
-                <div
-                  className="absolute inset-0 flex items-center justify-center rounded-xl border border-aura-purple/40 bg-gradient-to-br from-aura-purple/30 to-black shadow-neon"
-                  style={{ backfaceVisibility: "hidden" }}
-                >
-                  <span className="font-display text-4xl text-aura-purple">✦</span>
+                <div className="lux-tarot-back absolute inset-0" style={{ backfaceVisibility: "hidden" }}>
+                  <div className="lux-tarot-back__border" />
+                  <span className="lux-tarot-back__ornament">✦</span>
                 </div>
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-aura-gold/40 bg-gradient-to-br from-aura-gold/20 to-aura-bg p-3 shadow-neon-gold"
+                  className="absolute inset-0"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
                 >
-                  <span className="font-display text-center text-sm font-bold text-white">
-                    {card.name}
-                  </span>
-                  <span className="mt-2 text-center text-[10px] text-gray-500">{card.meaning}</span>
+                  <TarotCardFace card={card} showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:max-w-none [&_.lux-tarot-card]:h-full" />
                 </div>
               </motion.div>
             </button>
@@ -133,7 +127,7 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
       </AnimatePresence>
 
       {!allRevealed && (
-        <p className="text-center text-sm text-aura-gold">
+        <p className="text-center text-sm font-light text-aura-champagne/80">
           Открыто {revealedCount} из 3
         </p>
       )}

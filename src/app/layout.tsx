@@ -41,6 +41,14 @@ export default function RootLayout({
   return (
     <html lang="ru" className={`${inter.variable} ${cinzel.variable}`}>
       <body className="font-body relative min-h-screen">
+        <svg width="0" height="0" aria-hidden className="absolute">
+          <defs>
+            <linearGradient id="lux-gold-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#E8C77E" />
+              <stop offset="100%" stopColor="#C9A24A" />
+            </linearGradient>
+          </defs>
+        </svg>
         <MysticBackground />
         <div className="relative z-10">{children}</div>
       </body>

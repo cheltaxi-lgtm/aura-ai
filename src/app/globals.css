@@ -9,74 +9,407 @@
   }
 
   body {
-    @apply text-gray-100 antialiased;
+    @apply font-body font-light antialiased;
+    color: var(--aura-ivory);
     background: transparent;
     isolation: isolate;
+    line-height: 1.6;
   }
 }
 
 @layer components {
   :root {
-    --radius-ui: 0.75rem;
-    --motion-fast: 300ms;
+    /* ── Aura Luxury Design Tokens ── */
+    --aura-midnight: #0c0a1a;
+    --aura-plum: #1a0f2e;
+    --aura-indigo: #12102a;
+    --aura-void: #07050f;
+    --aura-ivory: #ede6da;
+    --aura-champagne: #e8c77e;
+    --aura-gold: #c9a24a;
+    --aura-gold-gradient: linear-gradient(135deg, #e8c77e 0%, #c9a24a 50%, #a8843a 100%);
+    --aura-purple-soft: rgba(155, 127, 212, 0.35);
+    --aura-emerald-soft: rgba(91, 168, 138, 0.3);
+    --radius-ui: 0.875rem;
+    --radius-lux: 1.125rem;
+    --blur-glass: 20px;
+    --motion-fast: 280ms;
+    --motion-lux: 450ms;
+    --shadow-lux:
+      0 0 0 1px rgba(232, 199, 126, 0.06) inset,
+      0 20px 50px -20px rgba(0, 0, 0, 0.7),
+      0 0 60px -30px rgba(155, 127, 212, 0.08);
+    --shadow-gold-glow: 0 0 28px rgba(201, 162, 74, 0.22), 0 0 60px rgba(232, 199, 126, 0.08);
   }
 
   .ui-card {
-    border-radius: var(--radius-ui);
+    border-radius: var(--radius-lux);
   }
 
   .ui-input {
-    @apply rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white
-           placeholder:text-gray-500 focus-visible:border-aura-purple/50 focus-visible:outline-none;
+    @apply rounded-xl border border-aura-champagne/15 bg-black/40 px-4 py-3 text-sm text-aura-ivory
+           placeholder:text-aura-ivory/35 focus-visible:border-aura-champagne/40 focus-visible:outline-none;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  }
+
+  /* ── Typography ── */
+  .lux-heading {
+    color: var(--aura-ivory);
+    text-shadow: 0 2px 24px rgba(232, 199, 126, 0.12);
+  }
+
+  .lux-heading-accent {
+    background: var(--aura-gold-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 2px 12px rgba(201, 162, 74, 0.25));
+  }
+
+  .lux-label {
+    @apply text-[10px] font-medium uppercase tracking-lux text-aura-champagne/85;
+  }
+
+  .lux-stat-label {
+    @apply text-[10px] uppercase tracking-wider text-aura-ivory/35;
+  }
+
+  /* ── Dividers ── */
+  .lux-divider {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(232, 199, 126, 0.35) 20%,
+      rgba(232, 199, 126, 0.5) 50%,
+      rgba(232, 199, 126, 0.35) 80%,
+      transparent
+    );
+    position: relative;
+  }
+
+  .lux-divider::after {
+    content: "✦";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8px;
+    color: rgba(232, 199, 126, 0.55);
+    background: var(--aura-void);
+    padding: 0 10px;
+    line-height: 1;
+  }
+
+  /* ── Glass panels ── */
+  .glass-panel {
+    @apply rounded-2xl backdrop-blur-xl;
+    border: 1px solid rgba(232, 199, 126, 0.1);
+    background: linear-gradient(
+      145deg,
+      rgba(18, 16, 42, 0.72) 0%,
+      rgba(12, 10, 26, 0.55) 100%
+    );
+    box-shadow: var(--shadow-lux);
+  }
+
+  .flow-panel {
+    @apply rounded-3xl p-8 backdrop-blur-2xl md:p-12;
+    border: 1px solid rgba(232, 199, 126, 0.08);
+    background: linear-gradient(160deg, rgba(18, 14, 36, 0.65), rgba(8, 6, 18, 0.5));
+    box-shadow: var(--shadow-lux);
+  }
+
+  /* ── Buttons ── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-medium
+           transition-all duration-300 active:scale-[0.98];
+    background: var(--aura-gold-gradient);
+    color: #1a1208;
+    box-shadow: var(--shadow-gold-glow);
+    border: 1px solid rgba(232, 199, 126, 0.45);
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 0 36px rgba(232, 199, 126, 0.4), 0 0 64px rgba(201, 162, 74, 0.15);
+    filter: brightness(1.05);
+  }
+
+  .btn-primary:focus-visible {
+    outline: 2px solid rgba(232, 199, 126, 0.5);
+    outline-offset: 2px;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border px-6 py-3
+           font-medium transition-all duration-300 active:scale-[0.98];
+    border-color: rgba(232, 199, 126, 0.28);
+    color: var(--aura-champagne);
+    background: rgba(232, 199, 126, 0.04);
+  }
+
+  .btn-ghost:hover {
+    border-color: rgba(232, 199, 126, 0.5);
+    background: rgba(232, 199, 126, 0.08);
+    box-shadow: 0 0 24px rgba(201, 162, 74, 0.12);
+  }
+
+  .btn-neon {
+    @apply btn-primary;
   }
 
   .neon-text {
-    text-shadow:
-      0 0 10px rgba(168, 85, 247, 0.8),
-      0 0 30px rgba(168, 85, 247, 0.4),
-      0 0 60px rgba(168, 85, 247, 0.2);
+    background: var(--aura-gold-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
-  .glass-panel {
-    @apply rounded-2xl border border-white/10 bg-black/25 backdrop-blur-xl;
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-      0 8px 32px -12px rgba(0, 0, 0, 0.55),
-      0 0 40px -20px rgba(168, 85, 247, 0.12);
+  /* ── Badges ── */
+  .lux-badge {
+    @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px]
+           font-medium tracking-wide backdrop-blur-sm;
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--aura-ivory);
   }
 
-  .premium-card {
-    @apply rounded-2xl bg-gradient-to-br from-aura-purple/40 via-aura-gold/20 to-aura-emerald/30 shadow-[0_0_60px_-12px_rgba(168,85,247,0.35)];
+  .lux-badge--gold {
+    border-color: rgba(232, 199, 126, 0.35);
+    background: rgba(201, 162, 74, 0.12);
+    color: var(--aura-champagne);
+    box-shadow: 0 0 16px rgba(201, 162, 74, 0.15);
   }
 
+  .lux-badge--emerald {
+    border-color: rgba(91, 168, 138, 0.35);
+    background: rgba(91, 168, 138, 0.1);
+    color: #7ec4a8;
+  }
+
+  .lux-badge--purple {
+    border-color: rgba(155, 127, 212, 0.35);
+    background: rgba(155, 127, 212, 0.1);
+    color: #c4b5fd;
+  }
+
+  .lux-star {
+    fill: url(#lux-gold-gradient);
+    color: var(--aura-champagne);
+    filter: drop-shadow(0 0 4px rgba(201, 162, 74, 0.4));
+  }
+
+  /* ── Master showcase cards ── */
   .master-showcase-card {
-    @apply overflow-hidden rounded-[18px] border border-white/10 bg-black/35 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md transition-all duration-500;
+    @apply overflow-hidden rounded-[20px] backdrop-blur-md transition-all duration-500;
+    border: 1px solid rgba(232, 199, 126, 0.1);
+    background: linear-gradient(
+      155deg,
+      rgba(22, 18, 40, 0.85) 0%,
+      rgba(10, 8, 22, 0.75) 100%
+    );
+    box-shadow: var(--shadow-lux);
   }
 
   .master-showcase-card:hover {
-    border-color: rgba(168, 85, 247, 0.35);
+    border-color: rgba(232, 199, 126, 0.22);
     box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.06) inset,
-      0 12px 40px -16px rgba(0, 0, 0, 0.65),
-      0 0 40px -8px var(--master-glow, rgba(168, 85, 247, 0.35));
+      var(--shadow-lux),
+      0 0 40px -8px var(--master-glow, rgba(155, 127, 212, 0.2));
+  }
+
+  .master-showcase-card--recommended {
+    border-color: rgba(232, 199, 126, 0.38);
+    box-shadow:
+      var(--shadow-lux),
+      0 0 48px -12px rgba(201, 162, 74, 0.35),
+      0 0 0 1px rgba(232, 199, 126, 0.12) inset;
+  }
+
+  .master-showcase-card__glow {
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      rgba(232, 199, 126, 0.08),
+      transparent 70%
+    );
+    opacity: 0;
+    transition: opacity var(--motion-lux);
+  }
+
+  .master-showcase-card:hover .master-showcase-card__glow,
+  .master-showcase-card--recommended .master-showcase-card__glow {
+    opacity: 1;
   }
 
   .master-showcase-stats {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
   }
 
-  .flow-panel {
-    @apply rounded-3xl border border-white/[0.08] bg-black/40 p-8 backdrop-blur-2xl md:p-10;
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
-      0 24px 48px -24px rgba(0, 0, 0, 0.5);
+  .lux-master-avatar {
+    @apply relative flex h-16 w-16 items-center justify-center rounded-full;
+    background: radial-gradient(circle at 30% 25%, rgba(232, 199, 126, 0.15), rgba(12, 10, 26, 0.9));
+    border: 1px solid rgba(232, 199, 126, 0.25);
+    box-shadow: 0 0 24px rgba(201, 162, 74, 0.12);
   }
 
-  .btn-neon {
-    @apply rounded-xl border border-aura-purple/50 bg-aura-purple/10 px-6 py-2.5
-           font-medium text-aura-neon transition-all duration-300
-           hover:border-aura-purple hover:bg-aura-purple/20 hover:shadow-neon
-           active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-aura-purple;
+  .lux-master-avatar__ring {
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1px solid rgba(232, 199, 126, 0.15);
+    pointer-events: none;
+  }
+
+  .lux-master-avatar__sigil {
+    @apply h-9 w-9 text-aura-champagne;
+    filter: drop-shadow(0 0 8px rgba(232, 199, 126, 0.35));
+  }
+
+  /* ── Tarot cards (luxury) ── */
+  .lux-tarot-wrap {
+    @apply flex flex-col items-center;
+    perspective: 900px;
+  }
+
+  .lux-tarot-card {
+    @apply relative w-full overflow-hidden;
+    aspect-ratio: 5 / 8;
+    border-radius: var(--radius-lux);
+    transform-style: preserve-3d;
+    transition:
+      transform var(--motion-lux) cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow var(--motion-lux);
+  }
+
+  .lux-tarot-card--md {
+    max-width: 156px;
+  }
+
+  .lux-tarot-card--lg {
+    max-width: 180px;
+  }
+
+  .lux-tarot-wrap:hover .lux-tarot-card {
+    transform: rotateX(4deg) rotateY(-6deg) translateY(-6px);
+    box-shadow:
+      0 24px 48px -16px rgba(0, 0, 0, 0.75),
+      0 0 40px rgba(201, 162, 74, 0.15);
+  }
+
+  .lux-tarot-card__frame {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid rgba(232, 199, 126, 0.35);
+    box-shadow:
+      0 0 0 1px rgba(232, 199, 126, 0.08) inset,
+      inset 0 0 30px rgba(201, 162, 74, 0.06);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .lux-tarot-card__frame::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border-radius: calc(var(--radius-lux) - 4px);
+    border: 1px solid rgba(232, 199, 126, 0.12);
+  }
+
+  .lux-tarot-card__inner {
+    @apply relative flex h-full flex-col justify-between p-3.5;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(232, 199, 126, 0.08), transparent 55%),
+      linear-gradient(165deg, #1a1428 0%, #0e0a18 45%, #080612 100%);
+    z-index: 1;
+  }
+
+  .lux-tarot-card__header {
+    @apply flex w-full items-start justify-between;
+  }
+
+  .lux-tarot-card__sigil-wrap {
+    @apply relative flex flex-1 items-center justify-center py-1;
+  }
+
+  .lux-tarot-card__halo {
+    position: absolute;
+    width: 72%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232, 199, 126, 0.18), transparent 70%);
+    filter: blur(8px);
+  }
+
+  .lux-tarot-card__sigil {
+    @apply relative z-10 h-14 w-14 text-aura-champagne;
+    filter: drop-shadow(0 0 10px rgba(232, 199, 126, 0.4));
+  }
+
+  .lux-tarot-card--lg .lux-tarot-card__sigil {
+    @apply h-16 w-16;
+  }
+
+  .lux-tarot-card__sheen {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      125deg,
+      transparent 35%,
+      rgba(255, 255, 255, 0.04) 48%,
+      transparent 62%
+    );
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  /* Card back (flip deck) */
+  .lux-tarot-back {
+    @apply relative flex h-full w-full items-center justify-center overflow-hidden;
+    border-radius: var(--radius-lux);
+    background:
+      radial-gradient(circle at 50% 40%, rgba(155, 127, 212, 0.12), transparent 55%),
+      linear-gradient(160deg, #16122a, #0a0814);
+    border: 1px solid rgba(232, 199, 126, 0.2);
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .lux-tarot-back__ornament {
+    @apply font-display text-3xl text-aura-champagne/70;
+    filter: drop-shadow(0 0 12px rgba(232, 199, 126, 0.3));
+  }
+
+  .lux-tarot-back__border {
+    position: absolute;
+    inset: 8px;
+    border-radius: calc(var(--radius-lux) - 4px);
+    border: 1px solid rgba(232, 199, 126, 0.12);
+    pointer-events: none;
+  }
+
+  /* ── Hero ── */
+  .lux-hero {
+    position: relative;
+  }
+
+  .lux-hero__glow {
+    position: absolute;
+    left: 50%;
+    top: -10%;
+    width: min(100%, 520px);
+    height: 280px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse, rgba(155, 127, 212, 0.12), transparent 70%);
+    filter: blur(40px);
+  }
+
+  .premium-card {
+    @apply rounded-2xl;
+    background: linear-gradient(145deg, rgba(26, 20, 48, 0.8), rgba(12, 10, 26, 0.6));
+    box-shadow: var(--shadow-lux);
   }
 }
 
@@ -166,10 +499,10 @@
 
 .aura-mystic-bg__base {
   background:
-    radial-gradient(ellipse 100% 70% at 50% -15%, rgba(88, 28, 135, 0.55) 0%, transparent 58%),
-    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(76, 29, 149, 0.35) 0%, transparent 55%),
-    radial-gradient(ellipse 70% 45% at 0% 100%, rgba(59, 7, 100, 0.4) 0%, transparent 60%),
-    linear-gradient(180deg, #0a0014 0%, #080012 45%, #05010d 100%);
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(45, 27, 78, 0.5) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 45% at 85% 15%, rgba(76, 29, 89, 0.25) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 10% 90%, rgba(26, 15, 46, 0.45) 0%, transparent 55%),
+    linear-gradient(180deg, #0c0a1a 0%, #1a0f2e 38%, #07050f 100%);
 }
 
 .aura-mystic-bg__nebula {
@@ -262,9 +595,30 @@
 
 @keyframes aura-stars-twinkle {
   0% {
-    opacity: 0.55;
+    opacity: 0.4;
   }
   100% {
-    opacity: 1;
+    opacity: 0.85;
+  }
+}
+
+/* Floating particles layer */
+.aura-mystic-bg__particles {
+  opacity: 0.35;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(232, 199, 126, 0.5), transparent),
+    radial-gradient(1px 1px at 80% 20%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1.5px 1.5px at 65% 75%, rgba(232, 199, 126, 0.4), transparent),
+    radial-gradient(1px 1px at 35% 85%, rgba(255, 255, 255, 0.25), transparent);
+  background-size: 200px 200px;
+  animation: aura-particles-drift 40s linear infinite;
+}
+
+@keyframes aura-particles-drift {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-200px);
   }
 }

@@ -17,7 +17,7 @@ export default function TarotCardsRow({
   if (!cards.length) return null;
 
   return (
-    <div className="grid grid-cols-3 gap-3 sm:gap-5">
+    <div className="grid grid-cols-3 gap-4 sm:gap-6 md:gap-8">
       {cards.map((card, i) => (
         <TarotCardFace
           key={`${card.name}-${i}`}

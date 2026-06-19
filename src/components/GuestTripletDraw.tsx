@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { drawRandomCards, TRIPLET_POSITIONS, type TarotCard } from "@/lib/tarot";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
+import TarotCardFace from "@/components/TarotCardFace";
 
 export default function GuestTripletDraw() {
   const [deck] = useState(() => drawRandomCards(3));
@@ -33,35 +34,40 @@ export default function GuestTripletDraw() {
   };
 
   return (
-    <div className="mx-auto mb-10 max-w-3xl">
-      <p className="mb-6 text-center text-xs uppercase tracking-[0.25em] text-aura-purple/80">
+    <div className="mx-auto mb-12 max-w-3xl">
+      <p className="lux-label mb-8 text-center">
         Бесплатный расклад · 3 карты до регистрации
       </p>
 
-      <div className="mb-8 flex flex-wrap items-end justify-center gap-4 sm:gap-6">
+      <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (
           <div key={card.id} className="flex flex-col items-center gap-2">
-            <p className="text-[10px] uppercase tracking-widest text-aura-gold sm:text-xs">
-              {TRIPLET_POSITIONS[i]}
-            </p>
+            <p className="lux-label">{TRIPLET_POSITIONS[i]}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
               disabled={revealed[i]}
-              className="perspective-1000 h-44 w-28 sm:h-52 sm:w-36"
+              className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
               aria-label={revealed[i] ? card.name : `Открыть карту ${TRIPLET_POSITIONS[i]}`}
             >
               <motion.div
                 className="relative h-full w-full preserve-3d"
                 animate={{ rotateY: revealed[i] ? 180 : 0 }}
-                transition={{ duration: 0.35, type: "spring", stiffness: 120 }}
+                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               >
-                <div className="absolute inset-0 backface-hidden ui-card flex items-center justify-center border border-aura-purple/30 bg-gradient-to-br from-purple-950/80 to-aura-bg">
-                  <span className="text-3xl">🃏</span>
+                <div className="lux-tarot-back absolute inset-0 backface-hidden">
+                  <div className="lux-tarot-back__border" />
+                  <span className="lux-tarot-back__ornament">✦</span>
                 </div>
-                <div className="absolute inset-0 rotate-y-180 backface-hidden ui-card flex flex-col items-center justify-center gap-1 border border-aura-emerald/40 bg-gradient-to-br from-emerald-950/70 to-aura-bg p-3 text-center">
-                  <p className="font-display text-xs font-semibold text-aura-gold sm:text-sm">{card.name}</p>
-                  <p className="text-[10px] leading-snug text-gray-400 sm:text-xs">{card.meaning}</p>
+                <div
+                  className="absolute inset-0 backface-hidden rotate-y-180"
+                >
+                  <TarotCardFace
+                    card={card}
+                    showMeaning={false}
+                    size="md"
+                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                  />
                 </div>
               </motion.div>
             </button>
@@ -71,7 +77,7 @@ export default function GuestTripletDraw() {
 
       {allRevealed && !done && (
         <div className="text-center">
-          <button type="button" onClick={handleFinish} className="btn-neon px-8 py-3">
+          <button type="button" onClick={handleFinish} className="btn-primary px-10 py-3.5">
             Сохранить расклад и продолжить
           </button>
         </div>
@@ -79,18 +85,15 @@ export default function GuestTripletDraw() {
 
       {done && (
         <motion.div
-          className="glass-panel mx-auto max-w-md space-y-4 p-6 text-center"
+          className="glass-panel mx-auto max-w-md space-y-5 p-8 text-center"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
+          transition={{ duration: 0.45 }}
         >
-          <p className="text-sm text-gray-300">
+          <p className="text-sm leading-relaxed text-aura-ivory/75">
             Расклад сохранён. Остался один шаг — быстрая регистрация и выбор мастера.
           </p>
-          <Link
-            href="/auth/user/register?returnTo=/"
-            className="btn-neon inline-block px-8 py-3"
-          >
+          <Link href="/auth/user/register?returnTo=/" className="btn-primary inline-block px-10 py-3.5">
             Получить расшифровку
           </Link>
         </motion.div>

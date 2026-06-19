@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Bot, Star, UserRound } from "lucide-react";
+import MasterSigil from "@/components/MasterSigil";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 
 function CardBadge({
@@ -13,19 +14,13 @@ function CardBadge({
   variant?: "gold" | "emerald" | "purple" | "default";
 }) {
   const styles = {
-    gold: "border-aura-gold/35 bg-aura-gold/10 text-aura-gold",
-    emerald: "border-aura-emerald/35 bg-aura-emerald/10 text-aura-emerald",
-    purple: "border-aura-purple/35 bg-aura-purple/10 text-aura-neon",
-    default: "border-white/15 bg-white/5 text-gray-300",
+    gold: "lux-badge lux-badge--gold",
+    emerald: "lux-badge lux-badge--emerald",
+    purple: "lux-badge lux-badge--purple",
+    default: "lux-badge",
   }[variant];
 
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium tracking-wide backdrop-blur-sm ${styles}`}
-    >
-      {children}
-    </span>
-  );
+  return <span className={styles}>{children}</span>;
 }
 
 export interface MasterShowcaseCardProps {
@@ -62,23 +57,24 @@ export default function MasterShowcaseCard({
 
   return (
     <motion.article
-      className={`master-showcase-card group relative flex h-full flex-col bg-gradient-to-br ${master.gradient} ${
-        recommended ? "ring-2 ring-aura-gold/45 ring-offset-2 ring-offset-aura-bg" : ""
+      className={`master-showcase-card group relative flex h-full flex-col ${
+        recommended ? "master-showcase-card--recommended" : ""
       }`}
       style={{ "--master-glow": master.glowColor } as CSSProperties}
-      initial={{ opacity: 0, y: 24 }}
+      initial={{ opacity: 0, y: 28 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.45, delay: index * 0.05 }}
-      whileHover={{ scale: 1.02, y: -4 }}
+      transition={{ duration: 0.55, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -6 }}
     >
-      <div className="master-showcase-card__sheen pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100" />
+      <div className="master-showcase-card__glow pointer-events-none" aria-hidden />
 
-      <div className="relative z-10 flex flex-1 flex-col p-6">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <span className="text-4xl leading-none drop-shadow-sm" aria-hidden>
-            {master.emoji}
-          </span>
+      <div className="relative z-10 flex flex-1 flex-col p-7">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div className="lux-master-avatar">
+            <div className="lux-master-avatar__ring" aria-hidden />
+            <MasterSigil masterId={master.id} className="lux-master-avatar__sigil" />
+          </div>
           <div className="flex max-w-[58%] flex-col items-end gap-1.5 sm:max-w-[65%]">
             {recommended && <CardBadge variant="gold">Подходит вам</CardBadge>}
             {canContinue && <CardBadge variant="emerald">Расшифровка готова</CardBadge>}
@@ -96,41 +92,43 @@ export default function MasterShowcaseCard({
           </div>
         </div>
 
-        <h3 className="font-display mb-1.5 text-2xl font-bold leading-tight tracking-tight text-white">
+        <h3 className="font-display mb-1.5 text-2xl font-semibold leading-tight tracking-tight text-aura-ivory">
           {master.name}
         </h3>
-        <p className="mb-2 text-sm leading-relaxed tracking-wide text-aura-purple/85">{master.title}</p>
-        <p className="mb-2 line-clamp-2 text-sm leading-relaxed text-gray-400">{master.specialty}</p>
-        <p className="line-clamp-2 text-xs leading-relaxed text-gray-500">{master.style}</p>
+        <p className="mb-2 text-sm leading-relaxed tracking-wide text-aura-champagne/80">
+          {master.title}
+        </p>
+        <p className="mb-2 line-clamp-2 text-sm leading-relaxed text-aura-ivory/65">
+          {master.specialty}
+        </p>
+        <p className="line-clamp-2 text-xs leading-relaxed text-aura-ivory/45">{master.style}</p>
 
         <div className="min-h-4 flex-1" aria-hidden />
 
-        <div className="master-showcase-stats mb-5 grid grid-cols-3 gap-3 border-t border-white/10 pt-4">
+        <div className="lux-divider my-5" aria-hidden />
+
+        <div className="master-showcase-stats mb-6 grid grid-cols-3 gap-3">
           <div className="min-w-0">
-            <p className="mb-1 text-[10px] uppercase tracking-wider text-gray-600">Рейтинг</p>
-            <p className="flex items-center gap-1 text-sm font-semibold leading-none text-aura-gold">
-              <Star className="h-3.5 w-3.5 shrink-0 fill-aura-gold" aria-hidden />
+            <p className="lux-stat-label mb-1">Рейтинг</p>
+            <p className="flex items-center gap-1 text-sm font-medium leading-none text-aura-champagne">
+              <Star className="lux-star h-3 w-3 shrink-0" aria-hidden />
               <span>{master.rating}</span>
             </p>
           </div>
-          <div className="min-w-0 border-x border-white/5 px-2 text-center">
-            <p className="mb-1 text-[10px] uppercase tracking-wider text-gray-600">Опыт</p>
-            <p className="text-xs font-medium leading-snug text-gray-400">{master.sessions}</p>
+          <div className="min-w-0 border-x border-aura-gold/10 px-2 text-center">
+            <p className="lux-stat-label mb-1">Опыт</p>
+            <p className="text-xs font-medium leading-snug text-aura-ivory/55">{master.sessions}</p>
           </div>
           <div className="min-w-0 text-right">
-            <p className="mb-1 text-[10px] uppercase tracking-wider text-gray-600">Стоимость</p>
-            <p className="text-xs font-semibold leading-snug text-gray-200">{priceLabel}</p>
+            <p className="lux-stat-label mb-1">Стоимость</p>
+            <p className="text-xs font-semibold leading-snug text-aura-ivory/80">{priceLabel}</p>
           </div>
         </div>
 
         <button
           type="button"
           onClick={() => onSelect(master.id)}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-medium transition-all duration-300 ${
-            canContinue
-              ? "btn-neon border-0"
-              : "border border-white/20 bg-white/5 text-white hover:border-white/35 hover:bg-white/10 hover:shadow-[0_0_24px_-8px_rgba(168,85,247,0.45)]"
-          }`}
+          className={canContinue ? "btn-primary w-full" : "btn-ghost w-full"}
         >
           {ctaLabel}
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />

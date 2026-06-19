@@ -7,6 +7,7 @@ export default function MysticBackground() {
       <div className="aura-mystic-bg__nebula aura-mystic-bg__nebula--indigo" />
       <div className="aura-mystic-bg__stars aura-mystic-bg__stars--far" />
       <div className="aura-mystic-bg__stars aura-mystic-bg__stars--near" />
+      <div className="aura-mystic-bg__particles" />
       <div className="aura-mystic-bg__symbols" />
       <div className="aura-mystic-bg__vignette" />
     </div>
