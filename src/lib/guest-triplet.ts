@@ -1,0 +1,44 @@
+import type { TarotCard } from "@/lib/tarot";
+
+export const GUEST_TRIPLET_KEY = "aura_guest_triplet";
+
+export interface GuestTripletDraft {
+  tarotCards: TarotCard[];
+  teaser: string;
+  completedAt: string;
+}
+
+export function loadGuestTriplet(): GuestTripletDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(GUEST_TRIPLET_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GuestTripletDraft;
+    if (!parsed.tarotCards?.length || parsed.tarotCards.length < 3) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveGuestTriplet(draft: GuestTripletDraft): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(GUEST_TRIPLET_KEY, JSON.stringify(draft));
+}
+
+export function clearGuestTriplet(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(GUEST_TRIPLET_KEY);
+}
+
+export function mergeGuestTripletIntoProfile<T extends { tarotCards?: TarotCard[]; teaser?: string }>(
+  profile: T
+): T {
+  const guest = loadGuestTriplet();
+  if (!guest || profile.tarotCards?.length) return profile;
+  return {
+    ...profile,
+    tarotCards: guest.tarotCards,
+    teaser: guest.teaser,
+  };
+}

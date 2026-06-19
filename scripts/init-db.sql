@@ -1,0 +1,1 @@
+-- Deprecated: canonical schema is src/lib/schema.sql (mounted by docker-compose.yml)
