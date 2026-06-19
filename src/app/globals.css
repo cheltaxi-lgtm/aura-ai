@@ -293,10 +293,16 @@
   }
 
   .lux-tarot-wrap:hover .lux-tarot-card {
-    transform: rotateX(4deg) rotateY(-6deg) translateY(-6px);
+    transform: translateY(-4px);
     box-shadow:
-      0 24px 48px -16px rgba(0, 0, 0, 0.75),
-      0 0 40px rgba(201, 162, 74, 0.15);
+      0 20px 40px -14px rgba(0, 0, 0, 0.7),
+      0 0 32px rgba(201, 162, 74, 0.18);
+  }
+
+  .lux-tarot-flip:hover .lux-tarot-card,
+  .lux-tarot-flip .lux-tarot-wrap:hover .lux-tarot-card {
+    transform: none;
+    box-shadow: none;
   }
 
   .lux-tarot-card__frame {
@@ -364,6 +370,36 @@
     );
     pointer-events: none;
     z-index: 3;
+  }
+
+  .lux-tarot-card--photo .lux-tarot-card__inner--photo {
+    @apply gap-1.5 p-2 pb-2.5;
+  }
+
+  .lux-tarot-card__image-wrap {
+    @apply relative mx-auto w-full flex-1 overflow-hidden rounded-md;
+    min-height: 0;
+    aspect-ratio: 2 / 3.2;
+    box-shadow: inset 0 0 0 1px rgba(232, 199, 126, 0.12);
+  }
+
+  .lux-tarot-card__image {
+    object-position: center top;
+  }
+
+  .lux-tarot-card__image-vignette {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      transparent 55%,
+      rgba(8, 6, 18, 0.55) 100%
+    );
+    pointer-events: none;
+  }
+
+  .lux-tarot-card--photo .lux-tarot-card__header {
+    @apply px-0.5;
   }
 
   /* Card back (flip deck) */

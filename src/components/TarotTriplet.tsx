@@ -10,7 +10,6 @@ import TarotCardFace from "@/components/TarotCardFace";
 interface TarotTripletProps {
   userName: string;
   zodiac?: string;
-  /** When set, reuse persisted cards instead of drawing new ones on mount. */
   initialCards?: TarotCard[];
   onComplete: (cards: TarotCard[], teaser: string) => void;
 }
@@ -55,7 +54,7 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
   return (
     <div className="mx-auto max-w-4xl">
       <motion.p
-        className="mb-8 text-center text-gray-400"
+        className="mb-8 text-center font-light text-aura-ivory/70"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
@@ -63,7 +62,7 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
       </motion.p>
 
       {allRevealed && atmosphereLoading && !atmosphereFailed && (
-        <p className="mb-6 text-center text-xs text-gray-600">Рисуем энергию расклада…</p>
+        <p className="mb-6 text-center text-xs text-aura-ivory/40">Рисуем энергию расклада…</p>
       )}
 
       {atmosphereUrl && (
@@ -75,9 +74,9 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
         />
       )}
 
-      <div className="mb-8 flex flex-wrap items-end justify-center gap-6">
+      <div className="mb-8 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (
-          <div key={card.id} className="flex flex-col items-center gap-3">
+          <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
             <p className="lux-label mb-1">{TRIPLET_POSITIONS[i]}</p>
             <button
               type="button"
@@ -85,6 +84,7 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
               disabled={revealed[i]}
               className="lux-tarot-flip perspective-[900px] focus:outline-none disabled:cursor-default"
               style={{ width: 148, height: 236 }}
+              aria-label={revealed[i] ? card.name : `Открыть карту ${TRIPLET_POSITIONS[i]}`}
             >
               <motion.div
                 className="relative h-full w-full"
@@ -92,15 +92,17 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
                 transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
                 style={{ transformStyle: "preserve-3d" }}
               >
-                <div className="lux-tarot-back absolute inset-0" style={{ backfaceVisibility: "hidden" }}>
-                  <div className="lux-tarot-back__border" />
-                  <span className="lux-tarot-back__ornament">✦</span>
+                <div
+                  className="absolute inset-0"
+                  style={{ backfaceVisibility: "hidden" }}
+                >
+                  <TarotCardFace card={card} faceDown showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none" />
                 </div>
                 <div
                   className="absolute inset-0"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
                 >
-                  <TarotCardFace card={card} showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:max-w-none [&_.lux-tarot-card]:h-full" />
+                  <TarotCardFace card={card} showMeaning={false} size="md" className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none" />
                 </div>
               </motion.div>
             </button>
@@ -115,11 +117,11 @@ export default function TarotTriplet({ userName, zodiac, initialCards, onComplet
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <p className="text-sm leading-relaxed text-gray-300">
-              Карты выпали: <strong className="text-aura-neon">{deck.map((c) => c.name).join(" · ")}</strong>.
+            <p className="text-sm leading-relaxed text-aura-ivory/75">
+              Карты выпали: <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
               Первая карта уже шепчет о вашем прошлом — полный разбор откроет наставник.
             </p>
-            <button onClick={handleFinish} className="btn-neon mt-6 px-8 py-3 text-sm">
+            <button onClick={handleFinish} className="btn-primary mt-6 px-8 py-3 text-sm">
               Узнать смысл у мастера
             </button>
           </motion.div>

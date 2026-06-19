@@ -41,7 +41,7 @@ export default function GuestTripletDraw() {
 
       <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (
-          <div key={card.id} className="flex flex-col items-center gap-2">
+          <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
             <p className="lux-label">{TRIPLET_POSITIONS[i]}</p>
             <button
               type="button"
@@ -55,13 +55,16 @@ export default function GuestTripletDraw() {
                 animate={{ rotateY: revealed[i] ? 180 : 0 }}
                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               >
-                <div className="lux-tarot-back absolute inset-0 backface-hidden">
-                  <div className="lux-tarot-back__border" />
-                  <span className="lux-tarot-back__ornament">✦</span>
+                <div className="absolute inset-0 backface-hidden">
+                  <TarotCardFace
+                    card={card}
+                    faceDown
+                    showMeaning={false}
+                    size="md"
+                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                  />
                 </div>
-                <div
-                  className="absolute inset-0 backface-hidden rotate-y-180"
-                >
+                <div className="absolute inset-0 backface-hidden rotate-y-180">
                   <TarotCardFace
                     card={card}
                     showMeaning={false}
