@@ -245,7 +245,118 @@
   }
 
   .master-showcase-stats {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem 0.625rem;
+    align-items: start;
+    margin-bottom: 1.25rem;
+  }
+
+  .master-stat-cell {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .master-stat-cell--center {
+    border-left: 1px solid rgba(232, 199, 126, 0.1);
+    border-right: 1px solid rgba(232, 199, 126, 0.1);
+    padding-inline: 0.375rem;
+    text-align: center;
+  }
+
+  .master-stat-cell--end {
+    text-align: right;
+  }
+
+  .master-stat__value {
+    @apply text-sm font-medium leading-snug text-aura-champagne;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .master-stat__value--sm {
+    @apply text-xs font-medium text-aura-ivory/70;
+  }
+
+  .master-stat__unit {
+    margin-top: 0.125rem;
+    font-size: 0.625rem;
+    line-height: 1.35;
+    color: rgba(232, 199, 126, 0.55);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .master-showcase-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    align-items: stretch;
+  }
+
+  @media (min-width: 640px) {
+    .master-showcase-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .master-showcase-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .master-showcase-card__body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 100%;
+  }
+
+  .master-showcase-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 4rem;
+  }
+
+  .master-showcase-card__badges {
+    display: flex;
+    max-width: 52%;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.375rem;
+  }
+
+  .master-showcase-card__theme {
+    min-height: 1.25rem;
+  }
+
+  .master-showcase-card__desc {
+    display: -webkit-box;
+    min-height: 2.75rem;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+  }
+
+  .master-showcase-card__style {
+    display: -webkit-box;
+    min-height: 2.5rem;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+  }
+
+  .master-showcase-card__cta {
+    @apply mt-auto inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 text-sm font-medium;
+    min-height: 2.75rem;
   }
 
   .lux-master-avatar {

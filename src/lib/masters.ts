@@ -48,15 +48,19 @@ export async function listHumanMasters(): Promise<ShowcaseMaster[]> {
   return rows.map((row, index) => {
     const theme = humanTheme(index);
     const sessions = parseInt(row.sessions_count ?? "0", 10);
-    const specialty = row.title?.split("·")[0]?.trim() || "Авторские расклады";
+    const isMarina = row.slug === "gadalka_marina";
+    const titleParts = row.title?.split("·").map((p) => p.trim()) ?? [];
+    const specialtyRaw = titleParts[0]?.replace(/^Taro$/i, "Таро") || "Авторские расклады";
 
     return {
       id: row.slug,
       slug: row.slug,
       kind: "human" as const,
-      name: row.display_name,
-      title: row.title ?? "Эксперт Aura",
-      specialty,
+      name: isMarina ? "Marina" : row.display_name,
+      title: isMarina ? "Таро" : (row.title ?? "Эксперт Aura"),
+      specialty: isMarina
+        ? "Расклады · Ритуалы"
+        : specialtyRaw,
       style: row.style_notes?.slice(0, 48) || "Живой мастер платформы",
       emoji: row.emoji ?? "🌟",
       gradient: theme.gradient,

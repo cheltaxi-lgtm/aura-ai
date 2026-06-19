@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, Bot, Star, UserRound } from "lucide-react";
 import MasterSigil from "@/components/MasterSigil";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
+import { formatMasterPriceDisplay } from "@/lib/master-pricing";
 
 function CardBadge({
   children,
@@ -20,7 +21,7 @@ function CardBadge({
     default: "lux-badge",
   }[variant];
 
-  return <span className={styles}>{children}</span>;
+  return <span className={`${styles} shrink-0 whitespace-nowrap`}>{children}</span>;
 }
 
 export interface MasterShowcaseCardProps {
@@ -30,6 +31,9 @@ export interface MasterShowcaseCardProps {
   canContinue?: boolean;
   sessionOnly?: boolean;
   readingCost?: number;
+  questionCost?: number;
+  runesEnabled?: boolean;
+  formatRunes?: (amount: number) => string;
   onSelect: (masterId: string) => void;
 }
 
@@ -40,24 +44,26 @@ export default function MasterShowcaseCard({
   canContinue = false,
   sessionOnly = false,
   readingCost,
+  questionCost,
+  runesEnabled = false,
+  formatRunes,
   onSelect,
 }: MasterShowcaseCardProps) {
-  const priceLabel =
-    sessionOnly
-      ? "по рунам за вопрос"
-      : readingCost != null && master.kind === "ai"
-        ? `от ${readingCost} ᚢ`
-        : `от ${master.priceFrom}`;
+  const price = formatMasterPriceDisplay({
+    system: master.system,
+    priceFrom: master.priceFrom,
+    runesEnabled,
+    readingCost,
+    questionCost,
+    sessionOnly,
+    formatRunes,
+  });
 
-  const ctaLabel = canContinue
-    ? "Продолжить"
-    : sessionOnly || master.kind === "human"
-      ? "Начать сеанс"
-      : "Получить расшифровку";
+  const ctaLabel = canContinue ? "Продолжить" : "Начать сеанс";
 
   return (
     <motion.article
-      className={`master-showcase-card group relative flex h-full flex-col ${
+      className={`master-showcase-card group relative h-full ${
         recommended ? "master-showcase-card--recommended" : ""
       }`}
       style={{ "--master-glow": master.glowColor } as CSSProperties}
@@ -69,15 +75,15 @@ export default function MasterShowcaseCard({
     >
       <div className="master-showcase-card__glow pointer-events-none" aria-hidden />
 
-      <div className="relative z-10 flex flex-1 flex-col p-7">
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div className="lux-master-avatar">
+      <div className="master-showcase-card__body relative z-10 p-6 sm:p-7">
+        <div className="master-showcase-card__header mb-5">
+          <div className="lux-master-avatar shrink-0">
             <div className="lux-master-avatar__ring" aria-hidden />
             <MasterSigil masterId={master.id} className="lux-master-avatar__sigil" />
           </div>
-          <div className="flex max-w-[58%] flex-col items-end gap-1.5 sm:max-w-[65%]">
-            {recommended && <CardBadge variant="gold">Подходит вам</CardBadge>}
-            {canContinue && <CardBadge variant="emerald">Расшифровка готова</CardBadge>}
+          <div className="master-showcase-card__badges">
+            {recommended ? <CardBadge variant="gold">Подходит вам</CardBadge> : null}
+            {canContinue ? <CardBadge variant="emerald">Расшифровка готова</CardBadge> : null}
             <CardBadge variant={master.kind === "ai" ? "purple" : "emerald"}>
               {master.kind === "ai" ? (
                 <>
@@ -92,46 +98,49 @@ export default function MasterShowcaseCard({
           </div>
         </div>
 
-        <h3 className="font-display mb-1.5 text-2xl font-semibold leading-tight tracking-tight text-aura-ivory">
+        <h3 className="font-display mb-1.5 text-xl font-semibold leading-tight tracking-tight text-aura-ivory sm:text-2xl">
           {master.name}
         </h3>
-        <p className="mb-2 text-sm leading-relaxed tracking-wide text-aura-champagne/80">
+        <p className="master-showcase-card__theme mb-2 text-sm leading-relaxed tracking-wide text-aura-champagne/80">
           {master.title}
         </p>
-        <p className="mb-2 line-clamp-2 text-sm leading-relaxed text-aura-ivory/65">
+        <p className="master-showcase-card__desc text-sm leading-relaxed text-aura-ivory/65">
           {master.specialty}
         </p>
-        <p className="line-clamp-2 text-xs leading-relaxed text-aura-ivory/45">{master.style}</p>
-
-        <div className="min-h-4 flex-1" aria-hidden />
+        <p className="master-showcase-card__style mt-2 text-xs leading-relaxed text-aura-ivory/45">
+          {master.style}
+        </p>
 
         <div className="lux-divider my-5" aria-hidden />
 
-        <div className="master-showcase-stats mb-6 grid grid-cols-3 gap-3">
-          <div className="min-w-0">
+        <div className="master-showcase-stats">
+          <div className="master-stat-cell">
             <p className="lux-stat-label mb-1">Рейтинг</p>
-            <p className="flex items-center gap-1 text-sm font-medium leading-none text-aura-champagne">
+            <p className="master-stat__value flex items-center justify-start gap-1">
               <Star className="lux-star h-3 w-3 shrink-0" aria-hidden />
               <span>{master.rating}</span>
             </p>
           </div>
-          <div className="min-w-0 border-x border-aura-gold/10 px-2 text-center">
+          <div className="master-stat-cell master-stat-cell--center">
             <p className="lux-stat-label mb-1">Опыт</p>
-            <p className="text-xs font-medium leading-snug text-aura-ivory/55">{master.sessions}</p>
+            <p className="master-stat__value master-stat__value--sm">{master.sessions}</p>
           </div>
-          <div className="min-w-0 text-right">
+          <div className="master-stat-cell master-stat-cell--end">
             <p className="lux-stat-label mb-1">Стоимость</p>
-            <p className="text-xs font-semibold leading-snug text-aura-ivory/80">{priceLabel}</p>
+            <p className="master-stat__value master-stat__value--sm">{price.amount}</p>
+            <p className="master-stat__unit">{price.unit}</p>
           </div>
         </div>
 
         <button
           type="button"
           onClick={() => onSelect(master.id)}
-          className={canContinue ? "btn-primary w-full" : "btn-ghost w-full"}
+          className={`master-showcase-card__cta ${
+            canContinue ? "btn-primary" : "btn-ghost"
+          }`}
         >
-          {ctaLabel}
-          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
+          <span>{ctaLabel}</span>
+          <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-1" aria-hidden />
         </button>
       </div>
     </motion.article>

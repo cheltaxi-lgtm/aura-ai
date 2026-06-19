@@ -152,12 +152,15 @@ CREATE INDEX IF NOT EXISTS idx_blogger_knowledge_blogger ON blogger_knowledge(bl
 INSERT INTO bloggers (slug, display_name, title, split_percent, style_notes, emoji)
 VALUES (
   'gadalka_marina',
-  'Марина',
+  'Marina',
   'Таро · Расклады · Ритуалы',
   80,
   'Говоришь тепло, образно, с отсылками к лунным циклам.',
   '🌹'
-) ON CONFLICT (slug) DO NOTHING;
+) ON CONFLICT (slug) DO UPDATE SET
+  display_name = EXCLUDED.display_name,
+  title = EXCLUDED.title,
+  style_notes = EXCLUDED.style_notes;
 
 -- === Admin panel ===
 CREATE TABLE IF NOT EXISTS admin_accounts (

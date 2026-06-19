@@ -2150,7 +2150,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   recommendedId={recommendedId}
                   continueMasterIds={continueMasterIds}
                   spreadReadingDone={spreadReadingDone}
+                  runesEnabled={runeConfig.enabled}
                   readingCost={runeConfig.enabled ? runeCost("READING") : undefined}
+                  questionCost={runeConfig.enabled ? runeCost("QUESTION") : undefined}
+                  formatRunes={formatRunes}
                   title="Выберите мастера"
                   subtitle={
                     spreadReadingDone
@@ -2188,6 +2191,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               onSelect={(id) => void handleMasterPick(id)}
               recommendedId={recommendedId}
               continueMasterIds={continueMasterIds}
+              runesEnabled={runeConfig.enabled}
+              readingCost={runeConfig.enabled ? runeCost("READING") : undefined}
+              questionCost={runeConfig.enabled ? runeCost("QUESTION") : undefined}
+              formatRunes={formatRunes}
               title="Витрина мастеров Aura"
               subtitle="AI-наставники платформы и живые эксперты с авторским стилем"
             />

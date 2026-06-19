@@ -18,6 +18,9 @@ interface MastersShowcaseProps {
   spreadReadingDone?: boolean;
   /** Цена расшифровки в рунах (если задано — показываем вместо priceFrom) */
   readingCost?: number;
+  questionCost?: number;
+  runesEnabled?: boolean;
+  formatRunes?: (amount: number) => string;
   title?: string;
   subtitle?: string;
   showExpertCta?: boolean;
@@ -31,6 +34,9 @@ export default function MastersShowcase({
   continueMasterIds = [],
   spreadReadingDone = false,
   readingCost,
+  questionCost,
+  runesEnabled = false,
+  formatRunes,
   title = "Мастера Aura",
   subtitle = "AI-наставники платформы и живые эксперты с авторским стилем",
   showExpertCta = true,
@@ -84,7 +90,7 @@ export default function MastersShowcase({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="master-showcase-grid">
         {filtered.map((master, index) => {
           const canContinue = continueSet.has(master.id);
           const sessionOnly = spreadReadingDone && !canContinue;
@@ -98,6 +104,9 @@ export default function MastersShowcase({
               canContinue={canContinue}
               sessionOnly={sessionOnly}
               readingCost={readingCost}
+              questionCost={questionCost}
+              runesEnabled={runesEnabled}
+              formatRunes={formatRunes}
               onSelect={onSelect}
             />
           );
