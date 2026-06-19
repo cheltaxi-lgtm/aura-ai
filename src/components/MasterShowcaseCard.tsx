@@ -79,7 +79,7 @@ export default function MasterShowcaseCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.55, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={{ y: -6 }}
+      whileHover={{ y: -3 }}
     >
       <div className="master-showcase-card__glow pointer-events-none" aria-hidden />
 
@@ -89,7 +89,7 @@ export default function MasterShowcaseCard({
           masterName={master.name}
           size="showcase"
           hoverZoom
-          priority={index < 3}
+          priority={index < 4}
         />
         <div className="master-showcase-card__badges-overlay">
           {recommended ? <CardBadge variant="gold">Подходит вам</CardBadge> : null}
@@ -97,69 +97,64 @@ export default function MasterShowcaseCard({
           <CardBadge variant={master.kind === "ai" ? "purple" : "emerald"}>
             {master.kind === "ai" ? (
               <>
-                <Bot className="h-3 w-3" /> AI
+                <Bot className="h-2.5 w-2.5" /> AI
               </>
             ) : (
               <>
-                <UserRound className="h-3 w-3" /> Эксперт
+                <UserRound className="h-2.5 w-2.5" /> Эксперт
               </>
             )}
           </CardBadge>
         </div>
       </div>
 
-      <div className="master-showcase-card__body relative z-10 p-5 sm:p-6">
-        <h3 className="font-display mb-0.5 text-xl font-semibold leading-tight tracking-tight text-aura-ivory">
+      <div className="master-showcase-card__body relative z-10">
+        <h3 className="font-display master-showcase-card__name text-aura-ivory">
           {master.name}
         </h3>
-        <p className="master-showcase-card__system mb-2 text-sm text-aura-champagne/85">
-          {master.title}
-        </p>
-        <p className="master-showcase-card__tagline text-sm leading-relaxed text-aura-ivory/60">
+        <p className="master-showcase-card__system text-aura-champagne/85">{master.title}</p>
+        <p className="master-showcase-card__tagline text-aura-ivory/55">
           {masterTagline(master.id, master.specialty)}
         </p>
 
-        <div className="lux-divider my-4" aria-hidden />
+        <p className="master-showcase-stats-dense">
+          <span className="master-showcase-stats-dense__item">
+            <Star className="lux-star h-2.5 w-2.5 shrink-0" aria-hidden />
+            {master.rating}
+          </span>
+          <span className="master-showcase-stats-dense__sep" aria-hidden>
+            ·
+          </span>
+          <span className="master-showcase-stats-dense__item">{master.sessions}</span>
+          <span className="master-showcase-stats-dense__sep" aria-hidden>
+            ·
+          </span>
+          <span className="master-showcase-stats-dense__item">
+            {price.amount}
+            {price.unit ? (
+              <span className="master-showcase-stats-dense__unit"> {price.unit}</span>
+            ) : null}
+          </span>
+        </p>
 
-        <div className="master-showcase-stats master-showcase-stats--compact">
-          <div className="master-stat-cell">
-            <p className="lux-stat-label mb-1">Рейтинг</p>
-            <p className="master-stat__value flex items-center gap-1">
-              <Star className="lux-star h-3 w-3 shrink-0" aria-hidden />
-              <span>{master.rating}</span>
-            </p>
-          </div>
-          <div className="master-stat-cell master-stat-cell--center">
-            <p className="lux-stat-label mb-1">Опыт</p>
-            <p className="master-stat__value master-stat__value--sm">{master.sessions}</p>
-          </div>
-          <div className="master-stat-cell master-stat-cell--end">
-            <p className="lux-stat-label mb-1">Стоимость</p>
-            <p className="master-stat__value master-stat__value--sm">{price.amount}</p>
-            <p className="master-stat__unit">{price.unit}</p>
-          </div>
-        </div>
-
-        {onBrowseDeck && (
+        {onBrowseDeck ? (
           <button
             type="button"
             onClick={() => onBrowseDeck(master)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-aura-gold/25 bg-aura-gold/5 py-2 text-xs text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 hover:text-aura-gold"
+            className="master-showcase-deck-link"
           >
-            <Layers className="h-3.5 w-3.5" />
+            <Layers className="h-3 w-3 shrink-0" aria-hidden />
             Вся колода · {deckCount} {deckUnit}
           </button>
-        )}
+        ) : null}
 
         <button
           type="button"
           onClick={() => onSelect(master.id)}
-          className={`master-showcase-card__cta mt-4 ${
-            canContinue ? "btn-primary" : "btn-ghost"
-          }`}
+          className={`master-showcase-card__cta ${canContinue ? "btn-primary" : "btn-ghost"}`}
         >
           <span>{ctaLabel}</span>
-          <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-1" aria-hidden />
+          <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden />
         </button>
       </div>
     </motion.article>

@@ -51,3 +51,18 @@ export function formatCountdownHMS(msRemaining: number): string {
   const s = totalSec % 60;
   return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
 }
+
+/** Pick the latest draw time and apply the 24h rule (server + local anchors). */
+export function effectiveTripletCooldown(
+  ...anchors: (Date | string | null | undefined)[]
+): TripletCooldownStatus {
+  let latest: string | null = null;
+  for (const anchor of anchors) {
+    if (!anchor) continue;
+    const iso = anchor instanceof Date ? anchor.toISOString() : String(anchor);
+    if (!latest || new Date(iso).getTime() > new Date(latest).getTime()) {
+      latest = iso;
+    }
+  }
+  return tripletCooldownFromLastDraw(latest);
+}

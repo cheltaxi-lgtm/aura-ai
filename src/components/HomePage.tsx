@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Layers } from "lucide-react";
 import Link from "next/link";
 
 import OnboardingForm, { type OnboardingData } from "@/components/OnboardingForm";
@@ -17,7 +17,7 @@ import { type FlowStep } from "@/components/FlowStepper";
 import LandingHero from "@/components/LandingHero";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
-import MasterDecksSection from "@/components/MasterDecksSection";
+import MasterDecksModal from "@/components/MasterDecksModal";
 import LandingSections from "@/components/LandingSections";
 import PhotoReadingFlow from "@/components/PhotoReadingFlow";
 import { buildPhotoReadingChatMessages } from "@/lib/photo-chat";
@@ -43,6 +43,10 @@ import {
   tripletCooldownFromLastDraw,
   type TripletCooldownStatus,
 } from "@/lib/triplet-limit";
+import {
+  mergeTripletCooldownWithAnchors,
+  writeLocalTripletDrawAt,
+} from "@/lib/triplet-cooldown-client";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM, getDeckPositions, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
@@ -73,6 +77,8 @@ export interface StoredProfile extends OnboardingData {
   deckSystem?: DeckSystem;
   deckSpreads?: Partial<Record<DeckSystem, SpreadSymbol[]>>;
   teaser?: string;
+  /** Client-side anchor for 24h triplet limit (survives spread deletion). */
+  lastTripletDrawAt?: string;
 }
 
 export interface HomePageProps {
@@ -169,6 +175,8 @@ function profileFromApiPayload(data: {
       : undefined;
 
   const p = data.profile;
+  const spreadCleared = data.keepSpread === false || cards.length < 3;
+
   return {
     name: String(p.name ?? ""),
     gender: (p.gender as StoredProfile["gender"]) ?? "female",
@@ -180,14 +188,47 @@ function profileFromApiPayload(data: {
     mainQuestion: (p.mainQuestion as string | undefined) ?? undefined,
     astroMeta: (p.astroMeta as StoredProfile["astroMeta"]) ?? undefined,
     userId: data.profileUserId,
-    tarotCards: data.keepSpread === false ? [] : cards,
-    deckSystem: data.keepSpread === false ? undefined : deckSystem,
-    teaser: data.keepSpread === false ? undefined : teaser,
-    deckSpreads:
-      data.keepSpread === false || cards.length < 3
-        ? undefined
-        : { [deckSystem]: cards },
+    tarotCards: spreadCleared ? [] : cards,
+    deckSystem: spreadCleared ? undefined : deckSystem,
+    teaser: spreadCleared ? undefined : teaser,
+    deckSpreads: spreadCleared ? undefined : { [deckSystem]: cards },
   };
+}
+
+function mergeProfileWithServer(
+  restored: StoredProfile,
+  prev: StoredProfile | null | undefined,
+  tripletDraftInProgress: boolean
+): StoredProfile {
+  if (tripletDraftInProgress && (prev?.tarotCards?.length ?? 0) >= 3) {
+    return {
+      ...restored,
+      tarotCards: prev!.tarotCards!,
+      deckSystem: prev!.deckSystem ?? restored.deckSystem,
+      teaser: prev!.teaser ?? restored.teaser,
+      deckSpreads: prev!.deckSpreads ?? restored.deckSpreads,
+      lastTripletDrawAt: prev!.lastTripletDrawAt ?? restored.lastTripletDrawAt,
+    };
+  }
+  const astroAnchor =
+    typeof restored.astroMeta === "object" &&
+    restored.astroMeta !== null &&
+    "lastTripletDrawAt" in restored.astroMeta &&
+    typeof (restored.astroMeta as Record<string, unknown>).lastTripletDrawAt === "string"
+      ? ((restored.astroMeta as Record<string, unknown>).lastTripletDrawAt as string)
+      : undefined;
+  return {
+    ...restored,
+    lastTripletDrawAt: prev?.lastTripletDrawAt ?? astroAnchor ?? restored.lastTripletDrawAt,
+  };
+}
+
+function clearSpreadSessionState(
+  setLastMasterId: (id: string | null) => void
+): void {
+  localStorage.removeItem(LAST_MASTER_KEY);
+  setLastMasterId(null);
+  clearChatCache();
 }
 
 function masterVisualKey(characterId: string): CharacterVisualKey | undefined {
@@ -288,6 +329,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const [showPaywall, setShowPaywall] = useState(false);
   const [deckGalleryOpen, setDeckGalleryOpen] = useState(false);
   const [browseDeckMaster, setBrowseDeckMaster] = useState<ShowcaseMaster | null>(null);
+  const [showDecksModal, setShowDecksModal] = useState(false);
   const [showRuneShop, setShowRuneShop] = useState(false);
   const [insufficientRunes, setInsufficientRunes] = useState<{
     balance: number;
@@ -299,6 +341,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const [savedReadings, setSavedReadings] = useState<StoredReadingRow[]>([]);
   const [tripletCooldown, setTripletCooldown] = useState<TripletCooldownStatus | null>(null);
   const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
+
+  const effectiveTripletCooldown = useMemo(
+    () => mergeTripletCooldownWithAnchors(tripletCooldown, profile?.lastTripletDrawAt),
+    [tripletCooldown, profile?.lastTripletDrawAt]
+  );
+
+  const tripletCountdown = useTripletCountdown(effectiveTripletCooldown.nextAvailableAt);
   const [tripletNotice, setTripletNotice] = useState<string | null>(null);
   const [serverContinueIds, setServerContinueIds] = useState<string[]>([]);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
@@ -443,9 +492,14 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const handleBrowseDeck = useCallback((master: ShowcaseMaster) => {
     setBrowseDeckMaster(master);
     setDeckGalleryOpen(true);
+    setShowDecksModal(false);
     requestAnimationFrame(() => {
       document.getElementById("колода")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  }, []);
+
+  const openDecksModal = useCallback(() => {
+    setShowDecksModal(true);
   }, []);
 
   useEffect(() => {
@@ -585,54 +639,44 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
         setTripletCooldown(tripletCooldownFromProfileData(data));
 
-        const latestTriplet = (data.readings as { characterName: string; contextData: Record<string, unknown> }[] | undefined)?.find(
-          (r) => r.characterName === "triplet"
-        );
-        const cards = (latestTriplet?.contextData?.tarotCards as SpreadSymbol[] | undefined) ?? [];
-        const deckSystemFromServer =
-          (latestTriplet?.contextData?.deckSystem as DeckSystem | undefined) ??
-          DEFAULT_DECK_SYSTEM;
-        const teaserReading = (data.readings as { characterName: string; contextData: Record<string, unknown> }[] | undefined)?.find(
-          (r) => r.contextData?.type === "reading"
-        );
-        const teaser =
-          typeof latestTriplet?.contextData?.teaser === "string"
-            ? latestTriplet.contextData.teaser
-            : undefined;
-
-        const restored: StoredProfile = {
-          name: data.profile.name,
-          gender: data.profile.gender,
-          birthDate: data.profile.birthDate,
-          zodiac: data.profile.zodiac,
-          birthTime: data.profile.birthTime ?? undefined,
-          birthCity: data.profile.birthCity ?? undefined,
-          lifeFocus: data.profile.lifeFocus ?? undefined,
-          mainQuestion: data.profile.mainQuestion ?? undefined,
-          astroMeta: data.profile.astroMeta ?? undefined,
-          userId: data.profileUserId,
-          tarotCards: cards,
-          deckSystem: deckSystemFromServer,
-          teaser,
-        };
+        const restored = profileFromApiPayload({
+          profile: data.profile,
+          profileUserId: data.profileUserId,
+          readings: data.readings,
+        });
 
         setProfile((prev) => {
-          if (newTripletInProgressRef.current) {
-            const next = {
-              ...restored,
-              tarotCards: prev?.tarotCards?.length ? prev.tarotCards : cards,
-              teaser: prev?.teaser ?? teaser,
-            };
-            localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-            return next;
+          const localCards = prev?.tarotCards?.length ?? 0;
+          const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current);
+          if (next.tarotCards.length < 3 && localCards >= 3) {
+            clearSpreadSessionState(setLastMasterId);
           }
-          const nextCards = cards.length >= 3 ? cards : (prev?.tarotCards ?? cards);
-          const next = { ...restored, tarotCards: nextCards, teaser: teaser ?? prev?.teaser };
+          // #region agent log
+          fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+            body: JSON.stringify({
+              sessionId: "f9adef",
+              runId: "spread-sync",
+              hypothesisId: "A",
+              location: "HomePage.tsx:profile-sync",
+              message: "server profile merge",
+              data: {
+                serverCards: restored.tarotCards.length,
+                localCards,
+                resultCards: next.tarotCards.length,
+                deckSystem: next.deckSystem ?? null,
+                tripletDraft: newTripletInProgressRef.current,
+              },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+          // #endregion
           localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
           return next;
         });
 
-        if (cards.length >= 3) {
+        if (restored.tarotCards.length >= 3) {
           setStepState((prev) => (prev === "intro" ? "masters" : prev));
         } else if (data.profile.birthDate) {
           setStepState((prev) => (prev === "intro" || prev === "onboarding" ? "triplet" : prev));
@@ -648,20 +692,29 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!Array.isArray(data?.readings)) return;
-        setSavedReadings(
-          data.readings.map(
-            (r: { characterName: string; createdAt?: string; contextData: Record<string, unknown> }) => ({
-              characterName: r.characterName,
-              createdAt: r.createdAt,
-              contextData: r.contextData as StoredReadingRow["contextData"],
-            })
-          )
-        );
+        setSavedReadings(mapProfileReadings(data.readings));
         if (Array.isArray(data.continueMasterIds)) {
           setServerContinueIds(data.continueMasterIds);
         }
 
         setTripletCooldown(tripletCooldownFromProfileData(data));
+
+        if (data.profile && !newTripletInProgressRef.current) {
+          const restored = profileFromApiPayload({
+            profile: data.profile,
+            profileUserId: data.profileUserId,
+            readings: data.readings,
+          });
+          setProfile((prev) => {
+            const localCards = prev?.tarotCards?.length ?? 0;
+            const next = mergeProfileWithServer(restored, prev, false);
+            if (next.tarotCards.length < 3 && localCards >= 3) {
+              clearSpreadSessionState(setLastMasterId);
+            }
+            localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+            return next;
+          });
+        }
 
         fetch("/api/runes/balance")
           .then((r) => (r.ok ? r.json() : null))
@@ -679,9 +732,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, [isLoggedIn, step, refreshSavedReadings]);
 
   const displayTarotCards = useMemo((): SpreadSymbol[] => {
-    const recap = resolveRecapSpread(profile, tripletSystem);
-    if (recap.cards.length >= 3) return recap.cards;
-
     const tripletRow = savedReadings.find(
       (row) =>
         row.characterName === "triplet" &&
@@ -697,16 +747,20 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       return fromServer.slice(0, 3).map((card) => resolveSpreadSymbol(system, card));
     }
 
-    return recap.cards;
+    const recap = resolveRecapSpread(profile, tripletSystem);
+    return recap.cards.length >= 3 ? recap.cards : [];
   }, [profile, tripletSystem, savedReadings]);
-
-  const tripletCountdown = useTripletCountdown(tripletCooldown?.nextAvailableAt);
 
   const tripletCooldownHint = useMemo(() => {
     if (tripletCountdown.isOnCooldown && tripletCountdown.hintRu) return tripletCountdown.hintRu;
-    if (!tripletCooldown?.nextAvailableAt) return undefined;
-    return `Новый расклад из 3 карт ${formatTripletCooldownRu(tripletCooldown.nextAvailableAt)}`;
-  }, [tripletCountdown.isOnCooldown, tripletCountdown.hintRu, tripletCooldown?.nextAvailableAt, tripletCountdown.tick]);
+    if (!effectiveTripletCooldown.nextAvailableAt) return undefined;
+    return `Новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`;
+  }, [
+    tripletCountdown.isOnCooldown,
+    tripletCountdown.hintRu,
+    effectiveTripletCooldown.nextAvailableAt,
+    tripletCountdown.tick,
+  ]);
 
   const persistProfile = (data: StoredProfile) => {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
@@ -735,48 +789,117 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         profile: data.profile,
         profileUserId: data.profileUserId,
         readings: data.readings,
-        keepSpread: opts?.keepSpread,
       });
-      if (newTripletInProgressRef.current) {
-        setProfile((prev) => {
-          const next = {
-            ...restored,
-            tarotCards: prev?.tarotCards?.length ? prev.tarotCards : restored.tarotCards,
-            teaser: prev?.teaser ?? restored.teaser,
-          };
-          localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-          return next;
-        });
-      } else {
-        persistProfile(restored);
-        setProfile(restored);
-      }
+
+      setProfile((prev) => {
+        const localCards = prev?.tarotCards?.length ?? 0;
+        const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current);
+        if (next.tarotCards.length < 3 && localCards >= 3) {
+          clearSpreadSessionState(setLastMasterId);
+        }
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+        return next;
+      });
       return { data, cooldown, profile: restored };
     },
     []
   );
 
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const resync = () => {
+      if (document.visibilityState !== "visible") return;
+      void syncProfileFromServer();
+    };
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    return () => {
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("focus", resync);
+    };
+  }, [isLoggedIn, syncProfileFromServer]);
+
   const continueMasterIds = useMemo(() => {
+    if (displayTarotCards.length < 3) return [];
     const cardsKey = spreadKey(displayTarotCards);
     const aiMasterIds = masters.map((m) => m.id);
     const merged = mergeContinueMasterIds(savedReadings, displayTarotCards, {
       cachedMasterIds: mastersWithCachedReading(cardsKey, aiMasterIds),
     });
-    return [...new Set([...serverContinueIds, ...merged])];
-  }, [savedReadings, displayTarotCards, serverContinueIds, masters]);
+    return [...new Set(merged)];
+  }, [savedReadings, displayTarotCards, masters]);
 
-  const spreadReadingDone = continueMasterIds.length > 0;
+  const hasActiveSpread = displayTarotCards.length >= 3;
+  const spreadReadingDone = hasActiveSpread && continueMasterIds.length > 0;
 
   const recapContinueMasterId = useMemo(
     () =>
-      primaryContinueMasterId(
-        savedReadings,
-        displayTarotCards,
-        continueMasterIds,
-        lastMasterId
-      ),
-    [savedReadings, displayTarotCards, continueMasterIds, lastMasterId]
+      hasActiveSpread
+        ? primaryContinueMasterId(
+            savedReadings,
+            displayTarotCards,
+            continueMasterIds,
+            lastMasterId
+          )
+        : null,
+    [hasActiveSpread, savedReadings, displayTarotCards, continueMasterIds, lastMasterId]
   );
+
+  const mastersShowcaseSubtitle = useMemo(() => {
+    if (hasActiveSpread) {
+      return spreadReadingDone
+        ? "Расшифровка расклада уже есть — продолжите с тем же мастером или начните свободный сеанс с другим"
+        : "Карты уже выпали — выберите, кто их расшифрует";
+    }
+    if (tripletCountdown.isOnCooldown && effectiveTripletCooldown.nextAvailableAt) {
+      return `Выберите мастера — новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`;
+    }
+    return "Выберите мастера и выпустите новый расклад из 3 карт";
+  }, [
+    hasActiveSpread,
+    spreadReadingDone,
+    tripletCountdown.isOnCooldown,
+    effectiveTripletCooldown.nextAvailableAt,
+  ]);
+
+  useEffect(() => {
+    if (!isLoggedIn || step !== "masters") return;
+    // #region agent log
+    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+      body: JSON.stringify({
+        sessionId: "f9adef",
+        runId: "continue-reset",
+        hypothesisId: "B-C",
+        location: "HomePage.tsx:continue-state",
+        message: "spread continue state",
+        data: {
+          hasActiveSpread,
+          cardsCount: displayTarotCards.length,
+          continueMasterIds,
+          recapContinueMasterId,
+          cooldownAllowed: effectiveTripletCooldown.allowed,
+          nextAvailableAt: effectiveTripletCooldown.nextAvailableAt,
+          profileAnchor: profile?.lastTripletDrawAt ?? null,
+          serverAllowed: tripletCooldown?.allowed ?? null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [
+    isLoggedIn,
+    step,
+    hasActiveSpread,
+    displayTarotCards.length,
+    continueMasterIds,
+    recapContinueMasterId,
+    effectiveTripletCooldown.allowed,
+    effectiveTripletCooldown.nextAvailableAt,
+    profile?.lastTripletDrawAt,
+    tripletCooldown?.allowed,
+  ]);
 
   const spreadCardsKey = useMemo(() => spreadKey(displayTarotCards), [displayTarotCards]);
 
@@ -963,6 +1086,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               }
             : tripletCooldownFromLastDraw(new Date())
         );
+        if (data.nextAvailableAt) {
+          const lastMs =
+            new Date(data.nextAvailableAt).getTime() - 24 * 60 * 60 * 1000;
+          const lastIso = new Date(lastMs).toISOString();
+          writeLocalTripletDrawAt(lastIso);
+          persistProfile({ ...restored, lastTripletDrawAt: lastIso });
+        }
         setTripletNotice(
           data.nextAvailableAt
             ? `Новый расклад из 3 карт ${formatTripletCooldownRu(data.nextAvailableAt)}`
@@ -978,7 +1108,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         setNewTripletDraft(false);
         clearGuestTriplet();
         if (data.userId) updated.userId = data.userId;
-        setTripletCooldown(tripletCooldownFromLastDraw(new Date()));
+        const drawAt = new Date().toISOString();
+        updated.lastTripletDrawAt = drawAt;
+        writeLocalTripletDrawAt(drawAt);
+        setTripletCooldown(tripletCooldownFromLastDraw(drawAt));
         clearChatCache();
       } else {
         newTripletInProgressRef.current = false;
@@ -1038,16 +1171,44 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const handleNewReading = async () => {
     setTripletNotice(null);
-    if (!tripletCooldownReady || tripletCountdown.isOnCooldown) {
-      const hint = tripletCooldown?.nextAvailableAt
-        ? `Новый расклад из 3 карт ${formatTripletCooldownRu(tripletCooldown.nextAvailableAt)}`
+    // #region agent log
+    fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+      body: JSON.stringify({
+        sessionId: "f9adef",
+        runId: "cooldown-guard",
+        hypothesisId: "A-B",
+        location: "HomePage.tsx:handleNewReading",
+        message: "new reading attempt",
+        data: {
+          cooldownReady: tripletCooldownReady,
+          effectiveAllowed: effectiveTripletCooldown.allowed,
+          isOnCooldown: tripletCountdown.isOnCooldown,
+          nextAvailableAt: effectiveTripletCooldown.nextAvailableAt,
+          profileAnchor: profile?.lastTripletDrawAt ?? null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    if (
+      !tripletCooldownReady ||
+      !effectiveTripletCooldown.allowed ||
+      tripletCountdown.isOnCooldown
+    ) {
+      const hint = effectiveTripletCooldown.nextAvailableAt
+        ? `Новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`
         : "Новый расклад из 3 карт доступен один раз в сутки";
       setTripletNotice(hint);
       return;
     }
     const synced = await syncProfileFromServer({ keepSpread: true });
-    const cooldown = synced?.cooldown ?? tripletCooldown;
-    if (!cooldown?.allowed || (cooldown.nextAvailableAt && new Date(cooldown.nextAvailableAt).getTime() > Date.now())) {
+    const cooldown = mergeTripletCooldownWithAnchors(
+      synced?.cooldown ?? tripletCooldown,
+      profile?.lastTripletDrawAt
+    );
+    if (!cooldown.allowed || tripletCountdown.isOnCooldown) {
       const hint = cooldown?.nextAvailableAt
         ? `Новый расклад из 3 карт ${formatTripletCooldownRu(cooldown.nextAvailableAt)}`
         : "Новый расклад из 3 карт доступен один раз в сутки";
@@ -1701,6 +1862,14 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     const masterSpread = getSpreadForSystem(activeProfile ?? profile, system);
 
     if (masterSpread.length < 3) {
+      if (tripletCooldownReady && !effectiveTripletCooldown.allowed) {
+        const hint = effectiveTripletCooldown.nextAvailableAt
+          ? `Новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`
+          : "Новый расклад из 3 карт доступен один раз в сутки";
+        setTripletNotice(hint);
+        return;
+      }
+      setTripletNotice(null);
       setTripletSystem(system);
       setStep("triplet");
       return;
@@ -1968,7 +2137,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             {[
               { label: photoNavLabel, action: openPhotoReading },
               { label: "Мастера", id: "наставники" },
-              { label: "Колоды", id: "колоды" },
+              { label: "Колоды", action: openDecksModal },
               { label: "Тарифы", id: "тарифы" },
             ].map((link) => (
               <button
@@ -1986,7 +2155,15 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={openDecksModal}
+              className="flex items-center gap-1.5 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2.5 py-1.5 text-xs text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Колоды
+            </button>
             {isLoggedIn && (
               <RuneBalance onBuyClick={() => setShowRuneShop(true)} />
             )}
@@ -2146,7 +2323,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   }
                   onNewReading={handleNewReading}
                   cooldownReady={tripletCooldownReady}
-                  nextAvailableAt={tripletCooldown?.nextAvailableAt}
+                  cooldownAllowed={effectiveTripletCooldown.allowed}
+                  nextAvailableAt={effectiveTripletCooldown.nextAvailableAt}
                   onUnlock={
                     session?.sessionId && !session.hasAccess && !runeConfig.enabled
                       ? () => setShowPaywall(true)
@@ -2170,8 +2348,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   }}
                 />
 
-                <MasterDecksSection masters={masters} onBrowseDeck={handleBrowseDeck} />
-
                 {deckGalleryOpen && (profile || browseDeckMaster) && (
                   <DeckGallery
                     system={
@@ -2193,10 +2369,14 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                     }
                     onBack={() => {
                       setDeckGalleryOpen(false);
-                      setBrowseDeckMaster(null);
-                      document.getElementById("мой-расклад")?.scrollIntoView({ behavior: "smooth" });
+                      if (browseDeckMaster) {
+                        setBrowseDeckMaster(null);
+                        setShowDecksModal(true);
+                      } else {
+                        document.getElementById("мой-расклад")?.scrollIntoView({ behavior: "smooth" });
+                      }
                     }}
-                    backLabel={browseDeckMaster ? "К витрине мастеров" : "К моему раскладу"}
+                    backLabel={browseDeckMaster ? "К колодам мастеров" : "К моему раскладу"}
                   />
                 )}
 
@@ -2213,11 +2393,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   questionCost={runeConfig.enabled ? runeCost("QUESTION") : undefined}
                   formatRunes={formatRunes}
                   title="Выберите мастера"
-                  subtitle={
-                    spreadReadingDone
-                      ? "Расшифровка расклада уже есть — продолжите с тем же мастером или начните свободный сеанс с другим"
-                      : "Карты уже выпали — выберите, кто их расшифрует"
-                  }
+                  subtitle={mastersShowcaseSubtitle}
                 />
 
                 <LandingSections
@@ -2258,8 +2434,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               subtitle="AI-наставники платформы и живые эксперты с авторским стилем"
             />
 
-            <MasterDecksSection masters={masters} onBrowseDeck={handleBrowseDeck} />
-
             {deckGalleryOpen && browseDeckMaster && (
               <DeckGallery
                 system={
@@ -2270,7 +2444,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 onBack={() => {
                   setDeckGalleryOpen(false);
                   setBrowseDeckMaster(null);
-                  document.getElementById("колоды")?.scrollIntoView({ behavior: "smooth" });
+                  setShowDecksModal(true);
                 }}
                 backLabel="К колодам мастеров"
               />
@@ -2310,6 +2484,13 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           onUnlocked={() => refresh(session.sessionId).then(() => setShowPaywall(false))}
         />
       )}
+
+      <MasterDecksModal
+        isOpen={showDecksModal}
+        onClose={() => setShowDecksModal(false)}
+        masters={masters}
+        onBrowseDeck={handleBrowseDeck}
+      />
 
       <RuneShopModal
         isOpen={showRuneShop}

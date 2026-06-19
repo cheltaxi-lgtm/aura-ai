@@ -121,15 +121,19 @@ export function primaryContinueMasterId(
   continueMasterIds: string[],
   fallbackMasterId?: string | null
 ): string | null {
-  if (continueMasterIds.length === 0) return fallbackMasterId ?? null;
+  if ((cards?.length ?? 0) < 3) return null;
 
   const cardsKey = tarotCardsKey(cards);
+  if (!cardsKey) return null;
+
+  if (continueMasterIds.length === 0) return null;
+
   let latest: { id: string; at: string } | null = null;
 
   for (const row of readings) {
     if (row.contextData?.type !== "reading") continue;
     if (!continueMasterIds.includes(row.characterName)) continue;
-    if (cardsKey && tarotCardsKey(row.contextData.tarotCards) !== cardsKey) continue;
+    if (tarotCardsKey(row.contextData.tarotCards) !== cardsKey) continue;
     const at = row.createdAt ?? "";
     if (!latest || at > latest.at) latest = { id: row.characterName, at };
   }

@@ -63,13 +63,13 @@ export default function MastersShowcase({
   );
 
   return (
-    <section id="наставники" className={`scroll-mt-24 ${className}`.trim()}>
-      <div className="mb-8 text-center">
-        <h2 className="font-display text-2xl font-semibold tracking-tight text-gray-300 md:text-3xl">{title}</h2>
-        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-gray-500">{subtitle}</p>
+    <section id="наставники" className={`master-showcase-section scroll-mt-24 ${className}`.trim()}>
+      <div className="master-showcase-section__head">
+        <h2 className="font-display master-showcase-section__title">{title}</h2>
+        <p className="master-showcase-section__subtitle">{subtitle}</p>
       </div>
 
-      <div className="mb-8 flex flex-wrap justify-center gap-2">
+      <div className="master-showcase-section__filters">
         {(
           [
             { id: "all" as const, label: `Все (${counts.all})` },
@@ -81,7 +81,7 @@ export default function MastersShowcase({
             key={tab.id}
             type="button"
             onClick={() => setFilter(tab.id)}
-            className={`rounded-full border px-4 py-2 text-xs transition-colors ${
+            className={`rounded-full border px-3 py-1.5 text-[11px] transition-colors ${
               filter === tab.id
                 ? "border-aura-purple/50 bg-aura-purple/20 text-aura-neon"
                 : "border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300"
@@ -118,7 +118,7 @@ export default function MastersShowcase({
 
       {showExpertCta && (
         <motion.div
-          className="glass-panel mt-10 flex flex-col items-center justify-between gap-4 p-6 sm:flex-row"
+          className="glass-panel master-showcase-section__expert-cta flex flex-col items-center justify-between gap-3 p-4 sm:flex-row"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}

@@ -9,6 +9,7 @@ import {
   serializeUserProfile,
   updateUserProfile,
   getLatestHistoryEntry,
+  recordTripletDrawAnchor,
 } from "@/lib/users";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
@@ -189,6 +190,8 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    await recordTripletDrawAnchor(user.id);
 
     return NextResponse.json({
       userId: user.id,

@@ -219,11 +219,44 @@ export async function incrementHistoryQuestions(userId: string) {
 }
 
 export async function deleteHistoryEntry(userId: string, entryId: string): Promise<boolean> {
+  const { rows } = await query<{ character_name: string; created_at: Date; context_data: Record<string, unknown> }>(
+    `SELECT character_name, created_at, context_data FROM history WHERE id = $1 AND user_id = $2`,
+    [entryId, userId]
+  );
+  const entry = rows[0];
+
   const result = await query(
     "DELETE FROM history WHERE id = $1 AND user_id = $2",
     [entryId, userId]
   );
+
+  if ((result.rowCount ?? 0) > 0 && entry?.created_at) {
+    const isTripletDraw =
+      entry.character_name === "triplet" ||
+      (entry.context_data as Record<string, unknown> | undefined)?.type === "triplet";
+    if (isTripletDraw) {
+      await recordTripletDrawAnchor(userId, entry.created_at);
+    }
+  }
+
   return (result.rowCount ?? 0) > 0;
+}
+
+export async function recordTripletDrawAnchor(
+  userId: string,
+  at: Date | string = new Date()
+): Promise<void> {
+  const iso = at instanceof Date ? at.toISOString() : at;
+  await query(
+    `UPDATE users SET astro_meta = jsonb_set(
+       COALESCE(astro_meta, '{}'::jsonb),
+       '{lastTripletDrawAt}',
+       to_jsonb($2::text),
+       true
+     )
+     WHERE id = $1`,
+    [userId, iso]
+  );
 }
 
 export function serializeUserProfile(user: UserRow) {

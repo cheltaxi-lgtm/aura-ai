@@ -26,6 +26,7 @@ interface ReadingRecapProps {
   onContinue?: () => void;
   onNewReading: () => void;
   cooldownReady?: boolean;
+  cooldownAllowed?: boolean;
   nextAvailableAt?: string | null;
   onUnlock?: () => void;
   unlockLabel?: string;
@@ -51,6 +52,7 @@ export default function ReadingRecap({
   onContinue,
   onNewReading,
   cooldownReady = true,
+  cooldownAllowed = true,
   nextAvailableAt,
   onUnlock,
   unlockLabel = "199 ₽",
@@ -58,11 +60,15 @@ export default function ReadingRecap({
   onOpenGallery,
 }: ReadingRecapProps) {
   const countdown = useTripletCountdown(nextAvailableAt);
-  const newReadingAllowed = cooldownReady && !countdown.isOnCooldown;
+  const newReadingAllowed =
+    cooldownReady && cooldownAllowed && !countdown.isOnCooldown;
+  const hasSpread = tarotCards.length >= 3;
 
-  const lastMaster = lastMasterId
+  const lastMaster = lastMasterId && hasSpread
     ? findShowcaseMaster(lastMasterId, masters) ?? getCharacterById(lastMasterId)
     : null;
+
+  const showContinue = hasSpread && Boolean(lastMaster && onContinue);
 
   const galleryMaster =
     lastMaster ??
@@ -77,7 +83,7 @@ export default function ReadingRecap({
   const zodiacSign = zodiacFromBirthDate(birthDate);
 
   const teaserText = useMemo(() => {
-    if (tarotCards.length >= 3) {
+    if (hasSpread) {
       return buildSpreadTeaser({
         userName,
         cards: tarotCards,
@@ -85,13 +91,14 @@ export default function ReadingRecap({
         masterName: lastMaster?.name,
       });
     }
+    if (!newReadingAllowed && countdown.hintRu) {
+      return `${userName}, суточный лимит активен — ${countdown.hintRu.toLowerCase()}. Выберите мастера ниже, затем выпустите новый расклад.`;
+    }
     return (
       teaser ??
-      (lastMaster
-        ? `${userName}, продолжите с ${lastMaster.name}, чтобы услышать полную расшифровку.`
-        : "Выберите мастера ниже — он расшифрует ваш расклад и ответит на вопросы.")
+      `${userName}, выберите мастера ниже и выпустите новый расклад из 3 карт.`
     );
-  }, [tarotCards, userName, positions, lastMaster, teaser]);
+  }, [hasSpread, tarotCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu]);
 
   const handleNewReading = () => {
     if (!newReadingAllowed) return;
@@ -112,7 +119,7 @@ export default function ReadingRecap({
           ) : null}
           <div>
           <p className="font-display text-lg font-semibold text-white sm:text-xl">
-            Ваш расклад готов
+            {hasSpread ? "Ваш расклад готов" : "Новый расклад"}
           </p>
           <p className="mt-1 flex flex-wrap items-center gap-1.5 font-display text-sm text-aura-ivory/85">
             <span className="uppercase tracking-wide">{userName}</span>
@@ -136,7 +143,7 @@ export default function ReadingRecap({
           className={`btn-new-spread ${newReadingAllowed ? "btn-new-spread--active" : "btn-new-spread--cooldown"}`}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${newReadingAllowed ? "" : "opacity-60"}`} />
-          Новый расклад
+          {newReadingAllowed ? "Новый расклад" : `Новый расклад · ${countdown.hms}`}
         </button>
       </div>
 
@@ -174,7 +181,9 @@ export default function ReadingRecap({
         </div>
       ) : (
         <p className="mb-4 text-sm text-amber-400/90">
-          Карты расклада не найдены — нажмите «Новый расклад», чтобы выпустить три карты заново.
+          {newReadingAllowed
+            ? "Расклад не найден — нажмите «Новый расклад» или выберите мастера ниже."
+            : "Расклад не найден — новые карты будут доступны после суточного лимита."}
         </p>
       )}
 
@@ -185,13 +194,13 @@ export default function ReadingRecap({
       ) : null}
 
       <div className="mt-5 flex flex-wrap gap-3">
-        {lastMaster && onContinue ? (
+        {showContinue ? (
           <button
             onClick={onContinue}
             className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
           >
-            Продолжить с {lastMaster.name}
-            <MasterAvatarInline masterId={lastMaster.id} masterName={lastMaster.name} size="xs" />
+            Продолжить с {lastMaster!.name}
+            <MasterAvatarInline masterId={lastMaster!.id} masterName={lastMaster!.name} size="xs" />
           </button>
         ) : null}
         {onUnlock ? (

@@ -84,6 +84,9 @@ docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/m
 echo ">>> DB migrate session memories..."
 docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-session-memories.sql 2>/dev/null || true
 
+echo ">>> DB migrate triplet cooldown anchor..."
+docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-triplet-cooldown-anchor.sql 2>/dev/null || true
+
 echo ">>> Seed admin..."
 export DATABASE_URL="${DATABASE_URL:-postgresql://auraai:auraai_secret@localhost:5432/auraai}"
 export ADMIN_SEED_EMAIL="${ADMIN_SEED_EMAIL:-cheldriver@yandex.ru}"
