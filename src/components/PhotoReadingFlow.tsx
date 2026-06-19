@@ -224,6 +224,29 @@ export default function PhotoReadingFlow({
       }
 
       setRedrawSpread(data.redrawSpread as RedrawSpread);
+      // #region agent log
+      fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9adef" },
+        body: JSON.stringify({
+          sessionId: "f9adef",
+          runId: "photo-recognize",
+          hypothesisId: "A-B",
+          location: "PhotoReadingFlow.tsx:recognize",
+          message: "photo redraw spread",
+          data: {
+            detected: data.detectedCards,
+            system: data.deckSystem,
+            cards: (data.redrawSpread as RedrawSpread)?.cards?.map((c) => ({
+              name: c.name,
+              placeholder: c.placeholder,
+              reversed: c.reversed,
+            })),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       setPreviewUrl(null);
       setImageData(null);
       if (previewObjectUrlRef.current) {

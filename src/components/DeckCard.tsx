@@ -20,6 +20,10 @@ export interface DeckCardProps {
   faceDown?: boolean;
   /** Hide name caption inside card (used by aligned spread row) */
   hideCaption?: boolean;
+  /** Upright image shown rotated 180° (reversed spread) */
+  reversed?: boolean;
+  /** Pre-resolved deck face path (photo redraw) */
+  imagePath?: string;
   /** Opens detail modal — gallery & daily spread */
   onClick?: () => void;
   interactive?: boolean;
@@ -41,6 +45,8 @@ export default function DeckCard({
   className = "",
   faceDown = false,
   hideCaption = false,
+  reversed = false,
+  imagePath: imagePathProp,
   onClick,
   interactive = false,
 }: DeckCardProps) {
@@ -51,7 +57,7 @@ export default function DeckCard({
   const sizeClass = SIZE_CLASS[size];
   const meaningWidth = size === "lg" ? "max-w-[180px]" : size === "sm" ? "max-w-[120px]" : "max-w-[156px]";
 
-  const imageSrc = faceDown ? deckBackPath(system) : resolved.imagePath;
+  const imageSrc = faceDown ? deckBackPath(system) : (imagePathProp ?? resolved.imagePath);
   const corner = faceDown ? "✦" : symbolCornerLabel(system, spreadSymbol);
   const kindLabel = faceDown ? "" : symbolKindLabel(system, spreadSymbol);
 
@@ -80,7 +86,9 @@ export default function DeckCard({
             )}
           </div>
 
-          <div className="lux-tarot-card__image-wrap">
+          <div
+            className={`lux-tarot-card__image-wrap${reversed ? " lux-tarot-card__image-wrap--reversed" : ""}`}
+          >
             <Image
               src={imageSrc}
               alt={faceDown ? "Рубашка" : resolved.name}

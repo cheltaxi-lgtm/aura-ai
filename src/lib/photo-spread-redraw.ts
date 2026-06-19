@@ -6,6 +6,7 @@ import {
 } from "@/lib/decks";
 import { getDeckImagePath, DECK_BACK_PATHS } from "@/data/decks";
 import { getSymbolDescription } from "@/data/descriptions";
+import { resolveDetectedSymbolName } from "@/lib/photo-card-resolve";
 
 export interface RedrawSpreadCard {
   name: string;
@@ -24,7 +25,7 @@ export interface RedrawSpread {
   cards: RedrawSpreadCard[];
 }
 
-const REVERSED_MARKERS = /\(перев\.?\)|\(reversed\)|\(rev\.?\)|перев\.?/i;
+const REVERSED_MARKERS = /\(перев\.?\)|\(reversed\)|\(rev\.?\)|перев\.?|перевернутая|перевёрнутая|reversed|upside[- ]?down/i;
 
 export function parseCardOrientation(raw: string): { name: string; reversed: boolean } {
   let text = raw.replace(/[«»"']/g, "").trim();
@@ -95,18 +96,19 @@ export function mapDetectedToRedrawSpread(params: {
     inferSpreadPositions(detectedCards.length, system, spreadType);
 
   const cards: RedrawSpreadCard[] = detectedCards.map((raw, index) => {
-    const { name, reversed } = parseCardOrientation(raw);
-    const symbol = findSymbolByName(system, name);
-    const imagePath = getDeckImagePath(system, name);
-    const desc = getSymbolDescription(system, symbol?.name ?? name);
+    const { name: rawName, reversed } = parseCardOrientation(raw);
+    const resolvedName = resolveDetectedSymbolName(system, rawName);
+    const symbol = findSymbolByName(system, resolvedName);
+    const imagePath = getDeckImagePath(system, resolvedName);
+    const desc = getSymbolDescription(system, symbol?.name ?? resolvedName);
 
     return {
-      name: symbol?.name ?? name,
+      name: symbol?.name ?? resolvedName,
       reversed,
       position: positions[index] ?? `Позиция ${index + 1}`,
       imagePath,
       shortMeaning: desc.shortMeaning || symbol?.meaning || "",
-      placeholder: isPlaceholderArt(system, name, imagePath),
+      placeholder: isPlaceholderArt(system, resolvedName, imagePath),
       order: index,
     };
   });

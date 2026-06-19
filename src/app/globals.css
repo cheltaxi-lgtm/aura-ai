@@ -1615,16 +1615,13 @@
 
 .photo-spread-preview__card {
   position: relative;
-  transition: transform 0.35s ease;
 }
 
-.photo-spread-preview__card--reversed {
+.lux-tarot-card__image-wrap--reversed .lux-tarot-card__image {
   transform: rotate(180deg);
 }
 
-.photo-spread-preview__card--reversed .lux-label,
-.photo-spread-preview__card--reversed + p,
-.photo-spread-preview__card--reversed ~ p {
+.lux-tarot-card__image-wrap--reversed .lux-tarot-card__image-vignette {
   transform: rotate(180deg);
 }
 

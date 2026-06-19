@@ -83,12 +83,15 @@ export default function PhotoSpreadPreview({
         {spread.cards.map((card, index) => (
           <div key={`${card.name}-${index}`} className="photo-spread-preview__item">
             <p className="lux-label mb-2 text-center">{card.position}</p>
-            <div className={card.reversed ? "photo-spread-preview__card photo-spread-preview__card--reversed" : "photo-spread-preview__card"}>
+            <div className={card.reversed ? "photo-spread-preview__card" : "photo-spread-preview__card"}>
               <DeckCard
                 card={{ name: card.name, meaning: card.shortMeaning }}
                 system={spread.system}
                 masterId={masterId}
+                imagePath={card.placeholder ? undefined : card.imagePath}
+                reversed={card.reversed}
                 showMeaning={false}
+                hideCaption
                 size="md"
                 className="mx-auto w-full max-w-[148px]"
               />
