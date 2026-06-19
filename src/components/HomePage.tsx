@@ -2140,9 +2140,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 {deckGalleryOpen && (profile || browseDeckMaster) && (
                   <DeckGallery
                     system={
-                      browseDeckMaster?.system ??
-                      profile?.deckSystem ??
-                      tripletSystem
+                      browseDeckMaster
+                        ? (browseDeckMaster.system ?? resolveMasterDeckSystem(browseDeckMaster.id))
+                        : (profile?.deckSystem ?? tripletSystem)
                     }
                     masterName={
                       browseDeckMaster?.name ??
@@ -2227,7 +2227,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
             {deckGalleryOpen && browseDeckMaster && (
               <DeckGallery
-                system={browseDeckMaster.system}
+                system={
+                  browseDeckMaster.system ?? resolveMasterDeckSystem(browseDeckMaster.id)
+                }
                 masterName={browseDeckMaster.name}
                 masterId={browseDeckMaster.id}
                 onBack={() => {

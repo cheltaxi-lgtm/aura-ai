@@ -6,7 +6,7 @@ import { ArrowRight, Bot, Layers, Star, UserRound } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { formatMasterPriceDisplay } from "@/lib/master-pricing";
 import { masterTagline } from "@/data/master-avatars";
-import { getDeckDefinition } from "@/lib/decks";
+import { getDeckDefinition, resolveMasterDeckSystem } from "@/lib/decks";
 import { DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
 import MasterAvatar from "@/components/MasterAvatar";
 
@@ -54,8 +54,9 @@ export default function MasterShowcaseCard({
   onSelect,
   onBrowseDeck,
 }: MasterShowcaseCardProps) {
+  const deckSystem = master.system ?? resolveMasterDeckSystem(master.id);
   const price = formatMasterPriceDisplay({
-    system: master.system,
+    system: deckSystem,
     priceFrom: master.priceFrom,
     runesEnabled,
     readingCost,
@@ -65,8 +66,8 @@ export default function MasterShowcaseCard({
   });
 
   const ctaLabel = canContinue ? "Продолжить" : "Начать сеанс";
-  const deckCount = getDeckDefinition(master.system).symbols.length;
-  const deckUnit = DECK_SYSTEM_LABEL[master.system];
+  const deckCount = getDeckDefinition(deckSystem).symbols.length;
+  const deckUnit = DECK_SYSTEM_LABEL[deckSystem];
 
   return (
     <motion.article

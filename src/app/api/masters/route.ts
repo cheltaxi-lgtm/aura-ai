@@ -19,6 +19,7 @@ export async function GET() {
       priceFrom: m.priceFrom,
       rating: m.rating,
       sessions: m.sessions,
+      system: m.system,
       profilePath: m.profilePath,
     })),
     counts: {

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Layers } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
-import { getDeckDefinition } from "@/lib/decks";
+import { getDeckDefinition, resolveMasterDeckSystem } from "@/lib/decks";
 import { DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
 import { masterTagline } from "@/data/master-avatars";
 import MasterAvatar from "@/components/MasterAvatar";
@@ -15,7 +15,10 @@ interface MasterDecksSectionProps {
 
 export default function MasterDecksSection({ masters, onBrowseDeck }: MasterDecksSectionProps) {
   const deckMasters = useMemo(
-    () => masters.filter((m) => m.system && getDeckDefinition(m.system).symbols.length > 0),
+    () =>
+      masters
+        .map((m) => ({ ...m, system: m.system ?? resolveMasterDeckSystem(m.id) }))
+        .filter((m) => getDeckDefinition(m.system).symbols.length > 0),
     [masters]
   );
 
