@@ -15,7 +15,10 @@ import {
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MastersShowcase from "@/components/MastersShowcase";
 import MasterAvatar from "@/components/MasterAvatar";
+import RuneIcon from "@/components/RuneIcon";
+import RunePrice from "@/components/RunePrice";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 const BENEFITS = [
   {
@@ -106,6 +109,15 @@ const TESTIMONIALS = [
   },
 ] as const;
 
+function parseTestimonialAuthor(author: string) {
+  const [namePart, cityPart] = author.split(",").map((part) => part.trim());
+  return {
+    name: namePart || author,
+    city: cityPart || "",
+    initial: (namePart || author).charAt(0).toUpperCase(),
+  };
+}
+
 function parseSessionsCount(sessions: string): number {
   const m = sessions.match(/(\d+)/);
   return m ? Number.parseInt(m[1], 10) : 0;
@@ -124,7 +136,9 @@ export interface AuraSellingLandingProps {
   showMasters?: boolean;
   showTariffs?: boolean;
   onOpenPaywall?: () => void;
-  onOpenRuneShop?: () => void;
+  runeBalance?: number;
+  isUnlimited?: boolean;
+  onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
 }
 
 export default function AuraSellingLanding({
@@ -140,9 +154,12 @@ export default function AuraSellingLanding({
   showMasters = true,
   showTariffs = false,
   onOpenPaywall,
-  onOpenRuneShop,
+  runeBalance = 0,
+  isUnlimited = false,
+  onInsufficientRunes,
 }: AuraSellingLandingProps) {
   const { config, cost, formatRunes } = useRuneConfig();
+  const { expertRegistrationEnabled } = usePlatformFeatures();
 
   const totalSessions = masters.reduce((sum, m) => sum + parseSessionsCount(m.sessions), 0);
   const avgRating =
@@ -199,7 +216,7 @@ export default function AuraSellingLanding({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
-              <p className="aura-landing-hero__eyebrow">Эзотерический оракул Aura</p>
+              <p className="aura-landing-hero__eyebrow">Эзотерический оракул Zovus</p>
               <h1 className="font-display aura-landing-hero__title">
                 Персональный расклад по{" "}
                 <span className="lux-heading-accent">Таро, рунам и звёздам</span>
@@ -216,7 +233,7 @@ export default function AuraSellingLanding({
                 </button>
               </div>
               <p className="aura-landing-hero__trust">
-                AI-мастера · живые эксперты · персональные ответы
+                Персональные мастера · глубокие ответы · история сеансов
               </p>
               {config.enabled ? (
                 <p className="aura-landing-hero__pricing">
@@ -259,7 +276,7 @@ export default function AuraSellingLanding({
       <section className="aura-landing-section">
         <div className="mx-auto max-w-6xl">
           <div className="aura-landing-section__head">
-            <h2 className="font-display aura-landing-section__title">Почему Aura</h2>
+            <h2 className="font-display aura-landing-section__title">Почему Zovus</h2>
             <p className="aura-landing-section__subtitle">
               Не просто карты — персональный канал к символам, которые говорят на вашем языке.
             </p>
@@ -322,10 +339,16 @@ export default function AuraSellingLanding({
           readingCost={config.enabled ? cost("READING") : undefined}
           questionCost={config.enabled ? cost("QUESTION") : undefined}
           formatRunes={formatRunes}
+          runeBalance={runeBalance}
+          isUnlimited={isUnlimited}
+          onInsufficientRunes={(payload) => {
+            onInsufficientRunes?.(payload);
+            onOpenPaywall?.();
+          }}
           layout="grid"
           title="Выберите своего проводника"
           subtitle="Каждый мастер работает в своей системе — от классического Таро до рун и астрологии."
-          showExpertCta={false}
+          showExpertCta={expertRegistrationEnabled}
           className="aura-landing-masters"
         />
       ) : null}
@@ -363,9 +386,9 @@ export default function AuraSellingLanding({
         </div>
       </section>
 
-      <section className="aura-landing-section">
+      <section className="aura-landing-section aura-landing-section--trust">
         <div className="mx-auto max-w-6xl">
-          <div className="aura-landing-trust glass-panel">
+          <div className="aura-landing-trust">
             <div className="aura-landing-trust__stats">
               <div className="aura-landing-trust__stat">
                 <span className="aura-landing-trust__value">
@@ -382,37 +405,94 @@ export default function AuraSellingLanding({
                 <span className="aura-landing-trust__label">проводников в витрине</span>
               </div>
             </div>
+
             <div className="aura-landing-trust__quotes">
-              {TESTIMONIALS.map((t) => (
-                <blockquote key={t.author} className="aura-landing-quote">
-                  <p className="aura-landing-quote__text">«{t.quote}»</p>
-                  <footer className="aura-landing-quote__author">{t.author}</footer>
-                </blockquote>
-              ))}
+              {TESTIMONIALS.map((t) => {
+                const author = parseTestimonialAuthor(t.author);
+                return (
+                  <article key={t.author} className="aura-landing-review">
+                    <div className="aura-landing-review__stars" aria-hidden>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star key={i} className="aura-landing-review__star" fill="currentColor" />
+                      ))}
+                    </div>
+                    <span className="aura-landing-review__quote-mark" aria-hidden>
+                      "
+                    </span>
+                    <p className="aura-landing-review__text">{t.quote}</p>
+                    <footer className="aura-landing-review__footer">
+                      <span className="aura-landing-review__avatar">{author.initial}</span>
+                      <div className="aura-landing-review__author-meta">
+                        <span className="aura-landing-review__name">{author.name}</span>
+                        {author.city ? (
+                          <span className="aura-landing-review__city">{author.city}</span>
+                        ) : null}
+                      </div>
+                    </footer>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </div>
       </section>
 
       {showTariffs ? (
-        <section id="тарифы" className="aura-landing-section text-center">
-          <div className="mx-auto max-w-xl">
-            <h2 className="font-display aura-landing-section__title mb-4">
-              {config.enabled ? "Оплата рунами ᚢ" : "Тарифы"}
+        <section id="тарифы" className="aura-landing-section aura-landing-section--tariffs">
+          <div className="mx-auto max-w-6xl text-center">
+            <h2 className="font-display aura-landing-section__title aura-landing-tariffs__title">
+              {config.enabled ? (
+                <>
+                  Оплата рунами
+                  <RuneIcon className="aura-landing-tariffs__title-icon" title="Руны" />
+                </>
+              ) : (
+                "Тарифы"
+              )}
             </h2>
-            <p className="mb-6 text-sm text-aura-ivory/60">
-              {config.enabled
-                ? `Расшифровка — ${formatRunes(cost("READING"))} · вопросы после ${config.freeQuestions} бесплатных — ${formatRunes(cost("QUESTION"))}`
-                : "Полный разбор — 199 ₽ · подписка Aura+ — 590 ₽/мес"}
-            </p>
+
+            {config.enabled ? (
+              <div className="aura-landing-tariffs__grid">
+                <article className="aura-landing-tariff-card">
+                  <RuneIcon className="aura-landing-tariff-card__icon" />
+                  <p className="aura-landing-tariff-card__price">
+                    <RunePrice value={cost("READING")} iconClassName="h-4 w-4" />
+                  </p>
+                  <p className="aura-landing-tariff-card__label">Расшифрование</p>
+                  <p className="aura-landing-tariff-card__hint">полный разбор расклада</p>
+                </article>
+                <article className="aura-landing-tariff-card">
+                  <RuneIcon className="aura-landing-tariff-card__icon" />
+                  <p className="aura-landing-tariff-card__price">
+                    <RunePrice value={cost("QUESTION")} iconClassName="h-4 w-4" />
+                  </p>
+                  <p className="aura-landing-tariff-card__label">Доп. вопрос</p>
+                  <p className="aura-landing-tariff-card__hint">после бесплатных</p>
+                </article>
+                <article className="aura-landing-tariff-card aura-landing-tariff-card--free">
+                  <RuneIcon className="aura-landing-tariff-card__icon" />
+                  <p className="aura-landing-tariff-card__price aura-landing-tariff-card__price--free">
+                    Бесплатно
+                  </p>
+                  <p className="aura-landing-tariff-card__label">
+                    Первые {config.freeQuestions} вопроса
+                  </p>
+                  <p className="aura-landing-tariff-card__hint">в каждом сеансе</p>
+                </article>
+              </div>
+            ) : (
+              <p className="aura-landing-tariffs__fallback">
+                Полный разбор — 199 ₽ · подписка Zovus+ — 590 ₽/мес
+              </p>
+            )}
+
             <button
               type="button"
               onClick={() => {
-                if (config.enabled && isLoggedIn && onOpenRuneShop) onOpenRuneShop();
-                else if (!config.enabled && onOpenPaywall) onOpenPaywall();
+                if (isLoggedIn && onOpenPaywall) onOpenPaywall();
                 else handlePrimaryCta();
               }}
-              className="btn-neon px-8 py-3 text-sm"
+              className="aura-landing-btn aura-landing-btn--secondary"
             >
               {isLoggedIn ? "Пополнить баланс" : "Начать бесплатно"}
             </button>
@@ -420,9 +500,9 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      <section className="aura-landing-final">
+      <section className="aura-landing-section aura-landing-section--final">
         <motion.div
-          className="aura-landing-final__panel glass-panel mx-auto max-w-3xl text-center"
+          className="aura-landing-final__panel mx-auto max-w-3xl text-center"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -434,13 +514,14 @@ export default function AuraSellingLanding({
           <p className="aura-landing-final__text">
             Выберите мастера и откройте подсказку, которая нужна вам сейчас.
           </p>
-          <button type="button" onClick={handlePrimaryCta} className="btn-primary mt-8 px-10 py-3.5 text-base">
+          <button type="button" onClick={handlePrimaryCta} className="aura-landing-btn aura-landing-btn--primary">
             Начать расклад
+            <ArrowRight className="h-4 w-4" />
           </button>
           {!isLoggedIn ? (
-            <p className="mt-4 text-xs text-gray-500">
+            <p className="aura-landing-final__login">
               Уже есть аккаунт?{" "}
-              <Link href="/auth/user/login?returnTo=/" className="text-aura-champagne/80 hover:text-aura-gold hover:underline">
+              <Link href="/auth/user/login?returnTo=/" className="aura-landing-final__login-link">
                 Войти
               </Link>
             </p>
