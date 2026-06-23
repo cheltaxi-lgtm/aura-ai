@@ -2,12 +2,14 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { RefreshCw, Sparkles, Layers } from "lucide-react";
+import { Clock, RefreshCw, Sparkles, Layers } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
 import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
+import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { reconcileSpreadDeck } from "@/lib/spread-context";
 import { buildSpreadTeaser } from "@/lib/spread-teaser";
 import { getZodiacFromDate } from "@/utils/zodiac";
 import { useTripletCountdown } from "@/hooks/useTripletCountdown";
@@ -25,6 +27,7 @@ interface ReadingRecapProps {
   masters?: ShowcaseMaster[];
   onContinue?: () => void;
   onNewReading: () => void;
+  onClearSpread?: () => void;
   cooldownReady?: boolean;
   cooldownAllowed?: boolean;
   nextAvailableAt?: string | null;
@@ -41,6 +44,17 @@ function zodiacFromBirthDate(birthDate?: string) {
   return getZodiacFromDate(birthDate);
 }
 
+function formatDisplayName(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((part) => {
+      if (!part) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
 export default function ReadingRecap({
   userName,
   birthDate,
@@ -51,6 +65,7 @@ export default function ReadingRecap({
   masters,
   onContinue,
   onNewReading,
+  onClearSpread,
   cooldownReady = true,
   cooldownAllowed = true,
   nextAvailableAt,
@@ -70,12 +85,15 @@ export default function ReadingRecap({
 
   const showContinue = hasSpread && Boolean(lastMaster && onContinue);
 
-  const galleryMaster =
-    lastMaster ??
-    masters?.find((m) => m.system === deckSystem) ??
-    masters?.[0];
+  const galleryMaster = lastMaster;
 
-  const system = deckSystem ?? (galleryMaster ? resolveMasterDeckSystem(galleryMaster.id) : undefined);
+  const spreadDisplay = useMemo(() => {
+    if (!hasSpread) return null;
+    return reconcileSpreadDeck(deckSystem ?? DEFAULT_DECK_SYSTEM, tarotCards.slice(0, 3));
+  }, [hasSpread, deckSystem, tarotCards]);
+
+  const system = spreadDisplay?.system ?? deckSystem ?? (galleryMaster ? resolveMasterDeckSystem(galleryMaster.id) : undefined);
+  const spreadCards = spreadDisplay?.cards ?? tarotCards.slice(0, 3);
   const positions = system
     ? [...getDeckPositions(system)]
     : ["Прошлое", "Настоящее", "Будущее"];
@@ -86,7 +104,7 @@ export default function ReadingRecap({
     if (hasSpread) {
       return buildSpreadTeaser({
         userName,
-        cards: tarotCards,
+        cards: spreadCards,
         positions,
         masterName: lastMaster?.name,
       });
@@ -98,7 +116,7 @@ export default function ReadingRecap({
       teaser ??
       `${userName}, выберите мастера и выпустите расклад из 3 карт.`
     );
-  }, [hasSpread, tarotCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu]);
+  }, [hasSpread, spreadCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu]);
 
   const handleNewReading = () => {
     if (!newReadingAllowed) return;
@@ -108,27 +126,29 @@ export default function ReadingRecap({
   return (
     <motion.div
       id="мой-расклад"
-      className={`glass-panel mx-auto mb-5 max-w-xl ${hasSpread ? "p-6" : "reading-recap--idle p-4 sm:p-5"}`}
+      className={`glass-panel reading-recap mx-auto mb-5 max-w-xl ${
+        hasSpread ? "reading-recap--spread p-6" : "reading-recap--idle p-4 sm:p-5"
+      }`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
     >
-      <div className={`flex flex-wrap items-center justify-between gap-3 ${hasSpread ? "mb-4" : ""}`}>
+      <div className={`reading-recap__header flex flex-wrap items-start justify-between gap-3 ${hasSpread ? "mb-6" : ""}`}>
         <div className="min-w-0">
           <p className="font-display text-base font-semibold text-white sm:text-lg">
             {hasSpread ? "Ваш расклад" : userName}
           </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-aura-champagne/70 sm:text-sm">
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs sm:text-sm">
             {hasSpread ? (
-              <span className="uppercase tracking-wide text-aura-ivory/85">{userName}</span>
+              <span className="reading-recap__name font-semibold text-aura-gold">{formatDisplayName(userName)}</span>
             ) : (
-              <span>Новый расклад из 3 карт</span>
+              <span className="text-aura-champagne/70">Новый расклад из 3 карт</span>
             )}
             {zodiacSign ? (
               <>
-                <span className="text-aura-champagne/40">·</span>
-                <span className="inline-flex items-center gap-1">
+                <span className="text-aura-champagne/35">·</span>
+                <span className="inline-flex items-center gap-1 text-aura-champagne/55">
                   {zodiacSign.name}
-                  <ZodiacGlyph signName={zodiacSign.name} className="h-3.5 w-3.5" />
+                  <ZodiacGlyph signName={zodiacSign.name} className="h-3.5 w-3.5 opacity-80" />
                 </span>
               </>
             ) : null}
@@ -139,9 +159,13 @@ export default function ReadingRecap({
           onClick={handleNewReading}
           disabled={!newReadingAllowed}
           title={countdown.tooltip || "Выпустить новый расклад из 3 карт"}
-          className={`btn-new-spread shrink-0 ${newReadingAllowed ? "btn-new-spread--active" : "btn-new-spread--cooldown"}`}
+          className={`btn-new-spread shrink-0 ${newReadingAllowed ? "btn-new-spread--active" : "btn-new-spread--cooldown reading-recap__cooldown"}`}
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${newReadingAllowed ? "" : "opacity-60"}`} />
+          {newReadingAllowed ? (
+            <RefreshCw className="h-3.5 w-3.5" />
+          ) : (
+            <Clock className="h-3.5 w-3.5 opacity-70" aria-hidden />
+          )}
           {newReadingAllowed ? "Новый расклад" : countdown.hms}
         </button>
       </div>
@@ -157,12 +181,12 @@ export default function ReadingRecap({
       ) : null}
 
       {hasSpread ? (
-        <div className="mb-5 rounded-2xl border border-aura-gold/15 bg-black/20 p-4 sm:p-5">
-          <p className="mb-4 text-center text-xs uppercase tracking-widest text-aura-gold">
+        <div className="reading-recap__cards mb-6">
+          <p className="reading-recap__cards-hint mb-4 text-center text-[11px] tracking-wide text-aura-champagne/50">
             Нажмите на карту для подробностей
           </p>
           <DeckCardsRow
-            cards={tarotCards.slice(0, 3)}
+            cards={spreadCards}
             system={system}
             masterId={galleryMaster?.id}
             size="lg"
@@ -170,11 +194,11 @@ export default function ReadingRecap({
             aligned
           />
           {onOpenGallery && galleryMaster && system ? (
-            <div className="mt-4 text-center">
+            <div className="reading-recap__gallery mt-6 text-center">
               <button
                 type="button"
                 onClick={onOpenGallery}
-                className="inline-flex items-center gap-2 text-xs text-aura-champagne/80 underline-offset-4 transition-colors hover:text-aura-champagne hover:underline"
+                className="btn-luxe btn-luxe--sm btn-luxe--gold"
               >
                 <Layers className="h-3.5 w-3.5" />
                 Вся колода {galleryMaster.name}
@@ -186,29 +210,42 @@ export default function ReadingRecap({
 
       {hasSpread ? (
         <>
-          <p className="mb-4 text-sm leading-relaxed text-gray-300">{teaserText}</p>
-          {readingHint ? <p className="mb-4 text-xs text-aura-gold/90">{readingHint}</p> : null}
+          <p className="reading-recap__teaser mb-4 text-sm leading-[1.6] text-gray-300">{teaserText}</p>
+          {readingHint ? (
+            <p className="reading-recap__hint mb-4 text-xs text-aura-gold/90">{readingHint}</p>
+          ) : null}
         </>
       ) : null}
 
       {hasSpread ? (
-        <div className="flex flex-wrap gap-3">
+        <div className="reading-recap__actions flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           {showContinue ? (
             <button
+              type="button"
               onClick={onContinue}
-              className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+              className="reading-recap__btn-primary btn-luxe btn-luxe--md"
             >
-              Продолжить с {lastMaster!.name}
               <MasterAvatarInline masterId={lastMaster!.id} masterName={lastMaster!.name} size="xs" />
+              Продолжить с {lastMaster!.name}
             </button>
           ) : null}
           {onUnlock ? (
             <button
+              type="button"
               onClick={onUnlock}
-              className="flex items-center gap-2 rounded-xl border border-aura-gold/30 px-5 py-2.5 text-sm text-aura-gold transition-colors hover:border-aura-gold/60"
+              className="reading-recap__btn-primary btn-luxe btn-luxe--md"
             >
               <Sparkles className="h-4 w-4" />
               Открыть полный разбор — {unlockLabel}
+            </button>
+          ) : null}
+          {onClearSpread ? (
+            <button
+              type="button"
+              onClick={onClearSpread}
+              className="reading-recap__btn-ghost btn-luxe btn-luxe--md"
+            >
+              Убрать с главной
             </button>
           ) : null}
         </div>

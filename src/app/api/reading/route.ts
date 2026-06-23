@@ -6,20 +6,30 @@ import { isAiMasterId } from "@/lib/showcase-masters";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
-import { canAfford, spendRunes, refundRunes } from "@/lib/rune-service";
-import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
+import { spendRunesAtomic, refundRunes, isRuneBillingActive } from "@/lib/rune-service";
+import { getRuneSettings } from "@/lib/rune-settings";
 import { resolveSessionForUser } from "@/lib/session-access";
-import { enforceChatRateLimit } from "@/lib/api-guards";
-import { createHistoryEntry, patchTripletInterpretation } from "@/lib/users";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
+import { insufficientRunesResponse } from "@/lib/insufficient-runes";
+import { createHistoryEntry, patchTripletInterpretation, getUserById } from "@/lib/users";
 import { getUserReadingHistory } from "@/lib/accounts";
 import { tarotCardsKey } from "@/lib/tarot";
 import {
   appendUserMemoryToPrompt,
-  buildUserMemoryBlock,
-  cardsKeyFromTarot,
+  buildClientBlock,
+  buildMemoryBlock,
 } from "@/lib/user-memory";
+import {
+  buildSpreadUserMessage,
+  enrichCardsForSpreadContext,
+  resolveIntentionLabel,
+  userContextFromProfile,
+} from "@/lib/prompts/user-context";
 import { getSessionMemories, countSessionMemories } from "@/lib/session-memory";
-import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
+import { resolveApiCharacterId, sanitizeTextField, stripMemoryLeakFromReply, sanitizeReadingForClient } from "@/lib/chat-sanitize";
+import { resolveMasterDeckSystem } from "@/lib/decks";
+import { INTENTION_OPTIONS, intentionPromptBlock, intentionReadingPromptBlock } from "@/lib/intention";
+import { isValidSessionIntention } from "@/lib/session-topics";
 
 export async function POST(request: NextRequest) {
   let characterId = "ragnar";
@@ -35,6 +45,8 @@ export async function POST(request: NextRequest) {
   let mainQuestion: string | undefined;
   let astroMeta: import("@/lib/astro-profile").AstroMeta | undefined;
   let isPaid = false;
+  let intention = "";
+  let forceRegenerate = false;
 
   try {
     const body = await request.json();
@@ -50,6 +62,8 @@ export async function POST(request: NextRequest) {
     lifeFocus = sanitizeTextField(body.lifeFocus, 40);
     mainQuestion = sanitizeTextField(body.mainQuestion, 500);
     astroMeta = body.astroMeta;
+    intention = sanitizeTextField(body.intention, 40) ?? "";
+    forceRegenerate = body.forceRegenerate === true;
   } catch (error) {
     console.error("Reading JSON error:", error);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -59,12 +73,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
+  if (intention && !isValidSessionIntention(intention)) {
+    intention = "";
+  }
+
   const authed = await requireProfileUserId();
   if (!authed) {
     return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
   }
 
-  const rateLimited = await enforceChatRateLimit(authed.auth.sub);
+  if (intention === "life_death") {
+    return NextResponse.json({ reading: "", skipReading: true });
+  }
+
+  const serverProfile = await getUserById(authed.profileUserId);
+  if (serverProfile) {
+    userName = serverProfile.name;
+    gender = serverProfile.gender;
+    zodiac = serverProfile.zodiac;
+    birthDate = serverProfile.birth_date;
+    birthTime = serverProfile.birth_time ?? undefined;
+    birthCity = serverProfile.birth_city ?? undefined;
+    lifeFocus = serverProfile.life_focus ?? undefined;
+    mainQuestion = serverProfile.main_question ?? undefined;
+    astroMeta = serverProfile.astro_meta as import("@/lib/astro-profile").AstroMeta;
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "reading");
   if (rateLimited) return rateLimited;
 
   let spentRunes = 0;
@@ -117,14 +152,19 @@ export async function POST(request: NextRequest) {
     let systemPrompt = buildCharacterPrompt(characterId, ctx, {
       sessionNumber,
       memory: sessionMemories,
+      intention: intention || null,
     });
 
     if (!isAiMasterId(characterId) && (await ensureDb())) {
       const blogger = await getBloggerBySlug(characterId);
       if (blogger) {
         const knowledge = await getBloggerKnowledge(blogger.id);
-        systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge);
+        systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge, intention || null);
       }
+    }
+
+    if (intention) {
+      systemPrompt += intentionReadingPromptBlock(intention);
     }
 
     const cardsKey = tarotCardsKey(tarotCards);
@@ -141,7 +181,7 @@ export async function POST(request: NextRequest) {
           tarotCardsKey(r.context_data.tarotCards as { name: string }[] | undefined) === cardsKey
       );
 
-      if (existing) {
+      if (existing && !forceRegenerate) {
         reading = existing.context_data.reading as string;
         historyId = existing.id;
         isPaid = existing.is_paid || isPaid;
@@ -153,7 +193,7 @@ export async function POST(request: NextRequest) {
 
         if (sessionId) {
           try {
-            await saveMessage(sessionId, characterId, "assistant", reading);
+            await saveMessage(sessionId, characterId, "assistant", reading, authed.profileUserId);
           } catch (err) {
             console.warn("Reading chat save failed:", err);
           }
@@ -173,65 +213,75 @@ export async function POST(request: NextRequest) {
     }
 
     const runeSettings = await getRuneSettings();
+    const useRuneBilling = isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
     let runeBalance: number | undefined;
 
-    if (runeSettings.enabled && !unlimited && !isPaid) {
-      const affordCheck = await canAfford(authed.profileUserId, "READING");
-      if (!affordCheck.allowed) {
-        return NextResponse.json(
-          {
-            error: "INSUFFICIENT_RUNES",
-            balance: affordCheck.balance,
-            required: affordCheck.cost,
-            message: affordCheck.reason,
-          },
-          { status: 402 }
-        );
-      }
-      const spendResult = await spendRunes(authed.profileUserId, "READING");
+    if (useRuneBilling) {
+      const spendResult = await spendRunesAtomic(authed.profileUserId, "READING");
       if (!spendResult.success) {
-        return NextResponse.json(
-          {
-            error: "INSUFFICIENT_RUNES",
-            balance: affordCheck.balance,
-            required: affordCheck.cost,
-          },
-          { status: 402 }
-        );
+        return insufficientRunesResponse(spendResult.balanceAfter, spendResult.cost);
       }
-      runeBalance = spendResult.newBalance;
-      spentRunes = runeCostFromSettings(runeSettings, "READING");
+      runeBalance = spendResult.balanceAfter;
+      spentRunes = spendResult.cost;
       isPaid = true;
       if (sessionId) {
         await unlockSingleSession(sessionId);
       }
     }
 
-    const memoryBlock = await buildUserMemoryBlock(authed.profileUserId, {
-      currentCharacterId: characterId,
-      currentCardsKey: cardsKeyFromTarot(tarotCards),
+    const memoryBlock = sessionId
+      ? await buildMemoryBlock(authed.profileUserId, characterId, sessionId)
+      : "";
+    const clientBlock = buildClientBlock({
+      name: userName,
+      gender,
+      zodiac,
+      birthDate,
+      mainQuestion,
+      lifeFocus,
     });
-    systemPrompt = appendUserMemoryToPrompt(systemPrompt, memoryBlock);
+    systemPrompt = appendUserMemoryToPrompt(
+      systemPrompt,
+      `${clientBlock}${memoryBlock}`.trim() || null
+    );
+
+    const deckSystem = resolveMasterDeckSystem(characterId);
+    const userForContext = userContextFromProfile({
+      name: userName,
+      gender,
+      birthDate,
+      zodiac,
+      astroMeta: astroMeta as Record<string, unknown> | undefined,
+    });
+    const cardsForContext = enrichCardsForSpreadContext(deckSystem, tarotCards);
+    const userMessage = buildSpreadUserMessage({
+      user: userForContext,
+      cards: cardsForContext,
+      intention: resolveIntentionLabel(intention || null),
+    });
 
     const generated = await generateReading(systemPrompt, {
       userName,
       tarotCards,
       isPaid,
       characterId,
+      intention: intention || null,
+      userMessage,
     });
-    reading = generated.text;
-
-    if (!generated.fromLlm && spentRunes > 0) {
-      try {
-        await refundRunes(authed.profileUserId, spentRunes, "Возврат: пустой ответ LLM", "READING");
-        spentRunes = 0;
-        isPaid = false;
-      } catch (refundErr) {
-        console.error("Reading LLM fallback refund failed:", refundErr);
-      }
-    }
+    reading =
+      sanitizeReadingForClient(
+        stripMemoryLeakFromReply(generated.text) || generated.text,
+        tarotCards.map((c) => c.name)
+      ) ||
+      fallbackReading(characterId, {
+        userName,
+        isPaid,
+        tarotCards,
+        intention: intention || null,
+      });
 
     if (await ensureDb()) {
+      const deckSystem = resolveMasterDeckSystem(characterId);
       const entry = await createHistoryEntry({
         userId: authed.profileUserId,
         characterName: characterId,
@@ -239,6 +289,7 @@ export async function POST(request: NextRequest) {
           type: "reading",
           reading,
           tarotCards,
+          deckSystem,
           userName,
           zodiac,
           gender,
@@ -255,7 +306,7 @@ export async function POST(request: NextRequest) {
 
       if (sessionId) {
         try {
-          await saveMessage(sessionId, characterId, "assistant", reading);
+          await saveMessage(sessionId, characterId, "assistant", reading, authed.profileUserId);
         } catch (err) {
           console.warn("Reading chat save failed:", err);
         }

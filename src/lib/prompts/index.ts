@@ -1,16 +1,18 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 
-import { ANSWER_STRUCTURE, CONTEXT_RULES, FORBIDDEN_PATTERNS, RESPONSE_FORMAT } from "./format";
+import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, SPREAD_FINAL_CONCLUSION_RULES } from "./format";
+import { buildGenderPronounBlock, SPREAD_TRUTH_RULES } from "./gender-context";
 import { AGAFYA_PERSONA } from "./masters/agafya";
-import { RAGNAR_PERSONA } from "./masters/ragnar";
+import { RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE } from "./masters/ragnar";
 import { SHRI_RAJ_PERSONA } from "./masters/shri-raj";
 import { VERONIKA_PERSONA } from "./masters/veronika";
 import { buildMemoryBlock } from "./memory";
-import { buildTopicBlock, detectTopics, type TopicKey } from "./topics";
+import { getSpreadInstructions } from "./spread-instructions";
+import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
 import type { CharacterKey, PromptUserContext, ReadingCard, SessionMemory } from "./types";
 
 const MASTER_PERSONA: Record<CharacterKey, string> = {
-  ragnar: RAGNAR_PERSONA,
+  ragnar: `${RAGNAR_PERSONA}\n\nПРИМЕР ПРАВИЛЬНОГО ГОЛОСА РАГНАРА:\n${RAGNAR_VOICE_SAMPLE}`,
   veronika: VERONIKA_PERSONA,
   agafya: AGAFYA_PERSONA,
   "shri-raj": SHRI_RAJ_PERSONA,
@@ -59,10 +61,14 @@ function cardsBlock(cards: string[] | ReadingCard[], labels = ["Прошлое",
     .join("\n");
 }
 
-function clientBlock(user: PromptUserContext): string {
+function clientBlock(user: PromptUserContext, lastUserMessage?: string): string {
   const sessionLabel = user.sessionNumber && user.sessionNumber > 1
     ? `Это ${user.sessionNumber}-й сеанс с этим клиентом.`
     : "Первый или ранний сеанс — заложи доверие и глубину.";
+
+  const questionLine = lastUserMessage?.trim()
+    ? `- Последний вопрос клиента: «${lastUserMessage.trim()}» — ответь именно на него, опираясь на символы.`
+    : "";
 
   return `
 ДАННЫЕ КЛИЕНТА:
@@ -72,8 +78,9 @@ function clientBlock(user: PromptUserContext): string {
 - Дата рождения: ${user.birthDate}
 ${user.today ? `- Сегодня: ${user.today}` : ""}
 - ${sessionLabel}
+${questionLine}
 
-ВЫПАВШИЕ СИМВОЛЫ (читай как единую картину):
+ВЫПАВШИЕ СИМВОЛЫ (единственный источник выводов — читай значения каждой карты):
 ${cardsBlock(user.cards)}
 ${astroLines(user).map((l) => `- ${l}`).join("\n")}`;
 }
@@ -89,6 +96,7 @@ export interface BuildPromptOptions {
   mode?: "chat" | "reading";
   topics?: TopicKey[];
   lastUserMessage?: string;
+  intention?: string | null;
 }
 
 export function buildSystemPrompt(
@@ -99,24 +107,37 @@ export function buildSystemPrompt(
   const mode = options.mode ?? "chat";
   const persona = MASTER_PERSONA[character];
   const displayName = MASTER_DISPLAY[character];
+  const thematicReading =
+    mode === "reading" &&
+    Boolean(options.intention?.trim() && options.intention !== "life_death") &&
+    user.isPaid;
 
   const topics =
     options.topics ??
-    (options.lastUserMessage ? detectTopics(options.lastUserMessage) : []);
+    (options.lastUserMessage
+      ? mergeTopics(options.lastUserMessage, options.intention)
+      : topicsFromIntention(options.intention));
+
+  const hasSpread = user.cards.length >= 3;
 
   const parts = [
     persona,
-    FORBIDDEN_PATTERNS,
-    ANSWER_STRUCTURE,
     CONTEXT_RULES,
-    clientBlock(user),
+    SPREAD_TRUTH_RULES,
+    ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
+    clientBlock(user, options.lastUserMessage),
+    buildGenderPronounBlock(user, options.lastUserMessage),
     buildMemoryBlock(user.memory ?? [], displayName),
     buildTopicBlock(character, topics),
     paywallRule(user.isPaid),
     mode === "chat"
       ? "РЕЖИМ: живой чат — отвечай на последний вопрос клиента, сохраняя голос мастера."
-      : "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов.",
-    RESPONSE_FORMAT,
+      : thematicReading
+        ? "РЕЖИМ: оплаченный тематический расклад — максимальная глубина по теме, без воды."
+        : "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов.",
+    thematicReading ? THEMATIC_SPREAD_READING_RULES : RESPONSE_FORMAT,
+    hasSpread && user.isPaid && mode === "reading" ? SPREAD_FINAL_CONCLUSION_RULES : "",
+    mode === "reading" && hasSpread ? getSpreadInstructions(character) : "",
   ];
 
   return parts.filter(Boolean).join("\n\n");
@@ -142,9 +163,11 @@ export function fromLegacyContext(
   extras?: { sessionNumber?: number; memory?: SessionMemory[]; lastUserMessage?: string }
 ): { character: CharacterKey; user: PromptUserContext; lastUserMessage?: string } {
   const character: CharacterKey = isCharacterKey(characterId) ? characterId : "ragnar";
-  const cards =
-    ctx.tarotCards?.map((c) => c.name) ??
-    ([] as string[]);
+  const cards: ReadingCard[] =
+    ctx.tarotCards?.slice(0, 3).map((c) => ({
+      name: c.name,
+      meaning: c.meaning ?? "",
+    })) ?? [];
 
   return {
     character,

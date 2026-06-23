@@ -158,6 +158,161 @@
     @apply btn-primary;
   }
 
+  /* ── Metallic luxe buttons (gold / silver / bronze) ── */
+  .btn-luxe {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold
+           transition-all duration-300 active:scale-[0.98];
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-width: 1px;
+    border-style: solid;
+  }
+
+  .btn-luxe--sm {
+    @apply min-h-[2.125rem] px-3 py-1.5 text-xs;
+  }
+
+  .btn-luxe--md {
+    @apply min-h-[2.75rem] px-5 py-2.5 text-sm;
+  }
+
+  .btn-luxe--block {
+    @apply w-full;
+  }
+
+  .btn-luxe--pill {
+    @apply rounded-full px-4 py-1.5;
+    min-height: auto;
+  }
+
+  .btn-luxe--pill::after {
+    border-radius: 9999px;
+  }
+
+  .btn-luxe > svg,
+  .btn-luxe > span {
+    position: relative;
+    z-index: 1;
+  }
+
+  .btn-luxe::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0.14) 32%,
+      transparent 54%
+    );
+    pointer-events: none;
+  }
+
+  .btn-luxe::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    z-index: 0;
+    border-radius: calc(0.5rem - 1px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    pointer-events: none;
+  }
+
+  .btn-luxe--gold {
+    background: linear-gradient(
+      165deg,
+      #fff8e8 0%,
+      #f2d88a 16%,
+      #e0b85c 38%,
+      #c9a24a 58%,
+      #a8843a 78%,
+      #7a5e28 100%
+    );
+    color: #1a0f06;
+    border-color: rgba(255, 228, 160, 0.7);
+    box-shadow:
+      0 1px 0 rgba(255, 245, 210, 0.5) inset,
+      0 0 22px rgba(201, 162, 74, 0.4),
+      0 4px 14px rgba(0, 0, 0, 0.4);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  .btn-luxe--gold:hover {
+    box-shadow:
+      0 1px 0 rgba(255, 245, 210, 0.55) inset,
+      0 0 32px rgba(232, 199, 126, 0.55),
+      0 0 48px rgba(201, 162, 74, 0.25),
+      0 6px 16px rgba(0, 0, 0, 0.45);
+    filter: brightness(1.06);
+  }
+
+  .btn-luxe--silver {
+    background: linear-gradient(
+      165deg,
+      #ffffff 0%,
+      #eef2f6 14%,
+      #d4dce4 36%,
+      #b8c4d0 56%,
+      #98a8b8 76%,
+      #7a8a9a 100%
+    );
+    color: #1a2228;
+    border-color: rgba(240, 246, 252, 0.75);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.65) inset,
+      0 0 20px rgba(180, 192, 204, 0.35),
+      0 4px 14px rgba(0, 0, 0, 0.35);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  }
+
+  .btn-luxe--silver:hover {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 0 28px rgba(210, 220, 230, 0.5),
+      0 0 44px rgba(180, 192, 204, 0.2),
+      0 6px 16px rgba(0, 0, 0, 0.4);
+    filter: brightness(1.07);
+  }
+
+  .btn-luxe--bronze {
+    background: linear-gradient(
+      165deg,
+      #f5dcc0 0%,
+      #e8b888 16%,
+      #d49a62 36%,
+      #b8864a 56%,
+      #9a6b38 76%,
+      #6b4520 100%
+    );
+    color: #1a0c04;
+    border-color: rgba(230, 180, 120, 0.65);
+    box-shadow:
+      0 1px 0 rgba(255, 220, 180, 0.45) inset,
+      0 0 20px rgba(166, 124, 82, 0.38),
+      0 4px 14px rgba(0, 0, 0, 0.4);
+    text-shadow: 0 1px 0 rgba(255, 230, 200, 0.3);
+  }
+
+  .btn-luxe--bronze:hover {
+    box-shadow:
+      0 1px 0 rgba(255, 220, 180, 0.5) inset,
+      0 0 28px rgba(212, 165, 116, 0.5),
+      0 0 44px rgba(166, 124, 82, 0.22),
+      0 6px 16px rgba(0, 0, 0, 0.45);
+    filter: brightness(1.06);
+  }
+
+  .btn-luxe:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
+  .btn-luxe:focus-visible {
+    outline: 2px solid rgba(232, 199, 126, 0.55);
+    outline-offset: 2px;
+  }
+
   .neon-text {
     background: var(--aura-gold-gradient);
     -webkit-background-clip: text;
@@ -737,6 +892,10 @@
     @apply border-emerald-400/30 bg-emerald-500/10 text-emerald-200/90;
   }
 
+  .master-list-row__tag--ritual {
+    @apply border-violet-400/35 bg-violet-500/10 text-violet-100/90 normal-case tracking-normal;
+  }
+
   .master-list-row__line2 {
     @apply mt-0.5 block truncate text-xs text-aura-champagne/70;
   }
@@ -1103,6 +1262,22 @@
     overflow-wrap: anywhere;
   }
 
+  .master-showcase-card__cta-label {
+    display: inline-grid;
+    text-align: center;
+  }
+
+  .master-showcase-card__cta-label-sizer,
+  .master-showcase-card__cta-label-text {
+    grid-area: 1 / 1;
+  }
+
+  .master-showcase-card__cta-label-sizer {
+    visibility: hidden;
+    pointer-events: none;
+    user-select: none;
+  }
+
   .master-showcase-card__cta {
     @apply mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium;
     min-height: 2.125rem;
@@ -1277,6 +1452,92 @@
     max-width: 120px;
   }
 
+  /* ── Deck gallery (uniform tiles, readable labels) ── */
+  .deck-gallery__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem 0.875rem;
+    justify-items: center;
+  }
+
+  @media (min-width: 480px) {
+    .deck-gallery__grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 768px) {
+    .deck-gallery__grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 1.5rem 1rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .deck-gallery__grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+  }
+
+  .deck-gallery-face {
+    display: flex;
+    width: 100%;
+    max-width: 148px;
+    flex-direction: column;
+    align-items: stretch;
+    border: none;
+    background: transparent;
+    padding: 0;
+    text-align: center;
+    cursor: default;
+  }
+
+  button.deck-gallery-face {
+    cursor: pointer;
+  }
+
+  button.deck-gallery-face:hover .deck-gallery-face__frame {
+    border-color: rgba(232, 199, 126, 0.45);
+    box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.65), 0 0 20px rgba(201, 162, 74, 0.15);
+    transform: translateY(-3px);
+  }
+
+  .deck-gallery-face__frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 533 / 800;
+    overflow: hidden;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(232, 199, 126, 0.22);
+    background: #080612;
+    transition:
+      transform 0.25s ease,
+      border-color 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+
+  .deck-gallery-face__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center center;
+  }
+
+  .deck-gallery-face__name {
+    margin-top: 0.5rem;
+    min-height: 2.6em;
+    padding-inline: 0.125rem;
+    font-family: var(--font-display, serif);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #ede6da;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    hyphens: auto;
+  }
+
   .lux-deck-card--interactive:hover .lux-tarot-card {
     transform: translateY(-4px);
     box-shadow:
@@ -1409,6 +1670,32 @@
 .chat-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(168, 85, 247, 0.45) transparent;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  min-height: 0;
+}
+
+.chat-stage {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+@media (max-width: 639px) {
+  .chat-stage {
+    height: calc(100dvh - var(--app-header-h, 3.25rem));
+    max-height: calc(100dvh - var(--app-header-h, 3.25rem));
+  }
+
+  .chat-stage .chat-stage__body {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .chat-stage .chat-stage__input {
+    flex-shrink: 0;
+  }
 }
 
 .chat-scroll::-webkit-scrollbar {
@@ -1431,6 +1718,30 @@
 
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(168, 85, 247, 0.75);
+}
+
+/* Dark amber scroll — modals, ritual flow, panels */
+.lux-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(232, 199, 126, 0.35) transparent;
+}
+
+.lux-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lux-scroll::-webkit-scrollbar-track {
+  margin: 8px 0;
+  background: transparent;
+}
+
+.lux-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(232, 199, 126, 0.32);
+}
+
+.lux-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(232, 199, 126, 0.52);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1610,7 +1921,16 @@
 
 .photo-spread-preview__item {
   width: 100%;
-  max-width: 168px;
+  max-width: 148px;
+}
+
+.photo-spread-preview__card .lux-tarot-card__image {
+  object-fit: contain !important;
+}
+
+.photo-spread-preview__card .lux-deck-card {
+  width: 100%;
+  max-width: 148px;
 }
 
 .photo-spread-preview__card {
@@ -1622,6 +1942,42 @@
 }
 
 .lux-tarot-card__image-wrap--reversed .lux-tarot-card__image-vignette {
+  transform: rotate(180deg);
+}
+
+.lux-detected-card-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.65rem;
+  background: linear-gradient(165deg, rgba(28, 22, 38, 0.95) 0%, rgba(12, 10, 18, 0.98) 100%);
+  border: 1px solid rgba(232, 199, 126, 0.22);
+  border-radius: 0.35rem;
+  text-align: center;
+}
+
+.lux-detected-card-face__glyph {
+  font-size: 1.1rem;
+  color: rgba(232, 199, 126, 0.55);
+  line-height: 1;
+}
+
+.lux-detected-card-face__name {
+  font-family: var(--font-display, serif);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: #ede6da;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.lux-tarot-card__image-wrap--reversed .lux-detected-card-face {
   transform: rotate(180deg);
 }
 
@@ -1647,28 +2003,263 @@
 
 .my-spreads-gallery {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 768px) {
+  .my-spreads-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1200px) {
   .my-spreads-gallery {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1024px) {
-  .my-spreads-gallery {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 .my-spreads-card {
-  @apply flex h-full flex-col overflow-hidden rounded-2xl border border-aura-gold/15 bg-black/25 p-4 transition-colors hover:border-aura-gold/25;
+  @apply flex h-full flex-col rounded-2xl border border-aura-gold/15 bg-black/25 p-4 transition-colors hover:border-aura-gold/30 hover:bg-black/35;
 }
 
 .my-spreads-card__preview {
-  @apply mb-3 overflow-hidden rounded-xl border border-aura-gold/10 bg-black/30 p-3;
+  @apply mb-4 rounded-xl border border-aura-gold/10 bg-black/35 px-2 py-3 sm:px-3;
+}
+
+.my-spreads-card__preview .lux-spread-grid {
+  gap: 0.5rem;
+}
+
+@media (min-width: 480px) {
+  .my-spreads-card__preview .lux-spread-grid {
+    gap: 0.75rem;
+  }
+}
+
+.my-spreads-card__preview .lux-spread-col__position {
+  margin-bottom: 0.375rem;
+  padding-inline: 0.125rem;
+  font-size: 0.625rem;
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.my-spreads-card__preview .lux-spread-col__title {
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.my-spreads-card__preview .lux-spread-col__card .lux-deck-card--sm {
+  width: 100%;
+  max-width: none;
+}
+
+.my-spreads-card__preview .lux-deck-card--sm .lux-tarot-card__inner--photo > p {
+  font-size: 0.625rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.my-spreads-card__preview .lux-detected-card-face__name {
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}
+
+.my-spreads-card__excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: rgba(209, 213, 219, 0.82);
+}
+
+.my-spreads-card__more {
+  @apply btn-luxe btn-luxe--sm btn-luxe--gold btn-luxe--block mt-4;
+}
+
+/* ── Reading recap (home spread block) ── */
+.reading-recap--spread {
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 16px;
+  background: linear-gradient(
+    165deg,
+    rgba(28, 22, 48, 0.88) 0%,
+    rgba(14, 12, 28, 0.78) 55%,
+    rgba(18, 14, 32, 0.82) 100%
+  );
+  box-shadow:
+    0 16px 48px -20px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.reading-recap--spread .reading-recap__name {
+  font-size: 0.9375rem;
+  letter-spacing: 0.01em;
+}
+
+.reading-recap--spread .reading-recap__cooldown {
+  @apply inline-flex items-center gap-1.5 tabular-nums;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+}
+
+.reading-recap--spread .lux-spread-grid {
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .reading-recap--spread .lux-spread-grid {
+    gap: 1.25rem;
+  }
+}
+
+.reading-recap--spread .lux-spread-col__position {
+  margin-bottom: 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.92);
+}
+
+.reading-recap--spread .lux-spread-col__position::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 1px;
+  margin-top: 0.375rem;
+  background: rgba(212, 175, 55, 0.25);
+}
+
+.reading-recap--spread .lux-tarot-wrap {
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.reading-recap--spread .lux-tarot-card {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.reading-recap--spread .lux-tarot-card__frame {
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 24px rgba(232, 199, 126, 0.06);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.reading-recap--spread .lux-tarot-wrap:hover .lux-tarot-card__frame,
+.reading-recap--spread .lux-deck-card--interactive:hover .lux-tarot-card__frame {
+  border-color: rgba(232, 199, 126, 0.45);
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.5),
+    0 0 28px rgba(201, 162, 74, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 1px 28px rgba(232, 199, 126, 0.1);
+}
+
+.reading-recap--spread .lux-tarot-wrap:hover,
+.reading-recap--spread .lux-deck-card--interactive:hover .lux-tarot-card {
+  transform: translateY(-6px);
+}
+
+.reading-recap--spread .lux-spread-col__title {
+  margin-top: 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #ffffff;
+}
+
+.reading-recap--spread .lux-spread-col__meaning {
+  margin-top: 0.375rem;
+  min-height: 2.5rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgba(232, 199, 126, 0.82);
+}
+
+.reading-recap--spread .reading-recap__btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  min-height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  background: linear-gradient(
+    145deg,
+    rgba(232, 199, 126, 0.28) 0%,
+    rgba(201, 162, 74, 0.16) 100%
+  );
+  color: #fff7e8;
+  font-weight: 600;
+  box-shadow:
+    0 4px 20px rgba(201, 162, 74, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: background 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.reading-recap--spread .reading-recap__btn-primary:hover {
+  border-color: rgba(232, 199, 126, 0.65);
+  background: linear-gradient(
+    145deg,
+    rgba(232, 199, 126, 0.38) 0%,
+    rgba(201, 162, 74, 0.22) 100%
+  );
+  box-shadow:
+    0 6px 28px rgba(201, 162, 74, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.reading-recap--spread .reading-recap__btn-primary .master-avatar {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  overflow: hidden;
+}
+
+.reading-recap--spread .reading-recap__btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(209, 213, 219, 0.85);
+  font-weight: 500;
+  transition: border-color 0.25s ease, color 0.25s ease, background 0.25s ease;
+}
+
+.reading-recap--spread .reading-recap__btn-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(243, 244, 246, 0.95);
+}
+
+@media (max-width: 639px) {
+  .reading-recap--spread .reading-recap__actions {
+    width: 100%;
+  }
+
+  .reading-recap--spread .reading-recap__btn-primary,
+  .reading-recap--spread .reading-recap__btn-ghost {
+    width: 100%;
+  }
 }
 
 /* ── Daily spread aligned grid ── */
@@ -1964,7 +2555,31 @@
 }
 
 .aura-landing-directions {
-  @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.625rem;
+  align-items: stretch;
+}
+
+@media (min-width: 640px) {
+  .aura-landing-directions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .aura-landing-directions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.875rem;
+  }
+}
+
+@media (min-width: 1100px) {
+  .aura-landing-directions {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
 }
 
 .aura-landing-direction {
@@ -2032,5 +2647,133 @@
 
 .aura-landing-masters {
   @apply mb-12 md:mb-16;
+}
+
+/* ── Spread ritual loader ── */
+.spread-ritual-loader {
+  @apply fixed inset-0 z-[120] flex items-center justify-center px-4;
+}
+
+.spread-ritual-loader__veil {
+  @apply absolute inset-0;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, rgba(155, 127, 212, 0.14), transparent 65%),
+    radial-gradient(ellipse 90% 80% at 50% 50%, rgba(12, 10, 26, 0.92), rgba(5, 1, 13, 0.97));
+  backdrop-filter: blur(10px);
+}
+
+.spread-ritual-loader__content {
+  @apply relative z-10 flex w-full max-w-md flex-col items-center gap-8;
+}
+
+.spread-ritual-loader__circle-wrap {
+  @apply relative mx-auto;
+  width: min(72vw, 220px);
+  height: min(72vw, 220px);
+}
+
+.spread-ritual-loader__ring {
+  @apply absolute inset-0 rounded-full;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+}
+
+.spread-ritual-loader__ring--outer {
+  box-shadow:
+    0 0 0 1px rgba(232, 199, 126, 0.06) inset,
+    0 0 40px rgba(201, 162, 74, 0.12);
+}
+
+.spread-ritual-loader__ring--inner {
+  inset: 14%;
+  border-color: rgba(155, 127, 212, 0.28);
+  box-shadow: 0 0 24px rgba(155, 127, 212, 0.1);
+}
+
+.spread-ritual-loader__core {
+  @apply absolute flex items-center justify-center rounded-full;
+  inset: 32%;
+  border: 1px solid rgba(232, 199, 126, 0.22);
+  background: radial-gradient(circle at 40% 35%, rgba(232, 199, 126, 0.14), rgba(7, 5, 15, 0.85));
+  box-shadow: var(--shadow-gold-glow);
+}
+
+.spread-ritual-loader__core-glyph {
+  @apply text-2xl text-aura-champagne;
+  text-shadow: 0 0 18px rgba(232, 199, 126, 0.55);
+  animation: spread-ritual-pulse 2.2s ease-in-out infinite;
+}
+
+.spread-ritual-loader__runes {
+  @apply absolute inset-0 m-0 list-none p-0;
+}
+
+.spread-ritual-loader__rune {
+  @apply absolute text-lg font-medium text-aura-ivory/25;
+  transform: translate(-50%, -50%);
+  transition:
+    color 0.35s ease,
+    text-shadow 0.35s ease,
+    opacity 0.35s ease;
+}
+
+.spread-ritual-loader__rune--lit {
+  @apply text-aura-champagne;
+  text-shadow:
+    0 0 12px rgba(232, 199, 126, 0.75),
+    0 0 28px rgba(201, 162, 74, 0.35);
+  opacity: 1;
+}
+
+.spread-ritual-loader__cards {
+  @apply flex items-end justify-center gap-3 sm:gap-4;
+  perspective: 900px;
+}
+
+.spread-ritual-loader__card-slot {
+  width: 88px;
+  height: 132px;
+}
+
+.spread-ritual-loader__deck-card {
+  @apply h-full w-full;
+}
+
+.spread-ritual-loader__deck-card .lux-tarot-card {
+  @apply h-full max-w-none;
+}
+
+.spread-ritual-loader__phrase {
+  @apply text-center font-display text-lg font-medium tracking-wide text-aura-champagne sm:text-xl;
+  text-shadow: 0 0 24px rgba(232, 199, 126, 0.25);
+}
+
+.spread-reading-ritual {
+  @apply mt-4 flex flex-col items-center gap-3 border-t border-white/5 pt-5;
+}
+
+.spread-reading-ritual__ring {
+  width: 148px;
+  height: 148px;
+}
+
+.spread-reading-ritual__countdown {
+  @apply font-mono text-lg tabular-nums;
+}
+
+.spread-reading-ritual__phrase {
+  @apply text-center text-sm font-medium tracking-wide text-aura-champagne/90;
+  text-shadow: 0 0 16px rgba(232, 199, 126, 0.2);
+}
+
+@keyframes spread-ritual-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
 }
 
