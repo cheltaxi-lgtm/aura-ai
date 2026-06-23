@@ -380,25 +380,27 @@
   }
 
   .master-showcase-card {
-    @apply overflow-hidden rounded-2xl backdrop-blur-md transition-all duration-500;
-    border: 1px solid rgba(232, 199, 126, 0.1);
+    @apply overflow-hidden rounded-2xl backdrop-blur-md transition-all duration-300;
+    border: 1px solid rgba(212, 175, 55, 0.15);
     background: linear-gradient(
-      155deg,
-      rgba(22, 18, 40, 0.85) 0%,
-      rgba(10, 8, 22, 0.75) 100%
+      180deg,
+      rgba(24, 20, 44, 0.92) 0%,
+      rgba(12, 10, 26, 0.88) 100%
     );
     box-shadow: var(--shadow-lux);
   }
 
   .master-showcase-card:hover {
-    border-color: rgba(232, 199, 126, 0.22);
+    border-color: rgba(232, 199, 126, 0.32);
+    transform: translateY(-4px);
     box-shadow:
       var(--shadow-lux),
+      0 12px 32px -12px rgba(0, 0, 0, 0.55),
       0 0 40px -8px var(--master-glow, rgba(155, 127, 212, 0.2));
   }
 
   .master-showcase-card--recommended {
-    border-color: rgba(232, 199, 126, 0.38);
+    border-color: rgba(232, 199, 126, 0.42);
     box-shadow:
       var(--shadow-lux),
       0 0 48px -12px rgba(201, 162, 74, 0.35),
@@ -408,55 +410,179 @@
   .master-showcase-card--gallery {
     display: flex;
     flex-direction: column;
+    height: 100%;
   }
 
   .master-showcase-card--compact {
-    border-radius: 0.875rem;
+    border-radius: 1rem;
   }
 
-  .master-showcase-card--compact .master-showcase-card__head {
-    @apply relative flex flex-col items-center px-3 pb-1 pt-3;
+  .master-showcase-card__inner {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.25rem;
+    text-align: center;
   }
 
   .master-showcase-card--compact .master-showcase-card__avatar-ring {
-    width: 4.5rem;
-    height: 4.5rem;
+    width: 4.75rem;
+    height: 4.75rem;
     flex-shrink: 0;
     border-radius: 50%;
     padding: 2px;
-    background: linear-gradient(145deg, rgba(232, 199, 126, 0.55), rgba(201, 162, 74, 0.25));
-    box-shadow: 0 0 24px rgba(201, 162, 74, 0.18);
+    border: 2px solid rgba(212, 175, 55, 0.5);
+    background: transparent;
+    box-shadow: 0 0 16px rgba(212, 175, 55, 0.2);
   }
 
-  .master-showcase-card--compact .master-showcase-card__badges-row {
-    @apply mt-2 flex max-w-full flex-wrap items-center justify-center gap-1;
+  .master-showcase-card--compact .master-showcase-card__avatar-ring .master-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    aspect-ratio: 1 / 1;
+  }
+
+  .master-showcase-card__badges-slot {
+    display: flex;
+    min-height: 1.75rem;
+    width: 100%;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    overflow: hidden;
+  }
+
+  .master-showcase-card__badge {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 999px;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .master-showcase-card__badge--accent {
+    border: 1px solid rgba(212, 175, 55, 0.45);
+    background: rgba(212, 175, 55, 0.15);
+    color: rgba(232, 199, 126, 0.95);
+  }
+
+  .master-showcase-card__badge--neutral {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(209, 213, 219, 0.88);
+  }
+
+  .master-showcase-card__badge-icon {
+    width: 0.6875rem;
+    height: 0.6875rem;
+    flex-shrink: 0;
   }
 
   .master-showcase-card--compact .master-showcase-card__body {
-    padding: 0.375rem 0.625rem 0.625rem;
+    display: flex;
+    width: 100%;
+    flex: 1;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0;
     text-align: center;
   }
 
   .master-showcase-card--compact .master-showcase-card__name {
-    @apply text-sm font-semibold;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #ffffff;
   }
 
   .master-showcase-card--compact .master-showcase-card__system {
-    @apply text-[10px];
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    overflow: hidden;
+    margin-top: -0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.35;
+    color: rgba(232, 199, 126, 0.72);
   }
 
-  .master-showcase-card--compact .master-showcase-stats-dense--compact {
-    @apply mt-1.5 justify-center text-[9px];
+  .master-showcase-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: rgba(229, 231, 235, 0.82);
+  }
+
+  .master-showcase-card__meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .master-showcase-card__meta-sep {
+    color: rgba(212, 175, 55, 0.35);
+  }
+
+  .master-showcase-card__star {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .master-showcase-card__price {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+  }
+
+  .master-showcase-card__price-amount {
+    font-weight: 600;
+    color: rgba(255, 247, 232, 0.95);
+  }
+
+  .master-showcase-card__price-unit {
+    color: rgba(232, 199, 126, 0.78);
+  }
+
+  .master-showcase-card--recommended .master-showcase-card__cta {
+    box-shadow:
+      0 0 28px rgba(201, 162, 74, 0.35),
+      var(--shadow-gold-glow, 0 0 20px rgba(201, 162, 74, 0.2));
   }
 
   .master-showcase-card--compact .master-showcase-card__cta {
-    min-height: 1.875rem;
-    margin-top: 0.5rem;
-    font-size: 0.6875rem;
+    min-height: 2.75rem;
+    margin-top: auto;
+    width: 100%;
+    font-size: 0.8125rem;
+  }
+
+  .master-showcase-card__cta-arrow {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    transition: transform 0.25s ease;
+  }
+
+  .master-showcase-card:hover .master-showcase-card__cta-arrow {
+    transform: translateX(2px);
+  }
+
+  .master-showcase-disclaimer {
+    max-width: 42rem;
+    margin-inline: auto;
+    padding-inline: 0.5rem;
+    color: rgba(156, 163, 175, 0.88);
   }
 
   .master-showcase-card__portrait-wrap {
@@ -1159,7 +1285,7 @@
   .master-showcase-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 0.625rem;
+    gap: 1rem;
     align-items: stretch;
   }
 
@@ -1192,7 +1318,7 @@
   }
 
   .aura-landing-masters .master-showcase-grid {
-    gap: 0.625rem;
+    gap: 1rem;
   }
 
   @media (min-width: 640px) {
@@ -1279,9 +1405,8 @@
   }
 
   .master-showcase-card__cta {
-    @apply mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium;
-    min-height: 2.125rem;
-    margin-top: 0.5rem;
+    @apply mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold;
+    min-height: 2.75rem;
   }
 
   .lux-master-avatar {
@@ -2190,8 +2315,34 @@
   color: rgba(232, 199, 126, 0.82);
 }
 
+.reading-recap--spread .reading-recap__actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .reading-recap--spread .reading-recap__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reading-recap--spread .reading-recap__actions:has(> :nth-child(3):last-child) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reading-recap--spread .reading-recap__actions:has(> :nth-child(3):last-child) > :nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+.reading-recap--spread .reading-recap__btn-primary,
+.reading-recap--spread .reading-recap__btn-ghost {
+  width: 100%;
+}
+
 .reading-recap--spread .reading-recap__btn-primary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.625rem;
@@ -2233,7 +2384,7 @@
 }
 
 .reading-recap--spread .reading-recap__btn-ghost {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   min-height: 2.75rem;
@@ -2249,17 +2400,6 @@
   border-color: rgba(255, 255, 255, 0.32);
   background: rgba(255, 255, 255, 0.04);
   color: rgba(243, 244, 246, 0.95);
-}
-
-@media (max-width: 639px) {
-  .reading-recap--spread .reading-recap__actions {
-    width: 100%;
-  }
-
-  .reading-recap--spread .reading-recap__btn-primary,
-  .reading-recap--spread .reading-recap__btn-ghost {
-    width: 100%;
-  }
 }
 
 /* ── Daily spread aligned grid ── */
