@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { LogIn, LogOut, User, Sparkles } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
+import NotificationBell from "@/components/NotificationBell";
 import type { AuthUser } from "@/lib/useAuth";
 
 export const NAVIGATE_CABINET_EVENT = "aura:navigate-cabinet";
@@ -39,6 +40,7 @@ export default function AuthHeader({
   if (user?.role === "user") {
     return (
       <div className="relative z-10 flex shrink-0 items-center gap-1 sm:gap-2">
+        <NotificationBell />
         <button type="button" onClick={openCabinet} className={btnClass} title="Личный кабинет">
           <User className="h-4 w-4 shrink-0" aria-hidden />
           <span className={compact ? "hidden sm:inline" : undefined}>

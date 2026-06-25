@@ -23,6 +23,11 @@ export async function dispatchNotification(params: DispatchNotificationParams): 
     type: params.type,
     title: params.title,
     body: params.body,
-    data: params.data,
+    // Persist the CTA so the in-app notification panel can render a link.
+    data: {
+      ...(params.data ?? {}),
+      ...(params.ctaPath ? { ctaPath: params.ctaPath } : {}),
+      ...(params.ctaLabel ? { ctaLabel: params.ctaLabel } : {}),
+    },
   });
 }
