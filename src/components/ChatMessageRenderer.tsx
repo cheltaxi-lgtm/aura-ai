@@ -3,7 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
-import { toParagraphs } from "@/lib/format-paragraphs";
+import { toParagraphs, splitWallOfText } from "@/lib/format-paragraphs";
 
 export interface ChatMessageRendererProps {
   content: string;
@@ -112,6 +112,25 @@ function renderInlineEmphasis(text: string, keyPrefix: string): ReactNode[] {
   }
 
   return nodes.length ? nodes : [text];
+}
+
+/**
+ * Within the markdown path, split run-on prose lines into blank-line-separated
+ * paragraphs so react-markdown renders multiple <p> instead of one wall of text.
+ * Structural lines (headings, lists, dividers, images, quotes) are left intact.
+ */
+function softenMarkdownParagraphs(md: string): string {
+  return md
+    .split("\n")
+    .map((line) => {
+      const t = line.trim();
+      if (!t) return line;
+      if (/^(#{1,6}\s|-\s|\d+\.\s|---$|>\s|\|)/.test(t)) return line;
+      if (CARD_IMAGE_RE.test(t)) return line;
+      if (t.length < 240) return line;
+      return splitWallOfText(t).join("\n\n");
+    })
+    .join("\n");
 }
 
 function renderPlainBody(text: string, className: string): ReactNode {
@@ -241,11 +260,15 @@ export default function ChatMessageRenderer({
   const normalized = normalizeMasterMarkdown(trimmed);
   const { imageBlock, body } = splitLeadingCardImages(normalized);
   const markdownSource = body || normalized;
-  const hasMarkdownSyntax = /(\*\*|^#{1,2}\s|^-\s|^---$|^\d+\.\s|!\[[^\]]*\]\([^)]+\))/m.test(
+  // Only route to react-markdown for BLOCK-level structure (headings, lists,
+  // dividers, images). Replies with just inline **bold**/*italic* go through the
+  // premium paragraph renderer, which handles inline emphasis AND breaks a
+  // run-on block into readable paragraphs (react-markdown leaves it as one <p>).
+  const hasBlockMarkdown = /(^#{1,2}\s|^-\s|^---$|^\d+\.\s|!\[[^\]]*\]\([^)]+\))/m.test(
     markdownSource
   );
 
-  if (!hasMarkdownSyntax && !imageBlock) {
+  if (!hasBlockMarkdown && !imageBlock) {
     return renderPlainBody(normalized, className);
   }
 
@@ -253,7 +276,9 @@ export default function ChatMessageRenderer({
     <div className={`mystic-text space-y-4 font-body ${className}`}>
       {imageBlock ? renderCardImageRow(imageBlock) : null}
       {markdownSource ? (
-        <ReactMarkdown components={mysticMarkdownComponents}>{markdownSource}</ReactMarkdown>
+        <ReactMarkdown components={mysticMarkdownComponents}>
+          {softenMarkdownParagraphs(markdownSource)}
+        </ReactMarkdown>
       ) : null}
     </div>
   );
