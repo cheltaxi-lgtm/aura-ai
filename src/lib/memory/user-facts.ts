@@ -268,6 +268,54 @@ export async function getUpcomingEvents(
   return rows.map(mapRow);
 }
 
+export interface GlobalUpcomingEvent {
+  factId: string;
+  userId: string;
+  fact: string;
+  eventDate: string;
+  sourceCharacter: string | null;
+}
+
+/**
+ * Cron-facing: dated events across ALL users that fall within `leadDays` and
+ * have NOT yet produced an `event_reminder` notification. Dedup is done against
+ * the notifications table (no extra schema), so the proactive nudge fires once.
+ */
+export async function getGlobalUpcomingEvents(
+  leadDays = 3,
+  limit = 200
+): Promise<GlobalUpcomingEvent[]> {
+  const { rows } = await query<{
+    id: string;
+    user_id: string;
+    fact: string;
+    event_date: string;
+    source_character: string | null;
+  }>(
+    `SELECT f.id, f.user_id, f.fact, f.event_date::text AS event_date, f.source_character
+       FROM user_facts f
+      WHERE f.event_date IS NOT NULL
+        AND f.event_date >= CURRENT_DATE
+        AND f.event_date <= CURRENT_DATE + ($1 || ' days')::interval
+        AND NOT EXISTS (
+          SELECT 1 FROM notifications n
+           WHERE n.user_id = f.user_id
+             AND n.type = 'event_reminder'
+             AND n.data->>'factId' = f.id::text
+        )
+      ORDER BY f.event_date ASC
+      LIMIT $2`,
+    [String(leadDays), limit]
+  );
+  return rows.map((r) => ({
+    factId: r.id,
+    userId: r.user_id,
+    fact: r.fact,
+    eventDate: r.event_date,
+    sourceCharacter: r.source_character,
+  }));
+}
+
 /** Critical facts (salience >= 5) — always relevant background. */
 export async function getCriticalFacts(userId: string, limit = 3): Promise<UserFact[]> {
   if (!userId) return [];

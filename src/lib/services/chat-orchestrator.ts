@@ -36,6 +36,7 @@ import {
 import type { ChargeChatBillingParams } from "@/lib/services/billing-service";
 import type { ChatBillingHandle } from "@/lib/services/billing-service";
 import { ClientMemory } from "@/lib/memory/client-memory";
+import { assertChatProactivity } from "@/lib/chat-proactivity";
 import {
   buildNumerologyPromptContext,
   generateNumerologStreamReply,
@@ -749,6 +750,10 @@ export class ChatOrchestrator {
       finalReply = llmUnavailableReply({ runesRefunded });
     }
 
+    if (!llmFailed && finalReply) {
+      assertChatProactivity(finalReply, this.characterId);
+    }
+
     return {
       ...this.baseResponseMeta(),
       llmFailed,
@@ -802,6 +807,9 @@ export class ChatOrchestrator {
     }
 
     const finalReply = reply ?? llmUnavailableReply({ runesRefunded });
+    if (!llmFailed && finalReply) {
+      assertChatProactivity(finalReply, this.characterId);
+    }
     const achievement = await this.persistAssistantOutcome(finalReply, llmFailed);
 
     if (achievement) {

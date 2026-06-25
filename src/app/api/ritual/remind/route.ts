@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { RITUAL_TYPES } from "@/lib/ritual-config";
-import {
-  createNotification,
-  getDueReminders,
-  markRitualReminded,
-} from "@/lib/ritual-service";
+import { getDueReminders, markRitualReminded } from "@/lib/ritual-service";
+import { dispatchNotification } from "@/lib/notify";
 
 export async function GET(request: NextRequest) {
   await ensureDb();
@@ -25,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   for (const item of due) {
     const typeLabel = RITUAL_TYPES[item.ritual_type as keyof typeof RITUAL_TYPES]?.label ?? "Обряд";
-    await createNotification({
+    await dispatchNotification({
       userId: item.user_id,
       type: "ritual_reminder",
       title: "Прошло 7 дней",
@@ -35,6 +32,8 @@ export async function GET(request: NextRequest) {
         characterKey: item.character_key,
         ritualType: item.ritual_type,
       },
+      ctaPath: "/cabinet",
+      ctaLabel: "Рассказать мастеру",
     });
     await markRitualReminded(item.id);
     processed++;

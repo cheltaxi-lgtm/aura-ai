@@ -66,6 +66,12 @@ grep -q '^DB_POOL_MAX=' "$ENV_FILE" \
   && sed -i 's|^DB_POOL_MAX=.*|DB_POOL_MAX=20|' "$ENV_FILE" \
   || echo 'DB_POOL_MAX=20' >> "$ENV_FILE"
 
+# Stable secret shared with proactive-reminder crons. Generated once, preserved
+# across deploys (never overwrite an existing value).
+if ! grep -q '^CRON_SECRET=' "$ENV_FILE"; then
+  echo "CRON_SECRET=$(openssl rand -hex 24)" >> "$ENV_FILE"
+fi
+
 # Never overwrite real YooKassa keys with placeholders during deploy.
 if [ -n "$YUKASSA_SHOP_BACKUP" ] && [ -n "$YUKASSA_SECRET_BACKUP" ] \
   && [ "$YUKASSA_SHOP_BACKUP" != "your-shop-id-here" ] \
@@ -106,5 +112,8 @@ sudo systemctl restart aura-ai
 sleep 3
 systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
+
+echo ">>> Installing background crons (memory maintenance + proactive reminders)..."
+bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
 
 echo "Deploy complete: https://zovus.ru"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Daily long-term memory maintenance (re-embed facts stored without a vector).
 # Installed in the ubuntu user's crontab; survives deploys because it lives in
-# the repo. See proxmox-setup/install-memory-cron.sh for installation.
+# the repo. See proxmox-setup/install-crons.sh for installation.
 set -euo pipefail
 cd /opt/aura-ai || exit 1
 export PATH="/usr/bin:/usr/local/bin:$PATH"

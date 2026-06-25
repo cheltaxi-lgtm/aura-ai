@@ -1,6 +1,6 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 
-import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, SPREAD_FINAL_CONCLUSION_RULES } from "./format";
+import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, SPREAD_FINAL_CONCLUSION_RULES, READING_FORWARD_HOOK } from "./format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
@@ -172,6 +172,12 @@ export function buildSystemPrompt(
       ? SPREAD_FINAL_CONCLUSION_RULES
       : "";
 
+  // Forward-хук: приглашение продолжить в чате в конце расклада (кроме «жизнь/смерть»).
+  const readingForwardHook =
+    mode === "reading" && hasSpread && options.intention !== "life_death"
+      ? READING_FORWARD_HOOK
+      : "";
+
   const parts = [
     persona,
     numerologyBlock,
@@ -184,13 +190,14 @@ export function buildSystemPrompt(
     buildTopicBlock(character, topics),
     paywallRule(user.isPaid),
     mode === "chat"
-      ? "РЕЖИМ: живой чат — отвечай на последний вопрос клиента, сохраняя голос мастера."
+      ? "РЕЖИМ: живой чат — отвечай на последний вопрос клиента, сохраняя голос мастера. Заверши ответ движением вперёд: ОДИН уточняющий вопрос ИЛИ крючок на продолжение (не оба) — диалог не должен вставать."
       : thematicReading
         ? "РЕЖИМ: оплаченный тематический расклад — максимальная глубина по теме, без воды."
         : "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов.",
     formatBlock,
     spreadFinalBlock,
     mode === "reading" && hasSpread ? getSpreadInstructions(character) : "",
+    readingForwardHook,
   ];
 
   return parts.filter(Boolean).join("\n\n");
