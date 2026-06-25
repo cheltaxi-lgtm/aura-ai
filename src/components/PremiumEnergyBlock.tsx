@@ -10,6 +10,7 @@ import { DECK_SYSTEM_DISPLAY } from "@/lib/photo-spread-redraw";
 import type { DeckSystem } from "@/lib/decks/types";
 import DeckCard from "@/components/DeckCard";
 import MasterAvatar from "@/components/MasterAvatar";
+import { toParagraphs } from "@/lib/format-paragraphs";
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const DAILY_POSITIONS = ["Утро", "День", "Вечер"] as const;
@@ -48,26 +49,41 @@ function parseDailyEnergyText(text: string): { body: string; quote: string | nul
 
 function renderBodyWithMasterHighlight(body: string, masterLabel: string) {
   const firstName = masterLabel.trim().split(/\s+/)[0];
-  if (!firstName || firstName.length < 2) {
-    return <p className="text-sm leading-relaxed text-gray-200">{body}</p>;
-  }
-  const re = new RegExp(`(${firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "i");
-  const parts = body.split(re);
+  const paragraphs = toParagraphs(body);
+  const re =
+    firstName && firstName.length >= 2
+      ? new RegExp(`(${firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "i")
+      : null;
+
   return (
-    <p className="text-sm leading-relaxed text-gray-200">
-      {parts.map((part, i) =>
-        re.test(part) ? (
-          <span
-            key={`${part}-${i}`}
-            className="font-display text-xl text-amber-100 drop-shadow-[0_0_12px_rgba(251,191,36,0.35)]"
-          >
-            {part}
-          </span>
-        ) : (
-          <span key={`${part}-${i}`}>{part}</span>
-        )
-      )}
-    </p>
+    <div className="space-y-3.5">
+      {paragraphs.map((para, pIndex) => {
+        if (!re) {
+          return (
+            <p key={`daily-p-${pIndex}`} className="text-[15px] leading-[1.85] text-gray-200">
+              {para}
+            </p>
+          );
+        }
+        const parts = para.split(re);
+        return (
+          <p key={`daily-p-${pIndex}`} className="text-[15px] leading-[1.85] text-gray-200">
+            {parts.map((part, i) =>
+              re.test(part) ? (
+                <span
+                  key={`${pIndex}-${i}`}
+                  className="font-display text-lg text-amber-100 drop-shadow-[0_0_12px_rgba(251,191,36,0.35)]"
+                >
+                  {part}
+                </span>
+              ) : (
+                <span key={`${pIndex}-${i}`}>{part}</span>
+              )
+            )}
+          </p>
+        );
+      })}
+    </div>
   );
 }
 

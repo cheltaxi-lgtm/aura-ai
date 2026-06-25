@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
+import { toParagraphs } from "@/lib/format-paragraphs";
 
 export interface ChatMessageRendererProps {
   content: string;
@@ -113,6 +114,30 @@ function renderInlineEmphasis(text: string, keyPrefix: string): ReactNode[] {
   return nodes.length ? nodes : [text];
 }
 
+function renderPlainBody(text: string, className: string): ReactNode {
+  const paragraphs = toParagraphs(text);
+  return (
+    <div className={`mystic-text space-y-4 font-body ${className}`}>
+      {paragraphs.map((para, index) => {
+        const lines = para.split("\n");
+        return (
+          <p
+            key={`para-${index}`}
+            className="text-[15px] leading-[1.85] tracking-[0.01em] text-mystic-text sm:text-base sm:leading-[1.9]"
+          >
+            {lines.map((line, lineIndex) => (
+              <Fragment key={`para-${index}-line-${lineIndex}`}>
+                {lineIndex > 0 && <br />}
+                {renderInlineEmphasis(line, `para-${index}-line-${lineIndex}`)}
+              </Fragment>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 const mysticMarkdownComponents: Components = {
   h2: ({ children }) => {
     const raw = String(children ?? "").replace(/^\s*✦\s*/, "").trim();
@@ -221,20 +246,11 @@ export default function ChatMessageRenderer({
   );
 
   if (!hasMarkdownSyntax && !imageBlock) {
-    const lines = normalized.split("\n");
-    return (
-      <div className={`mystic-text space-y-3 font-body ${className}`}>
-        {lines.map((line, index) => (
-          <p key={index} className="text-base leading-[1.8] text-mystic-text">
-            {renderInlineEmphasis(line, `line-${index}`)}
-          </p>
-        ))}
-      </div>
-    );
+    return renderPlainBody(normalized, className);
   }
 
   return (
-    <div className={`mystic-text space-y-3 font-body ${className}`}>
+    <div className={`mystic-text space-y-4 font-body ${className}`}>
       {imageBlock ? renderCardImageRow(imageBlock) : null}
       {markdownSource ? (
         <ReactMarkdown components={mysticMarkdownComponents}>{markdownSource}</ReactMarkdown>

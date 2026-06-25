@@ -7,6 +7,7 @@ import { X, Trash2 } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import MySpreadsGallery, { type MySpreadEntry } from "@/components/MySpreadsGallery";
 import DeckCardsRow from "@/components/DeckCardsRow";
+import ChatMessageRenderer from "@/components/ChatMessageRenderer";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { masterDisplay } from "@/lib/cabinet-utils";
 import type { CabinetPhotoSpreadRow } from "@/lib/cabinet-data";
@@ -132,10 +133,11 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                 </p>
               ) : null}
 
-              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
-                  {active.contextData.analysis ?? "Расшифровка недоступна"}
-                </p>
+              <div className="rounded-xl border border-white/10 bg-black/30 p-4 sm:p-5">
+                <ChatMessageRenderer
+                  content={active.contextData.analysis ?? "Расшифровка недоступна"}
+                  role="assistant"
+                />
               </div>
 
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">

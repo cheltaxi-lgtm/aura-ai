@@ -32,6 +32,7 @@ import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
 import PhotoReadingGuide from "@/components/PhotoReadingGuide";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import MasterAvatar from "@/components/MasterAvatar";
+import ChatMessageRenderer from "@/components/ChatMessageRenderer";
 export const PHOTO_READING_RETURN = "/?photo=1";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -962,10 +963,8 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
-                      {result.analysis}
-                    </p>
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
+                    <ChatMessageRenderer content={result.analysis} role="assistant" />
                     <MessageAudioPlayer text={result.analysis} characterId={masterId} />
                   </div>
 
