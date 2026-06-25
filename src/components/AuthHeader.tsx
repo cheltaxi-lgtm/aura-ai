@@ -1,59 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { LogIn, LogOut, User, Sparkles } from "lucide-react";
+import { performClientLogout } from "@/lib/client-logout";
+import type { AuthUser } from "@/lib/useAuth";
 
-interface AuthUser {
-  sub: string;
-  role: "user" | "expert" | "admin";
-  email: string;
-  name: string;
-  slug?: string;
-}
+export const NAVIGATE_CABINET_EVENT = "aura:navigate-cabinet";
 
 interface AuthHeaderProps {
   compact?: boolean;
+  /** When passed from useAuth — avoids duplicate /api/auth/me and UI desync. */
+  user?: AuthUser | null;
+  loading?: boolean;
 }
 
-export default function AuthHeader({ compact = false }: AuthHeaderProps) {
-  const router = useRouter();
-  const [auth, setAuth] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => setAuth(d.authenticated ? d.user : null))
-      .finally(() => setLoading(false));
-  }, []);
-
+export default function AuthHeader({
+  compact = false,
+  user = null,
+  loading = false,
+}: AuthHeaderProps) {
   const logout = async () => {
-    await fetch("/api/auth/me", { method: "DELETE" });
-    setAuth(null);
-    router.refresh();
+    await performClientLogout({ redirectTo: "/" });
+  };
+
+  const openCabinet = () => {
+    window.dispatchEvent(new CustomEvent(NAVIGATE_CABINET_EVENT));
+    window.location.assign("/cabinet");
   };
 
   const btnClass = compact
-    ? "btn-neon inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
-    : "btn-neon flex items-center gap-2 text-sm";
+    ? "btn-neon relative z-10 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
+    : "btn-neon relative z-10 flex items-center gap-2 text-sm";
 
   if (loading) {
     return <div className="h-8 w-8 shrink-0 animate-pulse rounded-xl bg-white/5 sm:w-24" />;
   }
 
-  if (auth?.role === "user") {
+  if (user?.role === "user") {
     return (
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <Link href="/cabinet" className={btnClass} title="Личный кабинет">
+      <div className="relative z-10 flex shrink-0 items-center gap-1 sm:gap-2">
+        <button type="button" onClick={openCabinet} className={btnClass} title="Личный кабинет">
           <User className="h-4 w-4 shrink-0" aria-hidden />
-          <span className={compact ? "hidden sm:inline" : undefined}>{auth.name.split(" ")[0]}</span>
-        </Link>
+          <span className={compact ? "hidden sm:inline" : undefined}>
+            {user.name.split(" ")[0]}
+          </span>
+        </button>
         <button
           type="button"
           onClick={logout}
-          className="shrink-0 p-1 text-gray-500 hover:text-white"
+          className="relative z-10 shrink-0 p-1 text-gray-500 hover:text-white"
           title="Выйти"
           aria-label="Выйти"
         >
@@ -63,9 +58,9 @@ export default function AuthHeader({ compact = false }: AuthHeaderProps) {
     );
   }
 
-  if (auth?.role === "admin") {
+  if (user?.role === "admin") {
     return (
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+      <div className="relative z-10 flex shrink-0 items-center gap-1 sm:gap-2">
         <Link href="/admin" className={btnClass} title="Админка">
           <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
           <span className={compact ? "hidden sm:inline" : undefined}>Админка</span>
@@ -73,7 +68,7 @@ export default function AuthHeader({ compact = false }: AuthHeaderProps) {
         <button
           type="button"
           onClick={logout}
-          className="shrink-0 p-1 text-gray-500 hover:text-white"
+          className="relative z-10 shrink-0 p-1 text-gray-500 hover:text-white"
           title="Выйти"
           aria-label="Выйти"
         >
@@ -83,9 +78,9 @@ export default function AuthHeader({ compact = false }: AuthHeaderProps) {
     );
   }
 
-  if (auth?.role === "expert") {
+  if (user?.role === "expert") {
     return (
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+      <div className="relative z-10 flex shrink-0 items-center gap-1 sm:gap-2">
         <Link href="/expert" className={btnClass} title="Кабинет эксперта">
           <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
           <span className={compact ? "hidden sm:inline" : undefined}>Кабинет</span>
@@ -93,7 +88,7 @@ export default function AuthHeader({ compact = false }: AuthHeaderProps) {
         <button
           type="button"
           onClick={logout}
-          className="shrink-0 p-1 text-gray-500 hover:text-white"
+          className="relative z-10 shrink-0 p-1 text-gray-500 hover:text-white"
           title="Выйти"
           aria-label="Выйти"
         >

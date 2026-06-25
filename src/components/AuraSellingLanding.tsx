@@ -187,6 +187,11 @@ export default function AuraSellingLanding({
 
   const handleDirection = (filter: (typeof DIRECTIONS)[number]["filter"]) => {
     if (filter === "numerology") {
+      const match = masters.find((m) => m.system === "numerology");
+      if (match) {
+        onSelectMaster(match.id);
+        return;
+      }
       scrollToMasters();
       return;
     }
@@ -207,6 +212,11 @@ export default function AuraSellingLanding({
 
   return (
     <div className="aura-landing">
+      {!showHero ? (
+        <h1 className="sr-only">
+          Zovus — персональные эзотерические консультации, расклады на таро и рунах
+        </h1>
+      ) : null}
       {showHero ? (
         <section className="aura-landing-hero">
           <div className="aura-landing-hero__grid mx-auto max-w-6xl">
@@ -216,13 +226,14 @@ export default function AuraSellingLanding({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
-              <p className="aura-landing-hero__eyebrow">Эзотерический оракул Zovus</p>
+              <p className="aura-landing-hero__eyebrow">Персональные эзотерические консультации онлайн</p>
               <h1 className="font-display aura-landing-hero__title">
-                Персональный расклад по{" "}
-                <span className="lux-heading-accent">Таро, рунам и звёздам</span>
+                Zovus — выбор наставника и{" "}
+                <span className="lux-heading-accent">духовные практики</span>
               </h1>
               <p className="aura-landing-hero__subtitle">
-                Выберите мастера, задайте вопрос и получите глубокую расшифровку уже сейчас.
+                Выберите проводника, задайте вопрос и получите персональную онлайн-сессию с расшифровкой
+                по Таро, рунам, астрологии и нумерологии.
               </p>
               <div className="aura-landing-hero__actions">
                 <button type="button" onClick={handlePrimaryCta} className="btn-primary px-8 py-3.5 text-sm sm:text-base">
@@ -237,7 +248,7 @@ export default function AuraSellingLanding({
               </p>
               {config.enabled ? (
                 <p className="aura-landing-hero__pricing">
-                  Расклад из 3 карт бесплатно · расшифровка {formatRunes(cost("READING"))} ·{" "}
+                  Расклад из 3 карт и расшифровка — бесплатно ·{" "}
                   {config.freeQuestions} вопроса бесплатно
                 </p>
               ) : null}

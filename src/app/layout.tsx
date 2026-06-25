@@ -1,11 +1,21 @@
-import type { Metadata } from "next";
-import { Inter, Cinzel } from "next/font/google";
+import Script from "next/script";
+import { Cormorant_Garamond, Inter, Cinzel } from "next/font/google";
 import MysticBackground from "@/components/MysticBackground";
+import Providers from "@/components/Providers";
+import { getRootMetadata } from "@/lib/seo";
 import "./globals.css";
 
+const YANDEX_METRIKA_ID = 110138367;
 const inter = Inter({
   subsets: ["latin", "cyrillic"],
   variable: "--font-body",
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-mystic-display",
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
 });
 
 const cinzel = Cinzel({
@@ -14,32 +24,12 @@ const cinzel = Cinzel({
   weight: ["400", "600", "700"],
 });
 
-export const metadata: Metadata = {
-  title: "Aura — Таро, руны, астрология онлайн",
-  description:
-    "Маркетплейс эзотерических предсказаний. Карта дня бесплатно, мастера таро и рун, разбор расклада по фото. Оплата через СБП и ЮKassa.",
-  keywords: [
-    "таро онлайн",
-    "гадание онлайн",
-    "руны",
-    "астрология",
-    "эзотерика",
-    "оракул",
-    "расклад таро",
-  ],
-  openGraph: {
-    title: "Aura — эзотерический оракул",
-    description: "Мастера таро, рун и астрологии. Бесплатная карта дня.",
-    locale: "ru_RU",
-    type: "website",
-  },
-};
-
+export const metadata = getRootMetadata();
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ru" className={`${inter.variable} ${cinzel.variable}`}>
+    <html lang="ru" className={`${inter.variable} ${cormorant.variable} ${cinzel.variable}`}>
       <body className="font-body relative min-h-screen">
         <svg width="0" height="0" aria-hidden className="absolute">
           <defs>
@@ -50,7 +40,32 @@ export default function RootLayout({
           </defs>
         </svg>
         <MysticBackground />
-        <div className="relative z-10">{children}</div>
+        <Providers>
+          <div className="relative z-10">{children}</div>
+        </Providers>
+
+        {/* Yandex.Metrika counter */}
+        <Script id="yandex-metrika" strategy="afterInteractive">
+          {`(function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=${YANDEX_METRIKA_ID}', 'ym');
+
+    ym(${YANDEX_METRIKA_ID}, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});`}
+        </Script>
+        <noscript>
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://mc.yandex.ru/watch/${YANDEX_METRIKA_ID}`}
+              style={{ position: "absolute", left: "-9999px" }}
+              alt=""
+            />
+          </div>
+        </noscript>
+        {/* /Yandex.Metrika counter */}
       </body>
     </html>
   );

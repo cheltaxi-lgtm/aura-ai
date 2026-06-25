@@ -253,10 +253,33 @@ async function downloadRune(file, dest) {
   }
 }
 
-async function processEntry(system, entry, dir, manifest, model) {
+function parseCliArgs() {
+  const args = process.argv.slice(2);
+  const force = args.includes("--force");
+  const systemArg = args.find((a) => a.startsWith("--system="));
+  const onlyArg = args.find((a) => a.startsWith("--only="));
+  return {
+    force,
+    systems: systemArg ? [systemArg.slice("--system=".length)] : null,
+    only: onlyArg
+      ? onlyArg
+          .slice("--only=".length)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null,
+  };
+}
+
+async function processEntry(system, entry, dir, manifest, model, { force = false } = {}) {
   const { file, name, hint } = entry;
   const dest = path.join(dir, `${file}.png`);
   const key = file;
+
+  if (force && fs.existsSync(dest)) {
+    fs.unlinkSync(dest);
+    delete manifest.items[key];
+  }
 
   if (fs.existsSync(dest) && manifest.items[key]) {
     inc(system, "skipped");
@@ -285,7 +308,11 @@ async function processEntry(system, entry, dir, manifest, model) {
   }
 
   const style = STYLE_BASE[system];
-  const prompt = `${style}. Depict "${name}" (${hint}). Single centered symbol/card, no text labels, no watermark, high detail`;
+  const astroBg =
+    system === "astrology"
+      ? " Dark indigo cosmic starfield fills entire card edge-to-edge, no cream white or beige margins."
+      : "";
+  const prompt = `${style}. Depict "${name}" (${hint}). Single centered symbol/card, no text labels, no watermark, high detail${astroBg}`;
   try {
     await generateAndSave(model, prompt, dest);
     manifest.items[key] = { name, file: `${file}.png`, source: "generated" };
@@ -309,15 +336,24 @@ async function runPool(tasks, limit) {
   await Promise.all(workers);
 }
 
-async function buildSystem(system, model) {
+async function buildSystem(system, model, { force = false, only = null } = {}) {
   const dir = path.join(ROOT, "public", "decks", system);
   fs.mkdirSync(dir, { recursive: true });
   const manifest = readManifest(dir);
   manifest.items ??= {};
 
-  const entries = deckEntries(system);
+  let entries = deckEntries(system);
+  if (only?.length) {
+    const onlySet = new Set(only);
+    entries = entries.filter((e) => onlySet.has(e.file));
+    if (!entries.length) {
+      console.warn(`  No matching entries for --only in ${system}`);
+      return;
+    }
+  }
+
   const tasks = entries.map(
-    (entry) => () => processEntry(system, entry, dir, manifest, model)
+    (entry) => () => processEntry(system, entry, dir, manifest, model, { force })
   );
 
   await runPool(tasks, system.startsWith("tarot-marina") ? 1 : CONCURRENCY);
@@ -366,12 +402,20 @@ async function buildSystem(system, model) {
 }
 
 async function main() {
+  const cli = parseCliArgs();
   console.log("=== Aura deck builder ===\n");
+  if (cli.force) console.log("Force rebuild enabled");
+  if (cli.only) console.log(`Only: ${cli.only.join(", ")}`);
   const model = await resolveSeedreamModel();
 
-  for (const system of DECK_SYSTEMS) {
+  const systems = cli.systems ?? DECK_SYSTEMS;
+  for (const system of systems) {
+    if (!DECK_SYSTEMS.includes(system)) {
+      console.warn(`Unknown system: ${system}`);
+      continue;
+    }
     console.log(`\n--- ${system} ---`);
-    await buildSystem(system, model);
+    await buildSystem(system, model, { force: cli.force, only: cli.only });
   }
 
   console.log("\n=== Summary ===");

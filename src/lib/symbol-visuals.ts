@@ -5,11 +5,14 @@ import {
 import type { DeckSystem, SpreadSymbol } from "@/lib/decks/types";
 import { tarotCardRoman } from "@/lib/tarot-visuals";
 
+import { parseCardOrientation } from "@/lib/card-orientation";
+
 export function resolveSpreadSymbol(
   system: DeckSystem,
   card: { id?: number; name: string; meaning?: string }
 ): SpreadSymbol {
-  const byName = findSymbolByName(system, card.name);
+  const baseName = parseCardOrientation(card.name).name;
+  const byName = findSymbolByName(system, baseName);
   if (byName) return byName;
 
   const def = getDeckDefinition(system);
@@ -20,12 +23,13 @@ export function resolveSpreadSymbol(
 
   return {
     id: card.id ?? -1,
-    name: card.name,
+    name: baseName,
     meaning: card.meaning ?? "",
   };
 }
 
 export function symbolCornerLabel(system: DeckSystem, symbol: SpreadSymbol): string {
+  if (system === "numerology") return symbol.name;
   if (system === "runes") return "᛭";
   if (system === "slavic") return "☉";
   if (system === "astrology") {
@@ -54,6 +58,8 @@ export function symbolKindLabel(system: DeckSystem, symbol: SpreadSymbol): strin
       return "Reza";
     case "astrology":
       return symbol.kind === "planet" ? "Graha" : "Rashi";
+    case "numerology":
+      return "Num";
     case "tarot-marina":
     case "tarot-veronika":
       return symbol.arcana === "major" ? "Major" : "Minor";

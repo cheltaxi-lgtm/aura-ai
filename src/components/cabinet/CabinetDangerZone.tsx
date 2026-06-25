@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
+import BodyPortal from "@/components/BodyPortal";
 
 const CONFIRM_PHRASE = "УДАЛИТЬ ВСЁ";
 
@@ -106,15 +107,16 @@ export default function CabinetDangerZone({ onPurged }: Props) {
         </div>
       </section>
 
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
-            onClick={closeModal}
-          >
+      <BodyPortal active={open}>
+        <AnimatePresence>
+          {open ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="app-modal-overlay fixed inset-0 z-[4990] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm pointer-events-auto"
+              onClick={closeModal}
+            >
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -227,8 +229,9 @@ export default function CabinetDangerZone({ onPurged }: Props) {
               </div>
             </motion.div>
           </motion.div>
-        ) : null}
-      </AnimatePresence>
+          ) : null}
+        </AnimatePresence>
+      </BodyPortal>
     </>
   );
 }

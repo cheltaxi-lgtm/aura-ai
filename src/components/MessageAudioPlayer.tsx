@@ -9,6 +9,7 @@ import {
   ttsCacheKey,
 } from "@/lib/tts-audio-cache";
 import { useTtsEnabled } from "@/hooks/useTtsEnabled";
+import { isCharacterTtsEnabled } from "@/lib/voice-config";
 
 interface MessageAudioPlayerProps {
   text: string;
@@ -246,6 +247,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
 
   if (ttsEnabled === false) return null;
   if (ttsEnabled === null) return null;
+  if (!isCharacterTtsEnabled(characterId)) return null;
 
   return (
     <div className="mt-2">

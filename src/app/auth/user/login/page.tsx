@@ -7,8 +7,8 @@ export default function UserLoginPage() {
       <Link href="/auth" className="mb-8 inline-block text-sm text-gray-500 hover:text-aura-neon">
         ← Выбор аккаунта
       </Link>
-      <h1 className="font-display mb-2 text-center text-3xl text-white">Вход клиента</h1>
-      <p className="mb-8 text-center text-sm text-gray-600">Личный кабинет пользователя Aura</p>
+      <h1 className="font-display mb-2 text-center text-3xl text-white">Вход</h1>
+      <p className="mb-8 text-center text-sm text-aura-ivory/45">Личный кабинет Искателя</p>
       <AuthForm mode="login" role="user" />
     </div>
   );

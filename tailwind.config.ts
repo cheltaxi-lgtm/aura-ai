@@ -22,16 +22,24 @@ const config: Config = {
           emerald: "#5BA88A",
           neon: "#B794F6",
         },
+        mystic: {
+          gold: "#C9A96E",
+          text: "#E8E0D5",
+          accent: "#7B5EA7",
+          lavender: "#B8A9C9",
+        },
       },
       fontFamily: {
         display: ["var(--font-display)", "Georgia", "serif"],
         body: ["var(--font-body)", "system-ui", "sans-serif"],
+        "mystic-display": ["var(--font-mystic-display)", "Georgia", "serif"],
       },
       animation: {
         "pulse-glow": "pulse-glow 3s ease-in-out infinite",
         "pulse-gold": "pulse-gold 4s ease-in-out infinite",
         float: "float 8s ease-in-out infinite",
         "fade-up": "fade-up 0.7s ease-out forwards",
+        "mystic-in": "mystic-in 0.3s ease-out forwards",
       },
       keyframes: {
         "pulse-glow": {
@@ -48,6 +56,10 @@ const config: Config = {
         },
         "fade-up": {
           from: { opacity: "0", transform: "translateY(16px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "mystic-in": {
+          from: { opacity: "0", transform: "translateY(10px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
       },

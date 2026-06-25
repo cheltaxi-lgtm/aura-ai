@@ -1,5 +1,8 @@
-import { getSetting } from "./settings";
-import { sanitizeChatHistory, type ChatHistoryMessage } from "./chat-sanitize";
+import { getAdminAiSettings, getChatModel, getVisionModel } from "./ai-model";
+import { openRouterAppHeaders } from "./brand";
+import { isDegenerateLlmOutput } from "./chat-reply-sanitize";
+import type { ChatHistoryMessage } from "./chat-sanitize";
+import { acquireLlmSlot, withLlmSlot, wrapStreamWithLlmRelease } from "./llm-concurrency";
 
 const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -17,37 +20,11 @@ export function isOpenRouterConfigured(): boolean {
 }
 
 function openRouterHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
     "Content-Type": "application/json",
+    ...openRouterAppHeaders(),
   };
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (appUrl) {
-    headers["HTTP-Referer"] = appUrl;
-    headers["X-Title"] = "Aura";
-  }
-  return headers;
-}
-
-function resolveModel(
-  vision: boolean,
-  isPaid: boolean,
-  aiSettings?: { model: string; visionModel: string; paidModel?: string; freeModel?: string }
-): string {
-  if (aiSettings) {
-    if (vision) return aiSettings.visionModel;
-    const main = aiSettings.model;
-    const paid = aiSettings.paidModel ?? main;
-    if (isPaid) return paid;
-    return aiSettings.freeModel ?? paid ?? main;
-  }
-  if (vision) {
-    return process.env.OPENROUTER_VISION_MODEL ?? "google/gemini-2.0-flash-001";
-  }
-  if (isPaid) {
-    return process.env.OPENROUTER_PAID_MODEL ?? process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
-  }
-  return process.env.OPENROUTER_FREE_MODEL ?? process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
 }
 
 /** OpenRouter catalog IDs always contain a slash (e.g. deepseek/deepseek-chat-v3-0324). */
@@ -55,13 +32,9 @@ export function isOpenRouterModelId(model: string): boolean {
   return model.includes("/");
 }
 
-function defaultModel(vision = false, aiSettings?: { model: string; visionModel: string; paidModel?: string; freeModel?: string }, isPaid = false): string {
-  return resolveModel(vision, isPaid, aiSettings);
-}
-
 async function resolveAiSettings() {
   try {
-    return await getSetting("ai");
+    return await getAdminAiSettings();
   } catch {
     return null;
   }
@@ -87,9 +60,72 @@ function isReasoningCapableModel(model: string): boolean {
 
 function extractAssistantText(message: Record<string, unknown> | undefined): string | null {
   if (!message) return null;
-  const content = typeof message.content === "string" ? message.content.trim() : "";
-  if (content) return content;
+  const content = message.content;
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    return trimmed || null;
+  }
+  if (Array.isArray(content)) {
+    const parts = content
+      .map((part) => {
+        if (part && typeof part === "object" && "text" in part && typeof part.text === "string") {
+          return part.text.trim();
+        }
+        return "";
+      })
+      .filter(Boolean);
+    const joined = parts.join("\n").trim();
+    return joined || null;
+  }
   return null;
+}
+
+const CJK_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
+const LLM_REFUSAL_PATTERNS: RegExp[] = [
+  /作为一个人工/i,
+  /人工智能/i,
+  /language model/i,
+  /(?:I'm|I am) an AI/i,
+  /还没学习/i,
+  /cannot assist/i,
+  /can't assist/i,
+  /cannot fulfill/i,
+  /can't fulfill/i,
+  /unable to fulfill/i,
+  /unable to assist/i,
+  /I(?:'m| am) not able to/i,
+  /I(?:'m| am) sorry,? but I/i,
+  /as an ai/i,
+  /无法回答/i,
+  /暂不(?:支持|提供)/i,
+  /Извините,?\s*я не мог/i,
+  /я не могу выполнить/i,
+  /я не могу помочь/i,
+  /не могу ответить на/i,
+  /отказываюсь/i,
+  /violat(?:e|es|ing) (?:my )?(?:policy|guidelines)/i,
+  /against my (?:policy|guidelines)/i,
+];
+
+/** True when LLM output must be rejected (empty, refusal, CJK storm, degenerate). */
+export function isRejectedLlmOutput(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (CJK_RE.test(trimmed)) return true;
+  if (LLM_REFUSAL_PATTERNS.some((pattern) => pattern.test(trimmed))) return true;
+  if (isDegenerateLlmOutput(trimmed)) return true;
+  return false;
+}
+
+function acceptLlmText(text: string | null): string | null {
+  if (!text?.trim()) return null;
+  const trimmed = text.trim();
+  if (isRejectedLlmOutput(trimmed)) {
+    console.warn("LLM output rejected:", trimmed.slice(0, 120));
+    return null;
+  }
+  return trimmed;
 }
 
 function openRouterRequestBody(
@@ -105,13 +141,15 @@ async function callChatCompletions(
   url: string,
   headers: Record<string, string>,
   body: Record<string, unknown>,
-  timeoutMs = 90000
+  timeoutMs = 90000,
+  maxAttempts = MAX_LLM_ATTEMPTS
 ): Promise<string | null> {
   const isOpenRouter = url.includes("openrouter.ai");
   const model = String(body.model ?? "");
   const payload = isOpenRouter ? openRouterRequestBody(body, model) : body;
 
-  for (let attempt = 0; attempt < MAX_LLM_ATTEMPTS; attempt++) {
+  return withLlmSlot(`complete:${model}`, async () => {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -123,7 +161,7 @@ async function callChatCompletions(
       });
       if (!response.ok) {
         const errText = await response.text().catch(() => "");
-        if (RETRYABLE_STATUSES.has(response.status) && attempt < MAX_LLM_ATTEMPTS - 1) {
+        if (RETRYABLE_STATUSES.has(response.status) && attempt < maxAttempts - 1) {
           await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));
           continue;
         }
@@ -136,7 +174,7 @@ async function callChatCompletions(
       console.warn("LLM empty content:", model, JSON.stringify(data.choices?.[0]?.message)?.slice(0, 200));
       return null;
     } catch (error) {
-      if (attempt < MAX_LLM_ATTEMPTS - 1) {
+      if (attempt < maxAttempts - 1) {
         await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));
         continue;
       }
@@ -147,6 +185,30 @@ async function callChatCompletions(
     }
   }
   return null;
+  });
+}
+
+async function resolveModel(vision: boolean): Promise<string> {
+  return vision ? getVisionModel() : getChatModel();
+}
+
+function buildRequestBody(
+  model: string,
+  messages: ChatMessage[],
+  aiSettings: Awaited<ReturnType<typeof resolveAiSettings>>,
+  opts: { maxTokens?: number; temperature?: number; stream?: boolean }
+): Record<string, unknown> {
+  const effectiveMaxTokens = opts.maxTokens ?? aiSettings?.maxTokens ?? 800;
+  const effectiveTemp = opts.temperature ?? aiSettings?.temperature ?? 0.85;
+  return {
+    model,
+    messages,
+    max_tokens: effectiveMaxTokens,
+    temperature: effectiveTemp,
+    frequency_penalty: 0.35,
+    presence_penalty: 0.2,
+    ...(opts.stream ? { stream: true } : {}),
+  };
 }
 
 export async function completeChat(params: {
@@ -154,78 +216,94 @@ export async function completeChat(params: {
   maxTokens?: number;
   temperature?: number;
   vision?: boolean;
+  /** @deprecated ignored — model always from admin settings */
   isPaid?: boolean;
+  timeoutMs?: number;
+  maxAttempts?: number;
+  /** Skip second pass at lower temperature (e.g. time-sensitive vision). */
+  skipTemperatureRetry?: boolean;
 }): Promise<string | null> {
-  const { messages, maxTokens, temperature = 0.85, vision = false, isPaid = false } = params;
-  const aiSettings = await resolveAiSettings();
-  const effectiveMaxTokens = maxTokens ?? aiSettings?.maxTokens ?? 800;
-  const effectiveTemp = temperature ?? aiSettings?.temperature ?? 0.85;
-  const provider: string = aiSettings?.provider ?? "openrouter";
-
-  const requestBody = (model: string) => ({
-    model,
+  const {
     messages,
-    max_tokens: effectiveMaxTokens,
-    temperature: effectiveTemp,
-  });
+    maxTokens,
+    temperature,
+    vision = false,
+    timeoutMs,
+    maxAttempts,
+    skipTemperatureRetry = false,
+  } = params;
+  const aiSettings = await resolveAiSettings();
+  const model = await resolveModel(vision);
 
-  const primaryModel = defaultModel(vision, aiSettings ?? undefined, isPaid);
-  const fallbackModel =
-    aiSettings?.model ?? process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
-
-  if (isOpenRouterConfigured()) {
-    const text = await callChatCompletions(
-      OPENROUTER_API,
-      openRouterHeaders(),
-      requestBody(primaryModel)
-    );
-    if (text?.trim()) return text.trim();
-
-    if (fallbackModel !== primaryModel && !vision) {
-      const fallbackText = await callChatCompletions(
+  const tryOnce = async (temp?: number) =>
+    acceptLlmText(
+      await callChatCompletions(
         OPENROUTER_API,
         openRouterHeaders(),
-        requestBody(fallbackModel)
-      );
-      if (fallbackText?.trim()) return fallbackText.trim();
+        buildRequestBody(model, messages, aiSettings, { maxTokens, temperature: temp ?? temperature }),
+        timeoutMs,
+        maxAttempts
+      )
+    );
+
+  if (!isOpenRouterConfigured()) return null;
+
+  const effectiveTemp = temperature ?? aiSettings?.temperature ?? 0.85;
+  let text = await tryOnce();
+  if (!text && !skipTemperatureRetry) {
+    text = await tryOnce(Math.min(effectiveTemp, 0.55));
+  }
+  return text;
+}
+
+/** Stream chat completions from OpenRouter (SSE). Model from admin settings only. */
+export async function streamChat(params: {
+  messages: ChatMessage[];
+  maxTokens?: number;
+  temperature?: number;
+  vision?: boolean;
+}): Promise<Response | null> {
+  if (!isOpenRouterConfigured()) return null;
+
+  const { messages, maxTokens, temperature, vision = false } = params;
+  const aiSettings = await resolveAiSettings();
+  const model = await resolveModel(vision);
+  const body = openRouterRequestBody(
+    buildRequestBody(model, messages, aiSettings, {
+      maxTokens,
+      temperature,
+      stream: true,
+    }),
+    model
+  );
+
+  const release = await acquireLlmSlot(`stream:${model}`);
+  if (!release) {
+    console.warn("LLM stream queue timeout");
+    return null;
+  }
+
+  try {
+    const response = await fetch(OPENROUTER_API, {
+      method: "POST",
+      headers: openRouterHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!response.ok || !response.body) {
+      release();
+      console.warn("LLM stream failed:", response.status);
+      return null;
     }
+    const wrappedBody = wrapStreamWithLlmRelease(response.body, release);
+    return new Response(wrappedBody, {
+      status: response.status,
+      headers: response.headers,
+    });
+  } catch (error) {
+    release();
+    console.warn("LLM stream error:", error);
+    return null;
   }
-
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if ((provider === "openai" || provider === "openrouter") && !isPlaceholder(openaiKey)) {
-    const text = await callChatCompletions(
-      "https://api.openai.com/v1/chat/completions",
-      { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-      {
-        model: vision ? "gpt-4o" : "gpt-4o-mini",
-        messages,
-        max_tokens: effectiveMaxTokens,
-        temperature: effectiveTemp,
-      }
-    );
-    if (text) return text;
-  }
-
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
-  if (
-    provider === "deepseek" &&
-    !isPlaceholder(deepseekKey) &&
-    !vision &&
-    !isOpenRouterModelId(primaryModel)
-  ) {
-    return callChatCompletions(
-      "https://api.deepseek.com/chat/completions",
-      { Authorization: `Bearer ${deepseekKey}`, "Content-Type": "application/json" },
-      {
-        model: "deepseek-chat",
-        messages,
-        max_tokens: effectiveMaxTokens,
-        temperature: effectiveTemp,
-      }
-    );
-  }
-
-  return null;
 }
 
 export function buildUserMessageWithImage(

@@ -3,12 +3,12 @@
 import { useMemo, useState } from "react";
 import type { DeckSystem } from "@/lib/decks/types";
 import { getDeckPositions } from "@/lib/decks";
-import { resolveDeckCard } from "@/lib/deck-card-utils";
+import { resolveDeckCard, type DeckCardInput } from "@/lib/deck-card-utils";
 import DeckCard from "@/components/DeckCard";
 import CardDetailModal from "@/components/CardDetailModal";
 
 interface DeckCardsRowProps {
-  cards: { id?: number; name: string; meaning?: string }[];
+  cards: DeckCardInput[];
   system?: DeckSystem;
   masterId?: string;
   showMeaning?: boolean;
@@ -16,6 +16,8 @@ interface DeckCardsRowProps {
   enableDetail?: boolean;
   /** Aligned spread layout with fixed caption baselines */
   aligned?: boolean;
+  /** Override the deck's default position labels (e.g. daily forecast). */
+  positions?: readonly string[];
 }
 
 export default function DeckCardsRow({
@@ -26,10 +28,13 @@ export default function DeckCardsRow({
   size = "md",
   enableDetail = true,
   aligned = false,
+  positions: positionsOverride,
 }: DeckCardsRowProps) {
   const [modalIndex, setModalIndex] = useState<number | null>(null);
 
-  const positions = system ? getDeckPositions(system) : ["Прошлое", "Настоящее", "Будущее"];
+  const positions =
+    positionsOverride ??
+    (system ? getDeckPositions(system) : ["Прошлое", "Настоящее", "Будущее"]);
 
   const resolvedSpread = useMemo(
     () => (system ? cards.map((c) => resolveDeckCard(system, c)) : []),
@@ -55,6 +60,10 @@ export default function DeckCardsRow({
                     card={card}
                     system={system}
                     masterId={masterId}
+                    imagePath={card.imagePath}
+                    detectedOnly={card.placeholder}
+                    originalName={card.originalName}
+                    reversed={card.reversed}
                     showMeaning={false}
                     hideCaption
                     size={size}
@@ -96,6 +105,10 @@ export default function DeckCardsRow({
             card={card}
             system={system}
             masterId={masterId}
+            imagePath={card.imagePath}
+            detectedOnly={card.placeholder}
+            originalName={card.originalName}
+            reversed={card.reversed}
             position={positions[i] ?? `Символ ${i + 1}`}
             showMeaning={showMeaning}
             size={size}

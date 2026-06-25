@@ -12,10 +12,18 @@ import {
   serializeUserProfile,
   updateUserProfile,
 } from "@/lib/users";
-import { getUserChatHistory, getUserReadingHistory } from "@/lib/accounts";
-import { mergeContinueMasterIds } from "@/lib/reading-progress";
+import { getUserReadingHistory } from "@/lib/accounts";
+import { upsertFact } from "@/lib/memory/user-facts";
+import { mastersWithReadingForSpread } from "@/lib/reading-progress";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
+import {
+  cleanupStaleTripletDisplay,
+  userHasConsultationActivity,
+  type TripletReadingRow,
+} from "@/lib/triplet-cleanup";
 import { tarotCardsKey } from "@/lib/tarot";
+import { resolveTripletDisplaySpread } from "@/lib/spread-context";
+import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
 import type { LifeFocus } from "@/lib/astro-profile";
@@ -35,11 +43,22 @@ export async function GET() {
     return NextResponse.json({ profile: null, readings: [] });
   }
 
-  const [profile, readings, chatRows] = await Promise.all([
+  const [profile, readingsRaw, hasConsultationActivity] = await Promise.all([
     getUserById(profileUserId),
     getUserReadingHistory(profileUserId),
-    getUserChatHistory(profileUserId),
+    userHasConsultationActivity(profileUserId),
   ]);
+
+  const readingsForCleanup = readingsRaw.map((r) => ({
+    characterName: r.character_name,
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    contextData: r.context_data as TripletReadingRow["contextData"],
+  }));
+
+  const orphanCleaned = await cleanupStaleTripletDisplay(profileUserId, readingsForCleanup);
+  const readings = orphanCleaned
+    ? await getUserReadingHistory(profileUserId)
+    : readingsRaw;
 
   const mappedReadings = readings.map((r) => ({
     id: r.id,
@@ -49,18 +68,13 @@ export async function GET() {
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
   }));
 
-  const latestTriplet = mappedReadings.find((r) => r.characterName === "triplet");
-  const spreadCards = latestTriplet?.contextData?.tarotCards as { name: string }[] | undefined;
+  const latestSpread = resolveTripletDisplaySpread(mappedReadings, null, DEFAULT_DECK_SYSTEM);
+  const spreadCards =
+    latestSpread.cards.length >= 3
+      ? latestSpread.cards.map((c) => ({ name: c.name }))
+      : undefined;
 
-  const continueMasterIds = mergeContinueMasterIds(mappedReadings, spreadCards, {
-    chatRows: chatRows.map((row) => ({
-      characterId: row.character_id,
-      role: row.role,
-      content: row.content,
-      createdAt:
-        row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
-    })),
-  });
+  const continueMasterIds = mastersWithReadingForSpread(mappedReadings, spreadCards);
 
   const tripletCooldown = await checkTripletCooldown(profileUserId);
 
@@ -71,6 +85,7 @@ export async function GET() {
     continueMasterIds,
     spreadCardsKey: tarotCardsKey(spreadCards),
     tripletCooldown,
+    hasConsultationActivity,
   });
 }
 
@@ -139,7 +154,13 @@ export async function PATCH(request: NextRequest) {
     } else {
       profile = await createUserProfile(payload);
       profileUserId = profile.id;
-      await linkAccountToProfile(auth.sub, profileUserId);
+      const linked = await linkAccountToProfile(auth.sub, profileUserId);
+      if (!linked) {
+        return NextResponse.json(
+          { error: "Профиль уже привязан к другому аккаунту", code: "PROFILE_OWNERSHIP_CONFLICT" },
+          { status: 409 }
+        );
+      }
     }
 
     if (name?.trim()) {
@@ -147,6 +168,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     const serialized = profile ? serializeUserProfile(profile) : null;
+
+    // Seed the client's main question into long-term memory so it is
+    // semantically searchable across masters (vector dedup collapses repeats).
+    const trimmedQuestion = mainQuestion?.trim();
+    if (profileUserId && trimmedQuestion && trimmedQuestion.length >= 8) {
+      void upsertFact(profileUserId, {
+        fact: `Главный запрос клиента: ${trimmedQuestion}`,
+        category: "goal",
+        salience: 4,
+        sourceCharacter: "profile",
+      }).catch((err) => console.warn("[memory] seed main question failed:", err));
+    }
 
     return NextResponse.json({
       ok: true,

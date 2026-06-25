@@ -66,7 +66,8 @@ export default function AdminSettingsPage() {
           <h2 className="font-display text-lg text-white">Функции</h2>
           {[
             ["maintenanceMode", "Режим обслуживания"],
-            ["registrationEnabled", "Регистрация включена"],
+            ["registrationEnabled", "Регистрация пользователей"],
+            ["expertRegistrationEnabled", "Регистрация эзотериков (мастеров)"],
             ["recaptchaEnabled", "reCAPTCHA при регистрации"],
             ["demoPayments", "Демо-оплата без ЮKassa"],
           ].map(([key, label]) => (

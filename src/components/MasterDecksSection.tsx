@@ -36,7 +36,7 @@ export default function MasterDecksSection({
         {!embedded ? (
           <p className="lux-label mb-2 flex items-center justify-center gap-2">
             <Layers className="h-3.5 w-3.5" />
-            Колоды Aura
+            Колоды Zovus
           </p>
         ) : null}
         <h2

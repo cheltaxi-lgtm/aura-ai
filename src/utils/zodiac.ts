@@ -4,7 +4,7 @@ export interface ZodiacSign {
   element: "fire" | "earth" | "air" | "water";
 }
 
-const ZODIAC_SIGNS: ZodiacSign[] = [
+export const ZODIAC_SIGNS: ZodiacSign[] = [
   { name: "Козерог", emoji: "♑", element: "earth" },
   { name: "Водолей", emoji: "♒", element: "air" },
   { name: "Рыбы", emoji: "♓", element: "water" },

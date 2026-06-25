@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import BrandMark from "@/components/BrandMark";
+import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
 import { RefreshCw, Sparkles } from "lucide-react";
 
 interface AppBootstrapScreenProps {
@@ -39,13 +41,13 @@ export default function AppBootstrapScreen({
         transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="mb-3 inline-flex items-center gap-2">
-          <Sparkles className="h-7 w-7 text-aura-purple" aria-hidden />
+          <BrandMark size={28} />
           <span className="font-display text-3xl font-bold tracking-[0.2em] text-white neon-text">
-            AURA
+            {BRAND_NAME.toUpperCase()}
           </span>
         </div>
         <p className="text-xs uppercase tracking-[0.35em] text-aura-champagne/55">
-          эзотерический оракул
+          {BRAND_TAGLINE}
         </p>
       </motion.header>
 
@@ -66,9 +68,9 @@ export default function AppBootstrapScreen({
           </div>
         </div>
 
-        <h1 className="font-display mb-2 text-xl font-semibold text-white md:text-2xl">
+        <p className="font-display mb-2 text-xl font-semibold text-white md:text-2xl">
           {title}
-        </h1>
+        </p>
         <p className="mx-auto mb-6 max-w-xs text-sm leading-relaxed text-aura-ivory/65">
           {subtitle}
         </p>
@@ -107,7 +109,7 @@ export default function AppBootstrapScreen({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.35, duration: 0.5 }}
       >
-        Таро · руны · астрология · AI-мастера и живые эксперты
+        Таро · руны · астрология · персональные мастера
       </motion.p>
     </div>
   );

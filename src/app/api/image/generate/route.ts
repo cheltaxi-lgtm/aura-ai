@@ -5,10 +5,20 @@ import { generateSceneImage, isImageGenConfigured } from "@/lib/image-gen";
 import type { ImageGenerateRequest, ImageSceneType } from "@/lib/image-prompts";
 import { sceneLabel } from "@/lib/image-prompts";
 import { getSetting } from "@/lib/settings";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { tarotCardsKey } from "@/lib/tarot";
 import { persistSceneArtForSpread, findExistingSceneArtUrl } from "@/lib/users";
 import { normalizeSceneImageUrl } from "@/lib/scene-image-store";
+import { getRuneSettings } from "@/lib/rune-settings";
+import {
+  BillingService,
+  InsufficientFundsError,
+  insufficientFundsResponse,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
+import { isRuneBillingActive } from "@/lib/rune-service";
+import { insufficientRunesResponse } from "@/lib/insufficient-runes";
+import type { RuneActionType } from "@/lib/rune-costs";
 
 export const maxDuration = 120;
 
@@ -19,6 +29,11 @@ const SCENES: ImageSceneType[] = [
   "scene_illustration",
   "final_report",
 ];
+
+const SCENE_RUNE_ACTION: Partial<Record<ImageSceneType, RuneActionType>> = {
+  destiny_card: "DESTINY_CARD",
+  final_report: "FINAL_REPORT",
+};
 
 function isSceneType(value: string): value is ImageSceneType {
   return SCENES.includes(value as ImageSceneType);
@@ -61,7 +76,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Scene disabled in admin settings", code: "scene_off" }, { status: 403 });
   }
 
-  if (scene === "final_report" && !body.isPaid) {
+  if (scene === "scene_illustration" && !body.aiResponseText?.trim()) {
+    return NextResponse.json({ error: "aiResponseText required for scene_illustration" }, { status: 400 });
+  }
+
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  const runeSettings = await getRuneSettings();
+  const unlimited = await resolveUnlimitedAccess({
+    accountId: auth.sub,
+    profileUserId: profileUserId ?? undefined,
+  });
+  const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
+  const runeAction = SCENE_RUNE_ACTION[scene as ImageSceneType];
+
+  if (scene === "final_report" && !body.isPaid && !useRuneBilling) {
     return NextResponse.json(
       { error: "Final report requires paid access", code: "payment_required" },
       { status: 402 }
@@ -72,12 +100,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "zodiac required for zodiac_avatar" }, { status: 400 });
   }
 
-  if (scene === "scene_illustration" && !body.aiResponseText?.trim()) {
-    return NextResponse.json({ error: "aiResponseText required for scene_illustration" }, { status: 400 });
-  }
+  let billingCharge: BillingChargeResult | null = null;
+  let runeBalance: number | undefined;
 
   try {
-    const profileUserId = await getProfileUserIdForAccount(auth.sub);
     const cardsKey =
       body.cards && body.cards.length >= 3
         ? tarotCardsKey(body.cards.slice(0, 3).map((name) => ({ name: String(name) })))
@@ -95,8 +121,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (profileUserId && useRuneBilling && runeAction) {
+      try {
+        const charge = await BillingService.chargeRuneAction({
+          userId: profileUserId,
+          action: runeAction,
+        });
+        billingCharge = charge;
+        runeBalance = charge.newBalance;
+      } catch (err) {
+        if (err instanceof InsufficientFundsError) {
+          return insufficientFundsResponse(err);
+        }
+        throw err;
+      }
+    }
+
     const result = await generateSceneImage({ ...body, scene });
     if (!result) {
+      if (profileUserId && billingCharge) {
+        try {
+          runeBalance = await BillingService.rollbackCharge({
+            userId: profileUserId,
+            cost: billingCharge.spentRunes,
+            wasFreeQuestion: billingCharge.wasFreeQuestion,
+            actionType: billingCharge.actionType,
+          });
+        } catch (refundErr) {
+          console.error("Scene art refund failed:", refundErr);
+        }
+      }
       return NextResponse.json({ error: "Image generation failed", code: "generation_failed" }, { status: 502 });
     }
 
@@ -121,9 +175,22 @@ export async function POST(request: NextRequest) {
       model: result.model,
       aspectRatio: result.aspectRatio,
       quality: result.quality,
+      runeBalance,
     });
   } catch (error) {
     console.error("Image generate error:", error);
+    if (profileUserId && billingCharge) {
+      try {
+        await BillingService.rollbackCharge({
+          userId: profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          actionType: billingCharge.actionType,
+        });
+      } catch (refundErr) {
+        console.error("Scene art refund failed:", refundErr);
+      }
+    }
     return NextResponse.json({ error: "Image generation error" }, { status: 500 });
   }
 }

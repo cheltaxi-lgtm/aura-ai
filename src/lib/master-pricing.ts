@@ -1,11 +1,12 @@
 import type { DeckSystem } from "@/lib/decks/types";
 
-export type MasterBillingKind = "runes" | "tarot" | "slavic" | "astrology";
+export type MasterBillingKind = "runes" | "tarot" | "slavic" | "astrology" | "numerology";
 
 export function masterBillingKind(system: DeckSystem): MasterBillingKind {
   if (system === "runes") return "runes";
   if (system === "slavic") return "slavic";
   if (system === "astrology") return "astrology";
+  if (system === "numerology") return "numerology";
   return "tarot";
 }
 
@@ -19,6 +20,8 @@ export function masterQuestionUnit(system: DeckSystem): string {
       return "по картам за вопрос";
     case "astrology":
       return "по знакам за вопрос";
+    case "numerology":
+      return "по числам за вопрос";
   }
 }
 

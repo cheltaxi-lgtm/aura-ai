@@ -22,6 +22,10 @@ export interface Message {
   timestamp: Date;
   audioUrl?: string;
   sceneImageUrl?: string;
+  /** Numerology UI attachments (e.g. Pythagoras square grid). */
+  numerologyUi?: {
+    pythagorasSquare?: import("@/lib/numerology/pythagoras-square").PythagorasSquareResult;
+  };
 }
 
 export interface ChatState {

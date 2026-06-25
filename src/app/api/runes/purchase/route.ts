@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAppUrl } from "@/lib/brand";
 import { ensureDb, query } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { createYukassaRunePayment, isYukassaConfigured } from "@/lib/yukassa";
+import { getRuneSettings } from "@/lib/rune-settings";
+import {
+  MAX_CUSTOM_RUNE_PURCHASE_RUB,
+  MIN_CUSTOM_RUNE_PURCHASE_RUB,
+  runesFromRubAmount,
+} from "@/lib/rune-purchase-constants";
+
+const CUSTOM_PACKAGE_ID = "custom";
+
+function parseStrictCustomAmount(raw: unknown): number | null {
+  const str = String(raw ?? "").trim();
+  if (!/^\d+$/.test(str)) return null;
+  const amountRub = parseInt(str, 10);
+  if (!Number.isFinite(amountRub)) return null;
+  return amountRub;
+}
 
 export async function POST(request: NextRequest) {
   const authed = await requireProfileUserId();
@@ -9,24 +27,84 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "rune_purchase");
+  if (rateLimited) return rateLimited;
+
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
   }
 
   if (!isYukassaConfigured()) {
-    return NextResponse.json({ error: "Payments not configured" }, { status: 503 });
+    return NextResponse.json(
+      {
+        error:
+          "Оплата временно недоступна: не настроены ключи ЮKassa на сервере. Обратитесь в поддержку.",
+        code: "payments_not_configured",
+      },
+      { status: 503 }
+    );
   }
 
-  let packageId: string;
+  let body: { packageId?: string; customAmount?: number | string };
   try {
-    const body = await request.json();
-    packageId = String(body.packageId ?? "");
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const appUrl = getAppUrl();
+  const customAmountRaw = body.customAmount;
+  const hasCustomAmount =
+    customAmountRaw !== undefined && customAmountRaw !== null && customAmountRaw !== "";
+
+  if (hasCustomAmount) {
+    const amountRub = parseStrictCustomAmount(customAmountRaw);
+    if (amountRub === null) {
+      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+    }
+
+    if (amountRub > MAX_CUSTOM_RUNE_PURCHASE_RUB) {
+      return NextResponse.json({ error: "Amount exceeds limit" }, { status: 400 });
+    }
+
+    if (amountRub < MIN_CUSTOM_RUNE_PURCHASE_RUB) {
+      return NextResponse.json(
+        { error: `Минимальная сумма — ${MIN_CUSTOM_RUNE_PURCHASE_RUB} ₽` },
+        { status: 400 }
+      );
+    }
+
+    const settings = await getRuneSettings();
+    const totalRunes = runesFromRubAmount(amountRub, settings.rubPerRune);
+    if (totalRunes <= 0) {
+      return NextResponse.json({ error: "Сумма слишком мала для начисления рун" }, { status: 400 });
+    }
+
+    try {
+      const payment = await createYukassaRunePayment({
+        packageId: CUSTOM_PACKAGE_ID,
+        packageName: "Произвольная сумма",
+        priceRub: amountRub,
+        totalRunes,
+        userId: authed.profileUserId,
+        returnUrl: `${appUrl}/runes/success`,
+      });
+
+      const paymentUrl = payment.confirmation?.confirmation_url;
+      if (!paymentUrl) {
+        return NextResponse.json({ error: "No confirmation URL" }, { status: 502 });
+      }
+
+      return NextResponse.json({ paymentUrl, paymentId: payment.id, runes: totalRunes });
+    } catch (error) {
+      console.error("Rune custom purchase error:", error);
+      return NextResponse.json({ error: "Payment creation failed" }, { status: 502 });
+    }
+  }
+
+  const packageId = String(body.packageId ?? "");
   if (!packageId) {
-    return NextResponse.json({ error: "packageId required" }, { status: 400 });
+    return NextResponse.json({ error: "packageId or customAmount required" }, { status: 400 });
   }
 
   const { rows } = await query<{
@@ -45,7 +123,6 @@ export async function POST(request: NextRequest) {
   }
 
   const totalRunes = pkg.runes + pkg.bonus_runes;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   try {
     const payment = await createYukassaRunePayment({

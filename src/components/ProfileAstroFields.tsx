@@ -218,6 +218,12 @@ export function profileAstroToPayload(
   astroMeta: AstroMeta;
 } | null {
   if (!name.trim() || !values.birthDate) return null;
+  const birthMs = Date.parse(values.birthDate);
+  const now = Date.now();
+  if (Number.isNaN(birthMs) || birthMs > now) return null;
+  const minBirth = new Date();
+  minBirth.setFullYear(minBirth.getFullYear() - 120);
+  if (birthMs < minBirth.getTime()) return null;
   const zodiac = getZodiacFromDate(values.birthDate);
   const astroMeta = buildAstroMeta(values.birthDate) ?? undefined;
   if (!astroMeta) return null;

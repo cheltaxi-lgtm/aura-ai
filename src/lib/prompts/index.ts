@@ -1,11 +1,21 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 
 import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, SPREAD_FINAL_CONCLUSION_RULES } from "./format";
+import {
+  isTarotRuneMasterId,
+  TAROT_RUNE_THEATER_BAN,
+  TAROT_RUNE_MARKDOWN_FORMAT,
+  TAROT_RUNE_CHAT_FORMAT,
+  TAROT_RUNE_THEMATIC_READING_RULES,
+} from "./tarot-rune-format";
 import { buildGenderPronounBlock, SPREAD_TRUTH_RULES } from "./gender-context";
 import { AGAFYA_PERSONA } from "./masters/agafya";
 import { RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE } from "./masters/ragnar";
 import { SHRI_RAJ_PERSONA } from "./masters/shri-raj";
 import { VERONIKA_PERSONA } from "./masters/veronika";
+import { NUMEROLOG_PERSONA } from "./masters/numerolog";
+import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
+import { resolveMasterDeckSystem, getDeckPositions } from "@/lib/decks";
 import { buildMemoryBlock } from "./memory";
 import { getSpreadInstructions } from "./spread-instructions";
 import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
@@ -16,6 +26,7 @@ const MASTER_PERSONA: Record<CharacterKey, string> = {
   veronika: VERONIKA_PERSONA,
   agafya: AGAFYA_PERSONA,
   "shri-raj": SHRI_RAJ_PERSONA,
+  numerolog: NUMEROLOG_PERSONA,
 };
 
 const MASTER_DISPLAY: Record<CharacterKey, string> = {
@@ -23,6 +34,7 @@ const MASTER_DISPLAY: Record<CharacterKey, string> = {
   veronika: "Вероника Лунная",
   agafya: "Баба Агафья",
   "shri-raj": "Гуру Шри Радж Кumar",
+  numerolog: "Эвелина Числа",
 };
 
 export function isCharacterKey(id: string): id is CharacterKey {
@@ -49,7 +61,15 @@ function astroLines(user: PromptUserContext): string[] {
   return lines;
 }
 
-function cardsBlock(cards: string[] | ReadingCard[], labels = ["Прошлое", "Настоящее", "Будущее"]): string {
+function spreadLabelsForCharacter(character: CharacterKey): string[] {
+  const positions = getDeckPositions(resolveMasterDeckSystem(character));
+  return [...positions].slice(0, 3);
+}
+
+function cardsBlock(
+  cards: string[] | ReadingCard[],
+  labels = ["Прошлое", "Настоящее", "Будущее"]
+): string {
   if (!cards.length) return "Карты расклада пока не переданы — опирайся на вопрос и знак клиента.";
   return cards
     .slice(0, 3)
@@ -61,7 +81,7 @@ function cardsBlock(cards: string[] | ReadingCard[], labels = ["Прошлое",
     .join("\n");
 }
 
-function clientBlock(user: PromptUserContext, lastUserMessage?: string): string {
+function clientBlock(user: PromptUserContext, character: CharacterKey, lastUserMessage?: string): string {
   const sessionLabel = user.sessionNumber && user.sessionNumber > 1
     ? `Это ${user.sessionNumber}-й сеанс с этим клиентом.`
     : "Первый или ранний сеанс — заложи доверие и глубину.";
@@ -81,7 +101,7 @@ ${user.today ? `- Сегодня: ${user.today}` : ""}
 ${questionLine}
 
 ВЫПАВШИЕ СИМВОЛЫ (единственный источник выводов — читай значения каждой карты):
-${cardsBlock(user.cards)}
+${cardsBlock(user.cards, spreadLabelsForCharacter(character))}
 ${astroLines(user).map((l) => `- ${l}`).join("\n")}`;
 }
 
@@ -97,6 +117,8 @@ export interface BuildPromptOptions {
   topics?: TopicKey[];
   lastUserMessage?: string;
   intention?: string | null;
+  /** Pre-built numerology block (avoids double computation in chat API). */
+  numerologyBlock?: string;
 }
 
 export function buildSystemPrompt(
@@ -120,12 +142,43 @@ export function buildSystemPrompt(
 
   const hasSpread = user.cards.length >= 3;
 
+  const numerologyBlock =
+    options.numerologyBlock ??
+    (character === "numerolog"
+      ? buildNumerologyChatContext({
+          birthDate: user.birthDate,
+          profileName: user.name,
+          lastUserMessage: options.lastUserMessage,
+        }).prompt
+      : "");
+
+  const tarotRune = isTarotRuneMasterId(character);
+
+  const formatBlock = (() => {
+    if (character === "numerolog") {
+      return thematicReading ? THEMATIC_SPREAD_READING_RULES : RESPONSE_FORMAT;
+    }
+    if (tarotRune) {
+      const theater = TAROT_RUNE_THEATER_BAN;
+      if (mode === "chat") return `${theater}\n${TAROT_RUNE_CHAT_FORMAT}`;
+      if (thematicReading) return `${theater}\n${TAROT_RUNE_THEMATIC_READING_RULES}`;
+      return `${theater}\n${TAROT_RUNE_MARKDOWN_FORMAT}`;
+    }
+    return thematicReading ? THEMATIC_SPREAD_READING_RULES : RESPONSE_FORMAT;
+  })();
+
+  const spreadFinalBlock =
+    hasSpread && user.isPaid && mode === "reading" && !tarotRune
+      ? SPREAD_FINAL_CONCLUSION_RULES
+      : "";
+
   const parts = [
     persona,
+    numerologyBlock,
     CONTEXT_RULES,
     SPREAD_TRUTH_RULES,
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
-    clientBlock(user, options.lastUserMessage),
+    clientBlock(user, character, options.lastUserMessage),
     buildGenderPronounBlock(user, options.lastUserMessage),
     buildMemoryBlock(user.memory ?? [], displayName),
     buildTopicBlock(character, topics),
@@ -135,8 +188,8 @@ export function buildSystemPrompt(
       : thematicReading
         ? "РЕЖИМ: оплаченный тематический расклад — максимальная глубина по теме, без воды."
         : "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов.",
-    thematicReading ? THEMATIC_SPREAD_READING_RULES : RESPONSE_FORMAT,
-    hasSpread && user.isPaid && mode === "reading" ? SPREAD_FINAL_CONCLUSION_RULES : "",
+    formatBlock,
+    spreadFinalBlock,
     mode === "reading" && hasSpread ? getSpreadInstructions(character) : "",
   ];
 

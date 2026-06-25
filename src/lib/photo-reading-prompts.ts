@@ -1,4 +1,4 @@
-import { completeChat, type ChatMessage } from "@/lib/llm";
+import { completeChat, isRejectedLlmOutput, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { buildChatPrompt, buildHumanChatPrompt } from "@/lib/chat-prompts";
 import type { UserContext } from "@/lib/chat-prompts";
@@ -14,6 +14,8 @@ export interface PhotoReadingMetadata {
   spreadType?: string;
   detectedCards: string[];
 }
+
+import { SPREAD_FINAL_CONCLUSION_RULES } from "@/lib/prompts/format";
 
 const PHOTO_READING_RULES = `
 Ты — эксперт по чтению карт по фото: классическое таро (78), Марсель, Тота (Кроули), Ленорман (36), оракулы, метафорические и психологические колоды, авторские, тематические и коллекционные колоды, а также скриншоты из мобильных приложений (Golden Thread, Labyrinthos, Facade, Tarot.com и др.).
@@ -33,10 +35,9 @@ const PHOTO_READING_RULES = `
 - Если назначение не подписано — предположи по числу карт и геометрии, отметь это в строке РАСКЛАД.
 
 ЭТАП 3 — РАСПОЗНАВАНИЕ КАРТ:
-- Называй карты в терминологии ЭТОЙ колоды (RWS: «6 Мечей», Тота: «Уравновешивание (Adjustment)», Марсель: «Отшельник»).
-- Для таро Aura (Rider-Waite) в строке КАРТЫ используй ТОЧНЫЕ русские названия колоды: «2 Пентаклей», «6 Мечей», «Маг», «Сила» — число + масть, не «Двойка» и не English.
+- Называй карты в терминологии ЭТОЙ колоды на фото (RWS: «Two of Swords» или «2 Мечей», Тота: «Adjustment», Ленорман: «Всадник», оракул: текст с карты).
 - Перевёрнутые — «(перев.)» после названия.
-- Разбери все различимые карты (1–20+), не выдумывай скрытые или размытые.
+- Разбери все различимые карты (1–20+); при незнакомой колоде всё равно перечисли видимые названия/образы.
 - Если часть неразборчива — перечисли только видимые и попроси более чёткое фото в конце расшифровки.
 
 ФОРМАТ ОТВЕТА (строго в начале, три строки):
@@ -49,10 +50,28 @@ const PHOTO_READING_RULES = `
 - связывай значение с позицией в раскладе;
 - свяжи с вопросом клиента и астрологическим профилем (если есть);
 - не используй markdown (* ** #);
+- соблюдай глобальные правила мастера: русский язык, честность без цензуры, пять-пятнадцать предложений, без дисклеймеров;
 - не упоминай, что ты AI или vision-модель;
-- применяй политику честности: не смягчай негатив, не отказывай от «тёмных» тем, если они видны в раскладе или в вопросе.`;
+- применяй политику честности: не смягчай негатив, не отказывай от «тёмных» тем, если они видны в раскладе или в вопросе.
 
-export function buildPhotoReadingPrompt(
+${SPREAD_FINAL_CONCLUSION_RULES}`;
+
+/** Rules for the SECOND step: cards already confirmed in the Zovus deck, no recognition needed. */
+const PHOTO_INTERPRETATION_RULES = `
+РЕЖИМ: РАСШИФРОВКА ПОДТВЕРЖДЁННОГО РАСКЛАДА.
+Карты уже распознаны и подтверждены клиентом — НЕ определяй колоду заново, НЕ выводи служебные строки (КОЛОДА/РАСКЛАД/КАРТЫ), НЕ перечисляй карты списком с номерами.
+
+Дай персональную расшифровку от лица мастера, 4–8 абзацев на русском живым текстом:
+- по каждой карте: название → значение в её позиции расклада → вывод для клиента;
+- свяжи с вопросом клиента и астрологическим профилем (если есть);
+- честно, без смягчения негатива и без отказа от «тёмных» тем;
+- не используй markdown (* ** #) и нумерованные списки;
+- не упоминай, что ты AI или vision-модель;
+- пиши только готовый текст для клиента — без повтора этих правил, профиля и структуры промпта.
+
+${SPREAD_FINAL_CONCLUSION_RULES}`;
+
+function buildPersonaBase(
   characterId: string,
   ctx: PhotoReadingContext,
   bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
@@ -67,12 +86,18 @@ export function buildPhotoReadingPrompt(
   }
 
   if (bloggerOverlay && !isAiMasterId(characterId)) {
-    base = buildHumanChatPrompt(
-      bloggerOverlay,
-      ctx,
-      bloggerOverlay.knowledge
-    );
+    base = buildHumanChatPrompt(bloggerOverlay, ctx, bloggerOverlay.knowledge);
   }
+
+  return base;
+}
+
+export function buildPhotoReadingPrompt(
+  characterId: string,
+  ctx: PhotoReadingContext,
+  bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
+): string {
+  const base = buildPersonaBase(characterId, ctx, bloggerOverlay);
 
   const questionLine = ctx.question?.trim()
     ? `Вопрос клиента к этому раскладу: «${ctx.question.trim()}».`
@@ -83,6 +108,20 @@ export function buildPhotoReadingPrompt(
 ${PHOTO_READING_RULES}
 
 ${questionLine}
+Сегодня: ${ctx.today ?? new Date().toLocaleDateString("ru-RU")}.`;
+}
+
+export function buildPhotoInterpretationPrompt(
+  characterId: string,
+  ctx: PhotoReadingContext,
+  bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
+): string {
+  const base = buildPersonaBase(characterId, ctx, bloggerOverlay);
+
+  return `${base}
+
+${PHOTO_INTERPRETATION_RULES}
+
 Сегодня: ${ctx.today ?? new Date().toLocaleDateString("ru-RU")}.`;
 }
 
@@ -108,11 +147,58 @@ function parseMetadataLine(analysis: string, key: string): string | undefined {
   return match?.[1]?.trim() || undefined;
 }
 
-export function parseDetectedCards(analysis: string): string[] {
-  const match = analysis.match(/^КАРТЫ:\s*(.+)$/im);
+export interface DetectedCardEntry {
+  name: string;
+  reversed: boolean;
+}
+
+function splitCardTokens(raw: string): string[] {
+  const numbered = raw
+    .split(/\n/)
+    .flatMap((line) => {
+      const m = line.match(/^\s*\d+[\.)]\s*(.+)$/);
+      return m ? [m[1]] : [line];
+    })
+    .join(" · ");
+
+  return numbered
+    .split(/[·•|/;,]+/)
+    .map((s) => s.replace(/[«»"']/g, "").trim())
+    .filter(Boolean);
+}
+
+function parseDetectedCardsJson(analysis: string): DetectedCardEntry[] {
+  const match = analysis.match(/КАРТЫ_JSON:\s*(\[[\s\S]*?\])/i);
   if (!match) return [];
+  try {
+    const arr = JSON.parse(match[1]) as Array<{ name?: string; reversed?: boolean }>;
+    return arr
+      .map((item) => ({
+        name: String(item.name ?? "").trim(),
+        reversed: Boolean(item.reversed),
+      }))
+      .filter((c) => c.name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function parseDetectedCards(analysis: string): string[] {
+  const jsonCards = parseDetectedCardsJson(analysis);
+  if (jsonCards.length) {
+    return jsonCards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name));
+  }
+
+  const match = analysis.match(/^КАРТЫ:\s*([\s\S]+)$/im);
+  if (!match) return [];
+
+  const tokens = splitCardTokens(match[1]);
+  if (tokens.length) return tokens;
+
   return match[1]
-    .split(/[·•|/]/)
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/\s+·\s+/)
     .map((s) => s.replace(/[«»"']/g, "").trim())
     .filter(Boolean);
 }
@@ -130,6 +216,7 @@ export function stripPhotoReadingHeader(analysis: string): string {
   return analysis
     .replace(/^КОЛОДА:.+\n\n?/im, "")
     .replace(/^РАСКЛАД:.+\n\n?/im, "")
+    .replace(/^КАРТЫ_JSON:.+\n\n?/im, "")
     .replace(/^КАРТЫ:.+\n\n?/im, "")
     .trim();
 }
@@ -170,16 +257,32 @@ ${name}, связь с образом прервалась — не могу ч�
 
 const PHOTO_RECOGNITION_ONLY = `
 РЕЖИМ: ТОЛЬКО РАСПОЗНАВАНИЕ (без расшифровки).
-Верни ТОЛЬКО три служебные строки в начале — без абзацев расшифровки:
+
+Ты ОБЯЗАН распознать любой вид расклада на фото:
+- классическое таро (Rider-Waite, Марсель, Тота, Shadow Work, Wild Unknown, Deviant Moon и любые авторские);
+- Ленорман (36 карт), оракулы, метафорические и психологические колоды;
+- руны, славянские символы, астрологические карты;
+- скриншоты из приложений (Golden Thread, Labyrinthos, Facade, Tarot.com и др.);
+- смешанные или неизвестные колоды — называй то, что видишь на картах.
+
+Верни ТОЛЬКО служебные строки — без расшифровки и без обращения к клиенту:
+
 КОЛОДА: [тип/название · уверенность: высокая/средняя/низкая]
-РАСКЛАД: [название или описание · N карт · назначение если ясно]
+РАСКЛАД: [название или описание · N символов · назначение если ясно]
+КАРТЫ_JSON: [{"name":"Название с фото","reversed":false}, ...]
 КАРТЫ: «Символ1» · «Символ2 (перев.)» · …
-Правила:
-- Перечисли ВСЕ различимые символы слева направо / сверху вниз по порядку на фото.
-- Перевёрнутые — «(перев.)» после названия.
-- Для таро Aura используй точные русские названия: «2 Пентаклей», «6 Мечей», «Маг», «Сила» (число + масть).
-- Если это не расклад (портрет, пейзаж, случайное фото) — КАРТЫ: не удалось распознать
-- Не пиши расшифровку и не обращайся к клиенту — только метаданные.`;
+
+Правила КАРТЫ_JSON и КАРТЫ:
+- Перечисли ВСЕ различимые символы на фото — не сокращай до 3, если видно больше.
+- Порядок: слева направо / сверху вниз, как на фото.
+- Если символов 1–2 — перечисли только видимые; клиент может добавить вручную.
+- Перечисли символы слева направо / сверху вниз.
+- Названия — в терминологии ЭТОЙ колоды на фото (English RWS: "Two of Swords", Ленорман: "Всадник", оракул: текст с карты).
+- reversed: true если карта перевёрнута (перев.), иначе false.
+- Для Rider-Waite / универсального таро можно дублировать русское «2 Мечей».
+- НЕ отказывайся от распознавания из-за незнакомой колоды — опиши каждую видимую карту.
+- КАРТЫ: не удалось распознать — ТОЛЬКО если на фото точно нет карт/рун/символов (портрет, пейзаж, пустой стол).
+- Если видна хотя бы 1 карта — перечисли её; при сомнении укажи лучшее предположение и низкую уверенность в КОЛОДА.`;
 
 export async function generatePhotoRecognition(
   systemPrompt: string,
@@ -200,9 +303,12 @@ export async function generatePhotoRecognition(
 
   return completeChat({
     messages,
-    maxTokens: 600,
+    maxTokens: 1400,
     temperature: 0.35,
     vision: true,
+    timeoutMs: 55_000,
+    maxAttempts: 2,
+    skipTemperatureRetry: true,
   });
 }
 
@@ -212,24 +318,35 @@ export async function generatePhotoInterpretation(
   question?: string
 ): Promise<string | null> {
   const fullPrompt = await wrapSystemPrompt(systemPrompt);
+  const questionLine = question?.trim()
+    ? `Вопрос: «${question.trim()}»`
+    : "";
+
   const userBlock = [
-    "Клиент подтвердил перерисованный расклад Aura:",
     spreadSummary,
-    question?.trim() ? `Вопрос клиента: «${question.trim()}»` : "Отдельный вопрос не задан.",
-    "Дай полную персональную расшифровку от лица мастера (4–8 абзацев, без markdown). Не упоминай AI или vision.",
-  ].join("\n\n");
+    questionLine,
+    "Дай персональную расшифровку.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const messages: ChatMessage[] = [
     { role: "system", content: fullPrompt },
     { role: "user", content: userBlock },
   ];
 
-  return completeChat({
+  const raw = await completeChat({
     messages,
     maxTokens: 1800,
     temperature: 0.65,
     vision: false,
   });
+
+  if (!raw || isRejectedLlmOutput(raw)) {
+    return null;
+  }
+
+  return raw;
 }
 
 export async function resolvePhotoReadingPrompt(
@@ -237,7 +354,28 @@ export async function resolvePhotoReadingPrompt(
   ctx: PhotoReadingContext,
   referrerSlug?: string | null
 ): Promise<string> {
-  let prompt = buildPhotoReadingPrompt(characterId, ctx);
+  return resolvePromptWithBuilder(buildPhotoReadingPrompt, characterId, ctx, referrerSlug);
+}
+
+export async function resolvePhotoInterpretationPrompt(
+  characterId: string,
+  ctx: PhotoReadingContext,
+  referrerSlug?: string | null
+): Promise<string> {
+  return resolvePromptWithBuilder(buildPhotoInterpretationPrompt, characterId, ctx, referrerSlug);
+}
+
+async function resolvePromptWithBuilder(
+  builder: (
+    characterId: string,
+    ctx: PhotoReadingContext,
+    bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
+  ) => string,
+  characterId: string,
+  ctx: PhotoReadingContext,
+  referrerSlug?: string | null
+): Promise<string> {
+  const prompt = builder(characterId, ctx);
 
   const humanSlug = !isAiMasterId(characterId) ? characterId : referrerSlug;
   if (!humanSlug) return prompt;
@@ -247,10 +385,7 @@ export async function resolvePhotoReadingPrompt(
     if (!blogger) return prompt;
 
     const knowledge = await getBloggerKnowledge(blogger.id);
-    return buildPhotoReadingPrompt(characterId, ctx, {
-      ...blogger,
-      knowledge,
-    });
+    return builder(characterId, ctx, { ...blogger, knowledge });
   } catch {
     return prompt;
   }

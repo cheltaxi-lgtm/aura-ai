@@ -1,101 +1,113 @@
-import { NextResponse } from "next/server";
-import { getAuth } from "@/lib/auth";
-import {
-  getUserChatHistory,
-  getUserPayments,
-  getUserSubscription,
-  getUserReadingHistory,
-  getProfileUserIdForAccount,
-} from "@/lib/accounts";
-import { getUserById, serializeUserProfile } from "@/lib/users";
-import { getUserMemoryPreview } from "@/lib/user-memory";
+import { NextRequest, NextResponse } from "next/server";
+import { ensureDb } from "@/lib/db";
+import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { requireUserAuth } from "@/lib/require-auth";
+import { pruneDuplicateActiveSessions, pruneEmptySessionStubs } from "@/lib/session";
+import {  getCabinetProfile,
+  getCabinetStats,
+  getCabinetAchievements,
+  getCabinetSessions,
+  getCabinetDiaryPreview,
+  getCabinetRunes,
+  getCabinetLegacyAccess,
+  getCabinetPhotoSpreads,
+} from "@/lib/cabinet-data";
 
-export async function GET() {
-  const auth = await getAuth();
-  if (!auth || auth.role !== "user") {
+export const dynamic = "force-dynamic";
+
+async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error("[cabinet]", e);
+    return fallback;
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await requireUserAuth();
+  if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const profileUserId = await getProfileUserIdForAccount(auth.sub);
-
-  if (!profileUserId) {
-    return NextResponse.json({
-      profile: { name: auth.name, email: auth.email },
-      astroProfile: null,
-      profileUserId: null,
-      latestAnalysis: null,
-      readings: [],
-      history: [],
-      payments: [],
-      subscription: null,
-    });
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
   }
 
-  const [astroRow, readings, history, payments, subscription, memory] = await Promise.all([
-    getUserById(profileUserId),
-    getUserReadingHistory(profileUserId),
-    getUserChatHistory(profileUserId),
-    getUserPayments(profileUserId),
-    getUserSubscription(profileUserId),
-    getUserMemoryPreview(profileUserId),
-  ]);
-
-  const mappedReadings = readings.map((r) => ({
-    id: r.id,
-    characterName: r.character_name,
-    contextData: r.context_data,
-    isPaid: r.is_paid,
-    createdAt: r.created_at,
-  }));
-
-  const latestTriplet = mappedReadings.find((r) => r.characterName === "triplet");
-  const latestReading = mappedReadings.find(
-    (r) =>
-      (r.contextData?.type === "reading" || r.contextData?.type === "photo_reading") &&
-      typeof (r.contextData.reading ?? r.contextData.analysis) === "string"
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (!profileUserId) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  }
+  const { searchParams } = new URL(request.url);
+  const sessionsLimit = Math.min(
+    50,
+    Math.max(1, Number.parseInt(searchParams.get("sessionsLimit") ?? "50", 10) || 50)
+  );
+  const sessionsOffset = Math.max(
+    0,
+    Number.parseInt(searchParams.get("sessionsOffset") ?? "0", 10) || 0
   );
 
-  const latestAnalysis = latestReading
-    ? {
-        id: latestReading.id,
-        type: latestReading.contextData?.type === "photo_reading" ? ("photo" as const) : ("reading" as const),
-        masterId: latestReading.characterName,
-        text: (latestReading.contextData.reading ?? latestReading.contextData.analysis) as string,
-        detectedCards: latestReading.contextData.detectedCards as string[] | undefined,
-        deckType: latestReading.contextData.deckType as string | undefined,
-        spreadType: latestReading.contextData.spreadType as string | undefined,
-        tarotCards: latestReading.contextData.tarotCards as
-          | { name: string; meaning?: string }[]
-          | undefined,
-        isPaid: latestReading.isPaid,
-        createdAt: latestReading.createdAt,
+  if (sessionsOffset === 0) {
+    await safe(async () => {
+      await pruneEmptySessionStubs(profileUserId);
+      await pruneDuplicateActiveSessions(profileUserId);
+    }, undefined);
+  }
+
+  const [    profile,
+    stats,
+    achievements,
+    sessionsData,
+    diaryPreview,
+    runes,
+    legacyAccess,
+    photoSpreads,
+  ] = await Promise.all([
+    safe(
+      () =>
+        getCabinetProfile(profileUserId, auth.email, auth.name ?? "Пользователь"),
+      {
+        id: profileUserId,
+        name: auth.name ?? "Пользователь",
+        email: auth.email,
+        zodiac: null,
+        birthDate: null,
+        runeBalance: 0,
+        createdAt: null,
       }
-    : latestTriplet
-      ? {
-          id: latestTriplet.id,
-          type: "teaser" as const,
-          text:
-            (typeof latestTriplet.contextData.teaser === "string"
-              ? latestTriplet.contextData.teaser
-              : null) ??
-            "Расклад готов — выберите мастера для полной расшифровки на главной.",
-          tarotCards: latestTriplet.contextData.tarotCards as
-            | { name: string; meaning?: string }[]
-            | undefined,
-          isPaid: latestTriplet.isPaid,
-          createdAt: latestTriplet.createdAt,
-        }
-      : null;
+    ),
+    safe(() => getCabinetStats(profileUserId), {
+      totalSessions: 0,
+      favoriteMaster: null,
+      daysWithUs: 0,
+      totalCards: 0,
+    }),
+    safe(() => getCabinetAchievements(profileUserId), { earned: [], locked: [] }),
+    safe(() => getCabinetSessions(profileUserId, sessionsLimit, sessionsOffset), {
+      sessions: [],
+      total: 0,
+    }),
+    safe(() => getCabinetDiaryPreview(profileUserId, 3), []),
+    safe(() => getCabinetRunes(profileUserId), {
+      enabled: false,
+      balance: 0,
+      transactions: [],
+    }),
+    safe(() => getCabinetLegacyAccess(profileUserId), null),
+    safe(() => getCabinetPhotoSpreads(profileUserId), []),
+  ]);
 
   return NextResponse.json({
-    profile: { name: auth.name, email: auth.email },
-    astroProfile: astroRow ? serializeUserProfile(astroRow) : null,
-    profileUserId,
-    latestAnalysis,
-    readings: mappedReadings,
-    history,
-    payments,
-    subscription,
-    memory,
+    profile,
+    stats,
+    achievements,
+    sessions: sessionsData.sessions,
+    sessionsTotal: sessionsData.total,
+    sessionsHasMore: sessionsOffset + sessionsData.sessions.length < sessionsData.total,
+    diaryPreview,
+    runes,
+    legacyAccess,
+    photoSpreads,
   });
 }

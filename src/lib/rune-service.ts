@@ -1,6 +1,7 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { RUNE_ACTION_LABELS, type RuneActionType } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
+import { runesFromRubAmount } from "@/lib/rune-purchase-constants";
 
 export interface AffordCheck {
   allowed: boolean;
@@ -15,6 +16,15 @@ export async function getRuneBalance(userId: string): Promise<number> {
     [userId]
   );
   return rows[0]?.rune_balance ?? 0;
+}
+
+/** Rune billing applies for all priced actions when runes are enabled (ignores legacy paywall session). */
+export function isRuneBillingActive(
+  profileUserId: string | null | undefined,
+  unlimited: boolean,
+  runeSettings: { enabled: boolean }
+): boolean {
+  return Boolean(profileUserId && !unlimited && runeSettings.enabled);
 }
 
 async function isFreeQuestion(action: RuneActionType, questionIndex?: number): Promise<boolean> {
@@ -49,12 +59,65 @@ export async function canAfford(
   return { allowed: true, balance, cost };
 }
 
-export async function spendRunes(
+/** Spend a custom rune amount (e.g. ritual costs vary by type). */
+export async function spendRunesAmount(
+  userId: string,
+  amount: number,
+  description: string,
+  actionType = "ritual",
+  client?: PoolClient
+): Promise<{ success: boolean; balanceAfter: number; cost: number; error?: string }> {
+  const run = client
+    ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) =>
+        queryClient(client, text, params)
+    : query;
+
+  if (amount <= 0) {
+    const balance = await getRuneBalance(userId);
+    return { success: true, balanceAfter: balance, cost: 0 };
+  }
+
+  const { rows } = await run<{ new_balance: number; success: boolean }>(
+    `WITH updated AS (
+       UPDATE users
+       SET rune_balance = rune_balance - $2
+       WHERE id = $1 AND rune_balance >= $2
+       RETURNING rune_balance AS new_balance
+     )
+     SELECT
+       COALESCE((SELECT new_balance FROM updated), -1) AS new_balance,
+       EXISTS (SELECT 1 FROM updated) AS success`,
+    [userId, amount]
+  );
+
+  const { new_balance, success } = rows[0] ?? { new_balance: -1, success: false };
+
+  if (!success) {
+    const balance = await getRuneBalance(userId);
+    return {
+      success: false,
+      balanceAfter: balance,
+      cost: amount,
+      error: `Недостаточно рун: нужно ${amount} ᚢ, у вас ${balance} ᚢ`,
+    };
+  }
+
+  await run(
+    `INSERT INTO rune_transactions
+       (user_id, type, amount, balance_after, description, action_type)
+     VALUES ($1, 'spend', $2, $3, $4, $5)`,
+    [userId, -amount, new_balance, description, actionType]
+  );
+
+  return { success: true, balanceAfter: new_balance, cost: amount };
+}
+
+export async function spendRunesAtomic(
   userId: string,
   action: RuneActionType,
   questionIndex?: number,
   client?: PoolClient
-): Promise<{ success: boolean; newBalance: number; error?: string; cost?: number }> {
+): Promise<{ success: boolean; balanceAfter: number; cost: number; error?: string }> {
   const run = client
     ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) =>
         queryClient(client, text, params)
@@ -62,7 +125,7 @@ export async function spendRunes(
 
   if (await isFreeQuestion(action, questionIndex)) {
     const balance = await getRuneBalance(userId);
-    return { success: true, newBalance: balance, cost: 0 };
+    return { success: true, balanceAfter: balance, cost: 0 };
   }
 
   const settings = await getRuneSettings();
@@ -84,7 +147,13 @@ export async function spendRunes(
   const { new_balance, success } = rows[0] ?? { new_balance: -1, success: false };
 
   if (!success) {
-    return { success: false, newBalance: 0, error: "Недостаточно рун", cost };
+    const balance = await getRuneBalance(userId);
+    return {
+      success: false,
+      balanceAfter: balance,
+      cost,
+      error: `Недостаточно рун: нужно ${cost} ᚢ, у вас ${balance} ᚢ`,
+    };
   }
 
   await run(
@@ -94,7 +163,22 @@ export async function spendRunes(
     [userId, -cost, new_balance, RUNE_ACTION_LABELS[action], action]
   );
 
-  return { success: true, newBalance: new_balance, cost };
+  return { success: true, balanceAfter: new_balance, cost };
+}
+
+export async function spendRunes(
+  userId: string,
+  action: RuneActionType,
+  questionIndex?: number,
+  client?: PoolClient
+): Promise<{ success: boolean; newBalance: number; error?: string; cost?: number }> {
+  const result = await spendRunesAtomic(userId, action, questionIndex, client);
+  return {
+    success: result.success,
+    newBalance: result.balanceAfter,
+    error: result.error,
+    cost: result.cost,
+  };
 }
 
 /** Refund runes after failed LLM / server error (not for fallback replies). */
@@ -128,7 +212,7 @@ export async function refundRunes(
 export async function addRunes(
   userId: string,
   amount: number,
-  type: "purchase" | "bonus" | "refund",
+  type: "purchase" | "bonus" | "refund" | "achievement" | "daily_bonus",
   description: string,
   paymentId?: string
 ): Promise<number> {
@@ -176,19 +260,155 @@ export async function getRuneTransactions(userId: string, limit = 50) {
   return rows;
 }
 
-/** Idempotent credit after YooKassa payment.succeeded */
+/** Credit runes to user (subscription equivalent, admin grant, etc.) */
+export async function creditRunesToUser(
+  userId: string,
+  amount: number,
+  type: "purchase" | "bonus" | "achievement" | "daily_bonus",
+  description: string
+): Promise<number> {
+  return addRunes(userId, amount, type, description);
+}
+
+export type RuneReceiptTransaction = {
+  id: string;
+  type: string;
+  amount: number;
+  balance_after: number;
+  description: string;
+  action_type: string | null;
+  created_at: Date;
+};
+
+export async function getUnshownReceipts(userId: string): Promise<RuneReceiptTransaction[]> {
+  try {
+    const { rows } = await query<RuneReceiptTransaction>(
+      `SELECT id, type, amount, balance_after, description, action_type, created_at
+       FROM rune_transactions
+       WHERE user_id = $1
+         AND shown_receipt = FALSE
+         AND type IN ('purchase', 'achievement', 'daily_bonus', 'bonus')
+         AND amount > 0
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [userId]
+    );
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+export async function markReceiptsShown(userId: string, ids?: string[]): Promise<void> {
+  if (ids?.length) {
+    await query(
+      `UPDATE rune_transactions
+       SET shown_receipt = TRUE
+       WHERE user_id = $1 AND id = ANY($2::uuid[])`,
+      [userId, ids]
+    );
+    return;
+  }
+  await query(
+    `UPDATE rune_transactions
+     SET shown_receipt = TRUE
+     WHERE user_id = $1
+       AND shown_receipt = FALSE
+       AND type IN ('purchase', 'achievement', 'daily_bonus', 'bonus')
+       AND amount > 0`,
+    [userId]
+  );
+}
+
+/** Admin manual grant with audit trail */
+export async function adminGrantRunes(
+  userId: string,
+  amount: number,
+  reason: string,
+  adminId: string
+): Promise<number> {
+  if (amount <= 0) throw new Error("amount_must_be_positive");
+
+  return withTransaction(async (client) => {
+    const { rows: updated } = await queryClient<{ rune_balance: number }>(
+      client,
+      `UPDATE users
+       SET rune_balance = rune_balance + $2
+       WHERE id = $1
+       RETURNING rune_balance`,
+      [userId, amount]
+    );
+    if (!updated[0]) throw new Error("user_not_found");
+
+    const description = `Admin: ${reason}`;
+    await queryClient(
+      client,
+      `INSERT INTO rune_transactions
+         (user_id, type, amount, balance_after, description)
+       VALUES ($1, 'bonus', $2, $3, $4)`,
+      [userId, amount, updated[0].rune_balance, description]
+    );
+
+    await queryClient(
+      client,
+      `INSERT INTO admin_audit_log (admin_id, action, entity_type, entity_id, details)
+       VALUES ($1, 'grant_runes', 'user', $2, $3)`,
+      [adminId, userId, JSON.stringify({ amount, reason })]
+    );
+
+    return updated[0].rune_balance;
+  });
+}
+
+/** Idempotent credit after YooKassa payment.succeeded — package totals from DB; custom from paid amount. */
 export async function creditRunesFromPayment(metadata: {
   userId: string;
   packageId: string;
-  runesAmount: string | number;
   paymentId: string;
+  amountRub?: number;
 }): Promise<boolean> {
-  const amount = Number(metadata.runesAmount);
-  if (!metadata.userId || !Number.isFinite(amount) || amount <= 0) {
+  if (!metadata.userId || !metadata.packageId || !metadata.paymentId) {
     return false;
   }
 
-  const description = `Пакет рун «${metadata.packageId}»: ${amount} ᚢ`;
+  let amount: number;
+  let description: string;
+
+  if (metadata.packageId === "custom") {
+    if (!metadata.amountRub || metadata.amountRub <= 0) {
+      console.warn("creditRunesFromPayment: custom payment missing amountRub");
+      return false;
+    }
+    const settings = await getRuneSettings();
+    amount = runesFromRubAmount(metadata.amountRub, settings.rubPerRune);
+    if (amount <= 0) {
+      console.warn("creditRunesFromPayment: custom payment yields zero runes");
+      return false;
+    }
+    description = `Пополнение на ${Math.round(metadata.amountRub)} ₽: ${amount} ᚢ`;
+  } else {
+    const { rows: pkgRows } = await query<{
+      name: string;
+      runes: number;
+      bonus_runes: number;
+    }>(
+      `SELECT name, runes, bonus_runes FROM rune_packages WHERE id = $1`,
+      [metadata.packageId]
+    );
+    const pkg = pkgRows[0];
+    if (!pkg) {
+      console.warn("creditRunesFromPayment: package not found:", metadata.packageId);
+      return false;
+    }
+
+    amount = pkg.runes + pkg.bonus_runes;
+    if (amount <= 0) {
+      console.warn("creditRunesFromPayment: invalid package rune total:", metadata.packageId);
+      return false;
+    }
+
+    description = `Пакет рун «${pkg.name}»: ${amount} ᚢ`;
+  }
 
   try {
     return await withTransaction(async (client) => {
@@ -241,19 +461,33 @@ export async function grantStarterRunesIfNeeded(
   const settings = await getRuneSettings();
   if (settings.starterRunes <= 0) return null;
 
-  const { rows } = await query<{ id: string }>(
-    `UPDATE users SET starter_runes_granted = TRUE
-     WHERE id = $1 AND starter_runes_granted = FALSE
-     RETURNING id`,
-    [userId]
-  );
-  if (!rows[0]) return null;
+  try {
+    return await withTransaction(async (client) => {
+      const { rows: flagged } = await queryClient<{ rune_balance: number }>(
+        client,
+        `UPDATE users
+         SET
+           starter_runes_granted = TRUE,
+           rune_balance = rune_balance + $2
+         WHERE id = $1 AND starter_runes_granted = FALSE
+         RETURNING rune_balance`,
+        [userId, settings.starterRunes]
+      );
+      if (!flagged[0]) return null;
 
-  const balance = await addRunes(
-    userId,
-    settings.starterRunes,
-    "bonus",
-    `Стартовый пакет: ${settings.starterRunes} ᚢ`
-  );
-  return { granted: settings.starterRunes, balance };
+      const description = `Стартовый пакет: ${settings.starterRunes} ᚢ`;
+      await queryClient(
+        client,
+        `INSERT INTO rune_transactions
+           (user_id, type, amount, balance_after, description)
+         VALUES ($1, 'bonus', $2, $3, $4)`,
+        [userId, settings.starterRunes, flagged[0].rune_balance, description]
+      );
+
+      return { granted: settings.starterRunes, balance: flagged[0].rune_balance };
+    });
+  } catch (err) {
+    console.error("grantStarterRunesIfNeeded failed:", err);
+    return null;
+  }
 }

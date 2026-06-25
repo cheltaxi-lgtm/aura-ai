@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Star, Trash2 } from "lucide-react";
+import BodyPortal from "@/components/BodyPortal";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
 import {
   formatCabinetDate,
@@ -40,12 +41,18 @@ function RateModal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-xl"
+    <BodyPortal active={open}>
+      <div
+        className="app-modal-overlay fixed inset-0 z-[4990] flex items-end justify-center bg-black/70 p-4 sm:items-center pointer-events-auto"
+        onClick={onClose}
+        role="presentation"
       >
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-xl"
+        >
         <h3 className="text-lg font-semibold text-white">Сбылось ли предсказание?</h3>
         <div className="mt-4 flex flex-col gap-2">
           {(
@@ -74,7 +81,8 @@ function RateModal({
           Отмена
         </button>
       </motion.div>
-    </div>
+      </div>
+    </BodyPortal>
   );
 }
 
@@ -162,7 +170,11 @@ function SessionCard({
           </button>
         )}
         <Link
-          href={`/?master=${encodeURIComponent(session.characterKey)}&resume=chat`}
+          href={
+            session.sessionId
+              ? `/?master=${encodeURIComponent(session.characterKey)}&resume=chat&sessionId=${encodeURIComponent(session.sessionId)}`
+              : `/?master=${encodeURIComponent(session.characterKey)}&resume=chat`
+          }
           className="cabinet-btn cabinet-btn--primary"
         >
           Продолжить чат

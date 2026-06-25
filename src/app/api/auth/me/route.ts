@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { clearAuthCookie, getAuth } from "@/lib/auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const auth = await getAuth();
   if (!auth) {

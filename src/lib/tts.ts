@@ -3,6 +3,7 @@ import {
   pcm16ToWav,
   splitTextForTts,
   resolveCharacterTts,
+  type CharacterTtsProfile,
   resolveElevenLabsVoiceId,
   mergeMp3Buffers,
   mergeWavBuffers,
@@ -10,6 +11,8 @@ import {
   TTS_CHUNK_CHARS,
 } from "@/lib/voice-config";
 import { isOpenRouterConfigured } from "@/lib/llm";
+import { withLlmSlot } from "@/lib/llm-concurrency";
+import { openRouterAppHeaders } from "@/lib/brand";
 import { getSetting, type TtsSettings } from "@/lib/settings";
 import { isPrimarilyCyrillic, reorderTtsModelChainForText } from "@/lib/tts-locale";
 
@@ -36,19 +39,15 @@ export interface SynthesizeResult {
 }
 
 function openRouterSpeechHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
     "Content-Type": "application/json",
+    ...openRouterAppHeaders(),
   };
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (appUrl) {
-    headers["HTTP-Referer"] = appUrl;
-    headers["X-Title"] = "Aura";
-  }
-  return headers;
 }
 
 async function callOpenRouterSpeech(body: Record<string, unknown>): Promise<SynthesizeResult | null> {
+  return withLlmSlot(`tts:${body.model ?? "unknown"}`, async () => {
   const response = await fetch(OPENROUTER_SPEECH_API, {
     method: "POST",
     headers: openRouterSpeechHeaders(),
@@ -88,6 +87,7 @@ async function callOpenRouterSpeech(body: Record<string, unknown>): Promise<Synt
     provider: "openrouter",
     model: String(body.model),
   };
+  });
 }
 
 function isGeminiTtsModel(model: string): boolean {
@@ -127,7 +127,7 @@ function buildModelChain(settings: TtsSettings, text: string): string[] {
 
 async function synthesizeWithOpenRouterModel(
   text: string,
-  profile: ReturnType<typeof resolveCharacterTts>,
+  profile: CharacterTtsProfile,
   model: string
 ): Promise<SynthesizeResult | null> {
   if (isGeminiTtsModel(model)) {
@@ -157,7 +157,7 @@ async function synthesizeWithOpenRouterModel(
 
 async function synthesizeAllChunksWithModel(
   chunkInputs: string[],
-  profile: ReturnType<typeof resolveCharacterTts>,
+  profile: CharacterTtsProfile,
   model: string,
   parallel = 2
 ): Promise<SynthesizeResult[] | null> {
@@ -190,6 +190,7 @@ async function synthesizeOpenRouter(
   if (!isOpenRouterConfigured()) return null;
 
   const profile = resolveCharacterTts(characterId);
+  if (!profile) return null;
   const fullText = chunkInputs.join(" ");
   const modelChain = buildModelChain(settings, fullText);
   const primary = resolvePrimaryModel(settings);
@@ -313,6 +314,7 @@ export async function synthesizeSpeech(
   if (!chunks.length) return null;
 
   const profile = resolveCharacterTts(characterId);
+  if (!profile) return null;
   const modelChain = buildModelChain(ttsSettings, rawText);
   const useGeminiTags = modelChain.length > 0 && isGeminiTtsModel(modelChain[0]);
 

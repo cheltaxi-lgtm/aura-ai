@@ -58,12 +58,18 @@ export async function listUserAccounts(limit = 50, offset = 0) {
     name: string;
     created_at: Date;
     profile_name: string | null;
+    profile_user_id: string | null;
     zodiac: string | null;
     sessions_count: string;
     is_unlimited: boolean;
+    last_triplet_draw_at: string | null;
+    rune_balance: number | null;
   }>(
     `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited,
+            ua.profile_user_id,
             u.name AS profile_name, u.zodiac,
+            u.rune_balance,
+            u.astro_meta->>'lastTripletDrawAt' AS last_triplet_draw_at,
             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count
      FROM user_accounts ua
      LEFT JOIN users u ON u.id = ua.profile_user_id
@@ -81,9 +87,14 @@ export async function listOnboardingProfiles(limit = 50, offset = 0) {
     birth_date: string;
     zodiac: string;
     created_at: Date;
+    rune_balance: number;
+    account_email: string | null;
   }>(
-    `SELECT id, name, gender, birth_date::text, zodiac, created_at
-     FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+    `SELECT u.id, u.name, u.gender, u.birth_date::text, u.zodiac, u.created_at,
+            u.rune_balance,
+            (SELECT ua.email FROM user_accounts ua WHERE ua.profile_user_id = u.id LIMIT 1) AS account_email
+     FROM users u
+     ORDER BY u.created_at DESC LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
   return rows;

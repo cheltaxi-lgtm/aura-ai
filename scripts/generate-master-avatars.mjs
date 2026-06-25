@@ -51,6 +51,12 @@ const MASTERS = [
     name: "Marina",
     prompt: `${STYLE_PREFIX} Character: modern elegant young woman tarot reader, stylish dark clothing, moonlit tarot cards, dark golden mystique palette, confident intuitive gaze.`,
   },
+  {
+    file: "numerolog",
+    id: "numerolog",
+    name: "Evelina",
+    prompt: `${STYLE_PREFIX} Character: elegant numerologist woman, warm intelligent gaze, golden sacred geometry and glowing numbers in background, deep indigo and violet palette with gold accents, soft mystical light.`,
+  },
 ];
 
 function loadEnvFile(name) {

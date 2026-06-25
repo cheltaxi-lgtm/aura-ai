@@ -82,6 +82,10 @@ export async function getAuth(): Promise<AuthPayload | null> {
   return verifyToken(token);
 }
 
+export function normalizeAuthEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export function slugify(input: string) {
   return input
     .toLowerCase()

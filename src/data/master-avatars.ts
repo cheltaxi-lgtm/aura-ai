@@ -82,6 +82,17 @@ export const MASTER_AVATAR_SLOTS: Record<string, MasterAvatarSlot> = {
     moodTo: "#3d3018",
     glow: "rgba(236, 72, 153, 0.35)",
   },
+  numerolog: {
+    id: "numerolog",
+    portrait: avatarPaths("numerolog").portrait,
+    thumb: avatarPaths("numerolog").thumb,
+    monogram: "Э",
+    artDirection:
+      "Elegant numerologist woman, golden sacred geometry, indigo-violet light; numbers and soft glow. Drop-in: numerolog.webp.",
+    moodFrom: "#1a1438",
+    moodTo: "#3d2a6e",
+    glow: "rgba(232, 199, 126, 0.4)",
+  },
 };
 
 const DEFAULT_SLOT: MasterAvatarSlot = {
@@ -89,7 +100,7 @@ const DEFAULT_SLOT: MasterAvatarSlot = {
   portrait: avatarPaths("default").portrait,
   thumb: avatarPaths("default").thumb,
   monogram: "✦",
-  artDirection: "Generic Aura master placeholder.",
+  artDirection: "Generic Zovus master placeholder.",
   moodFrom: "#12101a",
   moodTo: "#2a2438",
   glow: "rgba(232, 199, 126, 0.35)",
@@ -119,6 +130,7 @@ export function masterTagline(masterId: string, title?: string): string {
     agafya: "Славянские знаки и семейная мудрость",
     "shri-raj": "Джйотиш: карма, звёзды и предназначение",
     gadalka_marina: "Авторские расклады и лунная интуиция",
+    numerolog: "Числа судьбы, квадрат Пифагора и личные циклы",
   };
   return taglines[masterId] ?? title ?? "Персональный эзотерический наставник";
 }

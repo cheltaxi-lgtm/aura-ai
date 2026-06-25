@@ -1,18 +1,52 @@
 import type { Message } from "@/types";
+import type { DeckSystem } from "@/lib/decks/types";
 
 const CHAT_CACHE_KEY = "aura_chat_cache";
-export const MIN_SPREAD_READING_CHARS = 120;
+const CHAT_SYNC_CHANNEL = "aura-chat-sync";
 
-type ChatCacheEntry = Message[] | { cardsKey?: string; messages: Message[] };
+export const CHAT_HISTORY_PAGE_SIZE = 50;
+
+const TAB_ID =
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `tab-${Date.now()}`;
+export const MIN_SPREAD_READING_CHARS = 120;
+/** Cache key for paid session chats — must not match daily triplet spread keys */
+export const SESSION_ONLY_CACHE_KEY = "__session_only__";
+
+export type CachedChatSpread = {
+  cards: {
+    id?: number;
+    name: string;
+    meaning?: string;
+    imagePath?: string;
+    placeholder?: boolean;
+    reversed?: boolean;
+    originalName?: string;
+  }[];
+  system: DeckSystem;
+  variant?: "triplet" | "intention" | "photo";
+};
+
+type ChatCacheEntry =
+  | Message[]
+  | { cardsKey?: string; spread?: CachedChatSpread; messages: Message[] };
 type ChatCache = Record<string, ChatCacheEntry>;
 
-function normalizeEntry(entry: ChatCacheEntry | undefined): {
+export type ChatCacheSnapshot = {
   cardsKey?: string;
+  spread?: CachedChatSpread;
   messages: Message[];
-} {
+};
+
+function normalizeEntry(entry: ChatCacheEntry | undefined): ChatCacheSnapshot {
   if (!entry) return { messages: [] };
   if (Array.isArray(entry)) return { messages: entry };
-  return { cardsKey: entry.cardsKey, messages: entry.messages ?? [] };
+  return {
+    cardsKey: entry.cardsKey,
+    spread: entry.spread,
+    messages: entry.messages ?? [],
+  };
 }
 
 /** True when chat contains a full spread reading (not just a short teaser). */
@@ -41,35 +75,114 @@ function deserializeMessages(raw: Message[]): Message[] {
   }));
 }
 
-export function loadChatCache(characterId: string, cardsKey?: string): Message[] | null {
+export function loadChatCacheEntry(characterId: string): ChatCacheSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
     const stored = localStorage.getItem(CHAT_CACHE_KEY);
     if (!stored) return null;
     const cache = JSON.parse(stored) as ChatCache;
-    const { cardsKey: cachedKey, messages } = normalizeEntry(cache[characterId]);
+    const entry = normalizeEntry(cache[characterId]);
+    if (!entry.messages.length && !entry.spread?.cards.length) return null;
+    return {
+      cardsKey: entry.cardsKey,
+      spread: entry.spread,
+      messages: entry.messages.length ? deserializeMessages(entry.messages) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function loadChatCache(characterId: string, cardsKey?: string): Message[] | null {
+  const entry = loadChatCacheEntry(characterId);
+  if (!entry) return null;
+  if (!entry.messages.length) return null;
+  if (cardsKey && entry.cardsKey && entry.cardsKey !== cardsKey) return null;
+  return entry.messages;
+}
+
+/** Load chat for master; when cardsKey is set, never mix spreads. */
+export function loadChatCacheForMaster(
+  characterId: string,
+  cardsKey?: string
+): Message[] | null {
+  if (cardsKey) {
+    return loadChatCache(characterId, cardsKey);
+  }
+  return loadChatCacheAny(characterId);
+}
+/** Load cached chat for a master regardless of spread cardsKey (single conversation thread). */
+export function loadChatCacheAny(characterId: string): Message[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(CHAT_CACHE_KEY);
+    if (!stored) return null;
+    const cache = JSON.parse(stored) as ChatCache;
+    const { messages } = normalizeEntry(cache[characterId]);
     if (!messages.length) return null;
-    if (cardsKey && cachedKey && cachedKey !== cardsKey) return null;
     return deserializeMessages(messages);
   } catch {
     return null;
   }
 }
 
+export function notifyChatCacheUpdated(characterId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (typeof BroadcastChannel !== "undefined") {
+      const bc = new BroadcastChannel(CHAT_SYNC_CHANNEL);
+      bc.postMessage({ characterId, tabId: TAB_ID, at: Date.now() });
+      bc.close();
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function subscribeChatCacheUpdates(
+  onUpdate: (characterId: string) => void
+): () => void {
+  if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") {
+    return () => {};
+  }
+  const bc = new BroadcastChannel(CHAT_SYNC_CHANNEL);
+  bc.onmessage = (event: MessageEvent<{ characterId?: string; tabId?: string }>) => {
+    if (event.data?.tabId === TAB_ID) return;
+    if (event.data?.characterId) onUpdate(event.data.characterId);
+  };
+  return () => bc.close();
+}
+
+export function isLocalStorageAvailable(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const probe = "__aura_ls_probe__";
+    localStorage.setItem(probe, "1");
+    localStorage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function saveChatCache(
   characterId: string,
   messages: Message[],
-  cardsKey?: string
+  cardsKey?: string,
+  spread?: CachedChatSpread
 ): void {
   if (typeof window === "undefined" || !messages.length) return;
   try {
     const stored = localStorage.getItem(CHAT_CACHE_KEY);
     const cache: ChatCache = stored ? JSON.parse(stored) : {};
+    const prev = normalizeEntry(cache[characterId]);
     cache[characterId] = {
-      cardsKey: cardsKey || normalizeEntry(cache[characterId]).cardsKey,
+      cardsKey: cardsKey || prev.cardsKey,
+      spread: spread ?? prev.spread,
       messages: serializeMessages(messages) as unknown as Message[],
     };
     localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(cache));
+    notifyChatCacheUpdated(characterId);
   } catch {
     /* ignore quota errors */
   }

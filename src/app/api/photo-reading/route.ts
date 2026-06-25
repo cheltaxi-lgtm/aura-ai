@@ -1,28 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
-import { hasPaidAccess, saveMessage } from "@/lib/session";
+import { hasPaidAccess, saveMessage, updateSessionChatMeta, getSession } from "@/lib/session";
 import { buildPhotoReadingUserMessage } from "@/lib/photo-chat";
 import {
   generatePhotoInterpretation,
   photoReadingFallback,
-  resolvePhotoReadingPrompt,
+  resolvePhotoInterpretationPrompt,
 } from "@/lib/photo-reading-prompts";
 import { createHistoryEntry } from "@/lib/users";
 import { getUserById, serializeUserProfile } from "@/lib/users";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import {
   appendUserMemoryToPrompt,
-  buildUserMemoryBlock,
+  buildClientBlock,
+  buildMemoryBlock,
 } from "@/lib/user-memory";
-import { canAfford, spendRunes, refundRunes } from "@/lib/rune-service";
-import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
-import { resolveSessionForUser } from "@/lib/session-access";
-import { enforceChatRateLimit } from "@/lib/api-guards";
+import { loadClientMemoryBlock, recordTurn } from "@/lib/memory/client-memory";
+import {
+  BillingService,
+  InsufficientFundsError,
+  insufficientFundsResponse,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
+import { isRuneBillingActive } from "@/lib/rune-service";
+import { getRuneSettings } from "@/lib/rune-settings";
+import { ensureChatSession } from "@/lib/session-access";
+import { ensureSessionMemoryStub } from "@/lib/session-memory";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
+import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
 import {
   buildSpreadSummaryForLlm,
   isRecognizedSpread,
+  isPhotoSpreadComplete,
   normalizeRedrawSpreadInput,
   redrawSpreadToTarotCards,
   type RedrawSpread,
@@ -34,10 +45,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
   }
 
-  const rateLimited = await enforceChatRateLimit(auth.sub);
+  const rateLimited = await enforcePaidRouteRateLimit(auth.sub, "photo_reading");
   if (rateLimited) return rateLimited;
 
   let spentRunes = 0;
+  let billingCharge: BillingChargeResult | null = null;
 
   let characterId = "veronika";
   let question = "";
@@ -67,6 +79,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!isPhotoSpreadComplete(confirmedSpread)) {
+    return NextResponse.json(
+      {
+        error: "INCOMPLETE_SPREAD",
+        message: "Расклад пуст — добавьте хотя бы один символ перед расшифровкой.",
+      },
+      { status: 422 }
+    );
+  }
+
   const spreadCheck = isRecognizedSpread({
     detectedCards: confirmedSpread.cards.map((c) => c.name),
     deckType: confirmedSpread.deckType,
@@ -82,18 +104,27 @@ export async function POST(request: NextRequest) {
 
   let isPaid = false;
   let referrerSlug: string | null = null;
+  let resolvedSessionId: string | undefined = sessionId;
 
   const unlimited = profileUserId
     ? await resolveUnlimitedAccess({ accountId: auth.sub, profileUserId })
     : await resolveUnlimitedAccess({ accountId: auth.sub });
 
   if (await ensureDb()) {
-    if (sessionId) {
-      const resolved = await resolveSessionForUser(sessionId, profileUserId);
-      if (resolved.error) return resolved.error;
-      const session = resolved.session!;
-      isPaid = hasPaidAccess(session, { unlimited });
-      referrerSlug = session.referrer_slug;
+    if (profileUserId) {
+      const ensured = await ensureChatSession(sessionId, profileUserId);
+      if (ensured.error) return ensured.error;
+      if (ensured.session) {
+        resolvedSessionId = ensured.session.id;
+        isPaid = hasPaidAccess(ensured.session, { unlimited });
+        referrerSlug = ensured.session.referrer_slug;
+      }
+    } else if (sessionId) {
+      const row = await getSession(sessionId);
+      if (row) {
+        isPaid = hasPaidAccess(row, { unlimited });
+        referrerSlug = row.referrer_slug;
+      }
     } else if (unlimited) {
       isPaid = true;
     }
@@ -102,37 +133,24 @@ export async function POST(request: NextRequest) {
   }
 
   const runeSettings = await getRuneSettings();
-  const useRuneBilling = Boolean(
-    profileUserId && !unlimited && !isPaid && runeSettings.enabled
-  );
+  const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
   let runeBalance: number | undefined;
 
   if (useRuneBilling && profileUserId) {
-    const affordCheck = await canAfford(profileUserId, "VISION_ANALYSIS");
-    if (!affordCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: "INSUFFICIENT_RUNES",
-          balance: affordCheck.balance,
-          required: affordCheck.cost,
-          message: affordCheck.reason,
-        },
-        { status: 402 }
-      );
+    try {
+      const charge = await BillingService.chargeRuneAction({
+        userId: profileUserId,
+        action: "VISION_ANALYSIS",
+      });
+      billingCharge = charge;
+      runeBalance = charge.newBalance;
+      spentRunes = charge.spentRunes;
+    } catch (err) {
+      if (err instanceof InsufficientFundsError) {
+        return insufficientFundsResponse(err);
+      }
+      throw err;
     }
-    const spendResult = await spendRunes(profileUserId, "VISION_ANALYSIS");
-    if (!spendResult.success) {
-      return NextResponse.json(
-        {
-          error: "INSUFFICIENT_RUNES",
-          balance: affordCheck.balance,
-          required: affordCheck.cost,
-        },
-        { status: 402 }
-      );
-    }
-    runeBalance = spendResult.newBalance;
-    spentRunes = runeCostFromSettings(runeSettings, "VISION_ANALYSIS");
   }
 
   const today = new Date().toLocaleDateString("ru-RU", {
@@ -163,13 +181,21 @@ export async function POST(request: NextRequest) {
   const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread);
 
   try {
-    let systemPrompt = await resolvePhotoReadingPrompt(characterId, ctx, referrerSlug);
+    let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
 
-    if (profileUserId) {
-      const memoryBlock = await buildUserMemoryBlock(profileUserId, {
-        currentCharacterId: characterId,
+    if (profileUserId && resolvedSessionId) {
+      const clientBlock = buildClientBlock({
+        name: ctx.userName,
+        gender: ctx.gender,
+        zodiac: ctx.zodiac,
+        birthDate: ctx.birthDate,
       });
-      systemPrompt = appendUserMemoryToPrompt(systemPrompt, memoryBlock);
+      const memoryBlock = await buildMemoryBlock(profileUserId, characterId, resolvedSessionId);
+      const factsBlock = await loadClientMemoryBlock({ userId: profileUserId });
+      systemPrompt = appendUserMemoryToPrompt(
+        systemPrompt,
+        `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null
+      );
     }
 
     const llmAnalysis = await generatePhotoInterpretation(
@@ -180,14 +206,15 @@ export async function POST(request: NextRequest) {
     const usedLlmFallback = !llmAnalysis;
     const analysisBody = llmAnalysis ?? photoReadingFallback(ctx.userName);
 
-    if (usedLlmFallback && profileUserId && spentRunes > 0) {
+    if (usedLlmFallback && profileUserId && billingCharge) {
       try {
-        await refundRunes(
-          profileUserId,
-          spentRunes,
-          "Возврат: пустой ответ LLM",
-          "VISION_ANALYSIS"
-        );
+        runeBalance = await BillingService.rollbackCharge({
+          userId: profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          actionType: "VISION_ANALYSIS",
+        });
+        billingCharge = null;
         spentRunes = 0;
       } catch (refundErr) {
         console.error("Photo reading LLM fallback refund failed:", refundErr);
@@ -211,20 +238,47 @@ export async function POST(request: NextRequest) {
           redrawSpread: confirmedSpread,
           question: question.trim() || undefined,
           userName: ctx.userName,
+          sessionId: resolvedSessionId,
         },
-        isPaid,
+        isPaid: isPaid || spentRunes > 0,
       });
       historyId = entry?.id;
     }
 
-    if (sessionId && (await ensureDb())) {
+    if (resolvedSessionId && profileUserId && (await ensureDb())) {
       try {
         const userMsg = buildPhotoReadingUserMessage(question, detectedCards);
-        await saveMessage(sessionId, characterId, "user", userMsg);
-        await saveMessage(sessionId, characterId, "assistant", analysisBody);
+        await saveMessage(resolvedSessionId, characterId, "user", userMsg, profileUserId);
+        await saveMessage(resolvedSessionId, characterId, "assistant", analysisBody, profileUserId);
+        await updateSessionChatMeta(resolvedSessionId, {
+          characterKey: characterId,
+          spreadType: "photo",
+          cards: detectedCards,
+        });
+        const topicSummary = question.trim()
+          ? `Фото-расклад: ${question.trim().slice(0, 120)}`
+          : "Фото-расклад";
+        await ensureSessionMemoryStub({
+          userId: profileUserId,
+          sessionId: resolvedSessionId,
+          characterKey: characterId,
+          topicSummary,
+          keyCards: detectedCards.slice(0, 5),
+          prediction: analysisBody.slice(0, 500),
+        });
       } catch (err) {
         console.warn("Photo reading chat save failed:", err);
       }
+    }
+
+    // Capture durable client facts from the free-text question (cross-section memory).
+    if (profileUserId && question.trim()) {
+      void recordTurn({
+        userId: profileUserId,
+        characterId,
+        userMessage: question,
+        assistantReply: analysisBody,
+      }).catch((err) => console.warn("[memory] photo recordTurn failed:", err));
     }
 
     return NextResponse.json({
@@ -236,21 +290,22 @@ export async function POST(request: NextRequest) {
       redrawSpread: confirmedSpread,
       tarotCards,
       characterId,
-      isPaid,
+      isPaid: isPaid || spentRunes > 0,
       saved: Boolean(profileUserId),
       historyId,
+      sessionId: resolvedSessionId,
       runeBalance,
     });
   } catch (error) {
     console.error("Photo reading error:", error);
-    if (profileUserId && spentRunes > 0) {
+    if (profileUserId && billingCharge) {
       try {
-        await refundRunes(
-          profileUserId,
-          spentRunes,
-          "Возврат: ошибка анализа фото",
-          "VISION_ANALYSIS"
-        );
+        await BillingService.rollbackCharge({
+          userId: profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          actionType: "VISION_ANALYSIS",
+        });
       } catch (refundErr) {
         console.error("Photo reading refund failed:", refundErr);
       }

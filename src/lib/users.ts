@@ -1,4 +1,5 @@
 ﻿import { query } from "./db";
+import { deleteUserChatForCharacter } from "./accounts";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
 import { buildAstroMeta } from "./astro-profile";
 import { tarotCardsKey } from "./tarot";
@@ -106,7 +107,9 @@ export async function linkSessionToUser(sessionId: string, profileUserId: string
     `UPDATE sessions AS s
      SET user_id = u.id, updated_at = NOW()
      FROM users u
-     WHERE s.id = $1 AND u.id = $2
+     WHERE s.id = $1
+       AND u.id = $2
+       AND (s.user_id IS NULL OR s.user_id = u.id)
      RETURNING s.id`,
     [sessionId, profileUserId]
   );
@@ -230,6 +233,10 @@ export async function deleteHistoryEntry(userId: string, entryId: string): Promi
     [entryId, userId]
   );
 
+  if ((result.rowCount ?? 0) > 0 && entry?.character_name) {
+    await deleteUserChatForCharacter(userId, entry.character_name);
+  }
+
   if ((result.rowCount ?? 0) > 0 && entry?.created_at) {
     const isTripletDraw =
       entry.character_name === "triplet" ||
@@ -257,6 +264,45 @@ export async function recordTripletDrawAnchor(
      WHERE id = $1`,
     [userId, iso]
   );
+}
+
+/** Admin / support: allow a new daily 3-card spread immediately. */
+export async function resetTripletCooldown(userId: string): Promise<{
+  ok: boolean;
+  deletedHistory: number;
+  hadAnchor: boolean;
+}> {
+  const { rows } = await query<{ astro_meta: Record<string, unknown> | null }>(
+    `SELECT astro_meta FROM users WHERE id = $1`,
+    [userId]
+  );
+  if (!rows[0]) {
+    return { ok: false, deletedHistory: 0, hadAnchor: false };
+  }
+
+  const hadAnchor =
+    typeof rows[0].astro_meta?.lastTripletDrawAt === "string" &&
+    Boolean(String(rows[0].astro_meta.lastTripletDrawAt).trim());
+
+  await query(
+    `UPDATE users
+     SET astro_meta = COALESCE(astro_meta, '{}'::jsonb) - 'lastTripletDrawAt'
+     WHERE id = $1`,
+    [userId]
+  );
+
+  const del = await query(
+    `DELETE FROM history
+     WHERE user_id = $1
+       AND (character_name = 'triplet' OR context_data->>'type' = 'triplet')`,
+    [userId]
+  );
+
+  return {
+    ok: true,
+    deletedHistory: del.rowCount ?? 0,
+    hadAnchor,
+  };
 }
 
 export function serializeUserProfile(user: UserRow) {

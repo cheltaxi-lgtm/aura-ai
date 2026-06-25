@@ -1,14 +1,19 @@
 {
   "version": 1,
   "items": {
-    "the-fool": {
-      "name": "Шут",
-      "file": "the-fool.png",
-      "source": "download"
+    "_back": {
+      "name": "_back",
+      "file": "_back.png",
+      "source": "programmatic"
     },
     "the-magician": {
       "name": "Маг",
       "file": "the-magician.png",
+      "source": "download"
+    },
+    "the-fool": {
+      "name": "Шут",
+      "file": "the-fool.png",
       "source": "download"
     },
     "the-high-priestess": {
@@ -31,24 +36,24 @@
       "file": "the-hierophant.png",
       "source": "download"
     },
-    "the-chariot": {
-      "name": "Колесница",
-      "file": "the-chariot.png",
-      "source": "download"
-    },
     "the-lovers": {
       "name": "Влюблённые",
       "file": "the-lovers.png",
       "source": "download"
     },
-    "the-hermit": {
-      "name": "Отшельник",
-      "file": "the-hermit.png",
+    "the-chariot": {
+      "name": "Колесница",
+      "file": "the-chariot.png",
       "source": "download"
     },
     "strength": {
       "name": "Сила",
       "file": "strength.png",
+      "source": "download"
+    },
+    "the-hermit": {
+      "name": "Отшельник",
+      "file": "the-hermit.png",
       "source": "download"
     },
     "wheel-of-fortune": {
@@ -106,14 +111,14 @@
       "file": "judgement.png",
       "source": "download"
     },
-    "ace-of-cups": {
-      "name": "ace-of-cups",
-      "file": "ace-of-cups.png",
-      "source": "download"
-    },
     "the-world": {
       "name": "Мир",
       "file": "the-world.png",
+      "source": "download"
+    },
+    "ace-of-cups": {
+      "name": "ace-of-cups",
+      "file": "ace-of-cups.png",
       "source": "download"
     },
     "two-of-cups": {
@@ -156,14 +161,14 @@
       "file": "nine-of-cups.png",
       "source": "download"
     },
-    "page-of-cups": {
-      "name": "page-of-cups",
-      "file": "page-of-cups.png",
-      "source": "download"
-    },
     "ten-of-cups": {
       "name": "ten-of-cups",
       "file": "ten-of-cups.png",
+      "source": "download"
+    },
+    "page-of-cups": {
+      "name": "page-of-cups",
+      "file": "page-of-cups.png",
       "source": "download"
     },
     "knight-of-cups": {
@@ -221,14 +226,14 @@
       "file": "eight-of-wands.png",
       "source": "download"
     },
-    "nine-of-wands": {
-      "name": "nine-of-wands",
-      "file": "nine-of-wands.png",
-      "source": "download"
-    },
     "ten-of-wands": {
       "name": "ten-of-wands",
       "file": "ten-of-wands.png",
+      "source": "download"
+    },
+    "nine-of-wands": {
+      "name": "nine-of-wands",
+      "file": "nine-of-wands.png",
       "source": "download"
     },
     "page-of-wands": {
@@ -246,14 +251,14 @@
       "file": "queen-of-wands.png",
       "source": "download"
     },
-    "ace-of-swords": {
-      "name": "ace-of-swords",
-      "file": "ace-of-swords.png",
-      "source": "download"
-    },
     "king-of-wands": {
       "name": "king-of-wands",
       "file": "king-of-wands.png",
+      "source": "download"
+    },
+    "ace-of-swords": {
+      "name": "ace-of-swords",
+      "file": "ace-of-swords.png",
       "source": "download"
     },
     "two-of-swords": {
@@ -390,11 +395,6 @@
       "name": "king-of-pentacles",
       "file": "king-of-pentacles.png",
       "source": "download"
-    },
-    "_back": {
-      "name": "_back",
-      "file": "_back.png",
-      "source": "programmatic"
     }
   }
 }

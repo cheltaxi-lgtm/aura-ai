@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, Home } from "lucide-react";
+import { LogOut } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 import { performClientLogout } from "@/lib/client-logout";
 import { clearChatCache } from "@/lib/chat-cache";
 import {
@@ -95,7 +95,7 @@ export default function CabinetPage() {
       { credentials: "include" }
     );
     if (res.status === 401) {
-      router.replace("/auth/user/login?next=/cabinet");
+      router.replace("/auth/user/login?returnTo=/cabinet");
       return null;
     }
     if (!res.ok) {
@@ -491,10 +491,12 @@ export default function CabinetPage() {
     <div className="cabinet-page min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-24 text-white">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-black/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-          <Link href="/" className="btn-luxe btn-luxe--sm btn-luxe--silver min-h-[44px] min-w-[44px] shrink-0">
-            <Home className="h-5 w-5" />
-            <span className="hidden sm:inline">На главную</span>
-          </Link>
+          <BrandLogo
+            linkToHome
+            showTagline={false}
+            markSize={24}
+            titleClassName="font-display text-base font-bold tracking-wider text-white sm:text-lg"
+          />
           <span className="font-semibold">Личный кабинет</span>
           <button
             type="button"

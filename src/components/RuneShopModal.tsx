@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchRuneConfig } from "@/lib/useRuneConfig";
+import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
+import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
+import CustomRuneAmountField from "@/components/CustomRuneAmountField";
+
+const BALANCE_BEFORE_KEY = "aura_runes_before_purchase";
+const PENDING_PAYMENT_KEY = "aura_pending_rune_payment_id";
 
 interface RunePackage {
   id: string;
@@ -27,18 +33,63 @@ export default function RuneShopModal({
   requiredRunes,
 }: RuneShopModalProps) {
   const [packages, setPackages] = useState<RunePackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
   const [rubPerRune, setRubPerRune] = useState(2);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bonusStatus, setBonusStatus] = useState<{
+    available: boolean;
+    nextBonusIn?: string;
+  } | null>(null);
+  const [claimingBonus, setClaimingBonus] = useState(false);
+
+  const loadBonusStatus = useCallback(() => {
+    fetch("/api/runes/daily/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.available === "boolean") {
+          setBonusStatus({ available: d.available, nextBonusIn: d.nextBonusIn });
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
+    setPackagesLoading(true);
+    setError(null);
+    loadBonusStatus();
     void fetchRuneConfig().then((c) => setRubPerRune(c.rubPerRune));
     fetch("/api/runes/packages")
       .then((r) => r.json())
       .then((d) => setPackages(d.packages ?? []))
-      .catch(() => setError("Не удалось загрузить пакеты"));
-  }, [isOpen]);
+      .catch(() => setError("Не удалось загрузить пакеты"))
+      .finally(() => setPackagesLoading(false));
+  }, [isOpen, loadBonusStatus]);
+
+  const claimBonus = async () => {
+    setClaimingBonus(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/runes/daily", { method: "POST" });
+      const data = await res.json();
+      if (data.claimed && typeof data.newBalance === "number") {
+        emitRuneBalanceUpdate(data.newBalance);
+        loadBonusStatus();
+      } else if (data.alreadyClaimed) {
+        setBonusStatus({
+          available: false,
+          nextBonusIn: data.nextBonusIn ?? undefined,
+        });
+      } else if (!res.ok) {
+        setError(data.error ?? "Не удалось получить бонус");
+      }
+    } catch {
+      setError("Ошибка соединения");
+    } finally {
+      setClaimingBonus(false);
+    }
+  };
 
   const handlePurchase = async (packageId: string) => {
     setPurchasingId(packageId);
@@ -55,7 +106,36 @@ export default function RuneShopModal({
         setPurchasingId(null);
         return;
       }
-      localStorage.setItem("aura_runes_before_purchase", String(currentBalance));
+      localStorage.setItem(BALANCE_BEFORE_KEY, String(currentBalance));
+      if (typeof data.paymentId === "string" && data.paymentId) {
+        localStorage.setItem(PENDING_PAYMENT_KEY, data.paymentId);
+      }
+      window.location.href = data.paymentUrl;
+    } catch {
+      setError("Ошибка соединения");
+      setPurchasingId(null);
+    }
+  };
+
+  const handleCustomPurchase = async (amountRub: number) => {
+    setPurchasingId("custom");
+    setError(null);
+    try {
+      const res = await fetch("/api/runes/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customAmount: amountRub }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.paymentUrl) {
+        setError(data.error ?? "Ошибка оплаты");
+        setPurchasingId(null);
+        return;
+      }
+      localStorage.setItem(BALANCE_BEFORE_KEY, String(currentBalance));
+      if (typeof data.paymentId === "string" && data.paymentId) {
+        localStorage.setItem(PENDING_PAYMENT_KEY, data.paymentId);
+      }
       window.location.href = data.paymentUrl;
     } catch {
       setError("Ошибка соединения");
@@ -79,11 +159,27 @@ export default function RuneShopModal({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90vh] max-w-lg overflow-y-auto rounded-t-3xl border-t border-white/10 bg-[#12101a] p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rune-shop-title"
+            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90dvh] max-w-lg overflow-y-auto rounded-t-3xl border-t border-white/10 bg-[#12101a] p-6"
           >
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Закрыть магазин рун"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple"
+              >
+                ✕
+              </button>
+            </div>
             <div className="mb-6 text-center">
               <p className="mb-2 text-4xl">ᚢ</p>
-              <h2 className="text-lg font-bold text-white">Получить руны</h2>
+              <h2 id="rune-shop-title" className="text-lg font-bold text-white">
+                Получить руны
+              </h2>
               {requiredRunes !== undefined && requiredRunes > currentBalance ? (
                 <p className="mt-1 text-sm text-amber-400">
                   Нужно ещё {requiredRunes - currentBalance} ᚢ для этого действия
@@ -93,8 +189,46 @@ export default function RuneShopModal({
               )}
             </div>
 
+            {bonusStatus && (
+              <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl leading-none">ᚢ</span>
+                    <div>
+                      <p className="text-sm font-medium text-white">Ежедневный бонус</p>
+                      <p className="text-xs text-white/50">
+                        +{DAILY_BONUS_AMOUNT} рун каждый день бесплатно
+                      </p>
+                    </div>
+                  </div>
+                  {bonusStatus.available ? (
+                    <button
+                      type="button"
+                      onClick={() => void claimBonus()}
+                      disabled={claimingBonus}
+                            className="btn-luxe btn-luxe--sm btn-luxe--gold disabled:opacity-60"
+                    >
+                      {claimingBonus ? "…" : "Забрать"}
+                    </button>
+                  ) : (
+                    <span className="shrink-0 text-xs text-white/40">
+                      Через {bonusStatus.nextBonusIn ?? "—"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3">
-              {packages.map((pkg) => {
+              {packagesLoading &&
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={`sk-${i}`}
+                    className="h-[72px] animate-pulse rounded-2xl border border-white/10 bg-white/5"
+                  />
+                ))}
+              {!packagesLoading &&
+                packages.map((pkg) => {
                 const total = pkg.runes + pkg.bonus_runes;
                 return (
                   <button
@@ -142,7 +276,18 @@ export default function RuneShopModal({
               })}
             </div>
 
-            {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
+            <CustomRuneAmountField
+              rubPerRune={rubPerRune}
+              onPurchaseSubmit={(amountRub) => void handleCustomPurchase(amountRub)}
+              purchasing={purchasingId === "custom"}
+              disabled={!!purchasingId && purchasingId !== "custom"}
+            />
+
+            {error && (
+              <p role="alert" className="mt-3 text-center text-sm text-red-400">
+                {error}
+              </p>
+            )}
 
             <p className="mt-4 text-center text-xs text-gray-600">
               Руны не имеют срока действия · Безопасная оплата ЮKassa

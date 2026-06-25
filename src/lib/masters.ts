@@ -41,7 +41,7 @@ export async function listHumanMasters(): Promise<ShowcaseMaster[]> {
             (SELECT COUNT(*)::text FROM sessions s WHERE s.referrer_slug = b.slug) AS sessions_count
      FROM bloggers b
      WHERE b.is_active = TRUE
-       AND b.slug NOT IN ('ragnar', 'veronika', 'agafya', 'shri-raj')
+       AND b.slug NOT IN ('ragnar', 'veronika', 'agafya', 'shri-raj', 'numerolog')
      ORDER BY b.created_at DESC`
   );
 
@@ -57,7 +57,7 @@ export async function listHumanMasters(): Promise<ShowcaseMaster[]> {
       slug: row.slug,
       kind: "human" as const,
       name: isMarina ? "Marina" : row.display_name,
-      title: isMarina ? "Таро" : (row.title ?? "Эксперт Aura"),
+      title: isMarina ? "Таро" : (row.title ?? "Эксперт Zovus"),
       specialty: isMarina
         ? "Расклады · Ритуалы"
         : specialtyRaw,

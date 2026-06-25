@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
+import { performClientLogout } from "@/lib/client-logout";
+import BrandLogo from "@/components/BrandLogo";
 import { motion } from "framer-motion";
 import { Sparkles, Upload, Link2, BarChart3, LogOut } from "lucide-react";
 
@@ -24,6 +27,11 @@ export default function ExpertCabinetPage() {
   const [knowledge, setKnowledge] = useState("");
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [portalReady, setPortalReady] = useState(false);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   const load = () =>
     fetch("/api/expert/dashboard")
@@ -59,16 +67,19 @@ export default function ExpertCabinetPage() {
   };
 
   const logout = async () => {
-    await fetch("/api/auth/me", { method: "DELETE" });
-    router.push("/");
+    await performClientLogout({ redirectTo: "/" });
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-gray-500">
+    const loadingOverlay = (
+      <div className="app-modal-overlay fixed inset-0 z-[4990] flex items-center justify-center bg-[#05010d] text-gray-500 pointer-events-auto">
         Загрузка кабинета...
       </div>
     );
+    if (portalReady) {
+      return createPortal(loadingOverlay, document.body);
+    }
+    return loadingOverlay;
   }
 
   if (!data) return null;
@@ -78,7 +89,7 @@ export default function ExpertCabinetPage() {
       <div className="mx-auto max-w-3xl">
         <div className="mb-8 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-gray-500 hover:text-aura-neon">
-            <Sparkles className="h-5 w-5" /> Aura
+            <BrandLogo showTagline={false} markSize={22} titleClassName="font-display text-lg font-bold text-white" />
           </Link>
           <button onClick={logout} className="flex items-center gap-1 text-sm text-gray-500 hover:text-white">
             <LogOut className="h-4 w-4" /> Выйти

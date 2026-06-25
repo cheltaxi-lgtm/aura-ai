@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { getSession, unlockSingleSession, unlockSubscription } from "@/lib/session";
+import { getAuth } from "@/lib/auth";
 import { isYukassaConfigured } from "@/lib/yukassa";
 
 export async function POST(request: NextRequest) {
   if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Demo disabled in production" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const auth = await getAuth();
+  if (!auth || auth.role !== "admin") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
   if (isYukassaConfigured()) {
@@ -14,7 +20,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const { sessionId, plan } = await request.json();
-    if (!(await ensureDb()) || !sessionId) {
+    if (!(await ensureDb()) || !sessionId || typeof sessionId !== "string") {
       return NextResponse.json({ error: "Invalid" }, { status: 400 });
     }
 

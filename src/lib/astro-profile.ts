@@ -1,5 +1,6 @@
 import type { ZodiacSign } from "@/utils/zodiac";
 import { getZodiacFromDate } from "@/utils/zodiac";
+import { parseBirthDate, reduceToSingle } from "@/lib/numerology/constants";
 
 export type LifeFocus =
   | "love"
@@ -81,14 +82,12 @@ export function getChineseZodiac(birthDate: string): string {
 }
 
 export function getLifePathNumber(birthDate: string): number {
-  const digits = birthDate.replace(/\D/g, "");
-  let sum = digits.split("").reduce((acc, d) => acc + Number(d), 0);
-  while (sum > 9) {
-    sum = String(sum)
-      .split("")
-      .reduce((acc, d) => acc + Number(d), 0);
-  }
-  return sum || 1;
+  const parsed = parseBirthDate(birthDate);
+  if (!parsed) return 1;
+  const digits = `${parsed.day}${parsed.month}${parsed.year}`.replace(/\D/g, "");
+  const raw = [...digits].reduce((s, d) => s + parseInt(d, 10), 0);
+  const reduced = reduceToSingle(raw, true);
+  return reduced || 1;
 }
 
 export function buildAstroMeta(birthDate: string): AstroMeta | null {

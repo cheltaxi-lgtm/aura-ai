@@ -26,6 +26,9 @@ export async function verifyRecaptcha(
 
   const secret = process.env.RECAPTCHA_SECRET_KEY;
   if (!secret) {
+    if (token) {
+      return { ok: false, error: "Проверка reCAPTCHA временно недоступна" };
+    }
     console.warn("RECAPTCHA_SECRET_KEY not set, skipping verification");
     return { ok: true };
   }

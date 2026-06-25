@@ -1,13 +1,33 @@
 import type { MetadataRoute } from "next";
+import { getAppUrl } from "@/lib/brand";
 
 export default function robots(): MetadataRoute.Robots {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://aura.example.com";
+  const base = getAppUrl();
+
   return {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/admin/", "/api/"],
+      disallow: [
+        "/api/",
+        "/admin/",
+        "/auth/",
+        "/login",
+        "/register",
+        "/cabinet",
+        "/account",
+        "/dashboard",
+        "/checkout",
+        "/payment",
+        "/webhook",
+        "/diary",
+        "/expert",
+        "/expert/",
+        "/runes/success",
+        "/_next/",
+      ],
     },
     sitemap: `${base}/sitemap.xml`,
+    host: base,
   };
 }

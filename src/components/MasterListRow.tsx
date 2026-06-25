@@ -4,6 +4,8 @@ import type { MouseEvent } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight, Layers, Star } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
+import { MASTER_PUBLIC_BADGE } from "@/lib/master-disclosure";
+import { isRitualMaster, RITUAL_MASTER_SHOWCASE_BADGE } from "@/lib/ritual-config";
 import { formatMasterPriceDisplay } from "@/lib/master-pricing";
 import { getDeckDefinition, resolveMasterDeckSystem } from "@/lib/decks";
 import { DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
@@ -21,6 +23,7 @@ export interface MasterListRowProps {
   formatRunes?: (amount: number) => string;
   onSelect: (masterId: string) => void;
   onBrowseDeck?: (master: ShowcaseMaster) => void;
+  actionBlocked?: boolean;
 }
 
 export default function MasterListRow({
@@ -35,6 +38,7 @@ export default function MasterListRow({
   formatRunes,
   onSelect,
   onBrowseDeck,
+  actionBlocked = false,
 }: MasterListRowProps) {
   const deckSystem = master.system ?? resolveMasterDeckSystem(master.id);
   const price = formatMasterPriceDisplay({
@@ -48,7 +52,7 @@ export default function MasterListRow({
   });
   const deckCount = getDeckDefinition(deckSystem).symbols.length;
   const deckUnit = DECK_SYSTEM_LABEL[deckSystem];
-  const kindLabel = master.kind === "ai" ? "AI" : "Эксперт";
+  const kindLabel = MASTER_PUBLIC_BADGE;
 
   const openDeck = (event: MouseEvent) => {
     event.stopPropagation();
@@ -65,9 +69,10 @@ export default function MasterListRow({
       <button
         type="button"
         onClick={() => onSelect(master.id)}
+        disabled={actionBlocked}
         className={`master-list-row ${recommended ? "master-list-row--recommended" : ""} ${
           canContinue ? "master-list-row--continue" : ""
-        }`}
+        } disabled:cursor-not-allowed disabled:opacity-50`}
       >
         <span className="master-list-row__accent" aria-hidden />
         <span className="master-list-row__portrait">
@@ -80,6 +85,11 @@ export default function MasterListRow({
             <span className="master-list-row__kind">{kindLabel}</span>
             {recommended ? <span className="master-list-row__tag">Вам</span> : null}
             {canContinue ? <span className="master-list-row__tag master-list-row__tag--continue">Разбор</span> : null}
+            {isRitualMaster(master.id) ? (
+              <span className="master-list-row__tag master-list-row__tag--ritual">
+                {RITUAL_MASTER_SHOWCASE_BADGE}
+              </span>
+            ) : null}
           </span>
           <span className="master-list-row__line2">{master.title}</span>
           <span className="master-list-row__line3">

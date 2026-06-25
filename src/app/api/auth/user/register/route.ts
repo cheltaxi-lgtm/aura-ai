@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { createUser, findUserByEmail, linkAccountToProfile } from "@/lib/accounts";
-import { hashPassword, setAuthCookie } from "@/lib/auth";
+import { hashPassword, setAuthCookie, normalizeAuthEmail } from "@/lib/auth";
 import { verifyRecaptcha } from "@/lib/recaptcha";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      email,
+      email: rawEmail,
       password,
       name,
       gender,
@@ -30,9 +30,11 @@ export async function POST(request: NextRequest) {
       recaptchaToken,
     } = body;
 
-    if (!email || !password || !name || !gender || !birthDate) {
+    if (!rawEmail || !password || !name || !gender || !birthDate) {
       return NextResponse.json({ error: "Заполните все обязательные поля" }, { status: 400 });
     }
+
+    const email = normalizeAuthEmail(String(rawEmail));
 
     const captcha = await verifyRecaptcha(recaptchaToken, request.headers.get("x-forwarded-for"));
     if (!captcha.ok) {
@@ -67,11 +69,23 @@ export async function POST(request: NextRequest) {
       astroMeta,
     });
 
-    await linkAccountToProfile(account.id, profile.id);
+    const profileLinked = await linkAccountToProfile(account.id, profile.id);
+    if (!profileLinked) {
+      console.error("Profile link on register failed: profile already owned by another account");
+      return NextResponse.json({ error: "Не удалось создать профиль" }, { status: 500 });
+    }
     await grantStarterRunesIfNeeded(profile.id);
 
+    let sessionLinked = false;
     if (sessionId) {
-      await linkSessionToUser(sessionId, profile.id);
+      try {
+        sessionLinked = await linkSessionToUser(sessionId, profile.id);
+        if (!sessionLinked) {
+          console.warn("Session link on register skipped: session belongs to another profile");
+        }
+      } catch (linkErr) {
+        console.warn("Session link on register skipped:", linkErr);
+      }
     }
 
     await setAuthCookie({
@@ -85,6 +99,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       user: { id: account.id, email: account.email, name: account.name },
       profile: serializeUserProfile(profile),
+      sessionLinked,
     });
   } catch (error) {
     console.error("User register error:", error);

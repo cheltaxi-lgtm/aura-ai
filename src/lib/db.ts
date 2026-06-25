@@ -12,7 +12,7 @@ export function getPool(): Pool {
     }
     pool = new Pool({
       connectionString,
-      max: 10,
+      max: Math.max(1, Number(process.env.DB_POOL_MAX) || 20),
       connectionTimeoutMillis: 5_000,
       idleTimeoutMillis: 30_000,
     });

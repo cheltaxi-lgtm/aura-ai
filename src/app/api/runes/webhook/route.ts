@@ -18,26 +18,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-  if (isYukassaConfigured()) {
-    const verified = await verifyYukassaWebhookPayment(
-      payment.id,
-      event.event ?? event.type
-    );
-    if (!verified.valid) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-  } else if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Payment provider not configured" }, { status: 403 });
-  }
+    let amountRub: number | undefined;
 
-    await creditRunesFromPayment({
-      userId: payment.metadata.userId,
-      packageId: payment.metadata.packageId,
-      runesAmount: payment.metadata.runesAmount,
+    if (isYukassaConfigured()) {
+      const verified = await verifyYukassaWebhookPayment(
+        payment.id,
+        event.event ?? event.type
+      );
+      if (!verified.valid) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      if (verified.metadata) {
+        payment.metadata = { ...payment.metadata, ...verified.metadata };
+      }
+      amountRub = verified.amountRub;
+    } else if (process.env.NODE_ENV === "production") {
+      return NextResponse.json({ error: "Payment provider not configured" }, { status: 403 });
+    }
+
+    const credited = await creditRunesFromPayment({
+      userId: payment.metadata!.userId,
+      packageId: payment.metadata!.packageId,
       paymentId: payment.id,
+      amountRub,
     });
 
-    return NextResponse.json({ ok: true });
+    if (!credited) {
+      console.warn("Rune webhook: credit skipped or already processed:", payment.id);
+    }
+
+    return NextResponse.json({ ok: true, credited });
   } catch (error) {
     console.error("Rune webhook error:", error);
     return NextResponse.json({ error: "Webhook failed" }, { status: 500 });

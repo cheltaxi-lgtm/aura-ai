@@ -61,6 +61,21 @@ export const CHARACTERS: Character[] = [
     sessions: "260+ сеансов",
     system: "astrology",
   },
+  {
+    id: "numerolog",
+    name: "Эвелина",
+    title: "Нумерология",
+    specialty: "Числа судьбы и предназначение",
+    style: "Структурный, тёплый, точный",
+    emoji: "🔢",
+    gradient: "from-indigo-950 via-violet-950 to-purple-950",
+    glowColor: "rgba(232, 199, 126, 0.45)",
+    borderColor: "border-amber-500/35",
+    priceFrom: "1 290 ₽",
+    rating: 4.9,
+    sessions: "340+ сеансов",
+    system: "numerology",
+  },
 ];
 
 export function getCharacterById(id: string): Character | undefined {
@@ -79,6 +94,8 @@ export function recommendMaster(cards: { name: string; meaning: string }[]): str
   if (money.test(present)) return "ragnar";
   if (family.test(present)) return "agafya";
   if (karma.test(present)) return "shri-raj";
+  const numbers = /числ|цифр|код|период|этап/i;
+  if (numbers.test(present)) return "numerolog";
   return "veronika";
 }
 

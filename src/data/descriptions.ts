@@ -23,6 +23,8 @@ const SYSTEM_INTRO: Record<DeckSystem, string> = {
     "В системе Рез Рода этот знак связан с древнерусской магией, родом и силой предков.",
   astrology:
     "В джйотиш этот граха или раши описывает кармический узор и энергию небес.",
+  numerology:
+    "В нумерологии это число несёт вибрацию судьбы — ресурс, урок или совет периода.",
 };
 
 function keywordsFromMeaning(meaning: string): string[] {
@@ -57,6 +59,7 @@ export const DECK_DESCRIPTIONS: Record<DeckSystem, Record<string, SymbolDescript
   "tarot-marina": buildDescriptionMap("tarot-marina"),
   slavic: buildDescriptionMap("slavic"),
   astrology: buildDescriptionMap("astrology"),
+  numerology: buildDescriptionMap("numerology"),
 };
 
 export function normalizeDescName(name: string): string {

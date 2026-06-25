@@ -7,6 +7,11 @@ export interface StoredReadingRow {
   contextData?: {
     type?: string;
     reading?: string;
+    analysis?: string;
+    question?: string;
+    detectedCards?: string[];
+    sessionId?: string;
+    redrawSpread?: import("@/lib/photo-spread-redraw").RedrawSpread;
     tarotCards?: { name: string }[];
     sceneArt?: {
       tarot_atmosphere?: string;
@@ -36,13 +41,25 @@ export function mastersWithReadingForSpread(
 
   const ids = new Set<string>();
   for (const row of readings) {
-    if (row.contextData?.type !== "reading") continue;
+    const type = row.contextData?.type;
+    if (type !== "reading") continue;
     if (row.characterName === "triplet") continue;
-    if (tarotCardsKey(row.contextData.tarotCards) === key) {
+    if (tarotCardsKey(row.contextData?.tarotCards) === key) {
       ids.add(row.characterName);
     }
   }
 
+  return [...ids];
+}
+
+/** Masters with a saved photo spread (independent of daily triplet). */
+export function mastersWithPhotoReading(readings: StoredReadingRow[]): string[] {
+  const ids = new Set<string>();
+  for (const row of readings) {
+    if (row.contextData?.type !== "photo_reading") continue;
+    if (row.characterName === "triplet") continue;
+    ids.add(row.characterName);
+  }
   return [...ids];
 }
 
@@ -94,13 +111,17 @@ export function mergeContinueMasterIds(
 ): string[] {
   const ids = new Set(mastersWithReadingForSpread(readings, cards));
 
+  // Chat/cache hints only when the master already has a saved spread reading —
+  // otherwise session-only chats falsely show «Продолжить» for every master.
   const tripletAt = latestTripletCreatedAt(readings);
   for (const masterId of mastersWithChatReadingSinceTriplet(extra.chatRows ?? [], tripletAt)) {
-    ids.add(masterId);
+    if (ids.has(masterId)) ids.add(masterId);
   }
 
   for (const masterId of extra.cachedMasterIds ?? []) {
-    ids.add(masterId);
+    if (hasReadingForMaster(readings, cards, masterId)) {
+      ids.add(masterId);
+    }
   }
 
   return [...ids];
@@ -131,9 +152,10 @@ export function primaryContinueMasterId(
   let latest: { id: string; at: string } | null = null;
 
   for (const row of readings) {
-    if (row.contextData?.type !== "reading") continue;
+    const type = row.contextData?.type;
+    if (type !== "reading" && type !== "photo_reading") continue;
     if (!continueMasterIds.includes(row.characterName)) continue;
-    if (tarotCardsKey(row.contextData.tarotCards) !== cardsKey) continue;
+    if (tarotCardsKey(row.contextData?.tarotCards) !== cardsKey) continue;
     const at = row.createdAt ?? "";
     if (!latest || at > latest.at) latest = { id: row.characterName, at };
   }

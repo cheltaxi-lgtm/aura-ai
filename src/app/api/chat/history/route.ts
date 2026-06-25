@@ -1,366 +1,292 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureDb } from "@/lib/db";
-
+import { ensureDb, query } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
-
-import { getProfileUserIdForAccount, getUserReadingHistory } from "@/lib/accounts";
-
-import { getMessages, getSession } from "@/lib/session";
-
-import { buildPhotoReadingUserMessage } from "@/lib/photo-chat";
-
-import { randomUUID } from "crypto";
-
-
-
-const MIN_READING_CHARS = 120;
-
-
-
-function hasSpreadReading(
-
-  messages: { role: string; content: string }[]
-
-): boolean {
-
-  return messages.some(
-
-    (m) => m.role === "assistant" && m.content.trim().length >= MIN_READING_CHARS
-
-  );
-
-}
-
-
-
-function readingContentPrefix(content: string): string {
-
-  return content.trim().slice(0, 200);
-
-}
-
-
-
-function findHistoryReading(
-
-  readings: Awaited<ReturnType<typeof getUserReadingHistory>>,
-
-  characterId: string,
-
-  cardsKey: string | null
-
-) {
-
-  return readings.find((r) => {
-
-    if (r.character_name !== characterId || r.context_data?.type !== "reading") return false;
-
-    if (typeof r.context_data.reading !== "string") return false;
-
-    if (!cardsKey) return true;
-
-    const readingCards = r.context_data.tarotCards as { name: string }[] | undefined;
-
-    return (readingCards ?? []).map((c) => c.name).join("|") === cardsKey;
-
-  });
-
-}
-
-
-
-function findHistoryPhotoReading(
-
-  readings: Awaited<ReturnType<typeof getUserReadingHistory>>,
-
-  characterId: string
-
-) {
-
-  return readings.find((r) => {
-
-    if (r.character_name !== characterId || r.context_data?.type !== "photo_reading") return false;
-
-    return typeof r.context_data.analysis === "string" && r.context_data.analysis.trim().length > 0;
-
-  });
-
-}
-
-
-
-function sessionMatchesSpreadReading(
-
-  sessionRows: { role: string; content: string }[],
-
-  expectedReading: string
-
-): boolean {
-
-  const firstAssistant = sessionRows.find((r) => r.role === "assistant");
-
-  if (!firstAssistant) return false;
-
-  return (
-
-    readingContentPrefix(firstAssistant.content) === readingContentPrefix(expectedReading)
-
-  );
-
-}
-
-
-
-function appendPhotoReadingFromHistory(
-
-  messages: { id: string; role: "user" | "assistant"; content: string; timestamp: string }[],
-
-  entry: NonNullable<ReturnType<typeof findHistoryPhotoReading>>
-
-) {
-
-  const detected = (entry.context_data.detectedCards as string[] | undefined) ?? [];
-
-  const question = (entry.context_data.question as string | undefined) ?? "";
-
-  const analysis = entry.context_data.analysis as string;
-
-  const ts = new Date(entry.created_at).toISOString();
-
-
-
-  messages.push({
-
-    id: randomUUID(),
-
-    role: "user",
-
-    content: buildPhotoReadingUserMessage(question, detected),
-
-    timestamp: ts,
-
-  });
-
-  messages.push({
-
-    id: randomUUID(),
-
-    role: "assistant",
-
-    content: analysis,
-
-    timestamp: ts,
-
-  });
-
-}
-
-
-
-function mapSessionRows(
-
-  rows: Awaited<ReturnType<typeof getMessages>>
-
-): { id: string; role: "user" | "assistant"; content: string; timestamp: string }[] {
-
-  return rows.map((row, i) => ({
-
-    id: `db-${i}-${row.role}`,
-
+import { getProfileUserIdForAccount, clearMasterChatData } from "@/lib/accounts";
+import {
+  getActiveSessionMessages,
+  getSession,
+  updateSessionChatMeta,
+  type SessionRow,
+} from "@/lib/session";
+import { resolveApiCharacterId } from "@/lib/chat-sanitize";
+import { resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
+import { resolveSpreadSymbols, buildSessionSpreadCards } from "@/lib/intention-draw";
+import { mergeSpreadReadingIntoMessages } from "@/lib/chat-history-merge";
+import { findStoredSpreadReading } from "@/lib/session-spread-reading";
+import {
+  ensureSpreadReadingInChatMessages,
+  sessionHasSpreadReadingMessage,
+} from "@/lib/spread-reading-persist";
+
+const DEFAULT_HISTORY_LIMIT = 50;
+const HISTORY_PAGE_MAX = 200;
+
+type HistoryMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+};
+
+function mapMessageRows(
+  rows: { id: string; role: string; content: string; created_at: Date }[]
+): HistoryMessage[] {
+  return rows.map((row) => ({
+    id: row.id,
     role: row.role as "user" | "assistant",
-
     content: row.content,
-
-    timestamp: new Date().toISOString(),
-
+    timestamp: row.created_at.toISOString(),
   }));
-
 }
 
-
+function spreadFromSession(session: SessionRow, characterId: string) {
+  const cards = session.cards ?? [];
+  const masterKey = session.character_key ?? characterId;
+  if (cards.length < 3 || !masterKey) return null;
+  const system = resolveMasterDeckSystem(masterKey);
+  let symbols = resolveSpreadSymbols(system, cards);
+  if (symbols.length < 3) {
+    const built = buildSessionSpreadCards(masterKey, cards, { deckSystem: system });
+    symbols = built.spreadCards;
+  }
+  if (symbols.length < 3) return null;
+  const spreadType =
+    session.spread_type === "daily"
+      ? "reading"
+      : session.intention
+        ? "intention_spread"
+        : "reading";
+  return {
+    cards: symbols,
+    system,
+    type: spreadType,
+    cardsKey: spreadKey(symbols),
+    intention: session.intention ?? null,
+  };
+}
 
 export async function GET(request: NextRequest) {
-
   const auth = await requireUserAuth();
-
   if (!auth) {
-
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   }
 
+  const rawMasterId =
+    request.nextUrl.searchParams.get("masterId") ??
+    request.nextUrl.searchParams.get("characterId");
+  const archiveSessionId = request.nextUrl.searchParams.get("archiveSessionId");
+  const requestedSessionId = request.nextUrl.searchParams.get("sessionId");
+  const limitRaw = Number(request.nextUrl.searchParams.get("limit") ?? DEFAULT_HISTORY_LIMIT);
+  const historyLimit = Number.isFinite(limitRaw)
+    ? Math.min(Math.max(Math.floor(limitRaw), 1), HISTORY_PAGE_MAX)
+    : DEFAULT_HISTORY_LIMIT;
 
-
-  const sessionId = request.nextUrl.searchParams.get("sessionId");
-
-  const characterId = request.nextUrl.searchParams.get("characterId");
-
-  const cardsKey = request.nextUrl.searchParams.get("cardsKey");
-
-
-
-  if (!characterId) {
-
-    return NextResponse.json({ error: "characterId required" }, { status: 400 });
-
+  if (!rawMasterId) {
+    return NextResponse.json({ error: "masterId required" }, { status: 400 });
   }
 
-
+  let characterId: string;
+  try {
+    characterId = await resolveApiCharacterId(rawMasterId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid masterId";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   if (!(await ensureDb())) {
-
-    return NextResponse.json({ messages: [] });
-
+    return NextResponse.json({ messages: [], pastSessions: [] });
   }
-
-
-
-  const messages: { id: string; role: "user" | "assistant"; content: string; timestamp: string }[] =
-
-    [];
-
-
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
-
-  const readings = profileUserId ? await getUserReadingHistory(profileUserId) : [];
-
-
-
-  const photoEntry = profileUserId ? findHistoryPhotoReading(readings, characterId) : undefined;
-
-  if (photoEntry) {
-
-    appendPhotoReadingFromHistory(messages, photoEntry);
-
-    return NextResponse.json({ messages });
-
+  if (!profileUserId) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   }
 
+  let sessionRow: SessionRow | null = null;
 
-
-  const spreadReading = findHistoryReading(readings, characterId, cardsKey);
-
-
-
-  if (cardsKey) {
-
-    let sessionRows: Awaited<ReturnType<typeof getMessages>> = [];
-
-    if (sessionId) {
-
-      const session = await getSession(sessionId);
-
-      if (session) {
-
-        sessionRows = await getMessages(sessionId, characterId);
-
-      }
-
+  if (archiveSessionId) {
+    const archived = await getSession(archiveSessionId);
+    if (
+      archived &&
+      archived.user_id === profileUserId &&
+      (archived.status ?? "active") === "completed"
+    ) {
+      sessionRow = archived;
     }
+  } else if (requestedSessionId) {
+    const hinted = await getSession(requestedSessionId);
+    if (hinted && hinted.user_id === profileUserId) {
+      if (!hinted.character_key || hinted.character_key === characterId) {
+        sessionRow = hinted;
+        if (!hinted.character_key) {
+          await updateSessionChatMeta(hinted.id, { characterKey: characterId });
+        }
+      }
+    }
+  }
 
+  if (!sessionRow) {
+    const { rows } = await query<SessionRow>(
+      `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
+              COALESCE(awaiting_context, false) AS awaiting_context,
+              character_key, intention, spread_type, cards,
+              COALESCE(status, 'active') AS status, created_at, updated_at
+       FROM sessions
+       WHERE user_id = $1
+         AND character_key = $2
+         AND COALESCE(status, 'active') = 'active'
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [profileUserId, characterId]
+    );
+    sessionRow = rows[0] ?? null;
+  }
 
+  if (!sessionRow) {
+    const { rows } = await query<SessionRow>(
+      `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
+              COALESCE(awaiting_context, false) AS awaiting_context,
+              character_key, intention, spread_type, cards,
+              COALESCE(status, 'active') AS status, created_at, updated_at
+       FROM sessions s
+       WHERE s.user_id = $1
+         AND COALESCE(s.status, 'active') = 'active'
+         AND EXISTS (
+           SELECT 1 FROM chat_messages cm
+           WHERE cm.session_id = s.id AND cm.character_id = $2
+         )
+       ORDER BY s.updated_at DESC
+       LIMIT 1`,
+      [profileUserId, characterId]
+    );
+    sessionRow = rows[0] ?? null;
+  }
+
+  if (!sessionRow) {
+    return NextResponse.json({
+      sessionId: null,
+      intention: null,
+      spreadType: null,
+      cards: null,
+      status: null,
+      messages: [],
+      pastSessions: [],
+      hasMore: false,
+      spread: null,
+    });
+  }
+
+  const messageCharacterId = characterId;
+  let messageRows = await getActiveSessionMessages(
+    profileUserId,
+    messageCharacterId,
+    sessionRow.id,
+    historyLimit + 1
+  );
+
+  const hasMore = messageRows.length > historyLimit;
+  const slice = hasMore ? messageRows.slice(0, historyLimit) : messageRows;
+  let messages = mapMessageRows(slice);
+
+  const spread =
+    !sessionRow.character_key || sessionRow.character_key === characterId
+      ? spreadFromSession(sessionRow, characterId)
+      : null;
+
+  if (!sessionRow.character_key || sessionRow.character_key === characterId) {
+    const spreadReading = await findStoredSpreadReading(
+      profileUserId,
+      messageCharacterId,
+      sessionRow
+    );
 
     if (
-
       spreadReading &&
-
-      sessionRows.length > 0 &&
-
-      sessionMatchesSpreadReading(
-
-        sessionRows,
-
-        spreadReading.context_data.reading as string
-
-      )
-
+      !(await sessionHasSpreadReadingMessage(
+        sessionRow.id,
+        messageCharacterId,
+        profileUserId
+      ))
     ) {
-
-      return NextResponse.json({ messages: mapSessionRows(sessionRows) });
-
-    }
-
-
-
-    if (spreadReading) {
-
-      messages.push({
-
-        id: randomUUID(),
-
-        role: "assistant",
-
-        content: spreadReading.context_data.reading as string,
-
-        timestamp: new Date(spreadReading.created_at).toISOString(),
-
+      await ensureSpreadReadingInChatMessages({
+        sessionId: sessionRow.id,
+        profileUserId,
+        characterId: messageCharacterId,
+        reading: spreadReading,
+        tarotCards: sessionRow.cards?.map((name) => ({ name })),
+        intention: sessionRow.intention ?? undefined,
+        spreadType:
+          sessionRow.spread_type === "daily" || sessionRow.spread_type === "new"
+            ? sessionRow.spread_type
+            : undefined,
       });
-
+      messageRows = await getActiveSessionMessages(
+        profileUserId,
+        messageCharacterId,
+        sessionRow.id,
+        historyLimit + 1
+      );
+      messages = mapMessageRows(
+        messageRows.length > historyLimit
+          ? messageRows.slice(0, historyLimit)
+          : messageRows
+      );
+    } else if (spreadReading) {
+      messages = mergeSpreadReadingIntoMessages(
+        messages,
+        spreadReading,
+        sessionRow.created_at
+      );
     }
-
-
-
-    return NextResponse.json({ messages });
-
   }
 
-
-
-  if (sessionId) {
-
-    const session = await getSession(sessionId);
-
-    if (session) {
-
-      const rows = await getMessages(sessionId, characterId);
-
-      for (const row of mapSessionRows(rows)) {
-
-        messages.push(row);
-
-      }
-
-    }
-
-  }
-
-
-
-  if (messages.length === 0 && spreadReading) {
-
-    messages.push({
-
-      id: randomUUID(),
-
-      role: "assistant",
-
-      content: spreadReading.context_data.reading as string,
-
-      timestamp: new Date(spreadReading.created_at).toISOString(),
-
-    });
-
-  } else if (messages.length > 0 && !hasSpreadReading(messages) && spreadReading) {
-
-    messages.unshift({
-
-      id: randomUUID(),
-
-      role: "assistant",
-
-      content: spreadReading.context_data.reading as string,
-
-      timestamp: new Date(spreadReading.created_at).toISOString(),
-
-    });
-
-  }
-
-
-
-  return NextResponse.json({ messages });
-
+  return NextResponse.json({
+    sessionId: sessionRow.id,
+    intention: sessionRow.intention ?? null,
+    spreadType: sessionRow.spread_type ?? null,
+    cards: sessionRow.cards ?? null,
+    status: sessionRow.status ?? "active",
+    messages,
+    pastSessions: [],
+    hasMore,
+    spread,
+  });
 }
 
+export async function DELETE(request: NextRequest) {
+  const auth = await requireUserAuth();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rawMasterId =
+    request.nextUrl.searchParams.get("masterId") ??
+    request.nextUrl.searchParams.get("characterId");
+  if (!rawMasterId) {
+    return NextResponse.json({ error: "masterId required" }, { status: 400 });
+  }
+
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+  }
+
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (!profileUserId) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  }
+
+  let characterId: string;
+  try {
+    characterId = await resolveApiCharacterId(rawMasterId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid masterId";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  const { messagesDeleted, historyDeleted } = await clearMasterChatData(
+    profileUserId,
+    characterId
+  );
+  return NextResponse.json({ ok: true, deleted: messagesDeleted, historyDeleted });
+}

@@ -1,7 +1,7 @@
 /** Модели OpenRouter TTS без нормальной поддержки русского (читают кириллицу с англ. акцентом) */
 const NON_RUSSIAN_MODEL = /kokoro|orpheus|zonos|csm-1b|canopylabs|zyphra\/zonos/i;
 
-/** Модели с подтверждённой озвучкой русского на Aura */
+/** Модели с подтверждённой озвучкой русского на Zovus */
 const RUSSIAN_MODEL = /gemini.*tts|mai-voice|grok-voice|voxtral-mini-tts/i;
 
 export function isPrimarilyCyrillic(text: string): boolean {

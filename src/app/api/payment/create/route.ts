@@ -1,5 +1,6 @@
+import { getAppUrl } from "@/lib/brand";
 import { NextRequest, NextResponse } from "next/server";
-import { createYukassaPayment, isYukassaConfigured, type PaymentPlan } from "@/lib/yukassa";
+import { createYukassaPayment, isYukassaConfigured, getLegacyPrices, type PaymentPlan } from "@/lib/yukassa";
 import { createYoomoneyPaymentUrl, isYoomoneyConfigured } from "@/lib/yoomoney";
 import { recordPayment, getBloggerBySlug } from "@/lib/session";
 import { ensureDb } from "@/lib/db";
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = getAppUrl();
     const returnUrl = `${appUrl}/?paid=1&session=${sessionId}`;
 
     let bloggerSplit: number | undefined;
@@ -44,7 +45,8 @@ export async function POST(request: NextRequest) {
 
     if (isYukassaConfigured()) {
       const payment = await createYukassaPayment({ plan, sessionId, returnUrl });
-      const amount = plan === "single" ? 199 : 590;
+      const prices = await getLegacyPrices();
+      const amount = plan === "single" ? prices.single : prices.subscription;
 
       await recordPayment({
         sessionId,
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (isYoomoneyConfigured()) {
-      const payment = createYoomoneyPaymentUrl({ plan, sessionId, returnUrl });
+      const payment = await createYoomoneyPaymentUrl({ plan, sessionId, returnUrl });
 
       await recordPayment({
         sessionId,

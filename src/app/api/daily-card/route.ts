@@ -3,15 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { DAILY_CARDS } from "@/lib/characters";
 import { completeChat } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
-import { getAuth } from "@/lib/auth";
-import { clientIp, enforceDailyCardRateLimit } from "@/lib/api-guards";
+import { requireUserAuth } from "@/lib/require-auth";
+import { enforceDailyCardRateLimit } from "@/lib/api-guards";
 import { stripControlChars, resolveApiCharacterId } from "@/lib/chat-sanitize";
+import { stripStageDirections } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, isCharacterKey } from "@/lib/prompts";
 
 export async function POST(request: NextRequest) {
-  const auth = await getAuth();
-  const rateKey = auth?.role === "user" ? auth.sub : clientIp(request);
-  const rateLimited = await enforceDailyCardRateLimit(rateKey);
+  const auth = await requireUserAuth();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimited = await enforceDailyCardRateLimit(auth.sub);
   if (rateLimited) return rateLimited;
 
   const body = await request.json().catch(() => ({}));
@@ -45,7 +49,8 @@ export async function POST(request: NextRequest) {
 
 РЕЖИМ КАРТЫ ДНЯ:
 Дай короткое предсказание на сегодня (2–4 предложения) по одной выпавшей карте.
-Сохраняй голос мастера. Прямо и честно — если карта предупреждает, скажи это.`
+Сохраняй стиль мастера. Прямо и честно — если карта предупреждает, скажи это.
+Только текст предсказания — без ремарок в скобках и без описания голоса.`
     );
 
     const prediction = await completeChat({
@@ -62,7 +67,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      prediction: prediction ?? card.meaning,
+      prediction: stripStageDirections(prediction ?? "") || card.meaning,
       characterId: characterKey,
       cardName: card.name,
     });

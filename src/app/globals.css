@@ -28,6 +28,11 @@
     --aura-champagne: #e8c77e;
     --aura-gold: #c9a24a;
     --aura-gold-gradient: linear-gradient(135deg, #e8c77e 0%, #c9a24a 50%, #a8843a 100%);
+    --mystic-gold: #c9a96e;
+    --mystic-text: #e8e0d5;
+    --mystic-accent: #7b5ea7;
+    --mystic-lavender: #b8a9c9;
+    --mystic-bubble-bg: rgba(15, 10, 30, 0.85);
     --aura-purple-soft: rgba(155, 127, 212, 0.35);
     --aura-emerald-soft: rgba(91, 168, 138, 0.3);
     --radius-ui: 0.875rem;
@@ -1330,7 +1335,7 @@
 
   @media (min-width: 1280px) {
     .master-showcase-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0.75rem;
       max-width: none;
       margin-inline: 0;
@@ -1338,25 +1343,34 @@
   }
 
   .aura-landing-masters .master-showcase-grid {
-    gap: 1rem;
+    width: 100%;
+    max-width: 390px;
+    margin-inline: auto;
+    padding-inline: 1rem;
+    gap: 1.75rem;
+    justify-items: center;
+  }
+
+  .aura-landing-masters .master-showcase-grid > .master-showcase-card {
+    width: 100%;
+    max-width: 350px;
   }
 
   @media (min-width: 640px) {
     .aura-landing-masters .master-showcase-grid {
+      max-width: 760px;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.75rem;
+      padding-inline: 1.25rem;
     }
   }
 
-  @media (min-width: 900px) {
+  @media (min-width: 1024px) {
     .aura-landing-masters .master-showcase-grid {
+      max-width: 1120px;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 1100px) {
-    .aura-landing-masters .master-showcase-grid {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 1rem;
+      gap: 2rem;
+      padding-inline: 1.5rem;
     }
   }
 
@@ -2083,6 +2097,32 @@
 
 .photo-spread-preview__card {
   position: relative;
+}
+
+.photo-spread-preview__face {
+  position: relative;
+  width: 100%;
+  max-width: 148px;
+  margin-inline: auto;
+  aspect-ratio: 533 / 800;
+  overflow: hidden;
+  border-radius: var(--radius-lux);
+  background: #080612;
+  box-shadow:
+    0 0 0 1px rgba(232, 199, 126, 0.35),
+    inset 0 0 30px rgba(201, 162, 74, 0.06);
+}
+
+.photo-spread-preview__face img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #080612;
+}
+
+.photo-spread-preview__face--reversed img {
+  transform: rotate(180deg);
 }
 
 .lux-tarot-card__image-wrap--reversed .lux-tarot-card__image {
@@ -3084,9 +3124,34 @@
   @apply mb-12 md:mb-20;
 }
 
+/* ── App top header (portaled above modals) ── */
+.app-top-header {
+  z-index: 5000;
+  --app-header-h: 3.25rem;
+  pointer-events: auto;
+}
+
+.brand-logo-home {
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Paywall must sit above header (5000) and ritual flows (100–210). */
+.paywall-modal-root {
+  position: relative;
+  z-index: 5001;
+}
+
+body.paywall-modal-open .spread-ritual-loader,
+body.paywall-modal-open .app-modal-overlay,
+body.paywall-modal-open [data-flow-overlay="true"] {
+  pointer-events: none !important;
+}
+
 /* ── Spread ritual loader ── */
 .spread-ritual-loader {
   @apply fixed inset-0 z-[120] flex items-center justify-center px-4;
+  pointer-events: none;
 }
 
 .spread-ritual-loader__veil {
@@ -3099,6 +3164,7 @@
 
 .spread-ritual-loader__content {
   @apply relative z-10 flex w-full max-w-md flex-col items-center gap-8;
+  pointer-events: auto;
 }
 
 .spread-ritual-loader__circle-wrap {

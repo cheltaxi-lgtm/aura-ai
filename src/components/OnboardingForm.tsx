@@ -27,6 +27,8 @@ interface OnboardingFormProps {
 
 export default function OnboardingForm({ initialName = "", onComplete }: OnboardingFormProps) {
   const [name, setName] = useState(initialName);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [astro, setAstro] = useState<ProfileAstroValues>({
     gender: "female",
     birthDate: "",
@@ -38,8 +40,14 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setFormError(null);
     const payload = profileAstroToPayload(name, astro);
-    if (!payload) return;
+    if (!payload) {
+      setFormError("Укажите имя и корректную дату рождения.");
+      return;
+    }
+    setSubmitting(true);
     onComplete(payload);
   };
 
@@ -78,8 +86,14 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
         onChange={(patch) => setAstro((prev) => ({ ...prev, ...patch }))}
       />
 
-      <button type="submit" className="btn-neon w-full py-3 text-sm">
-        Открыть карты
+      {formError && (
+        <p role="alert" className="text-center text-sm text-red-400">
+          {formError}
+        </p>
+      )}
+
+      <button type="submit" disabled={submitting} className="btn-neon w-full py-3 text-sm">
+        {submitting ? "Сохраняем…" : "Открыть карты"}
       </button>
     </motion.form>
   );

@@ -1,135 +1,101 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal, flushSync } from "react-dom";
 import { motion } from "framer-motion";
-import { Sparkles, Layers, ArrowLeft, Camera } from "lucide-react";
+import { Layers, ArrowLeft, Camera } from "lucide-react";
 import Link from "next/link";
 
-import OnboardingForm, { type OnboardingData } from "@/components/OnboardingForm";
+import OnboardingForm from "@/components/OnboardingForm";
 import TarotTriplet from "@/components/TarotTriplet";
 import MasterSelect from "@/components/MasterSelect";
 import ChatWindow from "@/components/ChatWindow";
-import Paywall from "@/components/Paywall";
-import AuthHeader from "@/components/AuthHeader";
+import SessionList, { type SessionListItem } from "@/components/SessionList";
+import AuthHeader, { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
 import RuneBalance, { emitRuneBalanceUpdate } from "@/components/RuneBalance";
-import RuneShopModal from "@/components/RuneShopModal";
-import { type FlowStep } from "@/components/FlowStepper";
+import DailyBonusClaimer from "@/components/DailyBonusClaimer";
+import { usePaywall } from "@/contexts/PaywallContext";
+import { parseInsufficientRunes } from "@/lib/api-errors";
+import IntentionPicker from "@/components/IntentionPicker";
+import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
+import MasterSessionFlow from "@/components/MasterSessionFlow";
+import RitualFlow from "@/components/ritual/RitualFlow";
+import { RITUAL_MASTERS } from "@/lib/ritual-config";
+import FlowStepper from "@/components/FlowStepper";
+import BrandLogo from "@/components/BrandLogo";
 import AuraSellingLanding from "@/components/AuraSellingLanding";
-import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
 import MasterDecksModal from "@/components/MasterDecksModal";
-import PhotoReadingFlow from "@/components/PhotoReadingFlow";
-import { buildPhotoReadingChatMessages } from "@/lib/photo-chat";
+import PhotoReadingFlow, { type PhotoReadingChatPayload } from "@/components/PhotoReadingFlow";
+import { buildPhotoReadingChatMessages, mergePhotoReadingIntoChat } from "@/lib/photo-chat";
 import { useRuneConfig } from "@/lib/useRuneConfig";
-import { useAuraSession } from "@/lib/useSession";
 import { useAuth } from "@/lib/useAuth";
 import {
   findShowcaseMaster,
   getAiMasters,
   isAiMasterId,
-  recommendShowcaseMaster,
   type ShowcaseMaster,
 } from "@/lib/showcase-masters";
 import { getCharacterById } from "@/lib/characters";
 import RegisterGate from "@/components/RegisterGate";
 import WelcomeBackBanner from "@/components/WelcomeBackBanner";
 import AppBootstrapScreen from "@/components/AppBootstrapScreen";
+import SpreadRitualLoader from "@/components/SpreadRitualLoader";
+import {
+  persistSessionIntention,
+  persistIntentionSpreadState,
+  type SessionIntention,
+  type SessionTopicId,
+} from "@/lib/intention";
+import { pollIntentionSpreadReading } from "@/lib/intention-spread-client";
+import { waitForSpreadReadingRitual } from "@/components/SpreadReadingRitualPanel";
 import { generateId } from "@/lib/id";
-import { loadChatCache, saveChatCache, clearChatCache, mastersWithCachedReading, chatHasSpreadReading } from "@/lib/chat-cache";
-import { mergeContinueMasterIds, latestTripletCreatedAt, primaryContinueMasterId, type StoredReadingRow } from "@/lib/reading-progress";
 import {
-  formatTripletCooldownRu,
-  tripletCooldownFromLastDraw,
-  type TripletCooldownStatus,
-} from "@/lib/triplet-limit";
-import {
-  mergeTripletCooldownWithAnchors,
-  writeLocalTripletDrawAt,
-} from "@/lib/triplet-cooldown-client";
+  loadChatCache,
+  loadChatCacheAny,
+  clearChatCache,
+  saveChatCache,
+  chatHasSpreadReading,
+  SESSION_ONLY_CACHE_KEY,
+  MIN_SPREAD_READING_CHARS,
+  type CachedChatSpread,
+} from "@/lib/chat-cache";
+import { resolveClientReadingText } from "@/lib/chat-reply-sanitize";
+import { type StoredReadingRow } from "@/lib/reading-progress";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
-import { DEFAULT_DECK_SYSTEM, getDeckPositions, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
-import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
-import {
-  getSpreadForSystem,
-  resolveMasterSpread,
-  resolveRecapSpread,
-  profilePayloadForMaster,
-} from "@/lib/spread-context";
+import { DEFAULT_DECK_SYSTEM, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
+import { resolveSpreadSymbols } from "@/lib/intention-draw";
+import { getSpreadForSystem, resolveMasterSpread } from "@/lib/spread-context";
+import { redrawSpreadToDeckCards, redrawSpreadToTarotCards } from "@/lib/photo-spread-redraw";
+import type { DeckCardInput } from "@/lib/deck-card-utils";
+import { tarotCardsKey } from "@/lib/tarot";
 import { requestSceneImage, tarotCardNames } from "@/lib/scene-images-client";
-import type { CharacterVisualKey } from "@/lib/image-prompts";
 import type { Message } from "@/types";
-import { loadGuestTriplet, mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
-import { buildSpreadTeaser } from "@/lib/spread-teaser";
-import { useTripletCountdown } from "@/hooks/useTripletCountdown";
+import { useHomeFlow } from "@/hooks/useHomeFlow";
+import { useChatSession } from "@/hooks/useChatSession";
+import { useChatReadingLoading, useChatActions } from "@/hooks/useChatActions";
+import {
+  useOnboardingFlow,
+  masterVisualKey,
+  type ChatSessionDeps,
+} from "@/hooks/useOnboardingFlow";
+import { clearPendingReading } from "@/lib/chat-reading-helpers";
+import {
+  mergeActiveProfile,
+  readStoredProfileSpread,
+} from "@/lib/onboarding-flow-helpers";
+import {
+  FLOW_STEP_KEY,
+  LAST_MASTER_KEY,
+  readStoredProfile,
+} from "@/lib/home-flow-storage";
+import type { StoredProfile } from "@/types/stored-profile";
 
-const PROFILE_KEY = "aura_profile";
-const FLOW_STEP_KEY = "aura_flow_step";
-const LAST_VISIT_KEY = "aura_last_visit";
-const LAST_MASTER_KEY = "aura_last_master";
-const PENDING_MASTER_KEY = "aura_pending_master";
-const PENDING_READING_KEY = "aura_pending_reading";
-
-export interface StoredProfile extends OnboardingData {
-  userId?: string;
-  tarotCards: SpreadSymbol[];
-  deckSystem?: DeckSystem;
-  deckSpreads?: Partial<Record<DeckSystem, SpreadSymbol[]>>;
-  teaser?: string;
-  /** Client-side anchor for 24h triplet limit (survives spread deletion). */
-  lastTripletDrawAt?: string;
-}
+export type { StoredProfile };
 
 export interface HomePageProps {
   referrerSlug?: string;
-}
-
-function cardLabel(card: SpreadSymbol | { name?: string } | string): string {
-  if (typeof card === "string") return card;
-  return card?.name ?? "карта";
-}
-
-function buildTeaser(profile: StoredProfile | null): string {
-  if (profile?.teaser) return profile.teaser;
-  const names = (profile?.tarotCards ?? []).map(cardLabel);
-  if (profile?.name && names.length) {
-    return `${profile.name}, ваш расклад: ${names.join(" · ")}. Мастер готовит полную расшифровку…`;
-  }
-  return "Мастер на связи. Задайте вопрос — ответ придёт в чат.";
-}
-
-function profileApiPayload(
-  profile: StoredProfile,
-  masterId?: string,
-  mastersList?: ShowcaseMaster[]
-) {
-  if (masterId) {
-    return profilePayloadForMaster(profile, masterId, mastersList);
-  }
-  return {
-    userName: profile.name,
-    gender: profile.gender === "male" ? "Мужской" : "Женский",
-    zodiac: profile.zodiac,
-    birthDate: profile.birthDate,
-    birthTime: profile.birthTime,
-    birthCity: profile.birthCity,
-    lifeFocus: profile.lifeFocus,
-    mainQuestion: profile.mainQuestion,
-    astroMeta: profile.astroMeta,
-    tarotCards: profile.tarotCards,
-  };
-}
-
-
-
-function mapProfileReadings(
-  readings: { characterName: string; createdAt?: string; contextData: Record<string, unknown> }[]
-): StoredReadingRow[] {
-  return readings.map((r) => ({
-    characterName: r.characterName,
-    createdAt: r.createdAt,
-    contextData: r.contextData as StoredReadingRow["contextData"],
-  }));
 }
 
 function resolveDestinyCardUrl(
@@ -149,254 +115,333 @@ function resolveDestinyCardUrl(
   return null;
 }
 
-function tripletCooldownFromProfileData(data: {
-  tripletCooldown?: TripletCooldownStatus;
-  readings?: { characterName: string; createdAt?: string; contextData: Record<string, unknown> }[];
-}): TripletCooldownStatus {
-  if (data.tripletCooldown) return data.tripletCooldown;
-  const rows = mapProfileReadings(data.readings ?? []);
-  return tripletCooldownFromLastDraw(latestTripletCreatedAt(rows) ?? null);
-}
-
-function profileFromApiPayload(data: {
-  profile: Record<string, unknown>;
-  profileUserId?: string;
-  readings?: { characterName: string; contextData: Record<string, unknown> }[];
-  keepSpread?: boolean;
-}): StoredProfile {
-  const latestTriplet = data.readings?.find((r) => r.characterName === "triplet");
-  const cards = (latestTriplet?.contextData?.tarotCards as SpreadSymbol[] | undefined) ?? [];
-  const deckSystem =
-    (latestTriplet?.contextData?.deckSystem as DeckSystem | undefined) ?? DEFAULT_DECK_SYSTEM;
-  const teaser =
-    typeof latestTriplet?.contextData?.teaser === "string"
-      ? latestTriplet.contextData.teaser
-      : undefined;
-
-  const p = data.profile;
-  const spreadCleared = data.keepSpread === false || cards.length < 3;
-
-  return {
-    name: String(p.name ?? ""),
-    gender: (p.gender as StoredProfile["gender"]) ?? "female",
-    birthDate: String(p.birthDate ?? ""),
-    zodiac: String(p.zodiac ?? ""),
-    birthTime: (p.birthTime as string | undefined) ?? undefined,
-    birthCity: (p.birthCity as string | undefined) ?? undefined,
-    lifeFocus: (p.lifeFocus as StoredProfile["lifeFocus"]) ?? undefined,
-    mainQuestion: (p.mainQuestion as string | undefined) ?? undefined,
-    astroMeta: (p.astroMeta as StoredProfile["astroMeta"]) ?? undefined,
-    userId: data.profileUserId,
-    tarotCards: spreadCleared ? [] : cards,
-    deckSystem: spreadCleared ? undefined : deckSystem,
-    teaser: spreadCleared ? undefined : teaser,
-    deckSpreads: spreadCleared ? undefined : { [deckSystem]: cards },
-  };
-}
-
-function mergeProfileWithServer(
-  restored: StoredProfile,
-  prev: StoredProfile | null | undefined,
-  tripletDraftInProgress: boolean
-): StoredProfile {
-  if (tripletDraftInProgress && (prev?.tarotCards?.length ?? 0) >= 3) {
-    return {
-      ...restored,
-      tarotCards: prev!.tarotCards!,
-      deckSystem: prev!.deckSystem ?? restored.deckSystem,
-      teaser: prev!.teaser ?? restored.teaser,
-      deckSpreads: prev!.deckSpreads ?? restored.deckSpreads,
-      lastTripletDrawAt: prev!.lastTripletDrawAt ?? restored.lastTripletDrawAt,
-    };
-  }
-  const astroAnchor =
-    typeof restored.astroMeta === "object" &&
-    restored.astroMeta !== null &&
-    "lastTripletDrawAt" in restored.astroMeta &&
-    typeof (restored.astroMeta as Record<string, unknown>).lastTripletDrawAt === "string"
-      ? ((restored.astroMeta as Record<string, unknown>).lastTripletDrawAt as string)
-      : undefined;
-  return {
-    ...restored,
-    lastTripletDrawAt: prev?.lastTripletDrawAt ?? astroAnchor ?? restored.lastTripletDrawAt,
-  };
-}
-
-function clearSpreadSessionState(
-  setLastMasterId: (id: string | null) => void
-): void {
-  localStorage.removeItem(LAST_MASTER_KEY);
-  setLastMasterId(null);
-  clearChatCache();
-}
-
-function masterVisualKey(characterId: string): CharacterVisualKey | undefined {
-  if (!isAiMasterId(characterId)) return "veronika";
-  return characterId as CharacterVisualKey;
-}
-
-function persistPendingReading(masterId: string, required: number) {
-  localStorage.setItem(PENDING_READING_KEY, JSON.stringify({ masterId, required }));
-}
-
-function readPendingReading(): { masterId: string; required: number } | null {
-  try {
-    const raw = localStorage.getItem(PENDING_READING_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { masterId?: string; required?: number };
-    if (!parsed.masterId) return null;
-    return { masterId: parsed.masterId, required: parsed.required ?? 0 };
-  } catch {
-    return null;
-  }
-}
-
-function clearPendingReading() {
-  localStorage.removeItem(PENDING_READING_KEY);
-}
-
-function buildOnboardingPostBody(
-  base: StoredProfile,
-  cards: SpreadSymbol[],
-  teaser: string,
-  sessionId?: string,
-  deckSystem?: DeckSystem
-) {
-  const birthTime = base.birthTime?.trim();
-  const birthCity = base.birthCity?.trim();
-  return {
-    name: base.name?.trim() || "",
-    gender: base.gender === "male" || base.gender === "female" ? base.gender : "female",
-    birthDate: base.birthDate || "",
-    zodiac: base.zodiac || "",
-    ...(birthTime ? { birthTime } : {}),
-    ...(birthCity ? { birthCity } : {}),
-    lifeFocus: base.lifeFocus ?? "general",
-    mainQuestion: base.mainQuestion?.trim() || undefined,
-    ...(sessionId ? { sessionId } : {}),
-    tarotCards: cards.map((c) => ({
-      id: c.id,
-      name: c.name,
-      meaning: c.meaning,
-      ...(c.arcana ? { arcana: c.arcana } : {}),
-      ...(c.suit ? { suit: c.suit } : {}),
-    })),
-    deckSystem: deckSystem ?? base.deckSystem ?? DEFAULT_DECK_SYSTEM,
-    teaser,
-  };
-}
-
-function onboardingErrorMessage(data: {
-  error?: string;
-  code?: string;
-  step?: string;
-  detail?: string;
-  message?: string;
-  missing?: string[];
-}): string {
-  if (data.error === "TRIPLET_COOLDOWN") {
-    return data.message ?? "Новый расклад доступен один раз в сутки";
-  }
-  if (data.error === "Заполните профиль" || data.code === "MISSING_PROFILE") {
-    const fields = data.missing?.length ? ` (${data.missing.join(", ")})` : "";
-    return `Заполните профиль${fields}. Вернитесь к анкете.`;
-  }
-  if (data.error === "Database unavailable") {
-    return "Сервер временно недоступен. Попробуйте через минуту.";
-  }
-  if (data.detail) {
-    return `${data.error ?? "Ошибка"}: ${data.detail}`;
-  }
-  return data.message ?? data.error ?? "Не удалось сохранить расклад. Попробуйте ещё раз.";
-}
-
-function persistStep(step: FlowStep) {
-  localStorage.setItem(FLOW_STEP_KEY, step);
-}
-
-function readStoredProfile(): StoredProfile | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(PROFILE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as StoredProfile;
-  } catch {
-    return null;
-  }
-}
-
-function resolveDefaultTripletMasterId(
-  masters: ShowcaseMaster[],
-  options: {
-    pending?: string | null;
-    recapMasterId?: string | null;
-    tarotCards?: SpreadSymbol[];
-  }
-): string {
-  if (options.pending && findShowcaseMaster(options.pending, masters)) {
-    return options.pending;
-  }
-  if (options.recapMasterId && findShowcaseMaster(options.recapMasterId, masters)) {
-    return options.recapMasterId;
-  }
-  if (options.tarotCards?.length) {
-    const recommended = recommendShowcaseMaster(options.tarotCards, masters);
-    if (recommended && findShowcaseMaster(recommended, masters)) {
-      return recommended;
-    }
-  }
-  return masters[0]?.id ?? "";
-}
-
 export default function HomePage({ referrerSlug }: HomePageProps) {
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
-  const { session, loading: sessionLoading, refresh, reconnectSession } = useAuraSession(referrerSlug);
   const { isLoggedIn, loading: authLoading, user: authUser } = useAuth();
-  const [step, setStepState] = useState<FlowStep>("intro");
-  const [profile, setProfile] = useState<StoredProfile | null>(readStoredProfile);
-  const [tripletSystem, setTripletSystem] = useState<DeckSystem>(DEFAULT_DECK_SYSTEM);
-  const [tripletMasterId, setTripletMasterId] = useState("");
-  const [masters, setMasters] = useState<ShowcaseMaster[]>(() => getAiMasters());
+  const { openPaywall, showRateLimit } = usePaywall();
+
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [lastMasterId, setLastMasterId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [showPaywall, setShowPaywall] = useState(false);
+  const [photoChatSpread, setPhotoChatSpread] = useState<{
+    masterId: string;
+    cards: DeckCardInput[];
+    system: DeckSystem;
+  } | null>(null);
+  /** Overrides MasterSessionFlow preselection when opening from PremiumEnergyBlock CTAs. */
+  const [energyFlowMasterId, setEnergyFlowMasterId] = useState<string | null>(null);
+
+  const {
+    isLoading,
+    setIsLoading,
+    readingInFlightRef,
+    applyRestoredChatSpreadRef,
+    onApplyRestoredSpread,
+  } = useChatReadingLoading();
+
+  const loadReadingRef = useRef<
+    (
+      characterId: string,
+      profileOverride?: StoredProfile,
+      loadOptions?: {
+        force?: boolean;
+        replaceExisting?: boolean;
+        preserveChat?: boolean;
+        sessionId?: string;
+      }
+    ) => Promise<void>
+  >(async () => {});
+  const openChatWithCharacterRef = useRef<
+    (
+      characterId: string,
+      openOptions?: {
+        forceNew?: boolean;
+        sessionOnly?: boolean;
+        intention?: SessionIntention | null;
+      }
+    ) => Promise<void>
+  >(async () => {});
+  const applyHistorySessionMetaRef = useRef<
+    (
+      data: {
+        sessionId?: string | null;
+        intention?: string | null;
+        spreadType?: string | null;
+        cards?: string[] | null;
+        spread?: {
+          cards: { name: string; meaning?: string }[];
+          system: DeckSystem;
+          type: string;
+          cardsKey: string;
+          intention?: string | null;
+        } | null;
+      },
+      characterId: string
+    ) => void
+  >(() => {});
+  const chatDepsRef = useRef<ChatSessionDeps | null>(null);
+  const handleOpenPaywallRef = useRef<
+    (opts?: { balance?: number; requiredRunes?: number; shortage?: number }) => void
+  >(() => {});
+  const resetSpreadOnAccountSwitchRef = useRef<() => void>(() => {});
+  const sendingRef = useRef(false);
+  const skipNextReadingRef = useRef(false);
+  const pendingNewChatThreadRef = useRef(false);
+  const selectedCharacterRef = useRef<string | null>(null);
+  const chatClearRef = useRef<() => void>(() => {});
+  const accountSwitchCleanupRef = useRef<() => void>(() => {});
+  const pendingReadingMasterRef = useRef<string | null>(null);
+  const destinyBackfillRef = useRef<string | null>(null);
+  const destinyGenRef = useRef<Set<string>>(new Set());
+
+  const {
+    step,
+    setStepState,
+    setStep,
+    profile,
+    setProfile,
+    persistProfile,
+    session,
+    sessionLoading,
+    refresh,
+    reconnectSession: reconnectSessionRaw,
+    spawnSession: spawnSessionRaw,
+    showWelcomeBack,
+    setShowWelcomeBack,
+    reconnecting,
+    handleReconnectSession,
+    paymentNotice,
+    setPaymentNotice,
+  } = useHomeFlow({
+    referrerSlug,
+    isLoggedIn,
+    authLoading,
+    authUser,
+    setSelectedCharacter,
+    onPopStateLeaveChat: () => chatClearRef.current(),
+    onPopStateReset: () => chatClearRef.current(),
+    onRestoreChatMaster: (masterId) => setSelectedCharacter(masterId),
+    onPaymentChatReady: (masterId) => setSelectedCharacter(masterId),
+    onAccountSwitch: () => {
+      clearChatCache();
+      localStorage.removeItem("aura_session_id");
+      setSelectedCharacter(null);
+      resetSpreadOnAccountSwitchRef.current();
+      accountSwitchCleanupRef.current();
+    },
+  });
+
   const [deckGalleryOpen, setDeckGalleryOpen] = useState(false);
   const [browseDeckMaster, setBrowseDeckMaster] = useState<ShowcaseMaster | null>(null);
   const [showDecksModal, setShowDecksModal] = useState(false);
-  const [showRuneShop, setShowRuneShop] = useState(false);
   const [insufficientRunes, setInsufficientRunes] = useState<{
     balance: number;
     required: number;
   } | null>(null);
   const [runeBalance, setRuneBalance] = useState(0);
-  const [chatHeaderImage, setChatHeaderImage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [savedReadings, setSavedReadings] = useState<StoredReadingRow[]>([]);
-  const [tripletCooldown, setTripletCooldown] = useState<TripletCooldownStatus | null>(null);
-  const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
 
-  const effectiveTripletCooldown = useMemo(
-    () => mergeTripletCooldownWithAnchors(tripletCooldown, profile?.lastTripletDrawAt),
-    [tripletCooldown, profile?.lastTripletDrawAt]
+  const applyRuneBalancePayload = useCallback(
+    (data: {
+      balance?: number;
+      newTransactions?: Array<{ id: string; amount: number; description?: string }>;
+    } | null) => {
+      if (!data) return;
+      if (typeof data.balance === "number") {
+        setRuneBalance(data.balance);
+        emitRuneBalanceUpdate(data.balance);
+      }
+      const txs = data.newTransactions;
+      if (txs?.length) {
+        const total = txs.reduce((sum, t) => sum + (t.amount ?? 0), 0);
+        const description = txs[0]?.description ?? "Пополнение баланса";
+        setRuneReceiptPopup({ total, description });
+        setTimeout(() => setRuneReceiptPopup(null), 5000);
+        void fetch("/api/runes/balance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: txs.map((t) => t.id) }),
+          credentials: "include",
+        });
+      }
+    },
+    []
   );
 
-  const tripletCountdown = useTripletCountdown(effectiveTripletCooldown.nextAvailableAt);
-  const [tripletNotice, setTripletNotice] = useState<string | null>(null);
-  const [serverContinueIds, setServerContinueIds] = useState<string[]>([]);
-  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
-  const [reconnecting, setReconnecting] = useState(false);
   const [photoReadingOpen, setPhotoReadingOpen] = useState(false);
-  const [newTripletDraft, setNewTripletDraft] = useState(false);
-  const [sessionOnlyChat, setSessionOnlyChat] = useState(false);
-  const readingInFlightRef = useRef(false);
-  const sendingRef = useRef(false);
-  const skipNextReadingRef = useRef(false);
-  const autoResumeDoneRef = useRef(false);
-  const newTripletInProgressRef = useRef(false);
-  const pendingReadingMasterRef = useRef<string | null>(null);
-  const pendingReadingResumeRef = useRef<string | null>(null);
-  const destinyBackfillRef = useRef<string | null>(null);
+  const [showRitualFlow, setShowRitualFlow] = useState(false);
+  const [ritualFlowMaster, setRitualFlowMaster] = useState<string>("ragnar");
+  const [openRitualId, setOpenRitualId] = useState<string | null>(null);
+  const [achievementPopup, setAchievementPopup] = useState<{
+    label: string;
+    description: string;
+    bonus: number;
+    phrase: string;
+  } | null>(null);
+  const [runeReceiptPopup, setRuneReceiptPopup] = useState<{
+    total: number;
+    description: string;
+  } | null>(null);
+
+  const syncPhotoSessionForMaster = useCallback(
+    async (masterId: string, historyId?: string): Promise<string | undefined> => {
+      try {
+        const res = await fetch("/api/photo-reading/sync-session", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ characterId: masterId, historyId }),
+        });
+        if (!res.ok) return undefined;
+        const data = (await res.json()) as { sessionId?: string };
+        return data.sessionId;
+      } catch {
+        return undefined;
+      }
+    },
+    []
+  );
+
+  const reconnectSession = useCallback(
+    async (refToken: string | null) => {
+      const next = await reconnectSessionRaw(refToken);
+      return { sessionId: next.sessionId };
+    },
+    [reconnectSessionRaw]
+  );
+
+  const spawnSession = useCallback(
+    async (refToken: string | null) => {
+      const next = await spawnSessionRaw(refToken);
+      return { sessionId: next.sessionId };
+    },
+    [spawnSessionRaw]
+  );
+
+  const refreshSession = useCallback(
+    async (sessionId: string) => {
+      await refresh(sessionId);
+    },
+    [refresh]
+  );
+
+  const onboarding = useOnboardingFlow({
+    referrerSlug,
+    isLoggedIn,
+    authLoading,
+    authUser,
+    step,
+    setStep,
+    setStepState,
+    profile,
+    setProfile,
+    persistProfile,
+    session,
+    sessionLoading,
+    refresh: refreshSession,
+    reconnectSession,
+    spawnSession,
+    selectedCharacter,
+    setSelectedCharacter,
+    lastMasterId,
+    setLastMasterId,
+    readingInFlightRef,
+    handleOpenPaywallRef,
+    loadReadingRef,
+    openChatWithCharacterRef,
+    applyRestoredChatSpreadRef,
+    applyHistorySessionMetaRef,
+    chatDepsRef,
+    photoChatSpread,
+    pendingReadingMasterRef,
+    syncPhotoSessionForMaster,
+    onRuneBalancePayload: applyRuneBalancePayload,
+  });
+
+  resetSpreadOnAccountSwitchRef.current = onboarding.resetSpreadOnAccountSwitch;
+
+  const {
+    masters,
+    tripletSystem,
+    setTripletSystem,
+    tripletMasterId,
+    setTripletMasterId,
+    newTripletDraft,
+    tripletNotice,
+    setTripletNotice,
+    tripletCooldown,
+    spreadRitual,
+    setSpreadRitual,
+    sessionIntention,
+    setSessionIntention,
+    intentionSpread,
+    setIntentionSpread,
+    intentionSpreadLoading,
+    setIntentionSpreadLoading,
+    intentionHighlight,
+    setIntentionHighlight,
+    chatSessionSpread,
+    setChatSessionSpread,
+    spreadFlipped,
+    setSpreadFlipped,
+    hideChatSpread,
+    setHideChatSpread,
+    pendingMasterId,
+    readingRitualActive,
+    setReadingRitualActive,
+    readingRitualCountdownDone,
+    setReadingRitualCountdownDone,
+    setSpreadReadingRitualOpen,
+    showSessionFlow,
+    setShowSessionFlow,
+    savedReadings,
+    serverContinueIds,
+    pendingChatOptsRef,
+    sessionListBackMasterRef,
+    sessionSpreadMetaRef,
+    displayTarotCards,
+    displayDeckSystem,
+    tripletOwnerMasterId,
+    continueMasterIds,
+    spreadReadingDone,
+    recapContinueMasterId,
+    canChangeTripletMaster,
+    tripletCooldownHint,
+    spreadCardsKey,
+    chatSpread,
+    activeSpreadCardsKey,
+    shouldAutoLoadSpreadReading,
+    needsSpreadFlip,
+    allSpreadFlipped,
+    recommendedId,
+    dailyEnergyMasterId,
+    tripletMasterName,
+    chatDisplaySpread,
+    spreadReadingPending,
+    getActiveProfile,
+    refreshSavedReadings,
+    handleOnboardingComplete,
+    handleTripletComplete,
+    handleTripletBack,
+    startPersonalFlow,
+    handleTripletMasterChange,
+    handleTripletDraft,
+    beginChatAfterIntention,
+    openChatWithSessionParams,
+    bindSessionToMaster,
+    handleSelectCharacter,
+    handleMasterPick,
+    handleContinueListedSession,
+    handleSessionListBack,
+    handleSpreadReadingRitualComplete,
+  } = onboarding;
+
+  useEffect(() => {
+    selectedCharacterRef.current = selectedCharacter;
+  }, [selectedCharacter]);
+
+  useEffect(() => {
+    const savedMaster = localStorage.getItem(LAST_MASTER_KEY);
+    if (savedMaster) setLastMasterId(savedMaster);
+  }, [setLastMasterId]);
 
   const scrollToSection = useCallback((sectionId: string) => {
     const el = document.getElementById(sectionId);
@@ -404,110 +449,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
       window.history.replaceState(null, "", `#${sectionId}`);
     }
-  }, []);
-
-  const setStep = useCallback((next: FlowStep) => {
-    setStepState(next);
-    persistStep(next);
-    if (typeof window !== "undefined" && next !== "intro") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("step", next);
-      window.history.pushState({ step: next }, "", `${url.pathname}?${url.searchParams.toString()}`);
-    }
-  }, []);
-
-  const handleReconnectSession = useCallback(async () => {
-    setReconnecting(true);
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const refToken = params.get("ref") ?? referrerSlug ?? null;
-      await reconnectSession(refToken);
-    } finally {
-      setReconnecting(false);
-    }
-  }, [reconnectSession, referrerSlug]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const onPopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const stepParam = params.get("step") as FlowStep | null;
-      const saved = localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null;
-      const target = stepParam && stepParam !== "intro" ? stepParam : saved;
-      if (target && target !== "intro") {
-        setStepState(target);
-        persistStep(target);
-      } else {
-        setStepState("intro");
-        persistStep("intro");
-      }
-    };
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !isLoggedIn) return;
-    const last = localStorage.getItem(LAST_VISIT_KEY);
-    const now = Date.now();
-    if (last) {
-      const days = (now - Number.parseInt(last, 10)) / (1000 * 60 * 60 * 24);
-      if (days >= 1 && profile?.tarotCards?.length) {
-        setShowWelcomeBack(true);
-      }
-    }
-    localStorage.setItem(LAST_VISIT_KEY, String(now));
-  }, [isLoggedIn, profile?.tarotCards?.length]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("paid") !== "1") return;
-    const paySessionId = params.get("session");
-    if (!paySessionId) return;
-
-    let cancelled = false;
-    let attempts = 0;
-
-    const poll = async () => {
-      if (cancelled) return;
-      const updated = await refresh(paySessionId);
-      attempts += 1;
-      if (updated?.hasAccess) {
-        window.history.replaceState(null, "", window.location.pathname);
-        const master = localStorage.getItem(LAST_MASTER_KEY);
-        if (master) {
-          setSelectedCharacter(master);
-          setStep("chat");
-        } else {
-          setStep("masters");
-        }
-        return;
-      }
-      if (attempts < 15) {
-        window.setTimeout(poll, 2000);
-      } else {
-        window.history.replaceState(null, "", window.location.pathname);
-      }
-    };
-
-    void poll();
-    return () => {
-      cancelled = true;
-    };
-  }, [refresh, setStep]);
-
-  useEffect(() => {
-    fetch("/api/masters")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.masters?.length) {
-          setMasters(data.masters as ShowcaseMaster[]);
-        }
-      })
-      .catch(() => undefined);
   }, []);
 
   const openPhotoReading = useCallback(() => {
@@ -521,7 +462,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const closePhotoReading = useCallback(() => {
     setPhotoReadingOpen(false);
-  }, []);
+    setSpreadRitual({ active: false });
+  }, [setSpreadRitual]);
 
   const handleBrowseDeck = useCallback((master: ShowcaseMaster) => {
     setBrowseDeckMaster(master);
@@ -545,7 +487,11 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       setPhotoReadingOpen(true);
       window.history.replaceState(null, "", window.location.pathname);
     }
-  }, []);
+    if (params.get("runeShop") === "1") {
+      openPaywall({ currentBalance: runeBalance });
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [openPaywall, runeBalance]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.location.hash) return;
@@ -562,369 +508,248 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, [step, selectedCharacter, isLoggedIn]);
 
   useEffect(() => {
-    const savedMaster = localStorage.getItem(LAST_MASTER_KEY);
-    if (savedMaster) setLastMasterId(savedMaster);
-
-    const stored = localStorage.getItem(PROFILE_KEY);
-    if (!stored) return;
-
-    try {
-      setProfile(JSON.parse(stored) as StoredProfile);
-    } catch {
-      localStorage.removeItem(PROFILE_KEY);
-    }
-  }, []);
+    if (!isLoggedIn || !runeConfig.enabled) return;
+    fetch("/api/runes/balance")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => applyRuneBalancePayload(d))
+      .catch(() => undefined);
+  }, [isLoggedIn, runeConfig.enabled, step, applyRuneBalancePayload]);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (!isLoggedIn || (step !== "masters" && step !== "chat")) return;
+    refreshSavedReadings();
+  }, [isLoggedIn, step, selectedCharacter, refreshSavedReadings]);
 
-    if (!isLoggedIn) {
-      setStepState("intro");
-      return;
-    }
+  const {
+    messages,
+    setMessages,
+    isLoadingHistory,
+    setIsLoadingHistory,
+    loadingMoreHistory,
+    historyHasMore,
+    setHistoryHasMore,
+    retryDraft,
+    setRetryDraft,
+    chatHeaderImage,
+    setChatHeaderImage,
+    sessionOnlyChat,
+    setSessionOnlyChat,
+    sessionListMaster,
+    setSessionListMaster,
+    sessionsListData,
+    setSessionsListData,
+    sessionsListLoading,
+    setSessionsListLoading,
+    sessionListActionId,
+    setSessionListActionId,
+    consultationSessionId,
+    consultationSessionIdRef,
+    setConsultationSessionId,
+    consultationReadOnly,
+    setConsultationReadOnly,
+    completingSession,
+    setCompletingSession,
+    archiveSessionIdRef,
+    exitingToSessionListRef,
+    chatLoadedForRef,
+    prevSelectedCharacterRef,
+    clearMessages,
+    persistSessionMetaToServer,
+    restoreChatForCharacter,
+    refreshSessionsList,
+    resolveConsultationSessionId,
+    handleLoadMoreHistory,
+    buildSessionOnlyWelcome,
+  } = useChatSession({
+    isLoggedIn,
+    selectedCharacter,
+    getActiveProfile,
+    masters,
+    spreadCardsKey,
+    activeSpreadCardsKey,
+    isLoading,
+    sendingRef,
+    readingInFlightRef,
+    sessionOffline: session?.offline,
+    onApplyRestoredSpread,
+  });
 
-    const stored = localStorage.getItem(PROFILE_KEY);
-    const savedStep = localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null;
-    const savedMaster = localStorage.getItem(LAST_MASTER_KEY);
+  chatDepsRef.current = {
+    messages,
+    setMessages,
+    sessionListMaster,
+    setSessionListMaster,
+    setSessionsListLoading,
+    setSessionsListData,
+    setConsultationSessionId,
+    consultationSessionIdRef,
+    setConsultationReadOnly,
+    setIsLoadingHistory,
+    setHistoryHasMore,
+    persistSessionMetaToServer,
+    restoreChatForCharacter,
+    resolveConsultationSessionId,
+    refreshSessionsList,
+    archiveSessionIdRef,
+    sessionOnlyChat,
+    setSessionOnlyChat,
+    selectedCharacter,
+    setSelectedCharacter,
+    setIsLoading,
+    setChatHeaderImage,
+    setInsufficientRunes,
+    setRuneBalance,
+    chatLoadedForRef,
+    skipNextReadingRef,
+    pendingNewChatThreadRef,
+    readingInFlightRef,
+    setPhotoChatSpread,
+  };
 
-    if (!stored) {
-      const guest = loadGuestTriplet();
-      if (guest && isLoggedIn) {
-        const draft: StoredProfile = {
-          name: "",
-          gender: "female",
-          birthDate: "",
-          zodiac: "",
-          tarotCards: guest.tarotCards,
-          deckSystem: guest.deckSystem ?? DEFAULT_DECK_SYSTEM,
-          teaser: guest.teaser,
-        };
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(draft));
-        setProfile(draft);
-        setStepState(guest.tarotCards.length >= 3 ? "onboarding" : "triplet");
-      }
-      return;
-    }
+  useEffect(() => {
+    chatClearRef.current = clearMessages;
+    accountSwitchCleanupRef.current = () => {
+      setPhotoChatSpread(null);
+      setSpreadRitual({ active: false });
+      clearMessages();
+    };
+  }, [clearMessages, setSpreadRitual]);
 
-    try {
-      let parsed = JSON.parse(stored) as StoredProfile;
-      if (isLoggedIn) {
-        parsed = mergeGuestTripletIntoProfile(parsed) as StoredProfile;
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(parsed));
-        setProfile(parsed);
-      }
-
-      if (parsed.tarotCards?.length >= 3) {
-        if (savedStep === "chat" && savedMaster) {
-          setStepState("chat");
-          setSelectedCharacter(savedMaster);
-        } else if (savedStep === "chat") {
-          setStepState("masters");
-          persistStep("masters");
-        } else {
-          setStepState(savedStep ?? "masters");
-        }
-      } else if (parsed.name || parsed.birthDate) {
-        setStepState(savedStep === "intro" ? "triplet" : savedStep ?? "triplet");
-      } else if (savedStep && savedStep !== "intro") {
-        setStepState(savedStep);
-      }
-    } catch {
-      localStorage.removeItem(PROFILE_KEY);
-    }
-  }, [authLoading, isLoggedIn]);
+  useEffect(() => {
+    if (authLoading || !isLoggedIn || step !== "intro") return;
+    setStep("masters");
+  }, [authLoading, isLoggedIn, step, setStep]);
 
   useEffect(() => {
     if (authLoading || !isLoggedIn) return;
+    if (sessionListMaster) return;
     if (step !== "chat" || selectedCharacter) return;
+    if (pendingChatOptsRef.current) return;
+    if (readingInFlightRef.current) return;
 
     const masterId = localStorage.getItem(LAST_MASTER_KEY) || lastMasterId;
     if (masterId) {
-      setSelectedCharacter(masterId);
-      setLastMasterId(masterId);
+      void bindSessionToMaster(masterId).finally(() => {
+        setSelectedCharacter(masterId);
+        setLastMasterId(masterId);
+      });
       return;
     }
 
     setStep("masters");
-  }, [authLoading, isLoggedIn, step, selectedCharacter, lastMasterId, setStep]);
-
-  useEffect(() => {
-    if (!isLoggedIn) return;
-
-    fetch("/api/profile")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data?.profile) return;
-
-        if (Array.isArray(data.readings)) {
-          setSavedReadings(
-            data.readings.map(
-              (r: { characterName: string; createdAt?: string; contextData: Record<string, unknown> }) => ({
-                characterName: r.characterName,
-                createdAt: r.createdAt,
-                contextData: r.contextData as StoredReadingRow["contextData"],
-              })
-            )
-          );
-        }
-        if (Array.isArray(data.continueMasterIds)) {
-          setServerContinueIds(data.continueMasterIds);
-        }
-
-        setTripletCooldown(tripletCooldownFromProfileData(data));
-
-        const restored = profileFromApiPayload({
-          profile: data.profile,
-          profileUserId: data.profileUserId,
-          readings: data.readings,
-        });
-
-        setProfile((prev) => {
-          const localCards = prev?.tarotCards?.length ?? 0;
-          const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current);
-          if (next.tarotCards.length < 3 && localCards >= 3) {
-            clearSpreadSessionState(setLastMasterId);
-          }
-          localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-          return next;
-        });
-
-        if (restored.tarotCards.length >= 3) {
-          setStepState((prev) => (prev === "intro" ? "masters" : prev));
-        } else if (data.profile.birthDate) {
-          setStepState((prev) => (prev === "intro" || prev === "onboarding" ? "triplet" : prev));
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => setTripletCooldownReady(true));
-  }, [isLoggedIn]);
-
-  const refreshSavedReadings = useCallback(() => {
-    if (!isLoggedIn) return;
-    fetch("/api/profile")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!Array.isArray(data?.readings)) return;
-        setSavedReadings(mapProfileReadings(data.readings));
-        if (Array.isArray(data.continueMasterIds)) {
-          setServerContinueIds(data.continueMasterIds);
-        }
-
-        setTripletCooldown(tripletCooldownFromProfileData(data));
-
-        if (data.profile && !newTripletInProgressRef.current) {
-          const restored = profileFromApiPayload({
-            profile: data.profile,
-            profileUserId: data.profileUserId,
-            readings: data.readings,
-          });
-          setProfile((prev) => {
-            const localCards = prev?.tarotCards?.length ?? 0;
-            const next = mergeProfileWithServer(restored, prev, false);
-            if (next.tarotCards.length < 3 && localCards >= 3) {
-              clearSpreadSessionState(setLastMasterId);
-            }
-            localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-            return next;
-          });
-        }
-
-        fetch("/api/runes/balance")
-          .then((r) => (r.ok ? r.json() : null))
-          .then((d) => {
-            if (typeof d?.balance === "number") setRuneBalance(d.balance);
-          })
-          .catch(() => undefined);
-      })
-      .catch(() => undefined);
-  }, [isLoggedIn]);
-
-  useEffect(() => {
-    if (!isLoggedIn || step !== "masters") return;
-    refreshSavedReadings();
-  }, [isLoggedIn, step, refreshSavedReadings]);
-
-  const displayTarotCards = useMemo((): SpreadSymbol[] => {
-    const tripletRow = savedReadings.find(
-      (row) =>
-        row.characterName === "triplet" &&
-        (row.contextData?.tarotCards?.length ?? 0) >= 3
-    );
-    const fromServer = tripletRow?.contextData?.tarotCards ?? [];
-    const tripletCtx = tripletRow?.contextData as Record<string, unknown> | undefined;
-    const system =
-      (tripletCtx?.deckSystem as DeckSystem | undefined) ??
-      profile?.deckSystem ??
-      DEFAULT_DECK_SYSTEM;
-    if (fromServer.length >= 3) {
-      return fromServer.slice(0, 3).map((card) => resolveSpreadSymbol(system, card));
-    }
-
-    const recap = resolveRecapSpread(profile, tripletSystem);
-    return recap.cards.length >= 3 ? recap.cards : [];
-  }, [profile, tripletSystem, savedReadings]);
-
-  const tripletCooldownHint = useMemo(() => {
-    if (tripletCountdown.isOnCooldown && tripletCountdown.hintRu) return tripletCountdown.hintRu;
-    if (!effectiveTripletCooldown.nextAvailableAt) return undefined;
-    return `Новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`;
   }, [
-    tripletCountdown.isOnCooldown,
-    tripletCountdown.hintRu,
-    effectiveTripletCooldown.nextAvailableAt,
-    tripletCountdown.tick,
+    authLoading,
+    isLoggedIn,
+    step,
+    selectedCharacter,
+    lastMasterId,
+    sessionListMaster,
+    setStep,
+    pendingChatOptsRef,
+    setLastMasterId,
+    bindSessionToMaster,
   ]);
 
-  const persistProfile = (data: StoredProfile) => {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
-    setProfile(data);
-  };
+  useEffect(() => {
+    if (step !== "chat" || intentionSpreadLoading) return;
+    if (!selectedCharacter || !intentionSpread) return;
+    if (intentionSpread.masterId !== selectedCharacter) return;
+    if (sessionIntention === "life_death") return;
+    if (chatHasSpreadReading(messages)) return;
+    if (intentionSpread.cards.length < 3) return;
 
-  const syncProfileFromServer = useCallback(
-    async (opts?: { keepSpread?: boolean }) => {
-      const res = await fetch("/api/profile");
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (!data?.profile) return null;
+    const intention = sessionIntention ?? intentionSpread.intention;
+    if (!intention) return;
 
-      if (Array.isArray(data.readings)) {
-        setSavedReadings(mapProfileReadings(data.readings));
+    const cardsKey = spreadKey(intentionSpread.cards);
+    const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}`;
+    if (onboarding.spreadReadingRecoveryKeyRef.current === recoveryKey) return;
+    onboarding.spreadReadingRecoveryKeyRef.current = recoveryKey;
+
+    let cancelled = false;
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+    setReadingRitualCountdownDone(false);
+    void (async () => {
+      const [raw] = await Promise.all([
+        pollIntentionSpreadReading({
+          characterId: selectedCharacter,
+          intention,
+          cardNames: intentionSpread.cards.map((c) => c.name),
+        }),
+        waitForSpreadReadingRitual(),
+      ]);
+      if (cancelled || !raw) {
+        setSpreadReadingRitualOpen(false);
+        setReadingRitualActive(false);
+        setReadingRitualCountdownDone(true);
+        return;
       }
-      if (Array.isArray(data.continueMasterIds)) {
-        setServerContinueIds(data.continueMasterIds);
+
+      const cardNames = intentionSpread.cards.map((c) => c.name);
+      const readingText = resolveClientReadingText(raw, cardNames);
+      if (!readingText || cancelled) {
+        setSpreadReadingRitualOpen(false);
+        setReadingRitualActive(false);
+        setReadingRitualCountdownDone(true);
+        return;
       }
 
-      const cooldown = tripletCooldownFromProfileData(data);
-      setTripletCooldown(cooldown);
-      setTripletCooldownReady(true);
-
-      const restored = profileFromApiPayload({
-        profile: data.profile,
-        profileUserId: data.profileUserId,
-        readings: data.readings,
-      });
-
-      setProfile((prev) => {
-        const localCards = prev?.tarotCards?.length ?? 0;
-        const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current);
-        if (next.tarotCards.length < 3 && localCards >= 3) {
-          clearSpreadSessionState(setLastMasterId);
-        }
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+      setReadingRitualCountdownDone(true);
+      setSpreadReadingRitualOpen(false);
+      setReadingRitualActive(false);
+      setMessages((prev) => {
+        if (chatHasSpreadReading(prev)) return prev;
+        const readingMsg: Message = {
+          id: generateId(),
+          role: "assistant",
+          content: readingText,
+          timestamp: new Date(),
+        };
+        const next = [...prev, readingMsg];
+        saveChatCache(selectedCharacter, next, cardsKey, {
+          cards: intentionSpread.cards,
+          system: intentionSpread.system,
+          variant: "intention",
+        });
         return next;
       });
-      return { data, cooldown, profile: restored };
-    },
-    []
-  );
+    })();
 
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const resync = () => {
-      if (document.visibilityState !== "visible") return;
-      void syncProfileFromServer();
-    };
-    document.addEventListener("visibilitychange", resync);
-    window.addEventListener("focus", resync);
     return () => {
-      document.removeEventListener("visibilitychange", resync);
-      window.removeEventListener("focus", resync);
+      cancelled = true;
     };
-  }, [isLoggedIn, syncProfileFromServer]);
-
-  const continueMasterIds = useMemo(() => {
-    if (displayTarotCards.length < 3) return [];
-    const cardsKey = spreadKey(displayTarotCards);
-    const aiMasterIds = masters.map((m) => m.id);
-    const merged = mergeContinueMasterIds(savedReadings, displayTarotCards, {
-      cachedMasterIds: mastersWithCachedReading(cardsKey, aiMasterIds),
-    });
-    return [...new Set(merged)];
-  }, [savedReadings, displayTarotCards, masters]);
-
-  const hasActiveSpread = displayTarotCards.length >= 3;
-  const spreadReadingDone = hasActiveSpread && continueMasterIds.length > 0;
-
-  const recapContinueMasterId = useMemo(
-    () =>
-      hasActiveSpread
-        ? primaryContinueMasterId(
-            savedReadings,
-            displayTarotCards,
-            continueMasterIds,
-            lastMasterId
-          )
-        : null,
-    [hasActiveSpread, savedReadings, displayTarotCards, continueMasterIds, lastMasterId]
-  );
-
-  const applyTripletMaster = useCallback(
-    (masterId: string) => {
-      if (!masterId || !findShowcaseMaster(masterId, masters)) return;
-      setTripletMasterId(masterId);
-      const master = findShowcaseMaster(masterId, masters);
-      setTripletSystem(master?.system ?? resolveMasterDeckSystem(masterId));
-      localStorage.setItem(PENDING_MASTER_KEY, masterId);
-    },
-    [masters]
-  );
-
-  const canChangeTripletMaster = useMemo(() => {
-    if (newTripletDraft) return true;
-    if (!profile) return true;
-    return getSpreadForSystem(profile, tripletSystem).length < 3;
-  }, [newTripletDraft, profile, tripletSystem]);
-
-  const handleTripletMasterChange = useCallback(
-    (masterId: string) => {
-      if (!canChangeTripletMaster) return;
-      applyTripletMaster(masterId);
-    },
-    [canChangeTripletMaster, applyTripletMaster]
-  );
-
-  const handleTripletBack = useCallback(() => {
-    newTripletInProgressRef.current = false;
-    setNewTripletDraft(false);
-    setTripletNotice(null);
-    setStep("masters");
-  }, [setStep]);
-
-  useEffect(() => {
-    if (step !== "triplet" || masters.length === 0) return;
-    if (tripletMasterId && findShowcaseMaster(tripletMasterId, masters)) return;
-
-    const pending = localStorage.getItem(PENDING_MASTER_KEY);
-    const fallback = resolveDefaultTripletMasterId(masters, {
-      pending,
-      recapMasterId: recapContinueMasterId,
-      tarotCards: displayTarotCards,
-    });
-    if (fallback) {
-      applyTripletMaster(fallback);
-    }
   }, [
     step,
-    masters,
-    tripletMasterId,
-    recapContinueMasterId,
-    displayTarotCards,
-    applyTripletMaster,
+    intentionSpreadLoading,
+    selectedCharacter,
+    intentionSpread,
+    sessionIntention,
+    messages,
+    setMessages,
+    onboarding.spreadReadingRecoveryKeyRef,
+    setReadingRitualCountdownDone,
+    setReadingRitualActive,
+    setSpreadReadingRitualOpen,
   ]);
 
-  const spreadCardsKey = useMemo(() => spreadKey(displayTarotCards), [displayTarotCards]);
+  const chatMessagesForDisplay = useMemo(() => {
+    if (!spreadReadingPending) return messages;
+    if (chatHasSpreadReading(messages)) return messages;
+    return messages.filter(
+      (m) =>
+        !(
+          m.role === "assistant" &&
+          (m.content?.trim().length ?? 0) >= MIN_SPREAD_READING_CHARS
+        )
+    );
+  }, [messages, spreadReadingPending]);
 
-  const chatSpread = useMemo(() => {
-    if (!selectedCharacter) return null;
-    return resolveMasterSpread(profile, selectedCharacter, masters);
-  }, [selectedCharacter, profile, masters]);
-
-  const activeSpreadCardsKey = useMemo(() => {
-    if (chatSpread && chatSpread.cards.length >= 3 && chatSpread.cardsKey) {
-      return chatSpread.cardsKey;
+  useEffect(() => {
+    if ((chatDisplaySpread?.cards?.length ?? 0) >= 3) {
+      setChatHeaderImage(null);
     }
-    return spreadCardsKey;
-  }, [chatSpread, spreadCardsKey]);
+  }, [chatDisplaySpread?.cards?.length, setChatHeaderImage]);
 
   const applyDestinyCardToChat = useCallback(
     (url: string, characterId?: string | null) => {
@@ -942,7 +767,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         return updated;
       });
     },
-    [selectedCharacter, activeSpreadCardsKey]
+    [selectedCharacter, activeSpreadCardsKey, setChatHeaderImage, setMessages]
   );
 
   useEffect(() => {
@@ -968,345 +793,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     savedReadings,
     activeSpreadCardsKey,
     applyDestinyCardToChat,
-  ]);
-  const handleOnboardingComplete = async (data: OnboardingData) => {
-    if (!isLoggedIn) return;
-
-    try {
-      await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: data.name,
-          gender: data.gender,
-          birthDate: data.birthDate,
-          birthTime: data.birthTime,
-          birthCity: data.birthCity,
-          lifeFocus: data.lifeFocus,
-          mainQuestion: data.mainQuestion,
-        }),
-      });
-    } catch {
-      /* сохраним локально даже без сети */
-    }
-
-    const existingCards = profile?.tarotCards?.length ? profile.tarotCards : [];
-
-    if (tripletCooldown && !tripletCooldown.allowed) {
-      persistProfile({
-        ...data,
-        tarotCards: existingCards,
-        teaser: profile?.teaser,
-        userId: profile?.userId,
-        name: data.name || authUser?.name || data.name,
-      });
-      setStep("masters");
-      return;
-    }
-    persistProfile({
-      ...data,
-      tarotCards: existingCards,
-      teaser: profile?.teaser,
-      userId: profile?.userId,
-      name: data.name || authUser?.name || data.name,
-    });
-    if (existingCards.length >= 3) {
-      setStep("masters");
-      return;
-    }
-    const defaultMaster = resolveDefaultTripletMasterId(masters, {
-      pending: localStorage.getItem(PENDING_MASTER_KEY),
-      tarotCards: existingCards,
-    });
-    if (defaultMaster) {
-      applyTripletMaster(defaultMaster);
-    }
-    setStep("triplet");
-  };
-
-  const handleTripletComplete = async (cards: SpreadSymbol[], teaser: string) => {
-    if (!isLoggedIn) {
-      return;
-    }
-
-    if (!profile?.birthDate || !profile?.zodiac || !profile?.name) {
-      const msg = "Не хватает данных профиля. Заполните анкету заново.";
-      setTripletNotice(msg);
-      setStep("onboarding");
-      return;
-    }
-
-    let storedProfile: StoredProfile | null = null;
-    try {
-      const raw = localStorage.getItem(PROFILE_KEY);
-      if (raw) storedProfile = JSON.parse(raw) as StoredProfile;
-    } catch {
-      storedProfile = null;
-    }
-
-    const base = profile ?? storedProfile ?? ({} as StoredProfile);
-    const previousCards =
-      profile?.tarotCards?.length ? profile.tarotCards : (storedProfile?.tarotCards ?? []);
-
-    const updated: StoredProfile = {
-      ...base,
-      tarotCards: cards,
-      deckSystem: tripletSystem,
-      deckSpreads: { ...base.deckSpreads, [tripletSystem]: cards },
-      teaser,
-    };
-
-    let serverOk = false;
-    try {
-      const postBody = buildOnboardingPostBody(
-        base,
-        cards,
-        teaser,
-        session?.offline ? undefined : session?.sessionId,
-        tripletSystem
-      );
-
-      const res = await fetch("/api/onboarding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(postBody),
-      });
-
-      const data = (await res.json()) as {
-        userId?: string;
-        error?: string;
-        code?: string;
-        step?: string;
-        detail?: string;
-        missing?: string[];
-        message?: string;
-        nextAvailableAt?: string | null;
-      };
-
-      if (
-        (res.status === 429 || data.error === "TRIPLET_COOLDOWN") &&
-        data.error === "TRIPLET_COOLDOWN"
-      ) {
-        newTripletInProgressRef.current = false;
-        setNewTripletDraft(false);
-        const restored: StoredProfile = {
-          ...base,
-          tarotCards: previousCards,
-          teaser: profile?.teaser ?? storedProfile?.teaser,
-        };
-        persistProfile(restored);
-        setTripletCooldown(
-          data.nextAvailableAt
-            ? {
-                allowed: false,
-                nextAvailableAt: data.nextAvailableAt,
-                lastTripletAt: tripletCooldown?.lastTripletAt ?? null,
-              }
-            : tripletCooldownFromLastDraw(new Date())
-        );
-        if (data.nextAvailableAt) {
-          const lastMs =
-            new Date(data.nextAvailableAt).getTime() - 24 * 60 * 60 * 1000;
-          const lastIso = new Date(lastMs).toISOString();
-          writeLocalTripletDrawAt(lastIso);
-          persistProfile({ ...restored, lastTripletDrawAt: lastIso });
-        }
-        setTripletNotice(
-          data.nextAvailableAt
-            ? `Новый расклад из 3 карт ${formatTripletCooldownRu(data.nextAvailableAt)}`
-            : "Новый расклад из 3 карт доступен один раз в сутки"
-        );
-        setStep("masters");
-        return;
-      }
-
-      if (res.ok) {
-        serverOk = true;
-        newTripletInProgressRef.current = false;
-        setNewTripletDraft(false);
-        clearGuestTriplet();
-        if (data.userId) updated.userId = data.userId;
-        const drawAt = new Date().toISOString();
-        updated.lastTripletDrawAt = drawAt;
-        writeLocalTripletDrawAt(drawAt);
-        setTripletCooldown(tripletCooldownFromLastDraw(drawAt));
-        clearChatCache();
-      } else {
-        newTripletInProgressRef.current = false;
-        setNewTripletDraft(false);
-        const restored: StoredProfile = {
-          ...base,
-          tarotCards: previousCards,
-          teaser: profile?.teaser ?? storedProfile?.teaser,
-        };
-        persistProfile(restored);
-        setTripletNotice(onboardingErrorMessage(data));
-        if (data.error === "Заполните профиль" || data.code === "MISSING_PROFILE") {
-          setStep("onboarding");
-        } else {
-          setStep(previousCards.length >= 3 ? "masters" : "triplet");
-        }
-        return;
-      }
-    } catch {
-      /* офлайн: сохраняем локально без смены лимита */
-      newTripletInProgressRef.current = false;
-    }
-
-    if (!serverOk) {
-      setTripletNotice("Расклад сохранён локально. Синхронизация с сервером произойдёт при следующем входе.");
-    }
-
-    setNewTripletDraft(false);
-    persistProfile(updated);
-    setStep("masters");
-
-    const masterToBind =
-      tripletMasterId || localStorage.getItem(PENDING_MASTER_KEY);
-    if (masterToBind) {
-      localStorage.removeItem(PENDING_MASTER_KEY);
-      await bindSessionToMaster(masterToBind);
-      handleSelectCharacter(masterToBind);
-      return;
-    }
-
-    if (serverOk && session?.sessionId && !session.offline) {
-      await refresh(session.sessionId);
-    }
-  };
-
-  const getActiveProfile = useCallback((): StoredProfile | null => {
-    if (profile && (profile.name || profile.birthDate || (profile.tarotCards?.length ?? 0) > 0)) {
-      return profile;
-    }
-    try {
-      const raw = localStorage.getItem(PROFILE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw) as StoredProfile;
-    } catch {
-      return null;
-    }
-  }, [profile]);
-
-  const handleNewReading = async () => {
-    setTripletNotice(null);
-    if (
-      !tripletCooldownReady ||
-      !effectiveTripletCooldown.allowed ||
-      tripletCountdown.isOnCooldown
-    ) {
-      const hint = effectiveTripletCooldown.nextAvailableAt
-        ? `Новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`
-        : "Новый расклад из 3 карт доступен один раз в сутки";
-      setTripletNotice(hint);
-      return;
-    }
-    const synced = await syncProfileFromServer({ keepSpread: true });
-    const cooldown = mergeTripletCooldownWithAnchors(
-      synced?.cooldown ?? tripletCooldown,
-      profile?.lastTripletDrawAt
-    );
-    if (!cooldown.allowed || tripletCountdown.isOnCooldown) {
-      const hint = cooldown?.nextAvailableAt
-        ? `Новый расклад из 3 карт ${formatTripletCooldownRu(cooldown.nextAvailableAt)}`
-        : "Новый расклад из 3 карт доступен один раз в сутки";
-      setTripletNotice(hint);
-      setStep("masters");
-      return;
-    }
-    const base = synced?.profile ?? profile ?? getActiveProfile();
-    if (!base?.birthDate) {
-      setStep("onboarding");
-      return;
-    }
-    readingInFlightRef.current = false;
-    localStorage.removeItem(LAST_MASTER_KEY);
-    setLastMasterId(null);
-    setSelectedCharacter(null);
-    setMessages([]);
-    setShowPaywall(false);
-    setShowRuneShop(false);
-    setInsufficientRunes(null);
-    setChatHeaderImage(null);
-    const defaultMaster = resolveDefaultTripletMasterId(masters, {
-      pending: localStorage.getItem(PENDING_MASTER_KEY),
-      recapMasterId: recapContinueMasterId,
-      tarotCards: displayTarotCards,
-    });
-    if (defaultMaster) {
-      applyTripletMaster(defaultMaster);
-    } else {
-      localStorage.removeItem(PENDING_MASTER_KEY);
-    }
-    newTripletInProgressRef.current = true;
-    setNewTripletDraft(true);
-    setStep("triplet");
-  };
-
-  useEffect(() => {
-    if (step !== "onboarding" || !tripletCooldownReady || !tripletCooldown || tripletCooldown.allowed) {
-      return;
-    }
-    if (displayTarotCards.length < 3) return;
-    const hint = tripletCooldown.nextAvailableAt
-      ? `Новый расклад из 3 карт ${formatTripletCooldownRu(tripletCooldown.nextAvailableAt)}`
-      : "Новый расклад из 3 карт доступен один раз в сутки";
-    setTripletNotice(hint);
-    setStep("masters");
-  }, [step, tripletCooldownReady, tripletCooldown, displayTarotCards.length, setStep]);
-
-  const startPersonalFlow = useCallback(async () => {
-    if (!isLoggedIn) {
-      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent("/")}`;
-      return;
-    }
-    setTripletNotice(null);
-    const synced = await syncProfileFromServer({ keepSpread: true });
-    const base = synced?.profile ?? profile ?? getActiveProfile();
-    const mergedGuest = base ? mergeGuestTripletIntoProfile(base) : null;
-    if (mergedGuest && mergedGuest !== base) {
-      persistProfile(mergedGuest as StoredProfile);
-    }
-    const effectiveBase = mergedGuest ?? base;
-    const cooldown = synced?.cooldown ?? tripletCooldown;
-    const hasSpread =
-      (effectiveBase?.tarotCards?.length ?? 0) >= 3 || displayTarotCards.length >= 3;
-    if (effectiveBase?.birthDate && cooldown && !cooldown.allowed && hasSpread) {
-      const hint = cooldown.nextAvailableAt
-        ? `Новый расклад из 3 карт ${formatTripletCooldownRu(cooldown.nextAvailableAt)}`
-        : "Новый расклад из 3 карт доступен один раз в сутки";
-      setTripletNotice(hint);
-      setStep("masters");
-      return;
-    }
-    if (effectiveBase?.birthDate && hasSpread) {
-      setStep("masters");
-      return;
-    }
-    if (effectiveBase?.birthDate) {
-      const defaultMaster = resolveDefaultTripletMasterId(masters, {
-        pending: localStorage.getItem(PENDING_MASTER_KEY),
-        tarotCards: effectiveBase?.tarotCards,
-      });
-      if (defaultMaster) {
-        applyTripletMaster(defaultMaster);
-      }
-      setStep("triplet");
-      return;
-    }
-    if (hasSpread) {
-      setStep("onboarding");
-      return;
-    }
-    setStep("onboarding");
-  }, [
-    isLoggedIn,
-    syncProfileFromServer,
-    profile,
-    getActiveProfile,
-    tripletCooldown,
-    displayTarotCards.length,
-    setStep,
+    setChatHeaderImage,
   ]);
 
   const attachSceneToAssistantMessage = useCallback(
@@ -1319,6 +806,26 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     ) => {
       const activeProfile = getActiveProfile();
       if (!activeProfile) return;
+
+      const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
+      const cardsKey =
+        masterCtx.cardsKey ||
+        spreadKey(activeProfile.tarotCards) ||
+        activeSpreadCardsKey;
+
+      if (scene === "destiny_card" && cardsKey) {
+        const genKey = `${characterId}|destiny_card|${cardsKey}`;
+        const saved = resolveDestinyCardUrl(savedReadings, cardsKey, characterId);
+        if (saved) {
+          destinyGenRef.current.add(genKey);
+          applyDestinyCardToChat(saved, characterId);
+          return;
+        }
+        if (destinyGenRef.current.has(genKey)) {
+          return;
+        }
+        destinyGenRef.current.add(genKey);
+      }
 
       const url = await requestSceneImage({
         scene,
@@ -1346,16 +853,29 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         return updated;
       });
     },
-    [getActiveProfile, spreadCardsKey, masters]
+    [
+      getActiveProfile,
+      spreadCardsKey,
+      masters,
+      savedReadings,
+      applyDestinyCardToChat,
+      activeSpreadCardsKey,
+      setChatHeaderImage,
+      setMessages,
+    ]
   );
 
   useEffect(() => {
     if (sessionOnlyChat) return;
     if (!selectedCharacter || !activeSpreadCardsKey) return;
+    if ((chatDisplaySpread?.cards?.length ?? 0) >= 3) return;
 
     const firstAssistant = messages.find((m) => m.role === "assistant");
     if (!firstAssistant || firstAssistant.sceneImageUrl) return;
     if (resolveDestinyCardUrl(savedReadings, activeSpreadCardsKey, selectedCharacter)) return;
+
+    const genKey = `${selectedCharacter}|destiny_card|${activeSpreadCardsKey}`;
+    if (destinyGenRef.current.has(genKey)) return;
     if (!firstAssistant.content || firstAssistant.content.length < 40) return;
 
     const backfillKey = `${selectedCharacter}|${activeSpreadCardsKey}`;
@@ -1376,460 +896,96 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     attachSceneToAssistantMessage,
     refreshSavedReadings,
     sessionOnlyChat,
+    chatDisplaySpread?.cards?.length,
   ]);
 
-  const loadReading = useCallback(
-    async (characterId: string) => {
-      try {
-        const activeProfile = getActiveProfile();
-        if (!activeProfile?.tarotCards?.length) return;
-
-        const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
-        const cardsForMaster =
-          masterCtx.cards.length >= 3 ? masterCtx.cards : activeProfile.tarotCards;
-        const cardsKey = spreadKey(cardsForMaster) || spreadCardsKey;
-        const cachedReading = savedReadings.find(
-          (row) =>
-            row.characterName === characterId &&
-            row.contextData?.type === "reading" &&
-            typeof row.contextData.reading === "string" &&
-            spreadKey(row.contextData.tarotCards) === cardsKey
-        );
-
-        if (cachedReading?.contextData?.reading) {
-          const readingText = cachedReading.contextData.reading as string;
-          const readingTs = cachedReading.createdAt
-            ? new Date(cachedReading.createdAt)
-            : new Date();
-          const readingMsgId = generateId();
-          const readingMsg: Message = {
-            id: readingMsgId,
-            role: "assistant",
-            content: readingText,
-            timestamp: readingTs,
-          };
-          setMessages([readingMsg]);
-          saveChatCache(characterId, [readingMsg], cardsKey);
-          const savedUrl = resolveDestinyCardUrl(savedReadings, cardsKey, characterId);
-          if (savedUrl) {
-            applyDestinyCardToChat(savedUrl, characterId);
-          } else {
-            void attachSceneToAssistantMessage(
-              readingMsgId,
-              readingText,
-              characterId,
-              "destiny_card"
-            ).then(() => refreshSavedReadings());
-          }
-          return;
-        }
-
-        setIsLoading(true);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 55000);
-
-        try {
-          const res = await fetch("/api/reading", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: controller.signal,
-            body: JSON.stringify({
-              characterId,
-              sessionId: session?.offline ? undefined : session?.sessionId,
-              ...profileApiPayload(activeProfile, characterId, masters),
-            }),
-          });
-          const data = await res.json();
-          if (res.status === 401) {
-            setMessages([
-              {
-                id: generateId(),
-                role: "assistant",
-                content: "Для расшифровки нужна регистрация. Создайте аккаунт и начните расклад заново.",
-                timestamp: new Date(),
-              },
-            ]);
-            return;
-          }
-          if (res.status === 402 && data.error === "INSUFFICIENT_RUNES") {
-            const required = data.required ?? runeCost("READING");
-            pendingReadingMasterRef.current = characterId;
-            persistPendingReading(characterId, required);
-            setInsufficientRunes({
-              balance: data.balance ?? 0,
-              required,
-            });
-            setMessages([
-              {
-                id: generateId(),
-                role: "assistant",
-                content: `Для полной расшифровки нужно ${formatRunes(required)}. Пополните баланс — расшифровка начнётся автоматически.`,
-                timestamp: new Date(),
-              },
-            ]);
-            setShowRuneShop(true);
-            return;
-          }
-          if (typeof data.runeBalance === "number") {
-            setRuneBalance(data.runeBalance);
-            emitRuneBalanceUpdate(data.runeBalance);
-            if (session?.sessionId && !session.offline) {
-              void refresh(session.sessionId);
-            }
-          }
-          if (res.ok && data.reading) {
-            clearPendingReading();
-            pendingReadingMasterRef.current = null;
-            const readingMsgId = generateId();
-            const readingTs = data.createdAt ? new Date(data.createdAt) : new Date();
-            const readingMsg: Message = {
-              id: readingMsgId,
-              role: "assistant",
-              content: data.reading,
-              timestamp: readingTs,
-            };
-            setMessages([readingMsg]);
-            saveChatCache(characterId, [readingMsg], cardsKey);
-            refreshSavedReadings();
-            const savedUrl = resolveDestinyCardUrl(
-              savedReadings,
-              cardsKey,
-              characterId
-            );
-            if (savedUrl) {
-              applyDestinyCardToChat(savedUrl, characterId);
-            } else {
-              void attachSceneToAssistantMessage(
-                readingMsgId,
-                data.reading,
-                characterId,
-                "destiny_card"
-              ).then(() => refreshSavedReadings());
-            }
-          } else {
-            setMessages([
-              {
-                id: generateId(),
-                role: "assistant",
-                content: buildTeaser(activeProfile),
-                timestamp: new Date(),
-              },
-            ]);
-          }
-        } finally {
-          clearTimeout(timeout);
-          setIsLoading(false);
-        }
-      } catch (err) {
-        console.error("loadReading failed:", err);
-        setMessages([
-          {
-            id: generateId(),
-            role: "assistant",
-            content: "Мастер на связи. Задайте ваш вопрос.",
-            timestamp: new Date(),
-          },
-        ]);
-        setIsLoading(false);
-      }
-    },
-    [getActiveProfile, session?.offline, session?.sessionId, attachSceneToAssistantMessage, refreshSavedReadings, spreadCardsKey, runeCost, savedReadings, applyDestinyCardToChat, masters]
-  );
-
-  const restoreChatForCharacter = useCallback(
-    async (characterId: string): Promise<Message[] | null> => {
-      const activeProfile = getActiveProfile();
-      const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
-      const cacheKey =
-        masterCtx.cards.length >= 3 ? masterCtx.cardsKey : spreadCardsKey;
-      const cached = loadChatCache(characterId, cacheKey);
-      if (cached?.length && chatHasSpreadReading(cached)) return cached;
-
-      const cardsForMaster =
-        masterCtx.cards.length >= 3 ? masterCtx.cards : activeProfile?.tarotCards;
-      const cardsKey = spreadKey(cardsForMaster) || spreadCardsKey;
-
-      try {
-        const params = new URLSearchParams({ characterId });
-        if (session?.sessionId && !session.offline) {
-          params.set("sessionId", session.sessionId);
-        }
-        if (cardsKey) params.set("cardsKey", cardsKey);
-
-        const res = await fetch(`/api/chat/history?${params}`);
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (!data.messages?.length) return null;
-
-        const restored: Message[] = data.messages.map(
-          (m: { id: string; role: string; content: string; timestamp: string }) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            timestamp: new Date(m.timestamp),
-          })
-        );
-
-        if (!chatHasSpreadReading(restored)) return null;
-
-        saveChatCache(characterId, restored, cacheKey);
-        return restored;
-      } catch {
-        return null;
-      }
-    },
-    [getActiveProfile, session?.offline, session?.sessionId, spreadCardsKey, masters]
-  );
-
-  useEffect(() => {
-    if (!selectedCharacter || sessionLoading || authLoading || !isLoggedIn) return;
-    if (messages.length > 0) return;
-    if (readingInFlightRef.current) return;
-    if (skipNextReadingRef.current) {
-      skipNextReadingRef.current = false;
-      return;
-    }
-
-    const cached = loadChatCache(selectedCharacter, activeSpreadCardsKey);
-    if (cached?.length) {
-      if (chatHasSpreadReading(cached) || sessionOnlyChat) {
-        setMessages(cached);
-        return;
-      }
-    }
-
-    readingInFlightRef.current = true;
-    void (async () => {
-      try {
-        if (sessionOnlyChat) {
-          const restored = await restoreChatForCharacter(selectedCharacter);
-          if (restored?.length) {
-            setMessages(restored);
-            return;
-          }
-          const master =
-            findShowcaseMaster(selectedCharacter, masters) ??
-            getCharacterById(selectedCharacter);
-          const masterName = master?.name ?? "Мастер";
-          setMessages([
-            {
-              id: generateId(),
-              role: "assistant",
-              content: `${masterName} готов к сеансу. Задайте свой вопрос — этот диалог не привязан к вашему раскладу из трёх карт.`,
-              timestamp: new Date(),
-            },
-          ]);
-          return;
-        }
-
-        const restored = await restoreChatForCharacter(selectedCharacter);
-        if (restored?.length && chatHasSpreadReading(restored)) {
-          setMessages(restored);
-          return;
-        }
-        await loadReading(selectedCharacter);
-      } finally {
-        readingInFlightRef.current = false;
-      }
-    })();
-  }, [
-    selectedCharacter,
-    sessionLoading,
-    authLoading,
-    isLoggedIn,
-    messages.length,
-    sessionOnlyChat,
+  const {
     loadReading,
-    restoreChatForCharacter,
-    masters,
-    activeSpreadCardsKey,
-  ]);
-
-  useEffect(() => {
-    if (selectedCharacter && messages.length && chatHasSpreadReading(messages)) {
-      saveChatCache(selectedCharacter, messages, activeSpreadCardsKey);
-    }
-  }, [selectedCharacter, messages, activeSpreadCardsKey]);
-
-  const openChatWithCharacter = useCallback(
-    async (
-      characterId: string,
-      options?: { forceNew?: boolean; sessionOnly?: boolean }
-    ) => {
-      if (!isLoggedIn) return;
-
-      if (options?.sessionOnly !== undefined) {
-        setSessionOnlyChat(options.sessionOnly);
-      }
-
-      localStorage.setItem(LAST_MASTER_KEY, characterId);
-      localStorage.setItem(FLOW_STEP_KEY, "chat");
-      setLastMasterId(characterId);
-      setStep("chat");
-      setSelectedCharacter(characterId);
-
-      if (!options?.forceNew) {
-        const restored = await restoreChatForCharacter(characterId);
-        if (restored?.length && chatHasSpreadReading(restored)) {
-          skipNextReadingRef.current = true;
-          setMessages(restored);
-          return;
-        }
-      }
-
-      setMessages([]);
-    },
-    [isLoggedIn, restoreChatForCharacter, setStep]
-  );
-
-  useEffect(() => {
-    if (authLoading || !isLoggedIn || selectedCharacter || autoResumeDoneRef.current) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const continueMaster = params.get("master") ?? params.get("continue");
-    if (!continueMaster) return;
-
-    autoResumeDoneRef.current = true;
-
-    const activeProfile = getActiveProfile();
-    const hasSpread =
-      (activeProfile?.tarotCards?.length ?? 0) >= 3 || displayTarotCards.length >= 3;
-
-    if (!hasSpread) {
-      localStorage.setItem(PENDING_MASTER_KEY, continueMaster);
-      applyTripletMaster(continueMaster);
-      if (activeProfile?.birthDate) {
-        setStep("triplet");
-      } else {
-        setStep("onboarding");
-      }
-      window.history.replaceState(null, "", window.location.pathname);
-      return;
-    }
-
-    void openChatWithCharacter(continueMaster, {
-      sessionOnly:
-        spreadReadingDone && !continueMasterIds.includes(continueMaster),
-    });
-  }, [
-    authLoading,
-    isLoggedIn,
-    selectedCharacter,
+    handleSendMessage,
     openChatWithCharacter,
-    spreadReadingDone,
-    continueMasterIds,
-    getActiveProfile,
-    displayTarotCards.length,
+    applyRestoredChatSpread,
+    applyHistorySessionMeta,
+  } = useChatActions({
+    isLoading,
+    setIsLoading,
+    readingInFlightRef,
+    applyRestoredChatSpreadRef,
+    session,
+    sessionLoading,
+    refresh,
     setStep,
-  ]);
-
-  useEffect(() => {
-    if (authLoading || !isLoggedIn) return;
-    if (step === "triplet" || step === "onboarding") return;
-
-    const pending = readPendingReading();
-    if (!pending) {
-      pendingReadingResumeRef.current = null;
-      return;
-    }
-
-    const resumeKey = `${pending.masterId}:${pending.required}`;
-    if (pendingReadingResumeRef.current === resumeKey) return;
-
-    void (async () => {
-      try {
-        const res = await fetch("/api/runes/balance");
-        if (!res.ok) return;
-        const data = await res.json();
-        const balance = typeof data.balance === "number" ? data.balance : 0;
-        setRuneBalance(balance);
-        emitRuneBalanceUpdate(balance);
-
-        if (pending.required > 0 && balance < pending.required) return;
-
-        pendingReadingResumeRef.current = resumeKey;
-        pendingReadingMasterRef.current = null;
-        setInsufficientRunes(null);
-
-        if (selectedCharacter === pending.masterId && step === "chat") {
-          if (!chatHasSpreadReading(messages)) {
-            readingInFlightRef.current = true;
-            try {
-              await loadReading(pending.masterId);
-              clearPendingReading();
-            } finally {
-              readingInFlightRef.current = false;
-            }
-          } else {
-            clearPendingReading();
-          }
-          return;
-        }
-
-        void openChatWithCharacter(pending.masterId);
-      } catch {
-        pendingReadingResumeRef.current = null;
-      }
-    })();
-  }, [authLoading, isLoggedIn, selectedCharacter, step, messages, loadReading, openChatWithCharacter]);
-
-  const bindSessionToMaster = useCallback(
-    async (masterId: string) => {
-      if (!session?.sessionId || session.offline) return;
-
-      const referrerSlugValue = !isAiMasterId(masterId)
-        ? masterId
-        : referrerSlug
-          ? referrerSlug
-          : null;
-
-      try {
-        await fetch("/api/session", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: session.sessionId,
-            referrerSlug: referrerSlugValue,
-          }),
-        });
-        await refresh(session.sessionId);
-      } catch {
-        /* offline ok */
-      }
-    },
-    [referrerSlug, refresh, session?.offline, session?.sessionId]
-  );
-
-  const handleSelectCharacter = (characterId: string) => {
-    void openChatWithCharacter(characterId);
-  };
-
-  useEffect(() => {
-    if (authLoading || !isLoggedIn) return;
-    if (step !== "masters" || selectedCharacter) return;
-
-    const pendingMaster = localStorage.getItem(PENDING_MASTER_KEY);
-    if (!pendingMaster) return;
-
-    const activeProfile = getActiveProfile();
-    if ((activeProfile?.tarotCards?.length ?? 0) < 3 && displayTarotCards.length < 3) return;
-
-    localStorage.removeItem(PENDING_MASTER_KEY);
-    void bindSessionToMaster(pendingMaster).then(() => {
-      handleSelectCharacter(pendingMaster);
-    });
-  }, [
-    authLoading,
     isLoggedIn,
-    step,
+    authLoading,
+    runeConfig,
+    runeCost,
+    formatRunes,
+    runeBalance,
+    setRuneBalance,
+    setInsufficientRunes,
+    handleOpenPaywall: (opts) => handleOpenPaywallRef.current(opts),
+    showRateLimit,
+    messages,
+    setMessages,
+    isLoadingHistory,
+    setIsLoadingHistory,
+    setHistoryHasMore,
+    setConsultationSessionId,
+    setConsultationReadOnly,
+    restoreChatForCharacter,
+    resolveConsultationSessionId,
+    consultationSessionIdRef,
+    buildSessionOnlyWelcome,
     selectedCharacter,
+    selectedCharacterRef,
+    masters,
     getActiveProfile,
-    displayTarotCards.length,
-    bindSessionToMaster,
-  ]);
+    spreadCardsKey,
+    activeSpreadCardsKey,
+    savedReadings,
+    refreshSavedReadings,
+    sessionIntention,
+    setSessionIntention,
+    sessionOnlyChat,
+    setSessionOnlyChat,
+    sessionListMaster,
+    setSessionListMaster,
+    intentionSpread,
+    setIntentionSpread,
+    chatSessionSpread,
+    setChatSessionSpread,
+    setIntentionHighlight,
+    setIntentionSpreadLoading,
+    setReadingRitualActive,
+    setReadingRitualCountdownDone,
+    setSpreadReadingRitualOpen,
+    setHideChatSpread,
+    setSpreadFlipped,
+    setPhotoChatSpread,
+    setLastMasterId,
+    setSelectedCharacter,
+    skipNextReadingRef,
+    pendingNewChatThreadRef,
+    pendingReadingMasterRef,
+    sessionSpreadMetaRef,
+    sendingRef,
+    archiveSessionIdRef,
+    exitingToSessionListRef,
+    chatLoadedForRef,
+    prevSelectedCharacterRef,
+    needsSpreadFlip,
+    allSpreadFlipped,
+    shouldAutoLoadSpreadReading,
+    chatDisplaySpread,
+    attachSceneToAssistantMessage,
+    setRetryDraft,
+    setAchievementPopup,
+  });
 
-  const handleRuneShopClose = useCallback(async () => {
-    setShowRuneShop(false);
+  loadReadingRef.current = loadReading;
+  openChatWithCharacterRef.current = openChatWithCharacter;
+  applyHistorySessionMetaRef.current = applyHistorySessionMeta;
+
+  const handlePaywallClose = useCallback(async () => {
     const masterId = pendingReadingMasterRef.current;
     const required = insufficientRunes?.required;
     if (!masterId || !required) return;
@@ -1838,9 +994,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       const res = await fetch("/api/runes/balance");
       if (!res.ok) return;
       const data = await res.json();
+      applyRuneBalancePayload(data);
       const balance = typeof data.balance === "number" ? data.balance : 0;
-      setRuneBalance(balance);
-      emitRuneBalanceUpdate(balance);
 
       if (balance >= required) {
         pendingReadingMasterRef.current = null;
@@ -1856,237 +1011,513 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     } catch {
       /* пользователь может повторить вручную */
     }
-  }, [insufficientRunes?.required, loadReading]);
+  }, [insufficientRunes?.required, loadReading, applyRuneBalancePayload]);
 
-  const handleMasterPick = async (masterId: string) => {
-    localStorage.setItem(PENDING_MASTER_KEY, masterId);
-
-    if (!isLoggedIn) {
-      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent("/#наставники")}`;
-      return;
-    }
-
-    const activeProfile = getActiveProfile();
-    if (!activeProfile?.birthDate && !profile?.birthDate) {
-      setStep("onboarding");
-      return;
-    }
-
-    const master = findShowcaseMaster(masterId, masters);
-    const system = master?.system ?? resolveMasterDeckSystem(masterId);
-    const masterSpread = getSpreadForSystem(activeProfile ?? profile, system);
-
-    if (masterSpread.length < 3) {
-      if (tripletCooldownReady && !effectiveTripletCooldown.allowed) {
-        const hint = effectiveTripletCooldown.nextAvailableAt
-          ? `Новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`
-          : "Новый расклад из 3 карт доступен один раз в сутки";
-        setTripletNotice(hint);
-        return;
-      }
-      setTripletNotice(null);
-      applyTripletMaster(masterId);
-      setStep("triplet");
-      return;
-    }
-
-    if (profile && (profile.deckSystem !== system || profile.tarotCards !== masterSpread)) {
-      persistProfile({
-        ...profile,
-        tarotCards: masterSpread,
-        deckSystem: system,
+  const handleOpenPaywall = useCallback(
+    (opts?: { balance?: number; requiredRunes?: number; shortage?: number }) => {
+      openPaywall({
+        currentBalance: opts?.balance ?? runeBalance,
+        requiredRunes: opts?.requiredRunes ?? insufficientRunes?.required,
+        balance: opts?.balance ?? insufficientRunes?.balance,
+        shortage: opts?.shortage,
+        sessionId: session?.sessionId,
+        userName: profile?.name ?? authUser?.name,
+        onUnlocked: session?.sessionId
+          ? () => refresh(session.sessionId).then(() => undefined)
+          : undefined,
+        onClose: handlePaywallClose,
       });
+    },
+    [
+      openPaywall,
+      runeBalance,
+      insufficientRunes,
+      session?.sessionId,
+      profile?.name,
+      authUser?.name,
+      handlePaywallClose,
+      refresh,
+    ]
+  );
+
+  handleOpenPaywallRef.current = handleOpenPaywall;
+
+  const deleteConsultationSessionClient = useCallback(
+    async (masterId: string, sessionId: string): Promise<boolean> => {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) return false;
+
+      if (consultationSessionId === sessionId) {
+        setConsultationSessionId(null);
+        setConsultationReadOnly(false);
+        archiveSessionIdRef.current = null;
+      }
+      clearChatCache(masterId);
+      persistSessionIntention(masterId, null);
+      persistIntentionSpreadState(masterId, null);
+      void refreshSavedReadings();
+      return true;
+    },
+    [consultationSessionId, refreshSavedReadings]
+  );
+
+  const navigateToSessionListAfterDelete = useCallback(
+    (masterId: string) => {
+      sessionListBackMasterRef.current = null;
+      exitingToSessionListRef.current = true;
+      flushSync(() => {
+        setSelectedCharacter(null);
+        setConsultationSessionId(null);
+        setConsultationReadOnly(false);
+        archiveSessionIdRef.current = null;
+        setSessionListMaster(masterId);
+        setStep("masters");
+        setHideChatSpread(true);
+        setSessionOnlyChat(false);
+        setSessionIntention(null);
+        setIntentionHighlight(false);
+        setIntentionSpread(null);
+        setSpreadFlipped([false, false, false]);
+        sessionSpreadMetaRef.current = null;
+        setMessages([]);
+        chatLoadedForRef.current = null;
+        setHistoryHasMore(false);
+        readingInFlightRef.current = false;
+        skipNextReadingRef.current = false;
+        pendingNewChatThreadRef.current = false;
+      });
+      localStorage.setItem(FLOW_STEP_KEY, "masters");
+      localStorage.removeItem(LAST_MASTER_KEY);
+      setLastMasterId(null);
+      window.setTimeout(() => {
+        exitingToSessionListRef.current = false;
+      }, 0);
+    },
+    [setStep]
+  );
+
+  const resolveSessionIdForDelete = useCallback(
+    async (masterId: string): Promise<string | null> => {
+      if (consultationSessionId) return consultationSessionId;
+      if (archiveSessionIdRef.current) return archiveSessionIdRef.current;
+
+      try {
+        const params = new URLSearchParams({
+          characterId: masterId,
+          limit: "1",
+        });
+        const res = await fetch(`/api/chat/history?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { sessionId?: string | null };
+          if (data.sessionId) return data.sessionId;
+        }
+      } catch {
+        /* offline */
+      }
+
+      try {
+        const res = await fetch(
+          `/api/sessions?characterKey=${encodeURIComponent(masterId)}`,
+          { credentials: "include" }
+        );
+        if (res.ok) {
+          const data = (await res.json()) as { active?: { id?: string } | null };
+          if (data.active?.id) return data.active.id;
+        }
+      } catch {
+        /* offline */
+      }
+
+      if (session?.sessionId && !session.offline) return session.sessionId;
+      return null;
+    },
+    [consultationSessionId, session?.sessionId, session?.offline]
+  );
+
+  const handleClearChat = useCallback(async () => {
+    if (!selectedCharacter || !isLoggedIn) return;
+    const masterId = selectedCharacter;
+    const master = findShowcaseMaster(masterId, masters) ?? getCharacterById(masterId);
+    const label = master?.name ?? "мастером";
+    if (
+      !window.confirm(
+        `Удалить этот сеанс с ${label} безвозвратно? Переписка пропадёт из чата и личного кабинета.`
+      )
+    ) {
+      return;
     }
 
-    localStorage.removeItem(PENDING_MASTER_KEY);
-    setSessionOnlyChat(
-      spreadReadingDone && !continueMasterIds.includes(masterId)
-    );
-    await bindSessionToMaster(masterId);
-    handleSelectCharacter(masterId);
-  };
+    exitingToSessionListRef.current = true;
+
+    try {
+      const sid = await resolveSessionIdForDelete(masterId);
+
+      if (sid) {
+        const ok = await deleteConsultationSessionClient(masterId, sid);
+        if (!ok) {
+          exitingToSessionListRef.current = false;
+          window.alert("Не удалось удалить сеанс. Попробуйте ещё раз.");
+          return;
+        }
+      } else {
+        const res = await fetch(
+          `/api/chat/history?characterId=${encodeURIComponent(masterId)}`,
+          { method: "DELETE", credentials: "include" }
+        );
+        if (!res.ok) {
+          exitingToSessionListRef.current = false;
+          window.alert("Не удалось удалить переписку. Попробуйте ещё раз.");
+          return;
+        }
+        clearChatCache(masterId);
+        persistSessionIntention(masterId, null);
+        persistIntentionSpreadState(masterId, null);
+        void refreshSavedReadings();
+      }
+
+      navigateToSessionListAfterDelete(masterId);
+      await refreshSessionsList(masterId);
+    } catch {
+      exitingToSessionListRef.current = false;
+      window.alert("Не удалось удалить. Проверьте соединение.");
+    }
+  }, [
+    selectedCharacter,
+    isLoggedIn,
+    masters,
+    resolveSessionIdForDelete,
+    deleteConsultationSessionClient,
+    navigateToSessionListAfterDelete,
+    refreshSavedReadings,
+    refreshSessionsList,
+  ]);
+
+  const handleArchiveListedSession = useCallback(
+    async (masterId: string, item: SessionListItem) => {
+      setSessionListActionId(item.id);
+      try {
+        const res = await fetch("/api/session/complete", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: item.id,
+            characterKey: masterId,
+            archiveOnly: true,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          alreadyCompleted?: boolean;
+        };
+
+        if (res.ok || res.status === 409 || data.alreadyCompleted) {
+          if (consultationSessionId === item.id) {
+            setConsultationReadOnly(true);
+            archiveSessionIdRef.current = item.id;
+          }
+          await refreshSessionsList(masterId);
+          return;
+        }
+
+        const message =
+          data.error === "Session has no master"
+            ? "Не удалось отправить в архив: сеанс не связан с мастером."
+            : "Не удалось отправить сеанс в архив. Попробуйте ещё раз.";
+        window.alert(message);
+      } finally {
+        setSessionListActionId(null);
+      }
+    },
+    [refreshSessionsList, consultationSessionId]
+  );
+
+  const handleDeleteListedSession = useCallback(
+    async (masterId: string, item: SessionListItem) => {
+      const confirmed = window.confirm(
+        "Удалить этот сеанс безвозвратно? Переписка и записи пропадут из личного кабинета."
+      );
+      if (!confirmed) return;
+
+      setSessionListActionId(item.id);
+      try {
+        const ok = await deleteConsultationSessionClient(masterId, item.id);
+        if (ok) {
+          await refreshSessionsList(masterId);
+        }
+      } finally {
+        setSessionListActionId(null);
+      }
+    },
+    [deleteConsultationSessionClient, refreshSessionsList]
+  );
+
+  const handleCompleteSession = useCallback(async () => {
+    if (consultationReadOnly) return;
+    const masterId = selectedCharacter;
+    if (!masterId) return;
+
+    let sid = consultationSessionId;
+    if (!sid) {
+      sid = await resolveConsultationSessionId(masterId);
+    }
+    if (!sid) return;
+
+    setCompletingSession(true);
+    try {
+      const res = await fetch("/api/session/complete", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { finalMessage?: string };
+        if (data.finalMessage?.trim()) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateId(),
+              role: "assistant",
+              content: data.finalMessage!.trim(),
+              timestamp: new Date(),
+            },
+          ]);
+        }
+        setConsultationReadOnly(true);
+        archiveSessionIdRef.current = sid;
+        void refreshSessionsList(masterId);
+      }
+    } finally {
+      setCompletingSession(false);
+    }
+  }, [
+    consultationSessionId,
+    consultationReadOnly,
+    selectedCharacter,
+    resolveConsultationSessionId,
+    refreshSessionsList,
+  ]);
+
+  const handleOpenArchiveSession = useCallback(
+    async (masterId: string, item: SessionListItem) => {
+      sessionListBackMasterRef.current = masterId;
+      setSessionListMaster(null);
+      setConsultationReadOnly(true);
+      setConsultationSessionId(item.id);
+      consultationSessionIdRef.current = item.id;
+      archiveSessionIdRef.current = item.id;
+      skipNextReadingRef.current = true;
+      chatLoadedForRef.current = null;
+
+      await openChatWithCharacter(masterId, { intention: null });
+
+      selectedCharacterRef.current = masterId;
+      applyHistorySessionMeta(
+        {
+          sessionId: item.id,
+          intention: item.intention,
+          spreadType: item.spreadType,
+          cards: item.cards,
+        },
+        masterId
+      );
+
+      if (item.cards && item.cards.length >= 3) {
+        const system = resolveMasterDeckSystem(masterId);
+        const symbols = resolveSpreadSymbols(system, item.cards);
+        if (symbols.length >= 3) {
+          applyRestoredChatSpread(
+            {
+              cards: symbols,
+              system,
+              type: item.spreadType === "daily" ? "reading" : "intention_spread",
+              cardsKey: spreadKey(symbols),
+              intention: item.intention,
+            },
+            masterId
+          );
+        }
+      } else {
+        setSpreadFlipped([true, true, true]);
+      }
+    },
+    [
+      openChatWithCharacter,
+      applyHistorySessionMeta,
+      applyRestoredChatSpread,
+      setSpreadFlipped,
+    ]
+  );
 
   const handleCloseChat = () => {
+    pendingNewChatThreadRef.current = false;
     if (selectedCharacter && messages.length) {
-      saveChatCache(selectedCharacter, messages, activeSpreadCardsKey);
+      saveChatCache(
+        selectedCharacter,
+        messages,
+        sessionOnlyChat ? SESSION_ONLY_CACHE_KEY : activeSpreadCardsKey
+      );
     }
     readingInFlightRef.current = false;
+    setIsLoading(false);
+    setIsLoadingHistory(false);
+    setIntentionSpreadLoading(false);
+    setReadingRitualActive(false);
+    setReadingRitualCountdownDone(true);
     setSessionOnlyChat(false);
+    setPhotoChatSpread(null);
+    setHideChatSpread(false);
+    setSessionIntention(null);
+    setIntentionHighlight(false);
+    setIntentionSpread(null);
+    setChatSessionSpread(null);
+    if (selectedCharacter) {
+      persistSessionIntention(selectedCharacter, null);
+    }
+    const backToSessionList = sessionListBackMasterRef.current;
+    sessionListBackMasterRef.current = null;
     setSelectedCharacter(null);
-    setStep("masters");
+    setConsultationSessionId(null);
+    setConsultationReadOnly(false);
+    archiveSessionIdRef.current = null;
+    chatLoadedForRef.current = null;
+    if (backToSessionList) {
+      setSessionListMaster(backToSessionList);
+      setStep("masters");
+      localStorage.setItem(FLOW_STEP_KEY, "masters");
+      void refreshSessionsList(backToSessionList);
+    } else {
+      setSessionListMaster(null);
+      setStep("masters");
+    }
     refreshSavedReadings();
   };
 
-  const handlePhotoContinueChat = async (
-    masterId: string,
-    payload: { analysis: string; question?: string; detectedCards: string[] }
-  ) => {
+  const handlePhotoContinueChat = async (masterId: string, payload: PhotoReadingChatPayload) => {
     if (!isLoggedIn) return;
 
-    const chatMessages = buildPhotoReadingChatMessages(
+    const merged = mergeActiveProfile(profile, readStoredProfileSpread());
+    const displayName = merged?.name || authUser?.name;
+    if (!displayName) return;
+
+    if (!payload.sessionId) {
+      const syncedId = await syncPhotoSessionForMaster(masterId, payload.historyId);
+      if (syncedId) payload.sessionId = syncedId;
+    }
+
+    let photoSpreadSymbols: DeckCardInput[] | null = null;
+    let photoSystem: DeckSystem | null = null;
+
+    if (payload.redrawSpread && payload.redrawSpread.cards.length > 0) {
+      const photoDeckCards = redrawSpreadToDeckCards(payload.redrawSpread);
+      photoSpreadSymbols = photoDeckCards;
+      photoSystem = payload.redrawSpread.system;
+      setPhotoChatSpread({ masterId, cards: photoDeckCards, system: photoSystem });
+      setChatSessionSpread(null);
+      setHideChatSpread(false);
+      sessionSpreadMetaRef.current = {
+        spreadType: "photo",
+        cardNames: payload.detectedCards,
+      };
+      setChatHeaderImage(null);
+    }
+
+    const photoMessages = buildPhotoReadingChatMessages(
       payload.analysis,
       payload.question ?? "",
       payload.detectedCards
     );
 
-    saveChatCache(masterId, chatMessages);
+    // Photo spread always opens a fresh session — never post into the current chat.
+    const resolvedSessionId = payload.sessionId;
+
+    readingInFlightRef.current = true;
     skipNextReadingRef.current = true;
-    readingInFlightRef.current = false;
-
-    await bindSessionToMaster(masterId);
-
-    localStorage.setItem(LAST_MASTER_KEY, masterId);
-    localStorage.setItem(FLOW_STEP_KEY, "chat");
-    setLastMasterId(masterId);
-    setStep("chat");
-    setSelectedCharacter(masterId);
-    setMessages(chatMessages);
-  };
-
-  const handleSendMessage = async (content: string, imageBase64?: string) => {
-    if (!selectedCharacter || !content.trim() || !isLoggedIn || sendingRef.current) return;
-
-    if (session?.offline) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: generateId(),
-          role: "assistant",
-          content: "Сессия не синхронизирована с сервером. Обновите страницу и попробуйте снова.",
-          timestamp: new Date(),
-        },
-      ]);
-      return;
-    }
-
-    sendingRef.current = true;
-
-    const activeProfile = getActiveProfile();
-
-    const userMessage: Message = {
-      id: generateId(),
-      role: "user",
-      content: content.trim(),
-      timestamp: new Date(),
-    };
-
-    const outgoing = [...messages, userMessage];
-    setMessages(outgoing);
-    setIsLoading(true);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          characterId: selectedCharacter,
-          sessionId: session?.offline ? undefined : session?.sessionId,
-          messages: outgoing.map((m) => ({ role: m.role, content: m.content })),
-          imageBase64,
-          userProfile: activeProfile
-            ? {
-                name: activeProfile.name,
-                gender: activeProfile.gender === "male" ? "Мужской" : "Женский",
-                zodiac: activeProfile.zodiac,
-                birthDate: activeProfile.birthDate,
-                birthTime: activeProfile.birthTime,
-                birthCity: activeProfile.birthCity,
-                lifeFocus: activeProfile.lifeFocus,
-                mainQuestion: activeProfile.mainQuestion,
-                astroMeta: activeProfile.astroMeta,
+      if (resolvedSessionId) {
+        await bindSessionToMaster(masterId, resolvedSessionId);
+        setConsultationSessionId(resolvedSessionId);
+        setConsultationReadOnly(false);
+        archiveSessionIdRef.current = null;
+      } else {
+        await bindSessionToMaster(masterId);
+      }
+
+      // Always start with an empty history — each photo spread is a new conversation.
+      let existing: Message[] = [];
+
+      if (resolvedSessionId && !session?.offline) {
+        try {
+          const params = new URLSearchParams({ characterId: masterId });
+          params.set("sessionId", resolvedSessionId);
+          const res = await fetch(`/api/chat/history?${params}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.messages?.length) {
+              const serverMessages: Message[] = data.messages.map(
+                (m: { id: string; role: string; content: string; timestamp: string }) => ({
+                  id: m.id,
+                  role: m.role as "user" | "assistant",
+                  content: m.content,
+                  timestamp: new Date(m.timestamp),
+                })
+              );
+              if (serverMessages.length >= existing.length) {
+                existing = serverMessages;
               }
-            : undefined,
-          tarotCards: activeProfile?.tarotCards,
-        }),
-      });
-
-      if (response.status === 401) {
-        setMessages((prev) => [
-          ...prev.slice(0, -1),
-          {
-            id: generateId(),
-            role: "assistant",
-            content: "Для чата с мастером нужна регистрация. Войдите или создайте аккаунт.",
-            timestamp: new Date(),
-          },
-        ]);
-        return;
-      }
-
-      if (response.status === 402) {
-        const errData = await response.json().catch(() => ({}));
-        if (errData.error === "INSUFFICIENT_RUNES") {
-          setInsufficientRunes({
-            balance: errData.balance ?? 0,
-            required: errData.required ?? 10,
-          });
-          setShowRuneShop(true);
-          setMessages((prev) => prev.slice(0, -1));
-          return;
+            }
+          }
+        } catch {
+          /* offline ok */
         }
-        setShowPaywall(true);
-        setMessages((prev) => prev.slice(0, -1));
-        return;
       }
 
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error ?? "Chat failed");
+      const chatMessages = mergePhotoReadingIntoChat(existing, photoMessages);
+
+      const photoCacheKey = payload.redrawSpread
+        ? tarotCardsKey(redrawSpreadToTarotCards(payload.redrawSpread))
+        : spreadKey(payload.detectedCards.map((name) => ({ name })));
+
+      const photoSpreadCache: CachedChatSpread | undefined =
+        photoSpreadSymbols && photoSystem
+          ? {
+              cards: photoSpreadSymbols,
+              system: photoSystem,
+              variant: "photo",
+            }
+          : undefined;
+
+      saveChatCache(masterId, chatMessages, photoCacheKey, photoSpreadCache);
+
+      if (payload.sessionId && !session?.offline) {
+        try {
+          localStorage.setItem("aura_session_id", payload.sessionId);
+        } catch {
+          /* ignore */
+        }
       }
 
-      if (typeof data.runeBalance === "number") {
-        setRuneBalance(data.runeBalance);
-        emitRuneBalanceUpdate(data.runeBalance);
-        setInsufficientRunes(null);
-      }
+      setPhotoReadingOpen(false);
+      setSessionOnlyChat(false);
+      setLastMasterId(masterId);
+      localStorage.setItem(LAST_MASTER_KEY, masterId);
+      localStorage.setItem(FLOW_STEP_KEY, "chat");
+      setStep("chat");
+      chatLoadedForRef.current = masterId;
+      setHistoryHasMore(false);
+      setMessages(chatMessages);
+      setSelectedCharacter(masterId);
 
-      const replyId = generateId();
-      const reply =
-        data.reply ?? "Энергии сегодня нестабильны. Попробуйте позже.";
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: replyId,
-          role: "assistant",
-          content: reply,
-          timestamp: new Date(),
-        },
-      ]);
-
-      if (!data.llmFailed) {
-        void attachSceneToAssistantMessage(
-          replyId,
-          reply,
-          selectedCharacter,
-          "scene_illustration",
-          content.trim()
-        );
-      }
-
-      if (session?.sessionId && !session.offline) {
-        await refresh(session.sessionId);
-      }
-    } catch (err) {
-      const aborted = err instanceof DOMException && err.name === "AbortError";
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: generateId(),
-          role: "assistant",
-          content: aborted
-            ? "Мастер думал слишком долго — повторите вопрос."
-            : "Связь с астральным планом прервана. Повторите вопрос.",
-          timestamp: new Date(),
-        },
-      ]);
+      void refreshSavedReadings();
     } finally {
-      clearTimeout(timeout);
-      setIsLoading(false);
-      sendingRef.current = false;
+      readingInFlightRef.current = false;
+      setSpreadRitual({ active: false });
     }
   };
 
@@ -2101,17 +1532,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           0,
           (session?.freeLimit ?? runeConfig.freeQuestions) - (session?.freeQuestionsUsed ?? 0)
         ));
-
-  const recommendedId =
-    profile?.tarotCards?.length && masters.length
-      ? recommendShowcaseMaster(profile.tarotCards, masters)
-      : undefined;
-
-  const tripletMasterName = useMemo(() => {
-    const id = tripletMasterId || recapContinueMasterId || recommendedId;
-    if (!id) return undefined;
-    return findShowcaseMaster(id, masters)?.name ?? getCharacterById(id)?.name;
-  }, [tripletMasterId, recapContinueMasterId, recommendedId, masters]);
 
   const selectedMaster = selectedCharacter
     ? findShowcaseMaster(selectedCharacter, masters)
@@ -2138,84 +1558,257 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const showLanding = step === "intro";
   const inPersonalFlow = isLoggedIn && step !== "intro";
   const bootstrapping = sessionLoading || authLoading;
+  /** Marketing landing — guests only; logged-in users get masters + energy of the day. */
+  const showSeoLanding = !isLoggedIn && (showLanding || bootstrapping);
+  const landingMasters = masters.length > 0 ? masters : getAiMasters();
+
+  const landingInsufficientRunes = (payload: { balance: number; required: number }) => {
+    setInsufficientRunes(payload);
+    handleOpenPaywall({
+      balance: payload.balance,
+      requiredRunes: payload.required,
+      shortage: payload.required - payload.balance,
+    });
+  };
+
+  const seoLanding = (
+    <AuraSellingLanding
+      isLoggedIn={isLoggedIn}
+      masters={landingMasters}
+      onStartReading={() => void startPersonalFlow()}
+      onSelectMaster={(id) => void handleMasterPick(id)}
+      onBrowseDeck={handleBrowseDeck}
+      recommendedId={recommendedId}
+      continueMasterIds={continueMasterIds}
+      spreadReadingDone={spreadReadingDone}
+      showHero
+      showMasters
+      showTariffs
+      onOpenPaywall={() => handleOpenPaywall()}
+      runeBalance={runeBalance}
+      isUnlimited={Boolean(session?.isUnlimited)}
+      onInsufficientRunes={landingInsufficientRunes}
+    />
+  );
+
+  useEffect(() => {
+    const dismissOverlays = () => setSpreadRitual({ active: false });
+    window.addEventListener(NAVIGATE_CABINET_EVENT, dismissOverlays);
+    return () => window.removeEventListener(NAVIGATE_CABINET_EVENT, dismissOverlays);
+  }, [setSpreadRitual]);
+
+  useEffect(() => {
+    if (!spreadRitual.active) return;
+    const timer = window.setTimeout(() => setSpreadRitual({ active: false }), 60_000);
+    return () => window.clearTimeout(timer);
+  }, [spreadRitual.active, setSpreadRitual]);
+
+  const [headerMounted, setHeaderMounted] = useState(false);
+  useEffect(() => {
+    setHeaderMounted(true);
+  }, []);
+
+  const topHeader = (
+    <header className="app-top-header pointer-events-auto fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
+        <div className="flex min-w-0 shrink items-center gap-1.5 sm:gap-2">
+          <BrandLogo
+            linkToHome
+            titleClassName="font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl"
+          />
+        </div>
+
+        <nav className="hidden items-center gap-8 md:flex">
+          {[
+            { label: photoNavLabel, action: openPhotoReading },
+            { label: "Мастера", id: "наставники" },
+            { label: "Колоды", action: openDecksModal },
+            { label: "Тарифы", id: "тарифы" },
+          ].map((link) => (
+            <button
+              key={link.label}
+              type="button"
+              onClick={() =>
+                "action" in link && link.action
+                  ? link.action()
+                  : scrollToSection(link.id!)
+              }
+              className="text-sm text-gray-400 transition-colors hover:text-aura-neon"
+            >
+              {link.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
+          <button
+            type="button"
+            onClick={() => void startPersonalFlow()}
+            className="btn-primary hidden px-4 py-2 text-xs sm:inline-flex sm:text-sm"
+          >
+            Получить расклад
+          </button>
+          <button
+            type="button"
+            onClick={openPhotoReading}
+            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] text-gray-300 transition-colors hover:border-aura-gold/30 hover:text-white md:hidden"
+            aria-label={photoNavLabel}
+          >
+            <Camera className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="max-[480px]:hidden">Фото</span>
+          </button>
+          <button
+            type="button"
+            onClick={openDecksModal}
+            className="flex items-center gap-1 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2 py-1.5 text-[11px] text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
+            aria-label="Колоды мастеров"
+          >
+            <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="max-[480px]:hidden">Колоды</span>
+          </button>
+          {isLoggedIn && (
+            <RuneBalance compact onBuyClick={() => handleOpenPaywall()} />
+          )}
+          <AuthHeader compact user={authUser} loading={authLoading} />
+        </div>
+      </div>
+    </header>
+  );
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <header className="relative z-10 border-b border-white/5 bg-black/20 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
-          <motion.div
-            className="flex min-w-0 shrink items-center gap-1.5 sm:gap-2"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-          >
-            <Sparkles className="h-6 w-6 shrink-0 text-aura-purple sm:h-7 sm:w-7" />
-            <div className="min-w-0">
-              <span className="font-display text-xl font-bold tracking-wider text-white neon-text sm:text-2xl">
-                Aura
-              </span>
-              <span className="ml-2 hidden text-xs text-gray-600 sm:inline">эзотерический оракул</span>
-            </div>
-          </motion.div>
-
-          <nav className="hidden items-center gap-8 md:flex">
-            {[
-              { label: photoNavLabel, action: openPhotoReading },
-              { label: "Мастера", id: "наставники" },
-              { label: "Колоды", action: openDecksModal },
-              { label: "Тарифы", id: "тарифы" },
-            ].map((link) => (
-              <button
-                key={link.label}
-                type="button"
-                onClick={() =>
-                  "action" in link && link.action
-                    ? link.action()
-                    : scrollToSection(link.id!)
-                }
-                className="text-sm text-gray-400 transition-colors hover:text-aura-neon"
-              >
-                {link.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
-            <button
-              type="button"
-              onClick={() => void startPersonalFlow()}
-              className="btn-primary hidden px-4 py-2 text-xs sm:inline-flex sm:text-sm"
-            >
-              Получить расклад
-            </button>
-            <button
-              type="button"
-              onClick={openPhotoReading}
-              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] text-gray-300 transition-colors hover:border-aura-gold/30 hover:text-white md:hidden"
-              aria-label={photoNavLabel}
-            >
-              <Camera className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="max-[360px]:hidden">Фото</span>
-            </button>
-            <button
-              type="button"
-              onClick={openDecksModal}
-              className="flex items-center gap-1 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2 py-1.5 text-[11px] text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
-              aria-label="Колоды мастеров"
-            >
-              <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="max-[360px]:hidden">Колоды</span>
-            </button>
-            {isLoggedIn && (
-              <RuneBalance compact onBuyClick={() => setShowRuneShop(true)} />
-            )}
-            <AuthHeader compact />
-          </div>
-        </div>
-      </header>
+    <div className="relative min-h-screen overflow-hidden pt-[var(--app-header-h,3.25rem)]">
+      {headerMounted ? createPortal(topHeader, document.body) : null}
 
       <main className="relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12">
+        {paymentNotice && (
+          <div
+            role="alert"
+            className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+          >
+            <p>{paymentNotice}</p>
+            <button
+              type="button"
+              onClick={() => setPaymentNotice(null)}
+              className="shrink-0 text-amber-300 underline"
+            >
+              Закрыть
+            </button>
+          </div>
+        )}
+        {showSeoLanding ? seoLanding : null}
+
         {bootstrapping ? (
-          <AppBootstrapScreen embedded />
+          <div
+            className="bootstrap-overlay pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-md pt-[var(--app-header-h,3.25rem)]"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <div className="pointer-events-auto">
+              <AppBootstrapScreen embedded />
+            </div>
+          </div>
+        ) : null}
+
+        {!bootstrapping && !showLanding && !(inPersonalFlow && step === "masters") ? (
+          <h1 className="sr-only">
+            Zovus — персональные эзотерические консультации, расклады на таро и рунах
+          </h1>
+        ) : null}
+
+        {!bootstrapping && sessionListMaster ? (
+          <>
+            <SessionList
+              masterId={sessionListMaster}
+              masters={masters}
+              active={sessionsListData.active}
+              completed={sessionsListData.completed}
+              loading={sessionsListLoading}
+              actionSessionId={sessionListActionId}
+              onBack={handleSessionListBack}
+              onNewSession={() => setShowSessionFlow(true)}
+              onStartDaily={
+                displayTarotCards.length >= 3 &&
+                sessionListMaster === tripletOwnerMasterId
+                  ? () => {
+                      const masterId = sessionListMaster;
+                      sessionListBackMasterRef.current = masterId;
+                      void openChatWithSessionParams({
+                        characterKey: masterId,
+                        intention: null,
+                        spreadType: "daily",
+                        cards: displayTarotCards.map((c) => c.name),
+                      });
+                    }
+                  : undefined
+              }
+              onStartRitual={() => {
+                setRitualFlowMaster(sessionListMaster);
+                setOpenRitualId(null);
+                setShowRitualFlow(true);
+              }}
+              onOpenRitual={(id) => {
+                setRitualFlowMaster(sessionListMaster);
+                setOpenRitualId(id);
+                setShowRitualFlow(true);
+              }}
+              onRitualDeleted={(id) => {
+                if (openRitualId === id) {
+                  setShowRitualFlow(false);
+                  setOpenRitualId(null);
+                }
+              }}
+              onContinueActive={(item) => void handleContinueListedSession(sessionListMaster, item)}
+              onOpenArchive={(item) => void handleOpenArchiveSession(sessionListMaster, item)}
+              onArchiveSession={(item) =>
+                void handleArchiveListedSession(sessionListMaster, item)
+              }
+              onDeleteSession={(item) =>
+                void handleDeleteListedSession(sessionListMaster, item)
+              }
+            />
+            <MasterSessionFlow
+              isOpen={showSessionFlow}
+              onClose={() => setShowSessionFlow(false)}
+              preselectedMaster={sessionListMaster}
+              dailyCards={
+                sessionListMaster === tripletOwnerMasterId
+                  ? displayTarotCards.map((c) => c.name)
+                  : []
+              }
+              masters={masters}
+              onStartRitual={() => {
+                setRitualFlowMaster(sessionListMaster);
+                setOpenRitualId(null);
+                setShowSessionFlow(false);
+                setShowRitualFlow(true);
+              }}
+              onStart={(params) => {
+                setShowSessionFlow(false);
+                sessionListBackMasterRef.current = sessionListMaster;
+                setSessionListMaster(null);
+                void openChatWithSessionParams(params);
+              }}
+            />
+            {(RITUAL_MASTERS as readonly string[]).includes(sessionListMaster) ? (
+              <RitualFlow
+                isOpen={showRitualFlow}
+                characterKey={ritualFlowMaster as "ragnar" | "agafya"}
+                userName={effectiveProfile.name || authUser?.name || "друг"}
+                userZodiac={effectiveProfile.zodiac || ""}
+                balance={runeBalance}
+                isUnlimited={Boolean(session?.isUnlimited)}
+                initialRitualId={openRitualId}
+                onClose={() => {
+                  setShowRitualFlow(false);
+                  setOpenRitualId(null);
+                }}
+                onBalanceChange={(b) => {
+                  setRuneBalance(b);
+                  emitRuneBalanceUpdate(b);
+                }}
+              />
+            ) : null}
+          </>
         ) : selectedCharacter && !isLoggedIn ? (
           <RegisterGate
             compact
@@ -2230,32 +1823,76 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 ? { name: selectedMaster.name, title: selectedMaster.title, emoji: selectedMaster.emoji }
                 : undefined
             }
-            messages={messages}
+            messages={chatMessagesForDisplay}
             isLoading={isLoading}
+            isLoadingHistory={isLoadingHistory}
             questionsLeft={questionsLeft}
             hasFullAccess={session?.hasAccess ?? false}
             usesRuneBilling={usesRuneBilling}
             questionCost={runeCost("QUESTION")}
             insufficientRunes={insufficientRunes}
-            onOpenRuneShop={() => setShowRuneShop(true)}
+            onOpenPaywall={() => handleOpenPaywall()}
+            runeBalance={runeBalance}
+            visionCost={runeCost("VISION_ANALYSIS")}
             headerSceneUrl={sessionOnlyChat ? null : chatHeaderImage}
-            spreadCards={
-              sessionOnlyChat
-                ? undefined
-                : chatSpread && chatSpread.cards.length >= 3
-                  ? chatSpread.cards
-                  : displayTarotCards
+            spreadCards={chatDisplaySpread?.cards}
+            spreadDeckSystem={chatDisplaySpread?.system ?? profile?.deckSystem ?? DEFAULT_DECK_SYSTEM}
+            spreadLoading={
+              intentionSpreadLoading && !(chatDisplaySpread?.cards?.length ?? 0)
             }
-            spreadDeckSystem={
-              chatSpread && chatSpread.cards.length >= 3
-                ? chatSpread.system
-                : profile?.deckSystem ?? DEFAULT_DECK_SYSTEM
+            spreadReadingLoading={spreadReadingPending}
+            onSpreadReadingRitualComplete={handleSpreadReadingRitualComplete}
+            spreadVariant={
+              chatDisplaySpread?.source === "photo"
+                ? "photo"
+                : chatDisplaySpread?.source === "intention"
+                  ? "intention"
+                  : "triplet"
             }
+            spreadInteractiveFlip={
+              needsSpreadFlip &&
+              !chatHasSpreadReading(messages) &&
+              !allSpreadFlipped
+            }
+            spreadFlipped={spreadFlipped}
+            onSpreadFlip={(index) => {
+              setSpreadFlipped((prev) => {
+                const next = [...prev];
+                next[index] = true;
+                return next;
+              });
+            }}
+            allSpreadFlipped={allSpreadFlipped}
+            sessionIntention={sessionIntention ?? intentionSpread?.intention ?? null}
+            intentionHighlight={intentionHighlight}
             onSendMessage={handleSendMessage}
             onClose={handleCloseChat}
+            closeAriaLabel={
+              sessionListBackMasterRef.current ? "Назад к списку сеансов" : "Назад к списку мастеров"
+            }
             sessionOffline={Boolean(session?.offline)}
+            storageBlocked={Boolean(session?.storageBlocked)}
             onReconnectSession={reconnecting ? undefined : () => void handleReconnectSession()}
-            onOpenPaywall={() => setShowPaywall(true)}
+            retryDraft={retryDraft}
+            onRetry={() => {
+              if (retryDraft) {
+                void handleSendMessage(retryDraft.content, retryDraft.imageBase64);
+              }
+            }}
+            hasMoreHistory={historyHasMore}
+            loadingMoreHistory={loadingMoreHistory}
+            onLoadMore={() => void handleLoadMoreHistory()}
+            onClearChat={() => void handleClearChat()}
+            readOnly={consultationReadOnly}
+            onCompleteSession={
+              !consultationReadOnly ? () => void handleCompleteSession() : undefined
+            }
+            completingSession={completingSession}
+            userBirthDate={
+              selectedCharacter === "numerolog"
+                ? getActiveProfile()?.birthDate || profile?.birthDate
+                : undefined
+            }
           />
         ) : inPersonalFlow ? (
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
@@ -2335,16 +1972,17 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                           ? undefined
                           : getSpreadForSystem(effectiveProfile, tripletSystem).length >= 3
                             ? getSpreadForSystem(effectiveProfile, tripletSystem)
-                            : displayTarotCards
+                            : undefined
                       }
                       onComplete={handleTripletComplete}
+                      onAllRevealed={handleTripletDraft}
                     />
                     {newTripletDraft && displayTarotCards.length >= 3 ? (
                       <div className="mt-6 text-center">
                         <button
                           type="button"
                           onClick={handleTripletBack}
-                          className="text-sm text-gray-500 underline-offset-2 hover:text-gray-300 hover:underline"
+                          className="btn-luxe btn-luxe--sm btn-luxe--silver"
                         >
                           Отмена — оставить текущий расклад
                         </button>
@@ -2355,8 +1993,107 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               </section>
             )}
 
+            {step === "intention" && pendingMasterId && (
+              <section id="session-intention" className="mb-12 scroll-mt-24">
+                <FlowStepper current="intention" />
+                <IntentionPicker
+                  masterName={
+                    findShowcaseMaster(pendingMasterId, masters)?.name ??
+                    getCharacterById(pendingMasterId)?.name
+                  }
+                  spreadCost={runeCost("INTENTION_SPREAD")}
+                  runeBalance={runeBalance}
+                  runeBillingEnabled={usesRuneBilling}
+                  loading={intentionSpreadLoading}
+                  onSelect={(intention, mode) =>
+                    void beginChatAfterIntention(pendingMasterId, intention, mode)
+                  }
+                  onSkip={() => void beginChatAfterIntention(pendingMasterId, null)}
+                />
+              </section>
+            )}
+
+            {step === "intention" && !pendingMasterId && (
+              <section className="mb-12 text-center">
+                <p className="text-sm text-gray-400">Сессия прервана — выберите мастера снова.</p>
+                <button
+                  type="button"
+                  onClick={() => setStep("masters")}
+                  className="btn-primary mt-4 px-8 py-2.5 text-sm"
+                >
+                  К мастерам
+                </button>
+              </section>
+            )}
+
             {step === "masters" && (
               <>
+                {isLoggedIn && (
+                  <>
+                    <PremiumEnergyBlock
+                      characterKey={dailyEnergyMasterId}
+                      masters={masters}
+                      onTalkToMaster={(masterId) => {
+                        setEnergyFlowMasterId(masterId);
+                        setShowSessionFlow(true);
+                      }}
+                      onOpenNumerologForm={() => {
+                        setEnergyFlowMasterId("numerolog");
+                        setShowSessionFlow(true);
+                      }}
+                    />
+                    <MasterSessionFlow
+                      isOpen={showSessionFlow}
+                      onClose={() => {
+                        setShowSessionFlow(false);
+                        setEnergyFlowMasterId(null);
+                      }}
+                      preselectedMaster={energyFlowMasterId ?? dailyEnergyMasterId}
+                      dailyCards={
+                        displayTarotCards.length >= 3
+                          ? displayTarotCards.map((c) => c.name)
+                          : []
+                      }
+                      masters={masters}
+                      onStartRitual={() => {
+                        const ritualMaster = energyFlowMasterId ?? dailyEnergyMasterId;
+                        if (
+                          ritualMaster &&
+                          (RITUAL_MASTERS as readonly string[]).includes(ritualMaster)
+                        ) {
+                          setRitualFlowMaster(ritualMaster);
+                          setOpenRitualId(null);
+                          setShowSessionFlow(false);
+                          setShowRitualFlow(true);
+                        }
+                      }}
+                      onStart={(params) => {
+                        setShowSessionFlow(false);
+                        setEnergyFlowMasterId(null);
+                        void openChatWithSessionParams(params);
+                      }}
+                    />
+                    {(RITUAL_MASTERS as readonly string[]).includes(dailyEnergyMasterId) ? (
+                      <RitualFlow
+                        isOpen={showRitualFlow}
+                        characterKey={ritualFlowMaster as "ragnar" | "agafya"}
+                        userName={effectiveProfile.name || authUser?.name || "друг"}
+                        userZodiac={effectiveProfile.zodiac || ""}
+                        balance={runeBalance}
+                        isUnlimited={Boolean(session?.isUnlimited)}
+                        initialRitualId={openRitualId}
+                        onClose={() => {
+                          setShowRitualFlow(false);
+                          setOpenRitualId(null);
+                        }}
+                        onBalanceChange={(b) => {
+                          setRuneBalance(b);
+                          emitRuneBalanceUpdate(b);
+                        }}
+                      />
+                    ) : null}
+                  </>
+                )}
                 {showWelcomeBack && recapContinueMasterId ? (
                   <WelcomeBackBanner
                     userName={effectiveProfile.name}
@@ -2364,7 +2101,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                     masters={masters}
                     onContinue={(masterId) => {
                       setShowWelcomeBack(false);
-                      void handleMasterPick(masterId);
+                      void handleMasterPick(masterId, { continueSession: true });
                     }}
                   />
                 ) : null}
@@ -2373,52 +2110,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                     {tripletNotice}
                   </div>
                 ) : null}
-                <ReadingRecap
-                  userName={effectiveProfile.name || authUser?.name || "Гость"}
-                  birthDate={effectiveProfile.birthDate}
-                  tarotCards={displayTarotCards}
-                  deckSystem={effectiveProfile.deckSystem ?? tripletSystem}
-                  teaser={effectiveProfile.teaser}
-                  lastMasterId={recapContinueMasterId}
-                  masters={masters}
-                  onContinue={
-                    recapContinueMasterId
-                      ? () => void handleMasterPick(recapContinueMasterId)
-                      : undefined
-                  }
-                  onNewReading={handleNewReading}
-                  cooldownReady={tripletCooldownReady}
-                  cooldownAllowed={effectiveTripletCooldown.allowed}
-                  nextAvailableAt={effectiveTripletCooldown.nextAvailableAt}
-                  onUnlock={
-                    session?.sessionId && !session.hasAccess && !runeConfig.enabled
-                      ? () => setShowPaywall(true)
-                      : undefined
-                  }
-                  unlockLabel={
-                    runeConfig.enabled
-                      ? formatRunes(runeCost("READING"))
-                      : "199 ₽"
-                  }
-                  readingHint={
-                    runeConfig.enabled
-                      ? `Расшифровка у мастера — ${formatRunes(runeCost("READING"))} · вопросы после ${runeConfig.freeQuestions} бесплатных — ${formatRunes(runeCost("QUESTION"))}`
-                      : undefined
-                  }
-                  onOpenGallery={() => {
-                    setDeckGalleryOpen(true);
-                    requestAnimationFrame(() => {
-                      document.getElementById("колода")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    });
-                  }}
-                />
-
                 {deckGalleryOpen && (profile || browseDeckMaster) && (
                   <DeckGallery
                     system={
                       browseDeckMaster
                         ? (browseDeckMaster.system ?? resolveMasterDeckSystem(browseDeckMaster.id))
-                        : (profile?.deckSystem ?? tripletSystem)
+                        : displayDeckSystem
                     }
                     masterName={
                       browseDeckMaster?.name ??
@@ -2456,46 +2153,28 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   spreadReadingDone={spreadReadingDone}
                   showHero={false}
                   showTariffs
-                  onOpenPaywall={() => setShowPaywall(true)}
-                  onOpenRuneShop={() => setShowRuneShop(true)}
+                  onOpenPaywall={() => handleOpenPaywall()}
+                  runeBalance={runeBalance}
+                  isUnlimited={Boolean(session?.isUnlimited)}
+                  onInsufficientRunes={landingInsufficientRunes}
                 />
               </>
             )}
           </div>
-        ) : showLanding ? (
-          <>
-            <AuraSellingLanding
-              isLoggedIn={isLoggedIn}
-              masters={masters}
-              onStartReading={() => void startPersonalFlow()}
-              onSelectMaster={(id) => void handleMasterPick(id)}
-              onBrowseDeck={handleBrowseDeck}
-              recommendedId={recommendedId}
-              continueMasterIds={continueMasterIds}
-              spreadReadingDone={spreadReadingDone}
-              showHero
-              showMasters
-              showTariffs
-              onOpenPaywall={() => setShowPaywall(true)}
-              onOpenRuneShop={() => setShowRuneShop(true)}
-            />
-
-            {deckGalleryOpen && browseDeckMaster && (
-              <DeckGallery
-                system={
-                  browseDeckMaster.system ?? resolveMasterDeckSystem(browseDeckMaster.id)
-                }
-                masterName={browseDeckMaster.name}
-                masterId={browseDeckMaster.id}
-                onBack={() => {
-                  setDeckGalleryOpen(false);
-                  setBrowseDeckMaster(null);
-                  setShowDecksModal(true);
-                }}
-                backLabel="К колодам мастеров"
-              />
-            )}
-          </>
+        ) : !bootstrapping && showLanding && deckGalleryOpen && browseDeckMaster ? (
+          <DeckGallery
+            system={
+              browseDeckMaster.system ?? resolveMasterDeckSystem(browseDeckMaster.id)
+            }
+            masterName={browseDeckMaster.name}
+            masterId={browseDeckMaster.id}
+            onBack={() => {
+              setDeckGalleryOpen(false);
+              setBrowseDeckMaster(null);
+              setShowDecksModal(true);
+            }}
+            backLabel="К колодам мастеров"
+          />
         ) : null}
       </main>
 
@@ -2505,23 +2184,34 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         masters={masters}
         isLoggedIn={isLoggedIn}
         defaultMasterId={lastMasterId ?? recommendedId ?? "veronika"}
-        sessionId={session?.offline ? undefined : session?.sessionId}
+        sessionId={undefined}
         userName={profile?.name ?? authUser?.name}
-        onContinueChat={(masterId, payload) => void handlePhotoContinueChat(masterId, payload)}
+        onSpreadRitualStart={(spread) => {
+          setSpreadRitual({
+            active: true,
+            cards: redrawSpreadToDeckCards(spread),
+            system: spread.system,
+          });
+        }}
+        onSpreadRitualEnd={() => setSpreadRitual({ active: false })}
+        onRuneBalanceChange={(balance) => {
+          setRuneBalance(balance);
+          emitRuneBalanceUpdate(balance);
+        }}
+        onContinueChat={handlePhotoContinueChat}
+        onSaved={() => void refreshSavedReadings()}
         onInsufficientRunes={(payload) => {
           setInsufficientRunes(payload);
-          setShowRuneShop(true);
+          handleOpenPaywall({
+            balance: payload.balance,
+            requiredRunes: payload.required,
+            shortage: payload.required - payload.balance,
+          });
         }}
+        runeBalance={runeBalance}
+        isUnlimited={Boolean(session?.isUnlimited)}
+        onOpenPaywall={() => handleOpenPaywall()}
       />
-
-      {showPaywall && session && (
-        <Paywall
-          sessionId={session.sessionId}
-          userName={profile?.name}
-          onClose={() => setShowPaywall(false)}
-          onUnlocked={() => refresh(session.sessionId).then(() => setShowPaywall(false))}
-        />
-      )}
 
       <MasterDecksModal
         isOpen={showDecksModal}
@@ -2530,12 +2220,37 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         onBrowseDeck={handleBrowseDeck}
       />
 
-      <RuneShopModal
-        isOpen={showRuneShop}
-        onClose={() => void handleRuneShopClose()}
-        currentBalance={runeBalance}
-        requiredRunes={insufficientRunes?.required}
+      <DailyBonusClaimer
+        enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}
       />
+
+      <SpreadRitualLoader
+        active={spreadRitual.active}
+        cards={spreadRitual.cards}
+        system={spreadRitual.system}
+      />
+
+      {achievementPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 max-w-xs rounded-3xl border border-amber-500/40 bg-gradient-to-b from-amber-900/40 to-black/80 p-8 text-center animate-in zoom-in-95 duration-300">
+            <div className="mb-4 text-6xl">ᚢ</div>
+            <p className="mb-1 text-xl font-bold text-amber-400">{achievementPopup.label}</p>
+            <p className="mb-4 text-sm text-white/60">{achievementPopup.description}</p>
+            <p className="mb-4 text-sm italic text-amber-300">«{achievementPopup.phrase}»</p>
+            <p className="font-semibold text-white">+{achievementPopup.bonus} ᚢ рун</p>
+          </div>
+        </div>
+      )}
+
+      {runeReceiptPopup && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="mx-4 min-w-[280px] rounded-2xl border border-emerald-500/40 bg-gradient-to-b from-emerald-900/50 to-black/90 px-6 py-4 text-center shadow-xl">
+            <p className="text-lg font-bold text-emerald-400">+{runeReceiptPopup.total} ᚢ</p>
+            <p className="mt-1 text-sm text-white/70">{runeReceiptPopup.description}</p>
+            <p className="mt-1 text-xs text-white/40">Зачислено на баланс</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,12 +12,15 @@ import {
   questionsRemaining,
   updateSessionReferrer,
   getFreeQuestionLimit,
+  setSessionAwaitingContext,
+  updateSessionChatMeta,
 } from "@/lib/session";
 
 import { getInfluencerByToken, recordInfluencerClick } from "@/lib/influencers";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { resolveSessionForUser } from "@/lib/session-access";
+import { setSessionClaimCookie } from "@/lib/session-claim";
 
 function formatSession(
   session: {
@@ -29,7 +32,8 @@ function formatSession(
     has_single_unlock: boolean;
   },
   unlimited = false,
-  freeLimit = 2
+  freeLimit = 2,
+  ownerMismatch = false
 ) {
   const accessOpts = { unlimited, limit: freeLimit };
   const accessSession = session as import("@/lib/session").SessionRow;
@@ -43,6 +47,7 @@ function formatSession(
     paidUntil: session.paid_until,
     referrerSlug: session.referrer_slug,
     isUnlimited: unlimited,
+    ownerMismatch,
   };
 }
 
@@ -91,6 +96,8 @@ export async function POST(request: NextRequest) {
       influencerToken
     );
 
+    await setSessionClaimCookie(session.id);
+
     if (influencerToken) {
       const influencer = await getInfluencerByToken(influencerToken);
       if (influencer) {
@@ -118,6 +125,16 @@ export async function PATCH(request: NextRequest) {
       body.referrerSlug === null || body.referrerSlug === undefined
         ? null
         : String(body.referrerSlug);
+    const awaitingContext = body.awaitingContext as boolean | undefined;
+    const characterKey =
+      typeof body.characterKey === "string" ? body.characterKey.trim() : undefined;
+    const intention =
+      typeof body.intention === "string" ? body.intention.trim() : undefined;
+    const spreadType =
+      typeof body.spreadType === "string" ? body.spreadType.trim() : undefined;
+    const cards = Array.isArray(body.cards)
+      ? body.cards.filter((c: unknown) => typeof c === "string" && c.trim()).map((c: string) => c.trim())
+      : undefined;
 
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId required" }, { status: 400 });
@@ -131,18 +148,39 @@ export async function PATCH(request: NextRequest) {
     const resolved = await resolveSessionForUser(sessionId, profileUserId);
     if (resolved.error) return resolved.error;
 
-    const session = await updateSessionReferrer(sessionId, referrerSlug);
-    if (!session) {
+    const hasReferrerUpdate = Object.prototype.hasOwnProperty.call(body, "referrerSlug");
+    if (hasReferrerUpdate) {
+      const session = await updateSessionReferrer(sessionId, referrerSlug);
+      if (!session) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
+
+    if (typeof awaitingContext === "boolean") {
+      await setSessionAwaitingContext(sessionId, awaitingContext);
+    }
+
+    if (characterKey !== undefined || intention !== undefined || spreadType !== undefined || cards !== undefined) {
+      await updateSessionChatMeta(sessionId, {
+        characterKey,
+        intention: intention ?? null,
+        spreadType: spreadType ?? null,
+        cards: cards ?? null,
+      });
+    }
+
+    const updated = await getSession(sessionId);
+    if (!updated) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const unlimited = await resolveUnlimitedAccess({
       accountId: auth.sub,
-      profileUserId: session.user_id,
+      profileUserId: updated.user_id,
     });
 
     const freeLimit = await getFreeQuestionLimit();
-    return NextResponse.json(formatSession(session, unlimited, freeLimit));
+    return NextResponse.json(formatSession(updated, unlimited, freeLimit));
   } catch (error) {
     console.error("Session patch error:", error);
     return NextResponse.json({ error: "Session error" }, { status: 500 });
@@ -175,13 +213,31 @@ export async function GET(request: NextRequest) {
     }
 
     const auth = await getAuth();
+
+    if (session.user_id) {
+      if (!auth || auth.role !== "user") {
+        return NextResponse.json({ error: "auth_required" }, { status: 401 });
+      }
+      const profileUserId = await getProfileUserIdForAccount(auth.sub);
+      if (!profileUserId || session.user_id !== profileUserId) {
+        return NextResponse.json({ error: "session_forbidden" }, { status: 403 });
+      }
+    }
+
     const unlimited = await resolveUnlimitedAccess({
       accountId: auth?.role === "user" ? auth.sub : undefined,
       profileUserId: session.user_id,
     });
 
     const freeLimit = await getFreeQuestionLimit();
-    return NextResponse.json(formatSession(session, unlimited, freeLimit));
+    const payload = formatSession(session, unlimited, freeLimit, false);
+    if (!session.user_id) {
+      return NextResponse.json({
+        ...payload,
+        paidUntil: undefined,
+      });
+    }
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("Session get error:", error);
     return NextResponse.json({ error: "Session error" }, { status: 500 });

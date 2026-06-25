@@ -1,24 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { hasPaidAccess, saveMessage, unlockSingleSession } from "@/lib/session";
+import { hasPaidAccess, unlockSingleSession } from "@/lib/session";
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading, fallbackReading } from "@/lib/chat-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
-import { spendRunesAtomic, refundRunes, isRuneBillingActive } from "@/lib/rune-service";
+import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
+import {
+  BillingService,
+  InsufficientFundsError,
+  insufficientFundsResponse,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
+import { PRICING } from "@/lib/config/pricing";
+import { generateNumerologSpreadOpeningReading } from "@/lib/services/numerology-service";
 import { resolveSessionForUser } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
+import { resolveIsDailyFreeReading } from "@/lib/daily-spread-billing";
+import {
+  findSpreadReadingEntry,
+  withSpreadReadingLock,
+} from "@/lib/reading-idempotency";
 import { createHistoryEntry, patchTripletInterpretation, getUserById } from "@/lib/users";
-import { getUserReadingHistory } from "@/lib/accounts";
 import { tarotCardsKey } from "@/lib/tarot";
 import {
   appendUserMemoryToPrompt,
   buildClientBlock,
   buildMemoryBlock,
 } from "@/lib/user-memory";
+import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
 import {
   buildSpreadUserMessage,
   enrichCardsForSpreadContext,
@@ -26,10 +39,93 @@ import {
   userContextFromProfile,
 } from "@/lib/prompts/user-context";
 import { getSessionMemories, countSessionMemories } from "@/lib/session-memory";
+import { isValidSessionIntention } from "@/lib/session-topics";
 import { resolveApiCharacterId, sanitizeTextField, stripMemoryLeakFromReply, sanitizeReadingForClient } from "@/lib/chat-sanitize";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import { INTENTION_OPTIONS, intentionPromptBlock, intentionReadingPromptBlock } from "@/lib/intention";
-import { isValidSessionIntention } from "@/lib/session-topics";
+import {
+  buildNumerologSpreadReading,
+  isNumerologMaster,
+} from "@/lib/numerolog/welcome";
+import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
+
+async function persistReadingToSession(input: {
+  sessionId: string | undefined;
+  profileUserId: string;
+  characterId: string;
+  reading: string;
+  tarotCards: { name: string }[];
+  intention?: string;
+  spreadType?: "daily" | "new";
+}): Promise<string | null> {
+  return ensureSpreadReadingInChatMessages({
+    sessionId: input.sessionId,
+    profileUserId: input.profileUserId,
+    characterId: input.characterId,
+    reading: input.reading,
+    tarotCards: input.tarotCards,
+    intention: input.intention,
+    spreadType: input.spreadType,
+  });
+}
+
+async function respondWithExistingSpreadReading(input: {
+  existing: Awaited<ReturnType<typeof findSpreadReadingEntry>> & {};
+  profileUserId: string;
+  characterId: string;
+  cardsKey: string;
+  tarotCards: { name: string; meaning: string }[];
+  sessionId?: string;
+  intention?: string;
+  spreadType?: "daily" | "new";
+  userName: string;
+  birthDate: string;
+  isPaid: boolean;
+}) {
+  const { existing } = input;
+  if (!existing) throw new Error("missing_existing_reading");
+
+  const reading = isNumerologMaster(input.characterId)
+    ? buildNumerologSpreadReading({
+        userName: input.userName,
+        birthDate: input.birthDate,
+        fullName: input.userName,
+        spreadNumbers: input.tarotCards.map((c) => c.name),
+      })
+    : (existing.context_data.reading as string);
+  const historyId = existing.id;
+  const paid = existing.is_paid || input.isPaid;
+
+  void patchTripletInterpretation(input.profileUserId, input.cardsKey, {
+    text: reading,
+    masterId: input.characterId,
+  }).catch((err) => console.warn("Triplet interpretation patch failed:", err));
+
+  try {
+    await persistReadingToSession({
+      sessionId: input.sessionId,
+      profileUserId: input.profileUserId,
+      characterId: input.characterId,
+      reading,
+      tarotCards: input.tarotCards,
+      intention: input.intention,
+      spreadType: input.spreadType,
+    });
+  } catch (err) {
+    console.warn("Reading chat save failed:", err);
+  }
+
+  return NextResponse.json({
+    reading,
+    isPaid: paid,
+    historyId,
+    reused: true,
+    createdAt:
+      existing.created_at instanceof Date
+        ? existing.created_at.toISOString()
+        : String(existing.created_at),
+  });
+}
 
 export async function POST(request: NextRequest) {
   let characterId = "ragnar";
@@ -47,6 +143,7 @@ export async function POST(request: NextRequest) {
   let isPaid = false;
   let intention = "";
   let forceRegenerate = false;
+  let spreadType = "";
 
   try {
     const body = await request.json();
@@ -63,6 +160,7 @@ export async function POST(request: NextRequest) {
     mainQuestion = sanitizeTextField(body.mainQuestion, 500);
     astroMeta = body.astroMeta;
     intention = sanitizeTextField(body.intention, 40) ?? "";
+    spreadType = sanitizeTextField(body.spreadType, 20) ?? "";
     forceRegenerate = body.forceRegenerate === true;
   } catch (error) {
     console.error("Reading JSON error:", error);
@@ -103,6 +201,8 @@ export async function POST(request: NextRequest) {
   if (rateLimited) return rateLimited;
 
   let spentRunes = 0;
+  let billingCharge: BillingChargeResult | null = null;
+  let resolvedSession: Awaited<ReturnType<typeof resolveSessionForUser>>["session"] = null;
 
   try {
     const unlimited = await resolveUnlimitedAccess({
@@ -114,8 +214,11 @@ export async function POST(request: NextRequest) {
       if (sessionId) {
         const resolved = await resolveSessionForUser(sessionId, authed.profileUserId);
         if (resolved.error) return resolved.error;
-        const session = resolved.session!;
-        isPaid = hasPaidAccess(session, { unlimited });
+        resolvedSession = resolved.session!;
+        isPaid = hasPaidAccess(resolvedSession, { unlimited });
+        if (!spreadType && resolvedSession.spread_type === "daily") {
+          spreadType = "daily";
+        }
       } else if (unlimited) {
         isPaid = true;
       }
@@ -168,163 +271,360 @@ export async function POST(request: NextRequest) {
     }
 
     const cardsKey = tarotCardsKey(tarotCards);
+    const isDailySpread = await resolveIsDailyFreeReading({
+      profileUserId: authed.profileUserId,
+      spreadType,
+      intention,
+      sessionId,
+      tarotCards,
+      session: resolvedSession,
+    });
+    if (isDailySpread) {
+      spreadType = "daily";
+      isPaid = true;
+    }
     let historyId: string | undefined;
     let reading: string;
 
-    if (await ensureDb()) {
-      const prior = await getUserReadingHistory(authed.profileUserId);
-      const existing = prior.find(
-        (r) =>
-          r.character_name === characterId &&
-          r.context_data?.type === "reading" &&
-          typeof r.context_data.reading === "string" &&
-          tarotCardsKey(r.context_data.tarotCards as { name: string }[] | undefined) === cardsKey
+    if (await ensureDb() && cardsKey && !forceRegenerate) {
+      const existing = await findSpreadReadingEntry(
+        authed.profileUserId,
+        characterId,
+        cardsKey
+      );
+      if (existing) {
+        return respondWithExistingSpreadReading({
+          existing,
+          profileUserId: authed.profileUserId,
+          characterId,
+          cardsKey,
+          tarotCards,
+          sessionId,
+          intention: intention || undefined,
+          spreadType: isDailySpread ? "daily" : undefined,
+          userName,
+          birthDate,
+          isPaid,
+        });
+      }
+    }
+
+    const runLockedGeneration = async () => {
+      if (await ensureDb() && cardsKey && !forceRegenerate) {
+        const existing = await findSpreadReadingEntry(
+          authed.profileUserId,
+          characterId,
+          cardsKey
+        );
+        if (existing) {
+          return { kind: "existing" as const, existing };
+        }
+      }
+
+      if (isNumerologMaster(characterId)) {
+        const runeSettings = await getRuneSettings();
+        const useRuneBilling =
+          !isDailySpread &&
+          isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
+        let runeBalance: number | undefined;
+
+        if (useRuneBilling) {
+          try {
+            const charge = await BillingService.chargeForSession({
+              userId: authed.profileUserId,
+              cost: PRICING.NUMEROLOGY_SESSION,
+              actionType: "NUMEROLOGY_SESSION",
+              description: "Расшифровка трёх чисел (Эвелина)",
+            });
+            billingCharge = charge;
+            runeBalance = charge.newBalance;
+            spentRunes = charge.spentRunes;
+          } catch (err) {
+            if (err instanceof InsufficientFundsError) {
+              return {
+                kind: "insufficient" as const,
+                balance: err.balance,
+                cost: err.required,
+              };
+            }
+            throw err;
+          }
+          isPaid = true;
+          if (sessionId) {
+            await unlockSingleSession(sessionId);
+          }
+        }
+
+        try {
+          reading = await generateNumerologSpreadOpeningReading({
+            userName,
+            birthDate,
+            fullName: userName,
+            spreadNumbers: tarotCards.map((c) => c.name),
+          });
+        } catch (genErr) {
+          console.error("Numerolog spread LLM failed:", genErr);
+          if (billingCharge) {
+            await BillingService.rollbackCharge({
+              userId: authed.profileUserId,
+              cost: billingCharge.spentRunes,
+              wasFreeQuestion: false,
+              actionType: "NUMEROLOGY_SESSION",
+            });
+            billingCharge = null;
+            spentRunes = 0;
+          }
+          return { kind: "failed" as const };
+        }
+
+        if (await ensureDb()) {
+          const deckSystem = resolveMasterDeckSystem(characterId);
+          const entry = await createHistoryEntry({
+            userId: authed.profileUserId,
+            characterName: characterId,
+            contextData: {
+              type: "reading",
+              reading,
+              tarotCards,
+              deckSystem,
+              userName,
+              zodiac,
+              gender,
+              birthDate,
+              ...(isDailySpread ? { spreadType: "daily" } : {}),
+            },
+            isPaid,
+          });
+          historyId = entry.id;
+
+          void patchTripletInterpretation(authed.profileUserId, cardsKey, {
+            text: reading,
+            masterId: characterId,
+          }).catch((err) => console.warn("Triplet interpretation patch failed:", err));
+
+          try {
+            await persistReadingToSession({
+              sessionId,
+              profileUserId: authed.profileUserId,
+              characterId,
+              reading,
+              tarotCards,
+              intention: intention || undefined,
+              spreadType: isDailySpread ? "daily" : undefined,
+            });
+          } catch (err) {
+            console.warn("Reading chat save failed:", err);
+          }
+        }
+
+        return {
+          kind: "new" as const,
+          reading,
+          historyId,
+          isPaid,
+          runeBalance,
+        };
+      }
+
+      const runeSettings = await getRuneSettings();
+      const useRuneBilling =
+        !isDailySpread &&
+        isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
+      let runeBalance: number | undefined;
+
+      if (useRuneBilling) {
+        try {
+          const charge = await BillingService.chargeRuneAction({
+            userId: authed.profileUserId,
+            action: "READING",
+          });
+          billingCharge = charge;
+          runeBalance = charge.newBalance;
+          spentRunes = charge.spentRunes;
+        } catch (err) {
+          if (err instanceof InsufficientFundsError) {
+            return {
+              kind: "insufficient" as const,
+              balance: err.balance,
+              cost: err.required,
+            };
+          }
+          throw err;
+        }
+        isPaid = true;
+        if (sessionId) {
+          await unlockSingleSession(sessionId);
+        }
+      }
+
+      const memoryBlock = sessionId
+        ? await buildMemoryBlock(authed.profileUserId, characterId, sessionId)
+        : "";
+      const factsBlock = await loadClientMemoryBlock({
+        userId: authed.profileUserId,
+        queryText: mainQuestion ?? "",
+      });
+      const clientBlock = buildClientBlock({
+        name: userName,
+        gender,
+        zodiac,
+        birthDate,
+        mainQuestion,
+        lifeFocus,
+      });
+      systemPrompt = appendUserMemoryToPrompt(
+        systemPrompt,
+        `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null
       );
 
-      if (existing && !forceRegenerate) {
-        reading = existing.context_data.reading as string;
-        historyId = existing.id;
-        isPaid = existing.is_paid || isPaid;
+      const deckSystem = resolveMasterDeckSystem(characterId);
+      const userForContext = userContextFromProfile({
+        name: userName,
+        gender,
+        birthDate,
+        zodiac,
+        astroMeta: astroMeta as Record<string, unknown> | undefined,
+      });
+      const cardsForContext = enrichCardsForSpreadContext(deckSystem, tarotCards);
+      const userMessage = buildSpreadUserMessage({
+        user: userForContext,
+        cards: cardsForContext,
+        intention: resolveIntentionLabel(intention || null),
+      });
+
+      const generated = await generateReading(systemPrompt, {
+        userName,
+        tarotCards,
+        isPaid,
+        characterId,
+        intention: intention || null,
+        userMessage,
+      });
+      reading =
+        sanitizeReadingForClient(
+          stripMemoryLeakFromReply(generated.text) || generated.text,
+          tarotCards.map((c) => c.name)
+        ) ||
+        fallbackReading(characterId, {
+          userName,
+          isPaid,
+          tarotCards,
+          intention: intention || null,
+        });
+
+      if (!reading?.trim()) {
+        if (billingCharge) {
+          runeBalance = await BillingService.rollbackCharge({
+            userId: authed.profileUserId,
+            cost: billingCharge.spentRunes,
+            wasFreeQuestion: billingCharge.wasFreeQuestion,
+            actionType: "READING",
+          });
+          billingCharge = null;
+          spentRunes = 0;
+        }
+        return { kind: "failed" as const };
+      }
+
+      if (await ensureDb()) {
+        const entry = await createHistoryEntry({
+          userId: authed.profileUserId,
+          characterName: characterId,
+          contextData: {
+            type: "reading",
+            reading,
+            tarotCards,
+            deckSystem,
+            userName,
+            zodiac,
+            gender,
+            birthDate,
+            ...(isDailySpread ? { spreadType: "daily" } : {}),
+          },
+          isPaid,
+        });
+        historyId = entry.id;
 
         void patchTripletInterpretation(authed.profileUserId, cardsKey, {
           text: reading,
           masterId: characterId,
         }).catch((err) => console.warn("Triplet interpretation patch failed:", err));
 
-        if (sessionId) {
-          try {
-            await saveMessage(sessionId, characterId, "assistant", reading, authed.profileUserId);
-          } catch (err) {
-            console.warn("Reading chat save failed:", err);
-          }
-        }
-
-        return NextResponse.json({
-          reading,
-          isPaid,
-          historyId,
-          reused: true,
-          createdAt:
-            existing.created_at instanceof Date
-              ? existing.created_at.toISOString()
-              : String(existing.created_at),
-        });
-      }
-    }
-
-    const runeSettings = await getRuneSettings();
-    const useRuneBilling = isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
-    let runeBalance: number | undefined;
-
-    if (useRuneBilling) {
-      const spendResult = await spendRunesAtomic(authed.profileUserId, "READING");
-      if (!spendResult.success) {
-        return insufficientRunesResponse(spendResult.balanceAfter, spendResult.cost);
-      }
-      runeBalance = spendResult.balanceAfter;
-      spentRunes = spendResult.cost;
-      isPaid = true;
-      if (sessionId) {
-        await unlockSingleSession(sessionId);
-      }
-    }
-
-    const memoryBlock = sessionId
-      ? await buildMemoryBlock(authed.profileUserId, characterId, sessionId)
-      : "";
-    const clientBlock = buildClientBlock({
-      name: userName,
-      gender,
-      zodiac,
-      birthDate,
-      mainQuestion,
-      lifeFocus,
-    });
-    systemPrompt = appendUserMemoryToPrompt(
-      systemPrompt,
-      `${clientBlock}${memoryBlock}`.trim() || null
-    );
-
-    const deckSystem = resolveMasterDeckSystem(characterId);
-    const userForContext = userContextFromProfile({
-      name: userName,
-      gender,
-      birthDate,
-      zodiac,
-      astroMeta: astroMeta as Record<string, unknown> | undefined,
-    });
-    const cardsForContext = enrichCardsForSpreadContext(deckSystem, tarotCards);
-    const userMessage = buildSpreadUserMessage({
-      user: userForContext,
-      cards: cardsForContext,
-      intention: resolveIntentionLabel(intention || null),
-    });
-
-    const generated = await generateReading(systemPrompt, {
-      userName,
-      tarotCards,
-      isPaid,
-      characterId,
-      intention: intention || null,
-      userMessage,
-    });
-    reading =
-      sanitizeReadingForClient(
-        stripMemoryLeakFromReply(generated.text) || generated.text,
-        tarotCards.map((c) => c.name)
-      ) ||
-      fallbackReading(characterId, {
-        userName,
-        isPaid,
-        tarotCards,
-        intention: intention || null,
-      });
-
-    if (await ensureDb()) {
-      const deckSystem = resolveMasterDeckSystem(characterId);
-      const entry = await createHistoryEntry({
-        userId: authed.profileUserId,
-        characterName: characterId,
-        contextData: {
-          type: "reading",
-          reading,
-          tarotCards,
-          deckSystem,
-          userName,
-          zodiac,
-          gender,
-          birthDate,
-        },
-        isPaid,
-      });
-      historyId = entry.id;
-
-      void patchTripletInterpretation(authed.profileUserId, cardsKey, {
-        text: reading,
-        masterId: characterId,
-      }).catch((err) => console.warn("Triplet interpretation patch failed:", err));
-
-      if (sessionId) {
         try {
-          await saveMessage(sessionId, characterId, "assistant", reading, authed.profileUserId);
+          await persistReadingToSession({
+            sessionId,
+            profileUserId: authed.profileUserId,
+            characterId,
+            reading,
+            tarotCards,
+            intention: intention || undefined,
+            spreadType: isDailySpread ? "daily" : undefined,
+          });
         } catch (err) {
           console.warn("Reading chat save failed:", err);
         }
       }
+
+      return {
+        kind: "new" as const,
+        reading,
+        historyId,
+        isPaid,
+        runeBalance,
+      };
+    };
+
+    const lockedResult =
+      cardsKey && (await ensureDb())
+        ? await withSpreadReadingLock(
+            authed.profileUserId,
+            characterId,
+            cardsKey,
+            runLockedGeneration
+          )
+        : await runLockedGeneration();
+
+    if (lockedResult.kind === "existing") {
+      return respondWithExistingSpreadReading({
+        existing: lockedResult.existing,
+        profileUserId: authed.profileUserId,
+        characterId,
+        cardsKey,
+        tarotCards,
+        sessionId,
+        intention: intention || undefined,
+        spreadType: isDailySpread ? "daily" : undefined,
+        userName,
+        birthDate,
+        isPaid,
+      });
+    }
+
+    if (lockedResult.kind === "insufficient") {
+      return insufficientRunesResponse(lockedResult.balance, lockedResult.cost);
+    }
+
+    if (lockedResult.kind === "failed") {
+      return NextResponse.json({ error: "Reading generation failed" }, { status: 502 });
     }
 
     return NextResponse.json({
-      reading,
-      isPaid,
-      historyId,
-      runeBalance,
+      reading: lockedResult.reading,
+      isPaid: lockedResult.isPaid,
+      historyId: lockedResult.historyId,
+      runeBalance: lockedResult.runeBalance,
       createdAt: new Date().toISOString(),
     });
   } catch (error) {
     console.error("Reading error:", error);
     if (spentRunes > 0) {
       try {
-        await refundRunes(authed.profileUserId, spentRunes, "Возврат: ошибка расшифровки", "READING");
+        await BillingService.rollbackCharge({
+          userId: authed.profileUserId,
+          cost: spentRunes,
+          wasFreeQuestion: false,
+          actionType: "READING",
+        });
       } catch (refundErr) {
         console.error("Reading refund failed:", refundErr);
       }

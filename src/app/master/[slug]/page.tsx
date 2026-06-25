@@ -1,4 +1,6 @@
+import { buildMasterMetadata } from "@/lib/master-seo";
 import HomePage from "@/components/HomePage";
+import MasterStructuredData from "@/components/MasterStructuredData";
 
 interface MasterPageProps {
   params: Promise<{ slug: string }>;
@@ -6,13 +8,15 @@ interface MasterPageProps {
 
 export async function generateMetadata({ params }: MasterPageProps) {
   const { slug } = await params;
-  return {
-    title: `${slug} — Aura`,
-    description: `Персональная страница мастера ${slug} на платформе Aura`,
-  };
+  return buildMasterMetadata(slug);
 }
 
 export default async function MasterPage({ params }: MasterPageProps) {
   const { slug } = await params;
-  return <HomePage referrerSlug={slug} />;
+  return (
+    <>
+      <MasterStructuredData slug={slug} />
+      <HomePage referrerSlug={slug} />
+    </>
+  );
 }

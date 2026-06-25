@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { DeckSystem } from "@/lib/decks/types";
 import { drawSpread, getDeckPositions } from "@/lib/decks";
@@ -16,7 +16,8 @@ interface TarotTripletProps {
   system: DeckSystem;
   masterName?: string;
   initialCards?: SpreadSymbol[];
-  onComplete: (cards: SpreadSymbol[], teaser: string) => void;
+  onComplete: (cards: SpreadSymbol[], teaser: string) => void | Promise<void>;
+  onAllRevealed?: (cards: SpreadSymbol[], teaser: string) => void;
 }
 
 export default function TarotTriplet({
@@ -26,6 +27,7 @@ export default function TarotTriplet({
   masterName,
   initialCards,
   onComplete,
+  onAllRevealed,
 }: TarotTripletProps) {
   const positions = useMemo(() => getDeckPositions(system), [system]);
 
@@ -35,6 +37,7 @@ export default function TarotTriplet({
   const [revealed, setRevealed] = useState<boolean[]>(() =>
     initialCards?.length === 3 ? [true, true, true] : [false, false, false]
   );
+  const [submitting, setSubmitting] = useState(false);
 
   const revealedCount = revealed.filter(Boolean).length;
   const allRevealed = revealedCount === 3;
@@ -62,15 +65,32 @@ export default function TarotTriplet({
     });
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    if (submitting) return;
     const teaser = buildSpreadTeaser({
       userName,
       cards: deck,
       positions: [...positions],
       masterName,
     });
-    onComplete(deck, teaser);
+    setSubmitting(true);
+    try {
+      await onComplete(deck, teaser);
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  useEffect(() => {
+    if (!allRevealed || !onAllRevealed) return;
+    const teaser = buildSpreadTeaser({
+      userName,
+      cards: deck,
+      positions: [...positions],
+      masterName,
+    });
+    onAllRevealed(deck, teaser);
+  }, [allRevealed, deck, userName, positions, masterName, onAllRevealed]);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -149,8 +169,13 @@ export default function TarotTriplet({
               <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
               Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
             </p>
-            <button onClick={handleFinish} className="btn-primary mt-6 px-8 py-3 text-sm">
-              Узнать смысл у мастера
+            <button
+              type="button"
+              onClick={() => void handleFinish()}
+              disabled={submitting}
+              className="btn-primary mt-6 px-8 py-3 text-sm disabled:cursor-wait disabled:opacity-70"
+            >
+              {submitting ? "Настраиваем поле…" : "Узнать смысл у мастера"}
             </button>
           </motion.div>
         )}

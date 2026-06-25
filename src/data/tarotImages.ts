@@ -3,6 +3,8 @@
  * Keys must match names in src/lib/tarot.ts exactly.
  */
 
+import { parseCardOrientation } from "@/lib/card-orientation";
+
 const BASE = "/tarot";
 
 /** Normalize lookup key (trim, unify ё→е for fallback). */
@@ -102,7 +104,7 @@ export const tarotImages: Record<string, string> = {
 export const TAROT_CARD_BACK = `${BASE}/_back.jpg`;
 
 export function getTarotImagePath(cardName: string): string {
-  const key = normalizeTarotName(cardName);
+  const key = normalizeTarotName(parseCardOrientation(cardName).name);
   if (tarotImages[key]) return tarotImages[key];
 
   const relaxed = key.replace(/ё/g, "е");

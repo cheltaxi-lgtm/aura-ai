@@ -1,5 +1,6 @@
 /**
- * Removes AI letterboxing (white side bars) and normalizes deck faces to 533×800.
+ * Removes obvious AI letterboxing (white side bars) and normalizes deck faces to 533×800.
+ * Conservative: only crops near-pure white bars; resize uses contain (no art crop).
  */
 import fs from "fs";
 import path from "path";
@@ -8,6 +9,9 @@ import sharp from "sharp";
 export const CARD_WIDTH = 533;
 export const CARD_HEIGHT = 800;
 export const CARD_BG = { r: 8, g: 6, b: 18 };
+
+const MIN_BAR_WIDTH = 12;
+const BAR_LIGHT_THRESHOLD = 0.82;
 
 export async function whitePixelRatio(buffer, threshold = 235) {
   const { data } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
@@ -21,53 +25,164 @@ export async function whitePixelRatio(buffer, threshold = 235) {
   return white / total;
 }
 
-/** Crop horizontal white/grey bars using middle-band column analysis. */
-export async function cropSideLetterbox(input) {
-  const { data, info } = await sharp(input).raw().toBuffer({ resolveWithObject: true });
-  const { width: w, height: h, channels: ch } = info;
-  const y0 = Math.floor(h * 0.12);
-  const y1 = Math.floor(h * 0.88);
-  let minX = w;
-  let maxX = 0;
-
+function columnLightScores(data, w, h, ch) {
+  const y0 = Math.floor(h * 0.15);
+  const y1 = Math.floor(h * 0.85);
+  const scores = new Array(w);
   for (let x = 0; x < w; x++) {
     let light = 0;
     let n = 0;
     for (let y = y0; y < y1; y++) {
       const i = (y * w + x) * ch;
-      if (data[i] > 210 && data[i + 1] > 210 && data[i + 2] > 210) light++;
+      if (data[i] > 225 && data[i + 1] > 225 && data[i + 2] > 225) light++;
       n++;
     }
-    if (light / n < 0.45) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
+    scores[x] = light / n;
+  }
+  return scores;
+}
+
+function rowLightScores(data, w, h, ch) {
+  const x0 = Math.floor(w * 0.15);
+  const x1 = Math.floor(w * 0.85);
+  const scores = new Array(h);
+  for (let y = 0; y < h; y++) {
+    let light = 0;
+    let n = 0;
+    for (let x = x0; x < x1; x++) {
+      const i = (y * w + x) * ch;
+      if (data[i] > 225 && data[i + 1] > 225 && data[i + 2] > 225) light++;
+      n++;
     }
+    scores[y] = light / n;
+  }
+  return scores;
+}
+
+function columnMeanBrightness(data, w, h, ch) {
+  const y0 = Math.floor(h * 0.15);
+  const y1 = Math.floor(h * 0.85);
+  const scores = new Array(w);
+  for (let x = 0; x < w; x++) {
+    let sum = 0;
+    let n = 0;
+    for (let y = y0; y < y1; y++) {
+      const i = (y * w + x) * ch;
+      sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+      n++;
+    }
+    scores[x] = sum / n;
+  }
+  return scores;
+}
+
+/** Returns { topBar, bottomBar } in pixels for near-pure white top/bottom bars. */
+export function measureTopBottomLetterbox(scores) {
+  const h = scores.length;
+  let topBar = 0;
+  for (let y = 0; y < Math.floor(h * 0.3); y++) {
+    if (scores[y] >= BAR_LIGHT_THRESHOLD) topBar = y + 1;
+    else if (topBar >= MIN_BAR_WIDTH) break;
   }
 
-  if (minX >= maxX) return input;
+  let bottomBar = 0;
+  for (let y = h - 1; y >= Math.floor(h * 0.7); y--) {
+    if (scores[y] >= BAR_LIGHT_THRESHOLD) bottomBar = h - y;
+    else if (bottomBar >= MIN_BAR_WIDTH) break;
+  }
 
-  const pad = 2;
-  const left = Math.max(0, minX - pad);
-  const right = Math.min(w - 1, maxX + pad);
+  return { topBar, bottomBar };
+}
+
+/** Crop columns where art is visibly narrower than frame (tan/cream margins). */
+export function measureNarrowContentCrop(colBrightness, w) {
+  const CONTENT_MAX = 95;
+  let left = -1;
+  let right = -1;
+  for (let x = 0; x < w; x++) {
+    if (colBrightness[x] <= CONTENT_MAX) {
+      if (left === -1) left = x;
+      right = x;
+    }
+  }
+  const contentW = right - left + 1;
+  if (left === -1 || contentW < w * 0.35 || contentW > w * 0.92) {
+    return { leftCrop: 0, rightCrop: 0 };
+  }
+  const margin = Math.min(left, w - right - 1);
+  if (margin < MIN_BAR_WIDTH) return { leftCrop: 0, rightCrop: 0 };
+  return { leftCrop: left, rightCrop: w - right - 1 };
+}
+
+/** Returns { leftBar, rightBar } in pixels for near-pure white side bars only. */
+export function measureSideLetterbox(scores) {
+  const w = scores.length;
+  let leftBar = 0;
+  for (let x = 0; x < Math.floor(w * 0.3); x++) {
+    if (scores[x] >= BAR_LIGHT_THRESHOLD) leftBar = x + 1;
+    else if (leftBar >= MIN_BAR_WIDTH) break;
+  }
+
+  let rightBar = 0;
+  for (let x = w - 1; x >= Math.floor(w * 0.7); x--) {
+    if (scores[x] >= BAR_LIGHT_THRESHOLD) rightBar = w - x;
+    else if (rightBar >= MIN_BAR_WIDTH) break;
+  }
+
+  return { leftBar, rightBar };
+}
+
+/** Crop obvious white side bars and top/bottom letterboxing; trim narrow centered art. */
+export async function cropLetterbox(input) {
+  const { data, info } = await sharp(input).png().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h, channels: ch } = info;
+
+  const colScores = columnLightScores(data, w, h, ch);
+  const { leftBar, rightBar } = measureSideLetterbox(colScores);
+
+  const rowScores = rowLightScores(data, w, h, ch);
+  const { topBar, bottomBar } = measureTopBottomLetterbox(rowScores);
+
+  const colMean = columnMeanBrightness(data, w, h, ch);
+  const { leftCrop, rightCrop } = measureNarrowContentCrop(colMean, w);
+
+  let left = 0;
+  let right = w - 1;
+  let top = 0;
+  let bottom = h - 1;
+
+  if (leftBar >= MIN_BAR_WIDTH) left = leftBar;
+  if (rightBar >= MIN_BAR_WIDTH) right = w - rightBar - 1;
+  if (topBar >= MIN_BAR_WIDTH) top = topBar;
+  if (bottomBar >= MIN_BAR_WIDTH) bottom = h - bottomBar - 1;
+  if (leftCrop >= MIN_BAR_WIDTH) left = Math.max(left, leftCrop);
+  if (rightCrop >= MIN_BAR_WIDTH) right = Math.min(right, w - rightCrop - 1);
+
   const width = right - left + 1;
-  if (width < w * 0.45) return input;
+  const height = bottom - top + 1;
+  if (
+    width < w * 0.55 ||
+    height < h * 0.55 ||
+    (left === 0 && right === w - 1 && top === 0 && bottom === h - 1)
+  ) {
+    return input;
+  }
 
   return sharp(input)
-    .extract({ left, top: 0, width, height: h })
+    .extract({ left, top, width, height })
     .toBuffer();
 }
 
+/** @deprecated use cropLetterbox */
+export async function cropSideLetterbox(input) {
+  return cropLetterbox(input);
+}
+
 export async function normalizeDeckCardBuffer(input) {
-  let buf = await cropSideLetterbox(input);
-  try {
-    buf = await sharp(buf).trim({ threshold: 18 }).toBuffer();
-  } catch {
-    /* uniform image — trim not needed */
-  }
+  const buf = await cropLetterbox(input);
   return sharp(buf)
     .resize(CARD_WIDTH, CARD_HEIGHT, {
-      fit: "cover",
-      position: "centre",
+      fit: "contain",
       background: CARD_BG,
     })
     .png({ compressionLevel: 9 })
@@ -84,20 +199,44 @@ export async function meanBrightness(buffer) {
   return sum / n;
 }
 
+export async function topBottomLetterboxPixels(buffer) {
+  const { data, info } = await sharp(buffer).png().raw().toBuffer({ resolveWithObject: true });
+  const scores = rowLightScores(data, info.width, info.height, info.channels);
+  const { topBar, bottomBar } = measureTopBottomLetterbox(scores);
+  return Math.max(topBar, bottomBar);
+}
+
+export async function sideLetterboxPixels(buffer) {
+  const { data, info } = await sharp(buffer).png().raw().toBuffer({ resolveWithObject: true });
+  const scores = columnLightScores(data, info.width, info.height, info.channels);
+  const { leftBar, rightBar } = measureSideLetterbox(scores);
+  return Math.max(leftBar, rightBar);
+}
+
 export async function normalizeDeckCardFile(filePath, { force = false } = {}) {
   const before = fs.readFileSync(filePath);
   const ratio = await whitePixelRatio(before);
-  const brightness = await meanBrightness(before);
-  const needsFix = force || ratio >= 0.06 || brightness > 130;
+  const edgeBar = await sideLetterboxPixels(before);
+  const tbBar = await topBottomLetterboxPixels(before);
+  const needsFix = force || ratio >= 0.08 || edgeBar >= MIN_BAR_WIDTH || tbBar >= MIN_BAR_WIDTH;
   if (!needsFix) {
-    return { changed: false, whiteBefore: ratio, whiteAfter: ratio, brightness };
+    return { changed: false, whiteBefore: ratio, whiteAfter: ratio, edgeBar };
   }
 
   const afterBuf = await normalizeDeckCardBuffer(before);
   const afterRatio = await whitePixelRatio(afterBuf);
-  const afterBrightness = await meanBrightness(afterBuf);
-  if (!force && afterRatio >= ratio - 0.01 && afterBrightness >= brightness - 5) {
-    return { changed: false, whiteBefore: ratio, whiteAfter: afterRatio, brightness };
+  const afterEdge = await sideLetterboxPixels(afterBuf);
+
+  const edgeImproved = afterEdge + 2 < edgeBar;
+  const ratioImproved = afterRatio + 0.01 < ratio;
+  if (!force && !edgeImproved && !ratioImproved) {
+    return {
+      changed: false,
+      whiteBefore: ratio,
+      whiteAfter: afterRatio,
+      edgeBar,
+      edgeBarAfter: afterEdge,
+    };
   }
 
   fs.writeFileSync(filePath, afterBuf);
@@ -105,8 +244,8 @@ export async function normalizeDeckCardFile(filePath, { force = false } = {}) {
     changed: true,
     whiteBefore: ratio,
     whiteAfter: afterRatio,
-    brightness,
-    brightnessAfter: afterBrightness,
+    edgeBar,
+    edgeBarAfter: afterEdge,
   };
 }
 
@@ -125,9 +264,8 @@ export async function normalizeAllDeckCards(rootDir) {
           file,
           whiteBefore: Math.round(result.whiteBefore * 100),
           whiteAfter: Math.round(result.whiteAfter * 100),
-          brightness: result.brightness != null ? Math.round(result.brightness) : undefined,
-          brightnessAfter:
-            result.brightnessAfter != null ? Math.round(result.brightnessAfter) : undefined,
+          edgeBar: result.edgeBar,
+          edgeBarAfter: result.edgeBarAfter,
         });
       }
     }
@@ -144,10 +282,8 @@ if (isCli) {
   const fixed = await normalizeAllDeckCards(root);
   console.log(`Normalized ${fixed.length} card(s):`);
   for (const row of fixed) {
-    const extra =
-      row.brightness != null
-        ? ` · brightness ${row.brightness}→${row.brightnessAfter}`
-        : "";
-    console.log(`  ${row.deck}/${row.file}: ${row.whiteBefore}% white → ${row.whiteAfter}%${extra}`);
+    const edge =
+      row.edgeBar != null ? ` · edge ${row.edgeBar}px→${row.edgeBarAfter}px` : "";
+    console.log(`  ${row.deck}/${row.file}: ${row.whiteBefore}% white → ${row.whiteAfter}%${edge}`);
   }
 }

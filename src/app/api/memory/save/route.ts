@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
-import { resolveApiCharacterId } from "@/lib/chat-sanitize";
+import { resolveApiCharacterId, sanitizeChatHistory } from "@/lib/chat-sanitize";
 import {
   generateSessionSummary,
   saveSessionMemory,
@@ -26,7 +26,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const characterKey = await resolveApiCharacterId(body.characterKey ?? body.characterId);
-    const messages = (body.messages ?? []) as { role: string; content: string }[];
+    const messages = sanitizeChatHistory(
+      (body.messages ?? []) as { role: string; content: string }[]
+    );
     const cardNames = (body.cardNames ?? body.keyCards ?? []) as string[];
     const outcomeRating =
       typeof body.outcomeRating === "number" ? body.outcomeRating : undefined;

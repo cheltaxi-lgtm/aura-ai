@@ -1,4 +1,7 @@
-import { query } from "./db";
+import { query, queryClient, withTransaction } from "./db";
+import { deleteUserTripletForMaster } from "./triplet-cleanup";
+import { getUserById } from "./users";
+import { tarotCardsKey } from "./tarot";
 
 export interface UserAccount {
   id: string;
@@ -70,20 +73,114 @@ export async function setUserAccountUnlimited(accountId: string, unlimited: bool
   ]);
 }
 
+/** Returns profile id only when this account exclusively owns the linked profile (UUID link only). */
 export async function getProfileUserIdForAccount(accountId: string): Promise<string | null> {
-  const account = await findUserById(accountId);
-  return account?.profile_user_id ?? null;
+  return withTransaction(async (client) => {
+    const accountResult = await queryClient<{
+      id: string;
+      profile_user_id: string | null;
+    }>(client, "SELECT id, profile_user_id FROM user_accounts WHERE id = $1 FOR UPDATE", [
+      accountId,
+    ]);
+    const account = accountResult.rows[0];
+    if (!account) return null;
+
+    const profileId = account.profile_user_id ?? null;
+    if (!profileId) {
+      return null;
+    }
+
+    const profileRows = await queryClient<{ id: string }>(
+      client,
+      "SELECT id FROM users WHERE id = $1",
+      [profileId]
+    );
+    if (!profileRows.rows[0]) {
+      await queryClient(client, "UPDATE user_accounts SET profile_user_id = NULL WHERE id = $1", [
+        accountId,
+      ]);
+      return null;
+    }
+
+    const linkedAccounts = await queryClient<{ id: string; created_at: Date }>(
+      client,
+      `SELECT id, created_at FROM user_accounts
+       WHERE profile_user_id = $1
+       ORDER BY created_at ASC
+       FOR UPDATE`,
+      [profileId]
+    );
+
+    if (linkedAccounts.rows.length === 0) {
+      await queryClient(client, "UPDATE user_accounts SET profile_user_id = NULL WHERE id = $1", [
+        accountId,
+      ]);
+      return null;
+    }
+
+    if (linkedAccounts.rows.length === 1) {
+      return linkedAccounts.rows[0].id === accountId ? profileId : null;
+    }
+
+    const staleAccountIds = linkedAccounts.rows
+      .filter((row) => row.id !== accountId)
+      .map((row) => row.id);
+    if (staleAccountIds.length > 0) {
+      await queryClient(
+        client,
+        "UPDATE user_accounts SET profile_user_id = NULL WHERE id = ANY($1::uuid[])",
+        [staleAccountIds]
+      );
+    }
+
+    return linkedAccounts.rows.some((row) => row.id === accountId) ? profileId : null;
+  });
 }
 
 export async function updateUserAccountName(accountId: string, name: string) {
   await query("UPDATE user_accounts SET name = $2 WHERE id = $1", [accountId, name.trim()]);
 }
 
-export async function linkAccountToProfile(accountId: string, profileUserId: string) {
-  await query("UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1", [
-    accountId,
-    profileUserId,
-  ]);
+export async function linkAccountToProfile(
+  accountId: string,
+  profileUserId: string
+): Promise<boolean> {
+  return withTransaction(async (client) => {
+    const profileResult = await queryClient<{ id: string }>(
+      client,
+      "SELECT id FROM users WHERE id = $1 FOR UPDATE",
+      [profileUserId]
+    );
+    if (!profileResult.rows[0]) return false;
+
+    const accountResult = await queryClient<{
+      id: string;
+      profile_user_id: string | null;
+    }>(client, "SELECT id, profile_user_id FROM user_accounts WHERE id = $1 FOR UPDATE", [
+      accountId,
+    ]);
+    const account = accountResult.rows[0];
+    if (!account) return false;
+
+    if (account.profile_user_id === profileUserId) return true;
+
+    const conflict = await queryClient<{ id: string }>(
+      client,
+      `SELECT id FROM user_accounts
+       WHERE profile_user_id = $1 AND id <> $2
+       LIMIT 1
+       FOR UPDATE`,
+      [profileUserId, accountId]
+    );
+    if (conflict.rows[0]) return false;
+
+    const linkResult = await queryClient(
+      client,
+      "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
+      [accountId, profileUserId]
+    );
+    return (linkResult.rowCount ?? 0) > 0;
+  });
 }
 
 export async function createUser(email: string, passwordHash: string, name: string) {
@@ -131,28 +228,61 @@ export async function createExpert(data: {
     `INSERT INTO bloggers (slug, display_name, title, split_percent, style_notes, emoji)
      VALUES ($1, $2, $3, 80, $4, '🔮')
      ON CONFLICT (slug) DO UPDATE SET display_name = EXCLUDED.display_name, title = EXCLUDED.title`,
-    [data.slug, data.name, data.title ?? "Эзотерик · Aura", ""]
+    [data.slug, data.name, data.title ?? "Эзотерик · Zovus", ""]
   );
 
   return expert;
 }
 
-export async function getUserChatHistory(profileUserId: string) {
-  const { rows } = await query<{
-    character_id: string;
-    role: string;
-    content: string;
-    created_at: Date;
-  }>(
-    `SELECT cm.character_id, cm.role, cm.content, cm.created_at
-     FROM chat_messages cm
-     JOIN sessions s ON s.id = cm.session_id
-     WHERE s.user_id = $1
-     ORDER BY cm.created_at DESC
-     LIMIT 100`,
-    [profileUserId]
+/** Remove all chat messages for one master profile thread. */
+export async function clearProfileChatThread(
+  profileUserId: string,
+  characterId: string
+): Promise<number> {
+  const result = await query(
+    `DELETE FROM chat_messages cm
+     WHERE cm.character_id = $2
+       AND (
+         cm.owner_user_id = $1
+         OR cm.session_id IN (SELECT id FROM sessions WHERE user_id = $1)
+       )`,
+    [profileUserId, characterId]
   );
-  return rows;
+  return result.rowCount ?? 0;
+}
+
+/** Clear chat messages and saved readings so history API does not restore them. */
+export async function clearMasterChatData(
+  profileUserId: string,
+  characterId: string
+): Promise<{ messagesDeleted: number; historyDeleted: number }> {
+  const messagesDeleted = await clearProfileChatThread(profileUserId, characterId);
+
+  const historyResult = await query(
+    `DELETE FROM history
+     WHERE user_id = $1
+       AND character_name = $2
+       AND context_data->>'type' IN ('reading', 'intention_spread')`,
+    [profileUserId, characterId]
+  );
+
+  await query(
+    `UPDATE sessions
+     SET intention = NULL,
+         spread_type = NULL,
+         cards = NULL,
+         awaiting_context = FALSE,
+         updated_at = NOW()
+     WHERE user_id = $1 AND character_key = $2`,
+    [profileUserId, characterId]
+  );
+
+  await deleteUserTripletForMaster(profileUserId, characterId);
+
+  return {
+    messagesDeleted,
+    historyDeleted: historyResult.rowCount ?? 0,
+  };
 }
 
 export async function getUserReadingHistory(profileUserId: string) {
@@ -171,6 +301,40 @@ export async function getUserReadingHistory(profileUserId: string) {
     [profileUserId]
   );
   return rows;
+}
+
+export function findCachedIntentionSpread(
+  history: Awaited<ReturnType<typeof getUserReadingHistory>>,
+  characterId: string,
+  intention: string,
+  cards: { name: string }[]
+): {
+  reading: string;
+  tarotCards: { name: string; meaning?: string }[];
+  deckSystem?: string;
+  system?: string;
+} | null {
+  const key = tarotCardsKey(cards);
+  if (!key) return null;
+
+  const entry = history.find((r) => {
+    if (r.character_name !== characterId) return false;
+    const ctx = r.context_data;
+    if (ctx?.type !== "intention_spread" || ctx.intention !== intention) return false;
+    const reading = typeof ctx.reading === "string" ? ctx.reading.trim() : "";
+    if (reading.length < 80) return false;
+    const stored = ctx.tarotCards as { name: string }[] | undefined;
+    return tarotCardsKey(stored) === key;
+  });
+
+  if (!entry) return null;
+  const ctx = entry.context_data;
+  return {
+    reading: ctx.reading as string,
+    tarotCards: (ctx.tarotCards as { name: string; meaning?: string }[]) ?? cards,
+    deckSystem: ctx.deckSystem as string | undefined,
+    system: ctx.system as string | undefined,
+  };
 }
 
 export async function getUserPayments(profileUserId: string) {
@@ -229,8 +393,26 @@ export async function linkSessionToUser(sessionId: string, userId: string): Prom
      SET user_id = $2, updated_at = NOW()
      WHERE s.id = $1
        AND EXISTS (SELECT 1 FROM users u WHERE u.id = $2)
+       AND (s.user_id IS NULL OR s.user_id = $2)
      RETURNING s.id`,
     [sessionId, userId]
   );
   return Boolean(rows[0]);
+}
+
+export async function deleteUserChatForCharacter(
+  profileUserId: string,
+  characterId: string
+): Promise<number> {
+  if (!characterId || characterId === "triplet") return 0;
+
+  const result = await query(
+    `DELETE FROM chat_messages cm
+     USING sessions s
+     WHERE cm.session_id = s.id
+       AND s.user_id = $1
+       AND cm.character_id = $2`,
+    [profileUserId, characterId]
+  );
+  return result.rowCount ?? 0;
 }

@@ -7,7 +7,7 @@ export type ImageSceneType =
   | "scene_illustration"
   | "final_report";
 
-export type CharacterVisualKey = "ragnar" | "veronika" | "agafya" | "shri-raj";
+export type CharacterVisualKey = "ragnar" | "veronika" | "agafya" | "shri-raj" | "numerolog";
 
 export interface ImageGenerateRequest {
   scene: ImageSceneType;
@@ -36,6 +36,8 @@ const CHARACTER_STYLES: Record<CharacterVisualKey, string> = {
     "Slavic folk witchcraft aesthetic, dark forest, birch trees, bonfire smoke, herbal charms, old Russian mysticism, earthy and mysterious",
   "shri-raj":
     "Vedic cosmic aesthetic, saffron and deep indigo, mandalas and star charts, karma wheels, serene guru wisdom, golden celestial light",
+  numerolog:
+    "numerology sacred geometry aesthetic, golden ratio spirals, glowing numbers, deep indigo and violet palette, soft warm light, elegant feminine mystique",
 };
 
 const SCENE_LABELS: Record<ImageSceneType, string> = {

@@ -1,0 +1,520 @@
+import { query } from "@/lib/db";
+import { completeChat } from "@/lib/llm";
+import {
+  buildRitualPrompt,
+  parseRitualJson,
+  type RitualGeneratedContent,
+} from "@/lib/ritual-prompt";
+import {
+  computeRitualSchedule,
+  resolveRitualTimeDisplay,
+} from "@/lib/ritual-timing";
+import { resolveWordOfPowerTranscription } from "@/lib/word-of-power-transcription";
+import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
+
+export type RitualStatus =
+  | "questions"
+  | "spread"
+  | "payment"
+  | "generating"
+  | "completed"
+  | "reviewed";
+
+export interface RitualCard {
+  name: string;
+  position: string;
+}
+
+export interface RitualRow {
+  id: string;
+  user_id: string;
+  character_key: string;
+  ritual_type: RitualType;
+  status: RitualStatus;
+  answers: string[];
+  cards: RitualCard[];
+  moon_phase: string | null;
+  moon_sign: string | null;
+  ritual_time: string | null;
+  ritual_place: string | null;
+  ritual_items: Array<{ item: string; reason: string }>;
+  ritual_steps: Array<{ step: string; description: string }>;
+  ritual_words: string | null;
+  ritual_word_of_power: string | null;
+  ritual_word_of_power_transcription: string | null;
+  ritual_forbids: string[];
+  ritual_signs: string[];
+  rune_cost: number;
+  payment_status: string;
+  transaction_id: string | null;
+  outcome_text: string | null;
+  outcome_rating: number | null;
+  outcome_shared: boolean;
+  remind_at: Date | null;
+  reminded_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+function mapRitualRow(row: Record<string, unknown>): RitualRow {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    character_key: String(row.character_key),
+    ritual_type: row.ritual_type as RitualType,
+    status: row.status as RitualStatus,
+    answers: Array.isArray(row.answers) ? (row.answers as string[]) : [],
+    cards: Array.isArray(row.cards) ? (row.cards as RitualCard[]) : [],
+    moon_phase: row.moon_phase ? String(row.moon_phase) : null,
+    moon_sign: row.moon_sign ? String(row.moon_sign) : null,
+    ritual_time: row.ritual_time ? String(row.ritual_time) : null,
+    ritual_place: row.ritual_place ? String(row.ritual_place) : null,
+    ritual_items: Array.isArray(row.ritual_items)
+      ? (row.ritual_items as Array<{ item: string; reason: string }>)
+      : [],
+    ritual_steps: Array.isArray(row.ritual_steps)
+      ? (row.ritual_steps as Array<{ step: string; description: string }>)
+      : [],
+    ritual_words: row.ritual_words ? String(row.ritual_words) : null,
+    ritual_word_of_power: row.ritual_word_of_power
+      ? String(row.ritual_word_of_power)
+      : null,
+    ritual_word_of_power_transcription: row.ritual_word_of_power_transcription
+      ? String(row.ritual_word_of_power_transcription)
+      : null,
+    ritual_forbids: Array.isArray(row.ritual_forbids)
+      ? (row.ritual_forbids as string[])
+      : [],
+    ritual_signs: Array.isArray(row.ritual_signs)
+      ? (row.ritual_signs as string[])
+      : [],
+    rune_cost: Number(row.rune_cost ?? 0),
+    payment_status: String(row.payment_status ?? "pending"),
+    transaction_id: row.transaction_id ? String(row.transaction_id) : null,
+    outcome_text: row.outcome_text ? String(row.outcome_text) : null,
+    outcome_rating:
+      row.outcome_rating != null ? Number(row.outcome_rating) : null,
+    outcome_shared: Boolean(row.outcome_shared),
+    remind_at: row.remind_at ? new Date(String(row.remind_at)) : null,
+    reminded_at: row.reminded_at ? new Date(String(row.reminded_at)) : null,
+    created_at: new Date(String(row.created_at)),
+    updated_at: new Date(String(row.updated_at)),
+  };
+}
+
+export async function createRitual(params: {
+  userId: string;
+  characterKey: string;
+  ritualType: RitualType;
+  moonPhase: string;
+  moonSign: string;
+  runeCost: number;
+}): Promise<RitualRow> {
+  const { rows } = await query<Record<string, unknown>>(
+    `INSERT INTO rituals
+       (user_id, character_key, ritual_type, moon_phase, moon_sign, rune_cost)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [
+      params.userId,
+      params.characterKey,
+      params.ritualType,
+      params.moonPhase,
+      params.moonSign,
+      params.runeCost,
+    ]
+  );
+  return mapRitualRow(rows[0]);
+}
+
+export async function getRitualById(id: string): Promise<RitualRow | null> {
+  const { rows } = await query<Record<string, unknown>>(
+    "SELECT * FROM rituals WHERE id = $1",
+    [id]
+  );
+  return rows[0] ? mapRitualRow(rows[0]) : null;
+}
+
+export async function deleteRitualById(
+  id: string,
+  userId: string
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `DELETE FROM rituals WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export async function listUserRituals(
+  userId: string,
+  opts?: { characterKey?: string; status?: RitualStatus }
+): Promise<RitualRow[]> {
+  const params: unknown[] = [userId];
+  let sql = `SELECT * FROM rituals WHERE user_id = $1`;
+  if (opts?.characterKey) {
+    params.push(opts.characterKey);
+    sql += ` AND character_key = $${params.length}`;
+  }
+  if (opts?.status) {
+    params.push(opts.status);
+    sql += ` AND status = $${params.length}`;
+  }
+  sql += ` ORDER BY created_at DESC LIMIT 50`;
+  const { rows } = await query<Record<string, unknown>>(sql, params);
+  return rows.map(mapRitualRow);
+}
+
+export interface CabinetRitualStats {
+  total: number;
+  completed: number;
+  signsNoted: number;
+  pendingReview: number;
+  inProgress: number;
+  loveCount: number;
+  moneyCount: number;
+  protectionCount: number;
+  luckCount: number;
+  releaseCount: number;
+}
+
+export async function getCabinetRitualStats(
+  userId: string
+): Promise<CabinetRitualStats> {
+  const { rows } = await query<Record<string, unknown>>(
+    `SELECT
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE status IN ('completed', 'reviewed'))::int AS completed,
+       COUNT(*) FILTER (WHERE status = 'reviewed' AND outcome_rating >= 3)::int AS signs_noted,
+       COUNT(*) FILTER (
+         WHERE status = 'completed'
+           AND remind_at IS NOT NULL
+           AND remind_at <= NOW()
+           AND outcome_rating IS NULL
+       )::int AS pending_review,
+       COUNT(*) FILTER (WHERE status IN ('questions', 'spread', 'payment', 'generating'))::int AS in_progress,
+       COUNT(*) FILTER (WHERE ritual_type = 'love')::int AS love_count,
+       COUNT(*) FILTER (WHERE ritual_type = 'money')::int AS money_count,
+       COUNT(*) FILTER (WHERE ritual_type = 'protection')::int AS protection_count,
+       COUNT(*) FILTER (WHERE ritual_type = 'luck')::int AS luck_count,
+       COUNT(*) FILTER (WHERE ritual_type = 'release')::int AS release_count
+     FROM rituals
+     WHERE user_id = $1`,
+    [userId]
+  );
+  const row = rows[0] ?? {};
+  return {
+    total: Number(row.total ?? 0),
+    completed: Number(row.completed ?? 0),
+    signsNoted: Number(row.signs_noted ?? 0),
+    pendingReview: Number(row.pending_review ?? 0),
+    inProgress: Number(row.in_progress ?? 0),
+    loveCount: Number(row.love_count ?? 0),
+    moneyCount: Number(row.money_count ?? 0),
+    protectionCount: Number(row.protection_count ?? 0),
+    luckCount: Number(row.luck_count ?? 0),
+    releaseCount: Number(row.release_count ?? 0),
+  };
+}
+
+export async function appendRitualAnswer(
+  id: string,
+  answers: string[],
+  newStatus?: RitualStatus
+): Promise<RitualRow | null> {
+  const { rows } = await query<Record<string, unknown>>(
+    newStatus
+      ? `UPDATE rituals
+         SET answers = $2::jsonb, status = $3, updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`
+      : `UPDATE rituals
+         SET answers = $2::jsonb, updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+    newStatus
+      ? [id, JSON.stringify(answers), newStatus]
+      : [id, JSON.stringify(answers)]
+  );
+  return rows[0] ? mapRitualRow(rows[0]) : null;
+}
+
+export async function saveRitualCards(
+  id: string,
+  cards: RitualCard[]
+): Promise<RitualRow | null> {
+  const { rows } = await query<Record<string, unknown>>(
+    `UPDATE rituals
+     SET cards = $2::jsonb, status = 'payment', updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id, JSON.stringify(cards)]
+  );
+  return rows[0] ? mapRitualRow(rows[0]) : null;
+}
+
+export async function markRitualPaidAndGenerating(
+  id: string
+): Promise<RitualRow | null> {
+  const { rows } = await query<Record<string, unknown>>(
+    `UPDATE rituals
+     SET payment_status = 'paid', status = 'generating', updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id]
+  );
+  return rows[0] ? mapRitualRow(rows[0]) : null;
+}
+
+export async function saveGeneratedRitual(
+  id: string,
+  content: RitualGeneratedContent
+): Promise<RitualRow | null> {
+  const remindAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const { rows } = await query<Record<string, unknown>>(
+    `UPDATE rituals SET
+       status = 'completed',
+       ritual_time = $2,
+       ritual_place = $3,
+       ritual_items = $4::jsonb,
+       ritual_steps = $5::jsonb,
+       ritual_words = $6,
+       ritual_word_of_power = $7,
+       ritual_word_of_power_transcription = $8,
+       ritual_forbids = $9::jsonb,
+       ritual_signs = $10::jsonb,
+       remind_at = $11,
+       updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id,
+      content.ritual_time,
+      content.ritual_place,
+      JSON.stringify(content.ritual_items),
+      JSON.stringify(content.ritual_steps),
+      content.ritual_words,
+      content.ritual_word_of_power,
+      content.ritual_word_of_power_transcription || null,
+      JSON.stringify(content.ritual_forbids),
+      JSON.stringify(content.ritual_signs),
+      remindAt,
+    ]
+  );
+  return rows[0] ? mapRitualRow(rows[0]) : null;
+}
+
+export async function getRitualStats(
+  ritualType: string,
+  characterKey: string
+): Promise<{ total: number; signsReported: number; percentage: number }> {
+  const { rows } = await query<{ total: string; signs_reported: string }>(
+    `SELECT
+       COUNT(*)::text AS total,
+       COUNT(*) FILTER (WHERE outcome_rating >= 3)::text AS signs_reported
+     FROM ritual_outcomes_public
+     WHERE ritual_type = $1 AND character_key = $2`,
+    [ritualType, characterKey]
+  );
+  const total = Number(rows[0]?.total ?? 0);
+  const signsReported = Number(rows[0]?.signs_reported ?? 0);
+  const percentage = total > 0 ? Math.round((signsReported / total) * 100) : 0;
+  return { total, signsReported, percentage };
+}
+
+export async function submitRitualReview(
+  id: string,
+  params: {
+    outcomeText?: string;
+    outcomeRating: number;
+    sharePublicly?: boolean;
+  }
+): Promise<boolean> {
+  const ritual = await getRitualById(id);
+  if (!ritual) return false;
+
+  await query(
+    `UPDATE rituals SET
+       outcome_text = $2,
+       outcome_rating = $3,
+       outcome_shared = $4,
+       status = 'reviewed',
+       updated_at = NOW()
+     WHERE id = $1`,
+    [
+      id,
+      params.outcomeText ?? null,
+      params.outcomeRating,
+      Boolean(params.sharePublicly),
+    ]
+  );
+
+  if (params.sharePublicly && params.outcomeText) {
+    await query(
+      `INSERT INTO ritual_outcomes_public
+         (ritual_type, character_key, outcome_text, outcome_rating)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        ritual.ritual_type,
+        ritual.character_key,
+        params.outcomeText,
+        params.outcomeRating,
+      ]
+    );
+  }
+
+  return true;
+}
+
+export async function generateRitualContent(
+  ritual: RitualRow,
+  userProfile: { name: string; zodiac: string }
+): Promise<RitualRow | null> {
+  const referenceDate = ritual.created_at ?? new Date();
+  const schedule = computeRitualSchedule(ritual.ritual_type, referenceDate);
+  const prompt = buildRitualPrompt({
+    characterKey: ritual.character_key,
+    ritualType: ritual.ritual_type,
+    userName: userProfile.name,
+    userZodiac: userProfile.zodiac,
+    answers: ritual.answers,
+    cards: ritual.cards,
+    moonPhase: ritual.moon_phase ?? "",
+    moonSign: ritual.moon_sign ?? "",
+    referenceDate,
+    schedule,
+  });
+
+  const response = await completeChat({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 2000,
+    temperature: 0.85,
+    isPaid: true,
+  });
+
+  if (!response) return null;
+
+  const parsed = parseRitualJson(response, schedule);
+  if (!parsed) return null;
+
+  return saveGeneratedRitual(ritual.id, parsed);
+}
+
+export function getQuestionsForRitual(ritualType: RitualType): string[] {
+  return [...RITUAL_TYPES[ritualType].questions];
+}
+
+export async function getDueReminders(): Promise<
+  Array<{
+    id: string;
+    user_id: string;
+    character_key: string;
+    ritual_type: string;
+  }>
+> {
+  const { rows } = await query<{
+    id: string;
+    user_id: string;
+    character_key: string;
+    ritual_type: string;
+  }>(
+    `SELECT id, user_id, character_key, ritual_type
+     FROM rituals
+     WHERE status = 'completed'
+       AND remind_at <= NOW()
+       AND reminded_at IS NULL`
+  );
+  return rows;
+}
+
+export async function markRitualReminded(id: string): Promise<void> {
+  await query(
+    `UPDATE rituals SET reminded_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    [id]
+  );
+}
+
+export async function createNotification(params: {
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}): Promise<void> {
+  await query(
+    `INSERT INTO notifications (user_id, type, title, body, data)
+     VALUES ($1, $2, $3, $4, $5::jsonb)`,
+    [
+      params.userId,
+      params.type,
+      params.title,
+      params.body,
+      JSON.stringify(params.data ?? {}),
+    ]
+  );
+}
+
+export async function getUnreadNotifications(userId: string) {
+  const { rows } = await query<{
+    id: string;
+    type: string;
+    title: string;
+    body: string;
+    data: Record<string, unknown>;
+    created_at: Date;
+  }>(
+    `SELECT id, type, title, body, data, created_at
+     FROM notifications
+     WHERE user_id = $1 AND read = FALSE
+     ORDER BY created_at DESC
+     LIMIT 20`,
+    [userId]
+  );
+  return rows;
+}
+
+export async function markNotificationsRead(userId: string): Promise<void> {
+  await query(
+    `UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE`,
+    [userId]
+  );
+}
+
+export function ritualToClient(ritual: RitualRow) {
+  return {
+    id: ritual.id,
+    characterKey: ritual.character_key,
+    ritualType: ritual.ritual_type,
+    status: ritual.status,
+    answers: ritual.answers,
+    cards: ritual.cards,
+    moonPhase: ritual.moon_phase,
+    moonSign: ritual.moon_sign,
+    ritualTime: resolveRitualTimeDisplay(
+      ritual.ritual_type,
+      ritual.ritual_time,
+      ritual.created_at
+    ),
+    ritualPlace: ritual.ritual_place,
+    ritualItems: ritual.ritual_items,
+    ritualSteps: ritual.ritual_steps,
+    ritualWords: ritual.ritual_words,
+    ritualWordOfPower: ritual.ritual_word_of_power,
+    ritualWordOfPowerTranscription: resolveWordOfPowerTranscription(
+      ritual.ritual_word_of_power,
+      ritual.ritual_word_of_power_transcription
+    ),
+    ritualForbids: ritual.ritual_forbids,
+    ritualSigns: ritual.ritual_signs,
+    runeCost: ritual.rune_cost,
+    paymentStatus: ritual.payment_status,
+    outcomeText: ritual.outcome_text,
+    outcomeRating: ritual.outcome_rating,
+    outcomeShared: ritual.outcome_shared,
+    remindAt: ritual.remind_at?.toISOString() ?? null,
+    remindedAt: ritual.reminded_at?.toISOString() ?? null,
+    hasCard: Boolean(ritual.ritual_time),
+    createdAt: ritual.created_at.toISOString(),
+    updatedAt: ritual.updated_at.toISOString(),
+  };
+}

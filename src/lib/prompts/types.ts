@@ -1,6 +1,6 @@
 import type { AstroMeta, LifeFocus } from "@/lib/astro-profile";
 
-export type CharacterKey = "ragnar" | "veronika" | "agafya" | "shri-raj";
+export type CharacterKey = "ragnar" | "veronika" | "agafya" | "shri-raj" | "numerolog";
 
 export interface SessionMemory {
   date: string;
@@ -16,7 +16,7 @@ export interface PromptUserContext {
   gender?: string;
   zodiac: string;
   birthDate: string;
-  cards: string[];
+  cards: string[] | ReadingCard[];
   sessionNumber?: number;
   today?: string;
   birthTime?: string;

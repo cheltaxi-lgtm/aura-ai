@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2 } from "lucide-react";
+import BodyPortal from "@/components/BodyPortal";
 import MySpreadsGallery, { type MySpreadEntry } from "@/components/MySpreadsGallery";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
@@ -73,14 +74,15 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
         deletingId={deletingId}
       />
 
-      <AnimatePresence>
-        {active && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
+      <BodyPortal active={Boolean(active)}>
+        <AnimatePresence>
+          {active && (
+            <motion.div
+              className="app-modal-overlay fixed inset-0 z-[4990] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4 pointer-events-auto"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
             <button
               type="button"
               className="absolute inset-0"
@@ -157,8 +159,9 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
               </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      </BodyPortal>
     </section>
   );
 }

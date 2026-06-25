@@ -1,11 +1,26 @@
+import { getSetting } from "@/lib/settings";
+
 const YUKASSA_API = "https://api.yookassa.ru/v3";
 
 export type PaymentPlan = "single" | "subscription";
 
-const PLANS: Record<PaymentPlan, { amount: string; description: string }> = {
-  single: { amount: "199.00", description: "Aura — детальный разбор" },
-  subscription: { amount: "590.00", description: "Aura — подписка на месяц" },
+const PLAN_DESCRIPTIONS: Record<PaymentPlan, string> = {
+  single: "Zovus — детальный разбор",
+  subscription: "Zovus — подписка на месяц",
 };
+
+export async function getLegacyPrices(): Promise<{
+  single: number;
+  subscription: number;
+  currency: string;
+}> {
+  const pricing = await getSetting("pricing");
+  return {
+    single: pricing.singlePrice ?? 199,
+    subscription: pricing.subscriptionPrice ?? 590,
+    currency: pricing.currency ?? "RUB",
+  };
+}
 
 function authHeader(): string {
   const shopId = process.env.YUKASSA_SHOP_ID;
@@ -21,7 +36,8 @@ export async function createYukassaPayment(params: {
   sessionId: string;
   returnUrl: string;
 }) {
-  const plan = PLANS[params.plan];
+  const prices = await getLegacyPrices();
+  const amountRub = params.plan === "single" ? prices.single : prices.subscription;
   const idempotenceKey = `${params.sessionId}-${params.plan}-${Date.now()}`;
 
   const response = await fetch(`${YUKASSA_API}/payments`, {
@@ -32,13 +48,13 @@ export async function createYukassaPayment(params: {
       "Idempotence-Key": idempotenceKey,
     },
     body: JSON.stringify({
-      amount: { value: plan.amount, currency: "RUB" },
+      amount: { value: amountRub.toFixed(2), currency: prices.currency },
       capture: true,
       confirmation: {
         type: "redirect",
         return_url: params.returnUrl,
       },
-      description: plan.description,
+      description: PLAN_DESCRIPTIONS[params.plan],
       metadata: {
         session_id: params.sessionId,
         plan: params.plan,
@@ -88,11 +104,12 @@ export async function createYukassaRunePayment(params: {
         type: "redirect",
         return_url: params.returnUrl,
       },
-      description: `AuraAI — ${params.packageName}: ${params.totalRunes} ᚢ рун`,
+      description: `Zovus — ${params.packageName}: ${params.totalRunes} ᚢ рун`,
       metadata: {
         userId: params.userId,
         packageId: params.packageId,
         runesAmount: String(params.totalRunes),
+        runes_count: String(params.totalRunes),
         type: "rune_purchase",
       },
     }),
@@ -113,6 +130,7 @@ export async function createYukassaRunePayment(params: {
 export async function fetchYukassaPayment(paymentId: string): Promise<{
   id: string;
   status: string;
+  amount?: { value: string; currency: string };
   metadata?: Record<string, string>;
 } | null> {
   if (!isYukassaConfigured()) return null;
@@ -135,7 +153,7 @@ export async function fetchYukassaPayment(paymentId: string): Promise<{
 export async function verifyYukassaWebhookPayment(
   paymentId: string,
   event?: string
-): Promise<{ valid: boolean; metadata?: Record<string, string> }> {
+): Promise<{ valid: boolean; metadata?: Record<string, string>; amountRub?: number }> {
   if (event && event !== "payment.succeeded") {
     return { valid: false };
   }
@@ -143,5 +161,10 @@ export async function verifyYukassaWebhookPayment(
   if (!payment || payment.status !== "succeeded") {
     return { valid: false };
   }
-  return { valid: true, metadata: payment.metadata };
+  const amountRub = payment.amount?.value ? Number(payment.amount.value) : undefined;
+  return {
+    valid: true,
+    metadata: payment.metadata,
+    amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
+  };
 }

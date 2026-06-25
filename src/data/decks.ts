@@ -4,6 +4,7 @@
  */
 
 import type { DeckSystem } from "@/lib/decks/types";
+import { normalizePhotoCardName } from "@/lib/photo-card-aliases";
 
 const deckBase = (system: DeckSystem) => `/decks/${system}`;
 
@@ -88,6 +89,7 @@ function majorTarotPaths(system: DeckSystem): Record<string, string> {
     Луна: `${base}/the-moon.png`,
     Солнце: `${base}/the-sun.png`,
     Суд: `${base}/judgement.png`,
+    "Страшный Суд": `${base}/judgement.png`,
     Мир: `${base}/the-world.png`,
   };
 }
@@ -174,6 +176,12 @@ export const DECK_IMAGE_MAPS: Record<DeckSystem, Record<string, string>> = {
     Водолей: `${deckBase("astrology")}/aquarius.png`,
     Рыбы: `${deckBase("astrology")}/pisces.png`,
   },
+  numerology: Object.fromEntries(
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "11", "22", "33"].map((n) => [
+      n,
+      `${deckBase("numerology")}/${n}.svg`,
+    ])
+  ),
 };
 
 export const DECK_BACK_PATHS: Record<DeckSystem, string> = {
@@ -182,6 +190,7 @@ export const DECK_BACK_PATHS: Record<DeckSystem, string> = {
   "tarot-marina": `${deckBase("tarot-marina")}/_back.png`,
   slavic: `${deckBase("slavic")}/_back.png`,
   astrology: `${deckBase("astrology")}/_back.png`,
+  numerology: `${deckBase("numerology")}/_back.svg`,
 };
 
 export function normalizeDeckName(name: string): string {
@@ -189,7 +198,8 @@ export function normalizeDeckName(name: string): string {
 }
 
 export function getDeckImagePath(system: DeckSystem, cardName: string): string {
-  const key = normalizeDeckName(cardName);
+  const resolvedName = normalizePhotoCardName(cardName) ?? normalizeDeckName(cardName);
+  const key = normalizeDeckName(resolvedName);
   const map = DECK_IMAGE_MAPS[system];
   if (map[key]) return map[key];
   const relaxed = key.replace(/ё/g, "е");

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { CreditCard, HelpCircle, MessageCircle, Sparkles, Layers, UserRound, Coins } from "lucide-react";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import MasterServiceDisclaimer from "@/components/MasterServiceDisclaimer";
 
 interface RunePackage {
   id: string;
@@ -17,7 +18,6 @@ interface RunePackage {
 interface LandingSectionsProps {
   onStartFlow?: () => void;
   onOpenPaywall?: () => void;
-  onOpenRuneShop?: () => void;
   hasSession?: boolean;
   isLoggedIn?: boolean;
 }
@@ -43,7 +43,6 @@ const HOW_IT_WORKS = [
 export default function LandingSections({
   onStartFlow,
   onOpenPaywall,
-  onOpenRuneShop,
   hasSession,
   isLoggedIn,
 }: LandingSectionsProps) {
@@ -64,12 +63,7 @@ export default function LandingSections({
   const starterPack = packages.find((p) => p.id === "starter") ?? packages[packages.length - 1];
 
   const handlePrimaryTariff = () => {
-    if (config.enabled) {
-      if (isLoggedIn && onOpenRuneShop) onOpenRuneShop();
-      else onStartFlow?.();
-      return;
-    }
-    if (hasSession && onOpenPaywall) onOpenPaywall();
+    if (isLoggedIn && onOpenPaywall) onOpenPaywall();
     else onStartFlow?.();
   };
 
@@ -78,15 +72,21 @@ export default function LandingSections({
   const visionCost = cost("VISION_ANALYSIS");
   const freeQ = config.freeQuestions;
 
+  const faqBase = {
+    q: "Кто такие мастера на платформе?",
+    a: "Консультации оказываются с помощью программных ассистентов. Портреты и имена — художественные образы. Сервис носит развлекательно-ознакомительный характер и не заменяет профессиональные консультации.",
+  };
+
   const faq = config.enabled
     ? [
+        faqBase,
         {
           q: "Это правда бесплатно?",
           a: `Да. Расклад из 3 карт на лендинге и ${freeQ} ${freeQ === 1 ? "вопрос" : freeQ < 5 ? "вопроса" : "вопросов"} мастеру — бесплатно. Полная расшифровка у мастера — ${formatRunes(readingCost)}, следующие вопросы — ${formatRunes(questionCost)} каждый.`,
         },
         {
           q: "Что такое руны ᚢ?",
-          a: "Внутренняя валюта Aura. Пополняете баланс пакетами через ЮKassa — руны списываются только за выбранные действия: расшифровку, вопрос, фото-расклад.",
+          a: "Внутренняя валюта Zovus. Пополняете баланс пакетами через ЮKassa — руны списываются только за выбранные действия: расшифровку, вопрос, фото-расклад.",
         },
         {
           q: "Как оплатить?",
@@ -94,6 +94,7 @@ export default function LandingSections({
         },
       ]
     : [
+        faqBase,
         {
           q: "Это правда бесплатно?",
           a: "Да. Расклад из 3 карт и 2 вопроса мастеру — бесплатно. Полный разбор всех карт — разовая оплата.",
@@ -247,7 +248,7 @@ export default function LandingSections({
               className="glass-panel p-6 text-left transition-all hover:border-aura-gold/40 hover:shadow-neon-gold"
             >
               <p className="font-display text-3xl font-bold text-aura-gold">590 ₽/мес</p>
-              <p className="mt-2 text-sm font-medium text-white">Aura+</p>
+              <p className="mt-2 text-sm font-medium text-white">Zovus+</p>
               <p className="mt-1 text-xs text-gray-400">Безлимит · все 4 мастера</p>
             </button>
           </div>
@@ -267,6 +268,7 @@ export default function LandingSections({
             </div>
           ))}
         </div>
+        <MasterServiceDisclaimer className="mx-auto mt-6 max-w-2xl text-center" />
       </section>
 
       <section className="mt-16 text-center">

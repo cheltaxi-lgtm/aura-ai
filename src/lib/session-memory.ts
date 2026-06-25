@@ -15,7 +15,8 @@ export interface SessionMemoryRow {
 export async function getSessionMemories(
   userId: string,
   characterKey: string,
-  limit = 3
+  limit = 3,
+  excludeSessionId?: string | null
 ): Promise<SessionMemory[]> {
   const { rows } = await query<SessionMemoryRow>(
     `SELECT
@@ -26,10 +27,13 @@ export async function getSessionMemories(
        outcome_rating,
        mood
      FROM session_memories
-     WHERE user_id = $1 AND character_key = $2
+     WHERE user_id = $1
+       AND character_key = $2
+       AND session_id IS NOT NULL
+       AND ($4::uuid IS NULL OR session_id <> $4)
      ORDER BY session_date DESC
      LIMIT $3`,
-    [userId, characterKey, limit]
+    [userId, characterKey, limit, excludeSessionId ?? null]
   );
 
   return rows.map((r) => ({
@@ -59,7 +63,28 @@ export async function saveSessionMemory(input: {
   prediction: string;
   mood?: string;
   outcomeRating?: number;
+  sessionId?: string;
 }): Promise<void> {
+  if (input.sessionId) {
+    await upsertSessionMemoryFromChat({
+      userId: input.userId,
+      sessionId: input.sessionId,
+      characterKey: input.characterKey,
+      topicSummary: input.topicSummary,
+      keyCards: input.keyCards,
+      prediction: input.prediction,
+      mood: input.mood,
+    });
+    if (input.outcomeRating != null) {
+      await query(
+        `UPDATE session_memories SET outcome_rating = $3
+         WHERE session_id = $2 AND user_id = $1`,
+        [input.userId, input.sessionId, input.outcomeRating]
+      );
+    }
+    return;
+  }
+
   await query(
     `INSERT INTO session_memories
        (user_id, character_key, topic_summary, key_cards, prediction, mood, outcome_rating)
@@ -76,25 +101,62 @@ export async function saveSessionMemory(input: {
   );
 }
 
-export async function generateSessionSummary(
-  transcript: string,
-  cardNames: string[]
-): Promise<Omit<SessionMemory, "date" | "outcomeRating"> | null> {
-  const text = await completeChat({
-    messages: [
-      { role: "system", content: SESSION_SUMMARY_PROMPT },
-      {
-        role: "user",
-        content: `Карты расклада: ${cardNames.join(", ") || "не указаны"}\n\nПереписка:\n${transcript.slice(0, 6000)}`,
-      },
-    ],
-    maxTokens: 400,
-    temperature: 0.3,
-    isPaid: false,
+/** Create or refresh cabinet row when a consultation session starts or updates. */
+export async function ensureSessionMemoryStub(input: {
+  userId: string;
+  sessionId: string;
+  characterKey: string;
+  topicSummary: string;
+  keyCards: string[];
+  prediction?: string;
+}): Promise<void> {
+  await upsertSessionMemoryFromChat({
+    userId: input.userId,
+    sessionId: input.sessionId,
+    characterKey: input.characterKey,
+    topicSummary: input.topicSummary,
+    keyCards: input.keyCards,
+    prediction: input.prediction?.trim() || "Сеанс в процессе",
   });
+}
 
-  if (!text) return null;
+/** Upsert cabinet session row after each master reply — any character, any session length. */
+export async function upsertSessionMemoryFromChat(input: {
+  userId: string;
+  sessionId: string;
+  characterKey: string;
+  topicSummary: string;
+  keyCards: string[];
+  prediction: string;
+  mood?: string;
+}): Promise<void> {
+  await query(
+    `INSERT INTO session_memories
+       (user_id, session_id, character_key, topic_summary, key_cards, prediction, mood)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+       character_key = EXCLUDED.character_key,
+       topic_summary = EXCLUDED.topic_summary,
+       key_cards = EXCLUDED.key_cards,
+       prediction = EXCLUDED.prediction,
+       mood = COALESCE(EXCLUDED.mood, session_memories.mood),
+       session_date = NOW()`,
+    [
+      input.userId,
+      input.sessionId,
+      input.characterKey,
+      input.topicSummary.slice(0, 500),
+      input.keyCards.slice(0, 5),
+      input.prediction.slice(0, 1000),
+      input.mood ?? null,
+    ]
+  );
+}
 
+function parseSessionSummary(
+  text: string,
+  cardNames: string[]
+): Omit<SessionMemory, "date" | "outcomeRating"> | null {
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch?.[0] ?? text) as {
@@ -115,9 +177,29 @@ export async function generateSessionSummary(
   }
 }
 
-/** Save summary after ≥3 user turns; skip if saved in last hour for same character. */
+export async function generateSessionSummary(
+  transcript: string,
+  cardNames: string[]
+): Promise<Omit<SessionMemory, "date" | "outcomeRating"> | null> {
+  const text = await completeChat({
+    messages: [
+      { role: "system", content: SESSION_SUMMARY_PROMPT },
+      {
+        role: "user",
+        content: `Карты расклада: ${cardNames.join(", ") || "не указаны"}\n\nПереписка:\n${transcript.slice(0, 6000)}`,
+      },
+    ],
+    maxTokens: 400,
+    temperature: 0.3,
+  });
+
+  return text ? parseSessionSummary(text, cardNames) : null;
+}
+
+/** Enrich existing session row with LLM summary after longer dialogue. */
 export async function maybePersistSessionMemory(params: {
   userId: string;
+  sessionId?: string;
   characterKey: string;
   messages: { role: string; content: string }[];
   cardNames: string[];
@@ -125,6 +207,30 @@ export async function maybePersistSessionMemory(params: {
 }): Promise<void> {
   const userTurns = params.messages.filter((m) => m.role === "user").length;
   if (userTurns < 3 || userTurns % 3 !== 0) return;
+
+  const transcript = params.messages
+    .slice(-12)
+    .map((m) => `${m.role === "user" ? "Клиент" : "Мастер"}: ${m.content}`)
+    .concat([`Мастер: ${params.lastAssistantReply}`])
+    .join("\n");
+
+  const summary = await generateSessionSummary(transcript, params.cardNames);
+  if (!summary) return;
+
+  if (params.sessionId) {
+    // Upsert so the episodic row is created mid-chat even when no prior row
+    // exists (pure chat sessions), not just updated when one happens to exist.
+    await upsertSessionMemoryFromChat({
+      userId: params.userId,
+      sessionId: params.sessionId,
+      characterKey: params.characterKey,
+      topicSummary: summary.topicSummary,
+      keyCards: summary.keyCards,
+      prediction: summary.prediction,
+      mood: summary.mood,
+    });
+    return;
+  }
 
   const { rows } = await query<{ recent: boolean }>(
     `SELECT EXISTS(
@@ -135,15 +241,6 @@ export async function maybePersistSessionMemory(params: {
     [params.userId, params.characterKey]
   );
   if (rows[0]?.recent) return;
-
-  const transcript = params.messages
-    .slice(-12)
-    .map((m) => `${m.role === "user" ? "Клиент" : "Мастер"}: ${m.content}`)
-    .concat([`Мастер: ${params.lastAssistantReply}`])
-    .join("\n");
-
-  const summary = await generateSessionSummary(transcript, params.cardNames);
-  if (!summary) return;
 
   await saveSessionMemory({
     userId: params.userId,

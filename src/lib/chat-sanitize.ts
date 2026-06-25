@@ -2,7 +2,7 @@ import { getBloggerBySlug } from "@/lib/session";
 import { isAiMasterId } from "@/lib/showcase-masters";
 
 export const MAX_CHAT_HISTORY = 24;
-export const MAX_USER_MESSAGE_LENGTH = 1000;
+export const MAX_USER_MESSAGE_LENGTH = 500;
 
 const ALLOWED_ROLES = new Set(["user", "assistant"]);
 
@@ -40,6 +40,14 @@ export function sanitizeChatHistory(
   return cleaned.slice(-maxMessages);
 }
 
+export {
+  isDegenerateLlmOutput,
+  stripMemoryLeakFromReply,
+  sanitizeReadingForClient,
+  isPromptLeakInReading,
+  FULL_SPREAD_REQUEST_RE,
+} from "@/lib/chat-reply-sanitize";
+
 export type SanitizedUserProfile = {
   name?: string;
   gender?: string;
@@ -69,11 +77,15 @@ export function sanitizeUserProfileForPrompt(
   };
 }
 
-/** Whitelist AI master IDs; allow known human blogger slugs; fallback to ragnar. */
+/** Whitelist AI master IDs; allow known human blogger slugs. */
 export async function resolveApiCharacterId(characterId: unknown): Promise<string> {
-  if (typeof characterId !== "string") return "ragnar";
+  if (typeof characterId !== "string") {
+    throw new Error(`Unknown characterId: ${String(characterId)}`);
+  }
   const id = stripControlChars(characterId).trim().slice(0, 64);
-  if (!id) return "ragnar";
+  if (!id) {
+    throw new Error(`Unknown characterId: ${characterId}`);
+  }
   if (isAiMasterId(id)) return id;
   try {
     const blogger = await getBloggerBySlug(id);
@@ -81,5 +93,5 @@ export async function resolveApiCharacterId(characterId: unknown): Promise<strin
   } catch {
     /* DB unavailable — only allow known AI IDs */
   }
-  return "ragnar";
+  throw new Error(`Unknown characterId: ${characterId}`);
 }

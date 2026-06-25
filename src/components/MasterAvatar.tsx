@@ -56,7 +56,8 @@ export default function MasterAvatar({
     setFailed(true);
   };
 
-  const label = masterName ?? masterId;
+  const displayName = masterName ?? masterId;
+  const altText = `${displayName} — наставник Zovus`;
 
   return (
     <div
@@ -71,7 +72,7 @@ export default function MasterAvatar({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
-            alt=""
+            alt={altText}
             className="master-avatar__img master-avatar__img--svg"
             loading={priority ? "eager" : "lazy"}
             onError={handleError}
@@ -79,7 +80,7 @@ export default function MasterAvatar({
         ) : (
           <Image
             src={src}
-            alt=""
+            alt={altText}
             fill
             sizes={
               size === "showcase"
@@ -114,7 +115,7 @@ export default function MasterAvatar({
           <span className="master-avatar__monogram font-display">{slot.monogram}</span>
         </div>
       )}
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{displayName}</span>
     </div>
   );
 }

@@ -109,7 +109,7 @@ export default function MasterShowcaseCard({
           />
         </div>
 
-        <div className="master-showcase-card__badges-slot" aria-hidden={false}>
+        <div className="master-showcase-card__badges-slot">
           {recommended ? <CardBadge variant="accent">Вам</CardBadge> : null}
           {canContinue ? <CardBadge variant="accent">Готово</CardBadge> : null}
           {isRitualMaster(master.id) ? (
@@ -121,45 +121,36 @@ export default function MasterShowcaseCard({
           </CardBadge>
         </div>
 
-        <div className="master-showcase-card__body">
-          <h3 className="master-showcase-card__name">{displayName}</h3>
-          <p className="master-showcase-card__system">{master.title}</p>
+        <h3 className="master-showcase-card__name">{displayName}</h3>
+        <p className="master-showcase-card__system">{master.title}</p>
 
-          <p className="master-showcase-card__meta">
-            <span className="master-showcase-card__meta-item">
-              <Star className="lux-star master-showcase-card__star" aria-hidden />
-              {master.rating}
-            </span>
-            <span className="master-showcase-card__meta-sep" aria-hidden>
-              ·
-            </span>
-            <span className="master-showcase-card__meta-item">{master.sessions}</span>
-          </p>
+        <p className="master-showcase-card__meta">
+          <span className="master-showcase-card__meta-item">
+            <Star className="lux-star master-showcase-card__star" aria-hidden />
+            {master.rating}
+          </span>
+          <span className="master-showcase-card__meta-sep" aria-hidden>
+            ·
+          </span>
+          <span className="master-showcase-card__meta-item">{master.sessions}</span>
+        </p>
 
-          <p className="master-showcase-card__price">
-            <span className="master-showcase-card__price-amount">{price.amount}</span>
-            {price.unit ? (
-              <span className="master-showcase-card__price-unit"> {price.unit}</span>
-            ) : null}
-          </p>
+        <p className="master-showcase-card__price">
+          <span className="master-showcase-card__price-amount">{price.amount}</span>
+          {price.unit ? (
+            <span className="master-showcase-card__price-unit"> {price.unit}</span>
+          ) : null}
+        </p>
 
-          <button
-            type="button"
-            onClick={() => onSelect(master.id)}
-            disabled={actionBlocked}
-            className="master-showcase-card__cta btn-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="master-showcase-card__cta-label">
-              <span className="master-showcase-card__cta-label-sizer" aria-hidden>
-                Продолжить
-              </span>
-              <span className="master-showcase-card__cta-label-text">
-                {actionBlocked ? "Нужны руны" : ctaLabel}
-              </span>
-            </span>
-            <ArrowRight className="master-showcase-card__cta-arrow" aria-hidden />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => onSelect(master.id)}
+          disabled={actionBlocked}
+          className="master-showcase-card__cta disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionBlocked ? "Нужны руны" : ctaLabel}
+          <ArrowRight className="master-showcase-card__cta-arrow" aria-hidden />
+        </button>
       </div>
     </motion.article>
   );

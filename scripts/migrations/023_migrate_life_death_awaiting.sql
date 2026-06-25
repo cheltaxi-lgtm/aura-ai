@@ -1,0 +1,2 @@
+ALTER TABLE sessions
+  ADD COLUMN IF NOT EXISTS awaiting_context BOOLEAN NOT NULL DEFAULT false;

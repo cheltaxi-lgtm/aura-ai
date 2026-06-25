@@ -1,5 +1,7 @@
 import { buildImagePrompt, type ImageGenerateRequest } from "@/lib/image-prompts";
+import { openRouterAppHeaders } from "@/lib/brand";
 import { isOpenRouterConfigured } from "@/lib/llm";
+import { withLlmSlot } from "@/lib/llm-concurrency";
 import { distillSceneVisualPrompt } from "@/lib/scene-visual-prompt";
 import { getSetting, type ImageQuality, type VisualSettings } from "@/lib/settings";
 
@@ -15,16 +17,11 @@ export interface GeneratedImage {
 }
 
 function openRouterHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
     "Content-Type": "application/json",
+    ...openRouterAppHeaders(),
   };
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (appUrl) {
-    headers["HTTP-Referer"] = appUrl;
-    headers["X-Title"] = "Aura";
-  }
-  return headers;
 }
 
 /** Seedream 4.5 on OpenRouter: flat $0.04/image — 1K and 2K same price; keep 1K for chat illustrations. */
@@ -74,6 +71,7 @@ async function callOpenRouterImage(
   aspectRatio: string,
   quality: ImageQuality
 ): Promise<string | null> {
+  return withLlmSlot(`image:${model}`, async () => {
   const response = await fetch(OPENROUTER_API, {
     method: "POST",
     headers: openRouterHeaders(),
@@ -100,6 +98,7 @@ async function callOpenRouterImage(
   }
 
   return extractImageUrl(payload.choices?.[0]?.message);
+  });
 }
 
 function resolveModelChain(settings: VisualSettings): string[] {

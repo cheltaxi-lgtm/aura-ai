@@ -218,7 +218,7 @@ export default function ReadingRecap({
       ) : null}
 
       {hasSpread ? (
-        <div className="reading-recap__actions flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <div className="reading-recap__actions">
           {showContinue ? (
             <button
               type="button"

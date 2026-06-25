@@ -3,14 +3,23 @@
 import Image from "next/image";
 import type { DeckSystem } from "@/lib/decks/types";
 import { deckBackPath, resolveDeckCard, resolveDeckSystem, DECK_ACCENT_CLASS } from "@/lib/deck-card-utils";
+import { getDeckImagePath } from "@/data/decks";
+import { parseCardOrientation } from "@/lib/card-orientation";
 import {
   symbolCornerLabel,
   symbolKindLabel,
 } from "@/lib/symbol-visuals";
-import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
 
 export interface DeckCardProps {
-  card: { id?: number; name: string; meaning?: string };
+  card: {
+    id?: number;
+    name: string;
+    meaning?: string;
+    reversed?: boolean;
+    imagePath?: string;
+    placeholder?: boolean;
+    originalName?: string;
+  };
   system?: DeckSystem;
   masterId?: string;
   position?: string;
@@ -24,10 +33,20 @@ export interface DeckCardProps {
   reversed?: boolean;
   /** Pre-resolved deck face path (photo redraw) */
   imagePath?: string;
+  /** Symbolic face from photo when Zovus art is unavailable */
+  detectedOnly?: boolean;
+  /** Label read from photo (shown on detected face) */
+  originalName?: string;
   /** Opens detail modal — gallery & daily spread */
   onClick?: () => void;
   interactive?: boolean;
 }
+
+const DECK_IMAGE_SIZES = {
+  sm: "(max-width: 768px) 33vw, 120px",
+  md: "(max-width: 768px) 33vw, 150px",
+  lg: "(max-width: 768px) 33vw, 180px",
+} as const;
 
 const SIZE_CLASS = {
   sm: "lux-deck-card--sm",
@@ -47,19 +66,43 @@ export default function DeckCard({
   hideCaption = false,
   reversed = false,
   imagePath: imagePathProp,
+  detectedOnly = false,
+  originalName,
   onClick,
   interactive = false,
 }: DeckCardProps) {
   const system = resolveDeckSystem(systemProp, masterId);
   const resolved = resolveDeckCard(system, card);
-  const spreadSymbol = resolveSpreadSymbol(system, card);
-  const accent = DECK_ACCENT_CLASS[system];
+  const effectiveSystem = resolved.system;
+  const spreadSymbol = resolved.symbol;
+  const accent = DECK_ACCENT_CLASS[effectiveSystem];
   const sizeClass = SIZE_CLASS[size];
   const meaningWidth = size === "lg" ? "max-w-[180px]" : size === "sm" ? "max-w-[120px]" : "max-w-[156px]";
+  const isReversed = reversed || resolved.reversed;
+  const baseCardName = parseCardOrientation(card.name).name;
+  const deckFallback = getDeckImagePath(effectiveSystem, baseCardName);
+  const backPath = deckBackPath(effectiveSystem);
 
-  const imageSrc = faceDown ? deckBackPath(system) : (imagePathProp ?? resolved.imagePath);
-  const corner = faceDown ? "✦" : symbolCornerLabel(system, spreadSymbol);
-  const kindLabel = faceDown ? "" : symbolKindLabel(system, spreadSymbol);
+  const pickArtPath = (...candidates: (string | undefined)[]) => {
+    for (const src of candidates) {
+      const trimmed = src?.trim();
+      if (trimmed && trimmed !== backPath) return trimmed;
+    }
+    return deckFallback !== backPath ? deckFallback : "";
+  };
+
+  const hasExplicitArt = Boolean(
+    pickArtPath(imagePathProp, card.imagePath, resolved.imagePath, deckFallback)
+  );
+  const imageSrc = faceDown
+    ? backPath
+    : pickArtPath(imagePathProp, card.imagePath, resolved.imagePath, deckFallback);
+  const faceLabel = originalName?.trim() || resolved.originalName?.trim() || spreadSymbol.name;
+  const showDetectedFace =
+    (detectedOnly || resolved.detectedOnly) && !faceDown && !hasExplicitArt;
+  const showNumerologyFace = effectiveSystem === "numerology" && !faceDown && !showDetectedFace;
+  const corner = faceDown ? "✦" : symbolCornerLabel(effectiveSystem, spreadSymbol);
+  const kindLabel = faceDown ? "" : symbolKindLabel(effectiveSystem, spreadSymbol);
 
   const isClickable = Boolean(onClick) || interactive;
   const meaning = resolved.shortMeaning || spreadSymbol.meaning;
@@ -87,17 +130,41 @@ export default function DeckCard({
           </div>
 
           <div
-            className={`lux-tarot-card__image-wrap${reversed ? " lux-tarot-card__image-wrap--reversed" : ""}`}
+            className={`lux-tarot-card__image-wrap${isReversed ? " lux-tarot-card__image-wrap--reversed" : ""}`}
           >
-            <Image
-              src={imageSrc}
-              alt={faceDown ? "Рубашка" : resolved.name}
-              fill
-              sizes={size === "lg" ? "180px" : size === "sm" ? "120px" : "156px"}
-              className="lux-tarot-card__image object-cover"
-              unoptimized
-            />
-            <div className="lux-tarot-card__image-vignette" aria-hidden />
+            {showDetectedFace ? (
+              <div className="lux-detected-card-face" aria-label={faceLabel}>
+                <span className="lux-detected-card-face__glyph" aria-hidden>
+                  ✦
+                </span>
+                <span className="lux-detected-card-face__name">{faceLabel}</span>
+              </div>
+            ) : showNumerologyFace ? (
+              <div className="lux-detected-card-face lux-detected-card-face--numerology" aria-label={faceLabel}>
+                <span className="lux-detected-card-face__glyph font-display text-4xl text-aura-champagne" aria-hidden>
+                  {spreadSymbol.name}
+                </span>
+              </div>
+            ) : imageSrc ? (
+              <>
+                <Image
+                  src={imageSrc}
+                  alt={faceDown ? "Рубашка" : resolved.name}
+                  fill
+                  unoptimized={imageSrc.startsWith("/decks/")}
+                  sizes={DECK_IMAGE_SIZES[size]}
+                  className="lux-tarot-card__image object-cover"
+                />
+                <div className="lux-tarot-card__image-vignette" aria-hidden />
+              </>
+            ) : (
+              <div className="lux-detected-card-face" aria-label={faceLabel}>
+                <span className="lux-detected-card-face__glyph" aria-hidden>
+                  ✦
+                </span>
+                <span className="lux-detected-card-face__name">{faceLabel}</span>
+              </div>
+            )}
           </div>
 
           {!faceDown && !hideCaption && (

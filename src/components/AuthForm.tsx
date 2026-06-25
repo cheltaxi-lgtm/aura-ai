@@ -8,6 +8,9 @@ import ProfileAstroFields, {
   profileAstroToPayload,
   type ProfileAstroValues,
 } from "@/components/ProfileAstroFields";
+import { sanitizeReturnTo } from "@/lib/safe-redirect";
+import { clearClientAuthState } from "@/lib/client-logout";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 interface AuthFormProps {
   mode: "login" | "register";
@@ -25,6 +28,7 @@ const DEFAULT_ASTRO: ProfileAstroValues = {
 
 export default function AuthForm({ mode, role }: AuthFormProps) {
   const router = useRouter();
+  const { expertRegistrationEnabled } = usePlatformFeatures();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -36,6 +40,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
+  const showRegisterLink =
+    mode === "login" && (role !== "expert" || expertRegistrationEnabled);
   const endpoint = `/api/auth/${role}/${mode === "login" ? "login" : "register"}`;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,7 +49,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     setError("");
     setLoading(true);
 
-    const body: Record<string, unknown> = { email, password };
+    const body: Record<string, unknown> = { email: email.trim(), password };
 
     if (mode === "register") {
       body.name = name;
@@ -86,6 +92,15 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         return;
       }
 
+      if (typeof window !== "undefined") {
+        if (mode === "login") {
+          clearClientAuthState();
+          localStorage.setItem("aura_flow_step", "masters");
+        } else if (isUserRegister && !data.sessionLinked) {
+          localStorage.removeItem("aura_session_id");
+        }
+      }
+
       if (isUserRegister && data.profile) {
         localStorage.setItem(
           "aura_profile",
@@ -97,13 +112,25 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         localStorage.setItem("aura_flow_step", "triplet");
       }
 
-      const destination =
-        typeof window !== "undefined"
-          ? new URLSearchParams(window.location.search).get("returnTo") ||
-            (isExpert ? "/expert" : "/")
-          : isExpert
-            ? "/expert"
-            : "/";
+      const returnParams =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      let destination = returnParams
+        ? sanitizeReturnTo(
+            returnParams.get("returnTo") ?? returnParams.get("next"),
+            isExpert ? "/expert" : "/"
+          )
+        : isExpert
+          ? "/expert"
+          : "/";
+
+      if (typeof window !== "undefined" && mode === "login" && role === "user") {
+        const landing = new URL(destination, window.location.origin);
+        landing.searchParams.delete("step");
+        destination = `${landing.pathname}${landing.search}${landing.hash}`;
+        window.location.assign(destination);
+        return;
+      }
+
       router.push(destination);
       router.refresh();
     } catch {
@@ -221,23 +248,25 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         {loading ? "..." : mode === "login" ? "Войти" : "Создать аккаунт и открыть карты"}
       </button>
 
-      <p className="text-center text-xs text-gray-600">
-        {mode === "login" ? (
-          <>
-            Нет аккаунта?{" "}
-            <Link href={`/auth/${role}/register`} className="text-aura-neon hover:underline">
-              Регистрация
-            </Link>
-          </>
-        ) : (
-          <>
-            Уже есть аккаунт?{" "}
-            <Link href={`/auth/${role}/login`} className="text-aura-neon hover:underline">
-              Войти
-            </Link>
-          </>
-        )}
-      </p>
+      {(mode === "login" && showRegisterLink) || mode === "register" ? (
+        <p className="text-center text-xs text-gray-600">
+          {mode === "login" ? (
+            <>
+              Нет аккаунта?{" "}
+              <Link href={`/auth/${role}/register`} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+                Регистрация
+              </Link>
+            </>
+          ) : (
+            <>
+              Уже есть аккаунт?{" "}
+              <Link href={`/auth/${role}/login`} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+                Войти
+              </Link>
+            </>
+          )}
+        </p>
+      ) : null}
     </form>
   );
 }

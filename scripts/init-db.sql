@@ -1,1 +1,5 @@
--- Deprecated: canonical schema is src/lib/schema.sql (mounted by docker-compose.yml)
+-- Deprecated entrypoint — use the versioned migration runner instead.
+--
+-- Fresh DB (Docker): src/lib/schema.sql via docker-compose init
+-- All environments:  npm run migrate   (scripts/migrate.mjs + scripts/migrations/*.sql)
+-- Status:             npm run migrate:status

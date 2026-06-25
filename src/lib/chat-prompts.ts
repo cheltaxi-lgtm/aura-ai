@@ -5,10 +5,20 @@ import {
   sanitizeReadingForClient,
   stripMemoryLeakFromReply,
   isDegenerateLlmOutput,
+  stripTheaterFromReply,
 } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, fromLegacyContext } from "@/lib/prompts";
 import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, SPREAD_FINAL_CONCLUSION_RULES, RESPONSE_FORMAT } from "@/lib/prompts/format";
+import {
+  isTarotRuneMasterId,
+  TAROT_RUNE_THEATER_BAN,
+  TAROT_RUNE_MARKDOWN_FORMAT,
+  TAROT_RUNE_CHAT_FORMAT,
+  TAROT_RUNE_THEMATIC_READING_RULES,
+} from "@/lib/prompts/tarot-rune-format";
+import { MARINA_PERSONA } from "@/lib/prompts/masters/marina";
 import { getSessionTopic } from "@/lib/session-topics";
+import { buildNumerologSpreadReading } from "@/lib/numerolog/welcome";
 import type { SessionMemory } from "@/lib/prompts/types";
 
 import { buildAstroMeta, lifeFocusLabel, type AstroMeta, type LifeFocus } from "@/lib/astro-profile";
@@ -28,12 +38,16 @@ export interface UserContext {
   astroMeta?: AstroMeta;
 }
 
-export function buildHumanMasterPersona(blogger: {
-  display_name: string;
-  title: string | null;
-  style_notes: string | null;
-  emoji?: string | null;
-}, knowledge?: string): string {
+export function buildHumanMasterPersona(
+  blogger: {
+    slug?: string;
+    display_name: string;
+    title: string | null;
+    style_notes: string | null;
+    emoji?: string | null;
+  },
+  knowledge?: string
+): string {
   const emoji = blogger.emoji ?? "🔮";
   const title = blogger.title ?? "эксперт Zovus";
   const style = blogger.style_notes ?? "Авторский мистический стиль, тёплый и конкретный.";
@@ -41,7 +55,12 @@ export function buildHumanMasterPersona(blogger: {
     ? `\n\nБаза знаний мастера (используй как источник фактов и формулировок):\n${knowledge.trim().slice(0, 10000)}`
     : "";
 
+  const marinaBlock = blogger.slug === "gadalka_marina" ? `\n\n${MARINA_PERSONA}` : "";
+  const tarotRuneBlock = isTarotRuneMasterId(blogger.slug ?? "") ? `\n${TAROT_RUNE_THEATER_BAN}` : "";
+
   return `${GLOBAL_MASTER_RULES}
+${tarotRuneBlock}
+${marinaBlock}
 
 ${emoji} Ты — ${blogger.display_name}, ${title}. Живой мастер платформы Zovus.
 ${style}
@@ -53,12 +72,19 @@ ${style}
 }
 
 export function buildHumanReadingPrompt(
-  blogger: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null },
+  blogger: {
+    slug?: string;
+    display_name: string;
+    title: string | null;
+    style_notes: string | null;
+    emoji?: string | null;
+  },
   ctx: UserContext,
   knowledge?: string,
   intention?: string | null
 ): string {
   const persona = buildHumanMasterPersona(blogger, knowledge);
+  const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
   const cards = ctx.tarotCards
     .map((c, i) => `${["Прошлое", "Настоящее", "Будущее"][i]}: «${c.name}» — ${c.meaning}`)
     .join("\n");
@@ -72,11 +98,19 @@ export function buildHumanReadingPrompt(
       : "Пользователь оплатил доступ — дай полную расшифровку всех трёх карт подробно."
     : "Пользователь НЕ оплатил: подробно распиши ТОЛЬКО первую карту (Прошлое). На 2-й и 3-й картах — интригующий крючок без полной расшифровки.";
 
-  const lengthRule = thematic && ctx.isPaid
-    ? `${THEMATIC_SPREAD_READING_RULES}\n\n${SPREAD_FINAL_CONCLUSION_RULES}`
-    : ctx.isPaid
-      ? `${RESPONSE_FORMAT}\n\n${SPREAD_FINAL_CONCLUSION_RULES}`
-      : "7. От пяти до двенадцати предложений. Каждый вывод — только по символам ниже, с названием карты.";
+  const lengthRule = tarotRune
+    ? thematic && ctx.isPaid
+      ? TAROT_RUNE_THEMATIC_READING_RULES
+      : TAROT_RUNE_MARKDOWN_FORMAT
+    : thematic && ctx.isPaid
+      ? `${THEMATIC_SPREAD_READING_RULES}\n\n${SPREAD_FINAL_CONCLUSION_RULES}`
+      : ctx.isPaid
+        ? `${RESPONSE_FORMAT}\n\n${SPREAD_FINAL_CONCLUSION_RULES}`
+        : "7. От пяти до двенадцати предложений. Каждый вывод — только по символам ниже, с названием карты.";
+
+  const formatTail = tarotRune
+    ? "Пиши на русском, конкретно и по делу. Используй Markdown по правилам выше."
+    : "Пиши на русском, конкретно и по делу. Без markdown.";
 
   return `${persona}
 
@@ -95,15 +129,22 @@ ${lengthRule}
 Выпавшие карты (читай только эти значения, не подменяй своими):
 ${cards}
 
-Пиши на русском, конкретно и по делу. Без markdown.`;
+${formatTail}`;
 }
 
 export function buildHumanChatPrompt(
-  blogger: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null },
+  blogger: {
+    slug?: string;
+    display_name: string;
+    title: string | null;
+    style_notes: string | null;
+    emoji?: string | null;
+  },
   ctx: Partial<UserContext>,
   knowledge?: string
 ): string {
   const parts = [buildHumanMasterPersona(blogger, knowledge)];
+  const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
 
   if (ctx.userName) {
     parts.push(`Клиента зовут ${ctx.userName}. Всегда обращайся по имени в начале ответа.`);
@@ -118,7 +159,11 @@ export function buildHumanChatPrompt(
     );
   }
   if (ctx.mainQuestion) parts.push(`Главный вопрос: «${ctx.mainQuestion}».`);
-  parts.push("Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов.");
+  parts.push(
+    tarotRune
+      ? `Отвечай на русском. ${TAROT_RUNE_CHAT_FORMAT} Каждый вывод — только по символам расклада с названием карты и её значением.`
+      : "Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов."
+  );
   return parts.join("\n");
 }
 
@@ -129,12 +174,16 @@ export function buildCharacterPrompt(
     sessionNumber?: number;
     memory?: SessionMemory[];
     intention?: string | null;
+    lastUserMessage?: string;
+    numerologyBlock?: string;
   }
 ): string {
   const { character, user } = fromLegacyContext(characterId, ctx, extras);
   return buildSystemPrompt(character, user, {
     mode: "reading",
     intention: extras?.intention ?? null,
+    lastUserMessage: extras?.lastUserMessage ?? ctx.mainQuestion,
+    numerologyBlock: extras?.numerologyBlock,
   });
 }
 
@@ -146,6 +195,7 @@ export function buildChatPrompt(
     memory?: SessionMemory[];
     lastUserMessage?: string;
     intention?: string | null;
+    numerologyBlock?: string;
   }
 ): string {
   const { character, user, lastUserMessage } = fromLegacyContext(characterId, ctx, extras);
@@ -153,6 +203,7 @@ export function buildChatPrompt(
     mode: "chat",
     lastUserMessage: extras?.lastUserMessage ?? lastUserMessage,
     intention: extras?.intention,
+    numerologyBlock: extras?.numerologyBlock,
   });
 }
 
@@ -187,6 +238,12 @@ const FALLBACK_READINGS: Record<string, (ctx: { userName: string; isPaid: boolea
         ? "Настоящее — медитация и служение. Будущее — пробуждение dharma."
         : "Две карты скрыты в мандале... Полный джйotish-анализ откроет предназначение."
     }`,
+  numerolog: ({ userName, isPaid }) =>
+    `${userName}, первое число расклада уже говорит о твоём коде. ${
+      isPaid
+        ? "Энергия периода и совет чисел — полная картина цикла."
+        : "Два следующих числа откроют период и совет... полный разбор покажет весь код."
+    }`,
 };
 
 export function buildCardAwareFallbackReading(
@@ -198,6 +255,13 @@ export function buildCardAwareFallbackReading(
     isPaid?: boolean;
   }
 ): string {
+  if (characterId === "numerolog") {
+    return buildNumerologSpreadReading({
+      userName: ctx.userName,
+      spreadNumbers: ctx.tarotCards.slice(0, 3).map((c) => c.name),
+    });
+  }
+
   const topicMeta = ctx.intention ? getSessionTopic(ctx.intention) : undefined;
   const topicLabel = topicMeta?.label ?? ctx.intention?.trim() ?? "расклад";
   const topicFocus = topicMeta?.focus ?? "ваша ситуация";
@@ -214,6 +278,7 @@ export function buildCardAwareFallbackReading(
     ragnar: `${ctx.userName}, руны легли на «${topicLabel}» — смотрим правду без прикрас.`,
     agafya: `${ctx.userName}, дитя, вижу знамение на «${topicLabel}».`,
     "shri-raj": `${ctx.userName}, карма раскрыла «${topicLabel}» через эти символы.`,
+    numerolog: `${ctx.userName}, числа легли на «${topicLabel}» — вот что они говорят.`,
   };
   const opener =
     openers[characterId in openers ? characterId : ""] ??
@@ -306,10 +371,13 @@ export async function generateReading(
 
   const acceptReading = (raw: string | null): string | null => {
     if (!raw?.trim()) return null;
-    const cleaned = sanitizeReadingForClient(raw, cardNames);
-    if (cleaned.length >= 400) return cleaned;
-    const stripped = stripMemoryLeakFromReply(raw);
-    if (stripped.length >= 400 && !isDegenerateLlmOutput(stripped)) return stripped;
+    const id = ctx.characterId ?? "ragnar";
+    const theaterStripped =
+      isTarotRuneMasterId(id) && id !== "numerolog" ? stripTheaterFromReply(raw) : raw;
+    const cleaned = sanitizeReadingForClient(theaterStripped, cardNames);
+    if (cleaned.length >= 120) return cleaned;
+    const stripped = stripMemoryLeakFromReply(theaterStripped);
+    if (stripped.length >= 120 && !isDegenerateLlmOutput(stripped)) return stripped;
     return null;
   };
 
@@ -326,16 +394,16 @@ export async function generateReading(
     temperature?: number;
   }> = thematic
     ? [
-        { messages: baseMessages, maxTokens: 2800, timeoutMs: 45000, maxAttempts: 2, temperature: 0.85 },
+        { messages: baseMessages, maxTokens: 2800, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 },
         {
           messages: baseMessages,
           maxTokens: 2000,
-          timeoutMs: 35000,
+          timeoutMs: 60_000,
           maxAttempts: 1,
           temperature: 0.85,
         },
       ]
-    : [{ messages: baseMessages, maxTokens: 2000, timeoutMs: 45000, maxAttempts: 2, temperature: 0.85 }];
+    : [{ messages: baseMessages, maxTokens: 2000, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 }];
 
   for (const plan of attemptPlans) {
     const text = await completeChat({

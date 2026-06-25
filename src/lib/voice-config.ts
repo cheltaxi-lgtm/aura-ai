@@ -18,6 +18,13 @@ export interface CharacterTtsProfile {
   speed?: number;
 }
 
+/** Masters without voice playback (no TTS profile). */
+export const TTS_DISABLED_CHARACTERS = new Set<string>(["numerolog"]);
+
+export function isCharacterTtsEnabled(characterId: string): boolean {
+  return !TTS_DISABLED_CHARACTERS.has(characterId);
+}
+
 export const CHARACTER_TTS: Record<string, CharacterTtsProfile> = {
   ragnar: {
     geminiVoice: "Charon",
@@ -56,7 +63,8 @@ export const CHARACTER_TTS: Record<string, CharacterTtsProfile> = {
   },
 };
 
-export function resolveCharacterTts(characterId: string): CharacterTtsProfile {
+export function resolveCharacterTts(characterId: string): CharacterTtsProfile | null {
+  if (!isCharacterTtsEnabled(characterId)) return null;
   const base = CHARACTER_TTS[characterId] ?? CHARACTER_TTS.default;
   const envGeminiVoice = process.env[
     `OPENROUTER_TTS_VOICE_${characterId.toUpperCase().replace(/-/g, "_")}`

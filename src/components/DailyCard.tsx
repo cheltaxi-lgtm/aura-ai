@@ -98,7 +98,8 @@ export default function DailyCard({
 
       {isFlipped && !loading && (
         <motion.button
-          className="text-sm text-aura-purple/70 hover:text-aura-neon hover:underline"
+          type="button"
+          className="btn-luxe btn-luxe--sm btn-luxe--silver"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           onClick={handleReset}

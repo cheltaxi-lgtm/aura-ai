@@ -3,6 +3,7 @@ import { ensureDb } from "@/lib/db";
 import { registerInfluencer } from "@/lib/influencers";
 import { clientIp, enforceInfluencerRegisterRateLimit } from "@/lib/api-guards";
 import { sanitizeTextField } from "@/lib/chat-sanitize";
+import { isExpertRegistrationEnabled } from "@/lib/settings";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +14,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
     }
 
+    if (!(await isExpertRegistrationEnabled())) {
+      return NextResponse.json(
+        { error: "Регистрация мастеров временно закрыта" },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
+    const registerSecret = process.env.INFLUENCER_REGISTER_SECRET;
+
+    // Open registration without secret is allowed only outside production (local/dev).
+    if (process.env.NODE_ENV === "production") {
+      if (!registerSecret) {
+        return NextResponse.json(
+          { error: "Influencer registration is not configured" },
+          { status: 503 }
+        );
+      }
+      if (body.secret !== registerSecret) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    } else if (registerSecret && body.secret !== registerSecret) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const name = sanitizeTextField(body.name, 80);
     const telegramLink = sanitizeTextField(body.telegramLink, 200);
     const customPrompt = sanitizeTextField(body.customPrompt, 2000);

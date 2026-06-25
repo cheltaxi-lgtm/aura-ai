@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { AUTH_LOGOUT_EVENT } from "@/lib/client-logout";
 import { fetchWithTimeout } from "./fetch-with-timeout";
 
 export interface AuthUser {
@@ -29,6 +30,15 @@ export function useAuth() {
   useEffect(() => {
     refresh().finally(() => setLoading(false));
   }, [refresh]);
+
+  useEffect(() => {
+    const onLogout = () => {
+      setUser(null);
+      setLoading(false);
+    };
+    window.addEventListener(AUTH_LOGOUT_EVENT, onLogout);
+    return () => window.removeEventListener(AUTH_LOGOUT_EVENT, onLogout);
+  }, []);
 
   return {
     user,

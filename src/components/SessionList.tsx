@@ -1,0 +1,363 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ArrowLeft, Plus, CheckCircle2, Circle, Archive, Trash2 } from "lucide-react";
+import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
+import MasterAvatar from "@/components/MasterAvatar";
+import { getCharacterById } from "@/lib/characters";
+import type { ShowcaseMaster } from "@/lib/showcase-masters";
+import { findShowcaseMaster } from "@/lib/showcase-masters";
+import {
+  RITUAL_MASTERS,
+  RITUAL_TYPES,
+  ritualStatusLabel,
+  type RitualType,
+} from "@/lib/ritual-config";
+import type { RitualClientData } from "@/components/ritual/RitualCard";
+
+export type SessionListItem = {
+  id: string;
+  intention: string | null;
+  spreadType: string | null;
+  cards: string[] | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  topicSummary: string | null;
+  keyCards: string[] | null;
+  prediction: string | null;
+};
+
+interface SessionListProps {
+  masterId: string;
+  masters?: ShowcaseMaster[];
+  active: SessionListItem | null;
+  completed: SessionListItem[];
+  loading?: boolean;
+  actionSessionId?: string | null;
+  onBack: () => void;
+  onNewSession: () => void;
+  onStartDaily?: () => void;
+  onStartRitual?: () => void;
+  onOpenRitual?: (ritualId: string) => void;
+  onRitualDeleted?: (ritualId: string) => void;
+  onContinueActive: (session: SessionListItem) => void;
+  onOpenArchive: (session: SessionListItem) => void;
+  onArchiveSession: (session: SessionListItem) => void;
+  onDeleteSession: (session: SessionListItem) => void;
+}
+
+function formatSessionDate(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function intentionLabel(raw: string | null): string {
+  if (!raw) return "Сеанс";
+  try {
+    return topicLabel(raw as SessionTopicId);
+  } catch {
+    return raw;
+  }
+}
+
+function sessionTopicLabel(item: SessionListItem): string {
+  if (item.spreadType === "photo") return "Фото-расклад";
+  return intentionLabel(item.intention);
+}
+
+function minutesSince(updatedAt: string, createdAt: string): number {
+  const start = new Date(createdAt).getTime();
+  const end = new Date(updatedAt).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
+  return Math.max(1, Math.round((end - start) / 60000));
+}
+
+function SessionActions({
+  session,
+  isActive,
+  busy,
+  onContinue,
+  onArchive,
+  onDelete,
+}: {
+  session: SessionListItem;
+  isActive: boolean;
+  busy: boolean;
+  onContinue: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onContinue}
+        className="btn-luxe btn-luxe--sm btn-luxe--gold"
+      >
+        {busy ? "…" : "Продолжить сеанс"}
+      </button>
+      {isActive ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onArchive}
+          className="btn-luxe btn-luxe--sm btn-luxe--silver"
+        >
+          <Archive className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          В архив
+        </button>
+      ) : (
+        <span className="btn-luxe btn-luxe--sm btn-luxe--silver opacity-50">
+          <Archive className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          В архиве
+        </span>
+      )}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onDelete}
+        className="btn-luxe btn-luxe--sm btn-luxe--bronze"
+      >
+        <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        Удалить
+      </button>
+    </div>
+  );
+}
+
+export default function SessionList({
+  masterId,
+  masters = [],
+  active,
+  completed,
+  loading = false,
+  actionSessionId = null,
+  onBack,
+  onNewSession,
+  onStartDaily,
+  onStartRitual,
+  onOpenRitual,
+  onRitualDeleted,
+  onContinueActive,
+  onOpenArchive,
+  onArchiveSession,
+  onDeleteSession,
+}: SessionListProps) {
+  const master =
+    findShowcaseMaster(masterId, masters) ?? getCharacterById(masterId);
+  const masterName = master?.name ?? "Мастер";
+  const showRituals = (RITUAL_MASTERS as readonly string[]).includes(masterId);
+  const [rituals, setRituals] = useState<RitualClientData[]>([]);
+  const [deletingRitualId, setDeletingRitualId] = useState<string | null>(null);
+
+  const fetchRituals = async () => {
+    try {
+      const res = await fetch(
+        `/api/ritual/list?characterKey=${encodeURIComponent(masterId)}`,
+        { credentials: "include" }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setRituals((data.rituals ?? []).slice(0, 3));
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    if (!showRituals) return;
+    void fetchRituals();
+  }, [masterId, showRituals]);
+
+  const handleDeleteRitual = async (ritualId: string) => {
+    const confirmed = window.confirm(
+      "Удалить этот обряд безвозвратно? Карточка и ответы будут потеряны."
+    );
+    if (!confirmed) return;
+
+    setDeletingRitualId(ritualId);
+    try {
+      const res = await fetch(`/api/ritual/${encodeURIComponent(ritualId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Не удалось удалить обряд");
+      setRituals((prev) => prev.filter((r) => r.id !== ritualId));
+      onRitualDeleted?.(ritualId);
+    } catch {
+      window.alert("Не удалось удалить обряд. Попробуйте позже.");
+    } finally {
+      setDeletingRitualId(null);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="glass-panel mb-6 flex items-center gap-4 p-4">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Назад к мастерам"
+          className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-white/30 hover:text-white"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <MasterAvatar masterId={masterId} masterName={masterName} size="lg" />
+        <div className="flex-1">
+          <h2 className="font-display text-xl font-bold text-white">{masterName}</h2>
+          <p className="text-sm text-gray-400">Ваши сеансы с этим мастером</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onNewSession}
+        className="btn-primary mb-3 flex w-full items-center justify-center gap-2 py-3 text-sm"
+      >
+        <Plus className="h-4 w-4" />
+        Новый сеанс с темой
+      </button>
+
+      {onStartDaily ? (
+        <button
+          type="button"
+          onClick={onStartDaily}
+          className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block mb-6"
+        >
+          С картами дня — расшифровка
+        </button>
+      ) : (
+        <div className="mb-3" />
+      )}
+
+      {loading ? (
+        <p className="text-center text-sm text-gray-400">Загрузка сеансов…</p>
+      ) : null}
+
+      {active ? (
+        <section className="glass-panel mb-4 p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm text-aura-emerald">
+            <Circle className="h-3 w-3 fill-current" />
+            Активный сеанс
+          </div>
+          <p className="font-medium text-white">
+            {sessionTopicLabel(active)} · {active.messageCount} сообщений ·{" "}
+            {minutesSince(active.updatedAt, active.createdAt)} мин
+          </p>
+          {active.cards?.length ? (
+            <p className="mt-1 text-sm text-gray-400">{active.cards.join(" · ")}</p>
+          ) : null}
+          <SessionActions
+            session={active}
+            isActive
+            busy={actionSessionId === active.id}
+            onContinue={() => onContinueActive(active)}
+            onArchive={() => onArchiveSession(active)}
+            onDelete={() => onDeleteSession(active)}
+          />
+        </section>
+      ) : null}
+
+      {completed.length > 0 ? (
+        <div className="space-y-3">
+          {completed.map((item) => (
+            <section key={item.id} className="glass-panel p-4">
+              <div className="mb-1 flex items-center gap-2 text-sm text-gray-400">
+                <CheckCircle2 className="h-4 w-4 text-aura-emerald/80" />
+                {formatSessionDate(item.updatedAt || item.createdAt)}
+              </div>
+              <p className="font-medium text-white">
+                {sessionTopicLabel(item)}
+                {item.keyCards?.length || item.cards?.length
+                  ? ` · ${(item.keyCards ?? item.cards ?? []).join(" · ")}`
+                  : ""}
+              </p>
+              {item.topicSummary || item.prediction ? (
+                <p className="mt-2 line-clamp-2 text-sm text-gray-400">
+                  «{item.prediction ?? item.topicSummary}»
+                </p>
+              ) : null}
+              <SessionActions
+                session={item}
+                isActive={false}
+                busy={actionSessionId === item.id}
+                onContinue={() => onOpenArchive(item)}
+                onArchive={() => onArchiveSession(item)}
+                onDelete={() => onDeleteSession(item)}
+              />
+            </section>
+          ))}
+        </div>
+      ) : !active && !loading ? (
+        <p className="text-center text-sm text-gray-500">
+          Прошлых сеансов пока нет. Начните новый — выберите тему и карты.
+        </p>
+      ) : null}
+
+      {showRituals && onStartRitual ? (
+        <section className="mt-8">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-display text-base font-bold text-white">🕯 Мои обряды</h3>
+            <button
+              type="button"
+              onClick={onStartRitual}
+              className="text-sm text-amber-400 hover:text-amber-300"
+            >
+              + Новый обряд
+            </button>
+          </div>
+          {rituals.length === 0 ? (
+            <p className="text-center text-sm text-gray-500">Обрядов пока нет</p>
+          ) : (
+            <div className="space-y-2">
+              {rituals.map((r) => {
+                const cfg = RITUAL_TYPES[r.ritualType as RitualType];
+                const date = new Date(r.createdAt).toLocaleDateString("ru-RU", {
+                  day: "numeric",
+                  month: "short",
+                });
+                return (
+                  <div
+                    key={r.id}
+                    className="glass-panel flex items-center gap-2 p-3"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onOpenRitual?.(r.id)}
+                      className="min-w-0 flex-1 text-left transition hover:text-amber-200"
+                    >
+                      <p className="text-sm font-medium text-white">
+                        {cfg?.emoji} {cfg?.label} · {ritualStatusLabel(r.status)}
+                      </p>
+                      <p className="text-xs text-gray-400">{date}</p>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deletingRitualId === r.id}
+                      onClick={() => void handleDeleteRitual(r.id)}
+                      aria-label="Удалить обряд"
+                      className="btn-luxe btn-luxe--sm btn-luxe--bronze shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      {deletingRitualId === r.id ? "…" : "Удалить"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : null}
+    </div>
+  );
+}

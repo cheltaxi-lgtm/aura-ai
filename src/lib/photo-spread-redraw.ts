@@ -1,4 +1,4 @@
-import type { DeckSystem } from "@/lib/decks/types";
+import type { DeckSystem, SpreadSymbol } from "@/lib/decks/types";
 import {
   findSymbolByName,
   getDeckPositions,
@@ -6,10 +6,15 @@ import {
 } from "@/lib/decks";
 import { getDeckImagePath, DECK_BACK_PATHS } from "@/data/decks";
 import { getSymbolDescription } from "@/data/descriptions";
-import { resolveDetectedSymbolName } from "@/lib/photo-card-resolve";
+import { resolveAuraArtForDetected } from "@/lib/photo-card-resolve";
+import { formatReversedCardName, parseCardOrientation } from "@/lib/card-orientation";
+
+export { parseCardOrientation, formatReversedCardName } from "@/lib/card-orientation";
 
 export interface RedrawSpreadCard {
   name: string;
+  /** Label as read from the photo (may differ from Aura display name) */
+  originalName: string;
   reversed: boolean;
   position: string;
   imagePath: string;
@@ -25,17 +30,11 @@ export interface RedrawSpread {
   cards: RedrawSpreadCard[];
 }
 
-const REVERSED_MARKERS = /\(перев\.?\)|\(reversed\)|\(rev\.?\)|перев\.?|перевернутая|перевёрнутая|reversed|upside[- ]?down/i;
+/** Minimum symbols required before photo interpretation. */
+export const PHOTO_MIN_CARD_COUNT = 1;
 
-export function parseCardOrientation(raw: string): { name: string; reversed: boolean } {
-  let text = raw.replace(/[«»"']/g, "").trim();
-  const reversed = REVERSED_MARKERS.test(text);
-  text = text
-    .replace(REVERSED_MARKERS, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-  return { name: text, reversed };
-}
+/** @deprecated use card count from recognition; kept for legacy imports */
+export const PHOTO_SPREAD_CARD_COUNT = PHOTO_MIN_CARD_COUNT;
 
 export function resolvePhotoDeckSystem(
   deckType: string | undefined,
@@ -78,9 +77,50 @@ export function inferSpreadPositions(
   return numbered;
 }
 
-function isPlaceholderArt(system: DeckSystem, name: string, imagePath: string): boolean {
-  if (imagePath !== DECK_BACK_PATHS[system]) return false;
-  return !findSymbolByName(system, name);
+export function normalizeRedrawSpreadForMaster(
+  spread: RedrawSpread,
+  masterId: string
+): RedrawSpread {
+  const system = resolveMasterDeckSystem(masterId);
+  const count = Math.max(spread.cards.length, spread.cards.filter((c) => c.name?.trim()).length);
+  const cardCount = count > 0 ? count : spread.cards.length;
+  const positions = inferSpreadPositions(cardCount, system, spread.spreadType);
+  const detected = spread.cards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name));
+
+  const remapped = mapDetectedToRedrawSpread({
+    detectedCards: detected,
+    system,
+    deckType: spread.deckType,
+    spreadType: spread.spreadType ?? `${cardCount} ${cardCount === 1 ? "символ" : cardCount < 5 ? "символа" : "символов"}`,
+    positions: positions.slice(0, detected.length),
+  });
+
+  return {
+    ...remapped,
+    cards: remapped.cards.map((c, i) => ({
+      ...c,
+      order: i,
+      position: positions[i] ?? c.position,
+    })),
+  };
+}
+
+export function isPhotoSpreadComplete(spread: RedrawSpread | null | undefined): boolean {
+  const count = spread?.cards.filter((c) => c.name?.trim()).length ?? 0;
+  return count >= PHOTO_MIN_CARD_COUNT;
+}
+
+export function redrawSpreadToSpreadSymbols(spread: RedrawSpread): SpreadSymbol[] {
+  return spread.cards.map((card, index) => {
+    const baseName = card.name.replace(/\s*\(перев\.?\)\s*$/i, "").trim();
+    const symbol = findSymbolByName(spread.system, baseName);
+    const desc = getSymbolDescription(spread.system, symbol?.name ?? baseName);
+    return {
+      id: symbol?.id ?? index + 1,
+      name: card.reversed ? `${symbol?.name ?? baseName} (перев.)` : (symbol?.name ?? baseName),
+      meaning: desc.shortMeaning || symbol?.meaning || card.shortMeaning || "",
+    };
+  });
 }
 
 export function mapDetectedToRedrawSpread(params: {
@@ -97,18 +137,25 @@ export function mapDetectedToRedrawSpread(params: {
 
   const cards: RedrawSpreadCard[] = detectedCards.map((raw, index) => {
     const { name: rawName, reversed } = parseCardOrientation(raw);
-    const resolvedName = resolveDetectedSymbolName(system, rawName);
-    const symbol = findSymbolByName(system, resolvedName);
-    const imagePath = getDeckImagePath(system, resolvedName);
-    const desc = getSymbolDescription(system, symbol?.name ?? resolvedName);
+    const art = resolveAuraArtForDetected(rawName, {
+      primarySystem: system,
+      deckType,
+    });
+    const symbol = findSymbolByName(art.artSystem, art.displayName);
+    const desc = getSymbolDescription(art.artSystem, symbol?.name ?? art.displayName);
+    const imagePath = getDeckImagePath(system, art.displayName);
+    const placeholder =
+      imagePath === DECK_BACK_PATHS[system] &&
+      !findSymbolByName(system, art.displayName);
 
     return {
-      name: symbol?.name ?? resolvedName,
+      name: art.displayName,
+      originalName: art.originalName,
       reversed,
       position: positions[index] ?? `Позиция ${index + 1}`,
       imagePath,
       shortMeaning: desc.shortMeaning || symbol?.meaning || "",
-      placeholder: isPlaceholderArt(system, resolvedName, imagePath),
+      placeholder,
       order: index,
     };
   });
@@ -119,12 +166,18 @@ export function mapDetectedToRedrawSpread(params: {
 export function redrawSpreadToTarotCards(spread: RedrawSpread) {
   return spread.cards.map((c) => ({
     name: c.reversed ? `${c.name} (перев.)` : c.name,
+    originalName: c.originalName,
     meaning: c.shortMeaning,
     reversed: c.reversed,
     position: c.position,
     imagePath: c.imagePath,
     placeholder: c.placeholder,
   }));
+}
+
+/** Deck row / chat / ritual — preserves Zovus art paths from photo redraw. */
+export function redrawSpreadToDeckCards(spread: RedrawSpread) {
+  return redrawSpreadToTarotCards(spread);
 }
 
 export function isRecognizedSpread(params: {
@@ -139,19 +192,29 @@ export function isRecognizedSpread(params: {
   }
 
   const joined = detectedCards.join(" ").toLowerCase();
-  if (/не удалось|не распозн|не определ/i.test(joined)) {
+  const allFailed =
+    detectedCards.length === 1 &&
+    /^(не удалось|не распозн|не определ|не видно|нет карт)/i.test(detectedCards[0] ?? "");
+  if (allFailed || /^не удалось распознать$/i.test(joined.trim())) {
     return { ok: false, reason: "Это не похоже на расклад — загрузите фото карт или рун в кадре." };
   }
 
+  const validCards = detectedCards.filter(
+    (c) => !/^(не удалось|не распозн|не определ|не видно)$/i.test(c.trim())
+  );
+  if (validCards.length >= 1) {
+    return { ok: true };
+  }
+
   const deck = (deckType ?? "").toLowerCase();
-  if (/не определена|неизвест/i.test(deck) && detectedCards.length < 2) {
+  if (/не определена|неизвест/i.test(deck) && detectedCards.length < 1) {
     return {
       ok: false,
       reason: "Не удалось определить колоду. Сделайте фото при хорошем свете — все символы в кадре.",
     };
   }
 
-  if ((spreadType ?? "").toLowerCase().includes("не распознан") && detectedCards.length < 2) {
+  if ((spreadType ?? "").toLowerCase().includes("не распознан") && validCards.length < 1) {
     return { ok: false, reason: "Расклад не распознан. Попробуйте другое фото или выберите символы вручную." };
   }
 
@@ -159,14 +222,17 @@ export function isRecognizedSpread(params: {
 }
 
 export function buildSpreadSummaryForLlm(spread: RedrawSpread): string {
-  const lines = spread.cards.map(
-    (c, i) =>
-      `${i + 1}. ${c.position}: «${c.name}»${c.reversed ? " (перевёрнутая)" : ""}${
-        c.placeholder ? " [нет точного арта Aura — читай по названию]" : ""
-      }`
-  );
+  const lines = spread.cards.map((c, i) => {
+    const label =
+      c.originalName !== c.name
+        ? `«${c.originalName}» (на фото) → Zovus: «${c.name}»`
+        : `«${c.name}»`;
+    return `${i + 1}. ${c.position}: ${label}${c.reversed ? " (перевёрнутая)" : ""}${
+      c.placeholder ? " [нет арта Zovus — трактуй по названию с фото]" : ""
+    }`;
+  });
   return [
-    `Система Aura: ${spread.system}`,
+    `Система Zovus: ${spread.system}`,
     spread.deckType ? `Колода на фото: ${spread.deckType}` : "",
     spread.spreadType ? `Схема: ${spread.spreadType}` : "",
     `Подтверждённые символы (${spread.cards.length}):`,
@@ -190,7 +256,7 @@ export function normalizeRedrawSpreadInput(
   },
   masterId: string
 ): RedrawSpread {
-  const system = input.system ?? resolvePhotoDeckSystem(input.deckType, masterId);
+  const system = resolveMasterDeckSystem(masterId);
   const detected = input.cards.map((c) =>
     c.reversed ? `${c.name} (перев.)` : c.name
   );
@@ -202,7 +268,7 @@ export function normalizeRedrawSpreadInput(
     spreadType: input.spreadType,
     positions,
   });
-  return {
+  const merged: RedrawSpread = {
     ...spread,
     cards: spread.cards.map((c, i) => ({
       ...c,
@@ -211,6 +277,7 @@ export function normalizeRedrawSpreadInput(
       position: input.cards[i]?.position ?? c.position,
     })),
   };
+  return normalizeRedrawSpreadForMaster(merged, masterId);
 }
 
 export const DECK_SYSTEM_DISPLAY: Record<DeckSystem, string> = {
@@ -219,4 +286,5 @@ export const DECK_SYSTEM_DISPLAY: Record<DeckSystem, string> = {
   "tarot-marina": "Таро",
   slavic: "Славянское ведовство",
   astrology: "Джйотиш / Астрология",
+  numerology: "Нумерология",
 };

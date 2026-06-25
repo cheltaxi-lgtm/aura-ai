@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       tarotCards,
       teaser,
       deckSystem,
+      masterId,
     } = await request.json();
     void _sessionId;
 
@@ -108,7 +109,13 @@ export async function POST(request: NextRequest) {
         astroMeta,
       });
       step = "link_account";
-      await linkAccountToProfile(auth.sub, user.id);
+      const linked = await linkAccountToProfile(auth.sub, user.id);
+      if (!linked) {
+        return NextResponse.json(
+          { error: "Профиль уже привязан к другому аккаунту", code: "PROFILE_OWNERSHIP_CONFLICT" },
+          { status: 409 }
+        );
+      }
       profileUserId = user.id;
       step = "starter_runes";
       try {
@@ -176,6 +183,7 @@ export async function POST(request: NextRequest) {
         type: "triplet",
         tarotCards: tarotCards ?? [],
         deckSystem: typeof deckSystem === "string" ? deckSystem : undefined,
+        masterId: typeof masterId === "string" ? masterId : undefined,
         teaser,
         onboarding: {
           name,

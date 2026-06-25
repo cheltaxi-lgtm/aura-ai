@@ -2,13 +2,14 @@
 
 import { motion } from "framer-motion";
 
-export type FlowStep = "intro" | "onboarding" | "triplet" | "masters" | "chat";
+export type FlowStep = "intro" | "onboarding" | "triplet" | "masters" | "intention" | "chat";
 
 const STEPS: { id: FlowStep; label: string }[] = [
   { id: "intro", label: "Начало" },
   { id: "onboarding", label: "Профиль" },
   { id: "triplet", label: "Карты" },
   { id: "masters", label: "Мастер" },
+  { id: "intention", label: "Намерение" },
   { id: "chat", label: "Чат" },
 ];
 
@@ -59,7 +60,7 @@ export default function FlowStepper({ current }: FlowStepperProps) {
               </span>
 
               <span
-                className={`mt-2 text-center text-[10px] font-medium uppercase tracking-wider ${
+                className={`mt-2 text-center text-xs font-medium uppercase tracking-wider ${
                   isActive ? "text-aura-gold" : isDone ? "text-gray-500" : "text-gray-600"
                 }`}
               >

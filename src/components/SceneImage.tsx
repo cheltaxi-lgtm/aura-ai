@@ -89,7 +89,7 @@ export default function SceneImage({
         >
           <Image
             src={displayUrl}
-            alt={label ?? "Aura art"}
+            alt={label ?? "Zovus art"}
             width={520}
             height={780}
             unoptimized
@@ -103,7 +103,7 @@ export default function SceneImage({
     <>
       <Image
         src={displayUrl}
-        alt={label ?? "Aura art"}
+        alt={label ?? "Zovus art"}
         width={isCard ? 240 : 640}
         height={isCard ? 360 : 360}
         unoptimized

@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import GuestTripletDraw from "@/components/GuestTripletDraw";
 import { Check, Sparkles } from "lucide-react";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 interface LandingHeroProps {
   isLoggedIn: boolean;
@@ -14,16 +15,17 @@ interface LandingHeroProps {
 
 export default function LandingHero({ isLoggedIn, masterCount, onStart }: LandingHeroProps) {
   const { config, cost, formatRunes } = useRuneConfig();
+  const { expertRegistrationEnabled } = usePlatformFeatures();
 
   const bullets = config.enabled
     ? [
-        "Витрина AI-мастеров и живых экспертов — выберите наставника",
-        "Расклад из 3 карт — бесплатно, можно открыть прямо здесь",
+        "Витрина мастеров Zovus — выберите наставника",
+        "Карты дня и расшифровка — бесплатно",
         `${config.freeQuestions} вопроса мастеру бесплатно, далее — ${formatRunes(cost("QUESTION"))}`,
-        `Расшифровка расклада — ${formatRunes(cost("READING"))}, оплата внутренними рунами ᚢ`,
+        `Расклад на тему — ${formatRunes(cost("INTENTION_SPREAD"))}, оплата внутренними рунами ᚢ`,
       ]
     : [
-        "Витрина AI-мастеров и живых экспертов — выберите своего наставника",
+        "Витрина мастеров Zovus — выберите своего наставника",
         "Персональный расклад из 3 карт после регистрации",
         "2 вопроса мастеру в чате — бесплатно",
         "История всех сеансов сохраняется в личном кабинете",
@@ -40,9 +42,9 @@ export default function LandingHero({ isLoggedIn, masterCount, onStart }: Landin
 
       <h1 className="font-display lux-heading mb-6 text-4xl font-bold leading-[1.15] md:text-5xl lg:text-[3.25rem]">
         Витрина мастеров{" "}
-        <span className="lux-heading-accent">Aura</span>
+        <span className="lux-heading-accent">Zovus</span>
         <span className="mt-3 block text-2xl font-medium text-aura-champagne md:text-3xl">
-          AI + живые эксперты
+          Таро · руны · астрология
         </span>
       </h1>
 
@@ -78,21 +80,25 @@ export default function LandingHero({ isLoggedIn, masterCount, onStart }: Landin
         </div>
       )}
 
-      <div className="lux-divider mx-auto my-10 max-w-xs" aria-hidden />
+      {expertRegistrationEnabled ? (
+        <>
+          <div className="lux-divider mx-auto my-10 max-w-xs" aria-hidden />
 
-      <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-aura-ivory/40">
-        <span className="flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-aura-champagne/70" strokeWidth={1.5} />
-          Площадка для мастеров и клиентов
-        </span>
-        <span className="hidden sm:inline">·</span>
-        <Link
-          href="/auth/expert/register"
-          className="text-aura-champagne/70 underline-offset-4 transition-colors hover:text-aura-champagne hover:underline"
-        >
-          Стать мастером
-        </Link>
-      </p>
+          <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-aura-ivory/40">
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-aura-champagne/70" strokeWidth={1.5} />
+              Площадка для мастеров и клиентов
+            </span>
+            <span className="hidden sm:inline">·</span>
+            <Link
+              href="/auth/expert/register"
+              className="btn-luxe btn-luxe--sm btn-luxe--gold"
+            >
+              Стать мастером
+            </Link>
+          </p>
+        </>
+      ) : null}
     </motion.section>
   );
 }

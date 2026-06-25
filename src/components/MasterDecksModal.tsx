@@ -69,7 +69,7 @@ export default function MasterDecksModal({
               className="flex max-h-[min(88vh,680px)] w-full max-w-[min(100%,52rem)] flex-col overflow-hidden rounded-xl border border-aura-gold/20 bg-[#0c0a14] shadow-2xl shadow-black/50"
             >
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
-                <p className="lux-label text-[10px]">Колоды Aura</p>
+                <p className="lux-label text-[10px]">Колоды Zovus</p>
                 <button
                   type="button"
                   onClick={onClose}

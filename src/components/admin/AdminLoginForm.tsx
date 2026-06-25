@@ -36,7 +36,7 @@ export default function AdminLoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="glass-panel mx-auto max-w-md space-y-4 p-8">
-      <h1 className="font-display text-center text-2xl font-bold text-white">Aura Admin</h1>
+      <h1 className="font-display text-center text-2xl font-bold text-white">Zovus Admin</h1>
       <p className="text-center text-xs text-gray-500">Панель управления порталом</p>
       <input
         type="email"

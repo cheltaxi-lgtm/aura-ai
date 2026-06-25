@@ -14,12 +14,20 @@ export interface SessionState {
   canChat?: boolean;
   questionsRemaining?: number | null;
   offline?: boolean;
+  storageBlocked?: boolean;
   referrerSlug?: string | null;
+  /** Session belongs to another logged-in profile — client should reconnect */
+  ownerMismatch?: boolean;
+  isUnlimited?: boolean;
 }
 
 function offlineSession(): SessionState {
   const offlineId = generateId();
-  localStorage.setItem(SESSION_KEY, offlineId);
+  try {
+    localStorage.setItem(SESSION_KEY, offlineId);
+  } catch {
+    /* private mode */
+  }
   return {
     sessionId: offlineId,
     offline: true,
@@ -85,6 +93,15 @@ export function useAuraSession(referrerSlug?: string) {
 
   useEffect(() => {
     async function init() {
+      let storageBlocked = false;
+      try {
+        const probe = "__aura_ls__";
+        localStorage.setItem(probe, "1");
+        localStorage.removeItem(probe);
+      } catch {
+        storageBlocked = true;
+      }
+
       const params = new URLSearchParams(window.location.search);
       const refToken = params.get("ref") ?? referrerSlug;
       const existing = localStorage.getItem(SESSION_KEY);
@@ -102,9 +119,19 @@ export function useAuraSession(referrerSlug?: string) {
 
       if (!active) {
         active = await createSession(refToken);
+      } else if (active.ownerMismatch) {
+        localStorage.removeItem(SESSION_KEY);
+        active = await createSession(refToken);
       }
 
-      if (paid && demo && active.sessionId && !active.offline) {
+      if (active) {
+        if (storageBlocked) {
+          active = { ...active, storageBlocked: true, offline: true, canChat: false };
+        }
+        setSession(active);
+      }
+
+      if (paid && demo && active?.sessionId && !active.offline) {
         await fetch("/api/payments/demo-unlock", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -124,5 +151,8 @@ export function useAuraSession(referrerSlug?: string) {
     return createSession(refToken);
   }, [createSession]);
 
-  return { session, loading, refresh, reconnectSession };
+  /** New billing session without clearing the current one from state first (no flicker). */
+  const spawnSession = createSession;
+
+  return { session, loading, refresh, reconnectSession, spawnSession };
 }

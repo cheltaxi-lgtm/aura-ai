@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520" width="400" height="520">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1438"/>
+      <stop offset="50%" stop-color="#2d2060"/>
+      <stop offset="100%" stop-color="#0a0818"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E8C77E"/>
+      <stop offset="100%" stop-color="#C9A24A"/>
+    </linearGradient>
+    <radialGradient id="sil" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#1a1438" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#0a0818" stop-opacity="1"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="22%" r="55%">
+      <stop offset="0%" stop-color="#e8c77e" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+    <linearGradient id="face" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a5b4fc" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#0a0812" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#bg)"/>
+  <rect width="100%" height="100%" fill="url(#glow)"/>
+  <g opacity="0.45" stroke="url(#gold)" fill="none">
+    <circle cx="120" cy="320" r="28" stroke-width="1"/>
+    <circle cx="200" cy="300" r="36" stroke-width="1.2"/>
+    <circle cx="280" cy="320" r="28" stroke-width="1"/>
+    <path d="M140 360 Q200 330 260 360" stroke-width="0.8"/>
+  </g>
+  <path d="M200 225c-55 0-95 35-95 72v40c0 8 85 12 95 12s95-4 95-12v-40c0-37-40-72-95-72z" fill="url(#sil)" opacity="0.82"/>
+  <ellipse cx="200" cy="175" rx="52" ry="62" fill="url(#face)" opacity="0.92"/>
+  <text x="50%" y="92%" text-anchor="middle" font-family="Georgia, serif" font-size="64" fill="url(#gold)" opacity="0.85">-</text>
+  <text x="50%" y="97%" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="url(#gold)" opacity="0.45">-25;8=0</text>
+  <rect x="6" y="6" width="388" height="508" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.5" rx="6"/>
+  <rect x="12" y="12" width="376" height="496" fill="none" stroke="url(#gold)" stroke-width="0.8" opacity="0.2" rx="4"/>
+</svg>

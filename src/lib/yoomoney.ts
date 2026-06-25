@@ -1,11 +1,17 @@
 import crypto from "crypto";
+import { getSetting } from "@/lib/settings";
 
 export type PaymentPlan = "single" | "subscription";
 
-const PLANS: Record<PaymentPlan, { amount: string; description: string }> = {
-  single: { amount: "199.00", description: "Aura — детальный разбор" },
-  subscription: { amount: "590.00", description: "Aura — подписка Aura+ на месяц" },
+const PLAN_DESCRIPTIONS: Record<PaymentPlan, string> = {
+  single: "Zovus — детальный разбор",
+  subscription: "Zovus — подписка Zovus+ на месяц",
 };
+
+export async function getYoomoneyPlanAmount(plan: PaymentPlan): Promise<number> {
+  const pricing = await getSetting("pricing");
+  return plan === "single" ? pricing.singlePrice : pricing.subscriptionPrice;
+}
 
 export function isYoomoneyConfigured(): boolean {
   const wallet = process.env.YOOMONEY_WALLET_NUMBER;
@@ -13,24 +19,25 @@ export function isYoomoneyConfigured(): boolean {
   return Boolean(wallet && secret && !wallet.startsWith("your-"));
 }
 
-export function createYoomoneyPaymentUrl(params: {
+export async function createYoomoneyPaymentUrl(params: {
   plan: PaymentPlan;
   sessionId: string;
   returnUrl?: string;
-}): { confirmationUrl: string; orderId: string; amount: number } {
+}): Promise<{ confirmationUrl: string; orderId: string; amount: number }> {
   const wallet = process.env.YOOMONEY_WALLET_NUMBER;
   if (!wallet) throw new Error("YOOMONEY_WALLET_NUMBER not configured");
 
-  const plan = PLANS[params.plan];
+  const amountRub = await getYoomoneyPlanAmount(params.plan);
+  const amountStr = amountRub.toFixed(2);
   const orderId = `aura_${params.sessionId.slice(0, 8)}_${params.plan}_${Date.now()}`;
   const label = `${params.sessionId}|${params.plan}|${orderId}`;
 
   const qs = new URLSearchParams({
     receiver: wallet,
     "quickpay-form": "shop",
-    targets: plan.description,
+    targets: PLAN_DESCRIPTIONS[params.plan],
     paymentType: "SB",
-    sum: plan.amount,
+    sum: amountStr,
     label,
   });
 
@@ -41,7 +48,7 @@ export function createYoomoneyPaymentUrl(params: {
   return {
     confirmationUrl: `https://yoomoney.ru/quickpay/confirm.xml?${qs.toString()}`,
     orderId,
-    amount: parseFloat(plan.amount),
+    amount: amountRub,
   };
 }
 

@@ -11,11 +11,6 @@
       "file": "surya.png",
       "source": "generated"
     },
-    "mangala": {
-      "name": "Мангала",
-      "file": "mangala.png",
-      "source": "generated"
-    },
     "budha": {
       "name": "Будха",
       "file": "budha.png",
@@ -26,29 +21,9 @@
       "file": "shukra.png",
       "source": "generated"
     },
-    "guru-jupiter": {
-      "name": "Гуру",
-      "file": "guru-jupiter.png",
-      "source": "generated"
-    },
-    "shani": {
-      "name": "Шани",
-      "file": "shani.png",
-      "source": "generated"
-    },
-    "rahu": {
-      "name": "Раху",
-      "file": "rahu.png",
-      "source": "generated"
-    },
     "ketu": {
       "name": "Кету",
       "file": "ketu.png",
-      "source": "generated"
-    },
-    "taurus": {
-      "name": "Телец",
-      "file": "taurus.png",
       "source": "generated"
     },
     "aries": {
@@ -76,11 +51,6 @@
       "file": "libra.png",
       "source": "generated"
     },
-    "virgo": {
-      "name": "Дева",
-      "file": "virgo.png",
-      "source": "generated"
-    },
     "scorpio": {
       "name": "Скорпион",
       "file": "scorpio.png",
@@ -101,14 +71,44 @@
       "file": "aquarius.png",
       "source": "generated"
     },
+    "_back": {
+      "name": "_back",
+      "file": "_back.png",
+      "source": "generated"
+    },
+    "shani": {
+      "name": "Шани",
+      "file": "shani.png",
+      "source": "generated"
+    },
+    "mangala": {
+      "name": "Мангала",
+      "file": "mangala.png",
+      "source": "generated"
+    },
+    "taurus": {
+      "name": "Телец",
+      "file": "taurus.png",
+      "source": "generated"
+    },
+    "virgo": {
+      "name": "Дева",
+      "file": "virgo.png",
+      "source": "generated"
+    },
     "pisces": {
       "name": "Рыбы",
       "file": "pisces.png",
       "source": "generated"
     },
-    "_back": {
-      "name": "_back",
-      "file": "_back.png",
+    "guru-jupiter": {
+      "name": "Гуру",
+      "file": "guru-jupiter.png",
+      "source": "generated"
+    },
+    "rahu": {
+      "name": "Раху",
+      "file": "rahu.png",
       "source": "generated"
     }
   }

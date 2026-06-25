@@ -10,11 +10,21 @@ if [ "${SKIP_EXTRACT:-0}" != "1" ]; then
 fi
 
 ENV_FILE="/opt/aura-ai/.env.local"
+ENV_BACKUP="/tmp/aura-ai-env.local.bak"
+YUKASSA_SHOP_BACKUP=""
+YUKASSA_SECRET_BACKUP=""
+
+if [ -f "$ENV_FILE" ]; then
+  cp "$ENV_FILE" "$ENV_BACKUP"
+  YUKASSA_SHOP_BACKUP="$(grep '^YUKASSA_SHOP_ID=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
+  YUKASSA_SECRET_BACKUP="$(grep '^YUKASSA_SECRET_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
+fi
+
 touch "$ENV_FILE"
 
 grep -q '^NEXT_PUBLIC_APP_URL=' "$ENV_FILE" \
-  && sed -i 's|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=http://192.168.1.152:3000|' "$ENV_FILE" \
-  || echo 'NEXT_PUBLIC_APP_URL=http://192.168.1.152:3000' >> "$ENV_FILE"
+  && sed -i 's|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=https://zovus.ru|' "$ENV_FILE" \
+  || echo 'NEXT_PUBLIC_APP_URL=https://zovus.ru' >> "$ENV_FILE"
 
 grep -q '^COOKIE_SECURE=' "$ENV_FILE" \
   && sed -i 's|^COOKIE_SECURE=.*|COOKIE_SECURE=false|' "$ENV_FILE" \
@@ -44,48 +54,46 @@ grep -q '^RECAPTCHA_SECRET_KEY=' "$ENV_FILE" \
   && sed -i 's|^RECAPTCHA_SECRET_KEY=.*|RECAPTCHA_SECRET_KEY=6Lf39RQtAAAAAJLY5jVvvWZvFi95K-F0kQBePoKw|' "$ENV_FILE" \
   || echo 'RECAPTCHA_SECRET_KEY=6Lf39RQtAAAAAJLY5jVvvWZvFi95K-F0kQBePoKw' >> "$ENV_FILE"
 
+grep -q '^LLM_CONCURRENCY_MAX=' "$ENV_FILE" \
+  && sed -i 's|^LLM_CONCURRENCY_MAX=.*|LLM_CONCURRENCY_MAX=25|' "$ENV_FILE" \
+  || echo 'LLM_CONCURRENCY_MAX=25' >> "$ENV_FILE"
+
+grep -q '^LLM_QUEUE_TIMEOUT_MS=' "$ENV_FILE" \
+  && sed -i 's|^LLM_QUEUE_TIMEOUT_MS=.*|LLM_QUEUE_TIMEOUT_MS=120000|' "$ENV_FILE" \
+  || echo 'LLM_QUEUE_TIMEOUT_MS=120000' >> "$ENV_FILE"
+
+grep -q '^DB_POOL_MAX=' "$ENV_FILE" \
+  && sed -i 's|^DB_POOL_MAX=.*|DB_POOL_MAX=20|' "$ENV_FILE" \
+  || echo 'DB_POOL_MAX=20' >> "$ENV_FILE"
+
+# Never overwrite real YooKassa keys with placeholders during deploy.
+if [ -n "$YUKASSA_SHOP_BACKUP" ] && [ -n "$YUKASSA_SECRET_BACKUP" ] \
+  && [ "$YUKASSA_SHOP_BACKUP" != "your-shop-id-here" ] \
+  && ! printf '%s' "$YUKASSA_SHOP_BACKUP" | grep -q '^your-'; then
+  grep -q '^YUKASSA_SHOP_ID=' "$ENV_FILE" \
+    && sed -i "s|^YUKASSA_SHOP_ID=.*|YUKASSA_SHOP_ID=${YUKASSA_SHOP_BACKUP}|" "$ENV_FILE" \
+    || echo "YUKASSA_SHOP_ID=${YUKASSA_SHOP_BACKUP}" >> "$ENV_FILE"
+  grep -q '^YUKASSA_SECRET_KEY=' "$ENV_FILE" \
+    && sed -i "s|^YUKASSA_SECRET_KEY=.*|YUKASSA_SECRET_KEY=${YUKASSA_SECRET_BACKUP}|" "$ENV_FILE" \
+    || echo "YUKASSA_SECRET_KEY=${YUKASSA_SECRET_BACKUP}" >> "$ENV_FILE"
+fi
+
 cd /opt/aura-ai
-npm install
+npm ci --legacy-peer-deps
 npm run build
 
-echo ">>> DB migrate admin..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-admin.sql 2>/dev/null || true
+echo ">>> DB migrations (schema_migrations)..."
+if ! grep -q '^DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
+  echo 'DATABASE_URL=postgresql://auraai:auraai_secret@localhost:5432/auraai' >> "$ENV_FILE"
+fi
+set -a
+# shellcheck disable=SC1090
+source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
+set +a
+node /opt/aura-ai/scripts/migrate.mjs
 
-echo ">>> DB migrate schema..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-schema.sql 2>/dev/null || true
-
-echo ">>> DB migrate profile fields..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-profile-fields.sql 2>/dev/null || true
-
-echo ">>> DB migrate unlimited users..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-unlimited-users.sql 2>/dev/null || true
-
-echo ">>> DB migrate TTS settings..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-tts-settings.sql 2>/dev/null || true
-
-echo ">>> DB migrate TTS enabled flag..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-tts-enabled.sql 2>/dev/null || true
-
-echo ">>> DB migrate visual settings..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-visual-settings.sql 2>/dev/null || true
-
-echo ">>> DB migrate runes..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-runes.sql 2>/dev/null || true
-
-echo ">>> DB migrate runes settings..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-runes-settings.sql 2>/dev/null || true
-
-echo ">>> DB migrate rate limits..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-rate-limits.sql 2>/dev/null || true
-
-echo ">>> DB migrate AI model sync..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-ai-deepseek-sync.sql 2>/dev/null || true
-
-echo ">>> DB migrate session memories..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-session-memories.sql 2>/dev/null || true
-
-echo ">>> DB migrate triplet cooldown anchor..."
-docker exec -i auraai-postgres psql -U auraai -d auraai < /opt/aura-ai/scripts/migrate-triplet-cooldown-anchor.sql 2>/dev/null || true
+echo ">>> Memory smoke test (gates deploy on retrieval regressions)..."
+npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts
 
 echo ">>> Seed admin..."
 export DATABASE_URL="${DATABASE_URL:-postgresql://auraai:auraai_secret@localhost:5432/auraai}"
@@ -99,4 +107,4 @@ sleep 3
 systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
 
-echo "Deploy complete: http://192.168.1.152:3000"
+echo "Deploy complete: https://zovus.ru"

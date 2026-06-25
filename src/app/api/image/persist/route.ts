@@ -5,6 +5,7 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { tarotCardsKey } from "@/lib/tarot";
 import { canPersistSceneUrl, persistSceneArtForSpread } from "@/lib/users";
 import { normalizeSceneImageUrl } from "@/lib/scene-image-store";
+import { resolveApiCharacterId } from "@/lib/chat-sanitize";
 
 const PERSISTABLE: ImageSceneType[] = [
   "zodiac_avatar",
@@ -51,9 +52,13 @@ export async function POST(request: NextRequest) {
       ? tarotCardsKey(body.cards.slice(0, 3).map((name) => ({ name: String(name) })))
       : undefined;
 
+  const characterId = body.characterKey
+    ? await resolveApiCharacterId(body.characterKey)
+    : undefined;
+
   await persistSceneArtForSpread(profileUserId, scene, imageUrl, {
     cardsKey,
-    characterId: body.characterKey ? String(body.characterKey) : undefined,
+    characterId,
   });
 
   return NextResponse.json({ ok: true, scene, imageUrl });

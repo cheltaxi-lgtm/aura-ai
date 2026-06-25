@@ -68,6 +68,10 @@ export function recommendShowcaseMaster(
   if (karma.test(present)) {
     return pick((m) => /karma|astro|джйотиш|предназнач/i.test(`${m.specialty} ${m.title}`)) ?? "shri-raj";
   }
+  const numbers = /числ|цифр|код|нумер|этап|период/i;
+  if (numbers.test(present)) {
+    return pick((m) => m.system === "numerology") ?? "numerolog";
+  }
 
   return masters.find((m) => m.kind === "ai")?.id ?? masters[0]?.id;
 }

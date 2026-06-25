@@ -10,7 +10,6 @@ import {
 } from "@/lib/yoomoney";
 import { creditInfluencerBalance } from "@/lib/influencers";
 import { creditRunesFromPayment } from "@/lib/rune-service";
-import { ensureDb, query } from "@/lib/db";
 import { verifyYukassaWebhookPayment, isYukassaConfigured } from "@/lib/yukassa";
 
 async function handleYukassaWebhook(body: Record<string, unknown>) {
@@ -21,6 +20,8 @@ async function handleYukassaWebhook(body: Record<string, unknown>) {
     return;
   }
 
+  let amountRub: number | undefined;
+
   if (isYukassaConfigured()) {
     const verified = await verifyYukassaWebhookPayment(payment.id, event);
     if (!verified.valid) {
@@ -30,18 +31,22 @@ async function handleYukassaWebhook(body: Record<string, unknown>) {
     if (verified.metadata) {
       payment.metadata = { ...payment.metadata, ...verified.metadata };
     }
+    amountRub = verified.amountRub;
   } else if (process.env.NODE_ENV === "production") {
     console.warn("YooKassa webhook rejected: not configured");
     return;
   }
 
   if (payment.metadata?.type === "rune_purchase") {
-    await creditRunesFromPayment({
+    const credited = await creditRunesFromPayment({
       userId: payment.metadata.userId,
       packageId: payment.metadata.packageId,
-      runesAmount: payment.metadata.runesAmount,
       paymentId: payment.id,
+      amountRub,
     });
+    if (!credited) {
+      console.warn("Rune purchase webhook: credit skipped or already processed:", payment.id);
+    }
     return;
   }
 
@@ -69,33 +74,19 @@ async function handleYoomoneyWebhook(data: YoomoneyNotification) {
     return NextResponse.json({ error: "Invalid label" }, { status: 400 });
   }
 
-  await completeYoomoneyPayment({
+  const result = await completeYoomoneyPayment({
     operationId: data.operation_id,
     sessionId: parsed.sessionId,
     plan: parsed.plan,
     amount: parseFloat(data.amount),
   });
 
-  if (await ensureDb()) {
-    const { rows } = await query<{
-      influencer_id: string | null;
-      amount: string;
-      blogger_split_percent: number | null;
-      status: string;
-    }>(
-      `SELECT influencer_id, amount::text, blogger_split_percent, status FROM payments
-       WHERE yoomoney_operation_id = $1 OR order_id LIKE $2
-       LIMIT 1`,
-      [data.operation_id, `%${parsed.sessionId.slice(0, 8)}%`]
+  if (result?.influencer_id && result.amount) {
+    await creditInfluencerBalance(
+      result.influencer_id,
+      Number(result.amount),
+      result.blogger_split_percent ?? 80
     );
-    const row = rows[0];
-    if (row?.influencer_id && row.status === "succeeded") {
-      await creditInfluencerBalance(
-        row.influencer_id,
-        parseFloat(row.amount),
-        row.blogger_split_percent ?? 80
-      );
-    }
   }
 
   return NextResponse.json({ ok: true });

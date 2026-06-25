@@ -13,7 +13,7 @@ export default function MastersHomeIntro({
 }: MastersHomeIntroProps) {
   return (
     <section className="masters-home-intro mx-auto mb-6 max-w-xl text-center">
-      <p className="masters-home-intro__eyebrow">Ваш канал Aura</p>
+      <p className="masters-home-intro__eyebrow">Ваш канал Zovus</p>
       <h1 className="font-display masters-home-intro__title">
         {userName},{" "}
         <span className="lux-heading-accent">

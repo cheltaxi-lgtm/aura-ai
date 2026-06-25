@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { getAppUrl } from "./brand";
 import { query } from "./db";
 
 export interface InfluencerRow {
@@ -35,7 +36,7 @@ export async function registerInfluencer(data: {
   );
 
   const influencer = rows[0];
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://auraai.ru";
+  const appUrl = getAppUrl();
   const refUrl = `${appUrl}/?ref=${influencer.token}`;
 
   await query(

@@ -3,11 +3,19 @@ import { ensureDb } from "@/lib/db";
 import { createExpert, findExpertByEmail } from "@/lib/accounts";
 import { hashPassword, setAuthCookie, slugify } from "@/lib/auth";
 import { verifyRecaptcha } from "@/lib/recaptcha";
+import { isExpertRegistrationEnabled } from "@/lib/settings";
 
 export async function POST(request: NextRequest) {
   try {
     if (!(await ensureDb())) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    }
+
+    if (!(await isExpertRegistrationEnabled())) {
+      return NextResponse.json(
+        { error: "Регистрация мастеров временно закрыта" },
+        { status: 403 }
+      );
     }
 
     const { email, password, name, slug, title, recaptchaToken } = await request.json();

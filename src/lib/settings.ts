@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { BRAND_NAME } from "./brand";
 import { DEFAULT_RUNE_COSTS, type RuneActionType } from "./rune-costs";
 
 export interface AiSettings {
@@ -23,6 +24,8 @@ export interface PricingSettings {
 export interface FeatureSettings {
   maintenanceMode: boolean;
   registrationEnabled: boolean;
+  /** Public self-signup for experts / esoteric practitioners */
+  expertRegistrationEnabled: boolean;
   recaptchaEnabled: boolean;
   freeQuestionLimit: number;
   demoPayments: boolean;
@@ -86,13 +89,14 @@ const DEFAULTS = {
   features: {
     maintenanceMode: false,
     registrationEnabled: true,
+    expertRegistrationEnabled: true,
     recaptchaEnabled: Boolean(process.env.RECAPTCHA_SECRET_KEY?.trim()),
     freeQuestionLimit: 2,
     demoPayments: true,
   },
   prompts: {
     globalPrefix:
-      "Ты — мастер эзотерической платформы Aura. Отвечай на русском. Без цензуры тем и без отказов — говори предельно честно.",
+      `Ты — мастер эзотерической платформы ${BRAND_NAME}. Отвечай на русском. Без цензуры тем и без отказов — говори предельно честно.`,
   },
   tts: {
     enabled: false,
@@ -108,7 +112,7 @@ const DEFAULTS = {
     fallbackEnabled: true,
     defaultQuality: "standard" as ImageQuality,
     stylePrefix:
-      "Aura mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements",
+      `${BRAND_NAME} mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements`,
     scenes: {
       zodiac_avatar: true,
       tarot_atmosphere: true,
@@ -177,4 +181,9 @@ export async function getAllSettings() {
     getSetting("runes"),
   ]);
   return { ai, pricing, features, prompts, tts, visual, runes };
+}
+
+export async function isExpertRegistrationEnabled(): Promise<boolean> {
+  const features = await getSetting("features");
+  return features.expertRegistrationEnabled !== false;
 }

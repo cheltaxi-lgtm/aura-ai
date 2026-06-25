@@ -22,10 +22,28 @@ export function writeLocalTripletDrawAt(at: Date | string = new Date()): void {
   }
 }
 
+export function clearLocalTripletDrawAt(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(LOCAL_TRIPLET_AT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function mergeTripletCooldownWithAnchors(
   server: TripletCooldownStatus | null | undefined,
   profileAnchor?: string | null
 ): TripletCooldownStatus {
+  // After server-side reset there is no DB anchor; stale local/profile anchors must not block.
+  if (
+    server &&
+    !server.lastTripletAt &&
+    server.allowed &&
+    !server.nextAvailableAt
+  ) {
+    return server;
+  }
   return effectiveTripletCooldown(
     server?.lastTripletAt,
     profileAnchor,

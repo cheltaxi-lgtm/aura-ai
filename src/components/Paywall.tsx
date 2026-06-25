@@ -14,9 +14,11 @@ interface PaywallProps {
 
 export default function Paywall({ sessionId, userName, onClose, onUnlocked }: PaywallProps) {
   const [loading, setLoading] = useState<PaymentPlan | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handlePay = async (plan: PaymentPlan) => {
     setLoading(plan);
+    setError(null);
     try {
       const res = await fetch("/api/payment/create", {
         method: "POST",
@@ -29,10 +31,10 @@ export default function Paywall({ sessionId, userName, onClose, onUnlocked }: Pa
         window.location.href = data.confirmationUrl;
         return;
       }
-      if (data.demo && data.confirmationUrl) {
-        window.location.href = data.confirmationUrl;
-      }
+      setError(data.error ?? data.message ?? "Не удалось создать платёж. Попробуйте позже.");
+      setLoading(null);
     } catch {
+      setError("Ошибка соединения. Проверьте интернет и попробуйте снова.");
       setLoading(null);
     }
   };
@@ -53,7 +55,8 @@ export default function Paywall({ sessionId, userName, onClose, onUnlocked }: Pa
 
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-gray-400 hover:text-white"
+          aria-label="Закрыть окно оплаты"
+          className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 text-gray-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple"
         >
           <X className="h-4 w-4" />
         </button>
@@ -114,12 +117,18 @@ export default function Paywall({ sessionId, userName, onClose, onUnlocked }: Pa
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-medium text-white">Подписка Aura+</p>
+                <p className="font-medium text-white">Подписка Zovus+</p>
                 <p className="text-xs text-gray-400">Безлимит на месяц · все наставники</p>
               </div>
               <span className="font-display text-xl font-bold text-aura-gold">590 ₽</span>
             </button>
           </div>
+
+          {error && (
+            <p role="alert" className="mb-4 text-center text-sm text-red-400">
+              {error}
+            </p>
+          )}
 
           <p className="mt-6 text-center text-xs text-gray-600">
             Оплата через ЮKassa · Безопасное соединение

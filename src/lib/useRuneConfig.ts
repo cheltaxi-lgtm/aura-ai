@@ -17,8 +17,9 @@ const FALLBACK: RuneConfig = {
   freeQuestions: 2,
   costs: {
     QUESTION: 10,
-    VISION_ANALYSIS: 15,
+    VISION_ANALYSIS: 30,
     READING: 15,
+    INTENTION_SPREAD: 20,
     DESTINY_CARD: 20,
     JOINT_READING: 25,
     DAILY_AMULET: 5,
@@ -28,6 +29,7 @@ const FALLBACK: RuneConfig = {
     QUESTION: "Вопрос мастеру",
     VISION_ANALYSIS: "Анализ расклада по фото",
     READING: "Расшифровка расклада",
+    INTENTION_SPREAD: "Расклад на тему",
     DESTINY_CARD: "Карта судьбы",
     JOINT_READING: "Совместный расклад",
     DAILY_AMULET: "Амулет дня",

@@ -111,7 +111,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-black/40 px-4 py-3 backdrop-blur md:hidden">
         <div className="min-w-0">
-          <p className="font-display text-base font-bold text-aura-neon">Aura Admin</p>
+          <p className="font-display text-base font-bold text-aura-neon">Zovus Admin</p>
           <p className="truncate text-[10px] text-gray-600">{admin.email}</p>
         </div>
         <button
@@ -139,7 +139,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         }`}
       >
         <div className="mb-6 px-2">
-          <p className="font-display text-lg font-bold text-aura-neon">Aura Admin</p>
+          <p className="font-display text-lg font-bold text-aura-neon">Zovus Admin</p>
           <p className="truncate text-xs text-gray-600">{admin.email}</p>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -160,7 +160,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="flex min-h-screen">
         <aside className="hidden w-64 shrink-0 border-r border-white/5 bg-black/30 p-4 md:block">
           <div className="mb-8 px-2">
-            <p className="font-display text-lg font-bold text-aura-neon">Aura Admin</p>
+            <p className="font-display text-lg font-bold text-aura-neon">Zovus Admin</p>
             <p className="truncate text-xs text-gray-600">{admin.email}</p>
           </div>
           <AdminNavLinks pathname={pathname} />

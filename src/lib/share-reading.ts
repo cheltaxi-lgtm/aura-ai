@@ -19,8 +19,8 @@ export function masterDisplayName(id: string): string {
 }
 
 export function buildShareReadingText(input: ShareReadingInput): string {
-  const url = input.appUrl ?? (typeof window !== "undefined" ? window.location.origin : "https://aura.ai");
-  const lines: string[] = ["🔮 Мой расклад Aura", ""];
+  const url = input.appUrl ?? (typeof window !== "undefined" ? window.location.origin : "https://zovus.ru");
+  const lines: string[] = ["🔮 Мой расклад Zovus", ""];
 
   if (input.masterName) lines.push(`Мастер: ${input.masterName}`);
   if (input.date) lines.push(`Дата: ${input.date}`);

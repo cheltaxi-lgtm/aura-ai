@@ -1,7 +1,8 @@
 export const DEFAULT_RUNE_COSTS = {
   QUESTION: 10,
-  VISION_ANALYSIS: 15,
+  VISION_ANALYSIS: 30,
   READING: 15,
+  INTENTION_SPREAD: 20,
   DESTINY_CARD: 20,
   JOINT_READING: 25,
   DAILY_AMULET: 5,
@@ -20,6 +21,7 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
   QUESTION: "Вопрос мастеру",
   VISION_ANALYSIS: "Фото-расклад",
   READING: "Расшифровка 3 карт",
+  INTENTION_SPREAD: "Расклад на тему",
   DESTINY_CARD: "Карта судьбы (арт)",
   JOINT_READING: "Совместный расклад",
   DAILY_AMULET: "Амулет дня",
@@ -28,8 +30,9 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
 
 export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   QUESTION: "Каждый следующий вопрос в чате после бесплатного лимита",
-  VISION_ANALYSIS: "Разбор расклада по загруженному фото",
+  VISION_ANALYSIS: "Фото-расклад: распознавание, перерисовка и расшифровка",
   READING: "Первая полная расшифровка triplet у выбранного мастера",
+  INTENTION_SPREAD: "Новый расклад из 3 карт под выбранную тему сеанса",
   DESTINY_CARD: "Генерация персональной карты судьбы в чате",
   JOINT_READING: "Совместный расклад двух людей",
   DAILY_AMULET: "Карта-амулет дня",

@@ -15,7 +15,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "DB unavailable" }, { status: 503 });
     }
 
-    const { content, title } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const content = typeof body.content === "string" ? body.content.trim().slice(0, 50_000) : "";
+    const title =
+      typeof body.title === "string" ? body.title.trim().slice(0, 200) : undefined;
     if (!content) {
       return NextResponse.json({ error: "content required" }, { status: 400 });
     }

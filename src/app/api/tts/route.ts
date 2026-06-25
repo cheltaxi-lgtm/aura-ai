@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
+import { enforceTtsRateLimit } from "@/lib/api-guards";
 import { isTtsConfigured, isTtsEnabled, synthesizeSpeech } from "@/lib/tts";
 import { getSetting } from "@/lib/settings";
+import { resolveApiCharacterId } from "@/lib/chat-sanitize";
+import { isCharacterTtsEnabled } from "@/lib/voice-config";
 
 export const maxDuration = 300;
 
@@ -20,6 +23,9 @@ export async function POST(request: NextRequest) {
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized", code: "auth_required" }, { status: 401 });
   }
+
+  const rateLimited = await enforceTtsRateLimit(auth.sub);
+  if (rateLimited) return rateLimited;
 
   if (!(await isTtsEnabled())) {
     return NextResponse.json(
@@ -41,9 +47,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     text = String(body.text ?? "").trim();
-    characterId = String(body.characterId ?? characterId);
+    characterId = await resolveApiCharacterId(body.characterId ?? characterId);
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (!isCharacterTtsEnabled(characterId)) {
+    return NextResponse.json(
+      { error: "TTS disabled for this master", code: "browser_fallback" },
+      { status: 403 }
+    );
   }
 
   if (!text) {

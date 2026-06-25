@@ -7,10 +7,11 @@ import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 const LAST_MASTER_KEY = "aura_last_master";
 const PENDING_READING_KEY = "aura_pending_reading";
 const BALANCE_BEFORE_KEY = "aura_runes_before_purchase";
+const PENDING_PAYMENT_KEY = "aura_pending_rune_payment_id";
 
 export default function RunePurchaseSuccessPage() {
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
-  const [status, setStatus] = useState<"polling" | "ready">("polling");
+  const [status, setStatus] = useState<"polling" | "ready" | "timeout">("polling");
 
   useEffect(() => {
     let masterId: string | null = null;
@@ -34,11 +35,39 @@ export default function RunePurchaseSuccessPage() {
 
     const expectedRaw = localStorage.getItem(BALANCE_BEFORE_KEY);
     const expected = expectedRaw !== null ? Number(expectedRaw) : null;
+    const pendingPaymentId = localStorage.getItem(PENDING_PAYMENT_KEY);
     let attempts = 0;
     const maxAttempts = 15;
 
+    const markReady = (balance: number) => {
+      emitRuneBalanceUpdate(balance);
+      setStatus("ready");
+      localStorage.removeItem(BALANCE_BEFORE_KEY);
+      localStorage.removeItem(PENDING_PAYMENT_KEY);
+      window.setTimeout(() => {
+        window.location.href = href;
+      }, 1200);
+    };
+
     const poll = async () => {
       try {
+        if (pendingPaymentId) {
+          const confirmRes = await fetch("/api/runes/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentId: pendingPaymentId }),
+          });
+          if (confirmRes.ok) {
+            const confirmData = await confirmRes.json();
+            if (typeof confirmData.balance === "number") {
+              if (confirmData.credited || confirmData.status === "already_credited") {
+                markReady(confirmData.balance);
+                return;
+              }
+            }
+          }
+        }
+
         const params =
           expected !== null && Number.isFinite(expected)
             ? `?expected=${encodeURIComponent(String(expected))}`
@@ -47,13 +76,8 @@ export default function RunePurchaseSuccessPage() {
         if (res.ok) {
           const data = await res.json();
           if (typeof data.balance === "number") {
-            emitRuneBalanceUpdate(data.balance);
             if (!data.pending || (expected !== null && data.balance > expected)) {
-              setStatus("ready");
-              localStorage.removeItem(BALANCE_BEFORE_KEY);
-              window.setTimeout(() => {
-                window.location.href = href;
-              }, 1200);
+              markReady(data.balance);
               return;
             }
           }
@@ -64,10 +88,7 @@ export default function RunePurchaseSuccessPage() {
 
       attempts += 1;
       if (attempts >= maxAttempts) {
-        setStatus("ready");
-        window.setTimeout(() => {
-          window.location.href = href;
-        }, 800);
+        setStatus("timeout");
       }
     };
 
@@ -81,15 +102,19 @@ export default function RunePurchaseSuccessPage() {
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="max-w-sm text-center">
         <div className="mb-4 text-6xl">ᚢ</div>
-        <h1 className="font-display mb-2 text-2xl font-bold text-white">Руны получены!</h1>
+        <h1 className="font-display mb-2 text-2xl font-bold text-white">
+          {status === "timeout" ? "Ожидаем подтверждение" : "Руны получены!"}
+        </h1>
         <p className="mb-6 text-sm text-gray-400">
           {status === "polling"
             ? "Подтверждаем оплату и обновляем баланс…"
-            : "Баланс пополнен. Сейчас вернём вас к мастеру."}
+            : status === "timeout"
+              ? "Оплата может обрабатываться до нескольких минут. Обновите страницу или начислите руны через поддержку — платёж в ЮKassa уже прошёл."
+              : "Баланс пополнен. Сейчас вернём вас к мастеру."}
         </p>
         <Link
           href={redirectTo ?? "/"}
-          className="inline-block rounded-xl bg-amber-500 px-6 py-3 font-bold text-black transition-colors hover:bg-amber-400"
+          className="btn-luxe btn-luxe--md btn-luxe--gold"
         >
           Вернуться к мастеру →
         </Link>

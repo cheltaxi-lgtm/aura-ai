@@ -1,7 +1,8 @@
--- Aura — полная схема PostgreSQL (2026)
--- Монтируется в Docker через docker-compose.yml
-
+-- Zovus — полная схема PostgreSQL (2026)
+-- Монтируется в Docker через docker-compose.yml (fresh DB).
+-- Существующие базы: npm run migrate (scripts/migrate.mjs + scripts/migrations/*.sql).
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- === SPEC: Users (профиль онбординга) ===
 CREATE TABLE IF NOT EXISTS users (
@@ -17,6 +18,8 @@ CREATE TABLE IF NOT EXISTS users (
   astro_meta JSONB NOT NULL DEFAULT '{}',
   rune_balance INTEGER NOT NULL DEFAULT 0,
   total_runes_purchased INTEGER NOT NULL DEFAULT 0,
+  starter_runes_granted BOOLEAN NOT NULL DEFAULT FALSE,
+  last_daily_bonus TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -62,11 +65,24 @@ CREATE TABLE IF NOT EXISTS sessions (
   free_questions_used INT NOT NULL DEFAULT 0,
   paid_until TIMESTAMPTZ,
   has_single_unlock BOOLEAN NOT NULL DEFAULT FALSE,
+  character_key TEXT,
+  intention TEXT,
+  spread_type TEXT,
+  cards JSONB,
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'completed')),
+  awaiting_context BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_character
+  ON sessions (user_id, character_key, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_active
+  ON sessions (user_id, character_key, status, updated_at DESC);
 
 -- === Чат ===
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -76,10 +92,19 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL,
   image_url TEXT,
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_chat_messages_owner ON chat_messages(owner_user_id);
+
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_owner_character
+  ON chat_messages (owner_user_id, character_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_character_created
+  ON chat_messages (session_id, character_id, created_at ASC);
 
 -- === SPEC: Payments ===
 CREATE TABLE IF NOT EXISTS payments (
@@ -99,6 +124,8 @@ CREATE TABLE IF NOT EXISTS payments (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_payments_referrer ON payments(referrer_slug);
+
 -- === Аккаунты (регистрация / ЛК) ===
 CREATE TABLE IF NOT EXISTS user_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -107,8 +134,12 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   name TEXT NOT NULL,
   profile_user_id UUID REFERENCES users(id),
   is_unlimited BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT user_accounts_profile_user_id_unique UNIQUE (profile_user_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_user_accounts_unlimited ON user_accounts(is_unlimited)
+  WHERE is_unlimited = TRUE;
 
 CREATE TABLE IF NOT EXISTS expert_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -195,21 +226,23 @@ INSERT INTO platform_settings (key, value) VALUES
   ('ai', '{"provider":"openrouter","model":"openai/gpt-4o-mini","visionModel":"openai/gpt-4o","temperature":0.85,"maxTokens":800,"maxReadingTokens":900}'),
   ('pricing', '{"singlePrice":199,"subscriptionPrice":590,"currency":"RUB"}'),
   ('features', '{"maintenanceMode":false,"registrationEnabled":true,"recaptchaEnabled":false,"freeQuestionLimit":2,"demoPayments":true}'),
-  ('prompts', '{"globalPrefix":"Ты — мастер эзотерической платформы Aura. Отвечай на русском."}'),
+  ('prompts', '{"globalPrefix":"Ты — мастер эзотерической платформы Zovus. Отвечай на русском."}'),
   ('tts', '{"enabled":false,"model":"google/gemini-3.1-flash-tts-preview","fallbackModel":"hexgrad/kokoro-82m","fallbackEnabled":true,"chunkChars":4000}'),
-  ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Aura mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":true,"destiny_card":true,"scene_illustration":true,"final_report":true}}')
+  ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Zovus mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":true,"destiny_card":true,"scene_illustration":true,"final_report":true}}'),
+  ('runes', '{"enabled":true,"rubPerRune":2,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"FINAL_REPORT":30}}')
 ON CONFLICT (key) DO NOTHING;
 
 -- === Runes (internal currency) ===
 CREATE TABLE IF NOT EXISTS rune_transactions (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type            TEXT NOT NULL CHECK (type IN ('purchase', 'spend', 'bonus', 'refund')),
+  type            TEXT NOT NULL CHECK (type IN ('purchase', 'spend', 'bonus', 'refund', 'daily_bonus', 'achievement')),
   amount          INTEGER NOT NULL,
   balance_after   INTEGER NOT NULL,
   description     TEXT NOT NULL,
   action_type     TEXT,
   payment_id      TEXT,
+  shown_receipt   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -219,6 +252,11 @@ CREATE INDEX IF NOT EXISTS idx_rune_transactions_user
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_payment_purchase
   ON rune_transactions (payment_id)
   WHERE type = 'purchase' AND payment_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_rune_transactions_unshown
+  ON rune_transactions (user_id, created_at DESC)
+  WHERE shown_receipt = FALSE
+    AND type IN ('purchase', 'achievement', 'daily_bonus', 'bonus');
 
 CREATE TABLE IF NOT EXISTS rune_packages (
   id          TEXT PRIMARY KEY,
@@ -250,6 +288,7 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_reset ON rate_limit_buckets(reset_at);
 CREATE TABLE IF NOT EXISTS session_memories (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id      UUID REFERENCES sessions(id) ON DELETE SET NULL,
   character_key   TEXT NOT NULL,
   session_date    TIMESTAMPTZ NOT NULL DEFAULT now(),
   topic_summary   TEXT NOT NULL,
@@ -262,3 +301,133 @@ CREATE TABLE IF NOT EXISTS session_memories (
 
 CREATE INDEX IF NOT EXISTS idx_session_memories_user
   ON session_memories (user_id, character_key, session_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_session_memories_user_created
+  ON session_memories (user_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_memories_session_unique
+  ON session_memories (session_id)
+  WHERE session_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS user_facts (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  fact             TEXT NOT NULL,
+  category         TEXT,
+  event_date       DATE,
+  source_character TEXT,
+  salience         SMALLINT NOT NULL DEFAULT 3,
+  embedding        vector(1024),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_user
+  ON user_facts (user_id, salience DESC, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_embedding
+  ON user_facts USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_events
+  ON user_facts (user_id, event_date)
+  WHERE event_date IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_fts
+  ON user_facts USING gin (to_tsvector('russian', fact));
+
+CREATE TABLE IF NOT EXISTS diary_entries (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  character_key TEXT NOT NULL,
+  entry_text    TEXT NOT NULL,
+  cards         TEXT[] DEFAULT '{}',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_diary_user
+  ON diary_entries (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS user_achievements (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  achievement TEXT NOT NULL,
+  earned_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, achievement)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
+
+CREATE TABLE IF NOT EXISTS daily_readings (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  character_key TEXT NOT NULL,
+  reading_text  TEXT NOT NULL,
+  cards         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  deck_system   TEXT,
+  reading_date  DATE NOT NULL DEFAULT CURRENT_DATE,
+  UNIQUE(user_id, reading_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_readings_user_date
+  ON daily_readings (user_id, reading_date DESC);
+
+-- Ritual sessions
+CREATE TABLE IF NOT EXISTS rituals (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  character_key    TEXT NOT NULL,
+  ritual_type      TEXT NOT NULL
+    CHECK (ritual_type IN ('love','money','protection','luck','release')),
+  status           TEXT NOT NULL DEFAULT 'questions'
+    CHECK (status IN ('questions','spread','payment','generating','completed','reviewed')),
+  answers          JSONB DEFAULT '[]',
+  cards            JSONB DEFAULT '[]',
+  moon_phase       TEXT,
+  moon_sign        TEXT,
+  ritual_time      TEXT,
+  ritual_place     TEXT,
+  ritual_items     JSONB DEFAULT '[]',
+  ritual_steps     JSONB DEFAULT '[]',
+  ritual_words     TEXT,
+  ritual_word_of_power TEXT,
+  ritual_word_of_power_transcription TEXT,
+  ritual_forbids   JSONB DEFAULT '[]',
+  ritual_signs     JSONB DEFAULT '[]',
+  rune_cost        INTEGER NOT NULL DEFAULT 0,
+  payment_status   TEXT NOT NULL DEFAULT 'pending'
+    CHECK (payment_status IN ('free','pending','paid')),
+  transaction_id   UUID REFERENCES rune_transactions(id),
+  outcome_text     TEXT,
+  outcome_rating   INTEGER CHECK (outcome_rating BETWEEN 1 AND 5),
+  outcome_shared   BOOLEAN DEFAULT FALSE,
+  remind_at        TIMESTAMPTZ,
+  reminded_at      TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ritual_outcomes_public (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ritual_type      TEXT NOT NULL,
+  character_key    TEXT NOT NULL,
+  outcome_text     TEXT NOT NULL,
+  outcome_rating   INTEGER NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rituals_user ON rituals (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rituals_remind ON rituals (remind_at) WHERE status = 'completed' AND reminded_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ritual_outcomes_type ON ritual_outcomes_public (ritual_type, character_key);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type       TEXT NOT NULL,
+  title      TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  data       JSONB DEFAULT '{}',
+  read       BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_id, created_at DESC) WHERE read = FALSE;

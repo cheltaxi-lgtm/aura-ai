@@ -4,6 +4,36 @@ type Bucket = { count: number; resetAt: number };
 
 const memoryBuckets = new Map<string, Bucket>();
 
+const MEMORY_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+function purgeExpiredMemoryBuckets(now = Date.now()): number {
+  let removed = 0;
+  for (const [key, bucket] of memoryBuckets) {
+    if (now >= bucket.resetAt) {
+      memoryBuckets.delete(key);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+function ensureMemoryBucketJanitor(): void {
+  if (typeof setInterval === "undefined") return;
+  const g = globalThis as typeof globalThis & { __rateLimitMemoryJanitor?: boolean };
+  if (g.__rateLimitMemoryJanitor) return;
+  g.__rateLimitMemoryJanitor = true;
+
+  const timer = setInterval(() => {
+    purgeExpiredMemoryBuckets();
+  }, MEMORY_SWEEP_INTERVAL_MS);
+
+  if (typeof timer === "object" && timer !== null && "unref" in timer) {
+    timer.unref();
+  }
+}
+
+ensureMemoryBucketJanitor();
+
 /** Returns true if allowed, false if rate limited. */
 export function checkRateLimitMemory(
   key: string,
