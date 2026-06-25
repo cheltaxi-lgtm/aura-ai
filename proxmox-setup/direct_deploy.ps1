@@ -35,6 +35,8 @@ cd /opt/aura-ai && SKIP_EXTRACT=1 bash /opt/aura-ai/proxmox-setup/vm_local_deplo
 echo "=== DEPLOYED VERSION ===" && grep 'PHOTO_UPLOAD_REV' /opt/aura-ai/src/components/PhotoReadingFlow.tsx | head -1
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
-$DeployCmd | ssh -o StrictHostKeyChecking=no $VmHost "bash -s"
+# Strip any CR re-added by the PowerShell→ssh stdin pipe before bash parses it,
+# otherwise the final line arrives as e.g. `head -1\r` and breaks.
+$DeployCmd | ssh -o StrictHostKeyChecking=no $VmHost "tr -d '\r' | bash -s"
 
 Write-Host ">>> Done: https://zovus.ru"
