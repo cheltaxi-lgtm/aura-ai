@@ -271,8 +271,8 @@ export const config = {
     "/cabinet/:path*",
     "/expert/:path*",
     "/admin/:path*",
-    // Photo upload routes auth in their handlers — skip middleware body buffering.
-    "/api/((?!photo-reading/recognize|photo-reading/client-log).*)",
+    // Photo upload + cron routes auth in their handlers (body buffering / x-cron-secret).
+    "/api/((?!photo-reading/recognize|photo-reading/client-log|cron/|ritual/remind).*)",
   ],
 };
 

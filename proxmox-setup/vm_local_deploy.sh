@@ -114,6 +114,12 @@ systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
 
 echo ">>> Installing background crons (memory maintenance + proactive reminders)..."
+# Normalize line endings: these scripts may carry CRLF from a Windows checkout,
+# which breaks `set -euo pipefail` and other lines under bash.
+sed -i 's/\r$//' \
+  /opt/aura-ai/proxmox-setup/install-crons.sh \
+  /opt/aura-ai/proxmox-setup/cron-proactive-reminders.sh \
+  /opt/aura-ai/proxmox-setup/cron-memory-maintenance.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
 
 echo "Deploy complete: https://zovus.ru"
