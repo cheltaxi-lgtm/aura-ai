@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
     await dispatchNotification({
       userId: item.user_id,
       type: "ritual_reminder",
-      title: "Прошло 7 дней",
-      body: `Были знаки после обряда «${typeLabel}»? Расскажите мастеру.`,
+      title: "Неделя после обряда",
+      body: `Были знаки после обряда «${typeLabel}»? Расскажите мастеру — он подскажет, что делать дальше.`,
       data: {
         ritualId: item.id,
         characterKey: item.character_key,

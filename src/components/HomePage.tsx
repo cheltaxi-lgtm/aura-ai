@@ -129,6 +129,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   } | null>(null);
   /** Overrides MasterSessionFlow preselection when opening from PremiumEnergyBlock CTAs. */
   const [energyFlowMasterId, setEnergyFlowMasterId] = useState<string | null>(null);
+  /** Pending deep-link auto-reading (from a notification CTA): open chat + auto-ask. */
+  const [autoAsk, setAutoAsk] = useState<{ master: string; question: string } | null>(null);
+  const autoAskParsedRef = useRef(false);
+  const autoAskOpenedRef = useRef(false);
+  const autoAskSentRef = useRef(false);
+  const autoAskMasterRef = useRef<string | null>(null);
 
   const {
     isLoading,
@@ -492,6 +498,21 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, [openPaywall, runeBalance]);
+
+  // Deep link from a notification CTA: /?ask=<question>&master=<id>. Parse once,
+  // then open a session chat with the master and auto-send the question.
+  useEffect(() => {
+    if (typeof window === "undefined" || autoAskParsedRef.current) return;
+    autoAskParsedRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const ask = params.get("ask")?.trim();
+    if (!ask) return;
+    setAutoAsk({ master: params.get("master")?.trim() ?? "", question: ask });
+    const url = new URL(window.location.href);
+    url.searchParams.delete("ask");
+    url.searchParams.delete("master");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.location.hash) return;
@@ -984,6 +1005,69 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   loadReadingRef.current = loadReading;
   openChatWithCharacterRef.current = openChatWithCharacter;
   applyHistorySessionMetaRef.current = applyHistorySessionMeta;
+
+  // Auto-reading step 1 — once logged in and masters are ready, open a session
+  // chat with the relevant master (mirrors the known-good "talk to master" path).
+  useEffect(() => {
+    if (!autoAsk || authLoading || !isLoggedIn || !masters.length) return;
+    if (autoAskOpenedRef.current) return;
+    autoAskOpenedRef.current = true;
+
+    const resolved =
+      (autoAsk.master && findShowcaseMaster(autoAsk.master, masters) ? autoAsk.master : null) ??
+      recommendedId ??
+      masters[0]?.id ??
+      null;
+    if (!resolved) {
+      setAutoAsk(null);
+      return;
+    }
+    autoAskMasterRef.current = resolved;
+
+    void (async () => {
+      readingInFlightRef.current = true;
+      skipNextReadingRef.current = true;
+      try {
+        await bindSessionToMaster(resolved);
+        await openChatWithCharacterRef.current(resolved, {
+          sessionOnly: true,
+          intention: null,
+        });
+      } finally {
+        readingInFlightRef.current = false;
+      }
+    })();
+  }, [
+    autoAsk,
+    authLoading,
+    isLoggedIn,
+    masters,
+    recommendedId,
+    bindSessionToMaster,
+    readingInFlightRef,
+  ]);
+
+  // Auto-reading step 2 — once the session chat is open and its welcome has
+  // loaded, send the question so the master answers the topic directly.
+  useEffect(() => {
+    if (!autoAsk || autoAskSentRef.current) return;
+    if (!sessionOnlyChat || isLoading || isLoadingHistory) return;
+    if (sendingRef.current || messages.length === 0) return;
+    if (!selectedCharacter || selectedCharacter !== autoAskMasterRef.current) return;
+
+    autoAskSentRef.current = true;
+    const question = autoAsk.question;
+    setAutoAsk(null);
+    void handleSendMessage(question);
+  }, [
+    autoAsk,
+    sessionOnlyChat,
+    isLoading,
+    isLoadingHistory,
+    messages.length,
+    selectedCharacter,
+    handleSendMessage,
+  ]);
 
   const handlePaywallClose = useCallback(async () => {
     const masterId = pendingReadingMasterRef.current;

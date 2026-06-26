@@ -158,10 +158,12 @@ export default function NotificationBell() {
                 const label =
                   typeof n.data?.ctaLabel === "string" ? n.data.ctaLabel : "Открыть";
                 return (
-                  <li key={n.id} className="px-4 py-3">
-                    <p className="text-sm font-semibold text-mystic-gold">{n.title}</p>
-                    <p className="mt-1 text-[13px] leading-relaxed text-gray-300">{n.body}</p>
-                    <div className="mt-2 flex items-center justify-between gap-3">
+                  <li key={n.id} className="px-4 py-3.5">
+                    <p className="font-display text-[14px] font-semibold leading-snug text-mystic-gold">
+                      {n.title}
+                    </p>
+                    <p className="mt-1.5 text-[13px] leading-[1.6] text-gray-300/90">{n.body}</p>
+                    <div className="mt-3 flex items-center justify-between gap-3">
                       <span className="text-[11px] text-gray-500">{timeAgo(n.created_at)}</span>
                       {href && (
                         <a
@@ -170,9 +172,10 @@ export default function NotificationBell() {
                             void markAllRead();
                             setOpen(false);
                           }}
-                          className="text-xs font-medium text-aura-gold hover:text-amber-200"
+                          className="inline-flex items-center gap-1 rounded-full border border-aura-gold/40 bg-aura-gold/10 px-3 py-1.5 text-xs font-medium text-aura-gold transition hover:border-aura-gold/70 hover:bg-aura-gold/20 hover:text-amber-100"
                         >
-                          {label} →
+                          {label}
+                          <span aria-hidden>→</span>
                         </a>
                       )}
                     </div>

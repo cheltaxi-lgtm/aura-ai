@@ -31,18 +31,25 @@ export async function GET(request: NextRequest) {
 
   for (const ev of events) {
     const when = daysUntilLabel(ev.eventDate);
+    const topic = cleanEventTopic(ev.fact, ev.eventDate);
+    const question = buildAutoAsk(topic, when);
+    const master = ev.sourceCharacter?.trim() ?? "";
+    const ctaPath = `/?ask=${encodeURIComponent(question)}${
+      master ? `&master=${encodeURIComponent(master)}` : ""
+    }`;
+
     await dispatchNotification({
       userId: ev.userId,
       type: "event_reminder",
-      title: when ? `Скоро важный день — ${when}` : "Скоро важный день",
-      body: `Ты упоминал(а): «${ev.fact}». ${when ? `Это уже ${when}. ` : ""}Хочешь расклад на исход? Мастер ждёт в чате.`,
+      title: when ? `Важный день — ${when}` : "Важный день впереди",
+      body: `Вы упоминали: «${topic}». ${whenSentence(when)}Загляните к мастеру — посмотрим, что вас ждёт.`,
       data: {
         factId: ev.factId,
         eventDate: ev.eventDate,
         sourceCharacter: ev.sourceCharacter,
       },
-      ctaPath: "/",
-      ctaLabel: "Спросить мастера",
+      ctaPath,
+      ctaLabel: "Получить расклад",
     });
     processed++;
   }
@@ -60,4 +67,35 @@ function daysUntilLabel(iso: string): string {
   if (diff === 1) return "завтра";
   if (diff >= 2 && diff <= 4) return `через ${diff} дня`;
   return `через ${diff} дней`;
+}
+
+/** Turn a raw stored memory line into a short, readable topic for the user. */
+function cleanEventTopic(fact: string, eventDate: string): string {
+  let t = (fact ?? "").trim();
+  if (eventDate) t = t.split(eventDate).join(" ");
+  // Drop any leftover ISO dates and the cron-side phrasing that reads oddly.
+  t = t.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ");
+  t = t.replace(/^у\s+клиента\s+/i, "");
+  t = t.replace(/\s{2,}/g, " ").trim();
+  // Trim trailing separators/punctuation left behind by the removals.
+  t = t.replace(/[\s,;:.\-–—]+$/u, "").trim();
+  if (t.length > 90) t = `${t.slice(0, 87).trim()}…`;
+  return t || "важное событие";
+}
+
+function whenSentence(when: string): string {
+  if (!when) return "";
+  if (when === "сегодня") return "Это уже сегодня. ";
+  if (when === "завтра") return "Это уже завтра. ";
+  return `Это ${when}. `;
+}
+
+/**
+ * Build the message that is auto-sent to the master from the reminder CTA.
+ * Must NOT match FULL_SPREAD_REQUEST_RE (no "сделай/полный расклад"), so it goes
+ * through the normal chat path and the master answers the topic directly.
+ */
+function buildAutoAsk(topic: string, when: string): string {
+  const whenClause = when ? `Это ${when}. ` : "";
+  return `Хочу разобраться с важным событием: ${topic}. ${whenClause}Что меня ждёт и на что важно обратить внимание?`;
 }
