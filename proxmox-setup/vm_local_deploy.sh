@@ -68,9 +68,26 @@ grep -q '^DB_POOL_MAX=' "$ENV_FILE" \
 
 # Stable secret shared with proactive-reminder crons. Generated once, preserved
 # across deploys (never overwrite an existing value).
-if ! grep -q '^CRON_SECRET=' "$ENV_FILE"; then
-  echo "CRON_SECRET=$(openssl rand -hex 24)" >> "$ENV_FILE"
+if ! grep -q '^CRON_SECRET=' "$ENV_FILE" || [ -z "$(grep '^CRON_SECRET=' "$ENV_FILE" | cut -d= -f2- | tr -d '[:space:]')" ]; then
+  if grep -q '^CRON_SECRET=' "$ENV_FILE"; then
+    sed -i "s|^CRON_SECRET=.*|CRON_SECRET=$(openssl rand -hex 24)|" "$ENV_FILE"
+  else
+    echo "CRON_SECRET=$(openssl rand -hex 24)" >> "$ENV_FILE"
+  fi
 fi
+
+# AUTH_SECRET — generate once if missing or still a dev placeholder (invalidates sessions on first fix).
+_auth_current="$(grep '^AUTH_SECRET=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+if [ -z "${_auth_current// /}" ] || [ "$_auth_current" = "change-me-to-random-32-char-secret-key" ] || printf '%s' "$_auth_current" | grep -q '^change-me'; then
+  _new_auth="$(openssl rand -hex 32)"
+  if grep -q '^AUTH_SECRET=' "$ENV_FILE"; then
+    sed -i "s|^AUTH_SECRET=.*|AUTH_SECRET=${_new_auth}|" "$ENV_FILE"
+  else
+    echo "AUTH_SECRET=${_new_auth}" >> "$ENV_FILE"
+  fi
+  echo "Generated new AUTH_SECRET (existing sessions will need re-login)"
+fi
+unset _auth_current _new_auth
 
 # Never overwrite real YooKassa keys with placeholders during deploy.
 if [ -n "$YUKASSA_SHOP_BACKUP" ] && [ -n "$YUKASSA_SECRET_BACKUP" ] \
