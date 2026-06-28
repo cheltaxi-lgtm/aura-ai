@@ -4,6 +4,79 @@ import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 import { tarotCardsKey } from "@/lib/tarot";
 
 const MAX_BLOCK_CHARS = 4000;
+const PLACEHOLDER_PREDICTION = "Сеанс в процессе";
+
+export type SessionAnchorFallback = {
+  cardNames?: string[];
+  intention?: string | null;
+  mainQuestion?: string | null;
+};
+
+function formatSessionAnchor(parts: {
+  topicSummary?: string;
+  cardNames?: string[];
+  prediction?: string;
+  mood?: string | null;
+  intention?: string | null;
+}): string {
+  const hasTopic = Boolean(parts.topicSummary?.trim());
+  const hasCards = Boolean(parts.cardNames?.length);
+  const hasPrediction =
+    Boolean(parts.prediction?.trim()) && parts.prediction!.trim() !== PLACEHOLDER_PREDICTION;
+  if (!hasTopic && !hasCards && !hasPrediction) return "";
+
+  const lines: string[] = [
+    "ЯКОРЬ ТЕКУЩЕГО СЕАНСА (суть разговора — опирайся на это, не теряй нить):",
+  ];
+  if (hasTopic) lines.push(`- Тема: ${parts.topicSummary!.trim()}`);
+  if (parts.intention?.trim()) lines.push(`- Фокус: ${parts.intention.trim()}`);
+  if (hasCards) lines.push(`- Символы: ${parts.cardNames!.join(" · ")}`);
+  if (hasPrediction) lines.push(`- Что уже обсуждалось: ${parts.prediction!.trim()}`);
+  if (parts.mood?.trim()) lines.push(`- Настроение: ${parts.mood.trim()}`);
+  lines.push("Продолжай с того же места — не начинай диалог с нуля.");
+  return lines.join("\n");
+}
+
+/** Running summary of the active session — from session_memories or session meta fallback. */
+export async function buildCurrentSessionAnchorBlock(
+  userId: string,
+  sessionId: string,
+  characterKey: string,
+  fallback?: SessionAnchorFallback
+): Promise<string> {
+  const fallbackAnchor = formatSessionAnchor({
+    topicSummary: fallback?.mainQuestion ?? undefined,
+    cardNames: fallback?.cardNames,
+    intention: fallback?.intention ?? undefined,
+  });
+
+  if (!(await ensureDb())) return fallbackAnchor;
+
+  const { rows } = await query<{
+    topic_summary: string;
+    key_cards: string[] | null;
+    prediction: string;
+    mood: string | null;
+  }>(
+    `SELECT topic_summary, key_cards, prediction, mood
+     FROM session_memories
+     WHERE user_id = $1 AND session_id = $2 AND character_key = $3
+     LIMIT 1`,
+    [userId, sessionId, characterKey]
+  );
+
+  const row = rows[0];
+  if (!row) return fallbackAnchor;
+
+  const anchor = formatSessionAnchor({
+    topicSummary: row.topic_summary,
+    cardNames: row.key_cards ?? fallback?.cardNames,
+    prediction: row.prediction,
+    mood: row.mood,
+    intention: fallback?.intention ?? undefined,
+  });
+  return anchor || fallbackAnchor;
+}
 
 export interface UserMemoryOptions {
   currentCharacterId?: string;

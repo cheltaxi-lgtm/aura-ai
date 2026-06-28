@@ -8,6 +8,7 @@ import type { PaymentPlan } from "@/lib/yukassa";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
 import CustomRuneAmountField from "@/components/CustomRuneAmountField";
+import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 
 export interface RunePackage {
   id: string;
@@ -190,6 +191,8 @@ function RuneShopView({
           Не хватает {shortage} рун. Пополните баланс.
         </p>
       ) : null}
+
+      <LegalOfferNotice className="mb-4 mt-1" />
 
       <div className="space-y-3">
         {packages.map((pkg) => {

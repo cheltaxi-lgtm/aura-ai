@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { CreditCard, HelpCircle, MessageCircle, Sparkles, Layers, UserRound, Coins } from "lucide-react";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import MasterServiceDisclaimer from "@/components/MasterServiceDisclaimer";
+import { MASTER_SERVICE_DISCLAIMER_SHORT } from "@/lib/master-disclosure";
 
 interface RunePackage {
   id: string;
@@ -74,7 +75,7 @@ export default function LandingSections({
 
   const faqBase = {
     q: "Кто такие мастера на платформе?",
-    a: "Консультации оказываются с помощью программных ассистентов. Портреты и имена — художественные образы. Сервис носит развлекательно-ознакомительный характер и не заменяет профессиональные консультации.",
+    a: MASTER_SERVICE_DISCLAIMER_SHORT,
   };
 
   const faq = config.enabled

@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Star, UserRound } from "lucide-react";
+import { ArrowRight, UserRound } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { MASTER_PUBLIC_BADGE } from "@/lib/master-disclosure";
 import { isRitualMaster, RITUAL_MASTER_SHOWCASE_BADGE } from "@/lib/ritual-config";
@@ -124,16 +124,11 @@ export default function MasterShowcaseCard({
         <h3 className="master-showcase-card__name">{displayName}</h3>
         <p className="master-showcase-card__system">{master.title}</p>
 
-        <p className="master-showcase-card__meta">
-          <span className="master-showcase-card__meta-item">
-            <Star className="lux-star master-showcase-card__star" aria-hidden />
-            {master.rating}
-          </span>
-          <span className="master-showcase-card__meta-sep" aria-hidden>
-            ·
-          </span>
-          <span className="master-showcase-card__meta-item">{master.sessions}</span>
-        </p>
+        {master.sessions ? (
+          <p className="master-showcase-card__meta">
+            <span className="master-showcase-card__meta-item">{master.sessions}</span>
+          </p>
+        ) : null}
 
         <p className="master-showcase-card__price">
           <span className="master-showcase-card__price-amount">{price.amount}</span>

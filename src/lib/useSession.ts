@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { generateId } from "./id";
 import { fetchWithTimeout } from "./fetch-with-timeout";
+import { confirmAgeGateOnServer, isAgeGateConfirmed } from "./age-gate";
 const SESSION_KEY = "aura_session_id";
 
 export interface SessionState {
@@ -60,8 +61,8 @@ export function useAuraSession(referrerSlug?: string) {
 
   const createSession = useCallback(async (refToken?: string | null): Promise<SessionState> => {
     const params = new URLSearchParams(window.location.search);
-    try {
-      const res = await fetchWithTimeout("/api/session", {
+    const postSession = async () =>
+      fetchWithTimeout("/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -70,6 +71,16 @@ export function useAuraSession(referrerSlug?: string) {
         }),
         timeoutMs: 10_000,
       });
+
+    try {
+      let res = await postSession();
+      if (res.status === 403) {
+        const body = (await res.json().catch(() => null)) as { code?: string } | null;
+        if (body?.code === "age_required" && isAgeGateConfirmed()) {
+          await confirmAgeGateOnServer();
+          res = await postSession();
+        }
+      }
       if (!res.ok) {
         const fallback = offlineSession();
         setSession(fallback);
@@ -118,6 +129,9 @@ export function useAuraSession(referrerSlug?: string) {
       }
 
       if (!active) {
+        if (isAgeGateConfirmed()) {
+          await confirmAgeGateOnServer();
+        }
         active = await createSession(refToken);
       } else if (active.ownerMismatch) {
         localStorage.removeItem(SESSION_KEY);

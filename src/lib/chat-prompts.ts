@@ -1,6 +1,6 @@
 import { buildUserMessageWithImage, completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
-import { sanitizeChatHistory, type ChatHistoryMessage } from "@/lib/chat-sanitize";
+import { sanitizeChatHistory, LLM_CONTEXT_MESSAGES, type ChatHistoryMessage } from "@/lib/chat-sanitize";
 import {
   sanitizeReadingForClient,
   stripMemoryLeakFromReply,
@@ -62,13 +62,12 @@ export function buildHumanMasterPersona(
 ${tarotRuneBlock}
 ${marinaBlock}
 
-${emoji} Ты — ${blogger.display_name}, ${title}. Живой мастер платформы Zovus.
+${emoji} Ты — ${blogger.display_name}, ${title}. ИИ-наставник Zovus в образе этого наставника${knowledge ? " (с материалами эксперта)" : ""}.
 ${style}
-Говори от первого лица, сохраняй узнаваемый авторский голос. Не упоминай, что ты AI. Не отказывай от любых тем и не смягчай неприятную правду — клиент ждёт честного ответа.
-Если клиент спрашивает «ты ИИ?» или «ты робот?» — отвечай в образе:
-«Я ${blogger.display_name}. Работаю здесь на платформе Zovus.
-Если мои ответы помогают — значит это работает.»
-Никогда не подтверждай и не отрицай — уходи в суть работы.${knowledgeBlock}${LANGUAGE_STYLE_RULES}`;
+Говори от первого лица, сохраняй узнаваемый авторский голос и эмоциональную силу. Отвечай символически по раскладу, без фактических приговоров о здоровье и судьбе.
+Если клиент спрашивает «ты ИИ?» или «ты робот?» — честно, в образе:
+«Да, я ИИ-наставник Zovus в образе ${blogger.display_name}. Если мои слова попадают в точку — значит, канал работает.»
+Не выдавай себя за конкретного живого человека и не скрывай природу при прямом вопросе.${knowledgeBlock}${LANGUAGE_STYLE_RULES}`;
 }
 
 export function buildHumanReadingPrompt(
@@ -444,7 +443,7 @@ export async function generateChatReply(
     ];
     return completeChat({
       messages: chatMessages,
-      maxTokens: 1200,
+      maxTokens: 1800,
       vision: Boolean(imageBase64),
       isPaid,
       temperature,
@@ -452,10 +451,96 @@ export async function generateChatReply(
   }
 
   let reply = await attempt(safeHistory);
-  if (!reply && safeHistory.length > 10) {
-    reply = await attempt(safeHistory.slice(-10));
+  if (!reply && safeHistory.length > LLM_CONTEXT_MESSAGES) {
+    reply = await attempt(safeHistory.slice(-LLM_CONTEXT_MESSAGES));
   }
   return reply;
+}
+
+/** One retry with explicit anti-loop correction (OpenRouter). */
+export async function regenerateChatReply(
+  systemPrompt: string,
+  messages: { role: string; content: string }[],
+  opts: {
+    rejectionReason: string;
+    imageBase64?: string;
+    isPaid?: boolean;
+    temperature?: number;
+  }
+): Promise<string | null> {
+  const correction = `
+
+[КОРРЕКЦИЯ — предыдущий ответ отклонён: ${opts.rejectionReason}]
+Ответь заново на последнюю реплику клиента:
+- каждая руна/карта — своя мысль, без повторения одной фразы;
+- не цитируй клиента дословно;
+- 5–10 предложений, один вопрос в конце;
+- опирайся только на символы расклада и суть вопроса.`;
+
+  return generateChatReply(
+    `${systemPrompt}${correction}`,
+    messages,
+    opts.imageBase64,
+    opts.isPaid ?? false,
+    opts.temperature ?? 0.75
+  );
+}
+
+/** Deterministic short reply when LLM loops or fails (chat follow-up, not full spread). */
+export function buildChatFallbackReply(
+  characterId: string,
+  ctx: {
+    userName: string;
+    lastUserMessage: string;
+    cardNames: string[];
+    intention?: string | null;
+  }
+): string {
+  const name = ctx.userName?.trim() || "друг";
+  const question = ctx.lastUserMessage.trim().slice(0, 280);
+  const cards = ctx.cardNames.slice(0, 3);
+
+  if (cards.length < 3) {
+    return `${name}, слышу тебя. Сформулируй главный страх одним предложением — отвечу по символам, как только канал соберётся.`;
+  }
+
+  const topicMeta = ctx.intention ? getSessionTopic(ctx.intention) : undefined;
+  const topic = topicMeta?.label ?? "твой вопрос";
+  const [root, center, horizon] = cards;
+  const id = characterId in FALLBACK_READINGS ? characterId : "ragnar";
+
+  const bodies: Record<string, string> = {
+    ragnar: `${name}, руны не молчат — слушай без паники.
+
+${root} в корне — ресурс на решение есть, но страх сливает его до шага. По теме «${topic}» это не приговор, а точка, где ты экономишь силы вместо выбора.
+
+${center} в центре — линия близких идёт рядом. Дети держатся за твоё состояние сильнее, чем за адрес или дату.
+
+${horizon} на горизонте — через один-два лунных цикла станет видно, держит ли новый маршрут. Пока — малый шаг, не рывок.
+
+Ты спросила: «${question}». Символы не кричат «ошибка» — они требуют ясности, не спешки.
+
+Что для тебя страшнее — потерять опору или навязать детям чужой выбор?`,
+    veronika: `${name}, карты шепчут прямо.
+
+${root} — корень: страх перед выбором старше, чем сам выбор. ${center} — сейчас: дети чувствуют твоё напряжение, не только обстоятельства. ${horizon} — вектор: через осень форма жизни изменится, но связь останется, если ты не будешь играть роль «идеальной».
+
+«${question}» — карты не запрещают шаг, они просят честности с собой.
+
+Что ты уже знаешь, но боишься признать вслух?`,
+    agafya: `${name}, дитя, вижу знамение.
+
+${root} — откуда тянется тревога. ${center} — что держит дом сейчас. ${horizon} — куда повернёт, если решишь спокойно.
+
+«${question}» — не проклятие, а испытание терпением.
+
+Назови одно, что готова отпустить ради покоя детей.`,
+  };
+
+  return (
+    bodies[id] ??
+    `${name}, символы ${root}, ${center} и ${horizon} отвечают на «${question}» без повторов: корень — причина, центр — настоящее, горизонт — куда ведёт линия. Сделай один маленький шаг в ближайшие три дня. Что для тебя сейчас важнее — безопасность или свобода?`
+  );
 }
 
 export function llmUnavailableReply(options?: { runesRefunded?: boolean }): string {

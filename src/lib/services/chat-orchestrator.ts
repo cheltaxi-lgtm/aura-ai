@@ -5,12 +5,15 @@ import {
   buildChatPrompt,
   buildHumanChatPrompt,
   generateChatReply,
+  regenerateChatReply,
+  buildChatFallbackReply,
   llmUnavailableReply,
 } from "@/lib/chat-prompts";
 import {
   resolveApiCharacterId,
   sanitizeChatHistory,
   sanitizeUserProfileForPrompt,
+  LLM_CONTEXT_MESSAGES,
   type ChatHistoryMessage,
   type SanitizedUserProfile,
 } from "@/lib/chat-sanitize";
@@ -59,7 +62,22 @@ import {
 import { ensureDb } from "@/lib/db";
 import { getUserById } from "@/lib/users";
 import { MAX_IMAGE_BYTES, validateImageBase64Payload, validateLastUserMessage } from "@/lib/api-guards";
-import { appendUserMemoryToPrompt, buildClientBlock } from "@/lib/user-memory";
+import {
+  appendUserMemoryToPrompt,
+  buildClientBlock,
+  buildMemoryBlock,
+  buildCurrentSessionAnchorBlock,
+} from "@/lib/user-memory";
+import {
+  recoverSpreadMetaFromChatMessages,
+  recoverSpreadMetaFromHistory,
+} from "@/lib/session-spread-meta";
+import {
+  chatReplyRejectionReason,
+  isRejectedChatReply,
+  stripMemoryLeakFromReply,
+  type ChatReplyQualityOpts,
+} from "@/lib/chat-reply-sanitize";
 
 export type ChatRequestBody = {
   characterId: string;
@@ -174,6 +192,8 @@ export class ChatOrchestrator {
   private numerologParams: NumerologEngineParams | null = null;
   private numerologyUi: NumerologyUi | undefined;
   private memoryBlock = "";
+  private lastSystemPrompt = "";
+  private chatTemperature: number | undefined;
 
   private constructor(parsed: ParsedChatRequest) {
     this.characterId = parsed.characterId;
@@ -254,7 +274,7 @@ export class ChatOrchestrator {
   async run(): Promise<Response> {
     await this.syncSessionMeta();
     await this.persistUserMessage();
-    await this.loadClientMemory();
+    await this.loadPromptMemory();
     await this.loadLlmMessages();
 
     this.numerologParams = this.buildNumerologParams();
@@ -266,13 +286,15 @@ export class ChatOrchestrator {
     }
 
     const systemPrompt = await this.buildSystemPrompt();
-    const chatTemperature = this.resolvedIntention === "life_death" ? 0.4 : undefined;
+    this.lastSystemPrompt = systemPrompt;
+    this.chatTemperature = this.resolvedIntention === "life_death" ? 0.4 : undefined;
 
     const streamResponse = await createChatResponseStream({
       systemPrompt,
       messages: this.llmMessages,
       imageBase64: this.imageBase64,
-      temperature: chatTemperature,
+      temperature: this.chatTemperature,
+      qualityOpts: this.chatQualityOpts(),
       onComplete: (meta) => this.handleStreamComplete(meta),
     });
 
@@ -280,7 +302,7 @@ export class ChatOrchestrator {
       return streamResponse;
     }
 
-    return this.runNonStreamingFallback(systemPrompt, chatTemperature);
+    return this.runNonStreamingFallback(systemPrompt, this.chatTemperature);
   }
 
   private async ensureSession(
@@ -341,6 +363,45 @@ export class ChatOrchestrator {
       console.warn("Session meta load failed:", metaErr);
     }
 
+    if (
+      this.profileUserId &&
+      (!this.resolvedCardNames.length || !this.resolvedIntention)
+    ) {
+      try {
+        const recovered = await recoverSpreadMetaFromHistory(
+          this.profileUserId,
+          this.characterId,
+          this.session.id
+        );
+        if (recovered) {
+          if (!this.resolvedIntention && recovered.intention) {
+            this.resolvedIntention = recovered.intention;
+          }
+          if (!this.resolvedSpreadType && recovered.spreadType) {
+            this.resolvedSpreadType = recovered.spreadType;
+          }
+          if (!this.resolvedCardNames.length && recovered.cards.length >= 3) {
+            this.resolvedCardNames = recovered.cards;
+          }
+        }
+      } catch (recoverErr) {
+        console.warn("Session meta history recover failed:", recoverErr);
+      }
+    }
+
+    if (this.profileUserId && !this.resolvedCardNames.length) {
+      try {
+        const fromChat = await recoverSpreadMetaFromChatMessages(
+          this.session.id,
+          this.characterId,
+          this.profileUserId
+        );
+        if (fromChat.length >= 3) this.resolvedCardNames = fromChat;
+      } catch (chatRecoverErr) {
+        console.warn("Session meta chat recover failed:", chatRecoverErr);
+      }
+    }
+
     try {
       const cardNames = this.spreadCardNames?.length
         ? this.spreadCardNames
@@ -350,11 +411,20 @@ export class ChatOrchestrator {
 
       await updateSessionChatMeta(this.session.id, {
         characterKey: this.characterId,
-        ...(this.intention || this.spreadType || cardNames?.length
+        ...(this.intention ||
+        this.spreadType ||
+        cardNames?.length ||
+        this.resolvedIntention ||
+        this.resolvedSpreadType ||
+        this.resolvedCardNames.length
           ? {
               intention: this.intention ?? this.resolvedIntention ?? null,
               spreadType: this.spreadType ?? this.resolvedSpreadType ?? null,
-              cards: cardNames?.length ? cardNames : null,
+              cards: cardNames?.length
+                ? cardNames
+                : this.resolvedCardNames.length
+                  ? this.resolvedCardNames
+                  : null,
             }
           : {}),
       });
@@ -402,20 +472,49 @@ export class ChatOrchestrator {
     }
   }
 
-  private async loadClientMemory(): Promise<void> {
+  private async loadPromptMemory(): Promise<void> {
     if (!this.profileUserId) return;
-    this.memoryBlock = await ClientMemory.loadClientMemoryBlock({
-      userId: this.profileUserId,
-      queryText: this.lastUserMsg,
-    });
+
+    const cardNames =
+      this.resolvedCardNames.length > 0
+        ? this.resolvedCardNames
+        : this.tarotCards?.map((c) => c.name);
+
+    const [clientFacts, pastSessions, sessionAnchor] = await Promise.all([
+      ClientMemory.loadClientMemoryBlock({
+        userId: this.profileUserId,
+        queryText: this.lastUserMsg,
+      }),
+      this.dbOk && this.session
+        ? buildMemoryBlock(this.profileUserId, this.characterId, this.session.id)
+        : Promise.resolve(""),
+      this.dbOk && this.session
+        ? buildCurrentSessionAnchorBlock(
+            this.profileUserId,
+            this.session.id,
+            this.characterId,
+            {
+              cardNames,
+              intention: this.resolvedIntention,
+              mainQuestion: this.userProfile?.mainQuestion,
+            }
+          )
+        : Promise.resolve(""),
+    ]);
+
+    this.memoryBlock = [sessionAnchor, pastSessions, clientFacts].filter(Boolean).join("\n\n");
   }
 
   private async loadLlmMessages(): Promise<void> {
-    this.llmMessages = this.messages.slice(-20);
+    this.llmMessages = this.messages.slice(-LLM_CONTEXT_MESSAGES);
     if (!this.dbOk || !this.session) return;
 
     try {
-      const sessionMessages = await getSessionMessagesForLlm(this.session.id, this.characterId, 20);
+      const sessionMessages = await getSessionMessagesForLlm(
+        this.session.id,
+        this.characterId,
+        LLM_CONTEXT_MESSAGES
+      );
       if (sessionMessages.length > 0) {
         this.llmMessages = sessionMessages;
       } else {
@@ -575,7 +674,100 @@ export class ChatOrchestrator {
       }
     }
 
+    if (this.lastUserMsg.trim()) {
+      systemPrompt += `
+
+ЧАТ — ПОСЛЕДНЯЯ РЕПЛИКА КЛИЕНТА (ответь на неё, не уходи в общие фразы):
+«${this.lastUserMsg.trim().slice(0, 400)}»
+
+Правила этого ответа:
+- каждая руна/карта расклада — отдельная мысль, без повторения одной формулировки;
+- не пересказывай слова клиента дословно;
+- если вопрос уже уточнён (например «переезд») — не спрашивай снова «какой выбор», отвечай по сути.`;
+    }
+
     return systemPrompt;
+  }
+
+  private chatQualityOpts(): ChatReplyQualityOpts {
+    return {
+      lastUserMessage: this.lastUserMsg,
+      cardNames: this.resolvedCardNames.length
+        ? this.resolvedCardNames
+        : this.tarotCards?.map((c) => c.name),
+    };
+  }
+
+  private sanitizeChatReply(raw: string): string {
+    const cleaned = stripMemoryLeakFromReply(raw);
+    return cleaned || "";
+  }
+
+  /** Reject loop/echo → one OpenRouter retry → deterministic card-aware fallback. */
+  private async resolveFinalChatReply(
+    rawReply: string,
+    llmFailed: boolean
+  ): Promise<{ reply: string; llmFailed: boolean; usedFallback: boolean }> {
+    const qualityOpts = this.chatQualityOpts();
+    let reply = this.sanitizeChatReply(rawReply);
+    let failed = llmFailed || !reply;
+
+    if (!failed && isRejectedChatReply(reply, qualityOpts)) {
+      const reason = chatReplyRejectionReason(reply, qualityOpts) ?? "low quality";
+      console.warn(`[chat] reply rejected (${reason}), regenerating…`);
+      failed = true;
+      reply = "";
+    }
+
+    const usePremiumModel =
+      this.unlimited ||
+      (this.billingHandle?.useRuneBilling &&
+        (Boolean(this.imageBase64) ||
+          (this.billingHandle?.questionIndex ?? 0) >= this.freeLimit)) ||
+      (!this.billingHandle?.useRuneBilling &&
+        (this.billingHandle?.sessionHasFullAccess ?? false));
+
+    if (failed && this.lastSystemPrompt) {
+      const reason =
+        chatReplyRejectionReason(rawReply, qualityOpts) ?? "LLM unavailable";
+      const regenerated = await regenerateChatReply(
+        this.lastSystemPrompt,
+        this.llmMessages,
+        {
+          rejectionReason: reason,
+          imageBase64: this.imageBase64,
+          isPaid: usePremiumModel,
+          temperature: this.chatTemperature ?? 0.75,
+        }
+      );
+      const regClean = regenerated ? this.sanitizeChatReply(regenerated) : "";
+      if (regClean && !isRejectedChatReply(regClean, qualityOpts)) {
+        return { reply: regClean, llmFailed: false, usedFallback: false };
+      }
+    }
+
+    if (failed) {
+      const cardNames =
+        (qualityOpts.cardNames?.length ?? 0) >= 3
+          ? qualityOpts.cardNames!
+          : this.resolvedCardNames;
+      const fallback = buildChatFallbackReply(this.characterId, {
+        userName: this.userProfile?.name ?? "друг",
+        lastUserMessage: this.lastUserMsg,
+        cardNames: cardNames ?? [],
+        intention: this.resolvedIntention,
+      });
+      if (fallback.trim()) {
+        console.warn("[chat] using card-aware chat fallback");
+        return { reply: fallback, llmFailed: false, usedFallback: true };
+      }
+    }
+
+    if (!reply && failed) {
+      return { reply: "", llmFailed: true, usedFallback: false };
+    }
+
+    return { reply, llmFailed: false, usedFallback: false };
   }
 
   private baseResponseMeta(extra: Record<string, unknown> = {}) {
@@ -719,7 +911,10 @@ export class ChatOrchestrator {
   }): Promise<Record<string, unknown>> {
     let llmFailed = meta.llmFailed;
     let runesRefunded = false;
-    let finalReply = meta.reply;
+
+    const resolved = await this.resolveFinalChatReply(meta.reply, llmFailed);
+    let finalReply = resolved.reply;
+    llmFailed = resolved.llmFailed;
 
     if (llmFailed && this.numerologParams) {
       const engineFallback = tryNumerologEngineFallback(this.numerologParams);
@@ -782,9 +977,16 @@ export class ChatOrchestrator {
       chatTemperature
     );
 
+    this.lastSystemPrompt = systemPrompt;
+    this.chatTemperature = chatTemperature;
+
     let llmFailed = !llmReply;
     let runesRefunded = false;
-    let reply = llmReply;
+    let reply = llmReply ?? "";
+
+    const resolved = await this.resolveFinalChatReply(reply, llmFailed);
+    reply = resolved.reply;
+    llmFailed = resolved.llmFailed;
 
     if (llmFailed && this.numerologParams) {
       const engineFallback = tryNumerologEngineFallback(this.numerologParams);

@@ -129,6 +129,8 @@
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-medium
            transition-all duration-300 active:scale-[0.98];
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(232, 199, 126, 0.15);
     background: var(--aura-gold-gradient);
     color: #1a1208;
     box-shadow: var(--shadow-gold-glow);
@@ -167,6 +169,8 @@
   .btn-luxe {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold
            transition-all duration-300 active:scale-[0.98];
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(232, 199, 126, 0.15);
     position: relative;
     isolation: isolate;
     overflow: hidden;
@@ -1846,8 +1850,9 @@
 
 @media (max-width: 639px) {
   .chat-stage {
-    height: calc(100dvh - var(--app-header-h, 3.25rem));
-    max-height: calc(100dvh - var(--app-header-h, 3.25rem));
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
   }
 
   .chat-stage .chat-stage__body {
@@ -1857,6 +1862,21 @@
 
   .chat-stage .chat-stage__input {
     flex-shrink: 0;
+  }
+
+  .chat-stage .glass-panel {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .master-message-bubble {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .chat-scroll {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
 }
 
@@ -3164,7 +3184,7 @@ body.paywall-modal-open [data-flow-overlay="true"] {
 
 .spread-ritual-loader__content {
   @apply relative z-10 flex w-full max-w-md flex-col items-center gap-8;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .spread-ritual-loader__circle-wrap {
@@ -3753,5 +3773,232 @@ body.paywall-modal-open [data-flow-overlay="true"] {
 .cabinet-bottom-nav__icon {
   width: 1.25rem;
   height: 1.25rem;
+}
+
+/* ── Legal documents (prose) ── */
+.legal-prose {
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: rgba(237, 230, 218, 0.75);
+}
+
+.legal-prose > * + * {
+  margin-top: 1rem;
+}
+
+.legal-prose h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.25rem;
+  color: var(--aura-champagne);
+}
+
+.legal-prose h3 {
+  margin-top: 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.legal-prose ul,
+.legal-prose ol {
+  margin-left: 1.25rem;
+  list-style-position: outside;
+}
+
+.legal-prose ul {
+  list-style-type: disc;
+}
+
+.legal-prose ol {
+  list-style-type: decimal;
+}
+
+.legal-prose ul li + li,
+.legal-prose ol li + li {
+  margin-top: 0.5rem;
+}
+
+.legal-prose a {
+  color: var(--aura-champagne);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(232, 199, 126, 0.3);
+}
+
+.legal-prose a:hover {
+  text-decoration-color: var(--aura-champagne);
+}
+
+.legal-prose strong {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.legal-prose-emphasis {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.1);
+  padding: 0.75rem 1rem;
+  color: rgba(237, 230, 218, 0.85);
+}
+
+.site-legal-footer {
+  position: relative;
+  z-index: 10;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(5, 1, 13, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+body.cookie-banner-visible .site-legal-footer {
+  z-index: 6100;
+}
+
+.site-legal-footer__disclaimer {
+  border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+  background: rgba(245, 158, 11, 0.05);
+  padding: 0.625rem 1rem;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(254, 243, 199, 0.75);
+}
+
+.site-legal-footer__links {
+  display: flex;
+  max-width: 64rem;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem;
+  font-size: 0.75rem;
+  color: rgba(237, 230, 218, 0.4);
+}
+
+.site-legal-footer__links a,
+.legal-doc-link {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(232, 199, 126, 0.2);
+  transition: color 0.2s;
+}
+
+.site-legal-footer__links a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 0.25rem 0.125rem;
+}
+
+.site-legal-footer__links a:hover,
+.legal-doc-link:hover {
+  color: var(--aura-champagne);
+}
+
+.legal-page-nav .legal-doc-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.cookie-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 6000;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 10, 26, 0.95);
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(12px);
+  /* Пустые зоны баннера не перехватывают тапы по футеру и ссылкам под ним */
+  pointer-events: none;
+}
+
+.cookie-banner__inner {
+  pointer-events: auto;
+}
+
+body.cookie-banner-visible {
+  padding-bottom: calc(var(--cookie-banner-offset, 8.5rem) + env(safe-area-inset-bottom, 0px));
+}
+
+body.cookie-banner-visible .legal-page {
+  padding-bottom: calc(2rem + var(--cookie-banner-offset, 8.5rem) + env(safe-area-inset-bottom, 0px));
+}
+
+.cookie-banner__docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.6875rem;
+  color: rgba(237, 230, 218, 0.45);
+}
+
+.cookie-banner__docs a {
+  touch-action: manipulation;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: rgba(232, 199, 126, 0.75);
+}
+
+.cookie-banner__docs a:hover {
+  color: var(--aura-gold);
+}
+
+@media (min-width: 640px) {
+  .cookie-banner__docs {
+    display: none;
+  }
+}
+
+.cookie-banner__link {
+  color: var(--aura-champagne);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cookie-banner__link:hover {
+  color: var(--aura-gold);
+}
+
+.cookie-banner__inner {
+  display: flex;
+  max-width: 56rem;
+  margin: 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .cookie-banner__inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.cookie-banner__text {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: rgba(237, 230, 218, 0.6);
+}
+
+.cookie-banner__text a,
+.cookie-banner__link {
+  color: var(--aura-champagne);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cookie-banner__text a:hover,
+.cookie-banner__link:hover {
+  color: var(--aura-gold);
 }
 

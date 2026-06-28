@@ -2,7 +2,7 @@
 
 import type { MouseEvent } from "react";
 import { motion } from "framer-motion";
-import { ChevronRight, Layers, Star } from "lucide-react";
+import { ChevronRight, Layers } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { MASTER_PUBLIC_BADGE } from "@/lib/master-disclosure";
 import { isRitualMaster, RITUAL_MASTER_SHOWCASE_BADGE } from "@/lib/ritual-config";
@@ -93,11 +93,14 @@ export default function MasterListRow({
           </span>
           <span className="master-list-row__line2">{master.title}</span>
           <span className="master-list-row__line3">
-            <Star className="lux-star h-3 w-3 shrink-0" aria-hidden />
-            {master.rating}
-            <span className="master-list-row__dot" aria-hidden>
-              ·
-            </span>
+            {master.sessions ? (
+              <>
+                {master.sessions}
+                <span className="master-list-row__dot" aria-hidden>
+                  ·
+                </span>
+              </>
+            ) : null}
             {deckCount} {deckUnit}
             {price.amount ? (
               <>

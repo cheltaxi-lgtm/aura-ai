@@ -9,8 +9,9 @@ export interface Character {
   glowColor: string;
   borderColor: string;
   priceFrom: string;
-  rating: number;
-  sessions: string;
+  /** Только реальные метрики из БД; для AI-мастеров не задаётся */
+  rating?: number;
+  sessions?: string;
   /** Divination deck system for this master */
   system: import("@/lib/decks/types").DeckSystem;
 }

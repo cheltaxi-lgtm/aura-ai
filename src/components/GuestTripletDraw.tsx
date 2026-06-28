@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { drawSpread, getDeckPositions, DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
+import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import DeckCard from "@/components/DeckCard";
 
 export default function GuestTripletDraw() {
@@ -14,11 +15,24 @@ export default function GuestTripletDraw() {
   const [deck] = useState(() => drawSpread(system, 3));
   const [revealed, setRevealed] = useState<boolean[]>([false, false, false]);
   const [done, setDone] = useState(false);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [ageConfirming, setAgeConfirming] = useState(false);
+
+  useEffect(() => {
+    setAgeConfirmed(isAgeGateConfirmed());
+  }, []);
 
   const allRevealed = revealed.every(Boolean);
 
+  const handleAgeConfirm = async () => {
+    setAgeConfirming(true);
+    const ok = await confirmAgeGateOnServer();
+    setAgeConfirming(false);
+    if (ok) setAgeConfirmed(true);
+  };
+
   const handleFlip = (index: number) => {
-    if (revealed[index]) return;
+    if (!ageConfirmed || revealed[index]) return;
     setRevealed((prev) => {
       const next = [...prev];
       next[index] = true;
@@ -36,6 +50,26 @@ export default function GuestTripletDraw() {
     });
     setDone(true);
   };
+
+  if (!ageConfirmed) {
+    return (
+      <div className="mx-auto mb-12 max-w-md px-4">
+        <div className="glass-panel space-y-5 p-8 text-center">
+          <p className="text-sm leading-relaxed text-aura-ivory/75">
+            Бесплатный расклад доступен пользователям от 18 лет. Сервис носит развлекательно-ознакомительный характер.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleAgeConfirm()}
+            disabled={ageConfirming}
+            className="btn-primary w-full px-8 py-3.5 disabled:opacity-50"
+          >
+            {ageConfirming ? "..." : "Мне есть 18 лет — открыть расклад"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto mb-12 max-w-3xl">

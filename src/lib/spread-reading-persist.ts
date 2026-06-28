@@ -9,6 +9,8 @@ import { getDeckImagePath } from "@/data/decks";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import { isTarotRuneMasterId } from "@/lib/prompts/tarot-rune-format";
 import { stripTheaterFromReply } from "@/lib/chat-reply-sanitize";
+import { polishSpreadReadingText } from "@/lib/reading-text-polish";
+import { parseCardNamesFromSpreadText } from "@/lib/session-spread-meta";
 
 /** Markdown image block for the first assistant message (tarot/runes/slavic only). */
 export function buildSpreadCardImagesMarkdown(
@@ -101,19 +103,26 @@ export async function ensureSpreadReadingInChatMessages(
   if (!sessionId) return null;
 
   const cardNames = input.tarotCards?.map((c) => c.name).slice(0, 3) ?? [];
+  const parsedFromReading =
+    cardNames.length >= 3 ? cardNames : parseCardNamesFromSpreadText(readingRaw);
+  const resolvedCardNames = parsedFromReading.length >= 3 ? parsedFromReading : cardNames;
   const reading =
     isNumerologMaster(input.characterId) || !isTarotRuneMasterId(input.characterId)
       ? readingRaw
       : stripTheaterFromReply(readingRaw);
-  const formattedReading = formatSpreadReadingWithCards(
+  const polishedReading = polishSpreadReadingText(
     reading,
+    resolvedCardNames.length >= 3 ? resolvedCardNames : cardNames
+  );
+  const formattedReading = formatSpreadReadingWithCards(
+    polishedReading,
     input.tarotCards ?? [],
     input.characterId
   );
 
   await updateSessionChatMeta(sessionId, {
     characterKey: input.characterId,
-    cards: cardNames.length ? cardNames : null,
+    cards: resolvedCardNames.length ? resolvedCardNames : null,
     ...(input.intention ? { intention: input.intention } : {}),
     ...(input.spreadType ? { spreadType: input.spreadType } : {}),
   });
@@ -147,7 +156,7 @@ export async function ensureSpreadReadingInChatMessages(
     sessionId,
     characterKey: input.characterId,
     topicSummary,
-    keyCards: cardNames,
+    keyCards: resolvedCardNames,
     prediction: formattedReading,
   });
 

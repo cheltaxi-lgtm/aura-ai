@@ -23,7 +23,7 @@ import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 const BENEFITS = [
   {
     title: "Персональный ответ",
-    text: "Расклад учитывает ваш вопрос и выбранную систему — не шаблон, а живой диалог с символами.",
+    text: "Расклад учитывает ваш вопрос и выбранную систему — не шаблон, а диалог с символами в образе наставника.",
     icon: Sparkles,
   },
   {
@@ -100,7 +100,7 @@ const TESTIMONIALS = [
     author: "Анна, Москва",
   },
   {
-    quote: "Очень атмосферно, будто общаешься с настоящим проводником.",
+    quote: "Очень атмосферно — образ наставника и символы попали в точку.",
     author: "Елена, Санкт-Петербург",
   },
   {
@@ -161,11 +161,8 @@ export default function AuraSellingLanding({
   const { config, cost, formatRunes } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
 
-  const totalSessions = masters.reduce((sum, m) => sum + parseSessionsCount(m.sessions), 0);
-  const avgRating =
-    masters.length > 0
-      ? (masters.reduce((sum, m) => sum + m.rating, 0) / masters.length).toFixed(1)
-      : "4.9";
+  const totalSessions = masters.reduce((sum, m) => sum + parseSessionsCount(m.sessions ?? ""), 0);
+  const hasSessionStats = totalSessions > 0;
 
   const featuredMasters = masters.slice(0, 3);
 
@@ -401,16 +398,12 @@ export default function AuraSellingLanding({
         <div className="mx-auto max-w-6xl">
           <div className="aura-landing-trust">
             <div className="aura-landing-trust__stats">
-              <div className="aura-landing-trust__stat">
-                <span className="aura-landing-trust__value">
-                  {totalSessions > 0 ? `${totalSessions}+` : "1000+"}
-                </span>
-                <span className="aura-landing-trust__label">сеансов на платформе</span>
-              </div>
-              <div className="aura-landing-trust__stat">
-                <span className="aura-landing-trust__value">{avgRating}</span>
-                <span className="aura-landing-trust__label">средняя оценка мастеров</span>
-              </div>
+              {hasSessionStats ? (
+                <div className="aura-landing-trust__stat">
+                  <span className="aura-landing-trust__value">{totalSessions}+</span>
+                  <span className="aura-landing-trust__label">сеансов на платформе</span>
+                </div>
+              ) : null}
               <div className="aura-landing-trust__stat">
                 <span className="aura-landing-trust__value">{masters.length}</span>
                 <span className="aura-landing-trust__label">проводников в витрине</span>
@@ -422,11 +415,6 @@ export default function AuraSellingLanding({
                 const author = parseTestimonialAuthor(t.author);
                 return (
                   <article key={t.author} className="aura-landing-review">
-                    <div className="aura-landing-review__stars" aria-hidden>
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} className="aura-landing-review__star" fill="currentColor" />
-                      ))}
-                    </div>
                     <span className="aura-landing-review__quote-mark" aria-hidden>
                       "
                     </span>
@@ -444,6 +432,9 @@ export default function AuraSellingLanding({
                 );
               })}
             </div>
+            <p className="mt-4 text-center text-xs text-gray-600">
+              Примеры отзывов пользователей. Ответы генерируются ИИ-наставниками в художественных образах.
+            </p>
           </div>
         </div>
       </section>

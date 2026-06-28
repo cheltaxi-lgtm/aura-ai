@@ -1,4 +1,5 @@
-import { completeChat } from "@/lib/llm";
+import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
+import { getSetting } from "@/lib/settings";
 import { NUMEROLOG_MAIN_READING_SYSTEM_PROMPT, NUMEROLOG_SPREAD_THREE_SYSTEM_PROMPT } from "@/lib/prompts/masters/numerolog";
 
 import {
@@ -46,6 +47,103 @@ const MAIN_READING_INSTRUCTIONS: Partial<Record<NumerologFinaleTopic, string>> =
 
 const SPREAD_OPENING_USER_HINT =
   "Пользователь вытянул три числа на текущий период. Дай глубокий связный анализ — не копируй факты движка дословно.";
+
+/** Avoid showing mid-word LLM cutoffs when the provider hits max_tokens. */
+function trimIncompleteTrailingSentence(text: string): string {
+  const t = text.trim();
+  if (!t) return t;
+  if (/[.!?…»"')\]]$/.test(t)) return t;
+
+  const lastEnd = Math.max(
+    t.lastIndexOf(". "),
+    t.lastIndexOf("! "),
+    t.lastIndexOf("? "),
+    t.lastIndexOf("… ")
+  );
+  if (lastEnd >= Math.floor(t.length * 0.45)) {
+    return t.slice(0, lastEnd + 1).trim();
+  }
+  return t;
+}
+
+function isProseLikelyTruncated(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 48) return false;
+  if (/[.!?…»"')\]]$/.test(t)) return false;
+  return true;
+}
+
+function normalizeProseChunk(text: string): string {
+  return text.trim().replace(/^["«]|["»]$/g, "");
+}
+
+const MAIN_READING_MAX_TOKENS: Partial<Record<NumerologFinaleTopic, number>> = {
+  spread_opening: 1800,
+  forecast_timeline: 1400,
+  pythagoras_square: 1200,
+  life_path: 1100,
+};
+
+const FINALE_MAX_TOKENS: Partial<Record<NumerologFinaleTopic, number>> = {
+  spread_opening: 960,
+  forecast_timeline: 420,
+  pythagoras_square: 360,
+};
+
+async function readingTokenBudget(kind: "main" | "finale", topic: NumerologFinaleTopic): Promise<number> {
+  let base = 900;
+  try {
+    const ai = await getSetting("ai");
+    base = Number(ai.maxReadingTokens) || 900;
+  } catch {
+    /* defaults */
+  }
+
+  if (kind === "main") {
+    const floor = MAIN_READING_MAX_TOKENS[topic] ?? 1100;
+    return Math.max(floor, Math.round(base * 1.75));
+  }
+
+  const floor = FINALE_MAX_TOKENS[topic] ?? (topic === "spread_opening" ? 960 : 320);
+  return Math.max(floor, Math.round(base * 1.05));
+}
+
+const CONTINUE_USER_PROMPT =
+  "Текст оборвался на лимите. Продолжи ровно с того места, где остановилась — без повтора уже написанного. Допиши до логического завершения (1–4 предложения). Заверши последнее предложение точкой.";
+
+/** Complete prose with auto-continuation when the model hits max_tokens. */
+async function completeNumerologProse(
+  initialMessages: ChatMessage[],
+  opts: { maxTokens: number; temperature: number }
+): Promise<string | null> {
+  const messages: ChatMessage[] = [...initialMessages];
+  let combined = "";
+
+  for (let pass = 0; pass <= 2; pass++) {
+    const result = await completeChatDetailed({
+      messages,
+      maxTokens: opts.maxTokens + pass * 500,
+      temperature: opts.temperature,
+    });
+
+    const chunk = normalizeProseChunk(result.text ?? "");
+    if (!chunk) break;
+
+    combined = combined ? `${combined}${chunk}` : chunk;
+
+    const needsMore =
+      result.finishReason === "length" || isProseLikelyTruncated(combined);
+    if (!needsMore) {
+      return combined;
+    }
+    if (pass >= 2) break;
+
+    messages.push({ role: "assistant", content: combined });
+    messages.push({ role: "user", content: CONTINUE_USER_PROMPT });
+  }
+
+  return combined ? trimIncompleteTrailingSentence(combined) : null;
+}
 
 function deterministicFinale(name: string, topic: NumerologFinaleTopic): string {
   const label = TOPIC_LABELS[topic] ?? "разбор";
@@ -96,8 +194,8 @@ export async function generateNumerologMainReading(params: {
       ? NUMEROLOG_SPREAD_THREE_SYSTEM_PROMPT
       : NUMEROLOG_MAIN_READING_SYSTEM_PROMPT;
 
-  const text = await completeChat({
-    messages: [
+  const text = await completeNumerologProse(
+    [
       {
         role: "system",
         content: [systemBase, extra, `Фокус расчёта: ${topicLabel}.`]
@@ -111,16 +209,19 @@ export async function generateNumerologMainReading(params: {
           question ? `Вопрос клиента: «${question}»` : "",
           `\nДАННЫЕ ДВИЖКА:\n${facts}`,
           "\nДай связный ответ на вопрос клиента, опираясь только на эти факты.",
+          "Завершай каждое предложение полностью — не обрывай текст на полуслове.",
         ]
           .filter(Boolean)
           .join("\n"),
       },
     ],
-    maxTokens: 720,
-    temperature: 0.58,
-  });
+    {
+      maxTokens: await readingTokenBudget("main", params.topic),
+      temperature: 0.58,
+    }
+  );
 
-  const trimmed = text?.trim().replace(/^["«]|["»]$/g, "");
+  const trimmed = normalizeProseChunk(text ?? "");
   if (!trimmed || trimmed.length < 80 || isUnusableRussianLlmOutput(trimmed, 40)) {
     return params.fallback;
   }
@@ -143,8 +244,8 @@ export async function generateNumerologFinale(params: {
   const extra = FINALE_INSTRUCTIONS[params.topic] ?? "";
   const isSpreadOpening = params.topic === "spread_opening";
 
-  const text = await completeChat({
-    messages: [
+  const text = await completeNumerologProse(
+    [
       {
         role: "system",
         content: [
@@ -156,6 +257,7 @@ export async function generateNumerologFinale(params: {
           "Используй ТОЛЬКО факты из блока ДАННЫЕ ДВИЖКА. Не выдумывай числа, даты и ячейки.",
           "Без заголовков, списков и markdown (#, *, _). Не повторяй дословно весь разбор и не копируй списки годов.",
           "Не пиши заголовок «Простыми словами» — его добавит система.",
+          "Завершай каждое предложение полностью — не обрывай текст на полуслове.",
           `Тема: ${topicLabel}.`,
           extra,
         ]
@@ -171,11 +273,13 @@ export async function generateNumerologFinale(params: {
         }`,
       },
     ],
-    maxTokens: isSpreadOpening ? 420 : 200,
-    temperature: isSpreadOpening ? 0.5 : 0.35,
-  });
+    {
+      maxTokens: await readingTokenBudget("finale", params.topic),
+      temperature: isSpreadOpening ? 0.5 : 0.35,
+    }
+  );
 
-  const trimmed = text?.trim().replace(/^["«]|["»]$/g, "");
+  const trimmed = normalizeProseChunk(text ?? "");
   const minLen = isSpreadOpening ? 80 : 20;
   const minCyrillic = isSpreadOpening ? 40 : 15;
   if (!trimmed || trimmed.length < minLen || isUnusableRussianLlmOutput(trimmed, minCyrillic)) {

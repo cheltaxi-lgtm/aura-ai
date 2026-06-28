@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Search } from "lucide-react";
+import { useAdminModels, type AdminModelListType } from "@/hooks/useAdminModels";
 
 export interface ModelOption {
   id: string;
@@ -24,6 +25,21 @@ interface ModelPickerProps {
   placeholder?: string;
 }
 
+function formatModelLabel(model: ModelOption): string {
+  return model.name === model.id ? model.id : `${model.name} (${model.id})`;
+}
+
+function resolveListType(
+  speechOnly: boolean,
+  imageOnly: boolean,
+  visionOnly: boolean
+): AdminModelListType {
+  if (speechOnly) return "tts";
+  if (imageOnly) return "image";
+  if (visionOnly) return "vision";
+  return "chat";
+}
+
 export default function ModelPicker({
   label,
   value,
@@ -33,39 +49,20 @@ export default function ModelPicker({
   imageOnly = false,
   placeholder = "Начните вводить название модели…",
 }: ModelPickerProps) {
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
+  const listType = resolveListType(speechOnly, imageOnly, visionOnly);
+  const { models, loading, error, source } = useAdminModels(listType);
+
+  const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const modelsUrl = speechOnly
-    ? "/api/admin/models?type=tts"
-    : imageOnly
-      ? "/api/admin/models?type=image"
-      : "/api/admin/models";
-
-  useEffect(() => {
-    setLoading(true);
-    fetch(modelsUrl)
-      .then((r) => r.json())
-      .then((d) => setModels(d.models ?? []))
-      .finally(() => setLoading(false));
-  }, [modelsUrl]);
-
-  useEffect(() => {
-    const selected = models.find((m) => m.id === value);
-    if (selected && !open) {
-      setQuery(selected.name === selected.id ? selected.id : `${selected.name} (${selected.id})`);
-    } else if (!value && !open) {
-      setQuery("");
-    }
-  }, [value, models, open]);
+  const selected = useMemo(() => models.find((m) => m.id === value), [models, value]);
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
+        setSearch("");
       }
     };
     document.addEventListener("mousedown", onDocClick);
@@ -73,15 +70,15 @@ export default function ModelPicker({
   }, []);
 
   const pool = useMemo(() => {
-    if (speechOnly) return models.filter((m) => m.supportsSpeech !== false);
-    if (imageOnly) return models.filter((m) => m.supportsImage !== false);
-    if (visionOnly) return models.filter((m) => m.supportsVision);
+    if (listType === "tts") return models.filter((m) => m.supportsSpeech !== false);
+    if (listType === "image") return models.filter((m) => m.supportsImage !== false);
+    if (listType === "vision") return models.filter((m) => m.supportsVision);
     return models;
-  }, [models, visionOnly, speechOnly, imageOnly]);
+  }, [models, listType]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const limit = speechOnly || imageOnly ? pool.length : q ? 60 : 40;
+    const q = search.trim().toLowerCase();
+    const limit = listType === "chat" ? (q ? 80 : 50) : pool.length;
     if (!q) return pool.slice(0, limit);
     return pool
       .filter(
@@ -91,11 +88,11 @@ export default function ModelPicker({
           (m.pricingHint?.toLowerCase().includes(q) ?? false)
       )
       .slice(0, limit);
-  }, [pool, query, speechOnly, imageOnly]);
+  }, [pool, search, listType]);
 
   const selectModel = (model: ModelOption) => {
     onChange(model.id);
-    setQuery(model.name === model.id ? model.id : `${model.name} (${model.id})`);
+    setSearch("");
     setOpen(false);
   };
 
@@ -107,6 +104,9 @@ export default function ModelPicker({
         ? " с поддержкой фото"
         : "";
 
+  const closedInputValue = selected ? formatModelLabel(selected) : value;
+  const inputValue = open ? search : closedInputValue;
+
   return (
     <div ref={rootRef} className="relative">
       <label className="mb-1 block text-xs text-gray-500">{label}</label>
@@ -114,12 +114,15 @@ export default function ModelPicker({
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
         <input
           type="text"
-          value={query}
+          value={inputValue}
           placeholder={loading ? "Загрузка моделей…" : placeholder}
           disabled={loading}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            setOpen(true);
+            setSearch("");
+          }}
           onChange={(e) => {
-            setQuery(e.target.value);
+            setSearch(e.target.value);
             setOpen(true);
           }}
           className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-10 pr-10 text-sm text-white"
@@ -137,10 +140,18 @@ export default function ModelPicker({
         </p>
       )}
 
+      {error && (
+        <p className="mt-1 text-[11px] text-red-400">
+          {error}. Проверьте вход в админку и OPENROUTER_API_KEY.
+        </p>
+      )}
+
       {open && !loading && (
         <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-white/10 bg-[#12121a] shadow-neon">
           {filtered.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-gray-500">Ничего не найдено</p>
+            <p className="px-4 py-3 text-sm text-gray-500">
+              {pool.length === 0 ? "Список пуст — обновите страницу" : "Ничего не найдено"}
+            </p>
           ) : (
             filtered.map((model) => (
               <button
@@ -169,7 +180,9 @@ export default function ModelPicker({
       )}
 
       <p className="mt-1 text-[10px] text-gray-600">
-        {pool.length} моделей{poolLabel} · OpenRouter
+        {loading
+          ? "Загрузка…"
+          : `${pool.length} моделей${poolLabel}${source ? ` · ${source}` : ""}${listType === "chat" && pool.length > 50 ? " · введите текст для поиска" : ""}`}
       </p>
     </div>
   );

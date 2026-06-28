@@ -1,4 +1,5 @@
 import { query, queryClient, type PoolClient } from "./db";
+import { LLM_CONTEXT_MESSAGES } from "./chat-limits";
 import { getRuneSettings } from "./rune-settings";
 import { getSetting } from "./settings";
 import { creditRunesToUser } from "./rune-service";
@@ -357,7 +358,7 @@ export async function getMessages(sessionId: string, characterId: string) {
 export async function getSessionMessagesForLlm(
   sessionId: string,
   characterId: string,
-  limit = 20
+  limit: number = LLM_CONTEXT_MESSAGES
 ): Promise<{ role: "user" | "assistant"; content: string }[]> {
   const { rows } = await query<{ role: "user" | "assistant"; content: string }>(
     `SELECT role, content FROM chat_messages

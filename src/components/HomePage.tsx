@@ -1695,9 +1695,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const topHeader = (
     <header className="app-top-header pointer-events-auto fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
-        <div className="flex min-w-0 shrink items-center gap-1.5 sm:gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <BrandLogo
             linkToHome
+            iconOnlyOnMobile
+            showTagline={false}
+            markSize={32}
             titleClassName="font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl"
           />
         </div>
@@ -1728,9 +1731,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           <button
             type="button"
             onClick={() => void startPersonalFlow()}
-            className="btn-primary hidden px-4 py-2 text-xs sm:inline-flex sm:text-sm"
+            className="btn-primary inline-flex shrink-0 items-center px-2.5 py-1.5 text-[11px] leading-tight sm:px-4 sm:py-2 sm:text-sm"
           >
-            Получить расклад
+            <span className="sm:hidden">Расклад</span>
+            <span className="hidden sm:inline">Получить расклад</span>
           </button>
           <button
             type="button"
@@ -1759,11 +1763,23 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     </header>
   );
 
+  const inActiveChat = Boolean(selectedCharacter);
+
   return (
-    <div className="relative min-h-screen overflow-hidden pt-[var(--app-header-h,3.25rem)]">
+    <div
+      className={`relative overflow-hidden pt-[var(--app-header-h,3.25rem)] ${
+        inActiveChat ? "h-[100dvh]" : "min-h-screen"
+      }`}
+    >
       {headerMounted ? createPortal(topHeader, document.body) : null}
 
-      <main className="relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12">
+      <main
+        className={
+          inActiveChat
+            ? "relative z-10 mx-auto flex h-[calc(100dvh-var(--app-header-h,3.25rem))] max-w-none flex-col overflow-hidden px-0 py-0"
+            : "relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12"
+        }
+      >
         {paymentNotice && (
           <div
             role="alert"
@@ -1787,9 +1803,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             aria-busy="true"
             aria-live="polite"
           >
-            <div className="pointer-events-auto">
-              <AppBootstrapScreen embedded />
-            </div>
+            <AppBootstrapScreen embedded />
           </div>
         ) : null}
 
@@ -2315,8 +2329,23 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       />
 
       {achievementPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="mx-4 max-w-xs rounded-3xl border border-amber-500/40 bg-gradient-to-b from-amber-900/40 to-black/80 p-8 text-center animate-in zoom-in-95 duration-300">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          role="button"
+          tabIndex={0}
+          aria-label="Закрыть уведомление"
+          onClick={() => setAchievementPopup(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setAchievementPopup(null);
+            }
+          }}
+        >
+          <div
+            className="mx-4 max-w-xs rounded-3xl border border-amber-500/40 bg-gradient-to-b from-amber-900/40 to-black/80 p-8 text-center animate-in zoom-in-95 duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-4 text-6xl">ᚢ</div>
             <p className="mb-1 text-xl font-bold text-amber-400">{achievementPopup.label}</p>
             <p className="mb-4 text-sm text-white/60">{achievementPopup.description}</p>

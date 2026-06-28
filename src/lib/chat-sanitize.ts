@@ -1,6 +1,7 @@
 import { getBloggerBySlug } from "@/lib/session";
 import { isAiMasterId } from "@/lib/showcase-masters";
 
+export { LLM_CONTEXT_MESSAGES } from "@/lib/chat-limits";
 export const MAX_CHAT_HISTORY = 24;
 export const MAX_USER_MESSAGE_LENGTH = 500;
 

@@ -55,13 +55,13 @@ export function getMasterShareDescription(slug: string): string {
   if (!character) {
     return `Персональные эзотерические консультации с мастером ${slug} на платформе ${BRAND_NAME}.`;
   }
-  return `${character.name} — ${character.title}. ${character.specialty}. ${masterTagline(character.id, character.title)}. Онлайн-консультации и расклады на ${BRAND_NAME}.`;
+  return `${character.name} — ${character.title}. ${character.specialty}. ${masterTagline(character.id, character.title)}. ИИ-наставник Zovus в художественном образе. Онлайн на ${BRAND_NAME}.`;
 }
 
 export function buildMasterMetadata(slug: string): Metadata {
   const character = getCharacterById(slug);
   const name = character?.name ?? slug;
-  const ogTitle = `Эзотерический наставник ${name} | ${BRAND_NAME}`;
+  const ogTitle = `ИИ-наставник ${name} | ${BRAND_NAME}`;
   const ogDescription = getMasterShareDescription(slug);
   const pageTitle = character ? `${name} — ${character.title}` : `${slug} — мастер`;
   const pageUrl = `${BRAND_URL}/master/${slug}`;
@@ -74,7 +74,7 @@ export function buildMasterMetadata(slug: string): Metadata {
       canonical: pageUrl,
     },
     openGraph: {
-      type: "profile",
+      type: "website",
       locale: "ru_RU",
       url: pageUrl,
       siteName: BRAND_NAME,
@@ -85,7 +85,7 @@ export function buildMasterMetadata(slug: string): Metadata {
           url: ogImage.url,
           width: ogImage.width,
           height: ogImage.height,
-          alt: `${name} — эзотерический наставник ${BRAND_NAME}`,
+          alt: `${name} — ИИ-наставник ${BRAND_NAME}`,
         },
       ],
     },
@@ -110,23 +110,18 @@ export function getMasterStructuredData(slug: string) {
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "Person",
-        "@id": `${pageUrl}#person`,
-        name: character.name,
-        jobTitle: character.title,
-        description: masterTagline(character.id, character.title),
-        image: imageUrl,
-        url: pageUrl,
-        knowsAbout: [character.specialty, character.title],
-        worksFor: { "@id": `${BRAND_URL}/#organization` },
+        "@type": "Organization",
+        "@id": `${BRAND_URL}/#organization`,
+        name: BRAND_NAME,
+        url: BRAND_URL,
       },
       {
         "@type": "Service",
         "@id": `${pageUrl}#service`,
-        name: `Консультации с ${character.name}`,
+        name: `ИИ-консультации — образ «${character.name}»`,
         serviceType: character.title,
-        description,
-        provider: { "@id": `${pageUrl}#person` },
+        description: `${description} Художественный образ ИИ-наставника, не публичное лицо.`,
+        provider: { "@id": `${BRAND_URL}/#organization` },
         areaServed: { "@type": "Country", name: "Россия" },
         availableLanguage: ["ru"],
         url: pageUrl,

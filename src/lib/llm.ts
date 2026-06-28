@@ -144,48 +144,77 @@ async function callChatCompletions(
   timeoutMs = 90000,
   maxAttempts = MAX_LLM_ATTEMPTS
 ): Promise<string | null> {
+  const result = await callChatCompletionsDetailed(url, headers, body, timeoutMs, maxAttempts);
+  return result.text;
+}
+
+export type ChatCompletionResult = {
+  text: string | null;
+  finishReason: string | null;
+};
+
+async function callChatCompletionsDetailed(
+  url: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+  timeoutMs = 90000,
+  maxAttempts = MAX_LLM_ATTEMPTS
+): Promise<ChatCompletionResult> {
   const isOpenRouter = url.includes("openrouter.ai");
   const model = String(body.model ?? "");
   const payload = isOpenRouter ? openRouterRequestBody(body, model) : body;
 
-  return withLlmSlot(`complete:${model}`, async () => {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        if (RETRYABLE_STATUSES.has(response.status) && attempt < maxAttempts - 1) {
+  const result = await withLlmSlot(`complete:${model}`, async () => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const errText = await response.text().catch(() => "");
+          if (RETRYABLE_STATUSES.has(response.status) && attempt < maxAttempts - 1) {
+            await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));
+            continue;
+          }
+          console.warn("LLM request failed:", url, response.status, errText);
+          return { text: null, finishReason: null };
+        }
+        const data = await response.json();
+        const choice = data.choices?.[0] as
+          | { message?: Record<string, unknown>; finish_reason?: string }
+          | undefined;
+        const rawText = extractAssistantText(choice?.message);
+        const finishReason =
+          typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
+        if (rawText) {
+          return { text: acceptLlmText(rawText), finishReason };
+        }
+        console.warn(
+          "LLM empty content:",
+          model,
+          JSON.stringify(choice?.message)?.slice(0, 200)
+        );
+        return { text: null, finishReason };
+      } catch (error) {
+        if (attempt < maxAttempts - 1) {
           await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));
           continue;
         }
-        console.warn("LLM request failed:", url, response.status, errText);
-        return null;
+        console.warn("LLM request error:", error);
+        return { text: null, finishReason: null };
+      } finally {
+        clearTimeout(timer);
       }
-      const data = await response.json();
-      const text = extractAssistantText(data.choices?.[0]?.message);
-      if (text) return text;
-      console.warn("LLM empty content:", model, JSON.stringify(data.choices?.[0]?.message)?.slice(0, 200));
-      return null;
-    } catch (error) {
-      if (attempt < maxAttempts - 1) {
-        await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));
-        continue;
-      }
-      console.warn("LLM request error:", error);
-      return null;
-    } finally {
-      clearTimeout(timer);
     }
-  }
-  return null;
+    return { text: null, finishReason: null };
   });
+
+  return result ?? { text: null, finishReason: null };
 }
 
 async function resolveModel(vision: boolean): Promise<string> {
@@ -254,6 +283,47 @@ export async function completeChat(params: {
     text = await tryOnce(Math.min(effectiveTemp, 0.55));
   }
   return text;
+}
+
+/** Like completeChat, but exposes finish_reason for continuation logic. */
+export async function completeChatDetailed(params: {
+  messages: ChatMessage[];
+  maxTokens?: number;
+  temperature?: number;
+  vision?: boolean;
+  timeoutMs?: number;
+  maxAttempts?: number;
+  skipTemperatureRetry?: boolean;
+}): Promise<ChatCompletionResult> {
+  const {
+    messages,
+    maxTokens,
+    temperature,
+    vision = false,
+    timeoutMs,
+    maxAttempts,
+    skipTemperatureRetry = false,
+  } = params;
+  const aiSettings = await resolveAiSettings();
+  const model = await resolveModel(vision);
+
+  const tryOnce = async (temp?: number) =>
+    callChatCompletionsDetailed(
+      OPENROUTER_API,
+      openRouterHeaders(),
+      buildRequestBody(model, messages, aiSettings, { maxTokens, temperature: temp ?? temperature }),
+      timeoutMs,
+      maxAttempts
+    );
+
+  if (!isOpenRouterConfigured()) return { text: null, finishReason: null };
+
+  const effectiveTemp = temperature ?? aiSettings?.temperature ?? 0.85;
+  let result = await tryOnce();
+  if (!result.text && !skipTemperatureRetry) {
+    result = await tryOnce(Math.min(effectiveTemp, 0.55));
+  }
+  return result;
 }
 
 /** Stream chat completions from OpenRouter (SSE). Model from admin settings only. */

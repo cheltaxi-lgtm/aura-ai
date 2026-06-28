@@ -89,14 +89,18 @@ npm ci --legacy-peer-deps
 npm run build
 
 echo ">>> DB migrations (schema_migrations)..."
-if ! grep -q '^DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
-  echo 'DATABASE_URL=postgresql://auraai:auraai_secret@localhost:5432/auraai' >> "$ENV_FILE"
+if [ "${SKIP_MIGRATIONS:-0}" = "1" ]; then
+  echo "[skip] SKIP_MIGRATIONS=1 — migrations not run"
+else
+  if ! grep -q '^DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
+    echo 'DATABASE_URL=postgresql://auraai:auraai_secret@localhost:5432/auraai' >> "$ENV_FILE"
+  fi
+  set -a
+  # shellcheck disable=SC1090
+  source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
+  set +a
+  node /opt/aura-ai/scripts/migrate.mjs
 fi
-set -a
-# shellcheck disable=SC1090
-source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
-set +a
-node /opt/aura-ai/scripts/migrate.mjs
 
 echo ">>> Memory smoke test (gates deploy on retrieval regressions)..."
 npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts

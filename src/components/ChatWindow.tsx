@@ -25,6 +25,7 @@ import { topicLabel } from "@/lib/session-topics";
 import SessionFeedback from "@/components/SessionFeedback";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
+import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
 import { resolvePythagorasSquareForMessage } from "@/lib/numerology/resolve-message-ui";
@@ -146,10 +147,16 @@ export default function ChatWindow({
   const preserveScrollRef = useRef(false);
   const scrollSnapshotRef = useRef({ height: 0, top: 0 });
   const pinnedToBottomRef = useRef(true);
+  const userTouchScrollingRef = useRef(false);
+  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAutoScrollAtRef = useRef(0);
+  const prevMessageCountRef = useRef(0);
+  const streamingScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
   const SCROLL_PIN_THRESHOLD = 96;
+  const AUTO_SCROLL_MIN_INTERVAL_MS = 120;
 
   const updatePinnedToBottom = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -161,8 +168,17 @@ export default function ChatWindow({
   const scrollMessagesToBottom = useCallback((force = false) => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    if (!force && !pinnedToBottomRef.current) return;
+    if (!force && (userTouchScrollingRef.current || !pinnedToBottomRef.current)) return;
+
+    const now = Date.now();
+    if (!force && now - lastAutoScrollAtRef.current < AUTO_SCROLL_MIN_INTERVAL_MS) return;
+    lastAutoScrollAtRef.current = now;
+
     requestAnimationFrame(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ block: "end", behavior: "auto" });
+        return;
+      }
       el.scrollTop = el.scrollHeight;
     });
   }, []);
@@ -170,8 +186,28 @@ export default function ChatWindow({
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+
+    const markUserScrolling = () => {
+      userTouchScrollingRef.current = true;
+      pinnedToBottomRef.current = false;
+      if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
+      scrollIdleTimerRef.current = setTimeout(() => {
+        userTouchScrollingRef.current = false;
+        updatePinnedToBottom();
+      }, 180);
+    };
+
     el.addEventListener("scroll", updatePinnedToBottom, { passive: true });
-    return () => el.removeEventListener("scroll", updatePinnedToBottom);
+    el.addEventListener("touchstart", markUserScrolling, { passive: true });
+    el.addEventListener("touchmove", markUserScrolling, { passive: true });
+    el.addEventListener("wheel", markUserScrolling, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", updatePinnedToBottom);
+      el.removeEventListener("touchstart", markUserScrolling);
+      el.removeEventListener("touchmove", markUserScrolling);
+      el.removeEventListener("wheel", markUserScrolling);
+      if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
+    };
   }, [updatePinnedToBottom]);
 
   useEffect(() => {
@@ -193,13 +229,50 @@ export default function ChatWindow({
       return;
     }
 
+    const count = messages.length;
+    const countChanged = count !== prevMessageCountRef.current;
+    prevMessageCountRef.current = count;
+
     const last = messages[messages.length - 1];
     if (last?.role === "user") {
       pinnedToBottomRef.current = true;
+      userTouchScrollingRef.current = false;
+      scrollMessagesToBottom(true);
+      return;
     }
 
-    scrollMessagesToBottom(last?.role === "user");
-  }, [messages, isLoading, scrollMessagesToBottom]);
+    if (countChanged && pinnedToBottomRef.current) {
+      scrollMessagesToBottom(true);
+    }
+  }, [messages.length, scrollMessagesToBottom]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (streamingScrollTimerRef.current) {
+        clearInterval(streamingScrollTimerRef.current);
+        streamingScrollTimerRef.current = null;
+      }
+      if (pinnedToBottomRef.current) {
+        scrollMessagesToBottom(true);
+      }
+      return;
+    }
+
+    if (!pinnedToBottomRef.current) return;
+
+    streamingScrollTimerRef.current = setInterval(() => {
+      if (pinnedToBottomRef.current && !userTouchScrollingRef.current) {
+        scrollMessagesToBottom(false);
+      }
+    }, 200);
+
+    return () => {
+      if (streamingScrollTimerRef.current) {
+        clearInterval(streamingScrollTimerRef.current);
+        streamingScrollTimerRef.current = null;
+      }
+    };
+  }, [isLoading, scrollMessagesToBottom]);
 
   useEffect(() => {
     if (isLoading) {
@@ -210,12 +283,18 @@ export default function ChatWindow({
         "Соединяется с астральным планом…",
         "Расшифровывает знаки…",
       ];
-      let i = 0;
       setStatusText(statuses[0]!);
+
+      const prefersReducedMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia("(max-width: 639px), (prefers-reduced-motion: reduce)").matches;
+      if (prefersReducedMotion) return;
+
+      let i = 0;
       const interval = setInterval(() => {
         i = (i + 1) % statuses.length;
         setStatusText(statuses[i]!);
-      }, 2000);
+      }, 3000);
       return () => clearInterval(interval);
     }
     setStatusText("Готов к сеансу");
@@ -339,10 +418,10 @@ export default function ChatWindow({
 
   return (
     <motion.div
-      className="chat-stage mx-auto max-w-3xl"
+      className="chat-stage mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col"
       initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
     >
       {/* Chat header */}
       <div className="chat-stage__header glass-panel shrink-0 flex items-center gap-2.5 p-2.5 sm:mb-4 sm:gap-4 sm:p-4">
@@ -412,9 +491,16 @@ export default function ChatWindow({
         </div>
       </div>
 
+      <p
+        className="chat-session-disclaimer mb-2 px-1 text-center text-[10px] leading-relaxed text-gray-500 sm:px-4"
+        role="note"
+      >
+        {CHAT_SESSION_DISCLAIMER}
+      </p>
+
       <div
         ref={scrollContainerRef}
-        className="chat-stage__body glass-panel chat-scroll mb-4 flex min-h-[280px] flex-1 flex-col space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:mb-4 sm:min-h-[320px] sm:max-h-[min(640px,calc(100dvh-220px))]"
+        className="chat-stage__body glass-panel chat-scroll flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:mb-4 sm:min-h-[320px] sm:max-h-[min(640px,calc(100dvh-220px))]"
         role="log"
         aria-live="polite"
         aria-relevant="additions"
@@ -612,7 +698,7 @@ export default function ChatWindow({
                   className={
                     msg.role === "user"
                       ? "max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-aura-purple/35 to-aura-purple/15 px-4 py-3 text-white shadow-sm ring-1 ring-aura-purple/30"
-                      : "master-message-bubble max-w-[90%] animate-mystic-in rounded-2xl rounded-bl-md border border-[rgba(201,169,110,0.2)] bg-[rgba(15,10,30,0.85)] p-4 shadow-[0_4px_32px_rgba(123,94,167,0.15)] backdrop-blur-[12px] sm:max-w-[85%] sm:p-5"
+                      : "master-message-bubble max-w-[90%] rounded-2xl rounded-bl-md border border-[rgba(201,169,110,0.2)] bg-[rgba(15,10,30,0.92)] p-4 shadow-[0_4px_32px_rgba(123,94,167,0.15)] sm:max-w-[85%] sm:animate-mystic-in sm:bg-[rgba(15,10,30,0.85)] sm:p-5 sm:backdrop-blur-[12px]"
                   }
                 >
                   {msg.role === "user" && (
@@ -863,6 +949,9 @@ export default function ChatWindow({
           <Send className="h-5 w-5" />
         </button>
         </div>
+        <p className="mt-2 text-center text-[10px] leading-relaxed text-gray-600">
+          ИИ может допускать ошибки. Принимайте решения самостоятельно.
+        </p>
       </form>
       </div>
     </motion.div>

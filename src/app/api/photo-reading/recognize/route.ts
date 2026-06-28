@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { requireUserAuth } from "@/lib/require-auth";
 import {
   generatePhotoRecognition,
@@ -129,7 +130,10 @@ export async function POST(request: NextRequest) {
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   const profileRow = profileUserId ? await getUserById(profileUserId) : null;
-  const profile = profileRow ? serializeUserProfile(profileRow) : null;
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+  }
+  const profile = serializeUserProfile(profileRow);
 
   const today = new Date().toLocaleDateString("ru-RU", {
     day: "numeric",

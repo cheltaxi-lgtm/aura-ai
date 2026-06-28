@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 
 import { getAuth } from "@/lib/auth";
+import { AGE_REQUIRED_ERROR } from "@/lib/age-gate";
+import { isAgeGateCookieConfirmed } from "@/lib/age-gate-cookie";
 
 import {
   createSession,
@@ -82,6 +84,11 @@ export async function POST(request: NextRequest) {
     if (auth?.role === "user") {
       accountId = auth.sub;
       profileUserId = (await getProfileUserIdForAccount(auth.sub)) ?? undefined;
+    } else if (!auth) {
+      const ageOk = await isAgeGateCookieConfirmed(request);
+      if (!ageOk) {
+        return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+      }
     }
 
     const unlimited = await resolveUnlimitedAccess({

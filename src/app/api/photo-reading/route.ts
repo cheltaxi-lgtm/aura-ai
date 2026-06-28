@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { requireUserAuth } from "@/lib/require-auth";
 import { hasPaidAccess, saveMessage, updateSessionChatMeta, getSession } from "@/lib/session";
 import { buildPhotoReadingUserMessage } from "@/lib/photo-chat";
@@ -100,7 +101,10 @@ export async function POST(request: NextRequest) {
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   const profileRow = profileUserId ? await getUserById(profileUserId) : null;
-  const profile = profileRow ? serializeUserProfile(profileRow) : null;
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+  }
+  const profile = serializeUserProfile(profileRow);
 
   let isPaid = false;
   let referrerSlug: string | null = null;

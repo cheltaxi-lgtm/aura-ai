@@ -10,6 +10,8 @@ interface BrandLogoProps {
   markSize?: number;
   titleClassName?: string;
   taglineClassName?: string;
+  /** Below `sm`, show only the mark — saves header space on mobile. */
+  iconOnlyOnMobile?: boolean;
   /** Hard navigation to `/` — resets SPA state and closes overlays. */
   linkToHome?: boolean;
 }
@@ -20,12 +22,15 @@ export default function BrandLogo({
   markSize = 28,
   titleClassName = "font-display text-xl font-bold tracking-wider text-white neon-text sm:text-2xl",
   taglineClassName = "ml-2 hidden text-xs text-gray-600 sm:inline",
+  iconOnlyOnMobile = false,
   linkToHome = false,
 }: BrandLogoProps) {
+  const wordmarkClass = iconOnlyOnMobile ? "hidden min-w-0 sm:block" : "min-w-0";
+
   const content = (
     <>
       <BrandMark size={markSize} className="shrink-0 pointer-events-none" />
-      <div className="min-w-0 pointer-events-none">
+      <div className={`${wordmarkClass} pointer-events-none`}>
         <span className={titleClassName}>{BRAND_NAME}</span>
         {showTagline ? <span className={taglineClassName}>{BRAND_TAGLINE}</span> : null}
       </div>

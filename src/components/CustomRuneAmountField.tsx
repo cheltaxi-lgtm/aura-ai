@@ -142,6 +142,13 @@ export default function CustomRuneAmountField({
           "Оплатить"
         )}
       </button>
+      <p className="mt-2 text-center text-[11px] leading-relaxed text-gray-500">
+        Нажимая кнопку, вы соглашаетесь с условиями{" "}
+        <a href="/offer" className="text-aura-champagne/80 underline underline-offset-2 hover:text-aura-champagne">
+          Публичной оферты
+        </a>
+        .
+      </p>
     </div>
   );
 }

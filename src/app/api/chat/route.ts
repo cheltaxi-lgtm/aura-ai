@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
+import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { enforceChatRateLimit } from "@/lib/api-guards";
+import { getUserById } from "@/lib/users";
 import { chargeChatBilling, type ChatBillingHandle } from "@/lib/services/billing-service";
 import {
   ChatOrchestrator,
@@ -22,6 +25,12 @@ export async function POST(request: NextRequest) {
 
     const rateLimited = await enforceChatRateLimit(auth.sub);
     if (rateLimited) return rateLimited;
+
+    const profileUserId = await getProfileUserIdForAccount(auth.sub);
+    const user = profileUserId ? await getUserById(profileUserId) : null;
+    if (!user || !isUserAgeEligible(user)) {
+      return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+    }
 
     const body = await request.json();
     const parsed = await parseChatRequest(body);

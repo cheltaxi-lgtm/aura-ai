@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowRight, Star } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { CHARACTERS } from "@/lib/characters";
 
 interface CharacterGridProps {
@@ -51,12 +51,7 @@ export default function CharacterGrid({ onSelect, recommendedId }: CharacterGrid
             <p className="mb-1 text-sm text-aura-purple/80">{character.title}</p>
             <p className="mb-3 text-sm text-gray-400">{character.specialty}</p>
 
-            <div className="mb-5 flex items-center justify-between text-xs text-gray-500">
-              <span className="flex items-center gap-1 text-aura-gold">
-                <Star className="h-3.5 w-3.5 fill-aura-gold" />
-                {character.rating}
-              </span>
-              <span>{character.sessions}</span>
+            <div className="mb-5 flex items-center justify-end text-xs text-gray-500">
               <span className="font-medium text-gray-300">от {character.priceFrom}</span>
             </div>
 

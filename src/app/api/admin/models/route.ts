@@ -55,7 +55,10 @@ type OpenRouterModelRow = {
   pricing?: { prompt?: string; completion?: string };
 };
 
-type ModelListType = "chat" | "tts" | "image";
+type ModelListType = "chat" | "tts" | "image" | "vision";
+
+const CACHE_TTL_MS = 60 * 60 * 1000;
+const modelsCache = new Map<ModelListType, { models: AdminModelOption[]; source: string; expiresAt: number }>();
 
 function isPlaceholder(key?: string): boolean {
   return !key || key.startsWith("sk-your") || key.startsWith("your-");
@@ -73,7 +76,7 @@ function mapOpenRouterRow(m: OpenRouterModelRow, listType: ModelListType): Admin
   const supportsVision =
     inputModalities.includes("image") ||
     inputModalities.includes("file") ||
-    /vision|4o|gemini|claude-3|pixtral/i.test(m.id);
+    /vision|4o|gemini|claude-3|claude-4|pixtral|gpt-5/i.test(m.id);
   const supportsSpeech =
     listType === "tts" ||
     outputModalities.includes("speech") ||
@@ -82,7 +85,7 @@ function mapOpenRouterRow(m: OpenRouterModelRow, listType: ModelListType): Admin
   const supportsImage =
     listType === "image" ||
     outputModalities.includes("image") ||
-    /seedream|flux|recraft|riverflow|mai-image|grok-imagine|gemini.*image/i.test(m.id);
+    /seedream|flux|recraft|riverflow|mai-image|grok-imagine|gemini.*image|gpt-image/i.test(m.id);
 
   return {
     id: m.id,
@@ -112,6 +115,7 @@ function parseOpenRouterPayload(payload: unknown, listType: ModelListType): Admi
     .filter((m) => {
       if (listType === "tts") return m.supportsSpeech;
       if (listType === "image") return m.supportsImage;
+      if (listType === "vision") return m.supportsVision;
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -127,6 +131,7 @@ function mergeWithFallback(parsed: AdminModelOption[], fallback: AdminModelOptio
 function resolveListType(param: string | null): ModelListType {
   if (param === "tts") return "tts";
   if (param === "image") return "image";
+  if (param === "vision") return "vision";
   return "chat";
 }
 
@@ -136,39 +141,62 @@ function modelsUrlForType(listType: ModelListType): string {
   return "https://openrouter.ai/api/v1/models";
 }
 
-export async function GET(request: NextRequest) {
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+async function loadModelsForType(listType: ModelListType): Promise<{ models: AdminModelOption[]; source: string }> {
+  const cached = modelsCache.get(listType);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { models: cached.models, source: cached.source };
+  }
 
-  const listType = resolveListType(request.nextUrl.searchParams.get("type"));
   const fallback = fallbackForType(listType);
-
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (isPlaceholder(apiKey)) {
-    return NextResponse.json({ models: fallback, source: "fallback", type: listType });
+    const result = { models: fallback, source: "fallback" };
+    modelsCache.set(listType, { ...result, expiresAt: Date.now() + CACHE_TTL_MS });
+    return result;
   }
 
   try {
     const response = await fetch(modelsUrlForType(listType), {
       headers: { Authorization: `Bearer ${apiKey}` },
-      next: { revalidate: 3600 },
+      cache: "no-store",
     });
 
     if (!response.ok) {
-      return NextResponse.json({ models: fallback, source: "fallback", error: "fetch_failed", type: listType });
+      const result = { models: fallback, source: "fallback" };
+      modelsCache.set(listType, { ...result, expiresAt: Date.now() + 60_000 });
+      return result;
     }
 
     const json = await response.json();
     const parsed = parseOpenRouterPayload(json, listType);
-    const models = listType === "chat" ? parsed : mergeWithFallback(parsed, fallback);
-
-    return NextResponse.json({
+    const models =
+      listType === "chat" || listType === "vision"
+        ? parsed
+        : mergeWithFallback(parsed, fallback);
+    const result = {
       models: models.length ? models : fallback,
       source: "openrouter",
-      total: models.length,
-      type: listType,
-    });
+    };
+    modelsCache.set(listType, { ...result, expiresAt: Date.now() + CACHE_TTL_MS });
+    return result;
   } catch {
-    return NextResponse.json({ models: fallback, source: "fallback", type: listType });
+    const result = { models: fallback, source: "fallback" };
+    modelsCache.set(listType, { ...result, expiresAt: Date.now() + 60_000 });
+    return result;
   }
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const listType = resolveListType(request.nextUrl.searchParams.get("type"));
+  const { models, source } = await loadModelsForType(listType);
+
+  return NextResponse.json({
+    models,
+    source,
+    total: models.length,
+    type: listType,
+  });
 }

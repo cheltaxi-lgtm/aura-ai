@@ -31,7 +31,7 @@ export default function AppBootstrapScreen({
   return (
     <div
       className={`bootstrap-screen flex flex-col items-center justify-center px-6 py-16 ${
-        embedded ? "min-h-[52vh]" : "min-h-screen"
+        embedded ? "pointer-events-none min-h-0 py-8" : "min-h-screen"
       }`}
     >
       <motion.header
@@ -94,7 +94,7 @@ export default function AppBootstrapScreen({
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="btn-ghost inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+              className="btn-ghost pointer-events-auto inline-flex items-center gap-2 px-5 py-2.5 text-sm"
             >
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
               Обновить страницу

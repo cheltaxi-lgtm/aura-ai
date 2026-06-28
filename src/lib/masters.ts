@@ -61,14 +61,13 @@ export async function listHumanMasters(): Promise<ShowcaseMaster[]> {
       specialty: isMarina
         ? "Расклады · Ритуалы"
         : specialtyRaw,
-      style: row.style_notes?.slice(0, 48) || "Живой мастер платформы",
+      style: row.style_notes?.slice(0, 48) || "ИИ-наставник в авторском образе",
       emoji: row.emoji ?? "🌟",
       gradient: theme.gradient,
       glowColor: theme.glowColor,
       borderColor: theme.borderColor,
       priceFrom: "990 ₽",
-      rating: sessions >= 20 ? 4.9 : sessions >= 5 ? 4.8 : 5.0,
-      sessions: sessions > 0 ? `${sessions}+ сеансов` : "Новый мастер",
+      ...(sessions > 0 ? { sessions: `${sessions} сеансов` } : {}),
       styleNotes: row.style_notes ?? undefined,
       profilePath: `/master/${row.slug}`,
       system: row.slug === "gadalka_marina" ? "tarot-marina" : "tarot-veronika",

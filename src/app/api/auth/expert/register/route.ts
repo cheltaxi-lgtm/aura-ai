@@ -18,9 +18,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password, name, slug, title, recaptchaToken } = await request.json();
+    const { email, password, name, slug, title, recaptchaToken, ageConfirmed } = await request.json();
     if (!email || !password || !name) {
       return NextResponse.json({ error: "Заполните обязательные поля" }, { status: 400 });
+    }
+
+    if (ageConfirmed !== true) {
+      return NextResponse.json(
+        { error: "Необходимо подтвердить, что вам исполнилось 18 лет" },
+        { status: 400 }
+      );
     }
 
     const captcha = await verifyRecaptcha(recaptchaToken, request.headers.get("x-forwarded-for"));

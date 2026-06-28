@@ -35,11 +35,20 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [slug, setSlug] = useState("");
   const [title, setTitle] = useState("");
   const [astro, setAstro] = useState<ProfileAstroValues>(DEFAULT_ASTRO);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
+  const isExpertRegister = mode === "register" && role === "expert";
+  const requiresLegalConsent = role === "user";
+  const canSubmit =
+    !loading &&
+    (!requiresLegalConsent || acceptedTerms) &&
+    (!isUserRegister && !isExpertRegister || ageConfirmed);
   const showRegisterLink =
     mode === "login" && (role !== "expert" || expertRegistrationEnabled);
   const endpoint = `/api/auth/${role}/${mode === "login" ? "login" : "register"}`;
@@ -56,6 +65,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       if (isExpert) {
         body.slug = slug;
         body.title = title;
+        if (mode === "register") {
+          body.ageConfirmed = ageConfirmed;
+        }
       }
 
       if (isUserRegister) {
@@ -67,6 +79,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         }
         Object.assign(body, profilePayload);
         body.sessionId = localStorage.getItem("aura_session_id") ?? undefined;
+        body.marketingConsent = marketingConsent;
+        body.ageConfirmed = ageConfirmed;
       }
 
       if (isRecaptchaConfigured()) {
@@ -220,6 +234,69 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
 
+      {requiresLegalConsent && (
+        <div className="space-y-3 rounded-xl border border-white/8 bg-white/[0.02] p-4">
+          <div className="flex items-start gap-2.5 text-xs leading-relaxed text-gray-400">
+            <input
+              id="legal-terms-consent"
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              required
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
+            />
+            <p className="m-0">
+              <label htmlFor="legal-terms-consent" className="cursor-pointer">
+                Я согласен с
+              </label>{" "}
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="touch-manipulation text-aura-champagne/90 underline underline-offset-2 hover:text-aura-champagne"
+              >
+                Пользовательским соглашением
+              </a>{" "}
+              и{" "}
+              <a
+                href="/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="touch-manipulation text-aura-champagne/90 underline underline-offset-2 hover:text-aura-champagne"
+              >
+                Политикой обработки персональных данных
+              </a>
+            </p>
+          </div>
+
+          {mode === "register" && (
+            <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-gray-400">
+              <input
+                id="legal-age-consent"
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(e) => setAgeConfirmed(e.target.checked)}
+                required
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
+              />
+              <span>Мне есть 18 лет</span>
+            </label>
+          )}
+
+          {mode === "register" && (
+            <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-gray-500">
+              <input
+                type="checkbox"
+                checked={marketingConsent}
+                onChange={(e) => setMarketingConsent(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
+              />
+              <span>Я согласен на получение рекламных рассылок</span>
+            </label>
+          )}
+        </div>
+      )}
+
       {mode === "register" && isRecaptchaConfigured() && (
         <p className="text-center text-[10px] text-gray-600">
           Защищено reCAPTCHA. Применяются{" "}
@@ -244,7 +321,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </p>
       )}
 
-      <button type="submit" disabled={loading} className="btn-neon w-full py-3 text-sm disabled:opacity-50">
+      <button
+        type="submit"
+        disabled={!canSubmit}
+        className="btn-neon w-full py-3 text-sm disabled:opacity-50"
+      >
         {loading ? "..." : mode === "login" ? "Войти" : "Создать аккаунт и открыть карты"}
       </button>
 

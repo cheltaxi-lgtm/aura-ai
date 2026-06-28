@@ -1,6 +1,11 @@
 import { query } from "@/lib/db";
-import { completeChat } from "@/lib/llm";
+import { type ChatMessage } from "@/lib/llm";
 import { stripStageDirections } from "@/lib/chat-reply-sanitize";
+import {
+  completeProseWithContinuation,
+  isProseLikelyTruncated,
+  trimIncompleteTrailingSentence,
+} from "@/lib/prose-completion";
 import { MASTER_PERSONA, isCharacterKey } from "@/lib/prompts";
 import type { CharacterKey } from "@/lib/prompts/types";
 import { drawSpread, resolveMasterDeckSystem, type DeckSystem } from "@/lib/decks";
@@ -24,7 +29,7 @@ const DAILY_POSITIONS = ["Утро", "День", "Вечер"] as const;
 
 function finalizeDailyReadingText(raw: string | null | undefined): string {
   const fallback = "Сегодня — день тихой силы. Прислушайся к знакам вокруг.";
-  const cleaned = stripStageDirections(raw?.trim() ?? "");
+  const cleaned = trimIncompleteTrailingSentence(stripStageDirections(raw?.trim() ?? ""));
   return cleaned || fallback;
 }
 
@@ -68,6 +73,7 @@ function buildDailySystem(charKey: CharacterKey): string {
 - Свяжи каждую часть суток (утро, день, вечер) с её символом из расклада; используй именно слова «утро», «день», «вечер».
 - Опирайся ТОЛЬКО на выпавшие символы и профиль клиента — не выдумывай другие карты.
 - В конце — одно конкретное действие на сегодня.
+- Заверши текст полным последним предложением с точкой — не обрывай на полуслове.
 - БЕЗ markdown (никаких #, *, -, нумерованных списков), без заголовков, без подзаголовков, без ремарок в скобках, без описания голоса и жестов.
 - Не повторяй задание и не перечисляй названия символов списком.`;
 }
@@ -95,6 +101,53 @@ ${cardLines}
 Дай прогноз «Энергия дня» на ближайшие 24 часа.`;
 }
 
+async function generateDailyReadingText(
+  charKey: CharacterKey,
+  promptParams: {
+    name: string;
+    zodiac: string;
+    birthDate: string;
+    dateRu: string;
+    cards: DailyReadingCard[];
+  }
+): Promise<string | null> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: buildDailySystem(charKey) },
+    { role: "user", content: buildDailyPrompt(promptParams) },
+  ];
+
+  return completeProseWithContinuation(messages, {
+    maxTokens: 900,
+    temperature: 0.75,
+    maxPasses: 2,
+  });
+}
+
+async function repairTruncatedDailyReading(
+  charKey: CharacterKey,
+  partial: string
+): Promise<string | null> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: buildDailySystem(charKey) },
+    {
+      role: "user",
+      content: `Прогноз «Энергия дня» оборвался на середине. Допиши его с места обрыва до конца (вечер + одно действие на сегодня). Не повторяй уже написанное.\n\n${partial}`,
+    },
+  ];
+
+  const continued = await completeProseWithContinuation(messages, {
+    maxTokens: 500,
+    temperature: 0.7,
+    maxPasses: 1,
+  });
+  if (!continued?.trim()) return null;
+
+  const merged = continued.startsWith(partial.trim())
+    ? continued
+    : `${partial.trim()} ${continued.trim()}`;
+  return finalizeDailyReadingText(merged);
+}
+
 /** Validate a YYYY-MM-DD string; fall back to the server's UTC date. */
 function resolveReadingDate(localDate?: string | null): string {
   if (typeof localDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
@@ -113,14 +166,27 @@ export async function getExistingDailyReading(
     reading_text: string;
     cards: unknown;
     deck_system: string | null;
+    character_key: string;
   }>(
-    `SELECT reading_text, cards, deck_system FROM daily_readings
+    `SELECT reading_text, cards, deck_system, character_key FROM daily_readings
      WHERE user_id = $1 AND reading_date = $2::date`,
     [userId, today]
   );
   if (!rows[0]) return null;
 
-  const reading = finalizeDailyReadingText(rows[0].reading_text);
+  const charKey: CharacterKey = isCharacterKey(rows[0].character_key)
+    ? rows[0].character_key
+    : "veronika";
+
+  let reading = finalizeDailyReadingText(rows[0].reading_text);
+
+  if (isProseLikelyTruncated(reading)) {
+    const repaired = await repairTruncatedDailyReading(charKey, reading);
+    if (repaired && repaired !== reading) {
+      reading = repaired;
+    }
+  }
+
   if (reading !== rows[0].reading_text.trim()) {
     await query(
       `UPDATE daily_readings SET reading_text = $3
@@ -166,25 +232,12 @@ export async function getOrCreateDailyReading(params: {
 
   const cards = drawDailyCards(system);
 
-  const text = await completeChat({
-    messages: [
-      {
-        role: "system",
-        content: buildDailySystem(charKey),
-      },
-      {
-        role: "user",
-        content: buildDailyPrompt({
-          name: params.name,
-          zodiac: params.zodiac,
-          birthDate: params.birthDate,
-          dateRu,
-          cards,
-        }),
-      },
-    ],
-    maxTokens: 450,
-    temperature: 0.75,
+  const text = await generateDailyReadingText(charKey, {
+    name: params.name,
+    zodiac: params.zodiac,
+    birthDate: params.birthDate,
+    dateRu,
+    cards,
   });
 
   const reading = finalizeDailyReadingText(text);

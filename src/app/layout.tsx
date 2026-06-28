@@ -2,6 +2,8 @@ import Script from "next/script";
 import { Cormorant_Garamond, Inter, Cinzel } from "next/font/google";
 import MysticBackground from "@/components/MysticBackground";
 import Providers from "@/components/Providers";
+import CookieBanner from "@/components/CookieBanner";
+import SiteFooter from "@/components/SiteFooter";
 import { getRootMetadata } from "@/lib/seo";
 import "./globals.css";
 
@@ -30,7 +32,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" className={`${inter.variable} ${cormorant.variable} ${cinzel.variable}`}>
-      <body className="font-body relative min-h-screen">
+      <body className="font-body relative flex min-h-screen flex-col">
         <svg width="0" height="0" aria-hidden className="absolute">
           <defs>
             <linearGradient id="lux-gold-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -41,8 +43,10 @@ export default function RootLayout({
         </svg>
         <MysticBackground />
         <Providers>
-          <div className="relative z-10">{children}</div>
+          <div className="relative z-10 flex flex-1 flex-col">{children}</div>
+          <SiteFooter />
         </Providers>
+        <CookieBanner />
 
         {/* Yandex.Metrika counter */}
         <Script id="yandex-metrika" strategy="afterInteractive">

@@ -33,6 +33,7 @@ import CabinetPhotoSpreads from "@/components/cabinet/CabinetPhotoSpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
+import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
 import RitualFlow from "@/components/ritual/RitualFlow";
 import { clearClientActivityState } from "@/lib/client-logout";
 import type { RitualMasterKey } from "@/lib/ritual-config";
@@ -383,6 +384,7 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetDangerZone onPurged={handlePurgeAll} />
+            <CabinetDeleteAccount />
           </div>
         );
 

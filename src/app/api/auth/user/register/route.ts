@@ -28,10 +28,16 @@ export async function POST(request: NextRequest) {
       mainQuestion,
       sessionId,
       recaptchaToken,
+      marketingConsent,
+      ageConfirmed,
     } = body;
 
     if (!rawEmail || !password || !name || !gender || !birthDate) {
       return NextResponse.json({ error: "Заполните все обязательные поля" }, { status: 400 });
+    }
+
+    if (ageConfirmed !== true) {
+      return NextResponse.json({ error: "Подтвердите, что вам исполнилось 18 лет" }, { status: 400 });
     }
 
     const email = normalizeAuthEmail(String(rawEmail));
@@ -50,10 +56,20 @@ export async function POST(request: NextRequest) {
     }
 
     const sign = getZodiacFromDate(birthDate);
-    const astroMeta = buildAstroMeta(birthDate);
-    if (!sign || !astroMeta) {
+    const baseAstroMeta = buildAstroMeta(birthDate);
+    if (!sign || !baseAstroMeta) {
       return NextResponse.json({ error: "Некорректная дата рождения" }, { status: 400 });
     }
+
+    const astroMeta = {
+      ...baseAstroMeta,
+      ageConfirmed: true,
+      ageConfirmedAt: new Date().toISOString(),
+      marketingConsent: Boolean(marketingConsent),
+      ...(marketingConsent
+        ? { marketingConsentAt: new Date().toISOString() }
+        : {}),
+    };
 
     const account = await createUser(email, await hashPassword(password), name.trim());
 

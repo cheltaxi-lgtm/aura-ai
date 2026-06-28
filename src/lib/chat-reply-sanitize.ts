@@ -34,6 +34,96 @@ export function stripTheaterFromReply(text: string): string {
 
 /** Client-safe reply sanitizers (no server/DB imports). */
 
+import { polishSpreadReadingText } from "@/lib/reading-text-polish";
+
+function normalizeCompareText(text: string): string {
+  return text
+    .replace(/\*\*[^*]+\*\*/gu, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/gu, " ")
+    .replace(/[#*_`~[\]()]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/** Same phrase (5+ words) repeated 3+ times — semantic LLM loop. */
+export function hasRepeatedPhrase(text: string, minWords = 5, minOccurrences = 3): boolean {
+  const words = normalizeCompareText(text)
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length < minWords * minOccurrences) return false;
+
+  const counts = new Map<string, number>();
+  for (let i = 0; i <= words.length - minWords; i++) {
+    const phrase = words.slice(i, i + minWords).join(" ");
+    counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+  }
+  for (const count of counts.values()) {
+    if (count >= minOccurrences) return true;
+  }
+  return false;
+}
+
+/** Assistant pasted the user's message (or a full line of it) without interpretation. */
+export function isEchoingUserMessage(reply: string, userMessage?: string): boolean {
+  const user = userMessage?.trim();
+  if (!user || user.length < 12) return false;
+
+  const userNorm = user.replace(/\s+/g, " ").trim();
+  const replyFlat = reply.replace(/\s+/g, " ").trim();
+
+  if (userNorm.length >= 20 && replyFlat.includes(userNorm)) return true;
+
+  for (const line of reply.split(/\n+/)) {
+    const lineNorm = line.replace(/\s+/g, " ").trim();
+    if (lineNorm.length < 12) continue;
+    if (lineNorm === userNorm) return true;
+    if (userNorm.length >= 20 && lineNorm.includes(userNorm)) return true;
+  }
+  return false;
+}
+
+/** Three symbol blocks share the same interpretation core (tarot/rune chat loop). */
+export function hasDuplicateSymbolInterpretations(text: string): boolean {
+  const blocks: string[] = [];
+  for (const line of text.split(/\n+/)) {
+    const m = line.match(/\*\*([^*]{2,60})\*\*(.+)/u);
+    if (!m) continue;
+    let core = normalizeCompareText(m[2] ?? "");
+    core = core.replace(/^.*?\bчто\b\s+/u, "").trim();
+    if (core.length >= 12) blocks.push(core);
+  }
+  if (blocks.length < 3) return false;
+
+  const counts = new Map<string, number>();
+  for (const b of blocks) counts.set(b, (counts.get(b) ?? 0) + 1);
+  return Math.max(...counts.values()) >= 3;
+}
+
+export type ChatReplyQualityOpts = {
+  lastUserMessage?: string;
+  cardNames?: string[];
+};
+
+/** Chat-specific quality gate (loop, echo, lazy symbol blocks). */
+export function isRejectedChatReply(text: string, opts?: ChatReplyQualityOpts): boolean {
+  if (isDegenerateLlmOutput(text)) return true;
+  if (hasRepeatedPhrase(text)) return true;
+  if (hasDuplicateSymbolInterpretations(text)) return true;
+  if (opts?.lastUserMessage && isEchoingUserMessage(text, opts.lastUserMessage)) return true;
+  return false;
+}
+
+export function chatReplyRejectionReason(text: string, opts?: ChatReplyQualityOpts): string | null {
+  if (isDegenerateLlmOutput(text)) return "degenerate output";
+  if (hasRepeatedPhrase(text)) return "repeated phrase loop";
+  if (hasDuplicateSymbolInterpretations(text)) return "duplicate symbol interpretations";
+  if (opts?.lastUserMessage && isEchoingUserMessage(text, opts.lastUserMessage)) {
+    return "echoing user message";
+  }
+  return null;
+}
+
 export function isDegenerateLlmOutput(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
@@ -78,6 +168,19 @@ export function isDegenerateLlmOutput(text: string): boolean {
     const topLine = Math.max(...lineCounts.values());
     if (topLine / lines.length >= 0.5) return true;
   }
+
+  const normalizedLines = lines
+    .map((l) => normalizeCompareText(l))
+    .filter((l) => l.length >= 16);
+  if (normalizedLines.length >= 3) {
+    const normCounts = new Map<string, number>();
+    for (const line of normalizedLines) {
+      normCounts.set(line, (normCounts.get(line) ?? 0) + 1);
+    }
+    if (Math.max(...normCounts.values()) >= 3) return true;
+  }
+
+  if (hasRepeatedPhrase(flat)) return true;
 
   return false;
 }
@@ -188,6 +291,8 @@ export function sanitizeReadingForClient(
 ): string {
   let out = text.trim();
   if (!out) return out;
+
+  out = polishSpreadReadingText(out, cardNames);
 
   out = stripTrailingPromptChecklist(out);
 

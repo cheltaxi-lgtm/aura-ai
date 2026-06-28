@@ -4,6 +4,11 @@ import { Fragment, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { toParagraphs, splitWallOfText } from "@/lib/format-paragraphs";
+import {
+  cardNamesFromImageMarkdown,
+  inferSpreadCardNames,
+  polishSpreadReadingText,
+} from "@/lib/reading-text-polish";
 
 export interface ChatMessageRendererProps {
   content: string;
@@ -14,11 +19,14 @@ export interface ChatMessageRendererProps {
 const CARD_IMAGE_RE = /^!\[([^\]]*)\]\(([^)]+)\)\s*$/;
 
 /** Normalize Evelina-style em-dash lists and dividers for react-markdown. */
-function normalizeMasterMarkdown(content: string): string {
-  return content
-    .replace(/\r\n/g, "\n")
-    .replace(/^—\s/gm, "- ")
-    .replace(/^~~~$/gm, "---");
+function normalizeMasterMarkdown(content: string, cardNames?: string[]): string {
+  return polishSpreadReadingText(
+    content
+      .replace(/\r\n/g, "\n")
+      .replace(/^—\s/gm, "- ")
+      .replace(/^~~~$/gm, "---"),
+    cardNames
+  );
 }
 
 function splitLeadingCardImages(content: string): { imageBlock: string; body: string } {
@@ -257,9 +265,12 @@ export default function ChatMessageRenderer({
     );
   }
 
-  const normalized = normalizeMasterMarkdown(trimmed);
-  const { imageBlock, body } = splitLeadingCardImages(normalized);
-  const markdownSource = body || normalized;
+  const { imageBlock, body } = splitLeadingCardImages(trimmed);
+  const cardNames = inferSpreadCardNames(imageBlock ? `${imageBlock}\n${body}` : trimmed);
+  const markdownSource = normalizeMasterMarkdown(
+    body || trimmed,
+    cardNames.length >= 3 ? cardNames : undefined
+  );
   // Only route to react-markdown for BLOCK-level structure (headings, lists,
   // dividers, images). Replies with just inline **bold**/*italic* go through the
   // premium paragraph renderer, which handles inline emphasis AND breaks a
@@ -269,7 +280,7 @@ export default function ChatMessageRenderer({
   );
 
   if (!hasBlockMarkdown && !imageBlock) {
-    return renderPlainBody(normalized, className);
+    return renderPlainBody(markdownSource, className);
   }
 
   return (

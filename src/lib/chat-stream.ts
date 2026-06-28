@@ -1,6 +1,10 @@
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { sanitizeChatHistory, type ChatHistoryMessage } from "@/lib/chat-sanitize";
-import { stripMemoryLeakFromReply } from "@/lib/chat-reply-sanitize";
+import {
+  isRejectedChatReply,
+  stripMemoryLeakFromReply,
+  type ChatReplyQualityOpts,
+} from "@/lib/chat-reply-sanitize";
 import { buildUserMessageWithImage, isRejectedLlmOutput, streamChat, type ChatMessage } from "@/lib/llm";
 
 export interface ChatStreamMeta {
@@ -8,11 +12,18 @@ export interface ChatStreamMeta {
   llmFailed: boolean;
 }
 
+function streamOutputRejected(text: string, qualityOpts?: ChatReplyQualityOpts): boolean {
+  if (isRejectedLlmOutput(text)) return true;
+  if (qualityOpts && isRejectedChatReply(text, qualityOpts)) return true;
+  return false;
+}
+
 export async function createChatResponseStream(params: {
   systemPrompt: string;
   messages: { role: string; content: string }[];
   imageBase64?: string;
   temperature?: number;
+  qualityOpts?: ChatReplyQualityOpts;
   onComplete: (meta: ChatStreamMeta) => Promise<Record<string, unknown>>;
 }): Promise<Response | null> {
   const safeHistory = sanitizeChatHistory(params.messages);
@@ -26,7 +37,7 @@ export async function createChatResponseStream(params: {
 
   const upstream = await streamChat({
     messages: chatMessages,
-    maxTokens: 1200,
+    maxTokens: 1800,
     vision: Boolean(params.imageBase64),
     temperature: params.temperature,
   });
@@ -66,7 +77,7 @@ export async function createChatResponseStream(params: {
               const token = json.choices?.[0]?.delta?.content ?? "";
               if (token) {
                 fullText += token;
-                if (isRejectedLlmOutput(fullText)) {
+                if (streamOutputRejected(fullText, params.qualityOpts)) {
                   upstreamFailed = true;
                   streamAborted = true;
                   try {
@@ -91,11 +102,10 @@ export async function createChatResponseStream(params: {
       }
 
       const rawReply = fullText.trim();
+      const rejected = rawReply && streamOutputRejected(rawReply, params.qualityOpts);
       const reply =
-        rawReply && isRejectedLlmOutput(rawReply)
-          ? ""
-          : stripMemoryLeakFromReply(rawReply);
-      const llmFailed = upstreamFailed || !reply;
+        rawReply && !rejected ? stripMemoryLeakFromReply(rawReply) : "";
+      const llmFailed = upstreamFailed || !reply || Boolean(rejected && rawReply);
 
       let metaExtras: Record<string, unknown> = {};
       try {
