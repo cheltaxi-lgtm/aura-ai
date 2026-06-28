@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { adminLogin, setAdminSession } from "@/lib/admin-login";
+import { clientIp, enforceLoginRateLimit } from "@/lib/api-guards";
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimited = await enforceLoginRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
+
     const { email, password } = await request.json();
     if (!email || !password) {
       return NextResponse.json({ error: "Email и пароль обязательны" }, { status: 400 });

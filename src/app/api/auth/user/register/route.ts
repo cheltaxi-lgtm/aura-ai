@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { createUser, findUserByEmail, linkAccountToProfile } from "@/lib/accounts";
 import { hashPassword, setAuthCookie, normalizeAuthEmail } from "@/lib/auth";
+import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { verifyRecaptcha } from "@/lib/recaptcha";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
@@ -13,6 +14,9 @@ export async function POST(request: NextRequest) {
     if (!(await ensureDb())) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
     }
+
+    const rateLimited = await enforceRegisterRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
 
     const body = await request.json();
     const {

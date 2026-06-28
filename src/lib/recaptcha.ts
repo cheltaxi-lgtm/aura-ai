@@ -21,16 +21,17 @@ export async function verifyRecaptcha(
   remoteIp?: string | null
 ): Promise<RecaptchaResult> {
   if (!isRecaptchaEnabled()) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("reCAPTCHA disabled in production — set RECAPTCHA_SECRET_KEY and enable RECAPTCHA_ENABLED");
+      return { ok: false, error: "Регистрация временно недоступна. Обратитесь в поддержку." };
+    }
     return { ok: true };
   }
 
   const secret = process.env.RECAPTCHA_SECRET_KEY;
   if (!secret) {
-    if (token) {
-      return { ok: false, error: "Проверка reCAPTCHA временно недоступна" };
-    }
     console.warn("RECAPTCHA_SECRET_KEY not set, skipping verification");
-    return { ok: true };
+    return { ok: false, error: "Проверка reCAPTCHA временно недоступна" };
   }
 
   if (!token) {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { generateId } from "./id";
 import { fetchWithTimeout } from "./fetch-with-timeout";
-import { confirmAgeGateOnServer, isAgeGateConfirmed } from "./age-gate";
+import { confirmAgeGateOnServer, isAgeGateConfirmed, AGE_GATE_EVENT } from "./age-gate";
 const SESSION_KEY = "aura_session_id";
 
 export interface SessionState {
@@ -19,7 +19,21 @@ export interface SessionState {
   referrerSlug?: string | null;
   /** Session belongs to another logged-in profile — client should reconnect */
   ownerMismatch?: boolean;
+  /** Guest must confirm 18+ before server session is created */
+  ageRequired?: boolean;
   isUnlimited?: boolean;
+}
+
+function ageRequiredSession(): SessionState {
+  return {
+    sessionId: "",
+    ageRequired: true,
+    freeQuestionsUsed: 0,
+    freeLimit: 2,
+    hasAccess: false,
+    canChat: false,
+    questionsRemaining: 0,
+  };
 }
 
 function offlineSession(): SessionState {
@@ -76,9 +90,15 @@ export function useAuraSession(referrerSlug?: string) {
       let res = await postSession();
       if (res.status === 403) {
         const body = (await res.json().catch(() => null)) as { code?: string } | null;
-        if (body?.code === "age_required" && isAgeGateConfirmed()) {
-          await confirmAgeGateOnServer();
-          res = await postSession();
+        if (body?.code === "age_required") {
+          if (isAgeGateConfirmed()) {
+            await confirmAgeGateOnServer();
+            res = await postSession();
+          } else {
+            const pending = ageRequiredSession();
+            setSession(pending);
+            return pending;
+          }
         }
       }
       if (!res.ok) {
@@ -164,6 +184,16 @@ export function useAuraSession(referrerSlug?: string) {
     setSession(null);
     return createSession(refToken);
   }, [createSession]);
+
+  useEffect(() => {
+    const onAgeConfirmed = () => {
+      const params = new URLSearchParams(window.location.search);
+      const refToken = params.get("ref") ?? referrerSlug;
+      void reconnectSession(refToken);
+    };
+    window.addEventListener(AGE_GATE_EVENT, onAgeConfirmed);
+    return () => window.removeEventListener(AGE_GATE_EVENT, onAgeConfirmed);
+  }, [referrerSlug, reconnectSession]);
 
   /** New billing session without clearing the current one from state first (no flicker). */
   const spawnSession = createSession;

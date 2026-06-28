@@ -27,8 +27,8 @@ grep -q '^NEXT_PUBLIC_APP_URL=' "$ENV_FILE" \
   || echo 'NEXT_PUBLIC_APP_URL=https://zovus.ru' >> "$ENV_FILE"
 
 grep -q '^COOKIE_SECURE=' "$ENV_FILE" \
-  && sed -i 's|^COOKIE_SECURE=.*|COOKIE_SECURE=false|' "$ENV_FILE" \
-  || echo 'COOKIE_SECURE=false' >> "$ENV_FILE"
+  && sed -i 's|^COOKIE_SECURE=.*|COOKIE_SECURE=true|' "$ENV_FILE" \
+  || echo 'COOKIE_SECURE=true' >> "$ENV_FILE"
 
 grep -q '^OPENROUTER_API_KEY=' "$ENV_FILE" \
   && sed -i 's|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY='"'"'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'"'"'|' "$ENV_FILE" \
@@ -39,12 +39,12 @@ grep -q '^OPENROUTER_MODEL=' "$ENV_FILE" \
   || echo 'OPENROUTER_MODEL=openai/gpt-4o-mini' >> "$ENV_FILE"
 
 grep -q '^RECAPTCHA_ENABLED=' "$ENV_FILE" \
-  && sed -i 's|^RECAPTCHA_ENABLED=.*|RECAPTCHA_ENABLED=false|' "$ENV_FILE" \
-  || echo 'RECAPTCHA_ENABLED=false' >> "$ENV_FILE"
+  && sed -i 's|^RECAPTCHA_ENABLED=.*|RECAPTCHA_ENABLED=true|' "$ENV_FILE" \
+  || echo 'RECAPTCHA_ENABLED=true' >> "$ENV_FILE"
 
 grep -q '^NEXT_PUBLIC_RECAPTCHA_ENABLED=' "$ENV_FILE" \
-  && sed -i 's|^NEXT_PUBLIC_RECAPTCHA_ENABLED=.*|NEXT_PUBLIC_RECAPTCHA_ENABLED=false|' "$ENV_FILE" \
-  || echo 'NEXT_PUBLIC_RECAPTCHA_ENABLED=false' >> "$ENV_FILE"
+  && sed -i 's|^NEXT_PUBLIC_RECAPTCHA_ENABLED=.*|NEXT_PUBLIC_RECAPTCHA_ENABLED=true|' "$ENV_FILE" \
+  || echo 'NEXT_PUBLIC_RECAPTCHA_ENABLED=true' >> "$ENV_FILE"
 
 grep -q '^NEXT_PUBLIC_RECAPTCHA_SITE_KEY=' "$ENV_FILE" \
   && sed -i 's|^NEXT_PUBLIC_RECAPTCHA_SITE_KEY=.*|NEXT_PUBLIC_RECAPTCHA_SITE_KEY=6Lf39RQtAAAAAD5KIIHcgqar5rq91CTegKkZVSVn|' "$ENV_FILE" \
@@ -87,6 +87,13 @@ fi
 cd /opt/aura-ai
 npm ci --legacy-peer-deps
 npm run build
+
+echo ">>> Launch env check..."
+set -a
+# shellcheck disable=SC1090
+source <(grep -E '^(DATABASE_URL|AUTH_SECRET|OPENROUTER_API_KEY|NEXT_PUBLIC_APP_URL|YUKASSA_SHOP_ID|YUKASSA_SECRET_KEY|RECAPTCHA_SECRET_KEY|RECAPTCHA_ENABLED)=' "$ENV_FILE" | sed 's/\r$//')
+set +a
+node /opt/aura-ai/scripts/verify-launch-env.mjs
 
 echo ">>> DB migrations (schema_migrations)..."
 if [ "${SKIP_MIGRATIONS:-0}" = "1" ]; then

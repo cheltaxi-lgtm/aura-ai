@@ -266,6 +266,15 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               >
                 Политикой обработки персональных данных
               </a>
+              . Ознакомлен с{" "}
+              <a
+                href="/disclaimer"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="touch-manipulation text-aura-champagne/90 underline underline-offset-2 hover:text-aura-champagne"
+              >
+                отказом от ответственности
+              </a>
             </p>
           </div>
 

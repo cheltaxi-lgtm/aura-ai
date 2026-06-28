@@ -1,6 +1,7 @@
 import type { AstroMeta } from "@/lib/astro-profile";
 
 export const AGE_GATE_STORAGE_KEY = "aura_age_gate_v1";
+export const AGE_GATE_EVENT = "aura:age-confirmed";
 
 export function isAgeGateConfirmed(): boolean {
   if (typeof window === "undefined") return false;
@@ -25,6 +26,9 @@ export async function confirmAgeGateOnServer(): Promise<boolean> {
     const res = await fetch("/api/age-gate/confirm", { method: "POST" });
     if (!res.ok) return false;
     confirmAgeGate();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(AGE_GATE_EVENT));
+    }
     return true;
   } catch {
     return false;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { createExpert, findExpertByEmail } from "@/lib/accounts";
 import { hashPassword, setAuthCookie, slugify } from "@/lib/auth";
+import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { verifyRecaptcha } from "@/lib/recaptcha";
 import { isExpertRegistrationEnabled } from "@/lib/settings";
 
@@ -17,6 +18,9 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+
+    const rateLimited = await enforceRegisterRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
 
     const { email, password, name, slug, title, recaptchaToken, ageConfirmed } = await request.json();
     if (!email || !password || !name) {

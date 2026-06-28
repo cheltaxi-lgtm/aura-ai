@@ -200,6 +200,23 @@ export async function enforceSttRateLimit(accountId: string): Promise<NextRespon
 
 const LOGIN_LIMIT = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const REGISTER_LIMIT = 8;
+const REGISTER_WINDOW_MS = 60 * 60 * 1000;
+
+export async function enforceRegisterRateLimit(ip: string): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("register", ip),
+    REGISTER_LIMIT,
+    REGISTER_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток регистрации. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
 
 export async function enforceLoginRateLimit(ip: string): Promise<NextResponse | null> {
   const { allowed, retryAfterSec } = await checkRateLimit(

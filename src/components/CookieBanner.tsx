@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import LegalDocLink from "@/components/legal/LegalDocLink";
+import { acceptCookieConsent, hasCookieConsent } from "@/lib/cookie-consent";
 
-const CONSENT_KEY = "aura_cookie_consent";
 const BODY_CLASS = "cookie-banner-visible";
 
 function syncBannerOffset(banner: HTMLElement | null) {
@@ -17,13 +17,7 @@ export default function CookieBanner() {
   const bannerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    try {
-      if (localStorage.getItem(CONSENT_KEY) !== "1") {
-        setVisible(true);
-      }
-    } catch {
-      setVisible(true);
-    }
+    setVisible(!hasCookieConsent());
   }, []);
 
   useEffect(() => {
@@ -53,11 +47,7 @@ export default function CookieBanner() {
   }, [visible]);
 
   const accept = () => {
-    try {
-      localStorage.setItem(CONSENT_KEY, "1");
-    } catch {
-      /* ignore */
-    }
+    acceptCookieConsent();
     setVisible(false);
   };
 
