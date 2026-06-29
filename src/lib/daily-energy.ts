@@ -10,7 +10,8 @@ import {
 import { MASTER_PERSONA, isCharacterKey } from "@/lib/prompts";
 import type { CharacterKey } from "@/lib/prompts/types";
 import { drawSpread, resolveMasterDeckSystem, type DeckSystem } from "@/lib/decks";
-import { DEFAULT_SPREAD_ID, getSpread, normalizeSpreadId, type SpreadId } from "@/lib/spreads";
+import { DEFAULT_SPREAD_ID, getSpread, isSpreadEnabled, normalizeSpreadId, type SpreadId } from "@/lib/spreads";
+import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
 
 export interface DailyReadingCard {
   name: string;
@@ -241,6 +242,7 @@ export async function getExistingDailyReading(
     reading,
     cards,
     system: system ?? resolveMasterDeckSystem(charKey),
+    spreadId: storedSpreadId,
   }).catch((err) => console.warn("Daily reading history sync failed:", err));
 
   return {
@@ -266,8 +268,12 @@ export async function getOrCreateDailyReading(params: {
     : "veronika";
   const system = resolveMasterDeckSystem(charKey);
   const requestedSpreadId = normalizeSpreadId(params.spreadId);
-  const drawSpreadId =
+  let drawSpreadId: SpreadId =
     requestedSpreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID;
+  await ensureSpreadCatalogSettingsLoaded();
+  if (drawSpreadId === "daily-extended" && !isSpreadEnabled("daily-extended")) {
+    drawSpreadId = DEFAULT_SPREAD_ID;
+  }
 
   const today = resolveReadingDate(params.localDate);
 
@@ -313,6 +319,7 @@ export async function getOrCreateDailyReading(params: {
     reading,
     cards,
     system,
+    spreadId: drawSpreadId,
   });
 
   return { text: reading, cards, system, cached: false, spreadId: drawSpreadId };
@@ -325,6 +332,7 @@ async function syncDailyReadingHistory(params: {
   reading: string;
   cards: DailyReadingCard[];
   system: DeckSystem;
+  spreadId: SpreadId;
 }): Promise<void> {
   const existing = await query<{ id: string }>(
     `SELECT id FROM history
@@ -342,6 +350,7 @@ async function syncDailyReadingHistory(params: {
     isPaid: false,
     contextData: {
       type: "daily_reading",
+      spreadId: params.spreadId,
       reading: params.reading,
       readingDate: params.readingDate,
       characterKey: params.characterKey,

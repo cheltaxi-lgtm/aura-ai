@@ -32,6 +32,9 @@ const apiGuards = read("src/lib/api-guards.ts");
 const spreadTeaser = read("src/lib/spread-teaser.ts");
 const diary = read("src/lib/diary.ts");
 const registry = read("src/lib/spreads/registry.ts");
+const premiumEnergy = read("src/components/PremiumEnergyBlock.tsx");
+const intentionSpread = read("src/app/api/intention-spread/route.ts");
+const spreadLanding = read("src/app/rasklad/[slug]/page.tsx");
 
 // Recovery paths must use hasCompleteSpread, not triplet-only gates.
 assert(
@@ -71,7 +74,6 @@ assert(
 
 assert(metrics.includes("/api/metrics/spread"), "metrics client posts to /api/metrics/spread");
 
-const intentionSpread = read("src/app/api/intention-spread/route.ts");
 assert(
   intentionSpread.includes("recordSpreadMetric"),
   "intention-spread persists spread metrics on server"
@@ -105,6 +107,22 @@ assert(
 assert(
   dailyRoute.includes("spreadId") && dailyRoute.includes("normalizeSpreadId"),
   "daily-reading API accepts and returns spreadId"
+);
+assert(
+  premiumEnergy.includes("spreadId") && premiumEnergy.includes("daily-extended"),
+  "PremiumEnergyBlock wires daily-extended in UI"
+);
+assert(
+  intentionSpread.includes("isDailyOnlySpread"),
+  "intention-spread rejects daily-only spreads"
+);
+assert(
+  spreadLanding.includes("daily=extended"),
+  "daily-extended SEO landing deep-links to daily flow"
+);
+assert(
+  homePage.includes('dailyParam === "extended"') && homePage.includes("setDailyEnergySpreadId"),
+  "HomePage routes daily-extended deep link to PremiumEnergyBlock"
 );
 
 assert(

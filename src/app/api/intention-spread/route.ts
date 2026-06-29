@@ -48,6 +48,7 @@ import { recordSpreadMetric } from "@/lib/spread-metrics-store";
 import {
   getSpread,
   isSpreadEnabled,
+  isDailyOnlySpread,
   normalizeSpreadId,
   resolveSpreadPositions,
   logSpreadMetric,
@@ -147,6 +148,9 @@ export async function GET(request: NextRequest) {
   const rawMaster = request.nextUrl.searchParams.get("master")?.trim() ?? "veronika";
   const numerologDraw = request.nextUrl.searchParams.get("numerologDraw") === "1";
   const spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
+  if (isDailyOnlySpread(spreadId)) {
+    return NextResponse.json({ error: "Spread not available for sessions" }, { status: 400 });
+  }
   const spread = getSpread(spreadId);
 
   if (!isSpreadEnabled(spreadId)) {
@@ -225,6 +229,10 @@ export async function POST(request: NextRequest) {
 
   if (!isValidSessionIntention(intention)) {
     return NextResponse.json({ error: "Unknown intention" }, { status: 400 });
+  }
+
+  if (isDailyOnlySpread(spreadId)) {
+    return NextResponse.json({ error: "Spread not available for sessions" }, { status: 400 });
   }
 
   if (!isSpreadEnabled(spreadId)) {

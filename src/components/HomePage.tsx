@@ -140,6 +140,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   /** Pending deep-link auto-reading (from a notification CTA): open chat + auto-ask. */
   const [autoAsk, setAutoAsk] = useState<{ master: string; question: string } | null>(null);
   const [deepLinkSpreadId, setDeepLinkSpreadId] = useState<string | null>(null);
+  const [dailyEnergySpreadId, setDailyEnergySpreadId] = useState<SpreadId>(DEFAULT_SPREAD_ID);
+  const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
   const autoAskOpenedRef = useRef(false);
@@ -462,7 +464,21 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   useEffect(() => {
     if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
-    const spreadParam = new URLSearchParams(window.location.search).get("spread")?.trim();
+    const params = new URLSearchParams(window.location.search);
+    const spreadParam = params.get("spread")?.trim();
+    const dailyParam = params.get("daily")?.trim();
+
+    if (dailyParam === "extended" || spreadParam === "daily-extended") {
+      deepLinkSpreadParsedRef.current = true;
+      setDailyEnergySpreadId("daily-extended");
+      setDailyEnergyAutoOpen(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("daily");
+      url.searchParams.delete("spread");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      return;
+    }
+
     if (!spreadParam) return;
     deepLinkSpreadParsedRef.current = true;
     setDeepLinkSpreadId(normalizeSpreadId(spreadParam));
@@ -2378,6 +2394,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                     <PremiumEnergyBlock
                       characterKey={dailyEnergyMasterId}
                       masters={masters}
+                      initialSpreadId={dailyEnergySpreadId}
+                      autoOpen={dailyEnergyAutoOpen}
+                      onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
                       onTalkToMaster={(masterId) => {
                         setEnergyFlowMasterId(masterId);
                         setShowSessionFlow(true);

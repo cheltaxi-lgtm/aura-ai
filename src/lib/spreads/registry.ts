@@ -165,6 +165,11 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
 
 export const DEFAULT_SPREAD_ID: SpreadId = "triplet";
 
+/** Spreads used only in the daily-reading flow, not in paid intention sessions. */
+export function isDailyOnlySpread(id: SpreadId | string | null | undefined): boolean {
+  return normalizeSpreadId(id) === "daily-extended";
+}
+
 export function normalizeSpreadId(raw?: string | null): SpreadId {
   if (raw && raw in SPREAD_REGISTRY) return raw as SpreadId;
   return DEFAULT_SPREAD_ID;
@@ -265,7 +270,7 @@ export function listSpreads(options?: {
   const { topic, system, includeDisabled } = options ?? {};
   return (Object.values(SPREAD_REGISTRY) as SpreadDefinition[]).filter((spread) => {
     if (!includeDisabled && !isSpreadEnabled(spread.id)) return false;
-    if (spread.id === "triplet-love") return false;
+    if (spread.id === "triplet-love" || isDailyOnlySpread(spread.id)) return false;
     if (topic && !spreadMatchesTopic(spread, topic)) return false;
     if (system && !spreadMatchesSystem(spread, system)) return false;
     return true;

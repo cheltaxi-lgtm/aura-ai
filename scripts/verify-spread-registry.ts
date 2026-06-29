@@ -60,6 +60,7 @@ assert(all.some((s) => s.id === "triplet"), "triplet always listed");
 
 const runesOnly = listSpreads({ system: "runes" });
 assert(!runesOnly.some((s) => s.id === "yes-no"), "yes-no hidden for runes");
+assert(!all.some((s) => s.id === "daily-extended"), "daily-extended excluded from session spread list");
 
 assert(getSpread("celtic-cross").cardCount === 10, "celtic-cross has 10 cards");
 assert(MAX_SPREAD_CARD_COUNT === 10, `MAX_SPREAD_CARD_COUNT = 10 (got ${MAX_SPREAD_CARD_COUNT})`);

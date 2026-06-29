@@ -58,10 +58,10 @@ export default async function SpreadLandingPage({
 
       <section className="mt-10">
         <Link
-          href={`/?spread=${spread.id}`}
+          href={spread.id === "daily-extended" ? "/?daily=extended" : `/?spread=${spread.id}`}
           className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
         >
-          Начать расклад с мастером
+          {spread.id === "daily-extended" ? "Открыть расширенный день" : "Начать расклад с мастером"}
         </Link>
       </section>
 

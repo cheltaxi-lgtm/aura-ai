@@ -15,12 +15,7 @@ import { resolveMasterDeckSystem } from "@/lib/decks";
 import MasterAvatar from "@/components/MasterAvatar";
 import SpreadLayout from "@/components/SpreadLayout";
 import SpreadPicker from "@/components/SpreadPicker";
-import {
-  DEFAULT_SPREAD_ID,
-  getSpread,
-  spreadMatchesTopic,
-  type SpreadId,
-} from "@/lib/spreads";
+import { DEFAULT_SPREAD_ID, getSpread, isDailyOnlySpread, spreadMatchesTopic, type SpreadId } from "@/lib/spreads";
 import RuneCost from "@/components/RuneCost";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
@@ -60,6 +55,11 @@ interface MasterSessionFlowProps {
 
 type Step = "topic" | "master" | "cards" | "scheme" | "flip";
 
+function resolveSessionSpreadId(id?: SpreadId | null): SpreadId {
+  if (!id || isDailyOnlySpread(id)) return DEFAULT_SPREAD_ID;
+  return id;
+}
+
 function emptyFlipped(count: number): boolean[] {
   return Array.from({ length: count }, () => false);
 }
@@ -98,7 +98,7 @@ export default function MasterSessionFlow({
   const [newCards, setNewCards] = useState<{ name: string; meaning?: string }[]>([]);
   const [deckSystem, setDeckSystem] = useState<DeckSystem>("tarot-veronika");
   const [selectedSpreadId, setSelectedSpreadId] = useState<SpreadId>(
-    initialSpreadId ?? DEFAULT_SPREAD_ID
+    resolveSessionSpreadId(initialSpreadId)
   );
   const [flipped, setFlipped] = useState<boolean[]>(() => emptyFlipped(3));
   const [drawLoading, setDrawLoading] = useState(false);
@@ -145,8 +145,14 @@ export default function MasterSessionFlow({
     setVoiceNotice(null);
     setMaster(preselectedMaster ?? "");
     setNewCards([]);
-    setSelectedSpreadId(initialSpreadId ?? DEFAULT_SPREAD_ID);
-    setFlipped(emptyFlipped(initialSpreadId ? getSpread(initialSpreadId).cardCount : 3));
+    setSelectedSpreadId(resolveSessionSpreadId(initialSpreadId));
+    setFlipped(
+      emptyFlipped(
+        initialSpreadId && !isDailyOnlySpread(initialSpreadId)
+          ? getSpread(initialSpreadId).cardCount
+          : 3
+      )
+    );
     setDrawError(null);
     setDrawLoading(false);
 

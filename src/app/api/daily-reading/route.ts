@@ -5,6 +5,7 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getUserById } from "@/lib/users";
 import { getExistingDailyReading, getOrCreateDailyReading } from "@/lib/daily-energy";
 import { isCharacterKey } from "@/lib/prompts";
+import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
 import { DEFAULT_SPREAD_ID, normalizeSpreadId } from "@/lib/spreads";
 
 const EMPTY = { text: null, cards: [], system: null, drawn: false, spreadId: null as string | null };
@@ -18,6 +19,8 @@ export async function GET(request: NextRequest) {
   if (!(await ensureDb())) {
     return NextResponse.json(EMPTY);
   }
+
+  await ensureSpreadCatalogSettingsLoaded();
 
   const userId = await getProfileUserIdForAccount(auth.sub);
   if (!userId) {
@@ -48,6 +51,8 @@ export async function POST(request: NextRequest) {
   if (!(await ensureDb())) {
     return NextResponse.json(EMPTY);
   }
+
+  await ensureSpreadCatalogSettingsLoaded();
 
   const userId = await getProfileUserIdForAccount(auth.sub);
   if (!userId) {

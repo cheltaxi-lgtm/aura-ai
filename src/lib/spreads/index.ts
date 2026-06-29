@@ -27,6 +27,7 @@ export {
   MAX_SPREAD_CARD_COUNT,
   limitSpreadKeyCards,
   isSpreadEnabled,
+  isDailyOnlySpread,
   mergeSpreadCatalogSettings,
   setSpreadCatalogSettings,
   getSpreadCatalogSettings,
