@@ -43,6 +43,7 @@ import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
 import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
+import CabinetMemoryFacts from "@/components/cabinet/CabinetMemoryFacts";
 import CabinetSupportLink from "@/components/cabinet/CabinetSupportLink";
 import RitualFlow from "@/components/ritual/RitualFlow";
 import { clearClientActivityState } from "@/lib/client-logout";
@@ -408,6 +409,7 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetSupportLink />
+            <CabinetMemoryFacts />
             <CabinetDangerZone onPurged={handlePurgeAll} />
             <CabinetDeleteAccount />
           </div>

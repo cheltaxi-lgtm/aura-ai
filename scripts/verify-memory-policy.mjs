@@ -67,8 +67,33 @@ assert(
 );
 
 assert(
-  "user facts API exists",
-  read("src/app/api/memory/facts/route.ts").includes("export async function GET")
+  "buildCurrentSessionAnchorBlock rejects empty query",
+  userMemory.includes("if (!topicQuery) return \"\";") &&
+    userMemory.includes("buildRelevantSessionAnchor")
+);
+
+const adminPage = read("src/app/admin/users/page.tsx");
+assert(
+  "admin UI shows sessionMemories",
+  adminPage.includes("sessionMemories") && adminPage.includes("deleteSessionMemory")
+);
+
+const cabinetPage = read("src/app/cabinet/page.tsx");
+assert(
+  "cabinet UI uses memory facts",
+  cabinetPage.includes("CabinetMemoryFacts")
+);
+
+const deployYml = read(".github/workflows/deploy.yml");
+assert(
+  "deploy.yml triggers on master",
+  deployYml.includes("- master")
+);
+
+const gitignore = read(".gitignore");
+assert(
+  "gitignore excludes local debug artifacts",
+  gitignore.includes(".tmp-*")
 );
 
 console.log(`\n--- ${failed} failed ---`);

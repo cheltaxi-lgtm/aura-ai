@@ -40,6 +40,16 @@ export default function AdminUsersPage() {
   const [memoryFacts, setMemoryFacts] = useState<
     { id: string; fact: string; category: string | null; eventDate: string | null; salience: number }[]
   >([]);
+  const [sessionMemories, setSessionMemories] = useState<
+    {
+      id: string;
+      date: string;
+      characterKey: string;
+      topicSummary: string;
+      prediction: string;
+      keyCards: string[];
+    }[]
+  >([]);
   const [memoryLoading, setMemoryLoading] = useState(false);
 
   const load = () => {
@@ -108,11 +118,13 @@ export default function AdminUsersPage() {
   const openMemory = async (profileUserId: string, label: string) => {
     setMemoryModal({ profileUserId, label });
     setMemoryFacts([]);
+    setSessionMemories([]);
     setMemoryLoading(true);
     try {
       const res = await fetch(`/api/admin/users/${profileUserId}/memory`);
       const data = await res.json().catch(() => ({}));
       setMemoryFacts(Array.isArray(data.facts) ? data.facts : []);
+      setSessionMemories(Array.isArray(data.sessionMemories) ? data.sessionMemories : []);
     } finally {
       setMemoryLoading(false);
     }
@@ -124,6 +136,15 @@ export default function AdminUsersPage() {
       method: "DELETE",
     });
     setMemoryFacts((prev) => prev.filter((f) => f.id !== factId));
+  };
+
+  const deleteSessionMemory = async (sessionMemoryId: string) => {
+    if (!memoryModal) return;
+    await fetch(
+      `/api/admin/users/${memoryModal.profileUserId}/memory?sessionMemoryId=${sessionMemoryId}`,
+      { method: "DELETE" }
+    );
+    setSessionMemories((prev) => prev.filter((s) => s.id !== sessionMemoryId));
   };
 
   const purgeMemory = async () => {
@@ -296,17 +317,23 @@ export default function AdminUsersPage() {
           <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-white/10 bg-[#1a1028] p-6">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-white">Долговременная память</h3>
+                <h3 className="text-lg font-semibold text-white">Память клиента</h3>
                 <p className="mt-1 text-sm text-white/50">{memoryModal.label}</p>
               </div>
-              <span className="text-sm text-aura-neon">{memoryFacts.length} факт(ов)</span>
+              <span className="text-sm text-aura-neon">
+                {memoryFacts.length} факт(ов) · {sessionMemories.length} сеанс(ов)
+              </span>
             </div>
 
-            <div className="mt-4 flex-1 overflow-y-auto pr-1">
+            <div className="mt-4 flex-1 overflow-y-auto pr-1 space-y-6">
+              <div>
+                <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-white/40">
+                  Долговременные факты
+                </h4>
               {memoryLoading ? (
                 <p className="text-sm text-white/50">Загрузка…</p>
               ) : memoryFacts.length === 0 ? (
-                <p className="text-sm text-white/50">Память пуста.</p>
+                <p className="text-sm text-white/50">Факты пусты.</p>
               ) : (
                 <ul className="space-y-2">
                   {memoryFacts.map((f) => (
@@ -332,6 +359,43 @@ export default function AdminUsersPage() {
                   ))}
                 </ul>
               )}
+              </div>
+
+              <div>
+                <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-white/40">
+                  Эпизодическая память (сеансы)
+                </h4>
+                {memoryLoading ? null : sessionMemories.length === 0 ? (
+                  <p className="text-sm text-white/50">Сеансы не сохранены.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {sessionMemories.map((s) => (
+                      <li
+                        key={s.id}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm text-white/90">{s.topicSummary}</p>
+                          <p className="mt-1 text-xs text-white/40">
+                            {s.date} · {s.characterKey}
+                            {s.keyCards?.length ? ` · ${s.keyCards.join(", ")}` : ""}
+                          </p>
+                          {s.prediction ? (
+                            <p className="mt-1 text-xs text-white/55 line-clamp-2">{s.prediction}</p>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void deleteSessionMemory(s.id)}
+                          className="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-red-400/50 hover:text-red-300"
+                        >
+                          Удалить
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             <div className="mt-6 flex justify-between gap-2">

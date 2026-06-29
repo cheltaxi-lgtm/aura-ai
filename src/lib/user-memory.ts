@@ -44,6 +44,40 @@ function formatSessionAnchor(parts: {
   return lines.join("\n");
 }
 
+function buildRelevantSessionAnchor(
+  topicQuery: string,
+  parts: {
+    topicSummary?: string;
+    prediction?: string;
+    mood?: string | null;
+    cardNames?: string[];
+    intention?: string | null;
+  }
+): string {
+  if (!topicQuery) return "";
+
+  const narrative = `${parts.topicSummary ?? ""} ${parts.prediction ?? ""}`.trim();
+  const narrativeRelevant = narrative ? isTextRelevantToQuery(topicQuery, narrative) : false;
+
+  const cardNames = parts.cardNames ?? [];
+  const cardsRelevant =
+    cardNames.length > 0 && isTextRelevantToQuery(topicQuery, cardNames.join(" "));
+
+  const intention = parts.intention?.trim() ?? "";
+  const intentionRelevant =
+    Boolean(intention) && isTextRelevantToQuery(topicQuery, intention);
+
+  if (!narrativeRelevant && !cardsRelevant && !intentionRelevant) return "";
+
+  return formatSessionAnchor({
+    topicSummary: narrativeRelevant ? parts.topicSummary : undefined,
+    prediction: narrativeRelevant ? parts.prediction : undefined,
+    mood: narrativeRelevant ? parts.mood : undefined,
+    cardNames: cardsRelevant ? cardNames : undefined,
+    intention: intentionRelevant ? intention : undefined,
+  });
+}
+
 /** Running summary of the active session — from session_memories or session meta fallback. */
 export async function buildCurrentSessionAnchorBlock(
   userId: string,
@@ -52,12 +86,15 @@ export async function buildCurrentSessionAnchorBlock(
   fallback?: SessionAnchorFallback,
   queryText?: string
 ): Promise<string> {
-  const fallbackAnchor = formatSessionAnchor({
-    cardNames: fallback?.cardNames,
-    intention: fallback?.intention ?? undefined,
-  });
+  const topicQuery = queryText?.trim() ?? "";
+  if (!topicQuery) return "";
 
-  if (!(await ensureDb())) return fallbackAnchor;
+  if (!(await ensureDb())) {
+    return buildRelevantSessionAnchor(topicQuery, {
+      cardNames: fallback?.cardNames,
+      intention: fallback?.intention ?? undefined,
+    });
+  }
 
   const { rows } = await query<{
     topic_summary: string;
@@ -73,20 +110,22 @@ export async function buildCurrentSessionAnchorBlock(
   );
 
   const row = rows[0];
-  if (!row) return fallbackAnchor;
+  if (!row) {
+    return buildRelevantSessionAnchor(topicQuery, {
+      cardNames: fallback?.cardNames,
+      intention: fallback?.intention ?? undefined,
+    });
+  }
 
-  const narrative = `${row.topic_summary} ${row.prediction}`.trim();
-  const topicQuery = queryText?.trim() ?? "";
-  const includeNarrative = !topicQuery || isTextRelevantToQuery(topicQuery, narrative);
-
-  const anchor = formatSessionAnchor({
-    topicSummary: includeNarrative ? row.topic_summary : undefined,
-    cardNames: row.key_cards ?? fallback?.cardNames,
-    prediction: includeNarrative ? row.prediction : undefined,
-    mood: includeNarrative ? row.mood : undefined,
-    intention: fallback?.intention ?? undefined,
-  });
-  return anchor || fallbackAnchor;
+  return (
+    buildRelevantSessionAnchor(topicQuery, {
+      topicSummary: row.topic_summary,
+      prediction: row.prediction,
+      mood: row.mood,
+      cardNames: row.key_cards ?? fallback?.cardNames,
+      intention: fallback?.intention ?? undefined,
+    }) || ""
+  );
 }
 
 /** Fresh anchor for quick period spreads — no «continue old topic» bleed. */
