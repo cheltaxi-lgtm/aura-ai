@@ -100,6 +100,7 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
     systems: "*",
     costMultiplier: 1.0,
     layout: "row",
+    seoSlug: "lyubovnyj-triplet",
   },
   "love-7": {
     id: "love-7",
@@ -124,6 +125,7 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
     systems: ["tarot-veronika", "tarot-marina"],
     costMultiplier: 0.5,
     layout: "row",
+    seoSlug: "da-net",
   },
   "celtic-cross": {
     id: "celtic-cross",

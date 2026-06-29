@@ -10,6 +10,7 @@ import {
 import { MASTER_PERSONA, isCharacterKey } from "@/lib/prompts";
 import type { CharacterKey } from "@/lib/prompts/types";
 import { drawSpread, resolveMasterDeckSystem, type DeckSystem } from "@/lib/decks";
+import { DEFAULT_SPREAD_ID, getSpread, normalizeSpreadId, type SpreadId } from "@/lib/spreads";
 
 export interface DailyReadingCard {
   name: string;
@@ -23,6 +24,7 @@ export interface DailyReadingResult {
   cards: DailyReadingCard[];
   system: DeckSystem | null;
   cached: boolean;
+  spreadId: SpreadId;
 }
 
 /** Positions framed as a forecast across the next 24 hours. */
@@ -52,26 +54,46 @@ function parseStoredCards(raw: unknown): DailyReadingCard[] {
     .filter((c): c is DailyReadingCard => c !== null);
 }
 
-function drawDailyCards(system: DeckSystem): DailyReadingCard[] {
-  const symbols = drawSpread(system, DAILY_POSITIONS.length);
+function drawDailyCards(system: DeckSystem, spreadId: SpreadId = DEFAULT_SPREAD_ID): DailyReadingCard[] {
+  if (spreadId === DEFAULT_SPREAD_ID) {
+    const symbols = drawSpread(system, DAILY_POSITIONS.length);
+    return symbols.map((symbol, i) => ({
+      name: symbol.name,
+      meaning: symbol.meaning,
+      reversed: system.startsWith("tarot") ? Math.random() < 0.32 : false,
+      position: DAILY_POSITIONS[i] ?? `Символ ${i + 1}`,
+    }));
+  }
+
+  const spread = getSpread(spreadId);
+  const symbols = drawSpread(system, spread.cardCount);
   return symbols.map((symbol, i) => ({
     name: symbol.name,
     meaning: symbol.meaning,
-    // Reversed orientation only makes sense for tarot-style decks.
     reversed: system.startsWith("tarot") ? Math.random() < 0.32 : false,
-    position: DAILY_POSITIONS[i] ?? `Символ ${i + 1}`,
+    position: spread.positions[i]?.label ?? `Символ ${i + 1}`,
   }));
 }
 
-function buildDailySystem(charKey: CharacterKey): string {
+function buildDailySystem(charKey: CharacterKey, spreadId: SpreadId = DEFAULT_SPREAD_ID): string {
   const persona = MASTER_PERSONA[charKey];
+  const spread = getSpread(spreadId);
+  const taskHint =
+    spreadId === DEFAULT_SPREAD_ID
+      ? "краткий прогноз «Энергия дня» на ближайшие 24 часа по трём выпавшим символам — Утро, День, Вечер — с учётом профиля клиента."
+      : `краткий прогноз «${spread.label}» на ближайшие 24 часа по ${spread.cardCount} выпавшим символам (каждая позиция расклада отдельно) с учётом профиля клиента.`;
+  const formatHint =
+    spreadId === DEFAULT_SPREAD_ID
+      ? "- Свяжи каждую часть суток (утро, день, вечер) с её символом из расклада; используй именно слова «утро», «день», «вечер»."
+      : `- Пройди по всем ${spread.cardCount} позициям расклада; назови каждую позицию и её символ.`;
+
   return `${persona}
 
-ЗАДАЧА: краткий прогноз «Энергия дня» на ближайшие 24 часа по трём выпавшим символам — Утро, День, Вечер — с учётом профиля клиента.
+ЗАДАЧА: ${taskHint}
 
 СТРОГИЕ ПРАВИЛА ФОРМАТА:
-- Цельный связный текст от первого лица, голосом мастера. 4–6 предложений.
-- Свяжи каждую часть суток (утро, день, вечер) с её символом из расклада; используй именно слова «утро», «день», «вечер».
+- Цельный связный текст от первого лица, голосом мастера. ${spread.cardCount <= 3 ? "4–6" : "8–12"} предложений.
+${formatHint}
 - Опирайся ТОЛЬКО на выпавшие символы и профиль клиента — не выдумывай другие карты.
 - В конце — одно конкретное действие на сегодня.
 - Заверши текст полным последним предложением с точкой — не обрывай на полуслове.
@@ -85,6 +107,7 @@ function buildDailyPrompt(params: {
   birthDate: string;
   dateRu: string;
   cards: DailyReadingCard[];
+  spreadId?: SpreadId;
 }): string {
   const cardLines = params.cards
     .map(
@@ -93,13 +116,19 @@ function buildDailyPrompt(params: {
     )
     .join("\n");
 
+  const spread = getSpread(params.spreadId ?? DEFAULT_SPREAD_ID);
+  const title =
+    params.spreadId === DEFAULT_SPREAD_ID
+      ? "прогноз «Энергия дня»"
+      : `прогноз «${spread.label}»`;
+
   return `Сегодня ${params.dateRu}.
 Клиент: ${params.name}, ${params.zodiac}, рождён ${params.birthDate}.
 
-Расклад из трёх карт на сутки:
+Расклад из ${params.cards.length} карт:
 ${cardLines}
 
-Дай прогноз «Энергия дня» на ближайшие 24 часа.`;
+Дай ${title} на ближайшие 24 часа.`;
 }
 
 async function generateDailyReadingText(
@@ -110,11 +139,13 @@ async function generateDailyReadingText(
     birthDate: string;
     dateRu: string;
     cards: DailyReadingCard[];
+    spreadId?: SpreadId;
   }
 ): Promise<string | null> {
+  const spreadId = promptParams.spreadId ?? DEFAULT_SPREAD_ID;
   const messages: ChatMessage[] = [
-    { role: "system", content: buildDailySystem(charKey) },
-    { role: "user", content: buildDailyPrompt(promptParams) },
+    { role: "system", content: buildDailySystem(charKey, spreadId) },
+    { role: "user", content: buildDailyPrompt({ ...promptParams, spreadId }) },
   ];
 
   return completeProseWithContinuation(messages, {
@@ -126,10 +157,11 @@ async function generateDailyReadingText(
 
 async function repairTruncatedDailyReading(
   charKey: CharacterKey,
-  partial: string
+  partial: string,
+  spreadId: SpreadId = DEFAULT_SPREAD_ID
 ): Promise<string | null> {
   const messages: ChatMessage[] = [
-    { role: "system", content: buildDailySystem(charKey) },
+    { role: "system", content: buildDailySystem(charKey, spreadId) },
     {
       role: "user",
       content: `Прогноз «Энергия дня» оборвался на середине. Допиши его с места обрыва до конца (вечер + одно действие на сегодня). Не повторяй уже написанное.\n\n${partial}`,
@@ -168,12 +200,15 @@ export async function getExistingDailyReading(
     cards: unknown;
     deck_system: string | null;
     character_key: string;
+    spread_id: string | null;
   }>(
-    `SELECT reading_text, cards, deck_system, character_key FROM daily_readings
+    `SELECT reading_text, cards, deck_system, character_key, spread_id FROM daily_readings
      WHERE user_id = $1 AND reading_date = $2::date`,
     [userId, today]
   );
   if (!rows[0]) return null;
+
+  const storedSpreadId = normalizeSpreadId(rows[0].spread_id);
 
   const charKey: CharacterKey = isCharacterKey(rows[0].character_key)
     ? rows[0].character_key
@@ -182,7 +217,7 @@ export async function getExistingDailyReading(
   let reading = finalizeDailyReadingText(rows[0].reading_text);
 
   if (isProseLikelyTruncated(reading)) {
-    const repaired = await repairTruncatedDailyReading(charKey, reading);
+    const repaired = await repairTruncatedDailyReading(charKey, reading, storedSpreadId);
     if (repaired && repaired !== reading) {
       reading = repaired;
     }
@@ -213,6 +248,7 @@ export async function getExistingDailyReading(
     cards,
     system,
     cached: true,
+    spreadId: storedSpreadId,
   };
 }
 
@@ -223,16 +259,18 @@ export async function getOrCreateDailyReading(params: {
   zodiac: string;
   birthDate: string;
   localDate?: string | null;
+  spreadId?: SpreadId | string | null;
 }): Promise<DailyReadingResult> {
   const charKey: CharacterKey = isCharacterKey(params.characterKey)
     ? params.characterKey
     : "veronika";
   const system = resolveMasterDeckSystem(charKey);
+  const requestedSpreadId = normalizeSpreadId(params.spreadId);
+  const drawSpreadId =
+    requestedSpreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID;
 
   const today = resolveReadingDate(params.localDate);
 
-  // Daily reading is one-per-day (per the user's local calendar day): if already
-  // drawn (any master), return it.
   const existing = await getExistingDailyReading(params.userId, today);
   if (existing) return existing;
 
@@ -244,7 +282,7 @@ export async function getOrCreateDailyReading(params: {
     year: "numeric",
   });
 
-  const cards = drawDailyCards(system);
+  const cards = drawDailyCards(system, drawSpreadId);
 
   const text = await generateDailyReadingText(charKey, {
     name: params.name,
@@ -252,18 +290,20 @@ export async function getOrCreateDailyReading(params: {
     birthDate: params.birthDate,
     dateRu,
     cards,
+    spreadId: drawSpreadId,
   });
 
   const reading = finalizeDailyReadingText(text);
 
   await query(
-    `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6::date)
+    `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date, spread_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6::date, $7)
      ON CONFLICT (user_id, reading_date) DO UPDATE SET
        reading_text = EXCLUDED.reading_text,
        cards = EXCLUDED.cards,
-       deck_system = EXCLUDED.deck_system`,
-    [params.userId, charKey, reading, JSON.stringify(cards), system, today]
+       deck_system = EXCLUDED.deck_system,
+       spread_id = EXCLUDED.spread_id`,
+    [params.userId, charKey, reading, JSON.stringify(cards), system, today, drawSpreadId]
   );
 
   await syncDailyReadingHistory({
@@ -275,7 +315,7 @@ export async function getOrCreateDailyReading(params: {
     system,
   });
 
-  return { text: reading, cards, system, cached: false };
+  return { text: reading, cards, system, cached: false, spreadId: drawSpreadId };
 }
 
 async function syncDailyReadingHistory(params: {

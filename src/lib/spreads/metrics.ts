@@ -14,7 +14,7 @@ function emitSpreadMetric(event: SpreadMetricEvent, payload: SpreadMetricPayload
   console.info(line);
 }
 
-/** Structured spread catalog metrics (console, CustomEvent, server ingest). */
+/** Client-side spread metrics (console, CustomEvent, POST to /api/metrics/spread). */
 export function logSpreadMetric(event: SpreadMetricEvent, payload: SpreadMetricPayload): void {
   emitSpreadMetric(event, payload);
 

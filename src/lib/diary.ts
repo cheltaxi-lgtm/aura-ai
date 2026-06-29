@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { completeChat } from "@/lib/llm";
+import { limitSpreadKeyCards } from "@/lib/spreads";
 
 export interface DiaryEntry {
   id: string;
@@ -38,7 +39,7 @@ export async function saveDiaryEntry(
   await query(
     `INSERT INTO diary_entries (user_id, character_key, entry_text, cards)
      VALUES ($1, $2, $3, $4)`,
-    [userId, characterKey, entryText.slice(0, 2000), cards.slice(0, 5)]
+    [userId, characterKey, entryText.slice(0, 2000), limitSpreadKeyCards(cards)]
   );
 }
 

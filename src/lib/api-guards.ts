@@ -42,6 +42,7 @@ export const PAID_ROUTE_LIMITS = {
   image_generate: { max: IMAGE_GEN_LIMIT, windowMs: IMAGE_GEN_WINDOW_MS },
   daily_bonus: { max: 1, windowMs: 86_400_000 },
   rune_purchase: { max: 10, windowMs: 3_600_000 },
+  spread_metrics: { max: 120, windowMs: 60_000 },
 } as const;
 
 export type PaidRateLimitAction = keyof typeof PAID_ROUTE_LIMITS;
@@ -70,6 +71,19 @@ export async function enforcePaidRouteRateLimit(
   );
   if (!allowed) {
     return rateLimitResponse(action, retryAfterSec);
+  }
+  return null;
+}
+
+export async function enforceSpreadMetricsRateLimit(ip: string): Promise<NextResponse | null> {
+  const limit = PAID_ROUTE_LIMITS.spread_metrics;
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("spread_metrics", ip),
+    limit.max,
+    limit.windowMs
+  );
+  if (!allowed) {
+    return rateLimitResponse("spread_metrics", retryAfterSec);
   }
   return null;
 }

@@ -5,7 +5,7 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getUserById } from "@/lib/users";
 import { getExistingDailyReading, getOrCreateDailyReading } from "@/lib/daily-energy";
 import { isCharacterKey } from "@/lib/prompts";
-import { DEFAULT_SPREAD_ID } from "@/lib/spreads";
+import { DEFAULT_SPREAD_ID, normalizeSpreadId } from "@/lib/spreads";
 
 const EMPTY = { text: null, cards: [], system: null, drawn: false, spreadId: null as string | null };
 
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     cards: result.cards,
     system: result.system,
     drawn: true,
-    spreadId: DEFAULT_SPREAD_ID,
+    spreadId: result.spreadId,
   });
 }
 
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
   const requested = typeof body.characterKey === "string" ? body.characterKey : "veronika";
   const charKey = isCharacterKey(requested) ? requested : "veronika";
   const localDate = typeof body.localDate === "string" ? body.localDate : null;
+  const spreadId =
+    typeof body.spreadId === "string" ? normalizeSpreadId(body.spreadId) : DEFAULT_SPREAD_ID;
 
   const user = await getUserById(userId);
   if (!user) {
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
     zodiac: user.zodiac,
     birthDate: user.birth_date,
     localDate,
+    spreadId,
   });
 
   return NextResponse.json({
@@ -78,6 +81,6 @@ export async function POST(request: NextRequest) {
     cards: result.cards,
     system: result.system,
     drawn: true,
-    spreadId: DEFAULT_SPREAD_ID,
+    spreadId: result.spreadId,
   });
 }

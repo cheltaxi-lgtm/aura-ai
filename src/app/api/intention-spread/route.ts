@@ -44,6 +44,7 @@ import { resolveSessionForUser, ensureChatSession } from "@/lib/session-access";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import { readSessionClaimCookie } from "@/lib/session-claim";
 import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
+import { recordSpreadMetric } from "@/lib/spread-metrics-store";
 import {
   getSpread,
   isSpreadEnabled,
@@ -569,14 +570,30 @@ export async function POST(request: NextRequest) {
     }
   });
 
-  logSpreadMetric("spread_completed", {
-    spreadId,
-    intention,
-    characterId,
-    cardCount,
-    cost: billingCharge?.spentRunes,
-    source: "intention_spread",
-  });
+  logSpreadMetric(
+    "spread_completed",
+    {
+      spreadId,
+      intention,
+      characterId,
+      cardCount,
+      cost: billingCharge?.spentRunes,
+      source: "intention_spread",
+    }
+  );
+
+  await recordSpreadMetric(
+    "spread_completed",
+    {
+      spreadId,
+      intention,
+      characterId,
+      cardCount,
+      cost: billingCharge?.spentRunes,
+      source: "intention_spread",
+    },
+    authed.profileUserId
+  );
 
   return NextResponse.json({
     reading,

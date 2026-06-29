@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { clientIp, enforceSpreadMetricsRateLimit } from "@/lib/api-guards";
+import { requireUserAuth } from "@/lib/require-auth";
+import { recordSpreadMetric } from "@/lib/spread-metrics-store";
+import { normalizeSpreadId } from "@/lib/spreads";
 import type { SpreadMetricEvent, SpreadMetricPayload } from "@/lib/spreads/metrics";
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = clientIp(request);
+    const limited = await enforceSpreadMetricsRateLimit(ip);
+    if (limited) return limited;
+
     const body = (await request.json().catch(() => ({}))) as {
       event?: SpreadMetricEvent;
       spreadId?: string;
@@ -21,8 +30,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "spreadId required" }, { status: 400 });
     }
 
+    const spreadId = normalizeSpreadId(body.spreadId.trim());
     const payload: SpreadMetricPayload = {
-      spreadId: body.spreadId.trim(),
+      spreadId,
       intention: body.intention ?? null,
       characterId: body.characterId,
       cardCount: body.cardCount,
@@ -30,7 +40,12 @@ export async function POST(request: NextRequest) {
       source: body.source,
     };
 
+    const auth = await requireUserAuth();
+    const userId = auth ? await getProfileUserIdForAccount(auth.sub) : null;
+
+    await recordSpreadMetric(body.event, payload, userId);
     console.info(`[metrics] ${body.event} ${JSON.stringify(payload)}`);
+
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "bad request" }, { status: 400 });

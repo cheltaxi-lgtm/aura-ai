@@ -26,6 +26,10 @@ function assert(cond: boolean, msg: string) {
 
 for (const spread of Object.values(SPREAD_REGISTRY)) {
   assert(spread.positions.length === spread.cardCount, `${spread.id}: positions match cardCount`);
+  assert(
+    typeof spread.seoSlug === "string" && spread.seoSlug.trim().length > 0,
+    `${spread.id}: has seoSlug`
+  );
   const keys = new Set(spread.positions.map((p) => p.key));
   assert(keys.size === spread.positions.length, `${spread.id}: unique position keys`);
 }
