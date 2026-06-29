@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { motion } from "framer-motion";
-import { Layers, ArrowLeft, Camera } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 import OnboardingForm from "@/components/OnboardingForm";
@@ -11,8 +11,9 @@ import TarotTriplet from "@/components/TarotTriplet";
 import MasterSelect from "@/components/MasterSelect";
 import ChatWindow from "@/components/ChatWindow";
 import SessionList, { type SessionListItem } from "@/components/SessionList";
-import AuthHeader, { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
-import RuneBalance, { emitRuneBalanceUpdate } from "@/components/RuneBalance";
+import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
+import AppTopHeader from "@/components/AppTopHeader";
+import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { parseInsufficientRunes } from "@/lib/api-errors";
@@ -22,7 +23,6 @@ import MasterSessionFlow from "@/components/MasterSessionFlow";
 import RitualFlow from "@/components/ritual/RitualFlow";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
-import BrandLogo from "@/components/BrandLogo";
 import AuraSellingLanding from "@/components/AuraSellingLanding";
 import DeckGallery from "@/components/DeckGallery";
 import MasterDecksModal from "@/components/MasterDecksModal";
@@ -37,6 +37,13 @@ import {
   type ShowcaseMaster,
 } from "@/lib/showcase-masters";
 import { getCharacterById } from "@/lib/characters";
+import {
+  APP_SHELL_SECTIONS,
+  consumeOpenDecksModalFlag,
+  navigateToAppSection,
+  navigateToDecksModal,
+  navigateToPhotoReading as navigateToPhotoReadingHard,
+} from "@/lib/app-shell-nav";
 import RegisterGate from "@/components/RegisterGate";
 import WelcomeBackBanner from "@/components/WelcomeBackBanner";
 import AppBootstrapScreen from "@/components/AppBootstrapScreen";
@@ -135,6 +142,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const autoAskOpenedRef = useRef(false);
   const autoAskSentRef = useRef(false);
   const autoAskMasterRef = useRef<string | null>(null);
+  const exitToLandingForNavRef = useRef<(() => void) | null>(null);
+  const [pendingNav, setPendingNav] = useState<
+    { type: "section"; id: string } | { type: "decks" } | null
+  >(null);
 
   const {
     isLoading,
@@ -450,14 +461,20 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, [setLastMasterId]);
 
   const scrollToSection = useCallback((sectionId: string) => {
-    const el = document.getElementById(sectionId);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.history.replaceState(null, "", `#${sectionId}`);
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      navigateToAppSection(sectionId);
+      return;
     }
+    exitToLandingForNavRef.current?.();
+    setPendingNav({ type: "section", id: sectionId });
   }, []);
 
   const openPhotoReading = useCallback(() => {
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      navigateToPhotoReadingHard();
+      return;
+    }
+    exitToLandingForNavRef.current?.();
     setPhotoReadingOpen(true);
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
@@ -481,7 +498,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, []);
 
   const openDecksModal = useCallback(() => {
-    setShowDecksModal(true);
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      navigateToDecksModal();
+      return;
+    }
+    exitToLandingForNavRef.current?.();
+    setPendingNav({ type: "decks" });
   }, []);
 
   useEffect(() => {
@@ -1438,7 +1460,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     ]
   );
 
-  const handleCloseChat = () => {
+  const resetChatSessionState = () => {
     pendingNewChatThreadRef.current = false;
     if (selectedCharacter && messages.length) {
       saveChatCache(
@@ -1463,13 +1485,17 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     if (selectedCharacter) {
       persistSessionIntention(selectedCharacter, null);
     }
-    const backToSessionList = sessionListBackMasterRef.current;
-    sessionListBackMasterRef.current = null;
     setSelectedCharacter(null);
     setConsultationSessionId(null);
     setConsultationReadOnly(false);
     archiveSessionIdRef.current = null;
     chatLoadedForRef.current = null;
+  };
+
+  const handleCloseChat = () => {
+    resetChatSessionState();
+    const backToSessionList = sessionListBackMasterRef.current;
+    sessionListBackMasterRef.current = null;
     if (backToSessionList) {
       setSessionListMaster(backToSessionList);
       setStep("masters");
@@ -1481,6 +1507,50 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     }
     refreshSavedReadings();
   };
+
+  const exitToLandingForNav = useCallback(() => {
+    if (selectedCharacter) {
+      resetChatSessionState();
+      refreshSavedReadings();
+    }
+    sessionListBackMasterRef.current = null;
+    setSessionListMaster(null);
+    setShowSessionFlow(false);
+    setShowRitualFlow(false);
+    setPhotoReadingOpen(false);
+    setStep("masters");
+    localStorage.setItem(FLOW_STEP_KEY, "masters");
+  }, [
+    selectedCharacter,
+    messages,
+    sessionOnlyChat,
+    activeSpreadCardsKey,
+    refreshSavedReadings,
+    setStep,
+    setSessionListMaster,
+  ]);
+
+  useEffect(() => {
+    exitToLandingForNavRef.current = exitToLandingForNav;
+  }, [exitToLandingForNav]);
+
+  useEffect(() => {
+    if (!pendingNav) return;
+    if (selectedCharacter || sessionListMaster) return;
+    if (step !== "masters") return;
+
+    if (pendingNav.type === "section") {
+      const el = document.getElementById(pendingNav.id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.history.replaceState(null, "", `#${pendingNav.id}`);
+      setPendingNav(null);
+      return;
+    }
+
+    setShowDecksModal(true);
+    setPendingNav(null);
+  }, [pendingNav, selectedCharacter, sessionListMaster, step]);
 
   const handlePhotoContinueChat = async (masterId: string, payload: PhotoReadingChatPayload) => {
     if (!isLoggedIn) return;
@@ -1646,6 +1716,25 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const showSeoLanding = !isLoggedIn && (showLanding || bootstrapping);
   const landingMasters = masters.length > 0 ? masters : getAiMasters();
 
+  useEffect(() => {
+    if (bootstrapping) return;
+    if (!consumeOpenDecksModalFlag()) return;
+    if (selectedCharacter || sessionListMaster) {
+      setPendingNav({ type: "decks" });
+      return;
+    }
+    if (step === "masters") {
+      setShowDecksModal(true);
+    } else {
+      setPendingNav({ type: "decks" });
+    }
+  }, [bootstrapping, selectedCharacter, sessionListMaster, step]);
+
+  const handleStartReadingFromHeader = useCallback(() => {
+    exitToLandingForNav();
+    void startPersonalFlow();
+  }, [exitToLandingForNav, startPersonalFlow]);
+
   const landingInsufficientRunes = (payload: { balance: number; required: number }) => {
     setInsufficientRunes(payload);
     handleOpenPaywall({
@@ -1693,74 +1782,18 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, []);
 
   const topHeader = (
-    <header className="app-top-header pointer-events-auto fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <BrandLogo
-            linkToHome
-            iconOnlyOnMobile
-            showTagline={false}
-            markSize={32}
-            titleClassName="font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl"
-          />
-        </div>
-
-        <nav className="hidden items-center gap-8 md:flex">
-          {[
-            { label: photoNavLabel, action: openPhotoReading },
-            { label: "Мастера", id: "наставники" },
-            { label: "Колоды", action: openDecksModal },
-            { label: "Тарифы", id: "тарифы" },
-          ].map((link) => (
-            <button
-              key={link.label}
-              type="button"
-              onClick={() =>
-                "action" in link && link.action
-                  ? link.action()
-                  : scrollToSection(link.id!)
-              }
-              className="text-sm text-gray-400 transition-colors hover:text-aura-neon"
-            >
-              {link.label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
-          <button
-            type="button"
-            onClick={() => void startPersonalFlow()}
-            className="btn-primary inline-flex shrink-0 items-center px-2.5 py-1.5 text-[11px] leading-tight sm:px-4 sm:py-2 sm:text-sm"
-          >
-            <span className="sm:hidden">Расклад</span>
-            <span className="hidden sm:inline">Получить расклад</span>
-          </button>
-          <button
-            type="button"
-            onClick={openPhotoReading}
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] text-gray-300 transition-colors hover:border-aura-gold/30 hover:text-white md:hidden"
-            aria-label={photoNavLabel}
-          >
-            <Camera className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span className="max-[480px]:hidden">Фото</span>
-          </button>
-          <button
-            type="button"
-            onClick={openDecksModal}
-            className="flex items-center gap-1 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2 py-1.5 text-[11px] text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
-            aria-label="Колоды мастеров"
-          >
-            <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span className="max-[480px]:hidden">Колоды</span>
-          </button>
-          {isLoggedIn && (
-            <RuneBalance compact onBuyClick={() => handleOpenPaywall()} />
-          )}
-          <AuthHeader compact user={authUser} loading={authLoading} />
-        </div>
-      </div>
-    </header>
+    <AppTopHeader
+      photoNavLabel={photoNavLabel}
+      isLoggedIn={isLoggedIn}
+      authUser={authUser}
+      authLoading={authLoading}
+      onOpenPaywall={() => handleOpenPaywall()}
+      onNavMasters={() => scrollToSection(APP_SHELL_SECTIONS.masters)}
+      onNavTariffs={() => scrollToSection(APP_SHELL_SECTIONS.tariffs)}
+      onNavPhoto={openPhotoReading}
+      onNavDecks={openDecksModal}
+      onStartReading={handleStartReadingFromHeader}
+    />
   );
 
   const inActiveChat = Boolean(selectedCharacter);

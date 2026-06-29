@@ -1,17 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut } from "lucide-react";
-import BrandLogo from "@/components/BrandLogo";
-import { performClientLogout } from "@/lib/client-logout";
-import { clearChatCache } from "@/lib/chat-cache";
+import AppTopHeader from "@/components/AppTopHeader";
+import { usePaywall } from "@/contexts/PaywallContext";
+import { useAuth } from "@/lib/useAuth";
+import { useRuneConfig } from "@/lib/useRuneConfig";
+import {
+  APP_SHELL_SECTIONS,
+  navigateToAppSection,
+  navigateToDecksModal,
+  navigateToHomeSpreadFlow,
+  navigateToPhotoReading,
+} from "@/lib/app-shell-nav";
 import {
   persistSessionIntention,
   persistIntentionSpreadState,
 } from "@/lib/intention";
-import { usePaywall } from "@/contexts/PaywallContext";
+import { clearChatCache } from "@/lib/chat-cache";
 import CabinetProfileHeader, {
   CabinetProfileHeaderSkeleton,
 } from "@/components/cabinet/CabinetProfileHeader";
@@ -73,6 +81,9 @@ const TAB_MOTION = {
 export default function CabinetPage() {
   const router = useRouter();
   const { openPaywall } = usePaywall();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
+  const [headerMounted, setHeaderMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CabinetResponse | null>(null);
@@ -140,6 +151,14 @@ export default function CabinetPage() {
       cancelled = true;
     };
   }, [fetchCabinet]);
+
+  useEffect(() => {
+    setHeaderMounted(true);
+  }, []);
+
+  const photoNavLabel = runeConfig.enabled
+    ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`
+    : "Фото расклад";
 
   const handleLoadMore = async () => {
     setLoadingMore(true);
@@ -490,26 +509,28 @@ export default function CabinetPage() {
   };
 
   return (
-    <div className="cabinet-page min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-24 text-white">
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-black/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-          <BrandLogo
-            linkToHome
-            showTagline={false}
-            markSize={24}
-            titleClassName="font-display text-base font-bold tracking-wider text-white sm:text-lg"
-          />
-          <span className="font-semibold">Личный кабинет</span>
-          <button
-            type="button"
-            onClick={() => void performClientLogout({ redirectTo: "/" })}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center text-white/50 hover:text-white"
-            aria-label="Выйти"
-          >
-            <LogOut className="h-5 w-5" />
-          </button>
-        </div>
-      </header>
+    <div className="cabinet-page min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-24 pt-[var(--app-header-h,3.25rem)] text-white">
+      {headerMounted
+        ? createPortal(
+            <AppTopHeader
+              photoNavLabel={photoNavLabel}
+              isLoggedIn
+              authUser={authUser}
+              authLoading={authLoading}
+              onOpenPaywall={() => openPaywall()}
+              onNavMasters={() => navigateToAppSection(APP_SHELL_SECTIONS.masters)}
+              onNavTariffs={() => navigateToAppSection(APP_SHELL_SECTIONS.tariffs)}
+              onNavPhoto={() => navigateToPhotoReading()}
+              onNavDecks={() => navigateToDecksModal()}
+              onStartReading={() => navigateToHomeSpreadFlow()}
+            />,
+            document.body
+          )
+        : null}
+
+      <div className="border-b border-white/10 bg-black/40 py-2.5 text-center">
+        <span className="text-sm font-semibold text-white/90">Личный кабинет</span>
+      </div>
 
       <main className="mx-auto max-w-3xl px-4 py-6">
         {error && (
