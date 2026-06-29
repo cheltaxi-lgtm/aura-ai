@@ -603,7 +603,7 @@ export async function updateSessionOutcomeRating(
       sessionId,
       characterKey: session.character_key,
       topicSummary: topic,
-      keyCards: session.cards?.slice(0, 3) ?? [],
+      keyCards: session.cards ?? [],
     });
     ({ rows } = await query<{ id: string }>(
       `UPDATE session_memories SET outcome_rating = $3

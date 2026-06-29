@@ -414,6 +414,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     setSpreadReadingRitualOpen,
     showSessionFlow,
     setShowSessionFlow,
+    sessionFlowInitialTopic,
+    setSessionFlowInitialTopic,
     savedReadings,
     serverContinueIds,
     pendingChatOptsRef,
@@ -907,7 +909,14 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         characterKey: masterVisualKey(characterId),
         userName: activeProfile.name,
         zodiac: activeProfile.zodiac,
-        cards: tarotCardNames(activeProfile.tarotCards),
+        cards: tarotCardNames(
+          chatDisplaySpread?.source === "intention"
+            ? chatDisplaySpread.cards?.map((c) => ({ name: c.name }))
+            : activeProfile.tarotCards,
+          chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
+          chatDisplaySpread?.source === "intention" ? "new" : "daily"
+        ),
+        spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
         userQuestionText: scene === "scene_illustration" ? userQuestion : undefined,
         aiResponseText: scene === "scene_illustration" ? content : undefined,
       });
@@ -929,6 +938,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       });
     },
     [
+      chatDisplaySpread,
       getActiveProfile,
       spreadCardsKey,
       masters,
@@ -2031,8 +2041,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             />
             <MasterSessionFlow
               isOpen={showSessionFlow}
-              onClose={() => setShowSessionFlow(false)}
+              onClose={() => {
+                setShowSessionFlow(false);
+                setSessionFlowInitialTopic(null);
+              }}
               preselectedMaster={sessionListMaster}
+              initialTopic={sessionFlowInitialTopic ?? undefined}
               dailyCards={
                 sessionListMaster === tripletOwnerMasterId
                   ? displayTarotCards.map((c) => c.name)
@@ -2172,10 +2186,12 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             onClose={() => {
               setShowSessionFlow(false);
               setEnergyFlowMasterId(null);
+              setSessionFlowInitialTopic(null);
             }}
             preselectedMaster={energyFlowMasterId ?? selectedCharacter}
             newSpreadOnly
             initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
+            initialTopic={sessionFlowInitialTopic ?? undefined}
             masters={masters}
             onStartRitual={() => {
               if ((RITUAL_MASTERS as readonly string[]).includes(selectedCharacter)) {
@@ -2369,8 +2385,10 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                       onClose={() => {
                         setShowSessionFlow(false);
                         setEnergyFlowMasterId(null);
+                        setSessionFlowInitialTopic(null);
                       }}
                       preselectedMaster={energyFlowMasterId ?? dailyEnergyMasterId}
+                      initialTopic={sessionFlowInitialTopic ?? undefined}
                       dailyCards={
                         displayTarotCards.length >= 3
                           ? displayTarotCards.map((c) => c.name)

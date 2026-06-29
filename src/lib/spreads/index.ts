@@ -31,3 +31,13 @@ export {
 } from "./registry";
 
 export { DEFAULT_SPREAD_CATALOG_SETTINGS } from "./types";
+
+export {
+  readSpreadIdFromUrl,
+  resolveClientSpreadId,
+  hasExplicitClientSpreadId,
+} from "./client-spread-id";
+
+export { logSpreadMetric, type SpreadMetricEvent, type SpreadMetricPayload } from "./metrics";
+
+export { spreadCardsKey, spreadCardNamesForScene } from "./spread-cards-key";

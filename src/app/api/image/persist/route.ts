@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
 import type { ImageGenerateRequest, ImageSceneType } from "@/lib/image-prompts";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
-import { tarotCardsKey } from "@/lib/tarot";
+import { spreadCardsKey } from "@/lib/spreads";
 import { canPersistSceneUrl, persistSceneArtForSpread } from "@/lib/users";
 import { normalizeSceneImageUrl } from "@/lib/scene-image-store";
 import { resolveApiCharacterId } from "@/lib/chat-sanitize";
@@ -47,10 +47,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Profile not linked" }, { status: 404 });
   }
 
-  const cardsKey =
-    body.cards && body.cards.length >= 3
-      ? tarotCardsKey(body.cards.slice(0, 3).map((name) => ({ name: String(name) })))
-      : undefined;
+  const cardsKey = spreadCardsKey(
+    body.cards?.map(String),
+    body.spreadId,
+    "new"
+  );
 
   const characterId = body.characterKey
     ? await resolveApiCharacterId(body.characterKey)

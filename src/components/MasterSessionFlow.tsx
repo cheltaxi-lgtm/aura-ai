@@ -54,6 +54,8 @@ interface MasterSessionFlowProps {
   newSpreadOnly?: boolean;
   /** Deep link: preselect spread scheme */
   initialSpreadId?: SpreadId;
+  /** Preselect topic (skips topic step, opens scheme picker). */
+  initialTopic?: SessionTopicId | null;
 }
 
 type Step = "topic" | "master" | "cards" | "scheme" | "flip";
@@ -87,6 +89,7 @@ export default function MasterSessionFlow({
   masters = [],
   newSpreadOnly = false,
   initialSpreadId,
+  initialTopic,
 }: MasterSessionFlowProps) {
   const [step, setStep] = useState<Step>("topic");
   const [topic, setTopic] = useState<SessionTopicId | null>(null);
@@ -136,14 +139,14 @@ export default function MasterSessionFlow({
   const currentStepIdx = stepIndex(step);
 
   const initializeFlow = useCallback(() => {
-    setTopic(null);
+    setTopic(initialTopic ?? null);
     setTopicPickMode("grid");
     setCustomQuestion("");
     setVoiceNotice(null);
     setMaster(preselectedMaster ?? "");
     setNewCards([]);
     setSelectedSpreadId(initialSpreadId ?? DEFAULT_SPREAD_ID);
-    setFlipped(emptyFlipped(3));
+    setFlipped(emptyFlipped(initialSpreadId ? getSpread(initialSpreadId).cardCount : 3));
     setDrawError(null);
     setDrawLoading(false);
 
@@ -156,13 +159,17 @@ export default function MasterSessionFlow({
 
     if (newSpreadOnly) {
       setCardType("new");
+      if (initialTopic) {
+        setStep("scheme");
+        return;
+      }
       setStep(numerologPreselected ? "flip" : "topic");
       return;
     }
 
     setCardType(null);
-    setStep(hasDailyCards ? "master" : "topic");
-  }, [hasDailyCards, preselectedMaster, numerologPreselected, newSpreadOnly, initialSpreadId]);
+    setStep(hasDailyCards ? "master" : initialTopic ? "scheme" : "topic");
+  }, [hasDailyCards, preselectedMaster, numerologPreselected, newSpreadOnly, initialSpreadId, initialTopic]);
 
   useEffect(() => {
     if (isOpen) {

@@ -168,7 +168,7 @@ function parseSessionSummary(
     if (!parsed.topicSummary || !parsed.prediction) return null;
     return {
       topicSummary: parsed.topicSummary,
-      keyCards: parsed.keyCards?.length ? parsed.keyCards : cardNames.slice(0, 3),
+      keyCards: parsed.keyCards?.length ? parsed.keyCards : cardNames,
       prediction: parsed.prediction,
       mood: parsed.mood,
     };

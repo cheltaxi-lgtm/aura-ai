@@ -49,6 +49,7 @@ import {
   isSpreadEnabled,
   normalizeSpreadId,
   resolveSpreadPositions,
+  logSpreadMetric,
   type SpreadId,
 } from "@/lib/spreads";
 import { resolveSpreadCost } from "@/lib/spreads/spread-pricing";
@@ -568,12 +569,13 @@ export async function POST(request: NextRequest) {
     }
   });
 
-  console.info("[metrics] spread_completed", {
+  logSpreadMetric("spread_completed", {
     spreadId,
     intention,
     characterId,
     cardCount,
     cost: billingCharge?.spentRunes,
+    source: "intention_spread",
   });
 
   return NextResponse.json({

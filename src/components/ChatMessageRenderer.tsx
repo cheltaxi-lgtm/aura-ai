@@ -269,7 +269,7 @@ export default function ChatMessageRenderer({
   const cardNames = inferSpreadCardNames(imageBlock ? `${imageBlock}\n${body}` : trimmed);
   const markdownSource = normalizeMasterMarkdown(
     body || trimmed,
-    cardNames.length >= 3 ? cardNames : undefined
+    cardNames.length ? cardNames : undefined
   );
   // Only route to react-markdown for BLOCK-level structure (headings, lists,
   // dividers, images). Replies with just inline **bold**/*italic* go through the

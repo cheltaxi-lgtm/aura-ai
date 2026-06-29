@@ -36,6 +36,7 @@ import {
   type SessionTopicId,
 } from "@/lib/intention";
 import { buildSessionSpreadCards, resolveSpreadSymbols } from "@/lib/intention-draw";
+import { toSessionTopicId } from "@/lib/session-topics";
 import { postIntentionSpreadRequest, pollIntentionSpreadReading } from "@/lib/intention-spread-client";
 import { waitForSpreadReadingRitual } from "@/components/SpreadReadingRitualPanel";
 import { generateId } from "@/lib/id";
@@ -45,7 +46,7 @@ import {
   resolveMasterDeckSystem,
   spreadKey,
 } from "@/lib/decks";
-import { DEFAULT_SPREAD_ID, getSpread, hasCompleteSpread, resolveSpreadPositions, spreadFlippedState, type SpreadId } from "@/lib/spreads";
+import { DEFAULT_SPREAD_ID, getSpread, hasCompleteSpread, resolveSpreadPositions, spreadFlippedState, resolveClientSpreadId, hasExplicitClientSpreadId, type SpreadId } from "@/lib/spreads";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckCardInput } from "@/lib/deck-card-utils";
@@ -338,6 +339,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     SessionIntention | SessionTopicId | null
   >(null);
   const [showSessionFlow, setShowSessionFlow] = useState(false);
+  const [sessionFlowInitialTopic, setSessionFlowInitialTopic] = useState<
+    SessionTopicId | null
+  >(null);
   const [intentionHighlight, setIntentionHighlight] = useState(false);
   const [intentionSpreadLoading, setIntentionSpreadLoading] = useState(false);
   const [readingRitualActive, setReadingRitualActive] = useState(false);
@@ -1258,6 +1262,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       }
 
       if (intention && mode === "fresh") {
+        const spreadId = resolveClientSpreadId(sessionSpreadMetaRef.current?.spreadId);
+        if (!hasExplicitClientSpreadId(sessionSpreadMetaRef.current?.spreadId)) {
+          const topicId = toSessionTopicId(intention);
+          if (!topicId) return;
+          setSessionFlowInitialTopic(topicId);
+          setShowSessionFlow(true);
+          localStorage.setItem(PENDING_MASTER_KEY, masterId);
+          localStorage.setItem(LAST_MASTER_KEY, masterId);
+          setPendingMasterId(null);
+          setStep("masters");
+          deps.setSelectedCharacter(null);
+          deps.chatLoadedForRef.current = null;
+          return;
+        }
+
         setIntentionSpread(null);
         deps.setSelectedCharacter(masterId);
         readingInFlightRef.current = true;
@@ -1282,7 +1301,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             const response = await postIntentionSpreadRequest({
             characterId: masterId,
             intention,
-            spreadId: DEFAULT_SPREAD_ID,
+            spreadId,
             sessionId: chatSessionId,
           });
 
@@ -1315,6 +1334,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           setHideChatSpread(false);
           sessionSpreadMetaRef.current = {
             spreadType: "new",
+            spreadId,
             cardNames: cards.map((c) => c.name),
           };
           if (chatSessionId) {
@@ -1406,7 +1426,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               sessionSpreadMetaRef.current?.cardNames ??
               readIntentionSpreadForMaster(masterId)?.cards.map((c) => c.name) ??
               [];
-            if (cardNames.length >= 3) {
+            const recoverySpreadId =
+              sessionSpreadMetaRef.current?.spreadId ?? resolveClientSpreadId();
+            if (hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
               const polled = await pollIntentionSpreadReading({
                 characterId: masterId,
                 intention,
@@ -2815,6 +2837,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setSpreadReadingRitualOpen,
     showSessionFlow,
     setShowSessionFlow,
+    sessionFlowInitialTopic,
+    setSessionFlowInitialTopic,
     savedReadings,
     setSavedReadings,
     serverContinueIds,

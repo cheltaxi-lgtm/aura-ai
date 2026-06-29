@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, CheckCircle2, Circle, Archive, Trash2 } from "lucide-react";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
+import { getSpread, normalizeSpreadId } from "@/lib/spreads";
 import MasterAvatar from "@/components/MasterAvatar";
 import { getCharacterById } from "@/lib/characters";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
@@ -72,6 +73,21 @@ function intentionLabel(raw: string | null): string {
 function sessionTopicLabel(item: SessionListItem): string {
   if (item.spreadType === "photo") return "Фото-расклад";
   return intentionLabel(item.intention);
+}
+
+function sessionSpreadLabel(item: SessionListItem): string | null {
+  if (item.spreadType === "daily") return "Карты дня";
+  if (!item.spreadId || item.spreadType === "photo") return null;
+  const spread = getSpread(normalizeSpreadId(item.spreadId));
+  if (spread.id === "triplet" && item.spreadType !== "new") return null;
+  return spread.label;
+}
+
+function sessionHeading(item: SessionListItem): string {
+  const topic = sessionTopicLabel(item);
+  const spread = sessionSpreadLabel(item);
+  if (spread) return `${spread} · ${topic}`;
+  return topic;
 }
 
 function minutesSince(updatedAt: string, createdAt: string): number {
@@ -252,7 +268,7 @@ export default function SessionList({
             Активный сеанс
           </div>
           <p className="font-medium text-white">
-            {sessionTopicLabel(active)} · {active.messageCount} сообщений ·{" "}
+            {sessionHeading(active)} · {active.messageCount} сообщений ·{" "}
             {minutesSince(active.updatedAt, active.createdAt)} мин
           </p>
           {active.cards?.length ? (
@@ -278,7 +294,7 @@ export default function SessionList({
                 {formatSessionDate(item.updatedAt || item.createdAt)}
               </div>
               <p className="font-medium text-white">
-                {sessionTopicLabel(item)}
+                {sessionHeading(item)}
                 {item.keyCards?.length || item.cards?.length
                   ? ` · ${(item.keyCards ?? item.cards ?? []).join(" · ")}`
                   : ""}

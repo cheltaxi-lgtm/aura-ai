@@ -14,7 +14,8 @@ export interface ImageGenerateRequest {
   characterKey?: CharacterVisualKey | "baba_agafya" | "guru_raj";
   userName?: string;
   zodiac?: string;
-  cards?: [string, string, string] | string[];
+  cards?: string[];
+  spreadId?: string;
   /** User's question in chat — used to illustrate Q&A, not generic tarot art */
   userQuestionText?: string;
   aiResponseText?: string;
@@ -59,10 +60,8 @@ export function normalizeCharacterKey(
 
 function cardLabels(cards?: string[]): string {
   if (!cards?.length) return "";
-  const labels = ["Past", "Present", "Future"];
   return cards
-    .slice(0, 3)
-    .map((name, i) => `${labels[i] ?? "Card"}: ${name}`)
+    .map((name, i) => `Position ${i + 1}: ${name}`)
     .join(", ");
 }
 

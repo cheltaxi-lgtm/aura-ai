@@ -6,7 +6,7 @@ import type { ImageGenerateRequest, ImageSceneType } from "@/lib/image-prompts";
 import { sceneLabel } from "@/lib/image-prompts";
 import { getSetting } from "@/lib/settings";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
-import { tarotCardsKey } from "@/lib/tarot";
+import { spreadCardsKey } from "@/lib/spreads";
 import { persistSceneArtForSpread, findExistingSceneArtUrl } from "@/lib/users";
 import { normalizeSceneImageUrl } from "@/lib/scene-image-store";
 import { getRuneSettings } from "@/lib/rune-settings";
@@ -104,10 +104,11 @@ export async function POST(request: NextRequest) {
   let runeBalance: number | undefined;
 
   try {
-    const cardsKey =
-      body.cards && body.cards.length >= 3
-        ? tarotCardsKey(body.cards.slice(0, 3).map((name) => ({ name: String(name) })))
-        : undefined;
+    const cardsKey = spreadCardsKey(
+      body.cards?.map(String),
+      body.spreadId,
+      "new"
+    );
 
     if (profileUserId && scene !== "scene_illustration") {
       const existingUrl = await findExistingSceneArtUrl(profileUserId, scene, cardsKey);

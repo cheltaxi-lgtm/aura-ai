@@ -128,7 +128,7 @@ export default function IntentionPicker({
             </p>
           ) : (
             <p className="text-center text-[11px] text-gray-500">
-              «Новый расклад» — 3 символа, вытянутые под тему, с расшифровкой мастера
+              «Новый расклад» — выбор схемы (1–10 карт), вытянутых под тему, с расшифровкой мастера
             </p>
           )}
         </motion.div>

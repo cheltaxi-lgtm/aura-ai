@@ -157,6 +157,7 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
     costMultiplier: 2.0,
     layout: "grid7",
     compactPrompt: true,
+    seoSlug: "rasshirennyj-den",
   },
 };
 

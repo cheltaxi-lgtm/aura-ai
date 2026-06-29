@@ -3,6 +3,7 @@
 import {
   getSpread,
   listSpreads,
+  logSpreadMetric,
   type SpreadId,
 } from "@/lib/spreads";
 import type { DeckSystem } from "@/lib/decks/types";
@@ -46,11 +47,11 @@ export default function SpreadPicker({
             disabled={disabled}
             onClick={() => {
               onSelect(spread.id);
-              if (typeof window !== "undefined") {
-                window.dispatchEvent(
-                  new CustomEvent("spread_selected", { detail: { spreadId: spread.id } })
-                );
-              }
+              logSpreadMetric("spread_selected", {
+                spreadId: spread.id,
+                source: "spread_picker",
+                cardCount: spread.cardCount,
+              });
             }}
             className={`rounded-xl border p-4 text-left transition ${
               active

@@ -105,3 +105,12 @@ export function isValidSessionIntention(value: string): boolean {
   ];
   return legacy.includes(value);
 }
+
+export function toSessionTopicId(
+  value: SessionIntention | SessionTopicId | string
+): SessionTopicId | null {
+  if (isSessionTopicId(value)) return value;
+  if (value === "life_death" || value === "custom") return value;
+  const mapped = LEGACY_TO_TOPIC[value as SessionIntention];
+  return mapped ?? null;
+}

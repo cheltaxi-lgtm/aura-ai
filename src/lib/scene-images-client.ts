@@ -1,4 +1,5 @@
 import type { ImageGenerateRequest, ImageSceneType } from "@/lib/image-prompts";
+import { spreadCardNamesForScene } from "@/lib/spreads";
 
 const CACHE_PREFIX = "aura_scene_v1_";
 const CLIENT_TIMEOUT_MS = 75_000;
@@ -10,7 +11,7 @@ const CACHEABLE: ImageSceneType[] = [
 ];
 
 function cacheKey(req: ImageGenerateRequest): string {
-  const cards = req.cards?.slice(0, 3).join("|") ?? "";
+  const cards = req.cards?.join("|") ?? "";
   return `${CACHE_PREFIX}${req.scene}_${req.zodiac ?? ""}_${req.userName ?? ""}_${cards}_${req.characterKey ?? ""}`;
 }
 
@@ -74,9 +75,11 @@ export async function requestSceneImage(
   }
 }
 
+/** Card names for scene image prompts — supports 1–10 card spreads. */
 export function tarotCardNames(
-  cards: { name: string }[] | undefined
-): [string, string, string] | undefined {
-  if (!cards || cards.length < 3) return undefined;
-  return [cards[0].name, cards[1].name, cards[2].name];
+  cards: { name: string }[] | undefined,
+  spreadId?: string | null,
+  spreadType: "daily" | "new" = "daily"
+): string[] | undefined {
+  return spreadCardNamesForScene(cards, spreadId, spreadType);
 }
