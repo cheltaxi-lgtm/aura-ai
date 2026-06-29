@@ -18,6 +18,8 @@ interface SpreadFlipRowProps {
   masterId?: string;
   flipped: boolean[];
   onFlip: (index: number) => void;
+  /** Tighter row for narrow modals — keeps three cards on one line. */
+  compact?: boolean;
 }
 
 export default function SpreadFlipRow({
@@ -25,14 +27,19 @@ export default function SpreadFlipRow({
   system,
   flipped,
   onFlip,
+  compact = false,
 }: SpreadFlipRowProps) {
   const positions = getDeckPositions(system).slice(0, 3);
   const displayCards = cards.slice(0, 3);
   const allFlipped = flipped.every(Boolean);
+  const cardWidth = compact ? 104 : 120;
+  const cardHeight = compact ? 166 : 192;
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
+      <div
+        className={`mb-3 flex items-end justify-center ${compact ? "gap-3" : "flex-wrap gap-5 sm:gap-8"}`}
+      >
         {displayCards.map((card, i) => (
           <div key={`${card.name}-${i}`} className="flex flex-col items-center gap-2">
             <p className="text-[10px] uppercase tracking-widest text-aura-gold/80">
@@ -43,7 +50,7 @@ export default function SpreadFlipRow({
               onClick={() => onFlip(i)}
               disabled={flipped[i]}
               className="perspective-[900px] focus:outline-none disabled:cursor-default"
-              style={{ width: 120, height: 192 }}
+              style={{ width: cardWidth, height: cardHeight }}
               aria-label={flipped[i] ? card.name : `Перевернуть ${positions[i]}`}
             >
               <motion.div

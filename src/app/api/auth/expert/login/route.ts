@@ -29,13 +29,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setAuthCookie({
-      sub: expert.id,
-      role: "expert",
-      email: expert.email,
-      name: expert.name,
-      slug: expert.slug,
-    });
+    await setAuthCookie(
+      {
+        sub: expert.id,
+        role: "expert",
+        email: expert.email,
+        name: expert.name,
+        slug: expert.slug,
+      },
+      request
+    );
 
     return NextResponse.json({
       ok: true,

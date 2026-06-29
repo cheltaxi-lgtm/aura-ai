@@ -1,6 +1,6 @@
 import { query } from "./db";
 import { findAdminByEmail, verifyAdminPassword } from "./admin-auth";
-import { hashPassword, setAuthCookie, type AuthPayload } from "./auth";
+import { hashPassword, setAuthCookie, type AuthPayload, type CookieRequestContext } from "./auth";
 import { logAdminAction } from "./admin";
 
 export { findAdminByEmail, verifyAdminPassword };
@@ -29,8 +29,8 @@ export async function adminLogin(email: string, password: string): Promise<AuthP
   return { sub: admin.id, role: "admin", email: admin.email, name: admin.name };
 }
 
-export async function setAdminSession(payload: AuthPayload) {
-  await setAuthCookie(payload);
+export async function setAdminSession(payload: AuthPayload, request?: CookieRequestContext) {
+  await setAuthCookie(payload, request);
   try {
     await logAdminAction(payload.sub, "login", "admin", payload.sub);
   } catch (error) {

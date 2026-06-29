@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function AdminLoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,22 +12,46 @@ export default function AdminLoginForm() {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20_000);
+
     try {
       const res = await fetch("/api/auth/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
+        signal: controller.signal,
       });
-      const data = await res.json();
+
+      let data: { error?: string; message?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+
       if (!res.ok) {
-        setError(data.error ?? "Ошибка входа");
+        if (data.error === "rate_limit") {
+          setError(data.message ?? "Слишком много попыток. Подождите и попробуйте снова.");
+        } else if (res.status === 503) {
+          setError(data.error ?? "База данных недоступна");
+        } else {
+          setError(data.error ?? "Ошибка входа");
+        }
         return;
       }
-      router.push("/admin");
-      router.refresh();
-    } catch {
-      setError("Сеть недоступна");
+
+      window.location.assign("/admin");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("Сервер не отвечает. Проверьте, что приложение и база данных запущены.");
+      } else {
+        setError("Сеть недоступна");
+      }
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -44,6 +66,7 @@ export default function AdminLoginForm() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="Email"
+        autoComplete="username"
         className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
       />
       <input
@@ -52,11 +75,12 @@ export default function AdminLoginForm() {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         placeholder="Пароль"
+        autoComplete="current-password"
         className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
       />
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
       <button type="submit" disabled={loading} className="btn-neon w-full py-3 text-sm disabled:opacity-50">
-        {loading ? "..." : "Войти"}
+        {loading ? "Вход…" : "Войти"}
       </button>
     </form>
   );

@@ -3168,6 +3168,15 @@ body.paywall-modal-open [data-flow-overlay="true"] {
   pointer-events: none !important;
 }
 
+body.flow-overlay-open {
+  overflow: hidden;
+}
+
+body.flow-overlay-open .site-legal-footer,
+body.flow-overlay-open .cookie-banner {
+  z-index: 1;
+}
+
 /* ── Spread ritual loader ── */
 .spread-ritual-loader {
   @apply fixed inset-0 z-[120] flex items-center justify-center px-4;

@@ -12,12 +12,25 @@ export interface AuthPayload {
   slug?: string;
 }
 
+export type CookieRequestContext = {
+  headers: { get(name: string): string | null };
+  nextUrl?: { protocol: string };
+};
+
 const COOKIE = "aura_auth";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
-function cookieSecure(): boolean {
-  if (process.env.COOKIE_SECURE === "true") return true;
+/** Secure cookies are dropped on plain HTTP — derive from the incoming request. */
+export function resolveCookieSecure(request?: CookieRequestContext): boolean {
   if (process.env.COOKIE_SECURE === "false") return false;
+
+  const forwardedProto = request?.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const isHttps =
+    forwardedProto === "https" || request?.nextUrl?.protocol === "https:";
+
+  if (!isHttps) return false;
+
+  if (process.env.COOKIE_SECURE === "true") return true;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   return appUrl.startsWith("https://");
 }
@@ -58,12 +71,12 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
   }
 }
 
-export async function setAuthCookie(payload: AuthPayload) {
+export async function setAuthCookie(payload: AuthPayload, request?: CookieRequestContext) {
   const token = await signToken(payload);
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
-    secure: cookieSecure(),
+    secure: resolveCookieSecure(request),
     sameSite: "lax",
     maxAge: MAX_AGE,
     path: "/",

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import BodyPortal from "@/components/BodyPortal";
 import {
   SESSION_TOPICS,
   topicLabel,
@@ -120,6 +121,17 @@ export default function MasterSessionFlow({
     }
   }, [isOpen, initializeFlow]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    document.body.classList.add("flow-overlay-open");
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.classList.remove("flow-overlay-open");
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
   const goBack = () => {
     if (step === "master") {
       if (!hasDailyCards && !numerologFlow) setStep("topic");
@@ -217,13 +229,96 @@ export default function MasterSessionFlow({
 
   if (!isOpen) return null;
 
+  const footerPadding = { paddingBottom: "max(1rem, env(safe-area-inset-bottom))" } as const;
+
+  const actionFooter =
+    step === "topic" && !numerologFlow && topic ? (
+      <button
+        type="button"
+        onClick={() => {
+          if (cardType === "new") goToNewSpreadDraw();
+          else setStep("master");
+        }}
+        className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
+      >
+        Далее
+      </button>
+    ) : step === "master" && master ? (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (showCardsChoice) {
+              setStep("cards");
+            } else {
+              goToNewSpreadDraw();
+            }
+          }}
+          className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
+        >
+          {showCardsChoice ? "Далее" : "Вытянуть карты"}
+        </button>
+        {onStartRitual && (RITUAL_MASTERS as readonly string[]).includes(master) ? (
+          <button
+            type="button"
+            onClick={onStartRitual}
+            className="btn-luxe btn-luxe--md btn-luxe--block w-full border border-amber-500/30 bg-amber-950/20 text-amber-200"
+          >
+            🕯 Заказать обряд
+          </button>
+        ) : null}
+      </div>
+    ) : step === "cards" && showCardsChoice && cardType === "daily" ? (
+      <button
+        type="button"
+        onClick={handleStartDaily}
+        className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
+      >
+        Начать сеанс с картами дня
+      </button>
+    ) : step === "cards" && showCardsChoice && cardType === "new" ? (
+      <button
+        type="button"
+        onClick={() => {
+          if (numerologFlow) {
+            setStep("flip");
+          } else {
+            handleSelectNewSpread();
+          }
+        }}
+        className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
+      >
+        <span>Вытянуть новые карты</span>
+        {runeConfig.enabled ? (
+          <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+        ) : null}
+      </button>
+    ) : step === "flip" && newCards.length >= 3 && !drawLoading && !drawError ? (
+      <button
+        type="button"
+        disabled={!allFlipped}
+        onClick={() => void handleStartNew()}
+        className={`btn-luxe btn-luxe--md btn-luxe--block flex flex-col items-center gap-1 transition-all duration-200 ${
+          allFlipped
+            ? "btn-luxe--gold animate-pulse"
+            : "btn-luxe--silver opacity-40 cursor-not-allowed"
+        }`}
+      >
+        <span>Начать сеанс</span>
+        {runeConfig.enabled && allFlipped ? (
+          <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+        ) : null}
+      </button>
+    ) : null;
+
   return (
+    <BodyPortal active={isOpen}>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center"
+        className="fixed inset-0 z-[6500] flex items-end justify-center sm:items-center"
         data-flow-overlay="true"
         role="dialog"
         aria-modal="true"
@@ -241,11 +336,10 @@ export default function MasterSessionFlow({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 40 }}
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-black/90 backdrop-blur-xl sm:mx-4 sm:rounded-2xl"
-          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+          className="relative z-10 flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-black/90 backdrop-blur-xl sm:mx-4 sm:max-h-[90dvh] sm:rounded-2xl"
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
             {step !== "topic" && !(step === "master" && hasDailyCards) ? (
               <button
                 type="button"
@@ -277,7 +371,7 @@ export default function MasterSessionFlow({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="lux-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6">
             {/* Step 1 — Topic */}
             {step === "topic" && !numerologFlow && (
               <motion.div
@@ -340,24 +434,6 @@ export default function MasterSessionFlow({
                     );
                   })}
                 </div>
-                {topic && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-6"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (cardType === "new") goToNewSpreadDraw();
-                        else setStep("master");
-                      }}
-                      className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
-                    >
-                      Далее
-                    </button>
-                  </motion.div>
-                )}
               </motion.div>
             )}
 
@@ -414,38 +490,6 @@ export default function MasterSessionFlow({
                     );
                   })}
                 </div>
-
-                {master && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-6 space-y-3"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (showCardsChoice) {
-                          setStep("cards");
-                        } else {
-                          goToNewSpreadDraw();
-                        }
-                      }}
-                      className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
-                    >
-                      {showCardsChoice ? "Далее" : "Вытянуть карты"}
-                    </button>
-                    {onStartRitual &&
-                    (RITUAL_MASTERS as readonly string[]).includes(master) ? (
-                      <button
-                        type="button"
-                        onClick={onStartRitual}
-                        className="btn-luxe btn-luxe--md btn-luxe--block w-full border border-amber-500/30 bg-amber-950/20 text-amber-200"
-                      >
-                        🕯 Заказать обряд
-                      </button>
-                    ) : null}
-                  </motion.div>
-                )}
               </motion.div>
             )}
 
@@ -518,47 +562,6 @@ export default function MasterSessionFlow({
                     </p>
                   </button>
                 </div>
-
-                {cardType === "daily" && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-6"
-                  >
-                    <button
-                      type="button"
-                      onClick={handleStartDaily}
-                      className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
-                    >
-                      Начать сеанс с картами дня
-                    </button>
-                  </motion.div>
-                )}
-
-                {cardType === "new" && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-6"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (numerologFlow) {
-                          setStep("flip");
-                        } else {
-                          handleSelectNewSpread();
-                        }
-                      }}
-                      className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
-                    >
-                      <span>Вытянуть новые карты</span>
-                      {runeConfig.enabled ? (
-                        <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
-                      ) : null}
-                    </button>
-                  </motion.div>
-                )}
               </motion.div>
             )}
 
@@ -603,6 +606,7 @@ export default function MasterSessionFlow({
                         masterId={master}
                         flipped={flipped}
                         onFlip={handleFlip}
+                        compact
                       />
                     </div>
                     {!allFlipped && (
@@ -610,34 +614,23 @@ export default function MasterSessionFlow({
                         Откройте все три карты — затем нажмите «Начать сеанс»
                       </p>
                     )}
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mt-6"
-                    >
-                      <button
-                        type="button"
-                        disabled={!allFlipped}
-                        onClick={() => void handleStartNew()}
-                        className={`btn-luxe btn-luxe--md btn-luxe--block flex flex-col items-center gap-1 transition-all duration-200 ${
-                          allFlipped
-                            ? "btn-luxe--gold animate-pulse"
-                            : "btn-luxe--silver opacity-40 cursor-not-allowed"
-                        }`}
-                      >
-                        <span>Начать сеанс</span>
-                        {runeConfig.enabled && allFlipped ? (
-                          <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
-                        ) : null}
-                      </button>
-                    </motion.div>
                   </>
                 ) : null}
               </motion.div>
             )}
           </div>
+
+          {actionFooter ? (
+            <div
+              className="shrink-0 border-t border-white/10 bg-black/90 px-5 py-4"
+              style={footerPadding}
+            >
+              {actionFooter}
+            </div>
+          ) : null}
         </motion.div>
       </motion.div>
     </AnimatePresence>
+    </BodyPortal>
   );
 }

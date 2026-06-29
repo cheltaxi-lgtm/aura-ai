@@ -29,12 +29,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setAuthCookie({
-      sub: user.id,
-      role: "user",
-      email: user.email,
-      name: user.name,
-    });
+    await setAuthCookie(
+      {
+        sub: user.id,
+        role: "user",
+        email: user.email,
+        name: user.name,
+      },
+      request
+    );
 
     return NextResponse.json({ ok: true, user: { id: user.id, email: user.email, name: user.name } });
   } catch (error) {

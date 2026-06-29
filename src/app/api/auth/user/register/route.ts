@@ -108,12 +108,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await setAuthCookie({
-      sub: account.id,
-      role: "user",
-      email: account.email,
-      name: account.name,
-    });
+    await setAuthCookie(
+      {
+        sub: account.id,
+        role: "user",
+        email: account.email,
+        name: account.name,
+      },
+      request
+    );
 
     return NextResponse.json({
       ok: true,
