@@ -416,7 +416,7 @@ export default function AuraSellingLanding({
                 return (
                   <article key={t.author} className="aura-landing-review">
                     <span className="aura-landing-review__quote-mark" aria-hidden>
-                      "
+                      &ldquo;
                     </span>
                     <p className="aura-landing-review__text">{t.quote}</p>
                     <footer className="aura-landing-review__footer">

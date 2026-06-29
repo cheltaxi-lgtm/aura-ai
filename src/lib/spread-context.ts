@@ -8,8 +8,13 @@ import {
 } from "@/lib/decks";
 import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
+import { MAX_SPREAD_CARD_COUNT } from "@/lib/spreads/registry";
 
 const ALL_DECK_SYSTEMS = Object.keys(DECK_REGISTRY) as DeckSystem[];
+
+function capSpreadSymbols(cards: SpreadSymbol[]): SpreadSymbol[] {
+  return cards.slice(0, MAX_SPREAD_CARD_COUNT);
+}
 
 /** Pick deck system that best matches card names (fixes runes+tarot mismatches). */
 export function inferDeckSystemFromCardNames(
@@ -67,9 +72,9 @@ export function getSpreadForSystem(
   system: DeckSystem
 ): SpreadSymbol[] {
   const fromSpreads = profile?.deckSpreads?.[system];
-  if (fromSpreads && fromSpreads.length >= 3) return fromSpreads;
-  if (profile?.deckSystem === system && (profile.tarotCards?.length ?? 0) >= 3) {
-    return profile.tarotCards!;
+  if (fromSpreads && fromSpreads.length >= 1) return capSpreadSymbols(fromSpreads);
+  if (profile?.deckSystem === system && (profile.tarotCards?.length ?? 0) >= 1) {
+    return capSpreadSymbols(profile.tarotCards!);
   }
   return [];
 }
@@ -89,8 +94,8 @@ export function resolveMasterSpread(
   const master = findShowcaseMaster(masterId, masters);
   const system = master?.system ?? resolveMasterDeckSystem(masterId);
   const raw = getSpreadForSystem(profile, system);
-  if (raw.length >= 3) {
-    const aligned = reconcileSpreadDeck(system, raw.slice(0, 3));
+  if (raw.length >= 1) {
+    const aligned = reconcileSpreadDeck(system, raw);
     return { system: aligned.system, cards: aligned.cards, cardsKey: spreadKey(aligned.cards) };
   }
   return { system, cards: [], cardsKey: spreadKey(raw) };
@@ -151,8 +156,8 @@ export function resolveRecapSpread(
 ): { system: DeckSystem; cards: SpreadSymbol[] } {
   const system = profile?.deckSystem ?? fallbackSystem;
   const raw = getSpreadForSystem(profile, system);
-  if (raw.length >= 3) {
-    return reconcileSpreadDeck(system, raw.slice(0, 3));
+  if (raw.length >= 1) {
+    return reconcileSpreadDeck(system, raw);
   }
   const legacy = profile?.tarotCards ?? [];
   const legacySystem = profile?.deckSystem ?? fallbackSystem;
@@ -175,7 +180,7 @@ export function profilePayloadForMaster(
   masters?: ShowcaseMaster[]
 ) {
   const { system, cards } = resolveMasterSpread(profile, masterId, masters);
-  const tarotCards = cards.length >= 3 ? cards : (profile.tarotCards ?? []);
+  const tarotCards = cards.length >= 1 ? cards : (profile.tarotCards ?? []);
   return {
     userName: profile.name,
     gender: profile.gender === "male" ? "Мужской" : "Женский",
@@ -187,7 +192,7 @@ export function profilePayloadForMaster(
     mainQuestion: profile.mainQuestion,
     astroMeta: profile.astroMeta,
     tarotCards,
-    deckSystem: cards.length >= 3 ? system : profile.deckSystem,
+    deckSystem: cards.length >= 1 ? system : profile.deckSystem,
   };
 }
 

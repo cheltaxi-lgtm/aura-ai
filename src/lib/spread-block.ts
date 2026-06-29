@@ -13,20 +13,22 @@ import {
 
 /** Quick period spread (today / week / month) — does not require session intention. */
 export function buildPeriodSpreadBlock(scope: PeriodSpreadScope, cards: string[]): string {
-  if (cards.length < 3) return "";
+  if (cards.length < 1) return "";
 
   const positions = periodSpreadPositions(scope);
+  const count = Math.min(cards.length, positions.length);
   const horizon = periodSpreadTaskLabel(scope);
   const cardLines = cards
-    .slice(0, 3)
+    .slice(0, count)
     .map((name, i) => `${i + 1}я (${positions[i]}): ${name}`)
     .join("\n");
+  const symbolWord = count === 1 ? "символ" : count < 5 ? "символа" : "символов";
 
   return `
 НОВЫЙ РАСКЛАД ${horizon}:
 ${cardLines}
 
-Клиент запросил быстрый расклад на период — три символа только что выпали заново.
+Клиент запросил быстрый расклад на период — ${count} ${symbolWord} только что выпали заново.
 Дай развёрнутый расклад по каждой позиции на этот горизонт.
 Озвучивай позиции явно. Не предлагай тянуть новые карты.
 Без markdown (*, **, #).`.trim();

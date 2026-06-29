@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --max-warnings 50",
     "build:decks": "node scripts/build-decks.mjs",
     "fix:deck-cards": "node scripts/fix-deck-cards-targeted.mjs",
     "normalize:deck-cards": "node scripts/deck-card-normalize.mjs",
@@ -21,8 +21,9 @@
     "test:memory": "tsx scripts/memory-smoke-test.ts",
     "test:recaptcha": "tsx scripts/verify-recaptcha.ts",
     "test:spreads": "tsx scripts/verify-spread-registry.ts && tsx scripts/verify-spread-source-audit.ts",
+    "test": "npm run test:spreads && npm run verify:chat-quality && npm run verify:guardrails",
     "maintenance:memory": "node scripts/memory-maintenance.mjs",
-    "predeploy:check": "npm run verify:guardrails && npm run build"
+    "predeploy:check": "npm run test && npm run build"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -38,12 +39,15 @@
     "uuid": "^11.0.3"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.9",
     "postcss": "^8.4.49",
     "sharp": "^0.35.1",
     "tailwindcss": "^3.4.16",

@@ -24,8 +24,11 @@ jobs:
       - name: Guardrails
         run: npm run verify:guardrails
 
+      - name: Spread and chat quality tests
+        run: npm run test
+
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
-
-      - name: Test
-        run: npm test --if-present

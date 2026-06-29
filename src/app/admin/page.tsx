@@ -7,6 +7,7 @@ export default function AdminDashboardPage() {
   const [data, setData] = useState<{
     stats: Record<string, number>;
     chart: { day: string; count: string; total: string }[];
+    spreadMetrics?: { spreadId: string; event: string; count: number }[];
   } | null>(null);
 
   useEffect(() => {
@@ -43,6 +44,25 @@ export default function AdminDashboardPage() {
                 <span className="text-gray-300">
                   {row.count} оплат · {parseFloat(row.total).toFixed(0)} ₽
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data?.spreadMetrics && data.spreadMetrics.length > 0 && (
+        <div className="mt-8 glass-panel p-6">
+          <h2 className="font-display mb-4 text-lg text-white">Расклады за 30 дней</h2>
+          <div className="space-y-2">
+            {data.spreadMetrics.map((row) => (
+              <div
+                key={`${row.spreadId}-${row.event}`}
+                className="flex items-center justify-between text-sm"
+              >
+                <span className="text-gray-400">
+                  {row.spreadId} · {row.event}
+                </span>
+                <span className="text-gray-200">{row.count}</span>
               </div>
             ))}
           </div>

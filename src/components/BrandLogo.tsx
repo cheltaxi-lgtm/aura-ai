@@ -41,6 +41,8 @@ export default function BrandLogo({
 
   if (linkToHome) {
     return (
+      // Hard home reset via navigateHomeHard — not a plain client route transition.
+      // eslint-disable-next-line @next/next/no-html-link-for-pages
       <a
         href="/"
         onClick={(e) => {

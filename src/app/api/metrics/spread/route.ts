@@ -9,6 +9,11 @@ import type { SpreadMetricEvent, SpreadMetricPayload } from "@/lib/spreads/metri
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireUserAuth();
+    if (!auth) {
+      return NextResponse.json({ error: "auth_required" }, { status: 401 });
+    }
+
     const ip = clientIp(request);
     const limited = await enforceSpreadMetricsRateLimit(ip);
     if (limited) return limited;
@@ -40,8 +45,7 @@ export async function POST(request: NextRequest) {
       source: body.source,
     };
 
-    const auth = await requireUserAuth();
-    const userId = auth ? await getProfileUserIdForAccount(auth.sub) : null;
+    const userId = await getProfileUserIdForAccount(auth.sub);
 
     await recordSpreadMetric(body.event, payload, userId);
     console.info(`[metrics] ${body.event} ${JSON.stringify(payload)}`);

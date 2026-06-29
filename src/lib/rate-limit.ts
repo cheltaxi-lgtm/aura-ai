@@ -100,13 +100,21 @@ export async function checkRateLimit(
   limit: number,
   windowMs: number
 ): Promise<{ allowed: boolean; retryAfterSec?: number }> {
+  const failClosed = process.env.NODE_ENV === "production";
+
   if (await ensureDb()) {
     try {
       return await checkRateLimitPg(key, limit, windowMs);
     } catch (err) {
       console.warn("PG rate limit fallback to memory:", err);
+      if (failClosed) {
+        return { allowed: false, retryAfterSec: Math.ceil(windowMs / 1000) };
+      }
     }
+  } else if (failClosed) {
+    return { allowed: false, retryAfterSec: Math.ceil(windowMs / 1000) };
   }
+
   return checkRateLimitMemory(key, limit, windowMs);
 }
 

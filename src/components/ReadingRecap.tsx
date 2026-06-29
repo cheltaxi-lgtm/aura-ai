@@ -7,10 +7,18 @@ import { getCharacterById } from "@/lib/characters";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
-import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
+import { resolveMasterDeckSystem } from "@/lib/decks";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { reconcileSpreadDeck } from "@/lib/spread-context";
 import { buildSpreadTeaser } from "@/lib/spread-teaser";
+import {
+  DEFAULT_SPREAD_ID,
+  getSpread,
+  hasCompleteSpread,
+  normalizeSpreadId,
+  resolveSpreadPositions,
+  type SpreadId,
+} from "@/lib/spreads";
 import { getZodiacFromDate } from "@/utils/zodiac";
 import { useTripletCountdown } from "@/hooks/useTripletCountdown";
 import DeckCardsRow from "@/components/DeckCardsRow";
@@ -35,6 +43,7 @@ interface ReadingRecapProps {
   unlockLabel?: string;
   readingHint?: string;
   onOpenGallery?: () => void;
+  spreadId?: SpreadId;
 }
 
 function zodiacFromBirthDate(birthDate?: string) {
@@ -73,11 +82,16 @@ export default function ReadingRecap({
   unlockLabel = "199 ₽",
   readingHint,
   onOpenGallery,
+  spreadId: spreadIdProp,
 }: ReadingRecapProps) {
+  const spreadId = normalizeSpreadId(spreadIdProp ?? DEFAULT_SPREAD_ID);
+  const spreadDef = getSpread(spreadId);
   const countdown = useTripletCountdown(nextAvailableAt);
   const newReadingAllowed =
     cooldownReady && cooldownAllowed && !countdown.isOnCooldown;
-  const hasSpread = tarotCards.length >= 3;
+  const cardNames = tarotCards.map((c) => c.name);
+  const hasSpread =
+    tarotCards.length >= 1 && hasCompleteSpread(cardNames, spreadId, "new");
 
   const lastMaster = lastMasterId && hasSpread
     ? findShowcaseMaster(lastMasterId, masters) ?? getCharacterById(lastMasterId)
@@ -89,14 +103,12 @@ export default function ReadingRecap({
 
   const spreadDisplay = useMemo(() => {
     if (!hasSpread) return null;
-    return reconcileSpreadDeck(deckSystem ?? DEFAULT_DECK_SYSTEM, tarotCards.slice(0, 3));
+    return reconcileSpreadDeck(deckSystem ?? DEFAULT_DECK_SYSTEM, tarotCards);
   }, [hasSpread, deckSystem, tarotCards]);
 
   const system = spreadDisplay?.system ?? deckSystem ?? (galleryMaster ? resolveMasterDeckSystem(galleryMaster.id) : undefined);
-  const spreadCards = spreadDisplay?.cards ?? tarotCards.slice(0, 3);
-  const positions = system
-    ? [...getDeckPositions(system)]
-    : ["Прошлое", "Настоящее", "Будущее"];
+  const spreadCards = spreadDisplay?.cards ?? tarotCards;
+  const positions = resolveSpreadPositions(spreadId);
 
   const zodiacSign = zodiacFromBirthDate(birthDate);
 
@@ -105,7 +117,7 @@ export default function ReadingRecap({
       return buildSpreadTeaser({
         userName,
         cards: spreadCards,
-        positions,
+        positions: positions.map((p) => p.label),
         masterName: lastMaster?.name,
       });
     }
@@ -114,9 +126,9 @@ export default function ReadingRecap({
     }
     return (
       teaser ??
-      `${userName}, выберите мастера и выпустите расклад из 3 карт.`
+      `${userName}, выберите мастера и выпустите расклад из ${spreadDef.cardCount} карт.`
     );
-  }, [hasSpread, spreadCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu]);
+  }, [hasSpread, spreadCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu, spreadDef.cardCount]);
 
   const handleNewReading = () => {
     if (!newReadingAllowed) return;

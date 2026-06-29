@@ -28,6 +28,15 @@ export default function SessionIntentionBar({
   activeCharacterKey,
   highlight = false,
 }: SessionIntentionBarProps) {
+  const [pulse, setPulse] = useState(highlight);
+
+  useEffect(() => {
+    if (!highlight) return;
+    setPulse(true);
+    const t = setTimeout(() => setPulse(false), 4500);
+    return () => clearTimeout(t);
+  }, [highlight, intention]);
+
   if (!intention || characterKey !== activeCharacterKey) return null;
 
   const customQ = intention === "custom" ? readSessionCustomQuestion(characterKey) : null;
@@ -43,14 +52,6 @@ export default function SessionIntentionBar({
       ? `${masterName} отвечает на ваш вопрос через символы расклада`
       : (characterKey ? getTopicSubtitle(characterKey, intention) : null) ??
         `${masterName} ведёт разговор через призму: ${meta.focus}`;
-  const [pulse, setPulse] = useState(highlight);
-
-  useEffect(() => {
-    if (!highlight) return;
-    setPulse(true);
-    const t = setTimeout(() => setPulse(false), 4500);
-    return () => clearTimeout(t);
-  }, [highlight, intention]);
 
   return (
     <AnimatePresence>

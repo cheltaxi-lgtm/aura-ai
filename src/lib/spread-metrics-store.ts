@@ -25,3 +25,25 @@ export async function recordSpreadMetric(
     ]
   );
 }
+
+export async function getSpreadMetricsSummary(days = 30): Promise<
+  { spreadId: string; event: string; count: number }[]
+> {
+  if (!(await ensureDb())) return [];
+
+  const { rows } = await query<{ spread_id: string; event: string; count: string }>(
+    `SELECT spread_id, event, COUNT(*)::text AS count
+     FROM spread_metrics
+     WHERE created_at >= NOW() - ($1 || ' days')::INTERVAL
+     GROUP BY spread_id, event
+     ORDER BY COUNT(*) DESC, spread_id ASC
+     LIMIT 40`,
+    [String(days)]
+  );
+
+  return rows.map((row) => ({
+    spreadId: row.spread_id,
+    event: row.event,
+    count: parseInt(row.count, 10) || 0,
+  }));
+}

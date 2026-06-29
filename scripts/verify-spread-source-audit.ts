@@ -35,6 +35,8 @@ const registry = read("src/lib/spreads/registry.ts");
 const premiumEnergy = read("src/components/PremiumEnergyBlock.tsx");
 const intentionSpread = read("src/app/api/intention-spread/route.ts");
 const spreadLanding = read("src/app/rasklad/[slug]/page.tsx");
+const spreadContext = read("src/lib/spread-context.ts");
+const adminStats = read("src/app/api/admin/stats/route.ts");
 
 // Recovery paths must use hasCompleteSpread, not triplet-only gates.
 assert(
@@ -88,8 +90,16 @@ assert(
   "metrics API enforces rate limit"
 );
 assert(
+  metricsRoute.includes("requireUserAuth"),
+  "metrics API requires auth"
+);
+assert(
   metricsRoute.includes("recordSpreadMetric"),
   "metrics API persists to DB"
+);
+assert(
+  spreadContext.includes("MAX_SPREAD_CARD_COUNT"),
+  "spread-context caps cards at registry max"
 );
 assert(
   fs.existsSync(path.join(root, "src/lib/spread-metrics-store.ts")),
@@ -98,6 +108,10 @@ assert(
 assert(
   apiGuards.includes("spread_metrics"),
   "api-guards defines spread_metrics rate limit"
+);
+assert(
+  adminStats.includes("getSpreadMetricsSummary"),
+  "admin stats expose spread metrics"
 );
 
 assert(
