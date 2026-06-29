@@ -1041,7 +1041,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const {
     loadReading,
     handleSendMessage,
-    invokeNumerologTool,
     openChatWithCharacter,
     applyRestoredChatSpread,
     applyHistorySessionMeta,
@@ -2196,11 +2195,6 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             sessionIntention={sessionIntention ?? intentionSpread?.intention ?? null}
             intentionHighlight={intentionHighlight}
             onSendMessage={handleSendMessage}
-            onInvokeNumerologTool={invokeNumerologTool}
-            onOpenNumerologSpread={() => {
-              setSessionFlowPreselectedMaster("numerolog");
-              setShowSessionFlow(true);
-            }}
             onClose={handleCloseChat}
             closeAriaLabel={
               sessionListBackMasterRef.current ? "Назад к списку сеансов" : "Назад к списку мастеров"

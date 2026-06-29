@@ -28,10 +28,7 @@ import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
-import NumerologToolHub from "@/components/NumerologToolHub";
-import NumerologToolResultModal, {
-  type NumerologToolResultState,
-} from "@/components/numerolog/NumerologToolResultModal";
+import NumerologQuickChips from "@/components/NumerologQuickChips";
 import MasterQuickChips from "@/components/MasterQuickChips";
 import { hasMasterQuickChips } from "@/lib/master-quick-chips";
 import {
@@ -59,9 +56,6 @@ import {
 
 const noop = () => {};
 import type { Message } from "@/types";
-import type { NumerologToolId, NumerologToolParams } from "@/lib/numerology/tools";
-import { getNumerologTool } from "@/lib/numerology/tools";
-import { PRICING } from "@/lib/config/pricing";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 
@@ -101,19 +95,6 @@ interface ChatWindowProps {
   runeBalance?: number;
   visionCost?: number;
   onSendMessage: (content: string, imageBase64?: string) => void;
-  onInvokeNumerologTool?: (
-    toolId: NumerologToolId,
-    params?: NumerologToolParams
-  ) => Promise<
-    | {
-        ok: true;
-        toolLabel: string;
-        reply: string;
-        numerologyUi?: Message["numerologyUi"];
-      }
-    | { ok: false; reason: string; message?: string }
-  >;
-  onOpenNumerologSpread?: () => void;
   onClose: () => void;
   closeAriaLabel?: string;
   sessionOffline?: boolean;
@@ -166,8 +147,6 @@ export default function ChatWindow({
   visionCost = 15,
   master,
   onSendMessage,
-  onInvokeNumerologTool,
-  onOpenNumerologSpread,
   onClose,
   closeAriaLabel = "Назад к списку мастеров",
   sessionOffline,
@@ -192,13 +171,7 @@ export default function ChatWindow({
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
-  const [numerologToolModal, setNumerologToolModal] = useState<NumerologToolResultState | null>(
-    null
-  );
-  const [numerologToolModalOpen, setNumerologToolModalOpen] = useState(false);
-  const [numerologPanel, setNumerologPanel] = useState<"chat" | "tools">("tools");
   const isNumerologChat = characterId === "numerolog" && !readOnly;
-  const showNumerologToolsPanel = isNumerologChat && numerologPanel === "tools";
   const [statusText, setStatusText] = useState("Считывает энергетику...");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -267,12 +240,6 @@ export default function ChatWindow({
       if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
     };
   }, [updatePinnedToBottom]);
-
-  useEffect(() => {
-    if (isNumerologChat) {
-      setNumerologPanel("tools");
-    }
-  }, [characterId, isNumerologChat]);
 
   useEffect(() => {
     if (!loadingMoreHistory) return;
@@ -414,42 +381,6 @@ export default function ChatWindow({
     sessionExhausted ||
     sessionQuestionCapReached ||
     chatBlockedByRunes;
-
-  const handleNumerologToolInvoke = useCallback(
-    async (toolId: NumerologToolId, params?: NumerologToolParams) => {
-      if (toolId === "spread_three_numbers") {
-        onOpenNumerologSpread?.();
-        return;
-      }
-      if (!onInvokeNumerologTool) return;
-
-      pinnedToBottomRef.current = true;
-      const tool = getNumerologTool(toolId);
-      setNumerologToolModal({ toolLabel: tool.label, loading: true });
-      setNumerologToolModalOpen(true);
-
-      const result = await onInvokeNumerologTool(toolId, params);
-      if (result.ok) {
-        setNumerologToolModal({
-          toolLabel: result.toolLabel,
-          loading: false,
-          reply: result.reply,
-          numerologyUi: result.numerologyUi,
-        });
-        setNumerologPanel("chat");
-      } else if (result.reason === "invalid" && result.message) {
-        setNumerologToolModal({
-          toolLabel: tool.label,
-          loading: false,
-          error: result.message,
-        });
-      } else {
-        setNumerologToolModalOpen(false);
-        setNumerologToolModal(null);
-      }
-    },
-    [onInvokeNumerologTool, onOpenNumerologSpread]
-  );
 
   const showTypingIndicator =
     !spreadReadingLoading &&
@@ -611,41 +542,6 @@ export default function ChatWindow({
         {CHAT_SESSION_DISCLAIMER}
       </p>
 
-      {isNumerologChat ? (
-        <div
-          className="mb-2 flex gap-2 px-2 sm:px-4"
-          role="tablist"
-          aria-label="Режим сеанса с Эвелиной"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={numerologPanel === "tools"}
-            onClick={() => setNumerologPanel("tools")}
-            className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all ${
-              numerologPanel === "tools"
-                ? "border-aura-gold/45 bg-gradient-to-b from-aura-gold/20 to-indigo-950/80 text-aura-champagne shadow-[0_0_20px_rgba(212,175,55,0.12)]"
-                : "border-white/10 bg-black/20 text-gray-400 hover:border-aura-gold/25 hover:text-gray-200"
-            }`}
-          >
-            ✨ Расчёты
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={numerologPanel === "chat"}
-            onClick={() => setNumerologPanel("chat")}
-            className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all ${
-              numerologPanel === "chat"
-                ? "border-aura-purple/45 bg-gradient-to-b from-aura-purple/20 to-indigo-950/80 text-aura-champagne shadow-[0_0_20px_rgba(123,94,167,0.15)]"
-                : "border-white/10 bg-black/20 text-gray-400 hover:border-aura-purple/25 hover:text-gray-200"
-            }`}
-          >
-            💬 Чат
-          </button>
-        </div>
-      ) : null}
-
       <div
         ref={scrollContainerRef}
         className="chat-stage__body glass-panel chat-scroll flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:mb-4 sm:min-h-[320px] sm:max-h-[min(640px,calc(100dvh-220px))]"
@@ -775,7 +671,7 @@ export default function ChatWindow({
         </div>
       )}
 
-          {hasMoreHistory && onLoadMore && !isLoadingHistory && !showNumerologToolsPanel && (
+          {hasMoreHistory && onLoadMore && !isLoadingHistory && (
             <div className="flex justify-center pb-2">
               <button
                 type="button"
@@ -795,19 +691,7 @@ export default function ChatWindow({
             </div>
           )}
 
-          {showNumerologToolsPanel ? (
-            <div className="px-0 pb-2">
-              <NumerologToolHub
-                disabled={quickChipsDisabled}
-                questionCost={questionCost}
-                spreadCost={PRICING.NUMEROLOGY_SESSION}
-                onOpenSpread={() => onOpenNumerologSpread?.()}
-                onInvokeTool={(toolId, params) => {
-                  void handleNumerologToolInvoke(toolId, params);
-                }}
-              />
-            </div>
-          ) : historyStillLoading ? (
+          {historyStillLoading ? (
             <div className="flex flex-col gap-3 p-2">
               {[0, 1, 2].map((i) => (
                 <div
@@ -833,22 +717,13 @@ export default function ChatWindow({
                 >
                   <MasterAvatar masterId={characterId} masterName={character.name} size="xl" className="mb-4" />
                   {isNumerologMaster(characterId) ? (
-                    <div className="max-w-md space-y-3">
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                        {buildNumerologWelcomeMessage({
-                          userName: readStoredProfileForWelcome().name || "друг",
-                          birthDate: userBirthDate || readStoredProfileForWelcome().birthDate,
-                          fullName: readStoredProfileForWelcome().name,
-                        })}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setNumerologPanel("tools")}
-                        className="rounded-xl border border-aura-gold/35 bg-aura-gold/10 px-4 py-2 text-sm font-semibold text-aura-gold transition hover:bg-aura-gold/20"
-                      >
-                        Открыть расчёты →
-                      </button>
-                    </div>
+                    <p className="max-w-md whitespace-pre-wrap text-sm leading-relaxed">
+                      {buildNumerologWelcomeMessage({
+                        userName: readStoredProfileForWelcome().name || "друг",
+                        birthDate: userBirthDate || readStoredProfileForWelcome().birthDate,
+                        fullName: readStoredProfileForWelcome().name,
+                      })}
+                    </p>
                   ) : (
                     <p className="text-sm">
                       {character.name} готов к сеансу.
@@ -861,7 +736,7 @@ export default function ChatWindow({
             </AnimatePresence>
           )}
 
-          {(!isLoadingHistory || messages.length > 0) && !showNumerologToolsPanel && (
+          {(!isLoadingHistory || messages.length > 0) && (
           <AnimatePresence initial={false}>
             {messages.map((msg, msgIndex) => {
               const pythagorasSquare =
@@ -933,7 +808,7 @@ export default function ChatWindow({
           </AnimatePresence>
           )}
 
-          {!showNumerologToolsPanel && showTypingIndicator && (
+          {showTypingIndicator && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -950,7 +825,7 @@ export default function ChatWindow({
             </motion.div>
           )}
 
-          {!showNumerologToolsPanel && showMasterStatusSpinner && (
+          {showMasterStatusSpinner && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1068,7 +943,15 @@ export default function ChatWindow({
             {sessionQuestionsRemaining === 1 ? "вопрос" : "вопроса"} из {SESSION_CHAT_QUESTION_LIMIT}.
           </p>
         ) : null}
-        {hasMasterQuickChips(characterId) && !readOnly ? (
+        {isNumerologChat ? (
+          <NumerologQuickChips
+            disabled={quickChipsDisabled}
+            onSend={(text) => {
+              pinnedToBottomRef.current = true;
+              onSendMessage(text);
+            }}
+          />
+        ) : hasMasterQuickChips(characterId) && !readOnly ? (
           <MasterQuickChips
             masterId={characterId}
             disabled={quickChipsDisabled}
@@ -1078,11 +961,6 @@ export default function ChatWindow({
             }}
           />
         ) : null}
-        {showNumerologToolsPanel ? (
-          <p className="mb-2 rounded-xl border border-aura-gold/20 bg-aura-gold/10 px-4 py-3 text-center text-sm text-aura-champagne/90">
-            Выберите расчёт выше. После результата откройте вкладку «Чат», чтобы продолжить диалог.
-          </p>
-        ) : (
         <>
         {voiceInputNotice ? (
           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
@@ -1183,17 +1061,8 @@ export default function ChatWindow({
           ИИ может допускать ошибки. Принимайте решения самостоятельно.
         </p>
         </>
-        )}
       </form>
       </div>
-      <NumerologToolResultModal
-        open={numerologToolModalOpen}
-        state={numerologToolModal}
-        onClose={() => {
-          setNumerologToolModalOpen(false);
-          setNumerologToolModal(null);
-        }}
-      />
     </motion.div>
   );
 }

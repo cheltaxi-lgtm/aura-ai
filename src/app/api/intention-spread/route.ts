@@ -31,6 +31,11 @@ import { getSession, updateSessionChatMeta, getBloggerBySlug, getBloggerKnowledg
 import { intentionSpreadPromptBlock } from "@/lib/intention";
 import { isValidSessionIntention, topicToDrawIntention, topicLabel } from "@/lib/session-topics";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
+import {
+  DEFAULT_NUMEROLOG_SESSION_TOOL,
+  getNumerologTool,
+  isNumerologSessionToolId,
+} from "@/lib/numerology/tools";
 import { appendUserMemoryToPrompt, buildClientBlock, buildMemoryBlock } from "@/lib/user-memory";
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
 import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
@@ -148,6 +153,7 @@ export async function GET(request: NextRequest) {
   const topic = request.nextUrl.searchParams.get("topic")?.trim() ?? "";
   const rawMaster = request.nextUrl.searchParams.get("master")?.trim() ?? "veronika";
   const numerologDraw = request.nextUrl.searchParams.get("numerologDraw") === "1";
+  const numerologToolRaw = request.nextUrl.searchParams.get("numerologTool")?.trim() ?? "";
   const spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
   if (isDailyOnlySpread(spreadId)) {
     return NextResponse.json({ error: "Spread not available for sessions" }, { status: 400 });
@@ -162,14 +168,23 @@ export async function GET(request: NextRequest) {
   const system = resolveMasterDeckSystem(characterId);
   const cardCount = spread.cardCount;
 
-  if (isNumerologMaster(characterId) && numerologDraw) {
-    const drawn = drawUniformSpread(system, 3);
-    return NextResponse.json({
-      cards: drawn,
-      system,
-      deck: system,
-      intention: null,
-    });
+  if (isNumerologMaster(characterId)) {
+    const toolId = isNumerologSessionToolId(numerologToolRaw)
+      ? numerologToolRaw
+      : numerologDraw
+        ? DEFAULT_NUMEROLOG_SESSION_TOOL
+        : null;
+    if (toolId) {
+      const drawCount = getNumerologTool(toolId).drawCount;
+      const drawn = drawUniformSpread(system, drawCount);
+      return NextResponse.json({
+        cards: drawn,
+        system,
+        deck: system,
+        intention: null,
+        numerologTool: toolId,
+      });
+    }
   }
 
   if (!topic || !isValidSessionIntention(topic)) {

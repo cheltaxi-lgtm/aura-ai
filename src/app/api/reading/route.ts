@@ -15,7 +15,7 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { PRICING } from "@/lib/config/pricing";
-import { generateNumerologSpreadOpeningReading } from "@/lib/services/numerology-service";
+import { generateNumerologSessionReading } from "@/lib/services/numerology-service";
 import { resolveSessionForUser } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
@@ -48,6 +48,13 @@ import {
   buildNumerologSpreadReading,
   isNumerologMaster,
 } from "@/lib/numerolog/welcome";
+import {
+  DEFAULT_NUMEROLOG_SESSION_TOOL,
+  getNumerologTool,
+  isNumerologSessionToolId,
+  validateNumerologToolParams,
+  type NumerologToolParams,
+} from "@/lib/numerology/tools";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import {
   periodSpreadPositions,
@@ -155,6 +162,8 @@ export async function POST(request: NextRequest) {
   let spreadType = "";
   let readingScope = "";
   let spreadIdRaw = "";
+  let numerologToolIdRaw = "";
+  let numerologToolParams: NumerologToolParams = {};
 
   try {
     const body = await request.json();
@@ -176,6 +185,15 @@ export async function POST(request: NextRequest) {
     spreadIdRaw = sanitizeTextField(body.spreadId, 40) ?? "";
     forceRegenerate = body.forceRegenerate === true;
     readingScope = sanitizeTextField(body.readingScope, 10) ?? "";
+    numerologToolIdRaw = sanitizeTextField(body.numerologToolId, 40) ?? "";
+    if (body.numerologToolParams && typeof body.numerologToolParams === "object") {
+      const raw = body.numerologToolParams as Record<string, unknown>;
+      numerologToolParams = {
+        partnerName: sanitizeTextField(raw.partnerName, 80) ?? undefined,
+        partnerDate: sanitizeTextField(raw.partnerDate, 20) ?? undefined,
+        objectValue: sanitizeTextField(raw.objectValue, 120) ?? undefined,
+      };
+    }
   } catch (error) {
     console.error("Reading JSON error:", error);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -346,19 +364,35 @@ export async function POST(request: NextRequest) {
       }
 
       if (isNumerologMaster(characterId)) {
+        const toolId = isNumerologSessionToolId(numerologToolIdRaw)
+          ? numerologToolIdRaw
+          : DEFAULT_NUMEROLOG_SESSION_TOOL;
+        const tool = getNumerologTool(toolId);
+        const paramError = validateNumerologToolParams(toolId, numerologToolParams);
+        if (paramError) {
+          return { kind: "failed" as const };
+        }
+        const spreadNumbers = tarotCards.map((c) => c.name).slice(0, tool.drawCount);
+        if (spreadNumbers.length < tool.drawCount) {
+          return { kind: "failed" as const };
+        }
+
         const runeSettings = await getRuneSettings();
         const useRuneBilling =
           !isDailySpread &&
           isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
         let runeBalance: number | undefined;
+        let numerologyUi:
+          | { pythagorasSquare?: import("@/lib/numerology/pythagoras-square").PythagorasSquareResult }
+          | undefined;
 
         if (useRuneBilling) {
           try {
             const charge = await BillingService.chargeForSession({
               userId: authed.profileUserId,
-              cost: PRICING.NUMEROLOGY_SESSION,
+              cost: tool.cost,
               actionType: "NUMEROLOGY_SESSION",
-              description: "Расшифровка трёх чисел (Эвелина)",
+              description: `${tool.label} (Эвелина)`,
             });
             billingCharge = charge;
             runeBalance = charge.newBalance;
@@ -380,14 +414,18 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          reading = await generateNumerologSpreadOpeningReading({
+          const sessionResult = await generateNumerologSessionReading({
+            toolId,
+            toolParams: numerologToolParams,
             userName,
             birthDate,
             fullName: userName,
-            spreadNumbers: tarotCards.map((c) => c.name),
+            spreadNumbers,
           });
+          reading = sessionResult.reply;
+          numerologyUi = sessionResult.numerologyUi;
         } catch (genErr) {
-          console.error("Numerolog spread LLM failed:", genErr);
+          console.error("Numerolog session reading failed:", genErr);
           if (billingCharge) {
             await BillingService.rollbackCharge({
               userId: authed.profileUserId,
@@ -415,6 +453,7 @@ export async function POST(request: NextRequest) {
               zodiac,
               gender,
               birthDate,
+              numerologToolId: toolId,
               ...(isDailySpread ? { spreadType: "daily" } : {}),
             },
             isPaid,
@@ -447,6 +486,7 @@ export async function POST(request: NextRequest) {
           historyId,
           isPaid,
           runeBalance,
+          numerologyUi,
         };
       }
 
@@ -671,6 +711,9 @@ export async function POST(request: NextRequest) {
       runeBalance: lockedResult.runeBalance,
       spreadId,
       createdAt: new Date().toISOString(),
+      ...("numerologyUi" in lockedResult && lockedResult.numerologyUi
+        ? { numerologyUi: lockedResult.numerologyUi }
+        : {}),
     });
   } catch (error) {
     console.error("Reading error:", error);

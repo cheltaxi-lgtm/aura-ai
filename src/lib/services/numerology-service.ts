@@ -8,6 +8,12 @@ import {
 import { polishNumerologClientReply } from "@/lib/numerology/numerolog-finale-client";
 import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
+import {
+  buildNumerologToolMessage,
+  getNumerologTool,
+  type NumerologToolId,
+  type NumerologToolParams,
+} from "@/lib/numerology/tools";
 
 export type NumerologyUi = {
   pythagorasSquare?: PythagorasSquareResult;
@@ -38,7 +44,7 @@ function buildEngineInput(params: NumerologEngineParams) {
     lastUserMessage: params.lastUserMessage,
     recentUserMessages: params.recentUserMessages,
     spreadNumbers:
-      params.spreadNumbers.length >= 3 ? params.spreadNumbers : undefined,
+      params.spreadNumbers.length > 0 ? params.spreadNumbers : undefined,
   };
 }
 
@@ -204,4 +210,59 @@ export async function generateNumerologSpreadOpeningReading(input: {
       : `${mathSummary.trim()}\n\n${analysis.trim()}`;
 
   return appendNumerologFinale(body, finale);
+}
+
+/** Session spread reading for any numerology calculation chosen in MasterSessionFlow. */
+export async function generateNumerologSessionReading(input: {
+  toolId: NumerologToolId;
+  toolParams?: NumerologToolParams;
+  userName: string;
+  birthDate?: string;
+  fullName?: string;
+  spreadNumbers: string[];
+}): Promise<{ reply: string; numerologyUi?: NumerologyUi }> {
+  const tool = getNumerologTool(input.toolId);
+  const spreadNumbers = input.spreadNumbers.slice(0, tool.drawCount);
+
+  if (input.toolId === "spread_three_numbers" && spreadNumbers.length >= 3) {
+    return {
+      reply: await generateNumerologSpreadOpeningReading({
+        userName: input.userName,
+        birthDate: input.birthDate,
+        fullName: input.fullName,
+        spreadNumbers,
+      }),
+    };
+  }
+
+  const message = buildNumerologToolMessage(input.toolId, input.toolParams);
+  const streamed = await generateNumerologStreamReply({
+    characterId: "numerolog",
+    userName: input.userName,
+    birthDate: input.birthDate,
+    profileName: input.fullName ?? input.userName,
+    lastUserMessage: message,
+    recentUserMessages: [],
+    spreadNumbers,
+  });
+
+  if (streamed) {
+    return streamed;
+  }
+
+  const fallback = tryNumerologEngineFallback({
+    characterId: "numerolog",
+    userName: input.userName,
+    birthDate: input.birthDate,
+    profileName: input.fullName ?? input.userName,
+    lastUserMessage: message,
+    recentUserMessages: [],
+    spreadNumbers,
+  });
+
+  if (!fallback) {
+    throw new Error("numerolog_session_reading_failed");
+  }
+
+  return fallback;
 }

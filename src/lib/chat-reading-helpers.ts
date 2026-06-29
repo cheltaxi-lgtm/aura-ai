@@ -8,6 +8,14 @@ import { buildSessionSpreadCards } from "@/lib/intention-draw";
 import type { DeckSystem } from "@/lib/decks/types";
 import { MIN_SPREAD_READING_CHARS } from "@/lib/chat-cache";
 import { inferDailySpreadType } from "@/lib/daily-spread-client";
+import { isNumerologMaster } from "@/lib/numerolog/welcome";
+import {
+  DEFAULT_NUMEROLOG_SESSION_TOOL,
+  numerologSpreadComplete,
+  numerologToolDrawCount,
+  type NumerologToolId,
+  type NumerologToolParams,
+} from "@/lib/numerology/tools";
 import {
   resolveClientReadingText,
   stripMemoryLeakFromReply,
@@ -73,6 +81,8 @@ export function resolveSpreadCardsForReading(input: {
     spreadType?: "daily" | "new" | "photo";
     spreadId?: SpreadId | string;
     cardNames?: string[];
+    numerologToolId?: NumerologToolId;
+    numerologToolParams?: NumerologToolParams;
   } | null;
   intentionSpread?: {
     masterId: string;
@@ -92,6 +102,16 @@ export function resolveSpreadCardsForReading(input: {
   const spreadId = sessionSpreadMeta?.spreadId ?? DEFAULT_SPREAD_ID;
   const spreadType = sessionSpreadMeta?.spreadType;
   const metaCardNames = sessionSpreadMeta?.cardNames;
+  const numerologToolId = sessionSpreadMeta?.numerologToolId;
+
+  if (
+    isNumerologMaster(characterId) &&
+    metaCardNames?.length &&
+    numerologSpreadComplete(metaCardNames, numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL)
+  ) {
+    const required = numerologToolDrawCount(numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL);
+    return buildSessionSpreadCards(characterId, metaCardNames).spreadCards.slice(0, required);
+  }
 
   const metaCards =
     metaCardNames?.length &&
@@ -185,11 +205,37 @@ export function readingPayloadForMaster(
   cards: SpreadSymbol[],
   mastersList?: ShowcaseMaster[],
   spreadId?: SpreadId | string | null,
-  spreadType?: string | null
+  spreadType?: string | null,
+  numerologToolId?: NumerologToolId | null,
+  numerologToolParams?: NumerologToolParams
 ) {
   const base = profileApiPayload(profile, masterId, mastersList) as ReturnType<
     typeof profilePayloadForMaster
   >;
+
+  if (
+    isNumerologMaster(masterId) &&
+    numerologSpreadComplete(
+      cardNamesFromSpread(cards),
+      numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL
+    )
+  ) {
+    const toolId = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+    const required = numerologToolDrawCount(toolId);
+    return {
+      ...base,
+      tarotCards: cards.slice(0, required).map((c) => ({
+        name: c.name,
+        meaning: c.meaning ?? "",
+      })),
+      deckSystem: (base.deckSystem ?? resolveMasterSpread(profile, masterId, mastersList).system) as
+        | DeckSystem
+        | undefined,
+      numerologToolId: toolId,
+      numerologToolParams,
+    };
+  }
+
   if (hasCompleteSpread(cardNamesFromSpread(cards), spreadId ?? DEFAULT_SPREAD_ID, spreadType)) {
     const sliced = sliceForSpread(cards, spreadId ?? DEFAULT_SPREAD_ID, spreadType);
     return {

@@ -73,6 +73,10 @@ import {
 } from "@/lib/showcase-masters";
 import { getCharacterById } from "@/lib/characters";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
+import {
+  DEFAULT_NUMEROLOG_SESSION_TOOL,
+  numerologToolDrawCount,
+} from "@/lib/numerology/tools";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
 import {
   formatTripletCooldownRu,
@@ -386,6 +390,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     spreadType?: "daily" | "new" | "photo";
     spreadId?: SpreadId;
     cardNames?: string[];
+    numerologToolId?: import("@/lib/numerology/tools").NumerologToolId;
+    numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams;
   } | null>(null);
   const tripletPendingRef = useRef<{ cards: SpreadSymbol[]; teaser: string } | null>(null);
   const tripletDrawnAtRef = useRef(0);
@@ -1983,6 +1989,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         previewCards,
         deckSystem: previewDeckSystem,
         customQuestion,
+        numerologToolId,
+        numerologToolParams,
       } = params;
       const spreadCardCount = getSpread(spreadId).cardCount;
       const sessionIntentionValue = spreadType === "daily" ? null : intention;
@@ -1991,7 +1999,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       } else if (intention !== "custom") {
         persistSessionCustomQuestion(characterKey, null);
       }
-      sessionSpreadMetaRef.current = { spreadType, spreadId, cardNames: cards };
+      sessionSpreadMetaRef.current = {
+        spreadType,
+        spreadId,
+        cardNames: cards,
+        numerologToolId,
+        numerologToolParams,
+      };
       readingInFlightRef.current = true;
       deps.skipNextReadingRef.current = true;
       deps.chatLoadedForRef.current = null;
@@ -2096,11 +2110,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setSpreadFlipped(spreadFlippedState(spreadCardCount, false));
       }
 
+      const numerologTool = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+      const numerologDrawCount = numerologToolDrawCount(numerologTool);
+
       if (
         isNumerologMaster(characterKey) &&
         spreadType === "new" &&
         !intention &&
-        cards.length >= 3
+        cards.length >= numerologDrawCount
       ) {
         setIntentionSpread(null);
         persistIntentionSpreadState(characterKey, null);
@@ -2108,9 +2125,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           previewCards,
           deckSystem: previewDeckSystem,
         });
-        setChatSessionSpread({ masterId: characterKey, cards: spreadCards, system });
+        setChatSessionSpread({
+          masterId: characterKey,
+          cards: spreadCards.slice(0, numerologDrawCount),
+          system,
+        });
         setHideChatSpread(false);
-        setSpreadFlipped(spreadFlippedState(3, true));
+        setSpreadFlipped(spreadFlippedState(numerologDrawCount, true));
 
         const activeProfile = getActiveProfile();
         const mergedProfile = activeProfile

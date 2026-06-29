@@ -14,13 +14,24 @@ import type { DeckSystem } from "@/lib/decks/types";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import MasterAvatar from "@/components/MasterAvatar";
 import SpreadLayout from "@/components/SpreadLayout";
+import SpreadFlipRow from "@/components/SpreadFlipRow";
 import SpreadPicker from "@/components/SpreadPicker";
+import NumerologCalculationPicker, {
+  numerologCalculationReady,
+} from "@/components/numerolog/NumerologCalculationPicker";
+import {
+  DEFAULT_NUMEROLOG_SESSION_TOOL,
+  getNumerologTool,
+  numerologToolPositions,
+  type NumerologToolId,
+  type NumerologToolParams,
+} from "@/lib/numerology/tools";
 import { DEFAULT_SPREAD_ID, getSpread, isDailyOnlySpread, spreadMatchesTopic, type SpreadId } from "@/lib/spreads";
 import RuneCost from "@/components/RuneCost";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
-import { PRICING, numerologySessionCost } from "@/lib/config/pricing";
+import { PRICING } from "@/lib/config/pricing";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 
 export interface SessionStartParams {
@@ -35,6 +46,8 @@ export interface SessionStartParams {
   cardsRevealed?: boolean;
   previewCards?: { name: string; meaning?: string }[];
   deckSystem?: DeckSystem;
+  numerologToolId?: NumerologToolId;
+  numerologToolParams?: NumerologToolParams;
 }
 
 interface MasterSessionFlowProps {
@@ -53,7 +66,7 @@ interface MasterSessionFlowProps {
   initialTopic?: SessionTopicId | null;
 }
 
-type Step = "topic" | "master" | "cards" | "scheme" | "flip";
+type Step = "topic" | "master" | "cards" | "scheme" | "calculation" | "flip";
 
 function resolveSessionSpreadId(id?: SpreadId | null): SpreadId {
   if (!id || isDailyOnlySpread(id)) return DEFAULT_SPREAD_ID;
@@ -74,8 +87,21 @@ function stepIndex(step: Step): number {
       return 2;
     case "scheme":
       return 3;
+    case "calculation":
+      return 3;
     case "flip":
       return 4;
+  }
+}
+
+function numerologStepIndex(step: Step): number {
+  switch (step) {
+    case "calculation":
+      return 0;
+    case "flip":
+      return 1;
+    default:
+      return 0;
   }
 }
 
@@ -106,15 +132,24 @@ export default function MasterSessionFlow({
   const [topicPickMode, setTopicPickMode] = useState<"grid" | "custom">("grid");
   const [customQuestion, setCustomQuestion] = useState("");
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const [selectedNumerologTool, setSelectedNumerologTool] = useState<NumerologToolId>(
+    DEFAULT_NUMEROLOG_SESSION_TOOL
+  );
+  const [numerologToolParams, setNumerologToolParams] = useState<NumerologToolParams>({});
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
   const numerologFlow = isNumerologMaster(master);
   const spreadDef = getSpread(selectedSpreadId);
-  const cardCount = numerologFlow ? 3 : spreadDef.cardCount;
+  const numerologTool = numerologFlow ? getNumerologTool(selectedNumerologTool) : null;
+  const cardCount = numerologFlow ? (numerologTool?.drawCount ?? 3) : spreadDef.cardCount;
   const spreadCost = numerologFlow
-    ? PRICING.NUMEROLOGY_SESSION
+    ? (numerologTool?.cost ?? PRICING.NUMEROLOGY_SESSION)
     : Math.max(1, Math.round(runeCost("INTENTION_SPREAD") * spreadDef.costMultiplier));
   const numerologPreselected = isNumerologMaster(preselectedMaster);
   const customQuestionReady = customQuestion.trim().length >= 8;
+  const numerologPositions =
+    numerologFlow && selectedNumerologTool
+      ? numerologToolPositions(selectedNumerologTool)
+      : [];
 
   const { isRecording, phase: voicePhase, toggle: toggleRecording } = useSpeechInput({
     onTranscript: (text) => {
@@ -127,7 +162,7 @@ export default function MasterSessionFlow({
   const goToNewSpreadDraw = useCallback(() => {
     setCardType("new");
     if (isNumerologMaster(master)) {
-      setStep("flip");
+      setStep("calculation");
     } else {
       setStep("scheme");
     }
@@ -136,7 +171,7 @@ export default function MasterSessionFlow({
   const hasDailyCards = dailyCards.length >= 3 && !newSpreadOnly;
   const showCardsChoice = hasDailyCards;
   const allFlipped = flipped.slice(0, cardCount).every(Boolean);
-  const currentStepIdx = stepIndex(step);
+  const currentStepIdx = numerologFlow ? numerologStepIndex(step) : stepIndex(step);
 
   const initializeFlow = useCallback(() => {
     setTopic(initialTopic ?? null);
@@ -155,11 +190,13 @@ export default function MasterSessionFlow({
     );
     setDrawError(null);
     setDrawLoading(false);
+    setSelectedNumerologTool(DEFAULT_NUMEROLOG_SESSION_TOOL);
+    setNumerologToolParams({});
 
     if (numerologPreselected || (newSpreadOnly && isNumerologMaster(preselectedMaster))) {
-      // Skip topic/master — open numerolog spread draw immediately.
       setCardType("new");
-      setStep("flip");
+      setStep("calculation");
+      setFlipped(emptyFlipped(getNumerologTool(DEFAULT_NUMEROLOG_SESSION_TOOL).drawCount));
       return;
     }
 
@@ -169,7 +206,7 @@ export default function MasterSessionFlow({
         setStep("scheme");
         return;
       }
-      setStep(numerologPreselected ? "flip" : "topic");
+      setStep(numerologPreselected ? "calculation" : "topic");
       return;
     }
 
@@ -211,11 +248,16 @@ export default function MasterSessionFlow({
       else if (master) setStep("master");
       else setStep("topic");
     }
+    else if (step === "calculation") {
+      if (showCardsChoice && cardType === "new") setStep("cards");
+      else if (master) setStep("master");
+      else setStep("topic");
+    }
     else if (step === "flip") {
-      if (showCardsChoice && cardType === "new") {
-        setStep(numerologFlow ? "cards" : "scheme");
-      } else if (showCardsChoice) setStep("cards");
-      else setStep(numerologFlow ? "master" : "scheme");
+      if (numerologFlow) setStep("calculation");
+      else if (showCardsChoice && cardType === "new") setStep("scheme");
+      else if (showCardsChoice) setStep("cards");
+      else setStep("scheme");
     }
   };
 
@@ -223,12 +265,15 @@ export default function MasterSessionFlow({
     if (!master) return;
     if (!numerologFlow && !topic) return;
     if (topic === "custom" && !customQuestionReady) return;
+    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams)) {
+      return;
+    }
     setDrawLoading(true);
     setDrawError(null);
     try {
       const qs = new URLSearchParams({ master });
       if (numerologFlow) {
-        qs.set("numerologDraw", "1");
+        qs.set("numerologTool", selectedNumerologTool);
       } else if (topic) {
         qs.set("topic", topic);
       }
@@ -243,17 +288,26 @@ export default function MasterSessionFlow({
       if (!res.ok) throw new Error("draw_failed");
       const data = await res.json();
       const cards = (data.cards ?? []) as { name: string; meaning?: string }[];
-      const required = numerologFlow ? 3 : getSpread(selectedSpreadId).cardCount;
+      const required = numerologFlow ? cardCount : getSpread(selectedSpreadId).cardCount;
       if (cards.length < required) throw new Error("not_enough_cards");
       setNewCards(cards.slice(0, required));
       setDeckSystem((data.system ?? data.deck ?? resolveMasterDeckSystem(master)) as DeckSystem);
       setFlipped(emptyFlipped(required));
     } catch {
-      setDrawError("Не удалось вытянуть карты. Попробуйте снова.");
+      setDrawError(numerologFlow ? "Не удалось вытянуть числа. Попробуйте снова." : "Не удалось вытянуть карты. Попробуйте снова.");
     } finally {
       setDrawLoading(false);
     }
-  }, [topic, master, numerologFlow, customQuestionReady, selectedSpreadId]);
+  }, [
+    topic,
+    master,
+    numerologFlow,
+    customQuestionReady,
+    selectedSpreadId,
+    selectedNumerologTool,
+    numerologToolParams,
+    cardCount,
+  ]);
 
   useEffect(() => {
     if (step === "flip" && !numerologFlow && !topic) {
@@ -263,11 +317,32 @@ export default function MasterSessionFlow({
   }, [step, numerologFlow, topic]);
 
   useEffect(() => {
+    if (numerologFlow && step === "calculation") {
+      setFlipped(emptyFlipped(cardCount));
+      setNewCards([]);
+      setDrawError(null);
+    }
+  }, [selectedNumerologTool, numerologFlow, step, cardCount]);
+
+  useEffect(() => {
     if (step === "flip" && newCards.length === 0 && master && (numerologFlow || topic)) {
       if (topic === "custom" && !customQuestionReady) return;
+      if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams)) {
+        return;
+      }
       void fetchNewSpread();
     }
-  }, [step, newCards.length, topic, master, numerologFlow, fetchNewSpread, customQuestionReady]);
+  }, [
+    step,
+    newCards.length,
+    topic,
+    master,
+    numerologFlow,
+    fetchNewSpread,
+    customQuestionReady,
+    selectedNumerologTool,
+    numerologToolParams,
+  ]);
 
   const handleFlip = (index: number) => {
     setFlipped((prev) => {
@@ -280,7 +355,7 @@ export default function MasterSessionFlow({
   const handleSelectNewSpread = () => {
     setCardType("new");
     setNewCards([]);
-    setStep(numerologFlow ? "flip" : "scheme");
+    setStep(numerologFlow ? "calculation" : "scheme");
   };
 
   const handleStartDaily = () => {
@@ -297,6 +372,9 @@ export default function MasterSessionFlow({
     if (!master || !allFlipped || newCards.length < cardCount) return;
     if (!numerologFlow && !topic) return;
     if (topic === "custom" && !customQuestionReady) return;
+    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams)) {
+      return;
+    }
     onStart({
       characterKey: master,
       intention: numerologFlow ? null : topic,
@@ -307,6 +385,8 @@ export default function MasterSessionFlow({
       previewCards: newCards.slice(0, cardCount),
       deckSystem,
       customQuestion: topic === "custom" ? customQuestion.trim() : null,
+      numerologToolId: numerologFlow ? selectedNumerologTool : undefined,
+      numerologToolParams: numerologFlow ? numerologToolParams : undefined,
     });
   };
 
@@ -335,9 +415,8 @@ export default function MasterSessionFlow({
       <button
         type="button"
         onClick={() => {
-          setCardType("new");
           if (numerologFlow) {
-            setStep("flip");
+            setStep("calculation");
           } else {
             setStep("scheme");
           }
@@ -384,7 +463,7 @@ export default function MasterSessionFlow({
         type="button"
         onClick={() => {
           if (numerologFlow) {
-            setStep("flip");
+            setStep("calculation");
           } else {
             handleSelectNewSpread();
           }
@@ -414,6 +493,28 @@ export default function MasterSessionFlow({
           {!topic ? "Выбрать тему" : !master ? "Выбрать мастера" : "Вытянуть карты"}
         </span>
         {runeConfig.enabled && master && topic ? (
+          <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+        ) : null}
+      </button>
+    ) : step === "calculation" && numerologFlow ? (
+      <button
+        type="button"
+        disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams)}
+        onClick={() => {
+          setFlipped(emptyFlipped(cardCount));
+          setNewCards([]);
+          setStep("flip");
+        }}
+        className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
+      >
+        <span>
+          {cardCount === 1
+            ? "Вытянуть число"
+            : cardCount < 5
+              ? `Вытянуть ${cardCount} числа`
+              : `Вытянуть ${cardCount} чисел`}
+        </span>
+        {runeConfig.enabled ? (
           <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
         ) : null}
       </button>
@@ -484,7 +585,7 @@ export default function MasterSessionFlow({
               <span className="w-12" />
             )}
             <div className="flex items-center gap-1.5">
-              {[0, 1, 2, 3, 4].map((i) => (
+              {(numerologFlow ? [0, 1] : [0, 1, 2, 3, 4]).map((i) => (
                 <span
                   key={i}
                   className={`h-2 w-2 rounded-full transition-colors ${
@@ -667,7 +768,15 @@ export default function MasterSessionFlow({
                         onClick={() => {
                           setMaster(m.id);
                           setNewCards([]);
-                          setFlipped([false, false, false]);
+                          if (isNumerologMaster(m.id)) {
+                            setSelectedNumerologTool(DEFAULT_NUMEROLOG_SESSION_TOOL);
+                            setNumerologToolParams({});
+                            setFlipped(
+                              emptyFlipped(getNumerologTool(DEFAULT_NUMEROLOG_SESSION_TOOL).drawCount)
+                            );
+                          } else {
+                            setFlipped(emptyFlipped(3));
+                          }
                           setDrawError(null);
                         }}
                         className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all duration-200 ${
@@ -737,7 +846,7 @@ export default function MasterSessionFlow({
                     onClick={() => {
                       if (numerologFlow) {
                         setCardType("new");
-                        setStep("flip");
+                        setStep("calculation");
                       } else {
                         handleSelectNewSpread();
                       }
@@ -761,6 +870,34 @@ export default function MasterSessionFlow({
                       ) : null}
                     </p>
                   </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step — Numerolog calculation */}
+            {step === "calculation" && numerologFlow && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <h2 className="text-center font-display text-xl font-bold text-white">
+                  Выберите расчёт
+                </h2>
+                <p className="mt-1 text-center text-sm text-white/60">
+                  От вида расчёта зависит, сколько чисел нужно вытянуть
+                </p>
+                <div className="mt-6">
+                  <NumerologCalculationPicker
+                    selectedId={selectedNumerologTool}
+                    params={numerologToolParams}
+                    onSelect={(id) => {
+                      setSelectedNumerologTool(id);
+                      setNumerologToolParams({});
+                    }}
+                    onParamsChange={setNumerologToolParams}
+                    runeBillingEnabled={runeConfig.enabled}
+                  />
                 </div>
               </motion.div>
             )}
@@ -803,14 +940,20 @@ export default function MasterSessionFlow({
               >
                 <h2 className="text-center font-display text-xl font-bold text-white">
                   {numerologFlow
-                    ? "Вытяните три числа"
+                    ? cardCount === 1
+                      ? "Вытяните число"
+                      : cardCount < 5
+                        ? `Вытяните ${cardCount} числа`
+                        : `Вытяните ${cardCount} чисел`
                     : cardCount === 1
                       ? "Вытяните карту"
                       : `Вытяните ${cardCount} карт`}
                 </h2>
                 <p className="mt-1 text-center text-sm text-white/60">
                   {numerologFlow
-                    ? "Нажмите на каждое число, чтобы открыть расклад."
+                    ? numerologTool
+                      ? `${numerologTool.label} · нажмите на каждое число, чтобы открыть расклад`
+                      : "Нажмите на каждое число, чтобы открыть расклад."
                     : topic === "custom"
                       ? `«${spreadDef.label}» · «${customQuestion.trim()}»`
                       : `«${spreadDef.label}» · ${topic ? topicLabel(topic) : ""}`}
@@ -819,7 +962,9 @@ export default function MasterSessionFlow({
                 {drawLoading ? (
                   <div className="mt-10 flex flex-col items-center gap-3">
                     <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-                    <p className="text-sm text-white/60">Вытягиваем карты…</p>
+                    <p className="text-sm text-white/60">
+                      {numerologFlow ? "Вытягиваем числа…" : "Вытягиваем карты…"}
+                    </p>
                   </div>
                 ) : drawError ? (
                   <div className="mt-8 text-center">
@@ -835,21 +980,37 @@ export default function MasterSessionFlow({
                 ) : newCards.length >= cardCount ? (
                   <>
                     <div className="mt-6">
-                      <SpreadLayout
-                        spreadId={numerologFlow ? "triplet" : selectedSpreadId}
-                        cards={newCards}
-                        system={deckSystem}
-                        topic={topic}
-                        flipped={flipped}
-                        onFlip={handleFlip}
-                        compact
-                      />
+                      {numerologFlow ? (
+                        <SpreadFlipRow
+                          cards={newCards.slice(0, cardCount)}
+                          system={deckSystem}
+                          masterId={master}
+                          flipped={flipped.slice(0, cardCount)}
+                          onFlip={handleFlip}
+                          compact={cardCount <= 3}
+                          positions={numerologPositions}
+                        />
+                      ) : (
+                        <SpreadLayout
+                          spreadId={selectedSpreadId}
+                          cards={newCards}
+                          system={deckSystem}
+                          topic={topic}
+                          flipped={flipped}
+                          onFlip={handleFlip}
+                          compact
+                        />
+                      )}
                     </div>
                     {!allFlipped && (
                       <p className="mt-4 text-center text-sm text-amber-400/90">
-                        {cardCount === 1
-                          ? "Откройте карту — затем «Начать сеанс»"
-                          : `Откройте все ${cardCount} карт — затем «Начать сеанс»`}
+                        {numerologFlow
+                          ? cardCount === 1
+                            ? "Откройте число — затем «Начать сеанс»"
+                            : `Откройте все ${cardCount} чисел — затем «Начать сеанс»`
+                          : cardCount === 1
+                            ? "Откройте карту — затем «Начать сеанс»"
+                            : `Откройте все ${cardCount} карт — затем «Начать сеанс»`}
                       </p>
                     )}
                   </>
