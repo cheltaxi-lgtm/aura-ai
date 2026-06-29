@@ -5,11 +5,12 @@ import {
   ScrollText,
   Flame,
   BookOpen,
+  Brain,
   Coins,
   type LucideIcon,
 } from "lucide-react";
 
-export type CabinetTab = "profile" | "history" | "diary" | "runes" | "rituals";
+export type CabinetTab = "profile" | "history" | "diary" | "memory" | "runes" | "rituals";
 
 interface Props {
   active: CabinetTab;
@@ -28,6 +29,7 @@ const BASE_TABS: {
   { id: "history", label: "История", icon: ScrollText },
   { id: "rituals", label: "Обряды", icon: Flame },
   { id: "diary", label: "Дневник", icon: BookOpen },
+  { id: "memory", label: "Память", icon: Brain },
   { id: "runes", label: "Руны", icon: Coins },
 ];
 

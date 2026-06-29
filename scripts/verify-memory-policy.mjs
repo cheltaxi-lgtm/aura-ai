@@ -91,6 +91,10 @@ assert(
   "cabinet UI uses memory facts",
   cabinetPage.includes("CabinetMemoryFacts")
 );
+assert(
+  "cabinet memory is a bottom nav tab",
+  cabinetPage.includes('case "memory"') && cabinetPage.includes("hideTitle")
+);
 
 const factsRoute = read("src/app/api/memory/facts/route.ts");
 assert(

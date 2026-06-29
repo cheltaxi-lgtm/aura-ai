@@ -379,6 +379,8 @@ export default function CabinetPage() {
         return <div className="h-48 animate-pulse rounded-2xl bg-white/5" />;
       case "diary":
         return <CabinetDiaryPreviewSkeleton />;
+      case "memory":
+        return <div className="h-64 animate-pulse rounded-2xl bg-white/5" />;
       case "runes":
         return <CabinetRunesPanelSkeleton />;
       default:
@@ -409,7 +411,6 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetSupportLink />
-            <CabinetMemoryFacts />
             <CabinetDangerZone onPurged={handlePurgeAll} />
             <CabinetDeleteAccount />
           </div>
@@ -483,6 +484,18 @@ export default function CabinetPage() {
               deletingId={deletingDiaryId}
               hideTitle
             />
+          </div>
+        );
+
+      case "memory":
+        return (
+          <div className="space-y-6">
+            <CabinetTabHero
+              kicker="Контекст"
+              title="Память о вас"
+              subtitle="Добавляйте важное о себе — мастер учтёт это в будущих сеансах, если тема совпадёт."
+            />
+            <CabinetMemoryFacts hideTitle />
           </div>
         );
 

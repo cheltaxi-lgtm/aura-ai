@@ -23,7 +23,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "Другое",
 };
 
-export default function CabinetMemoryFacts() {
+export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: boolean }) {
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -118,20 +118,24 @@ export default function CabinetMemoryFacts() {
 
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-500/15 text-purple-300">
-          <Brain className="h-5 w-5" aria-hidden />
+      {!hideTitle ? (
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-500/15 text-purple-300">
+            <Brain className="h-5 w-5" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold text-white">Память о вас</h2>
+            <p className="mt-1 text-sm text-white/50">
+              Добавляйте важное о себе — мастер учтёт это в будущих сеансах, если тема совпадёт.
+              Можно удалить устаревшее.
+            </p>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-white">Память о вас</h2>
-          <p className="mt-1 text-sm text-white/50">
-            Добавляйте важное о себе — мастер учтёт это в будущих сеансах, если тема совпадёт.
-            Можно удалить устаревшее.
-          </p>
-        </div>
-      </div>
+      ) : null}
 
-      <div className="mt-4 space-y-3 rounded-xl border border-white/8 bg-black/20 p-3">
+      <div
+        className={`space-y-3 rounded-xl border border-white/8 bg-black/20 p-3${hideTitle ? "" : " mt-4"}`}
+      >
         <label className="block text-xs font-medium text-white/50">
           Новый факт
           <textarea
