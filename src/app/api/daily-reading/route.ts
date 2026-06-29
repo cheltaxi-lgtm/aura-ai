@@ -5,8 +5,9 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getUserById } from "@/lib/users";
 import { getExistingDailyReading, getOrCreateDailyReading } from "@/lib/daily-energy";
 import { isCharacterKey } from "@/lib/prompts";
+import { DEFAULT_SPREAD_ID } from "@/lib/spreads";
 
-const EMPTY = { text: null, cards: [], system: null, drawn: false };
+const EMPTY = { text: null, cards: [], system: null, drawn: false, spreadId: null as string | null };
 
 export async function GET(request: NextRequest) {
   const auth = await requireUserAuth();
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
     cards: result.cards,
     system: result.system,
     drawn: true,
+    spreadId: DEFAULT_SPREAD_ID,
   });
 }
 
@@ -76,5 +78,6 @@ export async function POST(request: NextRequest) {
     cards: result.cards,
     system: result.system,
     drawn: true,
+    spreadId: DEFAULT_SPREAD_ID,
   });
 }

@@ -22,6 +22,7 @@ import type { StoredProfile } from "@/types/stored-profile";
 import type { Message } from "@/types";
 import { generateId } from "@/lib/id";
 import { resolveMasterSpread } from "@/lib/spread-context";
+import { DEFAULT_SPREAD_ID, hasCompleteSpread } from "@/lib/spreads";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export interface RestoreChatResult {
@@ -162,7 +163,14 @@ export function useChatSession(options: UseChatSessionOptions) {
         ...new Set(
           [
             persistedIntention?.cardsKey || spreadKey(persistedIntention?.cards),
-            masterCtx.cards.length >= 3 ? masterCtx.cardsKey : "",
+            masterCtx.cardsKey &&
+            hasCompleteSpread(
+              masterCtx.cards.map((c) => c.name),
+              DEFAULT_SPREAD_ID,
+              "daily"
+            )
+              ? masterCtx.cardsKey
+              : "",
             spreadCardsKey,
           ].filter(Boolean) as string[]
         ),

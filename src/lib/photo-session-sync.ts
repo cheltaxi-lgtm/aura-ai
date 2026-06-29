@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import { ensureChatSession } from "@/lib/session-access";
 import { saveMessage, updateSessionChatMeta } from "@/lib/session";
+import { limitSpreadKeyCards } from "@/lib/spreads";
 import { ensureSessionMemoryStub } from "@/lib/session-memory";
 import {
   buildPhotoReadingUserMessage,
@@ -74,7 +75,7 @@ export async function syncPhotoReadingSession(params: {
     sessionId,
     characterKey: params.characterId,
     topicSummary,
-    keyCards: detectedCards.slice(0, 5),
+    keyCards: limitSpreadKeyCards(detectedCards),
     prediction: analysis.slice(0, 500),
   });
 

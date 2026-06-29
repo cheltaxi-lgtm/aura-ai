@@ -28,6 +28,7 @@ import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { ensureChatSession } from "@/lib/session-access";
 import { ensureSessionMemoryStub } from "@/lib/session-memory";
+import { limitSpreadKeyCards } from "@/lib/spreads";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
@@ -267,7 +268,7 @@ export async function POST(request: NextRequest) {
           sessionId: resolvedSessionId,
           characterKey: characterId,
           topicSummary,
-          keyCards: detectedCards.slice(0, 5),
+          keyCards: limitSpreadKeyCards(detectedCards),
           prediction: analysisBody.slice(0, 500),
         });
       } catch (err) {

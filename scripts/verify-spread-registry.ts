@@ -8,6 +8,8 @@ import {
   listSpreads,
   normalizeSpreadId,
   resolveSpreadPositions,
+  MAX_SPREAD_CARD_COUNT,
+  limitSpreadKeyCards,
 } from "../src/lib/spreads/registry";
 import { resolveSpreadCost } from "../src/lib/spreads/spread-pricing";
 
@@ -56,6 +58,15 @@ const runesOnly = listSpreads({ system: "runes" });
 assert(!runesOnly.some((s) => s.id === "yes-no"), "yes-no hidden for runes");
 
 assert(getSpread("celtic-cross").cardCount === 10, "celtic-cross has 10 cards");
+assert(MAX_SPREAD_CARD_COUNT === 10, `MAX_SPREAD_CARD_COUNT = 10 (got ${MAX_SPREAD_CARD_COUNT})`);
+assert(
+  limitSpreadKeyCards(Array.from({ length: 12 }, (_, i) => `C${i}`)).length === 10,
+  "limitSpreadKeyCards caps at 10"
+);
+assert(
+  limitSpreadKeyCards(["A"]).length === 1,
+  "limitSpreadKeyCards keeps short spreads"
+);
 
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);

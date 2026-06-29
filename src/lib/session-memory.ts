@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { completeChat } from "@/lib/llm";
+import { limitSpreadKeyCards } from "@/lib/spreads";
 import { SESSION_SUMMARY_PROMPT } from "@/lib/prompts/memory";
 import type { SessionMemory } from "@/lib/prompts/types";
 
@@ -146,7 +147,7 @@ export async function upsertSessionMemoryFromChat(input: {
       input.sessionId,
       input.characterKey,
       input.topicSummary.slice(0, 500),
-      input.keyCards.slice(0, 5),
+      limitSpreadKeyCards(input.keyCards),
       input.prediction.slice(0, 1000),
       input.mood ?? null,
     ]
@@ -168,7 +169,9 @@ function parseSessionSummary(
     if (!parsed.topicSummary || !parsed.prediction) return null;
     return {
       topicSummary: parsed.topicSummary,
-      keyCards: parsed.keyCards?.length ? parsed.keyCards : cardNames,
+      keyCards: limitSpreadKeyCards(
+        parsed.keyCards?.length ? parsed.keyCards : cardNames
+      ),
       prediction: parsed.prediction,
       mood: parsed.mood,
     };

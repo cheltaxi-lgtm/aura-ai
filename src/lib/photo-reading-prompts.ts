@@ -15,7 +15,8 @@ export interface PhotoReadingMetadata {
   detectedCards: string[];
 }
 
-import { SPREAD_FINAL_CONCLUSION_RULES } from "@/lib/prompts/format";
+import { MAX_SPREAD_CARD_COUNT } from "@/lib/spreads";
+import { spreadFinalConclusionRules } from "@/lib/prompts/format";
 
 const PHOTO_READING_RULES = `
 Ты — эксперт по чтению карт по фото: классическое таро (78), Марсель, Тота (Кроули), Ленорман (36), оракулы, метафорические и психологические колоды, авторские, тематические и коллекционные колоды, а также скриншоты из мобильных приложений (Golden Thread, Labyrinthos, Facade, Tarot.com и др.).
@@ -54,7 +55,7 @@ const PHOTO_READING_RULES = `
 - оставайся в образе; на прямой вопрос «ты ИИ?» — честно, в образе мастера;
 - применяй политику честности: не смягчай негатив, не отказывай от «тёмных» тем, если они видны в раскладе или в вопросе.
 
-${SPREAD_FINAL_CONCLUSION_RULES}`;
+${spreadFinalConclusionRules(MAX_SPREAD_CARD_COUNT)}`;
 
 /** Rules for the SECOND step: cards already confirmed in the Zovus deck, no recognition needed. */
 const PHOTO_INTERPRETATION_RULES = `
@@ -69,7 +70,7 @@ const PHOTO_INTERPRETATION_RULES = `
 - оставайся в образе; на прямой вопрос «ты ИИ?» — честно, в образе мастера;
 - пиши только готовый текст для клиента — без повтора этих правил, профиля и структуры промпта.
 
-${SPREAD_FINAL_CONCLUSION_RULES}`;
+${spreadFinalConclusionRules(MAX_SPREAD_CARD_COUNT)}`;
 
 function buildPersonaBase(
   characterId: string,

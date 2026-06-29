@@ -24,6 +24,8 @@ export {
   hasCompleteSpread,
   spreadFlippedState,
   sliceForSpread,
+  MAX_SPREAD_CARD_COUNT,
+  limitSpreadKeyCards,
   isSpreadEnabled,
   mergeSpreadCatalogSettings,
   setSpreadCatalogSettings,

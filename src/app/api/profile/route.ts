@@ -24,7 +24,7 @@ import {
 import { tarotCardsKey } from "@/lib/tarot";
 import { resolveTripletDisplaySpread } from "@/lib/spread-context";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
-import { DEFAULT_SPREAD_ID } from "@/lib/spreads";
+import { DEFAULT_SPREAD_ID, hasCompleteSpread } from "@/lib/spreads";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
 import type { LifeFocus } from "@/lib/astro-profile";
@@ -70,10 +70,10 @@ export async function GET() {
   }));
 
   const latestSpread = resolveTripletDisplaySpread(mappedReadings, null, DEFAULT_DECK_SYSTEM);
-  const spreadCards =
-    latestSpread.cards.length >= 3
-      ? latestSpread.cards.map((c) => ({ name: c.name }))
-      : undefined;
+  const dailyCardNames = latestSpread.cards.map((c) => c.name);
+  const spreadCards = hasCompleteSpread(dailyCardNames, DEFAULT_SPREAD_ID, "daily")
+    ? latestSpread.cards.map((c) => ({ name: c.name }))
+    : undefined;
 
   const continueMasterIds = mastersWithReadingForSpread(mappedReadings, spreadCards);
 

@@ -317,3 +317,12 @@ export function sliceForSpread<T>(
 ): T[] {
   return items.slice(0, requiredCardCount(spreadId, spreadType));
 }
+
+/** Max cards in catalog (Celtic cross). Used for keyCards / memory caps. */
+export const MAX_SPREAD_CARD_COUNT = Math.max(
+  ...(Object.values(SPREAD_REGISTRY) as SpreadDefinition[]).map((s) => s.cardCount)
+);
+
+export function limitSpreadKeyCards(cards: string[]): string[] {
+  return cards.slice(0, MAX_SPREAD_CARD_COUNT);
+}

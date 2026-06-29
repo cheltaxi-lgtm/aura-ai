@@ -3,6 +3,7 @@ import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { resolveApiCharacterId, sanitizeChatHistory } from "@/lib/chat-sanitize";
+import { limitSpreadKeyCards } from "@/lib/spreads";
 import {
   generateSessionSummary,
   saveSessionMemory,
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
         userId: profileUserId,
         characterKey,
         topicSummary: String(body.topicSummary).slice(0, 500),
-        keyCards: Array.isArray(cardNames) ? cardNames.slice(0, 5) : [],
+        keyCards: Array.isArray(cardNames) ? limitSpreadKeyCards(cardNames) : [],
         prediction: String(body.prediction).slice(0, 1000),
         mood: body.mood ? String(body.mood).slice(0, 100) : undefined,
         outcomeRating,
