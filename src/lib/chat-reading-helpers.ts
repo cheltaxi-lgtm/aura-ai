@@ -12,6 +12,13 @@ import {
   resolveClientReadingText,
   stripMemoryLeakFromReply,
 } from "@/lib/chat-reply-sanitize";
+import {
+  DEFAULT_SPREAD_ID,
+  hasCompleteSpread,
+  requiredCardCount,
+  sliceForSpread,
+  type SpreadId,
+} from "@/lib/spreads";
 
 export function cardLabel(card: SpreadSymbol | { name?: string } | string): string {
   if (typeof card === "string") return card;
@@ -53,13 +60,18 @@ export function isDailySpreadType(spreadType?: string | null): boolean {
   return spreadType === "daily";
 }
 
-/** Resolve the 3-card spread used for reading API + display (daily triplet wins over master deck cache). */
+function cardNamesFromSpread(symbols: SpreadSymbol[]): string[] {
+  return symbols.map((c) => c.name).filter(Boolean);
+}
+
+/** Resolve spread cards used for reading API + display (daily triplet wins over master deck cache). */
 export function resolveSpreadCardsForReading(input: {
   profile: StoredProfile | null;
   characterId: string;
   masters?: ShowcaseMaster[];
   sessionSpreadMeta?: {
     spreadType?: "daily" | "new" | "photo";
+    spreadId?: SpreadId | string;
     cardNames?: string[];
   } | null;
   intentionSpread?: {
@@ -77,70 +89,90 @@ export function resolveSpreadCardsForReading(input: {
   const { profile, characterId, sessionSpreadMeta } = input;
   if (!profile) return [];
 
+  const spreadId = sessionSpreadMeta?.spreadId ?? DEFAULT_SPREAD_ID;
+  const spreadType = sessionSpreadMeta?.spreadType;
   const metaCardNames = sessionSpreadMeta?.cardNames;
+
+  const metaCards =
+    metaCardNames?.length &&
+    hasCompleteSpread(metaCardNames, spreadId, spreadType)
+      ? buildSessionSpreadCards(characterId, metaCardNames).spreadCards
+      : [];
+
   const dailySpreadType = inferDailySpreadType({
     explicitSpreadType: sessionSpreadMeta?.spreadType,
     sessionSpreadType: sessionSpreadMeta?.spreadType,
-    cards:
-      (metaCardNames?.length ?? 0) >= 3
-        ? buildSessionSpreadCards(characterId, metaCardNames!).spreadCards
-        : input.chatSessionSpread?.masterId === characterId &&
-            (input.chatSessionSpread.cards.length ?? 0) >= 3
-          ? input.chatSessionSpread.cards
-          : (profile.tarotCards?.length ?? 0) >= 3
-            ? profile.tarotCards!
-            : [],
+    cards: metaCards.length ? metaCards : [],
     profile,
   });
 
-  if (dailySpreadType === "daily" && (metaCardNames?.length ?? 0) >= 3) {
-    return buildSessionSpreadCards(characterId, metaCardNames!).spreadCards;
+  if (dailySpreadType === "daily" && metaCards.length) {
+    return metaCards;
   }
 
   if (
     sessionSpreadMeta?.spreadType === "daily" &&
-    (sessionSpreadMeta.cardNames?.length ?? 0) >= 3
+    hasCompleteSpread(metaCardNames, spreadId, "daily")
   ) {
-    return buildSessionSpreadCards(characterId, sessionSpreadMeta.cardNames!).spreadCards;
+    return buildSessionSpreadCards(characterId, metaCardNames!).spreadCards;
   }
 
   if (
     input.chatSessionSpread?.masterId === characterId &&
-    input.chatSessionSpread.cards.length >= 3
+    hasCompleteSpread(
+      cardNamesFromSpread(input.chatSessionSpread.cards),
+      DEFAULT_SPREAD_ID,
+      "daily"
+    )
   ) {
     return input.chatSessionSpread.cards;
   }
 
   const masterCtx = resolveMasterSpread(profile, characterId, input.masters);
-  if (masterCtx.cards.length >= 3) {
+  if (
+    hasCompleteSpread(cardNamesFromSpread(masterCtx.cards), DEFAULT_SPREAD_ID, "daily")
+  ) {
     return masterCtx.cards;
   }
 
   if (
     input.intentionSpread?.masterId === characterId &&
-    (input.intentionSpread.cards.length ?? 0) >= 3
+    hasCompleteSpread(
+      cardNamesFromSpread(input.intentionSpread.cards),
+      spreadId,
+      spreadType ?? "new"
+    )
   ) {
-    return input.intentionSpread.cards;
+    return sliceForSpread(input.intentionSpread.cards, spreadId, spreadType ?? "new");
   }
 
-  if (
-    (sessionSpreadMeta?.cardNames?.length ?? 0) >= 3
-  ) {
-    return buildSessionSpreadCards(characterId, sessionSpreadMeta!.cardNames!).spreadCards;
+  if (hasCompleteSpread(metaCardNames, spreadId, spreadType)) {
+    return buildSessionSpreadCards(characterId, metaCardNames!).spreadCards;
   }
 
   if (
     input.chatDisplaySpread?.cards &&
-    input.chatDisplaySpread.cards.length >= 3
+    hasCompleteSpread(
+      input.chatDisplaySpread.cards.map((c) => c.name),
+      spreadId,
+      spreadType
+    )
   ) {
-    return input.chatDisplaySpread.cards.map((c, i) => ({
+    const required = requiredCardCount(spreadId, spreadType);
+    return input.chatDisplaySpread.cards.slice(0, required).map((c, i) => ({
       id: c.id ?? i + 1,
       name: c.name,
       meaning: c.meaning ?? "",
     }));
   }
 
-  if ((profile.tarotCards?.length ?? 0) >= 3) {
+  if (
+    hasCompleteSpread(
+      cardNamesFromSpread(profile.tarotCards ?? []),
+      DEFAULT_SPREAD_ID,
+      "daily"
+    )
+  ) {
     return profile.tarotCards!;
   }
 
@@ -151,15 +183,18 @@ export function readingPayloadForMaster(
   profile: StoredProfile,
   masterId: string,
   cards: SpreadSymbol[],
-  mastersList?: ShowcaseMaster[]
+  mastersList?: ShowcaseMaster[],
+  spreadId?: SpreadId | string | null,
+  spreadType?: string | null
 ) {
   const base = profileApiPayload(profile, masterId, mastersList) as ReturnType<
     typeof profilePayloadForMaster
   >;
-  if (cards.length >= 3) {
+  if (hasCompleteSpread(cardNamesFromSpread(cards), spreadId ?? DEFAULT_SPREAD_ID, spreadType)) {
+    const sliced = sliceForSpread(cards, spreadId ?? DEFAULT_SPREAD_ID, spreadType);
     return {
       ...base,
-      tarotCards: cards.map((c) => ({
+      tarotCards: sliced.map((c) => ({
         name: c.name,
         meaning: c.meaning ?? "",
       })),

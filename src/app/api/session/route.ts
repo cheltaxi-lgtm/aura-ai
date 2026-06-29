@@ -139,6 +139,8 @@ export async function PATCH(request: NextRequest) {
       typeof body.intention === "string" ? body.intention.trim() : undefined;
     const spreadType =
       typeof body.spreadType === "string" ? body.spreadType.trim() : undefined;
+    const spreadId =
+      typeof body.spreadId === "string" ? body.spreadId.trim() : undefined;
     const cards = Array.isArray(body.cards)
       ? body.cards.filter((c: unknown) => typeof c === "string" && c.trim()).map((c: string) => c.trim())
       : undefined;
@@ -167,11 +169,18 @@ export async function PATCH(request: NextRequest) {
       await setSessionAwaitingContext(sessionId, awaitingContext);
     }
 
-    if (characterKey !== undefined || intention !== undefined || spreadType !== undefined || cards !== undefined) {
+    if (
+      characterKey !== undefined ||
+      intention !== undefined ||
+      spreadType !== undefined ||
+      spreadId !== undefined ||
+      cards !== undefined
+    ) {
       await updateSessionChatMeta(sessionId, {
         characterKey,
         intention: intention ?? null,
         spreadType: spreadType ?? null,
+        spreadId: spreadId ?? null,
         cards: cards ?? null,
       });
     }

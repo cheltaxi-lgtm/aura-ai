@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   character_key TEXT,
   intention TEXT,
   spread_type TEXT,
+  spread_id TEXT,
   cards JSONB,
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'completed')),

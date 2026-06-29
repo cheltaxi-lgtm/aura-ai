@@ -238,18 +238,21 @@ export function buildSessionSpreadCards(
   options?: {
     previewCards?: { name: string; meaning?: string }[];
     deckSystem?: DeckSystem;
+    cardCount?: number;
+    positionLabels?: string[];
   }
 ): { spreadCards: SpreadSymbol[]; system: DeckSystem } {
   const system = options?.deckSystem ?? resolveMasterDeckSystem(characterKey);
-  const names = cardNames.slice(0, 3);
+  const count = options?.cardCount ?? 3;
+  const positions = options?.positionLabels ?? [...getDeckPositions(system)].slice(0, count);
+  const names = cardNames.slice(0, count);
   const fromNames = resolveSpreadSymbols(system, names);
-  if (fromNames.length >= 3) {
-    return { spreadCards: fromNames.slice(0, 3), system };
+  if (fromNames.length >= count) {
+    return { spreadCards: fromNames.slice(0, count), system };
   }
 
-  const preview = options?.previewCards?.slice(0, 3);
-  if (preview && preview.length >= 3) {
-    const positions = getDeckPositions(system);
+  const preview = options?.previewCards?.slice(0, count);
+  if (preview && preview.length >= count) {
     const spreadCards: SpreadSymbol[] = preview.map((c, i) => {
       const deckSym = findSymbolByName(system, c.name);
       if (deckSym) {
@@ -264,7 +267,6 @@ export function buildSessionSpreadCards(
     return { spreadCards, system };
   }
 
-  const positions = getDeckPositions(system);
   const spreadCards: SpreadSymbol[] = names.map((name, i) => {
     const sym = findSymbolByName(system, name);
     return (

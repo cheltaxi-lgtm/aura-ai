@@ -18,10 +18,11 @@ import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import SceneImage from "@/components/SceneImage";
 import TarotCardsRow from "@/components/TarotCardsRow";
 import SpreadFlipRow from "@/components/SpreadFlipRow";
+import SpreadLayout from "@/components/SpreadLayout";
 import SessionIntentionBar from "@/components/SessionIntentionBar";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
-import type { SessionIntention, SessionTopicId } from "@/lib/intention";
-import { topicLabel } from "@/lib/session-topics";
+import type { SessionIntention } from "@/lib/intention";
+import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import SessionFeedback from "@/components/SessionFeedback";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
@@ -30,6 +31,15 @@ import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
 import MasterQuickChips from "@/components/MasterQuickChips";
 import { hasMasterQuickChips } from "@/lib/master-quick-chips";
+import {
+  DEFAULT_SPREAD_ID,
+  getSpread,
+  hasCompleteSpread,
+  requiredCardCount,
+  resolveSpreadPositions,
+  spreadFlippedState,
+  type SpreadId,
+} from "@/lib/spreads";
 import {
   isSessionChatQuestionCapReached,
   SESSION_CHAT_LIMIT_MESSAGE,
@@ -74,6 +84,7 @@ interface ChatWindowProps {
   spreadReadingLoading?: boolean;
   onSpreadReadingRitualComplete?: () => void;
   spreadVariant?: "triplet" | "photo" | "intention";
+  spreadId?: SpreadId | string | null;
   spreadInteractiveFlip?: boolean;
   spreadFlipped?: boolean[];
   onSpreadFlip?: (index: number) => void;
@@ -124,8 +135,9 @@ export default function ChatWindow({
   spreadReadingLoading = false,
   onSpreadReadingRitualComplete,
   spreadVariant = "triplet",
+  spreadId = DEFAULT_SPREAD_ID,
   spreadInteractiveFlip = false,
-  spreadFlipped = [true, true, true],
+  spreadFlipped = spreadFlippedState(3, true),
   onSpreadFlip,
   allSpreadFlipped = true,
   sessionIntention,
@@ -586,32 +598,52 @@ export default function ChatWindow({
       )}
 
       {spreadCards &&
-        spreadCards.length >= (spreadVariant === "photo" ? 1 : 3) && (
+        hasCompleteSpread(
+          spreadCards.map((c) => c.name),
+          spreadVariant === "photo" ? null : spreadId,
+          spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
+        ) && (
         <div className="rounded-xl border border-aura-gold/15 bg-black/30 p-4">
           <p className="mb-3 text-center text-[10px] uppercase tracking-widest text-aura-gold">
             {spreadVariant === "photo"
               ? "Расклад по фото"
               : spreadVariant === "intention"
                 ? sessionIntention
-                  ? `Расклад: ${topicLabel(sessionIntention)}`
-                  : "Расклад на тему"
+                  ? `${getSpread(spreadId).label} · ${topicLabel(sessionIntention)}`
+                  : getSpread(spreadId).label
                 : "Ваш расклад"}
           </p>
           {spreadInteractiveFlip &&
           (spreadVariant === "triplet" || spreadVariant === "intention") ? (
-            <SpreadFlipRow
-              cards={spreadCards.slice(0, 3)}
-              system={spreadDeckSystem ?? DEFAULT_DECK_SYSTEM}
-              masterId={characterId}
-              flipped={spreadFlipped}
-              onFlip={(i) => onSpreadFlip?.(i)}
-            />
+            spreadVariant === "intention" && spreadId ? (
+              <SpreadLayout
+                spreadId={spreadId as SpreadId}
+                cards={spreadCards.slice(0, requiredCardCount(spreadId, "new"))}
+                system={spreadDeckSystem ?? DEFAULT_DECK_SYSTEM}
+                topic={(sessionIntention as SessionTopicId | null) ?? null}
+                flipped={spreadFlipped}
+                onFlip={(i) => onSpreadFlip?.(i)}
+                compact
+              />
+            ) : (
+              <SpreadFlipRow
+                cards={spreadCards.slice(0, requiredCardCount(spreadId, "daily"))}
+                system={spreadDeckSystem ?? DEFAULT_DECK_SYSTEM}
+                masterId={characterId}
+                flipped={spreadFlipped}
+                onFlip={(i) => onSpreadFlip?.(i)}
+                positions={resolveSpreadPositions(
+                  spreadId,
+                  (sessionIntention as SessionTopicId | null) ?? null
+                ).map((p) => p.label)}
+              />
+            )
           ) : (
             <TarotCardsRow
               cards={
                 spreadVariant === "photo"
                   ? spreadCards
-                  : spreadCards.slice(0, 3)
+                  : spreadCards.slice(0, requiredCardCount(spreadId, spreadVariant === "intention" ? "new" : "daily"))
               }
               system={spreadDeckSystem}
               masterId={characterId}

@@ -22,6 +22,7 @@ import { query } from "@/lib/db";
 import { maybeCreateDiaryEntry } from "@/lib/diary";
 import { intentionPromptBlock } from "@/lib/intention";
 import { buildSpreadBlock, buildPeriodSpreadBlock } from "@/lib/spread-block";
+import { getSpread, hasCompleteSpread, normalizeSpreadId, requiredCardCount, sliceForSpread } from "@/lib/spreads";
 import {
   LIFE_DEATH_TOPIC,
   LIFE_DEATH_LLM_OVERRIDE,
@@ -91,6 +92,7 @@ export type ChatRequestBody = {
   newChatThread?: boolean;
   intention?: string;
   spreadType?: "daily" | "new";
+  spreadId?: string;
   cards?: string[];
   userProfile?: {
     name: string;
@@ -189,10 +191,12 @@ export class ChatOrchestrator {
   private customQuestion?: string;
   private spreadType?: "daily" | "new";
   private spreadCardNames?: string[];
+  private spreadId?: string;
   private periodSpreadScope?: PeriodSpreadScope;
 
   private resolvedIntention?: string;
   private resolvedSpreadType?: "daily" | "new";
+  private resolvedSpreadId?: string;
   private resolvedCardNames: string[] = [];
   private lifeDeathReadyToRead = true;
   private llmMessages: { role: string; content: string }[] = [];
@@ -213,10 +217,12 @@ export class ChatOrchestrator {
     this.customQuestion = parsed.customQuestion?.trim() || undefined;
     this.spreadType = parsed.spreadType;
     this.spreadCardNames = parsed.cards;
+    this.spreadId = parsed.spreadId;
     this.periodSpreadScope =
       parsed.periodSpreadScope ?? detectPeriodSpreadScope(this.lastUserMsg) ?? undefined;
     this.resolvedIntention = parsed.intention;
     this.resolvedSpreadType = parsed.spreadType;
+    this.resolvedSpreadId = parsed.spreadId;
     this.resolvedCardNames = parsed.cards?.length ? [...parsed.cards] : [];
     this.lastUserMsg = parsed.messages[parsed.messages.length - 1]?.content ?? "";
   }
@@ -366,6 +372,9 @@ export class ChatOrchestrator {
         if (!this.resolvedSpreadType && meta.spread_type) {
           this.resolvedSpreadType = meta.spread_type as "daily" | "new";
         }
+        if (!this.resolvedSpreadId && meta.spread_id) {
+          this.resolvedSpreadId = meta.spread_id;
+        }
         if (!this.resolvedCardNames.length && meta.cards?.length) {
           this.resolvedCardNames = meta.cards;
         }
@@ -391,8 +400,19 @@ export class ChatOrchestrator {
           if (!this.resolvedSpreadType && recovered.spreadType) {
             this.resolvedSpreadType = recovered.spreadType;
           }
-          if (!this.resolvedCardNames.length && recovered.cards.length >= 3) {
-            this.resolvedCardNames = recovered.cards;
+          if (!this.resolvedSpreadId && recovered.spreadId) {
+            this.resolvedSpreadId = recovered.spreadId;
+          }
+          const recoverSpreadId = this.resolvedSpreadId ?? this.spreadId;
+          if (
+            !this.resolvedCardNames.length &&
+            hasCompleteSpread(recovered.cards, recoverSpreadId, recovered.spreadType)
+          ) {
+            this.resolvedCardNames = sliceForSpread(
+              recovered.cards,
+              recoverSpreadId,
+              recovered.spreadType
+            );
           }
         }
       } catch (recoverErr) {
@@ -407,18 +427,32 @@ export class ChatOrchestrator {
           this.characterId,
           this.profileUserId
         );
-        if (fromChat.length >= 3) this.resolvedCardNames = fromChat;
+        const recoverSpreadId = this.resolvedSpreadId ?? this.spreadId;
+        if (
+          hasCompleteSpread(fromChat, recoverSpreadId, this.resolvedSpreadType ?? this.spreadType)
+        ) {
+          this.resolvedCardNames = sliceForSpread(
+            fromChat,
+            recoverSpreadId,
+            this.resolvedSpreadType ?? this.spreadType
+          );
+        }
       } catch (chatRecoverErr) {
         console.warn("Session meta chat recover failed:", chatRecoverErr);
       }
     }
 
     try {
+      const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
       const cardNames = this.spreadCardNames?.length
         ? this.spreadCardNames
         : this.resolvedCardNames.length
           ? this.resolvedCardNames
-          : this.tarotCards?.map((c) => c.name).slice(0, 3);
+          : sliceForSpread(
+              this.tarotCards?.map((c) => c.name) ?? [],
+              activeSpreadId,
+              this.resolvedSpreadType ?? this.spreadType
+            );
 
       await updateSessionChatMeta(this.session.id, {
         characterKey: this.characterId,
@@ -427,10 +461,12 @@ export class ChatOrchestrator {
         cardNames?.length ||
         this.resolvedIntention ||
         this.resolvedSpreadType ||
+        this.resolvedSpreadId ||
         this.resolvedCardNames.length
           ? {
               intention: this.intention ?? this.resolvedIntention ?? null,
               spreadType: this.spreadType ?? this.resolvedSpreadType ?? null,
+              spreadId: this.spreadId ?? this.resolvedSpreadId ?? null,
               cards: cardNames?.length
                 ? cardNames
                 : this.resolvedCardNames.length
@@ -540,8 +576,8 @@ export class ChatOrchestrator {
   private buildNumerologParams(): NumerologEngineParams {
     const spreadNumbers =
       this.resolvedCardNames.length >= 3
-        ? this.resolvedCardNames
-        : (this.tarotCards?.map((c) => c.name) ?? []);
+        ? this.resolvedCardNames.slice(0, 3)
+        : (this.tarotCards?.map((c) => c.name).slice(0, 3) ?? []);
 
     const recentUserMessages = this.messages
       .filter((m) => m.role === "user")
@@ -680,7 +716,10 @@ export class ChatOrchestrator {
         this.resolvedSpreadType,
         cardNamesForBlock,
         this.resolvedIntention,
-        { readyToRead: this.lifeDeathReadyToRead }
+        {
+          readyToRead: this.lifeDeathReadyToRead,
+          spreadId: this.resolvedSpreadId ?? this.spreadId,
+        }
       );
     }
 
@@ -765,8 +804,13 @@ export class ChatOrchestrator {
     }
 
     if (failed) {
+      const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
       const cardNames =
-        (qualityOpts.cardNames?.length ?? 0) >= 3
+        hasCompleteSpread(
+          qualityOpts.cardNames,
+          activeSpreadId,
+          this.resolvedSpreadType ?? this.spreadType
+        )
           ? qualityOpts.cardNames!
           : this.resolvedCardNames;
       const fallback = buildChatFallbackReply(this.characterId, {

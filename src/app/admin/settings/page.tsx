@@ -8,6 +8,10 @@ import {
   DEFAULT_RECAPTCHA_SCOPES,
   type RecaptchaScopeSettings,
 } from "@/lib/recaptcha-scopes";
+import { SPREAD_IDS, SPREAD_ADMIN_LABELS } from "@/lib/spread-settings";
+import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
+import type { SpreadId } from "@/lib/spreads/types";
+import { DEFAULT_SPREAD_CATALOG_SETTINGS } from "@/lib/spreads/types";
 
 export default function AdminSettingsPage() {
   const [pricing, setPricing] = useState<Record<string, unknown>>({});
@@ -25,6 +29,10 @@ export default function AdminSettingsPage() {
           recaptchaScopes: {
             ...DEFAULT_RECAPTCHA_SCOPES,
             ...(f.recaptchaScopes as RecaptchaScopeSettings | undefined),
+          },
+          spreadOverrides: {
+            ...DEFAULT_SPREAD_CATALOG_SETTINGS.spreadOverrides,
+            ...(f.spreadOverrides as Record<string, { enabled?: boolean; costMultiplier?: number }> | undefined),
           },
         });
       });
@@ -49,6 +57,32 @@ export default function AdminSettingsPage() {
 
   const recaptchaScopes = (features.recaptchaScopes ?? DEFAULT_RECAPTCHA_SCOPES) as RecaptchaScopeSettings;
   const recaptchaMaster = Boolean(features.recaptchaEnabled);
+  const spreadsMaster = features.spreadsCatalogEnabled !== false;
+  const spreadOverrides = (features.spreadOverrides ?? {}) as Record<
+    SpreadId,
+    { enabled?: boolean; costMultiplier?: number }
+  >;
+
+  const toggleSpreadEnabled = (id: SpreadId) => {
+    const current = spreadOverrides[id]?.enabled !== false;
+    setFeatures({
+      ...features,
+      spreadOverrides: {
+        ...spreadOverrides,
+        [id]: { ...spreadOverrides[id], enabled: !current },
+      },
+    });
+  };
+
+  const setSpreadMultiplier = (id: SpreadId, value: number) => {
+    setFeatures({
+      ...features,
+      spreadOverrides: {
+        ...spreadOverrides,
+        [id]: { ...spreadOverrides[id], costMultiplier: value },
+      },
+    });
+  };
 
   const toggleRecaptchaScope = (scope: keyof RecaptchaScopeSettings) => {
     setFeatures({
@@ -159,6 +193,67 @@ export default function AdminSettingsPage() {
                 />
               </label>
             ))}
+          </div>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-display text-lg text-white">Каталог раскладов</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Включение схем и множители цены относительно базового расклада.
+              </p>
+            </div>
+            <label className="flex shrink-0 cursor-pointer items-center gap-2">
+              <span className="text-sm text-gray-300">Каталог</span>
+              <input
+                type="checkbox"
+                checked={spreadsMaster}
+                onChange={() => toggle("spreadsCatalogEnabled")}
+                className="h-4 w-4 accent-aura-purple"
+              />
+            </label>
+          </div>
+
+          <div className={`space-y-4 border-t border-white/10 pt-4 ${spreadsMaster ? "" : "opacity-50"}`}>
+            {SPREAD_IDS.filter((id) => id !== "triplet-love").map((id) => {
+              const base = SPREAD_REGISTRY[id];
+              const override = spreadOverrides[id];
+              const enabled = override?.enabled !== false;
+              return (
+                <div
+                  key={id}
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3 last:border-0"
+                >
+                  <label className={`flex items-center gap-2 ${spreadsMaster ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      disabled={!spreadsMaster || id === "triplet"}
+                      checked={enabled}
+                      onChange={() => toggleSpreadEnabled(id)}
+                      className="h-4 w-4 accent-aura-purple disabled:opacity-40"
+                    />
+                    <span className="text-sm text-gray-300">{SPREAD_ADMIN_LABELS[id]}</span>
+                  </label>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span>×</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={0.1}
+                      max={5}
+                      disabled={!spreadsMaster}
+                      value={override?.costMultiplier ?? base.costMultiplier}
+                      onChange={(e) =>
+                        setSpreadMultiplier(id, parseFloat(e.target.value) || base.costMultiplier)
+                      }
+                      className="w-16 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-white"
+                    />
+                    <span>(база {base.costMultiplier})</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

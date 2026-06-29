@@ -74,6 +74,12 @@ import {
   isSessionChatQuestionCapReached,
   SESSION_CHAT_LIMIT_MESSAGE,
 } from "@/lib/session-limits";
+import {
+  DEFAULT_SPREAD_ID,
+  hasCompleteSpread,
+  spreadFlippedState,
+  type SpreadId,
+} from "@/lib/spreads";
 
 type ApplyRestoredSpreadFn = (
   spread:
@@ -234,6 +240,7 @@ export interface UseChatActionsOptions {
   pendingReadingMasterRef: MutableRefObject<string | null>;
   sessionSpreadMetaRef: MutableRefObject<{
     spreadType?: "daily" | "new" | "photo";
+    spreadId?: string;
     cardNames?: string[];
   } | null>;
   sendingRef: MutableRefObject<boolean>;
@@ -250,6 +257,7 @@ export interface UseChatActionsOptions {
     source?: "triplet" | "photo" | "intention" | "master";
     cards?: DeckCardInput[];
     system?: DeckSystem;
+    spreadId?: SpreadId | string;
   } | null;
 
   // HomePage callbacks
@@ -437,8 +445,16 @@ export function useChatActions(options: UseChatActionsOptions) {
           return;
         }
 
+        const metaSpreadId = sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
+        const metaSpreadType = sessionSpreadMetaRef.current?.spreadType;
+
         const cardsForMaster =
-          loadOptions?.spreadCardsOverride && loadOptions.spreadCardsOverride.length >= 3
+          loadOptions?.spreadCardsOverride &&
+          hasCompleteSpread(
+            loadOptions.spreadCardsOverride.map((c) => c.name),
+            metaSpreadId,
+            metaSpreadType
+          )
             ? loadOptions.spreadCardsOverride
             : resolveSpreadCardsForReading({
                 profile: activeProfile,
@@ -450,7 +466,13 @@ export function useChatActions(options: UseChatActionsOptions) {
                 chatDisplaySpread,
               });
 
-        if (cardsForMaster.length < 3) {
+        if (
+          !hasCompleteSpread(
+            cardsForMaster.map((c) => c.name),
+            metaSpreadId,
+            metaSpreadType
+          )
+        ) {
           return;
         }
 
@@ -519,7 +541,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                 system: deckSystem,
                 intention: ctx.intention ?? sessionIntention ?? "Любовь",
               });
-              setSpreadFlipped([true, true, true]);
+              setSpreadFlipped(spreadFlippedState(ctx.tarotCards.length, true));
               persistIntentionSpreadState(characterId, {
                 cardsKey: intentionCardsKey,
                 cards: ctx.tarotCards,
@@ -593,7 +615,14 @@ export function useChatActions(options: UseChatActionsOptions) {
                 forceRegenerate: loadOptions?.force ?? false,
                 spreadType: effectiveSpreadType,
                 readingScope: loadOptions?.readingScope,
-                ...readingPayloadForMaster(activeProfile, characterId, cardsForMaster, masters),
+                ...readingPayloadForMaster(
+                  activeProfile,
+                  characterId,
+                  cardsForMaster,
+                  masters,
+                  metaSpreadId,
+                  metaSpreadType
+                ),
               }),
             }),
             waitForSpreadReadingRitual(),
@@ -765,8 +794,14 @@ export function useChatActions(options: UseChatActionsOptions) {
   const applyRestoredChatSpread = useCallback<ApplyRestoredSpreadFn>(
     (spread, characterId) => {
       if (characterId !== selectedCharacterRef.current) return;
+      if (!spread?.cards?.length) return;
 
-      if (!spread?.cards?.length || spread.cards.length < 3) return;
+      const spreadId = sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
+      const spreadType =
+        sessionSpreadMetaRef.current?.spreadType ??
+        (spread.type === "intention_spread" ? "new" : "daily");
+      const cardNames = spread.cards.map((c) => c.name);
+      if (!hasCompleteSpread(cardNames, spreadId, spreadType)) return;
 
       const intention = normalizeSessionIntention(spread.intention);
 
@@ -785,7 +820,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         });
         setSessionIntention(intention);
         persistSessionIntention(characterId, intention);
-      } else if (spread.cards.length >= 3) {
+      } else if (hasCompleteSpread(cardNames, spreadId, spreadType)) {
         if (isNumerologMaster(characterId) && !intention) {
           setChatSessionSpread({
             masterId: characterId,
@@ -816,7 +851,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         }
       }
 
-      setSpreadFlipped([true, true, true]);
+      setSpreadFlipped(spreadFlippedState(spread.cards.length, true));
     },
     [
       selectedCharacterRef,
@@ -837,6 +872,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         sessionId?: string | null;
         intention?: string | null;
         spreadType?: string | null;
+        spreadId?: string | null;
         cards?: string[] | null;
         spread?:
           | {
@@ -868,6 +904,7 @@ export function useChatActions(options: UseChatActionsOptions) {
 
       const cardNames =
         data.cards?.length ? data.cards : (data.spread?.cards?.map((c) => c.name) ?? []);
+      const spreadId = data.spreadId ?? sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
 
       const profile = getActiveProfile();
       const inferredSpreadType = inferDailySpreadType({
@@ -875,7 +912,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         sessionSpreadType: data.spreadType,
         sessionIntention: intention,
         cards:
-          cardNames.length >= 3
+          hasCompleteSpread(cardNames, spreadId, data.spreadType)
             ? buildSessionSpreadCards(characterId, cardNames).spreadCards
             : [],
         profile,
@@ -885,17 +922,17 @@ export function useChatActions(options: UseChatActionsOptions) {
         ((data.spreadType as "daily" | "new" | undefined) ?? "new");
 
       if (cardNames.length) {
-        sessionSpreadMetaRef.current = { spreadType, cardNames };
+        sessionSpreadMetaRef.current = { spreadType, spreadId, cardNames };
       } else {
         sessionSpreadMetaRef.current = null;
       }
 
       if (data.spread?.cards?.length) {
         applyRestoredChatSpread(data.spread, characterId);
-      } else if (cardNames.length >= 3 && intention) {
+      } else if (hasCompleteSpread(cardNames, spreadId, spreadType) && intention) {
         const system = resolveMasterDeckSystem(characterId);
         const symbols = resolveSpreadSymbols(system, cardNames);
-        if (symbols.length >= 3) {
+        if (hasCompleteSpread(symbols.map((c) => c.name), spreadId, spreadType)) {
           const cardsKey = spreadKey(symbols);
           setIntentionSpread({ masterId: characterId, cards: symbols, system, intention });
           persistIntentionSpreadState(characterId, {
@@ -904,16 +941,24 @@ export function useChatActions(options: UseChatActionsOptions) {
             system,
             intention,
           });
-          setSpreadFlipped([true, true, true]);
+          setSpreadFlipped(spreadFlippedState(symbols.length, true));
         }
-      } else if (cardNames.length >= 3 && isNumerologMaster(characterId) && !intention) {
+      } else if (
+        hasCompleteSpread(cardNames, DEFAULT_SPREAD_ID, "daily") &&
+        isNumerologMaster(characterId) &&
+        !intention
+      ) {
         const { spreadCards, system } = buildSessionSpreadCards(characterId, cardNames);
         setChatSessionSpread({ masterId: characterId, cards: spreadCards, system });
-        setSpreadFlipped([true, true, true]);
-      } else if (cardNames.length >= 3 && spreadType === "daily" && !intention) {
+        setSpreadFlipped(spreadFlippedState(spreadCards.length, true));
+      } else if (
+        hasCompleteSpread(cardNames, DEFAULT_SPREAD_ID, "daily") &&
+        spreadType === "daily" &&
+        !intention
+      ) {
         const { spreadCards, system } = buildSessionSpreadCards(characterId, cardNames);
         setChatSessionSpread({ masterId: characterId, cards: spreadCards, system });
-        setSpreadFlipped([true, true, true]);
+        setSpreadFlipped(spreadFlippedState(spreadCards.length, true));
       } else if (!readIntentionSpreadForMaster(characterId)) {
         setIntentionSpread(null);
         persistIntentionSpreadState(characterId, null);
@@ -959,7 +1004,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         setIntentionSpreadLoading(false);
         setSessionOnlyChat(false);
         setHideChatSpread(false);
-        setSpreadFlipped([false, false, false]);
+        setSpreadFlipped(spreadFlippedState(3, false));
       }
     }
   }, [
@@ -1247,7 +1292,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       setLastMasterId(characterId);
       setStep("chat");
       if (!openingArchive) {
-        setSpreadFlipped([false, false, false]);
+        setSpreadFlipped(spreadFlippedState(3, false));
       }
 
       if (openOptions?.forceNew) {
@@ -1391,22 +1436,31 @@ export function useChatActions(options: UseChatActionsOptions) {
           cards: drawn.cards,
           system: drawn.system,
         });
-        setSpreadFlipped([true, true, true]);
+        setSpreadFlipped(spreadFlippedState(drawn.cards.length, true));
         sessionSpreadMetaRef.current = {
           spreadType: "new",
+          spreadId: DEFAULT_SPREAD_ID,
           cardNames: drawn.cards.map((c) => c.name),
         };
       }
 
       sendingRef.current = true;
 
+      const chatSpreadId = sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
+      const chatSpreadType = sessionSpreadMetaRef.current?.spreadType ?? "new";
+
       if (
         intentionSpread?.masterId === selectedCharacter &&
-        intentionSpread.cards.length >= 3
+        hasCompleteSpread(
+          intentionSpread.cards.map((c) => c.name),
+          chatSpreadId,
+          chatSpreadType
+        )
       ) {
         if (!sessionSpreadMetaRef.current) {
           sessionSpreadMetaRef.current = {
             spreadType: "new",
+            spreadId: chatSpreadId,
             cardNames: intentionSpread.cards.map((c) => c.name),
           };
         }
@@ -1423,13 +1477,28 @@ export function useChatActions(options: UseChatActionsOptions) {
           ? resolveMasterSpread(activeProfile, selectedCharacter, masters)
           : null;
       const tarotCardsForChat =
-        periodSpreadCards && periodSpreadCards.length >= 3
+        periodSpreadCards &&
+        hasCompleteSpread(
+          periodSpreadCards.map((c) => c.name),
+          DEFAULT_SPREAD_ID,
+          "new"
+        )
           ? periodSpreadCards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }))
           : intentionSpread?.masterId === selectedCharacter && intentionSpread.cards.length
             ? intentionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-            : chatSessionSpread?.masterId === selectedCharacter && chatSessionSpread.cards.length >= 3
+            : chatSessionSpread?.masterId === selectedCharacter &&
+                hasCompleteSpread(
+                  chatSessionSpread.cards.map((c) => c.name),
+                  DEFAULT_SPREAD_ID,
+                  "daily"
+                )
               ? chatSessionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-              : masterSpread && masterSpread.cards.length >= 3
+              : masterSpread &&
+                  hasCompleteSpread(
+                    masterSpread.cards.map((c) => c.name),
+                    DEFAULT_SPREAD_ID,
+                    "daily"
+                  )
                 ? masterSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
                 : activeProfile?.tarotCards?.map((c) => ({ name: c.name, meaning: c.meaning }));
 
@@ -1473,6 +1542,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                 ? readSessionCustomQuestion(selectedCharacter) ?? undefined
                 : undefined,
             spreadType: periodScope ? "new" : sessionSpreadMetaRef.current?.spreadType,
+            spreadId: sessionSpreadMetaRef.current?.spreadId,
             cards:
               periodSpreadCards?.map((c) => c.name) ??
               sessionSpreadMetaRef.current?.cardNames,

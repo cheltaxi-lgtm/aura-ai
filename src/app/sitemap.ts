@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { getAppUrl } from "@/lib/brand";
 import { CHARACTERS } from "@/lib/characters";
+import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = getAppUrl();
@@ -12,6 +13,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "weekly" as const,
     priority: 0.7,
   }));
+
+  const spreadPages: MetadataRoute.Sitemap = Object.values(SPREAD_REGISTRY)
+    .filter((s) => s.seoSlug)
+    .map((s) => ({
+      url: `${base}/rasklad/${s.seoSlug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    }));
 
   return [
     {
@@ -45,5 +55,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.3,
     },
     ...masterPages,
+    ...spreadPages,
   ];
 }

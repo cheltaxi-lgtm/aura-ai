@@ -307,7 +307,8 @@ export function findCachedIntentionSpread(
   history: Awaited<ReturnType<typeof getUserReadingHistory>>,
   characterId: string,
   intention: string,
-  cards: { name: string }[]
+  cards: { name: string }[],
+  spreadId?: string | null
 ): {
   reading: string;
   tarotCards: { name: string; meaning?: string }[];
@@ -321,6 +322,7 @@ export function findCachedIntentionSpread(
     if (r.character_name !== characterId) return false;
     const ctx = r.context_data;
     if (ctx?.type !== "intention_spread" || ctx.intention !== intention) return false;
+    if (spreadId && ctx.spreadId && ctx.spreadId !== spreadId) return false;
     const reading = typeof ctx.reading === "string" ? ctx.reading.trim() : "";
     if (reading.length < 80) return false;
     const stored = ctx.tarotCards as { name: string }[] | undefined;

@@ -13,7 +13,14 @@ import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import type { DeckSystem } from "@/lib/decks/types";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import MasterAvatar from "@/components/MasterAvatar";
-import SpreadFlipRow from "@/components/SpreadFlipRow";
+import SpreadLayout from "@/components/SpreadLayout";
+import SpreadPicker from "@/components/SpreadPicker";
+import {
+  DEFAULT_SPREAD_ID,
+  getSpread,
+  spreadMatchesTopic,
+  type SpreadId,
+} from "@/lib/spreads";
 import RuneCost from "@/components/RuneCost";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
@@ -25,6 +32,7 @@ export interface SessionStartParams {
   characterKey: string;
   intention: SessionTopicId | null;
   spreadType: "daily" | "new";
+  spreadId?: SpreadId;
   cards: string[];
   /** Свой вопрос клиента — когда intention === "custom". */
   customQuestion?: string | null;
@@ -44,9 +52,15 @@ interface MasterSessionFlowProps {
   masters?: ShowcaseMaster[];
   /** Только новый расклад по теме — без «карт дня». */
   newSpreadOnly?: boolean;
+  /** Deep link: preselect spread scheme */
+  initialSpreadId?: SpreadId;
 }
 
-type Step = "topic" | "master" | "cards" | "flip";
+type Step = "topic" | "master" | "cards" | "scheme" | "flip";
+
+function emptyFlipped(count: number): boolean[] {
+  return Array.from({ length: count }, () => false);
+}
 
 function stepIndex(step: Step): number {
   switch (step) {
@@ -56,8 +70,10 @@ function stepIndex(step: Step): number {
       return 1;
     case "cards":
       return 2;
-    case "flip":
+    case "scheme":
       return 3;
+    case "flip":
+      return 4;
   }
 }
 
@@ -70,6 +86,7 @@ export default function MasterSessionFlow({
   dailyCards = [],
   masters = [],
   newSpreadOnly = false,
+  initialSpreadId,
 }: MasterSessionFlowProps) {
   const [step, setStep] = useState<Step>("topic");
   const [topic, setTopic] = useState<SessionTopicId | null>(null);
@@ -77,7 +94,10 @@ export default function MasterSessionFlow({
   const [cardType, setCardType] = useState<"daily" | "new" | null>(null);
   const [newCards, setNewCards] = useState<{ name: string; meaning?: string }[]>([]);
   const [deckSystem, setDeckSystem] = useState<DeckSystem>("tarot-veronika");
-  const [flipped, setFlipped] = useState([false, false, false]);
+  const [selectedSpreadId, setSelectedSpreadId] = useState<SpreadId>(
+    initialSpreadId ?? DEFAULT_SPREAD_ID
+  );
+  const [flipped, setFlipped] = useState<boolean[]>(() => emptyFlipped(3));
   const [drawLoading, setDrawLoading] = useState(false);
   const [drawError, setDrawError] = useState<string | null>(null);
   const [topicPickMode, setTopicPickMode] = useState<"grid" | "custom">("grid");
@@ -85,9 +105,11 @@ export default function MasterSessionFlow({
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
   const numerologFlow = isNumerologMaster(master);
+  const spreadDef = getSpread(selectedSpreadId);
+  const cardCount = numerologFlow ? 3 : spreadDef.cardCount;
   const spreadCost = numerologFlow
     ? PRICING.NUMEROLOGY_SESSION
-    : runeCost("INTENTION_SPREAD");
+    : Math.max(1, Math.round(runeCost("INTENTION_SPREAD") * spreadDef.costMultiplier));
   const numerologPreselected = isNumerologMaster(preselectedMaster);
   const customQuestionReady = customQuestion.trim().length >= 8;
 
@@ -112,7 +134,7 @@ export default function MasterSessionFlow({
 
   const hasDailyCards = dailyCards.length >= 3 && !newSpreadOnly;
   const showCardsChoice = hasDailyCards;
-  const allFlipped = flipped.every(Boolean);
+  const allFlipped = flipped.slice(0, cardCount).every(Boolean);
   const currentStepIdx = stepIndex(step);
 
   const initializeFlow = useCallback(() => {
@@ -122,7 +144,8 @@ export default function MasterSessionFlow({
     setVoiceNotice(null);
     setMaster(preselectedMaster ?? "");
     setNewCards([]);
-    setFlipped([false, false, false]);
+    setSelectedSpreadId(initialSpreadId ?? DEFAULT_SPREAD_ID);
+    setFlipped(emptyFlipped(3));
     setDrawError(null);
     setDrawLoading(false);
 
@@ -135,13 +158,13 @@ export default function MasterSessionFlow({
 
     if (newSpreadOnly) {
       setCardType("new");
-      setStep("topic");
+      setStep(numerologPreselected ? "flip" : "scheme");
       return;
     }
 
     setCardType(null);
     setStep(hasDailyCards ? "master" : "topic");
-  }, [hasDailyCards, preselectedMaster, numerologPreselected, newSpreadOnly]);
+  }, [hasDailyCards, preselectedMaster, numerologPreselected, newSpreadOnly, initialSpreadId]);
 
   useEffect(() => {
     if (isOpen) {
@@ -170,12 +193,16 @@ export default function MasterSessionFlow({
     if (step === "master") {
       if (!hasDailyCards && !numerologFlow) setStep("topic");
     } else if (step === "cards") setStep("master");
-    else if (step === "topic" && cardType === "new") setStep("cards");
+    else if (step === "topic" && cardType === "new") setStep("scheme");
+    else if (step === "scheme") {
+      if (showCardsChoice && cardType === "new") setStep("cards");
+      else setStep("master");
+    }
     else if (step === "flip") {
       if (showCardsChoice && cardType === "new") {
-        setStep(numerologFlow ? "cards" : "topic");
+        setStep(numerologFlow ? "cards" : "scheme");
       } else if (showCardsChoice) setStep("cards");
-      else setStep("master");
+      else setStep(numerologFlow ? "master" : "scheme");
     }
   };
 
@@ -192,6 +219,9 @@ export default function MasterSessionFlow({
       } else if (topic) {
         qs.set("topic", topic);
       }
+      if (!numerologFlow) {
+        qs.set("spreadId", selectedSpreadId);
+      }
       const res = await fetch(`/api/intention-spread?${qs}`, { credentials: "include" });
       if (res.status === 401) {
         setDrawError("Нужна регистрация");
@@ -200,16 +230,17 @@ export default function MasterSessionFlow({
       if (!res.ok) throw new Error("draw_failed");
       const data = await res.json();
       const cards = (data.cards ?? []) as { name: string; meaning?: string }[];
-      if (cards.length < 3) throw new Error("not_enough_cards");
-      setNewCards(cards.slice(0, 3));
+      const required = numerologFlow ? 3 : getSpread(selectedSpreadId).cardCount;
+      if (cards.length < required) throw new Error("not_enough_cards");
+      setNewCards(cards.slice(0, required));
       setDeckSystem((data.system ?? data.deck ?? resolveMasterDeckSystem(master)) as DeckSystem);
-      setFlipped([false, false, false]);
+      setFlipped(emptyFlipped(required));
     } catch {
       setDrawError("Не удалось вытянуть карты. Попробуйте снова.");
     } finally {
       setDrawLoading(false);
     }
-  }, [topic, master, numerologFlow, customQuestionReady]);
+  }, [topic, master, numerologFlow, customQuestionReady, selectedSpreadId]);
 
   useEffect(() => {
     if (step === "flip" && !numerologFlow && !topic) {
@@ -236,7 +267,7 @@ export default function MasterSessionFlow({
   const handleSelectNewSpread = () => {
     setCardType("new");
     setNewCards([]);
-    setStep("topic");
+    setStep(numerologFlow ? "flip" : "scheme");
   };
 
   const handleStartDaily = () => {
@@ -250,16 +281,17 @@ export default function MasterSessionFlow({
   };
 
   const handleStartNew = async () => {
-    if (!master || !allFlipped || newCards.length < 3) return;
+    if (!master || !allFlipped || newCards.length < cardCount) return;
     if (!numerologFlow && !topic) return;
     if (topic === "custom" && !customQuestionReady) return;
     onStart({
       characterKey: master,
       intention: numerologFlow ? null : topic,
       spreadType: "new",
+      spreadId: numerologFlow ? undefined : selectedSpreadId,
       cards: newCards.map((c) => c.name),
       cardsRevealed: true,
-      previewCards: newCards.slice(0, 3),
+      previewCards: newCards.slice(0, cardCount),
       deckSystem,
       customQuestion: topic === "custom" ? customQuestion.trim() : null,
     });
@@ -347,7 +379,18 @@ export default function MasterSessionFlow({
           <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
         ) : null}
       </button>
-    ) : step === "flip" && newCards.length >= 3 && !drawLoading && !drawError ? (
+    ) : step === "scheme" ? (
+      <button
+        type="button"
+        onClick={() => setStep("topic")}
+        className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
+      >
+        <span>Выбрать тему</span>
+        {runeConfig.enabled ? (
+          <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+        ) : null}
+      </button>
+    ) : step === "flip" && newCards.length >= cardCount && !drawLoading && !drawError ? (
       <button
         type="button"
         disabled={!allFlipped}
@@ -414,7 +457,7 @@ export default function MasterSessionFlow({
               <span className="w-12" />
             )}
             <div className="flex items-center gap-1.5">
-              {[0, 1, 2, 3].map((i) => (
+              {[0, 1, 2, 3, 4].map((i) => (
                 <span
                   key={i}
                   className={`h-2 w-2 rounded-full transition-colors ${
@@ -501,6 +544,7 @@ export default function MasterSessionFlow({
                       {SESSION_TOPICS.filter((t) => t.id !== "custom").map((card) => {
                     const isSelected = topic === card.id;
                     const isLifeDeath = card.id === "life_death";
+                    const topicCompatible = spreadMatchesTopic(spreadDef, card.id);
                     const dimOthers = topic && !isSelected;
 
                     let cardClass =
@@ -524,8 +568,9 @@ export default function MasterSessionFlow({
                       <button
                         key={card.id}
                         type="button"
+                        disabled={!topicCompatible}
                         onClick={() => setTopic(card.id)}
-                        className={cardClass}
+                        className={`${cardClass}${!topicCompatible ? " opacity-30 cursor-not-allowed" : ""}`}
                       >
                         <span className="text-2xl">{card.icon}</span>
                         <p
@@ -693,7 +738,35 @@ export default function MasterSessionFlow({
               </motion.div>
             )}
 
-            {/* Step 4 — Flip new cards */}
+            {/* Step — Spread scheme */}
+            {step === "scheme" && !numerologFlow && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <h2 className="text-center font-display text-xl font-bold text-white">
+                  Выберите схему
+                </h2>
+                <p className="mt-1 text-center text-sm text-white/60">
+                  {spreadDef.label} · {spreadDef.cardCount}{" "}
+                  {spreadDef.cardCount === 1 ? "карта" : "карт"}
+                </p>
+                <div className="mt-6">
+                  <SpreadPicker
+                    selectedId={selectedSpreadId}
+                    onSelect={(id) => {
+                      setSelectedSpreadId(id);
+                      setFlipped(emptyFlipped(getSpread(id).cardCount));
+                      setNewCards([]);
+                    }}
+                    masterId={master}
+                  />
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step — Flip new cards */}
             {step === "flip" && (
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
@@ -701,14 +774,18 @@ export default function MasterSessionFlow({
                 transition={{ duration: 0.2 }}
               >
                 <h2 className="text-center font-display text-xl font-bold text-white">
-                  {numerologFlow ? "Вытяните три числа" : "Вытяните три карты"}
+                  {numerologFlow
+                    ? "Вытяните три числа"
+                    : cardCount === 1
+                      ? "Вытяните карту"
+                      : `Вытяните ${cardCount} карт`}
                 </h2>
                 <p className="mt-1 text-center text-sm text-white/60">
                   {numerologFlow
                     ? "Нажмите на каждое число, чтобы открыть расклад."
                     : topic === "custom"
-                      ? `Ваш вопрос: «${customQuestion.trim()}»`
-                      : `Тема: ${topic ? topicLabel(topic) : ""}. Нажмите на каждую карту, чтобы открыть.`}
+                      ? `«${spreadDef.label}» · «${customQuestion.trim()}»`
+                      : `«${spreadDef.label}» · ${topic ? topicLabel(topic) : ""}`}
                 </p>
 
                 {drawLoading ? (
@@ -727,13 +804,14 @@ export default function MasterSessionFlow({
                       Попробовать снова
                     </button>
                   </div>
-                ) : newCards.length >= 3 ? (
+                ) : newCards.length >= cardCount ? (
                   <>
                     <div className="mt-6">
-                      <SpreadFlipRow
+                      <SpreadLayout
+                        spreadId={numerologFlow ? "triplet" : selectedSpreadId}
                         cards={newCards}
                         system={deckSystem}
-                        masterId={master}
+                        topic={topic}
                         flipped={flipped}
                         onFlip={handleFlip}
                         compact
@@ -741,7 +819,9 @@ export default function MasterSessionFlow({
                     </div>
                     {!allFlipped && (
                       <p className="mt-4 text-center text-sm text-amber-400/90">
-                        Откройте все три карты — затем нажмите «Начать сеанс»
+                        {cardCount === 1
+                          ? "Откройте карту — затем «Начать сеанс»"
+                          : `Откройте все ${cardCount} карт — затем «Начать сеанс»`}
                       </p>
                     )}
                   </>

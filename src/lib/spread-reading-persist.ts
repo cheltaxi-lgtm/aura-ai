@@ -11,18 +11,20 @@ import { isTarotRuneMasterId } from "@/lib/prompts/tarot-rune-format";
 import { stripTheaterFromReply } from "@/lib/chat-reply-sanitize";
 import { polishSpreadReadingText } from "@/lib/reading-text-polish";
 import { parseCardNamesFromSpreadText } from "@/lib/session-spread-meta";
+import { getSpread, hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
 
 /** Markdown image block for the first assistant message (tarot/runes/slavic only). */
 export function buildSpreadCardImagesMarkdown(
   characterId: string,
-  cards: { name: string }[]
+  cards: { name: string }[],
+  maxCards = 10
 ): string {
   if (!isTarotRuneMasterId(characterId) || isNumerologMaster(characterId)) return "";
-  if (cards.length < 3) return "";
+  if (cards.length < 1) return "";
 
   const system = resolveMasterDeckSystem(characterId);
   const lines = cards
-    .slice(0, 3)
+    .slice(0, maxCards)
     .map((c) => c.name.trim())
     .filter(Boolean)
     .map((name) => {
@@ -30,20 +32,21 @@ export function buildSpreadCardImagesMarkdown(
       return `![${name}](${path})`;
     });
 
-  return lines.length >= 3 ? lines.join("\n") : "";
+  return lines.length ? lines.join("\n") : "";
 }
 
 /** Prepend card images + markdown header for ChatMessageRenderer. */
 export function formatSpreadReadingWithCards(
   reading: string,
   cards: { name: string }[],
-  characterId?: string
+  characterId?: string,
+  minCards = 1
 ): string {
   const body = reading.trim();
-  if (!body || cards.length < 3) return body;
+  if (!body || cards.length < minCards) return body;
 
-  const names = cards.slice(0, 3).map((c) => c.name.trim()).filter(Boolean);
-  if (names.length < 3) return body;
+  const names = cards.map((c) => c.name.trim()).filter(Boolean);
+  if (names.length < minCards) return body;
 
   const cardLine = names.map((n) => `**${n}**`).join(" · ");
   const hasHeader = body.includes("##") && names.every((n) => body.includes(n));
@@ -51,7 +54,7 @@ export function formatSpreadReadingWithCards(
 
   const images =
     characterId && isTarotRuneMasterId(characterId)
-      ? buildSpreadCardImagesMarkdown(characterId, cards)
+      ? buildSpreadCardImagesMarkdown(characterId, cards, names.length)
       : "";
 
   const textBlock = [header, body].filter(Boolean).join("\n\n");
@@ -65,6 +68,7 @@ export type PersistSpreadReadingInput = {
   tarotCards?: { name: string }[];
   intention?: string;
   spreadType?: "daily" | "new" | null;
+  spreadId?: string | null;
 };
 
 /** True when session already has a substantive assistant spread message. */
@@ -102,22 +106,29 @@ export async function ensureSpreadReadingInChatMessages(
   const sessionId = ensured.session?.id;
   if (!sessionId) return null;
 
-  const cardNames = input.tarotCards?.map((c) => c.name).slice(0, 3) ?? [];
+  const spreadId = normalizeSpreadId(input.spreadId);
+  const requiredCards = getSpread(spreadId).cardCount;
+  const cardNames = input.tarotCards?.map((c) => c.name).slice(0, requiredCards) ?? [];
   const parsedFromReading =
-    cardNames.length >= 3 ? cardNames : parseCardNamesFromSpreadText(readingRaw);
-  const resolvedCardNames = parsedFromReading.length >= 3 ? parsedFromReading : cardNames;
+    hasCompleteSpread(cardNames, spreadId, input.spreadType)
+      ? cardNames
+      : parseCardNamesFromSpreadText(readingRaw);
+  const resolvedCardNames = hasCompleteSpread(parsedFromReading, spreadId, input.spreadType)
+    ? parsedFromReading.slice(0, requiredCards)
+    : cardNames;
   const reading =
     isNumerologMaster(input.characterId) || !isTarotRuneMasterId(input.characterId)
       ? readingRaw
       : stripTheaterFromReply(readingRaw);
   const polishedReading = polishSpreadReadingText(
     reading,
-    resolvedCardNames.length >= 3 ? resolvedCardNames : cardNames
+    resolvedCardNames.length ? resolvedCardNames : cardNames
   );
   const formattedReading = formatSpreadReadingWithCards(
     polishedReading,
     input.tarotCards ?? [],
-    input.characterId
+    input.characterId,
+    Math.min(requiredCards, 1)
   );
 
   await updateSessionChatMeta(sessionId, {
@@ -125,6 +136,7 @@ export async function ensureSpreadReadingInChatMessages(
     cards: resolvedCardNames.length ? resolvedCardNames : null,
     ...(input.intention ? { intention: input.intention } : {}),
     ...(input.spreadType ? { spreadType: input.spreadType } : {}),
+    spreadId,
   });
 
   const alreadySaved = await sessionHasSpreadReadingMessage(

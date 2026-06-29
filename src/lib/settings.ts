@@ -6,6 +6,10 @@ import {
   mergeRecaptchaScopes,
   type RecaptchaScopeSettings,
 } from "./recaptcha-scopes";
+import {
+  DEFAULT_SPREAD_CATALOG_SETTINGS,
+  type SpreadCatalogSettings,
+} from "./spreads/types";
 
 export interface AiSettings {
   provider: "openrouter" | "openai" | "deepseek";
@@ -35,6 +39,8 @@ export interface FeatureSettings {
   recaptchaEnabled: boolean;
   /** Per-action toggles when master switch is on */
   recaptchaScopes: RecaptchaScopeSettings;
+  spreadsCatalogEnabled: boolean;
+  spreadOverrides: SpreadCatalogSettings["spreadOverrides"];
   freeQuestionLimit: number;
   demoPayments: boolean;
 }
@@ -101,6 +107,8 @@ const DEFAULTS = {
     /** Master switch — only via admin; env keys alone must not auto-enable. */
     recaptchaEnabled: false,
     recaptchaScopes: { ...DEFAULT_RECAPTCHA_SCOPES },
+    spreadsCatalogEnabled: DEFAULT_SPREAD_CATALOG_SETTINGS.spreadsCatalogEnabled,
+    spreadOverrides: { ...DEFAULT_SPREAD_CATALOG_SETTINGS.spreadOverrides },
     freeQuestionLimit: 2,
     demoPayments: true,
   },
@@ -152,6 +160,11 @@ export async function getSetting<K extends keyof typeof DEFAULTS>(
     if (key === "features") {
       const features = merged as FeatureSettings;
       features.recaptchaScopes = mergeRecaptchaScopes(features.recaptchaScopes);
+      features.spreadsCatalogEnabled ??= DEFAULT_SPREAD_CATALOG_SETTINGS.spreadsCatalogEnabled;
+      features.spreadOverrides = {
+        ...DEFAULT_SPREAD_CATALOG_SETTINGS.spreadOverrides,
+        ...(features.spreadOverrides ?? {}),
+      };
     }
     if (key === "tts") {
       const tts = merged as (typeof DEFAULTS)["tts"];

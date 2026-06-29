@@ -20,6 +20,7 @@ interface SpreadFlipRowProps {
   onFlip: (index: number) => void;
   /** Tighter row for narrow modals — keeps three cards on one line. */
   compact?: boolean;
+  positions?: string[];
 }
 
 export default function SpreadFlipRow({
@@ -28,9 +29,10 @@ export default function SpreadFlipRow({
   flipped,
   onFlip,
   compact = false,
+  positions: positionsProp,
 }: SpreadFlipRowProps) {
-  const positions = getDeckPositions(system).slice(0, 3);
-  const displayCards = cards.slice(0, 3);
+  const positions = (positionsProp ?? getDeckPositions(system)).slice(0, cards.length);
+  const displayCards = cards.slice(0, positions.length || cards.length);
   const allFlipped = flipped.every(Boolean);
   const cardWidth = compact ? 104 : 120;
   const cardHeight = compact ? 166 : 192;
@@ -94,7 +96,9 @@ export default function SpreadFlipRow({
       </div>
       {!allFlipped && (
         <p className="text-center text-sm text-aura-gold/90">
-          Переверни все три карты чтобы мастер начал читать
+          {displayCards.length === 1
+            ? "Переверни карту, чтобы мастер начал читать"
+            : `Переверни все ${displayCards.length} карт, чтобы мастер начал читать`}
         </p>
       )}
     </div>

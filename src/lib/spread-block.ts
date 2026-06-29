@@ -1,9 +1,15 @@
-import { topicLabel } from "@/lib/session-topics";
+import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import {
   periodSpreadPositions,
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
+import {
+  getSpread,
+  hasCompleteSpread,
+  normalizeSpreadId,
+  resolveSpreadPositions,
+} from "@/lib/spreads";
 
 /** Quick period spread (today / week / month) — does not require session intention. */
 export function buildPeriodSpreadBlock(scope: PeriodSpreadScope, cards: string[]): string {
@@ -26,20 +32,31 @@ ${cardLines}
 Без markdown (*, **, #).`.trim();
 }
 
+export type SpreadBlockOptions = {
+  readyToRead?: boolean;
+  spreadId?: string | null;
+};
+
 /** System-prompt block for daily vs new intention spreads in chat. */
 export function buildSpreadBlock(
   spreadType?: string,
   cards?: string[],
   intention?: string,
-  opts?: { readyToRead?: boolean }
+  opts?: SpreadBlockOptions
 ): string {
   if (!cards?.length || !intention?.trim()) return "";
 
+  const spreadId = normalizeSpreadId(opts?.spreadId);
+  const spread = getSpread(spreadId);
+  if (!hasCompleteSpread(cards, spreadId, spreadType)) return "";
+
   const theme = topicLabel(intention);
   const readyToRead = opts?.readyToRead ?? true;
+  const positions = resolveSpreadPositions(spreadId, intention as SessionTopicId);
+  const cardSlice = cards.slice(0, spread.cardCount);
 
-  if (intention === "life_death" && cards.length >= 3) {
-    const cardLine = cards.slice(0, 3).join(" · ");
+  if (intention === "life_death" && cardSlice.length >= 3) {
+    const cardLine = cardSlice.join(" · ");
     if (!readyToRead) {
       return `
 КАРТЫ ЭТОГО СЕАНСА (${cardLine}).
@@ -54,9 +71,9 @@ export function buildSpreadBlock(
 Только после ответа пользователя — начинай расклад.
 
 Позиции карт (для второго сообщения):
-1я (${cards[0]}) — состояние человека сейчас
-2я (${cards[1]}) — обстоятельства вокруг него
-3я (${cards[2]}) — вектор, куда движется ситуация`;
+1я (${cardSlice[0]}) — состояние человека сейчас
+2я (${cardSlice[1]}) — обстоятельства вокруг него
+3я (${cardSlice[2]}) — вектор, куда движется ситуация`;
     }
 
     return `
@@ -67,9 +84,9 @@ export function buildSpreadBlock(
 Обращайся к тому, что сказал пользователь (имя, срок, обстоятельства).
 
 Позиции:
-1я (${cards[0]}) — состояние человека сейчас
-2я (${cards[1]}) — обстоятельства вокруг него
-3я (${cards[2]}) — вектор, куда движется ситуация
+1я (${cardSlice[0]}) — состояние человека сейчас
+2я (${cardSlice[1]}) — обстоятельства вокруг него
+3я (${cardSlice[2]}) — вектор, куда движется ситуация
 
 Читай каждую руну/карту как состояние, обстоятельство или вектор —
 НЕ как поэтический образ смерти. Слово «смерть» как метафора ЗАПРЕЩЕНО.`;
@@ -77,7 +94,7 @@ export function buildSpreadBlock(
 
   if (spreadType === "daily") {
     return `
-КАРТЫ ДНЯ КЛИЕНТА: ${cards.join(", ")}.
+КАРТЫ ДНЯ КЛИЕНТА: ${cardSlice.join(", ")}.
 ТЕМА СЕАНСА: ${theme}.
 Начни сеанс с расклада именно по этим картам на эту тему.
 Не предлагай новые карты — эти уже выпали сегодня.
@@ -87,20 +104,18 @@ export function buildSpreadBlock(
   }
 
   if (spreadType === "new") {
-    const positions =
-      intention === "life_death"
-        ? `1я карта (состояние человека сейчас): ${cards[0]}
-2я карта (обстоятельства вокруг):     ${cards[1]}
-3я карта (вектор ситуации):           ${cards[2]}`
-        : `1я карта (состояние сейчас): ${cards[0]}
-2я карта (обстоятельства):   ${cards[1]}
-3я карта (вектор):           ${cards[2]}`;
+    const positionLines = cardSlice
+      .map((name, i) => `${i + 1}я (${positions[i]?.label ?? `позиция ${i + 1}`}): ${name}`)
+      .join("\n");
+
+    const countLabel =
+      spread.cardCount === 1 ? "карту" : `${spread.cardCount} карт`;
 
     return `
-НОВЫЙ РАСКЛАД КЛИЕНТА НА ТЕМУ «${theme}»:
-${positions}
-Начни с прочтения этих трёх карт на выбранную тему.
-Озвучивай позиции явно: «Первая карта — это...»
+НОВЫЙ РАСКЛАД «${spread.label}» НА ТЕМУ «${theme}»:
+${positionLines}
+Начни с прочтения этих ${countLabel} на выбранную тему.
+Озвучивай позиции явно.
 Первое сообщение: приветствие + развёрнутый расклад.`;
   }
 

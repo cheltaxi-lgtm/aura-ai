@@ -9,6 +9,8 @@ export type IntentionSpreadPollParams = {
   characterId: string;
   intention: string;
   cardNames: string[];
+  spreadId?: string;
+  cardCount?: number;
 };
 
 /** Read completed intention spread from server history (no billing). */
@@ -18,8 +20,9 @@ export async function pollIntentionSpreadReading(
 ): Promise<string | null> {
   const maxAttempts = options?.maxAttempts ?? INTENTION_SPREAD_POLL_MAX_ATTEMPTS;
   const intervalMs = options?.intervalMs ?? INTENTION_SPREAD_POLL_INTERVAL_MS;
-  const cards = params.cardNames.filter(Boolean).slice(0, 3);
-  if (cards.length < 3) return null;
+  const required = params.cardCount ?? params.cardNames.filter(Boolean).length;
+  const cards = params.cardNames.filter(Boolean).slice(0, required);
+  if (cards.length < required || required < 1) return null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
@@ -32,6 +35,7 @@ export async function pollIntentionSpreadReading(
         intention: params.intention,
         cards: cards.join("|"),
       });
+      if (params.spreadId) qs.set("spreadId", params.spreadId);
       const res = await fetch(`/api/intention-spread?${qs}`, { cache: "no-store" });
       if (!res.ok) continue;
       const data = (await res.json()) as { reading?: string; found?: boolean };

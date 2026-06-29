@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
     id: s.id,
     intention: s.intention,
     spreadType: s.spread_type,
+    spreadId: s.spread_id,
     cards: s.cards,
     status: s.status,
     createdAt: s.created_at,

@@ -116,6 +116,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         characterKey: string;
         intention?: string | null;
         spreadType?: string | null;
+        spreadId?: string | null;
         cards?: string[];
         awaitingContext?: boolean;
         newConsultation?: boolean;
@@ -131,6 +132,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             characterKey: meta.characterKey,
             intention: meta.intention,
             spreadType: meta.spreadType,
+            spreadId: meta.spreadId,
             cards: meta.cards,
             awaitingContext: meta.awaitingContext,
             newConsultation: meta.newConsultation ?? false,

@@ -20,6 +20,7 @@ import { parseInsufficientRunes } from "@/lib/api-errors";
 import IntentionPicker from "@/components/IntentionPicker";
 import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
+import { DEFAULT_SPREAD_ID, hasCompleteSpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
 import RitualFlow from "@/components/ritual/RitualFlow";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
@@ -138,7 +139,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   const [energyFlowMasterId, setEnergyFlowMasterId] = useState<string | null>(null);
   /** Pending deep-link auto-reading (from a notification CTA): open chat + auto-ask. */
   const [autoAsk, setAutoAsk] = useState<{ master: string; question: string } | null>(null);
+  const [deepLinkSpreadId, setDeepLinkSpreadId] = useState<string | null>(null);
   const autoAskParsedRef = useRef(false);
+  const deepLinkSpreadParsedRef = useRef(false);
   const autoAskOpenedRef = useRef(false);
   const autoAskSentRef = useRef(false);
   const autoAskMasterRef = useRef<string | null>(null);
@@ -452,6 +455,18 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     handleSessionListBack,
     handleSpreadReadingRitualComplete,
   } = onboarding;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
+    const spreadParam = new URLSearchParams(window.location.search).get("spread")?.trim();
+    if (!spreadParam) return;
+    deepLinkSpreadParsedRef.current = true;
+    setDeepLinkSpreadId(normalizeSpreadId(spreadParam));
+    setShowSessionFlow(true);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("spread");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, [setShowSessionFlow]);
 
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
@@ -791,10 +806,16 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   }, [messages, spreadReadingPending]);
 
   useEffect(() => {
-    if ((chatDisplaySpread?.cards?.length ?? 0) >= 3) {
+    if (
+      hasCompleteSpread(
+        chatDisplaySpread?.cards?.map((c) => c.name),
+        chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
+        chatDisplaySpread?.source === "photo" ? "photo" : chatDisplaySpread?.source === "intention" ? "new" : "daily"
+      )
+    ) {
       setChatHeaderImage(null);
     }
-  }, [chatDisplaySpread?.cards?.length, setChatHeaderImage]);
+  }, [chatDisplaySpread, setChatHeaderImage]);
 
   const applyDestinyCardToChat = useCallback(
     (url: string, characterId?: string | null) => {
@@ -913,7 +934,15 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   useEffect(() => {
     if (sessionOnlyChat) return;
     if (!selectedCharacter || !activeSpreadCardsKey) return;
-    if ((chatDisplaySpread?.cards?.length ?? 0) >= 3) return;
+    if (
+      hasCompleteSpread(
+        chatDisplaySpread?.cards?.map((c) => c.name),
+        chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
+        chatDisplaySpread?.source === "photo" ? "photo" : chatDisplaySpread?.source === "intention" ? "new" : "daily"
+      )
+    ) {
+      return;
+    }
 
     const firstAssistant = messages.find((m) => m.role === "assistant");
     if (!firstAssistant || firstAssistant.sceneImageUrl) return;
@@ -1520,15 +1549,17 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           sessionId: item.id,
           intention: item.intention,
           spreadType: item.spreadType,
+          spreadId: item.spreadId,
           cards: item.cards,
         },
         masterId
       );
 
-      if (item.cards && item.cards.length >= 3) {
+      const restoreSpreadId = item.spreadId ?? DEFAULT_SPREAD_ID;
+      if (item.cards && hasCompleteSpread(item.cards, restoreSpreadId, item.spreadType)) {
         const system = resolveMasterDeckSystem(masterId);
         const symbols = resolveSpreadSymbols(system, item.cards);
-        if (symbols.length >= 3) {
+        if (hasCompleteSpread(symbols.map((c) => c.name), restoreSpreadId, item.spreadType)) {
           applyRestoredChatSpread(
             {
               cards: symbols,
@@ -1541,7 +1572,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           );
         }
       } else {
-        setSpreadFlipped([true, true, true]);
+        setSpreadFlipped(spreadFlippedState(3, true));
       }
     },
     [
@@ -1999,6 +2030,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   : []
               }
               masters={masters}
+              initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
               onStartRitual={() => {
                 setRitualFlowMaster(sessionListMaster);
                 setOpenRitualId(null);
@@ -2074,6 +2106,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                   ? "intention"
                   : "triplet"
             }
+            spreadId={chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID}
             spreadInteractiveFlip={
               needsSpreadFlip &&
               !chatHasSpreadReading(messages) &&
@@ -2133,6 +2166,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             }}
             preselectedMaster={energyFlowMasterId ?? selectedCharacter}
             newSpreadOnly
+            initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
             masters={masters}
             onStartRitual={() => {
               if ((RITUAL_MASTERS as readonly string[]).includes(selectedCharacter)) {
@@ -2334,6 +2368,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                           : []
                       }
                       masters={masters}
+                      initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
                       onStartRitual={() => {
                         const ritualMaster = energyFlowMasterId ?? dailyEnergyMasterId;
                         if (

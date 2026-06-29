@@ -19,6 +19,7 @@ export type SessionListItem = {
   id: string;
   intention: string | null;
   spreadType: string | null;
+  spreadId: string | null;
   cards: string[] | null;
   status: string;
   createdAt: string;

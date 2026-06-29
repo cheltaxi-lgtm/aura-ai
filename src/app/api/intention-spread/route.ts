@@ -16,7 +16,6 @@ import { getUserById, createHistoryEntry } from "@/lib/users";
 import { getUserReadingHistory, findCachedIntentionSpread } from "@/lib/accounts";
 import { resolveApiCharacterId, sanitizeTextField, sanitizeReadingForClient } from "@/lib/chat-sanitize";
 import {
-  getDeckPositions,
   resolveMasterDeckSystem,
 } from "@/lib/decks";
 import { drawIntentionSpread, resolveSpreadSymbols, drawUniformSpread } from "@/lib/intention-draw";
@@ -44,6 +43,16 @@ import { getSessionMemories, countSessionMemories, ensureSessionMemoryStub } fro
 import { resolveSessionForUser, ensureChatSession } from "@/lib/session-access";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import { readSessionClaimCookie } from "@/lib/session-claim";
+import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
+import {
+  getSpread,
+  isSpreadEnabled,
+  normalizeSpreadId,
+  resolveSpreadPositions,
+  type SpreadId,
+} from "@/lib/spreads";
+import { resolveSpreadCost } from "@/lib/spreads/spread-pricing";
+import type { SessionTopicId } from "@/lib/session-topics";
 
 async function persistToOwnedSession(
   sessionId: string | undefined,
@@ -75,6 +84,7 @@ async function persistToOwnedSession(
 
 /** Preview draw — no billing, no LLM (for flip step in MasterSessionFlow). */
 export async function GET(request: NextRequest) {
+  await ensureSpreadCatalogSettingsLoaded();
   const authed = await requireProfileUserId();
   if (!authed) {
     return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
@@ -91,14 +101,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unknown character" }, { status: 400 });
     }
     const intention = request.nextUrl.searchParams.get("intention")?.trim() ?? "";
+    const spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
+    const spread = getSpread(spreadId);
+    const cardCount = spread.cardCount;
     const cardsRaw = request.nextUrl.searchParams.get("cards")?.trim() ?? "";
     const cardNames = cardsRaw
       .split("|")
       .map((n) => n.trim())
       .filter(Boolean)
-      .slice(0, 3);
+      .slice(0, cardCount);
 
-    if (!characterId || !intention || cardNames.length < 3) {
+    if (!characterId || !intention || cardNames.length < cardCount) {
       return NextResponse.json({ error: "Invalid poll request" }, { status: 400 });
     }
     if (!isValidSessionIntention(intention)) {
@@ -114,7 +127,8 @@ export async function GET(request: NextRequest) {
       history,
       characterId,
       intention,
-      cardNames.map((name) => ({ name }))
+      cardNames.map((name) => ({ name })),
+      spreadId
     );
     const reading =
       cached?.reading?.trim() ?
@@ -130,9 +144,16 @@ export async function GET(request: NextRequest) {
   const topic = request.nextUrl.searchParams.get("topic")?.trim() ?? "";
   const rawMaster = request.nextUrl.searchParams.get("master")?.trim() ?? "veronika";
   const numerologDraw = request.nextUrl.searchParams.get("numerologDraw") === "1";
+  const spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
+  const spread = getSpread(spreadId);
+
+  if (!isSpreadEnabled(spreadId)) {
+    return NextResponse.json({ error: "Spread unavailable" }, { status: 403 });
+  }
 
   const characterId = await resolveApiCharacterId(rawMaster);
   const system = resolveMasterDeckSystem(characterId);
+  const cardCount = spread.cardCount;
 
   if (isNumerologMaster(characterId) && numerologDraw) {
     const drawn = drawUniformSpread(system, 3);
@@ -150,23 +171,26 @@ export async function GET(request: NextRequest) {
 
   const drawn =
     topic === "custom"
-      ? drawUniformSpread(system, 3)
-      : drawIntentionSpread(system, topicToDrawIntention(topic), 3);
+      ? drawUniformSpread(system, cardCount)
+      : drawIntentionSpread(system, topicToDrawIntention(topic), cardCount);
 
   return NextResponse.json({
     cards: drawn,
     system,
     deck: system,
     intention: topic,
+    spreadId,
   });
 }
 
 export async function POST(request: NextRequest) {
+  await ensureSpreadCatalogSettingsLoaded();
   let characterId = "ragnar";
   let intention = "";
   let customQuestion: string | undefined;
   let sessionId: string | undefined;
   let cardNames: string[] | undefined;
+  let spreadId: SpreadId = "triplet";
 
   try {
     const body = await request.json();
@@ -174,11 +198,16 @@ export async function POST(request: NextRequest) {
     intention = sanitizeTextField(body.intention, 40) ?? "";
     customQuestion = sanitizeTextField(body.customQuestion, 400) ?? undefined;
     sessionId = body.sessionId;
+    spreadId = normalizeSpreadId(
+      typeof body.spreadId === "string" ? body.spreadId : undefined
+    );
+    const spread = getSpread(spreadId);
+    const cardCount = spread.cardCount;
     if (Array.isArray(body.cardNames)) {
       cardNames = body.cardNames
         .filter((n: unknown) => typeof n === "string" && n.trim())
         .map((n: string) => n.trim())
-        .slice(0, 3);
+        .slice(0, cardCount);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid JSON";
@@ -195,6 +224,13 @@ export async function POST(request: NextRequest) {
   if (!isValidSessionIntention(intention)) {
     return NextResponse.json({ error: "Unknown intention" }, { status: 400 });
   }
+
+  if (!isSpreadEnabled(spreadId)) {
+    return NextResponse.json({ error: "Spread unavailable" }, { status: 403 });
+  }
+
+  const spread = getSpread(spreadId);
+  const cardCount = spread.cardCount;
 
   if (intention === "custom") {
     const q = customQuestion?.trim();
@@ -213,18 +249,21 @@ export async function POST(request: NextRequest) {
   if (rateLimited) return rateLimited;
 
   const system = resolveMasterDeckSystem(characterId);
-  const positions = getDeckPositions(system);
+  const positionLabels = resolveSpreadPositions(
+    spreadId,
+    intention as SessionTopicId
+  ).map((p) => p.label);
   const resolveDrawn = () => {
-    if (cardNames?.length === 3) {
+    if (cardNames?.length === cardCount) {
       const resolved = resolveSpreadSymbols(system, cardNames);
-      if (resolved.length >= 3) return resolved;
+      if (resolved.length >= cardCount) return resolved;
     }
-    if (intention === "custom") return drawUniformSpread(system, 3);
-    return drawIntentionSpread(system, topicToDrawIntention(intention), 3);
+    if (intention === "custom") return drawUniformSpread(system, cardCount);
+    return drawIntentionSpread(system, topicToDrawIntention(intention), cardCount);
   };
 
   const drawn = resolveDrawn();
-  if (drawn.length < 3) {
+  if (drawn.length < cardCount) {
     return NextResponse.json({ error: "Could not resolve cards" }, { status: 500 });
   }
 
@@ -234,7 +273,8 @@ export async function POST(request: NextRequest) {
       history,
       characterId,
       intention,
-      drawn.map((c) => ({ name: c.name }))
+      drawn.map((c) => ({ name: c.name })),
+      spreadId
     );
     if (cached?.reading) {
       const cardNames = drawn.map((c) => c.name);
@@ -249,6 +289,7 @@ export async function POST(request: NextRequest) {
             tarotCards: drawn.map((c) => ({ name: c.name })),
             intention,
             spreadType: "new",
+            spreadId,
           });
         });
         return NextResponse.json({
@@ -256,6 +297,7 @@ export async function POST(request: NextRequest) {
           cards: drawn,
           system,
           intention,
+          spreadId,
           isPaid: true,
           reused: true,
         });
@@ -286,9 +328,11 @@ export async function POST(request: NextRequest) {
 
   if (useRuneBilling) {
     try {
-      const charge = await BillingService.chargeRuneAction({
+      const spreadCost = resolveSpreadCost(spreadId, runeSettings);
+      const charge = await BillingService.chargeForSession({
         userId: authed.profileUserId,
-        action: "INTENTION_SPREAD",
+        cost: spreadCost,
+        actionType: "INTENTION_SPREAD",
       });
       billingCharge = charge;
       runeBalance = charge.newBalance;
@@ -308,6 +352,7 @@ export async function POST(request: NextRequest) {
         characterKey: characterId,
         intention,
         spreadType: "new",
+        spreadId,
         cards: drawn.map((c) => c.name),
       });
       await ensureSessionMemoryStub({
@@ -321,19 +366,20 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      reading: "",
-      skipReading: true,
-      cards: drawn,
-      system,
-      intention,
-      runeBalance,
+    reading: "",
+    skipReading: true,
+    cards: drawn,
+    system,
+    intention,
+    spreadId,
+    runeBalance,
       isPaid: true,
     });
   }
 
   const tarotCards = drawn.map((c, i) => ({
     name: c.name,
-    meaning: `${positions[i] ?? `Позиция ${i + 1}`}: ${c.meaning}`,
+    meaning: `${positionLabels[i] ?? `Позиция ${i + 1}`}: ${c.meaning}`,
   }));
 
   const today = new Date().toLocaleDateString("ru-RU", {
@@ -412,7 +458,7 @@ export async function POST(request: NextRequest) {
       zodiac,
       astroMeta: astroMeta as Record<string, unknown> | undefined,
     });
-    const cardsForContext = enrichCardsForSpreadContext(system, tarotCards, positions);
+    const cardsForContext = enrichCardsForSpreadContext(system, tarotCards, positionLabels);
     const userMessage = buildSpreadUserMessage({
       user: userForContext,
       cards: cardsForContext,
@@ -467,6 +513,7 @@ export async function POST(request: NextRequest) {
         contextData: {
           type: "intention_spread",
           intention,
+          spreadId,
           customQuestion: intention === "custom" ? customQuestion : undefined,
           reading,
           tarotCards,
@@ -490,12 +537,14 @@ export async function POST(request: NextRequest) {
         tarotCards: drawn.map((c) => ({ name: c.name })),
         intention,
         spreadType: "new",
+        spreadId,
       });
     } else {
       await updateSessionChatMeta(ownedSessionId, {
         characterKey: characterId,
         intention,
         spreadType: "new",
+        spreadId,
         cards: drawn.map((c) => c.name),
       });
       await ensureSessionMemoryStub({
@@ -509,11 +558,20 @@ export async function POST(request: NextRequest) {
     }
   });
 
+  console.info("[metrics] spread_completed", {
+    spreadId,
+    intention,
+    characterId,
+    cardCount,
+    cost: billingCharge?.spentRunes,
+  });
+
   return NextResponse.json({
     reading,
     cards: drawn,
     system,
     intention,
+    spreadId,
     runeBalance,
     isPaid: true,
   });

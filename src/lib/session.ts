@@ -16,6 +16,7 @@ export interface SessionRow {
   character_key?: string | null;
   intention?: string | null;
   spread_type?: string | null;
+  spread_id?: string | null;
   cards?: string[] | null;
   status?: string;
   created_at?: Date;
@@ -27,6 +28,7 @@ export interface SessionChatMeta {
   character_key: string | null;
   intention: string | null;
   spread_type: string | null;
+  spread_id: string | null;
   cards: string[] | null;
   awaiting_context?: boolean;
 }
@@ -34,7 +36,7 @@ export interface SessionChatMeta {
 const SESSION_SELECT_FIELDS = `
   id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
   COALESCE(awaiting_context, false) AS awaiting_context,
-  character_key, intention, spread_type, cards,
+  character_key, intention, spread_type, spread_id, cards,
   COALESCE(status, 'active') AS status, created_at, updated_at
 `;
 
@@ -54,6 +56,7 @@ function mapSessionChatMeta(row: {
   character_key?: string | null;
   intention?: string | null;
   spread_type?: string | null;
+  spread_id?: string | null;
   cards?: unknown;
   awaiting_context?: boolean;
 }): SessionChatMeta {
@@ -62,6 +65,7 @@ function mapSessionChatMeta(row: {
     character_key: row.character_key ?? null,
     intention: row.intention ?? null,
     spread_type: row.spread_type ?? null,
+    spread_id: row.spread_id ?? null,
     cards: parseSessionCards(row.cards),
     awaiting_context: row.awaiting_context,
   };
@@ -144,7 +148,7 @@ export async function getSessionChatMeta(sessionId: string): Promise<SessionChat
     cards: unknown;
     awaiting_context: boolean;
   }>(
-    `SELECT id, character_key, intention, spread_type, cards,
+    `SELECT id, character_key, intention, spread_type, spread_id, cards,
             COALESCE(awaiting_context, false) AS awaiting_context
      FROM sessions WHERE id = $1`,
     [sessionId]
@@ -164,7 +168,7 @@ export async function findLatestSessionMetaForCharacter(
     cards: unknown;
     awaiting_context: boolean;
   }>(
-    `SELECT id, character_key, intention, spread_type, cards,
+    `SELECT id, character_key, intention, spread_type, spread_id, cards,
             COALESCE(awaiting_context, false) AS awaiting_context
      FROM sessions
      WHERE user_id = $1
@@ -184,6 +188,7 @@ export async function updateSessionChatMeta(
     characterKey?: string;
     intention?: string | null;
     spreadType?: string | null;
+    spreadId?: string | null;
     cards?: string[] | null;
   }
 ): Promise<void> {
@@ -203,12 +208,22 @@ export async function updateSessionChatMeta(
     sets.push(`spread_type = $${idx++}`);
     params.push(meta.spreadType);
   }
+  if (meta.spreadId !== undefined) {
+    sets.push(`spread_id = $${idx++}`);
+    params.push(meta.spreadId);
+  }
   if (meta.cards !== undefined) {
     sets.push(`cards = $${idx++}::jsonb`);
     params.push(meta.cards?.length ? JSON.stringify(meta.cards) : null);
   }
 
-  if (meta.characterKey !== undefined || meta.intention !== undefined || meta.spreadType !== undefined || meta.cards !== undefined) {
+  if (
+    meta.characterKey !== undefined ||
+    meta.intention !== undefined ||
+    meta.spreadType !== undefined ||
+    meta.spreadId !== undefined ||
+    meta.cards !== undefined
+  ) {
     sets.push(`status = 'active'`);
   }
 
@@ -693,6 +708,7 @@ export type ConsultationListItem = {
   id: string;
   intention: string | null;
   spread_type: string | null;
+  spread_id: string | null;
   cards: string[] | null;
   status: string;
   created_at: Date;
@@ -708,7 +724,7 @@ export async function listConsultationSessions(
   characterKey: string
 ): Promise<{ active: ConsultationListItem | null; completed: ConsultationListItem[] }> {
   const sessionSelect = `
-    SELECT s.id, s.intention, s.spread_type, s.cards,
+    SELECT s.id, s.intention, s.spread_type, s.spread_id, s.cards,
            COALESCE(s.status, 'active') AS status,
            s.created_at, s.updated_at,
            COALESCE(mc.message_count, 0)::int AS message_count,

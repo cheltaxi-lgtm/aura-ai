@@ -45,6 +45,7 @@ import {
   resolveMasterDeckSystem,
   spreadKey,
 } from "@/lib/decks";
+import { DEFAULT_SPREAD_ID, getSpread, hasCompleteSpread, resolveSpreadPositions, spreadFlippedState, type SpreadId } from "@/lib/spreads";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckCardInput } from "@/lib/deck-card-utils";
@@ -135,6 +136,7 @@ export interface ChatSessionDeps {
       characterKey: string;
       intention: SessionIntention | SessionTopicId | null;
       spreadType: "daily" | "new";
+      spreadId?: SpreadId;
       cards: string[];
       awaitingContext?: boolean;
     }
@@ -374,6 +376,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const pendingReadingResumeRef = useRef<string | null>(null);
   const sessionSpreadMetaRef = useRef<{
     spreadType?: "daily" | "new" | "photo";
+    spreadId?: SpreadId;
     cardNames?: string[];
   } | null>(null);
   const tripletPendingRef = useRef<{ cards: SpreadSymbol[]; teaser: string } | null>(null);
@@ -793,6 +796,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       source: "photo";
       cards: DeckCardInput[];
       system: DeckSystem;
+      spreadId: SpreadId;
     } | null => {
       if (
         photoChatSpread?.masterId === selectedCharacter &&
@@ -802,6 +806,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           source: "photo",
           cards: photoChatSpread.cards,
           system: photoChatSpread.system,
+          spreadId: DEFAULT_SPREAD_ID,
         };
       }
       if (
@@ -812,6 +817,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           source: "photo",
           cards: cachedChatSpread.cards,
           system: cachedChatSpread.system,
+          spreadId: DEFAULT_SPREAD_ID,
         };
       }
       return null;
@@ -820,14 +826,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     const photoSpread = resolvePhotoSpread();
     if (photoSpread) return photoSpread;
 
+    const metaSpreadId = sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
+
     if (
       chatSessionSpread?.masterId === selectedCharacter &&
-      chatSessionSpread.cards.length >= 3
+      hasCompleteSpread(
+        chatSessionSpread.cards.map((c) => c.name),
+        DEFAULT_SPREAD_ID,
+        "daily"
+      )
     ) {
       return {
         source: "triplet" as const,
         cards: chatSessionSpread.cards,
         system: chatSessionSpread.system,
+        spreadId: DEFAULT_SPREAD_ID,
       };
     }
 
@@ -835,6 +848,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       source: "intention";
       cards: SpreadSymbol[];
       system: DeckSystem;
+      spreadId: SpreadId;
     } | null => {
       if (!selectedCharacter) return null;
 
@@ -844,17 +858,24 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           source: "intention",
           cards: persisted.cards as SpreadSymbol[],
           system: persisted.system,
+          spreadId: metaSpreadId,
         };
       }
 
       const saved = savedReadings
-        .filter(
-          (r) =>
-            r.characterName === selectedCharacter &&
-            r.contextData?.type === "intention_spread" &&
-            Array.isArray(r.contextData.tarotCards) &&
-            r.contextData.tarotCards.length >= 3
-        )
+        .filter((r) => {
+          if (r.characterName !== selectedCharacter) return false;
+          if (r.contextData?.type !== "intention_spread") return false;
+          const ctx = r.contextData as {
+            tarotCards?: { name?: string }[];
+            spreadId?: string;
+          };
+          const names = (ctx.tarotCards ?? [])
+            .map((c) => c?.name?.trim())
+            .filter(Boolean) as string[];
+          const savedSpreadId = typeof ctx.spreadId === "string" ? ctx.spreadId : metaSpreadId;
+          return hasCompleteSpread(names, savedSpreadId, "new");
+        })
         .sort(
           (a, b) =>
             new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
@@ -865,12 +886,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         tarotCards: SpreadSymbol[];
         deckSystem?: DeckSystem;
         system?: DeckSystem;
+        spreadId?: string;
       };
       const masterCtx = resolveMasterSpread(profile, selectedCharacter, masters);
       return {
         source: "intention",
         cards: ctx.tarotCards,
         system: ctx.deckSystem ?? ctx.system ?? masterCtx.system,
+        spreadId: (typeof ctx.spreadId === "string" ? ctx.spreadId : metaSpreadId) as SpreadId,
       };
     };
 
@@ -882,6 +905,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         source: "intention" as const,
         cards: intentionSpread.cards,
         system: intentionSpread.system,
+        spreadId: metaSpreadId,
       };
     }
 
@@ -895,6 +919,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               : ("triplet" as const),
         cards: cachedChatSpread.cards as SpreadSymbol[],
         system: cachedChatSpread.system,
+        spreadId: metaSpreadId,
       };
     }
 
@@ -903,11 +928,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       if (fromSaved) return fromSaved;
     }
 
-    if (chatSpread && chatSpread.cards.length >= 3) {
+    if (
+      chatSpread &&
+      hasCompleteSpread(
+        chatSpread.cards.map((c) => c.name),
+        DEFAULT_SPREAD_ID,
+        "daily"
+      )
+    ) {
       return {
         source: "master" as const,
         cards: chatSpread.cards,
         system: chatSpread.system,
+        spreadId: DEFAULT_SPREAD_ID,
       };
     }
     if (displayTarotCards.length >= 3) {
@@ -915,6 +948,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         source: "triplet" as const,
         cards: displayTarotCards,
         system: displayDeckSystem,
+        spreadId: DEFAULT_SPREAD_ID,
       };
     }
 
@@ -928,6 +962,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           source: "photo" as const,
           cards: photoFromSaved.cards,
           system: photoFromSaved.system,
+          spreadId: DEFAULT_SPREAD_ID,
         };
       }
     }
@@ -964,6 +999,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             ctx.type === "intention_spread" ? ("intention" as const) : ("master" as const),
           cards: ctx.tarotCards,
           system: ctx.deckSystem ?? ctx.system ?? masterCtx.system,
+          spreadId:
+            ctx.type === "intention_spread"
+              ? ((latestMasterSpread.contextData as { spreadId?: string }).spreadId ??
+                  metaSpreadId)
+              : DEFAULT_SPREAD_ID,
         };
       }
     }
@@ -989,13 +1029,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const spreadReadingPending =
     spreadReadingRitualOpen ||
     (intentionSpreadLoading &&
-      (chatDisplaySpread?.cards?.length ?? 0) >= 3 &&
+      hasCompleteSpread(
+        chatDisplaySpread?.cards?.map((c) => c.name),
+        sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID,
+        sessionSpreadMetaRef.current?.spreadType
+      ) &&
       !(chat()?.messages && chatHasSpreadReading(chat()!.messages)));
 
   const needsSpreadFlip =
     !chat()?.sessionOnlyChat &&
     chatDisplaySpread?.source !== "photo" &&
-    (chatDisplaySpread?.cards?.length ?? 0) >= 3;
+    hasCompleteSpread(
+      chatDisplaySpread?.cards?.map((c) => c.name),
+      sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID,
+      sessionSpreadMetaRef.current?.spreadType
+    );
 
   const allSpreadFlipped = !needsSpreadFlip || spreadFlipped.every(Boolean);
 
@@ -1185,7 +1233,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       localStorage.setItem(FLOW_STEP_KEY, "chat");
       setLastMasterId(masterId);
       setStep("chat");
-      setSpreadFlipped(intention ? [false, false, false] : [true, true, true]);
+      setSpreadFlipped(
+        intention
+          ? spreadFlippedState(
+              getSpread(sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID).cardCount,
+              false
+            )
+          : spreadFlippedState(3, true)
+      );
       deps.setSessionOnlyChat(false);
 
       if (!intention) {
@@ -1227,6 +1282,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             const response = await postIntentionSpreadRequest({
             characterId: masterId,
             intention,
+            spreadId: DEFAULT_SPREAD_ID,
             sessionId: chatSessionId,
           });
 
@@ -1271,7 +1327,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             system,
             intention,
           });
-          setSpreadFlipped([true, true, true]);
+          setSpreadFlipped(spreadFlippedState(cards.length, true));
 
           if (typeof data.runeBalance === "number") {
             deps.setRuneBalance(data.runeBalance);
@@ -1421,7 +1477,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             system: persistedForMaster.system,
             intention: persistedForMaster.intention,
           });
-          setSpreadFlipped([true, true, true]);
+          setSpreadFlipped(spreadFlippedState(persistedForMaster.cards.length, true));
         } else if (restored?.spread) {
           applyRestoredChatSpreadRef.current(restored.spread, masterId);
         }
@@ -1531,7 +1587,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           persistSessionIntention(masterToBind, null);
           setIntentionSpread(null);
           persistIntentionSpreadState(masterToBind, null);
-          setSpreadFlipped([true, true, true]);
+          setSpreadFlipped(spreadFlippedState(cards.length, true));
           pendingChatOptsRef.current = { masterId: masterToBind, skipReading: false };
           const deps = chat();
           if (deps) {
@@ -1879,19 +1935,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         characterKey,
         intention,
         spreadType,
+        spreadId = DEFAULT_SPREAD_ID,
         cards,
         cardsRevealed = false,
         previewCards,
         deckSystem: previewDeckSystem,
         customQuestion,
       } = params;
+      const spreadCardCount = getSpread(spreadId).cardCount;
       const sessionIntentionValue = spreadType === "daily" ? null : intention;
       if (customQuestion?.trim()) {
         persistSessionCustomQuestion(characterKey, customQuestion.trim());
       } else if (intention !== "custom") {
         persistSessionCustomQuestion(characterKey, null);
       }
-      sessionSpreadMetaRef.current = { spreadType, cardNames: cards };
+      sessionSpreadMetaRef.current = { spreadType, spreadId, cardNames: cards };
       readingInFlightRef.current = true;
       deps.skipNextReadingRef.current = true;
       deps.chatLoadedForRef.current = null;
@@ -1909,14 +1967,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
       const applyPreviewSpread = () => {
         if (!intention) return null;
-        if (!cardsRevealed || cards.length < 3) return null;
+        if (!cardsRevealed || !hasCompleteSpread(cards, spreadId, spreadType)) return null;
         const system = previewDeckSystem ?? resolveMasterDeckSystem(characterKey);
-        const positions = getDeckPositions(system);
+        const positionLabels = resolveSpreadPositions(spreadId, intention).map((p) => p.label);
         const fromDeck = resolveSpreadSymbols(system, cards);
         const spreadCards: SpreadSymbol[] =
-          fromDeck.length >= 3
-            ? fromDeck.slice(0, 3)
-            : (previewCards?.slice(0, 3).map((c, i) => {
+          fromDeck.length >= spreadCardCount
+            ? fromDeck.slice(0, spreadCardCount)
+            : (previewCards?.slice(0, spreadCardCount).map((c, i) => {
                 const deckSym = resolveSpreadSymbols(system, [c.name])[0];
                 if (deckSym) {
                   return { ...deckSym, meaning: c.meaning ?? deckSym.meaning };
@@ -1924,10 +1982,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 return {
                   id: i,
                   name: c.name,
-                  meaning: c.meaning ?? positions[i] ?? `Позиция ${i + 1}`,
+                  meaning: c.meaning ?? positionLabels[i] ?? `Позиция ${i + 1}`,
                 };
               }) ?? []);
-        if (spreadCards.length < 3) return null;
+        if (spreadCards.length < spreadCardCount) return null;
         const intentionCardsKey = spreadKey(spreadCards);
         setIntentionSpread({ masterId: characterKey, cards: spreadCards, system, intention });
         setHideChatSpread(false);
@@ -1937,14 +1995,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           system,
           intention,
         });
-        setSpreadFlipped([true, true, true]);
+        setSpreadFlipped(Array.from({ length: spreadCardCount }, () => true));
         return { spreadCards, system, intentionCardsKey };
       };
 
       if (spreadType === "daily") {
         setIntentionSpread(null);
         persistIntentionSpreadState(characterKey, null);
-        setSpreadFlipped([true, true, true]);
+        setSpreadFlipped(spreadFlippedState(3, true));
         const { spreadCards, system } = buildSessionSpreadCards(characterKey, cards);
         setChatSessionSpread({ masterId: characterKey, cards: spreadCards, system });
         deps.setSelectedCharacter(characterKey);
@@ -1993,7 +2051,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
       const preview = applyPreviewSpread();
       if (!preview) {
-        setSpreadFlipped([false, false, false]);
+        setSpreadFlipped(spreadFlippedState(spreadCardCount, false));
       }
 
       if (
@@ -2010,7 +2068,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         });
         setChatSessionSpread({ masterId: characterKey, cards: spreadCards, system });
         setHideChatSpread(false);
-        setSpreadFlipped([true, true, true]);
+        setSpreadFlipped(spreadFlippedState(3, true));
 
         const activeProfile = getActiveProfile();
         const mergedProfile = activeProfile
@@ -2089,6 +2147,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           characterKey,
           intention,
           spreadType,
+          spreadId,
           cards,
           awaitingContext: intention === "life_death" ? true : undefined,
         });
@@ -2107,6 +2166,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             const response = await postIntentionSpreadRequest({
               characterId: characterKey,
               intention,
+              spreadId,
               customQuestion: intention === "custom" ? customQuestion?.trim() : undefined,
               cardNames: cards,
               sessionId: chatSessionId,
@@ -2132,10 +2192,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
             const data = await response.json();
             const spreadCardsFromData = (data.cards ?? []) as SpreadSymbol[];
-            const cardNamesForClean =
-              spreadCardsFromData.length >= 3
-                ? spreadCardsFromData.map((c) => c.name)
-                : cards;
+            const cardNamesForClean = hasCompleteSpread(
+              spreadCardsFromData.map((c) => c.name),
+              spreadId
+            )
+              ? spreadCardsFromData.map((c) => c.name)
+              : cards;
             let readingText = resolveClientReadingText(
               typeof data.reading === "string" ? data.reading : "",
               cardNamesForClean
@@ -2153,7 +2215,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               system,
               intention,
             });
-            setSpreadFlipped([true, true, true]);
+            setSpreadFlipped(spreadFlippedState(spreadCards.length, true));
 
             if (typeof data.runeBalance === "number") {
               deps.setRuneBalance(data.runeBalance);
@@ -2165,6 +2227,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 characterId: characterKey,
                 intention,
                 cardNames: cardNamesForClean,
+                spreadId,
+                cardCount: spreadCardCount,
               });
               readingText = polled ? resolveClientReadingText(polled, cardNamesForClean) : "";
             }

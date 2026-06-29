@@ -32,7 +32,7 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   QUESTION: "Каждый следующий вопрос в чате после бесплатного лимита",
   VISION_ANALYSIS: "Фото-расклад: распознавание, перерисовка и расшифровка",
   READING: "Первая полная расшифровка triplet у выбранного мастера",
-  INTENTION_SPREAD: "Новый расклад из 3 карт под выбранную тему сеанса",
+  INTENTION_SPREAD: "Новый расклад на тему (стоимость зависит от схемы)",
   DESTINY_CARD: "Генерация персональной карты судьбы в чате",
   JOINT_READING: "Совместный расклад двух людей",
   DAILY_AMULET: "Карта-амулет дня",

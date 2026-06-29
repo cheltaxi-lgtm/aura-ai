@@ -18,6 +18,7 @@ import {
   ensureSpreadReadingInChatMessages,
   sessionHasSpreadReadingMessage,
 } from "@/lib/spread-reading-persist";
+import { getSpread, hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
 
 const DEFAULT_HISTORY_LIMIT = 50;
 const HISTORY_PAGE_MAX = 200;
@@ -43,14 +44,19 @@ function mapMessageRows(
 function spreadFromSession(session: SessionRow, characterId: string) {
   const cards = session.cards ?? [];
   const masterKey = session.character_key ?? characterId;
-  if (cards.length < 3 || !masterKey) return null;
+  const spreadId = normalizeSpreadId(session.spread_id);
+  const required = getSpread(spreadId).cardCount;
+  if (!hasCompleteSpread(cards, spreadId, session.spread_type) || !masterKey) return null;
   const system = resolveMasterDeckSystem(masterKey);
   let symbols = resolveSpreadSymbols(system, cards);
-  if (symbols.length < 3) {
-    const built = buildSessionSpreadCards(masterKey, cards, { deckSystem: system });
+  if (symbols.length < required) {
+    const built = buildSessionSpreadCards(masterKey, cards, {
+      deckSystem: system,
+      cardCount: required,
+    });
     symbols = built.spreadCards;
   }
-  if (symbols.length < 3) return null;
+  if (symbols.length < required) return null;
   const spreadType =
     session.spread_type === "daily"
       ? "reading"
@@ -63,6 +69,7 @@ function spreadFromSession(session: SessionRow, characterId: string) {
     type: spreadType,
     cardsKey: spreadKey(symbols),
     intention: session.intention ?? null,
+    spreadId,
   };
 }
 
@@ -130,7 +137,7 @@ export async function GET(request: NextRequest) {
     const { rows } = await query<SessionRow>(
       `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
               COALESCE(awaiting_context, false) AS awaiting_context,
-              character_key, intention, spread_type, cards,
+              character_key, intention, spread_type, spread_id, cards,
               COALESCE(status, 'active') AS status, created_at, updated_at
        FROM sessions
        WHERE user_id = $1
@@ -147,7 +154,7 @@ export async function GET(request: NextRequest) {
     const { rows } = await query<SessionRow>(
       `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
               COALESCE(awaiting_context, false) AS awaiting_context,
-              character_key, intention, spread_type, cards,
+              character_key, intention, spread_type, spread_id, cards,
               COALESCE(status, 'active') AS status, created_at, updated_at
        FROM sessions s
        WHERE s.user_id = $1
@@ -220,6 +227,7 @@ export async function GET(request: NextRequest) {
           sessionRow.spread_type === "daily" || sessionRow.spread_type === "new"
             ? sessionRow.spread_type
             : undefined,
+        spreadId: sessionRow.spread_id ?? undefined,
       });
       messageRows = await getActiveSessionMessages(
         profileUserId,
@@ -245,6 +253,7 @@ export async function GET(request: NextRequest) {
     sessionId: sessionRow.id,
     intention: sessionRow.intention ?? null,
     spreadType: sessionRow.spread_type ?? null,
+    spreadId: sessionRow.spread_id ?? null,
     cards: sessionRow.cards ?? null,
     status: sessionRow.status ?? "active",
     messages,

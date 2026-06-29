@@ -16,6 +16,7 @@ import { VERONIKA_PERSONA } from "./masters/veronika";
 import { NUMEROLOG_PERSONA } from "./masters/numerolog";
 import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import { resolveMasterDeckSystem, getDeckPositions } from "@/lib/decks";
+import { hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
 import { buildMemoryBlock } from "./memory";
 import { getSpreadInstructions } from "./spread-instructions";
 import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
@@ -117,6 +118,7 @@ export interface BuildPromptOptions {
   topics?: TopicKey[];
   lastUserMessage?: string;
   intention?: string | null;
+  spreadId?: string | null;
   /** Pre-built numerology block (avoids double computation in chat API). */
   numerologyBlock?: string;
 }
@@ -140,7 +142,10 @@ export function buildSystemPrompt(
       ? mergeTopics(options.lastUserMessage, options.intention)
       : topicsFromIntention(options.intention));
 
-  const hasSpread = user.cards.length >= 3;
+  const hasSpread = hasCompleteSpread(
+    user.cards.map((c) => (typeof c === "string" ? c : c.name)),
+    options.spreadId
+  );
 
   const numerologyBlock =
     options.numerologyBlock ??
@@ -196,7 +201,7 @@ export function buildSystemPrompt(
         : "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов.",
     formatBlock,
     spreadFinalBlock,
-    mode === "reading" && hasSpread ? getSpreadInstructions(character) : "",
+    mode === "reading" && hasSpread ? getSpreadInstructions(character, options.spreadId) : "",
     readingForwardHook,
   ];
 
