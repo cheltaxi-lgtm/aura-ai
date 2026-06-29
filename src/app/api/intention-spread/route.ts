@@ -424,7 +424,10 @@ export async function POST(request: NextRequest) {
     const blogger = await getBloggerBySlug(characterId);
     if (blogger) {
       const knowledge = await getBloggerKnowledge(blogger.id);
-      systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge, intention);
+      systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge, intention, {
+        spreadId,
+        positionLabels,
+      });
     }
   }
 

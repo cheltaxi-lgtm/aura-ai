@@ -1213,7 +1213,18 @@ export function useChatActions(options: UseChatActionsOptions) {
       chatSessionSpread,
       chatDisplaySpread,
     });
-    if (cardsForMaster.length < 3) return;
+    const meta = sessionSpreadMetaRef.current;
+    const spreadId = meta?.spreadId ?? DEFAULT_SPREAD_ID;
+    const spreadType = meta?.spreadType ?? "new";
+    if (
+      !hasCompleteSpread(
+        cardsForMaster.map((c) => c.name),
+        spreadId,
+        spreadType
+      )
+    ) {
+      return;
+    }
 
     const cardsKey = spreadKey(cardsForMaster);
     const saved = findSavedSpreadReading(savedReadings, selectedCharacter, cardsKey);

@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import { tarotCardsKey } from "@/lib/tarot";
 import type { SessionRow } from "@/lib/session";
+import { hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
 
 const MIN_STORED_READING_CHARS = 80;
 
@@ -51,7 +52,10 @@ export async function findSpreadReadingForSession(
   session: SessionRow
 ): Promise<string | null> {
   const sessionCards = session.cards ?? [];
-  const cardKey = sessionCards.length >= 3 ? tarotCardsKey(sessionCards.map((name) => ({ name }))) : "";
+  const spreadId = normalizeSpreadId(session.spread_id);
+  const cardKey = hasCompleteSpread(sessionCards, spreadId, session.spread_type)
+    ? tarotCardsKey(sessionCards.map((name) => ({ name })))
+    : "";
 
   const { rows } = await query<{ context_data: Record<string, unknown>; created_at: Date }>(
     `SELECT context_data, created_at
@@ -101,7 +105,8 @@ export async function findStoredSpreadReading(
   if (intentionReading) return intentionReading;
 
   const sessionCards = session.cards ?? [];
-  if (sessionCards.length < 3) {
+  const spreadId = normalizeSpreadId(session.spread_id);
+  if (!hasCompleteSpread(sessionCards, spreadId, session.spread_type)) {
     return findSessionMemoryReading(profileUserId, session.id, characterId);
   }
   const cardKey = tarotCardsKey(sessionCards.map((name) => ({ name })));

@@ -284,6 +284,13 @@ export function stripTrailingPromptChecklist(text: string): string {
   return lines.join("\n").trim();
 }
 
+/** Minimum card name mentions required for a reading to pass validation. */
+export function minCardMentionsRequired(cardCount: number): number {
+  if (cardCount <= 1) return 1;
+  if (cardCount <= 3) return cardCount;
+  return Math.min(cardCount, Math.max(3, Math.ceil(cardCount * 0.5)));
+}
+
 /** Client-safe reading text — strips leaks; returns empty if unusable. */
 export function sanitizeReadingForClient(
   text: string,
@@ -311,8 +318,9 @@ export function sanitizeReadingForClient(
         const relaxed = name.replace(/ё/g, "е");
         return out.includes(name) || out.includes(relaxed);
       });
-      const minMentions = cardNames.length >= 3 ? 3 : 2;
-      if (mentioned.length < minMentions && out.length < 900) return "";
+      const minMentions = minCardMentionsRequired(cardNames.length);
+      const minLength = Math.max(900, cardNames.length * 120);
+      if (mentioned.length < minMentions && out.length < minLength) return "";
     }
   }
 

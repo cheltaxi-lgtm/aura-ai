@@ -1,6 +1,6 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 
-import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, SPREAD_FINAL_CONCLUSION_RULES, READING_FORWARD_HOOK } from "./format";
+import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
@@ -126,8 +126,11 @@ function paywallRule(isPaid: boolean | undefined, cardCount: number): string {
       ? "Клиент с полным доступом — дай полную глубину по символу без удерживания."
       : `Клиент с полным доступом — дай полную глубину по всем ${cardCount} символам без удерживания.`;
   }
+  if (cardCount === 1) {
+    return "Клиент на бесплатном/частичном доступе: дай интригующий крючок без полной расшифровки, намекни что глубина откроется дальше.";
+  }
   if (cardCount <= 3) {
-    return `Клиент на бесплатном/частичном доступе: подробно раскрой ПЕРВЫЙ символ (Прошлое). По 2-му и 3-му — интригующий крючок без полной расшифровки, намекни что глубина откроется дальше.`;
+    return `Клиент на бесплатном/частичном доступе: подробно раскрой ПЕРВЫЙ символ. По остальным ${cardCount - 1} — интригующий крючок без полной расшифровки, намекни что глубина откроется дальше.`;
   }
   return `Клиент на бесплатном/частичном доступе: подробно раскрой ПЕРВЫЙ символ. По остальным ${cardCount - 1} — краткий крючок без полной расшифровки.`;
 }
@@ -178,9 +181,13 @@ export function buildSystemPrompt(
 
   const tarotRune = isTarotRuneMasterId(character);
 
+  const spreadCardCount = user.cards.length || (options.spreadId ? getSpread(options.spreadId).cardCount : 3);
+
   const formatBlock = (() => {
     if (character === "numerolog") {
-      return thematicReading ? THEMATIC_SPREAD_READING_RULES : RESPONSE_FORMAT;
+      return thematicReading
+        ? thematicSpreadReadingRules(spreadCardCount)
+        : RESPONSE_FORMAT;
     }
     if (tarotRune) {
       const theater = TAROT_RUNE_THEATER_BAN;
@@ -188,12 +195,16 @@ export function buildSystemPrompt(
       if (thematicReading) return `${theater}\n${TAROT_RUNE_THEMATIC_READING_RULES}`;
       return `${theater}\n${TAROT_RUNE_MARKDOWN_FORMAT}`;
     }
-    return thematicReading ? THEMATIC_SPREAD_READING_RULES : RESPONSE_FORMAT;
+    if (thematicReading) return thematicSpreadReadingRules(spreadCardCount);
+    if (mode === "reading" && spreadCardCount !== 3) {
+      return responseFormatForSpread(spreadCardCount);
+    }
+    return RESPONSE_FORMAT;
   })();
 
   const spreadFinalBlock =
     hasSpread && user.isPaid && mode === "reading" && !tarotRune
-      ? SPREAD_FINAL_CONCLUSION_RULES
+      ? spreadFinalConclusionRules(spreadCardCount)
       : "";
 
   // Forward-хук: приглашение продолжить в чате в конце расклада (кроме «жизнь/смерть»).
@@ -201,8 +212,6 @@ export function buildSystemPrompt(
     mode === "reading" && hasSpread && options.intention !== "life_death"
       ? READING_FORWARD_HOOK
       : "";
-
-  const spreadCardCount = user.cards.length || (options.spreadId ? getSpread(options.spreadId).cardCount : 3);
 
   const parts = [
     persona,

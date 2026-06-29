@@ -2,8 +2,10 @@
  * Fix broken LLM markdown in spread readings — empty * *, orphan asterisks.
  */
 
+const DEFAULT_MAX_CARDS = 10;
+
 /** Extract card/rune names from leading ![Name](url) image block. */
-export function cardNamesFromImageMarkdown(text: string): string[] {
+export function cardNamesFromImageMarkdown(text: string, maxCards = DEFAULT_MAX_CARDS): string[] {
   const names: string[] = [];
   const lines = text.split("\n");
   for (const line of lines) {
@@ -14,13 +16,14 @@ export function cardNamesFromImageMarkdown(text: string): string[] {
     const name = m[1]?.trim();
     if (name) names.push(name);
   }
-  return names.slice(0, 3);
+  return names.slice(0, maxCards);
 }
 
 /** Card names from image block and/or **Name** markers in the reading body. */
-export function inferSpreadCardNames(text: string): string[] {
-  const fromImages = cardNamesFromImageMarkdown(text);
-  if (fromImages.length >= 3) return fromImages;
+export function inferSpreadCardNames(text: string, cardNames?: string[]): string[] {
+  const limit = cardNames?.length ?? DEFAULT_MAX_CARDS;
+  const fromImages = cardNamesFromImageMarkdown(text, limit);
+  if (fromImages.length >= Math.min(3, limit)) return fromImages;
 
   const fromBold: string[] = [];
   for (const m of text.matchAll(/\*\*([^*]{2,40})\*\*/gu)) {
@@ -28,13 +31,13 @@ export function inferSpreadCardNames(text: string): string[] {
     if (/^(?:ваш расклад|простыми словами|утро|день|вечер)$/iu.test(n)) continue;
     if (!fromBold.some((x) => x.toLowerCase() === n.toLowerCase())) fromBold.push(n);
   }
-  return fromBold.slice(0, 3);
+  return fromBold.slice(0, limit);
 }
 
 /** Replace empty emphasis / orphan stars; optionally inject spread card names. */
 export function polishSpreadReadingText(text: string, cardNames?: string[]): string {
   let out = text.replace(/\r\n/g, "\n");
-  const cards = (cardNames ?? []).map((c) => c.trim()).filter(Boolean).slice(0, 3);
+  const cards = (cardNames ?? []).map((c) => c.trim()).filter(Boolean);
   let cardIdx = 0;
 
   const nextCard = (): string => {

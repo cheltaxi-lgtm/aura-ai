@@ -53,6 +53,8 @@ import {
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
+import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
+import type { SessionTopicId } from "@/lib/session-topics";
 
 async function persistReadingToSession(input: {
   sessionId: string | undefined;
@@ -150,6 +152,7 @@ export async function POST(request: NextRequest) {
   let forceRegenerate = false;
   let spreadType = "";
   let readingScope = "";
+  let spreadIdRaw = "";
 
   try {
     const body = await request.json();
@@ -167,6 +170,7 @@ export async function POST(request: NextRequest) {
     astroMeta = body.astroMeta;
     intention = sanitizeTextField(body.intention, 40) ?? "";
     spreadType = sanitizeTextField(body.spreadType, 20) ?? "";
+    spreadIdRaw = sanitizeTextField(body.spreadId, 40) ?? "";
     forceRegenerate = body.forceRegenerate === true;
     readingScope = sanitizeTextField(body.readingScope, 10) ?? "";
   } catch (error) {
@@ -259,17 +263,27 @@ export async function POST(request: NextRequest) {
       ? sessionMemories.length + 1
       : (await countSessionMemories(authed.profileUserId, characterId)) + 1;
 
+    const spreadId = normalizeSpreadId(spreadIdRaw || resolvedSession?.spread_id);
+    const positionLabels = resolveSpreadPositions(
+      spreadId,
+      (intention || null) as SessionTopicId | null
+    ).map((p) => p.label);
+
     let systemPrompt = buildCharacterPrompt(characterId, ctx, {
       sessionNumber,
       memory: sessionMemories,
       intention: intention || null,
+      spreadId,
     });
 
     if (!isAiMasterId(characterId) && (await ensureDb())) {
       const blogger = await getBloggerBySlug(characterId);
       if (blogger) {
         const knowledge = await getBloggerKnowledge(blogger.id);
-        systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge, intention || null);
+        systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge, intention || null, {
+          spreadId,
+          positionLabels,
+        });
       }
     }
 
@@ -514,6 +528,8 @@ export async function POST(request: NextRequest) {
         isPaid,
         characterId,
         intention: intention || null,
+        spreadId,
+        positionLabels,
         userMessage,
       });
       reading =

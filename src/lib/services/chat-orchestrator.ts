@@ -684,8 +684,13 @@ export class ChatOrchestrator {
 
     const sessionHasFullAccess = this.billingHandle?.sessionHasFullAccess ?? false;
     if (!sessionHasFullAccess && this.userProfile && this.tarotCards?.length) {
-      systemPrompt +=
-        "\n\nНапоминание: при частичном доступе — 2-я и 3-я карты только крючком.";
+      const spread = getSpread(this.resolvedSpreadId ?? this.spreadId);
+      if (spread.cardCount <= 1) {
+        systemPrompt +=
+          "\n\nНапоминание: при частичном доступе — полная расшифровка только первого символа.";
+      } else {
+        systemPrompt += `\n\nНапоминание: при частичном доступе — подробно только первый символ. По остальным ${spread.cardCount - 1} — крючок без полной расшифровки.`;
+      }
     }
 
     if (this.profileUserId) {
@@ -818,6 +823,7 @@ export class ChatOrchestrator {
         lastUserMessage: this.lastUserMsg,
         cardNames: cardNames ?? [],
         intention: this.resolvedIntention,
+        spreadId: activeSpreadId,
       });
       if (fallback.trim()) {
         console.warn("[chat] using card-aware chat fallback");

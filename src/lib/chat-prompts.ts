@@ -8,7 +8,7 @@ import {
   stripTheaterFromReply,
 } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, fromLegacyContext } from "@/lib/prompts";
-import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, SPREAD_FINAL_CONCLUSION_RULES, RESPONSE_FORMAT } from "@/lib/prompts/format";
+import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
@@ -20,7 +20,7 @@ import { MARINA_PERSONA } from "@/lib/prompts/masters/marina";
 import { getSessionTopic } from "@/lib/session-topics";
 import { buildNumerologSpreadReading } from "@/lib/numerolog/welcome";
 import type { SessionMemory } from "@/lib/prompts/types";
-import { getSpread, normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
+import { getSpread, normalizeSpreadId, requiredCardCount, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
 
 import { buildAstroMeta, lifeFocusLabel, type AstroMeta, type LifeFocus } from "@/lib/astro-profile";
@@ -82,31 +82,43 @@ export function buildHumanReadingPrompt(
   },
   ctx: UserContext,
   knowledge?: string,
-  intention?: string | null
+  intention?: string | null,
+  options?: { spreadId?: string | null; positionLabels?: string[] }
 ): string {
   const persona = buildHumanMasterPersona(blogger, knowledge);
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
-  const cards = ctx.tarotCards
-    .map((c, i) => `${["Прошлое", "Настоящее", "Будущее"][i]}: «${c.name}» — ${c.meaning}`)
+  const spreadId = normalizeSpreadId(options?.spreadId);
+  const spread = getSpread(spreadId);
+  const positions =
+    options?.positionLabels ??
+    resolveSpreadPositions(spreadId, intention as SessionTopicId | null | undefined).map(
+      (p) => p.label
+    );
+  const cardsSlice = ctx.tarotCards.slice(0, spread.cardCount);
+  const cards = cardsSlice
+    .map((c, i) => `${positions[i] ?? `Позиция ${i + 1}`}: «${c.name}» — ${c.meaning}`)
     .join("\n");
 
   const thematic = Boolean(intention?.trim() && intention !== "life_death");
   const topicLabel = thematic ? (getSessionTopic(intention!)?.label ?? intention) : null;
+  const cardWord = spread.cardCount === 1 ? "карту" : `${spread.cardCount} символов`;
 
   const paywallRule = ctx.isPaid
     ? thematic
-      ? `Клиент оплатил тематический расклад «${topicLabel}» — дай полную глубину по всем трём картам строго через эту тему.`
-      : "Пользователь оплатил доступ — дай полную расшифровку всех трёх карт подробно."
-    : "Пользователь НЕ оплатил: подробно распиши ТОЛЬКО первую карту (Прошлое). На 2-й и 3-й картах — интригующий крючок без полной расшифровки.";
+      ? `Клиент оплатил тематический расклад «${topicLabel}» — дай полную глубину по всем ${cardWord} строго через эту тему.`
+      : `Пользователь оплатил доступ — дай полную расшифровку всех ${cardWord} подробно.`
+    : spread.cardCount <= 1
+      ? "Пользователь НЕ оплатил: дай интригующий крючок без полной расшифровки."
+      : `Пользователь НЕ оплатил: подробно распиши ТОЛЬКО первый символ. По остальным ${spread.cardCount - 1} — интригующий крючок без полной расшифровки.`;
 
   const lengthRule = tarotRune
     ? thematic && ctx.isPaid
       ? TAROT_RUNE_THEMATIC_READING_RULES
       : TAROT_RUNE_MARKDOWN_FORMAT
     : thematic && ctx.isPaid
-      ? `${THEMATIC_SPREAD_READING_RULES}\n\n${SPREAD_FINAL_CONCLUSION_RULES}`
+      ? `${thematicSpreadReadingRules(spread.cardCount)}\n\n${spreadFinalConclusionRules(spread.cardCount)}`
       : ctx.isPaid
-        ? `${RESPONSE_FORMAT}\n\n${SPREAD_FINAL_CONCLUSION_RULES}`
+        ? `${responseFormatForSpread(spread.cardCount)}\n\n${spreadFinalConclusionRules(spread.cardCount)}`
         : "7. От пяти до двенадцати предложений. Каждый вывод — только по символам ниже, с названием карты.";
 
   const formatTail = tarotRune
@@ -506,53 +518,44 @@ export function buildChatFallbackReply(
     lastUserMessage: string;
     cardNames: string[];
     intention?: string | null;
+    spreadId?: string | null;
   }
 ): string {
   const name = ctx.userName?.trim() || "друг";
   const question = ctx.lastUserMessage.trim().slice(0, 280);
-  const cards = ctx.cardNames.slice(0, 3);
+  const spreadId = normalizeSpreadId(ctx.spreadId);
+  const required = requiredCardCount(spreadId, "new");
+  const cards = ctx.cardNames.slice(0, required);
 
-  if (cards.length < 3) {
+  if (!cards.length) {
     return `${name}, слышу тебя. Сформулируй главный страх одним предложением — отвечу по символам, как только канал соберётся.`;
   }
 
   const topicMeta = ctx.intention ? getSessionTopic(ctx.intention) : undefined;
   const topic = topicMeta?.label ?? "твой вопрос";
-  const [root, center, horizon] = cards;
-  const id = characterId in FALLBACK_READINGS ? characterId : "ragnar";
+  const positions = resolveSpreadPositions(
+    spreadId,
+    ctx.intention as SessionTopicId | null | undefined
+  ).map((p) => p.label);
 
-  const bodies: Record<string, string> = {
-    ragnar: `${name}, руны не молчат — слушай без паники.
+  if (cards.length === 1) {
+    return `${name}, «${cards[0]}» отвечает на «${question}» по теме «${topic}». Один символ — один совет: не гадай на страхе, сделай один конкретный шаг в ближайшие три дня. Что для тебя сейчас важнее — ясность или комфорт?`;
+  }
 
-${root} в корне — ресурс на решение есть, но страх сливает его до шага. По теме «${topic}» это не приговор, а точка, где ты экономишь силы вместо выбора.
+  const cardLines = cards
+    .map((card, i) => {
+      const pos = positions[i] ?? `позиция ${i + 1}`;
+      return `«${card}» (${pos}) — опирайся на образ, не на догадки.`;
+    })
+    .join("\n");
 
-${center} в центре — линия близких идёт рядом. Дети держатся за твоё состояние сильнее, чем за адрес или дату.
+  return `${name}, символы говорят по теме «${topic}».
 
-${horizon} на горизонте — через один-два лунных цикла станет видно, держит ли новый маршрут. Пока — малый шаг, не рывок.
+${cardLines}
 
-Ты спросила: «${question}». Символы не кричат «ошибка» — они требуют ясности, не спешки.
+Ты спросил: «${question}». Расклад просит ясности, не спешки.
 
-Что для тебя страшнее — потерять опору или навязать детям чужой выбор?`,
-    veronika: `${name}, карты шепчут прямо.
-
-${root} — корень: страх перед выбором старше, чем сам выбор. ${center} — сейчас: дети чувствуют твоё напряжение, не только обстоятельства. ${horizon} — вектор: через осень форма жизни изменится, но связь останется, если ты не будешь играть роль «идеальной».
-
-«${question}» — карты не запрещают шаг, они просят честности с собой.
-
-Что ты уже знаешь, но боишься признать вслух?`,
-    agafya: `${name}, дитя, вижу знамение.
-
-${root} — откуда тянется тревога. ${center} — что держит дом сейчас. ${horizon} — куда повернёт, если решишь спокойно.
-
-«${question}» — не проклятие, а испытание терпением.
-
-Назови одно, что готова отпустить ради покоя детей.`,
-  };
-
-  return (
-    bodies[id] ??
-    `${name}, символы ${root}, ${center} и ${horizon} отвечают на «${question}» без повторов: корень — причина, центр — настоящее, горизонт — куда ведёт линия. Сделай один маленький шаг в ближайшие три дня. Что для тебя сейчас важнее — безопасность или свобода?`
-  );
+Что для тебя сейчас важнее — безопасность или свобода?`;
 }
 
 export function llmUnavailableReply(options?: { runesRefunded?: boolean }): string {

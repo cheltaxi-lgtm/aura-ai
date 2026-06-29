@@ -716,7 +716,15 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     if (intentionSpread.masterId !== selectedCharacter) return;
     if (sessionIntention === "life_death") return;
     if (chatHasSpreadReading(messages)) return;
-    if (intentionSpread.cards.length < 3) return;
+    if (
+      !hasCompleteSpread(
+        intentionSpread.cards.map((c) => c.name),
+        chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
+        "new"
+      )
+    ) {
+      return;
+    }
 
     const intention = sessionIntention ?? intentionSpread.intention;
     if (!intention) return;
@@ -784,6 +792,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     intentionSpreadLoading,
     selectedCharacter,
     intentionSpread,
+    chatDisplaySpread?.spreadId,
     sessionIntention,
     messages,
     setMessages,
