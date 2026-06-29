@@ -30,6 +30,36 @@ const ok = (c: boolean, m: string) => {
   if (!c) fails++;
 };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Retry an async check that depends on the embeddings provider. The hybrid read
+ * path calls the embeddings API; right after a deploy the provider can be cold or
+ * rate-limited, so a single transient miss must not gate the deploy. A real
+ * SQL/param regression fails every attempt, so retrying keeps the gate honest.
+ */
+async function okRetry(
+  produce: () => Promise<boolean>,
+  message: string,
+  attempts = 3,
+  backoffMs = 1500
+) {
+  let passed = false;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      passed = await produce();
+    } catch (e) {
+      passed = false;
+      if (i === attempts) {
+        console.error(`    (attempt ${i} threw: ${e instanceof Error ? e.message : e})`);
+      }
+    }
+    if (passed) break;
+    if (i < attempts) await sleep(backoffMs * i);
+  }
+  ok(passed, message);
+}
+
 async function cleanup() {
   await purgeFacts(U).catch(() => {});
   await query(`DELETE FROM users WHERE id=$1`, [U]).catch(() => {});
@@ -56,11 +86,16 @@ async function main() {
     ]);
 
     // Hybrid retrieval (this is where the param-typing & ambiguous-id bugs lived).
-    const work = await searchFacts(U, "стоит ли мне менять работу?", { topK: 3 });
-    ok(work.some((f) => /работ/i.test(f.fact)), "hybrid retrieval surfaces work fact");
+    // Retried: depends on the embeddings provider, which can flake right after deploy.
+    await okRetry(async () => {
+      const work = await searchFacts(U, "стоит ли мне менять работу?", { topK: 3 });
+      return work.some((f) => /работ/i.test(f.fact));
+    }, "hybrid retrieval surfaces work fact");
 
-    const kw = await searchFacts(U, "Артём", { topK: 3 });
-    ok(kw.some((f) => /Артём/i.test(f.fact)), "keyword query surfaces the keyword fact");
+    await okRetry(async () => {
+      const kw = await searchFacts(U, "Артём", { topK: 3 });
+      return kw.some((f) => /Артём/i.test(f.fact));
+    }, "keyword query surfaces the keyword fact");
 
     const ev = await getUpcomingEvents(U);
     ok(ev.some((f) => /выпускн|Артём/i.test(f.fact)), "upcoming dated event surfaced");
