@@ -99,6 +99,10 @@ interface ChatWindowProps {
   readOnly?: boolean;
   onCompleteSession?: () => void;
   completingSession?: boolean;
+  onArchiveSession?: () => void;
+  onStartNewSession?: () => void;
+  archivingSession?: boolean;
+  startingNewSession?: boolean;
   /** User birth date — for numerolog Pythagoras grid fallback in chat. */
   userBirthDate?: string;
 }
@@ -146,6 +150,10 @@ export default function ChatWindow({
   readOnly = false,
   onCompleteSession,
   completingSession = false,
+  onArchiveSession,
+  onStartNewSession,
+  archivingSession = false,
+  startingNewSession = false,
   userBirthDate,
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
@@ -869,9 +877,33 @@ export default function ChatWindow({
 
       <form onSubmit={handleSubmit} className="glass-panel flex flex-col gap-2 p-3">
         {sessionQuestionCapReached ? (
-          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            {SESSION_CHAT_LIMIT_MESSAGE}
-          </p>
+          <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <p className="text-xs text-amber-100">{SESSION_CHAT_LIMIT_MESSAGE}</p>
+            {(onArchiveSession || onStartNewSession) && (
+              <div className="flex flex-wrap gap-2">
+                {onArchiveSession && !readOnly ? (
+                  <button
+                    type="button"
+                    onClick={onArchiveSession}
+                    disabled={archivingSession || startingNewSession || isLoading}
+                    className="btn-luxe btn-luxe--sm btn-luxe--silver disabled:opacity-50"
+                  >
+                    {archivingSession ? "…" : "В архив"}
+                  </button>
+                ) : null}
+                {onStartNewSession ? (
+                  <button
+                    type="button"
+                    onClick={onStartNewSession}
+                    disabled={archivingSession || startingNewSession || isLoading}
+                    className="btn-luxe btn-luxe--sm btn-luxe--gold disabled:opacity-50"
+                  >
+                    {startingNewSession ? "…" : "Создать новый сеанс"}
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
         ) : sessionQuestionsRemaining <= 2 && sessionQuestionsRemaining > 0 ? (
           <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300">
             В этом сеансе осталось {sessionQuestionsRemaining}{" "}

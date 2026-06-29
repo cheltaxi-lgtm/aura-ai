@@ -255,6 +255,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     required: number;
   } | null>(null);
   const [runeBalance, setRuneBalance] = useState(0);
+  const [archivingSession, setArchivingSession] = useState(false);
+  const [startingNewSession, setStartingNewSession] = useState(false);
 
   const applyRuneBalancePayload = useCallback(
     (data: {
@@ -1407,6 +1409,96 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     selectedCharacter,
     resolveConsultationSessionId,
     refreshSessionsList,
+    setCompletingSession,
+    setMessages,
+  ]);
+
+  const archiveActiveConsultationSession = useCallback(
+    async (masterId: string): Promise<boolean> => {
+      if (consultationReadOnly) return true;
+
+      let sid = consultationSessionId;
+      if (!sid) {
+        sid = await resolveConsultationSessionId(masterId);
+      }
+      if (!sid) return false;
+
+      const res = await fetch("/api/session/complete", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: sid,
+          characterKey: masterId,
+          archiveOnly: true,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        alreadyCompleted?: boolean;
+      };
+
+      if (res.ok || res.status === 409 || data.alreadyCompleted) {
+        setConsultationReadOnly(true);
+        archiveSessionIdRef.current = sid;
+        void refreshSessionsList(masterId);
+        return true;
+      }
+
+      const message =
+        data.error === "Session has no master"
+          ? "Не удалось отправить в архив: сеанс не связан с мастером."
+          : "Не удалось отправить сеанс в архив. Попробуйте ещё раз.";
+      window.alert(message);
+      return false;
+    },
+    [
+      consultationReadOnly,
+      consultationSessionId,
+      resolveConsultationSessionId,
+      refreshSessionsList,
+    ]
+  );
+
+  const handleArchiveCurrentSession = useCallback(async () => {
+    const masterId = selectedCharacter;
+    if (!masterId || consultationReadOnly) return;
+
+    setArchivingSession(true);
+    try {
+      await archiveActiveConsultationSession(masterId);
+    } finally {
+      setArchivingSession(false);
+    }
+  }, [selectedCharacter, consultationReadOnly, archiveActiveConsultationSession]);
+
+  const handleStartNewSessionFromChat = useCallback(async () => {
+    const masterId = selectedCharacter;
+    if (!masterId) return;
+
+    setStartingNewSession(true);
+    try {
+      const archived = await archiveActiveConsultationSession(masterId);
+      if (!archived && !consultationReadOnly) return;
+
+      pendingNewChatThreadRef.current = true;
+      setConsultationSessionId(null);
+      consultationSessionIdRef.current = null;
+      setConsultationReadOnly(false);
+      archiveSessionIdRef.current = null;
+      skipNextReadingRef.current = false;
+      chatLoadedForRef.current = null;
+      setEnergyFlowMasterId(masterId);
+      setShowSessionFlow(true);
+    } finally {
+      setStartingNewSession(false);
+    }
+  }, [
+    selectedCharacter,
+    consultationReadOnly,
+    archiveActiveConsultationSession,
+    setConsultationSessionId,
+    setShowSessionFlow,
   ]);
 
   const handleOpenArchiveSession = useCallback(
@@ -1947,6 +2039,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             description="Аккаунт нужен, чтобы сохранить переписку с мастером и историю раскладов."
           />
         ) : selectedCharacter ? (
+          <>
           <ChatWindow
             characterId={selectedCharacter}
             master={
@@ -2020,12 +2113,70 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               !consultationReadOnly ? () => void handleCompleteSession() : undefined
             }
             completingSession={completingSession}
+            onArchiveSession={
+              !consultationReadOnly ? () => void handleArchiveCurrentSession() : undefined
+            }
+            onStartNewSession={() => void handleStartNewSessionFromChat()}
+            archivingSession={archivingSession}
+            startingNewSession={startingNewSession}
             userBirthDate={
               selectedCharacter === "numerolog"
                 ? getActiveProfile()?.birthDate || profile?.birthDate
                 : undefined
             }
           />
+          <MasterSessionFlow
+            isOpen={showSessionFlow}
+            onClose={() => {
+              setShowSessionFlow(false);
+              setEnergyFlowMasterId(null);
+            }}
+            preselectedMaster={energyFlowMasterId ?? selectedCharacter}
+            dailyCards={
+              selectedCharacter === tripletOwnerMasterId && displayTarotCards.length >= 3
+                ? displayTarotCards.map((c) => c.name)
+                : []
+            }
+            masters={masters}
+            onStartRitual={() => {
+              if ((RITUAL_MASTERS as readonly string[]).includes(selectedCharacter)) {
+                setRitualFlowMaster(selectedCharacter as "ragnar" | "agafya");
+                setOpenRitualId(null);
+                setShowSessionFlow(false);
+                setShowRitualFlow(true);
+              }
+            }}
+            onStart={(params) => {
+              setShowSessionFlow(false);
+              setEnergyFlowMasterId(null);
+              pendingNewChatThreadRef.current = true;
+              setConsultationSessionId(null);
+              consultationSessionIdRef.current = null;
+              setConsultationReadOnly(false);
+              archiveSessionIdRef.current = null;
+              void openChatWithSessionParams(params);
+            }}
+          />
+          {(RITUAL_MASTERS as readonly string[]).includes(selectedCharacter) ? (
+            <RitualFlow
+              isOpen={showRitualFlow}
+              characterKey={ritualFlowMaster as "ragnar" | "agafya"}
+              userName={effectiveProfile.name || authUser?.name || "друг"}
+              userZodiac={effectiveProfile.zodiac || ""}
+              balance={runeBalance}
+              isUnlimited={Boolean(session?.isUnlimited)}
+              initialRitualId={openRitualId}
+              onClose={() => {
+                setShowRitualFlow(false);
+                setOpenRitualId(null);
+              }}
+              onBalanceChange={(b) => {
+                setRuneBalance(b);
+                emitRuneBalanceUpdate(b);
+              }}
+            />
+          ) : null}
+          </>
         ) : inPersonalFlow ? (
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
