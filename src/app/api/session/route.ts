@@ -23,6 +23,7 @@ import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accoun
 import { requireUserAuth } from "@/lib/require-auth";
 import { resolveSessionForUser } from "@/lib/session-access";
 import { setSessionClaimCookie } from "@/lib/session-claim";
+import { parseNumerologToolParams } from "@/lib/numerology/tools";
 
 function formatSession(
   session: {
@@ -144,6 +145,10 @@ export async function PATCH(request: NextRequest) {
     const cards = Array.isArray(body.cards)
       ? body.cards.filter((c: unknown) => typeof c === "string" && c.trim()).map((c: string) => c.trim())
       : undefined;
+    const numerologToolParams =
+      body.numerologToolParams && typeof body.numerologToolParams === "object"
+        ? parseNumerologToolParams(body.numerologToolParams as Record<string, string | null>)
+        : undefined;
 
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId required" }, { status: 400 });
@@ -174,7 +179,8 @@ export async function PATCH(request: NextRequest) {
       intention !== undefined ||
       spreadType !== undefined ||
       spreadId !== undefined ||
-      cards !== undefined
+      cards !== undefined ||
+      numerologToolParams !== undefined
     ) {
       await updateSessionChatMeta(sessionId, {
         characterKey,
@@ -182,6 +188,7 @@ export async function PATCH(request: NextRequest) {
         spreadType: spreadType ?? null,
         spreadId: spreadId ?? null,
         cards: cards ?? null,
+        numerologToolParams: numerologToolParams ?? null,
       });
     }
 

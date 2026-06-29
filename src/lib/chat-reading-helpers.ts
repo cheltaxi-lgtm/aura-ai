@@ -13,6 +13,7 @@ import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
   numerologSpreadComplete,
   numerologToolDrawCount,
+  resolveNumerologToolId,
   type NumerologToolId,
   type NumerologToolParams,
   buildNumerologSpreadCards,
@@ -100,19 +101,22 @@ export function resolveSpreadCardsForReading(input: {
   const { profile, characterId, sessionSpreadMeta } = input;
   if (!profile) return [];
 
+  const numerologToolId = resolveNumerologToolId(
+    sessionSpreadMeta?.spreadId,
+    sessionSpreadMeta?.numerologToolId
+  );
+
+  if (isNumerologMaster(characterId)) {
+    const metaNames = sessionSpreadMeta?.cardNames ?? [];
+    if (numerologSpreadComplete(metaNames, numerologToolId)) {
+      if (numerologToolDrawCount(numerologToolId) === 0) return [];
+      return buildNumerologSpreadCards(characterId, metaNames, numerologToolId).spreadCards;
+    }
+  }
+
   const spreadId = sessionSpreadMeta?.spreadId ?? DEFAULT_SPREAD_ID;
   const spreadType = sessionSpreadMeta?.spreadType;
   const metaCardNames = sessionSpreadMeta?.cardNames;
-  const numerologToolId = sessionSpreadMeta?.numerologToolId;
-
-  if (
-    isNumerologMaster(characterId) &&
-    metaCardNames?.length &&
-    numerologSpreadComplete(metaCardNames, numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL)
-  ) {
-    const toolId = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
-    return buildNumerologSpreadCards(characterId, metaCardNames, toolId).spreadCards;
-  }
 
   const metaCards =
     metaCardNames?.length &&
@@ -200,6 +204,100 @@ export function resolveSpreadCardsForReading(input: {
   return [];
 }
 
+/** Tarot/numerolog cards attached to outgoing chat messages. */
+export function resolveTarotCardsForOutgoingChat(input: {
+  characterId: string;
+  sessionSpreadMeta?: {
+    spreadType?: "daily" | "new" | "photo";
+    spreadId?: SpreadId | string;
+    cardNames?: string[];
+    numerologToolId?: NumerologToolId;
+    numerologToolParams?: NumerologToolParams;
+  } | null;
+  chatSessionSpread?: { masterId: string; cards: SpreadSymbol[] } | null;
+  intentionSpread?: { masterId: string; cards: SpreadSymbol[] } | null;
+  periodSpreadCards?: SpreadSymbol[] | null;
+  activeProfile: StoredProfile | null;
+  masters?: ShowcaseMaster[];
+}): { name: string; meaning: string }[] | undefined {
+  const {
+    characterId,
+    sessionSpreadMeta,
+    chatSessionSpread,
+    intentionSpread,
+    periodSpreadCards,
+    activeProfile,
+    masters,
+  } = input;
+
+  if (periodSpreadCards?.length) {
+    return periodSpreadCards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+  }
+
+  if (isNumerologMaster(characterId) && activeProfile) {
+    const toolId = resolveNumerologToolId(
+      sessionSpreadMeta?.spreadId,
+      sessionSpreadMeta?.numerologToolId
+    );
+    const drawCount = numerologToolDrawCount(toolId);
+    const cardNames =
+      sessionSpreadMeta?.cardNames ??
+      (chatSessionSpread?.masterId === characterId
+        ? chatSessionSpread.cards.map((c) => c.name)
+        : undefined);
+    if (numerologSpreadComplete(cardNames, toolId)) {
+      if (drawCount === 0) return [];
+      const cards =
+        chatSessionSpread?.masterId === characterId && chatSessionSpread.cards.length >= drawCount
+          ? chatSessionSpread.cards
+          : buildNumerologSpreadCards(characterId, cardNames ?? [], toolId).spreadCards;
+      return cards.slice(0, drawCount).map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+    }
+    return undefined;
+  }
+
+  const chatSpreadId = sessionSpreadMeta?.spreadId ?? DEFAULT_SPREAD_ID;
+  const chatSpreadType = sessionSpreadMeta?.spreadType ?? "new";
+
+  if (
+    intentionSpread?.masterId === characterId &&
+    hasCompleteSpread(
+      intentionSpread.cards.map((c) => c.name),
+      chatSpreadId,
+      chatSpreadType
+    )
+  ) {
+    return intentionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+  }
+
+  if (
+    chatSessionSpread?.masterId === characterId &&
+    hasCompleteSpread(
+      chatSessionSpread.cards.map((c) => c.name),
+      DEFAULT_SPREAD_ID,
+      "daily"
+    )
+  ) {
+    return chatSessionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+  }
+
+  const masterSpread = activeProfile
+    ? resolveMasterSpread(activeProfile, characterId, masters)
+    : null;
+  if (
+    masterSpread &&
+    hasCompleteSpread(
+      masterSpread.cards.map((c) => c.name),
+      DEFAULT_SPREAD_ID,
+      "daily"
+    )
+  ) {
+    return masterSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+  }
+
+  return activeProfile?.tarotCards?.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+}
+
 export function readingPayloadForMaster(
   profile: StoredProfile,
   masterId: string,
@@ -223,6 +321,14 @@ export function readingPayloadForMaster(
   ) {
     const toolId = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
     const required = numerologToolDrawCount(toolId);
+    if (required === 0) {
+      return {
+        ...base,
+        tarotCards: [],
+        numerologToolId: toolId,
+        numerologToolParams,
+      };
+    }
     return {
       ...base,
       tarotCards: cards.slice(0, required).map((c) => ({

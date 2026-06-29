@@ -2,8 +2,23 @@ import { query } from "@/lib/db";
 import { tarotCardsKey } from "@/lib/tarot";
 import type { SessionRow } from "@/lib/session";
 import { hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
+import { isNumerologMaster } from "@/lib/numerolog/welcome";
+import {
+  decodeNumerologSpreadId,
+  numerologSpreadComplete,
+} from "@/lib/numerology/tools";
 
 const MIN_STORED_READING_CHARS = 80;
+
+function sessionSpreadIsComplete(session: SessionRow, characterId: string): boolean {
+  const sessionCards = session.cards ?? [];
+  const numerologToolId = decodeNumerologSpreadId(session.spread_id);
+  if (numerologToolId && isNumerologMaster(characterId)) {
+    return numerologSpreadComplete(sessionCards, numerologToolId);
+  }
+  const spreadId = normalizeSpreadId(session.spread_id);
+  return hasCompleteSpread(sessionCards, spreadId, session.spread_type);
+}
 
 function pickStoredReading(ctx: Record<string, unknown>): string | null {
   const reading = typeof ctx.reading === "string" ? ctx.reading.trim() : "";
@@ -53,7 +68,7 @@ export async function findSpreadReadingForSession(
 ): Promise<string | null> {
   const sessionCards = session.cards ?? [];
   const spreadId = normalizeSpreadId(session.spread_id);
-  const cardKey = hasCompleteSpread(sessionCards, spreadId, session.spread_type)
+  const cardKey = sessionSpreadIsComplete(session, characterId)
     ? tarotCardsKey(sessionCards.map((name) => ({ name })))
     : "";
 
@@ -105,8 +120,7 @@ export async function findStoredSpreadReading(
   if (intentionReading) return intentionReading;
 
   const sessionCards = session.cards ?? [];
-  const spreadId = normalizeSpreadId(session.spread_id);
-  if (!hasCompleteSpread(sessionCards, spreadId, session.spread_type)) {
+  if (!sessionSpreadIsComplete(session, characterId)) {
     return findSessionMemoryReading(profileUserId, session.id, characterId);
   }
   const cardKey = tarotCardsKey(sessionCards.map((name) => ({ name })));

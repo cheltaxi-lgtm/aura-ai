@@ -35,7 +35,9 @@ import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
   getNumerologTool,
   isNumerologSessionToolId,
+  parseNumerologToolParams,
 } from "@/lib/numerology/tools";
+import { drawNumerologSessionSpread } from "@/lib/numerology/session-draw";
 import { appendUserMemoryToPrompt, buildClientBlock, buildMemoryBlock } from "@/lib/user-memory";
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
 import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
@@ -165,10 +167,20 @@ export async function GET(request: NextRequest) {
         ? DEFAULT_NUMEROLOG_SESSION_TOOL
         : null;
     if (toolId) {
-      const drawCount = getNumerologTool(toolId).drawCount;
-      const drawn = drawUniformSpread(system, drawCount);
+      const toolParams = parseNumerologToolParams({
+        partnerName: request.nextUrl.searchParams.get("partnerName"),
+        partnerDate: request.nextUrl.searchParams.get("partnerDate"),
+        objectValue: request.nextUrl.searchParams.get("objectValue"),
+      });
+      const profileUser = await getUserById(authed.profileUserId);
+      const birthDate = profileUser?.birth_date ?? null;
+      const drawn = drawNumerologSessionSpread(toolId, {
+        birthDate,
+        params: toolParams,
+        deckSystem: system,
+      });
       return NextResponse.json({
-        cards: drawn,
+        cards: drawn.map((c) => ({ name: c.name, meaning: c.meaning })),
         system,
         deck: system,
         intention: null,

@@ -48,8 +48,11 @@ import { getCharacterById } from "@/lib/characters";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
+  buildNumerologSpreadCards,
   numerologSpreadComplete,
   numerologToolCost,
+  numerologToolDrawCount,
+  resolveNumerologToolId,
   type NumerologToolId,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
@@ -60,6 +63,7 @@ import {
   clearPendingReading,
   resolveSpreadCardsForReading,
   readingPayloadForMaster,
+  resolveTarotCardsForOutgoingChat,
   coerceSpreadReadingText,
 } from "@/lib/chat-reading-helpers";
 import { inferDailySpreadType } from "@/lib/daily-spread-client";
@@ -463,8 +467,12 @@ export function useChatActions(options: UseChatActionsOptions) {
 
         const metaSpreadId = sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
         const metaSpreadType = sessionSpreadMetaRef.current?.spreadType;
-        const metaNumerologToolId =
-          sessionSpreadMetaRef.current?.numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+        const metaNumerologToolId = isNumerologMaster(characterId)
+          ? resolveNumerologToolId(
+              sessionSpreadMetaRef.current?.spreadId,
+              sessionSpreadMetaRef.current?.numerologToolId
+            )
+          : DEFAULT_NUMEROLOG_SESSION_TOOL;
 
         const spreadComplete = (names: string[]) =>
           isNumerologMaster(characterId)
@@ -896,6 +904,8 @@ export function useChatActions(options: UseChatActionsOptions) {
         spreadType?: string | null;
         spreadId?: string | null;
         cards?: string[] | null;
+        numerologToolId?: import("@/lib/numerology/tools").NumerologToolId | null;
+        numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
         spread?:
           | {
               cards: { name: string; meaning?: string }[];
@@ -927,6 +937,14 @@ export function useChatActions(options: UseChatActionsOptions) {
       const cardNames =
         data.cards?.length ? data.cards : (data.spread?.cards?.map((c) => c.name) ?? []);
       const spreadId = data.spreadId ?? sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
+      const numerologToolId = isNumerologMaster(characterId)
+        ? resolveNumerologToolId(
+            data.spreadId ?? sessionSpreadMetaRef.current?.spreadId,
+            data.numerologToolId ?? sessionSpreadMetaRef.current?.numerologToolId
+          )
+        : null;
+      const numerologToolParams =
+        data.numerologToolParams ?? sessionSpreadMetaRef.current?.numerologToolParams;
 
       const profile = getActiveProfile();
       const inferredSpreadType = inferDailySpreadType({
@@ -934,9 +952,13 @@ export function useChatActions(options: UseChatActionsOptions) {
         sessionSpreadType: data.spreadType,
         sessionIntention: intention,
         cards:
-          hasCompleteSpread(cardNames, spreadId, data.spreadType)
-            ? buildSessionSpreadCards(characterId, cardNames).spreadCards
-            : [],
+          isNumerologMaster(characterId) && numerologToolId
+            ? numerologSpreadComplete(cardNames, numerologToolId)
+              ? buildNumerologSpreadCards(characterId, cardNames, numerologToolId).spreadCards
+              : []
+            : hasCompleteSpread(cardNames, spreadId, data.spreadType)
+              ? buildSessionSpreadCards(characterId, cardNames).spreadCards
+              : [],
         profile,
       });
       const spreadType: "daily" | "new" =
@@ -944,7 +966,17 @@ export function useChatActions(options: UseChatActionsOptions) {
         ((data.spreadType as "daily" | "new" | undefined) ?? "new");
 
       if (cardNames.length) {
-        sessionSpreadMetaRef.current = { spreadType, spreadId, cardNames };
+        sessionSpreadMetaRef.current = {
+          spreadType,
+          spreadId,
+          cardNames,
+          ...(numerologToolId
+            ? {
+                numerologToolId,
+                numerologToolParams,
+              }
+            : {}),
+        };
       } else {
         sessionSpreadMetaRef.current = null;
       }
@@ -966,17 +998,29 @@ export function useChatActions(options: UseChatActionsOptions) {
           setSpreadFlipped(spreadFlippedState(symbols.length, true));
         }
       } else if (
-        hasCompleteSpread(cardNames, DEFAULT_SPREAD_ID, "daily") &&
         isNumerologMaster(characterId) &&
-        !intention
+        numerologToolId &&
+        !intention &&
+        numerologSpreadComplete(cardNames, numerologToolId)
       ) {
-        const { spreadCards, system } = buildSessionSpreadCards(characterId, cardNames);
-        setChatSessionSpread({ masterId: characterId, cards: spreadCards, system });
-        setSpreadFlipped(spreadFlippedState(spreadCards.length, true));
+        const drawCount = numerologToolDrawCount(numerologToolId);
+        if (drawCount > 0) {
+          const { spreadCards, system } = buildNumerologSpreadCards(
+            characterId,
+            cardNames,
+            numerologToolId
+          );
+          setChatSessionSpread({ masterId: characterId, cards: spreadCards, system });
+          setSpreadFlipped(spreadFlippedState(spreadCards.length, true));
+        } else {
+          setChatSessionSpread(null);
+          setSpreadFlipped([]);
+        }
       } else if (
         hasCompleteSpread(cardNames, DEFAULT_SPREAD_ID, "daily") &&
         spreadType === "daily" &&
-        !intention
+        !intention &&
+        !isNumerologMaster(characterId)
       ) {
         const { spreadCards, system } = buildSessionSpreadCards(characterId, cardNames);
         setChatSessionSpread({ masterId: characterId, cards: spreadCards, system });
@@ -1511,35 +1555,15 @@ export function useChatActions(options: UseChatActionsOptions) {
 
       const activeProfile = getActiveProfile();
 
-      const masterSpread =
-        selectedCharacter && activeProfile
-          ? resolveMasterSpread(activeProfile, selectedCharacter, masters)
-          : null;
-      const tarotCardsForChat =
-        periodSpreadCards &&
-        hasCompleteSpread(
-          periodSpreadCards.map((c) => c.name),
-          DEFAULT_SPREAD_ID,
-          "new"
-        )
-          ? periodSpreadCards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }))
-          : intentionSpread?.masterId === selectedCharacter && intentionSpread.cards.length
-            ? intentionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-            : chatSessionSpread?.masterId === selectedCharacter &&
-                hasCompleteSpread(
-                  chatSessionSpread.cards.map((c) => c.name),
-                  DEFAULT_SPREAD_ID,
-                  "daily"
-                )
-              ? chatSessionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-              : masterSpread &&
-                  hasCompleteSpread(
-                    masterSpread.cards.map((c) => c.name),
-                    DEFAULT_SPREAD_ID,
-                    "daily"
-                  )
-                ? masterSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-                : activeProfile?.tarotCards?.map((c) => ({ name: c.name, meaning: c.meaning }));
+      const tarotCardsForChat = resolveTarotCardsForOutgoingChat({
+        characterId: selectedCharacter,
+        sessionSpreadMeta: sessionSpreadMetaRef.current,
+        chatSessionSpread,
+        intentionSpread,
+        periodSpreadCards,
+        activeProfile,
+        masters,
+      });
 
       const userMessage: Message = {
         id: generateId(),

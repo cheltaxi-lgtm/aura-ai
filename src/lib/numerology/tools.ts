@@ -99,9 +99,9 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     topic: "pythagoras_square",
     group: "session",
     cost: SESSION_COST,
-    drawCount: 9,
-    positions: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-    description: "Девять ячеек психоматрицы",
+    drawCount: 0,
+    positions: [],
+    description: "Психоматрица по дате рождения — без случайного draw",
     buildMessage: () => "Разбери мой квадрат Пифагора",
   },
   {
@@ -258,6 +258,28 @@ export function isNumerologSessionToolId(value: string): value is NumerologToolI
 
 export const DEFAULT_NUMEROLOG_SESSION_TOOL: NumerologToolId = "spread_three_numbers";
 
+/** Stored in sessions.spread_id to persist the active numerolog calculation type. */
+export const NUMEROLOG_SPREAD_ID_PREFIX = "numerolog:";
+
+export function encodeNumerologSpreadId(toolId: NumerologToolId): string {
+  return `${NUMEROLOG_SPREAD_ID_PREFIX}${toolId}`;
+}
+
+export function decodeNumerologSpreadId(
+  spreadId?: string | null
+): NumerologToolId | null {
+  if (!spreadId?.startsWith(NUMEROLOG_SPREAD_ID_PREFIX)) return null;
+  const id = spreadId.slice(NUMEROLOG_SPREAD_ID_PREFIX.length);
+  return isNumerologSessionToolId(id) ? id : null;
+}
+
+export function resolveNumerologToolId(
+  spreadId?: string | null,
+  explicitToolId?: NumerologToolId | null
+): NumerologToolId {
+  return explicitToolId ?? decodeNumerologSpreadId(spreadId) ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+}
+
 export function numerologSpreadComplete(
   cards: string[] | null | undefined,
   toolId?: NumerologToolId | null
@@ -273,25 +295,53 @@ export const NUMEROLOG_BIRTH_DATE_TOOLS = new Set<NumerologToolId>([
   "pythagoras",
   "personal_year",
   "forecast_9y",
+  "favorable_dates",
   "karma",
   "chaldean",
+  "compatibility",
 ]);
 
 export function numerologSessionNeedsBirthDate(toolId: NumerologToolId): boolean {
   return NUMEROLOG_BIRTH_DATE_TOOLS.has(toolId);
 }
 
+/** Session tools that need a non-empty name in the user profile. */
+export const NUMEROLOG_NAME_TOOLS = new Set<NumerologToolId>(["chaldean", "karma"]);
+
+export function numerologSessionNeedsFullName(toolId: NumerologToolId): boolean {
+  return NUMEROLOG_NAME_TOOLS.has(toolId);
+}
+
 export function validateNumerologSessionReady(
   toolId: NumerologToolId,
   params?: NumerologToolParams,
-  birthDate?: string | null
+  birthDate?: string | null,
+  fullName?: string | null
 ): string | null {
   const paramError = validateNumerologToolParams(toolId, params);
   if (paramError) return paramError;
   if (numerologSessionNeedsBirthDate(toolId) && !parseBirthDate(birthDate ?? "")) {
     return "Укажите дату рождения в профиле — без неё этот расчёт недоступен.";
   }
+  if (numerologSessionNeedsFullName(toolId) && !(fullName?.trim())) {
+    return "Укажите имя в профиле — без него этот расчёт недоступен.";
+  }
   return null;
+}
+
+export function parseNumerologToolParams(raw: {
+  partnerName?: string | null;
+  partnerDate?: string | null;
+  objectValue?: string | null;
+}): NumerologToolParams {
+  const partnerName = raw.partnerName?.trim();
+  const partnerDate = raw.partnerDate?.trim();
+  const objectValue = raw.objectValue?.trim();
+  return {
+    ...(partnerName ? { partnerName } : {}),
+    ...(partnerDate ? { partnerDate } : {}),
+    ...(objectValue ? { objectValue } : {}),
+  };
 }
 
 /** Build spread symbols for a numerolog session tool (respects per-tool drawCount). */

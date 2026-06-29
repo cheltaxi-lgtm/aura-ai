@@ -66,6 +66,8 @@ interface MasterSessionFlowProps {
   initialTopic?: SessionTopicId | null;
   /** Birth date from profile — required for several numerolog calculations. */
   userBirthDate?: string;
+  /** Full name from profile — required for chaldean/karma. */
+  userFullName?: string;
 }
 
 type Step = "topic" | "master" | "cards" | "scheme" | "calculation" | "flip";
@@ -119,6 +121,7 @@ export default function MasterSessionFlow({
   initialSpreadId,
   initialTopic,
   userBirthDate,
+  userFullName,
 }: MasterSessionFlowProps) {
   const [step, setStep] = useState<Step>("topic");
   const [topic, setTopic] = useState<SessionTopicId | null>(null);
@@ -268,7 +271,7 @@ export default function MasterSessionFlow({
     if (!master) return;
     if (!numerologFlow && !topic) return;
     if (topic === "custom" && !customQuestionReady) return;
-    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)) {
+    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)) {
       return;
     }
     setDrawLoading(true);
@@ -277,6 +280,12 @@ export default function MasterSessionFlow({
       const qs = new URLSearchParams({ master });
       if (numerologFlow) {
         qs.set("numerologTool", selectedNumerologTool);
+        const partnerDate = numerologToolParams.partnerDate?.trim();
+        const partnerName = numerologToolParams.partnerName?.trim();
+        const objectValue = numerologToolParams.objectValue?.trim();
+        if (partnerDate) qs.set("partnerDate", partnerDate);
+        if (partnerName) qs.set("partnerName", partnerName);
+        if (objectValue) qs.set("objectValue", objectValue);
       } else if (topic) {
         qs.set("topic", topic);
       }
@@ -310,6 +319,7 @@ export default function MasterSessionFlow({
     selectedNumerologTool,
     numerologToolParams,
     cardCount,
+    userFullName,
   ]);
 
   useEffect(() => {
@@ -330,7 +340,7 @@ export default function MasterSessionFlow({
   useEffect(() => {
     if (step === "flip" && newCards.length === 0 && master && (numerologFlow || topic)) {
       if (topic === "custom" && !customQuestionReady) return;
-      if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)) {
+      if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)) {
         return;
       }
       void fetchNewSpread();
@@ -375,7 +385,7 @@ export default function MasterSessionFlow({
     if (!master || !allFlipped || newCards.length < cardCount) return;
     if (!numerologFlow && !topic) return;
     if (topic === "custom" && !customQuestionReady) return;
-    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)) {
+    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)) {
       return;
     }
     onStart({
@@ -502,8 +512,21 @@ export default function MasterSessionFlow({
     ) : step === "calculation" && numerologFlow ? (
       <button
         type="button"
-        disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)}
+        disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)}
         onClick={() => {
+          if (cardCount === 0 && master) {
+            onStart({
+              characterKey: master,
+              intention: null,
+              spreadType: "new",
+              cards: [],
+              cardsRevealed: true,
+              deckSystem,
+              numerologToolId: selectedNumerologTool,
+              numerologToolParams,
+            });
+            return;
+          }
           setFlipped(emptyFlipped(cardCount));
           setNewCards([]);
           setStep("flip");
@@ -511,11 +534,13 @@ export default function MasterSessionFlow({
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
       >
         <span>
-          {cardCount === 1
-            ? "Вытянуть число"
-            : cardCount < 5
-              ? `Вытянуть ${cardCount} числа`
-              : `Вытянуть ${cardCount} чисел`}
+          {cardCount === 0
+            ? "Начать расчёт"
+            : cardCount === 1
+              ? "Вытянуть число"
+              : cardCount < 5
+                ? `Вытянуть ${cardCount} числа`
+                : `Вытянуть ${cardCount} чисел`}
         </span>
         {runeConfig.enabled ? (
           <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
@@ -901,6 +926,7 @@ export default function MasterSessionFlow({
                     onParamsChange={setNumerologToolParams}
                     runeBillingEnabled={runeConfig.enabled}
                     userBirthDate={userBirthDate}
+                    userFullName={userFullName}
                   />
                 </div>
               </motion.div>

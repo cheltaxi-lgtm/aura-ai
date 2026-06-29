@@ -454,6 +454,11 @@ export async function POST(request: NextRequest) {
               gender,
               birthDate,
               numerologToolId: toolId,
+              ...(numerologToolParams.partnerName ||
+              numerologToolParams.partnerDate ||
+              numerologToolParams.objectValue
+                ? { numerologToolParams }
+                : {}),
               ...(isDailySpread ? { spreadType: "daily" } : {}),
             },
             isPaid,

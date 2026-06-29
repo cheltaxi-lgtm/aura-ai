@@ -19,6 +19,13 @@ import {
   sessionHasSpreadReadingMessage,
 } from "@/lib/spread-reading-persist";
 import { getSpread, hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
+import { isNumerologMaster } from "@/lib/numerolog/welcome";
+import {
+  buildNumerologSpreadCards,
+  decodeNumerologSpreadId,
+  encodeNumerologSpreadId,
+  numerologSpreadComplete,
+} from "@/lib/numerology/tools";
 
 const DEFAULT_HISTORY_LIMIT = 50;
 const HISTORY_PAGE_MAX = 200;
@@ -44,9 +51,29 @@ function mapMessageRows(
 function spreadFromSession(session: SessionRow, characterId: string) {
   const cards = session.cards ?? [];
   const masterKey = session.character_key ?? characterId;
+  if (!masterKey || !cards.length) return null;
+
+  const numerologToolId = decodeNumerologSpreadId(session.spread_id);
+  if (numerologToolId && isNumerologMaster(masterKey)) {
+    if (!numerologSpreadComplete(cards, numerologToolId)) return null;
+    const { spreadCards, system } = buildNumerologSpreadCards(
+      masterKey,
+      cards,
+      numerologToolId
+    );
+    return {
+      cards: spreadCards,
+      system,
+      type: "reading" as const,
+      cardsKey: spreadKey(spreadCards),
+      intention: null,
+      spreadId: session.spread_id ?? encodeNumerologSpreadId(numerologToolId),
+    };
+  }
+
   const spreadId = normalizeSpreadId(session.spread_id);
   const required = getSpread(spreadId).cardCount;
-  if (!hasCompleteSpread(cards, spreadId, session.spread_type) || !masterKey) return null;
+  if (!hasCompleteSpread(cards, spreadId, session.spread_type)) return null;
   const system = resolveMasterDeckSystem(masterKey);
   let symbols = resolveSpreadSymbols(system, cards);
   if (symbols.length < required) {
@@ -137,7 +164,7 @@ export async function GET(request: NextRequest) {
     const { rows } = await query<SessionRow>(
       `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
               COALESCE(awaiting_context, false) AS awaiting_context,
-              character_key, intention, spread_type, spread_id, cards,
+              character_key, intention, spread_type, spread_id, cards, numerolog_tool_params,
               COALESCE(status, 'active') AS status, created_at, updated_at
        FROM sessions
        WHERE user_id = $1
@@ -154,7 +181,7 @@ export async function GET(request: NextRequest) {
     const { rows } = await query<SessionRow>(
       `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
               COALESCE(awaiting_context, false) AS awaiting_context,
-              character_key, intention, spread_type, spread_id, cards,
+              character_key, intention, spread_type, spread_id, cards, numerolog_tool_params,
               COALESCE(status, 'active') AS status, created_at, updated_at
        FROM sessions s
        WHERE s.user_id = $1
@@ -255,6 +282,8 @@ export async function GET(request: NextRequest) {
     spreadType: sessionRow.spread_type ?? null,
     spreadId: sessionRow.spread_id ?? null,
     cards: sessionRow.cards ?? null,
+    numerologToolId: decodeNumerologSpreadId(sessionRow.spread_id),
+    numerologToolParams: sessionRow.numerolog_tool_params ?? null,
     status: sessionRow.status ?? "active",
     messages,
     pastSessions: [],

@@ -18,6 +18,8 @@ interface NumerologCalculationPickerProps {
   onParamsChange: (params: NumerologToolParams) => void;
   runeBillingEnabled?: boolean;
   userBirthDate?: string;
+  /** Full name from profile — required for chaldean/karma. */
+  userFullName?: string;
 }
 
 export default function NumerologCalculationPicker({
@@ -27,10 +29,16 @@ export default function NumerologCalculationPicker({
   onParamsChange,
   runeBillingEnabled = false,
   userBirthDate,
+  userFullName,
 }: NumerologCalculationPickerProps) {
   const [partnerDateError, setPartnerDateError] = useState("");
   const selected = getNumerologTool(selectedId);
-  const sessionError = validateNumerologSessionReady(selectedId, params, userBirthDate);
+  const sessionError = validateNumerologSessionReady(
+    selectedId,
+    params,
+    userBirthDate,
+    userFullName
+  );
 
   const handlePartnerDateChange = (value: string) => {
     let v = value.replace(/\D/g, "");
@@ -65,8 +73,9 @@ export default function NumerologCalculationPicker({
               </span>
               <span className="mt-1 block text-sm font-semibold text-white">{tool.label}</span>
               <span className="mt-0.5 block text-[11px] leading-snug text-white/55">
-                {tool.drawCount}{" "}
-                {tool.drawCount === 1 ? "число" : tool.drawCount < 5 ? "числа" : "чисел"}
+                {tool.drawCount === 0
+                  ? "по дате рождения"
+                  : `${tool.drawCount} ${tool.drawCount === 1 ? "число" : tool.drawCount < 5 ? "числа" : "чисел"}`}
               </span>
               {runeBillingEnabled ? (
                 <RuneCost cost={tool.cost} enabled className="mt-1 text-[10px] text-amber-200/80" />
@@ -126,8 +135,10 @@ export default function NumerologCalculationPicker({
       ) : null}
 
       <p className="text-center text-xs text-white/50">
-        {selected.description} · после выбора откроете {selected.drawCount}{" "}
-        {selected.drawCount === 1 ? "число" : selected.drawCount < 5 ? "числа" : "чисел"}
+        {selected.description}
+        {selected.drawCount > 0
+          ? ` · после выбора откроете ${selected.drawCount} ${selected.drawCount === 1 ? "число" : selected.drawCount < 5 ? "числа" : "чисел"}`
+          : " · расчёт сразу по дате рождения"}
       </p>
       {sessionError ? (
         <p className="text-center text-xs text-amber-200/90">{sessionError}</p>
@@ -139,7 +150,8 @@ export default function NumerologCalculationPicker({
 export function numerologCalculationReady(
   toolId: NumerologToolId,
   params: NumerologToolParams,
-  birthDate?: string | null
+  birthDate?: string | null,
+  fullName?: string | null
 ): boolean {
-  return validateNumerologSessionReady(toolId, params, birthDate) === null;
+  return validateNumerologSessionReady(toolId, params, birthDate, fullName) === null;
 }

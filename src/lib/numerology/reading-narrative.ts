@@ -61,7 +61,41 @@ function buildSpreadBridge(
   spreadNumbers: string[] | undefined,
   profile: FullNumerologyProfile | null
 ): string {
-  if (!spreadNumbers?.length || spreadNumbers.length < 3) return "";
+  if (!spreadNumbers?.length) return "";
+
+  if (spreadNumbers.length >= 9) {
+    const lines = [
+      "## Числа прогноза и матрица",
+      "",
+      `В раскладе — **личные годы** на девять лет вперёд: ${spreadNumbers.join(" · ")}.`,
+      "Каждое число — энергия конкретного года на фоне вашей психоматрицы, а не случайный draw.",
+    ];
+    if (profile?.personalYear.number) {
+      lines.push(
+        "",
+        `Текущий личный год **${profile.personalYear.number}** (${profile.personalYear.title.toLowerCase()}) — стартовая точка этой линии.`
+      );
+    }
+    return lines.join("\n");
+  }
+
+  if (spreadNumbers.length < 3) {
+    if (spreadNumbers.length === 1 && profile?.personalYear.number) {
+      return [
+        "## Число периода",
+        "",
+        `В раскладе — **${spreadNumbers[0]}**, ваш личный год по расчёту (${profile.personalYear.title.toLowerCase()}).`,
+      ].join("\n");
+    }
+    if (spreadNumbers.length === 2) {
+      return [
+        "## Коды пары",
+        "",
+        `Числа пути в раскладе: **${spreadNumbers[0]} · ${spreadNumbers[1]}** — ваш код и код партнёра по датам рождения.`,
+      ].join("\n");
+    }
+    return "";
+  }
 
   const [a, b, c] = spreadNumbers.slice(0, 3);
   const lp = profile?.lifePath.number;

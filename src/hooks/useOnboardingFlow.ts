@@ -75,9 +75,11 @@ import { getCharacterById } from "@/lib/characters";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
+  encodeNumerologSpreadId,
   numerologToolDrawCount,
   numerologToolPositions,
   buildNumerologSpreadCards,
+  resolveNumerologToolId,
 } from "@/lib/numerology/tools";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
 import {
@@ -143,9 +145,10 @@ export interface ChatSessionDeps {
       characterKey: string;
       intention: SessionIntention | SessionTopicId | null;
       spreadType: "daily" | "new";
-      spreadId?: SpreadId;
+      spreadId?: SpreadId | string;
       cards: string[];
       awaitingContext?: boolean;
+      numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
     }
   ) => Promise<void>;
   restoreChatForCharacter: (
@@ -390,7 +393,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const pendingReadingResumeRef = useRef<string | null>(null);
   const sessionSpreadMetaRef = useRef<{
     spreadType?: "daily" | "new" | "photo";
-    spreadId?: SpreadId;
+    spreadId?: SpreadId | string;
     cardNames?: string[];
     numerologToolId?: import("@/lib/numerology/tools").NumerologToolId;
     numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams;
@@ -860,8 +863,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     // Numerolog sessions use a per-tool number of "cards" (drawCount). Resolve them
     // explicitly so the chat never falls back to the user's 3-card tarot triplet.
     if (selectedCharacter && isNumerologMaster(selectedCharacter)) {
-      const toolId =
-        sessionSpreadMetaRef.current?.numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+      const toolId = resolveNumerologToolId(
+        sessionSpreadMetaRef.current?.spreadId,
+        sessionSpreadMetaRef.current?.numerologToolId
+      );
       const drawCount = numerologToolDrawCount(toolId);
       if (drawCount < 1) return null;
 
@@ -940,7 +945,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       source: "intention";
       cards: SpreadSymbol[];
       system: DeckSystem;
-      spreadId: SpreadId;
+      spreadId: SpreadId | string;
     } | null => {
       if (!selectedCharacter) return null;
 
@@ -2067,6 +2072,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         numerologToolId,
         numerologToolParams,
       } = params;
+      const numerologTool = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+      const isNumerologSessionStart =
+        isNumerologMaster(characterKey) && spreadType === "new" && !intention;
       const spreadCardCount = getSpread(spreadId).cardCount;
       const sessionIntentionValue = spreadType === "daily" ? null : intention;
       if (customQuestion?.trim()) {
@@ -2076,7 +2084,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       }
       sessionSpreadMetaRef.current = {
         spreadType,
-        spreadId,
+        spreadId: isNumerologSessionStart
+          ? encodeNumerologSpreadId(numerologTool)
+          : spreadId,
         cardNames: cards,
         numerologToolId,
         numerologToolParams,
@@ -2185,41 +2195,49 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setSpreadFlipped(spreadFlippedState(spreadCardCount, false));
       }
 
-      const numerologTool = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
       const numerologDrawCount = numerologToolDrawCount(numerologTool);
 
       if (
-        isNumerologMaster(characterKey) &&
-        spreadType === "new" &&
-        !intention &&
+        isNumerologSessionStart &&
         cards.length >= numerologDrawCount
       ) {
         setIntentionSpread(null);
         persistIntentionSpreadState(characterKey, null);
-        const { spreadCards, system } = buildNumerologSpreadCards(
-          characterKey,
-          cards,
-          numerologTool,
-          { previewCards, deckSystem: previewDeckSystem }
-        );
-        setChatSessionSpread({
-          masterId: characterKey,
-          cards: spreadCards,
-          system,
-        });
-        setHideChatSpread(false);
-        setSpreadFlipped(spreadFlippedState(numerologDrawCount, true));
+        let spreadCards: SpreadSymbol[] = [];
+        let system = previewDeckSystem ?? resolveMasterDeckSystem(characterKey);
+        if (numerologDrawCount > 0) {
+          const built = buildNumerologSpreadCards(
+            characterKey,
+            cards,
+            numerologTool,
+            { previewCards, deckSystem: previewDeckSystem }
+          );
+          spreadCards = built.spreadCards;
+          system = built.system;
+          setChatSessionSpread({
+            masterId: characterKey,
+            cards: spreadCards,
+            system,
+          });
+          setHideChatSpread(false);
+          setSpreadFlipped(spreadFlippedState(numerologDrawCount, true));
+        } else {
+          setChatSessionSpread(null);
+          setHideChatSpread(false);
+          setSpreadFlipped([]);
+        }
 
         const activeProfile = getActiveProfile();
-        const mergedProfile = activeProfile
-          ? {
-              ...activeProfile,
-              tarotCards: spreadCards,
-              deckSystem: system,
-              deckSpreads: { ...activeProfile.deckSpreads, [system]: spreadCards },
-            }
-          : null;
-        if (mergedProfile) {
+        const mergedProfile =
+          numerologDrawCount > 0 && activeProfile
+            ? {
+                ...activeProfile,
+                tarotCards: spreadCards,
+                deckSystem: system,
+                deckSpreads: { ...activeProfile.deckSpreads, [system]: spreadCards },
+              }
+            : activeProfile;
+        if (mergedProfile && numerologDrawCount > 0) {
           persistProfile(mergedProfile);
         }
 
@@ -2237,7 +2255,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             characterKey,
             intention: null,
             spreadType,
+            spreadId: encodeNumerologSpreadId(numerologTool),
             cards,
+            numerologToolParams: numerologToolParams ?? null,
           });
           if (chatSessionId) {
             deps.setConsultationSessionId(chatSessionId);

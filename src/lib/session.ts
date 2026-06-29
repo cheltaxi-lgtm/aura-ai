@@ -4,6 +4,7 @@ import { getRuneSettings } from "./rune-settings";
 import { getSetting } from "./settings";
 import { creditRunesToUser } from "./rune-service";
 import { deleteUserTripletForSession } from "./triplet-cleanup";
+import type { NumerologToolParams } from "@/lib/numerology/tools";
 
 export interface SessionRow {
   id: string;
@@ -18,6 +19,7 @@ export interface SessionRow {
   spread_type?: string | null;
   spread_id?: string | null;
   cards?: string[] | null;
+  numerolog_tool_params?: NumerologToolParams | null;
   status?: string;
   created_at?: Date;
   updated_at?: Date;
@@ -30,15 +32,30 @@ export interface SessionChatMeta {
   spread_type: string | null;
   spread_id: string | null;
   cards: string[] | null;
+  numerolog_tool_params?: NumerologToolParams | null;
   awaiting_context?: boolean;
 }
 
 const SESSION_SELECT_FIELDS = `
   id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
   COALESCE(awaiting_context, false) AS awaiting_context,
-  character_key, intention, spread_type, spread_id, cards,
+  character_key, intention, spread_type, spread_id, cards, numerolog_tool_params,
   COALESCE(status, 'active') AS status, created_at, updated_at
 `;
+
+function parseNumerologToolParams(raw: unknown): NumerologToolParams | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const partnerName = typeof o.partnerName === "string" ? o.partnerName.trim() : "";
+  const partnerDate = typeof o.partnerDate === "string" ? o.partnerDate.trim() : "";
+  const objectValue = typeof o.objectValue === "string" ? o.objectValue.trim() : "";
+  if (!partnerName && !partnerDate && !objectValue) return null;
+  return {
+    ...(partnerName ? { partnerName } : {}),
+    ...(partnerDate ? { partnerDate } : {}),
+    ...(objectValue ? { objectValue } : {}),
+  };
+}
 
 function parseSessionCards(raw: unknown): string[] | null {
   if (!raw) return null;
@@ -58,6 +75,7 @@ function mapSessionChatMeta(row: {
   spread_type?: string | null;
   spread_id?: string | null;
   cards?: unknown;
+  numerolog_tool_params?: unknown;
   awaiting_context?: boolean;
 }): SessionChatMeta {
   return {
@@ -67,6 +85,7 @@ function mapSessionChatMeta(row: {
     spread_type: row.spread_type ?? null,
     spread_id: row.spread_id ?? null,
     cards: parseSessionCards(row.cards),
+    numerolog_tool_params: parseNumerologToolParams(row.numerolog_tool_params),
     awaiting_context: row.awaiting_context,
   };
 }
@@ -90,7 +109,11 @@ export async function getSession(id: string): Promise<SessionRow | null> {
   );
   const row = rows[0];
   if (!row) return null;
-  return { ...row, cards: parseSessionCards(row.cards) };
+  return {
+    ...row,
+    cards: parseSessionCards(row.cards),
+    numerolog_tool_params: parseNumerologToolParams(row.numerolog_tool_params),
+  };
 }
 
 export async function updateSessionReferrer(
@@ -190,6 +213,7 @@ export async function updateSessionChatMeta(
     spreadType?: string | null;
     spreadId?: string | null;
     cards?: string[] | null;
+    numerologToolParams?: NumerologToolParams | null;
   }
 ): Promise<void> {
   const sets: string[] = ["updated_at = NOW()"];
@@ -216,13 +240,22 @@ export async function updateSessionChatMeta(
     sets.push(`cards = $${idx++}::jsonb`);
     params.push(meta.cards?.length ? JSON.stringify(meta.cards) : null);
   }
+  if (meta.numerologToolParams !== undefined) {
+    sets.push(`numerolog_tool_params = $${idx++}::jsonb`);
+    params.push(
+      meta.numerologToolParams && Object.keys(meta.numerologToolParams).length
+        ? JSON.stringify(meta.numerologToolParams)
+        : null
+    );
+  }
 
   if (
     meta.characterKey !== undefined ||
     meta.intention !== undefined ||
     meta.spreadType !== undefined ||
     meta.spreadId !== undefined ||
-    meta.cards !== undefined
+    meta.cards !== undefined ||
+    meta.numerologToolParams !== undefined
   ) {
     sets.push(`status = 'active'`);
   }

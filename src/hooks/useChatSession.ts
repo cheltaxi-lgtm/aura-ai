@@ -33,6 +33,9 @@ export interface RestoreChatResult {
   intention?: string | null;
   spreadType?: string | null;
   cards?: string[] | null;
+  spreadId?: string | null;
+  numerologToolId?: import("@/lib/numerology/tools").NumerologToolId | null;
+  numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
   spread?: {
     cards: { name: string; meaning?: string }[];
     system: DeckSystem;
@@ -119,6 +122,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         spreadType?: string | null;
         spreadId?: string | null;
         cards?: string[];
+        numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
         awaitingContext?: boolean;
         newConsultation?: boolean;
       }
@@ -135,6 +139,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             spreadType: meta.spreadType,
             spreadId: meta.spreadId,
             cards: meta.cards,
+            numerologToolParams: meta.numerologToolParams,
             awaitingContext: meta.awaitingContext,
             newConsultation: meta.newConsultation ?? false,
           }),
@@ -242,6 +247,8 @@ export function useChatSession(options: UseChatSessionOptions) {
               intention: data.intention as string | null | undefined,
               spreadType: data.spreadType as string | null | undefined,
               cards: data.cards as string[] | null | undefined,
+              numerologToolId: data.numerologToolId as RestoreChatResult["numerologToolId"],
+              numerologToolParams: data.numerologToolParams as RestoreChatResult["numerologToolParams"],
               spread: spread ?? undefined,
             };
           }
@@ -273,7 +280,10 @@ export function useChatSession(options: UseChatSessionOptions) {
             status: data.status as string | null | undefined,
             intention: data.intention as string | null | undefined,
             spreadType: data.spreadType as string | null | undefined,
+            spreadId: data.spreadId as string | null | undefined,
             cards: data.cards as string[] | null | undefined,
+            numerologToolId: data.numerologToolId as RestoreChatResult["numerologToolId"],
+            numerologToolParams: data.numerologToolParams as RestoreChatResult["numerologToolParams"],
             spread,
           };
 
