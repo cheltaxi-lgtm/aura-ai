@@ -27,14 +27,45 @@ export function isUnusableRussianLlmOutput(text: string, minCyrillic = 12): bool
 /** Remove trailing «Простыми словами» section so route can append it once. */
 export function stripProstymiSlovamiSection(text: string): string {
   return text
-    .replace(/\n{2,}(?:#{1,2}\s*)?Простыми словами[\s\S]*$/i, "")
+    .replace(/\n{2,}(?:#{1,2}\s*)?(?:✦\s*)?Простыми словами[\s\S]*$/i, "")
     .trim();
 }
 
-export const NUMEROLOG_FINALE_HEADER = "## Простыми словами";
+/** Plain label — no ## so the chat renderer does not add ✦ headers. */
+export const NUMEROLOG_FINALE_HEADER = "Простыми словами:";
+
+const SECTION_GLITCH_RES: Array<[RegExp, string]> = [
+  [/([а-яё]{1,5})(Совет чисел)/gi, ". $2"],
+  [/([а-яё]{1,5})(Энергия периода)/gi, ". $2"],
+  [/([а-яё]{1,5})(Число пути)/gi, ". $2"],
+];
+
+/** Strip markdown and fix common LLM glitches in numerolog replies. */
+export function polishNumerologClientReply(text: string): string {
+  let out = text.replace(/\r\n/g, "\n").trim();
+  if (!out) return out;
+
+  out = out.replace(/\*\*([^*]+)\*\*/g, "$1");
+  out = out.replace(/\*([^*\n]+)\*/g, "$1");
+  out = out.replace(/^#{1,6}\s+/gm, "");
+  out = out.replace(/\*\*/g, "");
+
+  out = out.replace(/клюСовет/gi, "Совет");
+  for (const [re, repl] of SECTION_GLITCH_RES) {
+    out = out.replace(re, repl);
+  }
+
+  out = out.replace(
+    /(Совет чисел — \d+\.[\s\S]*?)(?=Совет чисел — \d+\.)/g,
+    ""
+  );
+
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
 
 export function appendNumerologFinale(body: string, finale: string): string {
-  const cleanBody = stripProstymiSlovamiSection(body);
+  const cleanBody = polishNumerologClientReply(stripProstymiSlovamiSection(body));
   if (!finale.trim()) return cleanBody;
-  return `${cleanBody}\n\n${NUMEROLOG_FINALE_HEADER}\n\n${finale.trim()}`;
+  const cleanFinale = polishNumerologClientReply(finale);
+  return `${cleanBody}\n\n${NUMEROLOG_FINALE_HEADER}\n\n${cleanFinale}`;
 }

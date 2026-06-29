@@ -6,10 +6,11 @@ import {
   appendNumerologFinale,
   isUnusableRussianLlmOutput,
   NUMEROLOG_FINALE_HEADER,
+  polishNumerologClientReply,
   stripProstymiSlovamiSection,
 } from "./numerolog-finale-client";
 
-export { appendNumerologFinale, NUMEROLOG_FINALE_HEADER, stripProstymiSlovamiSection };
+export { appendNumerologFinale, NUMEROLOG_FINALE_HEADER, stripProstymiSlovamiSection, polishNumerologClientReply };
 
 import type { NumerologyTopic } from "./topic-handlers";
 export type NumerologFinaleTopic = NumerologyTopic | "spread_opening";
@@ -77,6 +78,39 @@ function normalizeProseChunk(text: string): string {
   return text.trim().replace(/^["«]|["»]$/g, "");
 }
 
+function mergeProseContinuation(prev: string, next: string): string {
+  let a = prev.trimEnd();
+  let b = next.trimStart();
+  if (!b) return a;
+  if (!a) return b;
+
+  for (let len = Math.min(a.length, b.length, 120); len >= 4; len--) {
+    if (a.slice(-len) === b.slice(0, len)) {
+      return a + b.slice(len);
+    }
+  }
+
+  const sectionRestart =
+    /^(?:\*\*)?(?:Совет чисел|Энергия периода|Число пути)\s*—/i;
+  if (sectionRestart.test(b) && !/[.!?…»"')\s]$/.test(a)) {
+    const cut = a.lastIndexOf(" ");
+    if (cut > Math.floor(a.length * 0.45)) {
+      a = a.slice(0, cut).trimEnd();
+    }
+  }
+
+  const gap = /[.!?…]$/.test(a) ? " " : a.endsWith(",") || a.endsWith(";") ? " " : " ";
+  return `${a}${gap}${b}`;
+}
+
+function todayLabelRu(): string {
+  return new Date().toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 const MAIN_READING_MAX_TOKENS: Partial<Record<NumerologFinaleTopic, number>> = {
   spread_opening: 1800,
   forecast_timeline: 1400,
@@ -129,7 +163,7 @@ async function completeNumerologProse(
     const chunk = normalizeProseChunk(result.text ?? "");
     if (!chunk) break;
 
-    combined = combined ? `${combined}${chunk}` : chunk;
+    combined = combined ? mergeProseContinuation(combined, chunk) : chunk;
 
     const needsMore =
       result.finishReason === "length" || isProseLikelyTruncated(combined);
@@ -161,7 +195,7 @@ function deterministicFinale(name: string, topic: NumerologFinaleTopic): string 
 
 const FINALE_INSTRUCTIONS: Partial<Record<NumerologFinaleTopic, string>> = {
   spread_opening:
-    "Объясни расклад из трёх чисел максимально понятно и подробно: что означает число пути, энергия периода и совет — по одному абзацу на каждую позицию. Свяжи их в общую картину ближайшего времени. Если в данных есть число жизненного пути или личный год — упомяни, как расклад с ними перекликается. Не перечисляй ячейки матрицы и не упоминай квадрат Пифагора.",
+    "Объясни расклад из трёх чисел максимально понятно и подробно: что означает число пути, энергия периода и совет — по одному абзацу на каждую позицию. Свяжи их в общую картину ближайшего времени. Если в данных есть число жизненного пути или личный год — упомяни, как расклад с ними перекликается. Не перечисляй ячейки матрицы и не упоминай квадрат Пифагора. Сегодняшняя дата указана в данных — не называй прошедшие события «ближайшими» или «на носу».",
   forecast_timeline:
     "Не перечисляй годы списком. Дай общую дугу цикла на 9 лет: где старт, где пик нагрузки, где завершение. Один практический совет.",
   karma: "Сформулируй главный урок кармы простым языком, без перечисления всех цифр.",
@@ -206,10 +240,13 @@ export async function generateNumerologMainReading(params: {
         role: "user",
         content: [
           `Имя клиента: ${params.name}`,
+          `Сегодня: ${todayLabelRu()}.`,
           question ? `Вопрос клиента: «${question}»` : "",
           `\nДАННЫЕ ДВИЖКА:\n${facts}`,
           "\nДай связный ответ на вопрос клиента, опираясь только на эти факты.",
+          "События с датой раньше «Сегодня» не выделяй как актуальный фокус недели — говори о текущем периоде.",
           "Завершай каждое предложение полностью — не обрывай текст на полуслове.",
+          "Без markdown: не используй *, **, # и заголовки.",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -226,9 +263,9 @@ export async function generateNumerologMainReading(params: {
     return params.fallback;
   }
   if (/только движком|что разобрать\?/i.test(trimmed)) {
-    return params.fallback;
+    return polishNumerologClientReply(params.fallback);
   }
-  return trimmed;
+  return polishNumerologClientReply(trimmed);
 }
 
 /** Short LLM finale in plain Russian — facts from engine only. */
@@ -266,9 +303,9 @@ export async function generateNumerologFinale(params: {
       },
       {
         role: "user",
-        content: `Имя клиента: ${params.name}\n\nДАННЫЕ ДВИЖКА:\n${facts}\n\n${
+        content: `Имя клиента: ${params.name}\nСегодня: ${todayLabelRu()}.\n\nДАННЫЕ ДВИЖКА:\n${facts}\n\n${
           isSpreadOpening
-            ? "Объясни расклад простыми словами: что означает каждое из трёх чисел и как они работают вместе."
+            ? "Объясни расклад простыми словами: что означает каждое из трёх чисел и как они работают вместе. Не называй прошедшие события «ближайшими»."
             : "Резюмируй человеку простыми словами."
         }`,
       },
@@ -283,7 +320,7 @@ export async function generateNumerologFinale(params: {
   const minLen = isSpreadOpening ? 80 : 20;
   const minCyrillic = isSpreadOpening ? 40 : 15;
   if (!trimmed || trimmed.length < minLen || isUnusableRussianLlmOutput(trimmed, minCyrillic)) {
-    return deterministicFinale(params.name, params.topic);
+    return polishNumerologClientReply(deterministicFinale(params.name, params.topic));
   }
-  return trimmed;
+  return polishNumerologClientReply(trimmed);
 }

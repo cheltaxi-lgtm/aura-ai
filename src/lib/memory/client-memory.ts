@@ -16,6 +16,7 @@ import {
   upsertFacts,
   type UserFact,
 } from "@/lib/memory/user-facts";
+import { filterActiveMemoryFacts } from "@/lib/memory/fact-date-filter";
 
 const MAX_BLOCK_CHARS = 3500;
 const MAX_FACT_LINES = 10;
@@ -67,7 +68,10 @@ export async function loadClientMemoryBlock(params: {
   }
 
   const upcomingIds = new Set(upcoming.map((f) => f.id));
-  const general = dedupeById([critical, relevant]).filter((f) => !upcomingIds.has(f.id));
+  const general = filterActiveMemoryFacts(
+    dedupeById([critical, relevant]).filter((f) => !upcomingIds.has(f.id))
+  );
+  upcoming = filterActiveMemoryFacts(upcoming);
 
   if (!upcoming.length && !general.length) return "";
 
@@ -95,7 +99,10 @@ export async function loadClientMemoryBlock(params: {
   }
 
   sections.push(
-    `ОБЯЗАТЕЛЬНО: если в памяти есть конкретное событие (дата, экзамен, поездка, встреча) и оно относится к вопросу клиента — назови его явно своими словами в первых 2–3 предложениях. Не подменяй конкретику намёками.
+    `ПРАВИЛА ПАМЯТИ:
+— События из блока «БЛИЖАЙШИЕ СОБЫТИЯ» (дата ещё не наступила) — можно назвать явно, если они относятся к вопросу.
+— События с прошедшей датой НЕ называй «ближайшими», «на носу», «дышат в затылок» — не выделяй их как актуальный фокус периода.
+— Факты без даты используй как фон семьи/контекста, без привязки к «сегодня/неделе», если дата события уже прошла.
 Факты могли быть из сеанса с другим мастером — это нормально, свяжи с текущим вопросом.
 Остальное используй как фон — не перечисляй память списком и не пересказывай дословно.
 Текущий сеанс — отдельный разговор.`

@@ -5,6 +5,7 @@ import {
   generateNumerologFinale,
   generateNumerologMainReading,
 } from "@/lib/numerology/numerolog-finalize";
+import { polishNumerologClientReply } from "@/lib/numerology/numerolog-finale-client";
 import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
 
@@ -80,7 +81,7 @@ export function tryNumerologEngineFallback(
   }
 
   return {
-    reply: engineResult.reply,
+    reply: polishNumerologClientReply(engineResult.reply),
     numerologyUi: engineResult.ui?.pythagorasSquare
       ? { pythagorasSquare: engineResult.ui.pythagorasSquare }
       : undefined,
