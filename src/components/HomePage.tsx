@@ -2109,6 +2109,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               }
               masters={masters}
               initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
+              userBirthDate={effectiveProfile.birthDate}
               onStartRitual={() => {
                 setRitualFlowMaster(sessionListMaster);
                 setOpenRitualId(null);
@@ -2255,6 +2256,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
             initialTopic={sessionFlowInitialTopic ?? undefined}
             masters={masters}
+            userBirthDate={effectiveProfile.birthDate}
             onStartRitual={() => {
               if ((RITUAL_MASTERS as readonly string[]).includes(selectedCharacter)) {
                 setRitualFlowMaster(selectedCharacter as "ragnar" | "agafya");
@@ -2464,6 +2466,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                       }
                       masters={masters}
                       initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
+                      userBirthDate={effectiveProfile.birthDate}
                       onStartRitual={() => {
                         const ritualMaster = energyFlowMasterId ?? dailyEnergyMasterId;
                         if (

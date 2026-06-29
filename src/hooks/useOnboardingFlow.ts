@@ -77,6 +77,7 @@ import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
   numerologToolDrawCount,
   numerologToolPositions,
+  buildNumerologSpreadCards,
 } from "@/lib/numerology/tools";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
 import {
@@ -864,15 +865,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       const drawCount = numerologToolDrawCount(toolId);
       if (drawCount < 1) return null;
 
-      const numerologCards = ((): SpreadSymbol[] | null => {
+      const metaNames = sessionSpreadMetaRef.current?.cardNames ?? [];
+      const cardNames = ((): string[] | null => {
+        if (metaNames.length >= drawCount) return metaNames.slice(0, drawCount);
         if (
           chatSessionSpread?.masterId === selectedCharacter &&
           chatSessionSpread.cards.length >= drawCount
         ) {
-          return chatSessionSpread.cards as SpreadSymbol[];
+          return chatSessionSpread.cards.map((c) => c.name).slice(0, drawCount);
         }
         if ((cachedChatSpread?.cards.length ?? 0) >= drawCount) {
-          return cachedChatSpread!.cards as SpreadSymbol[];
+          return cachedChatSpread!.cards.map((c) => c.name).slice(0, drawCount);
         }
         const savedNumerolog = savedReadings
           .filter(
@@ -885,22 +888,29 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             (a, b) =>
               new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
           )[0];
-        if (savedNumerolog?.contextData?.tarotCards) {
-          return savedNumerolog.contextData.tarotCards as SpreadSymbol[];
+        const saved = savedNumerolog?.contextData?.tarotCards as SpreadSymbol[] | undefined;
+        if (saved?.length) {
+          return saved.map((c) => c.name).slice(0, drawCount);
         }
         return null;
       })();
 
-      if (!numerologCards) return null;
+      if (!cardNames || cardNames.length < drawCount) return null;
 
-      const system =
-        (chatSessionSpread?.masterId === selectedCharacter
+      const previewDeck =
+        chatSessionSpread?.masterId === selectedCharacter
           ? chatSessionSpread.system
-          : undefined) ?? resolveMasterDeckSystem(selectedCharacter);
+          : cachedChatSpread?.system;
+      const { spreadCards, system } = buildNumerologSpreadCards(
+        selectedCharacter,
+        cardNames,
+        toolId,
+        { deckSystem: previewDeck }
+      );
 
       return {
         source: "numerolog" as const,
-        cards: numerologCards.slice(0, drawCount),
+        cards: spreadCards,
         system,
         spreadId: DEFAULT_SPREAD_ID,
         cardCount: drawCount,
@@ -2186,13 +2196,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       ) {
         setIntentionSpread(null);
         persistIntentionSpreadState(characterKey, null);
-        const { spreadCards, system } = buildSessionSpreadCards(characterKey, cards, {
-          previewCards,
-          deckSystem: previewDeckSystem,
-        });
+        const { spreadCards, system } = buildNumerologSpreadCards(
+          characterKey,
+          cards,
+          numerologTool,
+          { previewCards, deckSystem: previewDeckSystem }
+        );
         setChatSessionSpread({
           masterId: characterKey,
-          cards: spreadCards.slice(0, numerologDrawCount),
+          cards: spreadCards,
           system,
         });
         setHideChatSpread(false);

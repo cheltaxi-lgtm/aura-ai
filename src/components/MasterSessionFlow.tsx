@@ -64,6 +64,8 @@ interface MasterSessionFlowProps {
   initialSpreadId?: SpreadId;
   /** Preselect topic (skips topic step, opens scheme picker). */
   initialTopic?: SessionTopicId | null;
+  /** Birth date from profile — required for several numerolog calculations. */
+  userBirthDate?: string;
 }
 
 type Step = "topic" | "master" | "cards" | "scheme" | "calculation" | "flip";
@@ -116,6 +118,7 @@ export default function MasterSessionFlow({
   newSpreadOnly = false,
   initialSpreadId,
   initialTopic,
+  userBirthDate,
 }: MasterSessionFlowProps) {
   const [step, setStep] = useState<Step>("topic");
   const [topic, setTopic] = useState<SessionTopicId | null>(null);
@@ -265,7 +268,7 @@ export default function MasterSessionFlow({
     if (!master) return;
     if (!numerologFlow && !topic) return;
     if (topic === "custom" && !customQuestionReady) return;
-    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams)) {
+    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)) {
       return;
     }
     setDrawLoading(true);
@@ -327,7 +330,7 @@ export default function MasterSessionFlow({
   useEffect(() => {
     if (step === "flip" && newCards.length === 0 && master && (numerologFlow || topic)) {
       if (topic === "custom" && !customQuestionReady) return;
-      if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams)) {
+      if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)) {
         return;
       }
       void fetchNewSpread();
@@ -372,7 +375,7 @@ export default function MasterSessionFlow({
     if (!master || !allFlipped || newCards.length < cardCount) return;
     if (!numerologFlow && !topic) return;
     if (topic === "custom" && !customQuestionReady) return;
-    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams)) {
+    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)) {
       return;
     }
     onStart({
@@ -499,7 +502,7 @@ export default function MasterSessionFlow({
     ) : step === "calculation" && numerologFlow ? (
       <button
         type="button"
-        disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams)}
+        disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate)}
         onClick={() => {
           setFlipped(emptyFlipped(cardCount));
           setNewCards([]);
@@ -897,6 +900,7 @@ export default function MasterSessionFlow({
                     }}
                     onParamsChange={setNumerologToolParams}
                     runeBillingEnabled={runeConfig.enabled}
+                    userBirthDate={userBirthDate}
                   />
                 </div>
               </motion.div>
@@ -987,7 +991,7 @@ export default function MasterSessionFlow({
                           masterId={master}
                           flipped={flipped.slice(0, cardCount)}
                           onFlip={handleFlip}
-                          compact={cardCount <= 3}
+                          compact={cardCount <= 5}
                           positions={numerologPositions}
                         />
                       ) : (

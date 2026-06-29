@@ -15,6 +15,7 @@ import {
   numerologToolDrawCount,
   type NumerologToolId,
   type NumerologToolParams,
+  buildNumerologSpreadCards,
 } from "@/lib/numerology/tools";
 import {
   resolveClientReadingText,
@@ -109,8 +110,8 @@ export function resolveSpreadCardsForReading(input: {
     metaCardNames?.length &&
     numerologSpreadComplete(metaCardNames, numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL)
   ) {
-    const required = numerologToolDrawCount(numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL);
-    return buildSessionSpreadCards(characterId, metaCardNames).spreadCards.slice(0, required);
+    const toolId = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+    return buildNumerologSpreadCards(characterId, metaCardNames, toolId).spreadCards;
   }
 
   const metaCards =

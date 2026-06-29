@@ -154,19 +154,9 @@ export async function GET(request: NextRequest) {
   const rawMaster = request.nextUrl.searchParams.get("master")?.trim() ?? "veronika";
   const numerologDraw = request.nextUrl.searchParams.get("numerologDraw") === "1";
   const numerologToolRaw = request.nextUrl.searchParams.get("numerologTool")?.trim() ?? "";
-  const spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
-  if (isDailyOnlySpread(spreadId)) {
-    return NextResponse.json({ error: "Spread not available for sessions" }, { status: 400 });
-  }
-  const spread = getSpread(spreadId);
-
-  if (!isSpreadEnabled(spreadId)) {
-    return NextResponse.json({ error: "Spread unavailable" }, { status: 403 });
-  }
 
   const characterId = await resolveApiCharacterId(rawMaster);
   const system = resolveMasterDeckSystem(characterId);
-  const cardCount = spread.cardCount;
 
   if (isNumerologMaster(characterId)) {
     const toolId = isNumerologSessionToolId(numerologToolRaw)
@@ -186,6 +176,18 @@ export async function GET(request: NextRequest) {
       });
     }
   }
+
+  const spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
+  if (isDailyOnlySpread(spreadId)) {
+    return NextResponse.json({ error: "Spread not available for sessions" }, { status: 400 });
+  }
+  const spread = getSpread(spreadId);
+
+  if (!isSpreadEnabled(spreadId)) {
+    return NextResponse.json({ error: "Spread unavailable" }, { status: 403 });
+  }
+
+  const cardCount = spread.cardCount;
 
   if (!topic || !isValidSessionIntention(topic)) {
     return NextResponse.json({ error: "Unknown intention" }, { status: 400 });

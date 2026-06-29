@@ -1,6 +1,8 @@
 import { parseBirthDate } from "./constants";
 import type { NumerologyTopic } from "./topic-handlers";
 import { PRICING } from "@/lib/config/pricing";
+import { buildSessionSpreadCards } from "@/lib/intention-draw";
+import type { DeckSystem, SpreadSymbol } from "@/lib/decks/types";
 
 export type NumerologToolId =
   | "period_today"
@@ -263,4 +265,49 @@ export function numerologSpreadComplete(
   const id = toolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
   if (!isNumerologSessionToolId(id)) return false;
   return (cards?.length ?? 0) >= numerologToolDrawCount(id);
+}
+
+/** Session tools that require a valid birth date in the user profile. */
+export const NUMEROLOG_BIRTH_DATE_TOOLS = new Set<NumerologToolId>([
+  "spread_three_numbers",
+  "pythagoras",
+  "personal_year",
+  "forecast_9y",
+  "karma",
+  "chaldean",
+]);
+
+export function numerologSessionNeedsBirthDate(toolId: NumerologToolId): boolean {
+  return NUMEROLOG_BIRTH_DATE_TOOLS.has(toolId);
+}
+
+export function validateNumerologSessionReady(
+  toolId: NumerologToolId,
+  params?: NumerologToolParams,
+  birthDate?: string | null
+): string | null {
+  const paramError = validateNumerologToolParams(toolId, params);
+  if (paramError) return paramError;
+  if (numerologSessionNeedsBirthDate(toolId) && !parseBirthDate(birthDate ?? "")) {
+    return "Укажите дату рождения в профиле — без неё этот расчёт недоступен.";
+  }
+  return null;
+}
+
+/** Build spread symbols for a numerolog session tool (respects per-tool drawCount). */
+export function buildNumerologSpreadCards(
+  characterKey: string,
+  cardNames: string[],
+  toolId: NumerologToolId,
+  options?: {
+    previewCards?: { name: string; meaning?: string }[];
+    deckSystem?: DeckSystem;
+  }
+): { spreadCards: SpreadSymbol[]; system: DeckSystem } {
+  const drawCount = numerologToolDrawCount(toolId);
+  return buildSessionSpreadCards(characterKey, cardNames, {
+    ...options,
+    cardCount: drawCount,
+    positionLabels: numerologToolPositions(toolId),
+  });
 }

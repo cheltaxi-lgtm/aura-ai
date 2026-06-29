@@ -5,7 +5,7 @@ import { parseBirthDate } from "@/lib/numerology/constants";
 import {
   NUMEROLOG_SESSION_TOOLS,
   getNumerologTool,
-  validateNumerologToolParams,
+  validateNumerologSessionReady,
   type NumerologToolId,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
@@ -17,6 +17,7 @@ interface NumerologCalculationPickerProps {
   onSelect: (id: NumerologToolId) => void;
   onParamsChange: (params: NumerologToolParams) => void;
   runeBillingEnabled?: boolean;
+  userBirthDate?: string;
 }
 
 export default function NumerologCalculationPicker({
@@ -25,9 +26,11 @@ export default function NumerologCalculationPicker({
   onSelect,
   onParamsChange,
   runeBillingEnabled = false,
+  userBirthDate,
 }: NumerologCalculationPickerProps) {
   const [partnerDateError, setPartnerDateError] = useState("");
   const selected = getNumerologTool(selectedId);
+  const sessionError = validateNumerologSessionReady(selectedId, params, userBirthDate);
 
   const handlePartnerDateChange = (value: string) => {
     let v = value.replace(/\D/g, "");
@@ -126,13 +129,17 @@ export default function NumerologCalculationPicker({
         {selected.description} · после выбора откроете {selected.drawCount}{" "}
         {selected.drawCount === 1 ? "число" : selected.drawCount < 5 ? "числа" : "чисел"}
       </p>
+      {sessionError ? (
+        <p className="text-center text-xs text-amber-200/90">{sessionError}</p>
+      ) : null}
     </div>
   );
 }
 
 export function numerologCalculationReady(
   toolId: NumerologToolId,
-  params: NumerologToolParams
+  params: NumerologToolParams,
+  birthDate?: string | null
 ): boolean {
-  return validateNumerologToolParams(toolId, params) === null;
+  return validateNumerologSessionReady(toolId, params, birthDate) === null;
 }
