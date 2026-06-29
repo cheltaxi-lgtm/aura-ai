@@ -12,3 +12,4 @@ export * from "./topic-handlers";
 export * from "./name-context";
 export * from "./engine-reply";
 export * from "./reading-narrative";
+export * from "./tools";

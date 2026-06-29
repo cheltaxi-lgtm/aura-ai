@@ -37,6 +37,7 @@ const IMAGE_GEN_WINDOW_MS = 60 * 60 * 1000;
 
 export const PAID_ROUTE_LIMITS = {
   reading: { max: 10, windowMs: 60_000 },
+  numerolog_tool: { max: 12, windowMs: 60_000 },
   photo_reading: { max: 5, windowMs: 60_000 },
   intention_spread: { max: 10, windowMs: 60_000 },
   image_generate: { max: IMAGE_GEN_LIMIT, windowMs: IMAGE_GEN_WINDOW_MS },

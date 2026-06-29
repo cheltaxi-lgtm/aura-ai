@@ -28,7 +28,10 @@ import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
-import NumerologQuickChips from "@/components/NumerologQuickChips";
+import NumerologToolHub from "@/components/NumerologToolHub";
+import NumerologToolResultModal, {
+  type NumerologToolResultState,
+} from "@/components/numerolog/NumerologToolResultModal";
 import MasterQuickChips from "@/components/MasterQuickChips";
 import { hasMasterQuickChips } from "@/lib/master-quick-chips";
 import {
@@ -56,6 +59,9 @@ import {
 
 const noop = () => {};
 import type { Message } from "@/types";
+import type { NumerologToolId, NumerologToolParams } from "@/lib/numerology/tools";
+import { getNumerologTool } from "@/lib/numerology/tools";
+import { PRICING } from "@/lib/config/pricing";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 
@@ -95,6 +101,19 @@ interface ChatWindowProps {
   runeBalance?: number;
   visionCost?: number;
   onSendMessage: (content: string, imageBase64?: string) => void;
+  onInvokeNumerologTool?: (
+    toolId: NumerologToolId,
+    params?: NumerologToolParams
+  ) => Promise<
+    | {
+        ok: true;
+        toolLabel: string;
+        reply: string;
+        numerologyUi?: Message["numerologyUi"];
+      }
+    | { ok: false; reason: string; message?: string }
+  >;
+  onOpenNumerologSpread?: () => void;
   onClose: () => void;
   closeAriaLabel?: string;
   sessionOffline?: boolean;
@@ -147,6 +166,8 @@ export default function ChatWindow({
   visionCost = 15,
   master,
   onSendMessage,
+  onInvokeNumerologTool,
+  onOpenNumerologSpread,
   onClose,
   closeAriaLabel = "Назад к списку мастеров",
   sessionOffline,
@@ -171,6 +192,10 @@ export default function ChatWindow({
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
+  const [numerologToolModal, setNumerologToolModal] = useState<NumerologToolResultState | null>(
+    null
+  );
+  const [numerologToolModalOpen, setNumerologToolModalOpen] = useState(false);
   const [statusText, setStatusText] = useState("Считывает энергетику...");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -380,6 +405,41 @@ export default function ChatWindow({
     sessionExhausted ||
     sessionQuestionCapReached ||
     chatBlockedByRunes;
+
+  const handleNumerologToolInvoke = useCallback(
+    async (toolId: NumerologToolId, params?: NumerologToolParams) => {
+      if (toolId === "spread_three_numbers") {
+        onOpenNumerologSpread?.();
+        return;
+      }
+      if (!onInvokeNumerologTool) return;
+
+      pinnedToBottomRef.current = true;
+      const tool = getNumerologTool(toolId);
+      setNumerologToolModal({ toolLabel: tool.label, loading: true });
+      setNumerologToolModalOpen(true);
+
+      const result = await onInvokeNumerologTool(toolId, params);
+      if (result.ok) {
+        setNumerologToolModal({
+          toolLabel: result.toolLabel,
+          loading: false,
+          reply: result.reply,
+          numerologyUi: result.numerologyUi,
+        });
+      } else if (result.reason === "invalid" && result.message) {
+        setNumerologToolModal({
+          toolLabel: tool.label,
+          loading: false,
+          error: result.message,
+        });
+      } else {
+        setNumerologToolModalOpen(false);
+        setNumerologToolModal(null);
+      }
+    },
+    [onInvokeNumerologTool, onOpenNumerologSpread]
+  );
 
   const showTypingIndicator =
     !spreadReadingLoading &&
@@ -943,11 +1003,13 @@ export default function ChatWindow({
           </p>
         ) : null}
         {characterId === "numerolog" && !readOnly ? (
-          <NumerologQuickChips
+          <NumerologToolHub
             disabled={quickChipsDisabled}
-            onSend={(text) => {
-              pinnedToBottomRef.current = true;
-              onSendMessage(text);
+            questionCost={questionCost}
+            spreadCost={PRICING.NUMEROLOGY_SESSION}
+            onOpenSpread={() => onOpenNumerologSpread?.()}
+            onInvokeTool={(toolId, params) => {
+              void handleNumerologToolInvoke(toolId, params);
             }}
           />
         ) : null}
@@ -1061,6 +1123,14 @@ export default function ChatWindow({
         </p>
       </form>
       </div>
+      <NumerologToolResultModal
+        open={numerologToolModalOpen}
+        state={numerologToolModal}
+        onClose={() => {
+          setNumerologToolModalOpen(false);
+          setNumerologToolModal(null);
+        }}
+      />
     </motion.div>
   );
 }

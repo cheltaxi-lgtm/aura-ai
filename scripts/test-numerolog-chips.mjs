@@ -1,43 +1,46 @@
 #!/usr/bin/env node
 /**
- * Verify chip preset messages trigger numerology topic-handlers.
+ * Verify numerology tool preset messages trigger topic-handlers.
  * Run: npx tsx scripts/test-numerolog-chips.mjs
  */
 import { detectNumerologyTopics } from "../src/lib/numerology/topic-handlers.ts";
+import {
+  NUMEROLOG_TOOLS,
+  buildNumerologToolMessage,
+} from "../src/lib/numerology/tools.ts";
 
-const CHIPS = [
-  { label: "Квадрат Пифагора", message: "Разбери мой квадрат Пифагора", topic: "pythagoras_square" },
-  { label: "Мой личный год", message: "Что меня ждёт в этом году?", topic: "personal_cycle" },
-  { label: "Прогноз 9 лет", message: "Покажи мой прогноз на 9 лет", topic: "forecast_timeline" },
-  { label: "Удачные даты", message: "Какие благоприятные даты для меня?", topic: "favorable_dates" },
-  { label: "Кармические уроки", message: "Разбери мою карму", topic: "karma" },
-  {
-    label: "Халдейская",
-    message: "Посчитай мои числа имени по халдейской системе",
-    topic: "chaldean",
-  },
-  {
-    label: "Совместимость (form)",
-    message: "Совместимость с Борис, дата рождения 22.07.1988",
-    topic: "compatibility",
-  },
-  {
-    label: "Число телефона (form)",
-    message: "Число телефона +79991234567",
-    topic: "object_number",
-  },
-];
+const PERIOD_EXPECTATIONS = {
+  period_today: "personal_cycle",
+  period_week: "personal_cycle",
+  period_month: "personal_cycle",
+};
 
 let failed = 0;
-for (const chip of CHIPS) {
-  const topics = detectNumerologyTopics(chip.message);
-  const ok = topics.includes(chip.topic);
-  console.log(`${ok ? "OK" : "FAIL"}: [${chip.label}] → ${chip.topic} in [${topics.join(", ")}]`);
+
+for (const tool of NUMEROLOG_TOOLS) {
+  if (tool.id === "spread_three_numbers") continue;
+
+  const message =
+    tool.id === "compatibility"
+      ? buildNumerologToolMessage(tool.id, {
+          partnerName: "Борис",
+          partnerDate: "22.07.1988",
+        })
+      : tool.id === "object_number"
+        ? buildNumerologToolMessage(tool.id, { objectValue: "+79991234567" })
+        : buildNumerologToolMessage(tool.id);
+
+  const expectedTopic = PERIOD_EXPECTATIONS[tool.id] ?? tool.topic;
+  const topics = detectNumerologyTopics(message);
+  const ok = topics.includes(expectedTopic);
+  console.log(
+    `${ok ? "OK" : "FAIL"}: [${tool.label}] → ${expectedTopic} in [${topics.join(", ")}]`
+  );
   if (!ok) failed++;
 }
 
 if (failed) {
-  console.error(`\n${failed} chip(s) failed topic detection.`);
+  console.error(`\n${failed} tool message(s) failed topic detection.`);
   process.exit(1);
 }
-console.log("\nAll chip messages trigger expected topics.");
+console.log("\nAll numerology tool messages trigger expected topics.");

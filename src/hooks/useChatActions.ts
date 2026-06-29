@@ -47,6 +47,14 @@ import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters"
 import { getCharacterById } from "@/lib/characters";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import { numerologySessionCost } from "@/lib/config/pricing";
+import {
+  buildNumerologToolMessage,
+  getNumerologTool,
+  numerologToolCost,
+  validateNumerologToolParams,
+  type NumerologToolId,
+  type NumerologToolParams,
+} from "@/lib/numerology/tools";
 import { waitForSpreadReadingRitual } from "@/components/SpreadReadingRitualPanel";
 import {
   buildTeaser,
@@ -1902,12 +1910,215 @@ export function useChatActions(options: UseChatActionsOptions) {
     ]
   );
 
+  const invokeNumerologTool = useCallback(
+    async (toolId: NumerologToolId, params?: NumerologToolParams) => {
+      if (
+        !selectedCharacter ||
+        !isNumerologMaster(selectedCharacter) ||
+        !isLoggedIn ||
+        sendingRef.current
+      ) {
+        return { ok: false as const, reason: "blocked" as const };
+      }
+
+      if (toolId === "spread_three_numbers") {
+        return { ok: false as const, reason: "spread" as const };
+      }
+
+      const tool = getNumerologTool(toolId);
+      const validationError = validateNumerologToolParams(toolId, params);
+      if (validationError) {
+        return { ok: false as const, reason: "invalid" as const, message: validationError };
+      }
+
+      if (usesRuneBilling) {
+        const required = numerologToolCost(toolId);
+        const needsRunes = questionsLeft !== null && questionsLeft <= 0;
+        if (needsRunes && runeBalance < required) {
+          setInsufficientRunes({ balance: runeBalance, required });
+          handleOpenPaywall({
+            balance: runeBalance,
+            requiredRunes: required,
+            shortage: required - runeBalance,
+          });
+          return { ok: false as const, reason: "paywall" as const };
+        }
+      }
+
+      if (session?.offline) {
+        return { ok: false as const, reason: "offline" as const };
+      }
+
+      if (isSessionChatQuestionCapReached(session?.freeQuestionsUsed)) {
+        return { ok: false as const, reason: "limit" as const };
+      }
+
+      const userMessage = buildNumerologToolMessage(toolId, params);
+      const userMsg: Message = {
+        id: generateId(),
+        role: "user",
+        content: userMessage,
+        timestamp: new Date(),
+      };
+      const replyId = generateId();
+
+      sendingRef.current = true;
+      setIsLoading(true);
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        { id: replyId, role: "assistant", content: "", timestamp: new Date() },
+      ]);
+
+      try {
+        const spreadNumbers =
+          chatSessionSpread?.masterId === selectedCharacter
+            ? chatSessionSpread.cards.map((c) => c.name).slice(0, 3)
+            : (chatDisplaySpread?.cards?.map((c) => c.name).slice(0, 3) ?? []);
+
+        const res = await fetch("/api/numerolog/tool", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toolId,
+            params,
+            sessionId: consultationSessionIdRef.current ?? session?.sessionId,
+            spreadNumbers,
+          }),
+        });
+
+        const data = (await res.json().catch(() => ({}))) as {
+          reply?: string;
+          numerologyUi?: Message["numerologyUi"];
+          runeBalance?: number;
+          sessionId?: string;
+          message?: string;
+        };
+
+        if (res.status === 402) {
+          const parsed = parseInsufficientRunes(data);
+          if (parsed) {
+            setInsufficientRunes(parsed);
+            handleOpenPaywall({
+              balance: parsed.balance,
+              requiredRunes: parsed.required,
+            });
+          }
+          setMessages((prev) => prev.filter((m) => m.id !== replyId && m.id !== userMsg.id));
+          return { ok: false as const, reason: "paywall" as const };
+        }
+
+        if (!res.ok) {
+          const errorText =
+            typeof data.message === "string"
+              ? data.message
+              : "Не удалось выполнить расчёт. Попробуйте ещё раз.";
+          setMessages((prev) => {
+            const updated = [...prev];
+            const idx = updated.findIndex((m) => m.id === replyId);
+            if (idx >= 0) {
+              updated[idx] = { ...updated[idx]!, content: errorText };
+            }
+            return updated;
+          });
+          return { ok: false as const, reason: "error" as const, message: errorText };
+        }
+
+        const reply = typeof data.reply === "string" ? data.reply : "";
+        const numerologyUi = data.numerologyUi;
+
+        setMessages((prev) => {
+          const updated = [...prev];
+          const idx = updated.findIndex((m) => m.id === replyId);
+          if (idx >= 0) {
+            updated[idx] = {
+              ...updated[idx]!,
+              content: reply,
+              ...(numerologyUi ? { numerologyUi } : {}),
+            };
+          }
+          return updated;
+        });
+
+        if (typeof data.runeBalance === "number") {
+          setRuneBalance(data.runeBalance);
+          emitRuneBalanceUpdate(data.runeBalance);
+          setInsufficientRunes(null);
+        }
+
+        if (typeof data.sessionId === "string" && data.sessionId) {
+          localStorage.setItem("aura_session_id", data.sessionId);
+          setConsultationSessionId(data.sessionId);
+          consultationSessionIdRef.current = data.sessionId;
+        }
+
+        if (reply) {
+          void attachSceneToAssistantMessage(
+            replyId,
+            reply,
+            selectedCharacter,
+            "scene_illustration",
+            userMessage
+          );
+        }
+
+        return {
+          ok: true as const,
+          toolId,
+          toolLabel: tool.label,
+          userMessage,
+          reply,
+          numerologyUi,
+        };
+      } catch (err) {
+        console.error("invokeNumerologTool failed:", err);
+        setMessages((prev) => {
+          const updated = [...prev];
+          const idx = updated.findIndex((m) => m.id === replyId);
+          if (idx >= 0) {
+            updated[idx] = {
+              ...updated[idx]!,
+              content: "Не удалось выполнить расчёт. Проверьте соединение и попробуйте снова.",
+            };
+          }
+          return updated;
+        });
+        return { ok: false as const, reason: "error" as const };
+      } finally {
+        setIsLoading(false);
+        sendingRef.current = false;
+      }
+    },
+    [
+      selectedCharacter,
+      isLoggedIn,
+      sendingRef,
+      usesRuneBilling,
+      questionsLeft,
+      runeBalance,
+      setInsufficientRunes,
+      handleOpenPaywall,
+      session?.offline,
+      session?.sessionId,
+      session?.freeQuestionsUsed,
+      setMessages,
+      setIsLoading,
+      chatSessionSpread,
+      chatDisplaySpread?.cards,
+      consultationSessionIdRef,
+      setConsultationSessionId,
+      setRuneBalance,
+      attachSceneToAssistantMessage,
+    ]
+  );
+
   return {
     isLoading,
     setIsLoading,
     readingInFlightRef,
     loadReading,
     handleSendMessage,
+    invokeNumerologTool,
     openChatWithCharacter,
     applyRestoredChatSpread,
     applyHistorySessionMeta,
