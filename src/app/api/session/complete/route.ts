@@ -17,7 +17,7 @@ import {
 } from "@/lib/session-memory";
 import { query } from "@/lib/db";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
-import { requiredCardCount } from "@/lib/spreads";
+import { limitSpreadKeyCards, requiredCardCount } from "@/lib/spreads";
 
 export async function PATCH(request: NextRequest) {
   const auth = await requireUserAuth();
@@ -110,9 +110,11 @@ export async function PATCH(request: NextRequest) {
     sessionId,
     characterKey,
     topicSummary,
-    keyCards: summary?.keyCards?.length
-      ? summary.keyCards
-      : cardNames.slice(0, keyCardLimit),
+    keyCards: limitSpreadKeyCards(
+      summary?.keyCards?.length
+        ? summary.keyCards
+        : cardNames.slice(0, keyCardLimit)
+    ),
     prediction:
       summary?.prediction ??
       lastAssistant?.content?.slice(0, 1000) ??

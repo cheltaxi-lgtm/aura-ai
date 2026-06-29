@@ -20,7 +20,7 @@
     "migrate:status": "node scripts/migrate.mjs --status",
     "test:memory": "tsx scripts/memory-smoke-test.ts",
     "test:recaptcha": "tsx scripts/verify-recaptcha.ts",
-    "test:spreads": "tsx scripts/verify-spread-registry.ts",
+    "test:spreads": "tsx scripts/verify-spread-registry.ts && tsx scripts/verify-spread-source-audit.ts",
     "maintenance:memory": "node scripts/memory-maintenance.mjs",
     "predeploy:check": "npm run verify:guardrails && npm run build"
   },
