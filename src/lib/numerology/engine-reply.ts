@@ -7,6 +7,9 @@ import {
   buildKarmaNarrativeReading,
   buildLifePathNarrativeReading,
   buildPersonalCycleNarrativeReading,
+  buildPersonalDaySpreadReading,
+  buildPersonalWeekSpreadReading,
+  buildPersonalMonthSpreadReading,
   buildPythagorasNarrativeReading,
   formatMatrixLineEntry,
 } from "./reading-narrative";
@@ -114,6 +117,22 @@ function extractHealthSymptom(...messages: string[]): string | null {
 
 function isLongDurationMessage(message: string): boolean {
   return LONG_DURATION_RE.test(message.trim());
+}
+
+type PersonalCycleScope = "day" | "week" | "month" | "full";
+
+function detectPersonalCycleScope(message: string): PersonalCycleScope {
+  const text = message.trim().toLowerCase();
+  if (/на\s+сегодня|личн(ый|ого|ое|ая)\s+день|расклад.*сегодня|цифр.*сегодня/i.test(text)) {
+    return "day";
+  }
+  if (/на\s+недел|личн(ую|ая|ой|ую)\s+недел|расклад.*недел|цифр.*недел/i.test(text)) {
+    return "week";
+  }
+  if (/на\s+месяц|личн(ый|ого|ое|ий)\s+месяц|расклад.*месяц|цифр.*месяц|в\s+этом\s+месяце/i.test(text)) {
+    return "month";
+  }
+  return "full";
 }
 
 function isHealthConversationThread(recentUserMessages: string[], lastMessage: string): boolean {
@@ -781,7 +800,16 @@ export function buildNumerologEngineReply(
   } else if (primary === "forecast_timeline" && hasBirth) {
     reply = buildForecastNarrativeReading({ name, birthDate });
   } else if (primary === "personal_cycle" && hasBirth) {
-    reply = buildPersonalCycleNarrativeReading({ name, birthDate });
+    const scope = detectPersonalCycleScope(input.lastUserMessage);
+    if (scope === "day") {
+      reply = buildPersonalDaySpreadReading({ name, birthDate });
+    } else if (scope === "week") {
+      reply = buildPersonalWeekSpreadReading({ name, birthDate });
+    } else if (scope === "month") {
+      reply = buildPersonalMonthSpreadReading({ name, birthDate });
+    } else {
+      reply = buildPersonalCycleNarrativeReading({ name, birthDate });
+    }
   } else if (
     ["favorable_dates", "chaldean", "object_number", "compatibility"].includes(primary)
   ) {

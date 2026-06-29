@@ -3,6 +3,27 @@
 import { useState } from "react";
 import { parseBirthDate } from "@/lib/numerology/constants";
 
+const PERIOD_CHIPS = [
+  {
+    id: "today",
+    emoji: "☀️",
+    label: "Сегодня",
+    message: "Расклад по цифрам на сегодня",
+  },
+  {
+    id: "week",
+    emoji: "📆",
+    label: "Неделя",
+    message: "Расклад по цифрам на неделю",
+  },
+  {
+    id: "month",
+    emoji: "🗓️",
+    label: "Месяц",
+    message: "Расклад по цифрам на месяц",
+  },
+] as const;
+
 const ROW_ONE = [
   {
     id: "pythagoras",
@@ -177,6 +198,23 @@ export default function NumerologQuickChips({
       <p className="mb-2 px-1 text-[10px] font-medium uppercase tracking-[0.22em] text-aura-gold/55">
         Расчёты Эвелины
       </p>
+
+      <div
+        className="mb-2 grid grid-cols-3 gap-1.5 sm:gap-2"
+        role="toolbar"
+        aria-label="Расклад по периоду"
+      >
+        {PERIOD_CHIPS.map((chip) => (
+          <ChipButton
+            key={chip.id}
+            emoji={chip.emoji}
+            label={chip.label}
+            disabled={disabled}
+            onClick={() => send(chip.message)}
+            className="border-aura-purple/25 bg-gradient-to-b from-violet-950/50 to-indigo-950/80"
+          />
+        ))}
+      </div>
 
       {/* Mobile: single horizontally-scrollable row · Desktop: 4×2 grid */}
       <div

@@ -2,7 +2,7 @@ import type { FullNumerologyProfile } from "./profile";
 import { fullProfile } from "./profile";
 import type { PythagorasSquareResult } from "./pythagoras-square";
 import { personalYearForecast, personalYearTheme } from "./forecast";
-import { personalYear, personalMonth, personalDay, karmicDebts, karmicLessons } from "./calculator";
+import { personalYear, personalMonth, personalDay, personalWeek, karmicDebts, karmicLessons } from "./calculator";
 import { parseBirthDate } from "./constants";
 
 function cellLabel(n: number, count: number): string {
@@ -443,6 +443,110 @@ export function buildPersonalCycleNarrativeReading(input: {
     `**Личный день сегодня:** ${pd.number} — ${pd.title}.`,
     "",
     "Год задаёт стратегию, месяц — тактику, день — оттенок настроения. Не путай их с «судьбой на всю жизнь».",
+  ].join("\n");
+}
+
+function formatShortDate(date: Date): string {
+  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
+
+function formatWeekday(date: Date): string {
+  return date.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** Три цифры на сегодня: день · месяц · год. */
+export function buildPersonalDaySpreadReading(input: {
+  name: string;
+  birthDate: string;
+}): string {
+  const { name, birthDate } = input;
+  if (!parseBirthDate(birthDate)) {
+    return `${name}, для расклада на сегодня нужна дата рождения.`;
+  }
+
+  const now = new Date();
+  const pd = personalDay(birthDate, now);
+  const pm = personalMonth(birthDate, now);
+  const py = personalYear(birthDate, now.getFullYear());
+
+  return [
+    `${name}, **расклад по цифрам на сегодня** (${formatShortDate(now)}):`,
+    "",
+    `**1 · Личный день · ${pd.number}** — ${pd.title}. ${pd.meaning.split(".").slice(0, 2).join(".")}.`,
+    `**2 · Личный месяц · ${pm.number}** — ${pm.title}. Фон решений на ближайшие недели.`,
+    `**3 · Личный год · ${py.number}** — ${py.title}. Стратегия ${now.getFullYear()} года.`,
+    "",
+    "Сегодня опирайся на число дня — оно главное. Месяц и год не спорят с ним, а задают рамку.",
+  ].join("\n");
+}
+
+/** Расклад на 7 дней: личная неделя + три опорных дня + линия дней. */
+export function buildPersonalWeekSpreadReading(input: {
+  name: string;
+  birthDate: string;
+}): string {
+  const { name, birthDate } = input;
+  if (!parseBirthDate(birthDate)) {
+    return `${name}, для недельного расклада нужна дата рождения.`;
+  }
+
+  const now = new Date();
+  const pw = personalWeek(birthDate, now);
+  const pm = personalMonth(birthDate, now);
+  const anchors = [0, 3, 6].map((offset) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + offset);
+    return { date: d, pd: personalDay(birthDate, d) };
+  });
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + i);
+    return { date: d, pd: personalDay(birthDate, d) };
+  });
+
+  return [
+    `${name}, **расклад по цифрам на неделю** (с ${formatShortDate(now)}):`,
+    "",
+    `**Личная неделя · ${pw.number}** — ${pw.title}. ${pw.meaning.split(".").slice(0, 1).join(".")}.`,
+    `**Фон месяца · ${pm.number}** — ${pm.title}.`,
+    "",
+    "**Три опоры недели:**",
+    ...anchors.map(
+      ({ date, pd }, i) =>
+        `${i + 1}. ${formatWeekday(date)} — **${pd.number}** (${pd.title})`
+    ),
+    "",
+    "**Цифры по дням:**",
+    weekDays.map(({ date, pd }) => `· ${formatWeekday(date)} — ${pd.number}`).join("\n"),
+    "",
+    "Сильные дни для старта — 1, 3, 5, 8. Дни 7 и 9 — лучше для завершения и паузы.",
+  ].join("\n");
+}
+
+/** Три цифры на месяц: месяц · неделя · год. */
+export function buildPersonalMonthSpreadReading(input: {
+  name: string;
+  birthDate: string;
+}): string {
+  const { name, birthDate } = input;
+  if (!parseBirthDate(birthDate)) {
+    return `${name}, для месячного расклада нужна дата рождения.`;
+  }
+
+  const now = new Date();
+  const pm = personalMonth(birthDate, now);
+  const pw = personalWeek(birthDate, now);
+  const py = personalYear(birthDate, now.getFullYear());
+  const monthLabel = now.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+
+  return [
+    `${name}, **расклад по цифрам на ${monthLabel}**:`,
+    "",
+    `**1 · Личный месяц · ${pm.number}** — ${pm.title}. ${pm.meaning.split(".").slice(0, 2).join(".")}.`,
+    `**2 · Текущая неделя · ${pw.number}** — ${pw.title}. Как войти в ритм месяца прямо сейчас.`,
+    `**3 · Личный год · ${py.number}** — ${py.title}. Направление всего ${now.getFullYear()} года.`,
+    "",
+    "Месяц — тактика, год — стратегия. Не путай краткий цикл с судьбой на всю жизнь.",
   ].join("\n");
 }
 

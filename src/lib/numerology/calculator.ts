@@ -141,6 +141,18 @@ export function personalDay(
   return sumFromRaw(pm.number + ref.getDate(), true);
 }
 
+/** Личная неделя: личный месяц + номер недели внутри месяца (1–5). */
+export function personalWeek(
+  birthDate: string,
+  date?: Date
+): NumerologyResult {
+  const ref = date ?? new Date();
+  const pm = personalMonth(birthDate, ref);
+  if (pm.number <= 0) return { ...EMPTY_NUMEROLOGY_RESULT };
+  const weekInMonth = Math.ceil(ref.getDate() / 7);
+  return sumFromRaw(pm.number + weekInMonth, true);
+}
+
 export function karmicDebts(birthDate: string, fullName: string): number[] {
   const debts = new Set<number>();
   const parsed = parseBirthDate(birthDate);
