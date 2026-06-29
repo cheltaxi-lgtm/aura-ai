@@ -1,12 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function AdminLoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.authenticated && d.user?.role === "admin") {
+          window.location.replace("/admin");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCheckingSession(false));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +34,10 @@ export default function AdminLoginForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
         signal: controller.signal,
       });
 
@@ -35,15 +51,19 @@ export default function AdminLoginForm() {
       if (!res.ok) {
         if (data.error === "rate_limit") {
           setError(data.message ?? "Слишком много попыток. Подождите и попробуйте снова.");
+        } else if (res.status === 401) {
+          setError(data.error ?? "Неверный email или пароль");
         } else if (res.status === 503) {
           setError(data.error ?? "База данных недоступна");
+        } else if (res.status === 400) {
+          setError(data.error ?? "Проверьте email и пароль");
         } else {
           setError(data.error ?? "Ошибка входа");
         }
         return;
       }
 
-      window.location.assign("/admin");
+      window.location.replace("/admin");
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         setError("Сервер не отвечает. Проверьте, что приложение и база данных запущены.");
@@ -55,6 +75,14 @@ export default function AdminLoginForm() {
       setLoading(false);
     }
   };
+
+  if (checkingSession) {
+    return (
+      <div className="glass-panel mx-auto max-w-md p-8 text-center text-sm text-gray-500">
+        Проверяем сессию…
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="glass-panel mx-auto max-w-md space-y-4 p-8">

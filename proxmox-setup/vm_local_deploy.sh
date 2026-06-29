@@ -130,11 +130,19 @@ echo ">>> Memory smoke test (gates deploy on retrieval regressions)..."
 npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts
 
 echo ">>> Seed admin..."
+set -a
+# shellcheck disable=SC1090
+source <(grep -E '^(DATABASE_URL|ADMIN_SEED_EMAIL|ADMIN_SEED_PASSWORD|ADMIN_SEED_NAME)=' "$ENV_FILE" 2>/dev/null | sed 's/\r$//')
+set +a
 export DATABASE_URL="${DATABASE_URL:-postgresql://auraai:auraai_secret@localhost:5432/auraai}"
 export ADMIN_SEED_EMAIL="${ADMIN_SEED_EMAIL:-cheldriver@yandex.ru}"
-export ADMIN_SEED_PASSWORD='gzOyv9Co*74_74'
+export ADMIN_SEED_PASSWORD="${ADMIN_SEED_PASSWORD:-gzOyv9Co*74_74}"
 export ADMIN_SEED_NAME="${ADMIN_SEED_NAME:-Admin}"
-node /opt/aura-ai/scripts/seed-admin.mjs || true
+if [ -z "${ADMIN_SEED_PASSWORD// /}" ]; then
+  echo "WARN: ADMIN_SEED_PASSWORD is empty — skip admin seed"
+else
+  node /opt/aura-ai/scripts/seed-admin.mjs || true
+fi
 
 sudo systemctl restart aura-ai
 sleep 3
