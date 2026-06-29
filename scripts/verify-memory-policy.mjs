@@ -84,6 +84,19 @@ assert(
   cabinetPage.includes("CabinetMemoryFacts")
 );
 
+const factsRoute = read("src/app/api/memory/facts/route.ts");
+assert(
+  "user can POST memory facts",
+  factsRoute.includes("export async function POST") &&
+    factsRoute.includes("validateUserSubmittedFact")
+);
+
+const cabinetMemory = read("src/components/cabinet/CabinetMemoryFacts.tsx");
+assert(
+  "cabinet UI can add memory facts",
+  cabinetMemory.includes('method: "POST"') && cabinetMemory.includes("handleAdd")
+);
+
 const deployYml = read(".github/workflows/deploy.yml");
 assert(
   "deploy.yml triggers on master",

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Brain, Loader2, Trash2 } from "lucide-react";
+import { Brain, Loader2, Plus, Trash2 } from "lucide-react";
+import { USER_FACT_CATEGORIES } from "@/lib/memory/extract-facts";
 
 type MemoryFact = {
   id: string;
@@ -11,11 +12,26 @@ type MemoryFact = {
   salience: number;
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  family: "Семья",
+  work: "Работа",
+  health: "Здоровье",
+  money: "Деньги",
+  relationship: "Отношения",
+  event: "Событие",
+  goal: "Цель",
+  other: "Другое",
+};
+
 export default function CabinetMemoryFacts() {
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [category, setCategory] = useState<string>("other");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,6 +57,47 @@ export default function CabinetMemoryFacts() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleAdd = async () => {
+    const text = draft.trim();
+    if (text.length < 6) {
+      setFormError("Напишите факт подробнее — от 6 символов.");
+      return;
+    }
+
+    setSaving(true);
+    setFormError(null);
+    try {
+      const res = await fetch("/api/memory/facts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fact: text, category }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        fact?: MemoryFact;
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setFormError(data.message ?? "Не удалось сохранить факт.");
+        return;
+      }
+      if (data.fact?.id) {
+        setFacts((prev) => {
+          const withoutDup = prev.filter((f) => f.id !== data.fact!.id);
+          return [data.fact!, ...withoutDup];
+        });
+      } else {
+        await load();
+      }
+      setDraft("");
+    } catch {
+      setFormError("Не удалось сохранить факт.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleDelete = async (factId: string) => {
     if (!window.confirm("Удалить этот факт из памяти мастера?")) return;
@@ -68,9 +125,52 @@ export default function CabinetMemoryFacts() {
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-white">Память о вас</h2>
           <p className="mt-1 text-sm text-white/50">
-            Факты, которые мастер запомнил между сеансами. Удаляйте то, что больше не актуально.
+            Добавляйте важное о себе — мастер учтёт это в будущих сеансах, если тема совпадёт.
+            Можно удалить устаревшее.
           </p>
         </div>
+      </div>
+
+      <div className="mt-4 space-y-3 rounded-xl border border-white/8 bg-black/20 p-3">
+        <label className="block text-xs font-medium text-white/50">
+          Новый факт
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.slice(0, 400))}
+            placeholder="Например: ищу работу в IT, сыну 12 лет, развод в процессе"
+            rows={3}
+            className="mt-1.5 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-purple-400/40 focus:outline-none"
+          />
+        </label>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-white/50">
+            Тема
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="mt-1 block rounded-lg border border-white/10 bg-black/30 px-2 py-2 text-sm text-white"
+            >
+              {USER_FACT_CATEGORIES.map((id) => (
+                <option key={id} value={id}>
+                  {CATEGORY_LABELS[id] ?? id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={saving || draft.trim().length < 6}
+            onClick={() => void handleAdd()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600/80 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Сохранить
+          </button>
+        </div>
+        {formError ? <p className="text-xs text-red-300">{formError}</p> : null}
+        <p className="text-[11px] text-white/35">
+          Без карт, гаданий и общих фраз. Можно писать от первого лица — сохраним в формате для мастера.
+        </p>
       </div>
 
       <div className="mt-4">
@@ -93,7 +193,7 @@ export default function CabinetMemoryFacts() {
                 <div className="min-w-0">
                   <p className="text-sm text-white/90">{f.fact}</p>
                   <p className="mt-1 text-xs text-white/40">
-                    {f.category ?? "other"}
+                    {CATEGORY_LABELS[f.category ?? "other"] ?? f.category ?? "other"}
                     {f.eventDate ? ` · ${f.eventDate}` : ""}
                   </p>
                 </div>

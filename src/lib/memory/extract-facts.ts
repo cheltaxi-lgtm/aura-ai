@@ -74,7 +74,7 @@ function boostSalience(fact: string, salience: number): number {
 
 /** Facts that are clearly about the reading/master, not the client. */
 const META_FACT_RE =
-  /\b(карт[аыуои]?|таро|рун[аыуои]?|раскла|гадани|предсказ|астролог|гороскоп|зодиак|энерги|мастер|ассистент|assistant|tarot|card)/i;
+  /(карт[аыуои]?|таро|рун[аыуои]?|раскла|гадани|предсказ|астролог|гороскоп|зодиак|энерги|мастер|ассистент|assistant|tarot|card)/i;
 
 function isQualityFact(fact: string): boolean {
   const f = fact.trim();
@@ -193,4 +193,54 @@ export async function extractFactsFromTurn(
   });
   if (!raw) return [];
   return parseFacts(raw);
+}
+
+export const USER_FACT_CATEGORIES = [
+  "family",
+  "work",
+  "health",
+  "money",
+  "relationship",
+  "event",
+  "goal",
+  "other",
+] as const;
+
+export type UserFactCategory = (typeof USER_FACT_CATEGORIES)[number];
+
+function normalizeUserFactPhrase(fact: string): string {
+  const trimmed = fact.trim();
+  if (/^(у клиента|клиент)(\s|$)/i.test(trimmed)) return trimmed;
+  if (/^я(\s|$)/i.test(trimmed)) {
+    const rest = trimmed.replace(/^я\s*/i, "").trim();
+    return rest ? `Клиент ${rest}` : trimmed;
+  }
+  if (/^у меня(\s|$)/i.test(trimmed)) {
+    return `У клиента ${trimmed.replace(/^у меня\s*/i, "").trim()}`;
+  }
+  return `У клиента ${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`;
+}
+
+/** Validate and normalize a fact typed by the user in cabinet settings. */
+export function validateUserSubmittedFact(
+  raw: string,
+  category?: string | null,
+  eventDate?: string | null
+): FactInput | null {
+  const fact = normalizeUserFactPhrase(raw);
+  if (!isQualityFact(fact)) return null;
+
+  const cat =
+    category && VALID_CATEGORIES.has(category) ? category : ("other" as UserFactCategory);
+
+  const date =
+    eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : null;
+
+  return {
+    fact: fact.slice(0, 600),
+    category: cat,
+    eventDate: date,
+    salience: boostSalience(fact, 4),
+    sourceCharacter: "user",
+  };
 }

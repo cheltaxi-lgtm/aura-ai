@@ -18,6 +18,7 @@ import {
   filterLlmMessagesByTopic,
   isTextRelevantToQuery,
 } from "../src/lib/memory/memory-relevance.ts";
+import { validateUserSubmittedFact } from "../src/lib/memory/extract-facts.ts";
 
 let failed = 0;
 
@@ -136,6 +137,15 @@ assert(
 assert(
   "filterLlmMessagesByTopic keeps last user turn",
   filteredHistory.some((m) => m.content.includes("вернётся"))
+);
+
+assert(
+  "user submitted fact normalizes first person",
+  validateUserSubmittedFact("я работаю программистом")?.fact.includes("Клиент")
+);
+assert(
+  "user submitted fact rejects tarot meta",
+  validateUserSubmittedFact("карта таро говорит о любви") === null
 );
 
 console.log(`\n--- ${failed} failed ---`);
