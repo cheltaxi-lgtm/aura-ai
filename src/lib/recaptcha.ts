@@ -12,7 +12,7 @@ const MIN_SCORE = 0.3;
 const IP_V4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const IP_V6 = /^[0-9a-f:]+$/i;
 
-function normalizeRemoteIp(raw?: string | null): string | undefined {
+export function normalizeRecaptchaRemoteIp(raw?: string | null): string | undefined {
   const ip = raw?.trim();
   if (!ip || ip === "unknown") return undefined;
   if (IP_V4.test(ip) || IP_V6.test(ip)) return ip;
@@ -124,7 +124,7 @@ export async function verifyRecaptcha(
     secret,
     response: token,
   });
-  const ip = normalizeRemoteIp(remoteIp);
+  const ip = normalizeRecaptchaRemoteIp(remoteIp);
   if (ip) {
     body.set("remoteip", ip);
   }

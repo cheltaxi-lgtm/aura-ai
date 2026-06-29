@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
     }
 
     const captchaBlock = await enforceRecaptchaScope(
-      recaptchaToken,
       "expertRegister",
+      recaptchaToken,
       request
     );
     if (captchaBlock) return captchaBlock;
