@@ -7,7 +7,7 @@ import {
 } from "@/lib/recaptcha-scopes";
 
 const RECAPTCHA_VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify";
-const MIN_SCORE = 0.3;
+const MIN_SCORE = 0.1;
 
 const IP_V4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const IP_V6 = /^[0-9a-f:]+$/i;
@@ -142,13 +142,37 @@ export async function verifyRecaptcha(
   };
 
   if (!data.success) {
-    console.warn("reCAPTCHA verify failed:", data["error-codes"]);
+    const codes = data["error-codes"] ?? [];
+    console.warn("reCAPTCHA verify failed:", codes, "score:", data.score);
+    if (codes.includes("browser-error")) {
+      return {
+        ok: false,
+        error:
+          "reCAPTCHA не прошла проверку в этом браузере. Отключите блокировщик рекламы или попробуйте другой браузер.",
+      };
+    }
+    if (codes.includes("invalid-input-secret")) {
+      return {
+        ok: false,
+        error: "Проверка безопасности временно недоступна. Обратитесь в поддержку.",
+      };
+    }
+    if (codes.includes("timeout-or-duplicate")) {
+      return {
+        ok: false,
+        error: "Сессия reCAPTCHA истекла. Обновите страницу и попробуйте снова.",
+      };
+    }
     return { ok: false, error: "Проверка reCAPTCHA не пройдена" };
   }
 
   if (data.score !== undefined && data.score < MIN_SCORE) {
     console.warn("reCAPTCHA low score:", data.score);
-    return { ok: false, error: "Проверка reCAPTCHA не пройдена" };
+    return {
+      ok: false,
+      error:
+        "reCAPTCHA оценила запрос как подозрительный. Попробуйте ещё раз или другой браузер.",
+    };
   }
 
   return { ok: true };

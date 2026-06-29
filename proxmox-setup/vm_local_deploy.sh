@@ -39,20 +39,17 @@ grep -q '^OPENROUTER_MODEL=' "$ENV_FILE" \
   || echo 'OPENROUTER_MODEL=openai/gpt-4o-mini' >> "$ENV_FILE"
 
 grep -q '^RECAPTCHA_ENABLED=' "$ENV_FILE" \
-  && sed -i 's|^RECAPTCHA_ENABLED=.*|RECAPTCHA_ENABLED=true|' "$ENV_FILE" \
   || echo 'RECAPTCHA_ENABLED=true' >> "$ENV_FILE"
 
 grep -q '^NEXT_PUBLIC_RECAPTCHA_ENABLED=' "$ENV_FILE" \
-  && sed -i 's|^NEXT_PUBLIC_RECAPTCHA_ENABLED=.*|NEXT_PUBLIC_RECAPTCHA_ENABLED=true|' "$ENV_FILE" \
   || echo 'NEXT_PUBLIC_RECAPTCHA_ENABLED=true' >> "$ENV_FILE"
 
+# Do not overwrite production keys on every deploy — only seed when missing.
 grep -q '^NEXT_PUBLIC_RECAPTCHA_SITE_KEY=' "$ENV_FILE" \
-  && sed -i 's|^NEXT_PUBLIC_RECAPTCHA_SITE_KEY=.*|NEXT_PUBLIC_RECAPTCHA_SITE_KEY=6Lf39RQtAAAAAD5KIIHcgqar5rq91CTegKkZVSVn|' "$ENV_FILE" \
-  || echo 'NEXT_PUBLIC_RECAPTCHA_SITE_KEY=6Lf39RQtAAAAAD5KIIHcgqar5rq91CTegKkZVSVn' >> "$ENV_FILE"
+  || echo 'NEXT_PUBLIC_RECAPTCHA_SITE_KEY=' >> "$ENV_FILE"
 
 grep -q '^RECAPTCHA_SECRET_KEY=' "$ENV_FILE" \
-  && sed -i 's|^RECAPTCHA_SECRET_KEY=.*|RECAPTCHA_SECRET_KEY=6Lf39RQtAAAAAJLY5jVvvWZvFi95K-F0kQBePoKw|' "$ENV_FILE" \
-  || echo 'RECAPTCHA_SECRET_KEY=6Lf39RQtAAAAAJLY5jVvvWZvFi95K-F0kQBePoKw' >> "$ENV_FILE"
+  || echo 'RECAPTCHA_SECRET_KEY=' >> "$ENV_FILE"
 
 grep -q '^LLM_CONCURRENCY_MAX=' "$ENV_FILE" \
   && sed -i 's|^LLM_CONCURRENCY_MAX=.*|LLM_CONCURRENCY_MAX=25|' "$ENV_FILE" \
@@ -103,6 +100,11 @@ fi
 
 cd /opt/aura-ai
 npm ci --legacy-peer-deps
+set -a
+# NEXT_PUBLIC_* must be present during `next build` (inlined into client bundle).
+# shellcheck disable=SC1090
+source <(grep -E '^(NEXT_PUBLIC_RECAPTCHA_SITE_KEY|NEXT_PUBLIC_RECAPTCHA_ENABLED|NEXT_PUBLIC_APP_URL)=' "$ENV_FILE" | sed 's/\r$//')
+set +a
 npm run build
 
 echo ">>> Launch env check..."
