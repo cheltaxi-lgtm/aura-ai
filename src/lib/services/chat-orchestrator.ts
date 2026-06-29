@@ -68,6 +68,7 @@ import {
   buildClientBlock,
   buildMemoryBlock,
   buildCurrentSessionAnchorBlock,
+  buildPeriodSpreadAnchorBlock,
 } from "@/lib/user-memory";
 import {
   recoverSpreadMetaFromChatMessages,
@@ -83,6 +84,7 @@ import {
   detectPeriodSpreadScope,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
+import { composeMemoryQueryText, filterLlmMessagesByTopic } from "@/lib/memory/memory-relevance";
 
 export type ChatRequestBody = {
   characterId: string;
@@ -204,6 +206,7 @@ export class ChatOrchestrator {
   private numerologParams: NumerologEngineParams | null = null;
   private numerologyUi: NumerologyUi | undefined;
   private memoryBlock = "";
+  private memoryQuery = "";
   private lastSystemPrompt = "";
   private chatTemperature: number | undefined;
 
@@ -355,6 +358,11 @@ export class ChatOrchestrator {
   private async syncSessionMeta(): Promise<void> {
     if (!this.dbOk || !this.session) return;
 
+    if (this.periodSpreadScope) {
+      this.intention = undefined;
+      this.resolvedIntention = undefined;
+    }
+
     if (this.profileUserId) {
       const resolved = await resolveSessionForUser(this.session.id, this.profileUserId);
       if (resolved.error) {
@@ -368,7 +376,9 @@ export class ChatOrchestrator {
     try {
       const meta = await getSessionChatMeta(this.session.id);
       if (meta) {
-        if (!this.resolvedIntention && meta.intention) this.resolvedIntention = meta.intention;
+        if (!this.periodSpreadScope && !this.resolvedIntention && meta.intention) {
+          this.resolvedIntention = meta.intention;
+        }
         if (!this.resolvedSpreadType && meta.spread_type) {
           this.resolvedSpreadType = meta.spread_type as "daily" | "new";
         }
@@ -385,6 +395,7 @@ export class ChatOrchestrator {
 
     if (
       this.profileUserId &&
+      !this.periodSpreadScope &&
       (!this.resolvedCardNames.length || !this.resolvedIntention)
     ) {
       try {
@@ -462,9 +473,12 @@ export class ChatOrchestrator {
         this.resolvedIntention ||
         this.resolvedSpreadType ||
         this.resolvedSpreadId ||
-        this.resolvedCardNames.length
+        this.resolvedCardNames.length ||
+        this.periodSpreadScope
           ? {
-              intention: this.intention ?? this.resolvedIntention ?? null,
+              intention: this.periodSpreadScope
+                ? null
+                : (this.intention ?? this.resolvedIntention ?? null),
               spreadType: this.spreadType ?? this.resolvedSpreadType ?? null,
               spreadId: this.spreadId ?? this.resolvedSpreadId ?? null,
               cards: cardNames?.length
@@ -476,7 +490,7 @@ export class ChatOrchestrator {
           : {}),
       });
 
-      if (this.intention) this.resolvedIntention = this.intention;
+      if (this.intention && !this.periodSpreadScope) this.resolvedIntention = this.intention;
       if (this.spreadType) this.resolvedSpreadType = this.spreadType;
       if (this.spreadCardNames?.length) this.resolvedCardNames = this.spreadCardNames;
       else if (!this.resolvedCardNames.length && cardNames?.length) {
@@ -527,26 +541,43 @@ export class ChatOrchestrator {
         ? this.resolvedCardNames
         : this.tarotCards?.map((c) => c.name);
 
+    const memoryQuery = composeMemoryQueryText({
+      lastUserMessage: this.lastUserMsg,
+      intention: this.periodSpreadScope ? null : this.resolvedIntention,
+      customQuestion: this.customQuestion,
+      mainQuestion: this.userProfile?.mainQuestion,
+    });
+    this.memoryQuery = memoryQuery;
+
     const [clientFacts, pastSessions, sessionAnchor] = await Promise.all([
       ClientMemory.loadClientMemoryBlock({
         userId: this.profileUserId,
-        queryText: this.lastUserMsg,
+        queryText: memoryQuery,
       }),
-      this.dbOk && this.session
-        ? buildMemoryBlock(this.profileUserId, this.characterId, this.session.id)
-        : Promise.resolve(""),
-      this.dbOk && this.session
-        ? buildCurrentSessionAnchorBlock(
+      this.dbOk && this.session && !this.periodSpreadScope
+        ? buildMemoryBlock(
             this.profileUserId,
-            this.session.id,
             this.characterId,
-            {
-              cardNames,
-              intention: this.resolvedIntention,
-              mainQuestion: this.userProfile?.mainQuestion,
-            }
+            this.session.id,
+            memoryQuery
           )
         : Promise.resolve(""),
+      this.periodSpreadScope && cardNames?.length
+        ? Promise.resolve(
+            buildPeriodSpreadAnchorBlock(this.periodSpreadScope, cardNames)
+          )
+        : this.dbOk && this.session
+          ? buildCurrentSessionAnchorBlock(
+              this.profileUserId,
+              this.session.id,
+              this.characterId,
+              {
+                cardNames,
+                intention: this.resolvedIntention,
+              },
+              memoryQuery
+            )
+          : Promise.resolve(""),
     ]);
 
     this.memoryBlock = [sessionAnchor, pastSessions, clientFacts].filter(Boolean).join("\n\n");
@@ -563,7 +594,11 @@ export class ChatOrchestrator {
         LLM_CONTEXT_MESSAGES
       );
       if (sessionMessages.length > 0) {
-        this.llmMessages = sessionMessages;
+        this.llmMessages = filterLlmMessagesByTopic(
+          sessionMessages,
+          this.memoryQuery,
+          LLM_CONTEXT_MESSAGES
+        );
       } else {
         const lastUser = this.messages[this.messages.length - 1];
         this.llmMessages = lastUser ? [lastUser] : [];
@@ -660,7 +695,7 @@ export class ChatOrchestrator {
       sessionNumber,
       memory: [],
       lastUserMessage: this.lastUserMsg,
-      intention: this.resolvedIntention,
+      intention: this.periodSpreadScope ? null : this.resolvedIntention,
       numerologyBlock,
     });
 
@@ -694,21 +729,26 @@ export class ChatOrchestrator {
     }
 
     if (this.profileUserId) {
-      const clientBlock = buildClientBlock({
-        name: this.userProfile?.name,
-        gender: this.userProfile?.gender,
-        zodiac: this.userProfile?.zodiac,
-        birthDate: this.userProfile?.birthDate,
-        mainQuestion: this.userProfile?.mainQuestion,
-        lifeFocus: this.userProfile?.lifeFocus,
-      });
+      const clientBlock = buildClientBlock(
+        {
+          name: this.userProfile?.name,
+          gender: this.userProfile?.gender,
+          zodiac: this.userProfile?.zodiac,
+          birthDate: this.userProfile?.birthDate,
+          mainQuestion: this.userProfile?.mainQuestion,
+          lifeFocus: this.userProfile?.lifeFocus,
+        },
+        this.memoryQuery
+      );
       systemPrompt = appendUserMemoryToPrompt(
         systemPrompt,
         `${clientBlock}${this.memoryBlock}`.trim() || null
       );
     }
 
-    systemPrompt += intentionPromptBlock(this.resolvedIntention, this.customQuestion);
+    if (!this.periodSpreadScope) {
+      systemPrompt += intentionPromptBlock(this.resolvedIntention, this.customQuestion);
+    }
 
     const cardNamesForBlock = this.resolvedCardNames.length
       ? this.resolvedCardNames
@@ -739,13 +779,20 @@ export class ChatOrchestrator {
     if (this.lastUserMsg.trim()) {
       systemPrompt += `
 
-ЧАТ — ПОСЛЕДНЯЯ РЕПЛИКА КЛИЕНТА (ответь на неё, не уходи в общие фразы):
+ЧАТ — ПОСЛЕДНЯЯ РЕПЛИКА КЛИЕНТА (ответь на неё):
 «${this.lastUserMsg.trim().slice(0, 400)}»
 
 Правила этого ответа:
+- тема ответа = последняя реплика; память из служебного контекста — только если она про эту же тему;
 - каждая руна/карта расклада — отдельная мысль, без повторения одной формулировки;
 - не пересказывай слова клиента дословно;
 - если вопрос уже уточнён (например «переезд») — не спрашивай снова «какой выбор», отвечай по сути.`;
+    }
+
+    if (this.llmMessages.length > 2 && this.memoryBlock) {
+      systemPrompt += `
+
+В переписке могли быть другие темы. Память и якорь ниже уже отфильтрованы — используй их только если они про последний вопрос клиента.`;
     }
 
     return systemPrompt;
@@ -822,7 +869,7 @@ export class ChatOrchestrator {
         userName: this.userProfile?.name ?? "друг",
         lastUserMessage: this.lastUserMsg,
         cardNames: cardNames ?? [],
-        intention: this.resolvedIntention,
+        intention: this.periodSpreadScope ? null : this.resolvedIntention,
         spreadId: activeSpreadId,
       });
       if (fallback.trim()) {

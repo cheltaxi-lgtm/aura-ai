@@ -17,6 +17,10 @@ import {
   type UserFact,
 } from "@/lib/memory/user-facts";
 import { filterActiveMemoryFacts } from "@/lib/memory/fact-date-filter";
+import {
+  isTextRelevantToQuery,
+  MEMORY_USAGE_RULES,
+} from "@/lib/memory/memory-relevance";
 
 const MAX_BLOCK_CHARS = 3500;
 const MAX_FACT_LINES = 10;
@@ -68,10 +72,23 @@ export async function loadClientMemoryBlock(params: {
   }
 
   const upcomingIds = new Set(upcoming.map((f) => f.id));
-  const general = filterActiveMemoryFacts(
-    dedupeById([critical, relevant]).filter((f) => !upcomingIds.has(f.id))
+  const queryTrimmed = queryText.trim();
+  if (!queryTrimmed) return "";
+
+  const relevantSearch = filterActiveMemoryFacts(relevant);
+  upcoming = filterActiveMemoryFacts(
+    upcoming.filter((f) => isTextRelevantToQuery(queryTrimmed, f.fact))
   );
-  upcoming = filterActiveMemoryFacts(upcoming);
+  const criticalFiltered = filterActiveMemoryFacts(
+    critical.filter(
+      (f) =>
+        relevantSearch.some((r) => r.id === f.id) ||
+        isTextRelevantToQuery(queryTrimmed, f.fact)
+    )
+  );
+  const general = filterActiveMemoryFacts(
+    dedupeById([criticalFiltered, relevantSearch]).filter((f) => !upcomingIds.has(f.id))
+  );
 
   if (!upcoming.length && !general.length) return "";
 
@@ -98,15 +115,7 @@ export async function loadClientMemoryBlock(params: {
     sections.push(`ФАКТЫ:\n${lines}`);
   }
 
-  sections.push(
-    `ПРАВИЛА ПАМЯТИ:
-— События из блока «БЛИЖАЙШИЕ СОБЫТИЯ» (дата ещё не наступила) — можно назвать явно, если они относятся к вопросу.
-— События с прошедшей датой НЕ называй «ближайшими», «на носу», «дышат в затылок» — не выделяй их как актуальный фокус периода.
-— Факты без даты используй как фон семьи/контекста, без привязки к «сегодня/неделе», если дата события уже прошла.
-Факты могли быть из сеанса с другим мастером — это нормально, свяжи с текущим вопросом.
-Остальное используй как фон — не перечисляй память списком и не пересказывай дословно.
-Текущий сеанс — отдельный разговор.`
-  );
+  sections.push(MEMORY_USAGE_RULES);
 
   const block = `\n${sections.join("\n\n")}\n`;
   return block.length > MAX_BLOCK_CHARS ? `${block.slice(0, MAX_BLOCK_CHARS - 1)}…` : block;

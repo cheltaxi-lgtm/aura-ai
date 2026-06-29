@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { hasPaidAccess, unlockSingleSession } from "@/lib/session";
+import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading, fallbackReading } from "@/lib/chat-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
@@ -32,6 +32,7 @@ import {
   buildMemoryBlock,
 } from "@/lib/user-memory";
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
+import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import {
   buildSpreadUserMessage,
   enrichCardsForSpreadContext,
@@ -149,6 +150,7 @@ export async function POST(request: NextRequest) {
   let astroMeta: import("@/lib/astro-profile").AstroMeta | undefined;
   let isPaid = false;
   let intention = "";
+  let customQuestion = "";
   let forceRegenerate = false;
   let spreadType = "";
   let readingScope = "";
@@ -169,6 +171,7 @@ export async function POST(request: NextRequest) {
     mainQuestion = sanitizeTextField(body.mainQuestion, 500);
     astroMeta = body.astroMeta;
     intention = sanitizeTextField(body.intention, 40) ?? "";
+    customQuestion = sanitizeTextField(body.customQuestion, 500) ?? "";
     spreadType = sanitizeTextField(body.spreadType, 20) ?? "";
     spreadIdRaw = sanitizeTextField(body.spreadId, 40) ?? "";
     forceRegenerate = body.forceRegenerate === true;
@@ -478,21 +481,42 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      let lastChatUserMessage = "";
+      if (sessionId && (await ensureDb())) {
+        const chatTail = await getSessionMessagesForLlm(sessionId, characterId, 3);
+        lastChatUserMessage =
+          [...chatTail].reverse().find((m) => m.role === "user")?.content?.trim() ?? "";
+      }
+
+      const memoryQuery = composeMemoryQueryText({
+        lastUserMessage: lastChatUserMessage,
+        intention,
+        customQuestion,
+        mainQuestion,
+      });
       const memoryBlock = sessionId
-        ? await buildMemoryBlock(authed.profileUserId, characterId, sessionId)
+        ? await buildMemoryBlock(
+            authed.profileUserId,
+            characterId,
+            sessionId,
+            memoryQuery
+          )
         : "";
       const factsBlock = await loadClientMemoryBlock({
         userId: authed.profileUserId,
-        queryText: mainQuestion ?? "",
+        queryText: memoryQuery,
       });
-      const clientBlock = buildClientBlock({
-        name: userName,
-        gender,
-        zodiac,
-        birthDate,
-        mainQuestion,
-        lifeFocus,
-      });
+      const clientBlock = buildClientBlock(
+        {
+          name: userName,
+          gender,
+          zodiac,
+          birthDate,
+          mainQuestion,
+          lifeFocus,
+        },
+        memoryQuery
+      );
       systemPrompt = appendUserMemoryToPrompt(
         systemPrompt,
         `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null

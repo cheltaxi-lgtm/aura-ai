@@ -4,6 +4,29 @@
 
 const DEFAULT_MAX_CARDS = 10;
 
+const CARD_IMAGE_LINE_RE = /^!\[([^\]]*)\]\(([^)]+)\)\s*$/;
+
+/** Remove leading markdown card images (used when the spread row already shows cards). */
+export function stripLeadingSpreadCardImages(content: string): string {
+  const lines = content.split("\n");
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index]?.trim() ?? "";
+    if (!line) {
+      index += 1;
+      continue;
+    }
+    if (CARD_IMAGE_LINE_RE.test(line)) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  return lines.slice(index).join("\n").trim();
+}
+
 /** Extract card/rune names from leading ![Name](url) image block. */
 export function cardNamesFromImageMarkdown(text: string, maxCards = DEFAULT_MAX_CARDS): string[] {
   const names: string[] = [];

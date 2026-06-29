@@ -2,6 +2,14 @@ import { getUserById } from "@/lib/users";
 import { query, ensureDb } from "@/lib/db";
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 import { tarotCardsKey } from "@/lib/tarot";
+import {
+  periodSpreadTaskLabel,
+  type PeriodSpreadScope,
+} from "@/lib/master-quick-chips";
+import {
+  isTextRelevantToQuery,
+  MEMORY_USAGE_RULES,
+} from "@/lib/memory/memory-relevance";
 
 const MAX_BLOCK_CHARS = 4000;
 const PLACEHOLDER_PREDICTION = "Сеанс в процессе";
@@ -26,14 +34,13 @@ function formatSessionAnchor(parts: {
   if (!hasTopic && !hasCards && !hasPrediction) return "";
 
   const lines: string[] = [
-    "ЯКОРЬ ТЕКУЩЕГО СЕАНСА (суть разговора — опирайся на это, не теряй нить):",
+    "ЯКОРЬ СЕАНСА (контекст текущего разговора):",
   ];
-  if (hasTopic) lines.push(`- Тема: ${parts.topicSummary!.trim()}`);
-  if (parts.intention?.trim()) lines.push(`- Фокус: ${parts.intention.trim()}`);
+  if (hasTopic) lines.push(`- Тема сеанса: ${parts.topicSummary!.trim()}`);
+  if (parts.intention?.trim()) lines.push(`- Фокус расклада: ${parts.intention.trim()}`);
   if (hasCards) lines.push(`- Символы: ${parts.cardNames!.join(" · ")}`);
-  if (hasPrediction) lines.push(`- Что уже обсуждалось: ${parts.prediction!.trim()}`);
+  if (hasPrediction) lines.push(`- Уже проговорено: ${parts.prediction!.trim()}`);
   if (parts.mood?.trim()) lines.push(`- Настроение: ${parts.mood.trim()}`);
-  lines.push("Продолжай с того же места — не начинай диалог с нуля.");
   return lines.join("\n");
 }
 
@@ -42,10 +49,10 @@ export async function buildCurrentSessionAnchorBlock(
   userId: string,
   sessionId: string,
   characterKey: string,
-  fallback?: SessionAnchorFallback
+  fallback?: SessionAnchorFallback,
+  queryText?: string
 ): Promise<string> {
   const fallbackAnchor = formatSessionAnchor({
-    topicSummary: fallback?.mainQuestion ?? undefined,
     cardNames: fallback?.cardNames,
     intention: fallback?.intention ?? undefined,
   });
@@ -68,14 +75,36 @@ export async function buildCurrentSessionAnchorBlock(
   const row = rows[0];
   if (!row) return fallbackAnchor;
 
+  const narrative = `${row.topic_summary} ${row.prediction}`.trim();
+  const topicQuery = queryText?.trim() ?? "";
+  const includeNarrative = !topicQuery || isTextRelevantToQuery(topicQuery, narrative);
+
   const anchor = formatSessionAnchor({
-    topicSummary: row.topic_summary,
+    topicSummary: includeNarrative ? row.topic_summary : undefined,
     cardNames: row.key_cards ?? fallback?.cardNames,
-    prediction: row.prediction,
-    mood: row.mood,
+    prediction: includeNarrative ? row.prediction : undefined,
+    mood: includeNarrative ? row.mood : undefined,
     intention: fallback?.intention ?? undefined,
   });
   return anchor || fallbackAnchor;
+}
+
+/** Fresh anchor for quick period spreads — no «continue old topic» bleed. */
+export function buildPeriodSpreadAnchorBlock(
+  scope: PeriodSpreadScope,
+  cardNames: string[]
+): string {
+  const names = cardNames.map((n) => n.trim()).filter(Boolean);
+  if (!names.length) return "";
+
+  const horizon = periodSpreadTaskLabel(scope);
+  return [
+    "ЯКОРЬ ТЕКУЩЕГО ЗАПРОСА (быстрый расклад на период):",
+    `- Горизонт: ${horizon}`,
+    `- Символы: ${names.join(" · ")}`,
+    "Отвечай только на этот период и эти символы.",
+    "Не продолжай прошлую тему сеанса, если клиент не попросил об этом в последнем сообщении.",
+  ].join("\n");
 }
 
 export interface UserMemoryOptions {
@@ -94,29 +123,37 @@ export type ClientProfile = {
   lifeFocus?: string | null;
 };
 
-/** Level 1: immutable client profile for prompts. */
-export function buildClientBlock(profile: ClientProfile | null | undefined): string {
+/** Level 1: client profile for prompts — thematic fields gated by query relevance. */
+export function buildClientBlock(
+  profile: ClientProfile | null | undefined,
+  queryText?: string
+): string {
   if (!profile) return "";
+  const query = queryText?.trim() ?? "";
   const lines: string[] = [];
   if (profile.name) lines.push(`Имя: ${profile.name}.`);
   if (profile.gender) lines.push(`Пол: ${profile.gender}.`);
   if (profile.zodiac) lines.push(`Знак: ${profile.zodiac}.`);
   if (profile.birthDate) lines.push(`Дата рождения: ${profile.birthDate}.`);
-  if (profile.mainQuestion) lines.push(`Главный вопрос: «${profile.mainQuestion}».`);
+  if (profile.mainQuestion && query && isTextRelevantToQuery(query, profile.mainQuestion)) {
+    lines.push(`Главный вопрос: «${profile.mainQuestion}».`);
+  }
   if (profile.lifeFocus) {
-    lines.push(
-      `Тема жизни: ${lifeFocusLabel(profile.lifeFocus as LifeFocus) ?? profile.lifeFocus}.`
-    );
+    const focusLabel = lifeFocusLabel(profile.lifeFocus as LifeFocus) ?? profile.lifeFocus;
+    if (query && isTextRelevantToQuery(query, `${focusLabel} ${profile.lifeFocus}`)) {
+      lines.push(`Тема жизни: ${focusLabel}.`);
+    }
   }
   if (!lines.length) return "";
   return `\nПРОФИЛЬ КЛИЕНТА:\n${lines.join("\n")}\n`;
 }
 
-/** Level 2: past session summaries only — no raw chat excerpts. */
+/** Level 2: past session summaries — filtered by query relevance. */
 export async function buildMemoryBlock(
   userId: string,
   characterKey: string,
-  currentSessionId: string
+  currentSessionId: string,
+  queryText?: string
 ): Promise<string> {
   if (!(await ensureDb())) return "";
 
@@ -140,7 +177,19 @@ export async function buildMemoryBlock(
 
   if (!rows.length) return "";
 
-  const list = rows
+  const topicQuery = queryText?.trim() ?? "";
+  if (!topicQuery) return "";
+
+  const filtered = rows.filter((m) =>
+    isTextRelevantToQuery(
+      topicQuery,
+      `${m.topic_summary} ${m.prediction} ${(m.key_cards ?? []).join(" ")}`
+    )
+  );
+
+  if (!filtered.length) return "";
+
+  const list = filtered
     .map((m) => {
       const date = new Date(m.session_date).toLocaleDateString("ru-RU", {
         day: "numeric",
@@ -152,11 +201,10 @@ export async function buildMemoryBlock(
     .join("\n");
 
   const block = `
-ПАМЯТЬ О ПРОШЛЫХ СЕАНСАХ С ЭТИМ ЧЕЛОВЕКОМ:
+ПАМЯТЬ О ПРОШЛЫХ СЕАНСАХ С ЭТИМ ЧЕЛОВЕКОМ (по текущему вопросу):
 ${list}
 
-Используй это как фон — не пересказывай.
-Текущий сеанс — отдельный разговор.
+${MEMORY_USAGE_RULES}
 `;
 
   return block.length > MAX_BLOCK_CHARS ? `${block.slice(0, MAX_BLOCK_CHARS - 1)}…` : block;

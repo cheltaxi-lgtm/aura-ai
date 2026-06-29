@@ -164,6 +164,7 @@ export interface ChatSessionDeps {
   setIsLoading: (loading: boolean) => void;
   setChatHeaderImage: Dispatch<SetStateAction<string | null>>;
   setInsufficientRunes: (value: { balance: number; required: number } | null) => void;
+  insufficientRunes: { balance: number; required: number } | null;
   setRuneBalance: (balance: number) => void;
   chatLoadedForRef: MutableRefObject<string | null>;
   skipNextReadingRef: MutableRefObject<boolean>;
@@ -766,8 +767,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return !masterHasReadingForSpread(savedReadings, masterId, cardsKey);
       }
 
-      if (intentionSpread?.masterId === selectedCharacter && intentionSpread.cards.length) {
-        return masterHasReadingForSpread(savedReadings, masterId, cardsKey);
+      if (intentionSpread?.masterId === masterId && intentionSpread.cards.length) {
+        if (masterHasReadingForSpread(savedReadings, masterId, cardsKey)) return true;
+        return false;
       }
 
       if (tripletOwnerMasterId && masterId !== tripletOwnerMasterId) return false;
@@ -1041,14 +1043,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   ]);
 
   const spreadReadingPending =
-    spreadReadingRitualOpen ||
-    (intentionSpreadLoading &&
-      hasCompleteSpread(
-        chatDisplaySpread?.cards?.map((c) => c.name),
-        sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID,
-        sessionSpreadMetaRef.current?.spreadType
-      ) &&
-      !(chat()?.messages && chatHasSpreadReading(chat()!.messages)));
+    !chat()?.insufficientRunes &&
+    (spreadReadingRitualOpen ||
+      (intentionSpreadLoading &&
+        hasCompleteSpread(
+          chatDisplaySpread?.cards?.map((c) => c.name),
+          sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID,
+          sessionSpreadMetaRef.current?.spreadType
+        ) &&
+        !(chat()?.messages && chatHasSpreadReading(chat()!.messages))));
 
   const needsSpreadFlip =
     !chat()?.sessionOnlyChat &&
@@ -1395,6 +1398,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             ]);
 
             if (spreadResult.kind === "payment") {
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
             setStep("intention");
             setPendingMasterId(masterId);
             localStorage.setItem(PENDING_MASTER_KEY, masterId);
@@ -2282,6 +2287,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         ]);
 
         if (spreadResult.kind === "payment") {
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
           setStep("masters");
           deps.setSelectedCharacter(null);
           deps.chatLoadedForRef.current = null;

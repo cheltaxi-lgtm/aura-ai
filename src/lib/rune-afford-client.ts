@@ -10,6 +10,37 @@ export function canAffordRunes(opts: {
   return opts.balance >= opts.cost;
 }
 
+/** Whether a full spread reading (/api/reading) should charge runes on the client gate. */
+export function isSpreadReadingBillingActive(opts: {
+  spreadType?: string | null;
+  isLoggedIn: boolean;
+  runeBillingEnabled: boolean;
+  hasFullAccess?: boolean;
+  sessionOffline?: boolean;
+  isUnlimited?: boolean;
+}): boolean {
+  if (opts.spreadType === "daily") return false;
+  return (
+    opts.isLoggedIn &&
+    opts.runeBillingEnabled &&
+    !opts.hasFullAccess &&
+    !opts.sessionOffline &&
+    !opts.isUnlimited
+  );
+}
+
+export function gateSpreadReadingRunes(opts: {
+  billingActive: boolean;
+  balance: number;
+  cost: number;
+}): { blocked: false } | { blocked: true; balance: number; required: number } {
+  if (!opts.billingActive) return { blocked: false };
+  if (canAffordRunes({ enabled: true, balance: opts.balance, cost: opts.cost })) {
+    return { blocked: false };
+  }
+  return { blocked: true, balance: opts.balance, required: opts.cost };
+}
+
 export function runeShortfall(opts: {
   enabled: boolean;
   unlimited?: boolean;

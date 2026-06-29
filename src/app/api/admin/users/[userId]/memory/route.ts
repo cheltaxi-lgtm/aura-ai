@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminAction } from "@/lib/admin";
 import { ensureDb, query } from "@/lib/db";
 import { deleteFact, listFacts, purgeFacts } from "@/lib/memory/user-facts";
+import { deleteSessionMemory, listSessionMemoriesForUser } from "@/lib/session-memory";
 
 async function ensureUser(userId: string): Promise<boolean> {
   const { rows } = await query<{ id: string }>("SELECT id FROM users WHERE id = $1", [userId]);
@@ -26,7 +27,8 @@ export async function GET(
   }
 
   const facts = await listFacts(userId, 200);
-  return NextResponse.json({ facts, count: facts.length });
+  const sessionMemories = await listSessionMemoriesForUser(userId, 100);
+  return NextResponse.json({ facts, sessionMemories, count: facts.length });
 }
 
 /** Delete one fact (?factId=) or purge all facts for the user. */
@@ -46,6 +48,15 @@ export async function DELETE(
   }
 
   const factId = request.nextUrl.searchParams.get("factId")?.trim();
+  const sessionMemoryId = request.nextUrl.searchParams.get("sessionMemoryId")?.trim();
+
+  if (sessionMemoryId) {
+    const ok = await deleteSessionMemory(userId, sessionMemoryId);
+    await logAdminAction(auth.sub, "delete_session_memory", "user", userId, {
+      sessionMemoryId,
+    });
+    return NextResponse.json({ ok, deleted: ok ? 1 : 0 });
+  }
 
   if (factId) {
     const ok = await deleteFact(userId, factId);

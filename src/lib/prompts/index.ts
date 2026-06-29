@@ -18,7 +18,8 @@ import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import { resolveMasterDeckSystem, getDeckPositions } from "@/lib/decks";
 import { hasCompleteSpread, normalizeSpreadId, resolveSpreadPositions, getSpread } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
-import { buildMemoryBlock } from "./memory";
+import { formatLegacySessionMemories } from "./memory";
+import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import { getSpreadInstructions } from "./spread-instructions";
 import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
 import type { CharacterKey, PromptUserContext, ReadingCard, SessionMemory } from "./types";
@@ -213,6 +214,12 @@ export function buildSystemPrompt(
       ? READING_FORWARD_HOOK
       : "";
 
+  const legacyMemoryQuery = composeMemoryQueryText({
+    lastUserMessage: options.lastUserMessage,
+    intention: options.intention,
+    mainQuestion: user.mainQuestion,
+  });
+
   const parts = [
     persona,
     numerologyBlock,
@@ -221,11 +228,11 @@ export function buildSystemPrompt(
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
     clientBlock(user, character, options.lastUserMessage, options.spreadId, options.intention),
     buildGenderPronounBlock(user, options.lastUserMessage),
-    buildMemoryBlock(user.memory ?? [], displayName),
+    formatLegacySessionMemories(user.memory ?? [], displayName, legacyMemoryQuery),
     buildTopicBlock(character, topics),
     paywallRule(user.isPaid, spreadCardCount),
     mode === "chat"
-      ? "РЕЖИМ: живой чат — ответь на последний вопрос клиента по текущему раскладу, сохраняя голос мастера. Это уточнение к уже выпавшим символам, не новый сеанс. Заверши ответ движением вперёд: ОДИН уточняющий вопрос ИЛИ крючок на продолжение (не оба) — диалог не должен вставать."
+      ? "РЕЖИМ: живой чат — ответь на последний вопрос клиента по текущему раскладу. Память вплетай только когда она про ту же тему. Заверши ответ движением вперёд: ОДИН уточняющий вопрос ИЛИ крючок на продолжение (не оба) — диалог не должен вставать."
       : thematicReading
         ? `РЕЖИМ: оплаченный тематический расклад «${options.spreadId ? getSpread(options.spreadId).label : "расклад"}» — ${spreadCardCount} символов, максимальная глубина по теме, без воды.`
         : spreadCardCount === 3

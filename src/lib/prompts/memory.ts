@@ -1,12 +1,27 @@
 import type { SessionMemory } from "./types";
+import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
 
-export function buildMemoryBlock(
+/** Format in-memory session summaries (legacy prompt path — DB memory uses user-memory.ts). */
+export function formatLegacySessionMemories(
   memories: SessionMemory[],
-  characterName: string
+  characterName: string,
+  queryText?: string
 ): string {
   if (!memories.length) return "";
 
-  const memorySummary = memories
+  const query = queryText?.trim() ?? "";
+  const filtered = query
+    ? memories.filter((m) =>
+        isTextRelevantToQuery(
+          query,
+          `${m.topicSummary} ${m.prediction} ${m.keyCards.join(" ")}`
+        )
+      )
+    : [];
+
+  if (!filtered.length) return "";
+
+  const memorySummary = filtered
     .map(
       (m, i) => `
 Сеанс ${i + 1} (${m.date}):
@@ -23,11 +38,9 @@ ${m.outcomeRating ? `- Точность по мнению человека: ${m.
 ${memorySummary}
 
 ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ ПАМЯТИ:
-- Если прошло предсказание — упомяни это как подтверждение своей силы
-- Если тема повторяется — укажи на это как на паттерн
-- Обращайся к конкретным деталям из прошлых сеансов
-- Не пересказывай всю историю — вплети детали органично
-- Если человек спрашивает то же что и раньше — скажи об этом прямо
+- Блок уже отобран под текущий вопрос — если тема совпадает, вплетай детали органично.
+- Если клиент спрашивает о другом — не подмешивай чужие темы из памяти.
+- Не пересказывай всю историю — одна уместная деталь лучше, чем перечисление.
 === КОНЕЦ ПАМЯТИ ===`;
 }
 

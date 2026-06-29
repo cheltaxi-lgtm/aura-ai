@@ -12,6 +12,12 @@ import {
 import { buildChatFallbackReply } from "../src/lib/chat-prompts.ts";
 import { polishSpreadReadingText } from "../src/lib/reading-text-polish.ts";
 import { parseCardNamesFromSpreadText } from "../src/lib/session-spread-meta.ts";
+import {
+  composeMemoryQueryText,
+  expandIntentionForQuery,
+  filterLlmMessagesByTopic,
+  isTextRelevantToQuery,
+} from "../src/lib/memory/memory-relevance.ts";
 
 let failed = 0;
 
@@ -79,6 +85,58 @@ const fallback = buildChatFallbackReply("ragnar", {
 assert("fallback mentions all runes", ["Фехu", "Беркана", "Уруз"].every((r) => fallback.includes(r)));
 assert("fallback not loop", !isRejectedChatReply(fallback, { lastUserMessage: "Переезд" }));
 assert("fallback long enough", fallback.length > 200);
+
+assert(
+  "memory: career fact not relevant to love question",
+  !isTextRelevantToQuery(
+    "когда он вернётся ко мне",
+    "чувство вины за поступок в начале карьеры на работе"
+  )
+);
+assert(
+  "memory: career fact relevant to career question",
+  isTextRelevantToQuery(
+    "стоит ли менять работу и уйти с текущей карьеры",
+    "конфликт на работе и карьерный выбор"
+  )
+);
+assert(
+  "memory query prefers last user message",
+  composeMemoryQueryText({
+    lastUserMessage: "когда он вернётся ко мне",
+    intention: "career",
+    mainQuestion: "деньги и карьера",
+  }) === "когда он вернётся ко мне"
+);
+
+assert(
+  "memory query expands intention slug to Russian",
+  composeMemoryQueryText({ intention: "money" }).includes("Деньги")
+);
+
+assert(
+  "expandIntentionForQuery maps love slug",
+  expandIntentionForQuery("love").includes("Любовь")
+);
+
+const filteredHistory = filterLlmMessagesByTopic(
+  [
+    { role: "user", content: "конфликт на работе и карьера" },
+    { role: "assistant", content: "карьера требует терпения" },
+    { role: "user", content: "когда он вернётся ко мне" },
+    { role: "assistant", content: "любовь требует времени" },
+  ],
+  "когда он вернётся ко мне",
+  10
+);
+assert(
+  "filterLlmMessagesByTopic drops off-topic career turns",
+  !filteredHistory.some((m) => m.content.includes("карьера"))
+);
+assert(
+  "filterLlmMessagesByTopic keeps last user turn",
+  filteredHistory.some((m) => m.content.includes("вернётся"))
+);
 
 console.log(`\n--- ${failed} failed ---`);
 process.exit(failed > 0 ? 1 : 0);

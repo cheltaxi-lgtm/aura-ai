@@ -185,15 +185,7 @@ export async function searchFacts(
   const trimmed = queryText.trim();
 
   if (!trimmed) {
-    const { rows } = await query<FactRow>(
-      `SELECT ${FACT_COLUMNS}
-         FROM user_facts
-        WHERE user_id = $1
-        ORDER BY salience DESC, updated_at DESC
-        LIMIT $2`,
-      [userId, topK]
-    );
-    return rows.map(mapRow);
+    return [];
   }
 
   const embedding = await embedOne(trimmed, SEARCH_EMBED_TIMEOUT_MS);
@@ -204,7 +196,10 @@ export async function searchFacts(
     `WITH       vec_ranked AS (
         SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rnk
           FROM user_facts
-         WHERE user_id = $1 AND $2::vector IS NOT NULL AND embedding IS NOT NULL
+         WHERE user_id = $1
+           AND $2::vector IS NOT NULL
+           AND embedding IS NOT NULL
+           AND (embedding <=> $2::vector) <= ${SEARCH_MAX_DISTANCE}
          ORDER BY embedding <=> $2::vector
          LIMIT 20
       ),
@@ -235,16 +230,7 @@ export async function searchFacts(
   );
   if (rows.length) return rows.map(mapRow);
 
-  // Nothing matched either signal — fall back to salience/recency.
-  const fallback = await query<FactRow>(
-    `SELECT ${FACT_COLUMNS}
-       FROM user_facts
-      WHERE user_id = $1
-      ORDER BY salience DESC, updated_at DESC
-      LIMIT $2`,
-    [userId, topK]
-  );
-  return fallback.rows.map(mapRow);
+  return [];
 }
 
 /** Dated events from today forward (always surfaced regardless of query). */
@@ -316,7 +302,7 @@ export async function getGlobalUpcomingEvents(
   }));
 }
 
-/** Critical facts (salience >= 5) — always relevant background. */
+/** High-salience facts (salience >= 5) — surfaced only when queryText matches in client-memory. */
 export async function getCriticalFacts(userId: string, limit = 3): Promise<UserFact[]> {
   if (!userId) return [];
   const { rows } = await query<FactRow>(

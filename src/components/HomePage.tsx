@@ -69,6 +69,7 @@ import {
   type CachedChatSpread,
 } from "@/lib/chat-cache";
 import { resolveClientReadingText } from "@/lib/chat-reply-sanitize";
+import { stripLeadingSpreadCardImages } from "@/lib/reading-text-polish";
 import { type StoredReadingRow } from "@/lib/reading-progress";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
@@ -678,6 +679,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     setIsLoading,
     setChatHeaderImage,
     setInsufficientRunes,
+    insufficientRunes,
     setRuneBalance,
     chatLoadedForRef,
     skipNextReadingRef,
@@ -752,6 +754,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     const cardsKey = spreadKey(intentionSpread.cards);
     const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}`;
     if (onboarding.spreadReadingRecoveryKeyRef.current === recoveryKey) return;
+    if (insufficientRunes) return;
     onboarding.spreadReadingRecoveryKeyRef.current = recoveryKey;
 
     let cancelled = false;
@@ -822,19 +825,43 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     setReadingRitualCountdownDone,
     setReadingRitualActive,
     setSpreadReadingRitualOpen,
+    insufficientRunes,
   ]);
 
   const chatMessagesForDisplay = useMemo(() => {
-    if (!spreadReadingPending) return messages;
-    if (chatHasSpreadReading(messages)) return messages;
-    return messages.filter(
-      (m) =>
-        !(
-          m.role === "assistant" &&
-          (m.content?.trim().length ?? 0) >= MIN_SPREAD_READING_CHARS
-        )
-    );
-  }, [messages, spreadReadingPending]);
+    let msgs =
+      spreadReadingPending && !chatHasSpreadReading(messages)
+        ? messages.filter(
+            (m) =>
+              !(
+                m.role === "assistant" &&
+                (m.content?.trim().length ?? 0) >= MIN_SPREAD_READING_CHARS
+              )
+          )
+        : messages;
+
+    const headerSpreadActive =
+      chatDisplaySpread?.cards?.length &&
+      hasCompleteSpread(
+        chatDisplaySpread.cards.map((c) => c.name),
+        chatDisplaySpread.spreadId ?? DEFAULT_SPREAD_ID,
+        chatDisplaySpread.source === "photo"
+          ? "photo"
+          : chatDisplaySpread.source === "intention"
+            ? "new"
+            : "daily"
+      );
+
+    if (headerSpreadActive) {
+      msgs = msgs.map((m) => {
+        if (m.role !== "assistant" || !m.content?.includes("!(")) return m;
+        const stripped = stripLeadingSpreadCardImages(m.content);
+        return stripped === m.content.trim() ? m : { ...m, content: stripped };
+      });
+    }
+
+    return msgs;
+  }, [messages, spreadReadingPending, chatDisplaySpread]);
 
   useEffect(() => {
     if (
@@ -1033,6 +1060,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     formatRunes,
     runeBalance,
     setRuneBalance,
+    insufficientRunes,
     setInsufficientRunes,
     handleOpenPaywall: (opts) => handleOpenPaywallRef.current(opts),
     showRateLimit,

@@ -56,7 +56,11 @@ import {
   readingPayloadForMaster,
   coerceSpreadReadingText,
 } from "@/lib/chat-reading-helpers";
-import { inferDailySpreadType, isDailySpreadReading } from "@/lib/daily-spread-client";
+import { inferDailySpreadType } from "@/lib/daily-spread-client";
+import {
+  gateSpreadReadingRunes,
+  isSpreadReadingBillingActive,
+} from "@/lib/rune-afford-client";
 import {
   detectPeriodSpreadScope,
   drawPeriodSpread,
@@ -153,6 +157,7 @@ export interface UseChatActionsOptions {
   formatRunes: (amount: number) => string;
   runeBalance: number;
   setRuneBalance: (balance: number) => void;
+  insufficientRunes: { balance: number; required: number } | null;
   setInsufficientRunes: (value: { balance: number; required: number } | null) => void;
   handleOpenPaywall: (opts?: {
     balance?: number;
@@ -310,6 +315,7 @@ export function useChatActions(options: UseChatActionsOptions) {
     formatRunes,
     runeBalance,
     setRuneBalance,
+    insufficientRunes,
     setInsufficientRunes,
     handleOpenPaywall,
     showRateLimit,
@@ -493,7 +499,6 @@ export function useChatActions(options: UseChatActionsOptions) {
             cards: cardsForMaster,
             profile: activeProfile,
           }) ?? sessionSpreadMetaRef.current?.spreadType;
-        const isDailyReading = isDailySpreadReading(effectiveSpreadType);
 
         let apiCallStarted = false;
         try {
@@ -573,23 +578,30 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
         }
 
-        const billingActive =
-          !isDailyReading &&
-          isLoggedIn &&
-          runeConfig.enabled &&
-          !session?.hasAccess &&
-          !session?.offline &&
-          !session?.isUnlimited;
         const requiredReadingCost = isNumerologMaster(characterId)
           ? numerologySessionCost()
           : runeCost("READING");
-        if (billingActive && runeBalance < requiredReadingCost) {
+        const billingActive = isSpreadReadingBillingActive({
+          spreadType: effectiveSpreadType,
+          isLoggedIn,
+          runeBillingEnabled: runeConfig.enabled,
+          hasFullAccess: session?.hasAccess,
+          sessionOffline: session?.offline,
+          isUnlimited: session?.isUnlimited,
+        });
+        const affordGate = gateSpreadReadingRunes({
+          billingActive,
+          balance: runeBalance,
+          cost: requiredReadingCost,
+        });
+        if (affordGate.blocked) {
+          loadReadingAttemptKeyRef.current = loadAttemptKey;
           pendingReadingMasterRef.current = characterId;
-          persistPendingReading(characterId, requiredReadingCost);
-          setInsufficientRunes({ balance: runeBalance, required: requiredReadingCost });
+          persistPendingReading(characterId, affordGate.required);
+          setInsufficientRunes({ balance: affordGate.balance, required: affordGate.required });
           handleOpenPaywall({
-            balance: runeBalance,
-            requiredRunes: requiredReadingCost,
+            balance: affordGate.balance,
+            requiredRunes: affordGate.required,
           });
           return;
         }
@@ -1084,6 +1096,7 @@ export function useChatActions(options: UseChatActionsOptions) {
           const attemptKey = `${selectedCharacter}:${activeSpreadCardsKey}`;
           if (loadReadingAttemptKeyRef.current === attemptKey) return;
           if (loadReadingInFlightKeyRef.current === attemptKey) return;
+          if (insufficientRunes) return;
           if (shouldAutoLoadSpreadReading(selectedCharacter, activeSpreadCardsKey)) {
             setIsLoadingHistory(false);
             await loadReading(selectedCharacter);
@@ -1101,6 +1114,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         const attemptKey = `${selectedCharacter}:${activeSpreadCardsKey}`;
         if (loadReadingAttemptKeyRef.current === attemptKey) return;
         if (loadReadingInFlightKeyRef.current === attemptKey) return;
+        if (insufficientRunes) return;
         if (shouldAutoLoadSpreadReading(selectedCharacter, activeSpreadCardsKey)) {
           setIsLoadingHistory(false);
           await loadReading(selectedCharacter);
@@ -1123,6 +1137,7 @@ export function useChatActions(options: UseChatActionsOptions) {
     needsSpreadFlip,
     allSpreadFlipped,
     shouldAutoLoadSpreadReading,
+    insufficientRunes,
     savedReadings,
     applyRestoredChatSpread,
     applyHistorySessionMeta,
@@ -1173,6 +1188,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       intentionSpread.cards.length
     ) return;
     if (!shouldAutoLoadSpreadReading(selectedCharacter, activeSpreadCardsKey)) return;
+    if (insufficientRunes) return;
 
     const attemptKey = `${selectedCharacter}:${activeSpreadCardsKey}`;
     if (loadReadingAttemptKeyRef.current === attemptKey) return;
@@ -1442,6 +1458,8 @@ export function useChatActions(options: UseChatActionsOptions) {
         loadReadingInFlightKeyRef.current = null;
         setIntentionSpread(null);
         persistIntentionSpreadState(selectedCharacter, null);
+        setSessionIntention(null);
+        persistSessionIntention(selectedCharacter, null);
         setChatSessionSpread({
           masterId: selectedCharacter,
           cards: drawn.cards,
@@ -1547,12 +1565,12 @@ export function useChatActions(options: UseChatActionsOptions) {
                 }
               : undefined,
             tarotCards: tarotCardsForChat,
-            intention: sessionIntention ?? undefined,
+            intention: periodScope ? undefined : sessionIntention ?? undefined,
             customQuestion:
-              sessionIntention === "custom"
+              !periodScope && sessionIntention === "custom"
                 ? readSessionCustomQuestion(selectedCharacter) ?? undefined
                 : undefined,
-            spreadType: periodScope ? "new" : sessionSpreadMetaRef.current?.spreadType,
+            spreadType: periodScope ? undefined : sessionSpreadMetaRef.current?.spreadType,
             spreadId: sessionSpreadMetaRef.current?.spreadId,
             cards:
               periodSpreadCards?.map((c) => c.name) ??

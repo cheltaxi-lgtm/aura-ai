@@ -18,6 +18,7 @@ import {
   buildMemoryBlock,
 } from "@/lib/user-memory";
 import { loadClientMemoryBlock, recordTurn } from "@/lib/memory/client-memory";
+import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import {
   BillingService,
   InsufficientFundsError,
@@ -189,14 +190,31 @@ export async function POST(request: NextRequest) {
     let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
 
     if (profileUserId && resolvedSessionId) {
-      const clientBlock = buildClientBlock({
-        name: ctx.userName,
-        gender: ctx.gender,
-        zodiac: ctx.zodiac,
-        birthDate: ctx.birthDate,
+      const memoryQuery = composeMemoryQueryText({
+        lastUserMessage: question,
+        mainQuestion: ctx.mainQuestion,
       });
-      const memoryBlock = await buildMemoryBlock(profileUserId, characterId, resolvedSessionId);
-      const factsBlock = await loadClientMemoryBlock({ userId: profileUserId });
+      const clientBlock = buildClientBlock(
+        {
+          name: ctx.userName,
+          gender: ctx.gender,
+          zodiac: ctx.zodiac,
+          birthDate: ctx.birthDate,
+          mainQuestion: ctx.mainQuestion,
+          lifeFocus: ctx.lifeFocus,
+        },
+        memoryQuery
+      );
+      const memoryBlock = await buildMemoryBlock(
+        profileUserId,
+        characterId,
+        resolvedSessionId,
+        memoryQuery
+      );
+      const factsBlock = await loadClientMemoryBlock({
+        userId: profileUserId,
+        queryText: memoryQuery,
+      });
       systemPrompt = appendUserMemoryToPrompt(
         systemPrompt,
         `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null

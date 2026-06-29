@@ -33,6 +33,7 @@ import { isValidSessionIntention, topicToDrawIntention, topicLabel } from "@/lib
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import { appendUserMemoryToPrompt, buildClientBlock, buildMemoryBlock } from "@/lib/user-memory";
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
+import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import {
   buildSpreadUserMessage,
   enrichCardsForSpreadContext,
@@ -443,20 +444,33 @@ export async function POST(request: NextRequest) {
 
   systemPrompt += intentionSpreadPromptBlock(intention, customQuestion);
 
-  const clientBlock = buildClientBlock({
-    name: userName,
-    gender,
-    zodiac,
-    birthDate,
-    mainQuestion: intention === "custom" ? customQuestion : mainQuestion,
-    lifeFocus,
+  const memoryQuery = composeMemoryQueryText({
+    intention,
+    customQuestion,
+    mainQuestion,
   });
+  const clientBlock = buildClientBlock(
+    {
+      name: userName,
+      gender,
+      zodiac,
+      birthDate,
+      mainQuestion: intention === "custom" ? customQuestion : mainQuestion,
+      lifeFocus,
+    },
+    memoryQuery
+  );
   const memoryBlock = sessionId
-    ? await buildMemoryBlock(authed.profileUserId, characterId, sessionId)
+    ? await buildMemoryBlock(
+        authed.profileUserId,
+        characterId,
+        sessionId,
+        memoryQuery
+      )
     : "";
   const factsBlock = await loadClientMemoryBlock({
     userId: authed.profileUserId,
-    queryText: mainQuestion ?? "",
+    queryText: memoryQuery,
   });
   systemPrompt = appendUserMemoryToPrompt(
     systemPrompt,
