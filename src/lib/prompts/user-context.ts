@@ -167,7 +167,7 @@ export function enrichCardsForSpreadContext(
   positions?: readonly string[]
 ): CardContextInput[] {
   const pos = positions ?? getDeckPositions(system);
-  return cards.slice(0, 3).map((c, i) => {
+  return cards.map((c, i) => {
     const { reversed } = parseCardOrientation(c.name);
     const sym = findSymbolByName(system, c.name);
     const rawMeaning = c.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? sym?.meaning ?? "";

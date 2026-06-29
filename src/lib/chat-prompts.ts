@@ -20,6 +20,8 @@ import { MARINA_PERSONA } from "@/lib/prompts/masters/marina";
 import { getSessionTopic } from "@/lib/session-topics";
 import { buildNumerologSpreadReading } from "@/lib/numerolog/welcome";
 import type { SessionMemory } from "@/lib/prompts/types";
+import { getSpread, normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
+import type { SessionTopicId } from "@/lib/session-topics";
 
 import { buildAstroMeta, lifeFocusLabel, type AstroMeta, type LifeFocus } from "@/lib/astro-profile";
 
@@ -173,6 +175,7 @@ export function buildCharacterPrompt(
     sessionNumber?: number;
     memory?: SessionMemory[];
     intention?: string | null;
+    spreadId?: string | null;
     lastUserMessage?: string;
     numerologyBlock?: string;
   }
@@ -181,6 +184,7 @@ export function buildCharacterPrompt(
   return buildSystemPrompt(character, user, {
     mode: "reading",
     intention: extras?.intention ?? null,
+    spreadId: extras?.spreadId ?? null,
     lastUserMessage: extras?.lastUserMessage ?? ctx.mainQuestion,
     numerologyBlock: extras?.numerologyBlock,
   });
@@ -252,12 +256,14 @@ export function buildCardAwareFallbackReading(
     tarotCards: { name: string; meaning?: string }[];
     intention?: string | null;
     isPaid?: boolean;
+    spreadId?: string | null;
+    positionLabels?: string[];
   }
 ): string {
   if (characterId === "numerolog") {
     return buildNumerologSpreadReading({
       userName: ctx.userName,
-      spreadNumbers: ctx.tarotCards.slice(0, 3).map((c) => c.name),
+      spreadNumbers: ctx.tarotCards.map((c) => c.name),
     });
   }
 
@@ -265,11 +271,13 @@ export function buildCardAwareFallbackReading(
   const topicLabel = topicMeta?.label ?? ctx.intention?.trim() ?? "расклад";
   const topicFocus = topicMeta?.focus ?? "ваша ситуация";
 
-  const positions = [
-    "Корень / Прошлое",
-    "Сейчас / Настоящее",
-    "Вектор / Ближайшие 1–3 месяца",
-  ];
+  const spreadId = normalizeSpreadId(ctx.spreadId);
+  const positions =
+    ctx.positionLabels ??
+    resolveSpreadPositions(spreadId, ctx.intention as SessionTopicId | null | undefined).map(
+      (p) => p.label
+    );
+  const cards = ctx.tarotCards.slice(0, positions.length || ctx.tarotCards.length);
 
   const openers: Record<string, string> = {
     gadalka_marina: `${ctx.userName}, лунный свет лёг на символы — слушаю их для темы «${topicLabel}».`,
@@ -283,34 +291,25 @@ export function buildCardAwareFallbackReading(
     openers[characterId in openers ? characterId : ""] ??
     `${ctx.userName}, символы раскрывают тему «${topicLabel}».`;
 
-  const cardBlocks = ctx.tarotCards.slice(0, 3).map((card, i) => {
+  const cardBlocks = cards.map((card, i) => {
     const pos = positions[i] ?? `Позиция ${i + 1}`;
     const rawMeaning = card.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? card.name;
-    return `${pos} — «${card.name}». В контексте ${topicFocus} этот символ показывает: ${rawMeaning}. Для «${topicLabel}» это слой ${i === 0 ? "корня — откуда тянется ситуация" : i === 1 ? "настоящего — что происходит сейчас" : "вектора — куда движется линия в ближайшие месяцы"}. Опирайтесь на образ «${card.name}» как на конкретный ориентир, а не на догадки.`;
+    return `${pos} — «${card.name}». В контексте ${topicFocus} этот символ показывает: ${rawMeaning}. Для «${topicLabel}» это слой позиции «${pos}». Опирайтесь на образ «${card.name}» как на конкретный ориентир.`;
   });
 
-  const names = ctx.tarotCards
-    .slice(0, 3)
-    .map((c) => c.name)
-    .join(" → ");
+  const names = cards.map((c) => c.name).join(" → ");
 
-  const recapParts = ctx.tarotCards.slice(0, 3).map((card, i) => {
+  const recapParts = cards.map((card, i) => {
     const raw = card.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? card.name;
     const short = raw.split(/[.;]/)[0]?.trim() || raw;
-    return `«${card.name}» (${positions[i]}) — ${short}`;
+    return `«${card.name}» (${positions[i] ?? i + 1}) — ${short}`;
   });
-
-  const midCard = ctx.tarotCards[1]?.name ?? ctx.tarotCards[0]?.name;
-  const rootCard = ctx.tarotCards[0]?.name ?? "первая карта";
-  const vectorCard = ctx.tarotCards[2]?.name ?? "третья карта";
 
   const finalBlock = [
     `${ctx.userName}, вывод по всему раскладу на тему «${topicLabel}».`,
     `Линия ${names}: ${recapParts.join("; ")}.`,
-    `Вместе символы складываются в одну картину — корень «${rootCard}» объясняет откуда тянется ситуация, «${midCard}» показывает точку опоры сейчас, «${vectorCard}» задаёт вектор на ближайшие месяцы.`,
-    `По теме «${topicLabel}» главный факт: опирайтесь на то, что уже видно в «${midCard}», а не на ожидание идеальных условий.`,
-    `Сделайте: один конкретный шаг из логики «${vectorCard}» — без откладывания.`,
-    `Не делайте: не игнорируйте корень «${rootCard}» — он объясняет, почему тема «${topicLabel}» сейчас именно такая.`,
+    `Вместе ${cards.length} символов складываются в одну картину — пройди каждую позицию и сведи их в единый совет.`,
+    `По теме «${topicLabel}» опирайся на все выпавшие карты, а не только на первые три.`,
   ].join(" ");
 
   return [opener, ...cardBlocks, finalBlock].join("\n\n");
@@ -342,6 +341,8 @@ export async function generateReading(
     isPaid: boolean;
     characterId?: string;
     intention?: string | null;
+    spreadId?: string | null;
+    positionLabels?: string[];
     userMessage?: string;
   }
 ): Promise<ReadingGenerationResult> {
@@ -349,10 +350,17 @@ export async function generateReading(
   const thematic = Boolean(ctx.intention?.trim() && ctx.intention !== "life_death");
   const topicMeta = thematic ? getSessionTopic(ctx.intention!) : undefined;
   const topicLabel = topicMeta?.label ?? ctx.intention?.trim();
+  const spreadId = normalizeSpreadId(ctx.spreadId);
+  const spread = getSpread(spreadId);
+  const cardCount = ctx.tarotCards.length;
 
-  const positions = ["Корень / Прошлое", "Сейчас / Настоящее", "Вектор / Ближайшие 1–3 месяца"];
+  const positions =
+    ctx.positionLabels ??
+    resolveSpreadPositions(spreadId, ctx.intention as SessionTopicId | null | undefined).map(
+      (p) => p.label
+    );
+
   const cardsDetailed = ctx.tarotCards
-    .slice(0, 3)
     .map((c, i) => {
       const pos = positions[i] ?? `Позиция ${i + 1}`;
       const raw = c.meaning?.replace(/^[^:]+:\s*/, "").trim();
@@ -360,11 +368,13 @@ export async function generateReading(
     })
     .join("; ");
 
+  const cardWord = cardCount === 1 ? "карту" : cardCount < 5 ? "карты" : "символы";
+
   const userContent =
     ctx.userMessage?.trim() ||
     (thematic
-      ? `Расшифруй оплаченный расклад для ${ctx.userName}. Тема «${topicLabel}» — только линза. Символы: ${cardsDetailed}. В конце — финальный блок выводов по всему раскладу с действиями.`
-      : `Расшифруй расклад для ${ctx.userName}. Символы: ${cardsDetailed}. В конце — финальный блок выводов по всему раскладу с действиями.`);
+      ? `Расшифруй оплаченный расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Тема «${topicLabel}» — только линза. Все символы: ${cardsDetailed}. Раскрой КАЖДУЮ позицию. В конце — финальный блок выводов по всему раскладу с действиями.`
+      : `Расшифруй расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Символы: ${cardsDetailed}. Раскрой каждую позицию. В конце — финальный блок выводов по всему раскладу с действиями.`);
 
   const cardNames = ctx.tarotCards.map((c) => c.name);
 
@@ -385,6 +395,8 @@ export async function generateReading(
     { role: "user", content: userContent },
   ];
 
+  const maxTokens = cardCount > 5 ? 5000 : cardCount > 3 ? 4200 : 2800;
+
   const attemptPlans: Array<{
     messages: ChatMessage[];
     maxTokens: number;
@@ -393,16 +405,16 @@ export async function generateReading(
     temperature?: number;
   }> = thematic
     ? [
-        { messages: baseMessages, maxTokens: 2800, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 },
+        { messages: baseMessages, maxTokens, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 },
         {
           messages: baseMessages,
-          maxTokens: 2000,
-          timeoutMs: 60_000,
+          maxTokens: Math.round(maxTokens * 0.75),
+          timeoutMs: 90_000,
           maxAttempts: 1,
           temperature: 0.85,
         },
       ]
-    : [{ messages: baseMessages, maxTokens: 2000, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 }];
+    : [{ messages: baseMessages, maxTokens, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 }];
 
   for (const plan of attemptPlans) {
     const text = await completeChat({

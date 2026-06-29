@@ -417,6 +417,7 @@ export async function POST(request: NextRequest) {
     sessionNumber,
     memory: [],
     intention,
+    spreadId,
   });
 
   if (!isAiMasterId(characterId) && (await ensureDb())) {
@@ -474,6 +475,8 @@ export async function POST(request: NextRequest) {
       isPaid: true,
       characterId,
       intention,
+      spreadId,
+      positionLabels,
       userMessage,
     });
     reading = generated.text.trim();
@@ -484,6 +487,8 @@ export async function POST(request: NextRequest) {
         tarotCards,
         intention,
         isPaid: true,
+        spreadId,
+        positionLabels,
       });
   } catch (err) {
     console.error("Intention spread generation failed:", err);
@@ -501,6 +506,8 @@ export async function POST(request: NextRequest) {
       tarotCards,
       intention,
       isPaid: true,
+      spreadId,
+      positionLabels,
     });
   }
 

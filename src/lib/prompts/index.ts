@@ -16,7 +16,8 @@ import { VERONIKA_PERSONA } from "./masters/veronika";
 import { NUMEROLOG_PERSONA } from "./masters/numerolog";
 import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import { resolveMasterDeckSystem, getDeckPositions } from "@/lib/decks";
-import { hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
+import { hasCompleteSpread, normalizeSpreadId, resolveSpreadPositions, getSpread } from "@/lib/spreads";
+import type { SessionTopicId } from "@/lib/session-topics";
 import { buildMemoryBlock } from "./memory";
 import { getSpreadInstructions } from "./spread-instructions";
 import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
@@ -62,9 +63,17 @@ function astroLines(user: PromptUserContext): string[] {
   return lines;
 }
 
-function spreadLabelsForCharacter(character: CharacterKey): string[] {
-  const positions = getDeckPositions(resolveMasterDeckSystem(character));
-  return [...positions].slice(0, 3);
+function spreadLabelsForPrompt(
+  character: CharacterKey,
+  spreadId?: string | null,
+  intention?: string | null
+): string[] {
+  if (spreadId) {
+    return resolveSpreadPositions(spreadId, intention as SessionTopicId | null | undefined).map(
+      (p) => p.label
+    );
+  }
+  return [...getDeckPositions(resolveMasterDeckSystem(character))].slice(0, 3);
 }
 
 function cardsBlock(
@@ -73,7 +82,6 @@ function cardsBlock(
 ): string {
   if (!cards.length) return "Карты расклада пока не переданы — опирайся на вопрос и знак клиента.";
   return cards
-    .slice(0, 3)
     .map((c, i) => {
       const label = labels[i] ?? `Позиция ${i + 1}`;
       if (typeof c === "string") return `${label}: «${c}»`;
@@ -82,7 +90,13 @@ function cardsBlock(
     .join("\n");
 }
 
-function clientBlock(user: PromptUserContext, character: CharacterKey, lastUserMessage?: string): string {
+function clientBlock(
+  user: PromptUserContext,
+  character: CharacterKey,
+  lastUserMessage?: string,
+  spreadId?: string | null,
+  intention?: string | null
+): string {
   const sessionLabel = user.sessionNumber && user.sessionNumber > 1
     ? `Это ${user.sessionNumber}-й сеанс с этим клиентом.`
     : "Первый или ранний сеанс — заложи доверие и глубину.";
@@ -102,15 +116,20 @@ ${user.today ? `- Сегодня: ${user.today}` : ""}
 ${questionLine}
 
 ВЫПАВШИЕ СИМВОЛЫ (единственный источник выводов — читай значения каждой карты):
-${cardsBlock(user.cards, spreadLabelsForCharacter(character))}
+${cardsBlock(user.cards, spreadLabelsForPrompt(character, spreadId, intention))}
 ${astroLines(user).map((l) => `- ${l}`).join("\n")}`;
 }
 
-function paywallRule(isPaid: boolean | undefined): string {
+function paywallRule(isPaid: boolean | undefined, cardCount: number): string {
   if (isPaid) {
-    return "Клиент с полным доступом — дай полную глубину по всем трём символам без удерживания.";
+    return cardCount <= 1
+      ? "Клиент с полным доступом — дай полную глубину по символу без удерживания."
+      : `Клиент с полным доступом — дай полную глубину по всем ${cardCount} символам без удерживания.`;
   }
-  return `Клиент на бесплатном/частичном доступе: подробно раскрой ПЕРВЫЙ символ (Прошлое). По 2-му и 3-му — интригующий крючок без полной расшифровки, намекни что глубина откроется дальше.`;
+  if (cardCount <= 3) {
+    return `Клиент на бесплатном/частичном доступе: подробно раскрой ПЕРВЫЙ символ (Прошлое). По 2-му и 3-му — интригующий крючок без полной расшифровки, намекни что глубина откроется дальше.`;
+  }
+  return `Клиент на бесплатном/частичном доступе: подробно раскрой ПЕРВЫЙ символ. По остальным ${cardCount - 1} — краткий крючок без полной расшифровки.`;
 }
 
 export interface BuildPromptOptions {
@@ -183,22 +202,26 @@ export function buildSystemPrompt(
       ? READING_FORWARD_HOOK
       : "";
 
+  const spreadCardCount = user.cards.length || (options.spreadId ? getSpread(options.spreadId).cardCount : 3);
+
   const parts = [
     persona,
     numerologyBlock,
     CONTEXT_RULES,
     SPREAD_TRUTH_RULES,
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
-    clientBlock(user, character, options.lastUserMessage),
+    clientBlock(user, character, options.lastUserMessage, options.spreadId, options.intention),
     buildGenderPronounBlock(user, options.lastUserMessage),
     buildMemoryBlock(user.memory ?? [], displayName),
     buildTopicBlock(character, topics),
-    paywallRule(user.isPaid),
+    paywallRule(user.isPaid, spreadCardCount),
     mode === "chat"
       ? "РЕЖИМ: живой чат — ответь на последний вопрос клиента по текущему раскладу, сохраняя голос мастера. Это уточнение к уже выпавшим символам, не новый сеанс. Заверши ответ движением вперёд: ОДИН уточняющий вопрос ИЛИ крючок на продолжение (не оба) — диалог не должен вставать."
       : thematicReading
-        ? "РЕЖИМ: оплаченный тематический расклад — максимальная глубина по теме, без воды."
-        : "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов.",
+        ? `РЕЖИМ: оплаченный тематический расклад «${options.spreadId ? getSpread(options.spreadId).label : "расклад"}» — ${spreadCardCount} символов, максимальная глубина по теме, без воды.`
+        : spreadCardCount === 3
+          ? "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов."
+          : `РЕЖИМ: полный расклад — дай развёрнутую расшифровку всех ${spreadCardCount} символов.`,
     formatBlock,
     spreadFinalBlock,
     mode === "reading" && hasSpread ? getSpreadInstructions(character, options.spreadId) : "",
@@ -225,11 +248,15 @@ export function fromLegacyContext(
     astroMeta?: PromptUserContext["astroMeta"];
     isPaid?: boolean;
   },
-  extras?: { sessionNumber?: number; memory?: SessionMemory[]; lastUserMessage?: string }
+  extras?: { sessionNumber?: number; memory?: SessionMemory[]; lastUserMessage?: string; spreadId?: string | null }
 ): { character: CharacterKey; user: PromptUserContext; lastUserMessage?: string } {
   const character: CharacterKey = isCharacterKey(characterId) ? characterId : "ragnar";
+  const spreadId = normalizeSpreadId(extras?.spreadId);
+  const maxCards = extras?.spreadId
+    ? getSpread(spreadId).cardCount
+    : ctx.tarotCards?.length ?? 3;
   const cards: ReadingCard[] =
-    ctx.tarotCards?.slice(0, 3).map((c) => ({
+    ctx.tarotCards?.slice(0, maxCards).map((c) => ({
       name: c.name,
       meaning: c.meaning ?? "",
     })) ?? [];
