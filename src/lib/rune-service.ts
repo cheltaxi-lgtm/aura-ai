@@ -361,31 +361,31 @@ export async function adminGrantRunes(
 }
 
 /** Idempotent credit after YooKassa payment.succeeded — package totals from DB; custom from paid amount. */
-export async function creditRunesFromPayment(metadata: {
+export async function creditRunesFromPayment(payment: {
   userId: string;
   packageId: string;
   paymentId: string;
   amountRub?: number;
 }): Promise<boolean> {
-  if (!metadata.userId || !metadata.packageId || !metadata.paymentId) {
+  if (!payment.userId || !payment.packageId || !payment.paymentId) {
     return false;
   }
 
   let amount: number;
   let description: string;
 
-  if (metadata.packageId === "custom") {
-    if (!metadata.amountRub || metadata.amountRub <= 0) {
+  if (payment.packageId === "custom") {
+    if (!payment.amountRub || payment.amountRub <= 0) {
       console.warn("creditRunesFromPayment: custom payment missing amountRub");
       return false;
     }
     const settings = await getRuneSettings();
-    amount = runesFromRubAmount(metadata.amountRub, settings.rubPerRune);
+    amount = runesFromRubAmount(payment.amountRub, settings.rubPerRune);
     if (amount <= 0) {
       console.warn("creditRunesFromPayment: custom payment yields zero runes");
       return false;
     }
-    description = `Пополнение на ${Math.round(metadata.amountRub)} ₽: ${amount} ᚢ`;
+    description = `Пополнение на ${Math.round(payment.amountRub)} ₽: ${amount} ᚢ`;
   } else {
     const { rows: pkgRows } = await query<{
       name: string;
@@ -393,17 +393,17 @@ export async function creditRunesFromPayment(metadata: {
       bonus_runes: number;
     }>(
       `SELECT name, runes, bonus_runes FROM rune_packages WHERE id = $1`,
-      [metadata.packageId]
+      [payment.packageId]
     );
     const pkg = pkgRows[0];
     if (!pkg) {
-      console.warn("creditRunesFromPayment: package not found:", metadata.packageId);
+      console.warn("creditRunesFromPayment: package not found:", payment.packageId);
       return false;
     }
 
     amount = pkg.runes + pkg.bonus_runes;
     if (amount <= 0) {
-      console.warn("creditRunesFromPayment: invalid package rune total:", metadata.packageId);
+      console.warn("creditRunesFromPayment: invalid package rune total:", payment.packageId);
       return false;
     }
 
@@ -420,7 +420,7 @@ export async function creditRunesFromPayment(metadata: {
          ON CONFLICT (payment_id) WHERE type = 'purchase' AND payment_id IS NOT NULL
          DO NOTHING
          RETURNING id`,
-        [metadata.userId, metadata.paymentId, description]
+        [payment.userId, payment.paymentId, description]
       );
       if (!claimed[0]) return false;
 
@@ -432,7 +432,7 @@ export async function creditRunesFromPayment(metadata: {
            total_runes_purchased = total_runes_purchased + $2
          WHERE id = $1
          RETURNING rune_balance`,
-        [metadata.userId, amount]
+        [payment.userId, amount]
       );
       if (!updated[0]) {
         throw new Error("user_not_found");
