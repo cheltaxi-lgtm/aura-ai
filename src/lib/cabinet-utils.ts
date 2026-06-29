@@ -60,16 +60,57 @@ export function truncate(text: string, max: number): string {
 /** Убирает markdown-разметку из сгенерированного текста для отображения в ЛК */
 export function stripMarkdownText(text: string): string {
   return text
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+    .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*/g, "")
     .replace(/\*/g, "")
     .replace(/__/g, "")
     .replace(/_/g, "")
     .replace(/`/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .trim();
+}
+
+/**
+ * Короткое превью расклада для карточки истории — без картинок, заголовков и служебного markdown.
+ */
+export function formatCabinetPredictionPreview(text: string, maxLength = 220): string {
+  let out = text.replace(/\r\n/g, "\n").trim();
+  if (!out) return "";
+
+  const lines = out.split("\n");
+  const bodyLines: string[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    if (/^!\[[^\]]+\]\([^)]+\)/.test(t)) continue;
+    if (/^#{1,6}\s/.test(t)) continue;
+    if (/^ваш расклад\b/i.test(t)) continue;
+    if (/^(?:✦\s*)?простыми словами:?\s*$/i.test(t)) continue;
+    const withoutImages = t.replace(/!\[[^\]]*\]\([^)]+\)/g, " ").trim();
+    const cardOnly =
+      /^[\d\s\wа-яёА-ЯЁ·•,.-]+$/u.test(withoutImages.replace(/\*\*/g, "")) &&
+      (withoutImages.match(/·|•/g)?.length ?? 0) >= 2 &&
+      withoutImages.length < 120;
+    if (cardOnly) continue;
+    bodyLines.push(withoutImages);
+  }
+
+  out = stripMarkdownText(bodyLines.join(" "));
+  out = out.replace(/\s+/g, " ").trim();
+
+  if (!out || out.length < 24) return "";
+  return truncate(out, maxLength);
 }
 
 /** Исправляет типичные шаблонные огрехи + чистит markdown */
 export function sanitizeCabinetDisplayText(text: string): string {
+  const preview = formatCabinetPredictionPreview(text, 2000);
+  if (preview) {
+    return preview
+      .replace(/\bв контексте ваша ситуация\b/gi, "в контексте вашей ситуации")
+      .replace(/\bв контексте ваш ситуация\b/gi, "в контексте вашей ситуации");
+  }
   return stripMarkdownText(text)
     .replace(/\bв контексте ваша ситуация\b/gi, "в контексте вашей ситуации")
     .replace(/\bв контексте ваш ситуация\b/gi, "в контексте вашей ситуации");

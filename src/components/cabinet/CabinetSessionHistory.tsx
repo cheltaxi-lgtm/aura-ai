@@ -8,10 +8,10 @@ import BodyPortal from "@/components/BodyPortal";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
 import {
   formatCabinetDate,
+  formatCabinetPredictionPreview,
   masterDisplay,
   moodEmoji,
   outcomeRatingLabel,
-  sanitizeCabinetDisplayText,
   sessionMastersFromList,
   truncate,
 } from "@/lib/cabinet-utils";
@@ -100,6 +100,9 @@ function SessionCard({
   deleting: boolean;
 }) {
   const master = masterDisplay(session.characterKey);
+  const predictionPreview = session.prediction
+    ? formatCabinetPredictionPreview(session.prediction)
+    : "";
 
   return (
     <motion.article
@@ -143,14 +146,12 @@ function SessionCard({
         </div>
       )}
 
-      {session.prediction && (
+      {predictionPreview ? (
         <div className="mt-4">
           <p className="text-xs text-white/40">Предсказание</p>
-          <p className="cabinet-session-card__prediction">
-            {sanitizeCabinetDisplayText(session.prediction)}
-          </p>
+          <p className="cabinet-session-card__prediction">{predictionPreview}</p>
         </div>
-      )}
+      ) : null}
 
       {session.mood && (
         <p className="mt-3 text-sm text-white/60">
