@@ -19,6 +19,10 @@ import {
   isTextRelevantToQuery,
 } from "../src/lib/memory/memory-relevance.ts";
 import { validateUserSubmittedFact } from "../src/lib/memory/user-fact-input.ts";
+import {
+  formatMemoryFactForDisplay,
+  normalizeUserFactPhrase,
+} from "../src/lib/memory/user-fact-display.ts";
 
 let failed = 0;
 
@@ -141,7 +145,19 @@ assert(
 
 assert(
   "user submitted fact normalizes first person",
-  validateUserSubmittedFact("я работаю программистом")?.fact.includes("Клиент")
+  validateUserSubmittedFact("я работаю программистом")?.fact.includes("Клиент работает")
+);
+assert(
+  "user fact normalizes living city without double prefix",
+  normalizeUserFactPhrase("живу в городе Копейск") === "Клиент живёт в городе Копейск"
+);
+assert(
+  "user fact display shows first person for cabinet",
+  formatMemoryFactForDisplay("Клиент живёт в городе Копейск") === "Живу в городе Копейск"
+);
+assert(
+  "user fact display strips redundant client prefix",
+  formatMemoryFactForDisplay("У клиента 5 детей") === "5 детей"
 );
 assert(
   "user submitted fact rejects tarot meta",

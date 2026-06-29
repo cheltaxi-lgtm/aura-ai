@@ -109,10 +109,22 @@ assert(
 
 const cabinetMemory = read("src/components/cabinet/CabinetMemoryFacts.tsx");
 assert(
+  "cabinet memory uses premium fact cards",
+  cabinetMemory.includes("formatMemoryFactForDisplay") &&
+    cabinetMemory.includes("FACT_CATEGORY_ACCENTS")
+);
+assert(
   "cabinet memory shows PD consent before save",
   cabinetMemory.includes("pdConsent") &&
     cabinetMemory.includes("152-ФЗ") &&
     cabinetMemory.includes("/privacy")
+);
+
+const userFactDisplay = read("src/lib/memory/user-fact-display.ts");
+assert(
+  "user fact display module normalizes and formats facts",
+  userFactDisplay.includes("normalizeUserFactPhrase") &&
+    userFactDisplay.includes("formatMemoryFactForDisplay")
 );
 assert(
   "cabinet memory add form opens in modal",

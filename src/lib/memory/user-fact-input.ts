@@ -1,4 +1,5 @@
 import type { FactInput } from "@/lib/memory/user-facts";
+import { normalizeUserFactPhrase } from "@/lib/memory/user-fact-display";
 
 export const USER_FACT_CATEGORIES = [
   "family",
@@ -35,19 +36,6 @@ export function isQualityMemoryFact(fact: string): boolean {
   if (!CYRILLIC_RE.test(f)) return false;
   if (META_FACT_RE.test(f)) return false;
   return true;
-}
-
-function normalizeUserFactPhrase(fact: string): string {
-  const trimmed = fact.trim();
-  if (/^(у клиента|клиент)(\s|$)/i.test(trimmed)) return trimmed;
-  if (/^я(\s|$)/i.test(trimmed)) {
-    const rest = trimmed.replace(/^я\s*/i, "").trim();
-    return rest ? `Клиент ${rest}` : trimmed;
-  }
-  if (/^у меня(\s|$)/i.test(trimmed)) {
-    return `У клиента ${trimmed.replace(/^у меня\s*/i, "").trim()}`;
-  }
-  return `У клиента ${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`;
 }
 
 /** Validate and normalize a fact typed by the user in cabinet settings. */

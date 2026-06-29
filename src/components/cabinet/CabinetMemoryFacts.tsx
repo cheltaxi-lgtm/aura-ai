@@ -2,10 +2,31 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Brain, Loader2, Plus, Trash2, X } from "lucide-react";
+import {
+  Activity,
+  Brain,
+  Briefcase,
+  Calendar,
+  Heart,
+  Loader2,
+  Plus,
+  Sparkles,
+  Target,
+  Trash2,
+  Users,
+  Wallet,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import LegalDocLink from "@/components/legal/LegalDocLink";
-import { USER_FACT_CATEGORIES } from "@/lib/memory/user-fact-input";
+import {
+  FACT_CATEGORY_ACCENTS,
+  FACT_CATEGORY_LABELS,
+  formatMemoryFactForDisplay,
+  resolveFactCategory,
+} from "@/lib/memory/user-fact-display";
+import { USER_FACT_CATEGORIES, type UserFactCategory } from "@/lib/memory/user-fact-input";
 
 type MemoryFact = {
   id: string;
@@ -15,16 +36,26 @@ type MemoryFact = {
   salience: number;
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  family: "Семья",
-  work: "Работа",
-  health: "Здоровье",
-  money: "Деньги",
-  relationship: "Отношения",
-  event: "Событие",
-  goal: "Цель",
-  other: "Другое",
+const CATEGORY_ICONS: Record<UserFactCategory, LucideIcon> = {
+  family: Heart,
+  work: Briefcase,
+  health: Activity,
+  money: Wallet,
+  relationship: Users,
+  event: Calendar,
+  goal: Target,
+  other: Sparkles,
 };
+
+function factCountLabel(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} сохранённый факт`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return `${count} сохранённых факта`;
+  }
+  return `${count} сохранённых фактов`;
+}
 
 export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: boolean }) {
   const [facts, setFacts] = useState<MemoryFact[]>([]);
@@ -141,7 +172,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
 
   return (
     <>
-      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+      <section className={hideTitle ? "space-y-5" : "rounded-2xl border border-white/10 bg-white/[0.03] p-5"}>
         {!hideTitle ? (
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-500/15 text-purple-300">
@@ -151,62 +182,104 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               <h2 className="text-base font-semibold text-white">Память о вас</h2>
               <p className="mt-1 text-sm text-white/50">
                 Добавляйте важное о себе — мастер учтёт это в будущих сеансах, если тема совпадёт.
-                Можно удалить устаревшее.
               </p>
             </div>
           </div>
         ) : null}
 
-        <div className={hideTitle ? "" : "mt-4"}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {!loading && facts.length > 0 ? (
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-amber-400/70">
+              {factCountLabel(facts.length)}
+            </p>
+          ) : (
+            <span />
+          )}
           <button
             type="button"
             onClick={() => setAddModalOpen(true)}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-purple-400/30 bg-purple-600/20 px-4 py-3 text-sm font-medium text-purple-100 transition-colors hover:border-purple-400/50 hover:bg-purple-600/30 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/25 bg-gradient-to-r from-purple-700/35 via-purple-900/40 to-amber-950/30 px-5 py-3.5 text-sm font-semibold text-amber-100 shadow-[0_8px_32px_rgba(88,28,135,0.25),inset_0_1px_0_rgba(255,255,255,0.08)] transition-all hover:border-amber-400/40 hover:shadow-[0_12px_40px_rgba(88,28,135,0.35)] sm:w-auto"
           >
             <Plus className="h-4 w-4" aria-hidden />
             Добавить факт
           </button>
         </div>
 
-        <div className="mt-4">
+        <div>
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-white/50">
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-black/20 py-12 text-sm text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Загрузка…
+              Загрузка памяти…
             </div>
           ) : error ? (
-            <p className="text-sm text-red-300">{error}</p>
+            <p className="rounded-2xl border border-red-400/20 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+              {error}
+            </p>
           ) : facts.length === 0 ? (
-            <p className="text-sm text-white/45">Пока нет сохранённых фактов.</p>
+            <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/12 bg-gradient-to-br from-purple-950/30 via-black/20 to-amber-950/15 px-6 py-10 text-center">
+              <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-purple-600/10 blur-2xl" />
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-300">
+                <Sparkles className="h-6 w-6" aria-hidden />
+              </div>
+              <p className="mt-4 text-base font-medium text-white/85">Пока пусто</p>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-white/45">
+                Добавьте факты о себе — семья, работа, планы. Мастер подхватит их, когда тема сеанса
+                совпадёт.
+              </p>
+            </div>
           ) : (
-            <ul className="space-y-2">
-              {facts.map((f) => (
-                <li
-                  key={f.id}
-                  className="flex items-start justify-between gap-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm text-white/90">{f.fact}</p>
-                    <p className="mt-1 text-xs text-white/40">
-                      {CATEGORY_LABELS[f.category ?? "other"] ?? f.category ?? "other"}
-                      {f.eventDate ? ` · ${f.eventDate}` : ""}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={deletingId === f.id}
-                    onClick={() => void handleDelete(f.id)}
-                    className="shrink-0 rounded-lg border border-white/10 p-2 text-white/40 transition-colors hover:border-red-400/40 hover:text-red-300 disabled:opacity-50"
-                    aria-label="Удалить факт"
+            <ul className="space-y-3">
+              {facts.map((f) => {
+                const cat = resolveFactCategory(f.category);
+                const accent = FACT_CATEGORY_ACCENTS[cat];
+                const Icon = CATEGORY_ICONS[cat];
+                return (
+                  <li
+                    key={f.id}
+                    className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] via-purple-950/25 to-black/50 p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-all ${accent.ring}`}
                   >
-                    {deletingId === f.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </button>
-                </li>
-              ))}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/25 to-transparent" />
+                    <div className="flex gap-3.5">
+                      <div
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-white/10 ${accent.iconWrap}`}
+                      >
+                        <Icon className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${accent.badge}`}
+                          >
+                            {FACT_CATEGORY_LABELS[cat]}
+                          </span>
+                          {f.eventDate ? (
+                            <span className="text-[11px] text-white/35">{f.eventDate}</span>
+                          ) : null}
+                          {f.salience >= 5 ? (
+                            <span className="text-[10px] font-medium text-amber-400/80">важное</span>
+                          ) : null}
+                        </div>
+                        <p className="text-[15px] leading-relaxed text-white/92">
+                          {formatMemoryFactForDisplay(f.fact)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={deletingId === f.id}
+                        onClick={() => void handleDelete(f.id)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/35 transition-colors hover:border-red-400/35 hover:bg-red-950/30 hover:text-red-300 disabled:opacity-50"
+                        aria-label="Удалить факт"
+                      >
+                        {deletingId === f.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -275,7 +348,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                     >
                       {USER_FACT_CATEGORIES.map((id) => (
                         <option key={id} value={id}>
-                          {CATEGORY_LABELS[id] ?? id}
+                          {FACT_CATEGORY_LABELS[id]}
                         </option>
                       ))}
                     </select>
