@@ -83,8 +83,12 @@ interface ChatWindowProps {
   /** Cards already visible — waiting for thematic reading text */
   spreadReadingLoading?: boolean;
   onSpreadReadingRitualComplete?: () => void;
-  spreadVariant?: "triplet" | "photo" | "intention";
+  spreadVariant?: "triplet" | "photo" | "intention" | "numerolog";
   spreadId?: SpreadId | string | null;
+  /** Explicit card count for variable-size spreads (e.g. numerolog tools). */
+  spreadCardCount?: number;
+  /** Position labels for numerolog number cards. */
+  spreadPositions?: string[];
   spreadInteractiveFlip?: boolean;
   spreadFlipped?: boolean[];
   onSpreadFlip?: (index: number) => void;
@@ -136,6 +140,8 @@ export default function ChatWindow({
   onSpreadReadingRitualComplete,
   spreadVariant = "triplet",
   spreadId = DEFAULT_SPREAD_ID,
+  spreadCardCount,
+  spreadPositions,
   spreadInteractiveFlip = false,
   spreadFlipped = spreadFlippedState(3, true),
   onSpreadFlip,
@@ -399,8 +405,13 @@ export default function ChatWindow({
     !showTypingIndicator &&
     !assistantReplyInProgress;
 
-  const spreadCardsVisible =
-    (spreadCards?.length ?? 0) >= (spreadVariant === "photo" ? 1 : 3);
+  const requiredSpreadCount =
+    spreadVariant === "numerolog"
+      ? (spreadCardCount ?? 1)
+      : spreadVariant === "photo"
+        ? 1
+        : 3;
+  const spreadCardsVisible = (spreadCards?.length ?? 0) >= requiredSpreadCount;
 
   const showWelcomeEmpty =
     messages.length === 0 &&
@@ -599,20 +610,24 @@ export default function ChatWindow({
       )}
 
       {spreadCards &&
-        hasCompleteSpread(
-          spreadCards.map((c) => c.name),
-          spreadVariant === "photo" ? null : spreadId,
-          spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
-        ) && (
+        (spreadVariant === "numerolog"
+          ? spreadCards.length >= requiredSpreadCount
+          : hasCompleteSpread(
+              spreadCards.map((c) => c.name),
+              spreadVariant === "photo" ? null : spreadId,
+              spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
+            )) && (
         <div className="rounded-xl border border-aura-gold/15 bg-black/30 p-4">
           <p className="mb-3 text-center text-[10px] uppercase tracking-widest text-aura-gold">
             {spreadVariant === "photo"
               ? "Расклад по фото"
-              : spreadVariant === "intention"
-                ? sessionIntention
-                  ? `${getSpread(spreadId).label} · ${topicLabel(sessionIntention)}`
-                  : getSpread(spreadId).label
-                : "Ваш расклад"}
+              : spreadVariant === "numerolog"
+                ? "Ваши числа"
+                : spreadVariant === "intention"
+                  ? sessionIntention
+                    ? `${getSpread(spreadId).label} · ${topicLabel(sessionIntention)}`
+                    : getSpread(spreadId).label
+                  : "Ваш расклад"}
           </p>
           {spreadInteractiveFlip &&
           (spreadVariant === "triplet" || spreadVariant === "intention") ? (
@@ -644,13 +659,16 @@ export default function ChatWindow({
               cards={
                 spreadVariant === "photo"
                   ? spreadCards
-                  : spreadCards.slice(0, requiredCardCount(spreadId, spreadVariant === "intention" ? "new" : "daily"))
+                  : spreadVariant === "numerolog"
+                    ? spreadCards.slice(0, requiredSpreadCount)
+                    : spreadCards.slice(0, requiredCardCount(spreadId, spreadVariant === "intention" ? "new" : "daily"))
               }
               system={spreadDeckSystem}
               masterId={characterId}
               size="md"
               showMeaning={false}
               aligned
+              positions={spreadVariant === "numerolog" ? spreadPositions : undefined}
             />
           )}
           {spreadReadingLoading && (

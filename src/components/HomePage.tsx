@@ -2180,11 +2180,15 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             spreadVariant={
               chatDisplaySpread?.source === "photo"
                 ? "photo"
-                : chatDisplaySpread?.source === "intention"
-                  ? "intention"
-                  : "triplet"
+                : chatDisplaySpread?.source === "numerolog"
+                  ? "numerolog"
+                  : chatDisplaySpread?.source === "intention"
+                    ? "intention"
+                    : "triplet"
             }
             spreadId={chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID}
+            spreadCardCount={chatDisplaySpread?.cardCount}
+            spreadPositions={chatDisplaySpread?.positions}
             spreadInteractiveFlip={
               needsSpreadFlip &&
               !chatHasSpreadReading(messages) &&

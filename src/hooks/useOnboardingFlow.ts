@@ -76,6 +76,7 @@ import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
   numerologToolDrawCount,
+  numerologToolPositions,
 } from "@/lib/numerology/tools";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
 import {
@@ -810,7 +811,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     activeSpreadCardsKey,
   ]);
 
-  const chatDisplaySpread = useMemo(() => {
+  const chatDisplaySpread = useMemo((): {
+    source: "photo" | "triplet" | "intention" | "master" | "numerolog";
+    cards: SpreadSymbol[] | DeckCardInput[];
+    system: DeckSystem;
+    spreadId: SpreadId | string;
+    cardCount?: number;
+    positions?: string[];
+  } | null => {
     const deps = chat();
     if (deps?.sessionOnlyChat || hideChatSpread) return null;
 
@@ -847,6 +855,58 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     const photoSpread = resolvePhotoSpread();
     if (photoSpread) return photoSpread;
+
+    // Numerolog sessions use a per-tool number of "cards" (drawCount). Resolve them
+    // explicitly so the chat never falls back to the user's 3-card tarot triplet.
+    if (selectedCharacter && isNumerologMaster(selectedCharacter)) {
+      const toolId =
+        sessionSpreadMetaRef.current?.numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+      const drawCount = numerologToolDrawCount(toolId);
+      if (drawCount < 1) return null;
+
+      const numerologCards = ((): SpreadSymbol[] | null => {
+        if (
+          chatSessionSpread?.masterId === selectedCharacter &&
+          chatSessionSpread.cards.length >= drawCount
+        ) {
+          return chatSessionSpread.cards as SpreadSymbol[];
+        }
+        if ((cachedChatSpread?.cards.length ?? 0) >= drawCount) {
+          return cachedChatSpread!.cards as SpreadSymbol[];
+        }
+        const savedNumerolog = savedReadings
+          .filter(
+            (r) =>
+              r.characterName === selectedCharacter &&
+              Array.isArray(r.contextData?.tarotCards) &&
+              (r.contextData?.tarotCards?.length ?? 0) >= drawCount
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+          )[0];
+        if (savedNumerolog?.contextData?.tarotCards) {
+          return savedNumerolog.contextData.tarotCards as SpreadSymbol[];
+        }
+        return null;
+      })();
+
+      if (!numerologCards) return null;
+
+      const system =
+        (chatSessionSpread?.masterId === selectedCharacter
+          ? chatSessionSpread.system
+          : undefined) ?? resolveMasterDeckSystem(selectedCharacter);
+
+      return {
+        source: "numerolog" as const,
+        cards: numerologCards.slice(0, drawCount),
+        system,
+        spreadId: DEFAULT_SPREAD_ID,
+        cardCount: drawCount,
+        positions: numerologToolPositions(toolId),
+      };
+    }
 
     const metaSpreadId = sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
 
@@ -1048,25 +1108,30 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     cachedChatSpread,
   ]);
 
+  const displaySpreadComplete = (() => {
+    const names = chatDisplaySpread?.cards?.map((c) => c.name);
+    if (chatDisplaySpread?.source === "numerolog") {
+      return (names?.length ?? 0) >= (chatDisplaySpread.cardCount ?? 1);
+    }
+    return hasCompleteSpread(
+      names,
+      sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID,
+      sessionSpreadMetaRef.current?.spreadType
+    );
+  })();
+
   const spreadReadingPending =
     !chat()?.insufficientRunes &&
     (spreadReadingRitualOpen ||
       (intentionSpreadLoading &&
-        hasCompleteSpread(
-          chatDisplaySpread?.cards?.map((c) => c.name),
-          sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID,
-          sessionSpreadMetaRef.current?.spreadType
-        ) &&
+        displaySpreadComplete &&
         !(chat()?.messages && chatHasSpreadReading(chat()!.messages))));
 
   const needsSpreadFlip =
     !chat()?.sessionOnlyChat &&
     chatDisplaySpread?.source !== "photo" &&
-    hasCompleteSpread(
-      chatDisplaySpread?.cards?.map((c) => c.name),
-      sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID,
-      sessionSpreadMetaRef.current?.spreadType
-    );
+    chatDisplaySpread?.source !== "numerolog" &&
+    displaySpreadComplete;
 
   const allSpreadFlipped = !needsSpreadFlip || spreadFlipped.every(Boolean);
 

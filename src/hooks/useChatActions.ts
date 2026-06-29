@@ -267,10 +267,12 @@ export interface UseChatActionsOptions {
   allSpreadFlipped: boolean;
   shouldAutoLoadSpreadReading: (masterId: string, cardsKey: string) => boolean;
   chatDisplaySpread: {
-    source?: "triplet" | "photo" | "intention" | "master";
+    source?: "triplet" | "photo" | "intention" | "master" | "numerolog";
     cards?: DeckCardInput[];
     system?: DeckSystem;
     spreadId?: SpreadId | string;
+    cardCount?: number;
+    positions?: string[];
   } | null;
 
   // HomePage callbacks
@@ -1167,7 +1169,7 @@ export function useChatActions(options: UseChatActionsOptions) {
     if (!selectedCharacter || !isNumerologMaster(selectedCharacter)) return;
     if (sessionOnlyChat || isLoadingHistory) return;
     if (chatHasSpreadReading(messages)) return;
-    if ((chatDisplaySpread?.cards?.length ?? 0) < 3) return;
+    if ((chatDisplaySpread?.cards?.length ?? 0) < (chatDisplaySpread?.cardCount ?? 3)) return;
     if (readingInFlightRef.current || isLoading) return;
     const stuckOnTeaser =
       messages.length === 1 &&
