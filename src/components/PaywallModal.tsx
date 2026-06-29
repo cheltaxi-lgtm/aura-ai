@@ -9,6 +9,8 @@ import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
 import CustomRuneAmountField from "@/components/CustomRuneAmountField";
 import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
+import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 
 export interface RunePackage {
   id: string;
@@ -118,10 +120,19 @@ function RuneShopView({
     setPurchasingId(packageId);
     setError(null);
     try {
+      const features = await fetchPlatformFeatures();
+      const payload: Record<string, unknown> = { packageId };
+      const captchaErr = await attachRecaptchaToken(payload, "payments", features);
+      if (captchaErr) {
+        setError(captchaErr);
+        setPurchasingId(null);
+        return;
+      }
+
       const res = await fetch("/api/runes/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.status === 429) {
@@ -146,10 +157,19 @@ function RuneShopView({
     setPurchasingId("custom");
     setError(null);
     try {
+      const features = await fetchPlatformFeatures();
+      const payload: Record<string, unknown> = { customAmount: amountRub };
+      const captchaErr = await attachRecaptchaToken(payload, "payments", features);
+      if (captchaErr) {
+        setError(captchaErr);
+        setPurchasingId(null);
+        return;
+      }
+
       const res = await fetch("/api/runes/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customAmount: amountRub }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.status === 429) {
@@ -309,10 +329,19 @@ function LegacyPaywallView({
     setLoading(plan);
     setError(null);
     try {
+      const features = await fetchPlatformFeatures();
+      const payload: Record<string, unknown> = { sessionId, plan };
+      const captchaErr = await attachRecaptchaToken(payload, "payments", features);
+      if (captchaErr) {
+        setError(captchaErr);
+        setLoading(null);
+        return;
+      }
+
       const res = await fetch("/api/payment/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, plan }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.confirmationUrl) {

@@ -7,6 +7,7 @@ import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { resolveSessionForUser } from "@/lib/session-access";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { sessionId, plan } = body as { sessionId?: string; plan?: PaymentPlan };
+    const { sessionId, plan, recaptchaToken } = body as {
+      sessionId?: string;
+      plan?: PaymentPlan;
+      recaptchaToken?: string;
+    };
+
+    const captchaBlock = await enforceRecaptchaScope("payments", recaptchaToken, request);
+    if (captchaBlock) return captchaBlock;
 
     if (!sessionId || !plan || !["single", "subscription"].includes(plan)) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });

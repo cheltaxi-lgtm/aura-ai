@@ -1,6 +1,11 @@
 import { query } from "./db";
 import { BRAND_NAME } from "./brand";
 import { DEFAULT_RUNE_COSTS, type RuneActionType } from "./rune-costs";
+import {
+  DEFAULT_RECAPTCHA_SCOPES,
+  mergeRecaptchaScopes,
+  type RecaptchaScopeSettings,
+} from "./recaptcha-scopes";
 
 export interface AiSettings {
   provider: "openrouter" | "openai" | "deepseek";
@@ -26,7 +31,10 @@ export interface FeatureSettings {
   registrationEnabled: boolean;
   /** Public self-signup for experts / esoteric practitioners */
   expertRegistrationEnabled: boolean;
+  /** Master switch for reCAPTCHA (requires env keys) */
   recaptchaEnabled: boolean;
+  /** Per-action toggles when master switch is on */
+  recaptchaScopes: RecaptchaScopeSettings;
   freeQuestionLimit: number;
   demoPayments: boolean;
 }
@@ -91,6 +99,7 @@ const DEFAULTS = {
     registrationEnabled: true,
     expertRegistrationEnabled: true,
     recaptchaEnabled: Boolean(process.env.RECAPTCHA_SECRET_KEY?.trim()),
+    recaptchaScopes: { ...DEFAULT_RECAPTCHA_SCOPES },
     freeQuestionLimit: 2,
     demoPayments: true,
   },
@@ -139,6 +148,10 @@ export async function getSetting<K extends keyof typeof DEFAULTS>(
       [key]
     );
     const merged = { ...DEFAULTS[key], ...(rows[0]?.value ?? {}) };
+    if (key === "features") {
+      const features = merged as FeatureSettings;
+      features.recaptchaScopes = mergeRecaptchaScopes(features.recaptchaScopes);
+    }
     if (key === "tts") {
       const tts = merged as (typeof DEFAULTS)["tts"];
       const chunk = Number(tts.chunkChars);

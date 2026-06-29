@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ArrowLeft, Loader2, Plus, MessageCircle } from "lucide-react";
 import SupportChat, { SupportStatusBadge } from "@/components/support/SupportChat";
 import type { SupportMessage } from "@/components/support/SupportChat";
+import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 
 interface Ticket {
   id: string;
@@ -77,15 +79,23 @@ export default function SupportPage() {
     setCreating(true);
     setCreateError(null);
     try {
+      const features = await fetchPlatformFeatures();
+      const payload: Record<string, unknown> = {
+        subject: newSubject,
+        category: newCategory,
+        message: newMessage,
+      };
+      const captchaErr = await attachRecaptchaToken(payload, "support", features);
+      if (captchaErr) {
+        setCreateError(captchaErr);
+        return;
+      }
+
       const res = await fetch("/api/support/tickets", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: newSubject,
-          category: newCategory,
-          message: newMessage,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -109,11 +119,16 @@ export default function SupportPage() {
 
   const handleSend = async (content: string) => {
     if (!selectedId) return;
+    const features = await fetchPlatformFeatures();
+    const payload: Record<string, unknown> = { content };
+    const captchaErr = await attachRecaptchaToken(payload, "support", features);
+    if (captchaErr) throw new Error(captchaErr);
+
     const res = await fetch(`/api/support/tickets/${selectedId}/messages`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!res.ok) {

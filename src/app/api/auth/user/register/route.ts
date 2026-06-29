@@ -3,7 +3,7 @@ import { ensureDb } from "@/lib/db";
 import { createUser, findUserByEmail, linkAccountToProfile } from "@/lib/accounts";
 import { hashPassword, setAuthCookie, normalizeAuthEmail } from "@/lib/auth";
 import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
-import { verifyRecaptcha } from "@/lib/recaptcha";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { getZodiacFromDate, formatZodiacLabel } from "@/utils/zodiac";
@@ -46,10 +46,8 @@ export async function POST(request: NextRequest) {
 
     const email = normalizeAuthEmail(String(rawEmail));
 
-    const captcha = await verifyRecaptcha(recaptchaToken, request.headers.get("x-forwarded-for"));
-    if (!captcha.ok) {
-      return NextResponse.json({ error: captcha.error }, { status: 400 });
-    }
+    const captchaBlock = await enforceRecaptchaScope("register", recaptchaToken, request);
+    if (captchaBlock) return captchaBlock;
     if (password.length < 6) {
       return NextResponse.json({ error: "Пароль минимум 6 символов" }, { status: 400 });
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import {
   createSupportTicket,
   isValidSupportCategory,
@@ -29,12 +30,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const subject = typeof body.subject === "string" ? body.subject : "";
   const message = typeof body.message === "string" ? body.message : "";
+  const recaptchaToken = typeof body.recaptchaToken === "string" ? body.recaptchaToken : undefined;
   const category =
     typeof body.category === "string" && isValidSupportCategory(body.category)
       ? body.category
       : "general";
 
   try {
+    const captchaBlock = await enforceRecaptchaScope("support", recaptchaToken, request);
+    if (captchaBlock) return captchaBlock;
+
     const { ticket, message: firstMessage, autoReply } = await createSupportTicket({
       userAccountId: auth.sub,
       subject,

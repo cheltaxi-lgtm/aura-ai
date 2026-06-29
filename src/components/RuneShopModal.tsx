@@ -6,6 +6,8 @@ import { fetchRuneConfig } from "@/lib/useRuneConfig";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
 import CustomRuneAmountField from "@/components/CustomRuneAmountField";
+import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 
 const BALANCE_BEFORE_KEY = "aura_runes_before_purchase";
 const PENDING_PAYMENT_KEY = "aura_pending_rune_payment_id";
@@ -95,10 +97,19 @@ export default function RuneShopModal({
     setPurchasingId(packageId);
     setError(null);
     try {
+      const features = await fetchPlatformFeatures();
+      const payload: Record<string, unknown> = { packageId };
+      const captchaErr = await attachRecaptchaToken(payload, "payments", features);
+      if (captchaErr) {
+        setError(captchaErr);
+        setPurchasingId(null);
+        return;
+      }
+
       const res = await fetch("/api/runes/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.paymentUrl) {
@@ -121,10 +132,19 @@ export default function RuneShopModal({
     setPurchasingId("custom");
     setError(null);
     try {
+      const features = await fetchPlatformFeatures();
+      const payload: Record<string, unknown> = { customAmount: amountRub };
+      const captchaErr = await attachRecaptchaToken(payload, "payments", features);
+      if (captchaErr) {
+        setError(captchaErr);
+        setPurchasingId(null);
+        return;
+      }
+
       const res = await fetch("/api/runes/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customAmount: amountRub }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.paymentUrl) {

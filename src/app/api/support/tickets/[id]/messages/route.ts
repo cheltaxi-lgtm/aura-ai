@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { addUserSupportMessage } from "@/lib/support-service";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -13,8 +14,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const body = await request.json().catch(() => ({}));
   const content = typeof body.content === "string" ? body.content : "";
+  const recaptchaToken = typeof body.recaptchaToken === "string" ? body.recaptchaToken : undefined;
 
   try {
+    const captchaBlock = await enforceRecaptchaScope("support", recaptchaToken, request);
+    if (captchaBlock) return captchaBlock;
+
     const message = await addUserSupportMessage({
       userAccountId: auth.sub,
       ticketId: id,

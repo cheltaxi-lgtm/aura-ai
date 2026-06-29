@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getRecaptchaToken, isRecaptchaConfigured } from "@/lib/useRecaptcha";
+import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import ProfileAstroFields, {
   profileAstroToPayload,
   type ProfileAstroValues,
 } from "@/components/ProfileAstroFields";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { clearClientAuthState } from "@/lib/client-logout";
-import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 interface AuthFormProps {
   mode: "login" | "register";
@@ -28,7 +28,7 @@ const DEFAULT_ASTRO: ProfileAstroValues = {
 
 export default function AuthForm({ mode, role }: AuthFormProps) {
   const router = useRouter();
-  const { expertRegistrationEnabled } = usePlatformFeatures();
+  const { expertRegistrationEnabled, recaptcha } = usePlatformFeatures();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -52,6 +52,16 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const showRegisterLink =
     mode === "login" && (role !== "expert" || expertRegistrationEnabled);
   const endpoint = `/api/auth/${role}/${mode === "login" ? "login" : "register"}`;
+
+  const recaptchaScope =
+    mode === "login"
+      ? isExpert
+        ? "expertLogin"
+        : "login"
+      : isExpert
+        ? "expertRegister"
+        : "register";
+  const showRecaptchaBadge = recaptcha.masterEnabled && recaptcha.scopes[recaptchaScope];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,14 +93,26 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         body.ageConfirmed = ageConfirmed;
       }
 
-      if (isRecaptchaConfigured()) {
-        const recaptchaToken = await getRecaptchaToken("signup");
-        if (!recaptchaToken) {
-          setError("Не удалось пройти проверку reCAPTCHA. Обновите страницу и попробуйте снова.");
-          setLoading(false);
-          return;
-        }
-        body.recaptchaToken = recaptchaToken;
+      const captchaErr = await attachRecaptchaToken(
+        body,
+        recaptchaScope,
+        { expertRegistrationEnabled, recaptcha }
+      );
+      if (captchaErr) {
+        setError(captchaErr);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const captchaErr = await attachRecaptchaToken(
+        body,
+        recaptchaScope,
+        { expertRegistrationEnabled, recaptcha }
+      );
+      if (captchaErr) {
+        setError(captchaErr);
+        setLoading(false);
+        return;
       }
     }
 
@@ -306,7 +328,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </div>
       )}
 
-      {mode === "register" && isRecaptchaConfigured() && (
+      {showRecaptchaBadge && (
         <p className="text-center text-[10px] text-gray-600">
           Защищено reCAPTCHA. Применяются{" "}
           <a

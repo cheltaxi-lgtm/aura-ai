@@ -4,6 +4,7 @@ import { findExpertByEmail } from "@/lib/accounts";
 import { setAuthCookie, verifyPassword, normalizeAuthEmail } from "@/lib/auth";
 import { resolveLoginHint } from "@/lib/login-hints";
 import { clientIp, enforceLoginRateLimit } from "@/lib/api-guards";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,11 +15,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
     }
 
-    const { email: rawEmail, password } = await request.json();
+    const { email: rawEmail, password, recaptchaToken } = await request.json();
     const email = normalizeAuthEmail(String(rawEmail ?? ""));
     if (!email || !password) {
       return NextResponse.json({ error: "Email и пароль обязательны" }, { status: 400 });
     }
+
+    const captchaBlock = await enforceRecaptchaScope("expertLogin", recaptchaToken, request);
+    if (captchaBlock) return captchaBlock;
 
     const expert = await findExpertByEmail(email);
     if (!expert || !(await verifyPassword(password, expert.password_hash))) {

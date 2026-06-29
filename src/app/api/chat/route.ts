@@ -4,6 +4,7 @@ import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { enforceChatRateLimit } from "@/lib/api-guards";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { getUserById } from "@/lib/users";
 import { chargeChatBilling, type ChatBillingHandle } from "@/lib/services/billing-service";
 import {
@@ -33,6 +34,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const recaptchaToken =
+      typeof body.recaptchaToken === "string" ? body.recaptchaToken : undefined;
+    const captchaBlock = await enforceRecaptchaScope("chat", recaptchaToken, request);
+    if (captchaBlock) return captchaBlock;
+
     const parsed = await parseChatRequest(body);
     if (!parsed.ok) return parsed.response;
 

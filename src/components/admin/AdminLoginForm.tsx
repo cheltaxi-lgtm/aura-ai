@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 
 export default function AdminLoginForm() {
   const [email, setEmail] = useState("");
@@ -30,14 +32,22 @@ export default function AdminLoginForm() {
     const timeout = window.setTimeout(() => controller.abort(), 20_000);
 
     try {
+      const features = await fetchPlatformFeatures();
+      const body: Record<string, unknown> = {
+        email: email.trim(),
+        password,
+      };
+      const captchaErr = await attachRecaptchaToken(body, "adminLogin", features);
+      if (captchaErr) {
+        setError(captchaErr);
+        return;
+      }
+
       const res = await fetch("/api/auth/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 

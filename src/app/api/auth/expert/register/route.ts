@@ -3,7 +3,7 @@ import { ensureDb } from "@/lib/db";
 import { createExpert, findExpertByEmail } from "@/lib/accounts";
 import { hashPassword, setAuthCookie, slugify } from "@/lib/auth";
 import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
-import { verifyRecaptcha } from "@/lib/recaptcha";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { isExpertRegistrationEnabled } from "@/lib/settings";
 
 export async function POST(request: NextRequest) {
@@ -34,10 +34,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const captcha = await verifyRecaptcha(recaptchaToken, request.headers.get("x-forwarded-for"));
-    if (!captcha.ok) {
-      return NextResponse.json({ error: captcha.error }, { status: 400 });
-    }
+    const captchaBlock = await enforceRecaptchaScope(
+      recaptchaToken,
+      "expertRegister",
+      request
+    );
+    if (captchaBlock) return captchaBlock;
     if (password.length < 6) {
       return NextResponse.json({ error: "Пароль минимум 6 символов" }, { status: 400 });
     }

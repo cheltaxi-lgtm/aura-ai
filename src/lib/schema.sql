@@ -225,7 +225,7 @@ CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_log(created_at
 INSERT INTO platform_settings (key, value) VALUES
   ('ai', '{"provider":"openrouter","model":"openai/gpt-4o-mini","visionModel":"openai/gpt-4o","temperature":0.85,"maxTokens":800,"maxReadingTokens":900}'),
   ('pricing', '{"singlePrice":199,"subscriptionPrice":590,"currency":"RUB"}'),
-  ('features', '{"maintenanceMode":false,"registrationEnabled":true,"recaptchaEnabled":false,"freeQuestionLimit":2,"demoPayments":true}'),
+  ('features', '{"maintenanceMode":false,"registrationEnabled":true,"recaptchaEnabled":false,"recaptchaScopes":{"register":true,"login":true,"expertRegister":true,"expertLogin":true,"adminLogin":true,"support":true,"chat":true,"payments":true},"freeQuestionLimit":2,"demoPayments":true}'),
   ('prompts', '{"globalPrefix":"Ты — мастер эзотерической платформы Zovus. Отвечай на русском."}'),
   ('tts', '{"enabled":false,"model":"google/gemini-3.1-flash-tts-preview","fallbackModel":"hexgrad/kokoro-82m","fallbackEnabled":true,"chunkChars":4000}'),
   ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Zovus mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":true,"destiny_card":true,"scene_illustration":true,"final_report":true}}'),

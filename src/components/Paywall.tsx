@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { X, Sparkles, CreditCard, Smartphone, Loader2 } from "lucide-react";
 import { useState } from "react";
 import type { PaymentPlan } from "@/lib/yukassa";
+import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 
 interface PaywallProps {
   sessionId: string;
@@ -20,10 +22,19 @@ export default function Paywall({ sessionId, userName, onClose, onUnlocked }: Pa
     setLoading(plan);
     setError(null);
     try {
+      const features = await fetchPlatformFeatures();
+      const payload: Record<string, unknown> = { sessionId, plan };
+      const captchaErr = await attachRecaptchaToken(payload, "payments", features);
+      if (captchaErr) {
+        setError(captchaErr);
+        setLoading(null);
+        return;
+      }
+
       const res = await fetch("/api/payment/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, plan }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 

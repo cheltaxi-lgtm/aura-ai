@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle } from "@/components/admin/AdminShell";
+import {
+  RECAPTCHA_SCOPES,
+  RECAPTCHA_SCOPE_LABELS,
+  DEFAULT_RECAPTCHA_SCOPES,
+  type RecaptchaScopeSettings,
+} from "@/lib/recaptcha-scopes";
 
 export default function AdminSettingsPage() {
   const [pricing, setPricing] = useState<Record<string, unknown>>({});
@@ -13,7 +19,14 @@ export default function AdminSettingsPage() {
       .then((r) => r.json())
       .then((d) => {
         setPricing(d.pricing ?? {});
-        setFeatures(d.features ?? {});
+        const f = d.features ?? {};
+        setFeatures({
+          ...f,
+          recaptchaScopes: {
+            ...DEFAULT_RECAPTCHA_SCOPES,
+            ...(f.recaptchaScopes as RecaptchaScopeSettings | undefined),
+          },
+        });
       });
   }, []);
 
@@ -33,6 +46,19 @@ export default function AdminSettingsPage() {
   };
 
   const toggle = (key: string) => setFeatures({ ...features, [key]: !features[key] });
+
+  const recaptchaScopes = (features.recaptchaScopes ?? DEFAULT_RECAPTCHA_SCOPES) as RecaptchaScopeSettings;
+  const recaptchaMaster = Boolean(features.recaptchaEnabled);
+
+  const toggleRecaptchaScope = (scope: keyof RecaptchaScopeSettings) => {
+    setFeatures({
+      ...features,
+      recaptchaScopes: {
+        ...recaptchaScopes,
+        [scope]: !recaptchaScopes[scope],
+      },
+    });
+  };
 
   return (
     <AdminShell>
@@ -55,7 +81,9 @@ export default function AdminSettingsPage() {
               <input
                 type="number"
                 value={Number(pricing.subscriptionPrice ?? 590)}
-                onChange={(e) => setPricing({ ...pricing, subscriptionPrice: parseInt(e.target.value, 10) })}
+                onChange={(e) =>
+                  setPricing({ ...pricing, subscriptionPrice: parseInt(e.target.value, 10) })
+                }
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
               />
             </div>
@@ -68,7 +96,6 @@ export default function AdminSettingsPage() {
             ["maintenanceMode", "Режим обслуживания"],
             ["registrationEnabled", "Регистрация пользователей"],
             ["expertRegistrationEnabled", "Регистрация эзотериков (мастеров)"],
-            ["recaptchaEnabled", "reCAPTCHA при регистрации"],
             ["demoPayments", "Демо-оплата без ЮKassa"],
           ].map(([key, label]) => (
             <label key={key} className="flex cursor-pointer items-center justify-between">
@@ -93,6 +120,45 @@ export default function AdminSettingsPage() {
               }
               className="w-24 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
+          </div>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-display text-lg text-white">reCAPTCHA</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Google reCAPTCHA v3. Требуются ключи в .env.local на сервере.
+              </p>
+            </div>
+            <label className="flex shrink-0 cursor-pointer items-center gap-2">
+              <span className="text-sm text-gray-300">Включено</span>
+              <input
+                type="checkbox"
+                checked={recaptchaMaster}
+                onChange={() => toggle("recaptchaEnabled")}
+                className="h-4 w-4 accent-aura-purple"
+              />
+            </label>
+          </div>
+
+          <div className={`space-y-3 border-t border-white/10 pt-4 ${recaptchaMaster ? "" : "opacity-50"}`}>
+            <p className="text-xs text-gray-500">Где проверять (невидимо для пользователя):</p>
+            {RECAPTCHA_SCOPES.map((scope) => (
+              <label
+                key={scope}
+                className={`flex items-center justify-between ${recaptchaMaster ? "cursor-pointer" : "cursor-not-allowed"}`}
+              >
+                <span className="text-sm text-gray-300">{RECAPTCHA_SCOPE_LABELS[scope]}</span>
+                <input
+                  type="checkbox"
+                  disabled={!recaptchaMaster}
+                  checked={recaptchaScopes[scope] !== false}
+                  onChange={() => toggleRecaptchaScope(scope)}
+                  className="h-4 w-4 accent-aura-purple disabled:opacity-40"
+                />
+              </label>
+            ))}
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { adminLogin, setAdminSession } from "@/lib/admin-login";
 import { normalizeAuthEmail } from "@/lib/auth";
 import { clientIp, enforceLoginRateLimit } from "@/lib/api-guards";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
     }
 
-    let body: { email?: unknown; password?: unknown };
+    let body: { email?: unknown; password?: unknown; recaptchaToken?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -28,6 +29,13 @@ export async function POST(request: NextRequest) {
     if (!email || !password) {
       return NextResponse.json({ error: "Email и пароль обязательны" }, { status: 400 });
     }
+
+    const captchaBlock = await enforceRecaptchaScope(
+      "adminLogin",
+      typeof body.recaptchaToken === "string" ? body.recaptchaToken : undefined,
+      request
+    );
+    if (captchaBlock) return captchaBlock;
 
     const payload = await adminLogin(email, password);
     if (!payload) {

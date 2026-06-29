@@ -10,6 +10,7 @@ import {
   MIN_CUSTOM_RUNE_PURCHASE_RUB,
   runesFromRubAmount,
 } from "@/lib/rune-purchase-constants";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 
 const CUSTOM_PACKAGE_ID = "custom";
 
@@ -45,12 +46,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { packageId?: string; customAmount?: number | string };
+  let body: { packageId?: string; customAmount?: number | string; recaptchaToken?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const captchaBlock = await enforceRecaptchaScope("payments", body.recaptchaToken, request);
+  if (captchaBlock) return captchaBlock;
 
   const appUrl = getAppUrl();
   const customAmountRaw = body.customAmount;

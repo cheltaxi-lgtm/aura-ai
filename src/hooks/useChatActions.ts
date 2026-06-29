@@ -36,6 +36,8 @@ import {
 import { normalizeSessionIntention } from "@/lib/session-intention-normalize";
 import { buildSessionSpreadCards, resolveSpreadSymbols } from "@/lib/intention-draw";
 import { generateId } from "@/lib/id";
+import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { spreadKey, resolveMasterDeckSystem } from "@/lib/decks";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
@@ -1445,11 +1447,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       const timeout = setTimeout(() => controller.abort(), 120000);
 
       try {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
+        const chatBody: Record<string, unknown> = {
             characterId: selectedCharacter,
             sessionId: session?.offline ? undefined : session?.sessionId,
             newChatThread: pendingNewChatThreadRef.current,
@@ -1479,7 +1477,28 @@ export function useChatActions(options: UseChatActionsOptions) {
               periodSpreadCards?.map((c) => c.name) ??
               sessionSpreadMetaRef.current?.cardNames,
             periodSpreadScope: periodScope ?? undefined,
-          }),
+          };
+
+        const platformFeatures = await fetchPlatformFeatures();
+        const captchaErr = await attachRecaptchaToken(chatBody, "chat", platformFeatures);
+        if (captchaErr) {
+          setMessages((prev) => [
+            ...prev.slice(0, -1),
+            {
+              id: generateId(),
+              role: "assistant",
+              content: captchaErr,
+              timestamp: new Date(),
+            },
+          ]);
+          return;
+        }
+
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify(chatBody),
         });
 
         if (response.status === 401) {
