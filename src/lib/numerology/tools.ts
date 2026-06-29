@@ -3,6 +3,7 @@ import type { NumerologyTopic } from "./topic-handlers";
 import { PRICING } from "@/lib/config/pricing";
 import { buildSessionSpreadCards } from "@/lib/intention-draw";
 import type { DeckSystem, SpreadSymbol } from "@/lib/decks/types";
+import { personalYearForecast } from "./forecast";
 
 export type NumerologToolId =
   | "period_today"
@@ -226,8 +227,39 @@ export function numerologToolDrawCount(toolId: NumerologToolId): number {
   return getNumerologTool(toolId).drawCount;
 }
 
-export function numerologToolPositions(toolId: NumerologToolId): string[] {
+export function numerologToolPositions(
+  toolId: NumerologToolId,
+  opts?: { fromYear?: number }
+): string[] {
+  if (toolId === "forecast_9y") {
+    const start = opts?.fromYear ?? new Date().getFullYear();
+    return Array.from({ length: 9 }, (_, i) => String(start + i));
+  }
   return getNumerologTool(toolId).positions;
+}
+
+export function numerologSpreadLabel(spreadId?: string | null): string | null {
+  const toolId = decodeNumerologSpreadId(spreadId);
+  if (!toolId) return null;
+  return getNumerologTool(toolId).label;
+}
+
+/** Stable cache key for numerolog spread readings (history + idempotency). */
+export function numerologReadingCacheKey(input: {
+  characterId: string;
+  toolId: NumerologToolId | string;
+  birthDate?: string | null;
+  cardNames: string[];
+  params?: NumerologToolParams | null;
+}): string {
+  return [
+    "numerolog",
+    input.characterId,
+    input.toolId,
+    input.birthDate?.trim() || "no-birth",
+    input.cardNames.join("|") || "no-draw",
+    JSON.stringify(input.params ?? {}),
+  ].join(":");
 }
 
 export function validateNumerologToolParams(
@@ -352,12 +384,43 @@ export function buildNumerologSpreadCards(
   options?: {
     previewCards?: { name: string; meaning?: string }[];
     deckSystem?: DeckSystem;
+    birthDate?: string | null;
   }
 ): { spreadCards: SpreadSymbol[]; system: DeckSystem } {
   const drawCount = numerologToolDrawCount(toolId);
-  return buildSessionSpreadCards(characterKey, cardNames, {
+  const fromYear = new Date().getFullYear();
+  let previewCards = options?.previewCards;
+
+  if (toolId === "forecast_9y" && options?.birthDate && parseBirthDate(options.birthDate)) {
+    const forecast = personalYearForecast(options.birthDate, fromYear, 9);
+    previewCards = cardNames.map((name, i) => ({
+      name,
+      meaning:
+        forecast[i] != null
+          ? `${forecast[i].year} · личный год ${forecast[i].number}`
+          : previewCards?.[i]?.meaning,
+    }));
+  }
+
+  const built = buildSessionSpreadCards(characterKey, cardNames, {
     ...options,
+    previewCards,
     cardCount: drawCount,
-    positionLabels: numerologToolPositions(toolId),
+    positionLabels: numerologToolPositions(toolId, { fromYear }),
   });
+
+  if (toolId === "forecast_9y" && options?.birthDate && parseBirthDate(options.birthDate)) {
+    const forecast = personalYearForecast(options.birthDate, fromYear, 9);
+    return {
+      ...built,
+      spreadCards: built.spreadCards.map((c, i) => ({
+        ...c,
+        meaning: forecast[i]
+          ? `${forecast[i].year} · личный год ${forecast[i].number}`
+          : c.meaning,
+      })),
+    };
+  }
+
+  return built;
 }

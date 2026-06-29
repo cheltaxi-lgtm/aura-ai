@@ -49,6 +49,7 @@ import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
   buildNumerologSpreadCards,
+  numerologReadingCacheKey,
   numerologSpreadComplete,
   numerologToolCost,
   numerologToolDrawCount,
@@ -94,23 +95,6 @@ import {
   spreadFlippedState,
   type SpreadId,
 } from "@/lib/spreads";
-
-function numerologReadingCacheKey(input: {
-  characterId: string;
-  toolId: NumerologToolId;
-  birthDate?: string | null;
-  cardNames: string[];
-  params?: NumerologToolParams | null;
-}): string {
-  return [
-    input.characterId,
-    "numerolog",
-    input.toolId,
-    input.birthDate?.trim() || "no-birth",
-    input.cardNames.join("|") || "no-draw",
-    JSON.stringify(input.params ?? {}),
-  ].join(":");
-}
 
 type ApplyRestoredSpreadFn = (
   spread:

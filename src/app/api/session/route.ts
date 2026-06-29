@@ -23,7 +23,9 @@ import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accoun
 import { requireUserAuth } from "@/lib/require-auth";
 import { resolveSessionForUser } from "@/lib/session-access";
 import { setSessionClaimCookie } from "@/lib/session-claim";
-import { parseNumerologToolParams } from "@/lib/numerology/tools";
+import { parseNumerologToolParams, decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
+import { upsertSessionMemoryFromChat } from "@/lib/session-memory";
+import { isNumerologMaster } from "@/lib/numerolog/welcome";
 
 function formatSession(
   session: {
@@ -190,6 +192,27 @@ export async function PATCH(request: NextRequest) {
         cards: cards ?? null,
         numerologToolParams: numerologToolParams ?? null,
       });
+
+      const sessionAfterMeta = await getSession(sessionId);
+      const numerologToolId = decodeNumerologSpreadId(
+        spreadId ?? sessionAfterMeta?.spread_id ?? null
+      );
+      const effectiveCharacterKey = characterKey ?? sessionAfterMeta?.character_key;
+      if (
+        profileUserId &&
+        numerologToolId &&
+        effectiveCharacterKey &&
+        isNumerologMaster(effectiveCharacterKey)
+      ) {
+        await upsertSessionMemoryFromChat({
+          userId: profileUserId,
+          sessionId,
+          characterKey: effectiveCharacterKey,
+          topicSummary: getNumerologTool(numerologToolId).label,
+          keyCards: cards ?? sessionAfterMeta?.cards ?? [],
+          prediction: "Сеанс в процессе",
+        });
+      }
     }
 
     const updated = await getSession(sessionId);

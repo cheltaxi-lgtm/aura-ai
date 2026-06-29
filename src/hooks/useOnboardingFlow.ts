@@ -1277,6 +1277,46 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     [session?.offline, spawnSession, referrerSlug]
   );
 
+  const archiveActiveMasterSession = useCallback(
+    async (masterId: string) => {
+      if (session?.offline) return;
+      const deps = chat();
+      if (!deps) return;
+      try {
+        let sid: string | null | undefined = deps.consultationSessionIdRef.current;
+        if (!sid) {
+          sid = await deps.resolveConsultationSessionId(masterId);
+        }
+        if (!sid) {
+          const res = await fetch(
+            `/api/sessions?characterKey=${encodeURIComponent(masterId)}`
+          );
+          if (res.ok) {
+            const data = (await res.json()) as { active?: { id?: string } | null };
+            sid = data.active?.id;
+          }
+        }
+        if (!sid) return;
+        const res = await fetch("/api/session/complete", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: sid,
+            characterKey: masterId,
+            archiveOnly: true,
+          }),
+        });
+        if (res.ok || res.status === 409) {
+          deps.archiveSessionIdRef.current = sid;
+        }
+      } catch {
+        /* offline ok */
+      }
+    },
+    [session?.offline, chat]
+  );
+
   const handleOnboardingComplete = async (data: OnboardingData) => {
     if (!isLoggedIn) return;
 
@@ -2224,11 +2264,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         let spreadCards: SpreadSymbol[] = [];
         let system = previewDeckSystem ?? resolveMasterDeckSystem(characterKey);
         if (numerologDrawCount > 0) {
+          const activeProfileForSpread = getActiveProfile();
           const built = buildNumerologSpreadCards(
             characterKey,
             cards,
             numerologTool,
-            { previewCards, deckSystem: previewDeckSystem }
+            {
+              previewCards,
+              deckSystem: previewDeckSystem,
+              birthDate: activeProfileForSpread?.birthDate,
+            }
           );
           spreadCards = built.spreadCards;
           system = built.system;
@@ -2266,7 +2311,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         try {
           let chatSessionId = session?.offline ? undefined : session?.sessionId;
           if (!session?.offline) {
-            chatSessionId = await ensureMasterChatSessionId(characterKey);
+            await archiveActiveMasterSession(characterKey);
+            deps.setConsultationSessionId(null);
+            deps.consultationSessionIdRef.current = null;
+            deps.setConsultationReadOnly(false);
+            deps.archiveSessionIdRef.current = null;
+            chatSessionId = await ensureMasterChatSessionId(characterKey, { forceNew: true });
           }
           await bindSessionToMaster(characterKey, chatSessionId);
           await deps.persistSessionMetaToServer(chatSessionId, {

@@ -18,6 +18,7 @@ import {
 import { query } from "@/lib/db";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import { limitSpreadKeyCards, requiredCardCount } from "@/lib/spreads";
+import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
 
 export async function PATCH(request: NextRequest) {
   const auth = await requireUserAuth();
@@ -95,14 +96,19 @@ export async function PATCH(request: NextRequest) {
 
   const topicFromIntention = session.intention
     ? topicLabel(session.intention as SessionTopicId)
-    : "Сеанс";
+    : null;
+  const numerologToolId = decodeNumerologSpreadId(session.spread_id);
+  const topicFromNumerolog = numerologToolId
+    ? getNumerologTool(numerologToolId).label
+    : null;
+  const topicFromSpread = topicFromNumerolog ?? topicFromIntention ?? "Сеанс";
 
   let summary: Awaited<ReturnType<typeof generateSessionSummary>> = null;
   if (transcript.trim() && !archiveOnly) {
     summary = await generateSessionSummary(transcript, cardNames);
   }
 
-  const topicSummary = summary?.topicSummary ?? topicFromIntention;
+  const topicSummary = summary?.topicSummary ?? topicFromSpread;
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
 
   await upsertSessionMemoryFromChat({

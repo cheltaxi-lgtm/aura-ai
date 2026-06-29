@@ -5,6 +5,7 @@ import { hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import {
   decodeNumerologSpreadId,
+  numerologReadingCacheKey,
   numerologSpreadComplete,
 } from "@/lib/numerology/tools";
 
@@ -68,8 +69,16 @@ export async function findSpreadReadingForSession(
 ): Promise<string | null> {
   const sessionCards = session.cards ?? [];
   const spreadId = normalizeSpreadId(session.spread_id);
+  const numerologToolId = decodeNumerologSpreadId(session.spread_id);
   const cardKey = sessionSpreadIsComplete(session, characterId)
-    ? tarotCardsKey(sessionCards.map((name) => ({ name })))
+    ? numerologToolId && isNumerologMaster(characterId)
+      ? numerologReadingCacheKey({
+          characterId,
+          toolId: numerologToolId,
+          birthDate: null,
+          cardNames: sessionCards,
+        })
+      : tarotCardsKey(sessionCards.map((name) => ({ name })))
     : "";
 
   const { rows } = await query<{ context_data: Record<string, unknown>; created_at: Date }>(
@@ -123,10 +132,12 @@ export async function findStoredSpreadReading(
   if (!sessionSpreadIsComplete(session, characterId)) {
     return findSessionMemoryReading(profileUserId, session.id, characterId);
   }
-  const cardKey = tarotCardsKey(sessionCards.map((name) => ({ name })));
-  if (!cardKey) {
-    return findSessionMemoryReading(profileUserId, session.id, characterId);
-  }
+
+  const numerologToolId = decodeNumerologSpreadId(session.spread_id);
+  const cardKey =
+    numerologToolId && isNumerologMaster(characterId)
+      ? null
+      : tarotCardsKey(sessionCards.map((name) => ({ name })));
 
   const { rows } = await query<{ context_data: Record<string, unknown> }>(
     `SELECT context_data, created_at
@@ -143,8 +154,18 @@ export async function findStoredSpreadReading(
     const ctx = row.context_data;
     const reading = pickStoredReading(ctx);
     if (!reading) continue;
+
+    if (numerologToolId && isNumerologMaster(characterId)) {
+      if (ctx.numerologToolId !== numerologToolId) continue;
+      const stored = ctx.tarotCards as { name: string }[] | undefined;
+      if (tarotCardsKey(stored) === tarotCardsKey(sessionCards.map((name) => ({ name })))) {
+        return reading;
+      }
+      continue;
+    }
+
     const stored = ctx.tarotCards as { name: string }[] | undefined;
-    if (tarotCardsKey(stored) === cardKey) return reading;
+    if (cardKey && tarotCardsKey(stored) === cardKey) return reading;
   }
 
   return findSessionMemoryReading(profileUserId, session.id, characterId);

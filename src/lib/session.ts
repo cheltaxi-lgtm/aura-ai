@@ -784,6 +784,7 @@ export async function listConsultationSessions(
 
   const { rows: completedRows } = await query<ConsultationListItem & { cards?: unknown }>(
     `${sessionSelect}
+       AND COALESCE(s.status, 'active') = 'completed'
        AND ($3::uuid IS NULL OR s.id <> $3)
      ORDER BY s.updated_at DESC
      LIMIT 10`,

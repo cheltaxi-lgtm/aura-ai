@@ -36,6 +36,7 @@ import {
   getNumerologTool,
   isNumerologSessionToolId,
   parseNumerologToolParams,
+  validateNumerologSessionReady,
 } from "@/lib/numerology/tools";
 import { drawNumerologSessionSpread } from "@/lib/numerology/session-draw";
 import { appendUserMemoryToPrompt, buildClientBlock, buildMemoryBlock } from "@/lib/user-memory";
@@ -174,11 +175,23 @@ export async function GET(request: NextRequest) {
       });
       const profileUser = await getUserById(authed.profileUserId);
       const birthDate = profileUser?.birth_date ?? null;
+      const fullName = profileUser?.name ?? null;
+      const readyError = validateNumerologSessionReady(toolId, toolParams, birthDate, fullName);
+      if (readyError) {
+        return NextResponse.json({ error: readyError }, { status: 400 });
+      }
       const drawn = drawNumerologSessionSpread(toolId, {
         birthDate,
+        fullName,
         params: toolParams,
         deckSystem: system,
       });
+      if (getNumerologTool(toolId).drawCount > 0 && drawn.length < getNumerologTool(toolId).drawCount) {
+        return NextResponse.json(
+          { error: "Не удалось рассчитать числа — проверьте профиль и параметры." },
+          { status: 400 }
+        );
+      }
       return NextResponse.json({
         cards: drawn.map((c) => ({ name: c.name, meaning: c.meaning })),
         system,

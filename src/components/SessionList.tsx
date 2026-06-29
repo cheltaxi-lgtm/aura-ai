@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, CheckCircle2, Circle, Archive, Trash2 } from "lucide-react";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import { getSpread, normalizeSpreadId } from "@/lib/spreads";
+import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
 import MasterAvatar from "@/components/MasterAvatar";
 import { getCharacterById } from "@/lib/characters";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
@@ -72,12 +73,15 @@ function intentionLabel(raw: string | null): string {
 
 function sessionTopicLabel(item: SessionListItem): string {
   if (item.spreadType === "photo") return "Фото-расклад";
+  if (!item.intention && item.topicSummary?.trim()) return item.topicSummary.trim();
   return intentionLabel(item.intention);
 }
 
 function sessionSpreadLabel(item: SessionListItem): string | null {
   if (item.spreadType === "daily") return "Карты дня";
   if (!item.spreadId || item.spreadType === "photo") return null;
+  const numerologToolId = decodeNumerologSpreadId(item.spreadId);
+  if (numerologToolId) return getNumerologTool(numerologToolId).label;
   const spread = getSpread(normalizeSpreadId(item.spreadId));
   if (spread.id === "triplet" && item.spreadType !== "new") return null;
   return spread.label;
@@ -86,7 +90,8 @@ function sessionSpreadLabel(item: SessionListItem): string | null {
 function sessionHeading(item: SessionListItem): string {
   const topic = sessionTopicLabel(item);
   const spread = sessionSpreadLabel(item);
-  if (spread) return `${spread} · ${topic}`;
+  if (spread && spread !== topic) return `${spread} · ${topic}`;
+  if (spread) return spread;
   return topic;
 }
 

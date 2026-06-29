@@ -53,6 +53,7 @@ import {
   encodeNumerologSpreadId,
   getNumerologTool,
   isNumerologSessionToolId,
+  numerologReadingCacheKey,
   validateNumerologToolParams,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
@@ -64,22 +65,6 @@ import {
 } from "@/lib/master-quick-chips";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
-
-function numerologReadingKey(input: {
-  toolId: string;
-  birthDate?: string;
-  tarotCards: { name: string }[];
-  params?: NumerologToolParams;
-}): string {
-  const cardsKey = tarotCardsKey(input.tarotCards);
-  return [
-    "numerolog",
-    input.toolId,
-    input.birthDate?.trim() || "no-birth",
-    cardsKey || "no-draw",
-    JSON.stringify(input.params ?? {}),
-  ].join(":");
-}
 
 async function persistReadingToSession(input: {
   sessionId: string | undefined;
@@ -349,10 +334,11 @@ export async function POST(request: NextRequest) {
 
     const cardsKey =
       isNumerologMaster(characterId) && requestNumerologToolId
-        ? numerologReadingKey({
+        ? numerologReadingCacheKey({
+            characterId,
             toolId: requestNumerologToolId,
             birthDate,
-            tarotCards,
+            cardNames: tarotCards.map((c) => c.name),
             params: numerologToolParams,
           })
         : tarotCardsKey(tarotCards);
@@ -498,6 +484,7 @@ export async function POST(request: NextRequest) {
               gender,
               birthDate,
               numerologToolId: toolId,
+              ...(sessionId ? { sessionId } : {}),
               ...(numerologToolParams.partnerName ||
               numerologToolParams.partnerDate ||
               numerologToolParams.objectValue

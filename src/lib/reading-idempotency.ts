@@ -1,5 +1,10 @@
 import { query, type PoolClient, queryClient } from "@/lib/db";
 import { tarotCardsKey } from "@/lib/tarot";
+import {
+  isNumerologToolId,
+  numerologReadingCacheKey,
+  type NumerologToolParams,
+} from "@/lib/numerology/tools";
 
 export type SavedSpreadReadingRow = {
   id: string;
@@ -10,6 +15,38 @@ export type SavedSpreadReadingRow = {
 
 function spreadReadingLockKey(userId: string, characterId: string, cardsKey: string): string {
   return `spread-reading:${userId}:${characterId}:${cardsKey}`;
+}
+
+function storedNumerologReadingKey(
+  characterId: string,
+  ctx: Record<string, unknown>
+): string | null {
+  const toolId = ctx.numerologToolId;
+  if (typeof toolId !== "string" || !isNumerologToolId(toolId)) return null;
+  const stored = ctx.tarotCards as { name: string }[] | undefined;
+  const birthDate = typeof ctx.birthDate === "string" ? ctx.birthDate : null;
+  const params = (ctx.numerologToolParams ?? null) as NumerologToolParams | null;
+  return numerologReadingCacheKey({
+    characterId,
+    toolId,
+    birthDate,
+    cardNames: stored?.map((c) => c.name) ?? [],
+    params,
+  });
+}
+
+function spreadReadingMatchesRow(
+  characterId: string,
+  cardsKey: string,
+  ctx: Record<string, unknown>
+): boolean {
+  if (typeof ctx.reading !== "string") return false;
+  if (cardsKey.startsWith("numerolog:")) {
+    const storedKey = storedNumerologReadingKey(characterId, ctx);
+    return storedKey === cardsKey;
+  }
+  const stored = ctx.tarotCards as { name: string }[] | undefined;
+  return tarotCardsKey(stored) === cardsKey;
 }
 
 export async function findSpreadReadingEntry(
@@ -40,11 +77,7 @@ export async function findSpreadReadingEntry(
   );
 
   return (
-    rows.find((row) => {
-      if (typeof row.context_data?.reading !== "string") return false;
-      const stored = row.context_data.tarotCards as { name: string }[] | undefined;
-      return tarotCardsKey(stored) === cardsKey;
-    }) ?? null
+    rows.find((row) => spreadReadingMatchesRow(characterId, cardsKey, row.context_data)) ?? null
   ) as SavedSpreadReadingRow | null;
 }
 

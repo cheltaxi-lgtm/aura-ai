@@ -10,12 +10,16 @@ import {
   numerologSpreadComplete,
   numerologSessionNeedsBirthDate,
   numerologSessionNeedsFullName,
+  numerologToolPositions,
   getNumerologTool,
 } from "../src/lib/numerology/tools.ts";
 import {
   drawNumerologSessionSpread,
   resolveNumerologSpreadCardNames,
 } from "../src/lib/numerology/session-draw.ts";
+import { personalYearForecast } from "../src/lib/numerology/forecast.ts";
+
+const calendarYear = new Date().getFullYear();
 
 function assert(cond, msg) {
   if (!cond) {
@@ -72,6 +76,40 @@ const drawnForecast = drawNumerologSessionSpread("forecast_9y", {
   birthDate: "15.03.1990",
 });
 assert(drawnForecast.length === 9, "drawNumerologSessionSpread forecast_9y returns 9");
+assert(
+  drawnForecast[0]?.meaning?.includes(String(calendarYear)),
+  "forecast_9y meaning includes calendar year"
+);
+assert(
+  !drawnForecast.every((c, i) => c.name === String(calendarYear + i)),
+  "forecast_9y numbers are personal years, not calendar years"
+);
+
+const forecastPositions = numerologToolPositions("forecast_9y");
+assert(
+  forecastPositions[0] === String(calendarYear),
+  "forecast_9y positions use calendar years"
+);
+
+const chaldeanNames = resolveNumerologSpreadCardNames("chaldean", null, undefined, "Иван Петров");
+assert(chaldeanNames?.length === 3, "chaldean computed 3 numbers from name");
+
+const karmaNames = resolveNumerologSpreadCardNames("karma", "15.03.1990", undefined, "Иван");
+assert(karmaNames?.length === 3, "karma computed 3 numbers");
+
+const threeNames = resolveNumerologSpreadCardNames("spread_three_numbers", "15.03.1990");
+assert(threeNames?.length === 3, "spread_three_numbers computed from birth date");
+
+const emptyForecast = drawNumerologSessionSpread("forecast_9y", { birthDate: null });
+assert(emptyForecast.length === 0, "forecast_9y without birth date returns empty, not random");
+
+const builtForecast = buildNumerologSpreadCards("numerolog", forecastNames, "forecast_9y", {
+  birthDate: "15.03.1990",
+});
+assert(
+  builtForecast.spreadCards[0]?.meaning?.includes("личный год"),
+  "buildNumerologSpreadCards enriches forecast meanings"
+);
 
 assert(numerologSessionNeedsBirthDate("favorable_dates"), "favorable_dates needs birth date");
 assert(numerologSessionNeedsBirthDate("compatibility"), "compatibility needs birth date");
