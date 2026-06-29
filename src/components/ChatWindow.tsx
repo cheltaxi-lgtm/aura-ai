@@ -30,6 +30,12 @@ import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
 import MasterQuickChips from "@/components/MasterQuickChips";
 import { hasMasterQuickChips } from "@/lib/master-quick-chips";
+import {
+  isSessionChatQuestionCapReached,
+  SESSION_CHAT_LIMIT_MESSAGE,
+  SESSION_CHAT_QUESTION_LIMIT,
+  sessionChatQuestionsRemaining,
+} from "@/lib/session-limits";
 import { resolvePythagorasSquareForMessage } from "@/lib/numerology/resolve-message-ui";
 import {
   buildNumerologWelcomeMessage,
@@ -56,6 +62,7 @@ interface ChatWindowProps {
   isLoading: boolean;
   isLoadingHistory?: boolean;
   questionsLeft?: number | null;
+  sessionQuestionsUsed?: number;
   hasFullAccess?: boolean;
   usesRuneBilling?: boolean;
   questionCost?: number;
@@ -102,6 +109,7 @@ export default function ChatWindow({
   isLoading,
   isLoadingHistory = false,
   questionsLeft,
+  sessionQuestionsUsed = 0,
   hasFullAccess,
   usesRuneBilling,
   questionCost = 10,
@@ -307,6 +315,9 @@ export default function ChatWindow({
     !usesRuneBilling &&
     questionsLeft === 0;
 
+  const sessionQuestionCapReached = isSessionChatQuestionCapReached(sessionQuestionsUsed);
+  const sessionQuestionsRemaining = sessionChatQuestionsRemaining(sessionQuestionsUsed);
+
   const paidQuestionNeeded = usesRuneBilling && questionsLeft === 0;
 
   const canAffordQuestion = canAffordRunes({
@@ -337,8 +348,18 @@ export default function ChatWindow({
     historyStillLoading ||
     sessionOffline ||
     sessionExhausted ||
+    sessionQuestionCapReached ||
     chatBlockedByRunes ||
     (spreadInteractiveFlip && !allSpreadFlipped);
+
+  const quickChipsDisabled =
+    readOnly ||
+    isLoading ||
+    historyStillLoading ||
+    sessionOffline ||
+    sessionExhausted ||
+    sessionQuestionCapReached ||
+    chatBlockedByRunes;
 
   const showTypingIndicator =
     !spreadReadingLoading &&
@@ -847,9 +868,19 @@ export default function ChatWindow({
       ) : null}
 
       <form onSubmit={handleSubmit} className="glass-panel flex flex-col gap-2 p-3">
+        {sessionQuestionCapReached ? (
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            {SESSION_CHAT_LIMIT_MESSAGE}
+          </p>
+        ) : sessionQuestionsRemaining <= 2 && sessionQuestionsRemaining > 0 ? (
+          <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300">
+            В этом сеансе осталось {sessionQuestionsRemaining}{" "}
+            {sessionQuestionsRemaining === 1 ? "вопрос" : "вопроса"} из {SESSION_CHAT_QUESTION_LIMIT}.
+          </p>
+        ) : null}
         {characterId === "numerolog" && !readOnly ? (
           <NumerologQuickChips
-            disabled={inputBlocked}
+            disabled={quickChipsDisabled}
             onSend={(text) => {
               pinnedToBottomRef.current = true;
               onSendMessage(text);
@@ -859,7 +890,7 @@ export default function ChatWindow({
         {hasMasterQuickChips(characterId) && !readOnly ? (
           <MasterQuickChips
             masterId={characterId}
-            disabled={inputBlocked}
+            disabled={quickChipsDisabled}
             onSend={(text) => {
               pinnedToBottomRef.current = true;
               onSendMessage(text);

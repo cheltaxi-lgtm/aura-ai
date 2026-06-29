@@ -493,7 +493,7 @@ export async function POST(request: NextRequest) {
         astroMeta: astroMeta as Record<string, unknown> | undefined,
       });
       const periodScope =
-        readingScope === "today" || readingScope === "week" || readingScope === "year"
+        readingScope === "today" || readingScope === "week" || readingScope === "month"
           ? (readingScope as PeriodSpreadScope)
           : null;
       const cardsForContext = enrichCardsForSpreadContext(

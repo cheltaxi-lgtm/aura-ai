@@ -21,7 +21,7 @@ import { createChatResponseStream, createDeterministicTextStream } from "@/lib/c
 import { query } from "@/lib/db";
 import { maybeCreateDiaryEntry } from "@/lib/diary";
 import { intentionPromptBlock } from "@/lib/intention";
-import { buildSpreadBlock } from "@/lib/spread-block";
+import { buildSpreadBlock, buildPeriodSpreadBlock } from "@/lib/spread-block";
 import {
   LIFE_DEATH_TOPIC,
   LIFE_DEATH_LLM_OVERRIDE,
@@ -78,6 +78,10 @@ import {
   stripMemoryLeakFromReply,
   type ChatReplyQualityOpts,
 } from "@/lib/chat-reply-sanitize";
+import {
+  detectPeriodSpreadScope,
+  type PeriodSpreadScope,
+} from "@/lib/master-quick-chips";
 
 export type ChatRequestBody = {
   characterId: string;
@@ -100,6 +104,7 @@ export type ChatRequestBody = {
     astroMeta?: import("@/lib/astro-profile").AstroMeta;
   };
   tarotCards?: { name: string; meaning: string }[];
+  periodSpreadScope?: PeriodSpreadScope;
 };
 
 export type ChatOrchestratorPrepareResult =
@@ -182,6 +187,7 @@ export class ChatOrchestrator {
   private intention?: string;
   private spreadType?: "daily" | "new";
   private spreadCardNames?: string[];
+  private periodSpreadScope?: PeriodSpreadScope;
 
   private resolvedIntention?: string;
   private resolvedSpreadType?: "daily" | "new";
@@ -204,6 +210,8 @@ export class ChatOrchestrator {
     this.intention = parsed.intention;
     this.spreadType = parsed.spreadType;
     this.spreadCardNames = parsed.cards;
+    this.periodSpreadScope =
+      parsed.periodSpreadScope ?? detectPeriodSpreadScope(this.lastUserMsg) ?? undefined;
     this.resolvedIntention = parsed.intention;
     this.resolvedSpreadType = parsed.spreadType;
     this.resolvedCardNames = parsed.cards?.length ? [...parsed.cards] : [];
@@ -657,14 +665,21 @@ export class ChatOrchestrator {
     }
 
     systemPrompt += intentionPromptBlock(this.resolvedIntention);
-    systemPrompt += buildSpreadBlock(
-      this.resolvedSpreadType,
-      this.resolvedCardNames.length
-        ? this.resolvedCardNames
-        : this.tarotCards?.map((c) => c.name),
-      this.resolvedIntention,
-      { readyToRead: this.lifeDeathReadyToRead }
-    );
+
+    const cardNamesForBlock = this.resolvedCardNames.length
+      ? this.resolvedCardNames
+      : this.tarotCards?.map((c) => c.name) ?? [];
+
+    if (this.periodSpreadScope && cardNamesForBlock.length >= 3) {
+      systemPrompt += `\n\n${buildPeriodSpreadBlock(this.periodSpreadScope, cardNamesForBlock)}`;
+    } else {
+      systemPrompt += buildSpreadBlock(
+        this.resolvedSpreadType,
+        cardNamesForBlock,
+        this.resolvedIntention,
+        { readyToRead: this.lifeDeathReadyToRead }
+      );
+    }
 
     if (this.resolvedIntention === "life_death") {
       systemPrompt += `\n\n${LIFE_DEATH_TOPIC}`;

@@ -17,6 +17,21 @@ import {
   reserveQuestionSlot,
   type SessionRow,
 } from "@/lib/session";
+import {
+  isSessionChatQuestionCapReached,
+  SESSION_CHAT_LIMIT_MESSAGE,
+  SESSION_CHAT_QUESTION_LIMIT,
+} from "@/lib/session-limits";
+
+/** Thrown when the consultation session reached the chat question cap. */
+export class SessionQuestionLimitError extends Error {
+  readonly code = "SESSION_QUESTION_LIMIT";
+
+  constructor(message = SESSION_CHAT_LIMIT_MESSAGE) {
+    super(message);
+    this.name = "SessionQuestionLimitError";
+  }
+}
 
 /** Thrown when neither free questions nor rune balance cover the charge. Maps to HTTP 402. */
 export class InsufficientFundsError extends Error {
@@ -119,6 +134,15 @@ async function reserveQuestionIndex(
   hasFullAccess: boolean
 ): Promise<{ questionIndex: number; freeQuestionsRemaining: number }> {
   await queryClient(client, `SELECT id FROM sessions WHERE id = $1 FOR UPDATE`, [sessionId]);
+
+  const { rows: capRows } = await queryClient<{ free_questions_used: number }>(
+    client,
+    `SELECT free_questions_used FROM sessions WHERE id = $1`,
+    [sessionId]
+  );
+  if (isSessionChatQuestionCapReached(capRows[0]?.free_questions_used)) {
+    throw new SessionQuestionLimitError();
+  }
 
   let used: number;
   if (hasFullAccess) {
@@ -428,6 +452,25 @@ export async function chargeChatBilling(
 
   const actionType: RuneActionType = imageBase64 ? "VISION_ANALYSIS" : "QUESTION";
 
+  if (
+    session &&
+    actionType === "QUESTION" &&
+    isSessionChatQuestionCapReached(session.free_questions_used)
+  ) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "session_question_limit",
+          message: SESSION_CHAT_LIMIT_MESSAGE,
+          limit: SESSION_CHAT_QUESTION_LIMIT,
+          used: session.free_questions_used,
+        },
+        { status: 403 }
+      ),
+    };
+  }
+
   if (dbOk && session && useRuneBilling && profileUserId) {
     try {
       const settings = await getRuneSettings();
@@ -449,12 +492,39 @@ export async function chargeChatBilling(
       slotReserved = charge.slotReserved;
       session = (await getSession(session.id)) ?? session;
     } catch (billingErr) {
+      if (billingErr instanceof SessionQuestionLimitError) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            {
+              error: "session_question_limit",
+              message: billingErr.message,
+              limit: SESSION_CHAT_QUESTION_LIMIT,
+            },
+            { status: 403 }
+          ),
+        };
+      }
       if (billingErr instanceof InsufficientFundsError) {
         return { ok: false, response: insufficientFundsResponse(billingErr) };
       }
       throw billingErr;
     }
   } else if (dbOk && session && !useRuneBilling && !sessionHasFullAccess) {
+    if (isSessionChatQuestionCapReached(session.free_questions_used)) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error: "session_question_limit",
+            message: SESSION_CHAT_LIMIT_MESSAGE,
+            limit: SESSION_CHAT_QUESTION_LIMIT,
+            used: session.free_questions_used,
+          },
+          { status: 403 }
+        ),
+      };
+    }
     const reserved = await reserveQuestionSlot(session.id, freeLimit, false);
     if (reserved === null) {
       return {
@@ -467,6 +537,20 @@ export async function chargeChatBilling(
     freeQuestionsRemaining = Math.max(0, freeLimit - reserved);
     session = (await getSession(session.id)) ?? session;
   } else if (dbOk && session && !useRuneBilling && sessionHasFullAccess) {
+    if (isSessionChatQuestionCapReached(session.free_questions_used)) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error: "session_question_limit",
+            message: SESSION_CHAT_LIMIT_MESSAGE,
+            limit: SESSION_CHAT_QUESTION_LIMIT,
+            used: session.free_questions_used,
+          },
+          { status: 403 }
+        ),
+      };
+    }
     await reserveQuestionSlot(session.id, freeLimit, true);
   }
 

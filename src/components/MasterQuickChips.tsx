@@ -2,7 +2,6 @@
 
 import { getCharacterById } from "@/lib/characters";
 import {
-  MASTER_FULL_SPREAD_CHIP_MESSAGE,
   MASTER_PERIOD_CHIP_MESSAGES,
   type MasterQuickChipMasterId,
 } from "@/lib/master-quick-chips";
@@ -10,7 +9,7 @@ import {
 const PERIOD_CHIPS = [
   { id: "today" as const, emoji: "☀️", label: "Сегодня", message: MASTER_PERIOD_CHIP_MESSAGES.today },
   { id: "week" as const, emoji: "📆", label: "Неделя", message: MASTER_PERIOD_CHIP_MESSAGES.week },
-  { id: "year" as const, emoji: "🗓️", label: "Год", message: MASTER_PERIOD_CHIP_MESSAGES.year },
+  { id: "month" as const, emoji: "🗓️", label: "Месяц", message: MASTER_PERIOD_CHIP_MESSAGES.month },
 ];
 
 interface MasterQuickChipsProps {
@@ -70,16 +69,6 @@ export default function MasterQuickChips({
       <p className="mb-2 px-1 text-[10px] font-medium uppercase tracking-[0.22em] text-aura-gold/55">
         Расклады {masterName}
       </p>
-
-      <div className="mb-2">
-        <ChipButton
-          emoji="🔮"
-          label="Получить расклад"
-          disabled={disabled}
-          onClick={() => send(MASTER_FULL_SPREAD_CHIP_MESSAGE)}
-          className="w-full border-aura-gold/30 bg-gradient-to-b from-aura-gold/10 to-indigo-950/80"
-        />
-      </div>
 
       <div
         className="grid grid-cols-3 gap-1.5 sm:gap-2"

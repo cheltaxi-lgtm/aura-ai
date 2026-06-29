@@ -1925,6 +1925,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
             isLoading={isLoading}
             isLoadingHistory={isLoadingHistory}
             questionsLeft={questionsLeft}
+            sessionQuestionsUsed={session?.freeQuestionsUsed ?? 0}
             hasFullAccess={session?.hasAccess ?? false}
             usesRuneBilling={usesRuneBilling}
             questionCost={runeCost("QUESTION")}

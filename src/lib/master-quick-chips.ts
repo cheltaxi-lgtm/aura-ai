@@ -11,14 +11,12 @@ export const MASTER_QUICK_CHIP_MASTERS = [
 
 export type MasterQuickChipMasterId = (typeof MASTER_QUICK_CHIP_MASTERS)[number];
 
-export type PeriodSpreadScope = "today" | "week" | "year";
-
-export const MASTER_FULL_SPREAD_CHIP_MESSAGE = "Получить расклад";
+export type PeriodSpreadScope = "today" | "week" | "month";
 
 export const MASTER_PERIOD_CHIP_MESSAGES: Record<PeriodSpreadScope, string> = {
   today: "Расклад на сегодня",
   week: "Расклад на неделю",
-  year: "Расклад на год",
+  month: "Расклад на месяц",
 };
 
 export function hasMasterQuickChips(masterId: string | null | undefined): masterId is MasterQuickChipMasterId {
@@ -30,7 +28,7 @@ export function detectPeriodSpreadScope(message: string): PeriodSpreadScope | nu
   const trimmed = message.trim();
   if (/^расклад\s+на\s+сегодня$/iu.test(trimmed)) return "today";
   if (/^расклад\s+на\s+неделю$/iu.test(trimmed)) return "week";
-  if (/^расклад\s+на\s+год$/iu.test(trimmed)) return "year";
+  if (/^расклад\s+на\s+месяц$/iu.test(trimmed)) return "month";
   return null;
 }
 
@@ -40,8 +38,8 @@ export function periodSpreadPositions(scope: PeriodSpreadScope): readonly [strin
       return ["Утро / старт дня", "Сердце дня", "Итог дня"];
     case "week":
       return ["Начало недели", "Середина недели", "Конец недели"];
-    case "year":
-      return ["Первый квартал", "Середина года", "Итог года"];
+    case "month":
+      return ["Начало месяца", "Середина месяца", "Итог месяца"];
   }
 }
 
@@ -51,8 +49,8 @@ export function periodSpreadTaskLabel(scope: PeriodSpreadScope): string {
       return "на СЕГОДНЯ";
     case "week":
       return "на эту НЕДЕЛЮ";
-    case "year":
-      return "на этот ГОД";
+    case "month":
+      return "на этот МЕСЯЦ";
   }
 }
 

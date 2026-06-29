@@ -67,6 +67,10 @@ import type { StoredReadingRow } from "@/lib/reading-progress";
 import type { RestoreChatResult } from "@/hooks/useChatSession";
 import type { FlowStep } from "@/components/FlowStepper";
 import type { RuneActionType } from "@/lib/rune-costs";
+import {
+  isSessionChatQuestionCapReached,
+  SESSION_CHAT_LIMIT_MESSAGE,
+} from "@/lib/session-limits";
 
 type ApplyRestoredSpreadFn = (
   spread:
@@ -1322,6 +1326,22 @@ export function useChatActions(options: UseChatActionsOptions) {
         return;
       }
 
+      if (
+        !imageBase64 &&
+        isSessionChatQuestionCapReached(session?.freeQuestionsUsed)
+      ) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: generateId(),
+            role: "assistant",
+            content: SESSION_CHAT_LIMIT_MESSAGE,
+            timestamp: new Date(),
+          },
+        ]);
+        return;
+      }
+
       if (!imageBase64 && FULL_SPREAD_REQUEST_RE.test(content.trim())) {
         const userMessage: Message = {
           id: generateId(),
@@ -1354,54 +1374,25 @@ export function useChatActions(options: UseChatActionsOptions) {
       }
 
       const periodScope = detectPeriodSpreadScope(content.trim());
-      if (
-        !imageBase64 &&
-        periodScope &&
-        hasMasterQuickChips(selectedCharacter)
-      ) {
-        const userMessage: Message = {
-          id: generateId(),
-          role: "user",
-          content: content.trim(),
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, userMessage]);
+      let periodSpreadCards: SpreadSymbol[] | null = null;
 
-        const { cards, system } = drawPeriodSpread(selectedCharacter);
+      if (!imageBase64 && periodScope && hasMasterQuickChips(selectedCharacter)) {
+        const drawn = drawPeriodSpread(selectedCharacter);
+        periodSpreadCards = drawn.cards;
         loadReadingAttemptKeyRef.current = null;
         loadReadingInFlightKeyRef.current = null;
         setIntentionSpread(null);
         persistIntentionSpreadState(selectedCharacter, null);
-        setChatSessionSpread({ masterId: selectedCharacter, cards, system });
+        setChatSessionSpread({
+          masterId: selectedCharacter,
+          cards: drawn.cards,
+          system: drawn.system,
+        });
         setSpreadFlipped([true, true, true]);
         sessionSpreadMetaRef.current = {
           spreadType: "new",
-          cardNames: cards.map((c) => c.name),
+          cardNames: drawn.cards.map((c) => c.name),
         };
-
-        setIsLoading(true);
-        try {
-          await loadReading(selectedCharacter, undefined, {
-            force: true,
-            preserveChat: true,
-            readingScope: periodScope,
-            spreadCardsOverride: cards,
-          });
-        } catch (err) {
-          console.error("Period spread request failed:", err);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: generateId(),
-              role: "assistant",
-              content: "Не удалось получить расклад на выбранный период. Попробуйте ещё раз через минуту.",
-              timestamp: new Date(),
-            },
-          ]);
-        } finally {
-          setIsLoading(false);
-        }
-        return;
       }
 
       sendingRef.current = true;
@@ -1429,13 +1420,15 @@ export function useChatActions(options: UseChatActionsOptions) {
           ? resolveMasterSpread(activeProfile, selectedCharacter, masters)
           : null;
       const tarotCardsForChat =
-        intentionSpread?.masterId === selectedCharacter && intentionSpread.cards.length
-          ? intentionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-          : chatSessionSpread?.masterId === selectedCharacter && chatSessionSpread.cards.length >= 3
-            ? chatSessionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-            : masterSpread && masterSpread.cards.length >= 3
-              ? masterSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
-              : activeProfile?.tarotCards?.map((c) => ({ name: c.name, meaning: c.meaning }));
+        periodSpreadCards && periodSpreadCards.length >= 3
+          ? periodSpreadCards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }))
+          : intentionSpread?.masterId === selectedCharacter && intentionSpread.cards.length
+            ? intentionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
+            : chatSessionSpread?.masterId === selectedCharacter && chatSessionSpread.cards.length >= 3
+              ? chatSessionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
+              : masterSpread && masterSpread.cards.length >= 3
+                ? masterSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning }))
+                : activeProfile?.tarotCards?.map((c) => ({ name: c.name, meaning: c.meaning }));
 
       const userMessage: Message = {
         id: generateId(),
@@ -1476,8 +1469,11 @@ export function useChatActions(options: UseChatActionsOptions) {
               : undefined,
             tarotCards: tarotCardsForChat,
             intention: sessionIntention ?? undefined,
-            spreadType: sessionSpreadMetaRef.current?.spreadType,
-            cards: sessionSpreadMetaRef.current?.cardNames,
+            spreadType: periodScope ? "new" : sessionSpreadMetaRef.current?.spreadType,
+            cards:
+              periodSpreadCards?.map((c) => c.name) ??
+              sessionSpreadMetaRef.current?.cardNames,
+            periodSpreadScope: periodScope ?? undefined,
           }),
         });
 
@@ -1509,6 +1505,28 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
           setMessages((prev) => prev.slice(0, -1));
           return;
+        }
+
+        if (response.status === 403) {
+          const errData = (await response.json().catch(() => ({}))) as {
+            error?: string;
+            message?: string;
+          };
+          if (errData.error === "session_question_limit") {
+            setMessages((prev) => [
+              ...prev.slice(0, -1),
+              {
+                id: generateId(),
+                role: "assistant",
+                content: errData.message ?? SESSION_CHAT_LIMIT_MESSAGE,
+                timestamp: new Date(),
+              },
+            ]);
+            if (session?.sessionId && !session.offline) {
+              void refresh(session.sessionId).catch(() => undefined);
+            }
+            return;
+          }
         }
 
         if (response.status === 429) {
@@ -1735,6 +1753,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       handleOpenPaywall,
       session?.offline,
       session?.sessionId,
+      session?.freeQuestionsUsed,
       setMessages,
       loadReading,
       setIsLoading,

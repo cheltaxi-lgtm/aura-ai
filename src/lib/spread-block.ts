@@ -1,4 +1,30 @@
 import { topicLabel } from "@/lib/session-topics";
+import {
+  periodSpreadPositions,
+  periodSpreadTaskLabel,
+  type PeriodSpreadScope,
+} from "@/lib/master-quick-chips";
+
+/** Quick period spread (today / week / month) — does not require session intention. */
+export function buildPeriodSpreadBlock(scope: PeriodSpreadScope, cards: string[]): string {
+  if (cards.length < 3) return "";
+
+  const positions = periodSpreadPositions(scope);
+  const horizon = periodSpreadTaskLabel(scope);
+  const cardLines = cards
+    .slice(0, 3)
+    .map((name, i) => `${i + 1}я (${positions[i]}): ${name}`)
+    .join("\n");
+
+  return `
+НОВЫЙ РАСКЛАД ${horizon}:
+${cardLines}
+
+Клиент запросил быстрый расклад на период — три символа только что выпали заново.
+Дай развёрнутый расклад по каждой позиции на этот горизонт.
+Озвучивай позиции явно. Не предлагай тянуть новые карты.
+Без markdown (*, **, #).`.trim();
+}
 
 /** System-prompt block for daily vs new intention spreads in chat. */
 export function buildSpreadBlock(
