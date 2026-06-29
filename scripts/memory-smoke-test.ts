@@ -68,9 +68,15 @@ async function main() {
     const crit = await getCriticalFacts(U);
     ok(crit.some((f) => /развод/i.test(f.fact)), "critical (salience>=5) fact surfaced");
 
-    const block = await loadClientMemoryBlock({ userId: U, queryText: "что будет с работой и семьёй?" });
+    const block = await loadClientMemoryBlock({
+      userId: U,
+      queryText: "Артём выпускной и смена работы",
+    });
     ok(/ДОЛГОСРОЧНАЯ ПАМЯТЬ/.test(block), "assembled block has memory header");
     ok(/БЛИЖАЙШИЕ СОБЫТИЯ/.test(block), "assembled block has upcoming-events section");
+
+    const emptyBlock = await loadClientMemoryBlock({ userId: U, queryText: "" });
+    ok(emptyBlock === "", "empty query returns no memory block");
   } finally {
     await cleanup();
   }
