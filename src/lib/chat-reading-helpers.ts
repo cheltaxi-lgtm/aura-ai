@@ -312,14 +312,16 @@ export function readingPayloadForMaster(
     typeof profilePayloadForMaster
   >;
 
-  if (
-    isNumerologMaster(masterId) &&
-    numerologSpreadComplete(
-      cardNamesFromSpread(cards),
-      numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL
-    )
-  ) {
-    const toolId = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+  if (isNumerologMaster(masterId)) {
+    const toolId = resolveNumerologToolId(spreadId, numerologToolId);
+    if (
+      !numerologSpreadComplete(
+        cardNamesFromSpread(cards),
+        toolId
+      )
+    ) {
+      return base;
+    }
     const required = numerologToolDrawCount(toolId);
     if (required === 0) {
       return {

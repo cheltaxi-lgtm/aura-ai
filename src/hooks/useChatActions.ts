@@ -674,7 +674,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                   masters,
                   metaSpreadId,
                   metaSpreadType,
-                  sessionSpreadMetaRef.current?.numerologToolId,
+                  metaNumerologToolId,
                   sessionSpreadMetaRef.current?.numerologToolParams
                 ),
               }),

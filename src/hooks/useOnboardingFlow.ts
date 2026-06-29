@@ -753,6 +753,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   }, [selectedCharacter, profile, masters]);
 
   const activeSpreadCardsKey = useMemo(() => {
+    if (selectedCharacter && isNumerologMaster(selectedCharacter)) {
+      const toolId = resolveNumerologToolId(
+        sessionSpreadMetaRef.current?.spreadId,
+        sessionSpreadMetaRef.current?.numerologToolId
+      );
+      if (numerologToolDrawCount(toolId) === 0) {
+        return `${selectedCharacter}:${encodeNumerologSpreadId(toolId)}:no-draw`;
+      }
+    }
     if (intentionSpread?.masterId === selectedCharacter && intentionSpread.cards.length) {
       return spreadKey(intentionSpread.cards);
     }
@@ -766,7 +775,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       return chatSpread.cardsKey;
     }
     return spreadCardsKey;
-  }, [intentionSpread, selectedCharacter, chatSpread, spreadCardsKey]);
+  }, [intentionSpread, selectedCharacter, chatSpread, spreadCardsKey, sessionSpreadMetaRef]);
 
   const shouldAutoLoadSpreadReading = useCallback(
     (masterId: string, cardsKey: string) => {
@@ -868,7 +877,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         sessionSpreadMetaRef.current?.numerologToolId
       );
       const drawCount = numerologToolDrawCount(toolId);
-      if (drawCount < 1) return null;
+      if (drawCount < 1) {
+        return {
+          source: "numerolog" as const,
+          cards: [],
+          system: resolveMasterDeckSystem(selectedCharacter),
+          spreadId: encodeNumerologSpreadId(toolId),
+          cardCount: 0,
+          positions: [],
+        };
+      }
 
       const metaNames = sessionSpreadMetaRef.current?.cardNames ?? [];
       const cardNames = ((): string[] | null => {
