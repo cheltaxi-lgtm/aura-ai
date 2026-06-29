@@ -19,9 +19,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rateLimited = await enforceRegisterRateLimit(clientIp(request));
-    if (rateLimited) return rateLimited;
-
     const { email, password, name, slug, title, recaptchaToken, ageConfirmed } = await request.json();
     if (!email || !password || !name) {
       return NextResponse.json({ error: "Заполните обязательные поля" }, { status: 400 });
@@ -40,6 +37,10 @@ export async function POST(request: NextRequest) {
       request
     );
     if (captchaBlock) return captchaBlock;
+
+    const rateLimited = await enforceRegisterRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
+
     if (password.length < 6) {
       return NextResponse.json({ error: "Пароль минимум 6 символов" }, { status: 400 });
     }

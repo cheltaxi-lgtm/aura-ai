@@ -124,7 +124,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Ошибка");
+        if (data.error === "rate_limit") {
+          setError(data.message ?? "Слишком много попыток. Подождите и попробуйте снова.");
+        } else {
+          setError(data.message ?? data.error ?? "Ошибка");
+        }
         return;
       }
 

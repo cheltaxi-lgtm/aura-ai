@@ -15,9 +15,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
     }
 
-    const rateLimited = await enforceRegisterRateLimit(clientIp(request));
-    if (rateLimited) return rateLimited;
-
     const body = await request.json();
     const {
       email: rawEmail,
@@ -48,6 +45,10 @@ export async function POST(request: NextRequest) {
 
     const captchaBlock = await enforceRecaptchaScope("register", recaptchaToken, request);
     if (captchaBlock) return captchaBlock;
+
+    const rateLimited = await enforceRegisterRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
+
     if (password.length < 6) {
       return NextResponse.json({ error: "Пароль минимум 6 символов" }, { status: 400 });
     }

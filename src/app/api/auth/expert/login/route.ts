@@ -8,9 +8,6 @@ import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimited = await enforceLoginRateLimit(clientIp(request));
-    if (rateLimited) return rateLimited;
-
     if (!(await ensureDb())) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
     }
@@ -23,6 +20,9 @@ export async function POST(request: NextRequest) {
 
     const captchaBlock = await enforceRecaptchaScope("expertLogin", recaptchaToken, request);
     if (captchaBlock) return captchaBlock;
+
+    const rateLimited = await enforceLoginRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
 
     const expert = await findExpertByEmail(email);
     if (!expert || !(await verifyPassword(password, expert.password_hash))) {

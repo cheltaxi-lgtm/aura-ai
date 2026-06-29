@@ -10,9 +10,6 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimited = await enforceLoginRateLimit(clientIp(request));
-    if (rateLimited) return rateLimited;
-
     if (!(await ensureDb())) {
       return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
     }
@@ -36,6 +33,9 @@ export async function POST(request: NextRequest) {
       request
     );
     if (captchaBlock) return captchaBlock;
+
+    const rateLimited = await enforceLoginRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
 
     const payload = await adminLogin(email, password);
     if (!payload) {
