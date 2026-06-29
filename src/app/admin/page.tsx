@@ -29,6 +29,8 @@ export default function AdminDashboardPage() {
         <StatCard label="Успешных оплат" value={s?.paymentsOk ?? "—"} accent="text-aura-emerald" />
         <StatCard label="Выручка, ₽" value={s?.revenue?.toFixed(0) ?? "—"} accent="text-aura-gold" />
         <StatCard label="Инфлюенсеры" value={s?.influencers ?? "—"} />
+        <StatCard label="Поддержка (открытых)" value={s?.supportOpen ?? "—"} accent="text-amber-300" />
+        <StatCard label="Поддержка (непрочит.)" value={s?.supportUnread ?? "—"} accent="text-aura-neon" />
       </div>
 
       {data?.chart && data.chart.length > 0 && (

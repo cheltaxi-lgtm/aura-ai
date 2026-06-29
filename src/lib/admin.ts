@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { getSupportAdminStats } from "./support-service";
 
 export async function logAdminAction(
   adminId: string,
@@ -15,7 +16,8 @@ export async function logAdminAction(
 }
 
 export async function getDashboardStats() {
-  const { rows } = await query<{
+  const [{ rows }, support] = await Promise.all([
+    query<{
     users: string;
     experts: string;
     profiles: string;
@@ -36,7 +38,9 @@ export async function getDashboardStats() {
       (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'succeeded')::text AS revenue,
       (SELECT COUNT(*) FROM influencers)::text AS influencers,
       (SELECT COUNT(*) FROM bloggers)::text AS bloggers
-  `);
+  `),
+    getSupportAdminStats(),
+  ]);
   const s = rows[0];
   return {
     users: parseInt(s?.users ?? "0", 10),
@@ -48,6 +52,8 @@ export async function getDashboardStats() {
     revenue: parseFloat(s?.revenue ?? "0"),
     influencers: parseInt(s?.influencers ?? "0", 10),
     bloggers: parseInt(s?.bloggers ?? "0", 10),
+    supportOpen: support.open,
+    supportUnread: support.unread,
   };
 }
 

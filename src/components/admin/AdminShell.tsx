@@ -15,6 +15,7 @@ import {
   LogOut,
   Brain,
   Coins,
+  Headphones,
   Menu,
   X,
 } from "lucide-react";
@@ -27,6 +28,7 @@ const NAV = [
   { href: "/admin/payments", label: "Платежи", icon: CreditCard },
   { href: "/admin/runes", label: "Руны", icon: Coins },
   { href: "/admin/sessions", label: "Сессии и чат", icon: MessageSquare },
+  { href: "/admin/support", label: "Поддержка", icon: Headphones },
   { href: "/admin/ai", label: "Модели и промпты", icon: Brain },
   { href: "/admin/settings", label: "Платформа", icon: Settings },
   { href: "/admin/audit", label: "Аудит", icon: ScrollText },
