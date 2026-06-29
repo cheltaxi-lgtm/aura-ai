@@ -29,6 +29,7 @@ import {
 import { resolveClientReadingText } from "@/lib/chat-reply-sanitize";
 import {
   persistSessionIntention,
+  persistSessionCustomQuestion,
   persistIntentionSpreadState,
   readIntentionSpreadForMaster,
   type SessionIntention,
@@ -1882,8 +1883,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         cardsRevealed = false,
         previewCards,
         deckSystem: previewDeckSystem,
+        customQuestion,
       } = params;
       const sessionIntentionValue = spreadType === "daily" ? null : intention;
+      if (customQuestion?.trim()) {
+        persistSessionCustomQuestion(characterKey, customQuestion.trim());
+      } else if (intention !== "custom") {
+        persistSessionCustomQuestion(characterKey, null);
+      }
       sessionSpreadMetaRef.current = { spreadType, cardNames: cards };
       readingInFlightRef.current = true;
       deps.skipNextReadingRef.current = true;
@@ -2100,6 +2107,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             const response = await postIntentionSpreadRequest({
               characterId: characterKey,
               intention,
+              customQuestion: intention === "custom" ? customQuestion?.trim() : undefined,
               cardNames: cards,
               sessionId: chatSessionId,
             });

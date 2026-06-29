@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { SessionIntention, SessionTopicId } from "@/lib/intention";
-import { getIntentionMeta } from "@/lib/intention";
+import { getIntentionMeta, readSessionCustomQuestion } from "@/lib/intention";
 import { getSessionTopic } from "@/lib/session-topics";
 import { getTopicSubtitle } from "@/lib/session-topic-subtitles";
 
@@ -30,10 +30,19 @@ export default function SessionIntentionBar({
 }: SessionIntentionBarProps) {
   if (!intention || characterKey !== activeCharacterKey) return null;
 
+  const customQ = intention === "custom" ? readSessionCustomQuestion(characterKey) : null;
   const meta = intentionDisplay(intention);
+  const displayLabel =
+    intention === "custom" && customQ
+      ? customQ.length > 72
+        ? `${customQ.slice(0, 72).trim()}…`
+        : customQ
+      : meta.label;
   const subtitle =
-    (characterKey ? getTopicSubtitle(characterKey, intention) : null) ??
-    `${masterName} ведёт разговор через призму: ${meta.focus}`;
+    intention === "custom" && customQ
+      ? `${masterName} отвечает на ваш вопрос через символы расклада`
+      : (characterKey ? getTopicSubtitle(characterKey, intention) : null) ??
+        `${masterName} ведёт разговор через призму: ${meta.focus}`;
   const [pulse, setPulse] = useState(highlight);
 
   useEffect(() => {
@@ -70,11 +79,13 @@ export default function SessionIntentionBar({
             <p className="text-[10px] uppercase tracking-[0.2em] text-amber-400/90">
               Тема сеанса
             </p>
-            <p className="font-display text-lg font-semibold text-amber-100">{meta.label}</p>
+            <p className="font-display text-lg font-semibold text-amber-100">{displayLabel}</p>
             <p className="mt-0.5 text-xs text-gray-400">
               {pulse ? (
                 <span className="text-amber-200/90">
-                  {masterName} настраивает расклад на «{meta.label.toLowerCase()}»…
+                  {intention === "custom"
+                    ? `${masterName} настраивает расклад на ваш вопрос…`
+                    : `${masterName} настраивает расклад на «${meta.label.toLowerCase()}»…`}
                 </span>
               ) : (
                 subtitle

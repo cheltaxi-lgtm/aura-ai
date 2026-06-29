@@ -105,6 +105,7 @@ export type ChatRequestBody = {
   };
   tarotCards?: { name: string; meaning: string }[];
   periodSpreadScope?: PeriodSpreadScope;
+  customQuestion?: string;
 };
 
 export type ChatOrchestratorPrepareResult =
@@ -185,6 +186,7 @@ export class ChatOrchestrator {
   private imageBase64?: string;
   private tarotCards?: { name: string; meaning: string }[];
   private intention?: string;
+  private customQuestion?: string;
   private spreadType?: "daily" | "new";
   private spreadCardNames?: string[];
   private periodSpreadScope?: PeriodSpreadScope;
@@ -208,6 +210,7 @@ export class ChatOrchestrator {
     this.imageBase64 = parsed.imageBase64;
     this.tarotCards = parsed.tarotCards;
     this.intention = parsed.intention;
+    this.customQuestion = parsed.customQuestion?.trim() || undefined;
     this.spreadType = parsed.spreadType;
     this.spreadCardNames = parsed.cards;
     this.periodSpreadScope =
@@ -664,7 +667,7 @@ export class ChatOrchestrator {
       );
     }
 
-    systemPrompt += intentionPromptBlock(this.resolvedIntention);
+    systemPrompt += intentionPromptBlock(this.resolvedIntention, this.customQuestion);
 
     const cardNamesForBlock = this.resolvedCardNames.length
       ? this.resolvedCardNames

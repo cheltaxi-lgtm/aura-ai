@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Sparkles, Loader2, X, Moon } from "lucide-react";
+import { Loader2, X, Moon } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { isAiMasterId, type ShowcaseMaster } from "@/lib/showcase-masters";
 import { resolveMasterDeckSystem, DECK_REGISTRY } from "@/lib/decks";
@@ -26,8 +26,10 @@ interface DailyCard {
 export interface PremiumEnergyBlockProps {
   characterKey?: string;
   masters: ShowcaseMaster[];
-  onTalkToMaster: (masterId: string) => void;
-  onOpenNumerologForm: () => void;
+  /** @deprecated Footer only closes modal — kept for call-site compatibility. */
+  onTalkToMaster?: (masterId: string) => void;
+  /** @deprecated Footer only closes modal — kept for call-site compatibility. */
+  onOpenNumerologForm?: () => void;
 }
 
 /** User's local calendar date (YYYY-MM-DD) so the daily reset happens at their 00:00. */
@@ -90,8 +92,6 @@ function renderBodyWithMasterHighlight(body: string, masterLabel: string) {
 export default function PremiumEnergyBlock({
   characterKey = "veronika",
   masters,
-  onTalkToMaster,
-  onOpenNumerologForm,
 }: PremiumEnergyBlockProps) {
   const [loaded, setLoaded] = useState(false);
   const [drawnToday, setDrawnToday] = useState(false);
@@ -430,34 +430,21 @@ export default function PremiumEnergyBlock({
                 </AnimatePresence>
               </div>
 
-              {/* Footer CTAs — only after reveal */}
+              {/* Footer — only after reveal */}
               {allRevealed && (
                 <div className="shrink-0 border-t border-white/6 px-5 py-4">
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpen(false);
-                        onTalkToMaster(master);
-                      }}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition-all"
-                      style={{ background: GOLD_GRADIENT, color: "#1a0f00", boxShadow: "0 4px 20px rgba(212,175,55,0.3)" }}
-                    >
-                      Поговорить с {masterLabel.split(/\s+/)[0]}
-                      <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpen(false);
-                        onOpenNumerologForm();
-                      }}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 py-3 text-sm text-amber-200 transition-all hover:bg-amber-500/10"
-                    >
-                      <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
-                      Нумеролог
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="flex w-full items-center justify-center rounded-2xl py-3 text-sm font-semibold transition-all"
+                    style={{
+                      background: GOLD_GRADIENT,
+                      color: "#1a0f00",
+                      boxShadow: "0 4px 20px rgba(212,175,55,0.3)",
+                    }}
+                  >
+                    На главную
+                  </button>
                 </div>
               )}
             </motion.div>

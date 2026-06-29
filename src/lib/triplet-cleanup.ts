@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { recordTripletDrawAnchor } from "./users";
 import { tarotCardsKey } from "./tarot";
 
 export type TripletReadingRow = {
@@ -21,8 +22,26 @@ function parseSessionCardNames(raw: unknown): string[] {
   return [];
 }
 
+/** Keep 24h cooldown when triplet rows are removed from display/history. */
+async function preserveTripletDrawAnchor(userId: string): Promise<void> {
+  const { rows } = await query<{ max_at: Date | null }>(
+    `SELECT MAX(created_at) AS max_at FROM history
+     WHERE user_id = $1
+       AND (
+         character_name = 'triplet'
+         OR context_data->>'type' = 'triplet'
+       )`,
+    [userId]
+  );
+  const maxAt = rows[0]?.max_at;
+  if (maxAt) {
+    await recordTripletDrawAnchor(userId, maxAt);
+  }
+}
+
 /** Remove all daily triplet rows from user history. */
 export async function deleteAllUserTripletHistory(userId: string): Promise<number> {
+  await preserveTripletDrawAnchor(userId);
   const result = await query(
     `DELETE FROM history WHERE user_id = $1 AND character_name = 'triplet'`,
     [userId]
@@ -143,8 +162,8 @@ export async function deleteUserTripletForSession(
   const characterKey = session.character_key?.trim();
   if (!characterKey) return false;
 
-  const { rows } = await query<{ id: string; context_data: Record<string, unknown> }>(
-    `SELECT id, context_data FROM history
+  const { rows } = await query<{ id: string; created_at: Date; context_data: Record<string, unknown> }>(
+    `SELECT id, created_at, context_data FROM history
      WHERE user_id = $1 AND character_name = 'triplet'
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -165,6 +184,7 @@ export async function deleteUserTripletForSession(
   const ownerMatch = !owner || owner === characterKey;
 
   if (dailyLike && ownerMatch && (cardsMatch || !sessionKey)) {
+    await recordTripletDrawAnchor(userId, triplet.created_at);
     const result = await query(`DELETE FROM history WHERE id = $1 AND user_id = $2`, [
       triplet.id,
       userId,
@@ -180,8 +200,8 @@ export async function deleteUserTripletForMaster(
   userId: string,
   masterId: string
 ): Promise<boolean> {
-  const { rows } = await query<{ id: string; context_data: Record<string, unknown> }>(
-    `SELECT id, context_data FROM history
+  const { rows } = await query<{ id: string; created_at: Date; context_data: Record<string, unknown> }>(
+    `SELECT id, created_at, context_data FROM history
      WHERE user_id = $1 AND character_name = 'triplet'
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -193,6 +213,8 @@ export async function deleteUserTripletForMaster(
   const ctx = triplet.context_data ?? {};
   const owner = typeof ctx.masterId === "string" ? ctx.masterId : null;
   if (owner && owner !== masterId) return false;
+
+  await recordTripletDrawAnchor(userId, triplet.created_at);
 
   const result = await query(`DELETE FROM history WHERE id = $1 AND user_id = $2`, [
     triplet.id,

@@ -30,7 +30,7 @@ import {
 import { isAiMasterId } from "@/lib/showcase-masters";
 import { getSession, updateSessionChatMeta, getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import { intentionSpreadPromptBlock } from "@/lib/intention";
-import { isValidSessionIntention, topicToDrawKey, topicLabel } from "@/lib/session-topics";
+import { isValidSessionIntention, topicToDrawIntention, topicLabel } from "@/lib/session-topics";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import { appendUserMemoryToPrompt, buildClientBlock, buildMemoryBlock } from "@/lib/user-memory";
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
@@ -148,7 +148,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unknown intention" }, { status: 400 });
   }
 
-  const drawn = drawIntentionSpread(system, topicToDrawKey(topic), 3);
+  const drawn =
+    topic === "custom"
+      ? drawUniformSpread(system, 3)
+      : drawIntentionSpread(system, topicToDrawIntention(topic), 3);
 
   return NextResponse.json({
     cards: drawn,
@@ -161,6 +164,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   let characterId = "ragnar";
   let intention = "";
+  let customQuestion: string | undefined;
   let sessionId: string | undefined;
   let cardNames: string[] | undefined;
 
@@ -168,6 +172,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     characterId = await resolveApiCharacterId(body.characterId);
     intention = sanitizeTextField(body.intention, 40) ?? "";
+    customQuestion = sanitizeTextField(body.customQuestion, 400) ?? undefined;
     sessionId = body.sessionId;
     if (Array.isArray(body.cardNames)) {
       cardNames = body.cardNames
@@ -191,6 +196,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unknown intention" }, { status: 400 });
   }
 
+  if (intention === "custom") {
+    const q = customQuestion?.trim();
+    if (!q || q.length < 8) {
+      return NextResponse.json({ error: "Question too short" }, { status: 400 });
+    }
+    customQuestion = q;
+  }
+
   const authed = await requireProfileUserId();
   if (!authed) {
     return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
@@ -201,14 +214,13 @@ export async function POST(request: NextRequest) {
 
   const system = resolveMasterDeckSystem(characterId);
   const positions = getDeckPositions(system);
-  const drawKey = topicToDrawKey(intention);
-
   const resolveDrawn = () => {
     if (cardNames?.length === 3) {
       const resolved = resolveSpreadSymbols(system, cardNames);
       if (resolved.length >= 3) return resolved;
     }
-    return drawIntentionSpread(system, drawKey, 3);
+    if (intention === "custom") return drawUniformSpread(system, 3);
+    return drawIntentionSpread(system, topicToDrawIntention(intention), 3);
   };
 
   const drawn = resolveDrawn();
@@ -216,7 +228,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Could not resolve cards" }, { status: 500 });
   }
 
-  if (await ensureDb()) {
+  if (intention !== "custom" && (await ensureDb())) {
     const history = await getUserReadingHistory(authed.profileUserId);
     const cached = findCachedIntentionSpread(
       history,
@@ -369,14 +381,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  systemPrompt += intentionSpreadPromptBlock(intention);
+  systemPrompt += intentionSpreadPromptBlock(intention, customQuestion);
 
   const clientBlock = buildClientBlock({
     name: userName,
     gender,
     zodiac,
     birthDate,
-    mainQuestion,
+    mainQuestion: intention === "custom" ? customQuestion : mainQuestion,
     lifeFocus,
   });
   const memoryBlock = sessionId
@@ -404,7 +416,10 @@ export async function POST(request: NextRequest) {
     const userMessage = buildSpreadUserMessage({
       user: userForContext,
       cards: cardsForContext,
-      intention: resolveIntentionLabel(intention),
+      intention:
+        intention === "custom" && customQuestion
+          ? customQuestion
+          : resolveIntentionLabel(intention),
     });
 
     const generated = await generateReading(systemPrompt, {
@@ -452,6 +467,7 @@ export async function POST(request: NextRequest) {
         contextData: {
           type: "intention_spread",
           intention,
+          customQuestion: intention === "custom" ? customQuestion : undefined,
           reading,
           tarotCards,
           deckSystem: system,

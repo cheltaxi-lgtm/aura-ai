@@ -38,6 +38,7 @@ import CabinetTabHero from "@/components/cabinet/CabinetTabHero";
 import CabinetRunesPanel, { CabinetRunesPanelSkeleton } from "@/components/cabinet/CabinetRunesPanel";
 import CabinetLegacyAccessPanel from "@/components/cabinet/CabinetLegacyAccessPanel";
 import CabinetPhotoSpreads from "@/components/cabinet/CabinetPhotoSpreads";
+import CabinetDailySpreads from "@/components/cabinet/CabinetDailySpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
@@ -56,6 +57,7 @@ import type {
   CabinetRuneTransaction,
   CabinetLegacyAccess,
   CabinetPhotoSpreadRow,
+  CabinetDailyReadingRow,
 } from "@/lib/cabinet-data";
 
 interface CabinetResponse {
@@ -69,6 +71,7 @@ interface CabinetResponse {
   runes: { enabled: boolean; balance: number; transactions: CabinetRuneTransaction[] };
   legacyAccess: CabinetLegacyAccess | null;
   photoSpreads: CabinetPhotoSpreadRow[];
+  dailyReadings: CabinetDailyReadingRow[];
 }
 
 const TAB_MOTION = {
@@ -328,6 +331,7 @@ export default function CabinetPage() {
   const runes = data?.runes;
   const legacyAccess = data?.legacyAccess;
   const photoSpreads = data?.photoSpreads ?? [];
+  const dailyReadings = data?.dailyReadings ?? [];
   const runesEnabled = Boolean(runes?.enabled);
   const showRitualsSection =
     runesEnabled || (ritualStats?.total ?? 0) > 0;
@@ -430,6 +434,7 @@ export default function CabinetPage() {
               onDelete={(id) => void handleDeletePhotoSpread(id)}
               deletingId={deletingPhotoSpreadId}
             />
+            <CabinetDailySpreads readings={dailyReadings} />
           </div>
         );
 

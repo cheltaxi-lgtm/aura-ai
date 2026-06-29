@@ -11,6 +11,7 @@ import {  getCabinetProfile,
   getCabinetRunes,
   getCabinetLegacyAccess,
   getCabinetPhotoSpreads,
+  getCabinetDailyReadings,
 } from "@/lib/cabinet-data";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
     runes,
     legacyAccess,
     photoSpreads,
+    dailyReadings,
   ] = await Promise.all([
     safe(
       () =>
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest) {
     }),
     safe(() => getCabinetLegacyAccess(profileUserId), null),
     safe(() => getCabinetPhotoSpreads(profileUserId), []),
+    safe(() => getCabinetDailyReadings(profileUserId), []),
   ]);
 
   return NextResponse.json({
@@ -109,5 +112,6 @@ export async function GET(request: NextRequest) {
     runes,
     legacyAccess,
     photoSpreads,
+    dailyReadings,
   });
 }

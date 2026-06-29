@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Loader2, Mic, MicOff } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import {
   SESSION_TOPICS,
@@ -18,12 +19,15 @@ import { useRuneConfig } from "@/lib/useRuneConfig";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import { PRICING, numerologySessionCost } from "@/lib/config/pricing";
+import { useSpeechInput } from "@/hooks/useSpeechInput";
 
 export interface SessionStartParams {
   characterKey: string;
   intention: SessionTopicId | null;
   spreadType: "daily" | "new";
   cards: string[];
+  /** Свой вопрос клиента — когда intention === "custom". */
+  customQuestion?: string | null;
   /** Cards already flipped in the flow modal — chat should not ask to flip again. */
   cardsRevealed?: boolean;
   previewCards?: { name: string; meaning?: string }[];
@@ -76,12 +80,24 @@ export default function MasterSessionFlow({
   const [flipped, setFlipped] = useState([false, false, false]);
   const [drawLoading, setDrawLoading] = useState(false);
   const [drawError, setDrawError] = useState<string | null>(null);
+  const [topicPickMode, setTopicPickMode] = useState<"grid" | "custom">("grid");
+  const [customQuestion, setCustomQuestion] = useState("");
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
   const numerologFlow = isNumerologMaster(master);
   const spreadCost = numerologFlow
     ? PRICING.NUMEROLOGY_SESSION
     : runeCost("INTENTION_SPREAD");
   const numerologPreselected = isNumerologMaster(preselectedMaster);
+  const customQuestionReady = customQuestion.trim().length >= 8;
+
+  const { isRecording, phase: voicePhase, toggle: toggleRecording } = useSpeechInput({
+    onTranscript: (text) => {
+      setVoiceNotice(null);
+      setCustomQuestion((prev) => (prev ? `${prev} ${text}` : text));
+    },
+    onError: (message) => setVoiceNotice(message),
+  });
 
   const goToNewSpreadDraw = useCallback(() => {
     setCardType("new");
@@ -101,6 +117,9 @@ export default function MasterSessionFlow({
 
   const initializeFlow = useCallback(() => {
     setTopic(null);
+    setTopicPickMode("grid");
+    setCustomQuestion("");
+    setVoiceNotice(null);
     setMaster(preselectedMaster ?? "");
     setNewCards([]);
     setFlipped([false, false, false]);
@@ -142,6 +161,12 @@ export default function MasterSessionFlow({
   }, [isOpen]);
 
   const goBack = () => {
+    if (step === "topic" && topicPickMode === "custom") {
+      setTopicPickMode("grid");
+      setTopic(null);
+      setCustomQuestion("");
+      return;
+    }
     if (step === "master") {
       if (!hasDailyCards && !numerologFlow) setStep("topic");
     } else if (step === "cards") setStep("master");
@@ -157,6 +182,7 @@ export default function MasterSessionFlow({
   const fetchNewSpread = useCallback(async () => {
     if (!master) return;
     if (!numerologFlow && !topic) return;
+    if (topic === "custom" && !customQuestionReady) return;
     setDrawLoading(true);
     setDrawError(null);
     try {
@@ -183,7 +209,7 @@ export default function MasterSessionFlow({
     } finally {
       setDrawLoading(false);
     }
-  }, [topic, master, numerologFlow]);
+  }, [topic, master, numerologFlow, customQuestionReady]);
 
   useEffect(() => {
     if (step === "flip" && !numerologFlow && !topic) {
@@ -194,9 +220,10 @@ export default function MasterSessionFlow({
 
   useEffect(() => {
     if (step === "flip" && newCards.length === 0 && master && (numerologFlow || topic)) {
+      if (topic === "custom" && !customQuestionReady) return;
       void fetchNewSpread();
     }
-  }, [step, newCards.length, topic, master, numerologFlow, fetchNewSpread]);
+  }, [step, newCards.length, topic, master, numerologFlow, fetchNewSpread, customQuestionReady]);
 
   const handleFlip = (index: number) => {
     setFlipped((prev) => {
@@ -225,6 +252,7 @@ export default function MasterSessionFlow({
   const handleStartNew = async () => {
     if (!master || !allFlipped || newCards.length < 3) return;
     if (!numerologFlow && !topic) return;
+    if (topic === "custom" && !customQuestionReady) return;
     onStart({
       characterKey: master,
       intention: numerologFlow ? null : topic,
@@ -233,6 +261,7 @@ export default function MasterSessionFlow({
       cardsRevealed: true,
       previewCards: newCards.slice(0, 3),
       deckSystem,
+      customQuestion: topic === "custom" ? customQuestion.trim() : null,
     });
   };
 
@@ -241,7 +270,23 @@ export default function MasterSessionFlow({
   const footerPadding = { paddingBottom: "max(1rem, env(safe-area-inset-bottom))" } as const;
 
   const actionFooter =
-    step === "topic" && !numerologFlow && topic ? (
+    step === "topic" && !numerologFlow && topicPickMode === "custom" ? (
+      <button
+        type="button"
+        disabled={!customQuestionReady || drawLoading}
+        onClick={() => {
+          setTopic("custom");
+          setCardType("new");
+          setStep("flip");
+        }}
+        className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
+      >
+        <span>Получить карты</span>
+        {runeConfig.enabled ? (
+          <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+        ) : null}
+      </button>
+    ) : step === "topic" && !numerologFlow && topic ? (
       <button
         type="button"
         onClick={() => {
@@ -357,6 +402,14 @@ export default function MasterSessionFlow({
               >
                 ← Назад
               </button>
+            ) : step === "topic" && topicPickMode === "custom" ? (
+              <button
+                type="button"
+                onClick={goBack}
+                className="text-sm text-white/60 transition-colors hover:text-white"
+              >
+                ← Назад
+              </button>
             ) : (
               <span className="w-12" />
             )}
@@ -388,14 +441,64 @@ export default function MasterSessionFlow({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                <h2 className="text-center font-display text-xl font-bold text-white">
-                  О чём поговорим?
-                </h2>
-                <p className="mt-1 text-center text-sm text-white/60">
-                  Выберите тему сеанса
-                </p>
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                  {SESSION_TOPICS.map((card) => {
+                {topicPickMode === "custom" ? (
+                  <>
+                    <h2 className="text-center font-display text-xl font-bold text-white">
+                      Свой вопрос
+                    </h2>
+                    <p className="mt-1 text-center text-sm text-white/60">
+                      Сформулируйте запрос — мастер ответит по выпавшим картам
+                    </p>
+                    <div className="mt-5 space-y-3">
+                      <textarea
+                        value={customQuestion}
+                        onChange={(e) => setCustomQuestion(e.target.value)}
+                        placeholder="Например: стоит ли мне менять работу этой осенью?"
+                        rows={4}
+                        maxLength={400}
+                        className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/35 focus:border-amber-400/50 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void toggleRecording()}
+                          disabled={voicePhase === "transcribing"}
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                            isRecording
+                              ? "border-red-500/50 bg-red-500/10 text-red-400"
+                              : "border-white/10 text-gray-400 hover:border-aura-purple/50 hover:text-aura-purple"
+                          }`}
+                          aria-label={isRecording ? "Остановить запись" : "Диктовка голосом"}
+                        >
+                          {voicePhase === "transcribing" ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          ) : isRecording ? (
+                            <MicOff className="h-5 w-5" />
+                          ) : (
+                            <Mic className="h-5 w-5" />
+                          )}
+                        </button>
+                        <p className="text-xs text-white/40">
+                          {customQuestion.trim().length}/400 · мин. 8 символов
+                        </p>
+                      </div>
+                      {voiceNotice ? (
+                        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                          {voiceNotice}
+                        </p>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-center font-display text-xl font-bold text-white">
+                      О чём поговорим?
+                    </h2>
+                    <p className="mt-1 text-center text-sm text-white/60">
+                      Выберите тему сеанса
+                    </p>
+                    <div className="mt-6 grid grid-cols-2 gap-3">
+                      {SESSION_TOPICS.filter((t) => t.id !== "custom").map((card) => {
                     const isSelected = topic === card.id;
                     const isLifeDeath = card.id === "life_death";
                     const dimOthers = topic && !isSelected;
@@ -442,7 +545,21 @@ export default function MasterSessionFlow({
                       </button>
                     );
                   })}
-                </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopicPickMode("custom");
+                        setTopic(null);
+                      }}
+                      className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-center transition-all duration-200 hover:border-amber-400/50 hover:bg-white/10"
+                    >
+                      <span className="text-2xl">💬</span>
+                      <p className="mt-2 text-xs font-medium text-white/80">Свой вопрос</p>
+                      <p className="mt-1 text-xs text-white/40">Напишите или продиктуйте запрос</p>
+                    </button>
+                  </>
+                )}
               </motion.div>
             )}
 
@@ -457,13 +574,15 @@ export default function MasterSessionFlow({
                   Выберите мастера
                 </h2>
                 <p className="mt-1 text-center text-sm text-white/60">
-                  {topic === "life_death"
-                    ? "Кто поможет разобраться в ситуации"
-                    : topic
-                      ? `Кто проведёт сеанс на тему «${topicLabel(topic)}»`
-                      : hasDailyCards
-                        ? "Кто проведёт сеанс с вашими картами дня"
-                        : "Выберите наставника"}
+                  {topic === "custom"
+                    ? `Ваш вопрос: «${customQuestion.trim().slice(0, 48)}${customQuestion.trim().length > 48 ? "…" : ""}»`
+                    : topic === "life_death"
+                      ? "Кто поможет разобраться в ситуации"
+                      : topic
+                        ? `Тема: «${topicLabel(topic)}»`
+                        : hasDailyCards
+                          ? "Кто проведёт сеанс с вашими картами дня"
+                          : "Выберите наставника"}
                 </p>
 
                 <div className="mt-6 space-y-2">
@@ -587,7 +706,9 @@ export default function MasterSessionFlow({
                 <p className="mt-1 text-center text-sm text-white/60">
                   {numerologFlow
                     ? "Нажмите на каждое число, чтобы открыть расклад."
-                    : `Тема: ${topic ? topicLabel(topic) : ""}. Нажмите на каждую карту, чтобы открыть.`}
+                    : topic === "custom"
+                      ? `Ваш вопрос: «${customQuestion.trim()}»`
+                      : `Тема: ${topic ? topicLabel(topic) : ""}. Нажмите на каждую карту, чтобы открыть.`}
                 </p>
 
                 {drawLoading ? (

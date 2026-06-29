@@ -111,7 +111,7 @@ const MASTER_TOPIC_OPENINGS: Record<string, Partial<Record<SessionTopicId, strin
   },
 };
 
-const TOPIC_ID_TO_LEGACY: Record<SessionTopicId, SessionIntention> = {
+const TOPIC_ID_TO_LEGACY: Record<Exclude<SessionTopicId, "custom">, SessionIntention> = {
   love: "Любовь",
   money: "Деньги",
   health: "Здоровье",
@@ -129,6 +129,7 @@ export function buildIntentionOpening(
   const name = userName?.trim() || "друг";
 
   if (isSessionTopicId(intention)) {
+    if (intention === "custom") return "";
     const topicOpening = MASTER_TOPIC_OPENINGS[masterId]?.[intention];
     if (topicOpening) {
       return topicOpening.replace(/\{name\}/g, name);
@@ -193,9 +194,19 @@ function resolveThematicMeta(intention: string) {
   return { label, focus };
 }
 
-export function intentionPromptBlock(intention?: string | null): string {
+export function intentionPromptBlock(
+  intention?: string | null,
+  customQuestion?: string | null
+): string {
   if (!intention?.trim()) return "";
   if (intention === "life_death") return "";
+  if (intention === "custom") {
+    const q = customQuestion?.trim();
+    if (!q) return "";
+    return `\nКлиент пришёл со своим вопросом: «${q}».
+Отвечай только на этот запрос — через выпавшие символы, с названием каждой карты.
+Не подменяй вопрос общей темой и не выдумывай факты вне символов.`;
+  }
 
   const { label, focus } = resolveThematicMeta(intention);
   const angles = resolveThematicTopicAngles(intention);
@@ -207,8 +218,17 @@ ${angles ? `${angles}\n` : ""}Любой вывод — только если е
 Если символы не подтверждают страх по этой теме — скажи прямо.`;
 }
 
-export function intentionSpreadPromptBlock(intention: string): string {
+export function intentionSpreadPromptBlock(
+  intention: string,
+  customQuestion?: string | null
+): string {
   if (intention === "life_death") return "";
+  if (intention === "custom") {
+    const q = customQuestion?.trim();
+    if (!q) return "";
+    return `\nКлиент ОПЛАТИЛ новый расклад под свой вопрос: «${q}».
+Читай КАЖДЫЙ символ как ответ именно на этот вопрос — выводы только из значений выпавших карт.`;
+  }
 
   const { label, focus } = resolveThematicMeta(intention);
   const angles = resolveThematicTopicAngles(intention);
@@ -237,6 +257,24 @@ export function sessionIntentionStorageKey(characterKey: string): string {
   return `aura_session_intention_${characterKey}`;
 }
 
+export function sessionCustomQuestionStorageKey(characterKey: string): string {
+  return `aura_session_custom_question_${characterKey}`;
+}
+
+export function persistSessionCustomQuestion(characterKey: string, question: string | null): void {
+  if (typeof window === "undefined" || !characterKey) return;
+  const key = sessionCustomQuestionStorageKey(characterKey);
+  const trimmed = question?.trim();
+  if (trimmed) localStorage.setItem(key, trimmed);
+  else localStorage.removeItem(key);
+}
+
+export function readSessionCustomQuestion(characterKey: string): string | null {
+  if (typeof window === "undefined" || !characterKey) return null;
+  const raw = localStorage.getItem(sessionCustomQuestionStorageKey(characterKey));
+  return raw?.trim() || null;
+}
+
 export function intentionSpreadStorageKey(characterKey: string): string {
   return `aura_intention_spread_${characterKey}`;
 }
@@ -249,6 +287,9 @@ export function persistSessionIntention(
   const key = sessionIntentionStorageKey(characterKey);
   if (intention) localStorage.setItem(key, intention);
   else localStorage.removeItem(key);
+  if (intention !== "custom") {
+    persistSessionCustomQuestion(characterKey, null);
+  }
   // legacy global key caused cross-master leaks
   localStorage.removeItem(SESSION_INTENTION_KEY);
 }

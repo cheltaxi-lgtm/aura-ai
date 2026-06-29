@@ -1,4 +1,5 @@
 import type { SessionIntention } from "@/lib/intention";
+import type { DrawIntention } from "@/lib/intention-draw";
 
 export type SessionTopicId =
   | "love"
@@ -7,7 +8,8 @@ export type SessionTopicId =
   | "path"
   | "enemies"
   | "sign"
-  | "life_death";
+  | "life_death"
+  | "custom";
 
 export interface SessionTopicDef {
   id: SessionTopicId;
@@ -31,9 +33,15 @@ export const SESSION_TOPICS: SessionTopicDef[] = [
     sub: "Нет связи · Пропажа · Долго молчит",
     focus: "человек без вестей, тревога, поиск",
   },
+  {
+    id: "custom",
+    icon: "💬",
+    label: "Свой вопрос",
+    focus: "личный запрос клиента",
+  },
 ];
 
-const TOPIC_TO_LEGACY: Record<SessionTopicId, SessionIntention | "life_death"> = {
+const TOPIC_TO_LEGACY: Record<SessionTopicId, SessionIntention | "life_death" | "custom"> = {
   love: "Любовь",
   money: "Деньги",
   health: "Здоровье",
@@ -41,6 +49,7 @@ const TOPIC_TO_LEGACY: Record<SessionTopicId, SessionIntention | "life_death"> =
   enemies: "Враги",
   sign: "Знак свыше",
   life_death: "life_death",
+  custom: "custom",
 };
 
 const LEGACY_TO_TOPIC: Partial<Record<SessionIntention, SessionTopicId>> = {
@@ -68,15 +77,24 @@ export function topicLabel(value: string): string {
   return getSessionTopic(value)?.label ?? value;
 }
 
-/** Key for card draw bias (legacy Russian labels + life_death). */
-export function topicToDrawKey(value: string): SessionIntention | "life_death" {
+/** Key for card draw bias (legacy Russian labels + life_death + custom). */
+export function topicToDrawKey(value: string): SessionIntention | "life_death" | "custom" {
   if (isSessionTopicId(value)) return TOPIC_TO_LEGACY[value];
-  if (value === "life_death") return "life_death";
+  if (value === "life_death" || value === "custom") return value;
   return value as SessionIntention;
 }
 
+/** Draw bias key for intention spread — not for `custom` (use uniform draw). */
+export function topicToDrawIntention(value: string): DrawIntention {
+  const key = topicToDrawKey(value);
+  if (key === "custom") {
+    throw new Error(`topicToDrawIntention: "${value}" uses uniform draw`);
+  }
+  return key;
+}
+
 export function isValidSessionIntention(value: string): boolean {
-  if (isSessionTopicId(value) || value === "life_death") return true;
+  if (isSessionTopicId(value) || value === "life_death" || value === "custom") return true;
   const legacy = [
     "Любовь",
     "Деньги",

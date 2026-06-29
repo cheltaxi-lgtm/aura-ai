@@ -29,6 +29,7 @@ import {
   persistSessionIntention,
   persistIntentionSpreadState,
   readIntentionSpreadForMaster,
+  readSessionCustomQuestion,
   type SessionIntention,
   type SessionTopicId,
 } from "@/lib/intention";
@@ -1469,6 +1470,10 @@ export function useChatActions(options: UseChatActionsOptions) {
               : undefined,
             tarotCards: tarotCardsForChat,
             intention: sessionIntention ?? undefined,
+            customQuestion:
+              sessionIntention === "custom"
+                ? readSessionCustomQuestion(selectedCharacter) ?? undefined
+                : undefined,
             spreadType: periodScope ? "new" : sessionSpreadMetaRef.current?.spreadType,
             cards:
               periodSpreadCards?.map((c) => c.name) ??

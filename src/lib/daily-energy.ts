@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { createHistoryEntry } from "@/lib/users";
 import { type ChatMessage } from "@/lib/llm";
 import { stripStageDirections } from "@/lib/chat-reply-sanitize";
 import {
@@ -194,10 +195,23 @@ export async function getExistingDailyReading(
       [userId, today, reading]
     );
   }
+
+  const cards = parseStoredCards(rows[0].cards);
+  const system = (rows[0].deck_system as DeckSystem) ?? null;
+
+  void syncDailyReadingHistory({
+    userId,
+    characterKey: charKey,
+    readingDate: today,
+    reading,
+    cards,
+    system: system ?? resolveMasterDeckSystem(charKey),
+  }).catch((err) => console.warn("Daily reading history sync failed:", err));
+
   return {
     text: reading,
-    cards: parseStoredCards(rows[0].cards),
-    system: (rows[0].deck_system as DeckSystem) ?? null,
+    cards,
+    system,
     cached: true,
   };
 }
@@ -252,5 +266,52 @@ export async function getOrCreateDailyReading(params: {
     [params.userId, charKey, reading, JSON.stringify(cards), system, today]
   );
 
+  await syncDailyReadingHistory({
+    userId: params.userId,
+    characterKey: charKey,
+    readingDate: today,
+    reading,
+    cards,
+    system,
+  });
+
   return { text: reading, cards, system, cached: false };
+}
+
+async function syncDailyReadingHistory(params: {
+  userId: string;
+  characterKey: CharacterKey;
+  readingDate: string;
+  reading: string;
+  cards: DailyReadingCard[];
+  system: DeckSystem;
+}): Promise<void> {
+  const existing = await query<{ id: string }>(
+    `SELECT id FROM history
+     WHERE user_id = $1
+       AND character_name = 'daily_energy'
+       AND context_data->>'readingDate' = $2
+     LIMIT 1`,
+    [params.userId, params.readingDate]
+  );
+  if (existing.rows[0]) return;
+
+  await createHistoryEntry({
+    userId: params.userId,
+    characterName: "daily_energy",
+    isPaid: false,
+    contextData: {
+      type: "daily_reading",
+      reading: params.reading,
+      readingDate: params.readingDate,
+      characterKey: params.characterKey,
+      deckSystem: params.system,
+      tarotCards: params.cards.map((c) => ({
+        name: c.name,
+        meaning: c.meaning,
+        position: c.position,
+        reversed: c.reversed,
+      })),
+    },
+  });
 }

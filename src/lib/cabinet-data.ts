@@ -103,6 +103,15 @@ export interface CabinetPhotoSpreadRow {
   };
 }
 
+export interface CabinetDailyReadingRow {
+  id: string;
+  characterKey: string;
+  readingDate: string;
+  readingText: string;
+  deckSystem: string | null;
+  cards: { name: string; meaning?: string; position?: string; reversed?: boolean }[];
+}
+
 export async function getCabinetPhotoSpreads(
   profileUserId: string
 ): Promise<CabinetPhotoSpreadRow[]> {
@@ -127,6 +136,59 @@ export async function getCabinetPhotoSpreads(
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     contextData: (row.context_data ?? {}) as CabinetPhotoSpreadRow["contextData"],
   }));
+}
+
+export async function getCabinetDailyReadings(
+  profileUserId: string,
+  limit = 30
+): Promise<CabinetDailyReadingRow[]> {
+  const { rows } = await query<{
+    id: string;
+    character_key: string;
+    reading_text: string;
+    cards: unknown;
+    deck_system: string | null;
+    reading_date: Date | string;
+  }>(
+    `SELECT id, character_key, reading_text, cards, deck_system, reading_date
+     FROM daily_readings
+     WHERE user_id = $1
+     ORDER BY reading_date DESC
+     LIMIT $2`,
+    [profileUserId, limit]
+  );
+
+  return rows.map((row) => {
+    const rawCards = Array.isArray(row.cards) ? row.cards : [];
+    const cards = rawCards
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const obj = item as Record<string, unknown>;
+        const name = typeof obj.name === "string" ? obj.name : "";
+        if (!name) return null;
+        return {
+          name,
+          meaning: typeof obj.meaning === "string" ? obj.meaning : undefined,
+          position: typeof obj.position === "string" ? obj.position : undefined,
+          reversed: Boolean(obj.reversed),
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+
+    const readingDate =
+      row.reading_date instanceof Date
+        ? row.reading_date.toISOString().slice(0, 10)
+        : String(row.reading_date).slice(0, 10);
+
+    return {
+      id: row.id,
+      characterKey: row.character_key,
+      readingDate,
+      readingText: row.reading_text,
+      deckSystem: row.deck_system,
+      cards,
+    };
+  });
 }
 
 export async function deleteCabinetPhotoSpread(
