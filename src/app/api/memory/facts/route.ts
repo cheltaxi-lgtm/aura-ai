@@ -74,6 +74,16 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
+  if (body.pdConsent !== true) {
+    return NextResponse.json(
+      {
+        error: "consent_required",
+        message: "Требуется согласие на обработку персональных данных.",
+      },
+      { status: 422 }
+    );
+  }
+
   const factText = sanitizeTextField(body.fact, 400);
   if (!factText || factText.length < 6) {
     return NextResponse.json(

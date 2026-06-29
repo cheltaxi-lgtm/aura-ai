@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Brain, Loader2, Plus, Trash2 } from "lucide-react";
+import LegalDocLink from "@/components/legal/LegalDocLink";
 import { USER_FACT_CATEGORIES } from "@/lib/memory/user-fact-input";
 
 type MemoryFact = {
@@ -32,6 +33,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   const [category, setCategory] = useState<string>("other");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [pdConsent, setPdConsent] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +66,10 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
       setFormError("Напишите факт подробнее — от 6 символов.");
       return;
     }
+    if (!pdConsent) {
+      setFormError("Подтвердите согласие на обработку персональных данных.");
+      return;
+    }
 
     setSaving(true);
     setFormError(null);
@@ -72,7 +78,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fact: text, category }),
+        body: JSON.stringify({ fact: text, category, pdConsent: true }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         fact?: MemoryFact;
@@ -161,9 +167,38 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               ))}
             </select>
           </label>
+          <div className="w-full rounded-lg border border-white/8 bg-black/25 px-3 py-2.5 text-[11px] leading-relaxed text-white/45">
+            Добавляя сведения о себе, вы даёте оператору платформы Zovus согласие на обработку
+            указанных персональных данных (сбор, запись, хранение, использование) в целях
+            персонализации консультаций, в том числе с применением автоматизированных средств (ИИ),
+            на основании{" "}
+            <LegalDocLink
+              href="/privacy"
+              external
+              className="text-aura-champagne/85 underline underline-offset-2 hover:text-aura-champagne"
+            >
+              Политики обработки персональных данных
+            </LegalDocLink>
+            . Согласие действует до отзыва — удалением фактов, очисткой памяти или аккаунта (152-ФЗ).
+          </div>
+          <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-white/55">
+            <input
+              type="checkbox"
+              checked={pdConsent}
+              onChange={(e) => {
+                setPdConsent(e.target.checked);
+                if (e.target.checked) setFormError(null);
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
+            />
+            <span>
+              Я даю согласие на обработку персональных данных, указанных в поле «Новый факт», в
+              описанных целях.
+            </span>
+          </label>
           <button
             type="button"
-            disabled={saving || draft.trim().length < 6}
+            disabled={saving || draft.trim().length < 6 || !pdConsent}
             onClick={() => void handleAdd()}
             className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600/80 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-40"
           >

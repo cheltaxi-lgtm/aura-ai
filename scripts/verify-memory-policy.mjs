@@ -102,18 +102,28 @@ assert(
   factsRoute.includes("export async function POST") &&
     factsRoute.includes("validateUserSubmittedFact")
 );
+assert(
+  "memory facts POST requires PD consent",
+  factsRoute.includes("pdConsent") && factsRoute.includes("consent_required")
+);
+
+const cabinetMemory = read("src/components/cabinet/CabinetMemoryFacts.tsx");
+assert(
+  "cabinet memory shows PD consent before save",
+  cabinetMemory.includes("pdConsent") &&
+    cabinetMemory.includes("152-ФЗ") &&
+    cabinetMemory.includes("/privacy")
+);
+assert(
+  "cabinet UI can add memory facts",
+  cabinetMemory.includes('method: "POST"') && cabinetMemory.includes("handleAdd")
+);
 
 const userFactInput = read("src/lib/memory/user-fact-input.ts");
 assert(
   "user fact input is client-safe",
   userFactInput.includes("validateUserSubmittedFact") &&
     !userFactInput.includes("@/lib/llm")
-);
-
-const cabinetMemory = read("src/components/cabinet/CabinetMemoryFacts.tsx");
-assert(
-  "cabinet UI can add memory facts",
-  cabinetMemory.includes('method: "POST"') && cabinetMemory.includes("handleAdd")
 );
 
 const deployYml = read(".github/workflows/deploy.yml");
