@@ -3145,9 +3145,12 @@
 }
 
 /* ── App top header (portaled above modals) ── */
+:root {
+  --app-header-h: 3.25rem;
+}
+
 .app-top-header {
   z-index: 5000;
-  --app-header-h: 3.25rem;
   pointer-events: auto;
 }
 
