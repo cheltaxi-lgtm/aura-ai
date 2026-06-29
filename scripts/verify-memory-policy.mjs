@@ -47,6 +47,11 @@ assert(
   "buildClientBlock gates mainQuestion by relevance",
   userMemory.includes("isTextRelevantToQuery(query, profile.mainQuestion)")
 );
+assert(
+  "buildCurrentSessionAnchorBlock rejects empty query",
+  userMemory.includes("if (!topicQuery) return \"\";") &&
+    userMemory.includes("buildRelevantSessionAnchor")
+);
 
 const orchestrator = read("src/lib/services/chat-orchestrator.ts");
 assert(
@@ -62,20 +67,23 @@ assert(
 
 const adminMemory = read("src/app/api/admin/users/[userId]/memory/route.ts");
 assert(
-  "admin memory lists session_memories",
-  adminMemory.includes("listSessionMemoriesForUser")
+  "admin memory API has no GET (no content exposure)",
+  !adminMemory.includes("export async function GET") &&
+    !adminMemory.includes("listFacts") &&
+    !adminMemory.includes("listSessionMemoriesForUser")
 );
-
 assert(
-  "buildCurrentSessionAnchorBlock rejects empty query",
-  userMemory.includes("if (!topicQuery) return \"\";") &&
-    userMemory.includes("buildRelevantSessionAnchor")
+  "admin memory API can purge without reading content",
+  adminMemory.includes("purgeAllUserMemory") && adminMemory.includes("export async function DELETE")
 );
 
 const adminPage = read("src/app/admin/users/page.tsx");
 assert(
-  "admin UI shows sessionMemories",
-  adminPage.includes("sessionMemories") && adminPage.includes("deleteSessionMemory")
+  "admin UI has purge-only memory control",
+  adminPage.includes("Очистить память") &&
+    adminPage.includes("purgeUserMemory") &&
+    !adminPage.includes("openMemory") &&
+    !adminPage.includes("memoryModal")
 );
 
 const cabinetPage = read("src/app/cabinet/page.tsx");

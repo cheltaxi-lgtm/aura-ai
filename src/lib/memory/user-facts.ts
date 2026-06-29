@@ -396,4 +396,17 @@ export async function purgeFacts(userId: string): Promise<number> {
   return res.rowCount ?? 0;
 }
 
+/** Wipe AI memory only (facts + session summaries). Does not touch chats or cabinet history. */
+export async function purgeAllUserMemory(userId: string): Promise<{
+  factsRemoved: number;
+  sessionMemoriesRemoved: number;
+}> {
+  const sessionRes = await query(`DELETE FROM session_memories WHERE user_id = $1`, [userId]);
+  const factsRes = await query(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
+  return {
+    sessionMemoriesRemoved: sessionRes.rowCount ?? 0,
+    factsRemoved: factsRes.rowCount ?? 0,
+  };
+}
+
 export { EMBED_DIM };
