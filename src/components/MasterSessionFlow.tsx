@@ -38,6 +38,8 @@ interface MasterSessionFlowProps {
   preselectedMaster?: string;
   dailyCards?: string[];
   masters?: ShowcaseMaster[];
+  /** Только новый расклад по теме — без «карт дня». */
+  newSpreadOnly?: boolean;
 }
 
 type Step = "topic" | "master" | "cards" | "flip";
@@ -63,6 +65,7 @@ export default function MasterSessionFlow({
   preselectedMaster,
   dailyCards = [],
   masters = [],
+  newSpreadOnly = false,
 }: MasterSessionFlowProps) {
   const [step, setStep] = useState<Step>("topic");
   const [topic, setTopic] = useState<SessionTopicId | null>(null);
@@ -91,7 +94,7 @@ export default function MasterSessionFlow({
     }
   }, [master, topic]);
 
-  const hasDailyCards = dailyCards.length >= 3;
+  const hasDailyCards = dailyCards.length >= 3 && !newSpreadOnly;
   const showCardsChoice = hasDailyCards;
   const allFlipped = flipped.every(Boolean);
   const currentStepIdx = stepIndex(step);
@@ -104,16 +107,22 @@ export default function MasterSessionFlow({
     setDrawError(null);
     setDrawLoading(false);
 
-    if (numerologPreselected) {
+    if (numerologPreselected || (newSpreadOnly && isNumerologMaster(preselectedMaster))) {
       // Skip topic/master — open numerolog spread draw immediately.
       setCardType("new");
       setStep("flip");
       return;
     }
 
+    if (newSpreadOnly) {
+      setCardType("new");
+      setStep("topic");
+      return;
+    }
+
     setCardType(null);
     setStep(hasDailyCards ? "master" : "topic");
-  }, [hasDailyCards, preselectedMaster, numerologPreselected]);
+  }, [hasDailyCards, preselectedMaster, numerologPreselected, newSpreadOnly]);
 
   useEffect(() => {
     if (isOpen) {

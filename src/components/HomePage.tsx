@@ -2132,11 +2132,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               setEnergyFlowMasterId(null);
             }}
             preselectedMaster={energyFlowMasterId ?? selectedCharacter}
-            dailyCards={
-              selectedCharacter === tripletOwnerMasterId && displayTarotCards.length >= 3
-                ? displayTarotCards.map((c) => c.name)
-                : []
-            }
+            newSpreadOnly
             masters={masters}
             onStartRitual={() => {
               if ((RITUAL_MASTERS as readonly string[]).includes(selectedCharacter)) {
