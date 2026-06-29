@@ -98,7 +98,8 @@ const DEFAULTS = {
     maintenanceMode: false,
     registrationEnabled: true,
     expertRegistrationEnabled: true,
-    recaptchaEnabled: Boolean(process.env.RECAPTCHA_SECRET_KEY?.trim()),
+    /** Master switch — only via admin; env keys alone must not auto-enable. */
+    recaptchaEnabled: false,
     recaptchaScopes: { ...DEFAULT_RECAPTCHA_SCOPES },
     freeQuestionLimit: 2,
     demoPayments: true,

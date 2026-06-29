@@ -9,6 +9,16 @@ import {
 const RECAPTCHA_VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify";
 const MIN_SCORE = 0.3;
 
+const IP_V4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const IP_V6 = /^[0-9a-f:]+$/i;
+
+function normalizeRemoteIp(raw?: string | null): string | undefined {
+  const ip = raw?.trim();
+  if (!ip || ip === "unknown") return undefined;
+  if (IP_V4.test(ip) || IP_V6.test(ip)) return ip;
+  return undefined;
+}
+
 export interface RecaptchaResult {
   ok: boolean;
   error?: string;
@@ -114,8 +124,9 @@ export async function verifyRecaptcha(
     secret,
     response: token,
   });
-  if (remoteIp) {
-    body.set("remoteip", remoteIp);
+  const ip = normalizeRemoteIp(remoteIp);
+  if (ip) {
+    body.set("remoteip", ip);
   }
 
   const res = await fetch(RECAPTCHA_VERIFY_URL, {
