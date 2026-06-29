@@ -125,12 +125,10 @@ export default function MasterSessionFlow({
     setCardType("new");
     if (isNumerologMaster(master)) {
       setStep("flip");
-    } else if (topic) {
-      setStep("flip");
     } else {
-      setStep("topic");
+      setStep("scheme");
     }
-  }, [master, topic]);
+  }, [master]);
 
   const hasDailyCards = dailyCards.length >= 3 && !newSpreadOnly;
   const showCardsChoice = hasDailyCards;
@@ -158,7 +156,7 @@ export default function MasterSessionFlow({
 
     if (newSpreadOnly) {
       setCardType("new");
-      setStep(numerologPreselected ? "flip" : "scheme");
+      setStep(numerologPreselected ? "flip" : "topic");
       return;
     }
 
@@ -195,8 +193,10 @@ export default function MasterSessionFlow({
     } else if (step === "cards") setStep("master");
     else if (step === "topic" && cardType === "new") setStep("scheme");
     else if (step === "scheme") {
-      if (showCardsChoice && cardType === "new") setStep("cards");
-      else setStep("master");
+      if (topic) setStep("topic");
+      else if (showCardsChoice && cardType === "new") setStep("cards");
+      else if (master) setStep("master");
+      else setStep("topic");
     }
     else if (step === "flip") {
       if (showCardsChoice && cardType === "new") {
@@ -309,7 +309,7 @@ export default function MasterSessionFlow({
         onClick={() => {
           setTopic("custom");
           setCardType("new");
-          setStep("flip");
+          setStep("scheme");
         }}
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
       >
@@ -322,8 +322,12 @@ export default function MasterSessionFlow({
       <button
         type="button"
         onClick={() => {
-          if (cardType === "new") goToNewSpreadDraw();
-          else setStep("master");
+          setCardType("new");
+          if (numerologFlow) {
+            setStep("flip");
+          } else {
+            setStep("scheme");
+          }
         }}
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
       >
@@ -382,11 +386,21 @@ export default function MasterSessionFlow({
     ) : step === "scheme" ? (
       <button
         type="button"
-        onClick={() => setStep("topic")}
+        onClick={() => {
+          if (!topic) {
+            setStep("topic");
+          } else if (!master) {
+            setStep("master");
+          } else {
+            setStep("flip");
+          }
+        }}
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
       >
-        <span>Выбрать тему</span>
-        {runeConfig.enabled ? (
+        <span>
+          {!topic ? "Выбрать тему" : !master ? "Выбрать мастера" : "Вытянуть карты"}
+        </span>
+        {runeConfig.enabled && master && topic ? (
           <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
         ) : null}
       </button>
@@ -726,7 +740,7 @@ export default function MasterSessionFlow({
                       Новый расклад
                     </p>
                     <p className="mt-1 text-xs text-white/60">
-                      Три свежие карты под вашу тему
+                      Свежие карты под вашу тему — выберите схему на следующем шаге
                       {runeConfig.enabled ? (
                         <span className="ml-1">
                           · <RuneCost cost={spreadCost} enabled className="inline" />
@@ -761,6 +775,7 @@ export default function MasterSessionFlow({
                       setNewCards([]);
                     }}
                     masterId={master}
+                    topic={topic}
                   />
                 </div>
               </motion.div>
