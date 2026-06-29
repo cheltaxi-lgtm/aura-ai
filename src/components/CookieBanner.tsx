@@ -21,19 +21,17 @@ export default function CookieBanner() {
   }, []);
 
   useEffect(() => {
-    document.body.classList.toggle(BODY_CLASS, visible);
-    return () => {
+    if (!visible) {
       document.body.classList.remove(BODY_CLASS);
       document.documentElement.style.removeProperty("--cookie-banner-offset");
-    };
-  }, [visible]);
+      return;
+    }
 
-  useEffect(() => {
-    if (!visible) return;
     const banner = bannerRef.current;
-    if (!banner) return;
+    if (banner) syncBannerOffset(banner);
+    document.body.classList.add(BODY_CLASS);
 
-    syncBannerOffset(banner);
+    if (!banner) return;
 
     const onResize = () => syncBannerOffset(banner);
     const observer = new ResizeObserver(onResize);
@@ -43,6 +41,8 @@ export default function CookieBanner() {
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", onResize);
+      document.body.classList.remove(BODY_CLASS);
+      document.documentElement.style.removeProperty("--cookie-banner-offset");
     };
   }, [visible]);
 

@@ -1987,10 +1987,17 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   const inActiveChat = Boolean(selectedCharacter);
 
+  useEffect(() => {
+    document.body.classList.toggle("chat-session-active", inActiveChat);
+    return () => document.body.classList.remove("chat-session-active");
+  }, [inActiveChat]);
+
   return (
     <div
-      className={`relative overflow-hidden pt-[var(--app-header-h,3.25rem)] ${
-        inActiveChat ? "h-[100dvh]" : "min-h-screen"
+      className={`overflow-hidden pt-[var(--app-header-h,3.25rem)] ${
+        inActiveChat
+          ? "fixed inset-0 z-10 flex flex-col"
+          : "relative min-h-screen"
       }`}
     >
       {headerMounted ? createPortal(topHeader, document.body) : null}
@@ -1998,7 +2005,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       <main
         className={
           inActiveChat
-            ? "relative z-10 mx-auto flex h-[calc(100dvh-var(--app-header-h,3.25rem))] max-w-none flex-col overflow-hidden px-0 py-0"
+            ? "relative z-10 mx-auto flex min-h-0 flex-1 max-w-none flex-col overflow-hidden px-0 py-0"
             : "relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12"
         }
       >
