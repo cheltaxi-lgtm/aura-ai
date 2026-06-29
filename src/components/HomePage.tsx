@@ -1994,9 +1994,9 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
 
   return (
     <div
-      className={`overflow-hidden pt-[var(--app-header-h,3.25rem)] ${
+      className={`pt-[var(--app-header-h,3.25rem)] ${
         inActiveChat
-          ? "fixed inset-0 z-10 flex flex-col"
+          ? "relative z-10 flex min-h-[calc(100dvh-var(--app-header-h,3.25rem))] flex-1 flex-col"
           : "relative min-h-screen"
       }`}
     >
@@ -2005,7 +2005,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
       <main
         className={
           inActiveChat
-            ? "relative z-10 mx-auto flex min-h-0 flex-1 max-w-none flex-col overflow-hidden px-0 py-0"
+            ? "relative z-10 mx-auto flex min-h-0 flex-1 max-w-none flex-col px-0 py-0"
             : "relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12"
         }
       >

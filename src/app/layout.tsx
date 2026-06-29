@@ -42,7 +42,7 @@ export default function RootLayout({
         </svg>
         <MysticBackground />
         <Providers>
-          <div className="relative z-10 flex flex-1 flex-col">{children}</div>
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col">{children}</div>
           <SiteFooter />
         </Providers>
         <CookieBanner />

@@ -462,7 +462,7 @@ export default function ChatWindow({
 
   return (
     <motion.div
-      className="chat-stage mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col"
+      className="chat-stage mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col"
       initial={false}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -544,7 +544,7 @@ export default function ChatWindow({
 
       <div
         ref={scrollContainerRef}
-        className="chat-stage__body glass-panel chat-scroll flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:mb-4 sm:min-h-[320px] sm:max-h-[min(640px,calc(100dvh-220px))]"
+        className="chat-stage__body glass-panel chat-scroll flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4 sm:mb-4"
         role="log"
         aria-live="polite"
         aria-relevant="additions"

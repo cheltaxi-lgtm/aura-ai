@@ -1838,32 +1838,28 @@
   scrollbar-color: rgba(168, 85, 247, 0.45) transparent;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
   min-height: 0;
 }
 
 .chat-stage {
   display: flex;
+  flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
 }
 
+.chat-stage .chat-stage__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.chat-stage .chat-stage__input {
+  flex-shrink: 0;
+}
+
 @media (max-width: 639px) {
-  .chat-stage {
-    height: 100%;
-    max-height: 100%;
-    min-height: 0;
-  }
-
-  .chat-stage .chat-stage__body {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  .chat-stage .chat-stage__input {
-    flex-shrink: 0;
-  }
-
   .chat-stage .glass-panel {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -3185,6 +3181,11 @@ body.flow-overlay-open .cookie-banner {
 
 body.chat-session-active .site-legal-footer {
   display: none;
+}
+
+body.chat-session-active {
+  min-height: 100dvh;
+  overflow-y: auto;
 }
 
 /* ── Spread ritual loader ── */
