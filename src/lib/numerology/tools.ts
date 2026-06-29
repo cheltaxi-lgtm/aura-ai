@@ -181,7 +181,7 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
   },
   {
     id: "object_number",
-    emoji: "📱",
+    emoji: "🔢",
     label: "Число объекта",
     topic: "object_number",
     group: "form",
@@ -192,7 +192,7 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     description: "Телефон, авто, адрес или бренд",
     buildMessage: (params) => {
       const value = params?.objectValue?.trim() ?? "";
-      return `Число телефона ${value}`;
+      return `Рассчитай число объекта «${value}»`;
     },
   },
 ];

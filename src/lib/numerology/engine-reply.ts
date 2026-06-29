@@ -162,7 +162,7 @@ function inferThreadTopic(
   if (/карм/i.test(all)) return "karma";
   if (/совместимост/i.test(all)) return "compatibility";
   if (/халдей/i.test(all)) return "chaldean";
-  if (/телефон|номер\s+авто|числ(о|а)\s+телефон/i.test(all)) return "object_number";
+  if (/числ(о|а)\s+(объект|телефон|номер|авто|машин|адрес)|телефон|номер\s+авто/i.test(all)) return "object_number";
   if (/удачн(ый|ые)\s+дат|благоприятн/i.test(all)) return "favorable_dates";
   return null;
 }

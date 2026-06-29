@@ -110,12 +110,12 @@ export default function NumerologCalculationPicker({
         <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
           <p className="mb-3 text-xs uppercase tracking-widest text-amber-200/70">Объект расчёта</p>
           <label className="block text-xs text-white/60">
-            Телефон, авто, адрес или бренд
+            Телефон, номер авто, адрес или название — Эвелина определит тип сама
             <input
               type="text"
               value={params.objectValue ?? ""}
               onChange={(e) => onParamsChange({ ...params, objectValue: e.target.value })}
-              placeholder="+7 999 123-45-67"
+              placeholder="+7 999 123-45-67, А123ВС, Кирова 18А…"
               className={inputClass}
             />
           </label>

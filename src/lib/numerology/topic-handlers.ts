@@ -80,7 +80,7 @@ const TOPIC_PATTERNS: Record<NumerologyTopic, RegExp> = {
   favorable_dates:
     /удачн(ый|ого|ую|ые)\s+день|благоприятн(ая|ые|ую|ой)\s+дат|когда\s+лучше|когда\s+(подпис|начин|запуск|открыв|выход|свадьб|переезд)/i,
   object_number:
-    /числ(о|а)\s+(телефон|номер|авто|машин|адрес|квартир|дом|компан|бренд|назван)/i,
+    /числ(о|а)\s+(объект|телефон|номер|авто|машин|адрес|квартир|дом|компан|бренд|назван)/i,
   compatibility:
     /совместимост|подход(им|ят)\s+ли|мы\s+с\s+(ним|ней|тобой)|партн[ёе]р|отношен(ия|ии)\s+с|дата\s+рождения\s+(партн|его|её|мужа|жены)/i,
   chaldean:
@@ -114,7 +114,7 @@ export function detectNumerologyTopics(message: string): NumerologyTopic[] {
     if (/\+?\d[\d\s\-()]{8,}/.test(message)) found.push("object_number");
     else if (
       /[а-яёa-z]{2,}/i.test(message) &&
-      /(телефон|номер|авто|машин|адрес|гос\.?\s*номер|компан|бренд|назван)/i.test(text)
+      /(объект|телефон|номер|авто|машин|адрес|гос\.?\s*номер|компан|бренд|назван)/i.test(text)
     ) {
       found.push("object_number");
     }
@@ -143,14 +143,37 @@ function extractDatesFromMessage(message: string): string[] {
   return out;
 }
 
+/** Auto-detect the kind of object from its raw value (phone / car plate / address / brand). */
+function detectObjectLabel(value: string): string {
+  const v = value.trim();
+  const digits = v.replace(/\D/g, "");
+  if (/^\+?[\d\s\-()]{8,}$/.test(v) && digits.length >= 7) return "телефона";
+  if (/[A-ZА-Я]\d{3}[A-ZА-Я]{2}\d{2,3}|\d{2,3}[A-ZА-Я]{2}\d{2,3}/i.test(v)) return "номера авто";
+  if (
+    /(улиц|просп|переул|бульвар|шоссе|пер\.|ул\.|\bдом\b|\bкв\.?\b|д\.\s*\d|\bкорп)/i.test(v) ||
+    /[а-яёa-z].*\d+\s*[а-яёa-z]?$/i.test(v)
+  ) {
+    return "адреса";
+  }
+  if (/^[\d\s\-()]+$/.test(v)) return "номера";
+  return "объекта";
+}
+
 function extractObjectString(message: string): { value: string; label: string } | null {
+  // Session tool sends the value in guillemets/quotes — always honour it verbatim.
+  const quoted = message.match(/[«"„]([^»"“]{1,80})[»"“]/);
+  if (quoted?.[1]?.trim()) {
+    const value = quoted[1].trim();
+    return { value, label: detectObjectLabel(value) };
+  }
+
   const phone = message.match(/\+?\d[\d\s\-()]{8,}/);
   if (phone) {
     return { value: phone[0].replace(/\s/g, ""), label: "телефона" };
   }
   if (/авто|машин|гос\.?\s*номер/i.test(message)) {
     const plate = message.match(/[A-ZА-Я]\d{3}[A-ZА-Я]{2}\d{2,3}|\d{2,3}[A-ZА-Я]{2}\d{2,3}/i);
-    if (plate) return { value: plate[0], label: "авто/номера" };
+    if (plate) return { value: plate[0], label: "номера авто" };
   }
   if (/адрес|улиц|дом\s+\d/i.test(message)) {
     const addr = message.match(/(?:адрес|живу|прописан)[:\s—-]+([^\n.!?]{5,80})/i);
@@ -159,6 +182,12 @@ function extractObjectString(message: string): { value: string; label: string } 
   if (/компан|бренд|назван/i.test(message)) {
     const brand = message.match(/(?:компан(?:ия|ии)|бренд|назван(?:ие|ия))[:\s«""—-]+([^»\n.!?]{2,60})/i);
     if (brand?.[1]) return { value: brand[1].trim(), label: "названия" };
+  }
+  // Generic fallback: take the substring after "число ... " (e.g. "Число объекта Кирова 18А").
+  const after = message.match(/числ(?:о|а)\s+(?:объекта|объект)?\s*[:\-—]?\s*([^\n.!?]{2,80})/i);
+  if (after?.[1]?.trim()) {
+    const value = after[1].trim();
+    return { value, label: detectObjectLabel(value) };
   }
   return null;
 }
@@ -434,7 +463,7 @@ function buildTopicBlock(
       const obj = extractObjectString(message);
       if (!obj) {
         return {
-          text: "ЧИСЛО ОБЪЕКТА: попроси телефон, номер авто, адрес или название — посчитаешь число.",
+          text: "ЧИСЛО ОБЪЕКТА: объект не назван — попроси любой объект (телефон, номер авто, адрес или название), тип определишь сам и посчитаешь число.",
         };
       }
       return { text: buildObjectNumberPromptBlock(obj.value, obj.label) };
