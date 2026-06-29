@@ -35,5 +35,8 @@ echo ""
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
 $DeployCmd | ssh -o StrictHostKeyChecking=no $VmHost "tr -d '\r' | bash -s"
+if ($LASTEXITCODE -ne 0) {
+  throw "Deploy failed on VM (exit $LASTEXITCODE)"
+}
 
 Write-Host ">>> Done: https://zovus.ru"

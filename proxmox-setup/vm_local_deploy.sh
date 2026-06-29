@@ -99,6 +99,12 @@ if [ -n "$YUKASSA_SHOP_BACKUP" ] && [ -n "$YUKASSA_SECRET_BACKUP" ] \
 fi
 
 cd /opt/aura-ai
+
+# tar extract does not remove deleted files — drop retired sources so build cannot pick up stale modules.
+rm -f \
+  src/components/NumerologToolHub.tsx \
+  src/components/numerolog/NumerologToolResultModal.tsx
+
 npm ci --legacy-peer-deps
 set -a
 # NEXT_PUBLIC_* must be present during `next build` (inlined into client bundle).
