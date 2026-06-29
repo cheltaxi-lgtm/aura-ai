@@ -115,6 +115,10 @@ assert(
     cabinetMemory.includes("/privacy")
 );
 assert(
+  "cabinet memory add form opens in modal",
+  cabinetMemory.includes("addModalOpen") && cabinetMemory.includes("Добавить факт")
+);
+assert(
   "cabinet UI can add memory facts",
   cabinetMemory.includes('method: "POST"') && cabinetMemory.includes("handleAdd")
 );
