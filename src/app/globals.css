@@ -3863,17 +3863,17 @@ body.flow-overlay-open .cookie-banner {
 }
 
 body.cookie-banner-visible .site-legal-footer {
-  z-index: 6100;
+  z-index: 10;
 }
 
-.site-legal-footer__disclaimer {
-  border-bottom: 1px solid rgba(245, 158, 11, 0.15);
-  background: rgba(245, 158, 11, 0.05);
-  padding: 0.625rem 1rem;
+.site-legal-footer__tagline {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0.875rem 1rem 0;
   text-align: center;
   font-size: 11px;
-  line-height: 1.6;
-  color: rgba(254, 243, 199, 0.75);
+  line-height: 1.55;
+  color: rgba(237, 230, 218, 0.42);
 }
 
 .site-legal-footer__links {
