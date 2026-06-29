@@ -18,7 +18,7 @@ import {
   filterLlmMessagesByTopic,
   isTextRelevantToQuery,
 } from "../src/lib/memory/memory-relevance.ts";
-import { validateUserSubmittedFact } from "../src/lib/memory/extract-facts.ts";
+import { validateUserSubmittedFact } from "../src/lib/memory/user-fact-input.ts";
 
 let failed = 0;
 

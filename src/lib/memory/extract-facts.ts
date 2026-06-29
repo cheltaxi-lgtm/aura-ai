@@ -5,7 +5,18 @@
  * talk are discarded. Output is normalized, quality-filtered Russian facts.
  */
 import { completeChat } from "@/lib/llm";
+import {
+  boostFactSalience,
+  isQualityMemoryFact,
+  isValidFactCategory,
+} from "@/lib/memory/user-fact-input";
 import type { FactInput } from "@/lib/memory/user-facts";
+
+export {
+  USER_FACT_CATEGORIES,
+  type UserFactCategory,
+  validateUserSubmittedFact,
+} from "@/lib/memory/user-fact-input";
 
 function buildExtractSystem(today: string): string {
   return `Ты — модуль долговременной памяти таро-сервиса. Из реплики клиента извлекай ТОЛЬКО устойчивые факты о его реальной жизни, которые пригодятся мастеру в будущих сеансах.
@@ -49,41 +60,6 @@ interface RawFact {
   salience?: unknown;
 }
 
-const VALID_CATEGORIES = new Set([
-  "family",
-  "work",
-  "health",
-  "money",
-  "relationship",
-  "event",
-  "goal",
-  "other",
-]);
-
-const CYRILLIC_RE = /[а-яё]/i;
-
-/** Heavy life events — always treated as high salience regardless of model. */
-const CRITICAL_RE =
-  /(развод|расстал|расхо|измен[аыу]|смерт|умер|похорон|онколог|\bрак\b|опухол|инсульт|инфаркт|операци|беремен|выкидыш|увол|сокращ|банкрот|долг|суд\b|иск\b|насили|депресс|суицид|зависим)/i;
-
-/** Apply a salience floor for facts that mention heavy life events. */
-function boostSalience(fact: string, salience: number): number {
-  if (CRITICAL_RE.test(fact)) return Math.max(salience, 5);
-  return salience;
-}
-
-/** Facts that are clearly about the reading/master, not the client. */
-const META_FACT_RE =
-  /(карт[аыуои]?|таро|рун[аыуои]?|раскла|гадани|предсказ|астролог|гороскоп|зодиак|энерги|мастер|ассистент|assistant|tarot|card)/i;
-
-function isQualityFact(fact: string): boolean {
-  const f = fact.trim();
-  if (f.length < 6 || f.length > 600) return false;
-  if (!CYRILLIC_RE.test(f)) return false; // must be Russian, not English meta
-  if (META_FACT_RE.test(f)) return false; // reject reading/master content
-  return true;
-}
-
 function parseFacts(raw: string): FactInput[] {
   let text = raw.trim();
   const arrMatch = text.match(/\[[\s\S]*\]/);
@@ -117,10 +93,10 @@ function parseFacts(raw: string): FactInput[] {
   const out: FactInput[] = [];
   for (const item of items) {
     const fact = typeof item?.fact === "string" ? item.fact.trim() : "";
-    if (!isQualityFact(fact)) continue;
+    if (!isQualityMemoryFact(fact)) continue;
 
     const category =
-      typeof item.category === "string" && VALID_CATEGORIES.has(item.category)
+      typeof item.category === "string" && isValidFactCategory(item.category)
         ? item.category
         : "other";
 
@@ -136,7 +112,7 @@ function parseFacts(raw: string): FactInput[] {
       fact: fact.slice(0, 600),
       category,
       eventDate,
-      salience: boostSalience(fact, salienceNum),
+      salience: boostFactSalience(fact, salienceNum),
     });
   }
   return out.slice(0, 8);
@@ -146,10 +122,6 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/**
- * Extract facts from a client message. The assistant reply is provided only as
- * disambiguation context; facts must describe what the client revealed.
- */
 /** Short acknowledgements / greetings that never carry durable facts. */
 const FACTLESS_RE =
   /^(спасибо[!.\s]*|благодарю[!.\s]*|привет[!.\s]*|здравствуй(те)?[!.\s]*|да[!.\s]*|нет[!.\s]*|ок(ей)?[!.\s]*|хорошо[!.\s]*|понятно[!.\s]*|ясно[!.\s]*|угу[!.\s]*|ага[!.\s]*|спс[!.\s]*)+$/i;
@@ -161,7 +133,6 @@ export async function extractFactsFromTurn(
 ): Promise<FactInput[]> {
   const user = userMessage?.trim();
   if (!user || user.length < 8) return [];
-  // Skip the LLM call entirely for greetings/acknowledgements.
   if (user.length < 40 && FACTLESS_RE.test(user)) return [];
 
   const knownBlock = knownFacts.length
@@ -193,54 +164,4 @@ export async function extractFactsFromTurn(
   });
   if (!raw) return [];
   return parseFacts(raw);
-}
-
-export const USER_FACT_CATEGORIES = [
-  "family",
-  "work",
-  "health",
-  "money",
-  "relationship",
-  "event",
-  "goal",
-  "other",
-] as const;
-
-export type UserFactCategory = (typeof USER_FACT_CATEGORIES)[number];
-
-function normalizeUserFactPhrase(fact: string): string {
-  const trimmed = fact.trim();
-  if (/^(у клиента|клиент)(\s|$)/i.test(trimmed)) return trimmed;
-  if (/^я(\s|$)/i.test(trimmed)) {
-    const rest = trimmed.replace(/^я\s*/i, "").trim();
-    return rest ? `Клиент ${rest}` : trimmed;
-  }
-  if (/^у меня(\s|$)/i.test(trimmed)) {
-    return `У клиента ${trimmed.replace(/^у меня\s*/i, "").trim()}`;
-  }
-  return `У клиента ${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`;
-}
-
-/** Validate and normalize a fact typed by the user in cabinet settings. */
-export function validateUserSubmittedFact(
-  raw: string,
-  category?: string | null,
-  eventDate?: string | null
-): FactInput | null {
-  const fact = normalizeUserFactPhrase(raw);
-  if (!isQualityFact(fact)) return null;
-
-  const cat =
-    category && VALID_CATEGORIES.has(category) ? category : ("other" as UserFactCategory);
-
-  const date =
-    eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : null;
-
-  return {
-    fact: fact.slice(0, 600),
-    category: cat,
-    eventDate: date,
-    salience: boostSalience(fact, 4),
-    sourceCharacter: "user",
-  };
 }

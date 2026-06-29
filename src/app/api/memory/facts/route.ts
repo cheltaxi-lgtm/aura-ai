@@ -4,7 +4,7 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { sanitizeTextField } from "@/lib/chat-sanitize";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
-import { validateUserSubmittedFact } from "@/lib/memory/extract-facts";
+import { validateUserSubmittedFact } from "@/lib/memory/user-fact-input";
 import { deleteFact, listFacts, searchFacts, upsertFact } from "@/lib/memory/user-facts";
 
 const MAX_FACTS_PER_USER = 100;

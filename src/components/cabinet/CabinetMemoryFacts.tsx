@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Brain, Loader2, Plus, Trash2 } from "lucide-react";
-import { USER_FACT_CATEGORIES } from "@/lib/memory/extract-facts";
+import { USER_FACT_CATEGORIES } from "@/lib/memory/user-fact-input";
 
 type MemoryFact = {
   id: string;

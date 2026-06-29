@@ -91,6 +91,13 @@ assert(
     factsRoute.includes("validateUserSubmittedFact")
 );
 
+const userFactInput = read("src/lib/memory/user-fact-input.ts");
+assert(
+  "user fact input is client-safe",
+  userFactInput.includes("validateUserSubmittedFact") &&
+    !userFactInput.includes("@/lib/llm")
+);
+
 const cabinetMemory = read("src/components/cabinet/CabinetMemoryFacts.tsx");
 assert(
   "cabinet UI can add memory facts",
