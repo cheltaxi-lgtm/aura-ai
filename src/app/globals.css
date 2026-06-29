@@ -1857,6 +1857,17 @@
 
 .chat-stage .chat-stage__input {
   flex-shrink: 0;
+  padding: 0 0.75rem max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .chat-stage .chat-stage__input {
+    padding: 0 1rem max(1.25rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
+  padding-bottom: calc(max(1rem, env(safe-area-inset-bottom, 0px)) + var(--cookie-banner-offset, 0px));
 }
 
 @media (max-width: 639px) {
