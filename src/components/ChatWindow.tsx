@@ -605,7 +605,11 @@ export default function ChatWindow({
       {spreadLoading && (
         <div className="rounded-xl border border-aura-gold/15 bg-black/20 p-6 text-center">
           <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-aura-gold" aria-hidden />
-          <p className="text-sm text-gray-400">Вытягиваю карты на выбранную тему…</p>
+          <p className="text-sm text-gray-400">
+            {isNumerologMaster(characterId)
+              ? "Рассчитываю нумерологический сеанс…"
+              : "Вытягиваю карты на выбранную тему…"}
+          </p>
         </div>
       )}
 
@@ -678,7 +682,7 @@ export default function ChatWindow({
                 isNumerologMaster(characterId)
                   ? [
                       "Эвелина считает ваш код…",
-                      "Складываю три числа периода…",
+                      "Сверяю дату рождения и числа…",
                       "Готовлю расшифровку…",
                     ]
                   : undefined

@@ -50,6 +50,7 @@ import {
 } from "@/lib/numerolog/welcome";
 import {
   DEFAULT_NUMEROLOG_SESSION_TOOL,
+  encodeNumerologSpreadId,
   getNumerologTool,
   isNumerologSessionToolId,
   validateNumerologToolParams,
@@ -64,6 +65,22 @@ import {
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
 
+function numerologReadingKey(input: {
+  toolId: string;
+  birthDate?: string;
+  tarotCards: { name: string }[];
+  params?: NumerologToolParams;
+}): string {
+  const cardsKey = tarotCardsKey(input.tarotCards);
+  return [
+    "numerolog",
+    input.toolId,
+    input.birthDate?.trim() || "no-birth",
+    cardsKey || "no-draw",
+    JSON.stringify(input.params ?? {}),
+  ].join(":");
+}
+
 async function persistReadingToSession(input: {
   sessionId: string | undefined;
   profileUserId: string;
@@ -72,6 +89,7 @@ async function persistReadingToSession(input: {
   tarotCards: { name: string }[];
   intention?: string;
   spreadType?: "daily" | "new";
+  spreadId?: string;
 }): Promise<string | null> {
   return ensureSpreadReadingInChatMessages({
     sessionId: input.sessionId,
@@ -81,6 +99,7 @@ async function persistReadingToSession(input: {
     tarotCards: input.tarotCards,
     intention: input.intention,
     spreadType: input.spreadType,
+    spreadId: input.spreadId,
   });
 }
 
@@ -93,6 +112,7 @@ async function respondWithExistingSpreadReading(input: {
   sessionId?: string;
   intention?: string;
   spreadType?: "daily" | "new";
+  spreadId?: string;
   userName: string;
   birthDate: string;
   isPaid: boolean;
@@ -100,14 +120,17 @@ async function respondWithExistingSpreadReading(input: {
   const { existing } = input;
   if (!existing) throw new Error("missing_existing_reading");
 
-  const reading = isNumerologMaster(input.characterId)
-    ? buildNumerologSpreadReading({
-        userName: input.userName,
-        birthDate: input.birthDate,
-        fullName: input.userName,
-        spreadNumbers: input.tarotCards.map((c) => c.name),
-      })
-    : (existing.context_data.reading as string);
+  const storedReading = existing.context_data.reading as string | undefined;
+  const reading =
+    storedReading?.trim() ||
+    (isNumerologMaster(input.characterId)
+      ? buildNumerologSpreadReading({
+          userName: input.userName,
+          birthDate: input.birthDate,
+          fullName: input.userName,
+          spreadNumbers: input.tarotCards.map((c) => c.name),
+        })
+      : "");
   const historyId = existing.id;
   const paid = existing.is_paid || input.isPaid;
 
@@ -125,6 +148,7 @@ async function respondWithExistingSpreadReading(input: {
       tarotCards: input.tarotCards,
       intention: input.intention,
       spreadType: input.spreadType,
+      spreadId: input.spreadId,
     });
   } catch (err) {
     console.warn("Reading chat save failed:", err);
@@ -199,7 +223,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!characterId || !userName || !tarotCards?.length) {
+  const requestNumerologToolId = isNumerologSessionToolId(numerologToolIdRaw)
+    ? numerologToolIdRaw
+    : null;
+  const requestAllowsEmptyCards =
+    isNumerologMaster(characterId) &&
+    requestNumerologToolId !== null &&
+    getNumerologTool(requestNumerologToolId).drawCount === 0;
+
+  if (!characterId || !userName || (!tarotCards?.length && !requestAllowsEmptyCards)) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
@@ -285,6 +317,9 @@ export async function POST(request: NextRequest) {
       : (await countSessionMemories(authed.profileUserId, characterId)) + 1;
 
     const spreadId = normalizeSpreadId(spreadIdRaw || resolvedSession?.spread_id);
+    const storedSpreadId = requestNumerologToolId
+      ? encodeNumerologSpreadId(requestNumerologToolId)
+      : spreadId;
     const positionLabels = resolveSpreadPositions(
       spreadId,
       (intention || null) as SessionTopicId | null
@@ -312,7 +347,15 @@ export async function POST(request: NextRequest) {
       systemPrompt += intentionReadingPromptBlock(intention);
     }
 
-    const cardsKey = tarotCardsKey(tarotCards);
+    const cardsKey =
+      isNumerologMaster(characterId) && requestNumerologToolId
+        ? numerologReadingKey({
+            toolId: requestNumerologToolId,
+            birthDate,
+            tarotCards,
+            params: numerologToolParams,
+          })
+        : tarotCardsKey(tarotCards);
     const isDailySpread = await resolveIsDailyFreeReading({
       profileUserId: authed.profileUserId,
       spreadType,
@@ -344,6 +387,7 @@ export async function POST(request: NextRequest) {
           sessionId,
           intention: intention || undefined,
           spreadType: isDailySpread ? "daily" : undefined,
+          spreadId: storedSpreadId,
           userName,
           birthDate,
           isPaid,
@@ -479,6 +523,7 @@ export async function POST(request: NextRequest) {
               tarotCards,
               intention: intention || undefined,
               spreadType: isDailySpread ? "daily" : undefined,
+              spreadId: storedSpreadId,
             });
           } catch (err) {
             console.warn("Reading chat save failed:", err);
@@ -660,6 +705,7 @@ export async function POST(request: NextRequest) {
             tarotCards,
             intention: intention || undefined,
             spreadType: isDailySpread ? "daily" : undefined,
+            spreadId: storedSpreadId,
           });
         } catch (err) {
           console.warn("Reading chat save failed:", err);
@@ -695,6 +741,7 @@ export async function POST(request: NextRequest) {
         sessionId,
         intention: intention || undefined,
         spreadType: isDailySpread ? "daily" : undefined,
+        spreadId: storedSpreadId,
         userName,
         birthDate,
         isPaid,
@@ -714,7 +761,7 @@ export async function POST(request: NextRequest) {
       isPaid: lockedResult.isPaid,
       historyId: lockedResult.historyId,
       runeBalance: lockedResult.runeBalance,
-      spreadId,
+      spreadId: storedSpreadId,
       createdAt: new Date().toISOString(),
       ...("numerologyUi" in lockedResult && lockedResult.numerologyUi
         ? { numerologyUi: lockedResult.numerologyUi }

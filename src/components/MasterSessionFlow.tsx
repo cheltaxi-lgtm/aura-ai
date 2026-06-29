@@ -319,6 +319,7 @@ export default function MasterSessionFlow({
     selectedNumerologTool,
     numerologToolParams,
     cardCount,
+    userBirthDate,
     userFullName,
   ]);
 
@@ -355,6 +356,8 @@ export default function MasterSessionFlow({
     customQuestionReady,
     selectedNumerologTool,
     numerologToolParams,
+    userBirthDate,
+    userFullName,
   ]);
 
   const handleFlip = (index: number) => {
@@ -451,7 +454,7 @@ export default function MasterSessionFlow({
           }}
           className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block"
         >
-          {showCardsChoice ? "Далее" : "Вытянуть карты"}
+          {showCardsChoice ? "Далее" : numerologFlow ? "Выбрать расчёт" : "Вытянуть карты"}
         </button>
         {onStartRitual && (RITUAL_MASTERS as readonly string[]).includes(master) ? (
           <button
@@ -483,7 +486,7 @@ export default function MasterSessionFlow({
         }}
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
       >
-        <span>Вытянуть новые карты</span>
+        <span>{numerologFlow ? "Выбрать новый расчёт" : "Вытянуть новые карты"}</span>
         {runeConfig.enabled ? (
           <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
         ) : null}
@@ -913,7 +916,7 @@ export default function MasterSessionFlow({
                   Выберите расчёт
                 </h2>
                 <p className="mt-1 text-center text-sm text-white/60">
-                  От вида расчёта зависит, сколько чисел нужно вытянуть
+                  Выберите технику — для части расчётов числа считаются сразу по профилю
                 </p>
                 <div className="mt-6">
                   <NumerologCalculationPicker
@@ -982,8 +985,8 @@ export default function MasterSessionFlow({
                 <p className="mt-1 text-center text-sm text-white/60">
                   {numerologFlow
                     ? numerologTool
-                      ? `${numerologTool.label} · нажмите на каждое число, чтобы открыть расклад`
-                      : "Нажмите на каждое число, чтобы открыть расклад."
+                      ? `${numerologTool.label} · откройте числа для расчёта`
+                      : "Откройте числа для расчёта."
                     : topic === "custom"
                       ? `«${spreadDef.label}» · «${customQuestion.trim()}»`
                       : `«${spreadDef.label}» · ${topic ? topicLabel(topic) : ""}`}

@@ -107,6 +107,7 @@ export async function ensureSpreadReadingInChatMessages(
   if (!sessionId) return null;
 
   const spreadId = normalizeSpreadId(input.spreadId);
+  const storedSpreadId = input.spreadId ?? spreadId;
   const requiredCards = getSpread(spreadId).cardCount;
   const cardNames = input.tarotCards?.map((c) => c.name).slice(0, requiredCards) ?? [];
   const parsedFromReading =
@@ -136,7 +137,7 @@ export async function ensureSpreadReadingInChatMessages(
     cards: resolvedCardNames.length ? resolvedCardNames : null,
     ...(input.intention ? { intention: input.intention } : {}),
     ...(input.spreadType ? { spreadType: input.spreadType } : {}),
-    spreadId,
+    spreadId: storedSpreadId,
   });
 
   const alreadySaved = await sessionHasSpreadReadingMessage(

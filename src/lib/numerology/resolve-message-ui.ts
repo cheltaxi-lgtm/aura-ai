@@ -17,6 +17,11 @@ export function resolvePythagorasSquareForMessage(
 
   if (!birthDate || !parseBirthDate(birthDate)) return null;
 
+  const assistantContent = msg?.role === "assistant" ? msg.content : "";
+  if (/квадрат\s+пифагора|психоматриц|ячейки:/i.test(assistantContent)) {
+    return pythagorasSquare(birthDate);
+  }
+
   let userContent = "";
   for (let i = messageIndex - 1; i >= 0; i--) {
     const prior = messages[i];

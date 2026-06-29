@@ -95,6 +95,23 @@ import {
   type SpreadId,
 } from "@/lib/spreads";
 
+function numerologReadingCacheKey(input: {
+  characterId: string;
+  toolId: NumerologToolId;
+  birthDate?: string | null;
+  cardNames: string[];
+  params?: NumerologToolParams | null;
+}): string {
+  return [
+    input.characterId,
+    "numerolog",
+    input.toolId,
+    input.birthDate?.trim() || "no-birth",
+    input.cardNames.join("|") || "no-draw",
+    JSON.stringify(input.params ?? {}),
+  ].join(":");
+}
+
 type ApplyRestoredSpreadFn = (
   spread:
     | {
@@ -497,14 +514,22 @@ export function useChatActions(options: UseChatActionsOptions) {
           return;
         }
 
-        const cardsKey = spreadKey(cardsForMaster) || spreadCardsKey;
+        const cardNames = cardsForMaster.map((c) => c.name);
+        const cardsKey = isNumerologMaster(characterId)
+          ? numerologReadingCacheKey({
+              characterId,
+              toolId: metaNumerologToolId,
+              birthDate: activeProfile.birthDate,
+              cardNames,
+              params: sessionSpreadMetaRef.current?.numerologToolParams,
+            })
+          : spreadKey(cardsForMaster) || spreadCardsKey;
         const loadAttemptKey = `${characterId}:${cardsKey}`;
         if (!loadOptions?.force) {
           if (loadReadingInFlightKeyRef.current === loadAttemptKey) return;
           if (loadReadingAttemptKeyRef.current === loadAttemptKey) return;
         }
         loadReadingInFlightKeyRef.current = loadAttemptKey;
-        const cardNames = cardsForMaster.map((c) => c.name);
         const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
         const effectiveSpreadType =
           inferDailySpreadType({
