@@ -1,0 +1,102 @@
+"use client";
+
+import { getCharacterById } from "@/lib/characters";
+import {
+  MASTER_FULL_SPREAD_CHIP_MESSAGE,
+  MASTER_PERIOD_CHIP_MESSAGES,
+  type MasterQuickChipMasterId,
+} from "@/lib/master-quick-chips";
+
+const PERIOD_CHIPS = [
+  { id: "today" as const, emoji: "☀️", label: "Сегодня", message: MASTER_PERIOD_CHIP_MESSAGES.today },
+  { id: "week" as const, emoji: "📆", label: "Неделя", message: MASTER_PERIOD_CHIP_MESSAGES.week },
+  { id: "year" as const, emoji: "🗓️", label: "Год", message: MASTER_PERIOD_CHIP_MESSAGES.year },
+];
+
+interface MasterQuickChipsProps {
+  masterId: MasterQuickChipMasterId;
+  disabled?: boolean;
+  onSend: (message: string) => void;
+}
+
+function ChipButton({
+  emoji,
+  label,
+  disabled,
+  onClick,
+  className = "",
+}: {
+  emoji: string;
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`group flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-2 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple/60 disabled:pointer-events-none disabled:opacity-40 sm:min-h-[2.5rem] sm:w-full sm:px-2 border-white/[0.08] bg-gradient-to-b from-indigo-950/70 to-[#0a0814]/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-aura-gold/35 hover:from-indigo-900/80 hover:shadow-[0_0_14px_rgba(212,175,55,0.08)] ${className}`}
+    >
+      <span className="text-sm leading-none opacity-90" aria-hidden>
+        {emoji}
+      </span>
+      <span className="text-[11px] font-medium leading-tight text-aura-champagne/95 group-hover:text-aura-champagne sm:text-xs">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+export default function MasterQuickChips({
+  masterId,
+  disabled = false,
+  onSend,
+}: MasterQuickChipsProps) {
+  const masterName = getCharacterById(masterId)?.name ?? "Мастер";
+
+  const send = (message: string) => {
+    if (disabled) return;
+    onSend(message);
+  };
+
+  return (
+    <div
+      className="mb-2 rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-[#141028]/90 to-[#0a0812]/95 p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(212,175,55,0.06)] sm:p-3"
+      role="region"
+      aria-label={`Быстрые расклады — ${masterName}`}
+    >
+      <p className="mb-2 px-1 text-[10px] font-medium uppercase tracking-[0.22em] text-aura-gold/55">
+        Расклады {masterName}
+      </p>
+
+      <div className="mb-2">
+        <ChipButton
+          emoji="🔮"
+          label="Получить расклад"
+          disabled={disabled}
+          onClick={() => send(MASTER_FULL_SPREAD_CHIP_MESSAGE)}
+          className="w-full border-aura-gold/30 bg-gradient-to-b from-aura-gold/10 to-indigo-950/80"
+        />
+      </div>
+
+      <div
+        className="grid grid-cols-3 gap-1.5 sm:gap-2"
+        role="toolbar"
+        aria-label="Расклад по периоду"
+      >
+        {PERIOD_CHIPS.map((chip) => (
+          <ChipButton
+            key={chip.id}
+            emoji={chip.emoji}
+            label={chip.label}
+            disabled={disabled}
+            onClick={() => send(chip.message)}
+            className="border-aura-purple/25 bg-gradient-to-b from-violet-950/50 to-indigo-950/80"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

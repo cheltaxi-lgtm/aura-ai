@@ -54,6 +54,12 @@ import {
   coerceSpreadReadingText,
 } from "@/lib/chat-reading-helpers";
 import { inferDailySpreadType, isDailySpreadReading } from "@/lib/daily-spread-client";
+import {
+  detectPeriodSpreadScope,
+  drawPeriodSpread,
+  hasMasterQuickChips,
+  type PeriodSpreadScope,
+} from "@/lib/master-quick-chips";
 import { FLOW_STEP_KEY, LAST_MASTER_KEY } from "@/lib/home-flow-storage";
 import type { StoredProfile } from "@/types/stored-profile";
 import type { Message } from "@/types";
@@ -379,6 +385,8 @@ export function useChatActions(options: UseChatActionsOptions) {
         replaceExisting?: boolean;
         preserveChat?: boolean;
         sessionId?: string;
+        readingScope?: PeriodSpreadScope;
+        spreadCardsOverride?: SpreadSymbol[];
       }
     ) => {
       const appendReadingMessage = (prev: Message[], readingMsg: Message): Message[] => {
@@ -422,15 +430,18 @@ export function useChatActions(options: UseChatActionsOptions) {
           return;
         }
 
-        const cardsForMaster = resolveSpreadCardsForReading({
-          profile: activeProfile,
-          characterId,
-          masters,
-          sessionSpreadMeta: sessionSpreadMetaRef.current,
-          intentionSpread,
-          chatSessionSpread,
-          chatDisplaySpread,
-        });
+        const cardsForMaster =
+          loadOptions?.spreadCardsOverride && loadOptions.spreadCardsOverride.length >= 3
+            ? loadOptions.spreadCardsOverride
+            : resolveSpreadCardsForReading({
+                profile: activeProfile,
+                characterId,
+                masters,
+                sessionSpreadMeta: sessionSpreadMetaRef.current,
+                intentionSpread,
+                chatSessionSpread,
+                chatDisplaySpread,
+              });
 
         if (cardsForMaster.length < 3) {
           return;
@@ -574,6 +585,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                 intention: sessionIntention ?? undefined,
                 forceRegenerate: loadOptions?.force ?? false,
                 spreadType: effectiveSpreadType,
+                readingScope: loadOptions?.readingScope,
                 ...readingPayloadForMaster(activeProfile, characterId, cardsForMaster, masters),
               }),
             }),
@@ -1341,6 +1353,57 @@ export function useChatActions(options: UseChatActionsOptions) {
         return;
       }
 
+      const periodScope = detectPeriodSpreadScope(content.trim());
+      if (
+        !imageBase64 &&
+        periodScope &&
+        hasMasterQuickChips(selectedCharacter)
+      ) {
+        const userMessage: Message = {
+          id: generateId(),
+          role: "user",
+          content: content.trim(),
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, userMessage]);
+
+        const { cards, system } = drawPeriodSpread(selectedCharacter);
+        loadReadingAttemptKeyRef.current = null;
+        loadReadingInFlightKeyRef.current = null;
+        setIntentionSpread(null);
+        persistIntentionSpreadState(selectedCharacter, null);
+        setChatSessionSpread({ masterId: selectedCharacter, cards, system });
+        setSpreadFlipped([true, true, true]);
+        sessionSpreadMetaRef.current = {
+          spreadType: "new",
+          cardNames: cards.map((c) => c.name),
+        };
+
+        setIsLoading(true);
+        try {
+          await loadReading(selectedCharacter, undefined, {
+            force: true,
+            preserveChat: true,
+            readingScope: periodScope,
+            spreadCardsOverride: cards,
+          });
+        } catch (err) {
+          console.error("Period spread request failed:", err);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateId(),
+              role: "assistant",
+              content: "Не удалось получить расклад на выбранный период. Попробуйте ещё раз через минуту.",
+              timestamp: new Date(),
+            },
+          ]);
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       sendingRef.current = true;
 
       if (
@@ -1690,6 +1753,10 @@ export function useChatActions(options: UseChatActionsOptions) {
       refresh,
       setAchievementPopup,
       showRateLimit,
+      setIntentionSpread,
+      persistIntentionSpreadState,
+      setChatSessionSpread,
+      setSpreadFlipped,
     ]
   );
 

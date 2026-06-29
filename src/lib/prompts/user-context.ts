@@ -112,8 +112,10 @@ export function buildSpreadUserMessage(params: {
   user: UserContextInput;
   cards: CardContextInput[];
   intention?: string | null;
+  readingScopeLabel?: string | null;
 }): string {
   const intention = params.intention?.trim() || "Общий расклад";
+  const scopeSuffix = params.readingScopeLabel?.trim();
 
   return `
 === ДАННЫЕ ПОЛЬЗОВАТЕЛЯ ===
@@ -123,11 +125,11 @@ ${buildUserContext(params.user)}
 ${buildCardsContext(params.cards)}
 
 === ВОПРОС / НАМЕРЕНИЕ ===
-${intention}
+${intention}${scopeSuffix ? `\nГоризонт прогноза: ${scopeSuffix}` : ""}
 
 === ТВОЯ ЗАДАЧА ===
-Дай подробный персонализированный расклад следуя инструкциям из системного промпта.
-Обращайся к ${params.user.name} по имени. Не выводи клиенту служебные требования, чеклисты и структуру промпта.
+Дай подробный персонализированный расклад${scopeSuffix ? ` ${scopeSuffix}` : ""} следуя инструкциям из системного промпта.
+Читай каждую карту/руну по её позиции в раскладе. Обращайся к ${params.user.name} по имени. Не выводи клиенту служебные требования, чеклисты и структуру промпта.
 `.trim();
 }
 

@@ -28,6 +28,8 @@ import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
+import MasterQuickChips from "@/components/MasterQuickChips";
+import { hasMasterQuickChips } from "@/lib/master-quick-chips";
 import { resolvePythagorasSquareForMessage } from "@/lib/numerology/resolve-message-ui";
 import {
   buildNumerologWelcomeMessage,
@@ -847,6 +849,16 @@ export default function ChatWindow({
       <form onSubmit={handleSubmit} className="glass-panel flex flex-col gap-2 p-3">
         {characterId === "numerolog" && !readOnly ? (
           <NumerologQuickChips
+            disabled={inputBlocked}
+            onSend={(text) => {
+              pinnedToBottomRef.current = true;
+              onSendMessage(text);
+            }}
+          />
+        ) : null}
+        {hasMasterQuickChips(characterId) && !readOnly ? (
+          <MasterQuickChips
+            masterId={characterId}
             disabled={inputBlocked}
             onSend={(text) => {
               pinnedToBottomRef.current = true;

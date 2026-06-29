@@ -48,6 +48,11 @@ import {
   isNumerologMaster,
 } from "@/lib/numerolog/welcome";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
+import {
+  periodSpreadPositions,
+  periodSpreadTaskLabel,
+  type PeriodSpreadScope,
+} from "@/lib/master-quick-chips";
 
 async function persistReadingToSession(input: {
   sessionId: string | undefined;
@@ -144,6 +149,7 @@ export async function POST(request: NextRequest) {
   let intention = "";
   let forceRegenerate = false;
   let spreadType = "";
+  let readingScope = "";
 
   try {
     const body = await request.json();
@@ -162,6 +168,7 @@ export async function POST(request: NextRequest) {
     intention = sanitizeTextField(body.intention, 40) ?? "";
     spreadType = sanitizeTextField(body.spreadType, 20) ?? "";
     forceRegenerate = body.forceRegenerate === true;
+    readingScope = sanitizeTextField(body.readingScope, 10) ?? "";
   } catch (error) {
     console.error("Reading JSON error:", error);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -485,11 +492,20 @@ export async function POST(request: NextRequest) {
         zodiac,
         astroMeta: astroMeta as Record<string, unknown> | undefined,
       });
-      const cardsForContext = enrichCardsForSpreadContext(deckSystem, tarotCards);
+      const periodScope =
+        readingScope === "today" || readingScope === "week" || readingScope === "year"
+          ? (readingScope as PeriodSpreadScope)
+          : null;
+      const cardsForContext = enrichCardsForSpreadContext(
+        deckSystem,
+        tarotCards,
+        periodScope ? periodSpreadPositions(periodScope) : undefined
+      );
       const userMessage = buildSpreadUserMessage({
         user: userForContext,
         cards: cardsForContext,
         intention: resolveIntentionLabel(intention || null),
+        readingScopeLabel: periodScope ? periodSpreadTaskLabel(periodScope) : null,
       });
 
       const generated = await generateReading(systemPrompt, {
