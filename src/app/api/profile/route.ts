@@ -24,6 +24,7 @@ import {
 import { tarotCardsKey } from "@/lib/tarot";
 import { resolveTripletDisplaySpread } from "@/lib/spread-context";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { DEFAULT_SPREAD_ID } from "@/lib/spreads";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
 import type { LifeFocus } from "@/lib/astro-profile";
@@ -84,6 +85,7 @@ export async function GET() {
     readings: mappedReadings,
     continueMasterIds,
     spreadCardsKey: tarotCardsKey(spreadCards),
+    spreadId: spreadCards ? DEFAULT_SPREAD_ID : null,
     tripletCooldown,
     hasConsultationActivity,
   });

@@ -53,7 +53,12 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (session.status === "completed") {
-    return NextResponse.json({ ok: true, status: "completed", alreadyCompleted: true });
+    return NextResponse.json({
+      ok: true,
+      status: "completed",
+      alreadyCompleted: true,
+      spreadId: session.spread_id ?? null,
+    });
   }
 
   let characterKey = session.character_key?.trim() ?? "";
@@ -142,5 +147,6 @@ export async function PATCH(request: NextRequest) {
     ok: true,
     status: "completed",
     archived: archiveOnly,
+    spreadId: session.spread_id ?? null,
   });
 }

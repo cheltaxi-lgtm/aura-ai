@@ -645,6 +645,7 @@ export async function POST(request: NextRequest) {
       isPaid: lockedResult.isPaid,
       historyId: lockedResult.historyId,
       runeBalance: lockedResult.runeBalance,
+      spreadId,
       createdAt: new Date().toISOString(),
     });
   } catch (error) {

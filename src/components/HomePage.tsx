@@ -416,6 +416,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     setShowSessionFlow,
     sessionFlowInitialTopic,
     setSessionFlowInitialTopic,
+    sessionFlowPreselectedMaster,
+    setSessionFlowPreselectedMaster,
     savedReadings,
     serverContinueIds,
     pendingChatOptsRef,
@@ -746,6 +748,8 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
           characterId: selectedCharacter,
           intention,
           cardNames: intentionSpread.cards.map((c) => c.name),
+          spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
+          cardCount: intentionSpread.cards.length,
         }),
         waitForSpreadReadingRitual(),
       ]);
@@ -931,8 +935,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
         const updated = prev.map((m) =>
           m.id === messageId ? { ...m, sceneImageUrl: url } : m
         );
-        const ctx = resolveMasterSpread(activeProfile, characterId, masters);
-        const key = ctx.cards.length >= 3 ? ctx.cardsKey : spreadCardsKey;
+        const key = activeSpreadCardsKey || spreadCardsKey;
         saveChatCache(characterId, updated, key);
         return updated;
       });
@@ -2044,6 +2047,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               onClose={() => {
                 setShowSessionFlow(false);
                 setSessionFlowInitialTopic(null);
+                setSessionFlowPreselectedMaster(null);
               }}
               preselectedMaster={sessionListMaster}
               initialTopic={sessionFlowInitialTopic ?? undefined}
@@ -2187,8 +2191,11 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
               setShowSessionFlow(false);
               setEnergyFlowMasterId(null);
               setSessionFlowInitialTopic(null);
+              setSessionFlowPreselectedMaster(null);
             }}
-            preselectedMaster={energyFlowMasterId ?? selectedCharacter}
+            preselectedMaster={
+              sessionFlowPreselectedMaster ?? energyFlowMasterId ?? selectedCharacter
+            }
             newSpreadOnly
             initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
             initialTopic={sessionFlowInitialTopic ?? undefined}
@@ -2386,8 +2393,11 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                         setShowSessionFlow(false);
                         setEnergyFlowMasterId(null);
                         setSessionFlowInitialTopic(null);
+                        setSessionFlowPreselectedMaster(null);
                       }}
-                      preselectedMaster={energyFlowMasterId ?? dailyEnergyMasterId}
+                      preselectedMaster={
+                        sessionFlowPreselectedMaster ?? energyFlowMasterId ?? dailyEnergyMasterId
+                      }
                       initialTopic={sessionFlowInitialTopic ?? undefined}
                       dailyCards={
                         displayTarotCards.length >= 3

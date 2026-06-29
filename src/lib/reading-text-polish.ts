@@ -23,6 +23,9 @@ export function cardNamesFromImageMarkdown(text: string, maxCards = DEFAULT_MAX_
 export function inferSpreadCardNames(text: string, cardNames?: string[]): string[] {
   const limit = cardNames?.length ?? DEFAULT_MAX_CARDS;
   const fromImages = cardNamesFromImageMarkdown(text, limit);
+  if (cardNames?.length && fromImages.length >= cardNames.length) {
+    return fromImages.slice(0, limit);
+  }
   if (fromImages.length >= Math.min(3, limit)) return fromImages;
 
   const fromBold: string[] = [];

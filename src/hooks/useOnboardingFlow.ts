@@ -46,7 +46,7 @@ import {
   resolveMasterDeckSystem,
   spreadKey,
 } from "@/lib/decks";
-import { DEFAULT_SPREAD_ID, getSpread, hasCompleteSpread, resolveSpreadPositions, spreadFlippedState, resolveClientSpreadId, hasExplicitClientSpreadId, type SpreadId } from "@/lib/spreads";
+import { DEFAULT_SPREAD_ID, getSpread, hasCompleteSpread, normalizeSpreadId, resolveSpreadPositions, spreadFlippedState, resolveClientSpreadId, hasExplicitClientSpreadId, requiredCardCount, type SpreadId } from "@/lib/spreads";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckCardInput } from "@/lib/deck-card-utils";
@@ -341,6 +341,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [showSessionFlow, setShowSessionFlow] = useState(false);
   const [sessionFlowInitialTopic, setSessionFlowInitialTopic] = useState<
     SessionTopicId | null
+  >(null);
+  const [sessionFlowPreselectedMaster, setSessionFlowPreselectedMaster] = useState<
+    string | null
   >(null);
   const [intentionHighlight, setIntentionHighlight] = useState(false);
   const [intentionSpreadLoading, setIntentionSpreadLoading] = useState(false);
@@ -747,7 +750,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return persisted.cardsKey || spreadKey(persisted.cards);
       }
     }
-    if (chatSpread && chatSpread.cards.length >= 3 && chatSpread.cardsKey) {
+    if (chatSpread?.cardsKey && hasCompleteSpread(chatSpread.cards.map((c) => c.name), DEFAULT_SPREAD_ID, "daily")) {
       return chatSpread.cardsKey;
     }
     return spreadCardsKey;
@@ -780,8 +783,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (!selectedCharacter || deps?.sessionOnlyChat || typeof window === "undefined") return null;
     const entry = loadChatCacheEntry(selectedCharacter);
     if (!entry?.spread?.cards.length) return null;
-    const minCards = entry.spread.variant === "photo" ? 1 : 3;
-    if (entry.spread.cards.length >= minCards) {
+    const variant = entry.spread.variant ?? "triplet";
+    const spreadType =
+      variant === "photo" ? "photo" : variant === "intention" ? "new" : "daily";
+    const spreadId =
+      variant === "intention"
+        ? normalizeSpreadId(sessionSpreadMetaRef.current?.spreadId)
+        : DEFAULT_SPREAD_ID;
+    const names = entry.spread.cards.map((c) => c.name);
+    if (hasCompleteSpread(names, spreadId, spreadType)) {
       return entry.spread;
     }
     return null;
@@ -1266,6 +1276,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         if (!hasExplicitClientSpreadId(sessionSpreadMetaRef.current?.spreadId)) {
           const topicId = toSessionTopicId(intention);
           if (!topicId) return;
+          setSessionFlowPreselectedMaster(masterId);
           setSessionFlowInitialTopic(topicId);
           setShowSessionFlow(true);
           localStorage.setItem(PENDING_MASTER_KEY, masterId);
@@ -1364,6 +1375,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               characterId: masterId,
               intention,
               cardNames: cards.map((c) => c.name),
+              spreadId,
+              cardCount: cards.length,
             });
             readingText = polled
               ? resolveClientReadingText(polled, cards.map((c) => c.name))
@@ -1433,6 +1446,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 characterId: masterId,
                 intention,
                 cardNames,
+                spreadId: recoverySpreadId,
+                cardCount: requiredCardCount(recoverySpreadId, "new"),
               });
               const recovered = polled
                 ? resolveClientReadingText(polled, cardNames)
@@ -2305,14 +2320,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       } catch {
         try {
           const cardNames =
-            cards.length >= 3
+            sessionSpreadMetaRef.current?.cardNames ??
+            (cards.length
               ? cards
-              : (readIntentionSpreadForMaster(characterKey)?.cards.map((c) => c.name) ?? []);
-          if (cardNames.length >= 3) {
+              : (readIntentionSpreadForMaster(characterKey)?.cards.map((c) => c.name) ?? []));
+          const recoverySpreadId =
+            sessionSpreadMetaRef.current?.spreadId ?? spreadId;
+          if (hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
             const polled = await pollIntentionSpreadReading({
               characterId: characterKey,
               intention,
               cardNames,
+              spreadId: recoverySpreadId,
+              cardCount: requiredCardCount(recoverySpreadId, "new"),
             });
             const recovered = polled ? resolveClientReadingText(polled, cardNames) : "";
             if (recovered) {
@@ -2839,6 +2859,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setShowSessionFlow,
     sessionFlowInitialTopic,
     setSessionFlowInitialTopic,
+    sessionFlowPreselectedMaster,
+    setSessionFlowPreselectedMaster,
     savedReadings,
     setSavedReadings,
     serverContinueIds,

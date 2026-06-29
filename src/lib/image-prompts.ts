@@ -92,14 +92,14 @@ export function buildImagePrompt(
 
     case "tarot_atmosphere":
       return {
-        prompt: `${base}. Mystical tarot reading table atmosphere, three tarot cards on velvet cloth, candle smoke, deep shadows, magical particles, cinematic wide background for card spread UI, cards: ${cardsText || "three arcane cards"}. No readable text on cards`,
+        prompt: `${base}. Mystical tarot reading table atmosphere, tarot cards on velvet cloth, candle smoke, deep shadows, magical particles, cinematic wide background for card spread UI, cards: ${cardsText || "arcane spread cards"}. No readable text on cards`,
         aspectRatio: "16:9",
         quality: "standard",
       };
 
     case "destiny_card":
       return {
-        prompt: `${base}. Ornate personalized destiny card artwork, golden mystical frame, name energy for ${userName ?? "seeker"}, zodiac ${zodiac ?? "stars"}, tarot symbols: ${cardsText || "three fateful cards"}. Single collectible oracle card, vertical poster art, no readable text except decorative glyphs`,
+        prompt: `${base}. Ornate personalized destiny card artwork, golden mystical frame, name energy for ${userName ?? "seeker"}, zodiac ${zodiac ?? "stars"}, tarot symbols: ${cardsText || "fateful spread cards"}. Single collectible oracle card, vertical poster art, no readable text except decorative glyphs`,
         aspectRatio: "3:4",
         quality: "standard",
       };
@@ -120,7 +120,7 @@ export function buildImagePrompt(
 
     case "final_report":
       return {
-        prompt: `${base}. Epic shareable destiny report collage for ${userName ?? "seeker"}, zodiac ${zodiac ?? "cosmos"}, tarot arc: ${cardsText || "three cards"}. Golden borders, mystical symbols, premium oracle certificate aesthetic, vertical poster suitable for social sharing, decorative typography shapes only (no readable words)`,
+        prompt: `${base}. Epic shareable destiny report collage for ${userName ?? "seeker"}, zodiac ${zodiac ?? "cosmos"}, tarot arc: ${cardsText || "spread cards"}. Golden borders, mystical symbols, premium oracle certificate aesthetic, vertical poster suitable for social sharing, decorative typography shapes only (no readable words)`,
         aspectRatio: "9:16",
         quality: "high",
       };
