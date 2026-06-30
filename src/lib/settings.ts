@@ -155,7 +155,7 @@ const DEFAULTS = {
   share: {
     enabled: true,
     expiryDays: 90,
-    maxExcerptLength: 12000,
+    maxExcerptLength: 50000,
   },
 };
 

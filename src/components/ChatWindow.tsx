@@ -431,11 +431,7 @@ export default function ChatWindow({
       .filter((m) => m.role === "assistant" && m.content?.trim())
       .map((m) => m.content!.trim());
     const excerpt =
-      assistantReadings.length > 0
-        ? assistantReadings.reduce((longest, current) =>
-            current.length > longest.length ? current : longest
-          )
-        : undefined;
+      assistantReadings.length > 0 ? assistantReadings.join("\n\n") : undefined;
     return chatSpreadToSharePayload({
       characterId,
       masterName: character?.name,

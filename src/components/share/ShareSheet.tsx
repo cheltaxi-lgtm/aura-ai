@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Share2,
@@ -14,17 +14,14 @@ import {
   Loader2,
 } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
-import ShareCard from "@/components/share/cards/ShareCard";
 import SharePreviewCard from "@/components/share/SharePreviewCard";
 import {
   copyToClipboard,
   downloadShareOgImage,
-  exportCardAsPng,
   openShareChannel,
   shareViaNative,
 } from "@/lib/share/channels-client";
-import { buildSharePageUrl, buildShareText } from "@/lib/share/build-url";
-import { cardExcerptFromFull } from "@/lib/share/sanitize";
+import { buildSharePageUrl, buildShareTextForCopy } from "@/lib/share/build-url";
 import { trackShareChannel, trackShareOpen } from "@/lib/share/metrika";
 import type { ShareChannel, SharePayload } from "@/lib/share/types";
 
@@ -48,13 +45,7 @@ const CHANNELS: ChannelDef[] = [
   { id: "native", label: "Ещё", icon: MoreHorizontal },
 ];
 
-function exportCardPayload(payload: SharePayload): SharePayload {
-  if (!payload.excerpt) return payload;
-  return { ...payload, excerpt: cardExcerptFromFull(payload.excerpt) };
-}
-
 export default function ShareSheet({ payload, onClose }: Props) {
-  const exportRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<string | null>(null);
   const [savedPayload, setSavedPayload] = useState<SharePayload | null>(null);
   const [loading, setLoading] = useState(false);
@@ -88,20 +79,27 @@ export default function ShareSheet({ payload, onClose }: Props) {
           payload?: SharePayload;
           error?: string;
         };
-        if (!res.ok) throw new Error(data.error ?? "share_failed");
-        if (!data.token || !data.payload) throw new Error("share_failed");
+        if (!res.ok || !data.token) throw new Error(data.error ?? "share_failed");
+
         setToken(data.token);
-        setSavedPayload(data.payload);
+
+        const snapRes = await fetch(`/api/share/${encodeURIComponent(data.token)}`, {
+          cache: "no-store",
+        });
+        if (snapRes.ok) {
+          const snap = (await snapRes.json()) as { payload?: SharePayload };
+          if (snap.payload) {
+            setSavedPayload(snap.payload);
+            return;
+          }
+        }
+        if (data.payload) setSavedPayload(data.payload);
       })
       .catch(() => setError("Не удалось создать ссылку для шаринга"))
       .finally(() => setLoading(false));
   }, [payload]);
 
   const sharePayload = savedPayload ?? payload;
-  const exportPayload = useMemo(
-    () => (sharePayload ? exportCardPayload(sharePayload) : null),
-    [sharePayload]
-  );
 
   const showStatus = (message: string) => {
     setStatus(message);
@@ -115,10 +113,9 @@ export default function ShareSheet({ payload, onClose }: Props) {
       const title = sharePayload.title;
       const excerpt = sharePayload.excerpt ?? "";
       const shareUrl = buildSharePageUrl(token, channel);
-      const shareText = buildShareText(title, excerpt, shareUrl);
 
       if (channel === "copy") {
-        const ok = await copyToClipboard(shareText);
+        const ok = await copyToClipboard(buildShareTextForCopy(title, excerpt, shareUrl));
         showStatus(ok ? "Текст скопирован" : "Не удалось скопировать");
         trackShareChannel("copy", sharePayload.kind);
         return;
@@ -129,21 +126,13 @@ export default function ShareSheet({ payload, onClose }: Props) {
           token,
           `zovus-${sharePayload.kind}-${Date.now()}.png`
         );
-        if (!ok && exportRef.current) {
-          const fallback = await exportCardAsPng(
-            exportRef.current,
-            `zovus-${sharePayload.kind}-${Date.now()}.png`
-          );
-          showStatus(fallback ? "Картинка сохранена" : "Не удалось сохранить");
-        } else {
-          showStatus(ok ? "Картинка сохранена" : "Не удалось сохранить");
-        }
+        showStatus(ok ? "Картинка сохранена" : "Не удалось сохранить");
         trackShareChannel("png", sharePayload.kind);
         return;
       }
 
       if (channel === "native") {
-        const result = await shareViaNative(token, title, excerpt, exportRef.current);
+        const result = await shareViaNative(token, title, excerpt);
         if (result === "shared") showStatus("Отправлено");
         else if (result === "copied") showStatus("Скопировано");
         else showStatus("Не удалось поделиться");
@@ -197,13 +186,9 @@ export default function ShareSheet({ payload, onClose }: Props) {
                 ) : error ? (
                   <p className="share-sheet__error">{error}</p>
                 ) : sharePayload ? (
-                  <SharePreviewCard payload={sharePayload} />
+                  <SharePreviewCard payload={sharePayload} shareUrl={token ? buildSharePageUrl(token) : undefined} />
                 ) : null}
               </div>
-
-              {token && sharePayload?.excerpt && !error && (
-                <p className="share-sheet__excerpt-preview">{sharePayload.excerpt}</p>
-              )}
 
               <div className="share-sheet__channels">
                 {CHANNELS.map(({ id, label, icon: Icon }, i) => (
@@ -246,14 +231,6 @@ export default function ShareSheet({ payload, onClose }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {exportPayload && token && (
-        <div className="share-sheet__export-target" aria-hidden>
-          <div ref={exportRef}>
-            <ShareCard payload={exportPayload} aspect="og" />
-          </div>
-        </div>
-      )}
     </BodyPortal>
   );
 }

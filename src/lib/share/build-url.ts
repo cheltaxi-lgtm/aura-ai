@@ -1,6 +1,7 @@
 import { getAppUrl } from "@/lib/brand";
-import { truncateForShareUrl } from "./sanitize";
 import type { ShareChannel } from "./types";
+
+const MAX_MESSENGER_URL_LEN = 3800;
 
 export function buildSharePageUrl(token: string, channel?: ShareChannel): string {
   const base = getAppUrl();
@@ -13,60 +14,80 @@ export function buildSharePageUrl(token: string, channel?: ShareChannel): string
   return `${url}?${params.toString()}`;
 }
 
-/** Full text for copy / native share / landing reference. */
-export function buildShareText(title: string, excerpt: string, url: string): string {
+/** Full share body — title + excerpt, без ссылки. */
+export function buildShareBody(title: string, excerpt: string): string {
   const lines = ["🔮 Мой расклад Zovus", "", title.trim()];
   const body = excerpt.trim();
   if (body) lines.push("", body);
-  lines.push("", `Ссылка: ${url}`);
   return lines.join("\n");
 }
 
-/** Shorter body for messenger deep links (URL length limits). */
-export function buildMessengerShareText(title: string, excerpt: string, url: string): string {
-  const lines = ["🔮 Мой расклад Zovus", title.trim()];
-  const body = truncateForShareUrl(excerpt);
-  if (body) lines.push(body);
-  if (excerpt.trim().length > body.length) {
-    lines.push("", `Читать полностью: ${url}`);
-  } else {
-    lines.push("", url);
-  }
-  return lines.join("\n\n");
+/** Для копирования: полный текст + одна ссылка в конце. */
+export function buildShareTextForCopy(title: string, excerpt: string, url: string): string {
+  return `${buildShareBody(title, excerpt)}\n\n${url}`;
 }
 
-export function buildTelegramShareText(title: string, excerpt: string, url: string): string {
-  const lines = ["🔮 Мой расклад Zovus", title.trim()];
-  const body = truncateForShareUrl(excerpt, 900);
-  if (body) lines.push(body);
-  if (excerpt.trim().length > body.length) {
-    lines.push("Читать полностью на Zovus ↓");
+function truncateExcerptToFit(
+  title: string,
+  excerpt: string,
+  url: string,
+  prefix: string,
+  suffix: string,
+  maxUrlLen: number
+): string {
+  const header = buildShareBody(title, "");
+  const full = `${header}\n\n${excerpt.trim()}${suffix}`;
+  if (prefix.length + encodeURIComponent(full).length <= maxUrlLen) {
+    return full;
   }
-  return lines.join("\n\n");
+
+  let lo = 0;
+  let hi = excerpt.length;
+  let best = "";
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const slice = excerpt.slice(0, mid).trim();
+    const candidate = slice
+      ? `${header}\n\n${slice}…${suffix}`
+      : `${header}${suffix}`;
+    if (prefix.length + encodeURIComponent(candidate).length <= maxUrlLen) {
+      best = candidate;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  return best || `${header}${suffix}`;
+}
+
+export function buildTelegramShareUrl(pageUrl: string, title: string, excerpt: string): string {
+  const prefix = `https://t.me/share/url?url=${encodeURIComponent(pageUrl)}&text=`;
+  const text = truncateExcerptToFit(title, excerpt, pageUrl, prefix, "", MAX_MESSENGER_URL_LEN);
+  return prefix + encodeURIComponent(text);
+}
+
+export function buildWhatsAppShareUrl(pageUrl: string, title: string, excerpt: string): string {
+  const prefix = "https://wa.me/?text=";
+  const suffix = `\n\n${pageUrl}`;
+  const text = truncateExcerptToFit(title, excerpt, pageUrl, prefix, suffix, MAX_MESSENGER_URL_LEN);
+  return prefix + encodeURIComponent(text);
 }
 
 export function buildChannelUrl(
   channel: ShareChannel,
   shareUrl: string,
-  text: string,
-  title?: string,
-  excerpt?: string
+  title: string,
+  excerpt: string
 ): string | null {
   switch (channel) {
-    case "telegram": {
-      const tgText = buildTelegramShareText(
-        title ?? "Zovus",
-        excerpt ?? "",
-        shareUrl
-      );
-      return `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(tgText)}`;
-    }
-    case "whatsapp": {
-      const waText = buildMessengerShareText(title ?? "Zovus", excerpt ?? "", shareUrl);
-      return `https://wa.me/?text=${encodeURIComponent(waText)}`;
-    }
+    case "telegram":
+      return buildTelegramShareUrl(shareUrl, title, excerpt);
+    case "whatsapp":
+      return buildWhatsAppShareUrl(shareUrl, title, excerpt);
     case "vk":
-      return `https://vk.com/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(title ?? "Zovus")}&comment=${encodeURIComponent(truncateForShareUrl(excerpt ?? "", 500))}`;
+      return `https://vk.com/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(title)}`;
     case "copy":
     case "png":
     case "native":
@@ -74,4 +95,9 @@ export function buildChannelUrl(
     default:
       return null;
   }
+}
+
+/** @deprecated use buildShareBody / buildShareTextForCopy */
+export function buildShareText(title: string, excerpt: string, url: string): string {
+  return buildShareTextForCopy(title, excerpt, url);
 }
