@@ -3,7 +3,6 @@
 import type { ShareChannel } from "@/lib/share/types";
 import {
   buildChannelUrl,
-  buildShareBody,
   buildSharePageUrl,
   buildShareTextForCopy,
 } from "@/lib/share/build-url";
@@ -35,21 +34,10 @@ export async function downloadShareOgImage(token: string, filename: string): Pro
   }
 }
 
-export async function nativeShare(options: {
-  title: string;
-  text: string;
-  url?: string;
-  file?: File;
-}): Promise<"shared" | "cancelled" | "failed"> {
+async function nativeShareText(title: string, text: string): Promise<"shared" | "cancelled" | "failed"> {
   if (typeof navigator === "undefined" || !navigator.share) return "failed";
   try {
-    const shareData: ShareData = { title: options.title, text: options.text };
-    if (options.url) shareData.url = options.url;
-    if (options.file && navigator.canShare?.({ files: [options.file] })) {
-      await navigator.share({ ...shareData, files: [options.file] });
-    } else {
-      await navigator.share(shareData);
-    }
+    await navigator.share({ title: title.slice(0, 100), text });
     return "shared";
   } catch (err) {
     if ((err as Error)?.name === "AbortError") return "cancelled";
@@ -74,31 +62,18 @@ export function openShareChannel(
   return "unsupported";
 }
 
+/** Системное «Поделиться» — только текст со ссылкой в конце, без картинки и без отдельного url. */
 export async function shareViaNative(
   token: string,
   title: string,
   excerpt: string
 ): Promise<"shared" | "copied" | "failed"> {
   const url = buildSharePageUrl(token, "native");
-  const text = buildShareBody(title, excerpt);
+  const text = buildShareTextForCopy(title, excerpt, url);
 
-  try {
-    const res = await fetch(`/api/share/${encodeURIComponent(token)}/og`, { cache: "no-store" });
-    if (res.ok) {
-      const blob = await res.blob();
-      const file = new File([blob], "zovus-reading.png", { type: "image/png" });
-      if (navigator.canShare?.({ files: [file] })) {
-        const result = await nativeShare({ title, text, url, file });
-        if (result === "shared") return "shared";
-      }
-    }
-  } catch {
-    /* fall through */
-  }
-
-  const result = await nativeShare({ title, text, url });
+  const result = await nativeShareText(title, text);
   if (result === "shared") return "shared";
 
-  const copied = await copyToClipboard(buildShareTextForCopy(title, excerpt, url));
+  const copied = await copyToClipboard(text);
   return copied ? "copied" : "failed";
 }

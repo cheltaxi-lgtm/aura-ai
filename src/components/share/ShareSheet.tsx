@@ -6,7 +6,6 @@ import {
   Share2,
   X,
   Send,
-  MessageCircle,
   Copy,
   Download,
   MoreHorizontal,
@@ -38,7 +37,6 @@ type ChannelDef = {
 
 const CHANNELS: ChannelDef[] = [
   { id: "telegram", label: "Telegram", icon: Send },
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "vk", label: "VK", icon: Share2 },
   { id: "copy", label: "Текст", icon: Copy },
   { id: "png", label: "Картинка", icon: Download },
