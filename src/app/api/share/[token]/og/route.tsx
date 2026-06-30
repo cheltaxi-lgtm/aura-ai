@@ -16,7 +16,7 @@ export async function GET(_request: Request, context: RouteContext) {
     snapshot?.payload.excerpt?.slice(0, 120) ?? "Получите свой персональный расклад";
   const cards = snapshot?.payload.cards?.map((c) => c.name).slice(0, 3).join(" · ") ?? "";
 
-  return new ImageResponse(
+  const imageResponse = new ImageResponse(
     (
       <div
         style={{
@@ -60,7 +60,7 @@ export async function GET(_request: Request, context: RouteContext) {
             </div>
           ) : null}
         </div>
-        <div style={{ maxWidth: 900 }}>
+        <div style={{ display: "flex", flexDirection: "column", maxWidth: 900 }}>
           <div
             style={{
               fontSize: 24,
@@ -87,4 +87,12 @@ export async function GET(_request: Request, context: RouteContext) {
     ),
     { width: 1200, height: 630 }
   );
+
+  const buffer = await imageResponse.arrayBuffer();
+  return new Response(buffer, {
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=86400, s-maxage=86400",
+    },
+  });
 }
