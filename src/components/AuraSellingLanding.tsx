@@ -17,6 +17,7 @@ import MastersShowcase from "@/components/MastersShowcase";
 import MasterAvatar from "@/components/MasterAvatar";
 import RuneIcon from "@/components/RuneIcon";
 import RunePrice from "@/components/RunePrice";
+import QuickQuestions from "@/components/seo/QuickQuestions";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
@@ -280,6 +281,8 @@ export default function AuraSellingLanding({
           </div>
         </section>
       ) : null}
+
+      {showHero ? <QuickQuestions /> : null}
 
       <section className="aura-landing-section">
         <div className="mx-auto max-w-6xl">

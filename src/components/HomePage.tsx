@@ -21,6 +21,7 @@ import IntentionPicker from "@/components/IntentionPicker";
 import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import RitualFlow from "@/components/ritual/RitualFlow";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
@@ -466,6 +467,22 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
   useEffect(() => {
     if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
     const params = new URLSearchParams(window.location.search);
+    const intentParam = params.get("intent")?.trim();
+
+    if (intentParam) {
+      const intent = getSpreadIntentBySlug(intentParam);
+      if (intent) {
+        deepLinkSpreadParsedRef.current = true;
+        setDeepLinkSpreadId(intent.spreadId);
+        setSessionFlowPreselectedMaster(intent.recommendedMasterId);
+        setShowSessionFlow(true);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("intent");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        return;
+      }
+    }
+
     const spreadParam = params.get("spread")?.trim();
     const dailyParam = params.get("daily")?.trim();
 
@@ -487,7 +504,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
     const url = new URL(window.location.href);
     url.searchParams.delete("spread");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }, [setShowSessionFlow]);
+  }, [setShowSessionFlow, setSessionFlowPreselectedMaster]);
 
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
@@ -2241,6 +2258,7 @@ export default function HomePage({ referrerSlug }: HomePageProps) {
                 ? getActiveProfile()?.birthDate || profile?.birthDate
                 : undefined
             }
+            sessionId={consultationSessionId ?? session?.sessionId ?? undefined}
           />
           <MasterSessionFlow
             isOpen={showSessionFlow}
