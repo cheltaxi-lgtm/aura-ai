@@ -1,64 +1,41 @@
 import { ImageResponse } from "next/og";
-import { getShareSnapshotByToken } from "@/lib/share/get-snapshot";
 
 export const alt = "Zovus — эзотерический расклад";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-interface Props {
-  params: Promise<{ token: string }>;
+interface ShareOgPayload {
+  title?: string;
+  excerpt?: string;
+  cards?: { name: string }[];
 }
 
-function fallbackImage(title: string) {
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(145deg, #07050F 0%, #1A0F2E 45%, #3D2858 100%)",
-          color: "#F5E6B8",
-          fontFamily: "serif",
-          padding: 64,
-        }}
-      >
-        <div style={{ fontSize: 28, letterSpacing: 6, color: "#C9A24A", marginBottom: 24 }}>
-          ZOVUS
-        </div>
-        <div style={{ fontSize: 48, fontWeight: 700, textAlign: "center", maxWidth: 960 }}>
-          {title}
-        </div>
-        <div style={{ marginTop: 28, fontSize: 22, color: "rgba(245,230,184,0.75)" }}>
-          Получить свой расклад на zovus.ru
-        </div>
-      </div>
-    ),
-    { ...size }
-  );
+interface Props {
+  params: Promise<{ token: string }>;
 }
 
 export default async function Image({ params }: Props) {
   const { token } = await params;
 
-  let snapshot = null;
+  let snapshotPayload: ShareOgPayload | null = null;
+
   try {
-    snapshot = await getShareSnapshotByToken(token, false);
+    const internalBase = process.env.INTERNAL_APP_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:3000";
+    const res = await fetch(`${internalBase}/api/share/${encodeURIComponent(token)}`, {
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { payload?: ShareOgPayload };
+      snapshotPayload = data.payload ?? null;
+    }
   } catch {
-    snapshot = null;
+    snapshotPayload = null;
   }
 
-  if (!snapshot) {
-    return fallbackImage("Расклад Zovus");
-  }
-
-  const title = snapshot.payload.title ?? "Мой расклад Zovus";
+  const title = snapshotPayload?.title ?? "Мой расклад Zovus";
   const excerpt =
-    snapshot.payload.excerpt?.slice(0, 120) ?? "Получите свой персональный расклад";
-  const cards = snapshot.payload.cards?.map((c) => c.name).slice(0, 3).join(" · ") ?? "";
+    snapshotPayload?.excerpt?.slice(0, 120) ?? "Получите свой персональный расклад";
+  const cards = snapshotPayload?.cards?.map((c) => c.name).slice(0, 3).join(" · ") ?? "";
 
   return new ImageResponse(
     (
