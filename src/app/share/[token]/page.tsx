@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Расклад не найден" };
   }
 
-  const { payload, kind } = snapshot;
+  const { payload } = snapshot;
   const master = payload.masterName ?? (payload.masterKey ? masterDisplayName(payload.masterKey) : "");
   const title = `${payload.title}${master ? ` · ${master}` : ""}`;
   const description =
@@ -25,6 +25,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     "Персональный эзотерический расклад на Zovus — получите свой бесплатно.";
 
   const url = `${getAppUrl()}/share/${token}`;
+  const ogImage = `${getAppUrl()}/api/share/${token}/og`;
 
   return {
     title,
@@ -36,11 +37,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       siteName: BRAND_NAME,
       title,
       description,
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
+      images: [ogImage],
     },
   };
 }

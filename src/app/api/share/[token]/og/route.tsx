@@ -1,41 +1,20 @@
 import { ImageResponse } from "next/og";
+import { getShareSnapshotByToken } from "@/lib/share/get-snapshot";
 
-export const alt = "Zovus — эзотерический расклад";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+export const runtime = "nodejs";
 
-interface ShareOgPayload {
-  title?: string;
-  excerpt?: string;
-  cards?: { name: string }[];
-}
-
-interface Props {
+interface RouteContext {
   params: Promise<{ token: string }>;
 }
 
-export default async function Image({ params }: Props) {
-  const { token } = await params;
+export async function GET(_request: Request, context: RouteContext) {
+  const { token } = await context.params;
+  const snapshot = await getShareSnapshotByToken(token, false);
 
-  let snapshotPayload: ShareOgPayload | null = null;
-
-  try {
-    const internalBase = process.env.INTERNAL_APP_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:3000";
-    const res = await fetch(`${internalBase}/api/share/${encodeURIComponent(token)}`, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { payload?: ShareOgPayload };
-      snapshotPayload = data.payload ?? null;
-    }
-  } catch {
-    snapshotPayload = null;
-  }
-
-  const title = snapshotPayload?.title ?? "Мой расклад Zovus";
+  const title = snapshot?.payload.title ?? "Мой расклад Zovus";
   const excerpt =
-    snapshotPayload?.excerpt?.slice(0, 120) ?? "Получите свой персональный расклад";
-  const cards = snapshotPayload?.cards?.map((c) => c.name).slice(0, 3).join(" · ") ?? "";
+    snapshot?.payload.excerpt?.slice(0, 120) ?? "Получите свой персональный расклад";
+  const cards = snapshot?.payload.cards?.map((c) => c.name).slice(0, 3).join(" · ") ?? "";
 
   return new ImageResponse(
     (
@@ -106,6 +85,6 @@ export default async function Image({ params }: Props) {
         </div>
       </div>
     ),
-    { ...size }
+    { width: 1200, height: 630 }
   );
 }
