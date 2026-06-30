@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getShareSnapshotByToken } from "@/lib/share/get-snapshot";
+import { truncateForCard } from "@/lib/share/sanitize";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const title = snapshot?.payload.title ?? "Мой расклад Zovus";
   const excerpt =
-    snapshot?.payload.excerpt?.slice(0, 120) ?? "Получите свой персональный расклад";
+    truncateForCard(snapshot?.payload.excerpt) || "Получите свой персональный расклад";
   const cards = snapshot?.payload.cards?.map((c) => c.name).slice(0, 3).join(" · ") ?? "";
 
   const imageResponse = new ImageResponse(

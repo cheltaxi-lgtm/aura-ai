@@ -427,7 +427,15 @@ export default function ChatWindow({
               ? `${getSpread(spreadId).label} · ${topicLabel(sessionIntention)}`
               : getSpread(spreadId).label
             : "Ваш расклад";
-    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && m.content?.trim());
+    const assistantReadings = messages
+      .filter((m) => m.role === "assistant" && m.content?.trim())
+      .map((m) => m.content!.trim());
+    const excerpt =
+      assistantReadings.length > 0
+        ? assistantReadings.reduce((longest, current) =>
+            current.length > longest.length ? current : longest
+          )
+        : undefined;
     return chatSpreadToSharePayload({
       characterId,
       masterName: character?.name,
@@ -435,7 +443,7 @@ export default function ChatWindow({
       cards: spreadCards ?? [],
       deckSystem: spreadDeckSystem,
       spreadId: spreadId ?? undefined,
-      excerpt: lastAssistant?.content,
+      excerpt,
     });
   }, [
     spreadCardsVisible,

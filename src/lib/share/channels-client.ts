@@ -13,6 +13,23 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
+export async function downloadShareOgImage(token: string, filename: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/share/${encodeURIComponent(token)}/og`, { cache: "no-store" });
+    if (!res.ok) return false;
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = objectUrl;
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function exportCardAsPng(element: HTMLElement, filename: string): Promise<boolean> {
   try {
     const html2canvas = (await import("html2canvas")).default;
@@ -66,11 +83,6 @@ export function openShareChannel(
   const text = buildShareText(title, excerpt, url);
   const channelUrl = buildChannelUrl(channel, url, text, title, excerpt);
 
-  if (channel === "copy") {
-    void copyToClipboard(url);
-    return "copied";
-  }
-
   if (channelUrl && typeof window !== "undefined") {
     window.open(channelUrl, "_blank", "noopener,noreferrer");
     return "opened";
@@ -90,10 +102,9 @@ export async function shareViaNative(
 
   if (cardElement) {
     try {
-      const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(cardElement, { backgroundColor: "#0a0a0f", scale: 2, useCORS: true });
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (blob) {
+      const res = await fetch(`/api/share/${encodeURIComponent(token)}/og`, { cache: "no-store" });
+      if (res.ok) {
+        const blob = await res.blob();
         const file = new File([blob], "zovus-reading.png", { type: "image/png" });
         const result = await nativeShare({ title, text, url, file });
         if (result === "shared") return "shared";

@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const master = payload.masterName ?? (payload.masterKey ? masterDisplayName(payload.masterKey) : "");
   const title = `${payload.title}${master ? ` · ${master}` : ""}`;
   const description =
-    payload.excerpt?.slice(0, 300) ||
+    payload.excerpt?.slice(0, 500) ||
     "Персональный эзотерический расклад на Zovus — получите свой бесплатно.";
 
   const url = `${getAppUrl()}/share/${token}`;
