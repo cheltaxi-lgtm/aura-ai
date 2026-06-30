@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Moon, X } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
+import ShareButton from "@/components/share/ShareButton";
+import { dailyReadingToSharePayload } from "@/lib/share/payload-builders";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import ChatMessageRenderer from "@/components/ChatMessageRenderer";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
@@ -93,14 +95,20 @@ export default function CabinetDailySpreads({ readings }: Props) {
                       {formatShortDate(`${active.readingDate}T12:00:00`)}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveId(null)}
-                    className="rounded-full border border-white/10 p-1.5 text-gray-400 hover:text-white"
-                    aria-label="Закрыть"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <ShareButton
+                      payload={dailyReadingToSharePayload(active)}
+                      variant="icon"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setActiveId(null)}
+                      className="rounded-full border border-white/10 p-1.5 text-gray-400 hover:text-white"
+                      aria-label="Закрыть"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="lux-scroll flex-1 overflow-y-auto px-5 py-5">

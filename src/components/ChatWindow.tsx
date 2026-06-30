@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -56,6 +56,8 @@ import {
 
 const noop = () => {};
 import type { Message } from "@/types";
+import ShareButton from "@/components/share/ShareButton";
+import { chatSpreadToSharePayload } from "@/lib/share/payload-builders";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 
@@ -413,6 +415,42 @@ export default function ChatWindow({
         : 3;
   const spreadCardsVisible = (spreadCards?.length ?? 0) >= requiredSpreadCount;
 
+  const spreadSharePayload = useMemo(() => {
+    if (!spreadCardsVisible || spreadReadingLoading || spreadLoading) return null;
+    const spreadTitle =
+      spreadVariant === "photo"
+        ? "Расклад по фото"
+        : spreadVariant === "numerolog"
+          ? "Нумерологический сеанс"
+          : spreadVariant === "intention"
+            ? sessionIntention
+              ? `${getSpread(spreadId).label} · ${topicLabel(sessionIntention)}`
+              : getSpread(spreadId).label
+            : "Ваш расклад";
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && m.content?.trim());
+    return chatSpreadToSharePayload({
+      characterId,
+      masterName: character?.name,
+      spreadTitle,
+      cards: spreadCards ?? [],
+      deckSystem: spreadDeckSystem,
+      spreadId: spreadId ?? undefined,
+      excerpt: lastAssistant?.content,
+    });
+  }, [
+    spreadCardsVisible,
+    spreadReadingLoading,
+    spreadLoading,
+    spreadVariant,
+    sessionIntention,
+    spreadId,
+    messages,
+    characterId,
+    character?.name,
+    spreadCards,
+    spreadDeckSystem,
+  ]);
+
   const showWelcomeEmpty =
     messages.length === 0 &&
     !isLoading &&
@@ -689,6 +727,11 @@ export default function ChatWindow({
               }
               onComplete={onSpreadReadingRitualComplete ?? noop}
             />
+          )}
+          {spreadSharePayload && !spreadReadingLoading && (
+            <div className="mt-4 flex justify-center">
+              <ShareButton payload={spreadSharePayload} variant="pill" label="Поделиться раскладом" />
+            </div>
           )}
         </div>
       )}

@@ -46,11 +46,13 @@ const PUBLIC_API_EXACT = new Set([
 
   "/api/runes/webhook",
 
+  "/api/share",
+
 ]);
 
 
 
-const PUBLIC_API_PREFIXES = ["/api/auth/", "/api/scene-art/"] as const;
+const PUBLIC_API_PREFIXES = ["/api/auth/", "/api/scene-art/", "/api/share/"] as const;
 
 
 

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Star, Trash2 } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
+import ShareButton from "@/components/share/ShareButton";
+import { sessionToSharePayload } from "@/lib/share/payload-builders";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
 import {
   formatCabinetDate,
@@ -160,6 +162,11 @@ function SessionCard({
       )}
 
       <div className="cabinet-session-card__actions">
+        <ShareButton
+          payload={sessionToSharePayload(session)}
+          variant="pill"
+          className="cabinet-btn cabinet-btn--secondary !gap-1.5"
+        />
         {session.outcomeRating == null && (
           <button
             type="button"

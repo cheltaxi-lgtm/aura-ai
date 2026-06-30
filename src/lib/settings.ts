@@ -88,6 +88,12 @@ export interface VisualSettings {
   };
 }
 
+export interface SharePlatformSettings {
+  enabled: boolean;
+  expiryDays: number;
+  maxExcerptLength: number;
+}
+
 const DEFAULTS = {
   ai: {
     provider: "openrouter" as const,
@@ -146,6 +152,11 @@ const DEFAULTS = {
     freeQuestions: 2,
     costs: { ...DEFAULT_RUNE_COSTS } as Record<RuneActionType, number>,
   },
+  share: {
+    enabled: true,
+    expiryDays: 90,
+    maxExcerptLength: 280,
+  },
 };
 
 export async function getSetting<K extends keyof typeof DEFAULTS>(
@@ -198,7 +209,7 @@ export async function setSetting<K extends keyof typeof DEFAULTS>(
 }
 
 export async function getAllSettings() {
-  const [ai, pricing, features, prompts, tts, visual, runes] = await Promise.all([
+  const [ai, pricing, features, prompts, tts, visual, runes, share] = await Promise.all([
     getSetting("ai"),
     getSetting("pricing"),
     getSetting("features"),
@@ -206,8 +217,9 @@ export async function getAllSettings() {
     getSetting("tts"),
     getSetting("visual"),
     getSetting("runes"),
+    getSetting("share"),
   ]);
-  return { ai, pricing, features, prompts, tts, visual, runes };
+  return { ai, pricing, features, prompts, tts, visual, runes, share };
 }
 
 export async function isExpertRegistrationEnabled(): Promise<boolean> {

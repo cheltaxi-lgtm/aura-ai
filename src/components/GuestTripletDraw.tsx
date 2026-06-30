@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { drawSpread, getDeckPositions, DEFAULT_DECK_SYSTEM } from "@/lib/decks";
@@ -8,6 +8,8 @@ import type { SpreadSymbol } from "@/lib/decks/types";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import DeckCard from "@/components/DeckCard";
+import ShareButton from "@/components/share/ShareButton";
+import { tripletToSharePayload } from "@/lib/share/payload-builders";
 
 export default function GuestTripletDraw() {
   const system = DEFAULT_DECK_SYSTEM;
@@ -50,6 +52,17 @@ export default function GuestTripletDraw() {
     });
     setDone(true);
   };
+
+  const sharePayload = useMemo(() => {
+    if (!done) return null;
+    const teaser = `Три карты легли на ваш стол: «${deck[0].name}» · «${deck[1].name}» · «${deck[2].name}». Зарегистрируйтесь — мастер расшифрует расклад.`;
+    return tripletToSharePayload({
+      userName: "Гость",
+      cards: deck,
+      deckSystem: system,
+      teaser,
+    });
+  }, [done, deck, system]);
 
   if (!ageConfirmed) {
     return (
@@ -136,9 +149,14 @@ export default function GuestTripletDraw() {
           <p className="text-sm leading-relaxed text-aura-ivory/75">
             Расклад сохранён. Остался один шаг — быстрая регистрация и выбор мастера.
           </p>
-          <Link href="/auth/user/register?returnTo=/" className="btn-primary inline-block px-10 py-3.5">
-            Получить расшифровку
-          </Link>
+          <div className="flex flex-col gap-3">
+            <Link href="/auth/user/register?returnTo=/" className="btn-primary inline-block px-10 py-3.5">
+              Получить расшифровку
+            </Link>
+            {sharePayload && (
+              <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />
+            )}
+          </div>
         </motion.div>
       )}
     </div>

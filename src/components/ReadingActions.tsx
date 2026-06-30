@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Share2, Trash2, Loader2, Check, MessageCircle } from "lucide-react";
-import { shareReading, type ShareReadingInput } from "@/lib/share-reading";
+import { Trash2, Loader2, MessageCircle } from "lucide-react";
+import ShareButton from "@/components/share/ShareButton";
+import { shareInputToPayload } from "@/lib/share-reading";
+import type { ShareReadingInput } from "@/lib/share-reading";
 
 interface ReadingActionsProps {
   entryId: string;
@@ -22,16 +24,7 @@ export default function ReadingActions({
   continueChatHref,
 }: ReadingActionsProps) {
   const [deleting, setDeleting] = useState(false);
-  const [shareStatus, setShareStatus] = useState<"idle" | "shared" | "copied" | "error">("idle");
-
-  const handleShare = async () => {
-    setShareStatus("idle");
-    const result = await shareReading(share);
-    if (result === "shared") setShareStatus("shared");
-    else if (result === "copied") setShareStatus("copied");
-    else setShareStatus("error");
-    setTimeout(() => setShareStatus("idle"), 2500);
-  };
+  const [deleteError, setDeleteError] = useState(false);
 
   const handleDelete = async () => {
     if (
@@ -43,10 +36,11 @@ export default function ReadingActions({
     }
 
     setDeleting(true);
+    setDeleteError(false);
     try {
       const res = await fetch(`/api/cabinet/readings/${entryId}`, { method: "DELETE" });
       if (!res.ok) {
-        setShareStatus("error");
+        setDeleteError(true);
         return;
       }
       onDeleted?.();
@@ -54,15 +48,6 @@ export default function ReadingActions({
       setDeleting(false);
     }
   };
-
-  const shareLabel =
-    shareStatus === "shared"
-      ? "Отправлено"
-      : shareStatus === "copied"
-        ? "Скопировано"
-        : shareStatus === "error"
-          ? "Ошибка"
-          : "Поделиться";
 
   return (
     <div className={`flex flex-wrap gap-2 ${compact ? "" : "mt-4 border-t border-white/5 pt-4"}`}>
@@ -76,18 +61,7 @@ export default function ReadingActions({
         </Link>
       )}
 
-      <button
-        type="button"
-        onClick={() => void handleShare()}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-xs text-gray-300 transition-colors hover:border-aura-purple/40 hover:text-aura-neon"
-      >
-        {shareStatus === "copied" || shareStatus === "shared" ? (
-          <Check className="h-3.5 w-3.5 text-aura-emerald" />
-        ) : (
-          <Share2 className="h-3.5 w-3.5" />
-        )}
-        {shareLabel}
-      </button>
+      <ShareButton payload={shareInputToPayload(share, "reading")} variant="pill" />
 
       <button
         type="button"
@@ -100,7 +74,7 @@ export default function ReadingActions({
         ) : (
           <Trash2 className="h-3.5 w-3.5" />
         )}
-        Удалить
+        {deleteError ? "Ошибка" : "Удалить"}
       </button>
     </div>
   );

@@ -1,5 +1,7 @@
 import { CHARACTERS } from "@/lib/characters";
 import { TRIPLET_POSITIONS } from "@/lib/tarot";
+import { buildSharePageUrl, buildShareText } from "@/lib/share/build-url";
+import type { SharePayload } from "@/lib/share/types";
 
 export interface ShareReadingInput {
   title: string;
@@ -11,6 +13,8 @@ export interface ShareReadingInput {
   spreadType?: string;
   text: string;
   appUrl?: string;
+  /** When set, uses public share page URL instead of home */
+  shareToken?: string;
 }
 
 export function masterDisplayName(id: string): string {
@@ -18,8 +22,31 @@ export function masterDisplayName(id: string): string {
   return CHARACTERS.find((c) => c.id === id)?.name ?? id;
 }
 
+export function shareInputToPayload(input: ShareReadingInput, kind: SharePayload["kind"] = "reading"): SharePayload {
+  const cards =
+    input.detectedCards?.map((name) => ({ name })) ??
+    input.cards?.map((c, i) => ({
+      name: c.name,
+      meaning: c.meaning,
+      position: TRIPLET_POSITIONS[i],
+    }));
+
+  return {
+    kind,
+    title: input.title,
+    excerpt: input.text,
+    masterName: input.masterName,
+    cards,
+    spreadType: input.spreadType ?? input.deckType,
+    date: input.date,
+  };
+}
+
 export function buildShareReadingText(input: ShareReadingInput): string {
-  const url = input.appUrl ?? (typeof window !== "undefined" ? window.location.origin : "https://zovus.ru");
+  const url =
+    input.shareToken != null
+      ? buildSharePageUrl(input.shareToken)
+      : (input.appUrl ?? (typeof window !== "undefined" ? window.location.origin : "https://zovus.ru"));
   const lines: string[] = ["🔮 Мой расклад Zovus", ""];
 
   if (input.masterName) lines.push(`Мастер: ${input.masterName}`);

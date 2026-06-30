@@ -1,10 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import {
-  RITUAL_TYPES,
-  type RitualType,
-} from "@/lib/ritual-config";
+import ShareButton from "@/components/share/ShareButton";
+import { ritualToSharePayload } from "@/lib/share/payload-builders";
+import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
 import { getCharacterById } from "@/lib/characters";
 
 export interface RitualClientData {
@@ -68,16 +67,7 @@ export default function RitualCard({ ritual, onDone }: Props) {
     }
   };
 
-  const handleShare = async () => {
-    const text = `Обряд «${cfg.label}» от ${master?.name ?? "мастера"}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: text, text });
-      } catch {
-        /* cancelled */
-      }
-    }
-  };
+  const sharePayload = ritualToSharePayload(ritual);
 
   return (
     <div className="px-4 py-4">
@@ -239,13 +229,12 @@ export default function RitualCard({ ritual, onDone }: Props) {
         >
           {saving ? "…" : "📥 Сохранить"}
         </button>
-        <button
-          type="button"
-          onClick={() => void handleShare()}
-          className="btn-luxe btn-luxe--sm flex-1 border border-white/10 bg-white/5"
-        >
-          ↗ Поделиться
-        </button>
+        <ShareButton
+          payload={sharePayload}
+          variant="pill"
+          className="btn-luxe btn-luxe--sm flex-1"
+          label="↗ Поделиться"
+        />
         <button
           type="button"
           onClick={onDone}

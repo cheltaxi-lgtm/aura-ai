@@ -14,7 +14,7 @@ export async function PATCH(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { section, values } = await request.json();
-  if (!section || !values || !["ai", "pricing", "features", "prompts", "tts", "visual", "runes"].includes(section)) {
+  if (!section || !values || !["ai", "pricing", "features", "prompts", "tts", "visual", "runes", "share"].includes(section)) {
     return NextResponse.json({ error: "Invalid section" }, { status: 400 });
   }
 

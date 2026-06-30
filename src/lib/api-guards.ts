@@ -159,6 +159,24 @@ export async function enforceDailyCardRateLimit(key: string): Promise<NextRespon
   return null;
 }
 
+const SHARE_CREATE_LIMIT = 20;
+const SHARE_CREATE_WINDOW_MS = 60 * 60 * 1000;
+
+export async function enforceShareCreateRateLimit(key: string): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("share_create", key),
+    SHARE_CREATE_LIMIT,
+    SHARE_CREATE_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много ссылок для шаринга. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
+
 const INFLUENCER_REGISTER_LIMIT = 5;
 const INFLUENCER_REGISTER_WINDOW_MS = 24 * 60 * 60 * 1000;
 

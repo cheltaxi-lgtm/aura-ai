@@ -9,6 +9,8 @@ import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
 import SceneImage from "@/components/SceneImage";
 import DeckCard from "@/components/DeckCard";
+import ShareButton from "@/components/share/ShareButton";
+import { tripletToSharePayload } from "@/lib/share/payload-builders";
 
 interface TarotTripletProps {
   userName: string;
@@ -92,6 +94,23 @@ export default function TarotTriplet({
     onAllRevealed(deck, teaser);
   }, [allRevealed, deck, userName, positions, masterName, onAllRevealed]);
 
+  const sharePayload = useMemo(() => {
+    if (!allRevealed) return null;
+    const teaser = buildSpreadTeaser({
+      userName,
+      cards: deck,
+      positions: [...positions],
+      masterName,
+    });
+    return tripletToSharePayload({
+      userName,
+      cards: deck,
+      deckSystem: system,
+      teaser,
+      masterName,
+    });
+  }, [allRevealed, deck, userName, positions, masterName, system]);
+
   return (
     <div className="mx-auto max-w-4xl">
       <motion.p
@@ -169,14 +188,19 @@ export default function TarotTriplet({
               <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
               Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
             </p>
-            <button
-              type="button"
-              onClick={() => void handleFinish()}
-              disabled={submitting}
-              className="btn-primary mt-6 px-8 py-3 text-sm disabled:cursor-wait disabled:opacity-70"
-            >
-              {submitting ? "Настраиваем поле…" : "Узнать смысл у мастера"}
-            </button>
+            <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={() => void handleFinish()}
+                disabled={submitting}
+                className="btn-primary px-8 py-3 text-sm disabled:cursor-wait disabled:opacity-70"
+              >
+                {submitting ? "Настраиваем поле…" : "Узнать смысл у мастера"}
+              </button>
+              {sharePayload && (
+                <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
