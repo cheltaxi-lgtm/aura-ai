@@ -33,7 +33,7 @@ export async function createShareSnapshot(
          VALUES ($1, $2, $3, $4, $5)`,
         [token, userId ?? null, payload.kind, JSON.stringify(payload), expiresAt.toISOString()]
       );
-      return { token, url: buildSharePageUrl(token) };
+      return { token, url: buildSharePageUrl(token), payload };
     } catch (err) {
       const code = (err as { code?: string })?.code;
       if (code === "23505") continue;

@@ -16,7 +16,7 @@ import { DEFAULT_SPREAD_CATALOG_SETTINGS } from "@/lib/spreads/types";
 export default function AdminSettingsPage() {
   const [pricing, setPricing] = useState<Record<string, unknown>>({});
   const [features, setFeatures] = useState<Record<string, unknown>>({});
-  const [share, setShare] = useState<Record<string, unknown>>({ enabled: true, expiryDays: 90, maxExcerptLength: 280 });
+  const [share, setShare] = useState<Record<string, unknown>>({ enabled: true, expiryDays: 90, maxExcerptLength: 4000 });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function AdminSettingsPage() {
             ...(f.spreadOverrides as Record<string, { enabled?: boolean; costMultiplier?: number }> | undefined),
           },
         });
-        setShare(d.share ?? { enabled: true, expiryDays: 90, maxExcerptLength: 280 });
+        setShare(d.share ?? { enabled: true, expiryDays: 90, maxExcerptLength: 4000 });
       });
   }, []);
 
@@ -297,7 +297,7 @@ export default function AdminSettingsPage() {
                 type="number"
                 min={80}
                 max={500}
-                value={Number(share.maxExcerptLength ?? 280)}
+                value={Number(share.maxExcerptLength ?? 4000)}
                 onChange={(e) =>
                   setShare({ ...share, maxExcerptLength: parseInt(e.target.value, 10) })
                 }

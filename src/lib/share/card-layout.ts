@@ -9,3 +9,15 @@ export function shareCardScale(aspect: ShareCardAspect, maxWidth: number): numbe
   const { width } = SHARE_CARD_DIMENSIONS[aspect];
   return Math.min(1, maxWidth / width);
 }
+
+export function getScaledCardSize(aspect: ShareCardAspect, maxWidth: number) {
+  const dims = SHARE_CARD_DIMENSIONS[aspect];
+  const scale = shareCardScale(aspect, maxWidth);
+  return {
+    scale,
+    width: dims.width,
+    height: dims.height,
+    displayWidth: Math.round(dims.width * scale),
+    displayHeight: Math.round(dims.height * scale),
+  };
+}

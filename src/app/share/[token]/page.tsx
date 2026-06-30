@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const master = payload.masterName ?? (payload.masterKey ? masterDisplayName(payload.masterKey) : "");
   const title = `${payload.title}${master ? ` · ${master}` : ""}`;
   const description =
-    payload.excerpt?.slice(0, 160) ||
+    payload.excerpt?.slice(0, 300) ||
     "Персональный эзотерический расклад на Zovus — получите свой бесплатно.";
 
   const url = `${getAppUrl()}/share/${token}`;
@@ -67,20 +67,20 @@ export default async function ShareLandingPage({ params }: PageProps) {
     <main className="share-landing">
       <ShareLandingTracker token={token} kind={kind} />
       <article className="share-landing__card">
-        <p className="lux-label">Расклад {BRAND_NAME}</p>
-        <h1 className="mt-3 font-display text-2xl font-semibold text-white">{payload.title}</h1>
-        {master && <p className="mt-2 text-sm text-aura-champagne">{master}</p>}
-        {payload.date && <p className="mt-1 text-xs text-white/40">{payload.date}</p>}
+        <p className="lux-label share-landing__label">Расклад {BRAND_NAME}</p>
+        <h1 className="share-landing__title">{payload.title}</h1>
+        {master && <p className="share-landing__master">{master}</p>}
+        {payload.date && <p className="share-landing__date">{payload.date}</p>}
         {cards && (
-          <p className="mt-4 text-sm text-white/70">
-            <span className="text-white/40">Символы: </span>
+          <p className="share-landing__cards">
+            <span className="share-landing__cards-label">Символы: </span>
             {cards}
           </p>
         )}
         {payload.excerpt && (
-          <blockquote className="mt-6 border-l-2 border-aura-gold/40 pl-4 text-left text-sm italic leading-relaxed text-white/75">
-            {payload.excerpt}
-          </blockquote>
+          <div className="share-landing__excerpt-wrap">
+            <blockquote className="share-landing__excerpt">{payload.excerpt}</blockquote>
+          </div>
         )}
         <Link href={ctaHref} className="btn-luxe btn-luxe--gold share-landing__cta">
           Получить свой расклад

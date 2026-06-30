@@ -64,7 +64,7 @@ export function openShareChannel(
 ): "opened" | "copied" | "unsupported" {
   const url = buildSharePageUrl(token, channel);
   const text = buildShareText(title, excerpt, url);
-  const channelUrl = buildChannelUrl(channel, url, text);
+  const channelUrl = buildChannelUrl(channel, url, text, title, excerpt);
 
   if (channel === "copy") {
     void copyToClipboard(url);

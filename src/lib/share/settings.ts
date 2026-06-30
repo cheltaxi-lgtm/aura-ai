@@ -6,7 +6,7 @@ export type ShareSettings = SharePlatformSettings;
 const DEFAULT_SHARE_SETTINGS: ShareSettings = {
   enabled: true,
   expiryDays: 90,
-  maxExcerptLength: 280,
+  maxExcerptLength: 4000,
 };
 
 export async function getShareSettings(): Promise<ShareSettings> {
@@ -15,8 +15,8 @@ export async function getShareSettings(): Promise<ShareSettings> {
     enabled: s.enabled !== false,
     expiryDays: Number.isFinite(Number(s.expiryDays)) ? Math.max(1, Number(s.expiryDays)) : 90,
     maxExcerptLength: Number.isFinite(Number(s.maxExcerptLength))
-      ? Math.min(500, Math.max(80, Number(s.maxExcerptLength)))
-      : 280,
+      ? Math.min(8000, Math.max(200, Number(s.maxExcerptLength)))
+      : 4000,
   };
 }
 

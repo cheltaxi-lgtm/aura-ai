@@ -4139,6 +4139,11 @@ body.cookie-banner-visible .legal-page {
   gap: 1rem;
 }
 
+.share-sheet__header-text {
+  min-width: 0;
+  flex: 1;
+}
+
 .share-sheet__eyebrow {
   font-size: 0.625rem;
   letter-spacing: 0.22em;
@@ -4152,6 +4157,8 @@ body.cookie-banner-visible .legal-page {
   font-size: 1.125rem;
   font-weight: 600;
   color: #fff;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .share-sheet__close {
@@ -4194,7 +4201,6 @@ body.cookie-banner-visible .legal-page {
 
 .share-sheet__preview-wrap {
   margin-top: 1rem;
-  min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4202,11 +4208,17 @@ body.cookie-banner-visible .legal-page {
   border-radius: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(0, 0, 0, 0.35);
-  padding: 1rem;
+  padding: 0.75rem;
+}
+
+.share-sheet__preview-viewport {
+  overflow: hidden;
+  margin: 0 auto;
+  flex-shrink: 0;
 }
 
 .share-sheet__preview-scaler {
-  transform-origin: top center;
+  transform-origin: top left;
 }
 
 .share-sheet__loading,
@@ -4224,12 +4236,15 @@ body.cookie-banner-visible .legal-page {
   font-size: 0.875rem;
 }
 
-.share-sheet__link-preview {
+.share-sheet__link-preview,
+.share-sheet__excerpt-preview {
   margin-top: 0.75rem;
-  font-size: 0.625rem;
-  color: rgba(255, 255, 255, 0.35);
-  word-break: break-all;
-  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.45);
+  word-break: break-word;
+  text-align: left;
+  padding: 0 0.25rem;
 }
 
 .share-sheet__channels {
@@ -4354,6 +4369,16 @@ body.cookie-banner-visible .legal-page {
   bottom: 16px;
 }
 
+.share-card-reading,
+.share-card-daily,
+.share-card-triplet,
+.share-card-ritual {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .share-card-reading__eyebrow,
 .share-card-daily__eyebrow,
 .share-card-triplet__eyebrow {
@@ -4438,6 +4463,11 @@ body.cookie-banner-visible .legal-page {
   line-height: 1.55;
   font-style: italic;
   color: rgba(237, 230, 218, 0.82);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  -webkit-line-clamp: 7;
+  word-break: break-word;
 }
 
 .share-card-frame--og .share-card-reading__excerpt,
@@ -4446,6 +4476,7 @@ body.cookie-banner-visible .legal-page {
 .share-card-frame--og .share-card-ritual__excerpt {
   font-size: 18px;
   padding-top: 12px;
+  -webkit-line-clamp: 4;
 }
 
 .share-card-daily__icon {
@@ -4484,24 +4515,105 @@ body.cookie-banner-visible .legal-page {
 .share-landing {
   min-height: 60vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 2rem 1rem 4rem;
+  padding: 1.25rem 1rem 3rem;
 }
 
 .share-landing__card {
   width: 100%;
   max-width: 32rem;
-  border-radius: 1.5rem;
+  border-radius: 1.25rem;
   border: 1px solid rgba(201, 162, 74, 0.25);
   background: linear-gradient(165deg, rgba(18, 16, 26, 0.95) 0%, rgba(8, 6, 14, 0.98) 100%);
-  padding: 2rem;
-  text-align: center;
+  padding: 1.5rem 1.25rem;
+  text-align: left;
   box-shadow: var(--shadow-lux, 0 24px 80px rgba(0, 0, 0, 0.45));
+}
+
+@media (min-width: 640px) {
+  .share-landing {
+    align-items: center;
+    padding: 2rem 1rem 4rem;
+  }
+
+  .share-landing__card {
+    padding: 2rem;
+    border-radius: 1.5rem;
+    text-align: center;
+  }
+}
+
+.share-landing__label {
+  text-align: center;
+}
+
+.share-landing__title {
+  margin-top: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #fff;
+  word-break: break-word;
+}
+
+@media (min-width: 640px) {
+  .share-landing__title {
+    font-size: 1.5rem;
+  }
+}
+
+.share-landing__master {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--aura-champagne);
+}
+
+.share-landing__date {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.share-landing__cards {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.share-landing__cards-label {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.share-landing__excerpt-wrap {
+  margin-top: 1.25rem;
+}
+
+.share-landing__excerpt {
+  margin: 0;
+  padding: 1rem 1rem 1rem 1.125rem;
+  border-left: 2px solid rgba(201, 162, 74, 0.45);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.82);
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
 }
 
 .share-landing__cta {
   display: inline-flex;
+  width: 100%;
+  justify-content: center;
   margin-top: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .share-landing__cta {
+    width: auto;
+  }
 }
 

@@ -46,4 +46,5 @@ export interface ShareSnapshot {
 export interface CreateShareResult {
   token: string;
   url: string;
+  payload: ShareSnapshotPayload;
 }
