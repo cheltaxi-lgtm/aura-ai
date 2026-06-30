@@ -3,8 +3,9 @@
 import type { ShareChannel } from "@/lib/share/types";
 import {
   buildChannelUrl,
+  buildShareLinkMessage,
   buildSharePageUrl,
-  buildShareTextForCopy,
+  shareOgImageUrl,
 } from "@/lib/share/build-url";
 
 export async function copyToClipboard(text: string): Promise<boolean> {
@@ -17,42 +18,36 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-export async function downloadShareOgImage(token: string, filename: string): Promise<boolean> {
+export async function fetchShareOgBlob(token: string): Promise<Blob | null> {
   try {
-    const res = await fetch(`/api/share/${encodeURIComponent(token)}/og`, { cache: "no-store" });
-    if (!res.ok) return false;
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.download = filename;
-    link.href = objectUrl;
-    link.click();
-    URL.revokeObjectURL(objectUrl);
-    return true;
+    const res = await fetch(shareOgImageUrl(token), { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.blob();
   } catch {
-    return false;
+    return null;
   }
 }
 
-async function nativeShareText(title: string, text: string): Promise<"shared" | "cancelled" | "failed"> {
-  if (typeof navigator === "undefined" || !navigator.share) return "failed";
-  try {
-    await navigator.share({ title: title.slice(0, 100), text });
-    return "shared";
-  } catch (err) {
-    if ((err as Error)?.name === "AbortError") return "cancelled";
-    return "failed";
-  }
+export async function downloadShareOgImage(token: string, filename: string): Promise<boolean> {
+  const blob = await fetchShareOgBlob(token);
+  if (!blob) return false;
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = objectUrl;
+  link.click();
+  URL.revokeObjectURL(objectUrl);
+  return true;
 }
 
 export function openShareChannel(
   channel: ShareChannel,
   token: string,
   title: string,
-  excerpt: string
-): "opened" | "copied" | "unsupported" {
+  masterName?: string
+): "opened" | "unsupported" {
   const url = buildSharePageUrl(token, channel);
-  const channelUrl = buildChannelUrl(channel, url, title, excerpt);
+  const channelUrl = buildChannelUrl(channel, url, title, masterName);
 
   if (channelUrl && typeof window !== "undefined") {
     window.open(channelUrl, "_blank", "noopener,noreferrer");
@@ -62,17 +57,33 @@ export function openShareChannel(
   return "unsupported";
 }
 
-/** Системное «Поделиться» — только текст со ссылкой в конце, без картинки и без отдельного url. */
+/** Картинка + короткий текст + ссылка (без тела расклада). */
 export async function shareViaNative(
   token: string,
   title: string,
-  excerpt: string
+  masterName?: string
 ): Promise<"shared" | "copied" | "failed"> {
   const url = buildSharePageUrl(token, "native");
-  const text = buildShareTextForCopy(title, excerpt, url);
+  const text = buildShareLinkMessage(title, url, masterName);
 
-  const result = await nativeShareText(title, text);
-  if (result === "shared") return "shared";
+  if (typeof navigator !== "undefined" && navigator.share) {
+    try {
+      const blob = await fetchShareOgBlob(token);
+      if (blob && navigator.canShare?.({ files: [new File([blob], "zovus-reading.png", { type: "image/png" })] })) {
+        const file = new File([blob], "zovus-reading.png", { type: "image/png" });
+        await navigator.share({
+          title: title.slice(0, 100),
+          text,
+          files: [file],
+        });
+        return "shared";
+      }
+      await navigator.share({ title: title.slice(0, 100), text });
+      return "shared";
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return "failed";
+    }
+  }
 
   const copied = await copyToClipboard(text);
   return copied ? "copied" : "failed";

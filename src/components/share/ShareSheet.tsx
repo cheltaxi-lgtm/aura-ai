@@ -7,20 +7,14 @@ import {
   X,
   Send,
   Copy,
-  Download,
   MoreHorizontal,
   Check,
   Loader2,
 } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import SharePreviewCard from "@/components/share/SharePreviewCard";
-import {
-  copyToClipboard,
-  downloadShareOgImage,
-  openShareChannel,
-  shareViaNative,
-} from "@/lib/share/channels-client";
-import { buildSharePageUrl, buildShareTextForCopy } from "@/lib/share/build-url";
+import { copyToClipboard, openShareChannel, shareViaNative } from "@/lib/share/channels-client";
+import { buildShareLinkMessage, buildSharePageUrl } from "@/lib/share/build-url";
 import { trackShareChannel, trackShareOpen } from "@/lib/share/metrika";
 import type { ShareChannel, SharePayload } from "@/lib/share/types";
 
@@ -38,9 +32,8 @@ type ChannelDef = {
 const CHANNELS: ChannelDef[] = [
   { id: "telegram", label: "Telegram", icon: Send },
   { id: "vk", label: "VK", icon: Share2 },
-  { id: "copy", label: "Текст", icon: Copy },
-  { id: "png", label: "Картинка", icon: Download },
   { id: "native", label: "Ещё", icon: MoreHorizontal },
+  { id: "copy", label: "Ссылка", icon: Copy },
 ];
 
 export default function ShareSheet({ payload, onClose }: Props) {
@@ -109,28 +102,18 @@ export default function ShareSheet({ payload, onClose }: Props) {
     setBusyChannel(channel);
     try {
       const title = sharePayload.title;
-      const excerpt = sharePayload.excerpt ?? "";
+      const masterName = sharePayload.masterName;
       const shareUrl = buildSharePageUrl(token, channel);
 
       if (channel === "copy") {
-        const ok = await copyToClipboard(buildShareTextForCopy(title, excerpt, shareUrl));
-        showStatus(ok ? "Текст скопирован" : "Не удалось скопировать");
+        const ok = await copyToClipboard(buildShareLinkMessage(title, shareUrl, masterName));
+        showStatus(ok ? "Ссылка скопирована" : "Не удалось скопировать");
         trackShareChannel("copy", sharePayload.kind);
         return;
       }
 
-      if (channel === "png") {
-        const ok = await downloadShareOgImage(
-          token,
-          `zovus-${sharePayload.kind}-${Date.now()}.png`
-        );
-        showStatus(ok ? "Картинка сохранена" : "Не удалось сохранить");
-        trackShareChannel("png", sharePayload.kind);
-        return;
-      }
-
       if (channel === "native") {
-        const result = await shareViaNative(token, title, excerpt);
+        const result = await shareViaNative(token, title, masterName);
         if (result === "shared") showStatus("Отправлено");
         else if (result === "copied") showStatus("Скопировано");
         else showStatus("Не удалось поделиться");
@@ -138,7 +121,7 @@ export default function ShareSheet({ payload, onClose }: Props) {
         return;
       }
 
-      openShareChannel(channel, token, title, excerpt);
+      openShareChannel(channel, token, title, masterName);
       trackShareChannel(channel, sharePayload.kind);
     } finally {
       setBusyChannel(null);
@@ -179,16 +162,20 @@ export default function ShareSheet({ payload, onClose }: Props) {
                 {loading ? (
                   <div className="share-sheet__loading">
                     <Loader2 className="h-8 w-8 animate-spin text-aura-gold" />
-                    <p className="text-sm text-white/50">Готовим ссылку…</p>
+                    <p className="text-sm text-white/50">Готовим карточку…</p>
                   </div>
                 ) : error ? (
                   <p className="share-sheet__error">{error}</p>
-                ) : sharePayload ? (
-                  <SharePreviewCard payload={sharePayload} shareUrl={token ? buildSharePageUrl(token) : undefined} />
+                ) : sharePayload && token ? (
+                  <SharePreviewCard
+                    token={token}
+                    title={sharePayload.title}
+                    masterName={sharePayload.masterName}
+                  />
                 ) : null}
               </div>
 
-              <div className="share-sheet__channels">
+              <div className="share-sheet__channels share-sheet__channels--4">
                 {CHANNELS.map(({ id, label, icon: Icon }, i) => (
                   <motion.button
                     key={id}

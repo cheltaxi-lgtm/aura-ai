@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BRAND_NAME, getAppUrl } from "@/lib/brand";
+import { buildShareHook } from "@/lib/share/build-url";
 import { getShareSnapshotByToken, getShareSnapshotPublic } from "@/lib/share";
 import { masterDisplayName } from "@/lib/share-reading";
 import ShareLandingTracker from "@/components/share/ShareLandingTracker";
@@ -20,9 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { payload } = snapshot;
   const master = payload.masterName ?? (payload.masterKey ? masterDisplayName(payload.masterKey) : "");
   const title = `${payload.title}${master ? ` · ${master}` : ""}`;
-  const description =
-    payload.excerpt?.slice(0, 500) ||
-    "Персональный эзотерический расклад на Zovus — получите свой бесплатно.";
+  const description = buildShareHook(payload.title, master || undefined);
 
   const url = `${getAppUrl()}/share/${token}`;
   const ogImage = `${getAppUrl()}/api/share/${token}/og`;
@@ -77,11 +76,14 @@ export default async function ShareLandingPage({ params }: PageProps) {
             {cards}
           </p>
         )}
-        {payload.excerpt && (
-          <div className="share-landing__excerpt-wrap">
-            <blockquote className="share-landing__excerpt">{payload.excerpt}</blockquote>
+        {payload.excerpt ? (
+          <div className="share-landing__body">
+            <p className="share-landing__body-label">Полный расклад</p>
+            <div className="share-landing__excerpt-wrap">
+              <div className="share-landing__excerpt">{payload.excerpt}</div>
+            </div>
           </div>
-        )}
+        ) : null}
         <Link href={ctaHref} className="btn-luxe btn-luxe--gold share-landing__cta">
           Получить свой расклад
         </Link>

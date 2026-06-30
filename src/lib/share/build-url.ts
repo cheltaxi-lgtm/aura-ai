@@ -12,43 +12,37 @@ export function buildSharePageUrl(token: string, channel?: ShareChannel): string
   return `${url}?${params.toString()}`;
 }
 
-/** Full share body — title + excerpt, без ссылки. */
-export function buildShareBody(title: string, excerpt: string): string {
-  const lines = ["🔮 Мой расклад Zovus", "", title.trim()];
-  const body = excerpt.trim();
-  if (body) lines.push("", body);
+/** Короткий продающий текст для мессенджеров — без тела расклада. */
+export function buildShareHook(title: string, masterName?: string): string {
+  const lines = ["🔮 Посмотри мой расклад на Zovus", "", `«${title.trim()}»`];
+  if (masterName?.trim()) lines.push(`Мастер: ${masterName.trim()}`);
+  lines.push("", "Полный текст — по ссылке 👇");
   return lines.join("\n");
 }
 
-/** Для копирования: полный текст + одна ссылка в конце. */
-export function buildShareTextForCopy(title: string, excerpt: string, url: string): string {
-  return `${buildShareBody(title, excerpt)}\n\n${url}`;
+/** Сообщение для копирования / native: хук + ссылка. */
+export function buildShareLinkMessage(title: string, url: string, masterName?: string): string {
+  return `${buildShareHook(title, masterName)}\n\n${url}`;
 }
 
-export function buildTelegramShareUrl(pageUrl: string, title: string, excerpt: string): string {
-  const prefix = `https://t.me/share/url?url=${encodeURIComponent(pageUrl)}&text=`;
-  const intro = buildShareBody(title, "");
-  const teaser = excerpt.trim().slice(0, 240);
-  const text =
-    teaser && teaser.length < excerpt.trim().length
-      ? `${intro}\n\n${teaser}…`
-      : teaser
-        ? `${intro}\n\n${teaser}`
-        : intro;
-  return prefix + encodeURIComponent(text);
+export function buildTelegramShareUrl(pageUrl: string, title: string, masterName?: string): string {
+  const text = buildShareHook(title, masterName);
+  return `https://t.me/share/url?url=${encodeURIComponent(pageUrl)}&text=${encodeURIComponent(text)}`;
 }
 
 export function buildChannelUrl(
   channel: ShareChannel,
   shareUrl: string,
   title: string,
-  excerpt: string
+  masterName?: string
 ): string | null {
   switch (channel) {
     case "telegram":
-      return buildTelegramShareUrl(shareUrl, title, excerpt);
-    case "vk":
-      return `https://vk.com/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(title)}`;
+      return buildTelegramShareUrl(shareUrl, title, masterName);
+    case "vk": {
+      const hook = buildShareHook(title, masterName);
+      return `https://vk.com/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(hook.split("\n")[0] ?? "Zovus")}&comment=${encodeURIComponent(hook)}`;
+    }
     case "copy":
     case "png":
     case "native":
@@ -58,7 +52,25 @@ export function buildChannelUrl(
   }
 }
 
-/** @deprecated use buildShareBody / buildShareTextForCopy */
-export function buildShareText(title: string, excerpt: string, url: string): string {
-  return buildShareTextForCopy(title, excerpt, url);
+/** @deprecated */
+export function buildShareBody(title: string, excerpt: string): string {
+  return buildShareHook(title);
+}
+
+/** @deprecated */
+export function buildShareTextForCopy(title: string, _excerpt: string, url: string, masterName?: string): string {
+  return buildShareLinkMessage(title, url, masterName);
+}
+
+/** @deprecated */
+export function buildShareText(title: string, _excerpt: string, url: string, masterName?: string): string {
+  return buildShareLinkMessage(title, url, masterName);
+}
+
+export function shareOgImageUrl(token: string): string {
+  return `/api/share/${encodeURIComponent(token)}/og`;
+}
+
+export function shareOgImageAbsoluteUrl(token: string): string {
+  return `${getAppUrl()}${shareOgImageUrl(token)}`;
 }
