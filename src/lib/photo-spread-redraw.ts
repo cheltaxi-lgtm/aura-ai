@@ -8,6 +8,11 @@ import { getDeckImagePath, DECK_BACK_PATHS } from "@/data/decks";
 import { getSymbolDescription } from "@/data/descriptions";
 import { resolveAuraArtForDetected } from "@/lib/photo-card-resolve";
 import { formatReversedCardName, parseCardOrientation } from "@/lib/card-orientation";
+import {
+  MAX_PHOTO_CARD_NAME_LENGTH,
+  MAX_PHOTO_CARDS,
+  MAX_PHOTO_POSITION_LENGTH,
+} from "@/lib/photo-reading-constants";
 
 export { parseCardOrientation, formatReversedCardName } from "@/lib/card-orientation";
 
@@ -32,6 +37,19 @@ export interface RedrawSpread {
 
 /** Minimum symbols required before photo interpretation. */
 export const PHOTO_MIN_CARD_COUNT = 1;
+
+/** LLM / parser failure labels — not real deck symbols. */
+const UNRECOGNIZED_CARD_RE = /^(не удалось|не распозн|не определ|не видно|нет карт)/i;
+
+export function isUnrecognizedCardLabel(label: string | undefined | null): boolean {
+  const trimmed = (label ?? "").trim();
+  if (!trimmed) return true;
+  return UNRECOGNIZED_CARD_RE.test(trimmed);
+}
+
+export function filterRecognizedCardLabels(cards: string[]): string[] {
+  return cards.filter((c) => !isUnrecognizedCardLabel(c));
+}
 
 /** @deprecated use card count from recognition; kept for legacy imports */
 export const PHOTO_SPREAD_CARD_COUNT = PHOTO_MIN_CARD_COUNT;
@@ -77,6 +95,47 @@ export function inferSpreadPositions(
   return numbered;
 }
 
+export function createEmptyManualRedrawSpread(masterId: string): RedrawSpread {
+  const system = resolveMasterDeckSystem(masterId);
+  return {
+    system,
+    deckType: "Ручной ввод",
+    spreadType: "Ручной расклад",
+    cards: [],
+  };
+}
+
+export function buildPartialRedrawSpread(
+  masterId: string,
+  detectedCards: string[],
+  deckType?: string,
+  spreadType?: string
+): RedrawSpread {
+  if (!detectedCards.length) {
+    return createEmptyManualRedrawSpread(masterId);
+  }
+  const system = resolvePhotoDeckSystem(deckType, masterId);
+  return normalizeRedrawSpreadForMaster(
+    mapDetectedToRedrawSpread({
+      detectedCards,
+      system,
+      deckType,
+      spreadType,
+    }),
+    masterId
+  );
+}
+
+function clampSpreadCardInput<T extends { name: string; position?: string }>(
+  cards: T[]
+): T[] {
+  return cards.slice(0, MAX_PHOTO_CARDS).map((card) => ({
+    ...card,
+    name: card.name.trim().slice(0, MAX_PHOTO_CARD_NAME_LENGTH),
+    position: card.position?.trim().slice(0, MAX_PHOTO_POSITION_LENGTH),
+  }));
+}
+
 export function normalizeRedrawSpreadForMaster(
   spread: RedrawSpread,
   masterId: string
@@ -106,8 +165,37 @@ export function normalizeRedrawSpreadForMaster(
 }
 
 export function isPhotoSpreadComplete(spread: RedrawSpread | null | undefined): boolean {
-  const count = spread?.cards.filter((c) => c.name?.trim()).length ?? 0;
+  const count =
+    spread?.cards.filter(
+      (c) =>
+        c.name?.trim() &&
+        !isUnrecognizedCardLabel(c.name) &&
+        !isUnrecognizedCardLabel(c.originalName)
+    ).length ?? 0;
   return count >= PHOTO_MIN_CARD_COUNT;
+}
+
+/** Drop failure placeholders; return empty manual spread when nothing real was detected. */
+export function sanitizeRecognizedRedrawSpread(
+  spread: RedrawSpread | null | undefined,
+  masterId: string
+): { spread: RedrawSpread; manual: boolean } {
+  const cards =
+    spread?.cards.filter(
+      (c) => !isUnrecognizedCardLabel(c.name) && !isUnrecognizedCardLabel(c.originalName)
+    ) ?? [];
+
+  if (!cards.length) {
+    return { spread: createEmptyManualRedrawSpread(masterId), manual: true };
+  }
+
+  return {
+    spread: {
+      ...(spread as RedrawSpread),
+      cards: cards.map((c, i) => ({ ...c, order: i })),
+    },
+    manual: false,
+  };
 }
 
 export function redrawSpreadToSpreadSymbols(spread: RedrawSpread): SpreadSymbol[] {
@@ -185,37 +273,14 @@ export function isRecognizedSpread(params: {
   deckType?: string;
   spreadType?: string;
 }): { ok: boolean; reason?: string } {
-  const { detectedCards, deckType, spreadType } = params;
+  const { detectedCards } = params;
 
-  if (!detectedCards.length) {
-    return { ok: false, reason: "На фото не удалось распознать карты или символы расклада." };
-  }
-
-  const joined = detectedCards.join(" ").toLowerCase();
-  const allFailed =
-    detectedCards.length === 1 &&
-    /^(не удалось|не распозн|не определ|не видно|нет карт)/i.test(detectedCards[0] ?? "");
-  if (allFailed || /^не удалось распознать$/i.test(joined.trim())) {
+  const validCards = filterRecognizedCardLabels(detectedCards);
+  if (!validCards.length) {
+    if (!detectedCards.length) {
+      return { ok: false, reason: "На фото не удалось распознать карты или символы расклада." };
+    }
     return { ok: false, reason: "Это не похоже на расклад — загрузите фото карт или рун в кадре." };
-  }
-
-  const validCards = detectedCards.filter(
-    (c) => !/^(не удалось|не распозн|не определ|не видно)$/i.test(c.trim())
-  );
-  if (validCards.length >= 1) {
-    return { ok: true };
-  }
-
-  const deck = (deckType ?? "").toLowerCase();
-  if (/не определена|неизвест/i.test(deck) && detectedCards.length < 1) {
-    return {
-      ok: false,
-      reason: "Не удалось определить колоду. Сделайте фото при хорошем свете — все символы в кадре.",
-    };
-  }
-
-  if ((spreadType ?? "").toLowerCase().includes("не распознан") && validCards.length < 1) {
-    return { ok: false, reason: "Расклад не распознан. Попробуйте другое фото или выберите символы вручную." };
   }
 
   return { ok: true };
@@ -257,10 +322,11 @@ export function normalizeRedrawSpreadInput(
   masterId: string
 ): RedrawSpread {
   const system = resolveMasterDeckSystem(masterId);
-  const detected = input.cards.map((c) =>
+  const safeCards = clampSpreadCardInput(input.cards);
+  const detected = safeCards.map((c) =>
     c.reversed ? `${c.name} (перев.)` : c.name
   );
-  const positions = input.cards.map((c, i) => c.position ?? `Позиция ${i + 1}`);
+  const positions = safeCards.map((c, i) => c.position ?? `Позиция ${i + 1}`);
   const spread = mapDetectedToRedrawSpread({
     detectedCards: detected,
     system,
@@ -272,9 +338,9 @@ export function normalizeRedrawSpreadInput(
     ...spread,
     cards: spread.cards.map((c, i) => ({
       ...c,
-      order: input.cards[i]?.order ?? i,
-      reversed: input.cards[i]?.reversed ?? c.reversed,
-      position: input.cards[i]?.position ?? c.position,
+      order: safeCards[i]?.order ?? i,
+      reversed: safeCards[i]?.reversed ?? c.reversed,
+      position: safeCards[i]?.position ?? c.position,
     })),
   };
   return normalizeRedrawSpreadForMaster(merged, masterId);
@@ -287,4 +353,5 @@ export const DECK_SYSTEM_DISPLAY: Record<DeckSystem, string> = {
   slavic: "Славянское ведовство",
   astrology: "Джйотиш / Астрология",
   numerology: "Нумерология",
+  lenormand: "Оракул Ленорман",
 };
