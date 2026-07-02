@@ -57,15 +57,22 @@ npm run build
 npm run predeploy:check
 ```
 
-GitHub Actions: `.github/workflows/ci.yml` (push / pull_request) — `npm ci`, guardrails, build.
+Production deploy (Beget VPS, `217.12.37.32`):
 
-Production deploy: `.github/workflows/deploy.yml` (push в `main` или `workflow_dispatch`) — guardrails, build, Vercel.
+```powershell
+# From Windows (PuTTY + SSH key recommended; or BEGET_VPS_PASSWORD env)
+.\proxmox-setup\direct_deploy.ps1
+# or
+.\hosting\migrate-to-beget.ps1   # full migrate from old VM (one-time)
+```
 
-Secrets в GitHub (Settings → Secrets → Actions):
+DNS: Beget panel or `hosting/setup-dns-beget.sh` (A → server IP).  
+SSL: Caddy on the VPS (auto Let's Encrypt).
 
-- `VERCEL_TOKEN`
-- `VERCEL_ORG_ID`
-- `VERCEL_PROJECT_ID`
+Legacy Proxmox path (`ubuntu@192.168.1.152`) — deprecated after migration.
+
+GitHub Actions: `.github/workflows/ci.yml` — checks on push.  
+Optional Vercel deploy: `.github/workflows/deploy.yml` (needs `VERCEL_*` secrets).
 
 Production migrations **не** запускаются автоматически из CI/CD. Fresh DB — `src/lib/schema.sql` (Docker init). Существующую БД обновляйте вручную:
 

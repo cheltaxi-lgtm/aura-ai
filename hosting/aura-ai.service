@@ -1,0 +1,19 @@
+[Unit]
+Description=Zovus Next.js
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/aura-ai
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/aura-ai/.env.local
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/aura-ai/app.log
+StandardError=append:/var/log/aura-ai/app.log
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,7 @@
 # Safe production deploy — preserves /opt/aura-ai/.env.local on the VM.
 set -euo pipefail
 
-HOST="${DEPLOY_HOST:-ubuntu@192.168.1.152}"
+HOST="${DEPLOY_HOST:-root@217.12.37.32}"
 APP_DIR="${DEPLOY_DIR:-/opt/aura-ai}"
 TARBALL="${TMPDIR:-/tmp}/aura-ai-deploy.tgz"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

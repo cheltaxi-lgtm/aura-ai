@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path $PSScriptRoot -Parent
 $Tarball = Join-Path $env:TEMP "aura-ai-deploy.tgz"
-$VmHost = "ubuntu@192.168.1.152"
+$VmHost = "${env:DEPLOY_HOST:-root@217.12.37.32}"
 
 Write-Host ">>> Building tarball..."
 if (Test-Path $Tarball) { Remove-Item $Tarball -Force }

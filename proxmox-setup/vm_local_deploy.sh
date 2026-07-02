@@ -5,15 +5,7 @@ set -euo pipefail
 TARBALL="${1:-/tmp/aura-ai-deploy.tgz}"
 
 if [ -f "$TARBALL" ]; then
-  STAGE="$(mktemp -d)"
-  tar -xzf "$TARBALL" -C "$STAGE"
-  mkdir -p /opt/aura-ai
-  rsync -a --delete \
-    --exclude '.env.local' \
-    --exclude 'node_modules' \
-    --exclude '.next' \
-    "$STAGE/" /opt/aura-ai/
-  rm -rf "$STAGE"
+  tar -xzf "$TARBALL" -C /opt/aura-ai
   if [ "$(id -u)" -eq 0 ]; then
     chown -R ubuntu:ubuntu /opt/aura-ai
   else
