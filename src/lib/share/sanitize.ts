@@ -40,8 +40,20 @@ export function sanitizeShareBody(text: string | undefined): string {
   cleaned = normalizeExcerptWhitespace(cleaned);
   if (cleaned.length <= SHARE_BODY_MAX) return cleaned;
   const slice = cleaned.slice(0, SHARE_BODY_MAX - 1);
-  const lastBreak = slice.lastIndexOf("\n\n");
-  const cut = lastBreak > SHARE_BODY_MAX * 0.8 ? slice.slice(0, lastBreak) : slice;
+  const paragraphBreak = slice.lastIndexOf("\n\n");
+  const sentenceBreak = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("! "),
+    slice.lastIndexOf("? "),
+    slice.lastIndexOf("… ")
+  );
+  const lastBreak =
+    paragraphBreak > SHARE_BODY_MAX * 0.75
+      ? paragraphBreak
+      : sentenceBreak > SHARE_BODY_MAX * 0.85
+        ? sentenceBreak + 1
+        : -1;
+  const cut = lastBreak > 0 ? slice.slice(0, lastBreak) : slice;
   return `${cut.trim()}…`;
 }
 

@@ -14,10 +14,15 @@ export function buildSharePageUrl(token: string, channel?: ShareChannel): string
 
 /** Короткий продающий текст для мессенджеров — без тела расклада. */
 export function buildShareHook(title: string, masterName?: string): string {
-  const lines = ["🔮 Посмотри мой расклад на Zovus", "", `«${title.trim()}»`];
+  return buildSharePreviewLines(title, masterName).join("\n");
+}
+
+/** Строки превью в ShareSheet — без пустых строк и дублей. */
+export function buildSharePreviewLines(title: string, masterName?: string): string[] {
+  const lines = ["🔮 Посмотри мой расклад на Zovus", `«${title.trim()}»`];
   if (masterName?.trim()) lines.push(`Мастер: ${masterName.trim()}`);
-  lines.push("", "Полный текст — по ссылке 👇");
-  return lines.join("\n");
+  lines.push("Полный текст — по ссылке 👇");
+  return lines;
 }
 
 /** Сообщение для копирования / native: хук + ссылка. */
@@ -44,7 +49,7 @@ export function buildChannelUrl(
       return `https://vk.com/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(hook.split("\n")[0] ?? "Zovus")}&comment=${encodeURIComponent(hook)}`;
     }
     case "copy":
-    case "png":
+    case "download":
     case "native":
       return null;
     default:

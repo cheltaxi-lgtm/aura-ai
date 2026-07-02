@@ -6,6 +6,7 @@ import type { SharePayload } from "@/lib/share/types";
 export interface ShareReadingInput {
   title: string;
   masterName?: string;
+  masterKey?: string;
   date?: string;
   cards?: { name: string; meaning?: string }[];
   detectedCards?: string[];
@@ -13,6 +14,8 @@ export interface ShareReadingInput {
   spreadType?: string;
   text: string;
   appUrl?: string;
+  historyId?: string;
+  sessionId?: string;
   /** When set, uses public share page URL instead of home */
   shareToken?: string;
 }
@@ -31,14 +34,33 @@ export function shareInputToPayload(input: ShareReadingInput, kind: SharePayload
       position: TRIPLET_POSITIONS[i],
     }));
 
+  if (input.historyId || input.sessionId) {
+    return {
+      kind,
+      title: input.title,
+      excerpt: input.text,
+      masterName: input.masterName,
+      masterKey: input.masterKey,
+      cards,
+      spreadType: input.spreadType ?? input.deckType,
+      date: input.date,
+      historyId: input.historyId,
+      sessionId: input.sessionId,
+      sourceType: input.historyId ? "history" : "session",
+      sourceId: input.historyId ?? input.sessionId,
+    };
+  }
+
   return {
     kind,
     title: input.title,
     excerpt: input.text,
     masterName: input.masterName,
+    masterKey: input.masterKey,
     cards,
     spreadType: input.spreadType ?? input.deckType,
     date: input.date,
+    sourceType: "inline",
   };
 }
 
@@ -93,3 +115,5 @@ export async function shareReading(input: ShareReadingInput): Promise<"shared" |
 
   return "failed";
 }
+
+export { buildShareText };
