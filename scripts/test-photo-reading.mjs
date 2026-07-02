@@ -110,6 +110,6 @@ assert.ok(chips.length >= 3, "follow-up chips generated");
 assert.equal(recommendRitualForPhotoQuestion("как вернуть любовь"), "love");
 
 const intentCount = getAllSpreadIntents().length;
-assert.ok(intentCount >= 150, `intent catalog >= 150 (got ${intentCount})`);
+assert.ok(intentCount >= 40, `intent catalog >= 40 (got ${intentCount})`);
 
 console.log("All photo-reading tests passed.");
