@@ -29,7 +29,8 @@
     "maintenance:memory": "node scripts/memory-maintenance.mjs",
     "predeploy:check": "npm run test && npm run build",
     "mobile:sync": "npm run --prefix mobile sync",
-    "mobile:icons": "node scripts/generate-android-icons.mjs"
+    "mobile:icons": "node scripts/generate-android-icons.mjs",
+    "mobile:cert-sha": "node scripts/print-android-cert-sha.mjs"
   },
   "dependencies": {
     "@capgo/capacitor-native-biometric": "^8.4.12",

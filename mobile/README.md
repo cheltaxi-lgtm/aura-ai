@@ -60,15 +60,19 @@ npx cap sync android
 
 ## App Links (verified deep links)
 
-1. Build release APK/AAB and print SHA-256:
+Asset links are served dynamically from `/.well-known/assetlinks.json` (see `src/app/.well-known/assetlinks.json/route.ts`).
+
+1. Print SHA-256 from your keystore:
 
    ```bash
-   keytool -list -v -keystore zovus-release.keystore -alias zovus
+   npm run mobile:cert-sha
+   # release:
+   node scripts/print-android-cert-sha.mjs --keystore path/to/zovus-release.keystore --alias zovus
    ```
 
-2. Replace `REPLACE_WITH_RELEASE_KEY_SHA256_FINGERPRINT` in `public/.well-known/assetlinks.json`.
+2. Set `ANDROID_ASSETLINKS_SHA256` on Vercel (colonless fingerprint; comma-separated for debug+release).
 
-3. Deploy site so `https://zovus.ru/.well-known/assetlinks.json` is reachable.
+3. Deploy the web app so `https://zovus.ru/.well-known/assetlinks.json` returns the fingerprint.
 
 ## CI note
 

@@ -33,6 +33,9 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install mobile deps
         working-directory: mobile
         run: npm ci

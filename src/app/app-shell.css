@@ -8,6 +8,11 @@ html[data-app-shell="android"] body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+html[data-app-shell="android"] .site-legal-footer,
+html[data-app-shell="android"] .cookie-banner {
+  display: none !important;
+}
+
 html[data-app-shell="android"] .app-shell-pull-hint {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 0.35rem);

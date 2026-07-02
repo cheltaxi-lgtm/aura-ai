@@ -52,7 +52,7 @@ const PUBLIC_API_EXACT = new Set([
 
 
 
-const PUBLIC_API_PREFIXES = ["/api/auth/", "/api/scene-art/", "/api/share/"] as const;
+const PUBLIC_API_PREFIXES = ["/api/auth/", "/api/app/", "/api/scene-art/", "/api/share/"] as const;
 
 
 

@@ -13,6 +13,26 @@ type CapHaptics = typeof import("@capacitor/haptics");
 
 const PULL_REFRESH_THRESHOLD = 120;
 
+function resolveAppShellUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "zovus:" && url.host === "open") {
+      const path = url.pathname && url.pathname !== "/" ? url.pathname : "/";
+      const target = new URL(`https://zovus.ru${path}`);
+      target.search = url.search;
+      target.searchParams.set("app", "1");
+      return target.toString();
+    }
+    if (url.hostname === "zovus.ru" || url.hostname.endsWith(".zovus.ru")) {
+      if (!url.searchParams.has("app")) url.searchParams.set("app", "1");
+      return url.toString();
+    }
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
 async function loadCapacitorModules(isNative: boolean) {
   if (!isNative) return null;
   const [{ Capacitor }, app, statusBar, splash, haptics] = await Promise.all([
@@ -119,7 +139,7 @@ export default function AppShellBridge() {
         });
 
         urlListener = await app.App.addListener("appUrlOpen", (event) => {
-          if (event.url) window.location.href = event.url;
+          if (event.url) window.location.assign(resolveAppShellUrl(event.url));
         });
 
         try {
@@ -168,6 +188,9 @@ export default function AppShellBridge() {
       if (start == null || !shouldUseAppShellClient()) return;
       const endY = e.changedTouches[0]?.clientY ?? start;
       if (endY - start >= PULL_REFRESH_THRESHOLD && window.scrollY <= 4) {
+        void import("@capacitor/haptics")
+          .then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Medium }))
+          .catch(() => undefined);
         window.location.reload();
       }
     };
