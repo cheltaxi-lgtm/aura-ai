@@ -124,10 +124,7 @@ interface ChatWindowProps {
   startingNewSession?: boolean;
   /** User birth date — for numerolog Pythagoras grid fallback in chat. */
   userBirthDate?: string;
-<<<<<<< Updated upstream
   /** Active consultation session id (share / persistence hooks). */
-=======
->>>>>>> Stashed changes
   sessionId?: string;
 }
 
