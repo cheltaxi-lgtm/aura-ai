@@ -92,6 +92,13 @@ export interface SharePlatformSettings {
   enabled: boolean;
   expiryDays: number;
   maxExcerptLength: number;
+  channels?: {
+    telegram?: boolean;
+    vk?: boolean;
+    native?: boolean;
+    copy?: boolean;
+    download?: boolean;
+  };
 }
 
 const DEFAULTS = {
@@ -156,6 +163,13 @@ const DEFAULTS = {
     enabled: true,
     expiryDays: 90,
     maxExcerptLength: 50000,
+    channels: {
+      telegram: true,
+      vk: true,
+      native: true,
+      copy: true,
+      download: false,
+    },
   },
 };
 
