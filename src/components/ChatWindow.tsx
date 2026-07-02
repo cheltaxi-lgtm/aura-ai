@@ -107,6 +107,8 @@ interface ChatWindowProps {
   storageBlocked?: boolean;
   onReconnectSession?: () => void;
   onOpenPaywall?: () => void;
+  /** Opens full photo-reading flow (recognize → confirm → interpret) instead of inline chat vision. */
+  onOpenPhotoReading?: () => void;
   retryDraft?: { content: string; imageBase64?: string } | null;
   onRetry?: () => void;
   hasMoreHistory?: boolean;
@@ -122,6 +124,11 @@ interface ChatWindowProps {
   startingNewSession?: boolean;
   /** User birth date — for numerolog Pythagoras grid fallback in chat. */
   userBirthDate?: string;
+<<<<<<< Updated upstream
+  /** Active consultation session id (share / persistence hooks). */
+=======
+>>>>>>> Stashed changes
+  sessionId?: string;
 }
 
 export default function ChatWindow({
@@ -161,6 +168,7 @@ export default function ChatWindow({
   storageBlocked,
   onReconnectSession,
   onOpenPaywall,
+  onOpenPhotoReading,
   retryDraft,
   onRetry,
   hasMoreHistory = false,
@@ -175,6 +183,7 @@ export default function ChatWindow({
   archivingSession = false,
   startingNewSession = false,
   userBirthDate,
+  sessionId,
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
@@ -440,6 +449,7 @@ export default function ChatWindow({
       deckSystem: spreadDeckSystem,
       spreadId: spreadId ?? undefined,
       excerpt,
+      sessionId,
     });
   }, [
     spreadCardsVisible,
@@ -453,6 +463,7 @@ export default function ChatWindow({
     character?.name,
     spreadCards,
     spreadDeckSystem,
+    sessionId,
   ]);
 
   const showWelcomeEmpty =
@@ -1047,14 +1058,22 @@ export default function ChatWindow({
 
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={inputBlocked || (usesRuneBilling && !canAffordVision)}
+          onClick={() => {
+            if (onOpenPhotoReading) {
+              onOpenPhotoReading();
+              return;
+            }
+            fileInputRef.current?.click();
+          }}
+          disabled={inputBlocked || (usesRuneBilling && !canAffordVision && !onOpenPhotoReading)}
           aria-label="Загрузить фото расклада"
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-aura-emerald/50 hover:text-aura-emerald focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30"
           title={
-            usesRuneBilling && !canAffordVision
+            usesRuneBilling && !canAffordVision && !onOpenPhotoReading
               ? `Нужно ${visionCost} ᚢ для анализа фото`
-              : "Загрузить расклад"
+              : onOpenPhotoReading
+                ? "Фото-расклад с распознаванием"
+                : "Загрузить расклад"
           }
         >
           <Camera className="h-5 w-5" />
