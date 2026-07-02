@@ -16,6 +16,7 @@ export default function SiteFooter() {
         <LegalDocLink href="/terms">Соглашение</LegalDocLink>
         <LegalDocLink href="/offer">Оферта</LegalDocLink>
         <LegalDocLink href="/disclaimer">Отказ</LegalDocLink>
+        <LegalDocLink href="/app">Приложение</LegalDocLink>
       </nav>
       <p className="site-legal-footer__tagline" role="note">
         {SITE_FOOTER_LEGAL_LINE}{" "}

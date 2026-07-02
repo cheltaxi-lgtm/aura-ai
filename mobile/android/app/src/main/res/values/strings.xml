@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Zovus</string>
+    <string name="title_activity_main">Zovus</string>
+    <string name="package_name">ru.zovus.app</string>
+    <string name="custom_url_scheme">ru.zovus.app</string>
+</resources>

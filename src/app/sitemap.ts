@@ -58,6 +58,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const landingPages: MetadataRoute.Sitemap = [
     { path: "/rasklady", priority: 0.85 },
     { path: "/photo-rasklad", priority: 0.7 },
+    { path: "/app", priority: 0.75 },
     { path: "/obryady", priority: 0.65 },
     { path: "/joint-reading", priority: 0.6 },
     { path: "/numerology", priority: 0.6 },

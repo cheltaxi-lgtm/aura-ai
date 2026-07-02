@@ -1,0 +1,26 @@
+{
+  "name": "zovus-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zovus Android shell (Capacitor) — loads production WebView URL",
+  "scripts": {
+    "sync": "cap sync android",
+    "copy": "cap copy android",
+    "open:android": "cap open android",
+    "build:android:debug": "cd android && ./gradlew assembleDebug",
+    "build:android:release": "cd android && ./gradlew assembleRelease bundleRelease"
+  },
+  "dependencies": {
+    "@capgo/capacitor-native-biometric": "^8.4.12",
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
+    "typescript": "^5.7.2"
+  }
+}

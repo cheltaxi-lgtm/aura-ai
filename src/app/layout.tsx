@@ -1,11 +1,12 @@
 import { Cormorant_Garamond, Inter, Cinzel } from "next/font/google";
 import MysticBackground from "@/components/MysticBackground";
 import Providers from "@/components/Providers";
-import CookieBanner from "@/components/CookieBanner";
-import SiteFooter from "@/components/SiteFooter";
+import AppAwareCookieBanner from "@/components/AppAwareCookieBanner";
+import AppAwareSiteFooter from "@/components/AppAwareSiteFooter";
 import YandexMetrika from "@/components/YandexMetrika";
 import { getRootMetadata } from "@/lib/seo";
 import "./globals.css";
+import "./app-shell.css";
 
 const inter = Inter({
   subsets: ["latin", "cyrillic"],
@@ -43,9 +44,9 @@ export default function RootLayout({
         <MysticBackground />
         <Providers>
           <div className="relative z-10 flex min-h-0 flex-1 flex-col">{children}</div>
-          <SiteFooter />
+          <AppAwareSiteFooter />
         </Providers>
-        <CookieBanner />
+        <AppAwareCookieBanner />
         <YandexMetrika />
       </body>
     </html>
