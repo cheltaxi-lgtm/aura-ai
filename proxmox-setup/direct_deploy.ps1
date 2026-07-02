@@ -17,22 +17,15 @@ scp -o StrictHostKeyChecking=no $Tarball "${VmHost}:/tmp/aura-ai-deploy.tgz"
 Write-Host ">>> Deploy on VM..."
 $DeployCmd = @'
 set -e
-ENV_FILE="/opt/aura-ai/.env.local"
-ENV_BACKUP="/tmp/aura-ai-env.local.bak"
-if [ -f "$ENV_FILE" ]; then
-  cp "$ENV_FILE" "$ENV_BACKUP"
-  echo "Backed up .env.local"
-fi
-sudo tar -xzf /tmp/aura-ai-deploy.tgz -C /opt/aura-ai
-sudo chown -R ubuntu:ubuntu /opt/aura-ai
-if [ -f "$ENV_BACKUP" ]; then
-  cp "$ENV_BACKUP" "$ENV_FILE"
-  echo "Restored production .env.local"
-fi
+mkdir -p /opt/aura-ai/proxmox-setup
+STAGE="$(mktemp -d)"
+tar -xzf /tmp/aura-ai-deploy.tgz -C "$STAGE"
+cp "$STAGE/proxmox-setup/vm_local_deploy.sh" /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
+rm -rf "$STAGE"
 sed -i 's/\r$//' /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
 chmod +x /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
-cd /opt/aura-ai && SKIP_EXTRACT=1 bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
-echo "=== DEPLOYED VERSION ===" && grep 'PHOTO_UPLOAD_REV' /opt/aura-ai/src/components/PhotoReadingFlow.tsx | head -1
+bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz
+echo "=== DEPLOYED ===" && test -f /opt/aura-ai/src/app/app/page.tsx && echo module_a_app_page=ok
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
 # Strip any CR re-added by the PowerShell→ssh stdin pipe before bash parses it,

@@ -4,9 +4,21 @@ set -euo pipefail
 
 TARBALL="${1:-/tmp/aura-ai-deploy.tgz}"
 
-if [ "${SKIP_EXTRACT:-0}" != "1" ]; then
-  sudo tar -xzf "$TARBALL" -C /opt/aura-ai
-  sudo chown -R ubuntu:ubuntu /opt/aura-ai
+if [ -f "$TARBALL" ]; then
+  STAGE="$(mktemp -d)"
+  tar -xzf "$TARBALL" -C "$STAGE"
+  mkdir -p /opt/aura-ai
+  rsync -a --delete \
+    --exclude '.env.local' \
+    --exclude 'node_modules' \
+    --exclude '.next' \
+    "$STAGE/" /opt/aura-ai/
+  rm -rf "$STAGE"
+  if [ "$(id -u)" -eq 0 ]; then
+    chown -R ubuntu:ubuntu /opt/aura-ai
+  else
+    sudo chown -R ubuntu:ubuntu /opt/aura-ai
+  fi
 fi
 
 ENV_FILE="/opt/aura-ai/.env.local"
@@ -100,7 +112,7 @@ fi
 
 cd /opt/aura-ai
 
-# tar extract does not remove deleted files — drop retired sources so build cannot pick up stale modules.
+# rsync --delete above removes stale files; keep only legacy one-offs if needed.
 rm -f \
   src/components/NumerologToolHub.tsx \
   src/components/numerolog/NumerologToolResultModal.tsx
