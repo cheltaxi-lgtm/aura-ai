@@ -4,8 +4,12 @@ html[data-app-shell="android"] {
 }
 
 html[data-app-shell="android"] body {
-  padding-top: env(safe-area-inset-top);
+  padding-top: calc(env(safe-area-inset-top) + var(--app-header-h, 3.25rem));
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+html[data-app-shell="android"] .app-top-header {
+  padding-top: env(safe-area-inset-top);
 }
 
 html[data-app-shell="android"] .site-legal-footer,

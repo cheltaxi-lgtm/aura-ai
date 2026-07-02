@@ -30,7 +30,8 @@
     "predeploy:check": "npm run test && npm run build",
     "mobile:sync": "npm run --prefix mobile sync",
     "mobile:icons": "node scripts/generate-android-icons.mjs",
-    "mobile:cert-sha": "node scripts/print-android-cert-sha.mjs"
+    "mobile:cert-sha": "node scripts/print-android-cert-sha.mjs",
+    "verify:module-a": "node scripts/verify-module-a.mjs"
   },
   "dependencies": {
     "@capgo/capacitor-native-biometric": "^8.4.12",

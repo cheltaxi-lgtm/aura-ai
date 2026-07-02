@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BRAND_NAME, BRAND_TAGLINE, BRAND_URL, getAppUrl } from "@/lib/brand";
+import { readAndroidReleaseConfig } from "@/lib/android-release";
 import { appShellStartUrl } from "@/lib/app-shell";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import type { Metadata } from "next";
@@ -10,15 +11,12 @@ export const metadata: Metadata = buildSeoMetadata({
   path: "/app",
 });
 
-function apkUrl(): string {
-  const fromEnv = process.env.NEXT_PUBLIC_ANDROID_APK_URL?.trim();
-  if (fromEnv) return fromEnv;
-  return `${getAppUrl()}/releases/zovus-latest.apk`;
-}
+const GITHUB_REPO = process.env.NEXT_PUBLIC_GITHUB_REPO?.trim() || "cheltaxi-lgtm/aura-ai";
 
 export default function AppDownloadPage() {
-  const downloadHref = apkUrl();
+  const release = readAndroidReleaseConfig();
   const webAppHref = appShellStartUrl(getAppUrl());
+  const ciApkHint = `https://github.com/${GITHUB_REPO}/actions/workflows/android-debug.yml`;
 
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-6 py-16">
@@ -31,9 +29,14 @@ export default function AppDownloadPage() {
         поверх {BRAND_URL.replace(/^https:\/\//, "")}.
       </p>
 
+      <p className="mt-6 inline-flex w-fit rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-gray-300">
+        Версия оболочки: <span className="ml-1 text-aura-champagne">{release.versionName}</span>
+        <span className="ml-2 text-gray-500">(build {release.versionCode})</span>
+      </p>
+
       <div className="mt-10 flex flex-col gap-4 sm:flex-row">
         <a
-          href={downloadHref}
+          href={release.apkUrl}
           className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-amber-700 to-amber-500 px-8 py-4 text-center font-semibold text-black transition hover:brightness-110"
         >
           Скачать APK
@@ -55,8 +58,12 @@ export default function AppDownloadPage() {
           <li>Запустите {BRAND_NAME} с домашнего экрана.</li>
         </ol>
         <p className="mt-4 text-sm text-gray-500">
-          Обновления приложения подтягивают новый интерфейс с сайта автоматически; APK нужен только для
-          обновления нативной оболочки.
+          Интерфейс подтягивается с сайта автоматически; APK нужен только для обновления нативной оболочки.
+          Debug-сборку можно скачать из{" "}
+          <a href={ciApkHint} className="text-aura-champagne/80 underline-offset-2 hover:underline">
+            GitHub Actions
+          </a>
+          .
         </p>
       </section>
     </main>

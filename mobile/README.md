@@ -4,7 +4,7 @@ Native shell for the production Zovus web app. The WebView loads `https://zovus.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+ (Capacitor CLI 8 requirement)
 - Android Studio (SDK 34+, build-tools)
 - JDK 17
 

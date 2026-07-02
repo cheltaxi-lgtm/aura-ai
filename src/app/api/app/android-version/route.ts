@@ -1,41 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAppUrl } from "@/lib/brand";
+import { readAndroidReleaseConfig } from "@/lib/android-release";
 
 export const dynamic = "force-dynamic";
 
-type AndroidReleaseConfig = {
-  versionCode: number;
-  versionName: string;
-  minVersionCode: number;
-  apkUrl: string;
-  releaseNotes: string;
-};
-
-function parseIntEnv(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
-
-function readAndroidRelease(): AndroidReleaseConfig {
-  const base = getAppUrl();
-  const versionCode = parseIntEnv("ANDROID_VERSION_CODE", 1);
-  const versionName = process.env.ANDROID_VERSION_NAME?.trim() || "1.0.0";
-  const minVersionCode = parseIntEnv("ANDROID_MIN_VERSION_CODE", 1);
-  const apkUrl =
-    process.env.ANDROID_APK_URL?.trim() ||
-    process.env.NEXT_PUBLIC_ANDROID_APK_URL?.trim() ||
-    `${base}/releases/zovus-latest.apk`;
-  const releaseNotes =
-    process.env.ANDROID_RELEASE_NOTES?.trim() ||
-    "Официальное приложение Zovus для Android.";
-
-  return { versionCode, versionName, minVersionCode, apkUrl, releaseNotes };
-}
-
 export async function GET() {
-  return NextResponse.json(readAndroidRelease(), {
+  return NextResponse.json(readAndroidReleaseConfig(), {
     headers: {
       "Cache-Control": "public, max-age=60, s-maxage=300",
     },
