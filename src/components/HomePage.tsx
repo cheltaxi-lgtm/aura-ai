@@ -20,22 +20,15 @@ import { parseInsufficientRunes } from "@/lib/api-errors";
 import IntentionPicker from "@/components/IntentionPicker";
 import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
-import { DEFAULT_SPREAD_ID, hasCompleteSpread, isDailyOnlySpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
+import { DEFAULT_SPREAD_ID, hasCompleteSpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
-import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
-import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
-import { setJointReadingToken, setJointReadingRole } from "@/lib/joint-reading-storage";
-import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
 import RitualFlow from "@/components/ritual/RitualFlow";
-import { resolveRitualMasterKey, type RitualType } from "@/lib/ritual-config";
+import { RITUAL_MASTERS } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import AuraSellingLanding from "@/components/AuraSellingLanding";
 import DeckGallery from "@/components/DeckGallery";
 import MasterDecksModal from "@/components/MasterDecksModal";
-import PhotoReadingFlow, {
-  type PhotoReadingChatPayload,
-  type PhotoReadingEntryMode,
-} from "@/components/PhotoReadingFlow";
+import PhotoReadingFlow, { type PhotoReadingChatPayload } from "@/components/PhotoReadingFlow";
 import { buildPhotoReadingChatMessages, mergePhotoReadingIntoChat } from "@/lib/photo-chat";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { useAuth } from "@/lib/useAuth";
@@ -107,18 +100,12 @@ import {
   LAST_MASTER_KEY,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
-import {
-  isNumerologSessionToolId,
-  type NumerologToolId,
-} from "@/lib/numerology/tools";
 import type { StoredProfile } from "@/types/stored-profile";
 
 export type { StoredProfile };
 
 export interface HomePageProps {
   referrerSlug?: string;
-  /** From /master/[slug] — open that master's session flow on load. */
-  autoOpenMasterId?: string;
 }
 
 function resolveDestinyCardUrl(
@@ -138,7 +125,7 @@ function resolveDestinyCardUrl(
   return null;
 }
 
-export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePageProps) {
+export default function HomePage({ referrerSlug }: HomePageProps) {
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
   const { isLoggedIn, loading: authLoading, user: authUser } = useAuth();
   const { openPaywall, showRateLimit } = usePaywall();
@@ -155,22 +142,10 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
   /** Pending deep-link auto-reading (from a notification CTA): open chat + auto-ask. */
   const [autoAsk, setAutoAsk] = useState<{ master: string; question: string } | null>(null);
   const [deepLinkSpreadId, setDeepLinkSpreadId] = useState<string | null>(null);
-  const [seoFlowOpen, setSeoFlowOpen] = useState(false);
-  const [seoFlowIntentSlug, setSeoFlowIntentSlug] = useState<string | null>(null);
-  const [sessionFlowInitialQuestion, setSessionFlowInitialQuestion] = useState<string | null>(null);
-  const [sessionFlowRequiresPartnerInfo, setSessionFlowRequiresPartnerInfo] = useState(false);
-  const [sessionFlowInitialNumerologTool, setSessionFlowInitialNumerologTool] =
-    useState<NumerologToolId | null>(null);
-  const [sessionFlowInitialPartnerInfo, setSessionFlowInitialPartnerInfo] = useState<{
-    partnerName?: string;
-    partnerDate?: string;
-  } | null>(null);
   const [dailyEnergySpreadId, setDailyEnergySpreadId] = useState<SpreadId>(DEFAULT_SPREAD_ID);
   const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
-  const numerologDeepLinkParsedRef = useRef(false);
-  const masterAutoOpenParsedRef = useRef(false);
   const autoAskOpenedRef = useRef(false);
   const autoAskSentRef = useRef(false);
   const autoAskMasterRef = useRef<string | null>(null);
@@ -318,12 +293,8 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
   );
 
   const [photoReadingOpen, setPhotoReadingOpen] = useState(false);
-  const [photoReadingDefaultMaster, setPhotoReadingDefaultMaster] = useState<string | undefined>();
-  const [photoReadingInitialMode, setPhotoReadingInitialMode] =
-    useState<PhotoReadingEntryMode>("upload");
   const [showRitualFlow, setShowRitualFlow] = useState(false);
   const [ritualFlowMaster, setRitualFlowMaster] = useState<string>("ragnar");
-  const [pendingRitualType, setPendingRitualType] = useState<RitualType | null>(null);
   const [openRitualId, setOpenRitualId] = useState<string | null>(null);
   const [achievementPopup, setAchievementPopup] = useState<{
     label: string;
@@ -493,120 +464,20 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     handleSpreadReadingRitualComplete,
   } = onboarding;
 
-  const openSpreadIntentFlow = useCallback(
-    (
-      intent: NonNullable<ReturnType<typeof getSpreadIntentBySlug>>,
-      options?: { customQuestion?: string | null }
-    ) => {
-      if (isDailyOnlySpread(intent.spreadId)) {
-        setDailyEnergySpreadId(intent.spreadId);
-        setDailyEnergyAutoOpen(true);
-        return;
-      }
-      const gender = readStoredProfile()?.gender;
-      const copy = resolveIntentCopy(
-        intent,
-        gender === "male" || gender === "female" ? gender : null
-      );
-      const question = options?.customQuestion?.trim() || copy.questionTemplate;
-      setDeepLinkSpreadId(intent.spreadId);
-      setSeoFlowIntentSlug(intent.slug);
-      setSessionFlowPreselectedMaster(resolveIntentMasterId(intent));
-      setSessionFlowInitialTopic("custom");
-      setSessionFlowInitialQuestion(question);
-      setSessionFlowRequiresPartnerInfo(Boolean(intent.requiresPartnerInfo));
-      setSeoFlowOpen(true);
-      setShowSessionFlow(false);
-    },
-    [setShowSessionFlow, setSessionFlowPreselectedMaster]
-  );
-
   useEffect(() => {
     if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    const jointParam = params.get("joint")?.trim();
-    const jointRole = params.get("jointRole")?.trim();
-    // `joint` alone → status page; `joint` + `jointRole` → start personal spread in SEO flow
-    if (jointParam && !jointRole) {
-      deepLinkSpreadParsedRef.current = true;
-      window.location.replace(`/joint-reading/${encodeURIComponent(jointParam)}`);
-      return;
-    }
-    if (jointParam && jointRole) {
-      setJointReadingToken(jointParam);
-      if (jointRole === "initiator" || jointRole === "partner") {
-        setJointReadingRole(jointRole);
-      }
-      const spreadParam = params.get("spread")?.trim();
-      if (spreadParam) {
-        setDeepLinkSpreadId(normalizeSpreadId(spreadParam));
-      }
-      const jointPartnerName = params.get("jointPartnerName")?.trim();
-      const jointInvite = params.get("jointInvite")?.trim();
-      // Note: partner name is only stored for display — the joint flow never needs
-      // the "partner birth date" gate (see requiresPartnerInfo override below),
-      // since each side draws their own cards and the invite already carries names.
-      if (jointRole === "initiator" && jointPartnerName) {
-        setSessionFlowInitialPartnerInfo({ partnerName: jointPartnerName });
-      } else if (jointRole === "partner" && jointInvite) {
-        setSessionFlowInitialPartnerInfo({ partnerName: jointInvite });
-      }
-    }
-
-    const askParam = params.get("ask")?.trim();
-    if (askParam) {
-      deepLinkSpreadParsedRef.current = true;
-      autoAskParsedRef.current = true;
-      const spreadFromHero = params.get("spread") === "1";
-      const matched = matchSpreadIntentFromQuestion(askParam);
-      if (matched) {
-        openSpreadIntentFlow(matched, { customQuestion: askParam });
-      } else if (spreadFromHero || !isLoggedIn) {
-        setDeepLinkSpreadId("situation-5");
-        setSeoFlowIntentSlug(null);
-        setSessionFlowPreselectedMaster(params.get("master")?.trim() || "veronika");
-        setSessionFlowInitialTopic("custom");
-        setSessionFlowInitialQuestion(askParam);
-        setSessionFlowRequiresPartnerInfo(false);
-        setSeoFlowOpen(true);
-        setShowSessionFlow(false);
-      } else {
-        setAutoAsk({
-          master: params.get("master")?.trim() ?? "",
-          question: askParam,
-        });
-      }
-      const url = new URL(window.location.href);
-      url.searchParams.delete("ask");
-      url.searchParams.delete("master");
-      url.searchParams.delete("spread");
-      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-      return;
-    }
-
     const intentParam = params.get("intent")?.trim();
 
     if (intentParam) {
       const intent = getSpreadIntentBySlug(intentParam);
       if (intent) {
         deepLinkSpreadParsedRef.current = true;
-        const askWithIntent = params.get("ask")?.trim();
-        openSpreadIntentFlow(intent, {
-          customQuestion: askWithIntent || undefined,
-        });
-        if (jointParam && jointRole) {
-          // Joint reading: each side draws their own cards independently and the
-          // partner's name is already known from the invite — the generic
-          // "partner birth date" step is irrelevant here (and unused downstream),
-          // so don't force it or it silently blocks the whole flow.
-          setSessionFlowRequiresPartnerInfo(false);
-        }
+        setDeepLinkSpreadId(intent.spreadId);
+        setSessionFlowPreselectedMaster(intent.recommendedMasterId);
+        setShowSessionFlow(true);
         const url = new URL(window.location.href);
         url.searchParams.delete("intent");
-        url.searchParams.delete("ask");
-        url.searchParams.delete("joint");
-        url.searchParams.delete("jointRole");
-        url.searchParams.delete("jointInvite");
         window.history.replaceState(null, "", url.pathname + url.search + url.hash);
         return;
       }
@@ -628,72 +499,12 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
 
     if (!spreadParam) return;
     deepLinkSpreadParsedRef.current = true;
-    if (spreadParam === "love-7") {
-      const compatIntent = getSpreadIntentBySlug("sovmestimost-pary");
-      if (compatIntent) {
-        openSpreadIntentFlow(compatIntent);
-        const url = new URL(window.location.href);
-        url.searchParams.delete("spread");
-        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-        return;
-      }
-    }
     setDeepLinkSpreadId(normalizeSpreadId(spreadParam));
-    setSeoFlowIntentSlug(null);
-    setSessionFlowRequiresPartnerInfo(false);
-    setSessionFlowPreselectedMaster("veronika");
-    setSessionFlowInitialTopic("path");
-    setSessionFlowInitialQuestion(null);
-    setSeoFlowOpen(true);
-    setShowSessionFlow(false);
+    setShowSessionFlow(true);
     const url = new URL(window.location.href);
     url.searchParams.delete("spread");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }, [openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster, isLoggedIn]);
-
-  const openNumerologSessionFlow = useCallback(
-    (tool?: NumerologToolId | null) => {
-      setSessionFlowPreselectedMaster("numerolog");
-      setEnergyFlowMasterId("numerolog");
-      setSessionFlowInitialNumerologTool(tool ?? null);
-      setSeoFlowOpen(true);
-      setShowSessionFlow(false);
-    },
-    [setShowSessionFlow, setSessionFlowPreselectedMaster]
-  );
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if (autoOpenMasterId && !masterAutoOpenParsedRef.current) {
-      const character = getCharacterById(autoOpenMasterId);
-      if (!character) return;
-      masterAutoOpenParsedRef.current = true;
-      setSessionFlowPreselectedMaster(autoOpenMasterId);
-      setEnergyFlowMasterId(autoOpenMasterId);
-      setSeoFlowOpen(true);
-      setShowSessionFlow(false);
-      if (window.location.pathname.startsWith("/master/")) {
-        window.history.replaceState(null, "", "/");
-      }
-      return;
-    }
-
-    if (numerologDeepLinkParsedRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("numerolog") !== "1") return;
-
-    numerologDeepLinkParsedRef.current = true;
-    const toolRaw = params.get("tool")?.trim();
-    const tool =
-      toolRaw && isNumerologSessionToolId(toolRaw) ? toolRaw : null;
-    openNumerologSessionFlow(tool);
-
-    const url = new URL(window.location.href);
-    url.searchParams.delete("numerolog");
-    url.searchParams.delete("tool");
-    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }, [autoOpenMasterId, openNumerologSessionFlow, setSessionFlowPreselectedMaster, setShowSessionFlow]);
+  }, [setShowSessionFlow, setSessionFlowPreselectedMaster]);
 
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
@@ -713,28 +524,15 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     setPendingNav({ type: "section", id: sectionId });
   }, []);
 
-  const openPhotoReading = useCallback(
-    (options?: { masterOverride?: string; mode?: PhotoReadingEntryMode }) => {
-      if (options?.masterOverride) {
-        setPhotoReadingDefaultMaster(options.masterOverride);
-      } else {
-        setPhotoReadingDefaultMaster(undefined);
-      }
-      setPhotoReadingInitialMode(options?.mode ?? "upload");
-      if (typeof window !== "undefined" && window.location.pathname !== "/") {
-        navigateToPhotoReadingHard();
-        return;
-      }
-      exitToLandingForNavRef.current?.();
-      setPhotoReadingOpen(true);
-      window.history.replaceState(null, "", window.location.pathname);
-    },
-    []
-  );
-
-  const openMarkCards = useCallback(() => {
-    openPhotoReading({ mode: "mark" });
-  }, [openPhotoReading]);
+  const openPhotoReading = useCallback(() => {
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      navigateToPhotoReadingHard();
+      return;
+    }
+    exitToLandingForNavRef.current?.();
+    setPhotoReadingOpen(true);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   const photoNavLabel = runeConfig.enabled
     ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`
@@ -769,7 +567,6 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     const params = new URLSearchParams(window.location.search);
     const hash = decodeURIComponent(window.location.hash.slice(1));
     if (params.get("photo") === "1" || hash === "фото-расклад") {
-      setPhotoReadingInitialMode(params.get("mode") === "mark" ? "mark" : "upload");
       setPhotoReadingOpen(true);
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -2084,13 +1881,6 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     }
   };
 
-  const handleDailyStartRitual = (ritualType: RitualType) => {
-    setRitualFlowMaster(resolveRitualMasterKey(dailyEnergyMasterId));
-    setOpenRitualId(null);
-    setPendingRitualType(ritualType);
-    setShowRitualFlow(true);
-  };
-
   const usesRuneBilling =
     isLoggedIn && !session?.hasAccess && !session?.offline && runeConfig.enabled;
 
@@ -2128,9 +1918,8 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
   const showLanding = step === "intro";
   const inPersonalFlow = isLoggedIn && step !== "intro";
   const bootstrapping = sessionLoading || authLoading;
-  /** Marketing landing — guests only, after auth/session bootstrap. */
-  const showSeoLanding = !isLoggedIn && showLanding && !bootstrapping;
-  const showSalonHome = showSeoLanding || (!bootstrapping && step === "masters" && !selectedCharacter);
+  /** Marketing landing — guests only; logged-in users get masters + energy of the day. */
+  const showSeoLanding = !isLoggedIn && (showLanding || bootstrapping);
   const landingMasters = masters.length > 0 ? masters : getAiMasters();
 
   useEffect(() => {
@@ -2178,9 +1967,6 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
       runeBalance={runeBalance}
       isUnlimited={Boolean(session?.isUnlimited)}
       onInsufficientRunes={landingInsufficientRunes}
-      onOpenPhotoReading={() => openPhotoReading()}
-      onOpenMarkCards={openMarkCards}
-      photoNavLabel={photoNavLabel}
     />
   );
 
@@ -2210,7 +1996,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
       onOpenPaywall={() => handleOpenPaywall()}
       onNavMasters={() => scrollToSection(APP_SHELL_SECTIONS.masters)}
       onNavTariffs={() => scrollToSection(APP_SHELL_SECTIONS.tariffs)}
-      onNavPhoto={() => openPhotoReading()}
+      onNavPhoto={openPhotoReading}
       onNavDecks={openDecksModal}
       onStartReading={handleStartReadingFromHeader}
     />
@@ -2237,7 +2023,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
         className={
           inActiveChat
             ? "relative z-10 mx-auto flex min-h-0 flex-1 max-w-none flex-col px-0 py-0"
-            : `relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12${showSalonHome ? " home-salon-shell" : ""}`
+            : "relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12"
         }
       >
         {paymentNotice && (
@@ -2259,7 +2045,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
 
         {bootstrapping ? (
           <div
-            className="bootstrap-overlay pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-black/75 pt-[var(--app-header-h,3.25rem)] backdrop-blur-md max-md:bg-[#050309] max-md:backdrop-blur-none"
+            className="bootstrap-overlay pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-md pt-[var(--app-header-h,3.25rem)]"
             aria-busy="true"
             aria-live="polite"
           >
@@ -2355,6 +2141,25 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
                 void openChatWithSessionParams(params);
               }}
             />
+            {(RITUAL_MASTERS as readonly string[]).includes(sessionListMaster) ? (
+              <RitualFlow
+                isOpen={showRitualFlow}
+                characterKey={ritualFlowMaster as "ragnar" | "agafya"}
+                userName={effectiveProfile.name || authUser?.name || "друг"}
+                userZodiac={effectiveProfile.zodiac || ""}
+                balance={runeBalance}
+                isUnlimited={Boolean(session?.isUnlimited)}
+                initialRitualId={openRitualId}
+                onClose={() => {
+                  setShowRitualFlow(false);
+                  setOpenRitualId(null);
+                }}
+                onBalanceChange={(b) => {
+                  setRuneBalance(b);
+                  emitRuneBalanceUpdate(b);
+                }}
+              />
+            ) : null}
           </>
         ) : selectedCharacter && !isLoggedIn ? (
           <RegisterGate
@@ -2381,7 +2186,6 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
             questionCost={runeCost("QUESTION")}
             insufficientRunes={insufficientRunes}
             onOpenPaywall={() => handleOpenPaywall()}
-            onOpenPhotoReading={() => openPhotoReading({ masterOverride: selectedCharacter })}
             runeBalance={runeBalance}
             visionCost={runeCost("VISION_ANALYSIS")}
             headerSceneUrl={sessionOnlyChat ? null : chatHeaderImage}
@@ -2474,10 +2278,12 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
             userBirthDate={effectiveProfile.birthDate}
             userFullName={effectiveProfile.name}
             onStartRitual={() => {
-              setRitualFlowMaster(resolveRitualMasterKey(selectedCharacter));
-              setOpenRitualId(null);
-              setShowSessionFlow(false);
-              setShowRitualFlow(true);
+              if ((RITUAL_MASTERS as readonly string[]).includes(selectedCharacter)) {
+                setRitualFlowMaster(selectedCharacter as "ragnar" | "agafya");
+                setOpenRitualId(null);
+                setShowSessionFlow(false);
+                setShowRitualFlow(true);
+              }
             }}
             onStart={(params) => {
               setShowSessionFlow(false);
@@ -2490,6 +2296,25 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
               void openChatWithSessionParams(params);
             }}
           />
+          {(RITUAL_MASTERS as readonly string[]).includes(selectedCharacter) ? (
+            <RitualFlow
+              isOpen={showRitualFlow}
+              characterKey={ritualFlowMaster as "ragnar" | "agafya"}
+              userName={effectiveProfile.name || authUser?.name || "друг"}
+              userZodiac={effectiveProfile.zodiac || ""}
+              balance={runeBalance}
+              isUnlimited={Boolean(session?.isUnlimited)}
+              initialRitualId={openRitualId}
+              onClose={() => {
+                setShowRitualFlow(false);
+                setOpenRitualId(null);
+              }}
+              onBalanceChange={(b) => {
+                setRuneBalance(b);
+                emitRuneBalanceUpdate(b);
+              }}
+            />
+          ) : null}
           </>
         ) : inPersonalFlow ? (
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
@@ -2623,10 +2448,25 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
               </section>
             )}
 
-            {step === "masters" && !bootstrapping && (
+            {step === "masters" && (
               <>
                 {isLoggedIn && (
                   <>
+                    <PremiumEnergyBlock
+                      characterKey={dailyEnergyMasterId}
+                      masters={masters}
+                      initialSpreadId={dailyEnergySpreadId}
+                      autoOpen={dailyEnergyAutoOpen}
+                      onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
+                      onTalkToMaster={(masterId) => {
+                        setEnergyFlowMasterId(masterId);
+                        setShowSessionFlow(true);
+                      }}
+                      onOpenNumerologForm={() => {
+                        setEnergyFlowMasterId("numerolog");
+                        setShowSessionFlow(true);
+                      }}
+                    />
                     <MasterSessionFlow
                       isOpen={showSessionFlow}
                       onClose={() => {
@@ -2649,12 +2489,16 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
                       userBirthDate={effectiveProfile.birthDate}
                       userFullName={effectiveProfile.name}
                       onStartRitual={() => {
-                        setRitualFlowMaster(
-                          resolveRitualMasterKey(energyFlowMasterId ?? dailyEnergyMasterId)
-                        );
-                        setOpenRitualId(null);
-                        setShowSessionFlow(false);
-                        setShowRitualFlow(true);
+                        const ritualMaster = energyFlowMasterId ?? dailyEnergyMasterId;
+                        if (
+                          ritualMaster &&
+                          (RITUAL_MASTERS as readonly string[]).includes(ritualMaster)
+                        ) {
+                          setRitualFlowMaster(ritualMaster);
+                          setOpenRitualId(null);
+                          setShowSessionFlow(false);
+                          setShowRitualFlow(true);
+                        }
                       }}
                       onStart={(params) => {
                         setShowSessionFlow(false);
@@ -2662,6 +2506,25 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
                         void openChatWithSessionParams(params);
                       }}
                     />
+                    {(RITUAL_MASTERS as readonly string[]).includes(dailyEnergyMasterId) ? (
+                      <RitualFlow
+                        isOpen={showRitualFlow}
+                        characterKey={ritualFlowMaster as "ragnar" | "agafya"}
+                        userName={effectiveProfile.name || authUser?.name || "друг"}
+                        userZodiac={effectiveProfile.zodiac || ""}
+                        balance={runeBalance}
+                        isUnlimited={Boolean(session?.isUnlimited)}
+                        initialRitualId={openRitualId}
+                        onClose={() => {
+                          setShowRitualFlow(false);
+                          setOpenRitualId(null);
+                        }}
+                        onBalanceChange={(b) => {
+                          setRuneBalance(b);
+                          emitRuneBalanceUpdate(b);
+                        }}
+                      />
+                    ) : null}
                   </>
                 )}
                 {showWelcomeBack && recapContinueMasterId ? (
@@ -2721,30 +2584,8 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
                   recommendedId={recommendedId}
                   continueMasterIds={continueMasterIds}
                   spreadReadingDone={spreadReadingDone}
-                  showHero={!isLoggedIn}
-                  showSellingSections={!isLoggedIn}
+                  showHero={false}
                   showTariffs
-                  afterQuickQuestions={
-                    isLoggedIn ? (
-                      <PremiumEnergyBlock
-                        characterKey={dailyEnergyMasterId}
-                        masters={masters}
-                        initialSpreadId={dailyEnergySpreadId}
-                        autoOpen={dailyEnergyAutoOpen}
-                        onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
-                        onInsufficientRunes={landingInsufficientRunes}
-                        onStartRitual={handleDailyStartRitual}
-                        onTalkToMaster={(masterId) => {
-                          setEnergyFlowMasterId(masterId);
-                          setShowSessionFlow(true);
-                        }}
-                        onOpenNumerologForm={() => {
-                          setEnergyFlowMasterId("numerolog");
-                          setShowSessionFlow(true);
-                        }}
-                      />
-                    ) : undefined
-                  }
                   onOpenPaywall={() => handleOpenPaywall()}
                   runeBalance={runeBalance}
                   isUnlimited={Boolean(session?.isUnlimited)}
@@ -2770,84 +2611,12 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
         ) : null}
       </main>
 
-      {seoFlowOpen ? (
-        <MasterSessionFlow
-          isOpen={seoFlowOpen}
-          onClose={() => {
-            setSeoFlowOpen(false);
-            setShowSessionFlow(false);
-            setSeoFlowIntentSlug(null);
-            setDeepLinkSpreadId(null);
-            setEnergyFlowMasterId(null);
-            setSessionFlowInitialTopic(null);
-            setSessionFlowInitialQuestion(null);
-            setSessionFlowRequiresPartnerInfo(false);
-            setSessionFlowInitialNumerologTool(null);
-            setSessionFlowInitialPartnerInfo(null);
-            setSessionFlowPreselectedMaster(null);
-          }}
-          preselectedMaster={
-            sessionFlowPreselectedMaster ??
-            energyFlowMasterId ??
-            recommendedId ??
-            lastMasterId ??
-            "veronika"
-          }
-          newSpreadOnly
-          initialSpreadId={(deepLinkSpreadId as SpreadId | null) ?? undefined}
-          initialTopic={sessionFlowInitialTopic ?? undefined}
-          initialCustomQuestion={sessionFlowInitialQuestion ?? undefined}
-          autoDrawOnOpen={
-            Boolean(sessionFlowInitialTopic) &&
-            !sessionFlowRequiresPartnerInfo &&
-            !sessionFlowInitialQuestion?.trim()
-          }
-          requiresPartnerInfo={sessionFlowRequiresPartnerInfo}
-          initialNumerologTool={sessionFlowInitialNumerologTool ?? undefined}
-          initialPartnerInfo={sessionFlowInitialPartnerInfo ?? undefined}
-          masters={masters}
-          userBirthDate={effectiveProfile.birthDate}
-          userFullName={effectiveProfile.name}
-          onStartRitual={() => {
-            setRitualFlowMaster(
-              resolveRitualMasterKey(sessionFlowPreselectedMaster ?? energyFlowMasterId)
-            );
-            setOpenRitualId(null);
-            setSeoFlowOpen(false);
-            setShowSessionFlow(false);
-            setSeoFlowIntentSlug(null);
-            setShowRitualFlow(true);
-          }}
-          onStart={(params) => {
-            if (!isLoggedIn) {
-              if (typeof window !== "undefined") {
-                if (seoFlowIntentSlug) {
-                  window.sessionStorage.setItem("zovus_pending_intent", seoFlowIntentSlug);
-                }
-                const returnTo = seoFlowIntentSlug ? `/?intent=${encodeURIComponent(seoFlowIntentSlug)}` : "/";
-                window.location.href = `/auth/user/register?returnTo=${encodeURIComponent(returnTo)}`;
-              }
-              return;
-            }
-            setSeoFlowOpen(false);
-            setShowSessionFlow(false);
-            setSeoFlowIntentSlug(null);
-            setDeepLinkSpreadId(null);
-            setEnergyFlowMasterId(null);
-            setSessionFlowInitialQuestion(null);
-            void openChatWithSessionParams(params);
-          }}
-        />
-      ) : null}
-
       <PhotoReadingFlow
         open={photoReadingOpen}
         onClose={closePhotoReading}
         masters={masters}
         isLoggedIn={isLoggedIn}
-        defaultMasterId={
-          photoReadingDefaultMaster ?? lastMasterId ?? recommendedId ?? "veronika"
-        }
+        defaultMasterId={lastMasterId ?? recommendedId ?? "veronika"}
         sessionId={undefined}
         userName={profile?.name ?? authUser?.name}
         onSpreadRitualStart={(spread) => {
@@ -2875,7 +2644,6 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
         runeBalance={runeBalance}
         isUnlimited={Boolean(session?.isUnlimited)}
         onOpenPaywall={() => handleOpenPaywall()}
-        initialMode={photoReadingInitialMode}
       />
 
       <MasterDecksModal
@@ -2893,26 +2661,6 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
         active={spreadRitual.active}
         cards={spreadRitual.cards}
         system={spreadRitual.system}
-      />
-
-      <RitualFlow
-        isOpen={showRitualFlow}
-        characterKey={resolveRitualMasterKey(ritualFlowMaster)}
-        userName={effectiveProfile.name || authUser?.name || "друг"}
-        userZodiac={effectiveProfile.zodiac || ""}
-        balance={runeBalance}
-        isUnlimited={Boolean(session?.isUnlimited)}
-        initialRitualId={openRitualId}
-        initialRitualType={pendingRitualType}
-        onClose={() => {
-          setShowRitualFlow(false);
-          setOpenRitualId(null);
-          setPendingRitualType(null);
-        }}
-        onBalanceChange={(b) => {
-          setRuneBalance(b);
-          emitRuneBalanceUpdate(b);
-        }}
       />
 
       {achievementPopup && (
