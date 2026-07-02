@@ -1,5 +1,6 @@
 import { completeChat, isRejectedLlmOutput, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { todayLabelRu } from "@/lib/prompt-date";
 import { buildChatPrompt, buildHumanChatPrompt } from "@/lib/chat-prompts";
 import type { UserContext } from "@/lib/chat-prompts";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
@@ -109,7 +110,7 @@ export function buildPhotoReadingPrompt(
 ${PHOTO_READING_RULES}
 
 ${questionLine}
-Сегодня: ${ctx.today ?? new Date().toLocaleDateString("ru-RU")}.`;
+Сегодня: ${ctx.today ?? todayLabelRu()}.`;
 }
 
 export function buildPhotoInterpretationPrompt(
@@ -123,7 +124,7 @@ export function buildPhotoInterpretationPrompt(
 
 ${PHOTO_INTERPRETATION_RULES}
 
-Сегодня: ${ctx.today ?? new Date().toLocaleDateString("ru-RU")}.`;
+Сегодня: ${ctx.today ?? todayLabelRu()}.`;
 }
 
 export function buildPhotoVisionMessage(
@@ -168,11 +169,10 @@ function splitCardTokens(raw: string): string[] {
     .filter(Boolean);
 }
 
-function parseDetectedCardsJson(analysis: string): DetectedCardEntry[] {
-  const match = analysis.match(/КАРТЫ_JSON:\s*(\[[\s\S]*?\])/i);
-  if (!match) return [];
+function parseJsonCardArray(raw: string): DetectedCardEntry[] {
   try {
-    const arr = JSON.parse(match[1]) as Array<{ name?: string; reversed?: boolean }>;
+    const arr = JSON.parse(raw) as Array<{ name?: string; reversed?: boolean }>;
+    if (!Array.isArray(arr)) return [];
     return arr
       .map((item) => ({
         name: String(item.name ?? "").trim(),
@@ -184,24 +184,76 @@ function parseDetectedCardsJson(analysis: string): DetectedCardEntry[] {
   }
 }
 
+function parseDetectedCardsJson(analysis: string): DetectedCardEntry[] {
+  const labeled = analysis.match(/КАРТЫ_JSON:\s*(\[[\s\S]*?\])/i);
+  if (labeled) {
+    const parsed = parseJsonCardArray(labeled[1]);
+    if (parsed.length) return parsed;
+  }
+
+  const fenced = analysis.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/i);
+  if (fenced) {
+    const parsed = parseJsonCardArray(fenced[1]);
+    if (parsed.length) return parsed;
+  }
+
+  const inline = analysis.match(/\[\s*\{\s*"name"\s*:/i);
+  if (inline) {
+    const start = analysis.indexOf("[", inline.index ?? 0);
+    if (start >= 0) {
+      const slice = analysis.slice(start);
+      const end = slice.indexOf("]");
+      if (end > 0) {
+        const parsed = parseJsonCardArray(slice.slice(0, end + 1));
+        if (parsed.length) return parsed;
+      }
+    }
+  }
+
+  return [];
+}
+
+function parseDetectedCardsFromLists(analysis: string): string[] {
+  const lines = analysis.split(/\n/);
+  const items: string[] = [];
+  for (const line of lines) {
+    const bullet = line.match(/^\s*[-*•]\s+(.+)$/);
+    const numbered = line.match(/^\s*\d+[\.)]\s+(.+)$/);
+    const raw = (bullet?.[1] ?? numbered?.[1])?.trim();
+    if (!raw) continue;
+    if (/^(колода|расклад|карты)/i.test(raw)) continue;
+    const cleaned = raw.replace(/[«»"']/g, "").trim();
+    if (cleaned && !/^(не удалось|не распозн)/i.test(cleaned)) {
+      items.push(cleaned);
+    }
+  }
+  return items;
+}
+
 export function parseDetectedCards(analysis: string): string[] {
   const jsonCards = parseDetectedCardsJson(analysis);
   if (jsonCards.length) {
     return jsonCards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name));
   }
 
-  const match = analysis.match(/^КАРТЫ:\s*([\s\S]+)$/im);
-  if (!match) return [];
+  const match = analysis.match(/^КАРТЫ:\s*([\s\S]+?)(?:\n\n|\nКОЛОДА:|\nРАСКЛАД:|$)/im);
+  if (match) {
+    const tokens = splitCardTokens(match[1]);
+    if (tokens.length) return tokens;
 
-  const tokens = splitCardTokens(match[1]);
-  if (tokens.length) return tokens;
+    const fallback = match[1]
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(/\s+·\s+/)
+      .map((s) => s.replace(/[«»"']/g, "").trim())
+      .filter(Boolean);
+    if (fallback.length) return fallback;
+  }
 
-  return match[1]
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(/\s+·\s+/)
-    .map((s) => s.replace(/[«»"']/g, "").trim())
-    .filter(Boolean);
+  const listCards = parseDetectedCardsFromLists(analysis);
+  if (listCards.length) return listCards;
+
+  return [];
 }
 
 export function parsePhotoReadingResponse(analysis: string): PhotoReadingMetadata {
@@ -249,11 +301,7 @@ export async function generatePhotoReading(
 
 export function photoReadingFallback(userName?: string): string {
   const name = userName ?? "друг";
-  return `КОЛОДА: не определена
-РАСКЛАД: не распознан
-КАРТЫ: не удалось распознать
-
-${name}, связь с образом прервалась — не могу чётко разобрать карты на фото. Сделайте снимок при хорошем свете: все карты целиком в кадре, без бликов, сверху. Подойдут любые колоды — таро, Ленорман, оракулы, скриншот из приложения. Или опишите расклад текстом в чате с мастером.`;
+  return `${name}, связь с образом прервалась — не могу сейчас расшифровать расклад. Руны возвращены на баланс. Попробуйте ещё раз с более чётким фото: все карты целиком в кадре, без бликов, сверху. Или соберите расклад вручную в фото-режиме.`;
 }
 
 const PHOTO_RECOGNITION_ONLY = `
