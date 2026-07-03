@@ -1,6 +1,9 @@
 import { BRAND_NAME, BRAND_URL } from "@/lib/brand";
-
-const CONTACT_EMAIL = "cheldriver@yandex.ru";
+import {
+  getClaimsEmail,
+  getPrivacyEmail,
+  getSupportEmail,
+} from "@/lib/email/mail-config";
 
 /** Реквизиты самозанятого — оператора платформы Zovus (152-ФЗ, оферта, ЗоЗПП). */
 export const LEGAL_OPERATOR = {
@@ -14,10 +17,10 @@ export const LEGAL_OPERATOR = {
   siteName: BRAND_NAME,
   siteUrl: BRAND_URL,
   /** Единый контактный email оператора */
-  contactEmail: CONTACT_EMAIL,
-  privacyEmail: CONTACT_EMAIL,
-  supportEmail: CONTACT_EMAIL,
-  claimsEmail: CONTACT_EMAIL,
+  contactEmail: getSupportEmail(),
+  privacyEmail: getPrivacyEmail(),
+  supportEmail: getSupportEmail(),
+  claimsEmail: getClaimsEmail(),
 } as const;
 
 export interface LegalPaymentDetail {

@@ -148,6 +148,7 @@ async function notifyJointReadingEvent(params: {
       subject: isCompleted ? "Zovus — совместный расклад готов" : "Zovus — партнёр завершил расклад",
       html,
       text: `${title}. ${body} ${ctaUrl}`,
+      template: isCompleted ? "joint_reading_done" : "joint_reading_partner",
     });
   } catch (err) {
     console.warn("Joint reading email notification failed:", err);

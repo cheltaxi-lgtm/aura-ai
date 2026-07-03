@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminAction } from "@/lib/admin";
-import { addAdminSupportMessage } from "@/lib/support-service";
+import { addAdminSupportMessage, getAdminSupportTicket } from "@/lib/support-service";
+import { emailSupportReplyToUser } from "@/lib/email/support-notify";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -24,6 +25,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!message) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
     await logAdminAction(auth.sub, "reply", "support_ticket", id);
+
+    const ticket = await getAdminSupportTicket(id);
+    if (ticket?.user_email) {
+      void emailSupportReplyToUser({
+        userEmail: ticket.user_email,
+        userName: ticket.user_name ?? ticket.user_email,
+        ticketId: id,
+        subject: ticket.subject,
+        replyPreview: message.content,
+      });
+    }
+
     return NextResponse.json({ message });
   } catch (err) {
     const code = err instanceof Error ? err.message : "unknown";

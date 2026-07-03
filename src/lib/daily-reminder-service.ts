@@ -146,6 +146,7 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
         subject: "Zovus — ваш расклад на сегодня",
         html: dailyReminderEmailHtml(user.name, siteUrl),
         text: `${user.name}, откройте расклад на сутки: ${siteUrl}/?daily=1`,
+        template: "daily_reminder",
       });
       if (sent) {
         await markSent(user.userId, "email");

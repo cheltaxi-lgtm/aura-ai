@@ -9,6 +9,7 @@ import {
   SUPPORT_CATEGORY_LABELS,
   SUPPORT_STATUS_LABELS,
 } from "@/lib/support-service";
+import { emailSupportTicketCreated } from "@/lib/email/support-notify";
 
 export async function GET() {
   await ensureDb();
@@ -45,6 +46,14 @@ export async function POST(request: NextRequest) {
       subject,
       category,
       message,
+    });
+    void emailSupportTicketCreated({
+      userEmail: auth.email,
+      userName: auth.name ?? auth.email,
+      ticketId: ticket.id,
+      subject: ticket.subject,
+      category,
+      messagePreview: firstMessage.content,
     });
     return NextResponse.json({ ticket, message: firstMessage, autoReply }, { status: 201 });
   } catch (err) {

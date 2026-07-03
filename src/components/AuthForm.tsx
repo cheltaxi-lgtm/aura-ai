@@ -262,6 +262,16 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
+            {mode === "login" && role === "user" ? (
+              <p className="mt-2 text-right">
+                <Link
+                  href="/auth/user/forgot-password"
+                  className="text-xs text-aura-champagne/80 hover:text-aura-champagne hover:underline"
+                >
+                  Забыли пароль?
+                </Link>
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
