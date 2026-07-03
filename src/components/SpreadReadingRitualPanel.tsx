@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const RING_RUNES = ["ᚠ", "ᚢ", "ᚦ", "ᚨ", "ᚱ", "ᚲ", "ᚷ", "ᚹ"] as const;
@@ -11,24 +11,14 @@ const PHRASES = [
   "Складываю послание…",
 ] as const;
 
-export const SPREAD_READING_RITUAL_SEC = 20;
-
-export function waitForSpreadReadingRitual(
-  sec = SPREAD_READING_RITUAL_SEC
-): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, sec * 1000);
-  });
-}
-
 interface SpreadReadingRitualPanelProps {
   active: boolean;
-  countdownSec?: number;
   phrases?: readonly string[];
-  onComplete: () => void;
+  /** @deprecated Parent closes the panel when loading finishes — not used for auto-close. */
+  onComplete?: () => void;
 }
 
-function formatCountdown(totalSec: number): string {
+function formatElapsed(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
@@ -36,31 +26,23 @@ function formatCountdown(totalSec: number): string {
 
 export default function SpreadReadingRitualPanel({
   active,
-  countdownSec = SPREAD_READING_RITUAL_SEC,
   phrases = PHRASES,
-  onComplete,
 }: SpreadReadingRitualPanelProps) {
-  const [secondsLeft, setSecondsLeft] = useState(countdownSec);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [litRunes, setLitRunes] = useState(0);
-  const completedRef = useRef(false);
-  const onCompleteRef = useRef(onComplete);
-
-  useEffect(() => {
-    onCompleteRef.current = onComplete;
-  }, [onComplete]);
 
   useEffect(() => {
     if (!active) {
-      setSecondsLeft(countdownSec);
+      setElapsedSec(0);
       setPhraseIndex(0);
       setLitRunes(0);
-      completedRef.current = false;
       return;
     }
 
-    completedRef.current = false;
-    setSecondsLeft(countdownSec);
+    const elapsedTimer = window.setInterval(() => {
+      setElapsedSec((s) => s + 1);
+    }, 1000);
 
     const phraseTimer = window.setInterval(() => {
       setPhraseIndex((i) => (i + 1) % phrases.length);
@@ -70,26 +52,12 @@ export default function SpreadReadingRitualPanel({
       setLitRunes((n) => (n >= RING_RUNES.length ? 0 : n + 1));
     }, 320);
 
-    const countdownTimer = window.setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(countdownTimer);
-          if (!completedRef.current) {
-            completedRef.current = true;
-            onCompleteRef.current();
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
     return () => {
+      window.clearInterval(elapsedTimer);
       window.clearInterval(phraseTimer);
       window.clearInterval(runeTimer);
-      window.clearInterval(countdownTimer);
     };
-  }, [active, countdownSec, phrases.length]);
+  }, [active, phrases.length]);
 
   if (!active) return null;
 
@@ -108,7 +76,7 @@ export default function SpreadReadingRitualPanel({
         />
         <div className="spread-ritual-loader__core" aria-hidden>
           <span className="spread-ritual-loader__core-glyph spread-reading-ritual__countdown">
-            {formatCountdown(secondsLeft)}
+            {formatElapsed(elapsedSec)}
           </span>
         </div>
         <ul className="spread-ritual-loader__runes" aria-hidden>

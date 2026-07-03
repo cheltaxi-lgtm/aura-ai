@@ -10,6 +10,15 @@ export const MARKDOWN_IMAGE_LINE_PATTERN = /^(?:!\[[^\]]*\]\([^)]*\)\s*)+$/;
 
 const CARD_IMAGE_LINE_RE = /^!\[([^\]]*)\]\(([^)]*)\)\s*$/;
 
+/** Remove all markdown card/rune images (header row already shows the spread). */
+export function stripAllSpreadCardImages(content: string): string {
+  return content
+    .replace(MARKDOWN_IMAGE_PATTERN, " ")
+    .replace(/^[ \t]*\n/gm, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Remove leading markdown card images (used when the spread row already shows cards). */
 export function stripLeadingSpreadCardImages(content: string): string {
   const lines = content.split("\n");

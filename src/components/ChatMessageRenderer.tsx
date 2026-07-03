@@ -9,12 +9,15 @@ import {
   cardNamesFromImageMarkdown,
   inferSpreadCardNames,
   polishSpreadReadingText,
+  stripAllSpreadCardImages,
 } from "@/lib/reading-text-polish";
 
 export interface ChatMessageRendererProps {
   content: string;
   role?: "user" | "assistant";
   className?: string;
+  /** When the spread header already shows cards, hide duplicate card images in the message body. */
+  hideSpreadCardImages?: boolean;
 }
 
 const CARD_IMAGE_RE = /^!\[([^\]]*)\]\(([^)]*)\)\s*$/;
@@ -261,8 +264,9 @@ function ChatMessageRenderer({
   content,
   role = "assistant",
   className = "",
+  hideSpreadCardImages = false,
 }: ChatMessageRendererProps) {
-  const trimmed = content.trim();
+  const trimmed = (hideSpreadCardImages ? stripAllSpreadCardImages(content) : content).trim();
   if (!trimmed) return null;
 
   if (role === "user") {
@@ -274,7 +278,9 @@ function ChatMessageRenderer({
   }
 
   const { imageBlock, body } = splitLeadingCardImages(trimmed);
-  const cardNames = inferSpreadCardNames(imageBlock ? `${imageBlock}\n${body}` : trimmed);
+  const cardNames = hideSpreadCardImages
+    ? []
+    : inferSpreadCardNames(imageBlock ? `${imageBlock}\n${body}` : trimmed);
   const markdownSource = normalizeMasterMarkdown(
     body || trimmed,
     cardNames.length ? cardNames : undefined
@@ -293,7 +299,7 @@ function ChatMessageRenderer({
 
   return (
     <div className={`mystic-text space-y-4 font-body ${className}`}>
-      {imageBlock ? renderCardImageRow(imageBlock) : null}
+      {!hideSpreadCardImages && imageBlock ? renderCardImageRow(imageBlock) : null}
       {markdownSource ? (
         <ReactMarkdown components={mysticMarkdownComponents}>
           {softenMarkdownParagraphs(markdownSource)}

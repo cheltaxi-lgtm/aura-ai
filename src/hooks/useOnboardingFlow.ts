@@ -40,7 +40,7 @@ import { toSessionTopicId } from "@/lib/session-topics";
 import { postIntentionSpreadRequest, pollIntentionSpreadReading } from "@/lib/intention-spread-client";
 import { getJointReadingRole, clearJointReadingToken, resolveJointReadingToken } from "@/lib/joint-reading-storage";
 import { postJointReadingComplete } from "@/lib/joint-reading-client";
-import { waitForSpreadReadingRitual } from "@/components/SpreadReadingRitualPanel";
+import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
 import { generateId } from "@/lib/id";
 import {
   DEFAULT_DECK_SYSTEM,
@@ -1157,10 +1157,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   const spreadReadingPending =
     !chat()?.insufficientRunes &&
-    (spreadReadingRitualOpen ||
-      (intentionSpreadLoading &&
-        displaySpreadComplete &&
-        !(chat()?.messages && chatHasSpreadReading(chat()!.messages))));
+    spreadReadingRitualOpen &&
+    !(chat()?.messages && chatHasSpreadReading(chat()!.messages));
 
   const needsSpreadFlip =
     !chat()?.sessionOnlyChat &&
@@ -1319,6 +1317,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     [session?.offline, chat]
   );
 
+  /** Every new spread starts in a fresh consultation session (archive previous active). */
+  const beginNewSpreadSession = useCallback(
+    async (masterId: string): Promise<string | undefined> => {
+      if (session?.offline) return undefined;
+      await archiveActiveMasterSession(masterId);
+      const deps = chat();
+      deps?.setConsultationSessionId(null);
+      if (deps?.consultationSessionIdRef) deps.consultationSessionIdRef.current = null;
+      deps?.setConsultationReadOnly(false);
+      if (deps?.archiveSessionIdRef) deps.archiveSessionIdRef.current = null;
+      return ensureMasterChatSessionId(masterId, { forceNew: true });
+    },
+    [session?.offline, archiveActiveMasterSession, ensureMasterChatSessionId]
+  );
+
   const handleOnboardingComplete = async (data: OnboardingData) => {
     if (!isLoggedIn) return;
 
@@ -1444,20 +1457,18 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         deps.chatLoadedForRef.current = null;
         setIntentionSpreadLoading(true);
         openSpreadReadingRitual();
+        const ritualStartedAt = Date.now();
 
           let chatSessionId = session?.offline ? undefined : session?.sessionId;
           if (!session?.offline) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const refToken = urlParams.get("ref") ?? referrerSlug ?? null;
-            const fresh = await spawnSession(refToken);
-            chatSessionId = fresh.sessionId;
+            chatSessionId = await beginNewSpreadSession(masterId);
           }
 
           deps.setMessages([]);
 
+          let skipRitualFinally = false;
           try {
-            const [spreadResult] = await Promise.all([
-              (async () => {
+            const spreadResult = await (async () => {
             const response = await postIntentionSpreadRequest({
             characterId: masterId,
             intention,
@@ -1548,11 +1559,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             jointSaved,
             jointError,
           };
-              })(),
-              waitForSpreadReadingRitual(),
-            ]);
+              })();
 
             if (spreadResult.kind === "payment") {
+            skipRitualFinally = true;
             closeSpreadReadingRitual();
             setIntentionSpreadLoading(false);
             setStep("intention");
@@ -1567,7 +1577,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           const { readingText, cards, system, intentionCardsKey, jointSaved, jointError } = spreadResult;
 
           if (intention !== "life_death" && !readingText) {
-            closeSpreadReadingRitual();
+            skipRitualFinally = true;
             await loadReadingRef.current(masterId);
           } else if (intention !== "life_death" && readingText) {
             const readingMsg: Message = {
@@ -1619,6 +1629,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               jointFailureMessage = "Не удалось сохранить ваш расклад для совместного приглашения.";
             }
             clearJointReadingToken();
+            skipRitualFinally = true;
             closeSpreadReadingRitual();
             setIntentionSpreadLoading(false);
             readingInFlightRef.current = false;
@@ -1667,16 +1678,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                   return next;
                 });
               } else {
+                skipRitualFinally = true;
                 await loadReadingRef.current(masterId);
               }
             } else {
+              skipRitualFinally = true;
               await loadReadingRef.current(masterId);
             }
           } catch {
             /* loadReading shows its own fallback message */
           }
         } finally {
-          closeSpreadReadingRitual();
+          if (!skipRitualFinally) {
+            await ensureMinSpreadRitualDisplay(ritualStartedAt);
+            closeSpreadReadingRitual();
+          }
           setIntentionSpreadLoading(false);
           readingInFlightRef.current = false;
           deps.skipNextReadingRef.current = false;
@@ -1831,10 +1847,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
           let chatSessionId = session?.offline ? undefined : session?.sessionId;
           if (startFreshSession && !session?.offline) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const refToken = urlParams.get("ref") ?? referrerSlug ?? null;
-            const fresh = await spawnSession(refToken);
-            chatSessionId = fresh.sessionId;
+            chatSessionId = await beginNewSpreadSession(masterToBind);
           }
 
           await bindSessionToMasterRef.current(masterToBind, chatSessionId);
@@ -2261,7 +2274,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         try {
           let chatSessionId = session?.offline ? undefined : session?.sessionId;
           if (!session?.offline) {
-            chatSessionId = await ensureMasterChatSessionId(characterKey);
+            chatSessionId = await beginNewSpreadSession(characterKey);
           }
           await bindSessionToMaster(characterKey, chatSessionId);
           await deps.persistSessionMetaToServer(chatSessionId, {
@@ -2359,12 +2372,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         try {
           let chatSessionId = session?.offline ? undefined : session?.sessionId;
           if (!session?.offline) {
-            await archiveActiveMasterSession(characterKey);
-            deps.setConsultationSessionId(null);
-            deps.consultationSessionIdRef.current = null;
-            deps.setConsultationReadOnly(false);
-            deps.archiveSessionIdRef.current = null;
-            chatSessionId = await ensureMasterChatSessionId(characterKey, { forceNew: true });
+            chatSessionId = await beginNewSpreadSession(characterKey);
           }
           await bindSessionToMaster(characterKey, chatSessionId);
           await deps.persistSessionMetaToServer(chatSessionId, {
@@ -2407,19 +2415,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       deps.setSelectedCharacter(characterKey);
       setIntentionSpreadLoading(true);
       openSpreadReadingRitual();
+      const ritualStartedAt = Date.now();
       deps.setMessages([]);
       setStep("chat");
 
       let chatSessionId = session?.offline ? undefined : session?.sessionId;
+      let skipRitualFinally = false;
 
       try {
         if (!session?.offline) {
-          await archiveActiveMasterSession(characterKey);
-          deps.setConsultationSessionId(null);
-          deps.consultationSessionIdRef.current = null;
-          deps.setConsultationReadOnly(false);
-          deps.archiveSessionIdRef.current = null;
-          chatSessionId = await ensureMasterChatSessionId(characterKey, { forceNew: true });
+          chatSessionId = await beginNewSpreadSession(characterKey);
         }
 
         await bindSessionToMaster(characterKey, chatSessionId);
@@ -2442,8 +2447,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           void deps.resolveConsultationSessionId(characterKey);
         }
 
-        const [spreadResult] = await Promise.all([
-          (async () => {
+        const spreadResult = await (async () => {
             const response = await postIntentionSpreadRequest({
               characterId: characterKey,
               intention,
@@ -2539,11 +2543,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               jointError,
               sessionId: typeof data.sessionId === "string" ? data.sessionId : chatSessionId,
             };
-          })(),
-          waitForSpreadReadingRitual(),
-        ]);
+          })();
 
         if (spreadResult.kind === "payment") {
+          skipRitualFinally = true;
           closeSpreadReadingRitual();
           setIntentionSpreadLoading(false);
           setStep("masters");
@@ -2556,7 +2559,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           spreadResult;
 
         if (intention !== "life_death" && !readingText) {
-          closeSpreadReadingRitual();
+          skipRitualFinally = true;
           await loadReadingRef.current(characterKey);
         } else if (intention !== "life_death" && readingText) {
           const readingMsg: Message = {
@@ -2607,6 +2610,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             jointFailureMessage = "Не удалось сохранить ваш расклад для совместного приглашения.";
           }
           clearJointReadingToken();
+          skipRitualFinally = true;
           closeSpreadReadingRitual();
           setIntentionSpreadLoading(false);
           readingInFlightRef.current = false;
@@ -2661,16 +2665,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 return next;
               });
             } else {
+              skipRitualFinally = true;
               await loadReadingRef.current(characterKey);
             }
           } else {
+            skipRitualFinally = true;
             await loadReadingRef.current(characterKey);
           }
         } catch {
           /* loadReading shows its own fallback message */
         }
       } finally {
-        closeSpreadReadingRitual();
+        if (!skipRitualFinally) {
+          await ensureMinSpreadRitualDisplay(ritualStartedAt);
+          closeSpreadReadingRitual();
+        }
         setIntentionSpreadLoading(false);
         deps.chatLoadedForRef.current = characterKey;
         readingInFlightRef.current = false;
@@ -3214,6 +3223,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     beginChatAfterIntention,
     openChatWithSessionParams,
     bindSessionToMaster,
+    beginNewSpreadSession,
     handleSelectCharacter,
     handleMasterPick,
     handleContinueListedSession,

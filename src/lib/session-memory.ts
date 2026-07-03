@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { MARKDOWN_IMAGE_PATTERN } from "@/lib/reading-text-polish";
 import { SHARE_BODY_MAX } from "@/lib/share/sanitize";
 import { completeChat } from "@/lib/llm";
 import { limitSpreadKeyCards } from "@/lib/spreads";
@@ -9,6 +10,19 @@ import {
   recordLifetimeSessionActivity,
 } from "@/lib/user-lifetime-stats";
 import type { SessionMemory } from "@/lib/prompts/types";
+
+/**
+ * Predictions are shown as plain-text previews (session lists, cabinet, shares)
+ * and fed into LLM memory context — raw `![Card](/decks/...)` image markdown is
+ * noise in both, so strip it before the text ever reaches the database.
+ */
+function cleanPredictionText(text: string): string {
+  return text
+    .replace(MARKDOWN_IMAGE_PATTERN, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 export interface SessionMemoryRow {
   date: string;
@@ -101,7 +115,7 @@ export async function saveSessionMemory(input: {
       input.characterKey,
       input.topicSummary,
       input.keyCards,
-      input.prediction,
+      cleanPredictionText(input.prediction),
       input.mood ?? null,
       input.outcomeRating ?? null,
     ]
@@ -159,7 +173,7 @@ export async function upsertSessionMemoryFromChat(input: {
       input.characterKey,
       input.topicSummary.slice(0, 500),
       limitSpreadKeyCards(input.keyCards),
-      input.prediction.slice(0, SHARE_BODY_MAX),
+      cleanPredictionText(input.prediction).slice(0, SHARE_BODY_MAX),
       input.mood ?? null,
     ]
   );

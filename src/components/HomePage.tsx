@@ -64,7 +64,7 @@ import {
   type SessionTopicId,
 } from "@/lib/intention";
 import { pollIntentionSpreadReading } from "@/lib/intention-spread-client";
-import { waitForSpreadReadingRitual } from "@/components/SpreadReadingRitualPanel";
+import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
 import { generateId } from "@/lib/id";
 import {
   loadChatCache,
@@ -77,7 +77,7 @@ import {
   type CachedChatSpread,
 } from "@/lib/chat-cache";
 import { resolveClientReadingText } from "@/lib/chat-reply-sanitize";
-import { stripLeadingSpreadCardImages } from "@/lib/reading-text-polish";
+import { stripAllSpreadCardImages } from "@/lib/reading-text-polish";
 import { type StoredReadingRow } from "@/lib/reading-progress";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
@@ -486,6 +486,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     beginChatAfterIntention,
     openChatWithSessionParams,
     bindSessionToMaster,
+    beginNewSpreadSession,
     handleSelectCharacter,
     handleMasterPick,
     handleContinueListedSession,
@@ -992,35 +993,20 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     setReadingRitualActive(true);
     setReadingRitualCountdownDone(false);
     void (async () => {
-      const [raw] = await Promise.all([
-        pollIntentionSpreadReading({
+      const ritualStartedAt = Date.now();
+      try {
+        const raw = await pollIntentionSpreadReading({
           characterId: selectedCharacter,
           intention,
           cardNames: intentionSpread.cards.map((c) => c.name),
           spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
           cardCount: intentionSpread.cards.length,
-        }),
-        waitForSpreadReadingRitual(),
-      ]);
-      if (cancelled || !raw) {
-        setSpreadReadingRitualOpen(false);
-        setReadingRitualActive(false);
-        setReadingRitualCountdownDone(true);
-        return;
-      }
+        });
+        if (cancelled || !raw) return;
 
-      const cardNames = intentionSpread.cards.map((c) => c.name);
-      const readingText = resolveClientReadingText(raw, cardNames);
-      if (!readingText || cancelled) {
-        setSpreadReadingRitualOpen(false);
-        setReadingRitualActive(false);
-        setReadingRitualCountdownDone(true);
-        return;
-      }
-
-      setReadingRitualCountdownDone(true);
-      setSpreadReadingRitualOpen(false);
-      setReadingRitualActive(false);
+        const cardNames = intentionSpread.cards.map((c) => c.name);
+        const readingText = resolveClientReadingText(raw, cardNames);
+        if (!readingText || cancelled) return;
       setMessages((prev) => {
         if (chatHasSpreadReading(prev)) return prev;
         const readingMsg: Message = {
@@ -1037,6 +1023,14 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
         });
         return next;
       });
+      } finally {
+        if (!cancelled) {
+          await ensureMinSpreadRitualDisplay(ritualStartedAt);
+        }
+        setReadingRitualCountdownDone(true);
+        setSpreadReadingRitualOpen(false);
+        setReadingRitualActive(false);
+      }
     })();
 
     return () => {
@@ -1058,9 +1052,54 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     insufficientRunes,
   ]);
 
+  const spreadAwaitingReading = useMemo(() => {
+    if (insufficientRunes) return false;
+    if (chatHasSpreadReading(messages)) return false;
+    const cards = chatDisplaySpread?.cards;
+    if (!cards?.length) return false;
+    const spread = chatDisplaySpread;
+    if (!spread) return false;
+    if (spread.source === "numerolog") {
+      return cards.length >= (spread.cardCount ?? 1);
+    }
+    const spreadType =
+      spread.source === "photo"
+        ? "photo"
+        : spread.source === "intention"
+          ? "new"
+          : "daily";
+    return hasCompleteSpread(
+      cards.map((c) => c.name),
+      spread.spreadId ?? DEFAULT_SPREAD_ID,
+      spreadType
+    );
+  }, [messages, chatDisplaySpread, insufficientRunes]);
+
+  const spreadReadingLoading =
+    spreadAwaitingReading &&
+    (spreadReadingPending ||
+      intentionSpreadLoading ||
+      isLoadingHistory ||
+      isLoading);
+
+  useEffect(() => {
+    if (step !== "chat") return;
+    if (!spreadAwaitingReading || !isLoadingHistory) return;
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+    setReadingRitualCountdownDone(false);
+  }, [
+    step,
+    spreadAwaitingReading,
+    isLoadingHistory,
+    setSpreadReadingRitualOpen,
+    setReadingRitualActive,
+    setReadingRitualCountdownDone,
+  ]);
+
   const chatMessagesForDisplay = useMemo(() => {
     let msgs =
-      spreadReadingPending && !chatHasSpreadReading(messages)
+      spreadReadingLoading && !chatHasSpreadReading(messages)
         ? messages.filter(
             (m) =>
               !(
@@ -1085,13 +1124,13 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     if (headerSpreadActive) {
       msgs = msgs.map((m) => {
         if (m.role !== "assistant" || !m.content?.includes("!(")) return m;
-        const stripped = stripLeadingSpreadCardImages(m.content);
+        const stripped = stripAllSpreadCardImages(m.content);
         return stripped === m.content.trim() ? m : { ...m, content: stripped };
       });
     }
 
     return msgs;
-  }, [messages, spreadReadingPending, chatDisplaySpread]);
+  }, [messages, spreadReadingLoading, chatDisplaySpread]);
 
   useEffect(() => {
     if (
@@ -1349,6 +1388,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     attachSceneToAssistantMessage,
     setRetryDraft,
     setAchievementPopup,
+    beginNewSpreadSession,
   });
 
   loadReadingRef.current = loadReading;
@@ -2403,9 +2443,11 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
             spreadCards={chatDisplaySpread?.cards}
             spreadDeckSystem={chatDisplaySpread?.system ?? profile?.deckSystem ?? DEFAULT_DECK_SYSTEM}
             spreadLoading={
-              intentionSpreadLoading && !(chatDisplaySpread?.cards?.length ?? 0)
+              intentionSpreadLoading &&
+              !(chatDisplaySpread?.cards?.length ?? 0) &&
+              !spreadReadingLoading
             }
-            spreadReadingLoading={spreadReadingPending}
+            spreadReadingLoading={spreadReadingLoading}
             onSpreadReadingRitualComplete={handleSpreadReadingRitualComplete}
             spreadVariant={
               chatDisplaySpread?.source === "photo"

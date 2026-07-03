@@ -1,7 +1,6 @@
 "use client";
 
 import SiteFooter from "@/components/SiteFooter";
-import AppShellVersionFooter from "@/components/AppShellVersionFooter";
 import { shouldUseAppShellClient } from "@/lib/app-shell";
 import { useEffect, useState } from "react";
 
@@ -18,6 +17,6 @@ export default function AppAwareSiteFooter() {
     return () => observer.disconnect();
   }, []);
 
-  if (inShell) return <AppShellVersionFooter />;
+  if (inShell) return null;
   return <SiteFooter />;
 }

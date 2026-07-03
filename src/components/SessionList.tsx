@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, CheckCircle2, Circle, Archive, Trash2 } from "lucide-react";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
+import { formatCabinetPredictionPreview, stripMarkdownText, truncate } from "@/lib/cabinet-utils";
 import { getSpread, normalizeSpreadId } from "@/lib/spreads";
 import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
 import MasterAvatar from "@/components/MasterAvatar";
@@ -73,8 +74,18 @@ function intentionLabel(raw: string | null): string {
 
 function sessionTopicLabel(item: SessionListItem): string {
   if (item.spreadType === "photo") return "Фото-расклад";
-  if (!item.intention && item.topicSummary?.trim()) return item.topicSummary.trim();
+  const summary = item.topicSummary ? stripMarkdownText(item.topicSummary) : "";
+  if (!item.intention && summary) return summary;
   return intentionLabel(item.intention);
+}
+
+/** Old rows may hold raw reading markdown (card images etc.) — always sanitize. */
+function sessionPreviewText(item: SessionListItem): string {
+  const source = item.prediction?.trim() || item.topicSummary?.trim() || "";
+  if (!source) return "";
+  const polished = formatCabinetPredictionPreview(source);
+  if (polished) return polished;
+  return truncate(stripMarkdownText(source), 220);
 }
 
 function sessionSpreadLabel(item: SessionListItem): string | null {
@@ -304,9 +315,9 @@ export default function SessionList({
                   ? ` · ${(item.keyCards ?? item.cards ?? []).join(" · ")}`
                   : ""}
               </p>
-              {item.topicSummary || item.prediction ? (
+              {sessionPreviewText(item) ? (
                 <p className="mt-2 line-clamp-2 text-sm text-gray-400">
-                  «{item.prediction ?? item.topicSummary}»
+                  «{sessionPreviewText(item)}»
                 </p>
               ) : null}
               <SessionActions

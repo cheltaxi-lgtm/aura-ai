@@ -7,20 +7,19 @@ import {
   type AndroidReleaseInfo,
   type InstalledAppVersion,
 } from "@/lib/app-shell-version";
+import { shouldUseAppShellClient } from "@/lib/app-shell";
 
 export const APP_UPDATE_RECHECK_EVENT = "zovus:check-app-update";
 
-/**
- * Compact footer for the native app shell: shows the installed app version and,
- * when the server has a newer build, a tap-to-update link that re-opens the
- * update prompt (even if it was dismissed earlier in the session).
- */
-export default function AppShellVersionFooter() {
+function useAppShellVersion() {
   const [installed, setInstalled] = useState<InstalledAppVersion | null>(null);
   const [remote, setRemote] = useState<AndroidReleaseInfo | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    if (!shouldUseAppShellClient()) return;
     let cancelled = false;
+
     void (async () => {
       const [inst, rel] = await Promise.all([
         getInstalledAppVersion(),
@@ -29,32 +28,53 @@ export default function AppShellVersionFooter() {
       if (cancelled) return;
       setInstalled(inst);
       setRemote(rel);
+      setReady(true);
     })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (!installed) return null;
+  return { installed, remote, ready };
+}
 
-  const updateAvailable = remote !== null && remote.versionCode > installed.versionCode;
+/**
+ * Fixed strip above the tab bar (or at the bottom in chat) — always visible in the app shell.
+ */
+export function AppShellVersionBar() {
+  const { installed, remote, ready } = useAppShellVersion();
+
+  const updateAvailable =
+    installed !== null && remote !== null && remote.versionCode > installed.versionCode;
+
+  const versionLabel = installed
+    ? `v${installed.versionName} (${installed.versionCode})`
+    : remote
+      ? `сборка ${remote.versionCode}`
+      : ready
+        ? "версия не определена"
+        : "…";
 
   return (
-    <footer className="app-version-footer" role="contentinfo">
-      <span className="app-version-footer__current">
-        Zovus&nbsp;v{installed.versionName}&nbsp;({installed.versionCode})
-      </span>
-      {updateAvailable ? (
+    <div className="app-shell-version-bar" role="contentinfo" aria-live="polite">
+      <span className="app-shell-version-bar__current">Zovus {versionLabel}</span>
+      {updateAvailable && remote ? (
         <button
           type="button"
-          className="app-version-footer__update"
+          className="app-shell-version-bar__update"
           onClick={() => window.dispatchEvent(new Event(APP_UPDATE_RECHECK_EVENT))}
         >
-          Доступно обновление v{remote.versionName} ({remote.versionCode}) — установить
+          обновление v{remote.versionName}
         </button>
-      ) : (
-        <span className="app-version-footer__latest">актуальная версия</span>
-      )}
-    </footer>
+      ) : ready && installed ? (
+        <span className="app-shell-version-bar__ok">актуально</span>
+      ) : null}
+    </div>
   );
+}
+
+/** @deprecated Layout footer — use AppShellVersionBar in AppShellBridge instead. */
+export default function AppShellVersionFooter() {
+  return <AppShellVersionBar />;
 }

@@ -58,7 +58,7 @@ import {
   type NumerologToolId,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
-import { waitForSpreadReadingRitual } from "@/components/SpreadReadingRitualPanel";
+import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
 import {
   buildTeaser,
   persistPendingReading,
@@ -289,6 +289,8 @@ export interface UseChatActionsOptions {
     scene: "destiny_card" | "scene_illustration",
     userQuestion?: string
   ) => Promise<void>;
+  /** Archive active session and spawn a fresh one — required before every new spread. */
+  beginNewSpreadSession?: (masterId: string) => Promise<string | undefined>;
   setRetryDraft: Dispatch<SetStateAction<{ content: string; imageBase64?: string } | null>>;
   setAchievementPopup: Dispatch<
     SetStateAction<{
@@ -388,6 +390,7 @@ export function useChatActions(options: UseChatActionsOptions) {
     shouldAutoLoadSpreadReading,
     chatDisplaySpread,
     attachSceneToAssistantMessage,
+    beginNewSpreadSession,
     setRetryDraft,
     setAchievementPopup,
   } = options;
@@ -634,38 +637,36 @@ export function useChatActions(options: UseChatActionsOptions) {
         openSpreadReadingRitual();
         apiCallStarted = true;
         setIsLoading(true);
+        const ritualStartedAt = Date.now();
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 120_000);
 
         try {
-          const res = await Promise.all([
-            fetch("/api/reading", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              signal: controller.signal,
-              body: JSON.stringify({
+          const res = await fetch("/api/reading", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              characterId,
+              sessionId:
+                loadOptions?.sessionId ??
+                (session?.offline ? undefined : session?.sessionId),
+              intention: sessionIntention ?? undefined,
+              forceRegenerate: loadOptions?.force ?? false,
+              spreadType: effectiveSpreadType,
+              readingScope: loadOptions?.readingScope,
+              ...readingPayloadForMaster(
+                activeProfile,
                 characterId,
-                sessionId:
-                  loadOptions?.sessionId ??
-                  (session?.offline ? undefined : session?.sessionId),
-                intention: sessionIntention ?? undefined,
-                forceRegenerate: loadOptions?.force ?? false,
-                spreadType: effectiveSpreadType,
-                readingScope: loadOptions?.readingScope,
-                ...readingPayloadForMaster(
-                  activeProfile,
-                  characterId,
-                  cardsForMaster,
-                  masters,
-                  metaSpreadId,
-                  metaSpreadType,
-                  metaNumerologToolId,
-                  sessionSpreadMetaRef.current?.numerologToolParams
-                ),
-              }),
+                cardsForMaster,
+                masters,
+                metaSpreadId,
+                metaSpreadType,
+                metaNumerologToolId,
+                sessionSpreadMetaRef.current?.numerologToolParams
+              ),
             }),
-            waitForSpreadReadingRitual(),
-          ]).then(([response]) => response);
+          });
           const data = await res.json();
           if (res.status === 401) {
             closeSpreadReadingRitual();
@@ -765,6 +766,8 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
         } finally {
           clearTimeout(timeout);
+          await ensureMinSpreadRitualDisplay(ritualStartedAt);
+          closeSpreadReadingRitual();
           setIsLoading(false);
           setIsLoadingHistory(false);
           loadReadingAttemptKeyRef.current = loadAttemptKey;
@@ -1140,6 +1143,11 @@ export function useChatActions(options: UseChatActionsOptions) {
 
         if (restored?.spread) {
           applyRestoredChatSpread(restored.spread, selectedCharacter);
+          if (!chatHasSpreadReading(restored.messages)) {
+            setSpreadReadingRitualOpen(true);
+            setReadingRitualActive(true);
+            setReadingRitualCountdownDone(false);
+          }
         }
 
         if (restored !== null) {
@@ -1488,12 +1496,23 @@ export function useChatActions(options: UseChatActionsOptions) {
           content: content.trim(),
           timestamp: new Date(),
         };
+        let spreadSessionId = session?.offline ? undefined : session?.sessionId;
+        if (beginNewSpreadSession && !session?.offline) {
+          spreadSessionId = await beginNewSpreadSession(selectedCharacter);
+          if (spreadSessionId) {
+            setConsultationSessionId(spreadSessionId);
+            consultationSessionIdRef.current = spreadSessionId;
+            setConsultationReadOnly(false);
+            archiveSessionIdRef.current = null;
+          }
+          setMessages([]);
+        }
         setMessages((prev) => [...prev, userMessage]);
         setIsLoading(true);
         try {
           await loadReading(selectedCharacter, undefined, {
             force: true,
-            preserveChat: true,
+            sessionId: spreadSessionId,
           });
         } catch (err) {
           console.error("Full spread request failed:", err);
@@ -1514,6 +1533,7 @@ export function useChatActions(options: UseChatActionsOptions) {
 
       const periodScope = detectPeriodSpreadScope(content.trim());
       let periodSpreadCards: SpreadSymbol[] | null = null;
+      let periodRitualStartedAt: number | null = null;
 
       if (!imageBase64 && periodScope && hasMasterQuickChips(selectedCharacter)) {
         const drawn = drawPeriodSpread(selectedCharacter);
@@ -1535,6 +1555,20 @@ export function useChatActions(options: UseChatActionsOptions) {
           spreadId: DEFAULT_SPREAD_ID,
           cardNames: drawn.cards.map((c) => c.name),
         };
+        periodRitualStartedAt = Date.now();
+        setSpreadReadingRitualOpen(true);
+        setReadingRitualActive(true);
+        setReadingRitualCountdownDone(false);
+        if (beginNewSpreadSession) {
+          const newSessionId = await beginNewSpreadSession(selectedCharacter);
+          if (newSessionId) {
+            setConsultationSessionId(newSessionId);
+            consultationSessionIdRef.current = newSessionId;
+            setConsultationReadOnly(false);
+            archiveSessionIdRef.current = null;
+          }
+          setMessages([]);
+        }
       }
 
       sendingRef.current = true;
@@ -1591,7 +1625,9 @@ export function useChatActions(options: UseChatActionsOptions) {
       try {
         const chatBody: Record<string, unknown> = {
             characterId: selectedCharacter,
-            sessionId: session?.offline ? undefined : session?.sessionId,
+            sessionId: session?.offline
+              ? undefined
+              : (consultationSessionIdRef.current ?? session?.sessionId),
             newChatThread: pendingNewChatThreadRef.current,
             messages: outgoing.map((m) => ({ role: m.role, content: m.content })),
             imageBase64,
@@ -1931,6 +1967,13 @@ export function useChatActions(options: UseChatActionsOptions) {
         }
       } finally {
         clearTimeout(timeout);
+        if (periodRitualStartedAt != null) {
+          await ensureMinSpreadRitualDisplay(periodRitualStartedAt);
+          setSpreadReadingRitualOpen(false);
+          setReadingRitualActive(false);
+          setReadingRitualCountdownDone(true);
+          setIntentionSpreadLoading(false);
+        }
         setIsLoading(false);
         sendingRef.current = false;
         pendingNewChatThreadRef.current = false;

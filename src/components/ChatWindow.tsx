@@ -421,6 +421,16 @@ export default function ChatWindow({
         ? 1
         : 3;
   const spreadCardsVisible = (spreadCards?.length ?? 0) >= requiredSpreadCount;
+  const headerSpreadVisible = Boolean(
+    spreadCards?.length &&
+      (spreadVariant === "numerolog"
+        ? spreadCardsVisible
+        : hasCompleteSpread(
+            spreadCards.map((c) => c.name),
+            spreadVariant === "photo" ? null : spreadId,
+            spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
+          ))
+  );
 
   const spreadSharePayload = useMemo(() => {
     if (!spreadCardsVisible || spreadReadingLoading || spreadLoading) return null;
@@ -726,26 +736,29 @@ export default function ChatWindow({
               positions={spreadVariant === "numerolog" ? spreadPositions : undefined}
             />
           )}
-          {spreadReadingLoading && (
-            <SpreadReadingRitualPanel
-              active
-              phrases={
-                isNumerologMaster(characterId)
-                  ? [
-                      "Эвелина считает ваш код…",
-                      "Сверяю дату рождения и числа…",
-                      "Готовлю расшифровку…",
-                    ]
-                  : undefined
-              }
-              onComplete={onSpreadReadingRitualComplete ?? noop}
-            />
-          )}
           {spreadSharePayload && !spreadReadingLoading && (
             <div className="mt-4 flex justify-center">
               <ShareButton payload={spreadSharePayload} variant="pill" label="Поделиться раскладом" />
             </div>
           )}
+        </div>
+      )}
+
+      {spreadReadingLoading && (
+        <div className="rounded-xl border border-aura-gold/15 bg-black/30 p-4">
+          <SpreadReadingRitualPanel
+            active
+            phrases={
+              isNumerologMaster(characterId)
+                ? [
+                    "Эвелина считает ваш код…",
+                    "Сверяю дату рождения и числа…",
+                    "Готовлю расшифровку…",
+                  ]
+                : undefined
+            }
+            onComplete={onSpreadReadingRitualComplete ?? noop}
+          />
         </div>
       )}
 
@@ -864,7 +877,11 @@ export default function ChatWindow({
                           className="mb-3"
                         />
                       )}
-                      <ChatMessageRenderer content={assistantContent} role="assistant" />
+                      <ChatMessageRenderer
+                        content={assistantContent}
+                        role="assistant"
+                        hideSpreadCardImages={headerSpreadVisible}
+                      />
                       {pythagorasSquare ? (
                         <PythagorasSquareGrid
                           square={pythagorasSquare}

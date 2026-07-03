@@ -39,17 +39,27 @@ export type InstalledAppVersion = {
   versionCode: number;
 };
 
-/** Installed app version via Capacitor; null in a regular browser. */
+/** Installed app version via Capacitor; null in a regular browser. Retries while WebView boots. */
 export async function getInstalledAppVersion(): Promise<InstalledAppVersion | null> {
-  try {
-    const { Capacitor } = await import("@capacitor/core");
-    if (!Capacitor.isNativePlatform()) return null;
-    const { App } = await import("@capacitor/app");
-    const info = await App.getInfo();
-    const versionCode = Number.parseInt(String(info.build), 10);
-    if (!Number.isFinite(versionCode)) return null;
-    return { versionName: info.version, versionCode };
-  } catch {
-    return null;
+  if (typeof window === "undefined") return null;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const cap =
+        (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor ??
+        (await import("@capacitor/core")).Capacitor;
+      if (!cap?.isNativePlatform?.()) return null;
+      const { App } = await import("@capacitor/app");
+      const info = await App.getInfo();
+      const versionCode = Number.parseInt(String(info.build), 10);
+      if (!Number.isFinite(versionCode)) {
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+        continue;
+      }
+      return { versionName: info.version || "?", versionCode };
+    } catch {
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+    }
   }
+  return null;
 }

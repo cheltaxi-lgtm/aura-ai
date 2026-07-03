@@ -17,7 +17,7 @@ html[data-app-shell="android"] body {
 }
 
 html.app-shell-has-tabs body {
-  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(4.85rem + env(safe-area-inset-bottom, 0px));
 }
 
 html[data-app-shell="android"] .app-top-header {
@@ -966,7 +966,47 @@ html[data-app-shell="android"] .home-active-chat .chat-scroll {
   touch-action: pan-y;
 }
 
-/* App version footer (shell only) */
+/* App version bar — fixed above tab bar / bottom inset in native shell */
+.app-shell-version-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 9988;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem 0.625rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.625rem;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.42);
+  text-align: center;
+  pointer-events: auto;
+  background: linear-gradient(180deg, rgba(5, 3, 9, 0.72), rgba(5, 3, 9, 0.92));
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+html.app-shell-has-tabs .app-shell-version-bar {
+  bottom: calc(3.85rem + 0.35rem + env(safe-area-inset-bottom, 0px));
+}
+
+html[data-app-shell="android"]:not(.app-shell-has-tabs) .app-shell-version-bar,
+body.chat-session-active .app-shell-version-bar {
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app-shell-version-bar__ok {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.app-shell-version-bar__update {
+  color: rgba(251, 191, 36, 0.92);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Legacy layout footer (web shell fallback) */
 .app-version-footer {
   display: flex;
   flex-wrap: wrap;
