@@ -10,6 +10,9 @@ export type AndroidReleaseConfig = {
   releaseNotes: string;
   playStoreUrl?: string;
   updateChannel: "auto" | "play" | "apk";
+  releaseCertSha256?: string;
+  /** Builds below this code must uninstall + reinstall (debug-signed legacy APKs). */
+  reinstallBelowVersionCode?: number;
 };
 
 function parseIntEnv(name: string, fallback: number): number {
@@ -75,6 +78,18 @@ export function readAndroidReleaseConfig(): AndroidReleaseConfig {
     channelRaw === "play" || channelRaw === "apk" || channelRaw === "auto"
       ? channelRaw
       : "auto";
+  const releaseCertSha256 = process.env.ANDROID_ASSETLINKS_SHA256?.trim().replace(/:/g, "") || undefined;
+  const reinstallBelowVersionCode = parseIntEnv("ANDROID_REINSTALL_BELOW_CODE", 13);
 
-  return { versionCode, versionName, minVersionCode, apkUrl, releaseNotes, playStoreUrl, updateChannel };
+  return {
+    versionCode,
+    versionName,
+    minVersionCode,
+    apkUrl,
+    releaseNotes,
+    playStoreUrl,
+    updateChannel,
+    releaseCertSha256,
+    reinstallBelowVersionCode,
+  };
 }

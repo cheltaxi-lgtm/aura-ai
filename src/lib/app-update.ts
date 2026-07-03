@@ -1,8 +1,20 @@
 import { Capacitor } from "@capacitor/core";
 import { isAllowedApkDownloadUrl } from "@/lib/allowed-hosts";
+import {
+  isSignatureMismatchError,
+  normalizeUpdateError,
+  REINSTALL_UPDATE_HINT,
+  UPDATE_SIGNATURE_MISMATCH,
+} from "@/lib/app-update-errors";
 import { AppUpdateNative, type AppUpdateProgressEvent } from "@/lib/app-update-native";
 
 const APK_CACHE_PATH = "zovus-update.apk";
+
+function readErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string" && err.trim()) return err;
+  return fallback;
+}
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -95,7 +107,54 @@ export async function openPlayStoreUpdate(playStoreUrl?: string): Promise<void> 
 }
 
 export function openApkDownloadPage(apkUrl: string): void {
-  window.location.assign(apkUrl);
+  void openApkDownloadPageAsync(apkUrl);
+}
+
+export async function openApkDownloadPageAsync(apkUrl: string): Promise<void> {
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+    try {
+      await AppUpdateNative.openExternalUrl({ url: apkUrl });
+      return;
+    } catch {
+      /* fallback below */
+    }
+  }
+  window.open(apkUrl, "_blank", "noopener,noreferrer");
+}
+
+export function markUpdateInstallFailed(versionCode: number): void {
+  try {
+    sessionStorage.setItem(`zovus_update_install_failed_v${versionCode}`, "1");
+    localStorage.setItem(`zovus_update_install_failed_v${versionCode}`, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function hadUpdateInstallFailed(versionCode: number): boolean {
+  try {
+    return (
+      sessionStorage.getItem(`zovus_update_install_failed_v${versionCode}`) === "1" ||
+      localStorage.getItem(`zovus_update_install_failed_v${versionCode}`) === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeCertSha256(value: string): string {
+  return value.trim().replace(/:/g, "").toUpperCase();
+}
+
+export async function installedCertMatchesRelease(expectedSha256?: string): Promise<boolean | null> {
+  if (!expectedSha256?.trim()) return null;
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return null;
+  try {
+    const { sha256 } = await AppUpdateNative.getInstalledCertSha256();
+    return normalizeCertSha256(sha256) === normalizeCertSha256(expectedSha256);
+  } catch {
+    return null;
+  }
 }
 
 export async function downloadAndInstallApk(
@@ -118,6 +177,7 @@ export async function downloadAndInstallApk(
     if (message.includes("неизвестных источников") || message.includes("Unknown sources")) {
       throw new Error(message);
     }
+    throw new Error(normalizeUpdateError(message));
   }
 
   try {
@@ -138,9 +198,8 @@ export async function downloadAndInstallApk(
 
     await AppUpdateNative.installApk({ uri });
     onProgress?.(100);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Не удалось обновить приложение";
-    throw new Error(message);
+  } catch (err: unknown) {
+    throw new Error(normalizeUpdateError(readErrorMessage(err, "Не удалось обновить приложение")));
   }
 }
 
@@ -170,6 +229,24 @@ export function grantForcedUpdateGrace(versionCode: number): void {
   }
 }
 
+export async function openAppUninstallSettings(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await AppUpdateNative.openAppDetails();
+      return;
+    } catch {
+      /* fallback */
+    }
+    try {
+      await AppUpdateNative.openExternalUrl({
+        url: `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${Capacitor.getPlatform() === "android" ? "ru.zovus.app" : ""};end`,
+      });
+    } catch {
+      /* manual instructions only */
+    }
+  }
+}
+
 export function isForcedUpdateGraceActive(versionCode: number): boolean {
   try {
     const raw = sessionStorage.getItem(`zovus_forced_update_grace_v${versionCode}`);
@@ -181,3 +258,5 @@ export function isForcedUpdateGraceActive(versionCode: number): boolean {
     return false;
   }
 }
+
+export { REINSTALL_UPDATE_HINT, UPDATE_SIGNATURE_MISMATCH, isSignatureMismatchError };

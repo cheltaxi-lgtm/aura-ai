@@ -1,6 +1,14 @@
 "use client";
 
-import { dismissOptionalUpdate, isOptionalUpdateDismissed, isForcedUpdateGraceActive } from "@/lib/app-update";
+import {
+  dismissOptionalUpdate,
+  hadUpdateInstallFailed,
+  installedCertMatchesRelease,
+  isOptionalUpdateDismissed,
+  isForcedUpdateGraceActive,
+} from "@/lib/app-update";
+import { isLegacyReinstallBuild } from "@/lib/app-update-reinstall";
+import { UPDATE_SIGNATURE_MISMATCH } from "@/lib/app-update-errors";
 import { fetchAndroidReleaseInfo } from "@/lib/app-shell-version";
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 import type { AppUpdatePromptState } from "@/components/AppUpdatePrompt";
@@ -18,6 +26,25 @@ export async function waitForNativeCapacitor(maxMs = CAPACITOR_WAIT_MS): Promise
   return isNativeCapacitorPlatform();
 }
 
+function buildReinstallPrompt(
+  remote: NonNullable<Awaited<ReturnType<typeof fetchAndroidReleaseInfo>>>,
+  buildCode: number,
+  forced: boolean
+): AppUpdatePromptState {
+  return {
+    apkUrl: remote.apkUrl,
+    releaseNotes: remote.releaseNotes,
+    versionName: remote.versionName,
+    versionCode: remote.versionCode,
+    playStoreUrl: remote.playStoreUrl,
+    updateChannel: remote.updateChannel,
+    needsReinstall: true,
+    initialError: UPDATE_SIGNATURE_MISMATCH,
+    forced,
+    installedBuildCode: buildCode,
+  };
+}
+
 export async function checkAndroidAppUpdate(options?: {
   /** Show the optional-update prompt even if the user dismissed it this session (manual re-check). */
   ignoreDismissed?: boolean;
@@ -31,18 +58,39 @@ export async function checkAndroidAppUpdate(options?: {
     const buildCode = Number.parseInt(String(info.build), 10);
     if (!remote || !Number.isFinite(buildCode)) return null;
 
+    const legacyReinstall = isLegacyReinstallBuild(buildCode, remote);
+    const certMatch = legacyReinstall ? false : await installedCertMatchesRelease(remote.releaseCertSha256);
+    const needsReinstall =
+      legacyReinstall ||
+      certMatch === false ||
+      (buildCode < remote.versionCode && hadUpdateInstallFailed(remote.versionCode));
+
+    if (needsReinstall) {
+      const forcedByMin =
+        buildCode < remote.minVersionCode && !isForcedUpdateGraceActive(remote.minVersionCode);
+      if (buildCode < remote.minVersionCode && isForcedUpdateGraceActive(remote.minVersionCode)) {
+        return null;
+      }
+      return buildReinstallPrompt(remote, buildCode, forcedByMin);
+    }
+
+    const baseUpdate = {
+      apkUrl: remote.apkUrl,
+      releaseNotes: remote.releaseNotes,
+      versionName: remote.versionName,
+      versionCode: remote.versionCode,
+      playStoreUrl: remote.playStoreUrl,
+      updateChannel: remote.updateChannel,
+    };
+
     if (buildCode < remote.minVersionCode) {
       if (isForcedUpdateGraceActive(remote.minVersionCode)) {
         return null;
       }
       return {
-        apkUrl: remote.apkUrl,
-        releaseNotes: remote.releaseNotes,
-        versionName: remote.versionName,
-        versionCode: remote.versionCode,
+        ...baseUpdate,
         forced: true,
-        playStoreUrl: remote.playStoreUrl,
-        updateChannel: remote.updateChannel,
+        installedBuildCode: buildCode,
       };
     }
 
@@ -51,13 +99,9 @@ export async function checkAndroidAppUpdate(options?: {
       (options?.ignoreDismissed || !isOptionalUpdateDismissed(remote.versionCode))
     ) {
       return {
-        apkUrl: remote.apkUrl,
-        releaseNotes: remote.releaseNotes,
-        versionName: remote.versionName,
-        versionCode: remote.versionCode,
+        ...baseUpdate,
         forced: false,
-        playStoreUrl: remote.playStoreUrl,
-        updateChannel: remote.updateChannel,
+        installedBuildCode: buildCode,
       };
     }
   } catch {

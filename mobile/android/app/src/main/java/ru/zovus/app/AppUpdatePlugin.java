@@ -3,6 +3,7 @@ package ru.zovus.app;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
+import android.content.pm.Signature;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -18,6 +19,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.util.Locale;
 
 @CapacitorPlugin(name = "AppUpdate")
 public class AppUpdatePlugin extends Plugin {
@@ -87,6 +90,7 @@ public class AppUpdatePlugin extends Plugin {
 
                 notifyProgress(100);
                 assertApkPackage(apkFile);
+                assertApkSignatureCompatible(apkFile);
                 installFromUri(Uri.fromFile(apkFile));
                 call.resolve();
             } catch (Exception e) {
@@ -143,6 +147,52 @@ public class AppUpdatePlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void openAppDetails(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("openAppDetails failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void openExternalUrl(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || url.isEmpty()) {
+            call.reject("url is required");
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("openExternalUrl failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void getInstalledCertSha256(PluginCall call) {
+        try {
+            String sha256 = readInstalledCertSha256();
+            if (sha256 == null || sha256.isEmpty()) {
+                call.reject("signing certificate unavailable");
+                return;
+            }
+            JSObject payload = new JSObject();
+            payload.put("sha256", sha256);
+            call.resolve(payload);
+        } catch (Exception e) {
+            call.reject("getInstalledCertSha256 failed: " + e.getMessage(), e);
+        }
+    }
+
     private void installFromUri(Uri uri) {
         Context ctx = getContext();
         File apkFile = resolveApkFile(uri);
@@ -150,6 +200,7 @@ public class AppUpdatePlugin extends Plugin {
             throw new IllegalStateException("APK file not found");
         }
         assertApkPackage(apkFile);
+        assertApkSignatureCompatible(apkFile);
 
         String authority = ctx.getPackageName() + ".fileprovider";
         Uri contentUri = FileProvider.getUriForFile(ctx, authority, apkFile);
@@ -207,6 +258,87 @@ public class AppUpdatePlugin extends Plugin {
         if (!getContext().getPackageName().equals(info.packageName)) {
             throw new IllegalStateException("APK package mismatch");
         }
+    }
+
+    private void assertApkSignatureCompatible(File apkFile) {
+        PackageManager pm = getContext().getPackageManager();
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+            ? PackageManager.GET_SIGNING_CERTIFICATES
+            : PackageManager.GET_SIGNATURES;
+
+        PackageInfo installed;
+        try {
+            installed = pm.getPackageInfo(getContext().getPackageName(), flags);
+        } catch (PackageManager.NameNotFoundException e) {
+            return;
+        }
+
+        PackageInfo archive = readArchivePackageInfo(apkFile, flags);
+        if (archive == null) {
+            return;
+        }
+
+        Signature[] installedSigs = readPackageSignatures(installed);
+        Signature[] archiveSigs = readPackageSignatures(archive);
+        if (!signaturesMatch(installedSigs, archiveSigs)) {
+            throw new IllegalStateException("SIGNATURE_MISMATCH");
+        }
+    }
+
+    private PackageInfo readArchivePackageInfo(File apkFile, int flags) {
+        PackageManager pm = getContext().getPackageManager();
+        PackageInfo archive = pm.getPackageArchiveInfo(apkFile.getAbsolutePath(), flags);
+        if (archive == null) {
+            return null;
+        }
+        archive.applicationInfo.sourceDir = apkFile.getAbsolutePath();
+        archive.applicationInfo.publicSourceDir = apkFile.getAbsolutePath();
+        return archive;
+    }
+
+    private Signature[] readPackageSignatures(PackageInfo info) {
+        if (info == null) {
+            return null;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (info.signingInfo == null) {
+                return null;
+            }
+            return info.signingInfo.getApkContentsSigners();
+        }
+        @SuppressWarnings("deprecation")
+        Signature[] legacy = info.signatures;
+        return legacy;
+    }
+
+    private boolean signaturesMatch(Signature[] installed, Signature[] archive) {
+        if (installed == null || archive == null || installed.length == 0 || archive.length == 0) {
+            return true;
+        }
+        return installed[0].equals(archive[0]);
+    }
+
+    private String readInstalledCertSha256() throws Exception {
+        PackageManager pm = getContext().getPackageManager();
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+            ? PackageManager.GET_SIGNING_CERTIFICATES
+            : PackageManager.GET_SIGNATURES;
+        PackageInfo installed = pm.getPackageInfo(getContext().getPackageName(), flags);
+        Signature[] signatures = readPackageSignatures(installed);
+        if (signatures == null || signatures.length == 0) {
+            return null;
+        }
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(signatures[0].toByteArray());
+        return bytesToHex(hash);
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder builder = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            builder.append(String.format(Locale.US, "%02X", value));
+        }
+        return builder.toString();
     }
 
     private boolean isAllowedApkUrl(String raw) {

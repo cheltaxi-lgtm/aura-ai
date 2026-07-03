@@ -1,4 +1,5 @@
 import { getRecaptchaToken } from "@/lib/useRecaptcha";
+import { shouldUseAppShellClient } from "@/lib/app-shell";
 import type { RecaptchaScope } from "@/lib/recaptcha-scopes";
 import type { PlatformFeatures } from "@/lib/usePlatformFeatures";
 
@@ -7,6 +8,7 @@ export async function attachRecaptchaToken(
   scope: RecaptchaScope,
   features: PlatformFeatures
 ): Promise<string | null> {
+  if (shouldUseAppShellClient()) return null;
   if (!features.recaptcha.scopes[scope]) return null;
 
   const token = await getRecaptchaToken(scope);

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
 import { getLoginFormHints } from "@/lib/login-hints";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
+import { APP_SHELL_HEADER, shouldUseAppShellClient } from "@/lib/app-shell";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import ProfileAstroFields, {
   profileAstroToPayload,
@@ -119,9 +120,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     }
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (shouldUseAppShellClient()) {
+        headers[APP_SHELL_HEADER] = "1";
+      }
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
+        credentials: "include",
         body: JSON.stringify(body),
       });
       const data = await res.json();

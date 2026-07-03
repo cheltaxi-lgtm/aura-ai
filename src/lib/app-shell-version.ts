@@ -6,6 +6,8 @@ export type AndroidReleaseInfo = {
   releaseNotes: string;
   playStoreUrl?: string;
   updateChannel?: "auto" | "play" | "apk";
+  releaseCertSha256?: string;
+  reinstallBelowVersionCode?: number;
 };
 
 const FETCH_RETRIES = 3;

@@ -129,6 +129,7 @@ fi
 if [ -n "${ANDROID_MIN_VERSION_CODE:-}" ]; then
   upsert_env "ANDROID_MIN_VERSION_CODE" "${ANDROID_MIN_VERSION_CODE}"
 fi
+upsert_env "ANDROID_REINSTALL_BELOW_CODE" "${ANDROID_REINSTALL_BELOW_CODE:-13}"
 
 cd "${APP_ROOT}/mobile"
 npm ci
