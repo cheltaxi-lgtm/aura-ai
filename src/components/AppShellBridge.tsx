@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { markAppShellOnDocument, shouldUseAppShellClient } from "@/lib/app-shell";
+import { markAppShellOnDocument, shouldUseAppShellClient, isAppShellSplashDone } from "@/lib/app-shell";
 import { checkAndroidAppUpdate, dismissOptionalUpdate } from "@/lib/app-shell-update-check";
 import { useAppShellConnectivity } from "@/hooks/useAppConnectivity";
-import AppShellSplash from "@/components/AppShellSplash";
+import AppShellSplash, { APP_SHELL_SPLASH_HIDDEN_EVENT } from "@/components/AppShellSplash";
 import AppShellBottomNav from "@/components/AppShellBottomNav";
 import AppShellOfflineGate from "@/components/AppShellOfflineGate";
 import AppUpdatePrompt, { type AppUpdatePromptState } from "@/components/AppUpdatePrompt";
@@ -31,10 +31,14 @@ function resolveAppShellUrl(raw: string): string {
 
 export default function AppShellBridge() {
   const [updateAvailable, setUpdateAvailable] = useState<AppUpdatePromptState | null>(null);
+  const [splashDone, setSplashDone] = useState(() => {
+    if (!shouldUseAppShellClient()) return true;
+    return isAppShellSplashDone();
+  });
   const { blocked, checking, retry } = useAppShellConnectivity();
   const inShell = shouldUseAppShellClient();
-  const showGate = Boolean(blocked) && !updateAvailable?.forced;
-  const showTabs = inShell && !showGate && !updateAvailable?.forced;
+  const showGate = splashDone && Boolean(blocked) && !updateAvailable?.forced;
+  const showTabs = inShell && splashDone && !showGate && !updateAvailable?.forced;
 
   const refreshUpdate = useCallback(async () => {
     const next = await checkAndroidAppUpdate();
@@ -60,11 +64,10 @@ export default function AppShellBridge() {
       markAppShellOnDocument();
 
       if (isNative) {
-        const [{ Capacitor }, app, statusBar, splash, haptics] = await Promise.all([
+        const [{ Capacitor }, app, statusBar, haptics] = await Promise.all([
           import("@capacitor/core"),
           import("@capacitor/app"),
           import("@capacitor/status-bar"),
-          import("@capacitor/splash-screen"),
           import("@capacitor/haptics"),
         ]);
         if (cancelled) return;
@@ -84,12 +87,6 @@ export default function AppShellBridge() {
         resumeListener = await app.App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) void refreshUpdate();
         });
-
-        try {
-          await splash.SplashScreen.hide({ fadeOutDuration: 450 });
-        } catch {
-          /* ignore */
-        }
 
         backListener = await app.App.addListener("backButton", ({ canGoBack }) => {
           if (canGoBack) {
@@ -141,6 +138,16 @@ export default function AppShellBridge() {
       resumeListener?.remove();
     };
   }, [refreshUpdate]);
+
+  useEffect(() => {
+    if (!shouldUseAppShellClient()) {
+      setSplashDone(true);
+      return;
+    }
+    const onSplashHidden = () => setSplashDone(true);
+    window.addEventListener(APP_SHELL_SPLASH_HIDDEN_EVENT, onSplashHidden);
+    return () => window.removeEventListener(APP_SHELL_SPLASH_HIDDEN_EVENT, onSplashHidden);
+  }, []);
 
   const pullRef = useRef({ startY: 0, pulling: false });
   useEffect(() => {

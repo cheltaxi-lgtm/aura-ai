@@ -4,7 +4,15 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path $PSScriptRoot -Parent
 $Tarball = Join-Path $env:TEMP "aura-ai-deploy.tgz"
-$VmHost = "${env:DEPLOY_HOST:-root@217.12.37.32}"
+$VmHost = if ($env:DEPLOY_HOST) { $env:DEPLOY_HOST } else { "root@217.12.37.32" }
+$DefaultKey = Join-Path $env:USERPROFILE ".ssh\aura_deploy_ed25519"
+$SshKey = if ($env:DEPLOY_SSH_KEY) { $env:DEPLOY_SSH_KEY } elseif (Test-Path $DefaultKey) { $DefaultKey } else { $null }
+
+function Get-SshBaseArgs {
+  $args = @("-o", "StrictHostKeyChecking=no")
+  if ($SshKey) { $args += @("-i", $SshKey) }
+  return $args
+}
 
 Write-Host ">>> Building tarball..."
 if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
@@ -12,7 +20,8 @@ tar -czf $Tarball -C $ProjectRoot --exclude=node_modules --exclude=.next --exclu
 Write-Host "    $((Get-Item $Tarball).Length) bytes"
 
 Write-Host ">>> Upload to VM..."
-scp -o StrictHostKeyChecking=no $Tarball "${VmHost}:/tmp/aura-ai-deploy.tgz"
+$scpArgs = @(Get-SshBaseArgs) + @($Tarball, "${VmHost}:/tmp/aura-ai-deploy.tgz")
+& scp.exe @scpArgs
 
 Write-Host ">>> Deploy on VM..."
 $DeployCmd = @'
@@ -28,8 +37,7 @@ bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz
 echo "=== DEPLOYED ===" && test -f /opt/aura-ai/src/app/app/page.tsx && echo module_a_app_page=ok
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
-# Strip any CR re-added by the PowerShell→ssh stdin pipe before bash parses it,
-# otherwise the final line arrives as e.g. `head -1\r` and breaks.
-$DeployCmd | ssh -o StrictHostKeyChecking=no $VmHost "tr -d '\r' | bash -s"
+$sshArgs = @(Get-SshBaseArgs) + @($VmHost, "bash", "-s")
+$DeployCmd | & ssh.exe @sshArgs
 
 Write-Host ">>> Done: https://zovus.ru"

@@ -45,6 +45,27 @@ export function shouldUseAppShellClient(): boolean {
   }
 }
 
+const SPLASH_DONE_KEY = "zovus_splash_done";
+
+/** Launch splash already finished this app session (survives in-app full reloads). */
+export function isAppShellSplashDone(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem(SPLASH_DONE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markAppShellSplashDone(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(SPLASH_DONE_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
 export function appShellStartUrl(baseUrl?: string): string {
   const base = (baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://zovus.ru").replace(/\/$/, "");
   return `${base}/?${APP_SHELL_QUERY}=${APP_SHELL_VALUE}`;

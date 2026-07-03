@@ -132,61 +132,262 @@ html[data-app-shell="android"] .app-shell-pull-hint__rune {
   inset: 0;
   z-index: 10000;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 35%, #2a1845 0%, #0b0714 55%, #050309 100%);
-  transition: opacity 0.45s ease, visibility 0.45s ease;
+  overflow: hidden;
+  background: #050309;
 }
 
-.app-shell-splash--hide {
-  opacity: 0;
-  visibility: hidden;
+.app-shell-splash__backdrop {
+  position: absolute;
+  inset: 0;
   pointer-events: none;
 }
 
-.app-shell-splash__mark {
-  width: 4.5rem;
-  height: 4.5rem;
-  border-radius: 1.1rem;
-  border: 1px solid rgba(232, 199, 126, 0.35);
+.app-shell-splash__nebula {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(88, 28, 135, 0.42) 0%, transparent 52%),
+    radial-gradient(circle at 20% 80%, rgba(201, 162, 74, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 80% 20%, rgba(155, 127, 212, 0.12) 0%, transparent 38%),
+    linear-gradient(180deg, #0b0714 0%, #050309 100%);
+  animation: app-shell-splash-nebula 3.2s ease-in-out infinite alternate;
+}
+
+.app-shell-splash__stars {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.55) 0%, transparent 100%),
+    radial-gradient(1px 1px at 70% 18%, rgba(255, 255, 255, 0.35) 0%, transparent 100%),
+    radial-gradient(1px 1px at 42% 68%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 85% 72%, rgba(255, 255, 255, 0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 12% 82%, rgba(255, 255, 255, 0.25) 0%, transparent 100%);
+  animation: app-shell-splash-stars 4s ease-in-out infinite alternate;
+}
+
+.app-shell-splash__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem;
+  animation: app-shell-splash-enter 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-shell-splash--exiting {
+  pointer-events: none;
+}
+
+.app-shell-splash--exiting .app-shell-splash__content {
+  animation: app-shell-splash-exit 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.app-shell-splash--exiting .app-shell-splash__backdrop {
+  animation: app-shell-splash-backdrop-out 0.65s ease forwards;
+}
+
+.app-shell-splash__orb-wrap {
+  position: relative;
+  width: 6.5rem;
+  height: 6.5rem;
+}
+
+.app-shell-splash__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+}
+
+.app-shell-splash__ring--outer {
+  animation: app-shell-splash-orbit 2.6s linear infinite;
+  border-top-color: rgba(243, 220, 142, 0.75);
+  border-right-color: transparent;
+  border-bottom-color: rgba(232, 199, 126, 0.15);
+  border-left-color: transparent;
+}
+
+.app-shell-splash__ring--inner {
+  inset: 0.85rem;
+  animation: app-shell-splash-orbit 1.85s linear infinite reverse;
+  border-bottom-color: rgba(155, 127, 212, 0.65);
+  border-left-color: transparent;
+  border-top-color: rgba(155, 127, 212, 0.12);
+  border-right-color: transparent;
+  opacity: 0.9;
+}
+
+.app-shell-splash__core {
+  position: absolute;
+  inset: 1.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 28%, rgba(255, 242, 192, 0.18), rgba(14, 9, 24, 0.95));
   box-shadow:
-    0 0 40px rgba(201, 162, 74, 0.35),
-    inset 0 0 24px rgba(201, 162, 74, 0.12);
-  animation: app-shell-splash-glow 1.2s ease-in-out infinite alternate;
+    0 0 32px rgba(201, 162, 74, 0.28),
+    inset 0 0 24px rgba(155, 127, 212, 0.14);
+  animation: app-shell-splash-core-pulse 2.2s ease-in-out infinite;
+}
+
+.app-shell-splash__logo {
+  filter: drop-shadow(0 0 10px rgba(201, 162, 74, 0.35));
 }
 
 .app-shell-splash__wordmark {
-  margin-top: 1.25rem;
+  margin-top: 1.35rem;
   font-family: var(--font-display, serif);
-  font-size: 1.75rem;
+  font-size: 1.85rem;
   font-weight: 700;
-  letter-spacing: 0.28em;
-  color: #f0d88a;
-  text-shadow: 0 0 24px rgba(201, 162, 74, 0.45);
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  color: #f3dc8e;
+  text-shadow:
+    0 0 24px rgba(201, 162, 74, 0.45),
+    0 0 48px rgba(201, 162, 74, 0.15);
+  animation: app-shell-splash-wordmark 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
 }
 
 .app-shell-splash__tagline {
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
+  margin-top: 0.55rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.42);
+  animation: app-shell-splash-wordmark 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both;
 }
 
-@keyframes app-shell-splash-glow {
+.app-shell-splash__status {
+  margin-top: 0.85rem;
+  min-height: 1rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: rgba(232, 199, 126, 0.72);
+  animation: app-shell-splash-wordmark 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both;
+}
+
+.app-shell-splash--blocked .app-shell-offline {
+  background: transparent;
+}
+
+.app-shell-splash__progress {
+  width: min(12rem, 72vw);
+  height: 3px;
+  margin-top: 1.65rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  animation: app-shell-splash-wordmark 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
+}
+
+.app-shell-splash__progress-bar {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #c9a24a, #fff2c0, #c9a24a, transparent);
+  animation: app-shell-splash-progress 1.6s ease-in-out infinite;
+}
+
+@keyframes app-shell-splash-enter {
   from {
-    transform: scale(0.96);
-    box-shadow:
-      0 0 28px rgba(201, 162, 74, 0.25),
-      inset 0 0 16px rgba(201, 162, 74, 0.08);
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
   }
   to {
-    transform: scale(1);
-    box-shadow:
-      0 0 52px rgba(201, 162, 74, 0.5),
-      inset 0 0 28px rgba(201, 162, 74, 0.18);
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
+}
+
+@keyframes app-shell-splash-exit {
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(1.04);
+  }
+}
+
+@keyframes app-shell-splash-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes app-shell-splash-nebula {
+  from {
+    transform: scale(1);
+    opacity: 0.92;
+  }
+  to {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+@keyframes app-shell-splash-stars {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 0.65;
+  }
+}
+
+@keyframes app-shell-splash-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes app-shell-splash-core-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.96);
+  }
+}
+
+@keyframes app-shell-splash-wordmark {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes app-shell-splash-progress {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell-splash__nebula,
+  .app-shell-splash__stars,
+  .app-shell-splash__ring,
+  .app-shell-splash__core,
+  .app-shell-splash__progress-bar {
+    animation: none !important;
+  }
+}
+
+html[data-app-shell="android"] .app-shell-splash__ring--outer,
+html[data-app-shell="android"] .app-shell-splash__ring--inner {
+  animation-duration: 3.4s;
 }
 
 .app-shell-update-gate {
