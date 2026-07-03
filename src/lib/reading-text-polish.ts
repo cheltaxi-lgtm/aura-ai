@@ -4,7 +4,11 @@
 
 const DEFAULT_MAX_CARDS = 10;
 
-const CARD_IMAGE_LINE_RE = /^!\[([^\]]*)\]\(([^)]+)\)\s*$/;
+/** Markdown image — URL may be empty when the model emits broken `![Name]()`. */
+export const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\([^)]*\)/g;
+export const MARKDOWN_IMAGE_LINE_PATTERN = /^(?:!\[[^\]]*\]\([^)]*\)\s*)+$/;
+
+const CARD_IMAGE_LINE_RE = /^!\[([^\]]*)\]\(([^)]*)\)\s*$/;
 
 /** Remove leading markdown card images (used when the spread row already shows cards). */
 export function stripLeadingSpreadCardImages(content: string): string {

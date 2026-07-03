@@ -16,7 +16,7 @@ export interface ChatMessageRendererProps {
   className?: string;
 }
 
-const CARD_IMAGE_RE = /^!\[([^\]]*)\]\(([^)]+)\)\s*$/;
+const CARD_IMAGE_RE = /^!\[([^\]]*)\]\(([^)]*)\)\s*$/;
 
 /** Normalize Evelina-style em-dash lists and dividers for react-markdown. */
 function normalizeMasterMarkdown(content: string, cardNames?: string[]): string {
@@ -55,7 +55,9 @@ function splitLeadingCardImages(content: string): { imageBlock: string; body: st
 }
 
 function renderCardImageRow(markdown: string): ReactNode {
-  const images = [...markdown.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)];
+  const images = [...markdown.matchAll(/!\[([^\]]*)\]\(([^)]*)\)/g)].filter(
+    (match) => Boolean(match[2]?.trim())
+  );
   if (!images.length) return null;
 
   return (
@@ -63,7 +65,7 @@ function renderCardImageRow(markdown: string): ReactNode {
       {images.map((match, i) => (
         <img
           key={`spread-card-${i}`}
-          src={match[2]}
+          src={match[2]!.trim()}
           alt={match[1] ?? "Карта расклада"}
           className="h-36 w-24 flex-shrink-0 rounded-md border border-amber-500/20 object-cover shadow-md"
           loading="lazy"

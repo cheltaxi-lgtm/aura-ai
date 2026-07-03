@@ -1,4 +1,8 @@
 import { CHARACTERS, getCharacterById } from "@/lib/characters";
+import {
+  MARKDOWN_IMAGE_LINE_PATTERN,
+  MARKDOWN_IMAGE_PATTERN,
+} from "@/lib/reading-text-polish";
 import { ZODIAC_SIGNS, getZodiacFromDate, type ZodiacSign } from "@/utils/zodiac";
 
 export function masterDisplay(key: string) {
@@ -60,7 +64,7 @@ export function truncate(text: string, max: number): string {
 /** Убирает markdown-разметку из сгенерированного текста для отображения в ЛК */
 export function stripMarkdownText(text: string): string {
   return text
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+    .replace(MARKDOWN_IMAGE_PATTERN, "")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*/g, "")
     .replace(/\*/g, "")
@@ -83,11 +87,11 @@ export function formatCabinetPredictionPreview(text: string, maxLength = 220): s
   for (const line of lines) {
     const t = line.trim();
     if (!t) continue;
-    if (/^!\[[^\]]+\]\([^)]+\)/.test(t)) continue;
+    if (MARKDOWN_IMAGE_LINE_PATTERN.test(t)) continue;
     if (/^#{1,6}\s/.test(t)) continue;
     if (/^ваш расклад\b/i.test(t)) continue;
     if (/^(?:✦\s*)?простыми словами:?\s*$/i.test(t)) continue;
-    const withoutImages = t.replace(/!\[[^\]]*\]\([^)]+\)/g, " ").trim();
+    const withoutImages = t.replace(MARKDOWN_IMAGE_PATTERN, " ").trim();
     const cardOnly =
       /^[\d\s\wа-яёА-ЯЁ·•,.-]+$/u.test(withoutImages.replace(/\*\*/g, "")) &&
       (withoutImages.match(/·|•/g)?.length ?? 0) >= 2 &&
