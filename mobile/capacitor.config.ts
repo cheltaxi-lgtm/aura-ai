@@ -18,7 +18,10 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: "#0b0714",
     allowMixedContent: false,
-    captureInput: true,
+    // captureInput must stay OFF: with it on, the WebView intercepts IME input
+    // via BaseInputConnection and Cyrillic/composition keyboards (GBoard, Samsung)
+    // show up but typed characters never reach the page.
+    captureInput: false,
     webContentsDebuggingEnabled: false,
   },
   plugins: {

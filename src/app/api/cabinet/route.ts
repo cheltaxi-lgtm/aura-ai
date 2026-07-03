@@ -16,11 +16,17 @@ import {  getCabinetProfile,
 
 export const dynamic = "force-dynamic";
 
-async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+async function safe<T>(
+  key: string,
+  fn: () => Promise<T>,
+  fallback: T,
+  errors: string[]
+): Promise<T> {
   try {
     return await fn();
   } catch (e) {
-    console.error("[cabinet]", e);
+    console.error("[cabinet]", key, e);
+    errors.push(key);
     return fallback;
   }
 }
@@ -76,11 +82,18 @@ export async function GET(request: NextRequest) {
   );
 
   if (sessionsOffset === 0) {
-    await safe(async () => {
-      await pruneEmptySessionStubs(profileUserId);
-      await pruneDuplicateActiveSessions(profileUserId);
-    }, undefined);
+    await safe(
+      "cleanup",
+      async () => {
+        await pruneEmptySessionStubs(profileUserId);
+        await pruneDuplicateActiveSessions(profileUserId);
+      },
+      undefined,
+      []
+    );
   }
+
+  const errors: string[] = [];
 
   const [    profile,
     stats,
@@ -93,6 +106,7 @@ export async function GET(request: NextRequest) {
     dailyReadings,
   ] = await Promise.all([
     safe(
+      "profile",
       () =>
         getCabinetProfile(profileUserId, auth.email, auth.name ?? "Пользователь"),
       {
@@ -103,28 +117,37 @@ export async function GET(request: NextRequest) {
         birthDate: null,
         runeBalance: 0,
         createdAt: null,
-      }
+      },
+      errors
     ),
-    safe(() => getCabinetStats(profileUserId), {
-      totalSessions: 0,
-      favoriteMaster: null,
-      daysWithUs: 0,
-      totalCards: 0,
-    }),
-    safe(() => getCabinetAchievements(profileUserId), { earned: [], locked: [] }),
-    safe(() => getCabinetSessions(profileUserId, sessionsLimit, sessionsOffset), {
-      sessions: [],
-      total: 0,
-    }),
-    safe(() => getCabinetDiaryPreview(profileUserId, 3), []),
-    safe(() => getCabinetRunes(profileUserId), {
-      enabled: false,
-      balance: 0,
-      transactions: [],
-    }),
-    safe(() => getCabinetLegacyAccess(profileUserId), null),
-    safe(() => getCabinetPhotoSpreads(profileUserId), []),
-    safe(() => getCabinetDailyReadings(profileUserId), []),
+    safe(
+      "stats",
+      () => getCabinetStats(profileUserId),
+      { totalSessions: 0, favoriteMaster: null, daysWithUs: 0, totalCards: 0 },
+      errors
+    ),
+    safe(
+      "achievements",
+      () => getCabinetAchievements(profileUserId),
+      { earned: [], locked: [] },
+      errors
+    ),
+    safe(
+      "sessions",
+      () => getCabinetSessions(profileUserId, sessionsLimit, sessionsOffset),
+      { sessions: [], total: 0 },
+      errors
+    ),
+    safe("diaryPreview", () => getCabinetDiaryPreview(profileUserId, 3), [], errors),
+    safe(
+      "runes",
+      () => getCabinetRunes(profileUserId),
+      { enabled: false, balance: 0, transactions: [] },
+      errors
+    ),
+    safe("legacyAccess", () => getCabinetLegacyAccess(profileUserId), null, errors),
+    safe("photoSpreads", () => getCabinetPhotoSpreads(profileUserId), [], errors),
+    safe("dailyReadings", () => getCabinetDailyReadings(profileUserId), [], errors),
   ]);
 
   return NextResponse.json({
@@ -139,5 +162,7 @@ export async function GET(request: NextRequest) {
     legacyAccess,
     photoSpreads,
     dailyReadings,
+    partial: errors.length > 0,
+    errors,
   });
 }

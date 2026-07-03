@@ -1,6 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
+import { resolveCookieSecure, type CookieRequestContext } from "@/lib/auth";
+
 export const SESSION_CLAIM_COOKIE = "aura_session_claim";
 
 const SESSION_CLAIM_MAX_AGE = 60 * 60 * 24 * 365;
@@ -33,19 +35,15 @@ export async function verifySessionClaim(token: string): Promise<string | null> 
   }
 }
 
-function cookieSecure(): boolean {
-  if (process.env.COOKIE_SECURE === "true") return true;
-  if (process.env.COOKIE_SECURE === "false") return false;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  return appUrl.startsWith("https://");
-}
-
-export async function setSessionClaimCookie(sessionId: string): Promise<void> {
+export async function setSessionClaimCookie(
+  sessionId: string,
+  request?: CookieRequestContext
+): Promise<void> {
   const token = await signSessionClaim(sessionId);
   const jar = await cookies();
   jar.set(SESSION_CLAIM_COOKIE, token, {
     httpOnly: true,
-    secure: cookieSecure(),
+    secure: resolveCookieSecure(request),
     sameSite: "lax",
     maxAge: SESSION_CLAIM_MAX_AGE,
     path: "/",

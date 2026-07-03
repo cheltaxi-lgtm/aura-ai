@@ -3,6 +3,7 @@ import { ensureDb } from "@/lib/db";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { clientIp, enforceShareCreateRateLimit } from "@/lib/api-guards";
+import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { createShareSnapshot, isShareEnabled, type ShareKind, type SharePayload } from "@/lib/share";
 
 const VALID_KINDS = new Set<ShareKind>(["reading", "ritual", "daily", "triplet", "session"]);
@@ -48,6 +49,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
+  if (!auth) {
+    const recaptchaToken =
+      typeof (body as { recaptchaToken?: unknown }).recaptchaToken === "string"
+        ? (body as { recaptchaToken?: string }).recaptchaToken
+        : undefined;
+    const captchaBlock = await enforceRecaptchaScope("share", recaptchaToken, request);
+    if (captchaBlock) return captchaBlock;
+  }
+
   const result = await createShareSnapshot(body, profileUserId);
   if (!result) {
     return NextResponse.json({ error: "share_disabled" }, { status: 403 });
@@ -55,3 +65,4 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json(result);
 }
+

@@ -30,10 +30,33 @@ function useInActiveChat(): boolean {
   return active;
 }
 
+/**
+ * Full-screen flow modals (master session, photo reading, ritual, tariffs, etc.)
+ * all lock body scroll via `document.body.style.overflow = "hidden"` while open.
+ * The tab bar renders at a lower z-index than most of them, so it visually
+ * covers their bottom action button unless we hide it while any modal is open.
+ */
+function useAnyModalOpen(): boolean {
+  const [open, setOpen] = useState(
+    () => typeof document !== "undefined" && document.body.style.overflow === "hidden"
+  );
+
+  useEffect(() => {
+    const sync = () => setOpen(document.body.style.overflow === "hidden");
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return open;
+}
+
 export default function AppShellBottomNav() {
   const pathname = usePathname() ?? "/";
   const inActiveChat = useInActiveChat();
-  const hidden = HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || inActiveChat;
+  const anyModalOpen = useAnyModalOpen();
+  const hidden = HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || inActiveChat || anyModalOpen;
   const isCabinet = pathname.startsWith("/cabinet");
   const isPhoto = pathname.startsWith("/photo-rasklad");
   const isSpread = pathname.startsWith("/rasklady");

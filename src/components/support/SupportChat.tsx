@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Send, X } from "lucide-react";
 import { isSupportSystemSender } from "@/lib/support-constants";
+import { useNativeInputSync } from "@/lib/use-native-input-sync";
 
 export interface SupportMessage {
   id: string;
@@ -41,6 +42,7 @@ export default function SupportChat({
   onPoll,
 }: Props) {
   const [text, setText] = useState("");
+  const textSyncRef = useNativeInputSync<HTMLTextAreaElement>(setText);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -142,13 +144,14 @@ export default function SupportChat({
         ) : null}
         <div className="flex gap-2">
           <textarea
+            ref={textSyncRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled || sending}
             placeholder={disabled ? "Чат закрыт" : "Напишите сообщение…"}
             rows={2}
-            className="flex-1 resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-aura-purple/50 focus:outline-none disabled:opacity-50"
+            className="flex-1 touch-auto select-text resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-aura-purple/50 focus:outline-none disabled:opacity-50"
           />
           <button
             type="button"

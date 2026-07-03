@@ -13,7 +13,8 @@ mkdir -p "$LOG_DIR"
 chmod +x "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
          "$REPO/proxmox-setup/cron-proactive-reminders.sh" \
          "$REPO/proxmox-setup/cron-daily-reading-remind.sh" \
-         "$REPO/proxmox-setup/cron-reconcile-rune-payments.sh" 2>/dev/null || true
+         "$REPO/proxmox-setup/cron-reconcile-rune-payments.sh" \
+         "$REPO/proxmox-setup/cron-pg-backup.sh" 2>/dev/null || true
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 # Drop any previously-managed block, keep everything else untouched.
@@ -30,6 +31,8 @@ CLEANED="$(printf '%s\n' "$CURRENT" | sed "/${MARK_BEGIN}/,/${MARK_END}/d")"
   echo "0 * * * * $REPO/proxmox-setup/cron-daily-reading-remind.sh >> $LOG_DIR/daily-remind.log 2>&1"
   # Missed YooKassa rune purchase reconciliation — every 15 minutes.
   echo "*/15 * * * * $REPO/proxmox-setup/cron-reconcile-rune-payments.sh >> $LOG_DIR/rune-reconcile.log 2>&1"
+  # PostgreSQL backup — daily at 02:45 UTC.
+  echo "45 2 * * * $REPO/proxmox-setup/cron-pg-backup.sh >> $LOG_DIR/pg-backup.log 2>&1"
   echo "$MARK_END"
 } | crontab -
 

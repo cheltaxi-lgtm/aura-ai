@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, Loader2, Sparkles, X } from "lucide-react";
 import {
   downloadAndInstallApk,
+  grantForcedUpdateGrace,
   openApkDownloadPage,
   openPlayStoreUpdate,
 } from "@/lib/app-update";
@@ -22,6 +23,7 @@ export type AppUpdatePromptState = {
 type AppUpdatePromptProps = {
   update: AppUpdatePromptState;
   onDismiss?: () => void;
+  onGraceContinue?: () => void;
 };
 
 type Phase = "idle" | "download" | "install";
@@ -47,7 +49,7 @@ function shouldUsePlayStore(update: AppUpdatePromptState): boolean {
   return Boolean(update.playStoreUrl);
 }
 
-export default function AppUpdatePrompt({ update, onDismiss }: AppUpdatePromptProps) {
+export default function AppUpdatePrompt({ update, onDismiss, onGraceContinue }: AppUpdatePromptProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +134,19 @@ export default function AppUpdatePrompt({ update, onDismiss }: AppUpdatePromptPr
             }}
           >
             Скачать в браузере
+          </button>
+        ) : null}
+        {error && update.forced && onGraceContinue ? (
+          <button
+            type="button"
+            className="app-shell-update__dismiss"
+            onClick={() => {
+              void triggerAppHaptic("light");
+              grantForcedUpdateGrace(update.versionCode);
+              onGraceContinue();
+            }}
+          >
+            Продолжить без обновления (24 ч)
           </button>
         ) : null}
         {!update.forced && onDismiss ? (

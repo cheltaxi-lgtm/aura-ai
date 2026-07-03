@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { createExpert, findExpertByEmail } from "@/lib/accounts";
+import { validatePasswordLength } from "@/lib/auth-policy";
 import { hashPassword, setAuthCookie, slugify } from "@/lib/auth";
 import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
@@ -41,8 +42,9 @@ export async function POST(request: NextRequest) {
     const rateLimited = await enforceRegisterRateLimit(clientIp(request));
     if (rateLimited) return rateLimited;
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: "Пароль минимум 6 символов" }, { status: 400 });
+    const passwordError = validatePasswordLength(String(password));
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
     const finalSlug = slugify(slug || name);

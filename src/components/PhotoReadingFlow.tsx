@@ -36,6 +36,7 @@ import {
 } from "@/lib/photo-reading-constants";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
+import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
 import PhotoReadingGuide from "@/components/PhotoReadingGuide";
 import DeckCardsRow from "@/components/DeckCardsRow";
@@ -333,6 +334,7 @@ export default function PhotoReadingFlow({
   const [fileOriginalBytes, setFileOriginalBytes] = useState(0);
   const [masterId, setMasterId] = useState(defaultMasterId);
   const [question, setQuestion] = useState("");
+  const questionInputSyncRef = useNativeInputSync<HTMLTextAreaElement>(setQuestion);
   const [loading, setLoading] = useState(false);
   const [preparingImage, setPreparingImage] = useState(false);
   const [recognizeAttempt, setRecognizeAttempt] = useState(0);
@@ -1326,6 +1328,7 @@ export default function PhotoReadingFlow({
                     <label htmlFor="photo-question">Ваш вопрос (необязательно)</label>
                     <textarea
                       id="photo-question"
+                      ref={questionInputSyncRef}
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
                       placeholder="Что означает этот расклад?"

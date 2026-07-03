@@ -27,6 +27,10 @@ public class AppUpdatePlugin extends Plugin {
             call.reject("url is required");
             return;
         }
+        if (!isAllowedApkUrl(url)) {
+            call.reject("APK URL not allowed");
+            return;
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (!getContext().getPackageManager().canRequestPackageInstalls()) {
@@ -188,5 +192,22 @@ public class AppUpdatePlugin extends Plugin {
         }
 
         return null;
+    }
+
+    private boolean isAllowedApkUrl(String raw) {
+        try {
+            URL parsed = new URL(raw);
+            if (!"https".equalsIgnoreCase(parsed.getProtocol())) return false;
+            String host = parsed.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase();
+            if (!host.equals("zovus.ru") && !host.equals("www.zovus.ru") && !host.endsWith(".zovus.ru")) {
+                return false;
+            }
+            String path = parsed.getPath();
+            return path != null && path.startsWith("/releases/") && path.endsWith(".apk");
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

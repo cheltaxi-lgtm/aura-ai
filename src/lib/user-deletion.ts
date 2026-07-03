@@ -4,6 +4,7 @@ export interface DeleteUserAccountResult {
   chatMessagesRemoved: number;
   sessionsRemoved: number;
   paymentsRemoved: number;
+  shareSnapshotsRemoved: number;
   accountRemoved: number;
   userRemoved: number;
 }
@@ -28,6 +29,10 @@ export async function deleteUserAccountCompletely(
       [profileUserId]
     );
 
+    const shareSnapshotsRemoved = await run(`DELETE FROM share_snapshots WHERE user_id = $1`, [
+      profileUserId,
+    ]);
+
     const chatMessagesRemoved = await run(
       `DELETE FROM chat_messages cm
        WHERE cm.owner_user_id = $1
@@ -50,6 +55,7 @@ export async function deleteUserAccountCompletely(
       chatMessagesRemoved,
       sessionsRemoved,
       paymentsRemoved,
+      shareSnapshotsRemoved,
       accountRemoved,
       userRemoved,
     };

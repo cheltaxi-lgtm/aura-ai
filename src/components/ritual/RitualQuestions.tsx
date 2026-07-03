@@ -8,6 +8,7 @@ import {
   type RitualMasterKey,
   type RitualType,
 } from "@/lib/ritual-config";
+import { useNativeInputSync } from "@/lib/use-native-input-sync";
 
 interface Props {
   ritualId: string;
@@ -34,6 +35,7 @@ export default function RitualQuestions({
   const questions = RITUAL_TYPES[ritualType].questions;
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
+  const inputSyncRef = useNativeInputSync<HTMLInputElement>(setInput);
   const [answerIndex, setAnswerIndex] = useState(0);
   const [typing, setTyping] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -144,13 +146,14 @@ export default function RitualQuestions({
         <div className="border-t border-white/10 p-4">
           <div className="flex gap-2">
             <input
+              ref={inputSyncRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void handleSubmit()}
               placeholder="Ваш ответ…"
               disabled={submitting}
-              className="flex-1 rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
+              className="flex-1 touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
             />
             <button
               type="button"

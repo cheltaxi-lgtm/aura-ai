@@ -192,21 +192,25 @@ export async function refundRunes(
     return getRuneBalance(userId);
   }
 
-  const { rows } = await query<{ new_balance: number }>(
-    `UPDATE users SET rune_balance = rune_balance + $2 WHERE id = $1 RETURNING rune_balance AS new_balance`,
-    [userId, amount]
-  );
+  return withTransaction(async (client) => {
+    const { rows } = await queryClient<{ new_balance: number }>(
+      client,
+      `UPDATE users SET rune_balance = rune_balance + $2 WHERE id = $1 RETURNING rune_balance AS new_balance`,
+      [userId, amount]
+    );
 
-  const newBalance = rows[0]?.new_balance ?? 0;
+    const newBalance = rows[0]?.new_balance ?? 0;
 
-  await query(
-    `INSERT INTO rune_transactions
-       (user_id, type, amount, balance_after, description, action_type)
-     VALUES ($1, 'refund', $2, $3, $4, $5)`,
-    [userId, amount, newBalance, description, action ?? null]
-  );
+    await queryClient(
+      client,
+      `INSERT INTO rune_transactions
+         (user_id, type, amount, balance_after, description, action_type)
+       VALUES ($1, 'refund', $2, $3, $4, $5)`,
+      [userId, amount, newBalance, description, action ?? null]
+    );
 
-  return newBalance;
+    return newBalance;
+  });
 }
 
 export async function addRunes(
@@ -218,26 +222,30 @@ export async function addRunes(
 ): Promise<number> {
   const purchaseDelta = type === "purchase" ? amount : 0;
 
-  const { rows } = await query<{ new_balance: number }>(
-    `UPDATE users
-     SET
-       rune_balance = rune_balance + $2,
-       total_runes_purchased = total_runes_purchased + $3
-     WHERE id = $1
-     RETURNING rune_balance AS new_balance`,
-    [userId, amount, purchaseDelta]
-  );
+  return withTransaction(async (client) => {
+    const { rows } = await queryClient<{ new_balance: number }>(
+      client,
+      `UPDATE users
+       SET
+         rune_balance = rune_balance + $2,
+         total_runes_purchased = total_runes_purchased + $3
+       WHERE id = $1
+       RETURNING rune_balance AS new_balance`,
+      [userId, amount, purchaseDelta]
+    );
 
-  const newBalance = rows[0]?.new_balance ?? 0;
+    const newBalance = rows[0]?.new_balance ?? 0;
 
-  await query(
-    `INSERT INTO rune_transactions
-       (user_id, type, amount, balance_after, description, payment_id)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [userId, type, amount, newBalance, description, paymentId ?? null]
-  );
+    await queryClient(
+      client,
+      `INSERT INTO rune_transactions
+         (user_id, type, amount, balance_after, description, payment_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, type, amount, newBalance, description, paymentId ?? null]
+    );
 
-  return newBalance;
+    return newBalance;
+  });
 }
 
 export async function getRuneTransactions(userId: string, limit = 50) {
@@ -391,14 +399,27 @@ export async function creditRunesFromPayment(payment: {
       name: string;
       runes: number;
       bonus_runes: number;
+      price_rub: number;
     }>(
-      `SELECT name, runes, bonus_runes FROM rune_packages WHERE id = $1`,
+      `SELECT name, runes, bonus_runes, price_rub FROM rune_packages WHERE id = $1`,
       [payment.packageId]
     );
     const pkg = pkgRows[0];
     if (!pkg) {
       console.warn("creditRunesFromPayment: package not found:", payment.packageId);
       return false;
+    }
+
+    if (payment.amountRub !== undefined) {
+      if (Math.abs(payment.amountRub - Number(pkg.price_rub)) > 0.01) {
+        console.warn(
+          "creditRunesFromPayment: amount mismatch",
+          payment.paymentId,
+          payment.amountRub,
+          pkg.price_rub
+        );
+        return false;
+      }
     }
 
     amount = pkg.runes + pkg.bonus_runes;

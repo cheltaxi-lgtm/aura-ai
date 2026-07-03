@@ -127,7 +127,7 @@
 
   /* ── Buttons ── */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-medium
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-6 py-3 font-medium
            transition-all duration-300 active:scale-[0.98];
     touch-action: manipulation;
     -webkit-tap-highlight-color: rgba(232, 199, 126, 0.15);
@@ -148,7 +148,7 @@
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border px-6 py-3
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-6 py-3
            font-medium transition-all duration-300 active:scale-[0.98];
     border-color: rgba(232, 199, 126, 0.28);
     color: var(--aura-champagne);
@@ -2481,6 +2481,9 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   font-size: 0.875rem;
   color: #fff;
   transition: border-color 0.2s ease;
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .photo-flow-field textarea:focus,

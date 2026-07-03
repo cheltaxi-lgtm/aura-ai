@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getCharacterById } from "@/lib/characters";
+import { useNativeInputSync } from "@/lib/use-native-input-sync";
 
 interface Props {
   ritualId: string;
@@ -18,6 +19,7 @@ export default function RitualReview({
 }: Props) {
   const [step, setStep] = useState<"ask" | "form">("ask");
   const [outcomeText, setOutcomeText] = useState("");
+  const outcomeTextRef = useNativeInputSync<HTMLTextAreaElement>(setOutcomeText);
   const [rating, setRating] = useState(0);
   const [sharePublicly, setSharePublicly] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -82,11 +84,12 @@ export default function RitualReview({
   return (
     <div className="px-5 py-6">
       <textarea
+        ref={outcomeTextRef}
         value={outcomeText}
         onChange={(e) => setOutcomeText(e.target.value)}
         placeholder="Что произошло? (необязательно)"
         rows={4}
-        className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
+        className="w-full touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
       />
 
       <div className="mt-4 flex justify-center gap-2">

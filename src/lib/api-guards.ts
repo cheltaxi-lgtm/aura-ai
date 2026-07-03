@@ -20,11 +20,15 @@ export async function enforceChatRateLimit(accountId: string): Promise<NextRespo
 }
 
 export function clientIp(request: NextRequest): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown"
-  );
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+
+  if (process.env.TRUST_PROXY === "true") {
+    const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    if (forwarded) return forwarded;
+  }
+
+  return "unknown";
 }
 
 import { MAX_CHAT_HISTORY, MAX_USER_MESSAGE_LENGTH } from "@/lib/chat-sanitize";

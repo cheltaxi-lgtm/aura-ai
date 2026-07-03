@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import ProfileAstroFields, {
@@ -249,7 +250,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             <input
               type="password"
               required
-              minLength={6}
+              minLength={mode === "register" ? MIN_PASSWORD_LENGTH : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"

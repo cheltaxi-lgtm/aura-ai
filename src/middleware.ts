@@ -162,6 +162,26 @@ function unauthorizedApiResponse() {
 
 
 
+function forbiddenApiResponse() {
+
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+}
+
+
+
+function requiredApiRole(pathname: string): AuthRole | null {
+
+  if (pathname.startsWith("/api/admin/")) return "admin";
+
+  if (pathname.startsWith("/api/expert/")) return "expert";
+
+  return null;
+
+}
+
+
+
 export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
@@ -223,6 +243,16 @@ export async function middleware(request: NextRequest) {
     if (!role) {
 
       return unauthorizedApiResponse();
+
+    }
+
+
+
+    const apiRole = requiredApiRole(pathname);
+
+    if (apiRole && role !== apiRole) {
+
+      return forbiddenApiResponse();
 
     }
 

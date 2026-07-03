@@ -28,6 +28,10 @@ async function handleYoomoneyWebhook(data: YoomoneyNotification) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
+  if (data.currency && data.currency !== "643" && data.currency.toUpperCase() !== "RUB") {
+    return NextResponse.json({ error: "Unsupported currency" }, { status: 400 });
+  }
+
   const parsed = parseYoomoneyLabel(data.label);
   if (!parsed) {
     return NextResponse.json({ error: "Invalid label" }, { status: 400 });

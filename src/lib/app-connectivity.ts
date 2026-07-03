@@ -89,7 +89,9 @@ function parseStatusPayload(
   };
 }
 
-async function probeMaintenanceMode(): Promise<AppConnectivityReason | null> {
+async function probeStatusEndpoint(
+  options?: ProbeAppConnectivityOptions
+): Promise<AppConnectivityReason | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
 
@@ -100,9 +102,12 @@ async function probeMaintenanceMode(): Promise<AppConnectivityReason | null> {
     });
     const data = parseStatusPayload(await res.json().catch(() => null));
     if (data.maintenanceMode) return "maintenance";
+    if (!res.ok || data.ok === false) {
+      return options?.bootstrap ? null : "server";
+    }
     return null;
   } catch {
-    return null;
+    return options?.bootstrap ? null : "server";
   } finally {
     clearTimeout(timer);
   }
@@ -126,12 +131,12 @@ async function probeRuntimeOffline(): Promise<AppConnectivityReason | null> {
 export async function probeAppConnectivity(
   options?: ProbeAppConnectivityOptions
 ): Promise<AppConnectivityReason | null> {
-  if (options?.bootstrap) {
-    return probeMaintenanceMode();
-  }
+  const status = await probeStatusEndpoint(options);
+  if (status) return status;
 
-  const maintenance = await probeMaintenanceMode();
-  if (maintenance) return maintenance;
+  if (options?.bootstrap) {
+    return null;
+  }
 
   return probeRuntimeOffline();
 }

@@ -15,6 +15,13 @@ export function getPool(): Pool {
       max: Math.max(1, Number(process.env.DB_POOL_MAX) || 20),
       connectionTimeoutMillis: 5_000,
       idleTimeoutMillis: 30_000,
+      ssl:
+        process.env.DATABASE_SSL === "require"
+          ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false" }
+          : undefined,
+    });
+    void pool.query("SET statement_timeout = '30s'").catch(() => {
+      /* optional — some hosts restrict SET */
     });
   }
   return pool;

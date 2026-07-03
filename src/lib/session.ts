@@ -390,7 +390,6 @@ export async function saveMessage(
      VALUES ($1, $2, $3, $4, $5)`,
     [sessionId, characterId, role, content, ownerUserId ?? null]
   );
-  console.log(`[DB_CHAT_SAVE_SUCCESS] Saved message for master: ${characterId}`);
 }
 
 export async function getMessages(sessionId: string, characterId: string) {
@@ -476,7 +475,10 @@ export async function recordPayment(data: {
   );
 }
 
-export async function completePayment(yukassaPaymentId: string) {
+export async function completePayment(
+  yukassaPaymentId: string,
+  verifiedAmountRub?: number
+) {
   const { rows } = await query<{
     session_id: string;
     payment_type: "single" | "subscription";
@@ -491,6 +493,21 @@ export async function completePayment(yukassaPaymentId: string) {
   );
   const payment = rows[0];
   if (!payment) return null;
+
+  if (verifiedAmountRub !== undefined) {
+    const expected = parseFloat(payment.amount);
+    if (!Number.isFinite(expected) || Math.abs(expected - verifiedAmountRub) > 0.01) {
+      console.warn(
+        "[completePayment] amount mismatch",
+        yukassaPaymentId,
+        "expected",
+        expected,
+        "verified",
+        verifiedAmountRub
+      );
+      return null;
+    }
+  }
 
   if (payment.payment_type === "subscription") {
     await unlockSubscription(payment.session_id);
@@ -540,13 +557,22 @@ export async function completeYoomoneyPayment(data: {
          updated_at = NOW()
      WHERE session_id = $1
        AND status = 'pending'
+       AND payment_type = $3
+       AND ABS(amount - $4::numeric) < 0.01
        AND (yoomoney_operation_id IS NULL OR yoomoney_operation_id = $2)
      RETURNING id, payment_type, influencer_id, amount::text, blogger_split_percent`,
-    [data.sessionId, data.operationId]
+    [data.sessionId, data.operationId, data.plan, data.amount]
   );
 
   const payment = rows[0];
   if (!payment) {
+    console.warn(
+      "[completeYoomoneyPayment] rejected",
+      data.sessionId,
+      data.plan,
+      data.amount,
+      data.operationId
+    );
     return null;
   }
 
@@ -595,20 +621,22 @@ export async function completeOtherActiveSessions(
     [userId, characterKey, exceptSessionId ?? null]
   );
 
-  for (const row of rows) {
-    const msgCount = Number.parseInt(row.msg_count, 10);
-    const hasSpread = (parseSessionCards(row.cards)?.length ?? 0) >= 3;
-    const hasMemory =
-      typeof row.prediction === "string" &&
-      row.prediction.trim().length > 0 &&
-      row.prediction.trim() !== "Сеанс в процессе";
+  await Promise.all(
+    rows.map(async (row) => {
+      const msgCount = Number.parseInt(row.msg_count, 10);
+      const hasSpread = (parseSessionCards(row.cards)?.length ?? 0) >= 3;
+      const hasMemory =
+        typeof row.prediction === "string" &&
+        row.prediction.trim().length > 0 &&
+        row.prediction.trim() !== "Сеанс в процессе";
 
-    if (msgCount === 0 && !hasSpread && !hasMemory) {
-      await deleteConsultationSession(row.id, userId);
-    } else {
-      await completeConsultationSession(row.id, userId);
-    }
-  }
+      if (msgCount === 0 && !hasSpread && !hasMemory) {
+        await deleteConsultationSession(row.id, userId);
+      } else {
+        await completeConsultationSession(row.id, userId);
+      }
+    })
+  );
 }
 
 /** Remove empty cabinet stubs (no chat, no intention, placeholder prediction). */
@@ -625,11 +653,10 @@ export async function pruneEmptySessionStubs(userId: string): Promise<number> {
     [userId]
   );
 
-  let removed = 0;
-  for (const row of rows) {
-    if (await deleteConsultationSession(row.id, userId)) removed += 1;
-  }
-  return removed;
+  const results = await Promise.all(
+    rows.map((row) => deleteConsultationSession(row.id, userId))
+  );
+  return results.filter(Boolean).length;
 }
 
 /** Remove empty duplicate consultation rows (same master + cards); keep the latest only. */
@@ -654,11 +681,10 @@ export async function pruneDuplicateActiveSessions(userId: string): Promise<numb
     [userId]
   );
 
-  let removed = 0;
-  for (const row of rows) {
-    if (await deleteConsultationSession(row.id, userId)) removed += 1;
-  }
-  return removed;
+  const results = await Promise.all(
+    rows.map((row) => deleteConsultationSession(row.id, userId))
+  );
+  return results.filter(Boolean).length;
 }
 
 export async function completeConsultationSession(

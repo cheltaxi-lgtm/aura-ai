@@ -152,6 +152,8 @@ async function respondWithExistingSpreadReading(input: {
   });
 }
 
+export const maxDuration = 90;
+
 export async function POST(request: NextRequest) {
   let characterId = "ragnar";
   let userName = "друг";

@@ -1,6 +1,6 @@
 "use client";
 
-import { dismissOptionalUpdate, isOptionalUpdateDismissed } from "@/lib/app-update";
+import { dismissOptionalUpdate, isOptionalUpdateDismissed, isForcedUpdateGraceActive } from "@/lib/app-update";
 import { fetchAndroidReleaseInfo } from "@/lib/app-shell-version";
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 import type { AppUpdatePromptState } from "@/components/AppUpdatePrompt";
@@ -18,7 +18,10 @@ export async function waitForNativeCapacitor(maxMs = CAPACITOR_WAIT_MS): Promise
   return isNativeCapacitorPlatform();
 }
 
-export async function checkAndroidAppUpdate(): Promise<AppUpdatePromptState | null> {
+export async function checkAndroidAppUpdate(options?: {
+  /** Show the optional-update prompt even if the user dismissed it this session (manual re-check). */
+  ignoreDismissed?: boolean;
+}): Promise<AppUpdatePromptState | null> {
   if (!(await waitForNativeCapacitor())) return null;
 
   try {
@@ -29,6 +32,9 @@ export async function checkAndroidAppUpdate(): Promise<AppUpdatePromptState | nu
     if (!remote || !Number.isFinite(buildCode)) return null;
 
     if (buildCode < remote.minVersionCode) {
+      if (isForcedUpdateGraceActive(remote.minVersionCode)) {
+        return null;
+      }
       return {
         apkUrl: remote.apkUrl,
         releaseNotes: remote.releaseNotes,
@@ -40,7 +46,10 @@ export async function checkAndroidAppUpdate(): Promise<AppUpdatePromptState | nu
       };
     }
 
-    if (buildCode < remote.versionCode && !isOptionalUpdateDismissed(remote.versionCode)) {
+    if (
+      buildCode < remote.versionCode &&
+      (options?.ignoreDismissed || !isOptionalUpdateDismissed(remote.versionCode))
+    ) {
       return {
         apkUrl: remote.apkUrl,
         releaseNotes: remote.releaseNotes,

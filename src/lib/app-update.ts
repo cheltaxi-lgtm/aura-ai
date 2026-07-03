@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { isAllowedApkDownloadUrl } from "@/lib/allowed-hosts";
 import { AppUpdateNative, type AppUpdateProgressEvent } from "@/lib/app-update-native";
 
 const APK_CACHE_PATH = "zovus-update.apk";
@@ -101,6 +102,9 @@ export async function downloadAndInstallApk(
   apkUrl: string,
   onProgress?: (percent: number) => void
 ): Promise<void> {
+  if (!isAllowedApkDownloadUrl(apkUrl)) {
+    throw new Error("Недопустимый адрес обновления");
+  }
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") {
     window.location.assign(apkUrl);
     return;
@@ -151,6 +155,28 @@ export function dismissOptionalUpdate(versionCode: number): void {
 export function isOptionalUpdateDismissed(versionCode: number): boolean {
   try {
     return sessionStorage.getItem(`zovus_update_dismiss_v${versionCode}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const FORCED_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export function grantForcedUpdateGrace(versionCode: number): void {
+  try {
+    sessionStorage.setItem(`zovus_forced_update_grace_v${versionCode}`, String(Date.now()));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isForcedUpdateGraceActive(versionCode: number): boolean {
+  try {
+    const raw = sessionStorage.getItem(`zovus_forced_update_grace_v${versionCode}`);
+    if (!raw) return false;
+    const started = Number.parseInt(raw, 10);
+    if (!Number.isFinite(started)) return false;
+    return Date.now() - started < FORCED_GRACE_MS;
   } catch {
     return false;
   }

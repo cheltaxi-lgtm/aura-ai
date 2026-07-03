@@ -997,7 +997,7 @@ export default function MasterSessionFlow({
                         autoComplete="off"
                         autoCorrect="on"
                         spellCheck
-                        className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/35 focus:border-amber-400/50 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                        className="w-full touch-auto select-text resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/35 focus:border-amber-400/50 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                       />
                       <div className="flex items-center justify-between gap-2">
                         <button

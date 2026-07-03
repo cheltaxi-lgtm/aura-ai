@@ -17,22 +17,20 @@ export async function processYukassaWebhook(body: Record<string, unknown>): Prom
     return { ok: true, kind: "ignored" };
   }
 
-  let amountRub: number | undefined;
-
-  if (isYukassaConfigured()) {
-    const verified = await verifyYukassaWebhookPayment(payment.id, event);
-    if (!verified.valid) {
-      console.warn("[yukassa-webhook] rejected", payment.id, event);
-      return { ok: false, kind: "rejected", paymentId: payment.id };
-    }
-    if (verified.metadata) {
-      payment.metadata = { ...payment.metadata, ...verified.metadata };
-    }
-    amountRub = verified.amountRub;
-  } else if (process.env.NODE_ENV === "production") {
+  if (!isYukassaConfigured()) {
     console.warn("[yukassa-webhook] provider not configured", payment.id);
     return { ok: false, kind: "rejected", paymentId: payment.id };
   }
+
+  const verified = await verifyYukassaWebhookPayment(payment.id, event);
+  if (!verified.valid) {
+    console.warn("[yukassa-webhook] rejected", payment.id, event);
+    return { ok: false, kind: "rejected", paymentId: payment.id };
+  }
+  if (verified.metadata) {
+    payment.metadata = { ...payment.metadata, ...verified.metadata };
+  }
+  const amountRub = verified.amountRub;
 
   if (payment.metadata?.type === "rune_purchase") {
     const credited = await creditRunesFromPayment({
@@ -56,7 +54,7 @@ export async function processYukassaWebhook(body: Record<string, unknown>): Prom
     };
   }
 
-  const result = await completePayment(payment.id);
+  const result = await completePayment(payment.id, amountRub);
   if (result?.influencer_id && result.amount) {
     await creditInfluencerBalance(
       result.influencer_id,

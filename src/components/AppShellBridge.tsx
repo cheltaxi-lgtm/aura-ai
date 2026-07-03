@@ -2,35 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { markAppShellOnDocument, shouldUseAppShellClient, isAppShellSplashDone } from "@/lib/app-shell";
+import { resolveAppShellDeepLink } from "@/lib/allowed-hosts";
 import { checkAndroidAppUpdate, dismissOptionalUpdate } from "@/lib/app-shell-update-check";
 import { useAppShellConnectivity } from "@/hooks/useAppConnectivity";
 import AppShellSplash, { APP_SHELL_SPLASH_HIDDEN_EVENT } from "@/components/AppShellSplash";
 import AppShellBottomNav from "@/components/AppShellBottomNav";
 import AppShellOfflineGate from "@/components/AppShellOfflineGate";
+import AppExitConfirm from "@/components/AppExitConfirm";
 import AppUpdatePrompt, { type AppUpdatePromptState } from "@/components/AppUpdatePrompt";
+import { APP_UPDATE_RECHECK_EVENT } from "@/components/AppShellVersionFooter";
 
-function resolveAppShellUrl(raw: string): string {
-  try {
-    const url = new URL(raw);
-    if (url.protocol === "zovus:" && url.host === "open") {
-      const path = url.pathname && url.pathname !== "/" ? url.pathname : "/";
-      const target = new URL(`https://zovus.ru${path}`);
-      target.search = url.search;
-      target.searchParams.set("app", "1");
-      return target.toString();
-    }
-    if (url.hostname === "zovus.ru" || url.hostname.endsWith(".zovus.ru")) {
-      if (!url.searchParams.has("app")) url.searchParams.set("app", "1");
-      return url.toString();
-    }
-    return raw;
-  } catch {
-    return raw;
-  }
-}
+const UPDATE_POLL_MS = 30 * 60 * 1000;
 
 export default function AppShellBridge() {
   const [updateAvailable, setUpdateAvailable] = useState<AppUpdatePromptState | null>(null);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const exitAppRef = useRef<(() => Promise<void>) | null>(null);
   const [splashDone, setSplashDone] = useState(() => {
     if (!shouldUseAppShellClient()) return true;
     return isAppShellSplashDone();
@@ -40,10 +27,21 @@ export default function AppShellBridge() {
   const showGate = splashDone && Boolean(blocked) && !updateAvailable?.forced;
   const showTabs = inShell && splashDone && !showGate && !updateAvailable?.forced;
 
-  const refreshUpdate = useCallback(async () => {
-    const next = await checkAndroidAppUpdate();
-    setUpdateAvailable(next);
+  const refreshUpdate = useCallback(async (ignoreDismissed = false) => {
+    const next = await checkAndroidAppUpdate({ ignoreDismissed });
+    // A background re-check must never close a prompt the user is looking at.
+    setUpdateAvailable((prev) => next ?? (ignoreDismissed ? null : prev));
   }, []);
+
+  useEffect(() => {
+    const onManualCheck = () => void refreshUpdate(true);
+    window.addEventListener(APP_UPDATE_RECHECK_EVENT, onManualCheck);
+    const timer = setInterval(() => void refreshUpdate(), UPDATE_POLL_MS);
+    return () => {
+      window.removeEventListener(APP_UPDATE_RECHECK_EVENT, onManualCheck);
+      clearInterval(timer);
+    };
+  }, [refreshUpdate]);
 
   useEffect(() => {
     if (shouldUseAppShellClient()) markAppShellOnDocument();
@@ -99,13 +97,17 @@ export default function AppShellBridge() {
             } catch {
               /* ignore */
             }
-            const exit = window.confirm("Выйти из Zovus?");
-            if (exit) await app.App.exitApp();
+            exitAppRef.current = async () => {
+              await app.App.exitApp();
+            };
+            setExitConfirmOpen(true);
           })();
         });
 
         urlListener = await app.App.addListener("appUrlOpen", (event) => {
-          if (event.url) window.location.assign(resolveAppShellUrl(event.url));
+          if (!event.url) return;
+          const target = resolveAppShellDeepLink(event.url);
+          if (target) window.location.assign(target);
         });
 
         try {
@@ -174,6 +176,7 @@ export default function AppShellBridge() {
       {updateAvailable ? (
         <AppUpdatePrompt
           update={updateAvailable}
+          onGraceContinue={() => setUpdateAvailable(null)}
           onDismiss={
             updateAvailable.forced
               ? undefined
@@ -186,6 +189,15 @@ export default function AppShellBridge() {
       ) : null}
       {showGate && blocked ? (
         <AppShellOfflineGate reason={blocked} checking={checking} onRetry={retry} />
+      ) : null}
+      {exitConfirmOpen ? (
+        <AppExitConfirm
+          onConfirm={() => {
+            setExitConfirmOpen(false);
+            void exitAppRef.current?.();
+          }}
+          onCancel={() => setExitConfirmOpen(false)}
+        />
       ) : null}
       {showTabs ? <AppShellBottomNav /> : null}
     </>

@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    optimizePackageImports: ["lucide-react", "framer-motion"],
   },
   images: {
     formats: ["image/avif", "image/webp"],

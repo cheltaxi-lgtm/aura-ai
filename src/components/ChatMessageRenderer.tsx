@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
+import { Fragment, memo, type ReactNode } from "react";
+import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { toParagraphs, splitWallOfText } from "@/lib/format-paragraphs";
@@ -63,10 +64,12 @@ function renderCardImageRow(markdown: string): ReactNode {
   return (
     <div className="my-6 flex flex-wrap justify-center gap-4">
       {images.map((match, i) => (
-        <img
+        <Image
           key={`spread-card-${i}`}
           src={match[2]!.trim()}
           alt={match[1] ?? "Карта расклада"}
+          width={96}
+          height={144}
           className="h-36 w-24 flex-shrink-0 rounded-md border border-amber-500/20 object-cover shadow-md"
           loading="lazy"
         />
@@ -214,14 +217,17 @@ const mysticMarkdownComponents: Components = {
 
     return <p className="text-base leading-[1.8] text-mystic-text">{children}</p>;
   },
-  img: ({ src, alt }) => (
-    <img
-      src={typeof src === "string" ? src : ""}
-      alt={alt ?? "Карта расклада"}
-      className="h-36 w-24 flex-shrink-0 rounded-md border border-amber-500/20 object-cover shadow-md"
-      loading="lazy"
-    />
-  ),
+  img: ({ src, alt }) =>
+    typeof src === "string" && src ? (
+      <Image
+        src={src}
+        alt={alt ?? "Карта расклада"}
+        width={96}
+        height={144}
+        className="h-36 w-24 flex-shrink-0 rounded-md border border-amber-500/20 object-cover shadow-md"
+        loading="lazy"
+      />
+    ) : null,
   strong: ({ children }) => (
     <strong className="font-semibold text-mystic-gold">{children}</strong>
   ),
@@ -251,7 +257,7 @@ const mysticMarkdownComponents: Components = {
   ),
 };
 
-export default function ChatMessageRenderer({
+function ChatMessageRenderer({
   content,
   role = "assistant",
   className = "",
@@ -296,3 +302,5 @@ export default function ChatMessageRenderer({
     </div>
   );
 }
+
+export default memo(ChatMessageRenderer);

@@ -162,8 +162,8 @@ export ADMIN_SEED_EMAIL="$(read_env_var ADMIN_SEED_EMAIL)"
 export ADMIN_SEED_PASSWORD="$(read_env_var ADMIN_SEED_PASSWORD)"
 export ADMIN_SEED_NAME="$(read_env_var ADMIN_SEED_NAME)"
 export DATABASE_URL="${DATABASE_URL:-postgresql://auraai:auraai_secret@localhost:5432/auraai}"
-export ADMIN_SEED_EMAIL="${ADMIN_SEED_EMAIL:-cheldriver@yandex.ru}"
-export ADMIN_SEED_PASSWORD="${ADMIN_SEED_PASSWORD:-gzOyv9Co*74_74}"
+export ADMIN_SEED_EMAIL="${ADMIN_SEED_EMAIL:-}"
+export ADMIN_SEED_PASSWORD="${ADMIN_SEED_PASSWORD:-}"
 export ADMIN_SEED_NAME="${ADMIN_SEED_NAME:-Admin}"
 if [ -z "${ADMIN_SEED_PASSWORD// /}" ]; then
   echo "WARN: ADMIN_SEED_PASSWORD is empty — skip admin seed"
@@ -185,7 +185,8 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/cron-proactive-reminders.sh \
   /opt/aura-ai/proxmox-setup/cron-memory-maintenance.sh \
   /opt/aura-ai/proxmox-setup/cron-daily-reading-remind.sh \
-  /opt/aura-ai/proxmox-setup/cron-reconcile-rune-payments.sh 2>/dev/null || true
+  /opt/aura-ai/proxmox-setup/cron-reconcile-rune-payments.sh \
+  /opt/aura-ai/proxmox-setup/cron-pg-backup.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
 
 echo "Deploy complete: https://zovus.ru"

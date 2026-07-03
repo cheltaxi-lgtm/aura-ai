@@ -1,22 +1,23 @@
 "use client";
 
 import SiteFooter from "@/components/SiteFooter";
+import AppShellVersionFooter from "@/components/AppShellVersionFooter";
 import { shouldUseAppShellClient } from "@/lib/app-shell";
 import { useEffect, useState } from "react";
 
-/** Hides legal/SEO footer inside the native app shell. */
+/** Legal/SEO footer on the web; compact version footer inside the native app shell. */
 export default function AppAwareSiteFooter() {
-  const [hide, setHide] = useState(false);
+  const [inShell, setInShell] = useState(false);
 
   useEffect(() => {
-    setHide(shouldUseAppShellClient());
+    setInShell(shouldUseAppShellClient());
     const observer = new MutationObserver(() => {
-      setHide(shouldUseAppShellClient());
+      setInShell(shouldUseAppShellClient());
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-app-shell"] });
     return () => observer.disconnect();
   }, []);
 
-  if (hide) return null;
+  if (inShell) return <AppShellVersionFooter />;
   return <SiteFooter />;
 }

@@ -2,6 +2,8 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
+import { resolveCookieSecure, type CookieRequestContext } from "@/lib/auth";
+
 export const AGE_GATE_COOKIE = "aura_age_gate";
 
 const AGE_GATE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -15,13 +17,6 @@ function secretKey(): Uint8Array {
     return new TextEncoder().encode("dev-secret-change-in-production");
   }
   return new TextEncoder().encode(secret);
-}
-
-function cookieSecure(): boolean {
-  if (process.env.COOKIE_SECURE === "true") return true;
-  if (process.env.COOKIE_SECURE === "false") return false;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  return appUrl.startsWith("https://");
 }
 
 async function signAgeGateToken(): Promise<string> {
@@ -41,12 +36,12 @@ async function verifyAgeGateToken(token: string): Promise<boolean> {
   }
 }
 
-export async function setAgeGateCookie(): Promise<void> {
+export async function setAgeGateCookie(request?: CookieRequestContext): Promise<void> {
   const token = await signAgeGateToken();
   const jar = await cookies();
   jar.set(AGE_GATE_COOKIE, token, {
     httpOnly: true,
-    secure: cookieSecure(),
+    secure: resolveCookieSecure(request),
     sameSite: "lax",
     maxAge: AGE_GATE_MAX_AGE,
     path: "/",

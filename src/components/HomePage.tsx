@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 
 import OnboardingForm from "@/components/OnboardingForm";
 import TarotTriplet from "@/components/TarotTriplet";
@@ -26,17 +27,16 @@ import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
 import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
 import { setJointReadingToken, setJointReadingRole } from "@/lib/joint-reading-storage";
 import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
-import RitualFlow from "@/components/ritual/RitualFlow";
 import { resolveRitualMasterKey, type RitualType } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import AuraSellingLanding from "@/components/AuraSellingLanding";
 import DeckGallery from "@/components/DeckGallery";
-import MasterDecksModal from "@/components/MasterDecksModal";
-import PhotoReadingFlow, {
-  type PhotoReadingChatPayload,
-  type PhotoReadingEntryMode,
-} from "@/components/PhotoReadingFlow";
+import type { PhotoReadingChatPayload, PhotoReadingEntryMode } from "@/components/PhotoReadingFlow";
 import { buildPhotoReadingChatMessages, mergePhotoReadingIntoChat } from "@/lib/photo-chat";
+
+const RitualFlow = dynamic(() => import("@/components/ritual/RitualFlow"), { ssr: false });
+const MasterDecksModal = dynamic(() => import("@/components/MasterDecksModal"), { ssr: false });
+const PhotoReadingFlow = dynamic(() => import("@/components/PhotoReadingFlow"), { ssr: false });
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { useAuth } from "@/lib/useAuth";
 import {

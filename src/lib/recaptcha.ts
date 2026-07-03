@@ -7,7 +7,7 @@ import {
 } from "@/lib/recaptcha-scopes";
 
 const RECAPTCHA_VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify";
-const MIN_SCORE = 0.1;
+const MIN_SCORE = 0.5;
 
 const IP_V4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const IP_V6 = /^[0-9a-f:]+$/i;

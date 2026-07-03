@@ -310,18 +310,14 @@ export async function getCabinetSessions(
       created_at: Date;
       status: string;
     }>(
-      `WITH msg_counts AS (
-         SELECT session_id, COUNT(*)::int AS msg_count
-         FROM chat_messages
-         GROUP BY session_id
-       ),
-       last_assistant AS (
-         SELECT DISTINCT ON (session_id)
-           session_id,
-           content AS last_assistant
-         FROM chat_messages
-         WHERE role = 'assistant'
-         ORDER BY session_id, created_at DESC
+      `WITH last_assistant AS (
+         SELECT DISTINCT ON (cm.session_id)
+           cm.session_id,
+           cm.content AS last_assistant
+         FROM chat_messages cm
+         INNER JOIN sessions us ON us.id = cm.session_id AND us.user_id = $1
+         WHERE cm.role = 'assistant'
+         ORDER BY cm.session_id, cm.created_at DESC
        )
        SELECT
          COALESCE(sm.id, s.id) AS id,
@@ -340,13 +336,12 @@ export async function getCabinetSessions(
          COALESCE(s.status, 'active') AS status
        FROM sessions s
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id
-       LEFT JOIN msg_counts mc ON mc.session_id = s.id
        LEFT JOIN last_assistant la ON la.session_id = s.id
        WHERE s.user_id = $1
          AND s.character_key IS NOT NULL
          AND TRIM(s.character_key) <> ''
          AND NOT (
-           COALESCE(mc.msg_count, 0) = 0
+           COALESCE(s.message_count, 0) = 0
            AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
            AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''
          )
@@ -355,20 +350,14 @@ export async function getCabinetSessions(
       [userId, limit, offset]
     ),
     query<{ cnt: string }>(
-      `WITH msg_counts AS (
-         SELECT session_id, COUNT(*)::int AS msg_count
-         FROM chat_messages
-         GROUP BY session_id
-       )
-       SELECT COUNT(*)::text AS cnt
+      `SELECT COUNT(*)::text AS cnt
        FROM sessions s
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id
-       LEFT JOIN msg_counts mc ON mc.session_id = s.id
        WHERE s.user_id = $1
          AND s.character_key IS NOT NULL
          AND TRIM(s.character_key) <> ''
          AND NOT (
-           COALESCE(mc.msg_count, 0) = 0
+           COALESCE(s.message_count, 0) = 0
            AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
            AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''
          )`,

@@ -127,6 +127,18 @@ export async function listOnboardingProfiles(limit = 50, offset = 0) {
 }
 
 export async function deleteUserAccount(id: string) {
+  const { rows } = await query<{ profile_user_id: string | null }>(
+    "SELECT profile_user_id FROM user_accounts WHERE id = $1",
+    [id]
+  );
+  const profileUserId = rows[0]?.profile_user_id ?? null;
+
+  if (profileUserId) {
+    const { deleteUserAccountCompletely } = await import("@/lib/user-deletion");
+    await deleteUserAccountCompletely(id, profileUserId);
+    return;
+  }
+
   await query("DELETE FROM user_accounts WHERE id = $1", [id]);
 }
 
@@ -310,7 +322,10 @@ export async function listSessions(limit = 50, offset = 0) {
   return rows;
 }
 
+const MAX_ADMIN_LIST_LIMIT = 100;
+
 export async function listChatMessages(limit = 100, offset = 0, search?: string) {
+  const cappedLimit = Math.min(Math.max(1, limit), MAX_ADMIN_LIST_LIMIT);
   if (search) {
     const { rows } = await query<{
       id: string;
@@ -323,7 +338,7 @@ export async function listChatMessages(limit = 100, offset = 0, search?: string)
       `SELECT id, session_id, character_id, role, content, created_at
        FROM chat_messages WHERE content ILIKE $1
        ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-      [`%${search}%`, limit, offset]
+      [`%${search}%`, cappedLimit, offset]
     );
     return rows;
   }
@@ -337,7 +352,7 @@ export async function listChatMessages(limit = 100, offset = 0, search?: string)
   }>(
     `SELECT id, session_id, character_id, role, content, created_at
      FROM chat_messages ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-    [limit, offset]
+    [cappedLimit, offset]
   );
   return rows;
 }

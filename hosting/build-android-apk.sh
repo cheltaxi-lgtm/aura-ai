@@ -44,14 +44,29 @@ ensure_android_sdk
 
 GRADLE="${APP_ROOT}/mobile/android/app/build.gradle"
 ENV_FILE="${APP_ROOT}/.env.local"
-CURRENT_CODE="$(grep -E 'versionCode [0-9]+' "${GRADLE}" | head -1 | grep -Eo '[0-9]+' || echo "1")"
-NEW_CODE="$((CURRENT_CODE + 1))"
+MANIFEST="${APP_ROOT}/public/releases/android-version.json"
+
+# versionCode source of truth: the max of every place a code can live.
+# build.gradle gets overwritten by each deploy from the dev machine, so on its
+# own it can go backwards and produce duplicate versionCodes (two different
+# APKs with the same number => installed apps never see the update).
+# .env.local and public/releases/ both survive deploys, so including them
+# guarantees the counter is strictly monotonic.
+GRADLE_CODE="$(grep -E 'versionCode [0-9]+' "${GRADLE}" | head -1 | grep -Eo '[0-9]+' || echo "0")"
+ENV_CODE="$(grep -E '^ANDROID_VERSION_CODE=' "${ENV_FILE}" 2>/dev/null | head -1 | cut -d= -f2 | tr -dc '0-9' || true)"
+MANIFEST_CODE="$(grep -Eo '"versionCode":[[:space:]]*[0-9]+' "${MANIFEST}" 2>/dev/null | grep -Eo '[0-9]+' || true)"
+BASE_CODE="${GRADLE_CODE:-0}"
+for c in "${ENV_CODE:-0}" "${MANIFEST_CODE:-0}"; do
+  if [ "${c:-0}" -gt "${BASE_CODE}" ]; then BASE_CODE="${c}"; fi
+done
+NEW_CODE="$((BASE_CODE + 1))"
+
 CURRENT_NAME="$(grep -E 'versionName "' "${GRADLE}" | head -1 | sed -E 's/.*versionName "([^"]+)".*/\1/')"
 NEW_NAME="${ANDROID_VERSION_NAME:-${CURRENT_NAME}}"
 
-sed -i "s/versionCode ${CURRENT_CODE}/versionCode ${NEW_CODE}/" "${GRADLE}"
-sed -i "s/versionName \"${CURRENT_NAME}\"/versionName \"${NEW_NAME}\"/" "${GRADLE}"
-echo ">>> Android versionCode ${CURRENT_CODE} -> ${NEW_CODE} (${NEW_NAME})"
+sed -i -E "s/versionCode [0-9]+/versionCode ${NEW_CODE}/" "${GRADLE}"
+sed -i -E "s/versionName \"[^\"]+\"/versionName \"${NEW_NAME}\"/" "${GRADLE}"
+echo ">>> Android versionCode ${BASE_CODE} -> ${NEW_CODE} (${NEW_NAME}) [gradle=${GRADLE_CODE} env=${ENV_CODE:-none} manifest=${MANIFEST_CODE:-none}]"
 
 upsert_env() {
   local key="$1"
@@ -79,10 +94,30 @@ npx cap sync android
 
 cd android
 chmod +x gradlew
-./gradlew assembleDebug --no-daemon
+
+KEYSTORE_PROPS="${APP_ROOT}/mobile/android/keystore.properties"
+APK_SRC=""
+if [ -n "${ANDROID_KEYSTORE_PATH:-}" ] && [ -f "${ANDROID_KEYSTORE_PATH}" ] \
+  && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] \
+  && [ -n "${ANDROID_KEY_ALIAS:-}" ] \
+  && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
+  cat > "${KEYSTORE_PROPS}" <<EOF
+storeFile=${ANDROID_KEYSTORE_PATH}
+storePassword=${ANDROID_KEYSTORE_PASSWORD}
+keyAlias=${ANDROID_KEY_ALIAS}
+keyPassword=${ANDROID_KEY_PASSWORD}
+EOF
+  echo ">>> Building signed release APK..."
+  ./gradlew assembleRelease --no-daemon
+  APK_SRC="app/build/outputs/apk/release/app-release.apk"
+else
+  echo ">>> WARN: release keystore not configured — building debug APK"
+  ./gradlew assembleDebug --no-daemon
+  APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
+fi
 
 mkdir -p "${APP_ROOT}/public/releases"
-cp -f app/build/outputs/apk/debug/app-debug.apk "${APK_OUT}"
+cp -f "${APK_SRC}" "${APK_OUT}"
 node "${APP_ROOT}/scripts/write-android-release-manifest.mjs"
 ls -lh "${APK_OUT}"
 echo "APK ready: ${APK_OUT}"

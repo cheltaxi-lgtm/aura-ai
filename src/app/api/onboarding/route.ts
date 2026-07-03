@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("Onboarding error at step:", step, detail, error);
     return NextResponse.json(
-      { error: "Ошибка сохранения профиля", code: "ONBOARDING_FAILED", step, detail },
+      { error: "Ошибка сохранения профиля", code: "ONBOARDING_FAILED", step },
       { status: 500 }
     );
   }

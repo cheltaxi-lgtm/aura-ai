@@ -60,6 +60,7 @@ import ShareButton from "@/components/share/ShareButton";
 import { chatSpreadToSharePayload } from "@/lib/share/payload-builders";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
+import { useNativeInputSync } from "@/lib/use-native-input-sync";
 
 interface MasterDisplay {
   name: string;
@@ -184,6 +185,7 @@ export default function ChatWindow({
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
+  const textInputRef = useNativeInputSync<HTMLTextAreaElement>(setInput);
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
   const isNumerologChat = characterId === "numerolog" && !readOnly;
   const [statusText, setStatusText] = useState("Считывает энергетику...");
@@ -198,7 +200,6 @@ export default function ChatWindow({
   const prevMessageCountRef = useRef(0);
   const streamingScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textInputRef = useRef<HTMLTextAreaElement>(null);
 
   const SCROLL_PIN_THRESHOLD = 96;
   const AUTO_SCROLL_MIN_INTERVAL_MS = 120;
@@ -1130,7 +1131,7 @@ export default function ChatWindow({
           disabled={inputBlocked}
           enterKeyHint="send"
           aria-label="Текст сообщения"
-          className="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-gray-500 outline-none disabled:opacity-50"
+          className="max-h-32 min-h-[44px] flex-1 touch-auto select-text resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-gray-500 outline-none disabled:opacity-50"
         />
 
         <button
