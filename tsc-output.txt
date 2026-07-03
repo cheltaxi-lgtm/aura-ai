@@ -1,0 +1,103 @@
+﻿src/app/api/intention-spread/route.ts(160,13): error TS7006: Parameter 'n' implicitly has an 'any' type.
+src/app/api/intention-spread/route.ts(180,22): error TS7006: Parameter 'name' implicitly has an 'any' type.
+src/app/auth/expert/register/page.tsx(2,10): error TS2305: Module '"next/navigation"' has no exported member 'redirect'.
+src/app/cabinet/page.tsx(5,10): error TS2305: Module '"next/navigation"' has no exported member 'useRouter'.
+src/app/cards/[slug]/page.tsx(3,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/cards/[slug]/page.tsx(51,45): error TS2345: Argument of type 'TarotCard | undefined' is not assignable to parameter of type 'TarotCard'.
+  Type 'undefined' is not assignable to type 'TarotCard'.
+src/app/cards/[slug]/page.tsx(53,37): error TS18048: 'card' is possibly 'undefined'.
+src/app/cards/[slug]/page.tsx(55,55): error TS18048: 'card' is possibly 'undefined'.
+src/app/cards/[slug]/page.tsx(60,5): error TS18048: 'card' is possibly 'undefined'.
+src/app/cards/[slug]/page.tsx(62,9): error TS18048: 'card' is possibly 'undefined'.
+src/app/cards/[slug]/page.tsx(63,42): error TS18048: 'card' is possibly 'undefined'.
+src/app/cards/[slug]/page.tsx(63,56): error TS18048: 'card' is possibly 'undefined'.
+src/app/cards/[slug]/page.tsx(70,61): error TS18048: 'card' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(3,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/cards/combinations/[slug]/page.tsx(43,26): error TS18048: 'combo' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(51,10): error TS18048: 'combo' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(51,29): error TS18048: 'combo' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(53,61): error TS18048: 'combo' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(54,42): error TS18048: 'combo' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(57,13): error TS18048: 'combo' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(61,13): error TS18048: 'combo' is possibly 'undefined'.
+src/app/cards/combinations/[slug]/page.tsx(65,13): error TS18048: 'combo' is possibly 'undefined'.
+src/app/expert/page.tsx(5,10): error TS2305: Module '"next/navigation"' has no exported member 'useRouter'.
+src/app/joint-reading/[token]/page.tsx(5,10): error TS2305: Module '"next/navigation"' has no exported member 'useParams'.
+src/app/joint-reading/[token]/page.tsx(5,21): error TS2305: Module '"next/navigation"' has no exported member 'useRouter'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(3,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(43,25): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(44,29): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(51,13): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(57,56): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(58,54): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(59,42): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(61,36): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(62,45): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(63,34): error TS18048: 'combo' is possibly 'undefined'.
+src/app/lenormand/sochetaniya/[slug]/page.tsx(67,12): error TS18048: 'combo' is possibly 'undefined'.
+src/app/numerology/[slug]/page.tsx(3,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/obryady/[slug]/page.tsx(3,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklad/[slug]/page.tsx(3,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklad/[slug]/page.tsx(36,15): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklad/[slug]/page.tsx(43,59): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklad/[slug]/page.tsx(44,61): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklad/[slug]/page.tsx(45,42): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklad/[slug]/page.tsx(50,12): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklad/[slug]/page.tsx(61,17): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklad/[slug]/page.tsx(61,83): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklad/[slug]/page.tsx(64,12): error TS18047: 'spread' is possibly 'null'.
+src/app/rasklady/[slug]/page.tsx(3,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklady/[slug]/page.tsx(60,28): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(61,35): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(62,43): error TS2345: Argument of type 'SpreadIntentDefinition | undefined' is not assignable to parameter of type 'SpreadIntentDefinition'.
+  Type 'undefined' is not assignable to type 'SpreadIntentDefinition'.
+src/app/rasklady/[slug]/page.tsx(65,43): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(67,30): error TS2345: Argument of type 'SpreadIntentDefinition | undefined' is not assignable to parameter of type 'SpreadIntentDefinition'.
+  Type 'undefined' is not assignable to type 'SpreadIntentDefinition'.
+src/app/rasklady/[slug]/page.tsx(68,42): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(74,48): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(76,13): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(84,64): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(86,61): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(87,42): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(103,37): error TS2345: Argument of type 'SpreadIntentDefinition | undefined' is not assignable to parameter of type 'SpreadIntentDefinition'.
+  Type 'undefined' is not assignable to type 'SpreadIntentDefinition'.
+src/app/rasklady/[slug]/page.tsx(110,37): error TS2345: Argument of type 'SpreadIntentDefinition | undefined' is not assignable to parameter of type 'SpreadIntentDefinition'.
+  Type 'undefined' is not assignable to type 'SpreadIntentDefinition'.
+src/app/rasklady/[slug]/page.tsx(122,13): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/[slug]/page.tsx(127,12): error TS18048: 'intent' is possibly 'undefined'.
+src/app/rasklady/budushchee-otnoshenij/page.tsx(1,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklady/budushchee-otnoshenij/page.tsx(16,25): error TS2322: Type 'SpreadHubConfig | undefined' is not assignable to type 'SpreadHubConfig'.
+  Type 'undefined' is not assignable to type 'SpreadHubConfig'.
+src/app/rasklady/chuvstva-i-myisli/page.tsx(1,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklady/chuvstva-i-myisli/page.tsx(16,25): error TS2322: Type 'SpreadHubConfig | undefined' is not assignable to type 'SpreadHubConfig'.
+  Type 'undefined' is not assignable to type 'SpreadHubConfig'.
+src/app/rasklady/kariera/page.tsx(1,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklady/kariera/page.tsx(16,25): error TS2322: Type 'SpreadHubConfig | undefined' is not assignable to type 'SpreadHubConfig'.
+  Type 'undefined' is not assignable to type 'SpreadHubConfig'.
+src/app/rasklady/lyubov/page.tsx(1,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklady/lyubov/page.tsx(16,25): error TS2322: Type 'SpreadHubConfig | undefined' is not assignable to type 'SpreadHubConfig'.
+  Type 'undefined' is not assignable to type 'SpreadHubConfig'.
+src/app/rasklady/vernost-i-doverie/page.tsx(1,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/rasklady/vernost-i-doverie/page.tsx(16,25): error TS2322: Type 'SpreadHubConfig | undefined' is not assignable to type 'SpreadHubConfig'.
+  Type 'undefined' is not assignable to type 'SpreadHubConfig'.
+src/app/share/[token]/page.tsx(2,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/share/[token]/page.tsx(55,11): error TS2339: Property 'payload' does not exist on type 'ShareSnapshot | null'.
+src/app/share/[token]/page.tsx(55,20): error TS2339: Property 'kind' does not exist on type 'ShareSnapshot | null'.
+src/app/share/[token]/page.tsx(57,37): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/app/statyi/[slug]/page.tsx(5,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/app/statyi/[slug]/page.tsx(91,13): error TS18048: 'article' is possibly 'undefined'.
+src/app/statyi/[slug]/page.tsx(97,25): error TS18048: 'article' is possibly 'undefined'.
+src/app/statyi/[slug]/page.tsx(99,29): error TS18048: 'article' is possibly 'undefined'.
+src/app/statyi/[slug]/page.tsx(113,58): error TS18048: 'article' is possibly 'undefined'.
+src/app/statyi/[slug]/page.tsx(115,44): error TS18048: 'article' is possibly 'undefined'.
+src/app/statyi/[slug]/page.tsx(119,10): error TS18048: 'article' is possibly 'undefined'.
+src/app/statyi/[slug]/page.tsx(135,14): error TS18048: 'article' is possibly 'undefined'.
+src/components/admin/AdminShell.tsx(4,10): error TS2305: Module '"next/navigation"' has no exported member 'usePathname'.
+src/components/admin/AdminShell.tsx(4,23): error TS2305: Module '"next/navigation"' has no exported member 'useRouter'.
+src/components/AppShellBottomNav.tsx(4,10): error TS2305: Module '"next/navigation"' has no exported member 'usePathname'.
+src/components/AuthForm.tsx(4,10): error TS2305: Module '"next/navigation"' has no exported member 'useRouter'.
+src/components/seo/SpreadHubPage.tsx(2,10): error TS2305: Module '"next/navigation"' has no exported member 'notFound'.
+src/lib/age-gate-cookie.ts(2,10): error TS2305: Module '"next/headers"' has no exported member 'cookies'.
+src/lib/auth.ts(3,10): error TS2305: Module '"next/headers"' has no exported member 'cookies'.
+src/lib/session-claim.ts(2,10): error TS2305: Module '"next/headers"' has no exported member 'cookies'.

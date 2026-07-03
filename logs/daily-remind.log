@@ -1,0 +1,4 @@
+[2026-07-02T06:00:01+00:00] daily-reading-remind MSK hour=9: {"hourMsk":9,"inApp":14,"email":0}
+[2026-07-02T07:00:01+00:00] daily-reading-remind MSK hour=10: {"hourMsk":10,"inApp":0,"email":0}
+/bin/sh: 1: /opt/aura-ai/proxmox-setup/cron-daily-reading-remind.sh: Permission denied
+[2026-07-02T09:00:01+00:00] daily-reading-remind MSK hour=12: {"hourMsk":12,"inApp":0,"email":0}
