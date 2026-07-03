@@ -3,13 +3,15 @@ import Link from "next/link";
 import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
 import { RITUAL_PAGE_SLUGS } from "@/lib/ritual-recommendations";
 import { BRAND_NAME } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildSeoMetadata({
   title: `Обряды Zovus — энергетические практики с мастерами | ${BRAND_NAME}`,
   description:
     "Расклад показывает, что происходит. Обряд помогает сделать следующий шаг: притяжение, достаток, защита, удача, отпускание.",
-};
+  path: "/obryady",
+});
 
 const RITUAL_ORDER: RitualType[] = ["love", "money", "protection", "luck", "release"];
 
@@ -36,7 +38,7 @@ export default function ObryadyPage() {
               <p className="text-2xl">{ritual.emoji}</p>
               <p className="mt-2 font-display text-lg text-white">{ritual.label}</p>
               <p className="mt-2 text-sm text-white/60">{ritual.desc}</p>
-              <p className="mt-3 text-xs text-white/40">{ritual.cost} ₽</p>
+              <p className="mt-3 text-xs text-white/40">от {ritual.cost} ᚢ</p>
             </Link>
           );
         })}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" fill="none">
+  <circle cx="240" cy="240" r="210" stroke="#E8C77E" stroke-opacity="0.14" stroke-width="1"/>
+  <circle cx="240" cy="240" r="168" stroke="#B794F6" stroke-opacity="0.18" stroke-width="0.8" stroke-dasharray="6 10"/>
+  <circle cx="240" cy="240" r="124" stroke="#E8C77E" stroke-opacity="0.12" stroke-width="0.7"/>
+  <path d="M240 30 L240 54 M240 426 L240 450 M30 240 L54 240 M426 240 L450 240" stroke="#E8C77E" stroke-opacity="0.22" stroke-width="0.8" stroke-linecap="round"/>
+  <path d="M96 96 L112 112 M368 368 L384 384 M384 96 L368 112 M96 384 L112 368" stroke="#C4B5FD" stroke-opacity="0.16" stroke-width="0.7" stroke-linecap="round"/>
+  <circle cx="240" cy="30" r="3" fill="#E8C77E" fill-opacity="0.55"/>
+  <circle cx="450" cy="240" r="2.5" fill="#B794F6" fill-opacity="0.5"/>
+  <circle cx="240" cy="450" r="2.5" fill="#E8C77E" fill-opacity="0.45"/>
+  <circle cx="30" cy="240" r="2.5" fill="#C4B5FD" fill-opacity="0.45"/>
+  <path d="M240 118 C286 118 322 154 322 200 C322 246 286 282 240 282 C194 282 158 246 158 200 C158 154 194 118 240 118 Z" stroke="#E8C77E" stroke-opacity="0.1" stroke-width="0.8"/>
+</svg>

@@ -38,6 +38,8 @@ import {
 import { buildSessionSpreadCards, resolveSpreadSymbols } from "@/lib/intention-draw";
 import { toSessionTopicId } from "@/lib/session-topics";
 import { postIntentionSpreadRequest, pollIntentionSpreadReading } from "@/lib/intention-spread-client";
+import { getJointReadingRole, clearJointReadingToken, resolveJointReadingToken } from "@/lib/joint-reading-storage";
+import { postJointReadingComplete } from "@/lib/joint-reading-client";
 import { waitForSpreadReadingRitual } from "@/components/SpreadReadingRitualPanel";
 import { generateId } from "@/lib/id";
 import {
@@ -1461,6 +1463,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             intention,
             spreadId,
             sessionId: chatSessionId,
+            ...(resolveJointReadingToken() ? { jointToken: resolveJointReadingToken() } : {}),
           });
 
           if (response.status === 402) {
@@ -1530,12 +1533,20 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               : "";
           }
 
+          const jointSaved = Boolean((data as { jointSaved?: boolean }).jointSaved);
+          const jointError =
+            typeof (data as { jointError?: string }).jointError === "string"
+              ? (data as { jointError?: string }).jointError
+              : undefined;
+
           return {
             kind: "ok" as const,
             readingText,
             cards,
             system,
             intentionCardsKey,
+            jointSaved,
+            jointError,
           };
               })(),
               waitForSpreadReadingRitual(),
@@ -1553,7 +1564,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             return;
           }
 
-          const { readingText, cards, system, intentionCardsKey } = spreadResult;
+          const { readingText, cards, system, intentionCardsKey, jointSaved, jointError } = spreadResult;
 
           if (intention !== "life_death" && !readingText) {
             closeSpreadReadingRitual();
@@ -1582,6 +1593,43 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             });
           }
           void refreshSavedReadings();
+
+          const jointToken = resolveJointReadingToken();
+          if (jointToken) {
+            const jointRole = getJointReadingRole() ?? "initiator";
+            let jointFailureMessage: string | undefined;
+            if (readingText && !jointSaved) {
+              const positionLabels = resolveSpreadPositions(spreadId, intention as SessionTopicId).map(
+                (p) => p.label
+              );
+              const fallback = await postJointReadingComplete(jointToken, {
+                reading: readingText,
+                cards: cards.map((c, i) => ({
+                  name: c.name,
+                  position: positionLabels[i] ?? c.name,
+                })),
+                sessionId: chatSessionId,
+                characterKey: masterId,
+                role: jointRole,
+              });
+              if (!fallback.ok) {
+                jointFailureMessage = fallback.error || jointError;
+              }
+            } else if (!readingText) {
+              jointFailureMessage = "Не удалось сохранить ваш расклад для совместного приглашения.";
+            }
+            clearJointReadingToken();
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            readingInFlightRef.current = false;
+            deps.skipNextReadingRef.current = false;
+            deps.pendingNewChatThreadRef.current = false;
+            const jointRedirect = jointFailureMessage
+              ? `/joint-reading/${encodeURIComponent(jointToken)}?jointError=${encodeURIComponent(jointFailureMessage)}`
+              : `/joint-reading/${encodeURIComponent(jointToken)}`;
+            window.location.assign(jointRedirect);
+            return;
+          }
         } catch {
           try {
             const cardNames =
@@ -2366,7 +2414,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
       try {
         if (!session?.offline) {
-          chatSessionId = await ensureMasterChatSessionId(characterKey);
+          await archiveActiveMasterSession(characterKey);
+          deps.setConsultationSessionId(null);
+          deps.consultationSessionIdRef.current = null;
+          deps.setConsultationReadOnly(false);
+          deps.archiveSessionIdRef.current = null;
+          chatSessionId = await ensureMasterChatSessionId(characterKey, { forceNew: true });
         }
 
         await bindSessionToMaster(characterKey, chatSessionId);
@@ -2398,6 +2451,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               customQuestion: intention === "custom" ? customQuestion?.trim() : undefined,
               cardNames: cards,
               sessionId: chatSessionId,
+              ...(resolveJointReadingToken() ? { jointToken: resolveJointReadingToken() } : {}),
             });
 
             if (response.status === 402) {
@@ -2419,6 +2473,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             if (!response.ok) throw new Error("intention_spread_failed");
 
             const data = await response.json();
+            if (typeof data.sessionId === "string" && data.sessionId) {
+              chatSessionId = data.sessionId;
+              deps.setConsultationSessionId(data.sessionId);
+              deps.consultationSessionIdRef.current = data.sessionId;
+              deps.setConsultationReadOnly(false);
+              deps.archiveSessionIdRef.current = null;
+              await bindSessionToMaster(characterKey, data.sessionId);
+            }
             const spreadCardsFromData = (data.cards ?? []) as SpreadSymbol[];
             const cardNamesForClean = hasCompleteSpread(
               spreadCardsFromData.map((c) => c.name),
@@ -2461,12 +2523,21 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               readingText = polled ? resolveClientReadingText(polled, cardNamesForClean) : "";
             }
 
+            const jointSaved = Boolean((data as { jointSaved?: boolean }).jointSaved);
+            const jointError =
+              typeof (data as { jointError?: string }).jointError === "string"
+                ? (data as { jointError?: string }).jointError
+                : undefined;
+
             return {
               kind: "ok" as const,
               readingText,
               spreadCards,
               system,
               intentionCardsKey,
+              jointSaved,
+              jointError,
+              sessionId: typeof data.sessionId === "string" ? data.sessionId : chatSessionId,
             };
           })(),
           waitForSpreadReadingRitual(),
@@ -2481,7 +2552,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           return;
         }
 
-        const { readingText, spreadCards, system, intentionCardsKey } = spreadResult;
+        const { readingText, spreadCards, system, intentionCardsKey, jointSaved, jointError, sessionId: spreadSessionId } =
+          spreadResult;
 
         if (intention !== "life_death" && !readingText) {
           closeSpreadReadingRitual();
@@ -2510,6 +2582,41 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           });
         }
         void refreshSavedReadings();
+        void deps.refreshSessionsList(characterKey);
+
+        const jointToken = resolveJointReadingToken();
+        if (jointToken) {
+          const jointRole = getJointReadingRole() ?? "initiator";
+          let jointFailureMessage: string | undefined;
+          if (readingText && !jointSaved) {
+            const positionLabels = resolveSpreadPositions(spreadId, intention).map((p) => p.label);
+            const fallback = await postJointReadingComplete(jointToken, {
+              reading: readingText,
+              cards: spreadCards.map((c, i) => ({
+                name: c.name,
+                position: positionLabels[i] ?? c.name,
+              })),
+              sessionId: spreadSessionId ?? chatSessionId,
+              characterKey,
+              role: jointRole,
+            });
+            if (!fallback.ok) {
+              jointFailureMessage = fallback.error || jointError;
+            }
+          } else if (!readingText) {
+            jointFailureMessage = "Не удалось сохранить ваш расклад для совместного приглашения.";
+          }
+          clearJointReadingToken();
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+          readingInFlightRef.current = false;
+          deps.skipNextReadingRef.current = false;
+          const jointRedirect = jointFailureMessage
+            ? `/joint-reading/${encodeURIComponent(jointToken)}?jointError=${encodeURIComponent(jointFailureMessage)}`
+            : `/joint-reading/${encodeURIComponent(jointToken)}`;
+          window.location.assign(jointRedirect);
+          return;
+        }
       } catch {
         try {
           const cardNames =
@@ -2569,10 +2676,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         readingInFlightRef.current = false;
         deps.skipNextReadingRef.current = false;
         deps.pendingNewChatThreadRef.current = false;
+        void deps.refreshSessionsList(characterKey);
       }
     },
     [
       bindSessionToMaster,
+      archiveActiveMasterSession,
+      ensureMasterChatSessionId,
       session?.offline,
       session?.sessionId,
       refreshSavedReadings,

@@ -21,12 +21,22 @@ async function mustInclude(rel, needle) {
 const checks = [
   () => mustExist("mobile/capacitor.config.ts"),
   () => mustExist("mobile/android/app/src/main/AndroidManifest.xml"),
+  () => mustExist("src/components/AppDownloadButton.tsx"),
+  () => mustExist("src/components/seo/AndroidDownloadBlock.tsx"),
+  () => mustInclude("src/components/AppTopHeader.tsx", "AppDownloadButton"),
   () => mustExist("src/components/AppShellBridge.tsx"),
   () => mustExist("src/app/app/page.tsx"),
   () => mustExist("src/app/api/app/android-version/route.ts"),
   () => mustExist(".github/workflows/android-debug.yml"),
   () => mustInclude("mobile/capacitor.config.ts", "ru.zovus.app"),
   () => mustInclude("mobile/android/app/src/main/AndroidManifest.xml", "zovus.ru"),
+  () => mustInclude("mobile/android/app/src/main/AndroidManifest.xml", "android.permission.CAMERA"),
+  () => mustExist("src/lib/app-update.ts"),
+  () => mustExist("src/components/AppUpdatePrompt.tsx"),
+  () => mustInclude("mobile/android/app/src/main/AndroidManifest.xml", "REQUEST_INSTALL_PACKAGES"),
+  () => mustInclude("mobile/package.json", "@capacitor/camera"),
+  () => mustInclude("mobile/package.json", "@capacitor/filesystem"),
+  () => mustExist("src/lib/app-camera.ts"),
   () => mustInclude(".github/workflows/android-debug.yml", "node-version: 22"),
 ];
 

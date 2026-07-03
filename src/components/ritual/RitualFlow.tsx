@@ -36,6 +36,8 @@ interface Props {
   balance?: number;
   isUnlimited?: boolean;
   initialRitualId?: string | null;
+  /** Auto-start this ritual type when opening (e.g. from daily upsell). */
+  initialRitualType?: RitualType | null;
   onClose: () => void;
   onBalanceChange?: (balance: number) => void;
 }
@@ -48,6 +50,7 @@ export default function RitualFlow({
   balance = 0,
   isUnlimited = false,
   initialRitualId,
+  initialRitualType,
   onClose,
   onBalanceChange,
 }: Props) {
@@ -117,6 +120,11 @@ export default function RitualFlow({
     setStep("questions");
   };
 
+  useEffect(() => {
+    if (!isOpen || !initialRitualType || initialRitualId || step !== "entry") return;
+    void handleStartType(initialRitualType);
+  }, [isOpen, initialRitualType, initialRitualId, step]);
+
   const handleSpreadComplete = async (
     drawnCards: Array<{ name: string; position: string }>
   ) => {
@@ -137,7 +145,7 @@ export default function RitualFlow({
     setStep("payment");
   };
 
-  const handlePay = async () => {
+  const handlePay = useCallback(async () => {
     if (!ritualId) return;
     setPaying(true);
     try {
@@ -160,16 +168,37 @@ export default function RitualFlow({
     } finally {
       setPaying(false);
     }
-  };
+  }, [ritualId, localBalance, cost, openPaywall, onBalanceChange]);
 
-  const handleGenerated = async () => {
+  const handleGenerated = useCallback(async () => {
     if (!ritualId) return;
     const r = await loadRitual(ritualId);
     if (r) {
       setRitual(r);
       setStep("card");
     }
-  };
+  }, [ritualId, loadRitual]);
+
+  const handleGenerationFailed = useCallback(
+    async (opts?: { refunded?: boolean }) => {
+      if (opts?.refunded && ritualId) {
+        try {
+          const res = await fetch("/api/runes/balance", { credentials: "include" });
+          if (res.ok) {
+            const data = await res.json();
+            if (typeof data.balance === "number") {
+              setLocalBalance(data.balance);
+              onBalanceChange?.(data.balance);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      setStep("payment");
+    },
+    [ritualId, onBalanceChange]
+  );
 
   if (!isOpen) return null;
 
@@ -245,7 +274,8 @@ export default function RitualFlow({
               <RitualGenerating
                 characterKey={characterKey}
                 ritualId={ritualId}
-                onReady={() => void handleGenerated()}
+                onReady={handleGenerated}
+                onFailed={handleGenerationFailed}
               />
             )}
 

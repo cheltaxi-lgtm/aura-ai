@@ -88,7 +88,7 @@ export default function DeckCard({
       const trimmed = src?.trim();
       if (trimmed && trimmed !== backPath) return trimmed;
     }
-    return deckFallback !== backPath ? deckFallback : "";
+    return deckFallback || "";
   };
 
   const hasExplicitArt = Boolean(
@@ -97,10 +97,17 @@ export default function DeckCard({
   const imageSrc = faceDown
     ? backPath
     : pickArtPath(imagePathProp, card.imagePath, resolved.imagePath, deckFallback);
+  const isSvgFace = Boolean(imageSrc && imageSrc.endsWith(".svg"));
+  const imageFitClass =
+    effectiveSystem === "lenormand" || isSvgFace
+      ? "lux-tarot-card__image object-contain"
+      : "lux-tarot-card__image object-cover";
   const faceLabel = originalName?.trim() || resolved.originalName?.trim() || spreadSymbol.name;
   const showDetectedFace =
     (detectedOnly || resolved.detectedOnly) && !faceDown && !hasExplicitArt;
   const showNumerologyFace = effectiveSystem === "numerology" && !faceDown && !showDetectedFace;
+  const showLenormandFace =
+    effectiveSystem === "lenormand" && !faceDown && !showDetectedFace && !imageSrc;
   const corner = faceDown ? "✦" : symbolCornerLabel(effectiveSystem, spreadSymbol);
   const kindLabel = faceDown ? "" : symbolKindLabel(effectiveSystem, spreadSymbol);
 
@@ -145,16 +152,32 @@ export default function DeckCard({
                   {spreadSymbol.name}
                 </span>
               </div>
+            ) : showLenormandFace ? (
+              <div className="lux-detected-card-face lux-detected-card-face--lenormand" aria-label={faceLabel}>
+                <span className="lux-detected-card-face__glyph font-display text-2xl text-aura-champagne" aria-hidden>
+                  ✦
+                </span>
+                <span className="lux-detected-card-face__name">{faceLabel}</span>
+              </div>
             ) : imageSrc ? (
               <>
-                <Image
-                  src={imageSrc}
-                  alt={faceDown ? "Рубашка" : resolved.name}
-                  fill
-                  unoptimized={imageSrc.startsWith("/decks/")}
-                  sizes={DECK_IMAGE_SIZES[size]}
-                  className="lux-tarot-card__image object-cover"
-                />
+                {isSvgFace ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imageSrc}
+                    alt={faceDown ? "Рубашка" : resolved.name}
+                    className={`${imageFitClass} absolute inset-0 h-full w-full`}
+                  />
+                ) : (
+                  <Image
+                    src={imageSrc}
+                    alt={faceDown ? "Рубашка" : resolved.name}
+                    fill
+                    unoptimized={imageSrc.startsWith("/decks/")}
+                    sizes={DECK_IMAGE_SIZES[size]}
+                    className={imageFitClass}
+                  />
+                )}
                 <div className="lux-tarot-card__image-vignette" aria-hidden />
               </>
             ) : (

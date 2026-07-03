@@ -43,6 +43,9 @@ import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
 import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
+import CabinetDailyNotifications from "@/components/cabinet/CabinetDailyNotifications";
+import CabinetAppVersion from "@/components/cabinet/CabinetAppVersion";
+import CabinetJointReadings from "@/components/cabinet/CabinetJointReadings";
 import CabinetMemoryFacts from "@/components/cabinet/CabinetMemoryFacts";
 import CabinetSupportLink from "@/components/cabinet/CabinetSupportLink";
 import RitualFlow from "@/components/ritual/RitualFlow";
@@ -63,6 +66,7 @@ import type {
 } from "@/lib/cabinet-data";
 
 interface CabinetResponse {
+  needsOnboarding?: boolean;
   profile: CabinetProfile;
   stats: CabinetStats;
   achievements: { earned: CabinetAchievementEarned[]; locked: CabinetAchievementLocked[] };
@@ -112,7 +116,7 @@ export default function CabinetPage() {
       { credentials: "include" }
     );
     if (res.status === 401) {
-      router.replace("/auth/user/login?returnTo=/cabinet");
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       return null;
     }
     if (!res.ok) {
@@ -214,10 +218,6 @@ export default function CabinetPage() {
         prev
           ? {
               ...prev,
-              stats: {
-                ...prev.stats,
-                totalSessions: Math.max(0, prev.stats.totalSessions - 1),
-              },
               sessionsTotal: Math.max(0, prev.sessionsTotal - 1),
             }
           : prev
@@ -299,12 +299,6 @@ export default function CabinetPage() {
       prev
         ? {
             ...prev,
-            stats: {
-              totalSessions: 0,
-              favoriteMaster: null,
-              daysWithUs: prev.stats.daysWithUs,
-              totalCards: 0,
-            },
             sessionsTotal: 0,
             diaryPreview: [],
             photoSpreads: [],
@@ -411,6 +405,9 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetSupportLink />
+            <CabinetJointReadings />
+            <CabinetDailyNotifications />
+            <CabinetAppVersion />
             <CabinetDangerZone onPurged={handlePurgeAll} />
             <CabinetDeleteAccount />
           </div>
@@ -560,6 +557,22 @@ export default function CabinetPage() {
             {error}
           </div>
         )}
+
+        {data?.needsOnboarding ? (
+          <div className="mb-6 rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-4 text-sm text-aura-champagne">
+            <p className="font-medium text-white">Завершите регистрацию</p>
+            <p className="mt-1 text-white/70">
+              Чтобы открыть кабинет, пройдите короткий старт на главной — выберите карты и заполните профиль.
+            </p>
+            <button
+              type="button"
+              className="btn-luxe btn-luxe--sm btn-luxe--gold mt-4"
+              onClick={() => navigateToHomeSpreadFlow()}
+            >
+              На главную
+            </button>
+          </div>
+        ) : null}
 
         {loading ? (
           <div className="space-y-6">{renderTabSkeleton()}</div>

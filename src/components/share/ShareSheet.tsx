@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Share2,
@@ -10,17 +10,33 @@ import {
   MoreHorizontal,
   Check,
   Loader2,
+  RefreshCw,
+  Download,
 } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import SharePreviewCard from "@/components/share/SharePreviewCard";
-import { copyToClipboard, openShareChannel, shareViaNative } from "@/lib/share/channels-client";
-import { buildShareLinkMessage, buildSharePageUrl } from "@/lib/share/build-url";
-import { trackShareChannel, trackShareOpen } from "@/lib/share/metrika";
-import type { ShareChannel, SharePayload } from "@/lib/share/types";
+import {
+  copyToClipboard,
+  downloadShareOgImage,
+  openShareChannel,
+  shareViaNative,
+} from "@/lib/share/channels-client";
+import { buildSharePageUrl } from "@/lib/share/build-url";
+import {
+  trackShareChannel,
+  trackShareCopyFail,
+  trackShareCopySuccess,
+  trackShareCreateFail,
+  trackShareCreateSuccess,
+  trackShareOpen,
+} from "@/lib/share/metrika";
+import type { ShareChannel, SharePayload, SharePublicPayload } from "@/lib/share/types";
+import type { ShareChannelSettings } from "@/lib/share/settings";
 
 interface Props {
   payload: SharePayload | null;
   onClose: () => void;
+  channels?: ShareChannelSettings;
 }
 
 type ChannelDef = {
@@ -29,31 +45,39 @@ type ChannelDef = {
   icon: typeof Send;
 };
 
-const CHANNELS: ChannelDef[] = [
+const ALL_CHANNELS: ChannelDef[] = [
   { id: "telegram", label: "Telegram", icon: Send },
   { id: "vk", label: "VK", icon: Share2 },
   { id: "native", label: "Ещё", icon: MoreHorizontal },
   { id: "copy", label: "Ссылка", icon: Copy },
+  { id: "download", label: "PNG", icon: Download },
 ];
 
-export default function ShareSheet({ payload, onClose }: Props) {
+const DEFAULT_CHANNELS: ShareChannelSettings = {
+  telegram: true,
+  vk: true,
+  native: true,
+  copy: true,
+  download: false,
+};
+
+export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNELS }: Props) {
   const [token, setToken] = useState<string | null>(null);
-  const [savedPayload, setSavedPayload] = useState<SharePayload | null>(null);
+  const [savedPayload, setSavedPayload] = useState<SharePublicPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busyChannel, setBusyChannel] = useState<ShareChannel | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
-  useEffect(() => {
-    if (!payload) {
-      setToken(null);
-      setSavedPayload(null);
-      setError(null);
-      setStatus(null);
-      return;
-    }
+  const createSnapshot = (nextPayload: SharePayload) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const requestId = ++requestIdRef.current;
 
-    trackShareOpen(payload.kind);
+    trackShareOpen(nextPayload.kind);
     setLoading(true);
     setError(null);
     setToken(null);
@@ -62,23 +86,27 @@ export default function ShareSheet({ payload, onClose }: Props) {
     fetch("/api/share", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(nextPayload),
+      signal: controller.signal,
     })
       .then(async (res) => {
         const data = (await res.json()) as {
           token?: string;
-          payload?: SharePayload;
+          payload?: SharePublicPayload;
           error?: string;
         };
         if (!res.ok || !data.token) throw new Error(data.error ?? "share_failed");
+        if (requestId !== requestIdRef.current) return;
 
         setToken(data.token);
+        trackShareCreateSuccess(nextPayload.kind);
 
         const snapRes = await fetch(`/api/share/${encodeURIComponent(data.token)}`, {
           cache: "no-store",
+          signal: controller.signal,
         });
         if (snapRes.ok) {
-          const snap = (await snapRes.json()) as { payload?: SharePayload };
+          const snap = (await snapRes.json()) as { payload?: SharePublicPayload };
           if (snap.payload) {
             setSavedPayload(snap.payload);
             return;
@@ -86,11 +114,35 @@ export default function ShareSheet({ payload, onClose }: Props) {
         }
         if (data.payload) setSavedPayload(data.payload);
       })
-      .catch(() => setError("Не удалось создать ссылку для шаринга"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if ((err as Error)?.name === "AbortError") return;
+        if (requestId !== requestIdRef.current) return;
+        trackShareCreateFail(nextPayload.kind);
+        setError("Не удалось создать ссылку для шаринга");
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    if (!payload) {
+      abortRef.current?.abort();
+      setToken(null);
+      setSavedPayload(null);
+      setError(null);
+      setStatus(null);
+      return;
+    }
+    createSnapshot(payload);
+    return () => abortRef.current?.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload]);
 
-  const sharePayload = savedPayload ?? payload;
+  const sharePayload = savedPayload;
+  const cleanUrl = token ? buildSharePageUrl(token) : "";
+
+  const visibleChannels = ALL_CHANNELS.filter((ch) => channels[ch.id] !== false);
 
   const showStatus = (message: string) => {
     setStatus(message);
@@ -103,12 +155,20 @@ export default function ShareSheet({ payload, onClose }: Props) {
     try {
       const title = sharePayload.title;
       const masterName = sharePayload.masterName;
-      const shareUrl = buildSharePageUrl(token, channel);
 
       if (channel === "copy") {
-        const ok = await copyToClipboard(buildShareLinkMessage(title, shareUrl, masterName));
+        const ok = await copyToClipboard(cleanUrl);
         showStatus(ok ? "Ссылка скопирована" : "Не удалось скопировать");
+        if (ok) trackShareCopySuccess(sharePayload.kind);
+        else trackShareCopyFail(sharePayload.kind);
         trackShareChannel("copy", sharePayload.kind);
+        return;
+      }
+
+      if (channel === "download") {
+        const ok = await downloadShareOgImage(token, `zovus-${token}.png`);
+        showStatus(ok ? "Картинка сохранена" : "Не удалось сохранить PNG");
+        trackShareChannel("download", sharePayload.kind);
         return;
       }
 
@@ -162,21 +222,36 @@ export default function ShareSheet({ payload, onClose }: Props) {
                 {loading ? (
                   <div className="share-sheet__loading">
                     <Loader2 className="h-8 w-8 animate-spin text-aura-gold" />
-                    <p className="text-sm text-white/50">Готовим карточку…</p>
+                    <p className="text-sm text-white/50">Создаём ссылку…</p>
                   </div>
                 ) : error ? (
-                  <p className="share-sheet__error">{error}</p>
+                  <div className="share-sheet__error-wrap">
+                    <p className="share-sheet__error">{error}</p>
+                    <button
+                      type="button"
+                      className="share-sheet__retry"
+                      onClick={() => payload && createSnapshot(payload)}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Повторить
+                    </button>
+                  </div>
                 ) : sharePayload && token ? (
                   <SharePreviewCard
                     token={token}
                     title={sharePayload.title}
                     masterName={sharePayload.masterName}
+                    cleanUrl={cleanUrl}
                   />
                 ) : null}
               </div>
 
-              <div className="share-sheet__channels share-sheet__channels--4">
-                {CHANNELS.map(({ id, label, icon: Icon }, i) => (
+              <div
+                className={`share-sheet__channels ${
+                  visibleChannels.length >= 5 ? "share-sheet__channels--5" : "share-sheet__channels--4"
+                }`}
+              >
+                {visibleChannels.map(({ id, label, icon: Icon }, i) => (
                   <motion.button
                     key={id}
                     type="button"

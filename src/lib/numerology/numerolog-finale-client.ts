@@ -14,6 +14,30 @@ const LLM_REFUSAL_RE = [
   /暂不(?:支持|提供)/i,
 ];
 
+/** LLM sometimes asks for spread numbers that are already in engine facts — reject that output. */
+export function deniesHavingSpreadNumbers(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return (
+    /не\s+(?:хватает|передали|отобразил)/i.test(t) ||
+    /(?:назови|напиши|сообщи)\s+(?:мне\s+)?(?:эти\s+)?три\s+числ/i.test(t) ||
+    /позици(?:и|й)\s+расклада\s+не/i.test(t) ||
+    /жду\s+чисел/i.test(t) ||
+    /без\s+них\s+любое\s+толкование/i.test(t)
+  );
+}
+
+/** Finale must reference the drawn spread, not only destiny/soul numbers from the matrix. */
+export function spreadFinaleMatchesNumbers(finale: string, spreadNumbers: string[]): boolean {
+  const nums = spreadNumbers
+    .slice(0, 3)
+    .map((n) => n.replace(/\D/g, ""))
+    .filter(Boolean);
+  if (nums.length < 3) return true;
+  const mentions = nums.filter((n) => new RegExp(`\\b${n}\\b`).test(finale)).length;
+  return mentions >= 2;
+}
+
 /** Reject empty, non-Russian, CJK or generic model-refusal outputs. */
 export function isUnusableRussianLlmOutput(text: string, minCyrillic = 12): boolean {
   const t = text.trim();

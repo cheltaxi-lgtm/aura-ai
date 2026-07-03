@@ -9,9 +9,12 @@ export type SpreadId =
   | "triplet-love"
   | "yes-no"
   | "celtic-cross"
-  | "daily-extended";
+  | "daily-extended"
+  | "year-ahead"
+  | "compatibility-12"
+  | "lenormand-line";
 
-export type SpreadLayout = "row" | "cross5" | "celtic10" | "grid" | "grid7";
+export type SpreadLayout = "row" | "cross5" | "celtic10" | "grid" | "grid7" | "grid12";
 
 export interface SpreadPosition {
   key: string;

@@ -1,11 +1,13 @@
 "use client";
 
 import BrandMark from "@/components/BrandMark";
-import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
+import { BRAND_NAME, BRAND_TAGLINE, BRAND_WORDMARK } from "@/lib/brand";
 import { navigateHomeHard } from "@/lib/navigate-home";
 
 interface BrandLogoProps {
   showTagline?: boolean;
+  /** Small beta label — project is in active development. */
+  showBeta?: boolean;
   className?: string;
   markSize?: number;
   titleClassName?: string;
@@ -18,6 +20,7 @@ interface BrandLogoProps {
 
 export default function BrandLogo({
   showTagline = true,
+  showBeta = true,
   className = "",
   markSize = 28,
   titleClassName = "font-display text-xl font-bold tracking-wider text-white neon-text sm:text-2xl",
@@ -27,17 +30,42 @@ export default function BrandLogo({
 }: BrandLogoProps) {
   const wordmarkClass = iconOnlyOnMobile ? "hidden min-w-0 sm:block" : "min-w-0";
 
+  const betaBadge = showBeta ? (
+    <span
+      className="brand-beta-badge"
+      title="Проект в активной доработке — функции и интерфейс могут меняться"
+    >
+      beta
+    </span>
+  ) : null;
+
+  const mobileBeta =
+    showBeta && iconOnlyOnMobile ? (
+      <span
+        className="brand-beta-badge brand-beta-badge--mobile sm:hidden"
+        title="Проект в активной доработке — функции и интерфейс могут меняться"
+      >
+        beta
+      </span>
+    ) : null;
+
   const content = (
     <>
-      <BrandMark size={markSize} className="shrink-0 pointer-events-none" />
-      <div className={`${wordmarkClass} pointer-events-none`}>
-        <span className={titleClassName}>{BRAND_NAME}</span>
-        {showTagline ? <span className={taglineClassName}>{BRAND_TAGLINE}</span> : null}
-      </div>
+      <span className="brand-logo__lockup inline-flex min-w-0 items-center">
+        <BrandMark size={markSize} className="shrink-0 pointer-events-none" />
+        {mobileBeta}
+        <span className={`${wordmarkClass} inline-flex items-center`}>
+          <span className={`brand-logo__wordmark ${titleClassName}`}>{BRAND_WORDMARK}</span>
+          {betaBadge}
+        </span>
+      </span>
+      {showTagline ? (
+        <span className={`${wordmarkClass} ${taglineClassName} pointer-events-none`}>{BRAND_TAGLINE}</span>
+      ) : null}
     </>
   );
 
-  const wrapperClass = `flex min-w-0 shrink items-center gap-1.5 sm:gap-2 ${className}`;
+  const wrapperClass = `flex min-w-0 shrink items-center gap-0 ${className}`;
 
   if (linkToHome) {
     return (

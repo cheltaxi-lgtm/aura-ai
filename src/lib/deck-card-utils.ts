@@ -108,6 +108,7 @@ export const DECK_ACCENT_CLASS: Record<DeckSystem, string> = {
   slavic: "lux-deck-card--slavic",
   astrology: "lux-deck-card--astrology",
   numerology: "lux-deck-card--numerology",
+  lenormand: "lux-deck-card--lenormand",
 };
 
 export const DECK_SYSTEM_LABEL: Record<DeckSystem, string> = {
@@ -117,4 +118,5 @@ export const DECK_SYSTEM_LABEL: Record<DeckSystem, string> = {
   slavic: "символов",
   astrology: "грах и знаков",
   numerology: "чисел",
+  lenormand: "карт Ленорман",
 };

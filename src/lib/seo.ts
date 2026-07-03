@@ -106,6 +106,9 @@ export function getRootMetadata(): Metadata {
         "max-video-preview": -1,
       },
     },
+    verification: {
+      yandex: "7902ba7dfdb76ac3",
+    },
     icons: {
       icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
       apple: [{ url: "/apple-icon.svg", type: "image/svg+xml" }],

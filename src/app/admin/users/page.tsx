@@ -77,7 +77,7 @@ export default function AdminUsersPage() {
   const resetTripletCooldown = async (profileUserId: string, email: string) => {
     if (
       !confirm(
-        `Сбросить таймер расклада из 3 карт для ${email}?\n\nПользователь сможет сразу запустить новый ежедневный расклад.`
+        `Сбросить дневные расклады для ${email}?\n\nБудут сняты лимиты «3 карты» и «Энергия дня», удалены сохранённые расклады на сегодня. Пользователь сможет начать заново после обновления страницы.`
       )
     ) {
       return;
@@ -86,11 +86,17 @@ export default function AdminUsersPage() {
     try {
       const res = await fetch(`/api/admin/users/${profileUserId}/triplet-cooldown`, {
         method: "POST",
+        credentials: "include",
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        const parts = [
+          `triplet: ${Number(data.deletedHistory ?? 0)}`,
+          `энергия дня: ${Number(data.deletedDailyReadings ?? 0)}`,
+        ];
+        setGrantNotice(`Сброс для ${email}: удалено ${parts.join(", ")}.`);
         load();
       } else {
-        const data = await res.json().catch(() => ({}));
         alert(data.error ?? "Ошибка сброса");
       }
     } finally {

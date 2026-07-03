@@ -17,6 +17,9 @@ export const SPREAD_ADMIN_LABELS: Record<SpreadId, string> = {
   "yes-no": "Да / Нет",
   "celtic-cross": "Кельтский крест",
   "daily-extended": "Расширенный день",
+  "year-ahead": "Год вперёд (13)",
+  "compatibility-12": "Совместимость 12 карт",
+  "lenormand-line": "Линия Ленорман (5)",
 };
 
 export function mergeSpreadSettingsFromFeatures(

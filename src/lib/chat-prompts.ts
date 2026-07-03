@@ -1,5 +1,11 @@
 import { buildUserMessageWithImage, completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { completeProseWithContinuation } from "@/lib/prose-completion";
+import { isProseLikelyTruncated } from "@/lib/prose-truncation";
+import {
+  ensurePaidSpreadTextComplete,
+  isPaidSpreadTextComplete,
+} from "@/lib/spread-reading-complete";
 import { sanitizeChatHistory, LLM_CONTEXT_MESSAGES, type ChatHistoryMessage } from "@/lib/chat-sanitize";
 import {
   sanitizeReadingForClient,
@@ -189,6 +195,7 @@ export function buildCharacterPrompt(
     intention?: string | null;
     spreadId?: string | null;
     lastUserMessage?: string;
+    customQuestion?: string | null;
     numerologyBlock?: string;
   }
 ): string {
@@ -198,6 +205,7 @@ export function buildCharacterPrompt(
     intention: extras?.intention ?? null,
     spreadId: extras?.spreadId ?? null,
     lastUserMessage: extras?.lastUserMessage ?? ctx.mainQuestion,
+    customQuestion: extras?.customQuestion ?? null,
     numerologyBlock: extras?.numerologyBlock,
   });
 }
@@ -392,13 +400,20 @@ export async function generateReading(
 
   const acceptReading = (raw: string | null): string | null => {
     if (!raw?.trim()) return null;
+    if (isProseLikelyTruncated(raw)) return null;
     const id = ctx.characterId ?? "ragnar";
     const theaterStripped =
       isTarotRuneMasterId(id) && id !== "numerolog" ? stripTheaterFromReply(raw) : raw;
     const cleaned = sanitizeReadingForClient(theaterStripped, cardNames);
-    if (cleaned.length >= 120) return cleaned;
+    if (cleaned.length >= 120 && isPaidSpreadTextComplete(cleaned, cardNames)) return cleaned;
     const stripped = stripMemoryLeakFromReply(theaterStripped);
-    if (stripped.length >= 120 && !isDegenerateLlmOutput(stripped)) return stripped;
+    if (
+      stripped.length >= 120 &&
+      !isDegenerateLlmOutput(stripped) &&
+      isPaidSpreadTextComplete(stripped, cardNames)
+    ) {
+      return stripped;
+    }
     return null;
   };
 
@@ -429,14 +444,18 @@ export async function generateReading(
     : [{ messages: baseMessages, maxTokens, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 }];
 
   for (const plan of attemptPlans) {
-    const text = await completeChat({
-      messages: plan.messages,
+    let text = await completeProseWithContinuation(plan.messages, {
       maxTokens: plan.maxTokens,
-      timeoutMs: plan.timeoutMs,
-      maxAttempts: plan.maxAttempts,
-      temperature: plan.temperature,
-      isPaid: ctx.isPaid,
+      temperature: plan.temperature ?? 0.85,
+      maxPasses: cardCount > 5 ? 3 : 3,
     });
+    if (text && !isPaidSpreadTextComplete(text, cardNames)) {
+      text = await ensurePaidSpreadTextComplete(plan.messages, text, cardNames, {
+        maxTokens: Math.round(plan.maxTokens * 0.35),
+        temperature: plan.temperature ?? 0.85,
+        maxRounds: 4,
+      });
+    }
     const accepted = acceptReading(text);
     if (accepted) return { text: accepted, fromLlm: true };
   }

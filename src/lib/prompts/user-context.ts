@@ -5,6 +5,7 @@ import {
   getDeckPositions,
   type DeckSystem,
 } from "@/lib/decks";
+import { isThirdPartyCustomQuestion } from "@/lib/custom-question-scope";
 import { getSessionTopic } from "@/lib/session-topics";
 
 export type UserContextInput = {
@@ -116,6 +117,21 @@ export function buildSpreadUserMessage(params: {
 }): string {
   const intention = params.intention?.trim() || "Общий расклад";
   const scopeSuffix = params.readingScopeLabel?.trim();
+  const thirdParty = isThirdPartyCustomQuestion(intention);
+
+  const taskLines = thirdParty
+    ? [
+        `Дай подробный расклад по вопросу: «${intention}».`,
+        `Обращайся к ${params.user.name} по имени как к спрашивающему.`,
+        "Каждая карта описывает субъект из вопроса (другого человека или ситуацию), не внутренний путь клиента.",
+        "Не выводи клиенту служебные требования, чеклисты и структуру промпта.",
+      ]
+    : [
+        `Дай подробный персонализированный расклад${scopeSuffix ? ` ${scopeSuffix}` : ""} следуя инструкциям из системного промпта.`,
+        "Читай каждую карту/руну по её позиции в раскладе.",
+        `Обращайся к ${params.user.name} по имени.`,
+        "Не выводи клиенту служебные требования, чеклисты и структуру промпта.",
+      ];
 
   return `
 === ДАННЫЕ ПОЛЬЗОВАТЕЛЯ ===
@@ -128,8 +144,7 @@ ${buildCardsContext(params.cards)}
 ${intention}${scopeSuffix ? `\nГоризонт прогноза: ${scopeSuffix}` : ""}
 
 === ТВОЯ ЗАДАЧА ===
-Дай подробный персонализированный расклад${scopeSuffix ? ` ${scopeSuffix}` : ""} следуя инструкциям из системного промпта.
-Читай каждую карту/руну по её позиции в раскладе. Обращайся к ${params.user.name} по имени. Не выводи клиенту служебные требования, чеклисты и структуру промпта.
+${taskLines.join("\n")}
 `.trim();
 }
 

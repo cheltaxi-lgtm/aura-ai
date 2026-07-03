@@ -149,6 +149,41 @@ export async function fetchYukassaPayment(paymentId: string): Promise<{
   }
 }
 
+export async function listRecentYukassaPayments(sinceIso: string, limit = 20): Promise<
+  Array<{
+    id: string;
+    status: string;
+    amount?: { value: string; currency: string };
+    metadata?: Record<string, string>;
+    created_at?: string;
+  }>
+> {
+  if (!isYukassaConfigured()) return [];
+
+  try {
+    const response = await fetch(
+      `${YUKASSA_API}/payments?created_at.gte=${encodeURIComponent(sinceIso)}&limit=${limit}`,
+      {
+        headers: {
+          Authorization: authHeader(),
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (!response.ok) return [];
+    const data = (await response.json()) as { items?: Array<Record<string, unknown>> };
+    return (data.items ?? []) as Array<{
+      id: string;
+      status: string;
+      amount?: { value: string; currency: string };
+      metadata?: Record<string, string>;
+      created_at?: string;
+    }>;
+  } catch {
+    return [];
+  }
+}
+
 /** Verify webhook payload against YooKassa API (status must be succeeded). */
 export async function verifyYukassaWebhookPayment(
   paymentId: string,

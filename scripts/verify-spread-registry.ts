@@ -62,11 +62,12 @@ const runesOnly = listSpreads({ system: "runes" });
 assert(!runesOnly.some((s) => s.id === "yes-no"), "yes-no hidden for runes");
 assert(!all.some((s) => s.id === "daily-extended"), "daily-extended excluded from session spread list");
 
-assert(getSpread("celtic-cross").cardCount === 10, "celtic-cross has 10 cards");
-assert(MAX_SPREAD_CARD_COUNT === 10, `MAX_SPREAD_CARD_COUNT = 10 (got ${MAX_SPREAD_CARD_COUNT})`);
+assert(getSpread("year-ahead").cardCount === 13, "year-ahead has 13 cards");
+assert(getSpread("compatibility-12").cardCount === 12, "compatibility-12 has 12 cards");
+assert(MAX_SPREAD_CARD_COUNT === 13, `MAX_SPREAD_CARD_COUNT = 13 (got ${MAX_SPREAD_CARD_COUNT})`);
 assert(
-  limitSpreadKeyCards(Array.from({ length: 12 }, (_, i) => `C${i}`)).length === 10,
-  "limitSpreadKeyCards caps at 10"
+  limitSpreadKeyCards(Array.from({ length: 14 }, (_, i) => `C${i}`)).length === 13,
+  "limitSpreadKeyCards caps at 13"
 );
 assert(
   limitSpreadKeyCards(["A"]).length === 1,

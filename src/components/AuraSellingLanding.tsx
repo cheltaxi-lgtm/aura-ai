@@ -1,5 +1,6 @@
 "use client";
 
+import { type ReactNode } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -15,9 +16,11 @@ import {
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MastersShowcase from "@/components/MastersShowcase";
 import MasterAvatar from "@/components/MasterAvatar";
-import RuneIcon from "@/components/RuneIcon";
-import RunePrice from "@/components/RunePrice";
 import QuickQuestions from "@/components/seo/QuickQuestions";
+import HeroQuestionField from "@/components/seo/HeroQuestionField";
+import OfflineSpreadBlock from "@/components/seo/OfflineSpreadBlock";
+import AndroidDownloadBlock from "@/components/seo/AndroidDownloadBlock";
+import LandingSeoHub from "@/components/seo/LandingSeoHub";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
@@ -97,15 +100,15 @@ const DIRECTIONS = [
 
 const TESTIMONIALS = [
   {
-    quote: "Получила точный ответ и поняла, как действовать дальше.",
+    quote: "Карты легли точно по моему вопросу, а не «вообще про любовь». Поняла, что делать дальше.",
     author: "Анна, Москва",
   },
   {
-    quote: "Очень атмосферно — образ наставника и символы попали в точку.",
+    quote: "Сначала показали расклад, и только потом — продолжение с мастером. Без навязывания, очень по-салонному.",
     author: "Елена, Санкт-Петербург",
   },
   {
-    quote: "Рунический расклад помог посмотреть на ситуацию иначе.",
+    quote: "Рунический разбор с Рагнаром помог увидеть ситуацию иначе. Атмосфера — как у личного таролога.",
     author: "Дмитрий, Казань",
   },
 ] as const;
@@ -134,12 +137,19 @@ export interface AuraSellingLandingProps {
   continueMasterIds?: string[];
   spreadReadingDone?: boolean;
   showHero?: boolean;
+  /** Benefits, steps, directions, reviews — for guests only. */
+  showSellingSections?: boolean;
+  /** Slot between quick questions and selling sections (e.g. daily energy for logged-in users). */
+  afterQuickQuestions?: ReactNode;
   showMasters?: boolean;
   showTariffs?: boolean;
   onOpenPaywall?: () => void;
   runeBalance?: number;
   isUnlimited?: boolean;
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
+  onOpenPhotoReading?: () => void;
+  onOpenMarkCards?: () => void;
+  photoNavLabel?: string;
 }
 
 export default function AuraSellingLanding({
@@ -152,12 +162,17 @@ export default function AuraSellingLanding({
   continueMasterIds = [],
   spreadReadingDone = false,
   showHero = true,
+  showSellingSections = true,
+  afterQuickQuestions,
   showMasters = true,
   showTariffs = false,
   onOpenPaywall,
   runeBalance = 0,
   isUnlimited = false,
   onInsufficientRunes,
+  onOpenPhotoReading,
+  onOpenMarkCards,
+  photoNavLabel,
 }: AuraSellingLandingProps) {
   const { config, cost, formatRunes } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
@@ -224,25 +239,25 @@ export default function AuraSellingLanding({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
-              <p className="aura-landing-hero__eyebrow">Персональные эзотерические консультации онлайн</p>
-              <h1 className="font-display aura-landing-hero__title">
-                Zovus — выбор наставника и{" "}
-                <span className="lux-heading-accent">духовные практики</span>
+              <p className="aura-landing-hero__eyebrow">Закрытый салон Таро онлайн</p>
+              <h1 className="font-mystic-display aura-landing-hero__title">
+                Вероника раскладывает классическое Таро под ваш вопрос
               </h1>
               <p className="aura-landing-hero__subtitle">
-                Выберите проводника, задайте вопрос и получите персональную онлайн-сессию с расшифровкой
-                по Таро, рунам, астрологии и нумерологии.
+                Выберите ситуацию, откройте карты и продолжите разговор с мастером в личном чате.
+                Zovus сохраняет контекст, историю и расшифровку без ощущения обычного AI-бота.
               </p>
+              <HeroQuestionField className="mt-6" />
               <div className="aura-landing-hero__actions">
-                <button type="button" onClick={handlePrimaryCta} className="btn-primary px-8 py-3.5 text-sm sm:text-base">
-                  Получить расклад
+                <button type="button" onClick={handlePrimaryCta} className="btn-luxe btn-luxe--md btn-luxe--gold">
+                  Открыть расклад
                 </button>
-                <button type="button" onClick={handleSecondaryCta} className="btn-ghost px-8 py-3.5 text-sm">
-                  Выбрать мастера
+                <button type="button" onClick={handleSecondaryCta} className="btn-luxe btn-luxe--md btn-luxe--ghost">
+                  Посмотреть мастеров
                 </button>
               </div>
               <p className="aura-landing-hero__trust">
-                Персональные мастера · глубокие ответы · история сеансов
+                Вероника по умолчанию · классическое Таро · карты видны до начала сеанса
               </p>
               {config.enabled ? (
                 <p className="aura-landing-hero__pricing">
@@ -273,23 +288,45 @@ export default function AuraSellingLanding({
                 ))}
               </div>
               <div className="aura-landing-hero__cards">
-                <div className="aura-landing-hero__card aura-landing-hero__card--1" />
-                <div className="aura-landing-hero__card aura-landing-hero__card--2" />
-                <div className="aura-landing-hero__card aura-landing-hero__card--3" />
+                <div className="aura-landing-hero__card aura-landing-hero__card--1">
+                  <span>Его мысли</span>
+                </div>
+                <div className="aura-landing-hero__card aura-landing-hero__card--2">
+                  <span>Его чувства</span>
+                </div>
+                <div className="aura-landing-hero__card aura-landing-hero__card--3">
+                  <span>Совет</span>
+                </div>
               </div>
             </motion.div>
           </div>
         </section>
       ) : null}
 
-      {showHero ? <QuickQuestions /> : null}
+      {showHero || afterQuickQuestions ? <QuickQuestions showQuestionField={!showHero} /> : null}
 
+      {showHero ? (
+        <OfflineSpreadBlock
+          onOpenPhoto={onOpenPhotoReading}
+          onOpenMarkCards={onOpenMarkCards}
+          photoCostLabel={photoNavLabel?.replace(/^Фото ·\s*/, "")}
+        />
+      ) : null}
+
+      {afterQuickQuestions ? (
+        <div className="aura-landing__after-quick">{afterQuickQuestions}</div>
+      ) : null}
+
+      {showSellingSections ? <AndroidDownloadBlock /> : null}
+
+      {showSellingSections ? (
+      <>
       <section className="aura-landing-section">
         <div className="mx-auto max-w-6xl">
           <div className="aura-landing-section__head">
-            <h2 className="font-display aura-landing-section__title">Почему Zovus</h2>
+            <h2 className="font-mystic-display aura-landing-section__title">Почему это ощущается как личный салон</h2>
             <p className="aura-landing-section__subtitle">
-              Не просто карты — персональный канал к символам, которые говорят на вашем языке.
+              Меньше шаблонов, больше внимания к вашему вопросу, картам и продолжению диалога.
             </p>
           </div>
           <div className="aura-landing-benefits">
@@ -316,7 +353,7 @@ export default function AuraSellingLanding({
       <section className="aura-landing-section">
         <div className="mx-auto max-w-6xl">
           <div className="aura-landing-section__head">
-            <h2 className="font-display aura-landing-section__title">Как это работает</h2>
+            <h2 className="font-mystic-display aura-landing-section__title">Как это работает</h2>
             <p className="aura-landing-section__subtitle">Три шага от вопроса до ясности</p>
           </div>
           <div className="aura-landing-steps">
@@ -337,6 +374,8 @@ export default function AuraSellingLanding({
           </div>
         </div>
       </section>
+      </>
+      ) : null}
 
       {showMasters ? (
         <MastersShowcase
@@ -364,10 +403,12 @@ export default function AuraSellingLanding({
         />
       ) : null}
 
+      {showSellingSections ? (
+      <>
       <section className="aura-landing-section">
         <div className="mx-auto max-w-6xl">
           <div className="aura-landing-section__head">
-            <h2 className="font-display aura-landing-section__title">Направления</h2>
+            <h2 className="font-mystic-display aura-landing-section__title">Направления</h2>
             <p className="aura-landing-section__subtitle">
               Выберите систему, которая откликается — или доверьтесь мастеру.
             </p>
@@ -399,6 +440,12 @@ export default function AuraSellingLanding({
 
       <section className="aura-landing-section aura-landing-section--trust">
         <div className="mx-auto max-w-6xl">
+          <div className="aura-landing-section__head">
+            <h2 className="font-mystic-display aura-landing-section__title">Что говорят о сеансах</h2>
+            <p className="aura-landing-section__subtitle">
+              Карты сначала, решение потом — без навязывания и без ощущения бота.
+            </p>
+          </div>
           <div className="aura-landing-trust">
             <div className="aura-landing-trust__stats">
               {hasSessionStats ? (
@@ -435,76 +482,18 @@ export default function AuraSellingLanding({
                 );
               })}
             </div>
-            <p className="mt-4 text-center text-xs text-gray-600">
+            <p className="mt-4 text-center text-xs text-aura-ivory/40">
               Примеры отзывов пользователей. Ответы генерируются ИИ-наставниками в художественных образах.
             </p>
           </div>
         </div>
       </section>
-
-      {showTariffs ? (
-        <section id="тарифы" className="aura-landing-section aura-landing-section--tariffs">
-          <div className="mx-auto max-w-6xl text-center">
-            <h2 className="font-display aura-landing-section__title aura-landing-tariffs__title">
-              {config.enabled ? (
-                <>
-                  Оплата рунами
-                  <RuneIcon className="aura-landing-tariffs__title-icon" title="Руны" />
-                </>
-              ) : (
-                "Тарифы"
-              )}
-            </h2>
-
-            {config.enabled ? (
-              <div className="aura-landing-tariffs__grid">
-                <article className="aura-landing-tariff-card">
-                  <RuneIcon className="aura-landing-tariff-card__icon" />
-                  <p className="aura-landing-tariff-card__price">
-                    <RunePrice value={cost("READING")} iconClassName="h-4 w-4" />
-                  </p>
-                  <p className="aura-landing-tariff-card__label">Расшифрование</p>
-                  <p className="aura-landing-tariff-card__hint">полный разбор расклада</p>
-                </article>
-                <article className="aura-landing-tariff-card">
-                  <RuneIcon className="aura-landing-tariff-card__icon" />
-                  <p className="aura-landing-tariff-card__price">
-                    <RunePrice value={cost("QUESTION")} iconClassName="h-4 w-4" />
-                  </p>
-                  <p className="aura-landing-tariff-card__label">Доп. вопрос</p>
-                  <p className="aura-landing-tariff-card__hint">после бесплатных</p>
-                </article>
-                <article className="aura-landing-tariff-card aura-landing-tariff-card--free">
-                  <RuneIcon className="aura-landing-tariff-card__icon" />
-                  <p className="aura-landing-tariff-card__price aura-landing-tariff-card__price--free">
-                    Бесплатно
-                  </p>
-                  <p className="aura-landing-tariff-card__label">
-                    Первые {config.freeQuestions} вопроса
-                  </p>
-                  <p className="aura-landing-tariff-card__hint">в каждом сеансе</p>
-                </article>
-              </div>
-            ) : (
-              <p className="aura-landing-tariffs__fallback">
-                Полный разбор — 199 ₽ · подписка Zovus+ — 590 ₽/мес
-              </p>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                if (isLoggedIn && onOpenPaywall) onOpenPaywall();
-                else handlePrimaryCta();
-              }}
-              className="aura-landing-btn aura-landing-btn--secondary"
-            >
-              {isLoggedIn ? "Пополнить баланс" : "Начать бесплатно"}
-            </button>
-          </div>
-        </section>
+      </>
       ) : null}
 
+      {showTariffs ? <LandingSeoHub /> : null}
+
+      {showSellingSections ? (
       <section className="aura-landing-section aura-landing-section--final">
         <motion.div
           className="aura-landing-final__panel mx-auto max-w-3xl text-center"
@@ -513,7 +502,7 @@ export default function AuraSellingLanding({
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
         >
-          <h2 className="font-display aura-landing-final__title">
+          <h2 className="font-mystic-display aura-landing-final__title">
             Задайте вопрос — и получите свой расклад
           </h2>
           <p className="aura-landing-final__text">
@@ -533,6 +522,7 @@ export default function AuraSellingLanding({
           ) : null}
         </motion.div>
       </section>
+      ) : null}
     </div>
   );
 }

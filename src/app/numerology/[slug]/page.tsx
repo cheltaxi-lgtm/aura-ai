@@ -7,6 +7,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import type { NumerologToolId } from "@/lib/numerology/tools";
 
 const TOPICS = {
   "pythagoras-square": {
@@ -28,6 +29,12 @@ const TOPICS = {
       "Персональный календарь возможностей — для сделок, переездов, важных разговоров и новых начинаний.",
   },
 } as const;
+
+const NUMEROLOGY_TOPIC_TOOLS: Record<TopicSlug, NumerologToolId> = {
+  "pythagoras-square": "pythagoras",
+  compatibility: "compatibility",
+  "favorable-dates": "favorable_dates",
+};
 
 type TopicSlug = keyof typeof TOPICS;
 
@@ -61,6 +68,8 @@ export default async function NumerologyTopicPage({
 
   const evelina = getCharacterById("numerolog");
   const sessionCost = PRICING.NUMEROLOGY_SESSION;
+  const numerologTool = NUMEROLOGY_TOPIC_TOOLS[slug as TopicSlug];
+  const startHref = `/?numerolog=1&tool=${encodeURIComponent(numerologTool)}`;
 
   return (
     <SeoPageShell backHref="/numerology" backLabel="Нумерология">
@@ -74,7 +83,7 @@ export default async function NumerologyTopicPage({
 
       <div className="mt-8">
         <SeoTrackedCta
-          href="/master/numerolog"
+          href={startHref}
           trackGoal="numerology_cta_click"
           trackParams={{ topic: slug }}
         >

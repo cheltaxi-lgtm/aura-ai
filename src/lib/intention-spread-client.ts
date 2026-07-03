@@ -64,6 +64,7 @@ export async function postIntentionSpreadRequest(
     try {
       const response = await fetch("/api/intention-spread", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: controller.signal,

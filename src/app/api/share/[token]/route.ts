@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { getShareSnapshotByToken } from "@/lib/share";
+import { toSharePublicApiResponse } from "@/lib/share/public-payload";
 
 export async function GET(
   _request: NextRequest,
@@ -20,12 +21,5 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    token: snapshot.token,
-    kind: snapshot.kind,
-    payload: snapshot.payload,
-    viewCount: snapshot.viewCount,
-    createdAt: snapshot.createdAt,
-    expiresAt: snapshot.expiresAt,
-  });
+  return NextResponse.json(toSharePublicApiResponse(snapshot));
 }

@@ -14,12 +14,20 @@ export function buildSeoMetadata({
   return {
     title,
     description,
+    alternates: {
+      canonical: url,
+    },
     openGraph: {
       title,
       description,
       url,
       type: "website",
       siteName: BRAND_NAME,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
     },
   };
 }

@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
+import {
+  clearPendingRunePurchase,
+  readPendingRunePaymentId,
+  RUNE_BALANCE_BEFORE_KEY,
+} from "@/lib/rune-purchase-client";
 
 const LAST_MASTER_KEY = "aura_last_master";
 const PENDING_READING_KEY = "aura_pending_reading";
-const BALANCE_BEFORE_KEY = "aura_runes_before_purchase";
-const PENDING_PAYMENT_KEY = "aura_pending_rune_payment_id";
 
 export default function RunePurchaseSuccessPage() {
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
@@ -33,17 +36,16 @@ export default function RunePurchaseSuccessPage() {
     const href = masterId ? `/?master=${encodeURIComponent(masterId)}` : "/";
     setRedirectTo(href);
 
-    const expectedRaw = localStorage.getItem(BALANCE_BEFORE_KEY);
+    const expectedRaw = localStorage.getItem(RUNE_BALANCE_BEFORE_KEY);
     const expected = expectedRaw !== null ? Number(expectedRaw) : null;
-    const pendingPaymentId = localStorage.getItem(PENDING_PAYMENT_KEY);
+    const pendingPaymentId = readPendingRunePaymentId(new URLSearchParams(window.location.search));
     let attempts = 0;
-    const maxAttempts = 15;
+    const maxAttempts = 20;
 
     const markReady = (balance: number) => {
       emitRuneBalanceUpdate(balance);
       setStatus("ready");
-      localStorage.removeItem(BALANCE_BEFORE_KEY);
-      localStorage.removeItem(PENDING_PAYMENT_KEY);
+      clearPendingRunePurchase();
       window.setTimeout(() => {
         window.location.href = href;
       }, 1200);
@@ -51,19 +53,17 @@ export default function RunePurchaseSuccessPage() {
 
     const poll = async () => {
       try {
-        if (pendingPaymentId) {
-          const confirmRes = await fetch("/api/runes/confirm", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ paymentId: pendingPaymentId }),
-          });
-          if (confirmRes.ok) {
-            const confirmData = await confirmRes.json();
-            if (typeof confirmData.balance === "number") {
-              if (confirmData.credited || confirmData.status === "already_credited") {
-                markReady(confirmData.balance);
-                return;
-              }
+        const confirmRes = await fetch("/api/runes/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pendingPaymentId ? { paymentId: pendingPaymentId } : {}),
+        });
+        if (confirmRes.ok) {
+          const confirmData = await confirmRes.json();
+          if (typeof confirmData.balance === "number") {
+            if (confirmData.credited || confirmData.alreadyCredited || confirmData.status === "already_credited") {
+              markReady(confirmData.balance);
+              return;
             }
           }
         }
@@ -109,7 +109,7 @@ export default function RunePurchaseSuccessPage() {
           {status === "polling"
             ? "Подтверждаем оплату и обновляем баланс…"
             : status === "timeout"
-              ? "Оплата может обрабатываться до нескольких минут. Обновите страницу или начислите руны через поддержку — платёж в ЮKassa уже прошёл."
+              ? "Оплата обрабатывается дольше обычного. Обновите страницу через минуту — руны начислятся автоматически."
               : "Баланс пополнен. Сейчас вернём вас к мастеру."}
         </p>
         <Link

@@ -15,6 +15,9 @@ function isValidPayload(body: unknown): body is SharePayload {
     p.title.trim().length > 0 &&
     VALID_KINDS.has(p.kind) &&
     (p.excerpt == null || typeof p.excerpt === "string") &&
+    (p.sessionId == null || typeof p.sessionId === "string") &&
+    (p.historyId == null || typeof p.historyId === "string") &&
+    (p.sourceType == null || typeof p.sourceType === "string") &&
     (p.cards == null || Array.isArray(p.cards))
   );
 }

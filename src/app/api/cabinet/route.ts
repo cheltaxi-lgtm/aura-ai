@@ -37,7 +37,33 @@ export async function GET(request: NextRequest) {
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
-    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    return NextResponse.json({
+      needsOnboarding: true,
+      profile: {
+        id: auth.sub,
+        name: auth.name ?? "Пользователь",
+        email: auth.email,
+        zodiac: null,
+        birthDate: null,
+        runeBalance: 0,
+        createdAt: null,
+      },
+      stats: {
+        totalSessions: 0,
+        favoriteMaster: null,
+        daysWithUs: 0,
+        totalCards: 0,
+      },
+      achievements: { earned: [], locked: [] },
+      sessions: [],
+      sessionsTotal: 0,
+      sessionsHasMore: false,
+      diaryPreview: [],
+      runes: { enabled: false, balance: 0, transactions: [] },
+      legacyAccess: null,
+      photoSpreads: [],
+      dailyReadings: [],
+    });
   }
   const { searchParams } = new URL(request.url);
   const sessionsLimit = Math.min(

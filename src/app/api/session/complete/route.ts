@@ -123,7 +123,7 @@ export async function PATCH(request: NextRequest) {
     ),
     prediction:
       summary?.prediction ??
-      lastAssistant?.content?.slice(0, 1000) ??
+      lastAssistant?.content?.trim() ??
       (archiveOnly ? "Сеанс отправлен в архив" : topicSummary),
     mood: mood ?? summary?.mood,
   });
@@ -138,7 +138,7 @@ export async function PATCH(request: NextRequest) {
 
   if (!archiveOnly) {
     const prediction =
-      summary?.prediction ?? lastAssistant?.content?.slice(0, 1000) ?? topicSummary;
+      summary?.prediction ?? lastAssistant?.content?.trim() ?? topicSummary;
     const finalMessage = prediction.trim()
       ? `Итог сеанса: ${prediction.trim()}`
       : `Сеанс на тему «${topicSummary}» завершён. До новых встреч.`;

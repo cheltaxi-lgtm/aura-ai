@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, X, Moon } from "lucide-react";
+import { Loader2, X, Moon, Users } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { isAiMasterId, type ShowcaseMaster } from "@/lib/showcase-masters";
 import { resolveMasterDeckSystem, DECK_REGISTRY } from "@/lib/decks";
 import { DECK_SYSTEM_DISPLAY } from "@/lib/photo-spread-redraw";
 import type { DeckSystem } from "@/lib/decks/types";
 import DeckCard from "@/components/DeckCard";
+import BodyPortal from "@/components/BodyPortal";
 import MasterAvatar from "@/components/MasterAvatar";
 import { toParagraphs } from "@/lib/format-paragraphs";
 import { DEFAULT_SPREAD_ID, getSpread, type SpreadId } from "@/lib/spreads";
+import { useRuneConfig } from "@/lib/useRuneConfig";
+import RuneCost from "@/components/RuneCost";
+import {
+  dailyJointReadingHref,
+  dailyRitualType,
+  showDailyJointReading,
+} from "@/lib/daily-retention";
+import type { RitualType } from "@/lib/ritual-config";
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const GOLD_GRADIENT = "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)";
@@ -40,6 +50,10 @@ export interface PremiumEnergyBlockProps {
   /** Open modal on mount (e.g. from ?daily=extended deep link). */
   autoOpen?: boolean;
   onAutoOpenHandled?: () => void;
+  /** Opens paywall when extended daily needs more runes. */
+  onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
+  /** Open in-app ritual flow with recommended type from daily reading. */
+  onStartRitual?: (ritualType: RitualType) => void;
   /** @deprecated Footer only closes modal — kept for call-site compatibility. */
   onTalkToMaster?: (masterId: string) => void;
   /** @deprecated Footer only closes modal — kept for call-site compatibility. */
@@ -109,9 +123,14 @@ export default function PremiumEnergyBlock({
   initialSpreadId = DEFAULT_SPREAD_ID,
   autoOpen = false,
   onAutoOpenHandled,
+  onInsufficientRunes,
+  onStartRitual,
 }: PremiumEnergyBlockProps) {
+  const { config: runeConfig, cost: runeCost } = useRuneConfig();
+  const extendedCost = runeCost("DAILY_EXTENDED");
   const [loaded, setLoaded] = useState(false);
   const [drawnToday, setDrawnToday] = useState(false);
+  const [lockedToday, setLockedToday] = useState(false);
   const [open, setOpen] = useState(false);
 
   const [master, setMaster] = useState(characterKey);
@@ -121,7 +140,8 @@ export default function PremiumEnergyBlock({
   const [system, setSystem] = useState<DeckSystem | null>(null);
   const [revealed, setRevealed] = useState(0);
   const [drawing, setDrawing] = useState(false);
-  const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const spreadIdRef = useRef<SpreadId>(initialSpreadId);
 
   const spread = useMemo(() => getSpread(spreadId), [spreadId]);
   const positionLabels = useMemo(() => spread.positions.map((p) => p.label), [spread]);
@@ -148,6 +168,10 @@ export default function PremiumEnergyBlock({
   );
 
   useEffect(() => {
+    spreadIdRef.current = spreadId;
+  }, [spreadId]);
+
+  useEffect(() => {
     setSpreadId(initialSpreadId);
   }, [initialSpreadId]);
 
@@ -160,7 +184,9 @@ export default function PremiumEnergyBlock({
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch(`/api/daily-reading?date=${localDateStr()}`);
+        const res = await fetch(`/api/daily-reading?date=${localDateStr()}`, {
+          credentials: "include",
+        });
         if (res.ok) {
           const data = (await res.json()) as {
             text?: string;
@@ -168,8 +194,16 @@ export default function PremiumEnergyBlock({
             system?: DeckSystem | null;
             drawn?: boolean;
             spreadId?: SpreadId | null;
+            locked?: boolean;
+            purged?: boolean;
           };
-          if (data.drawn && data.text) {
+          if (data.drawn && data.locked && !data.text) {
+            setLockedToday(true);
+            setDrawnToday(true);
+            setSpreadId(
+              data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID
+            );
+          } else if (data.drawn && data.text) {
             setText(data.text);
             setCards(Array.isArray(data.cards) ? data.cards : []);
             setSystem(data.system ?? null);
@@ -198,18 +232,24 @@ export default function PremiumEnergyBlock({
     };
   }, [open, drawing]);
 
-  const draw = async () => {
-    if (drawing) return;
+  const draw = async (overrideSpreadId?: SpreadId) => {
+    if (drawing || lockedToday) return;
+    const activeSpreadId = overrideSpreadId ?? spreadIdRef.current;
+    if (overrideSpreadId) {
+      setSpreadId(overrideSpreadId);
+      spreadIdRef.current = overrideSpreadId;
+    }
     setDrawing(true);
-    setError(false);
+    setErrorMessage(null);
     try {
       const res = await fetch("/api/daily-reading", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           characterKey: master,
           localDate: localDateStr(),
-          spreadId,
+          spreadId: activeSpreadId,
         }),
       });
       const data = (await res.json()) as {
@@ -218,7 +258,29 @@ export default function PremiumEnergyBlock({
         system?: DeckSystem | null;
         drawn?: boolean;
         spreadId?: SpreadId | null;
+        error?: string;
+        message?: string;
+        balance?: number;
+        required?: number;
       };
+      if (res.status === 402 && data.error === "insufficient_runes") {
+        if (
+          onInsufficientRunes &&
+          typeof data.balance === "number" &&
+          typeof data.required === "number"
+        ) {
+          onInsufficientRunes({ balance: data.balance, required: data.required });
+        } else {
+          setErrorMessage("Недостаточно рун для расширенного расклада.");
+        }
+        return;
+      }
+      if (res.status === 403 && data.error === "daily_reading_locked") {
+        setLockedToday(true);
+        setDrawnToday(true);
+        setOpen(false);
+        return;
+      }
       if (data.drawn && data.text && Array.isArray(data.cards) && data.cards.length) {
         setText(data.text);
         setCards(data.cards);
@@ -226,11 +288,13 @@ export default function PremiumEnergyBlock({
         setSpreadId(data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
         setRevealed(0);
         setDrawnToday(true);
+      } else if (data.message) {
+        setErrorMessage(data.message);
       } else {
-        setError(true);
+        setErrorMessage("Не удалось разложить карты. Попробуйте ещё раз.");
       }
     } catch {
-      setError(true);
+      setErrorMessage("Не удалось разложить карты. Попробуйте ещё раз.");
     } finally {
       setDrawing(false);
     }
@@ -241,17 +305,29 @@ export default function PremiumEnergyBlock({
 
   const hasDraw = cards.length > 0;
   const allRevealed = hasDraw && revealed >= cards.length;
+  const canDraw = !lockedToday && !hasDraw && !drawing;
+  const canReveal = hasDraw && revealed < cards.length && !drawing;
+  const canUpgradeToExtended =
+    !lockedToday && hasDraw && spreadId !== "daily-extended" && !drawing;
   const { body, quote } = useMemo(
     () => (text && allRevealed ? parseDailyEnergyText(text) : { body: "", quote: null }),
     [text, allRevealed]
+  );
+  const ritualUpsellType = useMemo(
+    () => (text ? dailyRitualType(text, positionLabels) : null),
+    [text, positionLabels]
+  );
+  const jointReadingVisible = useMemo(
+    () => showDailyJointReading(spreadId, positionLabels),
+    [spreadId, positionLabels]
   );
 
   // ─────────────────────────── TRIGGER CARD ───────────────────────────
   if (!loaded) {
     return (
-      <div className="mb-8 rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 backdrop-blur-md">
-        <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
-        <div className="mt-4 h-12 animate-pulse rounded bg-white/5" />
+      <div className="mb-8 rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md">
+        <div className="h-4 w-32 rounded bg-white/10 max-md:animate-none animate-pulse" />
+        <div className="mt-4 h-12 rounded bg-white/5 max-md:animate-none animate-pulse" />
       </div>
     );
   }
@@ -261,10 +337,10 @@ export default function PremiumEnergyBlock({
       <motion.section
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative mb-8 overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 shadow-2xl backdrop-blur-md sm:p-7"
+        className="relative mb-8 overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 shadow-2xl max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md sm:p-7"
       >
         <div
-          className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-amber-500/10 blur-3xl"
+          className="pointer-events-none absolute -right-16 -top-16 hidden h-48 w-48 rounded-full bg-amber-500/10 blur-3xl md:block"
           aria-hidden
         />
         <div className="relative flex items-center gap-4">
@@ -277,7 +353,9 @@ export default function PremiumEnergyBlock({
             </p>
             <h3 className="font-display text-lg font-semibold text-white">Расклад на сутки</h3>
             <p className="mt-0.5 text-xs text-gray-400">
-              {drawnToday
+              {lockedToday
+                ? "Расклад на сегодня уже был — новый завтра"
+                : drawnToday
                 ? spreadId === "daily-extended"
                   ? "Расширенный расклад на сегодня готов"
                   : "Ваш расклад на сегодня готов"
@@ -290,45 +368,46 @@ export default function PremiumEnergyBlock({
             className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-transform hover:scale-[1.03] active:scale-95"
             style={{ background: GOLD_GRADIENT, color: "#1a0f00", boxShadow: "0 4px 20px rgba(212,175,55,0.3)" }}
           >
-            {drawnToday ? "Смотреть" : "Разложить"}
+            {lockedToday ? "Завтра" : drawnToday ? "Смотреть" : "Разложить"}
           </button>
         </div>
       </motion.section>
-
-      {/* ─────────────────────────── MODAL ─────────────────────────── */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Расклад на сутки"
-          >
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-              onClick={() => !drawing && setOpen(false)}
-              aria-label="Закрыть"
-            />
+      <BodyPortal active={open}>
+        <AnimatePresence>
+          {open && (
             <motion.div
-              className="relative z-10 flex max-h-[94vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl"
-              style={{
-                background: "linear-gradient(160deg, #0d0a1a 0%, #120e24 60%, #0a0814 100%)",
-                boxShadow:
-                  "0 0 0 1px rgba(212,175,55,0.12), 0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(139,90,200,0.08)",
-              }}
-              initial={{ opacity: 0, y: 32, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 32, scale: 0.97 }}
-              transition={{ type: "spring", damping: 28, stiffness: 260 }}
+              className="fixed inset-0 z-[6500] flex items-end justify-center sm:items-center sm:p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Расклад на сутки"
             >
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-aura-gold/40 to-transparent" />
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                onClick={() => !drawing && setOpen(false)}
+                aria-label="Закрыть"
+              />
+              <motion.div
+                className={`relative z-10 flex w-full max-h-[min(90dvh,calc(100dvh-2rem))] flex-col overflow-hidden rounded-t-3xl border border-amber-500/15 sm:rounded-3xl ${
+                  spreadId === "daily-extended" ? "max-w-xl" : "max-w-md"
+                }`}
+                style={{
+                  background: "linear-gradient(160deg, #0d0a1a 0%, #120e24 60%, #0a0814 100%)",
+                  boxShadow:
+                    "0 0 0 1px rgba(212,175,55,0.12), 0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(139,90,200,0.08)",
+                }}
+                initial={{ opacity: 0, y: 32, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 32, scale: 0.97 }}
+                transition={{ type: "spring", damping: 28, stiffness: 260 }}
+              >
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-aura-gold/40 to-transparent" />
 
-              {/* Header */}
-              <div className="relative flex shrink-0 items-center justify-between gap-3 px-5 pt-5 pb-4">
+                {/* Header */}
+                <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-white/6 px-5 py-4">
                 <div>
                   <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
                     Бесплатно · раз в сутки
@@ -347,10 +426,19 @@ export default function PremiumEnergyBlock({
                 </button>
               </div>
 
-              <div className="h-px shrink-0 bg-gradient-to-r from-transparent via-white/8 to-transparent mx-5" />
-
-              <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5">
-                {!hasDraw && !drawnToday && (
+              <div className="lux-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
+                {lockedToday ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
+                    <p className="text-sm text-gray-200">
+                      Расклад на сегодня уже был использован.
+                    </p>
+                    <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                      После очистки данных текст не сохраняется, но лимит «раз в сутки» остаётся до
+                      полуночи по вашему времени.
+                    </p>
+                  </div>
+                ) : null}
+                {!hasDraw && !drawnToday && !lockedToday && (
                   <div className="mb-5">
                     <p className="mb-2 text-[11px] uppercase tracking-wide text-gray-500">Схема</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -378,7 +466,14 @@ export default function PremiumEnergyBlock({
                         }`}
                       >
                         <span className="block font-medium">Расширенный</span>
-                        <span className="mt-0.5 block text-[10px] opacity-80">7 сфер дня</span>
+                        <span className="mt-0.5 block text-[10px] opacity-80">
+                          7 сфер ·{" "}
+                          {runeConfig.enabled ? (
+                            <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />
+                          ) : (
+                            "10 рун"
+                          )}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -423,31 +518,56 @@ export default function PremiumEnergyBlock({
                   </div>
                 )}
 
+                {canUpgradeToExtended && (
+                  <div className="mb-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                    <p className="text-xs text-gray-300">
+                      Классический расклад готов. Можно расширить до 7 сфер дня.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={drawing}
+                      onClick={() => void draw("daily-extended")}
+                      className="mt-2 w-full rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/15 disabled:opacity-50"
+                    >
+                      Расширить до 7 карт
+                      {runeConfig.enabled ? (
+                        <>
+                          {" · "}
+                          <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />
+                        </>
+                      ) : (
+                        " · 10 рун"
+                      )}
+                    </button>
+                  </div>
+                )}
+
                 {/* Cards */}
-                <div className={`grid gap-3 ${cardGridClass}`}>
+                {!lockedToday && (
+                <div className={`grid gap-2 sm:gap-3 ${cardGridClass}`}>
                   {(hasDraw ? cards : positionLabels.map(() => null)).map((card, i) => {
                     const pos = card?.position ?? positionLabels[i] ?? `Символ ${i + 1}`;
                     const isRevealed = hasDraw && i < revealed;
                     const cardData = card
                       ? { name: card.name, meaning: card.meaning, reversed: card.reversed }
                       : { name: placeholderName };
-                    const clickable = !hasDraw || (!isRevealed && hasDraw);
+                    const cardCanDraw = canDraw;
+                    const cardCanReveal = canReveal && !isRevealed;
+                    const cardInteractive = cardCanDraw || cardCanReveal;
                     return (
                       <div key={`${pos}-${i}`} className="flex flex-col items-center gap-1.5">
                         <span className="text-[10px] uppercase tracking-wider text-amber-400/60">{pos}</span>
                         <button
                           type="button"
                           onClick={
-                            drawing
-                              ? undefined
-                              : !hasDraw
-                                ? () => void draw()
-                                : !isRevealed
-                                  ? revealNext
-                                  : undefined
+                            cardCanDraw
+                              ? () => void draw()
+                              : cardCanReveal
+                                ? revealNext
+                                : undefined
                           }
-                          disabled={drawing || (hasDraw && isRevealed)}
-                          className={`relative w-full ${clickable && !drawing ? "cursor-pointer transition-transform hover:-translate-y-1" : ""}`}
+                          disabled={!cardInteractive}
+                          className={`relative w-full ${cardInteractive ? "cursor-pointer transition-transform hover:-translate-y-1" : ""}`}
                           aria-label={isRevealed && card ? card.name : "Открыть карту"}
                         >
                           <DeckCard
@@ -459,7 +579,7 @@ export default function PremiumEnergyBlock({
                             showMeaning={false}
                             hideCaption={!isRevealed}
                             size="sm"
-                            className="mx-auto w-full max-w-[110px]"
+                            className="mx-auto w-full max-w-[84px] sm:max-w-[110px]"
                           />
                           {drawing && i === Math.floor((spread.cardCount - 1) / 2) && (
                             <span className="absolute inset-0 flex items-center justify-center">
@@ -471,22 +591,23 @@ export default function PremiumEnergyBlock({
                     );
                   })}
                 </div>
+                )}
 
                 {/* Hint */}
-                {!allRevealed && (
+                {!lockedToday && !allRevealed && (
                   <p className="mt-4 text-center text-xs text-amber-300/70">
                     {drawing
                       ? "Раскрываем карты…"
-                      : !hasDraw
+                      : canDraw
                         ? "Нажмите на карты, чтобы открыть расклад"
-                        : "Открывайте карты, чтобы увидеть энергию дня"}
+                        : canReveal
+                          ? "Открывайте карты, чтобы увидеть энергию дня"
+                          : null}
                   </p>
                 )}
 
-                {error && (
-                  <p className="mt-3 text-center text-xs text-red-400">
-                    Не удалось разложить карты. Попробуйте ещё раз.
-                  </p>
+                {errorMessage && (
+                  <p className="mt-3 text-center text-xs text-red-400">{errorMessage}</p>
                 )}
 
                 {/* Energy reading */}
@@ -498,7 +619,7 @@ export default function PremiumEnergyBlock({
                       className="mt-6 rounded-2xl border border-amber-500/12 bg-black/20 p-4"
                     >
                       <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
-                        Энергия дня
+                        {spreadId === "daily-extended" ? spread.label : "Энергия дня"}
                       </p>
                       <div className="mt-3 space-y-3">
                         {renderBodyWithMasterHighlight(body, masterLabel)}
@@ -511,11 +632,41 @@ export default function PremiumEnergyBlock({
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {allRevealed &&
+                text &&
+                ((ritualUpsellType && onStartRitual) || jointReadingVisible) ? (
+                  <div className="mt-5 space-y-3">
+                    {ritualUpsellType && onStartRitual ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpen(false);
+                          onStartRitual(ritualUpsellType);
+                        }}
+                        className="block w-full rounded-xl border border-purple-500/25 bg-purple-500/8 px-4 py-3 text-left text-sm text-white/75 transition-colors hover:border-purple-500/40"
+                      >
+                        Усилите энергию дня{" "}
+                        <span className="text-amber-300">обрядом →</span>
+                      </button>
+                    ) : null}
+                    {jointReadingVisible ? (
+                      <Link
+                        href={dailyJointReadingHref()}
+                        onClick={() => setOpen(false)}
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/70 transition-colors hover:border-amber-500/25 hover:text-white"
+                      >
+                        <Users className="h-4 w-4 shrink-0 text-amber-400/80" />
+                        Совместный расклад с партнёром
+                      </Link>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               {/* Footer — only after reveal */}
               {allRevealed && (
-                <div className="shrink-0 border-t border-white/6 px-5 py-4">
+                <div className="shrink-0 space-y-2 border-t border-white/6 bg-[#0d0a1a]/95 px-4 py-3 sm:px-5 sm:py-4">
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
@@ -530,10 +681,11 @@ export default function PremiumEnergyBlock({
                   </button>
                 </div>
               )}
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      </BodyPortal>
     </>
   );
 }

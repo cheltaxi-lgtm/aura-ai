@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
-import { getUserById } from "@/lib/users";
 import {
   BillingService,
   InsufficientFundsError,
@@ -11,10 +10,8 @@ import {
 } from "@/lib/services/billing-service";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
-import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { RITUAL_TYPES } from "@/lib/ritual-config";
 import {
-  generateRitualContent,
   getRitualById,
   markRitualPaidAndGenerating,
   ritualToClient,
@@ -22,6 +19,7 @@ import {
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+/** Charge runes and mark ritual as `generating`. Client calls `/regenerate` to build text. */
 export async function POST(_request: NextRequest, context: RouteContext) {
   await ensureDb();
 
@@ -84,28 +82,6 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     }
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
-
-  const profile = await getUserById(authed.profileUserId);
-  const userProfile = {
-    name: profile?.name ?? "друг",
-    zodiac: profile?.zodiac ?? "",
-  };
-
-  void generateRitualContent(generating, userProfile)
-    .then(async (result) => {
-      if (!result) {
-        if (useBilling && billingCharge && cost > 0) {
-          await BillingService.rollbackCharge({
-            userId: authed.profileUserId,
-            cost: billingCharge.spentRunes,
-            wasFreeQuestion: false,
-            actionType: "ritual",
-          });
-        }
-        console.error("Ritual generation failed for", id);
-      }
-    })
-    .catch((err) => console.error("Ritual generation error:", err));
 
   const balance = await getRuneBalance(authed.profileUserId);
 

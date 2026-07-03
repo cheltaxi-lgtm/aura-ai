@@ -176,6 +176,12 @@ export function isRitualMaster(value: string): value is RitualMasterKey {
   return (RITUAL_MASTERS as readonly string[]).includes(value);
 }
 
+/** Pick ritual master when daily/tarot master cannot perform rituals. */
+export function resolveRitualMasterKey(preferred?: string | null): RitualMasterKey {
+  if (preferred && isRitualMaster(preferred)) return preferred;
+  return "agafya";
+}
+
 /** Бейдж на витрине мастеров с обрядами. */
 export const RITUAL_MASTER_SHOWCASE_BADGE = "🕯 Обряды";
 

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BRAND_NAME, getAppUrl } from "@/lib/brand";
 import { buildShareHook } from "@/lib/share/build-url";
 import { getShareSnapshotByToken, getShareSnapshotPublic } from "@/lib/share";
 import { masterDisplayName } from "@/lib/share-reading";
 import ShareLandingTracker from "@/components/share/ShareLandingTracker";
+import ShareLandingActions from "@/components/share/ShareLandingActions";
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -61,6 +61,7 @@ export default async function ShareLandingPage({ params }: PageProps) {
       : payload.spreadId
         ? `/?spread=${encodeURIComponent(payload.spreadId)}`
         : "/";
+  const shareUrl = `${getAppUrl()}/share/${token}`;
 
   return (
     <main className="share-landing">
@@ -79,14 +80,17 @@ export default async function ShareLandingPage({ params }: PageProps) {
         {payload.excerpt ? (
           <div className="share-landing__body">
             <p className="share-landing__body-label">Полный расклад</p>
+            {payload.excerptTruncated ? (
+              <p className="share-landing__truncated-note">
+                Текст сокращён для безопасного хранения. Создайте новую ссылку из кабинета для полной версии.
+              </p>
+            ) : null}
             <div className="share-landing__excerpt-wrap">
               <div className="share-landing__excerpt">{payload.excerpt}</div>
             </div>
           </div>
         ) : null}
-        <Link href={ctaHref} className="btn-luxe btn-luxe--gold share-landing__cta">
-          Получить свой расклад
-        </Link>
+        <ShareLandingActions token={token} kind={kind} shareUrl={shareUrl} ctaHref={ctaHref} />
       </article>
     </main>
   );

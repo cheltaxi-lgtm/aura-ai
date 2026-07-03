@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getAllCardCombinations } from "@/lib/card-combinations/registry";
 import { BRAND_NAME } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildSeoMetadata({
   title: `Сочетания карт Таро — значения пар | ${BRAND_NAME}`,
   description:
     "Как читать пары карт в раскладе: любовь, деньги, совет — и переход к персональному раскладу с мастером.",
-};
+  path: "/cards/combinations",
+});
 
 export default function CombinationsCatalogPage() {
   const combinations = getAllCardCombinations();

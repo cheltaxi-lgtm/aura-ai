@@ -5,7 +5,7 @@ export const ASTROLOGY_SYMBOLS: SpreadSymbol[] = [
   { id: 1, name: "Чандра", slug: "chandra", kind: "planet", meaning: "Луна — ум, мать, эмоции, дом" },
   { id: 2, name: "Мангала", slug: "mangala", kind: "planet", meaning: "Марс — энергия, смелость, конфликт" },
   { id: 3, name: "Будха", slug: "budha", kind: "planet", meaning: "Меркурий — интеллект, речь, торговля" },
-  { id: 4, name: "Гуру", slug: "guru-jupiter", kind: "planet", meaning: "Юпитер — мудрость, удача, дharma" },
+  { id: 4, name: "Гуру", slug: "guru-jupiter", kind: "planet", meaning: "Юпитер — мудрость, удача, дхарма" },
   { id: 5, name: "Шукра", slug: "shukra", kind: "planet", meaning: "Венера — любовь, красота, наслаждение" },
   { id: 6, name: "Шани", slug: "shani", kind: "planet", meaning: "Сатурн — карма, дисциплина, испытания" },
   { id: 7, name: "Раху", slug: "rahu", kind: "planet", meaning: "Раху — амбиции, иллюзии, материальные желания" },

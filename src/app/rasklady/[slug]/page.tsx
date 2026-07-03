@@ -7,10 +7,10 @@ import {
   getSpreadIntentBySlug,
 } from "@/lib/spread-intents";
 import {
-  buildMasterAskUrl,
   buildSpreadStartUrl,
   estimateIntentRuneCost,
 } from "@/lib/spread-intents/router";
+import { formatSpreadUnitRu } from "@/lib/spread-ritual-copy";
 import { getSpread } from "@/lib/spreads";
 import { getCharacterById } from "@/lib/characters";
 import {
@@ -18,9 +18,15 @@ import {
   ritualPageSlug,
 } from "@/lib/ritual-recommendations";
 import { RITUAL_TYPES } from "@/lib/ritual-config";
+import { getArticleForIntent } from "@/lib/seo/articles";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildIntentFaq, intentFaqJsonLd } from "@/lib/seo/intent-faq";
+import { SPREAD_INTENT_CATEGORY_LABELS } from "@/lib/spread-intents/types";
+import { getSpreadHubBySlug } from "@/lib/seo/hubs";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
+import SeoTrustBlock from "@/components/seo/SeoTrustBlock";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
 export function generateStaticParams() {
@@ -42,29 +48,6 @@ export async function generateMetadata({
   });
 }
 
-const FAQ = [
-  {
-    q: "Можно ли гадать на конкретного человека?",
-    a: "Да. Сформулируйте вопрос о человеке — мастер учтёт контекст в расшифровке.",
-  },
-  {
-    q: "Нужна ли дата рождения?",
-    a: "Для базового расклада не обязательно. Дата рождения помогает для прогнозов и нумерологии.",
-  },
-  {
-    q: "Сохраняется ли расклад?",
-    a: "После регистрации история сеансов и переписка сохраняются в личном кабинете.",
-  },
-  {
-    q: "Можно ли задать уточняющий вопрос?",
-    a: "Да. После расшифровки вы продолжаете диалог с мастером в чате — можно уточнять детали.",
-  },
-  {
-    q: "Чем Zovus отличается от обычного онлайн-гадания?",
-    a: "У нас живые ИИ-мастера с памятью, чат после расклада, фото-расклады и обряды — не только текст по шаблону.",
-  },
-];
-
 export default async function SpreadIntentPage({
   params,
 }: {
@@ -76,16 +59,29 @@ export default async function SpreadIntentPage({
 
   const spread = getSpread(intent.spreadId);
   const master = getCharacterById(intent.recommendedMasterId);
-  const related = getRelatedSpreadIntents(intent);
+  const related = getRelatedSpreadIntents(intent, 6);
   const ritualType = recommendRitualForIntentSlug(slug);
   const ritual = ritualType ? RITUAL_TYPES[ritualType] : null;
   const runeCost = estimateIntentRuneCost(intent.spreadId);
+  const article = getArticleForIntent(slug);
+  const faq = buildIntentFaq(intent);
+  const categoryHub = getCategoryHubPath(intent.category);
+
+  const breadcrumbs = [
+    { name: "Zovus", path: "/" },
+    { name: "Расклады", path: "/rasklady" },
+    ...(categoryHub
+      ? [{ name: SPREAD_INTENT_CATEGORY_LABELS[intent.category], path: categoryHub }]
+      : []),
+    { name: intent.title, path: `/rasklady/${slug}` },
+  ];
 
   return (
     <SeoPageShell backHref="/rasklady" backLabel="Все расклады">
+      <SeoBreadcrumbs items={breadcrumbs} />
       <SeoPageTracker goal="spread_intent_view" params={{ slug }} />
       <p className="text-sm text-aura-gold/80">
-        {spread.label} · {spread.cardCount} карт
+        {spread.label} · {formatSpreadUnitRu(spread.cardCount, intent.recommendedMasterId, "nominative")}
       </p>
       <h1 className="mt-2 font-display text-3xl font-bold">{intent.h1}</h1>
       <p className="mt-4 text-white/70">{intent.intro}</p>
@@ -110,10 +106,17 @@ export default async function SpreadIntentPage({
         >
           Разложить сейчас
         </SeoTrackedCta>
-        <SeoTrackedCta href={buildMasterAskUrl(intent)} variant="ghost">
-          Спросить у мастера
+        <SeoTrackedCta
+          href={buildSpreadStartUrl(intent)}
+          variant="ghost"
+          trackGoal="spread_intent_start"
+          trackParams={{ slug, variant: "ghost" }}
+        >
+          Открыть карты с {master?.name ?? "мастером"}
         </SeoTrackedCta>
       </div>
+
+      <SeoTrustBlock />
 
       <SeoSection title="Когда подходит этот расклад">
         <p>{intent.description}</p>
@@ -133,7 +136,12 @@ export default async function SpreadIntentPage({
         <p>Выбираете вопрос или формулируете свой.</p>
         <p>Мастер раскладывает карты по выбранной схеме.</p>
         <p>Получаете связную трактовку с учётом позиций и контекста.</p>
-        <p>Можете продолжить диалог и уточнить детали в чате.</p>
+        <p>
+          Можете продолжить диалог и уточнить детали в чате.{" "}
+          <Link href="/about/how-readings-work" className="text-aura-gold hover:underline">
+            Подробнее о процессе →
+          </Link>
+        </p>
       </SeoSection>
 
       {master ? (
@@ -164,8 +172,16 @@ export default async function SpreadIntentPage({
         </SeoSection>
       ) : null}
 
+      {article ? (
+        <SeoSection title="Подробнее о теме">
+          <Link href={`/statyi/${article.slug}`} className="text-aura-gold hover:underline">
+            {article.title} →
+          </Link>
+        </SeoSection>
+      ) : null}
+
       {related.length > 0 ? (
-        <SeoSection title="Похожие расклады">
+        <SeoSection title="Похожие вопросы">
           <ul className="space-y-2">
             {related.map((item) => (
               <li key={item.slug}>
@@ -179,13 +195,28 @@ export default async function SpreadIntentPage({
       ) : null}
 
       <SeoSection title="Частые вопросы">
-        {FAQ.map((item) => (
+        {faq.map((item) => (
           <div key={item.q}>
             <p className="font-medium text-white">{item.q}</p>
             <p className="mt-1">{item.a}</p>
           </div>
         ))}
       </SeoSection>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(intentFaqJsonLd(faq)) }}
+      />
     </SeoPageShell>
   );
+}
+
+function getCategoryHubPath(category: string): string | null {
+  switch (category) {
+    case "love":
+      return "/rasklady/lyubov";
+    case "career":
+      return "/rasklady/kariera";
+    default:
+      return null;
+  }
 }

@@ -3,14 +3,39 @@
 import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn } from "@/components/admin/AdminShell";
 
+type PaymentRow = {
+  id: string;
+  order_id: string | null;
+  amount: string;
+  runes: string | null;
+  payment_type: string;
+  status: string;
+  referrer_slug: string | null;
+  user_email: string | null;
+  source: string;
+  created_at: string;
+};
+
+function paymentTypeLabel(type: string): string {
+  if (type === "subscription") return "Подписка";
+  if (type === "rune_purchase") return "Руны";
+  return "Разбор";
+}
+
 export default function AdminPaymentsPage() {
-  const [items, setItems] = useState<Record<string, unknown>[]>([]);
+  const [items, setItems] = useState<PaymentRow[]>([]);
   const [paymentId, setPaymentId] = useState("");
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileNotice, setReconcileNotice] = useState<string | null>(null);
 
+  const loadPayments = () => {
+    fetch("/api/admin/payments")
+      .then((r) => r.json())
+      .then((d) => setItems(d.items ?? []));
+  };
+
   useEffect(() => {
-    fetch("/api/admin/payments").then((r) => r.json()).then((d) => setItems(d.items ?? []));
+    loadPayments();
   }, []);
 
   const reconcilePayment = async () => {
@@ -32,6 +57,7 @@ export default function AdminPaymentsPage() {
             : `Платёж уже был обработан ранее. Баланс: ${data.balance} ᚢ`
         );
         setPaymentId("");
+        loadPayments();
       } else {
         setReconcileNotice(data.error ?? "Ошибка восстановления");
       }
@@ -42,13 +68,16 @@ export default function AdminPaymentsPage() {
 
   return (
     <AdminShell>
-      <AdminTitle title="Платежи" subtitle="ЮKassa / ЮMoney транзакции" />
+      <AdminTitle
+        title="Платежи"
+        subtitle="ЮKassa: разборы, подписки и покупки рун (автоматически + cron каждые 15 мин)"
+      />
 
       <div className="glass-panel mb-6 p-4">
-        <h2 className="text-sm font-semibold text-white">Восстановить оплату рун (ЮKassa)</h2>
+        <h2 className="text-sm font-semibold text-white">Ручное восстановление (запасной вариант)</h2>
         <p className="mt-1 text-xs text-gray-500">
-          Если webhook не сработал — вставьте ID платежа из личного кабинета ЮKassa (формат
-          2b4e…).
+          Обычно не нужно: webhook, страница успеха и cron начисляют руны сами. ID платежа — из
+          личного кабинета ЮKassa.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <input
@@ -68,11 +97,13 @@ export default function AdminPaymentsPage() {
       </div>
 
       <AdminTable
-        headers={["Order ID", "Сумма", "Тип", "Статус", "Referrer", "Дата"]}
+        headers={["Order ID", "Сумма", "Руны", "Тип", "Пользователь", "Статус", "Referrer", "Дата"]}
         rows={items.map((p) => [
-          String(p.order_id ?? p.id).slice(0, 20),
+          String(p.order_id ?? p.id).slice(0, 24),
           `${p.amount} ₽`,
-          p.payment_type === "subscription" ? "Подписка" : "Разбор",
+          p.runes ? `${p.runes} ᚢ` : "—",
+          paymentTypeLabel(p.payment_type),
+          p.user_email ?? "—",
           p.status === "succeeded" ? <span className="text-aura-emerald">OK</span> : String(p.status),
           String(p.referrer_slug ?? "—"),
           new Date(String(p.created_at)).toLocaleString("ru-RU"),

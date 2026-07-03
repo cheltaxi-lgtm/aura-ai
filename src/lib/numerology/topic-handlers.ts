@@ -422,7 +422,6 @@ function buildTopicBlock(
               ];
       return {
         text: [`СФЕРА ${sphereLabel} (квадрат Пифагора, реальный):`, ...sphereLines].join("\n"),
-        ui: { pythagorasSquare: square },
       };
     }
 

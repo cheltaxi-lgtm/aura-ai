@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { parseBirthDate } from "@/lib/numerology/constants";
 import {
   NUMEROLOG_SESSION_TOOLS,
   getNumerologTool,
   validateNumerologSessionReady,
+  type NumerologToolDef,
   type NumerologToolId,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
@@ -20,6 +20,20 @@ interface NumerologCalculationPickerProps {
   userBirthDate?: string;
   /** Full name from profile — required for chaldean/karma. */
   userFullName?: string;
+}
+
+function drawMeta(tool: NumerologToolDef): string {
+  if (tool.drawCount === 0) return "психоматрица";
+  if (tool.drawCount === 1) return "1 число";
+  if (tool.drawCount < 5) return `${tool.drawCount} числа`;
+  return `${tool.drawCount} чисел`;
+}
+
+function drawActionHint(tool: NumerologToolDef): string {
+  if (tool.drawCount === 0) {
+    return "Классический квадрат Пифагора по дате рождения — чистый расчёт, без случайности.";
+  }
+  return `После «Посчитать» числа рассчитаются из вашего кода и проявятся по позициям — не «вытягивание».`;
 }
 
 export default function NumerologCalculationPicker({
@@ -54,35 +68,80 @@ export default function NumerologCalculationPicker({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {NUMEROLOG_SESSION_TOOLS.map((tool) => {
           const active = tool.id === selectedId;
+          const tagline = tool.tagline ?? tool.description ?? "";
+
           return (
             <button
               key={tool.id}
               type="button"
               onClick={() => onSelect(tool.id)}
-              className={`rounded-2xl border p-3 text-left transition-all ${
+              className={`group relative overflow-hidden rounded-2xl border p-3.5 text-left transition-all duration-300 ${
                 active
-                  ? "border-amber-400/50 bg-amber-950/25 shadow-lg shadow-amber-500/10"
-                  : "border-white/10 bg-white/5 hover:border-amber-400/30 hover:bg-white/10"
+                  ? "border-aura-gold/55 bg-gradient-to-br from-amber-950/45 via-[#1a1228]/90 to-purple-950/35 shadow-[0_0_28px_rgba(201,153,58,0.14)]"
+                  : "border-white/10 bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.07]"
               }`}
             >
-              <span className="text-lg" aria-hidden>
-                {tool.emoji}
-              </span>
-              <span className="mt-1 block text-sm font-semibold text-white">{tool.label}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-white/55">
-                {tool.drawCount === 0
-                  ? "по дате рождения"
-                  : `${tool.drawCount} ${tool.drawCount === 1 ? "число" : tool.drawCount < 5 ? "числа" : "чисел"}`}
-              </span>
-              {runeBillingEnabled ? (
-                <RuneCost cost={tool.cost} enabled className="mt-1 text-[10px] text-amber-200/80" />
+              {active ? (
+                <span
+                  className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-aura-gold/70 to-transparent"
+                  aria-hidden
+                />
               ) : null}
+
+              <div className="flex items-start gap-3">
+                <span
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg transition-colors ${
+                    active
+                      ? "border-aura-gold/35 bg-amber-950/40"
+                      : "border-white/10 bg-black/35 group-hover:border-white/20"
+                  }`}
+                  aria-hidden
+                >
+                  {tool.emoji}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-display text-[15px] font-semibold leading-snug text-white">
+                      {tool.label}
+                    </p>
+                    {active ? (
+                      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-aura-gold">
+                        ✓
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {tagline ? (
+                    <p className="mt-1 text-xs leading-relaxed text-white/55">{tagline}</p>
+                  ) : null}
+
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/45">
+                      {drawMeta(tool)}
+                    </span>
+                    {runeBillingEnabled ? (
+                      <RuneCost cost={tool.cost} enabled className="text-[10px] text-amber-200/75" />
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </button>
           );
         })}
+      </div>
+
+      <div className="rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/25 via-black/20 to-transparent px-4 py-3.5">
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-aura-gold/80">
+          {selected.label}
+        </p>
+        <p className="mt-1.5 text-sm leading-relaxed text-white/70">
+          {selected.description ?? selected.tagline ?? ""}
+        </p>
+        <p className="mt-2 text-xs text-white/45">{drawActionHint(selected)}</p>
       </div>
 
       {selected.needsForm === "compat" ? (
@@ -134,12 +193,6 @@ export default function NumerologCalculationPicker({
         </div>
       ) : null}
 
-      <p className="text-center text-xs text-white/50">
-        {selected.description}
-        {selected.drawCount > 0
-          ? ` · после выбора откроете ${selected.drawCount} ${selected.drawCount === 1 ? "число" : selected.drawCount < 5 ? "числа" : "чисел"}`
-          : " · расчёт сразу по дате рождения"}
-      </p>
       {sessionError ? (
         <p className="text-center text-xs text-amber-200/90">{sessionError}</p>
       ) : null}

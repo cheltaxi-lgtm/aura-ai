@@ -16,7 +16,12 @@ import { DEFAULT_SPREAD_CATALOG_SETTINGS } from "@/lib/spreads/types";
 export default function AdminSettingsPage() {
   const [pricing, setPricing] = useState<Record<string, unknown>>({});
   const [features, setFeatures] = useState<Record<string, unknown>>({});
-  const [share, setShare] = useState<Record<string, unknown>>({ enabled: true, expiryDays: 90, maxExcerptLength: 4000 });
+  const [share, setShare] = useState<Record<string, unknown>>({
+    enabled: true,
+    expiryDays: 90,
+    maxExcerptLength: 50000,
+    channels: { telegram: true, vk: true, native: true, copy: true, download: false },
+  });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -36,7 +41,12 @@ export default function AdminSettingsPage() {
             ...(f.spreadOverrides as Record<string, { enabled?: boolean; costMultiplier?: number }> | undefined),
           },
         });
-        setShare(d.share ?? { enabled: true, expiryDays: 90, maxExcerptLength: 4000 });
+        setShare(d.share ?? {
+          enabled: true,
+          expiryDays: 90,
+          maxExcerptLength: 50000,
+          channels: { telegram: true, vk: true, native: true, copy: true, download: false },
+        });
       });
   }, []);
 
@@ -62,6 +72,12 @@ export default function AdminSettingsPage() {
 
   const toggle = (key: string) => setFeatures({ ...features, [key]: !features[key] });
   const toggleShare = (key: string) => setShare({ ...share, [key]: !share[key] });
+  const shareChannels = (share.channels ?? {}) as Record<string, boolean>;
+  const toggleShareChannel = (key: string) =>
+    setShare({
+      ...share,
+      channels: { ...shareChannels, [key]: !shareChannels[key] },
+    });
 
   const recaptchaScopes = (features.recaptchaScopes ?? DEFAULT_RECAPTCHA_SCOPES) as RecaptchaScopeSettings;
   const recaptchaMaster = Boolean(features.recaptchaEnabled);
@@ -292,18 +308,44 @@ export default function AdminSettingsPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Макс. длина excerpt</label>
+              <label className="mb-1 block text-xs text-gray-500">
+                Макс. длина текста расклада (хранение)
+              </label>
               <input
                 type="number"
-                min={80}
-                max={500}
-                value={Number(share.maxExcerptLength ?? 4000)}
+                min={500}
+                max={100000}
+                value={Number(share.maxExcerptLength ?? 50000)}
                 onChange={(e) =>
                   setShare({ ...share, maxExcerptLength: parseInt(e.target.value, 10) })
                 }
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
               />
+              <p className="mt-1 text-[11px] text-gray-500">
+                Серверный hard cap — 100 000 символов. Поле используется для совместимости настроек.
+              </p>
             </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(
+              [
+                ["telegram", "Telegram"],
+                ["vk", "VK"],
+                ["native", "Ещё (native share)"],
+                ["copy", "Копировать ссылку"],
+                ["download", "Скачать PNG"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 px-3 py-2">
+                <span className="text-sm text-gray-300">{label}</span>
+                <input
+                  type="checkbox"
+                  checked={shareChannels[key] !== false}
+                  onChange={() => toggleShareChannel(key)}
+                  className="h-4 w-4 accent-aura-purple"
+                />
+              </label>
+            ))}
           </div>
         </div>
 

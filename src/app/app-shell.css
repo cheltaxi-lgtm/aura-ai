@@ -1,11 +1,23 @@
 /* Native app shell (Capacitor WebView, ?app=1) */
 html[data-app-shell="android"] {
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
+  height: auto;
+  touch-action: pan-y pinch-zoom;
 }
 
 html[data-app-shell="android"] body {
-  padding-top: calc(env(safe-area-inset-top) + var(--app-header-h, 3.25rem));
+  overscroll-behavior-y: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y pinch-zoom;
+  /* Header offset lives on HomePage wrapper — avoid double padding here */
+  padding-top: 0;
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+html.app-shell-has-tabs body {
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
 }
 
 html[data-app-shell="android"] .app-top-header {
@@ -15,6 +27,64 @@ html[data-app-shell="android"] .app-top-header {
 html[data-app-shell="android"] .site-legal-footer,
 html[data-app-shell="android"] .cookie-banner {
   display: none !important;
+}
+
+/* WebView: framer-motion whileInView may never fire — keep landing UI visible */
+html[data-app-shell="android"] .aura-landing-hero,
+html[data-app-shell="android"] .aura-landing-hero__copy,
+html[data-app-shell="android"] .aura-landing-hero__visual,
+html[data-app-shell="android"] .aura-landing-hero__title,
+html[data-app-shell="android"] .aura-landing-hero__subtitle,
+html[data-app-shell="android"] .aura-landing-hero__actions,
+html[data-app-shell="android"] .hero-question,
+html[data-app-shell="android"] .quick-questions,
+html[data-app-shell="android"] .offline-spread,
+html[data-app-shell="android"] .aura-landing-benefit,
+html[data-app-shell="android"] .aura-landing-step,
+html[data-app-shell="android"] .aura-landing-direction,
+html[data-app-shell="android"] .aura-landing-final__panel,
+html[data-app-shell="android"] .aura-landing-section,
+html[data-app-shell="android"] .master-showcase-card,
+html[data-app-shell="android"] .master-showcase-section,
+html[data-app-shell="android"] .master-list-row,
+html[data-app-shell="android"] .glass-panel.mb-8,
+html[data-app-shell="android"] .bootstrap-screen__brand,
+html[data-app-shell="android"] .bootstrap-screen__panel,
+html[data-app-shell="android"] .bootstrap-screen__footer {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+}
+
+html[data-app-shell="android"] .aura-landing-hero {
+  min-height: auto;
+}
+
+html[data-app-shell="android"] .bootstrap-overlay {
+  display: none !important;
+}
+
+html[data-app-shell="android"] .hero-question__input,
+html[data-app-shell="android"] .hero-question textarea,
+html[data-app-shell="android"] .quick-questions input,
+html[data-app-shell="android"] .quick-questions textarea {
+  pointer-events: auto;
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html[data-app-shell="android"] .deck-pick__body,
+html[data-app-shell="android"] .lux-scroll,
+html[data-app-shell="android"] .chat-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+html[data-app-shell="android"] .hero-question,
+html[data-app-shell="android"] .quick-questions__panel {
+  pointer-events: auto;
 }
 
 html[data-app-shell="android"] .app-shell-pull-hint {
@@ -162,4 +232,504 @@ html[data-app-shell="android"] .app-shell-pull-hint__rune {
   font-weight: 600;
   color: #0b0714;
   text-decoration: none;
+}
+
+.app-shell-update-gate__version {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.75);
+}
+
+.app-shell-update-gate__hint {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.app-shell-update-banner {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 10000;
+}
+
+.app-shell-update-banner__inner {
+  border-radius: 1rem;
+  border: 1px solid rgba(232, 199, 126, 0.28);
+  background: linear-gradient(180deg, rgba(42, 24, 69, 0.92), rgba(11, 7, 20, 0.98));
+  padding: 0.9rem 1rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.app-shell-update-banner__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.app-shell-update-banner__body {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.app-shell-update__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.app-shell-update__cta {
+  border: none;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #b8862a, #e8c77e);
+  padding: 0.55rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #0b0714;
+}
+
+.app-shell-update__cta:disabled {
+  opacity: 0.65;
+}
+
+.app-shell-update__dismiss {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+  background: transparent;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.app-shell-update__error {
+  margin-top: 0.65rem;
+  font-size: 0.75rem;
+  color: #f0a3a3;
+}
+
+.app-shell-update__progress {
+  margin-top: 0.75rem;
+}
+
+.app-shell-update__progress-bar {
+  height: 0.35rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app-shell-update__progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #b8862a, #e8c77e);
+  transition: width 0.2s ease;
+}
+
+.app-shell-update__progress-label {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Bottom tab bar ── */
+.app-shell-tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9990;
+  pointer-events: none;
+}
+
+.app-shell-tabs__rail {
+  display: grid;
+  grid-template-columns: 1fr 1fr 4rem 1fr 1fr;
+  align-items: end;
+  gap: 0;
+  min-height: 3.85rem;
+  padding: 0.35rem 0.5rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(232, 199, 126, 0.14);
+  background:
+    linear-gradient(180deg, rgba(232, 199, 126, 0.08) 0%, transparent 32%),
+    linear-gradient(180deg, rgba(14, 9, 24, 0.92), rgba(5, 3, 9, 0.98));
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 -16px 44px rgba(0, 0, 0, 0.38);
+  transition: transform 0.28s ease, opacity 0.28s ease;
+  pointer-events: auto;
+}
+
+.app-shell-tabs--hidden .app-shell-tabs__rail {
+  transform: translateY(110%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.app-shell-tabs--hidden .app-shell-tabs__fab {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(110%);
+}
+
+.app-shell-tabs__center-slot {
+  width: 100%;
+  min-height: 2.75rem;
+  pointer-events: none;
+}
+
+.app-shell-tabs__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.24rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0.15rem 0.05rem 0.05rem;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 0.56rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-shell-tabs__item--link {
+  cursor: pointer;
+}
+
+.app-shell-tabs__item--active {
+  color: #f3dc8e;
+}
+
+.app-shell-tabs__icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 9999px;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.app-shell-tabs__item:active .app-shell-tabs__icon-wrap {
+  transform: scale(0.94);
+}
+
+.app-shell-tabs__item--active .app-shell-tabs__icon-wrap {
+  background: rgba(232, 199, 126, 0.14);
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 199, 126, 0.24),
+    0 0 16px rgba(201, 162, 74, 0.12);
+}
+
+.app-shell-tabs__icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.app-shell-tabs__label {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.app-shell-tabs__item--right {
+  position: relative;
+  z-index: 5;
+}
+
+.app-shell-tabs__fab {
+  position: absolute;
+  left: 50%;
+  bottom: calc(0.72rem + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  pointer-events: none;
+  z-index: 3;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+
+.app-shell-tabs__fab-core {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.15rem;
+  height: 3.15rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(243, 220, 142, 0.62);
+  background:
+    radial-gradient(circle at 30% 20%, #fff2c0 0%, #e8c77e 36%, #b8862a 70%, #6f4c14 100%);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    0 0 22px rgba(201, 162, 74, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  color: #17100a;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-shell-tabs__fab-core:active {
+  transform: scale(0.96);
+}
+
+.app-shell-tabs__fab-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+/* ── Offline gate ── */
+.app-shell-offline {
+  position: fixed;
+  inset: 0;
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: radial-gradient(circle at 50% 20%, rgba(42, 24, 69, 0.55), rgba(5, 3, 9, 0.96));
+}
+
+.app-shell-offline__glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 35%, rgba(201, 162, 74, 0.12), transparent 55%);
+  pointer-events: none;
+}
+
+.app-shell-offline__card {
+  position: relative;
+  max-width: 22rem;
+  width: 100%;
+  border-radius: 1.35rem;
+  border: 1px solid rgba(232, 199, 126, 0.22);
+  background: linear-gradient(180deg, rgba(42, 24, 69, 0.55), rgba(11, 7, 20, 0.95));
+  padding: 1.5rem 1.25rem 1.35rem;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+.app-shell-offline__icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(232, 199, 126, 0.25);
+  background: rgba(232, 199, 126, 0.08);
+  margin-bottom: 0.85rem;
+}
+
+.app-shell-offline__icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: #e8c77e;
+}
+
+.app-shell-offline__title {
+  font-family: var(--font-display, serif);
+  font-size: 1.35rem;
+  color: #fff;
+}
+
+.app-shell-offline__body {
+  margin-top: 0.65rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.app-shell-offline__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-top: 1.15rem;
+  border: none;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #b8862a, #e8c77e);
+  padding: 0.65rem 1.15rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #0b0714;
+}
+
+.app-shell-offline__cta:disabled {
+  opacity: 0.7;
+}
+
+.app-shell-offline__cta-spin {
+  width: 1rem;
+  height: 1rem;
+  animation: app-shell-pull-spin 0.9s linear infinite;
+}
+
+.app-shell-offline__cta-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+/* ── Premium update UI extras ── */
+.app-shell-update-gate__backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(201, 162, 74, 0.08), transparent 60%);
+  pointer-events: none;
+}
+
+.app-shell-update-gate__card {
+  position: relative;
+}
+
+.app-shell-update-gate__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(232, 199, 126, 0.35);
+  background: rgba(232, 199, 126, 0.1);
+  margin-bottom: 0.65rem;
+}
+
+.app-shell-update-gate__badge-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #e8c77e;
+}
+
+.app-shell-update-banner__close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.app-shell-update-banner__eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.75);
+}
+
+.app-shell-update__bullets {
+  margin-top: 0.55rem;
+  padding-left: 1.1rem;
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.app-shell-update__body {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.app-shell-update__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.app-shell-update__cta-icon,
+.app-shell-update__cta-spin {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.app-shell-update__cta-spin {
+  animation: app-shell-pull-spin 0.9s linear infinite;
+}
+
+.app-shell-update__progress-fill--shimmer {
+  background: linear-gradient(90deg, #b8862a, #f0d88a, #b8862a);
+  background-size: 200% 100%;
+  animation: app-shell-update-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes app-shell-update-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+html[data-app-shell="android"] .home-active-chat {
+  height: calc(100dvh - var(--app-header-h, 3.25rem));
+  max-height: calc(100dvh - var(--app-header-h, 3.25rem));
+  min-height: 0;
+  overflow: hidden;
+}
+
+html[data-app-shell="android"] body.chat-session-active {
+  overflow: hidden;
+  height: 100dvh;
+  overscroll-behavior: none;
+}
+
+html[data-app-shell="android"] .home-active-chat > main {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+html[data-app-shell="android"] .home-active-chat .chat-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+html[data-app-shell="android"] .home-active-chat .chat-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }

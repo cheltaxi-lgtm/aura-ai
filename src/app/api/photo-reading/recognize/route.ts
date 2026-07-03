@@ -11,12 +11,17 @@ import { getUserById, serializeUserProfile } from "@/lib/users";
 import { enforceChatRateLimit, MAX_IMAGE_BYTES, validateImageMime, validateImageBase64Payload } from "@/lib/api-guards";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
 import {
+  filterRecognizedCardLabels,
   isRecognizedSpread,
   mapDetectedToRedrawSpread,
   normalizeRedrawSpreadForMaster,
   redrawSpreadToTarotCards,
 } from "@/lib/photo-spread-redraw";
 import { resolveMasterDeckSystem } from "@/lib/decks";
+import {
+  parseRecognitionConfidence,
+  type PhotoRecognitionConfidence,
+} from "@/lib/photo-reading-constants";
 
 export const maxDuration = 120;
 
@@ -182,6 +187,32 @@ export async function POST(request: NextRequest) {
     const spreadCheck = isRecognizedSpread({ detectedCards, deckType, spreadType });
 
     if (!spreadCheck.ok) {
+      const partialCards = filterRecognizedCardLabels(detectedCards);
+      if (partialCards.length > 0) {
+        const system = resolveMasterDeckSystem(characterId);
+        const redrawSpread = normalizeRedrawSpreadForMaster(
+          mapDetectedToRedrawSpread({
+            detectedCards: partialCards,
+            system,
+            deckType,
+            spreadType,
+          }),
+          characterId
+        );
+        const confidence = parseRecognitionConfidence(deckType);
+        return NextResponse.json({
+          redrawSpread,
+          tarotCards: redrawSpreadToTarotCards(redrawSpread),
+          deckType,
+          spreadType,
+          detectedCards: partialCards,
+          deckSystem: system,
+          confidence,
+          partial: true,
+          message: spreadCheck.reason,
+        });
+      }
+
       return NextResponse.json(
         {
           error: "NOT_A_SPREAD",
@@ -204,11 +235,13 @@ export async function POST(request: NextRequest) {
       }),
       characterId
     );
+    const confidence = parseRecognitionConfidence(deckType);
 
     console.info("[photo-recognize] ok", {
       userId: auth.sub,
       ms: Date.now() - startedAt,
       cards: detectedCards.length,
+      confidence,
     });
 
     return NextResponse.json({
@@ -218,6 +251,8 @@ export async function POST(request: NextRequest) {
       spreadType,
       detectedCards,
       deckSystem: system,
+      confidence,
+      partial: false,
     });
   } catch (error) {
     console.error("[VISION_UPLOAD_ERROR]", {

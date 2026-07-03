@@ -4,6 +4,7 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getLatestHistoryEntry } from "@/lib/users";
 import { syncPhotoReadingSession } from "@/lib/photo-session-sync";
+import { resolveApiCharacterId } from "@/lib/chat-sanitize";
 
 export async function POST(request: NextRequest) {
   const auth = await requireUserAuth();
@@ -25,9 +26,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    if (typeof body.characterId === "string" && body.characterId.trim()) {
-      characterId = body.characterId.trim();
-    }
+    characterId = await resolveApiCharacterId(body.characterId ?? characterId);
     if (typeof body.historyId === "string" && body.historyId.trim()) {
       historyId = body.historyId.trim();
     }

@@ -6,6 +6,8 @@ export type AndroidReleaseConfig = {
   minVersionCode: number;
   apkUrl: string;
   releaseNotes: string;
+  playStoreUrl?: string;
+  updateChannel: "auto" | "play" | "apk";
 };
 
 function parseIntEnv(name: string, fallback: number): number {
@@ -27,6 +29,15 @@ export function readAndroidReleaseConfig(): AndroidReleaseConfig {
   const releaseNotes =
     process.env.ANDROID_RELEASE_NOTES?.trim() ||
     "Официальное приложение Zovus для Android.";
+  const playStoreUrl =
+    process.env.ANDROID_PLAY_STORE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_ANDROID_PLAY_STORE_URL?.trim() ||
+    undefined;
+  const channelRaw = process.env.ANDROID_UPDATE_CHANNEL?.trim()?.toLowerCase();
+  const updateChannel =
+    channelRaw === "play" || channelRaw === "apk" || channelRaw === "auto"
+      ? channelRaw
+      : "auto";
 
-  return { versionCode, versionName, minVersionCode, apkUrl, releaseNotes };
+  return { versionCode, versionName, minVersionCode, apkUrl, releaseNotes, playStoreUrl, updateChannel };
 }

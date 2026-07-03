@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 320" width="200" height="320">
+  <defs>
+    <linearGradient id="len-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a2240"/>
+      <stop offset="45%" stop-color="#16102a"/>
+      <stop offset="100%" stop-color="#0a0814"/>
+    </linearGradient>
+    <linearGradient id="len-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5E6B8"/>
+      <stop offset="50%" stop-color="#C9A24A"/>
+      <stop offset="100%" stop-color="#7a5a22"/>
+    </linearGradient>
+    <radialGradient id="len-glow" cx="50%" cy="44%" r="42%">
+      <stop offset="0%" stop-color="#E8C77E" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#E8C77E" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="len-grid" width="14" height="14" patternUnits="userSpaceOnUse">
+      <circle cx="7" cy="7" r="0.55" fill="#E8C77E" opacity="0.07"/>
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#len-bg)" rx="10"/>
+  <rect width="100%" height="100%" fill="url(#len-grid)" rx="10"/>
+  <rect width="100%" height="100%" fill="url(#len-glow)" rx="10"/>
+  <rect x="10" y="14" width="180" height="292" fill="none" stroke="url(#len-gold)" stroke-width="1.8" opacity="0.75" rx="7"/>
+  <rect x="18" y="22" width="164" height="276" fill="none" stroke="#E8C77E" stroke-width="0.7" opacity="0.28" rx="5"/>
+  <!-- Petit Lenormand 4x9 hint -->
+  <g opacity="0.38" stroke="#C9A24A" stroke-width="0.6" fill="none">
+    <rect x="52" y="88" width="96" height="132" rx="4"/>
+    <path d="M76 88v132M100 88v132M124 88v132"/>
+    <path d="M52 110h96M52 132h96M52 154h96M52 176h96M52 198h96"/>
+  </g>
+  <!-- Central clover / star -->
+  <g transform="translate(100 154)" opacity="0.82">
+    <circle cx="0" cy="0" r="34" fill="none" stroke="url(#len-gold)" stroke-width="1.2"/>
+    <path d="M0,-22 C8,-8 8,8 0,22 C-8,8 -8,-8 0,-22 Z" fill="none" stroke="#F0D88A" stroke-width="1"/>
+    <path d="M-22,0 C-8,8 8,8 22,0 C8,-8 -8,-8 -22,0 Z" fill="none" stroke="#F0D88A" stroke-width="1"/>
+    <circle cx="0" cy="0" r="5" fill="#E8C77E" opacity="0.55"/>
+  </g>
+  <text x="100" y="278" text-anchor="middle" font-family="Georgia, serif" font-size="9" letter-spacing="4" fill="#E8C77E" opacity="0.45">LENORMAND</text>
+</svg>

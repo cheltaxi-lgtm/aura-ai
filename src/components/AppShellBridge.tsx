@@ -1,17 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { fetchAndroidReleaseInfo } from "@/lib/app-shell-version";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { markAppShellOnDocument, shouldUseAppShellClient } from "@/lib/app-shell";
+import { checkAndroidAppUpdate, dismissOptionalUpdate } from "@/lib/app-shell-update-check";
+import { useAppShellConnectivity } from "@/hooks/useAppConnectivity";
 import AppShellSplash from "@/components/AppShellSplash";
-
-type CapCore = typeof import("@capacitor/core");
-type CapApp = typeof import("@capacitor/app");
-type CapStatusBar = typeof import("@capacitor/status-bar");
-type CapSplash = typeof import("@capacitor/splash-screen");
-type CapHaptics = typeof import("@capacitor/haptics");
-
-const PULL_REFRESH_THRESHOLD = 120;
+import AppShellBottomNav from "@/components/AppShellBottomNav";
+import AppShellOfflineGate from "@/components/AppShellOfflineGate";
+import AppUpdatePrompt, { type AppUpdatePromptState } from "@/components/AppUpdatePrompt";
 
 function resolveAppShellUrl(raw: string): string {
   try {
@@ -33,46 +29,24 @@ function resolveAppShellUrl(raw: string): string {
   }
 }
 
-async function loadCapacitorModules(isNative: boolean) {
-  if (!isNative) return null;
-  const [{ Capacitor }, app, statusBar, splash, haptics] = await Promise.all([
-    import("@capacitor/core") as Promise<CapCore>,
-    import("@capacitor/app") as Promise<CapApp>,
-    import("@capacitor/status-bar") as Promise<CapStatusBar>,
-    import("@capacitor/splash-screen") as Promise<CapSplash>,
-    import("@capacitor/haptics") as Promise<CapHaptics>,
-  ]);
-  return { Capacitor, app, statusBar, splash, haptics };
-}
-
-function UpdateGate({ apkUrl, releaseNotes }: { apkUrl: string; releaseNotes: string }) {
-  return (
-    <div className="app-shell-update-gate" role="alertdialog" aria-modal="true">
-      <div className="app-shell-update-gate__card">
-        <p className="app-shell-update-gate__title">Нужно обновление</p>
-        <p className="app-shell-update-gate__body">{releaseNotes}</p>
-        <a className="app-shell-update-gate__cta" href={apkUrl}>
-          Скачать новую версию
-        </a>
-      </div>
-    </div>
-  );
-}
-
 export default function AppShellBridge() {
-  const [offline, setOffline] = useState(false);
-  const [pullVisible, setPullVisible] = useState(false);
-  const [updateRequired, setUpdateRequired] = useState<{ apkUrl: string; releaseNotes: string } | null>(
-    null
-  );
-  const pullStartY = useRef<number | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<AppUpdatePromptState | null>(null);
+  const { blocked, checking, retry } = useAppShellConnectivity();
+  const inShell = shouldUseAppShellClient();
+  const showGate = Boolean(blocked) && !updateAvailable?.forced;
+  const showTabs = inShell && !showGate && !updateAvailable?.forced;
+
+  const refreshUpdate = useCallback(async () => {
+    const next = await checkAndroidAppUpdate();
+    setUpdateAvailable(next);
+  }, []);
 
   useEffect(() => {
-    const active = shouldUseAppShellClient();
-    if (active) markAppShellOnDocument();
+    if (shouldUseAppShellClient()) markAppShellOnDocument();
 
     let backListener: { remove: () => void } | undefined;
     let urlListener: { remove: () => void } | undefined;
+    let resumeListener: { remove: () => void } | undefined;
     let cancelled = false;
 
     void (async () => {
@@ -82,14 +56,18 @@ export default function AppShellBridge() {
           (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
         );
 
-      if (!active && !isNative) return;
+      if (!shouldUseAppShellClient() && !isNative) return;
       markAppShellOnDocument();
 
-      const mods = await loadCapacitorModules(isNative);
-      if (cancelled) return;
-
-      if (mods) {
-        const { Capacitor, app, statusBar, splash, haptics } = mods;
+      if (isNative) {
+        const [{ Capacitor }, app, statusBar, splash, haptics] = await Promise.all([
+          import("@capacitor/core"),
+          import("@capacitor/app"),
+          import("@capacitor/status-bar"),
+          import("@capacitor/splash-screen"),
+          import("@capacitor/haptics"),
+        ]);
+        if (cancelled) return;
 
         if (Capacitor.getPlatform() === "android") {
           try {
@@ -97,24 +75,15 @@ export default function AppShellBridge() {
             await statusBar.StatusBar.setBackgroundColor({ color: "#0b0714" });
             await statusBar.StatusBar.setStyle({ style: statusBar.Style.Dark });
           } catch {
-            /* plugin unavailable */
+            /* optional */
           }
         }
 
-        try {
-          const info = await app.App.getInfo();
-          const remote = await fetchAndroidReleaseInfo();
-          const buildCode = Number.parseInt(String(info.build), 10);
-          if (
-            remote &&
-            Number.isFinite(buildCode) &&
-            buildCode < remote.minVersionCode
-          ) {
-            setUpdateRequired({ apkUrl: remote.apkUrl, releaseNotes: remote.releaseNotes });
-          }
-        } catch {
-          /* version gate optional */
-        }
+        await refreshUpdate();
+
+        resumeListener = await app.App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) void refreshUpdate();
+        });
 
         try {
           await splash.SplashScreen.hide({ fadeOutDuration: 450 });
@@ -160,82 +129,58 @@ export default function AppShellBridge() {
             }
           }
         } catch {
-          /* biometric optional */
+          /* optional */
         }
       }
     })();
-
-    const onOnline = () => setOffline(false);
-    const onOffline = () => setOffline(true);
-    setOffline(typeof navigator !== "undefined" && !navigator.onLine);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (!shouldUseAppShellClient() || window.scrollY > 4) return;
-      pullStartY.current = e.touches[0]?.clientY ?? null;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      const start = pullStartY.current;
-      if (start == null) return;
-      const delta = (e.touches[0]?.clientY ?? start) - start;
-      setPullVisible(delta > 48 && window.scrollY <= 4);
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      const start = pullStartY.current;
-      pullStartY.current = null;
-      setPullVisible(false);
-      if (start == null || !shouldUseAppShellClient()) return;
-      const endY = e.changedTouches[0]?.clientY ?? start;
-      if (endY - start >= PULL_REFRESH_THRESHOLD && window.scrollY <= 4) {
-        void import("@capacitor/haptics")
-          .then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Medium }))
-          .catch(() => undefined);
-        window.location.reload();
-      }
-    };
-
-    document.addEventListener("touchstart", onTouchStart, { passive: true });
-    document.addEventListener("touchmove", onTouchMove, { passive: true });
-    document.addEventListener("touchend", onTouchEnd, { passive: true });
 
     return () => {
       cancelled = true;
       backListener?.remove();
       urlListener?.remove();
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
+      resumeListener?.remove();
+    };
+  }, [refreshUpdate]);
+
+  const pullRef = useRef({ startY: 0, pulling: false });
+  useEffect(() => {
+    if (!inShell) return;
+    const onTouchStart = (e: TouchEvent) => {
+      if (window.scrollY > 8) return;
+      pullRef.current.startY = e.touches[0]?.clientY ?? 0;
+      pullRef.current.pulling = true;
+    };
+    const onTouchEnd = () => {
+      pullRef.current.pulling = false;
+    };
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
       document.removeEventListener("touchstart", onTouchStart);
-      document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("touchend", onTouchEnd);
     };
-  }, []);
-
-  const inShell = shouldUseAppShellClient();
+  }, [inShell]);
 
   return (
     <>
       <AppShellSplash />
-      {inShell && pullVisible ? (
-        <div className="app-shell-pull-hint app-shell-pull-hint--visible" aria-hidden>
-          <span className="app-shell-pull-hint__rune">✦</span>
-          Обновить
-        </div>
+      {updateAvailable ? (
+        <AppUpdatePrompt
+          update={updateAvailable}
+          onDismiss={
+            updateAvailable.forced
+              ? undefined
+              : () => {
+                  dismissOptionalUpdate(updateAvailable.versionCode);
+                  setUpdateAvailable(null);
+                }
+          }
+        />
       ) : null}
-      {updateRequired ? (
-        <UpdateGate apkUrl={updateRequired.apkUrl} releaseNotes={updateRequired.releaseNotes} />
+      {showGate && blocked ? (
+        <AppShellOfflineGate reason={blocked} checking={checking} onRetry={retry} />
       ) : null}
-      {offline && inShell ? (
-        <div
-          className="app-shell-offline fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0b0714] px-8 text-center"
-          role="alert"
-        >
-          <p className="font-display text-xl text-aura-champagne">Нет соединения</p>
-          <p className="mt-3 max-w-sm text-sm text-gray-400">
-            Проверьте интернет — Zovus работает онлайн. Карты вернутся, когда связь восстановится.
-          </p>
-        </div>
-      ) : null}
+      {showTabs ? <AppShellBottomNav /> : null}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SHARE_BODY_MAX } from "@/lib/share/sanitize";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
         characterKey,
         topicSummary: String(body.topicSummary).slice(0, 500),
         keyCards: Array.isArray(cardNames) ? limitSpreadKeyCards(cardNames) : [],
-        prediction: String(body.prediction).slice(0, 1000),
+        prediction: String(body.prediction).slice(0, SHARE_BODY_MAX),
         mood: body.mood ? String(body.mood).slice(0, 100) : undefined,
         outcomeRating,
       });

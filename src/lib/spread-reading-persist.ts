@@ -69,6 +69,7 @@ export type PersistSpreadReadingInput = {
   intention?: string;
   spreadType?: "daily" | "new" | null;
   spreadId?: string | null;
+  customQuestion?: string | null;
 };
 
 /** True when session already has a substantive assistant spread message. */
@@ -156,13 +157,15 @@ export async function ensureSpreadReadingInChatMessages(
   }
 
   const topicSummary =
-    input.intention && isValidSessionIntention(input.intention)
-      ? topicLabel(input.intention as SessionTopicId)
-      : isNumerologMaster(input.characterId)
-        ? "Нумерология"
-        : input.spreadType === "daily"
-          ? "Три карты дня"
-          : "Сеанс";
+    input.intention === "custom" && input.customQuestion?.trim()
+      ? input.customQuestion.trim().slice(0, 120)
+      : input.intention && isValidSessionIntention(input.intention)
+        ? topicLabel(input.intention as SessionTopicId)
+        : isNumerologMaster(input.characterId)
+          ? "Нумерология"
+          : input.spreadType === "daily"
+            ? "Три карты дня"
+            : "Сеанс";
 
   await upsertSessionMemoryFromChat({
     userId: input.profileUserId,

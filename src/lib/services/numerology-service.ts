@@ -1,11 +1,15 @@
-import { buildNumerologSpreadReading } from "@/lib/numerolog/welcome";
+import { buildNumerologSpreadReading, buildSpreadOpeningFinale } from "@/lib/numerolog/welcome";
 import { buildNumerologEngineReply, buildRichEngineFacts } from "@/lib/numerology/engine-reply";
 import {
   appendNumerologFinale,
   generateNumerologFinale,
   generateNumerologMainReading,
 } from "@/lib/numerology/numerolog-finalize";
-import { polishNumerologClientReply } from "@/lib/numerology/numerolog-finale-client";
+import {
+  deniesHavingSpreadNumbers,
+  polishNumerologClientReply,
+  spreadFinaleMatchesNumbers,
+} from "@/lib/numerology/numerolog-finale-client";
 import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
 import {
@@ -175,25 +179,15 @@ export async function generateNumerologSpreadOpeningReading(input: {
   const firstName =
     (input.userName || input.fullName || "друг").trim().split(/\s+/)[0] || "друг";
 
-  const numerologyCtx = buildNumerologyChatContext({
-    birthDate: input.birthDate,
-    profileName: input.fullName ?? input.userName,
-    lastUserMessage: "draw_three_numbers",
-  });
+  // Authoritative facts: drawn spread + path/year context. Profile-only blocks (destiny/soul)
+  // must not replace this — the model then asks for numbers or invents wrong ones in «Простыми словами».
+  const engineFacts = mathSummary;
 
-  const engineFacts =
-    buildRichEngineFacts({
-      prompt: numerologyCtx.prompt,
-      primaryTopic: "personal_cycle",
-      userMessage: "Три числа текущего периода",
-      fallbackFacts: mathSummary,
-    }) || mathSummary;
-
-  const [analysis, finale] = await Promise.all([
+  const [analysisRaw, finaleRaw] = await Promise.all([
     generateNumerologMainReading({
       name: firstName,
       topic: "spread_opening",
-      userMessage: "draw_three_numbers",
+      userMessage: "Три числа текущего периода",
       engineFacts,
       fallback: mathSummary,
     }),
@@ -204,10 +198,16 @@ export async function generateNumerologSpreadOpeningReading(input: {
     }),
   ]);
 
-  const body =
-    analysis.trim() === mathSummary.trim()
-      ? mathSummary
-      : `${mathSummary.trim()}\n\n${analysis.trim()}`;
+  const analysis =
+    deniesHavingSpreadNumbers(analysisRaw) || analysisRaw.trim() === mathSummary.trim()
+      ? ""
+      : analysisRaw.trim();
+
+  const finale = spreadFinaleMatchesNumbers(finaleRaw, spreadNumbers)
+    ? finaleRaw
+    : buildSpreadOpeningFinale(firstName, spreadNumbers);
+
+  const body = analysis ? `${mathSummary.trim()}\n\n${analysis}` : mathSummary;
 
   return appendNumerologFinale(body, finale);
 }

@@ -6,10 +6,12 @@ TARBALL="${1:-/tmp/aura-ai-deploy.tgz}"
 
 if [ -f "$TARBALL" ]; then
   tar -xzf "$TARBALL" -C /opt/aura-ai
-  if [ "$(id -u)" -eq 0 ]; then
-    chown -R ubuntu:ubuntu /opt/aura-ai
-  else
-    sudo chown -R ubuntu:ubuntu /opt/aura-ai
+  if id ubuntu >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+      chown -R ubuntu:ubuntu /opt/aura-ai
+    else
+      sudo chown -R ubuntu:ubuntu /opt/aura-ai
+    fi
   fi
 fi
 
@@ -171,7 +173,9 @@ echo ">>> Installing background crons (memory maintenance + proactive reminders)
 sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/install-crons.sh \
   /opt/aura-ai/proxmox-setup/cron-proactive-reminders.sh \
-  /opt/aura-ai/proxmox-setup/cron-memory-maintenance.sh 2>/dev/null || true
+  /opt/aura-ai/proxmox-setup/cron-memory-maintenance.sh \
+  /opt/aura-ai/proxmox-setup/cron-daily-reading-remind.sh \
+  /opt/aura-ai/proxmox-setup/cron-reconcile-rune-payments.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
 
 echo "Deploy complete: https://zovus.ru"

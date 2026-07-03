@@ -1,4 +1,5 @@
 import { query, withTransaction } from "@/lib/db";
+import { preserveUserRateLimitsBeforePurge } from "@/lib/rate-limit-anchors";
 import { getUserById } from "@/lib/users";
 import { getRuneBalance, getRuneTransactions } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
@@ -8,6 +9,11 @@ import { listDiaryEntries } from "@/lib/diary";
 import { deleteConsultationSession, getSession } from "@/lib/session";
 import { ensureSessionMemoryStub } from "@/lib/session-memory";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
+import {
+  getDaysWithUs,
+  getLifetimeStats,
+  pickFavoriteMaster,
+} from "@/lib/user-lifetime-stats";
 import {
   ACHIEVEMENTS,
   type AchievementKey,
@@ -193,15 +199,19 @@ export async function getCabinetDailyReadings(
 
 export async function deleteCabinetPhotoSpread(
   userId: string,
-  historyId: string
-): Promise<{ ok: boolean; characterName?: string }> {
-  const { rows } = await query<{ character_name: string }>(
-    `SELECT character_name FROM history
+  historyId: string,
+  options?: { deleteLinkedChat?: boolean }
+): Promise<{ ok: boolean; characterName?: string; sessionId?: string }> {
+  const { rows } = await query<{ character_name: string; context_data: Record<string, unknown> }>(
+    `SELECT character_name, context_data FROM history
      WHERE id = $1 AND user_id = $2 AND context_data->>'type' = 'photo_reading'`,
     [historyId, userId]
   );
   const row = rows[0];
   if (!row) return { ok: false };
+
+  const sessionId =
+    typeof row.context_data?.sessionId === "string" ? row.context_data.sessionId : undefined;
 
   const result = await query(
     `DELETE FROM history
@@ -210,7 +220,39 @@ export async function deleteCabinetPhotoSpread(
   );
   if ((result.rowCount ?? 0) === 0) return { ok: false };
 
-  return { ok: true, characterName: row.character_name };
+  if (options?.deleteLinkedChat !== false && sessionId) {
+    const analysis =
+      typeof row.context_data?.analysis === "string"
+        ? row.context_data.analysis.trim().slice(0, 240)
+        : "";
+    if (analysis) {
+      await query(
+        `DELETE FROM chat_messages
+         WHERE session_id = $1
+           AND (
+             content LIKE '[Фото-расклад]%'
+             OR LEFT(TRIM(content), 240) = $2
+           )`,
+        [sessionId, analysis]
+      );
+    } else {
+      await query(
+        `DELETE FROM chat_messages
+         WHERE session_id = $1 AND content LIKE '[Фото-расклад]%'`,
+        [sessionId]
+      );
+    }
+    await query(
+      `UPDATE sessions
+       SET spread_type = NULL,
+           cards = NULL,
+           updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND spread_type = 'photo'`,
+      [sessionId, userId]
+    );
+  }
+
+  return { ok: true, characterName: row.character_name, sessionId };
 }
 
 export async function getCabinetProfile(
@@ -236,36 +278,13 @@ export async function getCabinetProfile(
 }
 
 export async function getCabinetStats(userId: string): Promise<CabinetStats> {
-  const [sessionCount, favorite, daysRow, cardsRow] = await Promise.all([
-    query<{ cnt: string }>(
-      `SELECT COUNT(*)::text AS cnt
-       FROM sessions
-       WHERE user_id = $1 AND character_key IS NOT NULL AND TRIM(character_key) <> ''`,
-      [userId]
-    ),
-    query<{ character_key: string; cnt: string }>(
-      `SELECT character_key, COUNT(*)::text AS cnt
-       FROM session_memories WHERE user_id = $1
-       GROUP BY character_key ORDER BY COUNT(*) DESC LIMIT 1`,
-      [userId]
-    ),
-    query<{ days: number | null }>(
-      `SELECT EXTRACT(DAY FROM NOW() - MIN(created_at))::int AS days
-       FROM sessions WHERE user_id = $1`,
-      [userId]
-    ),
-    query<{ total: string }>(
-      `SELECT COALESCE(SUM(COALESCE(array_length(key_cards, 1), 0)), 0)::text AS total
-       FROM session_memories WHERE user_id = $1`,
-      [userId]
-    ),
-  ]);
+  const [lifetime, daysWithUs] = await Promise.all([getLifetimeStats(userId), getDaysWithUs(userId)]);
 
   return {
-    totalSessions: Number.parseInt(sessionCount.rows[0]?.cnt ?? "0", 10),
-    favoriteMaster: favorite.rows[0]?.character_key ?? null,
-    daysWithUs: Math.max(0, Number(daysRow.rows[0]?.days ?? 0)),
-    totalCards: Number.parseInt(cardsRow.rows[0]?.total ?? "0", 10),
+    totalSessions: lifetime.totalSessions,
+    favoriteMaster: pickFavoriteMaster(lifetime.masterCounts),
+    daysWithUs,
+    totalCards: lifetime.totalCards,
   };
 }
 
@@ -299,7 +318,7 @@ export async function getCabinetSessions(
        last_assistant AS (
          SELECT DISTINCT ON (session_id)
            session_id,
-           LEFT(content, 1000) AS last_assistant
+           content AS last_assistant
          FROM chat_messages
          WHERE role = 'assistant'
          ORDER BY session_id, created_at DESC
@@ -673,6 +692,9 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
     const diaryRemoved = await run(`DELETE FROM diary_entries WHERE user_id = $1`, [userId]);
     const memoriesRemoved = await run(`DELETE FROM session_memories WHERE user_id = $1`, [userId]);
     const factsRemoved = await run(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
+
+    await preserveUserRateLimitsBeforePurge(userId, client);
+
     const dailyReadingsRemoved = await run(`DELETE FROM daily_readings WHERE user_id = $1`, [userId]);
     const historyRemoved = await run(`DELETE FROM history WHERE user_id = $1`, [userId]);
 

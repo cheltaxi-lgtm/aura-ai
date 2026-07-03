@@ -7,8 +7,13 @@ import {
 } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { SessionIntention } from "@/lib/intention";
+import { createSeededRng, type SpreadRng } from "@/lib/spread-seed";
 
 export type DrawIntention = SessionIntention | "life_death";
+
+const LENORMAND_LOVE = ["Сердце", "Кольцо", "Букет", "Собака", "Лилия", "Аист", "Солнце"];
+const LENORMAND_MONEY = ["Рыбы", "Клевер", "Якорь", "Корабль", "Ключ", "Солнце", "Медведь"];
+const LENORMAND_SIGN = ["Звёзды", "Ключ", "Солнце", "Луна", "Книга", "Всадник", "Птицы"];
 
 /** Preferred symbols per intention — biased draw, not a fixed spread. */
 const INTENTION_PREFERRED: Record<
@@ -20,50 +25,52 @@ const INTENTION_PREFERRED: Record<
     "tarot-veronika": [
       "Влюблённые",
       "Императрица",
-      "Туз кубков",
-      "Двойка кубков",
-      "Тройка кубков",
-      "Девятка кубков",
-      "Десять кубков",
-      "Королева кубков",
-      "Рыцарь кубков",
+      "Туз Кубков",
+      "2 Кубков",
+      "3 Кубков",
+      "9 Кубков",
+      "10 Кубков",
+      "Королева Кубков",
+      "Рыцарь Кубков",
     ],
     "tarot-marina": [
       "Влюблённые",
       "Императрица",
-      "Туз кубков",
-      "Двойка кубков",
-      "Тройка кубков",
-      "Девятка кубков",
-      "Десять кубков",
-      "Королева кубков",
+      "Туз Кубков",
+      "2 Кубков",
+      "3 Кубков",
+      "9 Кубков",
+      "10 Кубков",
+      "Королева Кубков",
     ],
     slavic: ["Леля", "Берегиня", "Даждьбог", "Уд"],
     astrology: ["Шукра", "Чандра", "Гуру"],
+    lenormand: LENORMAND_LOVE,
   },
   Деньги: {
     runes: ["Феху", "Йера", "Райдо", "Соулу", "Отал"],
     "tarot-veronika": [
-      "Туз пентаклей",
-      "Девятка пентаклей",
-      "Десять пентаклей",
-      "Король пентаклей",
-      "Королева пентаклей",
+      "Туз Пентаклей",
+      "9 Пентаклей",
+      "10 Пентаклей",
+      "Король Пентаклей",
+      "Королева Пентаклей",
       "Императрица",
       "Колесо Фортуны",
-      "Шестёрка пентаклей",
-      "Восьмёрка пентаклей",
+      "6 Пентаклей",
+      "8 Пентаклей",
     ],
     "tarot-marina": [
-      "Туз пентаклей",
-      "Девятка пентаклей",
-      "Десять пентаклей",
-      "Король пентаклей",
+      "Туз Пентаклей",
+      "9 Пентаклей",
+      "10 Пентаклей",
+      "Король Пентаклей",
       "Императрица",
       "Колесо Фортуны",
     ],
     slavic: ["Даждьбог", "Уд", "Опора"],
     astrology: ["Гуру", "Шукра", "Шани"],
+    lenormand: LENORMAND_MONEY,
   },
   Здоровье: {
     runes: ["Уруз", "Соулу", "Беркана", "Ингуз", "Альгиз"],
@@ -72,11 +79,11 @@ const INTENTION_PREFERRED: Record<
       "Солнце",
       "Звезда",
       "Императрица",
-      "Четвёрка мечей",
+      "4 Мечей",
       "Умеренность",
       "Мир",
     ],
-    "tarot-marina": ["Сила", "Солнце", "Звезда", "Императрица", "Четвёрка мечей", "Умеренность"],
+    "tarot-marina": ["Сила", "Солнце", "Звезда", "Императрица", "4 Мечей", "Умеренность"],
     slavic: ["Берегиня", "Сила", "Есть"],
     astrology: ["Сурья", "Чандра", "Гуру"],
   },
@@ -98,29 +105,29 @@ const INTENTION_PREFERRED: Record<
   Враги: {
     runes: ["Турисаз", "Тейваз", "Иса", "Хагалаз", "Наутиз", "Эйваз"],
     "tarot-veronika": [
-      "Пятёрка мечей",
-      "Семёрка мечей",
-      "Девятка мечей",
-      "Десять мечей",
-      "Тройка мечей",
+      "5 Мечей",
+      "7 Мечей",
+      "9 Мечей",
+      "10 Мечей",
+      "3 Мечей",
       "Дьявол",
       "Башня",
-      "Пятёрка жезлов",
-      "Семёрка жезлов",
+      "5 Жезлов",
+      "7 Жезлов",
       "Справедливость",
       "Сила",
       "Император",
       "Повешенный",
     ],
     "tarot-marina": [
-      "Пятёрка мечей",
-      "Семёрка мечей",
-      "Девятка мечей",
-      "Десять мечей",
+      "5 Мечей",
+      "7 Мечей",
+      "9 Мечей",
+      "10 Мечей",
       "Дьявол",
       "Башня",
-      "Пятёрка жезлов",
-      "Семёрка жезлов",
+      "5 Жезлов",
+      "7 Жезлов",
       "Справедливость",
     ],
     slavic: ["Чернобог", "Перун", "Сила", "Рок"],
@@ -132,9 +139,10 @@ const INTENTION_PREFERRED: Record<
     "tarot-marina": ["Звезда", "Луна", "Суд", "Иерофант", "Мир", "Колесо Фортуны"],
     slavic: ["Алатырь", "Радуга", "Ветер"],
     astrology: ["Гуру", "Кету", "Сурья"],
+    lenormand: LENORMAND_SIGN,
   },
   life_death: {
-    runes: ["Альгиз", "Совило", "Райдо", "Иса", "Хагалаз", "Перт", "Феху", "Гебo", "Одал"],
+    runes: ["Альгиз", "Соулу", "Райдо", "Иса", "Хагалаз", "Перт", "Феху", "Гебо", "Отал"],
     "tarot-veronika": [
       "Звезда",
       "Солнце",
@@ -145,12 +153,13 @@ const INTENTION_PREFERRED: Record<
       "Повешенный",
       "Сила",
       "Башня",
-      "Десятка Мечей",
-      "Восьмёрка Мечей",
-      "Шестёрка Мечей",
+      "Смерть",
+      "10 Мечей",
+      "8 Мечей",
+      "6 Мечей",
     ],
-    "tarot-marina": ["Звезда", "Солнце", "Луна", "Отшельник", "Башня", "Десятка Мечей"],
-    slavic: ["Живая вода", "Огонь горит", "Птица летит", "Дуб", "Заря", "Буря", "Болото", "Волк"],
+    "tarot-marina": ["Звезда", "Солнце", "Луна", "Отшельник", "Башня", "10 Мечей"],
+    slavic: ["Исток", "Даждьбог", "Ветер", "Опора", "Радуга", "Перун", "Рок", "Есть"],
     astrology: ["Сурья", "Чандра", "Кету", "Гуру", "Шани"],
   },
 };
@@ -174,7 +183,8 @@ function matchesPreferred(cardName: string, preferred: string[]): boolean {
 export function drawIntentionSpread(
   system: DeckSystem,
   intention: DrawIntention,
-  count = 3
+  count = 3,
+  rng: SpreadRng = Math.random
 ): SpreadSymbol[] {
   const deck = [...DECK_REGISTRY[system].symbols];
   const preferredNames = INTENTION_PREFERRED[intention]?.[system] ?? [];
@@ -183,19 +193,19 @@ export function drawIntentionSpread(
   const drawn: SpreadSymbol[] = [];
 
   while (drawn.length < count && pool.length > 0) {
-    const usePreferred = preferred.length > 0 && Math.random() < 0.72;
+    const usePreferred = preferred.length > 0 && rng() < 0.72;
 
     let pick: SpreadSymbol | undefined;
 
     if (usePreferred) {
       const available = preferred.filter((s) => pool.some((p) => p.name === s.name));
       if (available.length) {
-        pick = available[Math.floor(Math.random() * available.length)];
+        pick = available[Math.floor(rng() * available.length)];
       }
     }
 
     if (!pick) {
-      pick = pool[Math.floor(Math.random() * pool.length)];
+      pick = pool[Math.floor(rng() * pool.length)];
     }
 
     const idx = pool.findIndex((s) => s.name === pick!.name);
@@ -207,15 +217,36 @@ export function drawIntentionSpread(
 }
 
 /** Uniform random pick — used only for numerolog preview draw. */
-export function drawUniformSpread(system: DeckSystem, count = 3): SpreadSymbol[] {
+export function drawUniformSpread(
+  system: DeckSystem,
+  count = 3,
+  rng: SpreadRng = Math.random
+): SpreadSymbol[] {
   const deck = [...DECK_REGISTRY[system].symbols];
   const pool = [...deck];
   const drawn: SpreadSymbol[] = [];
   while (drawn.length < count && pool.length > 0) {
-    const pick = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    const pick = pool.splice(Math.floor(rng() * pool.length), 1)[0];
     if (pick) drawn.push(pick);
   }
   return drawn;
+}
+
+export function drawSeededIntentionSpread(
+  system: DeckSystem,
+  intention: DrawIntention,
+  count: number,
+  seed: string
+): SpreadSymbol[] {
+  return drawIntentionSpread(system, intention, count, createSeededRng(seed));
+}
+
+export function drawSeededUniformSpread(
+  system: DeckSystem,
+  count: number,
+  seed: string
+): SpreadSymbol[] {
+  return drawUniformSpread(system, count, createSeededRng(seed));
 }
 
 /** Resolve drawn card names back to deck symbols (for fixed spreads after flip). */

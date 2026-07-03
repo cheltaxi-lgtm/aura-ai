@@ -43,27 +43,50 @@ export default function RitualEntry({
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    const fetchWithTimeout = async (url: string, ms = 8000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ms);
       try {
-        const moonRes = await fetch("/api/ritual/moon");
+        return await fetch(url, { signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    (async () => {
+      const types = getMasterRitualTypes(characterKey);
+      try {
+        const moonRes = await fetchWithTimeout("/api/ritual/moon");
         const moonData = moonRes.ok ? await moonRes.json() : getMoonPhase();
         if (!cancelled) setMoon(moonData);
-
-        const entries = await Promise.all(
-          ritualTypes.map(async (type) => {
-            const res = await fetch(
-              `/api/ritual/stats?type=${type}&characterKey=${characterKey}`
-            );
-            if (!res.ok) return [type, { total: 0, signsReported: 0 }] as const;
-            const data = await res.json();
-            return [type, { total: data.total, signsReported: data.signsReported }] as const;
-          })
-        );
-        if (!cancelled) setStats(Object.fromEntries(entries));
+      } catch {
+        if (!cancelled) setMoon(getMoonPhase());
       } finally {
         if (!cancelled) setLoading(false);
       }
+
+      try {
+        const entries = await Promise.all(
+          types.map(async (type) => {
+            try {
+              const res = await fetchWithTimeout(
+                `/api/ritual/stats?type=${type}&characterKey=${characterKey}`
+              );
+              if (!res.ok) return [type, { total: 0, signsReported: 0 }] as const;
+              const data = await res.json();
+              return [type, { total: data.total, signsReported: data.signsReported }] as const;
+            } catch {
+              return [type, { total: 0, signsReported: 0 }] as const;
+            }
+          })
+        );
+        if (!cancelled) setStats(Object.fromEntries(entries));
+      } catch {
+        /* stats are optional */
+      }
     })();
+
     return () => {
       cancelled = true;
     };

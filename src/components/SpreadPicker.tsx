@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSpreadUnitRu } from "@/lib/spread-ritual-copy";
 import {
   getSpread,
   listSpreads,
@@ -62,7 +63,7 @@ export default function SpreadPicker({
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="font-medium text-white">{spread.label}</span>
               <span className="rounded-full bg-black/30 px-2 py-0.5 text-xs text-aura-gold">
-                {spread.cardCount} {spread.cardCount === 1 ? "карта" : "карт"}
+                {formatSpreadUnitRu(spread.cardCount, masterId ?? "veronika", "nominative")}
               </span>
             </div>
             <p className="mb-2 text-sm text-white/60">{spread.description}</p>

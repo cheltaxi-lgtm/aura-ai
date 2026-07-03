@@ -10,6 +10,8 @@ import { buildUserMessageWithImage, isRejectedLlmOutput, streamChat, type ChatMe
 export interface ChatStreamMeta {
   reply: string;
   llmFailed: boolean;
+  finishReason?: string | null;
+  streamInterrupted?: boolean;
 }
 
 function streamOutputRejected(text: string, qualityOpts?: ChatReplyQualityOpts): boolean {
@@ -23,6 +25,7 @@ export async function createChatResponseStream(params: {
   messages: { role: string; content: string }[];
   imageBase64?: string;
   temperature?: number;
+  maxTokens?: number;
   qualityOpts?: ChatReplyQualityOpts;
   onComplete: (meta: ChatStreamMeta) => Promise<Record<string, unknown>>;
 }): Promise<Response | null> {
@@ -37,7 +40,7 @@ export async function createChatResponseStream(params: {
 
   const upstream = await streamChat({
     messages: chatMessages,
-    maxTokens: 1800,
+    maxTokens: params.maxTokens ?? 1800,
     vision: Boolean(params.imageBase64),
     temperature: params.temperature,
   });
@@ -48,6 +51,7 @@ export async function createChatResponseStream(params: {
   const encoder = new TextEncoder();
   let fullText = "";
   let upstreamFailed = false;
+  let finishReason: string | null = null;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -72,9 +76,13 @@ export async function createChatResponseStream(params: {
 
             try {
               const json = JSON.parse(data) as {
-                choices?: { delta?: { content?: string } }[];
+                choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
               };
-              const token = json.choices?.[0]?.delta?.content ?? "";
+              const choice = json.choices?.[0];
+              if (typeof choice?.finish_reason === "string") {
+                finishReason = choice.finish_reason;
+              }
+              const token = choice?.delta?.content ?? "";
               if (token) {
                 fullText += token;
                 if (streamOutputRejected(fullText, params.qualityOpts)) {
@@ -105,11 +113,18 @@ export async function createChatResponseStream(params: {
       const rejected = rawReply && streamOutputRejected(rawReply, params.qualityOpts);
       const reply =
         rawReply && !rejected ? stripMemoryLeakFromReply(rawReply) : "";
-      const llmFailed = upstreamFailed || !reply || Boolean(rejected && rawReply);
+      const streamInterrupted = upstreamFailed;
+      const llmFailed =
+        streamInterrupted || !reply || Boolean(rejected && rawReply);
 
       let metaExtras: Record<string, unknown> = {};
       try {
-        metaExtras = await params.onComplete({ reply, llmFailed });
+        metaExtras = await params.onComplete({
+          reply,
+          llmFailed,
+          finishReason,
+          streamInterrupted,
+        });
       } catch (err) {
         console.error("[DB_CHAT_SAVE_FAILED] Stream onComplete error:", err);
       }

@@ -11,19 +11,30 @@ import {
   inferSpreadPositions,
   mapDetectedToRedrawSpread,
 } from "@/lib/photo-spread-redraw";
+import {
+  confidenceLabel,
+  MAX_PHOTO_CARDS,
+  type PhotoRecognitionConfidence,
+} from "@/lib/photo-reading-constants";
 
-const MAX_PHOTO_CARDS = 12;
+const MAX_PHOTO_CARDS_LOCAL = MAX_PHOTO_CARDS;
 
 interface PhotoSpreadPreviewProps {
   spread: RedrawSpread;
   masterId: string;
   onChange: (spread: RedrawSpread) => void;
+  confidence?: PhotoRecognitionConfidence;
+  manualMode?: boolean;
+  recognitionFailed?: boolean;
+  /** When parent renders status badges, hide duplicate confidence line. */
+  hideStatusLine?: boolean;
 }
 
 function gridClass(count: number): string {
   if (count <= 1) return "photo-spread-preview__grid--1";
   if (count === 2) return "photo-spread-preview__grid--2";
   if (count === 3) return "photo-spread-preview__grid--3";
+  if (count <= 6) return "photo-spread-preview__grid--4";
   return "photo-spread-preview__grid--5";
 }
 
@@ -38,10 +49,24 @@ function toDeckInput(card: RedrawSpreadCard): DeckCardInput {
   };
 }
 
+function statusTone(
+  confidence: PhotoRecognitionConfidence,
+  placeholderCount: number
+): "high" | "low" | "medium" | "warn" {
+  if (placeholderCount > 0) return "warn";
+  if (confidence === "high") return "high";
+  if (confidence === "low") return "low";
+  return "medium";
+}
+
 export default function PhotoSpreadPreview({
   spread,
   masterId,
   onChange,
+  confidence = "unknown",
+  manualMode = false,
+  recognitionFailed = false,
+  hideStatusLine = false,
 }: PhotoSpreadPreviewProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [addingCard, setAddingCard] = useState(false);
@@ -100,7 +125,7 @@ export default function PhotoSpreadPreview({
   };
 
   const addCard = (name: string) => {
-    if (spread.cards.length >= MAX_PHOTO_CARDS) return;
+    if (spread.cards.length >= MAX_PHOTO_CARDS_LOCAL) return;
     const detected = [
       ...spread.cards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name)),
       name,
@@ -121,154 +146,186 @@ export default function PhotoSpreadPreview({
   const cardCount = spread.cards.length;
   const countLabel =
     cardCount === 1 ? "1 символ" : cardCount < 5 ? `${cardCount} символа` : `${cardCount} символов`;
+  const placeholderCount = spread.cards.filter((c) => c.placeholder).length;
+
+  const title = recognitionFailed
+    ? "Соберите расклад вручную"
+    : manualMode
+      ? "Выберите символы колоды"
+      : `Проверьте расклад · ${countLabel}`;
+
+  const subtitle = recognitionFailed
+    ? "Выберите карты или руны — мастер расшифрует по вашему выбору."
+    : manualMode
+      ? "Добавьте символы из колоды Zovus перед расшифровкой."
+      : "Замените, переверните или добавьте символ, если AI ошибся.";
+
+  const statusText =
+    placeholderCount > 0
+      ? `${placeholderCount} ${placeholderCount === 1 ? "карта требует" : "карты требуют"} проверки`
+      : confidenceLabel(confidence);
 
   return (
-    <div className="photo-spread-preview">
-      <p className="mb-4 text-center font-display text-base text-aura-ivory sm:text-lg">
-        Я перерисовал ваш расклад ({countLabel}) — всё верно?
-      </p>
+    <div className="photo-flow-preview-shell">
+      <div className="photo-spread-preview">
+        <h3 className="photo-spread-preview__header-title">{title}</h3>
+        <p className="photo-spread-preview__header-sub">{subtitle}</p>
 
-      <div className={`photo-spread-preview__grid ${gridClass(cardCount)}`}>
-        {spread.cards.map((card, index) => (
-          <div key={`${card.order}-${card.name}-${index}`} className="photo-spread-preview__item">
-            <p className="lux-label mb-2 text-center">{card.position}</p>
-            <div className="photo-spread-preview__card">
-              <DeckCard
-                card={toDeckInput(card)}
-                system={spread.system}
-                masterId={masterId}
-                imagePath={card.imagePath}
-                detectedOnly={card.placeholder}
-                originalName={card.originalName}
-                reversed={card.reversed}
-                showMeaning={false}
-                hideCaption
-                size="md"
-                className="mx-auto w-full"
-              />
-            </div>
-            <p className="mt-2 text-center text-xs font-medium text-aura-champagne">{card.name}</p>
-            {card.originalName !== card.name && (
-              <p className="text-center text-[10px] text-aura-ivory/45">На фото: {card.originalName}</p>
-            )}
-            {card.reversed && (
-              <p className="text-center text-[10px] uppercase tracking-wider text-aura-gold/70">
-                Перевёрнутая
-              </p>
-            )}
+        {!hideStatusLine && confidence !== "unknown" && (
+          <p className="mt-3 text-center">
+            <span className={`photo-flow-badge photo-flow-badge--${statusTone(confidence, placeholderCount)}`}>
+              {statusText}
+            </span>
+          </p>
+        )}
 
-            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setEditingIndex(editingIndex === index ? null : index)}
-                className="photo-spread-preview__tool"
-                title="Заменить символ"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => toggleReversed(index)}
-                className="photo-spread-preview__tool"
-                title="Перевёрнутая"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => moveCard(index, -1)}
-                disabled={index === 0}
-                className="photo-spread-preview__tool"
-                title="Левее"
-              >
-                <ArrowUp className="h-3.5 w-3.5 -rotate-90" />
-              </button>
-              <button
-                type="button"
-                onClick={() => moveCard(index, 1)}
-                disabled={index === spread.cards.length - 1}
-                className="photo-spread-preview__tool"
-                title="Правее"
-              >
-                <ArrowDown className="h-3.5 w-3.5 -rotate-90" />
-              </button>
-              {spread.cards.length > PHOTO_MIN_CARD_COUNT && (
+        <div className={`photo-spread-preview__grid mt-4 ${gridClass(cardCount)}`}>
+          {spread.cards.map((card, index) => (
+            <div key={`${card.order}-${card.name}-${index}`} className="photo-spread-preview__item">
+              <p className="lux-label mb-2 text-center text-[10px]">{card.position}</p>
+              <div className="photo-spread-preview__card">
+                <DeckCard
+                  card={toDeckInput(card)}
+                  system={spread.system}
+                  masterId={masterId}
+                  imagePath={card.imagePath}
+                  detectedOnly={card.placeholder}
+                  originalName={card.originalName}
+                  reversed={card.reversed}
+                  showMeaning={false}
+                  hideCaption
+                  size="md"
+                  className="mx-auto w-full"
+                />
+              </div>
+              <p className="mt-2 text-center text-xs font-medium text-aura-champagne">{card.name}</p>
+              {card.originalName !== card.name && (
+                <p className="text-center text-[10px] text-white/40">На фото: {card.originalName}</p>
+              )}
+              {card.reversed && (
+                <p className="text-center text-[10px] uppercase tracking-wider text-aura-gold/65">
+                  Перевёрнутая
+                </p>
+              )}
+
+              <div className="photo-spread-preview__tools">
                 <button
                   type="button"
-                  onClick={() => removeCard(index)}
-                  className="photo-spread-preview__tool photo-spread-preview__tool--danger"
-                  title="Убрать"
+                  onClick={() => setEditingIndex(editingIndex === index ? null : index)}
+                  className="photo-spread-preview__tool photo-spread-preview__tool--labeled"
+                  title="Заменить символ"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <Pencil className="h-3.5 w-3.5" />
+                  <span>Заменить</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => toggleReversed(index)}
+                  className="photo-spread-preview__tool photo-spread-preview__tool--labeled"
+                  title="Перевернуть"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Перевернуть</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveCard(index, -1)}
+                  disabled={index === 0}
+                  className="photo-spread-preview__tool"
+                  title="Левее"
+                  aria-label="Сдвинуть левее"
+                >
+                  <ArrowUp className="h-3.5 w-3.5 -rotate-90" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveCard(index, 1)}
+                  disabled={index === spread.cards.length - 1}
+                  className="photo-spread-preview__tool"
+                  title="Правее"
+                  aria-label="Сдвинуть правее"
+                >
+                  <ArrowDown className="h-3.5 w-3.5 -rotate-90" />
+                </button>
+                {spread.cards.length > PHOTO_MIN_CARD_COUNT && (
+                  <button
+                    type="button"
+                    onClick={() => removeCard(index)}
+                    className="photo-spread-preview__tool photo-spread-preview__tool--danger photo-spread-preview__tool--labeled"
+                    title="Убрать"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span>Убрать</span>
+                  </button>
+                )}
+              </div>
+
+              {editingIndex === index && (
+                <div className="photo-spread-preview__picker mt-3">
+                  <p className="mb-2 text-[10px] uppercase tracking-wider text-white/38">
+                    Выберите из колоды
+                  </p>
+                  <div className="photo-spread-preview__picker-list">
+                    {deckOptions.map((opt) => (
+                      <button
+                        key={opt.name}
+                        type="button"
+                        onClick={() => replaceCard(index, opt.name)}
+                        className="photo-spread-preview__picker-option"
+                      >
+                        {opt.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
+          ))}
+        </div>
 
-            {editingIndex === index && (
-              <div className="photo-spread-preview__picker mt-3">
-                <p className="mb-2 text-[10px] uppercase tracking-wider text-aura-ivory/45">
-                  Выберите из колоды Zovus
-                </p>
-                <div className="max-h-36 overflow-y-auto rounded-xl border border-aura-gold/15 bg-black/40 p-2">
-                  {deckOptions.map((opt) => (
-                    <button
-                      key={opt.name}
-                      type="button"
-                      onClick={() => replaceCard(index, opt.name)}
-                      className="block w-full rounded-lg px-2 py-1.5 text-left text-xs text-aura-ivory/80 hover:bg-aura-gold/10 hover:text-aura-champagne"
-                    >
-                      {opt.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+        {spread.cards.length < MAX_PHOTO_CARDS_LOCAL && (
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setAddingCard(true);
+                setEditingIndex(null);
+              }}
+              className="photo-spread-preview__add"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить символ
+            </button>
           </div>
-        ))}
+        )}
+
+        {addingCard && (
+          <div className="photo-spread-preview__picker mt-4">
+            <p className="mb-2 text-center text-[10px] uppercase tracking-wider text-white/38">
+              Новая позиция
+            </p>
+            <div className="photo-spread-preview__picker-list">
+              {deckOptions.map((opt) => (
+                <button
+                  key={opt.name}
+                  type="button"
+                  onClick={() => addCard(opt.name)}
+                  className="photo-spread-preview__picker-option"
+                >
+                  {opt.name}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddingCard(false)}
+              className="mt-2 w-full text-center text-xs text-white/42 hover:text-white/70"
+            >
+              Отмена
+            </button>
+          </div>
+        )}
       </div>
-
-      {spread.cards.length < MAX_PHOTO_CARDS && (
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => {
-              setAddingCard(true);
-              setEditingIndex(null);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-dashed border-aura-gold/30 px-4 py-2 text-sm text-aura-champagne/80 transition-colors hover:border-aura-gold/50 hover:text-aura-gold"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить символ
-          </button>
-        </div>
-      )}
-
-      {addingCard && (
-        <div className="photo-spread-preview__picker mt-4">
-          <p className="mb-2 text-center text-[10px] uppercase tracking-wider text-aura-ivory/45">
-            Выберите символ для новой позиции
-          </p>
-          <div className="max-h-40 overflow-y-auto rounded-xl border border-aura-gold/15 bg-black/40 p-2">
-            {deckOptions.map((opt) => (
-              <button
-                key={opt.name}
-                type="button"
-                onClick={() => addCard(opt.name)}
-                className="block w-full rounded-lg px-2 py-1.5 text-left text-xs text-aura-ivory/80 hover:bg-aura-gold/10 hover:text-aura-champagne"
-              >
-                {opt.name}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => setAddingCard(false)}
-            className="mt-2 w-full text-center text-xs text-gray-500 hover:text-gray-300"
-          >
-            Отмена
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ set -euo pipefail
 NEW_IP="${1:?New server public IP required}"
 FQDN="zovus.ru"
 WWW="www.zovus.ru"
+YANDEX_VERIFY="${YANDEX_WEBMASTER_VERIFICATION:-7902ba7dfdb76ac3}"
 LOGIN="${BEGET_LOGIN:?Set BEGET_LOGIN}"
 PASS="${BEGET_PASSWORD:?Set BEGET_PASSWORD}"
 
@@ -19,8 +20,8 @@ beget_api() {
     --data-urlencode "input_data=${2}"
 }
 
-echo "=== A ${FQDN} -> ${NEW_IP} ==="
-resp=$(beget_api changeRecords "{\"fqdn\":\"${FQDN}\",\"records\":{\"A\":[{\"priority\":10,\"value\":\"${NEW_IP}\"}]}}")
+echo "=== A + Yandex verify TXT ${FQDN} -> ${NEW_IP} ==="
+resp=$(beget_api changeRecords "{\"fqdn\":\"${FQDN}\",\"records\":{\"A\":[{\"priority\":10,\"value\":\"${NEW_IP}\"}],\"TXT\":[{\"priority\":10,\"value\":\"yandex-verification: ${YANDEX_VERIFY}\"}]}}")
 echo "$resp" | head -c 300
 echo
 echo "$resp" | grep -q '"status":"success"' || { echo "DNS failed for ${FQDN}"; exit 1; }

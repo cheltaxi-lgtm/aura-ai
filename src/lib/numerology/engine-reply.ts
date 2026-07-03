@@ -241,8 +241,14 @@ export function buildRichEngineFacts(params: {
     if (block && !chunks.includes(block)) chunks.push(block);
   }
 
-  if (chunks.length <= 1 && params.fallbackFacts?.trim()) {
-    chunks.push(params.fallbackFacts.trim());
+  const fallback = params.fallbackFacts?.trim();
+  if (fallback) {
+    const alreadyIncluded = chunks.some(
+      (chunk) => chunk.includes(fallback.slice(0, 64)) || fallback.includes(chunk.slice(0, 64))
+    );
+    if (!alreadyIncluded) {
+      chunks.unshift(fallback);
+    }
   }
 
   return chunks.join("\n\n").slice(0, 4000);

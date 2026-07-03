@@ -50,7 +50,7 @@ const FAQ = [
   },
   {
     q: "Сколько длится обряд?",
-    a: "Мастер сопровождает вас в чате — вы получаете инструкцию и можете задавать вопросы.",
+    a: "Мастер составляет персональную инструкцию за несколько минут. Провести обряд вы сможете в рекомендованное лунное время — карточка сохранится в кабинете.",
   },
   {
     q: "Сохраняется ли история?",
@@ -72,11 +72,11 @@ export default async function ObryadyDetailPage({
 
   return (
     <SeoPageShell backHref="/obryady" backLabel="Все обряды">
-      <SeoPageTracker goal="ritual_landing_cta_click" params={{ slug }} />
+      <SeoPageTracker goal="ritual_landing_view" params={{ slug }} />
       <p className="text-2xl">{ritual.emoji}</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Обряд «{ritual.label}»</h1>
       <p className="mt-4 text-white/70">{ritual.desc}</p>
-      <p className="mt-3 text-sm text-white/50">{ritual.cost} ₽</p>
+      <p className="mt-3 text-sm text-white/50">от {ritual.cost} ᚢ</p>
 
       <div className="mt-8">
         <SeoTrackedCta
@@ -95,7 +95,7 @@ export default async function ObryadyDetailPage({
       <SeoSection title="Как проходит">
         <p>Мастер задаёт уточняющие вопросы о вашей ситуации.</p>
         <p>Формируется персональный обряд с учётом вашего запроса.</p>
-        <p>Вы получаете инструкцию и сопровождение в чате.</p>
+        <p>Вы получаете карточку обряда: время, атрибуты, шаги и слово силы.</p>
       </SeoSection>
 
       <SeoSection title="Какие вопросы задаст мастер">
@@ -126,6 +126,20 @@ export default async function ObryadyDetailPage({
           ← Сначала сделать расклад
         </Link>
       </p>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: FAQ.map((item) => ({
+              "@type": "Question",
+              name: item.q,
+              acceptedAnswer: { "@type": "Answer", text: item.a },
+            })),
+          }),
+        }}
+      />
     </SeoPageShell>
   );
 }

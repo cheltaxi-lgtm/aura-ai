@@ -1,8 +1,13 @@
 import { query } from "@/lib/db";
+import { SHARE_BODY_MAX } from "@/lib/share/sanitize";
 import { completeChat } from "@/lib/llm";
 import { limitSpreadKeyCards } from "@/lib/spreads";
 import { SESSION_SUMMARY_PROMPT } from "@/lib/prompts/memory";
 import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
+import {
+  recordLifetimeOrphanMemory,
+  recordLifetimeSessionActivity,
+} from "@/lib/user-lifetime-stats";
 import type { SessionMemory } from "@/lib/prompts/types";
 
 export interface SessionMemoryRow {
@@ -101,6 +106,11 @@ export async function saveSessionMemory(input: {
       input.outcomeRating ?? null,
     ]
   );
+  void recordLifetimeOrphanMemory({
+    userId: input.userId,
+    characterKey: input.characterKey,
+    cardCount: input.keyCards.length,
+  }).catch((err) => console.warn("[lifetime-stats] orphan memory:", err));
 }
 
 /** Create or refresh cabinet row when a consultation session starts or updates. */
@@ -149,10 +159,17 @@ export async function upsertSessionMemoryFromChat(input: {
       input.characterKey,
       input.topicSummary.slice(0, 500),
       limitSpreadKeyCards(input.keyCards),
-      input.prediction.slice(0, 1000),
+      input.prediction.slice(0, SHARE_BODY_MAX),
       input.mood ?? null,
     ]
   );
+
+  void recordLifetimeSessionActivity({
+    userId: input.userId,
+    sessionId: input.sessionId,
+    characterKey: input.characterKey,
+    cardCount: limitSpreadKeyCards(input.keyCards).length,
+  }).catch((err) => console.warn("[lifetime-stats] session activity:", err));
 }
 
 function parseSessionSummary(

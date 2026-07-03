@@ -2,14 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { requireUserAuth } from "@/lib/require-auth";
-import { hasPaidAccess, saveMessage, updateSessionChatMeta, getSession } from "@/lib/session";
-import { buildPhotoReadingUserMessage } from "@/lib/photo-chat";
+import { hasPaidAccess, getSession } from "@/lib/session";
 import {
   generatePhotoInterpretation,
   photoReadingFallback,
   resolvePhotoInterpretationPrompt,
 } from "@/lib/photo-reading-prompts";
-import { createHistoryEntry } from "@/lib/users";
 import { getUserById, serializeUserProfile } from "@/lib/users";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import {
@@ -17,7 +15,7 @@ import {
   buildClientBlock,
   buildMemoryBlock,
 } from "@/lib/user-memory";
-import { loadClientMemoryBlock, recordTurn } from "@/lib/memory/client-memory";
+import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
 import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import {
   BillingService,
@@ -28,10 +26,7 @@ import {
 import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { ensureChatSession } from "@/lib/session-access";
-import { ensureSessionMemoryStub } from "@/lib/session-memory";
-import { limitSpreadKeyCards } from "@/lib/spreads";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
 import {
   buildSpreadSummaryForLlm,
@@ -41,6 +36,17 @@ import {
   redrawSpreadToTarotCards,
   type RedrawSpread,
 } from "@/lib/photo-spread-redraw";
+import { MAX_PHOTO_CARDS } from "@/lib/photo-reading-constants";
+import { resolvePhotoReadingPricing } from "@/lib/photo-reading-billing";
+import {
+  buildPhotoSpreadKey,
+  findPhotoReadingEntry,
+  withPhotoReadingLock,
+} from "@/lib/photo-reading-idempotency";
+import {
+  persistPhotoReadingResult,
+  photoReadingJsonFromContext,
+} from "@/lib/photo-reading-persist";
 
 export async function POST(request: NextRequest) {
   const auth = await requireUserAuth();
@@ -58,12 +64,16 @@ export async function POST(request: NextRequest) {
   let question = "";
   let sessionId: string | undefined;
   let confirmedSpread: RedrawSpread | null = null;
+  let idempotencyKey: string | undefined;
 
   try {
     const body = await request.json();
     characterId = await resolveApiCharacterId(body.characterId);
     question = sanitizeTextField(body.question, 500) ?? "";
     sessionId = body.sessionId;
+    idempotencyKey =
+      request.headers.get("Idempotency-Key")?.trim() ||
+      (typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : undefined);
 
     if (body.confirmedSpread?.cards?.length) {
       confirmedSpread = normalizeRedrawSpreadInput(body.confirmedSpread, characterId);
@@ -92,6 +102,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (confirmedSpread.cards.length > MAX_PHOTO_CARDS) {
+    return NextResponse.json(
+      {
+        error: "TOO_MANY_CARDS",
+        message: `В раскладе не больше ${MAX_PHOTO_CARDS} символов.`,
+      },
+      { status: 422 }
+    );
+  }
+
   const spreadCheck = isRecognizedSpread({
     detectedCards: confirmedSpread.cards.map((c) => c.name),
     deckType: confirmedSpread.deckType,
@@ -100,6 +120,9 @@ export async function POST(request: NextRequest) {
   if (!spreadCheck.ok) {
     return NextResponse.json({ error: "NOT_A_SPREAD", message: spreadCheck.reason }, { status: 422 });
   }
+
+  const photoSpreadKey = buildPhotoSpreadKey(characterId, confirmedSpread, question);
+  const lockKey = idempotencyKey || photoSpreadKey;
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   const profileRow = profileUserId ? await getUserById(profileUserId) : null;
@@ -141,201 +164,202 @@ export async function POST(request: NextRequest) {
   const runeSettings = await getRuneSettings();
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
   let runeBalance: number | undefined;
+  let firstPhotoDiscount = false;
 
-  if (useRuneBilling && profileUserId) {
-    try {
-      const charge = await BillingService.chargeRuneAction({
-        userId: profileUserId,
-        action: "VISION_ANALYSIS",
-      });
-      billingCharge = charge;
-      runeBalance = charge.newBalance;
-      spentRunes = charge.spentRunes;
-    } catch (err) {
-      if (err instanceof InsufficientFundsError) {
-        return insufficientFundsResponse(err);
-      }
-      throw err;
+  if (profileUserId && (await ensureDb())) {
+    const existing = await findPhotoReadingEntry(profileUserId, photoSpreadKey, idempotencyKey);
+    if (existing && typeof existing.context_data.analysis === "string") {
+      return NextResponse.json(
+        photoReadingJsonFromContext(existing.context_data, {
+          historyId: existing.id,
+          runeBalance,
+          cached: true,
+        })
+      );
     }
   }
 
-  const today = new Date().toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-
-  const ctx = {
-    userName: profile?.name ?? auth.name,
-    gender: profile?.gender === "male" ? "Мужской" : profile?.gender === "female" ? "Женский" : undefined,
-    zodiac: profile?.zodiac,
-    birthDate: profile?.birthDate,
-    birthTime: profile?.birthTime ?? undefined,
-    birthCity: profile?.birthCity ?? undefined,
-    lifeFocus: profile?.lifeFocus ?? undefined,
-    mainQuestion: profile?.mainQuestion ?? undefined,
-    astroMeta: profile?.astroMeta as import("@/lib/astro-profile").AstroMeta | undefined,
-    today,
-    isPaid,
-    question,
-  };
-
-  const detectedCards = confirmedSpread.cards.map((c) =>
-    c.reversed ? `${c.name} (перев.)` : c.name
-  );
-  const tarotCards = redrawSpreadToTarotCards(confirmedSpread);
-  const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread);
-
-  try {
-    let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
-
-    if (profileUserId && resolvedSessionId) {
-      const memoryQuery = composeMemoryQueryText({
-        lastUserMessage: question,
-        mainQuestion: ctx.mainQuestion,
-      });
-      const clientBlock = buildClientBlock(
-        {
-          name: ctx.userName,
-          gender: ctx.gender,
-          zodiac: ctx.zodiac,
-          birthDate: ctx.birthDate,
-          mainQuestion: ctx.mainQuestion,
-          lifeFocus: ctx.lifeFocus,
-        },
-        memoryQuery
-      );
-      const memoryBlock = await buildMemoryBlock(
-        profileUserId,
-        characterId,
-        resolvedSessionId,
-        memoryQuery
-      );
-      const factsBlock = await loadClientMemoryBlock({
-        userId: profileUserId,
-        queryText: memoryQuery,
-      });
-      systemPrompt = appendUserMemoryToPrompt(
-        systemPrompt,
-        `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null
-      );
-    }
-
-    const llmAnalysis = await generatePhotoInterpretation(
-      systemPrompt,
-      spreadSummary,
-      question.trim() || undefined
-    );
-    const usedLlmFallback = !llmAnalysis;
-    const analysisBody = llmAnalysis ?? photoReadingFallback(ctx.userName);
-
-    if (usedLlmFallback && profileUserId && billingCharge) {
-      try {
-        runeBalance = await BillingService.rollbackCharge({
-          userId: profileUserId,
-          cost: billingCharge.spentRunes,
-          wasFreeQuestion: billingCharge.wasFreeQuestion,
-          actionType: "VISION_ANALYSIS",
-        });
-        billingCharge = null;
-        spentRunes = 0;
-      } catch (refundErr) {
-        console.error("Photo reading LLM fallback refund failed:", refundErr);
-      }
-    }
-
-    let historyId: string | undefined;
-
+  return withPhotoReadingLock(profileUserId ?? auth.sub, lockKey, async () => {
     if (profileUserId && (await ensureDb())) {
-      const entry = await createHistoryEntry({
-        userId: profileUserId,
-        characterName: characterId,
-        contextData: {
-          type: "photo_reading",
-          analysis: analysisBody,
-          detectedCards,
-          deckType: confirmedSpread.deckType,
-          spreadType: confirmedSpread.spreadType,
-          deckSystem: confirmedSpread.system,
-          tarotCards,
-          redrawSpread: confirmedSpread,
-          question: question.trim() || undefined,
-          userName: ctx.userName,
-          sessionId: resolvedSessionId,
-        },
-        isPaid: isPaid || spentRunes > 0,
-      });
-      historyId = entry?.id;
-    }
-
-    if (resolvedSessionId && profileUserId && (await ensureDb())) {
-      try {
-        const userMsg = buildPhotoReadingUserMessage(question, detectedCards);
-        await saveMessage(resolvedSessionId, characterId, "user", userMsg, profileUserId);
-        await saveMessage(resolvedSessionId, characterId, "assistant", analysisBody, profileUserId);
-        await updateSessionChatMeta(resolvedSessionId, {
-          characterKey: characterId,
-          spreadType: "photo",
-          cards: detectedCards,
-        });
-        const topicSummary = question.trim()
-          ? `Фото-расклад: ${question.trim().slice(0, 120)}`
-          : "Фото-расклад";
-        await ensureSessionMemoryStub({
-          userId: profileUserId,
-          sessionId: resolvedSessionId,
-          characterKey: characterId,
-          topicSummary,
-          keyCards: limitSpreadKeyCards(detectedCards),
-          prediction: analysisBody.slice(0, 500),
-        });
-      } catch (err) {
-        console.warn("Photo reading chat save failed:", err);
+      const existing = await findPhotoReadingEntry(profileUserId, photoSpreadKey, idempotencyKey);
+      if (existing && typeof existing.context_data.analysis === "string") {
+        return NextResponse.json(
+          photoReadingJsonFromContext(existing.context_data, {
+            historyId: existing.id,
+            runeBalance,
+            cached: true,
+          })
+        );
       }
     }
 
-    // Capture durable client facts from the free-text question (cross-section memory).
-    if (profileUserId && question.trim()) {
-      void recordTurn({
-        userId: profileUserId,
-        characterId,
-        userMessage: question,
-        assistantReply: analysisBody,
-      }).catch((err) => console.warn("[memory] photo recordTurn failed:", err));
-    }
-
-    return NextResponse.json({
-      analysis: analysisBody,
-      detectedCards,
-      deckType: confirmedSpread.deckType,
-      spreadType: confirmedSpread.spreadType,
-      deckSystem: confirmedSpread.system,
-      redrawSpread: confirmedSpread,
-      tarotCards,
-      characterId,
-      isPaid: isPaid || spentRunes > 0,
-      saved: Boolean(profileUserId),
-      historyId,
-      sessionId: resolvedSessionId,
-      runeBalance,
-    });
-  } catch (error) {
-    console.error("Photo reading error:", error);
-    if (profileUserId && billingCharge) {
+    if (useRuneBilling && profileUserId) {
       try {
-        await BillingService.rollbackCharge({
+        const pricing = await resolvePhotoReadingPricing(profileUserId);
+        firstPhotoDiscount = pricing.firstPhotoDiscount;
+        const charge = await BillingService.chargeForSession({
           userId: profileUserId,
-          cost: billingCharge.spentRunes,
-          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          cost: pricing.effectiveCost,
           actionType: "VISION_ANALYSIS",
+          description: pricing.firstPhotoDiscount
+            ? "Фото-расклад (первая скидка 50%)"
+            : undefined,
         });
-      } catch (refundErr) {
-        console.error("Photo reading refund failed:", refundErr);
+        billingCharge = charge;
+        runeBalance = charge.newBalance;
+        spentRunes = charge.spentRunes;
+      } catch (err) {
+        if (err instanceof InsufficientFundsError) {
+          return insufficientFundsResponse(err);
+        }
+        throw err;
       }
     }
-    return NextResponse.json(
-      { error: "Не удалось расшифровать расклад. Руны возвращены на баланс." },
-      { status: 500 }
+
+    const today = new Date().toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+
+    const ctx = {
+      userName: profile?.name ?? auth.name,
+      gender:
+        profile?.gender === "male"
+          ? "Мужской"
+          : profile?.gender === "female"
+            ? "Женский"
+            : undefined,
+      zodiac: profile?.zodiac,
+      birthDate: profile?.birthDate,
+      birthTime: profile?.birthTime ?? undefined,
+      birthCity: profile?.birthCity ?? undefined,
+      lifeFocus: profile?.lifeFocus ?? undefined,
+      mainQuestion: profile?.mainQuestion ?? undefined,
+      astroMeta: profile?.astroMeta as import("@/lib/astro-profile").AstroMeta | undefined,
+      today,
+      isPaid,
+      question,
+    };
+
+    const detectedCards = confirmedSpread!.cards.map((c) =>
+      c.reversed ? `${c.name} (перев.)` : c.name
     );
-  }
+    const tarotCards = redrawSpreadToTarotCards(confirmedSpread!);
+    const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread!);
+
+    try {
+      let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
+
+      if (profileUserId && resolvedSessionId) {
+        const memoryQuery = composeMemoryQueryText({
+          lastUserMessage: question,
+          mainQuestion: ctx.mainQuestion,
+        });
+        const clientBlock = buildClientBlock(
+          {
+            name: ctx.userName,
+            gender: ctx.gender,
+            zodiac: ctx.zodiac,
+            birthDate: ctx.birthDate,
+            mainQuestion: ctx.mainQuestion,
+            lifeFocus: ctx.lifeFocus,
+          },
+          memoryQuery
+        );
+        const memoryBlock = await buildMemoryBlock(
+          profileUserId,
+          characterId,
+          resolvedSessionId,
+          memoryQuery
+        );
+        const factsBlock = await loadClientMemoryBlock({
+          userId: profileUserId,
+          queryText: memoryQuery,
+        });
+        systemPrompt = appendUserMemoryToPrompt(
+          systemPrompt,
+          `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null
+        );
+      }
+
+      const llmAnalysis = await generatePhotoInterpretation(
+        systemPrompt,
+        spreadSummary,
+        question.trim() || undefined
+      );
+      const usedLlmFallback = !llmAnalysis;
+      const analysisBody = llmAnalysis ?? photoReadingFallback(ctx.userName);
+
+      if (usedLlmFallback && profileUserId && billingCharge) {
+        try {
+          runeBalance = await BillingService.rollbackCharge({
+            userId: profileUserId,
+            cost: billingCharge.spentRunes,
+            wasFreeQuestion: billingCharge.wasFreeQuestion,
+            actionType: "VISION_ANALYSIS",
+          });
+          billingCharge = null;
+          spentRunes = 0;
+        } catch (refundErr) {
+          console.error("Photo reading LLM fallback refund failed:", refundErr);
+        }
+      }
+
+      let historyId: string | undefined;
+
+      if (profileUserId && !usedLlmFallback && (await ensureDb())) {
+        historyId = await persistPhotoReadingResult({
+          profileUserId,
+          characterId,
+          analysisBody,
+          detectedCards,
+          confirmedSpread: confirmedSpread!,
+          question,
+          userName: ctx.userName ?? "друг",
+          resolvedSessionId,
+          isPaid,
+          spentRunes,
+          photoSpreadKey,
+          idempotencyKey,
+          firstPhotoDiscount,
+        });
+      }
+
+      return NextResponse.json({
+        analysis: analysisBody,
+        detectedCards,
+        deckType: confirmedSpread!.deckType,
+        spreadType: confirmedSpread!.spreadType,
+        deckSystem: confirmedSpread!.system,
+        redrawSpread: confirmedSpread,
+        tarotCards,
+        characterId,
+        isPaid: isPaid || spentRunes > 0,
+        saved: Boolean(profileUserId) && !usedLlmFallback,
+        historyId,
+        sessionId: resolvedSessionId,
+        runeBalance,
+        firstPhotoDiscount,
+      });
+    } catch (error) {
+      console.error("Photo reading error:", error);
+      if (profileUserId && billingCharge) {
+        try {
+          await BillingService.rollbackCharge({
+            userId: profileUserId,
+            cost: billingCharge.spentRunes,
+            wasFreeQuestion: billingCharge.wasFreeQuestion,
+            actionType: "VISION_ANALYSIS",
+          });
+        } catch (refundErr) {
+          console.error("Photo reading refund failed:", refundErr);
+        }
+      }
+      return NextResponse.json(
+        { error: "Не удалось расшифровать расклад. Руны возвращены на баланс." },
+        { status: 500 }
+      );
+    }
+  });
 }

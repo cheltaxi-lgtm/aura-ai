@@ -63,6 +63,7 @@ import {
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
+import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
 
@@ -644,6 +645,15 @@ export async function POST(request: NextRequest) {
           tarotCards,
           intention: intention || null,
         });
+
+      if (!isPaidSpreadTextComplete(reading, tarotCards.map((c) => c.name))) {
+        reading = fallbackReading(characterId, {
+          userName,
+          isPaid,
+          tarotCards,
+          intention: intention || null,
+        });
+      }
 
       if (!reading?.trim()) {
         if (billingCharge) {

@@ -40,19 +40,34 @@ export default function RitualSpread({
   const [allDone, setAllDone] = useState(false);
 
   useEffect(() => {
-    void (async () => {
+    let cancelled = false;
+
+    const fetchDraw = async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12_000);
       try {
         const res = await fetch(
-          `/api/ritual/draw?characterKey=${encodeURIComponent(characterKey)}`
+          `/api/ritual/draw?characterKey=${encodeURIComponent(characterKey)}`,
+          { signal: controller.signal }
         );
         if (!res.ok) throw new Error("draw_failed");
         const data = await res.json();
-        setCards(data.cards ?? []);
-        setSystem(data.system ?? "runes");
+        if (!cancelled) {
+          setCards(data.cards ?? []);
+          setSystem(data.system ?? "runes");
+        }
+      } catch {
+        if (!cancelled) setCards([]);
       } finally {
-        setLoading(false);
+        clearTimeout(timer);
+        if (!cancelled) setLoading(false);
       }
-    })();
+    };
+
+    void fetchDraw();
+    return () => {
+      cancelled = true;
+    };
   }, [characterKey]);
 
   const flipNext = useCallback(() => {
@@ -94,6 +109,34 @@ export default function RitualSpread({
     return (
       <div className="flex min-h-[300px] items-center justify-center text-white/50">
         Вытягиваю карты…
+      </div>
+    );
+  }
+
+  if (cards.length === 0) {
+    return (
+      <div className="flex min-h-[300px] flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-sm text-white/60">Не удалось вытянуть карты. Проверьте вход в аккаунт.</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true);
+            void fetch(
+              `/api/ritual/draw?characterKey=${encodeURIComponent(characterKey)}`
+            )
+              .then(async (res) => {
+                if (!res.ok) throw new Error("draw_failed");
+                const data = await res.json();
+                setCards(data.cards ?? []);
+                setSystem(data.system ?? "runes");
+              })
+              .catch(() => setCards([]))
+              .finally(() => setLoading(false));
+          }}
+          className="btn-luxe btn-luxe--sm btn-luxe--ghost"
+        >
+          Повторить
+        </button>
       </div>
     );
   }

@@ -4,7 +4,10 @@ import { parseBirthDate } from "./constants";
 import { pythagorasSquare, type PythagorasSquareResult } from "./pythagoras-square";
 import { detectNumerologyTopics } from "./topic-handlers";
 
-/** Resolve Pythagoras grid for an assistant message (stored UI or recompute from user topic). */
+const SPREAD_TOOL_USER_RE =
+  /^(?:расч[ёе]т|расклад|сеанс|совместимость|число|прогноз|карма|личный)/i;
+
+/** Resolve Pythagoras grid — only when explicitly attached or user asked for the square. */
 export function resolvePythagorasSquareForMessage(
   messages: Message[],
   messageIndex: number,
@@ -15,12 +18,8 @@ export function resolvePythagorasSquareForMessage(
     return msg.numerologyUi.pythagorasSquare;
   }
 
+  // Do not infer from assistant prose — spread readings mention the square as a CTA.
   if (!birthDate || !parseBirthDate(birthDate)) return null;
-
-  const assistantContent = msg?.role === "assistant" ? msg.content : "";
-  if (/квадрат\s+пифагора|психоматриц|ячейки:/i.test(assistantContent)) {
-    return pythagorasSquare(birthDate);
-  }
 
   let userContent = "";
   for (let i = messageIndex - 1; i >= 0; i--) {
@@ -30,7 +29,12 @@ export function resolvePythagorasSquareForMessage(
       break;
     }
   }
-  if (!userContent) return null;
+  if (!userContent.trim()) return null;
+
+  const trimmedUser = userContent.trim();
+  if (SPREAD_TOOL_USER_RE.test(trimmedUser) && !/квадрат\s+пифагора|психоматриц/i.test(trimmedUser)) {
+    return null;
+  }
 
   if (!detectNumerologyTopics(userContent).includes("pythagoras_square")) {
     return null;

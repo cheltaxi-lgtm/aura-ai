@@ -1,6 +1,7 @@
 import { drawSpread, resolveMasterDeckSystem } from "@/lib/decks";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
+import { currentYearMsk, monthLabelRu } from "@/lib/prompt-date";
 
 export const MASTER_QUICK_CHIP_MASTERS = [
   "ragnar",
@@ -48,9 +49,9 @@ export function periodSpreadTaskLabel(scope: PeriodSpreadScope): string {
     case "today":
       return "на СЕГОДНЯ";
     case "week":
-      return "на эту НЕДЕЛЮ";
+      return "на эту НЕДЕЛЮ (считая от сегодняшней даты)";
     case "month":
-      return "на этот МЕСЯЦ";
+      return `на этот МЕСЯЦ (${monthLabelRu()} ${currentYearMsk()})`;
   }
 }
 

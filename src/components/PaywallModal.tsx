@@ -11,6 +11,7 @@ import CustomRuneAmountField from "@/components/CustomRuneAmountField";
 import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
+import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
 
 export interface RunePackage {
   id: string;
@@ -145,7 +146,7 @@ function RuneShopView({
         setPurchasingId(null);
         return;
       }
-      localStorage.setItem("aura_runes_before_purchase", String(currentBalance));
+      storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       window.location.href = data.paymentUrl;
     } catch {
       setError("Ошибка соединения");
@@ -182,7 +183,7 @@ function RuneShopView({
         setPurchasingId(null);
         return;
       }
-      localStorage.setItem("aura_runes_before_purchase", String(currentBalance));
+      storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       window.location.href = data.paymentUrl;
     } catch {
       setError("Ошибка соединения");

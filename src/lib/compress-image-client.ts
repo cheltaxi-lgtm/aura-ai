@@ -11,8 +11,8 @@ export async function compressImageForUpload(
   let imageEl: HTMLImageElement | null = null;
 
   try {
-    imageEl = await loadImageElement(file);
-  } catch (err) {
+    imageEl = await loadImageElementWithRetry(file);
+  } catch {
     throw new Error("image_load_failed");
   }
 
@@ -54,12 +54,51 @@ export async function compressImageForUpload(
   return { base64, mimeType: "image/jpeg", blob };
 }
 
-function loadImageElement(file: File): Promise<HTMLImageElement> {
+async function loadImageElementWithRetry(file: File, attempts = 2): Promise<HTMLImageElement> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      if (typeof createImageBitmap === "function") {
+        try {
+          return await loadImageElementViaBitmap(file);
+        } catch {
+          // Fall back to object URL — some mobile browsers fail bitmap on first try.
+        }
+      }
+      return await loadImageElementFromObjectUrl(file);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 120 * attempt));
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("image_load_failed");
+}
+
+async function loadImageElementViaBitmap(file: File): Promise<HTMLImageElement> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas_unavailable");
+    ctx.drawImage(bitmap, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    if (!blob) throw new Error("image_load_failed");
+    return loadImageElementFromObjectUrl(new File([blob], "preview.jpg", { type: "image/jpeg" }));
+  } finally {
+    bitmap.close();
+  }
+}
+
+function loadImageElementFromObjectUrl(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     let settled = false;
-    
+
     const cleanup = () => {
       if (settled) return;
       settled = true;
@@ -67,21 +106,29 @@ function loadImageElement(file: File): Promise<HTMLImageElement> {
     };
 
     img.onload = () => {
-      cleanup();
-      resolve(img);
+      void (async () => {
+        try {
+          if (typeof img.decode === "function") {
+            await img.decode();
+          }
+          cleanup();
+          resolve(img);
+        } catch (err) {
+          cleanup();
+          reject(err instanceof Error ? err : new Error("image_load_failed"));
+        }
+      })();
     };
     img.onerror = () => {
       cleanup();
       reject(new Error("image_load_failed"));
     };
-    
-    // Safety timeout: if image doesn't load in 15 seconds, reject
+
     setTimeout(() => {
-      if (!settled) {
-        cleanup();
-        reject(new Error("image_load_timeout"));
-      }
-    }, 15000);
+      if (settled) return;
+      cleanup();
+      reject(new Error("image_load_timeout"));
+    }, 20000);
 
     img.src = url;
   });

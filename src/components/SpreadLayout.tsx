@@ -211,7 +211,7 @@ export default function SpreadLayout({
     );
   }
 
-  if (spread.layout === "celtic10" || spread.layout === "grid7" || spread.cardCount > 3) {
+  if (spread.layout === "celtic10" || spread.layout === "grid7" || spread.layout === "grid12" || spread.cardCount > 3) {
     return (
       <div>
         <GridLayout
@@ -221,7 +221,7 @@ export default function SpreadLayout({
           flipped={flipped}
           onFlip={onFlip}
           compact={compact}
-          cols={spread.cardCount >= 10 ? 5 : 4}
+          cols={spread.layout === "grid12" ? 6 : spread.cardCount >= 10 ? 5 : 4}
         />
         <p className="mt-4 text-center text-sm text-white/50">
           {allFlipped

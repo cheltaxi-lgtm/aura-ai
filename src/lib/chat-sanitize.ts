@@ -78,12 +78,18 @@ export function sanitizeUserProfileForPrompt(
   };
 }
 
+const API_CHARACTER_ALIASES: Record<string, string> = {
+  /** Legacy Lenormand SEO seeds — oracle deck is bound to spreadId, not this slug. */
+  gadalka_marina: "veronika",
+};
+
 /** Whitelist AI master IDs; allow known human blogger slugs. */
 export async function resolveApiCharacterId(characterId: unknown): Promise<string> {
   if (typeof characterId !== "string") {
     throw new Error(`Unknown characterId: ${String(characterId)}`);
   }
-  const id = stripControlChars(characterId).trim().slice(0, 64);
+  const raw = stripControlChars(characterId).trim().slice(0, 64);
+  const id = API_CHARACTER_ALIASES[raw] ?? raw;
   if (!id) {
     throw new Error(`Unknown characterId: ${characterId}`);
   }

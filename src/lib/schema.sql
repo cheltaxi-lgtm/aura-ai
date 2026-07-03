@@ -310,6 +310,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_session_memories_session_unique
   ON session_memories (session_id)
   WHERE session_id IS NOT NULL;
 
+-- Lifetime stats (survive cabinet purge)
+CREATE TABLE IF NOT EXISTS user_lifetime_stats (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  total_sessions INT NOT NULL DEFAULT 0,
+  total_cards INT NOT NULL DEFAULT 0,
+  master_counts JSONB NOT NULL DEFAULT '{}',
+  backfilled_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_lifetime_session_snapshots (
+  session_id UUID NOT NULL,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  character_key TEXT NOT NULL,
+  cards_count INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (session_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lifetime_snapshots_user
+  ON user_lifetime_session_snapshots (user_id);
+
 CREATE TABLE IF NOT EXISTS user_facts (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -483,9 +504,55 @@ CREATE TABLE IF NOT EXISTS share_snapshots (
   user_id      UUID REFERENCES users(id) ON DELETE SET NULL,
   kind         TEXT NOT NULL CHECK (kind IN ('reading', 'ritual', 'daily', 'triplet', 'session')),
   payload      JSONB NOT NULL,
+  source_meta  JSONB,
   view_count   INT NOT NULL DEFAULT 0,
   expires_at   TIMESTAMPTZ,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_share_snapshots_token ON share_snapshots(token);
+
+-- Joint readings (async paired spreads)
+CREATE TABLE IF NOT EXISTS joint_readings (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token                 TEXT UNIQUE NOT NULL,
+  initiator_user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  initiator_name        TEXT,
+  partner_name          TEXT,
+  spread_id             TEXT NOT NULL DEFAULT 'love-7',
+  intent_slug           TEXT NOT NULL DEFAULT 'sovmestimost-pary',
+  status                TEXT NOT NULL DEFAULT 'pending_partner'
+    CHECK (status IN ('pending_partner', 'partner_done', 'completed', 'expired')),
+  initiator_session_id  TEXT,
+  initiator_reading     TEXT,
+  initiator_cards       JSONB DEFAULT '[]'::jsonb,
+  initiator_character   TEXT,
+  partner_user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+  partner_session_id    TEXT,
+  partner_reading       TEXT,
+  partner_cards         JSONB DEFAULT '[]'::jsonb,
+  partner_character     TEXT,
+  combined_reading      TEXT,
+  rune_charged          BOOLEAN NOT NULL DEFAULT FALSE,
+  expires_at            TIMESTAMPTZ NOT NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at          TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_joint_readings_token ON joint_readings (token);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS notification_prefs JSONB NOT NULL DEFAULT '{
+    "dailyEmail": true,
+    "dailyInApp": true,
+    "reminderHourUtc": 6
+  }'::jsonb;
+
+CREATE TABLE IF NOT EXISTS daily_reminder_log (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sent_date  DATE NOT NULL DEFAULT CURRENT_DATE,
+  channel    TEXT NOT NULL CHECK (channel IN ('in_app', 'email')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, sent_date, channel)
+);

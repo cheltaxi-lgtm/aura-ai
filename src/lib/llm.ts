@@ -54,8 +54,32 @@ function isReasoningCapableModel(model: string): boolean {
     id.includes("thinking") ||
     id.includes("o1") ||
     id.includes("o3") ||
-    id.includes("deepseek-r1")
+    id.includes("deepseek-r1") ||
+    id.includes("deepseek-v4")
   );
+}
+
+function extractReasoningText(message: Record<string, unknown> | undefined): string | null {
+  const reasoning = message?.reasoning;
+  if (typeof reasoning === "string" && reasoning.trim()) return reasoning.trim();
+  return null;
+}
+
+type CompletionExtractOptions = {
+  allowReasoningFallback?: boolean;
+  structuredJson?: boolean;
+};
+
+function extractAssistantTextFromMessage(
+  message: Record<string, unknown> | undefined,
+  opts?: CompletionExtractOptions
+): string | null {
+  const content = extractAssistantText(message);
+  if (content) return content;
+  if (opts?.allowReasoningFallback) {
+    return extractReasoningText(message);
+  }
+  return null;
 }
 
 function extractAssistantText(message: Record<string, unknown> | undefined): string | null {
@@ -118,9 +142,17 @@ export function isRejectedLlmOutput(text: string): boolean {
   return false;
 }
 
-function acceptLlmText(text: string | null): string | null {
+function acceptLlmText(
+  text: string | null,
+  opts?: { structuredJson?: boolean }
+): string | null {
   if (!text?.trim()) return null;
   const trimmed = text.trim();
+  if (opts?.structuredJson) {
+    if (CJK_RE.test(trimmed)) return null;
+    if (LLM_REFUSAL_PATTERNS.some((pattern) => pattern.test(trimmed))) return null;
+    return trimmed;
+  }
   if (isRejectedLlmOutput(trimmed)) {
     console.warn("LLM output rejected:", trimmed.slice(0, 120));
     return null;
@@ -142,9 +174,17 @@ async function callChatCompletions(
   headers: Record<string, string>,
   body: Record<string, unknown>,
   timeoutMs = 90000,
-  maxAttempts = MAX_LLM_ATTEMPTS
+  maxAttempts = MAX_LLM_ATTEMPTS,
+  extractOpts?: CompletionExtractOptions
 ): Promise<string | null> {
-  const result = await callChatCompletionsDetailed(url, headers, body, timeoutMs, maxAttempts);
+  const result = await callChatCompletionsDetailed(
+    url,
+    headers,
+    body,
+    timeoutMs,
+    maxAttempts,
+    extractOpts
+  );
   return result.text;
 }
 
@@ -158,7 +198,8 @@ async function callChatCompletionsDetailed(
   headers: Record<string, string>,
   body: Record<string, unknown>,
   timeoutMs = 90000,
-  maxAttempts = MAX_LLM_ATTEMPTS
+  maxAttempts = MAX_LLM_ATTEMPTS,
+  extractOpts?: CompletionExtractOptions
 ): Promise<ChatCompletionResult> {
   const isOpenRouter = url.includes("openrouter.ai");
   const model = String(body.model ?? "");
@@ -188,11 +229,16 @@ async function callChatCompletionsDetailed(
         const choice = data.choices?.[0] as
           | { message?: Record<string, unknown>; finish_reason?: string }
           | undefined;
-        const rawText = extractAssistantText(choice?.message);
+        const rawText = extractAssistantTextFromMessage(choice?.message, extractOpts);
         const finishReason =
           typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
         if (rawText) {
-          return { text: acceptLlmText(rawText), finishReason };
+          return {
+            text: acceptLlmText(rawText, {
+              structuredJson: extractOpts?.structuredJson,
+            }),
+            finishReason,
+          };
         }
         console.warn(
           "LLM empty content:",
@@ -225,7 +271,12 @@ function buildRequestBody(
   model: string,
   messages: ChatMessage[],
   aiSettings: Awaited<ReturnType<typeof resolveAiSettings>>,
-  opts: { maxTokens?: number; temperature?: number; stream?: boolean }
+  opts: {
+    maxTokens?: number;
+    temperature?: number;
+    stream?: boolean;
+    jsonObject?: boolean;
+  }
 ): Record<string, unknown> {
   const effectiveMaxTokens = opts.maxTokens ?? aiSettings?.maxTokens ?? 800;
   const effectiveTemp = opts.temperature ?? aiSettings?.temperature ?? 0.85;
@@ -237,21 +288,31 @@ function buildRequestBody(
     frequency_penalty: 0.35,
     presence_penalty: 0.2,
     ...(opts.stream ? { stream: true } : {}),
+    ...(opts.jsonObject ? { response_format: { type: "json_object" } } : {}),
   };
 }
 
-export async function completeChat(params: {
+type CompleteChatOptions = {
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
   vision?: boolean;
-  /** @deprecated ignored — model always from admin settings */
+  /** @deprecated ignored — model always from admin settings unless modelOverride set */
   isPaid?: boolean;
   timeoutMs?: number;
   maxAttempts?: number;
-  /** Skip second pass at lower temperature (e.g. time-sensitive vision). */
   skipTemperatureRetry?: boolean;
-}): Promise<string | null> {
+  /** Use reasoning field when content is empty (structured outputs only). */
+  allowReasoningFallback?: boolean;
+  /** Ask OpenRouter/OpenAI for JSON object in content. */
+  jsonObject?: boolean;
+  /** Override admin chat model (e.g. ritual fallback). */
+  modelOverride?: string;
+};
+
+async function completeChatInternal(
+  params: CompleteChatOptions
+): Promise<string | null> {
   const {
     messages,
     maxTokens,
@@ -260,18 +321,30 @@ export async function completeChat(params: {
     timeoutMs,
     maxAttempts,
     skipTemperatureRetry = false,
+    allowReasoningFallback = false,
+    jsonObject = false,
+    modelOverride,
   } = params;
   const aiSettings = await resolveAiSettings();
-  const model = await resolveModel(vision);
+  const model = modelOverride ?? (await resolveModel(vision));
+  const extractOpts: CompletionExtractOptions = {
+    allowReasoningFallback,
+    structuredJson: allowReasoningFallback && jsonObject,
+  };
 
   const tryOnce = async (temp?: number) =>
     acceptLlmText(
       await callChatCompletions(
         OPENROUTER_API,
         openRouterHeaders(),
-        buildRequestBody(model, messages, aiSettings, { maxTokens, temperature: temp ?? temperature }),
+        buildRequestBody(model, messages, aiSettings, {
+          maxTokens,
+          temperature: temp ?? temperature,
+          jsonObject,
+        }),
         timeoutMs,
-        maxAttempts
+        maxAttempts,
+        extractOpts
       )
     );
 
@@ -285,16 +358,12 @@ export async function completeChat(params: {
   return text;
 }
 
+export async function completeChat(params: CompleteChatOptions): Promise<string | null> {
+  return completeChatInternal(params);
+}
+
 /** Like completeChat, but exposes finish_reason for continuation logic. */
-export async function completeChatDetailed(params: {
-  messages: ChatMessage[];
-  maxTokens?: number;
-  temperature?: number;
-  vision?: boolean;
-  timeoutMs?: number;
-  maxAttempts?: number;
-  skipTemperatureRetry?: boolean;
-}): Promise<ChatCompletionResult> {
+export async function completeChatDetailed(params: CompleteChatOptions): Promise<ChatCompletionResult> {
   const {
     messages,
     maxTokens,
@@ -303,17 +372,29 @@ export async function completeChatDetailed(params: {
     timeoutMs,
     maxAttempts,
     skipTemperatureRetry = false,
+    allowReasoningFallback = false,
+    jsonObject = false,
+    modelOverride,
   } = params;
   const aiSettings = await resolveAiSettings();
-  const model = await resolveModel(vision);
+  const model = modelOverride ?? (await resolveModel(vision));
+  const extractOpts: CompletionExtractOptions = {
+    allowReasoningFallback,
+    structuredJson: allowReasoningFallback && jsonObject,
+  };
 
   const tryOnce = async (temp?: number) =>
     callChatCompletionsDetailed(
       OPENROUTER_API,
       openRouterHeaders(),
-      buildRequestBody(model, messages, aiSettings, { maxTokens, temperature: temp ?? temperature }),
+      buildRequestBody(model, messages, aiSettings, {
+        maxTokens,
+        temperature: temp ?? temperature,
+        jsonObject,
+      }),
       timeoutMs,
-      maxAttempts
+      maxAttempts,
+      extractOpts
     );
 
   if (!isOpenRouterConfigured()) return { text: null, finishReason: null };

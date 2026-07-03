@@ -24,6 +24,8 @@ const PUBLIC_API_EXACT = new Set([
 
   "/api/platform/features",
 
+  "/api/platform/status",
+
   "/api/runes/config",
 
   "/api/runes/packages",
@@ -39,6 +41,8 @@ const PUBLIC_API_EXACT = new Set([
   "/api/debug/client-log",
 
   "/api/influencer/register",
+
+  "/api/intention-spread",
 
   "/api/payment/webhook",
 
@@ -276,7 +280,7 @@ export const config = {
     "/expert/:path*",
     "/admin/:path*",
     // Photo upload + cron routes auth in their handlers (body buffering / x-cron-secret).
-    "/api/((?!photo-reading/recognize|photo-reading/client-log|cron/|ritual/remind).*)",
+    "/api/((?!photo-reading/recognize|photo-reading/client-log|photo-reading/pricing|cron/|ritual/remind).*)",
   ],
 };
 

@@ -2,6 +2,7 @@
 import { deleteUserChatForCharacter } from "./accounts";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
 import { buildAstroMeta } from "./astro-profile";
+import { clearDailyReadingAnchors } from "./rate-limit-anchors";
 import { tarotCardsKey } from "./tarot";
 
 export interface UserRow {
@@ -266,21 +267,33 @@ export async function recordTripletDrawAnchor(
   );
 }
 
-/** Admin / support: allow a new daily 3-card spread immediately. */
+/** Admin / support: allow a new daily 3-card spread and daily energy reading immediately. */
 export async function resetTripletCooldown(userId: string): Promise<{
   ok: boolean;
   deletedHistory: number;
-  hadAnchor: boolean;
+  deletedDailyHistory: number;
+  deletedDailyReadings: number;
+  hadTripletAnchor: boolean;
+  hadDailyAnchor: boolean;
 }> {
+  const empty = {
+    ok: false,
+    deletedHistory: 0,
+    deletedDailyHistory: 0,
+    deletedDailyReadings: 0,
+    hadTripletAnchor: false,
+    hadDailyAnchor: false,
+  };
+
   const { rows } = await query<{ astro_meta: Record<string, unknown> | null }>(
     `SELECT astro_meta FROM users WHERE id = $1`,
     [userId]
   );
   if (!rows[0]) {
-    return { ok: false, deletedHistory: 0, hadAnchor: false };
+    return empty;
   }
 
-  const hadAnchor =
+  const hadTripletAnchor =
     typeof rows[0].astro_meta?.lastTripletDrawAt === "string" &&
     Boolean(String(rows[0].astro_meta.lastTripletDrawAt).trim());
 
@@ -291,17 +304,33 @@ export async function resetTripletCooldown(userId: string): Promise<{
     [userId]
   );
 
-  const del = await query(
-    `DELETE FROM history
-     WHERE user_id = $1
-       AND (character_name = 'triplet' OR context_data->>'type' = 'triplet')`,
-    [userId]
-  );
+  const [tripletDel, dailyHistoryDel, dailyReadingsDel, hadDailyAnchor] = await Promise.all([
+    query(
+      `DELETE FROM history
+       WHERE user_id = $1
+         AND (character_name = 'triplet' OR context_data->>'type' = 'triplet')`,
+      [userId]
+    ),
+    query(
+      `DELETE FROM history
+       WHERE user_id = $1
+         AND (
+           character_name = 'daily_energy'
+           OR context_data->>'type' = 'daily_reading'
+         )`,
+      [userId]
+    ),
+    query(`DELETE FROM daily_readings WHERE user_id = $1`, [userId]),
+    clearDailyReadingAnchors(userId),
+  ]);
 
   return {
     ok: true,
-    deletedHistory: del.rowCount ?? 0,
-    hadAnchor,
+    deletedHistory: tripletDel.rowCount ?? 0,
+    deletedDailyHistory: dailyHistoryDel.rowCount ?? 0,
+    deletedDailyReadings: dailyReadingsDel.rowCount ?? 0,
+    hadTripletAnchor,
+    hadDailyAnchor,
   };
 }
 

@@ -4,6 +4,7 @@
  */
 
 import type { DeckSystem } from "@/lib/decks/types";
+import { LENORMAND_SYMBOLS } from "@/lib/decks/lenormand";
 import { normalizePhotoCardName } from "@/lib/photo-card-aliases";
 
 const deckBase = (system: DeckSystem) => `/decks/${system}`;
@@ -182,6 +183,44 @@ export const DECK_IMAGE_MAPS: Record<DeckSystem, Record<string, string>> = {
       `${deckBase("numerology")}/${n}.svg`,
     ])
   ),
+  lenormand: {
+    Всадник: `${deckBase("lenormand")}/rider.svg`,
+    Клевер: `${deckBase("lenormand")}/clover.svg`,
+    Корабль: `${deckBase("lenormand")}/ship.svg`,
+    Дом: `${deckBase("lenormand")}/house.svg`,
+    Дерево: `${deckBase("lenormand")}/tree.svg`,
+    Тучи: `${deckBase("lenormand")}/clouds.svg`,
+    Змея: `${deckBase("lenormand")}/snake.svg`,
+    Гроб: `${deckBase("lenormand")}/coffin.svg`,
+    Букет: `${deckBase("lenormand")}/bouquet.svg`,
+    Коса: `${deckBase("lenormand")}/scythe.svg`,
+    Метла: `${deckBase("lenormand")}/whip.svg`,
+    Птицы: `${deckBase("lenormand")}/birds.svg`,
+    Ребёнок: `${deckBase("lenormand")}/child.svg`,
+    Лиса: `${deckBase("lenormand")}/fox.svg`,
+    Медведь: `${deckBase("lenormand")}/bear.svg`,
+    Звёзды: `${deckBase("lenormand")}/stars.svg`,
+    Аист: `${deckBase("lenormand")}/stork.svg`,
+    Собака: `${deckBase("lenormand")}/dog.svg`,
+    Башня: `${deckBase("lenormand")}/tower.svg`,
+    Сад: `${deckBase("lenormand")}/garden.svg`,
+    Гора: `${deckBase("lenormand")}/mountain.svg`,
+    Дорога: `${deckBase("lenormand")}/crossroads.svg`,
+    Мыши: `${deckBase("lenormand")}/mice.svg`,
+    Сердце: `${deckBase("lenormand")}/heart.svg`,
+    Кольцо: `${deckBase("lenormand")}/ring.svg`,
+    Книга: `${deckBase("lenormand")}/book.svg`,
+    Письмо: `${deckBase("lenormand")}/letter.svg`,
+    Мужчина: `${deckBase("lenormand")}/man.svg`,
+    Женщина: `${deckBase("lenormand")}/woman.svg`,
+    Лилия: `${deckBase("lenormand")}/lily.svg`,
+    Солнце: `${deckBase("lenormand")}/sun.svg`,
+    Луна: `${deckBase("lenormand")}/moon.svg`,
+    Ключ: `${deckBase("lenormand")}/key.svg`,
+    Рыбы: `${deckBase("lenormand")}/fish.svg`,
+    Якорь: `${deckBase("lenormand")}/anchor.svg`,
+    Крест: `${deckBase("lenormand")}/cross.svg`,
+  },
 };
 
 export const DECK_BACK_PATHS: Record<DeckSystem, string> = {
@@ -191,6 +230,7 @@ export const DECK_BACK_PATHS: Record<DeckSystem, string> = {
   slavic: `${deckBase("slavic")}/_back.png`,
   astrology: `${deckBase("astrology")}/_back.png`,
   numerology: `${deckBase("numerology")}/_back.svg`,
+  lenormand: `${deckBase("lenormand")}/_back.svg`,
 };
 
 export function normalizeDeckName(name: string): string {
@@ -204,7 +244,20 @@ export function getDeckImagePath(system: DeckSystem, cardName: string): string {
   if (map[key]) return map[key];
   const relaxed = key.replace(/ё/g, "е");
   if (map[relaxed]) return map[relaxed];
-  return DECK_BACK_PATHS[system];
+
+  const symbol =
+    system === "lenormand"
+      ? LENORMAND_SYMBOLS.find(
+          (s) =>
+            normalizeDeckName(s.name) === key ||
+            normalizeDeckName(s.name).replace(/ё/g, "е") === relaxed
+        )
+      : undefined;
+  if (symbol?.slug) {
+    return `${deckBase(system)}/${symbol.slug}.svg`;
+  }
+
+  return "";
 }
 
 export default DECK_IMAGE_MAPS;

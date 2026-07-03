@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { completeChat } from "@/lib/llm";
+import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { limitSpreadKeyCards } from "@/lib/spreads";
 
 export interface DiaryEntry {
@@ -55,8 +56,9 @@ export async function generateDiaryEntry(
     messages: [
       {
         role: "system",
-        content:
-          "Ты помощник эзотерической платформы Zovus. Пиши только текст записи, без пояснений.",
+        content: await wrapSystemPrompt(
+          "Ты помощник эзотерической платформы Zovus. Пиши только текст записи, без пояснений."
+        ),
       },
       {
         role: "user",

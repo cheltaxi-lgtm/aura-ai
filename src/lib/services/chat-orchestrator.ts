@@ -18,6 +18,13 @@ import {
   type SanitizedUserProfile,
 } from "@/lib/chat-sanitize";
 import { createChatResponseStream, createDeterministicTextStream } from "@/lib/chat-stream";
+import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { completeProseWithContinuation } from "@/lib/prose-completion";
+import {
+  ensurePaidSpreadTextComplete,
+  isPaidSpreadTextComplete,
+} from "@/lib/spread-reading-complete";
+import type { ChatMessage } from "@/lib/llm";
 import { query } from "@/lib/db";
 import { maybeCreateDiaryEntry } from "@/lib/diary";
 import { intentionPromptBlock } from "@/lib/intention";
@@ -297,11 +304,12 @@ export class ChatOrchestrator {
     await this.loadPromptMemory();
     await this.loadLlmMessages();
 
+    this.numerologyUi = undefined;
     this.numerologParams = this.buildNumerologParams();
 
     const numerologReply = await generateNumerologStreamReply(this.numerologParams);
     if (numerologReply) {
-      this.numerologyUi = numerologReply.numerologyUi ?? this.numerologyUi;
+      this.numerologyUi = numerologReply.numerologyUi;
       return this.streamDeterministicReply(numerologReply.reply, { engineReply: true });
     }
 
@@ -309,11 +317,16 @@ export class ChatOrchestrator {
     this.lastSystemPrompt = systemPrompt;
     this.chatTemperature = this.resolvedIntention === "life_death" ? 0.4 : undefined;
 
+    if (this.isLongFormSpreadReply() && !this.imageBase64) {
+      return this.runBufferedSpreadReply(systemPrompt);
+    }
+
     const streamResponse = await createChatResponseStream({
       systemPrompt,
       messages: this.llmMessages,
       imageBase64: this.imageBase64,
       temperature: this.chatTemperature,
+      maxTokens: this.streamMaxTokens(),
       qualityOpts: this.chatQualityOpts(),
       onComplete: (meta) => this.handleStreamComplete(meta),
     });
@@ -620,14 +633,6 @@ export class ChatOrchestrator {
       .slice(-12)
       .map((m) => m.content);
 
-    const { numerologyUi } = buildNumerologyPromptContext({
-      characterId: this.characterId,
-      birthDate: this.userProfile?.birthDate,
-      profileName: this.userProfile?.name,
-      lastUserMessage: this.lastUserMsg,
-    });
-    this.numerologyUi = numerologyUi;
-
     return {
       characterId: this.characterId,
       imageBase64: this.imageBase64,
@@ -805,6 +810,97 @@ export class ChatOrchestrator {
         ? this.resolvedCardNames
         : this.tarotCards?.map((c) => c.name),
     };
+  }
+
+  /** Long-form spread replies (period chips, new/daily spread) need more output budget. */
+  private streamMaxTokens(): number {
+    if (this.periodSpreadScope) return 4200;
+    const spreadId = this.resolvedSpreadId ?? this.spreadId;
+    const cards = this.resolvedCardNames.length
+      ? this.resolvedCardNames
+      : this.tarotCards?.map((c) => c.name) ?? [];
+    if (
+      cards.length >= 3 &&
+      hasCompleteSpread(cards, spreadId, this.resolvedSpreadType ?? this.spreadType)
+    ) {
+      return 3600;
+    }
+    return 1800;
+  }
+
+  private isLongFormSpreadReply(): boolean {
+    if (this.periodSpreadScope) return true;
+    const spreadId = this.resolvedSpreadId ?? this.spreadId;
+    const cards = this.resolvedCardNames.length
+      ? this.resolvedCardNames
+      : this.tarotCards?.map((c) => c.name) ?? [];
+    return (
+      cards.length >= 3 &&
+      hasCompleteSpread(cards, spreadId, this.resolvedSpreadType ?? this.spreadType)
+    );
+  }
+
+  private activeSpreadCardNames(): string[] {
+    return this.resolvedCardNames.length
+      ? this.resolvedCardNames
+      : this.tarotCards?.map((c) => c.name) ?? [];
+  }
+
+  private async buildSpreadContextMessages(systemPrompt: string): Promise<ChatMessage[]> {
+    const fullPrompt = await wrapSystemPrompt(systemPrompt);
+    return [
+      { role: "system", content: fullPrompt },
+      ...this.llmMessages.map((m) => ({
+        role: m.role as ChatMessage["role"],
+        content: m.content,
+      })),
+    ];
+  }
+
+  /** Never return a partial paid spread — complete via continuation or card-aware fallback. */
+  private async finalizeSpreadReply(
+    raw: string | null,
+    contextMessages: ChatMessage[]
+  ): Promise<string> {
+    const cardNames = this.activeSpreadCardNames();
+    let text = raw?.trim() ?? "";
+
+    if (text && !isPaidSpreadTextComplete(text, cardNames)) {
+      const ensured = await ensurePaidSpreadTextComplete(contextMessages, text, cardNames, {
+        maxTokens: 1400,
+        temperature: this.chatTemperature ?? 0.75,
+        maxRounds: 4,
+      });
+      if (ensured) text = ensured;
+    }
+
+    const cleaned = text ? this.sanitizeChatReply(text) : "";
+    if (cleaned && isPaidSpreadTextComplete(cleaned, cardNames)) return cleaned;
+
+    console.warn("[chat] paid spread incomplete after continuation — using fallback");
+    const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
+    const fallback = buildChatFallbackReply(this.characterId, {
+      userName: this.userProfile?.name ?? "друг",
+      lastUserMessage: this.lastUserMsg,
+      cardNames,
+      intention: this.periodSpreadScope ? null : this.resolvedIntention,
+      spreadId: activeSpreadId,
+    });
+    const fb = fallback.trim();
+    if (fb) return fb;
+    return llmUnavailableReply({});
+  }
+
+  /** Generate full spread off-stream, then stream the complete text (no mid-word cutoffs). */
+  private async runBufferedSpreadReply(systemPrompt: string): Promise<Response> {
+    const contextMessages = await this.buildSpreadContextMessages(systemPrompt);
+    const draft = await completeProseWithContinuation(contextMessages, {
+      maxTokens: this.streamMaxTokens(),
+      temperature: this.chatTemperature ?? 0.75,
+      maxPasses: 3,
+    });
+    const reply = await this.finalizeSpreadReply(draft, contextMessages);
+    return this.streamDeterministicReply(reply);
   }
 
   private sanitizeChatReply(raw: string): string {
@@ -1023,13 +1119,23 @@ export class ChatOrchestrator {
   private async handleStreamComplete(meta: {
     reply: string;
     llmFailed: boolean;
+    finishReason?: string | null;
+    streamInterrupted?: boolean;
   }): Promise<Record<string, unknown>> {
-    let llmFailed = meta.llmFailed;
+    let llmFailed = meta.llmFailed || Boolean(meta.streamInterrupted);
     let runesRefunded = false;
 
     const resolved = await this.resolveFinalChatReply(meta.reply, llmFailed);
     let finalReply = resolved.reply;
     llmFailed = resolved.llmFailed;
+
+    if (!llmFailed && finalReply && this.isLongFormSpreadReply()) {
+      const cardNames = this.activeSpreadCardNames();
+      if (!isPaidSpreadTextComplete(finalReply, cardNames) && this.lastSystemPrompt) {
+        const contextMessages = await this.buildSpreadContextMessages(this.lastSystemPrompt);
+        finalReply = await this.finalizeSpreadReply(finalReply, contextMessages);
+      }
+    }
 
     if (llmFailed && this.numerologParams) {
       const engineFallback = tryNumerologEngineFallback(this.numerologParams);

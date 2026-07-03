@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
-import { createHistoryEntry } from "@/lib/users";
+import { createHistoryEntry, getUserById } from "@/lib/users";
 import { type ChatMessage } from "@/lib/llm";
+import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { stripStageDirections } from "@/lib/chat-reply-sanitize";
 import {
   completeProseWithContinuation,
@@ -10,8 +11,20 @@ import {
 import { MASTER_PERSONA, isCharacterKey } from "@/lib/prompts";
 import type { CharacterKey } from "@/lib/prompts/types";
 import { drawSpread, resolveMasterDeckSystem, type DeckSystem } from "@/lib/decks";
+import { buildSpreadSeed, createSeededRng } from "@/lib/spread-seed";
 import { DEFAULT_SPREAD_ID, getSpread, isSpreadEnabled, normalizeSpreadId, type SpreadId } from "@/lib/spreads";
 import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
+import { isDailyReadingUsedToday, recordDailyReadingAnchor } from "@/lib/rate-limit-anchors";
+
+export class DailyReadingLockedError extends Error {
+  spreadId: string | null;
+
+  constructor(spreadId: string | null) {
+    super("daily_reading_locked");
+    this.name = "DailyReadingLockedError";
+    this.spreadId = spreadId;
+  }
+}
 
 export interface DailyReadingCard {
   name: string;
@@ -31,10 +44,82 @@ export interface DailyReadingResult {
 /** Positions framed as a forecast across the next 24 hours. */
 const DAILY_POSITIONS = ["Утро", "День", "Вечер"] as const;
 
-function finalizeDailyReadingText(raw: string | null | undefined): string {
-  const fallback = "Сегодня — день тихой силы. Прислушайся к знакам вокруг.";
-  const cleaned = trimIncompleteTrailingSentence(stripStageDirections(raw?.trim() ?? ""));
-  return cleaned || fallback;
+export const DAILY_READING_GENERIC_FALLBACK =
+  "Сегодня — день тихой силы. Прислушайся к знакам вокруг.";
+
+function sanitizeDailyReadingText(raw: string | null | undefined): string {
+  return trimIncompleteTrailingSentence(stripStageDirections(raw?.trim() ?? ""));
+}
+
+export function isDailyReadingPlaceholder(text: string, cards: DailyReadingCard[]): boolean {
+  const t = text.trim();
+  if (!t || t === DAILY_READING_GENERIC_FALLBACK) return true;
+  const minLen = cards.length <= 3 ? 48 : Math.max(120, cards.length * 28);
+  return t.length < minLen;
+}
+
+function buildDailyFallbackReading(
+  charKey: CharacterKey,
+  params: { name: string; cards: DailyReadingCard[]; spreadId: SpreadId }
+): string {
+  const spread = getSpread(params.spreadId);
+  const title =
+    params.spreadId === DEFAULT_SPREAD_ID ? "энергия дня" : spread.label.toLowerCase();
+  const persona = MASTER_PERSONA[charKey]?.split("\n")[0]?.trim();
+  const opener = persona
+    ? `${params.name}, ${persona.charAt(0).toLowerCase()}${persona.slice(1)} — твой прогноз «${title}».`
+    : `${params.name}, твой прогноз «${title}».`;
+
+  const parts = params.cards.map((c) => {
+    const meaning = c.meaning?.replace(/^[^:]+:\s*/, "").trim() || c.name;
+    const short = meaning.split(/[.;!?…]/)[0]?.trim() || meaning;
+    const pos = c.position.toLowerCase();
+    return `В ${pos} — «${c.name}»${c.reversed ? " (перев.)" : ""}: ${short}.`;
+  });
+
+  const adviceCard =
+    params.cards.find((c) => /совет|послание/i.test(c.position)) ??
+    params.cards[params.cards.length - 1];
+  const closer = adviceCard
+    ? ` Главный ориентир на сегодня — «${adviceCard.name}» в позиции «${adviceCard.position}».`
+    : "";
+
+  return sanitizeDailyReadingText(`${opener} ${parts.join(" ")}${closer}`) || `${opener} ${parts.join(" ")}`;
+}
+
+async function resolveDailyReadingText(
+  charKey: CharacterKey,
+  raw: string | null | undefined,
+  params: {
+    name: string;
+    zodiac: string;
+    birthDate: string;
+    dateRu: string;
+    cards: DailyReadingCard[];
+    spreadId: SpreadId;
+  }
+): Promise<string> {
+  let text = sanitizeDailyReadingText(raw);
+  if (text && !isDailyReadingPlaceholder(text, params.cards)) return text;
+
+  const fromLlm = await generateDailyReadingText(charKey, params);
+  text = sanitizeDailyReadingText(fromLlm);
+  if (text && !isDailyReadingPlaceholder(text, params.cards)) return text;
+
+  if (fromLlm) {
+    console.warn("Daily reading LLM output too short, using card fallback", {
+      spreadId: params.spreadId,
+      cardCount: params.cards.length,
+      len: fromLlm.length,
+    });
+  } else {
+    console.warn("Daily reading LLM empty, using card fallback", {
+      spreadId: params.spreadId,
+      cardCount: params.cards.length,
+    });
+  }
+
+  return buildDailyFallbackReading(charKey, params);
 }
 
 function parseStoredCards(raw: unknown): DailyReadingCard[] {
@@ -55,23 +140,43 @@ function parseStoredCards(raw: unknown): DailyReadingCard[] {
     .filter((c): c is DailyReadingCard => c !== null);
 }
 
-function drawDailyCards(system: DeckSystem, spreadId: SpreadId = DEFAULT_SPREAD_ID): DailyReadingCard[] {
+function drawDailyCards(
+  system: DeckSystem,
+  spreadId: SpreadId = DEFAULT_SPREAD_ID,
+  seedParts?: {
+    userId: string;
+    birthDate: string;
+    characterKey: string;
+    localDate: string;
+  }
+): DailyReadingCard[] {
+  const rng = seedParts
+    ? createSeededRng(
+        buildSpreadSeed({
+          userId: seedParts.userId,
+          birthDate: seedParts.birthDate,
+          masterId: seedParts.characterKey,
+          spreadId,
+          localDate: seedParts.localDate,
+        })
+      )
+    : Math.random;
   if (spreadId === DEFAULT_SPREAD_ID) {
-    const symbols = drawSpread(system, DAILY_POSITIONS.length);
+    const symbols = drawSpread(system, DAILY_POSITIONS.length, rng);
     return symbols.map((symbol, i) => ({
       name: symbol.name,
       meaning: symbol.meaning,
-      reversed: system.startsWith("tarot") ? Math.random() < 0.32 : false,
+      reversed: system.startsWith("tarot") ? rng() < 0.32 : false,
       position: DAILY_POSITIONS[i] ?? `Символ ${i + 1}`,
     }));
   }
 
   const spread = getSpread(spreadId);
-  const symbols = drawSpread(system, spread.cardCount);
+  const symbols = drawSpread(system, spread.cardCount, rng);
   return symbols.map((symbol, i) => ({
     name: symbol.name,
     meaning: symbol.meaning,
-    reversed: system.startsWith("tarot") ? Math.random() < 0.32 : false,
+    reversed: system.startsWith("tarot") ? rng() < 0.32 : false,
     position: spread.positions[i]?.label ?? `Символ ${i + 1}`,
   }));
 }
@@ -145,14 +250,14 @@ async function generateDailyReadingText(
 ): Promise<string | null> {
   const spreadId = promptParams.spreadId ?? DEFAULT_SPREAD_ID;
   const messages: ChatMessage[] = [
-    { role: "system", content: buildDailySystem(charKey, spreadId) },
+    { role: "system", content: await wrapSystemPrompt(buildDailySystem(charKey, spreadId)) },
     { role: "user", content: buildDailyPrompt({ ...promptParams, spreadId }) },
   ];
 
   return completeProseWithContinuation(messages, {
-    maxTokens: 900,
+    maxTokens: spreadId === "daily-extended" ? 1600 : 900,
     temperature: 0.75,
-    maxPasses: 2,
+    maxPasses: spreadId === "daily-extended" ? 3 : 2,
   });
 }
 
@@ -162,10 +267,10 @@ async function repairTruncatedDailyReading(
   spreadId: SpreadId = DEFAULT_SPREAD_ID
 ): Promise<string | null> {
   const messages: ChatMessage[] = [
-    { role: "system", content: buildDailySystem(charKey, spreadId) },
+    { role: "system", content: await wrapSystemPrompt(buildDailySystem(charKey, spreadId)) },
     {
       role: "user",
-      content: `Прогноз «Энергия дня» оборвался на середине. Допиши его с места обрыва до конца (вечер + одно действие на сегодня). Не повторяй уже написанное.\n\n${partial}`,
+      content: `Прогноз «${getSpread(spreadId).label}» оборвался на середине. Допиши его с места обрыва до конца (все оставшиеся позиции + одно действие на сегодня). Не повторяй уже написанное.\n\n${partial}`,
     },
   ];
 
@@ -179,7 +284,7 @@ async function repairTruncatedDailyReading(
   const merged = continued.startsWith(partial.trim())
     ? continued
     : `${partial.trim()} ${continued.trim()}`;
-  return finalizeDailyReadingText(merged);
+  return sanitizeDailyReadingText(merged);
 }
 
 /** Validate a YYYY-MM-DD string; fall back to the server's UTC date. */
@@ -215,7 +320,29 @@ export async function getExistingDailyReading(
     ? rows[0].character_key
     : "veronika";
 
-  let reading = finalizeDailyReadingText(rows[0].reading_text);
+  const cards = parseStoredCards(rows[0].cards);
+  let reading = sanitizeDailyReadingText(rows[0].reading_text);
+
+  if (isDailyReadingPlaceholder(reading, cards)) {
+    const user = await getUserById(userId);
+    if (user) {
+      const dateRu = new Date(`${today}T12:00:00`).toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      reading = await resolveDailyReadingText(charKey, reading, {
+        name: user.name,
+        zodiac: user.zodiac,
+        birthDate: user.birth_date,
+        dateRu,
+        cards,
+        spreadId: storedSpreadId,
+      });
+    } else if (!reading) {
+      reading = DAILY_READING_GENERIC_FALLBACK;
+    }
+  }
 
   if (isProseLikelyTruncated(reading)) {
     const repaired = await repairTruncatedDailyReading(charKey, reading, storedSpreadId);
@@ -232,7 +359,6 @@ export async function getExistingDailyReading(
     );
   }
 
-  const cards = parseStoredCards(rows[0].cards);
   const system = (rows[0].deck_system as DeckSystem) ?? null;
 
   void syncDailyReadingHistory({
@@ -278,7 +404,17 @@ export async function getOrCreateDailyReading(params: {
   const today = resolveReadingDate(params.localDate);
 
   const existing = await getExistingDailyReading(params.userId, today);
-  if (existing) return existing;
+  if (existing) {
+    const existingSpreadId = normalizeSpreadId(existing.spreadId);
+    const wantsExtendedUpgrade =
+      drawSpreadId === "daily-extended" && existingSpreadId !== "daily-extended";
+    if (!wantsExtendedUpgrade) return existing;
+  }
+
+  const usage = await isDailyReadingUsedToday(params.userId, today);
+  if (usage.used && !usage.hasContent) {
+    throw new DailyReadingLockedError(usage.spreadId);
+  }
 
   // Build display date from the user's local calendar date (append T12:00 to
   // avoid timezone shifting the day when formatting).
@@ -288,7 +424,12 @@ export async function getOrCreateDailyReading(params: {
     year: "numeric",
   });
 
-  const cards = drawDailyCards(system, drawSpreadId);
+  const cards = drawDailyCards(system, drawSpreadId, {
+    userId: params.userId,
+    birthDate: params.birthDate,
+    characterKey: charKey,
+    localDate: today,
+  });
 
   const text = await generateDailyReadingText(charKey, {
     name: params.name,
@@ -299,7 +440,14 @@ export async function getOrCreateDailyReading(params: {
     spreadId: drawSpreadId,
   });
 
-  const reading = finalizeDailyReadingText(text);
+  const reading = await resolveDailyReadingText(charKey, text, {
+    name: params.name,
+    zodiac: params.zodiac,
+    birthDate: params.birthDate,
+    dateRu,
+    cards,
+    spreadId: drawSpreadId,
+  });
 
   await query(
     `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date, spread_id)
@@ -321,6 +469,8 @@ export async function getOrCreateDailyReading(params: {
     system,
     spreadId: drawSpreadId,
   });
+
+  await recordDailyReadingAnchor(params.userId, today, drawSpreadId);
 
   return { text: reading, cards, system, cached: false, spreadId: drawSpreadId };
 }

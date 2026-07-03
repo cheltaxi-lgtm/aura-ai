@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminAction } from "@/lib/admin";
 import { ensureDb } from "@/lib/db";
-import { resetTripletCooldown } from "@/lib/users";
-import { query } from "@/lib/db";
+import { resetTripletCooldown, getUserById } from "@/lib/users";
 
 export async function POST(
   _request: NextRequest,
@@ -21,30 +20,30 @@ export async function POST(
     return NextResponse.json({ error: "userId required" }, { status: 400 });
   }
 
-  const { rows } = await query<{ id: string }>("SELECT id FROM users WHERE id = $1", [userId]);
-  if (!rows[0]) {
+  const user = await getUserById(userId);
+  if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   try {
     const result = await resetTripletCooldown(userId);
-    // Also clear the daily "Энергия дня" reading so the premium modal can be
-    // re-run immediately (used for testing the daily spread flow).
-    const dailyReset = await query(
-      "DELETE FROM daily_readings WHERE user_id = $1",
-      [userId]
-    );
-    const deletedDailyReadings = dailyReset.rowCount ?? 0;
+    if (!result.ok) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
     await logAdminAction(auth.sub, "reset_triplet_cooldown", "user", userId, {
       deletedHistory: result.deletedHistory,
-      hadAnchor: result.hadAnchor,
-      deletedDailyReadings,
+      deletedDailyHistory: result.deletedDailyHistory,
+      deletedDailyReadings: result.deletedDailyReadings,
+      hadTripletAnchor: result.hadTripletAnchor,
+      hadDailyAnchor: result.hadDailyAnchor,
     });
     return NextResponse.json({
       ok: true,
       deletedHistory: result.deletedHistory,
-      hadAnchor: result.hadAnchor,
-      deletedDailyReadings,
+      deletedDailyHistory: result.deletedDailyHistory,
+      deletedDailyReadings: result.deletedDailyReadings,
+      hadTripletAnchor: result.hadTripletAnchor,
+      hadDailyAnchor: result.hadDailyAnchor,
     });
   } catch (err) {
     console.error("resetTripletCooldown error:", err);

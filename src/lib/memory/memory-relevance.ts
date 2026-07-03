@@ -128,13 +128,18 @@ export function composeMemoryQueryText(parts: {
   // Substantive user message wins — don't pull old profile/intention into relevance.
   if (last.length >= 10) return last;
 
+  const custom = parts.customQuestion?.trim() ?? "";
+  if (parts.intention === "custom" && custom.length >= 8) {
+    return custom;
+  }
+
   const intentionText = parts.intention?.trim()
     ? expandIntentionForQuery(parts.intention.trim())
     : "";
 
   return [
     last,
-    parts.customQuestion?.trim(),
+    custom,
     intentionText,
     parts.mainQuestion?.trim(),
   ]

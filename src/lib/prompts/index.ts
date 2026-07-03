@@ -1,4 +1,5 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
+import { todayLabelRu } from "@/lib/prompt-date";
 
 import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
 import {
@@ -112,7 +113,7 @@ function clientBlock(
 - Пол: ${user.gender ?? "не указан"}
 - Знак зодиака: ${user.zodiac}
 - Дата рождения: ${user.birthDate}
-${user.today ? `- Сегодня: ${user.today}` : ""}
+- Сегодня: ${user.today?.trim() || todayLabelRu()}
 - ${sessionLabel}
 ${questionLine}
 
@@ -142,6 +143,7 @@ export interface BuildPromptOptions {
   lastUserMessage?: string;
   intention?: string | null;
   spreadId?: string | null;
+  customQuestion?: string | null;
   /** Pre-built numerology block (avoids double computation in chat API). */
   numerologyBlock?: string;
 }
@@ -240,7 +242,13 @@ export function buildSystemPrompt(
           : `РЕЖИМ: полный расклад — дай развёрнутую расшифровку всех ${spreadCardCount} символов.`,
     formatBlock,
     spreadFinalBlock,
-    mode === "reading" && hasSpread ? getSpreadInstructions(character, options.spreadId) : "",
+    mode === "reading" && hasSpread
+      ? getSpreadInstructions(
+          character,
+          options.spreadId,
+          options.intention === "custom" ? options.customQuestion : null
+        )
+      : "",
     readingForwardHook,
   ];
 

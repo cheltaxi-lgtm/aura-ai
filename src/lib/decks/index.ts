@@ -4,6 +4,9 @@ import { RUNE_SYMBOLS } from "./runes";
 import { SLAVIC_SYMBOLS } from "./slavic";
 import { ASTROLOGY_SYMBOLS } from "./astrology";
 import { NUMEROLOGY_SYMBOLS, NUMEROLOGY_POSITIONS } from "./numerology";
+import { LENORMAND_SYMBOLS, LENORMAND_POSITIONS } from "./lenormand";
+import { normalizeSpreadId } from "@/lib/spreads/registry";
+import type { SpreadId } from "@/lib/spreads/types";
 import type { DeckDefinition, DeckSystem, SpreadSymbol } from "./types";
 
 export type { DeckSystem, SpreadSymbol, DeckDefinition };
@@ -26,6 +29,8 @@ const STYLE_BASE: Record<DeckSystem, string> = {
     "Vedic Jyotish celestial symbol, deep indigo cosmic starfield, glowing gold celestial line-art, sacred geometry, vertical card",
   numerology:
     "sacred numerology oracle card, golden sacred geometry, glowing number symbol, deep indigo violet gradient, golden ratio spiral, soft mystical light, vertical card",
+  lenormand:
+    "Petit Lenormand oracle card, vintage European illustration, soft cream and muted teal, elegant thin border, clear symbolic vignette, vertical card",
 };
 
 export const DECK_REGISTRY: Record<DeckSystem, DeckDefinition> = {
@@ -65,6 +70,12 @@ export const DECK_REGISTRY: Record<DeckSystem, DeckDefinition> = {
     positions: NUMEROLOGY_POSITIONS,
     styleBase: STYLE_BASE.numerology,
   },
+  lenormand: {
+    system: "lenormand",
+    symbols: LENORMAND_SYMBOLS.map((c) => ({ ...c, kind: "lenormand" as const })),
+    positions: LENORMAND_POSITIONS,
+    styleBase: STYLE_BASE.lenormand,
+  },
 };
 
 /** Master id / slug → deck system */
@@ -84,6 +95,15 @@ export function resolveMasterDeckSystem(masterId?: string | null): DeckSystem {
   return MASTER_DECK_SYSTEM[masterId] ?? DEFAULT_DECK_SYSTEM;
 }
 
+/** Deck for a spread session — Lenormand line uses the Lenormand oracle, not tarot. */
+export function resolveSpreadDeckSystem(
+  spreadId: SpreadId | string | null | undefined,
+  masterId?: string | null
+): DeckSystem {
+  if (normalizeSpreadId(spreadId) === "lenormand-line") return "lenormand";
+  return resolveMasterDeckSystem(masterId);
+}
+
 export function getDeckDefinition(system: DeckSystem): DeckDefinition {
   return DECK_REGISTRY[system];
 }
@@ -92,11 +112,15 @@ export function getDeckPositions(system: DeckSystem): readonly string[] {
   return DECK_REGISTRY[system].positions;
 }
 
-export function drawSpread(system: DeckSystem, count = 3): SpreadSymbol[] {
+export function drawSpread(
+  system: DeckSystem,
+  count = 3,
+  rng: () => number = Math.random
+): SpreadSymbol[] {
   const deck = [...DECK_REGISTRY[system].symbols];
   const drawn: SpreadSymbol[] = [];
   for (let i = 0; i < count && deck.length > 0; i++) {
-    const idx = Math.floor(Math.random() * deck.length);
+    const idx = Math.floor(rng() * deck.length);
     drawn.push(deck.splice(idx, 1)[0]);
   }
   return drawn;

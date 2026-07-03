@@ -1,6 +1,6 @@
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import type { DeckSystem, SpreadSymbol } from "@/lib/decks/types";
-import { drawUniformSpread, resolveSpreadSymbols } from "@/lib/intention-draw";
+import { resolveSpreadSymbols } from "@/lib/intention-draw";
 import {
   birthdayNumber,
   destinyNumber,
@@ -15,6 +15,10 @@ import {
 } from "./calculator";
 import { parseBirthDate } from "./constants";
 import { favorableDates } from "./favorable-dates";
+
+function formatMonthDay(day: number, month: number, year: number): string {
+  return `${String(day).padStart(2, "0")}.${String(month).padStart(2, "0")}.${year}`;
+}
 import { personalYearForecast } from "./forecast";
 import {
   getNumerologTool,
@@ -106,13 +110,17 @@ export function resolveNumerologSpreadCardNames(
     }
     case "favorable_dates": {
       if (!parsedBirth) return null;
-      const fav = favorableDates(birthDate!);
+      const now = new Date();
+      const refYear = now.getFullYear();
+      const refMonth = now.getMonth() + 1;
+      const fav = favorableDates(birthDate!, refMonth, refYear);
       if (!fav) return null;
       const best = fav.favorable[0] ?? fav.neutral[0];
       const window = fav.favorable[Math.min(2, fav.favorable.length - 1)] ?? fav.neutral[1];
       const caution = fav.caution[0] ?? fav.neutral[fav.neutral.length - 1];
       if (best == null || window == null || caution == null) return null;
-      return [String(best), String(window), String(caution)];
+      const fmt = (day: number) => formatMonthDay(day, refMonth, refYear);
+      return [fmt(best), fmt(window), fmt(caution)];
     }
     default:
       return null;
@@ -169,5 +177,5 @@ export function drawNumerologSessionSpread(
 
   if (COMPUTED_ONLY_TOOLS.has(toolId)) return [];
 
-  return drawUniformSpread(system, tool.drawCount);
+  return [];
 }

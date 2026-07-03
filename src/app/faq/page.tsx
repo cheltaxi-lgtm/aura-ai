@@ -1,0 +1,61 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { SEO_FAQ_ITEMS } from "@/lib/seo";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+import AboutPageShell, { AboutSection } from "@/components/seo/AboutPageShell";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "FAQ — частые вопросы о Zovus",
+  description: "Оплата, бесплатные расклады, мастера, фото-расклад и история сеансов — ответы на частые вопросы.",
+  path: "/faq",
+});
+
+const BREADCRUMBS = [
+  { name: "Zovus", path: "/" },
+  { name: "FAQ", path: "/faq" },
+];
+
+export default function FaqPage() {
+  return (
+    <AboutPageShell
+      title="FAQ"
+      h1="Частые вопросы"
+      intro="Ответы о сервисе, оплате и раскладах. Не нашли ответ — напишите на email в подвале сайта."
+      breadcrumbs={BREADCRUMBS}
+    >
+      <AboutSection title="Вопросы и ответы">
+        {SEO_FAQ_ITEMS.map((item) => (
+          <div key={item.question}>
+            <p className="font-medium text-white">{item.question}</p>
+            <p className="mt-1">{item.answer}</p>
+          </div>
+        ))}
+      </AboutSection>
+      <AboutSection title="Расклады">
+        <p>
+          <Link href="/rasklady" className="text-aura-gold hover:underline">
+            Каталог раскладов
+          </Link>
+          {" · "}
+          <Link href="/about/how-readings-work" className="text-aura-gold hover:underline">
+            Как проходит расклад
+          </Link>
+        </p>
+      </AboutSection>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: SEO_FAQ_ITEMS.map((item) => ({
+              "@type": "Question",
+              name: item.question,
+              acceptedAnswer: { "@type": "Answer", text: item.answer },
+            })),
+          }),
+        }}
+      />
+    </AboutPageShell>
+  );
+}

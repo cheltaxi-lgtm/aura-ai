@@ -13,6 +13,7 @@ const config: CapacitorConfig = {
     url: `${appUrl}/?app=1`,
     cleartext: false,
     androidScheme: "https",
+    errorPath: "offline.html",
   },
   android: {
     backgroundColor: "#0b0714",

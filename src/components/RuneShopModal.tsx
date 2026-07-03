@@ -8,9 +8,7 @@ import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
 import CustomRuneAmountField from "@/components/CustomRuneAmountField";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
-
-const BALANCE_BEFORE_KEY = "aura_runes_before_purchase";
-const PENDING_PAYMENT_KEY = "aura_pending_rune_payment_id";
+import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
 
 interface RunePackage {
   id: string;
@@ -117,10 +115,7 @@ export default function RuneShopModal({
         setPurchasingId(null);
         return;
       }
-      localStorage.setItem(BALANCE_BEFORE_KEY, String(currentBalance));
-      if (typeof data.paymentId === "string" && data.paymentId) {
-        localStorage.setItem(PENDING_PAYMENT_KEY, data.paymentId);
-      }
+      storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       window.location.href = data.paymentUrl;
     } catch {
       setError("Ошибка соединения");
@@ -152,10 +147,7 @@ export default function RuneShopModal({
         setPurchasingId(null);
         return;
       }
-      localStorage.setItem(BALANCE_BEFORE_KEY, String(currentBalance));
-      if (typeof data.paymentId === "string" && data.paymentId) {
-        localStorage.setItem(PENDING_PAYMENT_KEY, data.paymentId);
-      }
+      storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       window.location.href = data.paymentUrl;
     } catch {
       setError("Ошибка соединения");

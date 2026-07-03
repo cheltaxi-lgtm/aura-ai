@@ -11,6 +11,7 @@ import {
 } from "react";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
+import { isProseLikelyTruncated } from "@/lib/prose-truncation";
 import { rateLimitMessage } from "@/lib/rate-limit-messages";
 import {
   loadChatCacheForMaster,
@@ -1773,6 +1774,34 @@ export function useChatActions(options: UseChatActionsOptions) {
                 /* skip malformed */
               }
             }
+          }
+
+          const serverReply =
+            typeof streamMeta.reply === "string" ? streamMeta.reply.trim() : "";
+          const effectiveText = serverReply || fullText.trim();
+          const deployStyleCutoff =
+            Boolean(streamMeta.llmFailed) && !serverReply && fullText.trim().length > 80;
+          const spreadTruncated =
+            Boolean(periodScope) &&
+            effectiveText.length > 0 &&
+            isProseLikelyTruncated(effectiveText);
+
+          if (deployStyleCutoff || spreadTruncated) {
+            setRetryDraft({ content: content.trim(), imageBase64 });
+            setMessages((prev) => {
+              const updated = [...prev];
+              const idx = updated.findIndex((m) => m.id === replyId);
+              if (idx >= 0) {
+                updated[idx] = {
+                  ...updated[idx]!,
+                  content:
+                    "Расклад не успел сформироваться полностью. Нажмите «Отправить снова» — повтор без дополнительного списания, если ᚢ уже списаны.",
+                  timestamp: new Date(),
+                };
+              }
+              return updated;
+            });
+            return;
           }
 
           const llmFailed = Boolean(streamMeta.llmFailed);

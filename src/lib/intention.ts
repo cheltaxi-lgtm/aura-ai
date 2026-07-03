@@ -4,6 +4,7 @@ import {
   topicLabel,
   type SessionTopicId,
 } from "@/lib/session-topics";
+import { customQuestionSpreadRules, isThirdPartyCustomQuestion } from "@/lib/custom-question-scope";
 export type SessionIntention =
   | "Любовь"
   | "Деньги"
@@ -205,7 +206,8 @@ export function intentionPromptBlock(
     if (!q) return "";
     return `\nКлиент пришёл со своим вопросом: «${q}».
 Отвечай только на этот запрос — через выпавшие символы, с названием каждой карты.
-Не подменяй вопрос общей темой и не выдумывай факты вне символов.`;
+Не подменяй вопрос общей темой и не выдумывай факты вне символов.
+${customQuestionSpreadRules(q)}`;
   }
 
   const { label, focus } = resolveThematicMeta(intention);
@@ -227,7 +229,8 @@ export function intentionSpreadPromptBlock(
     const q = customQuestion?.trim();
     if (!q) return "";
     return `\nКлиент ОПЛАТИЛ новый расклад под свой вопрос: «${q}».
-Читай КАЖДЫЙ символ как ответ именно на этот вопрос — выводы только из значений выпавших карт.`;
+Читай КАЖДЫЙ символ как ответ именно на этот вопрос — выводы только из значений выпавших карт.
+${customQuestionSpreadRules(q)}`;
   }
 
   const { label, focus } = resolveThematicMeta(intention);

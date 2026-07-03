@@ -8,6 +8,8 @@ import BodyPortal from "@/components/BodyPortal";
 import MySpreadsGallery, { type MySpreadEntry } from "@/components/MySpreadsGallery";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import ChatMessageRenderer from "@/components/ChatMessageRenderer";
+import ShareButton from "@/components/share/ShareButton";
+import { historyReadingToSharePayload } from "@/lib/share/payload-builders";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { masterDisplay } from "@/lib/cabinet-utils";
 import type { CabinetPhotoSpreadRow } from "@/lib/cabinet-data";
@@ -57,6 +59,23 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
     (active?.contextData.deckSystem as DeckSystem | undefined) ??
     active?.contextData.redrawSpread?.system ??
     DEFAULT_DECK_SYSTEM;
+
+  const activeSharePayload = active
+    ? historyReadingToSharePayload({
+        historyId: active.id,
+        title: `Фото-расклад · ${masterLabel(active.characterName)}`,
+        text: active.contextData.analysis ?? "",
+        masterKey: active.characterName,
+        masterName: masterLabel(active.characterName),
+        date: new Date(active.createdAt).toLocaleDateString("ru-RU", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }),
+        cards: activeCards,
+        spreadType: "photo",
+      })
+    : null;
 
   return (
     <section id="мои-расклады" className="space-y-4">
@@ -147,6 +166,14 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                 >
                   Перейти в чат с мастером
                 </Link>
+                {activeSharePayload ? (
+                  <ShareButton
+                    payload={activeSharePayload}
+                    variant="pill"
+                    label="Поделиться"
+                    className="justify-center shrink-0"
+                  />
+                ) : null}
                 {onDelete ? (
                   <button
                     type="button"

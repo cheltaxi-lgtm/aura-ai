@@ -21,16 +21,31 @@ export function navigateToAppSection(sectionId: string): void {
   window.location.assign(`/#${encodeURIComponent(sectionId)}`);
 }
 
-/** Новый расклад — сброс SPA-состояния и переход на главную. */
-export function navigateToHomeSpreadFlow(): void {
+/** Главная — сброс SPA-состояния и переход на домашний экран. */
+export function navigateToAppHome(): void {
   primeHomeFlowState();
-  window.location.assign("/");
+  window.location.assign("/?app=1");
+}
+
+/** @deprecated alias */
+export function navigateToHomeSpreadFlow(): void {
+  navigateToAppHome();
+}
+
+/** Каталог раскладов. */
+export function navigateToSpreadCatalog(): void {
+  try {
+    sessionStorage.setItem("zovus_app_shell", "1");
+  } catch {
+    /* private mode */
+  }
+  window.location.assign("/rasklady?app=1");
 }
 
 /** Фото-расклад с любой страницы. */
 export function navigateToPhotoReading(): void {
   primeHomeFlowState();
-  window.location.assign("/?photo=1");
+  window.location.assign("/?photo=1&app=1");
 }
 
 /** Модалка колод — флаг в sessionStorage, затем главная. */
@@ -41,7 +56,23 @@ export function navigateToDecksModal(): void {
   } catch {
     /* private mode */
   }
-  window.location.assign("/");
+  window.location.assign("/?app=1");
+}
+
+/** Кабинет — явная навигация с сохранением app-shell в WebView. */
+export function navigateToCabinet(): void {
+  try {
+    sessionStorage.setItem("zovus_app_shell", "1");
+  } catch {
+    /* private mode */
+  }
+  markAppShellInDocument();
+  window.location.href = "/cabinet?app=1";
+}
+
+function markAppShellInDocument(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.appShell = "android";
 }
 
 export function consumeOpenDecksModalFlag(): boolean {

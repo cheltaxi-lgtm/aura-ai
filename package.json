@@ -31,15 +31,18 @@
     "mobile:sync": "npm run --prefix mobile sync",
     "mobile:icons": "node scripts/generate-android-icons.mjs",
     "mobile:cert-sha": "node scripts/print-android-cert-sha.mjs",
-    "verify:module-a": "node scripts/verify-module-a.mjs"
+    "verify:module-a": "node scripts/verify-module-a.mjs",
+    "verify:app-shell": "node scripts/verify-app-shell.mjs"
   },
   "dependencies": {
-    "@capgo/capacitor-native-biometric": "^8.4.12",
     "@capacitor/app": "^8.1.0",
+    "@capacitor/camera": "^8.2.0",
     "@capacitor/core": "^8.4.1",
+    "@capacitor/filesystem": "^8.1.2",
     "@capacitor/haptics": "^8.0.0",
     "@capacitor/splash-screen": "^8.0.0",
     "@capacitor/status-bar": "^8.0.0",
+    "@capgo/capacitor-native-biometric": "^8.4.12",
     "bcryptjs": "^2.4.3",
     "framer-motion": "^11.15.0",
     "html2canvas": "^1.4.1",

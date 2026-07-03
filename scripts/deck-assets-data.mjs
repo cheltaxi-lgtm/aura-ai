@@ -9,6 +9,7 @@ export const DECK_SYSTEMS = [
   "tarot-marina",
   "slavic",
   "astrology",
+  "lenormand",
 ];
 
 export const STYLE_BASE = {
@@ -22,6 +23,8 @@ export const STYLE_BASE = {
     "old Slavic sacred symbol Reza Roda, carved wooden old-russian style, deep red and gold ornament border, ancient mystical, centered, vertical card",
   astrology:
     "Vedic Jyotish celestial symbol, deep indigo cosmic starfield, glowing gold celestial line-art, sacred geometry, vertical card",
+  lenormand:
+    "Petit Lenormand oracle card, vintage European illustration, soft cream and muted teal, elegant thin border, clear symbolic vignette, vertical card",
 };
 
 export const RUNES = [
@@ -94,6 +97,46 @@ export const ASTROLOGY = [
   ["capricorn", "Козерог", "Capricorn zodiac"],
   ["aquarius", "Водолей", "Aquarius zodiac"],
   ["pisces", "Рыбы", "Pisces zodiac sign: two fish with curved tails (♓), NOT Cancer crab"],
+];
+
+/** Sync with src/lib/decks/lenormand.ts — use generate-lenormand-art.mjs for programmatic SVG faces. */
+export const LENORMAND = [
+  ["rider", "Всадник", "horse rider, news, swift movement"],
+  ["clover", "Клевер", "four-leaf clover, luck"],
+  ["ship", "Корабль", "sailing ship, journey"],
+  ["house", "Дом", "home, family"],
+  ["tree", "Дерево", "tree, health, roots"],
+  ["clouds", "Тучи", "clouds, uncertainty"],
+  ["snake", "Змея", "snake, intrigue"],
+  ["coffin", "Гроб", "coffin, ending"],
+  ["bouquet", "Букет", "flower bouquet, joy"],
+  ["scythe", "Коса", "scythe, sudden cut"],
+  ["whip", "Метла", "whip or broom, conflict"],
+  ["birds", "Птицы", "pair of birds, conversation"],
+  ["child", "Ребёнок", "small child, new beginning"],
+  ["fox", "Лиса", "fox, caution"],
+  ["bear", "Медведь", "bear, strength, authority"],
+  ["stars", "Звёзды", "stars cluster, hope"],
+  ["stork", "Аист", "stork bird, change"],
+  ["dog", "Собака", "loyal dog, friend"],
+  ["tower", "Башня", "tower building, solitude"],
+  ["garden", "Сад", "garden gate, society"],
+  ["mountain", "Гора", "mountain peak, obstacle"],
+  ["crossroads", "Дорога", "crossroads fork, choice"],
+  ["mice", "Мыши", "mice, loss, stress"],
+  ["heart", "Сердце", "heart, love"],
+  ["ring", "Кольцо", "wedding ring, commitment"],
+  ["book", "Книга", "closed book, secret knowledge"],
+  ["letter", "Письмо", "envelope, message"],
+  ["man", "Мужчина", "adult man figure"],
+  ["woman", "Женщина", "adult woman figure"],
+  ["lily", "Лилия", "lily flower, peace"],
+  ["sun", "Солнце", "sun with rays, success"],
+  ["moon", "Луна", "crescent moon, intuition"],
+  ["key", "Ключ", "old key, solution"],
+  ["fish", "Рыбы", "two fish, money, abundance"],
+  ["anchor", "Якорь", "ship anchor, stability"],
+  ["cross", "Крест", "Christian cross, fate"],
 ];
 
 const MAJOR = [
@@ -276,6 +319,8 @@ export function deckEntries(system) {
       return SLAVIC.map(([file, name, hint]) => ({ file, name, hint }));
     case "astrology":
       return ASTROLOGY.map(([file, name, hint]) => ({ file, name, hint }));
+    case "lenormand":
+      return LENORMAND.map(([file, name, hint]) => ({ file, name, hint }));
     case "tarot-veronika":
     case "tarot-marina":
       return TAROT.map(([file, name, hint]) => ({ file, name, hint }));

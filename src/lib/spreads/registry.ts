@@ -52,6 +52,45 @@ const celticCrossPositions: SpreadPosition[] = [
   { key: "outcome", label: "Итог" },
 ];
 
+const yearAheadPositions: SpreadPosition[] = [
+  { key: "jan", label: "Январь" },
+  { key: "feb", label: "Февраль" },
+  { key: "mar", label: "Март" },
+  { key: "apr", label: "Апрель" },
+  { key: "may", label: "Май" },
+  { key: "jun", label: "Июнь" },
+  { key: "jul", label: "Июль" },
+  { key: "aug", label: "Август" },
+  { key: "sep", label: "Сентябрь" },
+  { key: "oct", label: "Октябрь" },
+  { key: "nov", label: "Ноябрь" },
+  { key: "dec", label: "Декабрь" },
+  { key: "outcome", label: "Итог года" },
+];
+
+const compatibility12Positions: SpreadPosition[] = [
+  { key: "you-core", label: "Вы — суть" },
+  { key: "you-feelings", label: "Вы — чувства" },
+  { key: "you-goals", label: "Вы — цели" },
+  { key: "partner-core", label: "Партнёр — суть" },
+  { key: "partner-feelings", label: "Партнёр — чувства" },
+  { key: "partner-goals", label: "Партнёр — цели" },
+  { key: "bond", label: "Связь" },
+  { key: "attraction", label: "Притяжение" },
+  { key: "emotion", label: "Эмоции пары" },
+  { key: "challenge", label: "Препятствие" },
+  { key: "advice", label: "Совет" },
+  { key: "outcome", label: "Итог пары" },
+];
+
+const lenormandLinePositions: SpreadPosition[] = [
+  { key: "base", label: "Основа" },
+  { key: "development", label: "Развитие" },
+  { key: "core", label: "Ядро" },
+  { key: "outcome", label: "Исход" },
+  { key: "key", label: "Ключ" },
+];
+
 export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
   triplet: {
     id: "triplet",
@@ -161,6 +200,45 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
     compactPrompt: true,
     seoSlug: "rasshirennyj-den",
   },
+  "year-ahead": {
+    id: "year-ahead",
+    label: "Год вперёд",
+    description: "Двенадцать месяцев и итог года — полный прогноз на 12+1 карту",
+    cardCount: 13,
+    positions: yearAheadPositions,
+    topics: ["path"],
+    systems: "*",
+    costMultiplier: 3.5,
+    layout: "grid12",
+    compactPrompt: true,
+    seoSlug: "god-vpered",
+  },
+  "compatibility-12": {
+    id: "compatibility-12",
+    label: "Совместимость 12 карт",
+    description: "Два человека по шести сферам — глубокий разбор пары",
+    cardCount: 12,
+    positions: compatibility12Positions,
+    topics: ["love"],
+    systems: "*",
+    costMultiplier: 3.0,
+    layout: "grid12",
+    compactPrompt: true,
+    seoSlug: "sovmestimost-12",
+  },
+  "lenormand-line": {
+    id: "lenormand-line",
+    label: "Линия Ленорман",
+    description: "Пять карт в линию — быстрая фраза «основа → исход» в духе оракула Ленорман",
+    cardCount: 5,
+    positions: lenormandLinePositions,
+    topics: "*",
+    systems: ["lenormand"],
+    costMultiplier: 1.5,
+    layout: "row",
+    compactPrompt: true,
+    seoSlug: "lenormand-liniya",
+  },
 };
 
 export const DEFAULT_SPREAD_ID: SpreadId = "triplet";
@@ -210,13 +288,25 @@ function getSpreadOverride(id: SpreadId): SpreadSettingsOverride | undefined {
   return catalogSettings.spreadOverrides[id];
 }
 
+function isSpreadExplicitlyDisabled(id: SpreadId): boolean {
+  return getSpreadOverride(id)?.enabled === false;
+}
+
+/** Master catalog toggle — affects scheme picker UI, not deep-link sessions. */
+export function isSpreadCatalogMasterEnabled(): boolean {
+  return catalogSettings.spreadsCatalogEnabled;
+}
+
+/** Whether a spread can run in paid session / API (deep links included). */
+export function isSpreadSessionAllowed(id: SpreadId): boolean {
+  return !isSpreadExplicitlyDisabled(id);
+}
+
 export function isSpreadEnabled(id: SpreadId): boolean {
   if (!catalogSettings.spreadsCatalogEnabled) {
     return id === DEFAULT_SPREAD_ID;
   }
-  const override = getSpreadOverride(id);
-  if (override?.enabled === false) return false;
-  return true;
+  return !isSpreadExplicitlyDisabled(id);
 }
 
 export function getSpread(id: SpreadId | string | null | undefined): SpreadDefinition {

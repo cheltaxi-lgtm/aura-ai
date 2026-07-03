@@ -29,6 +29,7 @@ export default function AdminDashboardPage() {
         <StatCard label="Сообщений в чате" value={s?.messages ?? "—"} />
         <StatCard label="Успешных оплат" value={s?.paymentsOk ?? "—"} accent="text-aura-emerald" />
         <StatCard label="Выручка, ₽" value={s?.revenue?.toFixed(0) ?? "—"} accent="text-aura-gold" />
+        <StatCard label="Покупок рун" value={s?.runePurchases ?? "—"} accent="text-aura-neon" />
         <StatCard label="Инфлюенсеры" value={s?.influencers ?? "—"} />
         <StatCard label="Поддержка (открытых)" value={s?.supportOpen ?? "—"} accent="text-amber-300" />
         <StatCard label="Поддержка (непрочит.)" value={s?.supportUnread ?? "—"} accent="text-aura-neon" />

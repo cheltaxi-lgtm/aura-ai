@@ -39,4 +39,6 @@ export interface SpreadIntentDefinition {
   relatedSlugs: string[];
   runeAction?: RuneActionType;
   isFeatured?: boolean;
+  /** Tarot spreads that need the second person's name and birth date before the draw. */
+  requiresPartnerInfo?: boolean;
 }

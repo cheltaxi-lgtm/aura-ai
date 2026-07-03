@@ -1,32 +1,15 @@
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
+import {
+  isProseLikelyTruncated,
+  trimIncompleteTrailingSentence,
+} from "@/lib/prose-truncation";
+
+export { isProseLikelyTruncated, trimIncompleteTrailingSentence } from "@/lib/prose-truncation";
 
 const CONTINUE_USER_PROMPT =
   "Текст оборвался на лимите. Продолжи ровно с того места, где остановилась — без повтора уже написанного. Допиши до логического завершения (1–4 предложения). Заверши последнее предложение точкой.";
 
-/** Avoid showing mid-word LLM cutoffs when the provider hits max_tokens. */
-export function trimIncompleteTrailingSentence(text: string): string {
-  const t = text.trim();
-  if (!t) return t;
-  if (/[.!?…»"')\]]$/.test(t)) return t;
-
-  const lastEnd = Math.max(
-    t.lastIndexOf(". "),
-    t.lastIndexOf("! "),
-    t.lastIndexOf("? "),
-    t.lastIndexOf("… ")
-  );
-  if (lastEnd >= Math.floor(t.length * 0.45)) {
-    return t.slice(0, lastEnd + 1).trim();
-  }
-  return t;
-}
-
-export function isProseLikelyTruncated(text: string): boolean {
-  const t = text.trim();
-  if (t.length < 48) return false;
-  if (/[.!?…»"')\]]$/.test(t)) return false;
-  return true;
-}
+export { CONTINUE_USER_PROMPT };
 
 function normalizeProseChunk(text: string): string {
   return text.trim().replace(/^["«]|["»]$/g, "");
@@ -37,7 +20,7 @@ export async function completeProseWithContinuation(
   initialMessages: ChatMessage[],
   opts: { maxTokens: number; temperature: number; maxPasses?: number }
 ): Promise<string | null> {
-  const maxPasses = opts.maxPasses ?? 2;
+  const maxPasses = opts.maxPasses ?? 3;
   const messages: ChatMessage[] = [...initialMessages];
   let combined = "";
 
@@ -65,4 +48,30 @@ export async function completeProseWithContinuation(
   }
 
   return combined ? trimIncompleteTrailingSentence(combined) : null;
+}
+
+/** Continue an assistant reply that hit max_tokens (chat spread / reading). */
+export async function continueAssistantProse(
+  contextMessages: ChatMessage[],
+  partialAssistant: string,
+  opts: { maxTokens: number; temperature: number; maxPasses?: number }
+): Promise<string | null> {
+  const partial = partialAssistant.trim();
+  if (!partial) return null;
+
+  const messages: ChatMessage[] = [
+    ...contextMessages,
+    { role: "assistant", content: partial },
+    { role: "user", content: CONTINUE_USER_PROMPT },
+  ];
+
+  const continued = await completeProseWithContinuation(messages, {
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature,
+    maxPasses: opts.maxPasses ?? 1,
+  });
+  if (!continued?.trim()) return trimIncompleteTrailingSentence(partial);
+
+  if (continued.startsWith(partial)) return continued.trim();
+  return `${partial} ${continued.trim()}`;
 }

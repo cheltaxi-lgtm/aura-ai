@@ -6,6 +6,7 @@ export const DEFAULT_RUNE_COSTS = {
   DESTINY_CARD: 20,
   JOINT_READING: 25,
   DAILY_AMULET: 5,
+  DAILY_EXTENDED: 10,
   FINAL_REPORT: 30,
 } as const;
 
@@ -25,6 +26,7 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
   DESTINY_CARD: "Карта судьбы (арт)",
   JOINT_READING: "Совместный расклад",
   DAILY_AMULET: "Амулет дня",
+  DAILY_EXTENDED: "Расширенный день (7 карт)",
   FINAL_REPORT: "Арт-отчёт сеанса",
 };
 
@@ -36,5 +38,6 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   DESTINY_CARD: "Генерация персональной карты судьбы в чате",
   JOINT_READING: "Совместный расклад двух людей",
   DAILY_AMULET: "Карта-амулет дня",
+  DAILY_EXTENDED: "Семь карт на сферы дня — один раз в сутки",
   FINAL_REPORT: "Итоговый арт-коллаж сеанса",
 };

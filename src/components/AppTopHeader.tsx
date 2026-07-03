@@ -1,10 +1,12 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
-import { Camera, Layers } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import AppDownloadButton from "@/components/AppDownloadButton";
+import AppHeaderMenu from "@/components/AppHeaderMenu";
 import BrandLogo from "@/components/BrandLogo";
 import AuthHeader from "@/components/AuthHeader";
 import RuneBalance from "@/components/RuneBalance";
+import TariffsModal from "@/components/TariffsModal";
 import type { AuthUser } from "@/lib/useAuth";
 
 export interface AppTopHeaderProps {
@@ -14,7 +16,8 @@ export interface AppTopHeaderProps {
   authLoading: boolean;
   onOpenPaywall: () => void;
   onNavMasters: () => void;
-  onNavTariffs: () => void;
+  /** @deprecated Optional scroll fallback; modal always opens. */
+  onNavTariffs?: () => void;
   onNavPhoto: () => void;
   onNavDecks: () => void;
   onStartReading: () => void;
@@ -33,6 +36,12 @@ export default function AppTopHeader({
   onStartReading,
 }: AppTopHeaderProps) {
   const headerRef = useRef<HTMLElement>(null);
+  const [tariffsOpen, setTariffsOpen] = useState(false);
+
+  const openTariffs = () => {
+    onNavTariffs?.();
+    setTariffsOpen(true);
+  };
 
   useLayoutEffect(() => {
     const el = headerRef.current;
@@ -40,6 +49,10 @@ export default function AppTopHeader({
 
     const syncHeaderHeight = () => {
       const height = Math.ceil(el.getBoundingClientRect().height);
+      const prev = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--app-header-h")
+      );
+      if (Number.isFinite(prev) && Math.abs(height - prev) < 2) return;
       document.documentElement.style.setProperty("--app-header-h", `${height}px`);
     };
 
@@ -57,16 +70,16 @@ export default function AppTopHeader({
   return (
     <header
       ref={headerRef}
-      className="app-top-header pointer-events-auto fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md"
+      className="app-top-header pointer-events-auto fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md max-md:bg-[#080512] max-md:backdrop-blur-none"
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
-        <div className="app-top-header__brand flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-4">
+        <div className="app-top-header__brand flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           <BrandLogo
             linkToHome
             iconOnlyOnMobile
             showTagline={false}
             markSize={32}
-            titleClassName="font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl"
+            titleClassName="font-display text-lg font-bold text-white neon-text sm:text-2xl"
           />
         </div>
 
@@ -94,46 +107,49 @@ export default function AppTopHeader({
           </button>
           <button
             type="button"
-            onClick={onNavTariffs}
+            onClick={openTariffs}
             className="relative z-[5010] text-sm text-gray-400 transition-colors hover:text-aura-neon"
           >
             Тарифы
           </button>
         </nav>
 
-        <div className="app-top-header__actions flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
+        {/* Desktop actions */}
+        <div className="app-top-header__actions hidden shrink-0 items-center gap-2 md:flex md:gap-3">
+          <AppDownloadButton compact />
           <button
             type="button"
             onClick={onStartReading}
-            className="btn-primary relative z-[5010] inline-flex shrink-0 items-center px-2.5 py-1.5 text-[11px] leading-tight sm:px-4 sm:py-2 sm:text-sm"
+            className="btn-primary relative z-[5010] inline-flex shrink-0 items-center px-4 py-2 text-sm"
           >
-            <span className="sm:hidden">Расклад</span>
-            <span className="hidden sm:inline">Получить расклад</span>
+            Получить расклад
           </button>
-          <button
-            type="button"
-            onClick={onNavPhoto}
-            className="relative z-[5010] flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] text-gray-300 transition-colors hover:border-aura-gold/30 hover:text-white md:hidden"
-            aria-label={photoNavLabel}
-          >
-            <Camera className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span className="max-[480px]:hidden">Фото</span>
-          </button>
-          <button
-            type="button"
-            onClick={onNavDecks}
-            className="relative z-[5010] flex items-center gap-1 rounded-lg border border-aura-gold/25 bg-aura-gold/5 px-2 py-1.5 text-[11px] text-aura-champagne transition-colors hover:border-aura-gold/45 hover:bg-aura-gold/10 md:hidden"
-            aria-label="Колоды мастеров"
-          >
-            <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span className="max-[480px]:hidden">Колоды</span>
-          </button>
-          {isLoggedIn ? (
-            <RuneBalance compact onBuyClick={onOpenPaywall} />
-          ) : null}
-          <AuthHeader compact user={authUser} loading={authLoading} />
+          {isLoggedIn ? <RuneBalance onBuyClick={onOpenPaywall} /> : null}
+          <AuthHeader user={authUser} loading={authLoading} />
+        </div>
+
+        {/* Mobile: logo + runes + menu */}
+        <div className="app-top-header__mobile flex shrink-0 items-center gap-2 md:hidden">
+          {isLoggedIn ? <RuneBalance compact onBuyClick={onOpenPaywall} /> : null}
+          <AppHeaderMenu
+            photoNavLabel={photoNavLabel}
+            isLoggedIn={isLoggedIn}
+            authUser={authUser}
+            authLoading={authLoading}
+            onNavMasters={onNavMasters}
+            onNavDecks={onNavDecks}
+            onNavPhoto={onNavPhoto}
+            onNavTariffs={openTariffs}
+            onStartReading={onStartReading}
+          />
         </div>
       </div>
+      <TariffsModal
+        open={tariffsOpen}
+        onClose={() => setTariffsOpen(false)}
+        onOpenPaywall={onOpenPaywall}
+        isLoggedIn={isLoggedIn}
+      />
     </header>
   );
 }

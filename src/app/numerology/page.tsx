@@ -15,26 +15,26 @@ export const metadata: Metadata = buildSeoMetadata({
   path: "/numerology",
 });
 
-const NUMEROLOGY_LINKS = [
+const NUMEROLOGY_DIRECTIONS = [
   {
-    href: "/master/numerolog",
     title: "Три числа судьбы",
     text: "Полная расшифровка жизненного пути, души и личности.",
+    action: "Нажмите «Начать с Эвелиной» и выберите расчёт «Три числа» — нужна только дата рождения.",
   },
   {
-    href: "/numerology/pythagoras-square",
     title: "Квадрат Пифагора",
     text: "Структурный разбор характера и потенциала по дате рождения.",
+    action: "В том же сеансе выберите «Квадрат Пифагора» и подтвердите дату рождения из профиля.",
   },
   {
-    href: "/numerology/compatibility",
     title: "Совместимость",
     text: "Числовой анализ пары — сильные стороны и точки роста.",
+    action: "После «Начать с Эвелиной» укажите свои данные и данные партнёра в форме совместимости.",
   },
   {
-    href: "/numerology/favorable-dates",
     title: "Благоприятные даты",
     text: "Когда лучше начинать важные дела и принимать решения.",
+    action: "В списке расчётов Эвелины выберите «Благоприятные даты» и период, который вас интересует.",
   },
 ] as const;
 
@@ -54,22 +54,27 @@ export default function NumerologyPage() {
       <p className="mt-4 text-sm text-white/50">Полная сессия · от {sessionCost} ᚢ</p>
 
       <div className="mt-8">
-        <SeoTrackedCta href="/master/numerolog" trackGoal="numerology_cta_click">
+        <SeoTrackedCta href="/?numerolog=1" trackGoal="numerology_cta_click">
           Начать с Эвелиной
         </SeoTrackedCta>
       </div>
 
       <SeoSection title="Направления">
+        <p className="mb-4 text-sm text-white/60">
+          Все расчёты открываются через одну кнопку{" "}
+          <span className="text-aura-gold">«Начать с Эвелиной»</span> — дальше вы выбираете
+          нужную технику в сеансе.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {NUMEROLOGY_LINKS.map((item) => (
-            <Link
+          {NUMEROLOGY_DIRECTIONS.map((item) => (
+            <div
               key={item.title}
-              href={item.href}
-              className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-aura-gold/30"
+              className="rounded-xl border border-white/10 bg-white/5 p-4"
             >
               <p className="font-medium text-white">{item.title}</p>
-              <p className="mt-1 text-sm">{item.text}</p>
-            </Link>
+              <p className="mt-1 text-sm text-white/70">{item.text}</p>
+              <p className="mt-2 text-sm text-white/50">{item.action}</p>
+            </div>
           ))}
         </div>
       </SeoSection>

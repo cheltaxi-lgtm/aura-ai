@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 220" fill="none">
+  <defs>
+    <linearGradient id="cardFace" x1="20" y1="16" x2="120" y2="204" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3d2460" stop-opacity="0.95"/>
+      <stop offset="0.55" stop-color="#221338" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#140c24" stop-opacity="0.85"/>
+    </linearGradient>
+    <radialGradient id="cardSheen" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(70 58) rotate(90) scale(78 52)">
+      <stop stop-color="#E8C77E" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#E8C77E" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="goldEdge" x1="0" y1="0" x2="140" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8C77E" stop-opacity="0.85"/>
+      <stop offset="0.5" stop-color="#C9A24A" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#E8C77E" stop-opacity="0.75"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="132" height="212" rx="14" fill="url(#cardFace)" stroke="url(#goldEdge)" stroke-width="1.2"/>
+  <rect x="4" y="4" width="132" height="212" rx="14" fill="url(#cardSheen)"/>
+  <rect x="14" y="14" width="112" height="192" rx="10" stroke="#E8C77E" stroke-opacity="0.22" stroke-width="0.8"/>
+  <circle cx="70" cy="110" r="34" stroke="#B794F6" stroke-opacity="0.35" stroke-width="0.8"/>
+  <circle cx="70" cy="110" r="22" stroke="#E8C77E" stroke-opacity="0.4" stroke-width="0.7" stroke-dasharray="3 4"/>
+  <path d="M70 78 L70 66 M70 154 L70 142 M38 110 L26 110 M114 110 L102 110" stroke="#E8C77E" stroke-opacity="0.35" stroke-width="0.7" stroke-linecap="round"/>
+  <path d="M70 92c-8 10-8 22 0 32 8-10 8-22 0-32z" fill="#E8C77E" fill-opacity="0.16" stroke="#E8C77E" stroke-opacity="0.35" stroke-width="0.6"/>
+  <path d="M52 52 L48 46 M88 168 L92 174 M88 52 L92 46 M52 168 L48 174" stroke="#C4B5FD" stroke-opacity="0.28" stroke-width="0.6" stroke-linecap="round"/>
+</svg>

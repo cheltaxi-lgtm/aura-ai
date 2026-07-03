@@ -18,36 +18,94 @@ import { findShowcaseMaster } from "@/lib/showcase-masters";
 import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
 import { useRuneConfig } from "@/lib/useRuneConfig";
-import { resolveMasterDeckSystem } from "@/lib/decks";
-import { DECK_SYSTEM_DISPLAY, type RedrawSpread, redrawSpreadToDeckCards } from "@/lib/photo-spread-redraw";
 import {
   PHOTO_MIN_CARD_COUNT,
   isPhotoSpreadComplete,
   normalizeRedrawSpreadForMaster,
+  createEmptyManualRedrawSpread,
+  buildPartialRedrawSpread,
+  filterRecognizedCardLabels,
+  sanitizeRecognizedRedrawSpread,
+  type RedrawSpread,
+  redrawSpreadToDeckCards,
 } from "@/lib/photo-spread-redraw";
+import {
+  confidenceLabel,
+  parseRecognitionConfidence,
+  type PhotoRecognitionConfidence,
+} from "@/lib/photo-reading-constants";
 import { canAffordRunes } from "@/lib/rune-afford-client";
-import { masterQuestionUnit } from "@/lib/master-pricing";
 import { compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
 import PhotoReadingGuide from "@/components/PhotoReadingGuide";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import MasterAvatar from "@/components/MasterAvatar";
+import BodyPortal from "@/components/BodyPortal";
+import {
+  buildPhotoFollowUpChips,
+  ritualHrefForQuestion,
+} from "@/lib/photo-followups";
+import {
+  appCameraErrorMessage,
+  isAppCameraAvailable,
+  pickPhotoFromApp,
+} from "@/lib/app-camera";
+import { trackPhotoReadingPhase } from "@/lib/photo-reading-analytics";
 import ChatMessageRenderer from "@/components/ChatMessageRenderer";
+import ShareButton from "@/components/share/ShareButton";
+import { chatSpreadToSharePayload } from "@/lib/share/payload-builders";
+
 export const PHOTO_READING_RETURN = "/?photo=1";
+const PHOTO_STREAM_URL = "/api/photo-reading/stream";
+export type PhotoReadingEntryMode = "upload" | "mark";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 /** Client-side compression target: preserve vision quality while staying below infra limits. */
 const UPLOAD_TARGET_BYTES = 2_500_000;
 const HEAVY_FILE_BYTES = 2_500_000;
-const PHOTO_UPLOAD_REV = "photo-upload-v17";
+const PHOTO_UPLOAD_REV = "photo-upload-v18";
 const RECOGNIZE_URL = "/api/photo-reading/recognize";
 const RECOGNIZE_MAX_ATTEMPTS = 3;
-const RECOGNIZE_RETRY_BASE_MS = 400;
-/** fetch times out quickly so XHR can take over with a fresh connection */
-const FETCH_PROBE_TIMEOUT_MS = 3_000;
-const ALLOWED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const RECOGNIZE_RETRY_BASE_MS = 600;
+/** Vision + upload can take a minute on mobile networks. */
+const RECOGNIZE_TIMEOUT_MS = 120_000;
+const ALLOWED_IMAGE_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
 
 type FlowStep = "upload" | "confirm" | "result";
+
+const FLOW_STEPS: { id: FlowStep; label: string }[] = [
+  { id: "upload", label: "Фото" },
+  { id: "confirm", label: "Проверка" },
+  { id: "result", label: "Расшифровка" },
+];
+
+function PhotoFlowSteps({ step }: { step: FlowStep }) {
+  const order: FlowStep[] = ["upload", "confirm", "result"];
+  const currentIdx = order.indexOf(step);
+  return (
+    <ol className="photo-reading-steps" aria-label="Шаги фото-расклада">
+      {FLOW_STEPS.map((item, index) => {
+        const done = index < currentIdx;
+        const active = item.id === step;
+        return (
+          <li
+            key={item.id}
+            className={`photo-reading-steps__item${active ? " photo-reading-steps__item--active" : ""}${done ? " photo-reading-steps__item--done" : ""}`}
+          >
+            <span className="photo-reading-steps__dot">{index + 1}</span>
+            <span className="photo-reading-steps__label">{item.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 export interface PhotoReadingChatPayload {
   analysis: string;
@@ -75,6 +133,7 @@ interface PhotoReadingFlowProps {
   runeBalance?: number;
   isUnlimited?: boolean;
   onOpenPaywall?: () => void;
+  initialMode?: PhotoReadingEntryMode;
 }
 
 function logPhotoClientError(payload: Record<string, unknown>) {
@@ -96,8 +155,6 @@ function logPhotoClientError(payload: Record<string, unknown>) {
     // ignore logging failures
   }
 }
-
-const RECOGNIZE_TIMEOUT_MS = 120_000;
 
 function buildRecognizeFormData(blob: Blob, masterId: string, question: string): FormData {
   const formData = new FormData();
@@ -123,33 +180,6 @@ function recognizeRetryDelayMs(attempt: number): number {
   return RECOGNIZE_RETRY_BASE_MS * attempt;
 }
 
-/**
- * fetch probe: always fails fast in this env, but its failure clears stale
- * keep-alive connections so the subsequent XHR can open a fresh one.
- */
-function probeFetch(formData: FormData): Promise<{ status: number; text: string }> {
-  const url =
-    typeof window !== "undefined" ? `${window.location.origin}${RECOGNIZE_URL}` : RECOGNIZE_URL;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_PROBE_TIMEOUT_MS);
-  return fetch(url, {
-    method: "POST",
-    body: formData,
-    signal: controller.signal,
-    credentials: "include",
-    cache: "no-store",
-  })
-    .then(async (res) => {
-      clearTimeout(timeoutId);
-      return { status: res.status, text: await res.text() };
-    })
-    .catch((err) => {
-      clearTimeout(timeoutId);
-      if (err instanceof Error && err.name === "AbortError") throw new Error("fetch_timeout");
-      throw err;
-    });
-}
-
 function postRecognizeXhr(formData: FormData): Promise<{ status: number; text: string }> {
   const url =
     typeof window !== "undefined" ? `${window.location.origin}${RECOGNIZE_URL}` : RECOGNIZE_URL;
@@ -167,21 +197,8 @@ function postRecognizeXhr(formData: FormData): Promise<{ status: number; text: s
 }
 
 /**
- * Probe with fetch first (fails fast, clears stale connection), then XHR.
- * If fetch actually succeeds (response received), return it directly.
+ * Single XHR upload — avoids duplicate aborted fetch + retry confusion on mobile.
  */
-async function postRecognizeOnce(
-  blob: Blob,
-  masterId: string,
-  question: string
-): Promise<{ status: number; text: string }> {
-  try {
-    return await probeFetch(buildRecognizeFormData(blob, masterId, question));
-  } catch {
-    return postRecognizeXhr(buildRecognizeFormData(blob, masterId, question));
-  }
-}
-
 async function postRecognizeWithRetry(
   blob: Blob,
   masterId: string,
@@ -193,7 +210,7 @@ async function postRecognizeWithRetry(
   for (let attempt = 1; attempt <= RECOGNIZE_MAX_ATTEMPTS; attempt++) {
     onAttempt?.(attempt);
     try {
-      const response = await postRecognizeOnce(blob, masterId, question);
+      const response = await postRecognizeXhr(buildRecognizeFormData(blob, masterId, question));
       if (isRetriableRecognizeStatus(response.status) && attempt < RECOGNIZE_MAX_ATTEMPTS) {
         logPhotoClientError({
           phase: "recognize_retry_status",
@@ -226,14 +243,48 @@ async function postRecognizeWithRetry(
 function isImageFile(file: File): boolean {
   const mime = file.type.toLowerCase().split(";")[0]?.trim();
   if (mime) return ALLOWED_IMAGE_MIMES.has(mime);
-  return /\.(jpe?g|png|webp)$/i.test(file.name);
+  return /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name);
 }
 
-function systemHint(master: ShowcaseMaster | undefined): string {
-  if (!master) return "Загрузите фото — распознаём, перерисуем колодой Zovus и расшифруем у мастера.";
-  const system = master.system ?? resolveMasterDeckSystem(master.id);
-  const unit = masterQuestionUnit(system);
-  return `Мастер читает ${unit.replace("за вопрос", "на фото")}. После распознавания подтвердите перерисованный расклад — расшифровка входит в стоимость.`;
+
+function imageCacheKey(data: { base64: string; mimeType: string }): string {
+  return `${data.mimeType}:${data.base64.length}:${data.base64.slice(0, 64)}`;
+}
+
+async function readPhotoStream(
+  response: Response,
+  onToken: (token: string) => void
+): Promise<Record<string, unknown>> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No stream body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload: Record<string, unknown> | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const json = JSON.parse(data) as Record<string, unknown>;
+        if (typeof json.token === "string") onToken(json.token);
+        if (json.type === "done") donePayload = json;
+      } catch {
+        /* skip malformed chunk */
+      }
+    }
+  }
+
+  if (!donePayload) throw new Error("Stream ended without done payload");
+  return donePayload;
 }
 
 export default function PhotoReadingFlow({
@@ -252,12 +303,26 @@ export default function PhotoReadingFlow({
   runeBalance = 0,
   isUnlimited = false,
   onOpenPaywall,
+  initialMode = "upload",
 }: PhotoReadingFlowProps) {
   const { config: runeConfig, cost: runeCost, formatRunes, formatRunesWithRub } = useRuneConfig();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
+  const sourcePhotoUrlRef = useRef<string | null>(null);
   const recognizeInFlightRef = useRef(false);
+  const interpretIdempotencyKeyRef = useRef<string | null>(null);
+  const recognizeCacheRef = useRef<
+    Map<
+      string,
+      {
+        spread: RedrawSpread;
+        confidence: PhotoRecognitionConfidence;
+        manual: boolean;
+        notice?: string;
+      }
+    >
+  >(new Map());
   const isMobile =
     typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
 
@@ -269,9 +334,17 @@ export default function PhotoReadingFlow({
   const [masterId, setMasterId] = useState(defaultMasterId);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
+  const [preparingImage, setPreparingImage] = useState(false);
   const [recognizeAttempt, setRecognizeAttempt] = useState(0);
   const [error, setError] = useState("");
   const [redrawSpread, setRedrawSpread] = useState<RedrawSpread | null>(null);
+  const [recognitionConfidence, setRecognitionConfidence] =
+    useState<PhotoRecognitionConfidence>("unknown");
+  const [manualMode, setManualMode] = useState(false);
+  const [recognitionFailed, setRecognitionFailed] = useState(false);
+  const [sourcePhotoUrl, setSourcePhotoUrl] = useState<string | null>(null);
+  const [showSourceCompare, setShowSourceCompare] = useState(false);
+  const [showRescueActions, setShowRescueActions] = useState(false);
   const [result, setResult] = useState<{
     analysis: string;
     detectedCards: string[];
@@ -280,9 +353,21 @@ export default function PhotoReadingFlow({
     saved: boolean;
     historyId?: string;
   } | null>(null);
+  const [streamingAnalysis, setStreamingAnalysis] = useState("");
+  const [photoPricing, setPhotoPricing] = useState<{
+    baseCost: number;
+    effectiveCost: number;
+    firstPhotoDiscount: boolean;
+  } | null>(null);
 
   const selectedMaster = findShowcaseMaster(masterId, masters);
-  const photoCost = runeCost("VISION_ANALYSIS");
+  const aiMasters = useMemo(
+    () => masters.filter((m) => m.kind === "ai" || !m.kind),
+    [masters]
+  );
+  const masterDisplayName = selectedMaster?.name ?? "Мастер";
+  const photoCost = photoPricing?.effectiveCost ?? runeCost("VISION_ANALYSIS");
+  const photoBaseCost = photoPricing?.baseCost ?? runeCost("VISION_ANALYSIS");
   const photoPriceLabel = formatRunesWithRub(photoCost);
   const canAffordPhoto = canAffordRunes({
     enabled: runeConfig.enabled,
@@ -296,7 +381,24 @@ export default function PhotoReadingFlow({
   useEffect(() => {
     if (!open) return;
     sessionStorage.setItem("zovus_photo_rev", PHOTO_UPLOAD_REV);
-  }, [open]);
+    trackPhotoReadingPhase("open", { mode: initialMode });
+  }, [open, initialMode]);
+
+  useEffect(() => {
+    if (!open || !isLoggedIn) return;
+    void fetch("/api/photo-reading/pricing")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (typeof data?.effectiveCost === "number") {
+          setPhotoPricing({
+            baseCost: data.baseCost ?? data.effectiveCost,
+            effectiveCost: data.effectiveCost,
+            firstPhotoDiscount: Boolean(data.firstPhotoDiscount),
+          });
+        }
+      })
+      .catch(() => undefined);
+  }, [open, isLoggedIn]);
 
   const onRuneBalanceChangeRef = useRef(onRuneBalanceChange);
   useEffect(() => { onRuneBalanceChangeRef.current = onRuneBalanceChange; });
@@ -345,7 +447,13 @@ export default function PhotoReadingFlow({
       URL.revokeObjectURL(previewObjectUrlRef.current);
       previewObjectUrlRef.current = null;
     }
+    if (sourcePhotoUrlRef.current) {
+      URL.revokeObjectURL(sourcePhotoUrlRef.current);
+      sourcePhotoUrlRef.current = null;
+    }
     setPreviewUrl(null);
+    setSourcePhotoUrl(null);
+    setShowSourceCompare(false);
     setImageData(null);
     setRedrawSpread(null);
     setResult(null);
@@ -353,9 +461,35 @@ export default function PhotoReadingFlow({
     setQuestion("");
     setStep("upload");
     setLoading(false);
+    setPreparingImage(false);
+    setManualMode(false);
+    setRecognitionFailed(false);
+    setRecognitionConfidence("unknown");
+    setShowRescueActions(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
+    interpretIdempotencyKeyRef.current = null;
+    setStreamingAnalysis("");
+    setPhotoPricing(null);
   }, [open]);
+
+  const markModeBootedRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      markModeBootedRef.current = false;
+      return;
+    }
+    if (initialMode !== "mark" || markModeBootedRef.current) return;
+    markModeBootedRef.current = true;
+    if (!isLoggedIn) return;
+    if (runesBlocked) return;
+    trackPhotoReadingPhase("manual_mark");
+    openConfirmStep(createEmptyManualRedrawSpread(masterId), {
+      manual: true,
+      confidence: "unknown",
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- boot mark mode once per open
+  }, [open, initialMode, isLoggedIn, masterId]);
 
   useEffect(() => {
     if (!open) return;
@@ -371,16 +505,90 @@ export default function PhotoReadingFlow({
     };
   }, [open, loading, onClose]);
 
+  const preserveSourcePhoto = (url: string | null) => {
+    if (!url) return;
+    if (sourcePhotoUrlRef.current && sourcePhotoUrlRef.current !== url) {
+      URL.revokeObjectURL(sourcePhotoUrlRef.current);
+    }
+    sourcePhotoUrlRef.current = url;
+    setSourcePhotoUrl(url);
+  };
+
+  const openConfirmStep = (
+    spread: RedrawSpread,
+    opts?: {
+      confidence?: PhotoRecognitionConfidence;
+      manual?: boolean;
+      recognitionFailed?: boolean;
+      notice?: string;
+      recognizeCacheKey?: string;
+    }
+  ) => {
+    setRedrawSpread(spread);
+    setRecognitionConfidence(opts?.confidence ?? "unknown");
+    setManualMode(Boolean(opts?.manual));
+    setRecognitionFailed(Boolean(opts?.recognitionFailed));
+    setStep("confirm");
+    setShowRescueActions(false);
+    if (opts?.recognizeCacheKey) {
+      recognizeCacheRef.current.set(opts.recognizeCacheKey, {
+        spread,
+        confidence: opts?.confidence ?? "unknown",
+        manual: Boolean(opts?.manual),
+        notice: opts?.notice,
+      });
+    }
+    if (!interpretIdempotencyKeyRef.current) {
+      interpretIdempotencyKeyRef.current =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+    trackPhotoReadingPhase("confirm", { manual: Boolean(opts?.manual) });
+    if (opts?.notice) {
+      setError(opts.notice);
+    } else {
+      setError("");
+    }
+  };
+
+  const startManualSpread = () => {
+    if (!isLoggedIn) {
+      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`;
+      return;
+    }
+    if (runesBlocked) {
+      onInsufficientRunes?.({ balance: runeBalance, required: photoCost });
+      onOpenPaywall?.();
+      setError(`Недостаточно рун: нужно ${formatRunes(photoCost)}, у вас ${formatRunes(runeBalance)}.`);
+      return;
+    }
+    openConfirmStep(createEmptyManualRedrawSpread(masterId), {
+      manual: true,
+      confidence: "unknown",
+    });
+  };
+
   const handleFile = async (file: File | undefined, source: "camera" | "gallery" = "gallery") => {
     if (!file || !isImageFile(file)) {
-      setError("Выберите изображение (JPG, PNG, WebP)");
+      setError("Выберите изображение (JPG, PNG, WebP или HEIC)");
       return;
     }
     setError("");
     setResult(null);
     setRedrawSpread(null);
+    setManualMode(false);
+    setRecognitionFailed(false);
     setStep("upload");
+    setImageData(null);
     setFileOriginalBytes(file.size);
+    setPreparingImage(true);
+
+    if (previewObjectUrlRef.current) URL.revokeObjectURL(previewObjectUrlRef.current);
+    const objectUrl = URL.createObjectURL(file);
+    previewObjectUrlRef.current = objectUrl;
+    setPreviewUrl(objectUrl);
+
     logPhotoClientError({
       phase: "file_selected",
       name: source,
@@ -412,17 +620,36 @@ export default function PhotoReadingFlow({
         name: source,
         originalBytes: file.size,
       });
+      setPreviewUrl(null);
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+        previewObjectUrlRef.current = null;
+      }
       setError(
         file.size > HEAVY_FILE_BYTES
           ? "Фото слишком тяжёлое и не удалось сжать. Попробуйте другое фото в JPG, PNG или WebP."
-          : "Не удалось обработать изображение. Попробуйте JPG или PNG."
+          : "Не удалось обработать изображение. Попробуйте ещё раз или выберите JPG/PNG."
       );
+    } finally {
+      setPreparingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+    }
+  };
+
+  const pickFromAppSource = async (source: "camera" | "gallery") => {
+    if (!isAppCameraAvailable()) {
+      if (source === "camera") cameraInputRef.current?.click();
+      else fileInputRef.current?.click();
       return;
     }
-    if (previewObjectUrlRef.current) URL.revokeObjectURL(previewObjectUrlRef.current);
-    const objectUrl = URL.createObjectURL(file);
-    previewObjectUrlRef.current = objectUrl;
-    setPreviewUrl(objectUrl);
+    try {
+      const file = await pickPhotoFromApp(source);
+      if (file) await handleFile(file, source);
+    } catch (err) {
+      const message = appCameraErrorMessage(err);
+      if (message) setError(message);
+    }
   };
 
   const clearImage = () => {
@@ -437,6 +664,10 @@ export default function PhotoReadingFlow({
     setRedrawSpread(null);
     setResult(null);
     setStep("upload");
+    setPreparingImage(false);
+    setManualMode(false);
+    setRecognitionFailed(false);
+    setShowSourceCompare(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
@@ -465,6 +696,20 @@ export default function PhotoReadingFlow({
       setError(`Недостаточно рун: нужно ${formatRunes(photoCost)}, у вас ${formatRunes(runeBalance)}.`);
       return;
     }
+
+    const cacheKey = imageCacheKey(imageData);
+    const cachedRecognize = recognizeCacheRef.current.get(cacheKey);
+    if (cachedRecognize) {
+      trackPhotoReadingPhase("recognize_ok", { cached: true });
+      openConfirmStep(cachedRecognize.spread, {
+        confidence: cachedRecognize.confidence,
+        manual: cachedRecognize.manual,
+        notice: cachedRecognize.notice,
+      });
+      return;
+    }
+
+    trackPhotoReadingPhase("recognize_start");
 
     recognizeInFlightRef.current = true;
     setLoading(true);
@@ -511,7 +756,7 @@ export default function PhotoReadingFlow({
         originalBytes: fileOriginalBytes,
         name: isMobile ? "mobile" : "desktop",
         source: imageSource,
-        transport: "multipart_only",
+        transport: "multipart_xhr",
       });
 
       if (uploadBytes > MAX_UPLOAD_BYTES) {
@@ -578,18 +823,29 @@ export default function PhotoReadingFlow({
       }
 
       if (response.status === 422) {
-        const code = data.error ?? data.code;
-        if (code === "INCOMPLETE_SPREAD") {
-          setError(
-            (typeof data.message === "string" && data.message) ||
-              "На фото не удалось распознать символы — добавьте их вручную на следующем шаге."
-          );
-          return;
-        }
-        setError(
-          (typeof data.message === "string" && data.message) ||
-            "На фото не удалось распознать расклад"
+        const partialCards = filterRecognizedCardLabels(
+          Array.isArray(data.detectedCards) ? (data.detectedCards as string[]) : []
         );
+        const deckType = typeof data.deckType === "string" ? data.deckType : undefined;
+        const spreadType = typeof data.spreadType === "string" ? data.spreadType : undefined;
+        const message =
+          (typeof data.message === "string" && data.message) ||
+          "На фото не удалось распознать расклад — соберите его вручную.";
+
+        preserveSourcePhoto(previewUrl);
+        openConfirmStep(
+          partialCards.length
+            ? buildPartialRedrawSpread(masterId, partialCards, deckType, spreadType)
+            : createEmptyManualRedrawSpread(masterId),
+          {
+            confidence: parseRecognitionConfidence(deckType),
+            manual: true,
+            recognitionFailed: true,
+            notice: message,
+            recognizeCacheKey: cacheKey,
+          }
+        );
+        trackPhotoReadingPhase("recognize_partial");
         return;
       }
 
@@ -610,14 +866,32 @@ export default function PhotoReadingFlow({
         return;
       }
 
-      setRedrawSpread(data.redrawSpread as RedrawSpread);
+      const rawSpread = data.redrawSpread as RedrawSpread;
+      const { spread, manual } = sanitizeRecognizedRedrawSpread(rawSpread, masterId);
+      const confidence = parseRecognitionConfidence(
+        typeof data.deckType === "string" ? data.deckType : spread?.deckType
+      );
+      preserveSourcePhoto(previewUrl);
+      openConfirmStep(spread, {
+        confidence: Boolean(data.partial) && confidence === "high" ? "medium" : confidence,
+        manual,
+        recognitionFailed: manual,
+        notice:
+          manual
+            ? (typeof data.message === "string" && data.message) ||
+              "На фото не удалось распознать расклад — соберите его вручную."
+            : typeof data.message === "string" && data.partial
+              ? data.message
+              : undefined,
+        recognizeCacheKey: cacheKey,
+      });
+      trackPhotoReadingPhase(manual ? "recognize_partial" : "recognize_ok");
       setPreviewUrl(null);
       setImageData(null);
       if (previewObjectUrlRef.current) {
         URL.revokeObjectURL(previewObjectUrlRef.current);
         previewObjectUrlRef.current = null;
       }
-      setStep("confirm");
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logPhotoClientError({
@@ -626,6 +900,7 @@ export default function PhotoReadingFlow({
         name: isMobile ? "mobile" : "desktop",
       });
       setError("Ошибка при отправке фото. Попробуйте ещё раз.");
+      setShowRescueActions(true);
     } finally {
       recognizeInFlightRef.current = false;
       setRecognizeAttempt(0);
@@ -648,93 +923,185 @@ export default function PhotoReadingFlow({
 
     setLoading(true);
     setError("");
+    setStreamingAnalysis("");
+    setStep("result");
+    trackPhotoReadingPhase("interpret_start");
     let ritualActive = false;
+
+    const idempotencyKey =
+      interpretIdempotencyKeyRef.current ??
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    interpretIdempotencyKeyRef.current = idempotencyKey;
 
     try {
       onSpreadRitualStart?.(redrawSpread);
       ritualActive = true;
 
-      const res = await fetch("/api/photo-reading", {
+      const res = await fetch(PHOTO_STREAM_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({
           characterId: masterId,
           question: question.trim() || undefined,
           sessionId,
           confirmedSpread: redrawSpread,
+          idempotencyKey,
         }),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
 
-      if (res.status === 429) {
-        setError("Слишком много фото-чтений. Подождите минуту.");
-        return;
-      }
-
-      if (res.status === 402) {
-        const parsed = parseInsufficientRunes(data);
-        if (parsed) {
-          onInsufficientRunes?.({ balance: parsed.balance, required: parsed.required });
-          onOpenPaywall?.();
-          setError(`Недостаточно рун. Не хватает ${parsed.shortage} ᚢ.`);
+        if (res.status === 429) {
+          setStep("confirm");
+          setError("Слишком много фото-чтений. Подождите минуту.");
           return;
         }
-      }
 
-      if (res.status === 422 && data.error === "INCOMPLETE_SPREAD") {
-        setError(data.message ?? "Добавьте хотя бы один символ в расклад.");
+        if (res.status === 402) {
+          setStep("confirm");
+          const parsed = parseInsufficientRunes(data);
+          if (parsed) {
+            onInsufficientRunes?.({ balance: parsed.balance, required: parsed.required });
+            onOpenPaywall?.();
+            setError(`Недостаточно рун. Не хватает ${parsed.shortage} ᚢ.`);
+            return;
+          }
+        }
+
+        if (res.status === 422 && data.error === "INCOMPLETE_SPREAD") {
+          setStep("confirm");
+          setError(data.message ?? "Добавьте хотя бы один символ в расклад.");
+          return;
+        }
+
+        if (!res.ok) {
+          setStep("confirm");
+          setError(data.message ?? data.error ?? "Не удалось расшифровать расклад");
+          return;
+        }
+
+        const nextResult = {
+          analysis: String(data.analysis ?? ""),
+          detectedCards: (data.detectedCards as string[]) ?? [],
+          deckType: data.deckType as string | undefined,
+          spreadType: data.spreadType as string | undefined,
+          saved: Boolean(data.saved),
+          historyId: data.historyId as string | undefined,
+        };
+        setResult(nextResult);
+        setStreamingAnalysis(nextResult.analysis);
+
+        if (typeof data.runeBalance === "number") {
+          onRuneBalanceChange?.(data.runeBalance);
+        }
+        if (data.firstPhotoDiscount) {
+          setPhotoPricing((prev) =>
+            prev ? { ...prev, firstPhotoDiscount: false, effectiveCost: prev.baseCost } : prev
+          );
+        }
+        if (data.saved || data.historyId) onSaved?.();
+        trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
+
+        if (onContinueChat && nextResult.analysis && !data.cached) {
+          if (ritualActive) {
+            onSpreadRitualEnd?.();
+            ritualActive = false;
+          }
+          await onContinueChat(masterId, {
+            analysis: nextResult.analysis,
+            question: question.trim() || undefined,
+            detectedCards: nextResult.detectedCards,
+            redrawSpread: redrawSpread ?? undefined,
+            sessionId: data.sessionId as string | undefined,
+            historyId: nextResult.historyId,
+          });
+          return;
+        }
         return;
       }
 
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "Не удалось расшифровать расклад");
+        setStep("confirm");
+        setError("Не удалось расшифровать расклад");
+        trackPhotoReadingPhase("interpret_fail");
         return;
       }
 
+      trackPhotoReadingPhase("interpret_stream");
+      let streamedText = "";
+      const data = await readPhotoStream(res, (token) => {
+        streamedText += token;
+        setStreamingAnalysis(streamedText);
+      });
+
+      const analysis = String(data.reply ?? data.analysis ?? streamedText);
       const nextResult = {
-        analysis: data.analysis,
-        detectedCards: data.detectedCards ?? [],
-        deckType: data.deckType,
-        spreadType: data.spreadType,
-        saved: data.saved ?? false,
-        historyId: data.historyId,
+        analysis,
+        detectedCards: (data.detectedCards as string[]) ?? [],
+        deckType: data.deckType as string | undefined,
+        spreadType: data.spreadType as string | undefined,
+        saved: Boolean(data.saved),
+        historyId: data.historyId as string | undefined,
       };
       setResult(nextResult);
+      setStreamingAnalysis(analysis);
 
       if (typeof data.runeBalance === "number") {
-        onRuneBalanceChange?.(data.runeBalance);
+        onRuneBalanceChange?.(data.runeBalance as number);
       }
-
-      if (data.saved || data.historyId) {
-        onSaved?.();
+      if (data.firstPhotoDiscount) {
+        setPhotoPricing((prev) =>
+          prev ? { ...prev, firstPhotoDiscount: false, effectiveCost: prev.baseCost } : prev
+        );
       }
+      if (data.saved || data.historyId) onSaved?.();
+      trackPhotoReadingPhase("interpret_done", { streamed: true });
 
-      if (onContinueChat && data.analysis) {
+      if (onContinueChat && analysis) {
         if (ritualActive) {
           onSpreadRitualEnd?.();
           ritualActive = false;
         }
         await onContinueChat(masterId, {
-          analysis: data.analysis,
+          analysis,
           question: question.trim() || undefined,
-          detectedCards: data.detectedCards ?? [],
+          detectedCards: nextResult.detectedCards,
           redrawSpread: redrawSpread ?? undefined,
-          sessionId: data.sessionId,
-          historyId: data.historyId,
+          sessionId: data.sessionId as string | undefined,
+          historyId: nextResult.historyId,
         });
         return;
       }
-
-      setStep("result");
     } catch {
+      setStep("confirm");
       setError("Ошибка сети. Попробуйте ещё раз.");
+      trackPhotoReadingPhase("interpret_fail");
     } finally {
       setLoading(false);
       if (ritualActive) {
         onSpreadRitualEnd?.();
       }
     }
+  };
+
+  const handleFollowUpChip = async (chipQuestion: string) => {
+    trackPhotoReadingPhase("followup_chip");
+    if (!onContinueChat || !result) return;
+    await onContinueChat(masterId, {
+      analysis: result.analysis,
+      question: chipQuestion,
+      detectedCards: result.detectedCards,
+      redrawSpread: redrawSpread ?? undefined,
+      historyId: result.historyId,
+    });
+    onClose();
   };
 
   const handleContinueChat = async () => {
@@ -753,58 +1120,80 @@ export default function PhotoReadingFlow({
     () => (redrawSpread ? redrawSpreadToDeckCards(redrawSpread) : []),
     [redrawSpread]
   );
+  const followUpChips = useMemo(
+    () => buildPhotoFollowUpChips(question),
+    [question]
+  );
+  const ritualUpsellHref = useMemo(
+    () => ritualHrefForQuestion(question),
+    [question]
+  );
+  const displayAnalysis = streamingAnalysis || result?.analysis || "";
+
+  const resultSharePayload = useMemo(() => {
+    if (!displayAnalysis.trim()) return null;
+    return chatSpreadToSharePayload({
+      characterId: masterId,
+      masterName: masterDisplayName,
+      spreadTitle: "Расклад по фото",
+      cards: resultCards.map((c) => ({ name: c.name, meaning: c.meaning })),
+      deckSystem: redrawSpread?.system,
+      excerpt: displayAnalysis,
+      sessionId,
+    });
+  }, [displayAnalysis, masterId, masterDisplayName, resultCards, redrawSpread?.system, sessionId]);
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4"
-          data-flow-overlay="true"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="photo-reading-title"
-        >
-          {/* Backdrop */}
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/80 backdrop-blur-md"
-            onClick={() => !loading && onClose()}
-            aria-label="Закрыть"
-          />
-
+    <BodyPortal active={open}>
+      <AnimatePresence>
+        {open && (
           <motion.div
-            className="relative z-10 flex max-h-[94vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl"
-            style={{
-              background: "linear-gradient(160deg, #0d0a1a 0%, #120e24 60%, #0a0814 100%)",
-              boxShadow: "0 0 0 1px rgba(212,175,55,0.12), 0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(139,90,200,0.08)",
-            }}
-            initial={{ opacity: 0, y: 32, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 32, scale: 0.97 }}
-            transition={{ type: "spring", damping: 28, stiffness: 260 }}
+            className="fixed inset-0 z-[6500] flex items-end justify-center sm:items-center sm:p-4"
+            data-flow-overlay="true"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
-            {/* Ambient glow top */}
+            {/* Backdrop */}
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              onClick={() => !loading && onClose()}
+              aria-label="Закрыть"
+            />
+
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="photo-reading-title"
+              className="relative z-10 photo-flow-dialog flex w-full max-h-[min(90dvh,calc(100dvh-2rem))] flex-col overflow-hidden rounded-t-3xl border border-white/10 sm:mx-4 sm:max-w-lg sm:rounded-3xl"
+              initial={{ opacity: 0, y: 32, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 32, scale: 0.97 }}
+              transition={{ type: "spring", damping: 28, stiffness: 260 }}
+            >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-aura-gold/40 to-transparent" />
 
-            {/* ── HEADER ── */}
-            <div className="relative flex shrink-0 items-center gap-3 px-5 pt-5 pb-4">
+            <div className="photo-flow-dialog__header relative flex shrink-0 items-center gap-3 px-4 py-3 sm:px-5 sm:py-4">
               <div className="relative">
-                <MasterAvatar masterId="veronika" masterName="Вероника" size="md" thumb />
+                <MasterAvatar
+                  masterId={masterId}
+                  masterName={masterDisplayName}
+                  size="md"
+                  thumb
+                />
                 <div className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-aura-gold text-[8px]">
                   ✦
                 </div>
               </div>
               <div className="min-w-0 flex-1">
                 <h2 id="photo-reading-title" className="font-display text-base font-semibold text-white leading-tight">
-                  Вероника читает расклад
+                  {masterDisplayName} · фото-расклад
                 </h2>
                 <p className="text-[11px] text-aura-gold/70 mt-0.5">
                   {runeConfig.enabled && step !== "result"
                     ? `${photoPriceLabel} · распознавание и расшифровка`
-                    : "Таро и психология"}
+                    : (selectedMaster?.title ?? "Фото-расклад")}
                 </p>
               </div>
               <button
@@ -818,23 +1207,40 @@ export default function PhotoReadingFlow({
               </button>
             </div>
 
-            {/* Divider */}
-            <div className="h-px shrink-0 bg-gradient-to-r from-transparent via-white/8 to-transparent mx-5" />
+            <div className="shrink-0 px-4 pb-2 pt-1 sm:px-5 sm:pb-3">
+              <PhotoFlowSteps step={step} />
+            </div>
 
-            {/* ── BODY ── */}
-            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
+            {aiMasters.length > 1 && step === "upload" && (
+              <div className="photo-flow-field shrink-0 px-4 pb-2 sm:px-5 sm:pb-3">
+                <label htmlFor="photo-master-select">Мастер</label>
+                <select
+                  id="photo-master-select"
+                  value={masterId}
+                  onChange={(e) => setMasterId(e.target.value)}
+                  disabled={loading}
+                >
+                  {aiMasters.map((m) => (
+                    <option key={m.id} value={m.id} className="bg-zinc-900">
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-              {/* Loading bar */}
+            <div className="lux-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3 sm:space-y-4 sm:px-5 sm:py-4">
+
               {loading && (
                 <motion.div
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center gap-3 rounded-2xl border border-aura-gold/20 bg-aura-gold/5 px-4 py-3"
+                  className="photo-flow-loading"
                 >
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin text-aura-gold" />
-                  <span className="text-sm text-gray-300">
-                    {step === "confirm"
-                      ? "Вероника расшифровывает…"
+                  <span>
+                    {step === "result" || step === "confirm"
+                      ? `${masterDisplayName} расшифровывает…`
                       : recognizeAttempt > 1
                         ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})…`
                         : "Распознаём и перерисовываем…"}
@@ -854,35 +1260,41 @@ export default function PhotoReadingFlow({
                       {isMobile && (
                         <button
                           type="button"
-                          onClick={() => cameraInputRef.current?.click()}
-                          className="group flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-aura-purple/35 bg-aura-purple/5 py-6 transition-all hover:border-aura-purple/60 hover:bg-aura-purple/10"
+                          onClick={() => void pickFromAppSource("camera")}
+                          className="photo-flow-upload-tile"
                         >
-                          <Camera className="h-7 w-7 text-aura-neon/70 transition-colors group-hover:text-aura-neon" />
-                          <span className="text-xs font-medium text-white/80">Сделать фото</span>
+                          <span className="photo-flow-upload-tile__icon">
+                            <Camera className="h-6 w-6" />
+                          </span>
+                          <span className="text-xs font-medium text-white/85">Сделать фото</span>
                         </button>
                       )}
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className={`group flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] py-8 transition-all hover:border-aura-gold/30 hover:bg-aura-gold/5 ${!isMobile ? "col-span-full" : ""}`}
+                        onClick={() => void pickFromAppSource("gallery")}
+                        className={`photo-flow-upload-tile sm:py-8 ${!isMobile ? "col-span-full" : ""}`}
                       >
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 transition-colors group-hover:border-aura-gold/25 group-hover:bg-aura-gold/8">
-                          <ImagePlus className="h-6 w-6 text-gray-500 transition-colors group-hover:text-aura-gold/70" />
-                        </div>
-                        <span className="text-sm font-medium text-white/80 transition-colors group-hover:text-white">
-                          Загрузить фото
+                        <span className="photo-flow-upload-tile__icon">
+                          <ImagePlus className="h-6 w-6" />
                         </span>
-                        <span className="text-[11px] text-gray-600">JPG, PNG, WebP</span>
+                        <span className="text-sm font-medium text-white/85">Загрузить фото</span>
+                        <span className="text-[11px] text-white/38">JPG, PNG, WebP · до 5 МБ</span>
                       </button>
                     </div>
                   ) : (
-                    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={previewUrl}
                         alt="Ваш расклад"
-                        className="max-h-52 w-full object-contain"
+                        className="max-h-36 w-full object-contain sm:max-h-52"
                       />
+                      {preparingImage ? (
+                        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/45 text-sm text-gray-200">
+                          <Loader2 className="h-4 w-4 animate-spin text-aura-gold" />
+                          Подготавливаем фото…
+                        </div>
+                      ) : null}
                       <button
                         type="button"
                         onClick={clearImage}
@@ -897,7 +1309,7 @@ export default function PhotoReadingFlow({
                   <input
                     ref={cameraInputRef}
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                     capture="environment"
                     className="hidden"
                     onChange={(e) => void handleFile(e.target.files?.[0], "camera")}
@@ -905,49 +1317,115 @@ export default function PhotoReadingFlow({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/*"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
                     className="hidden"
                     onChange={(e) => void handleFile(e.target.files?.[0], "gallery")}
                   />
 
-                  {/* Question */}
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-gray-600">
-                      Ваш вопрос (необязательно)
-                    </label>
+                  <div className="photo-flow-field">
+                    <label htmlFor="photo-question">Ваш вопрос (необязательно)</label>
                     <textarea
+                      id="photo-question"
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
                       placeholder="Что означает этот расклад?"
                       rows={2}
-                      className="w-full resize-none rounded-xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-gray-700 focus:border-aura-gold/30 focus:outline-none focus:ring-0 transition-colors"
+                      className="resize-none placeholder:text-white/28"
                     />
                   </div>
+
+                  <div className="photo-flow-hint">
+                    <p>Нет фото или не читается снимок?</p>
+                    <button
+                      type="button"
+                      onClick={startManualSpread}
+                      disabled={loading || runesBlocked}
+                      className="disabled:opacity-40"
+                    >
+                      Собрать расклад вручную
+                    </button>
+                  </div>
+
+                  {runeConfig.enabled && (
+                    <p className="text-center text-xs text-gray-500">
+                      Стоимость фото-расклада {formatRunes(photoCost)}
+                      {photoPricing?.firstPhotoDiscount && photoCost < photoBaseCost ? (
+                        <>
+                          {" "}
+                          <span className="text-aura-gold/80">
+                            (первая расшифровка −50%, далее {formatRunes(photoBaseCost)})
+                          </span>
+                        </>
+                      ) : null}
+                      : сначала распознаём карты, затем вы подтверждаете расклад и получаете расшифровку.
+                    </p>
+                  )}
                 </>
               )}
 
               {/* ── STEP: CONFIRM ── */}
               {step === "confirm" && redrawSpread && (
                 <>
-                  {!isPhotoSpreadComplete(redrawSpread) && (
-                    <p className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-200/80">
-                      Добавьте хотя бы один символ — сейчас {redrawSpread.cards.length} в раскладе.
-                    </p>
+                  {(sourcePhotoUrl ||
+                    (!manualMode && recognitionConfidence !== "unknown") ||
+                    !isPhotoSpreadComplete(redrawSpread)) && (
+                    <div className="photo-flow-panel photo-flow-panel--status">
+                      {sourcePhotoUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowSourceCompare((v) => !v)}
+                          className="photo-flow-link"
+                        >
+                          {showSourceCompare ? "Скрыть фото" : "Исходное фото"}
+                        </button>
+                      ) : null}
+                      {!manualMode && recognitionConfidence !== "unknown" ? (
+                        <span
+                          className={`photo-flow-badge photo-flow-badge--${
+                            recognitionConfidence === "high"
+                              ? "high"
+                              : recognitionConfidence === "low"
+                                ? "low"
+                                : "medium"
+                          }`}
+                        >
+                          {confidenceLabel(recognitionConfidence)}
+                        </span>
+                      ) : null}
+                      {!isPhotoSpreadComplete(redrawSpread) ? (
+                        <span className="photo-flow-badge photo-flow-badge--warn">
+                          Добавьте символ · {redrawSpread.cards.length}
+                        </span>
+                      ) : null}
+                      {showSourceCompare && sourcePhotoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={sourcePhotoUrl}
+                          alt="Исходный расклад"
+                          className="photo-flow-source-thumb"
+                        />
+                      ) : null}
+                    </div>
                   )}
+
                   <PhotoSpreadPreview
                     spread={redrawSpread}
                     masterId={masterId}
                     onChange={setRedrawSpread}
+                    confidence={recognitionConfidence}
+                    manualMode={manualMode}
+                    recognitionFailed={recognitionFailed}
+                    hideStatusLine
                   />
                 </>
               )}
 
               {/* ── STEP: RESULT ── */}
-              {step === "result" && result && redrawSpread && (
+              {step === "result" && redrawSpread && (result || streamingAnalysis || loading) && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <MasterAvatar masterId="veronika" masterName="Вероника" size="sm" />
-                    <p className="font-display text-base font-semibold text-white">Вероника</p>
+                    <MasterAvatar masterId={masterId} masterName={masterDisplayName} size="sm" />
+                    <p className="font-display text-base font-semibold text-white">{masterDisplayName}</p>
                   </div>
 
                   {resultCards.length > 0 && (
@@ -964,11 +1442,19 @@ export default function PhotoReadingFlow({
                   )}
 
                   <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
-                    <ChatMessageRenderer content={result.analysis} role="assistant" />
-                    <MessageAudioPlayer text={result.analysis} characterId={masterId} />
+                    {displayAnalysis ? (
+                      <>
+                        <ChatMessageRenderer content={displayAnalysis} role="assistant" />
+                        {!loading ? (
+                          <MessageAudioPlayer text={displayAnalysis} characterId={masterId} />
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400">Мастер готовит расшифровку…</p>
+                    )}
                   </div>
 
-                  {result.saved && (
+                  {result?.saved && !loading && (
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xs text-aura-emerald">Расклад сохранён в кабинете.</p>
                       <Link href="/cabinet#мои-расклады" className="btn-luxe btn-luxe--sm btn-luxe--gold">
@@ -976,19 +1462,86 @@ export default function PhotoReadingFlow({
                       </Link>
                     </div>
                   )}
+
+                  {!loading && resultSharePayload && (
+                    <div className="flex justify-center">
+                      <ShareButton payload={resultSharePayload} variant="pill" label="Поделиться раскладом" />
+                    </div>
+                  )}
+
+                  {!loading && displayAnalysis && onContinueChat ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">Продолжить в чате</p>
+                      <div className="flex flex-wrap gap-2">
+                        {followUpChips.map((chip) => (
+                          <button
+                            key={chip.label}
+                            type="button"
+                            onClick={() => void handleFollowUpChip(chip.question)}
+                            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-gray-300 hover:border-aura-gold/30 hover:text-white"
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {!loading && ritualUpsellHref ? (
+                    <Link
+                      href={ritualUpsellHref}
+                      onClick={() => trackPhotoReadingPhase("ritual_upsell")}
+                      className="block rounded-xl border border-aura-purple/25 bg-aura-purple/8 px-4 py-3 text-sm text-white/75 hover:border-aura-purple/40"
+                    >
+                      Расклад показал направление — усилите результат{" "}
+                      <span className="text-aura-gold">обрядом →</span>
+                    </Link>
+                  ) : null}
                 </motion.div>
               )}
 
               {/* Error */}
               {error && (
-                <motion.p
+                <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-300"
+                  className="space-y-2"
                 >
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {error}
-                </motion.p>
+                  <p className="photo-flow-alert">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {error}
+                  </p>
+                  {(showRescueActions || step === "upload") && (
+                    <div className="flex flex-wrap gap-2">
+                      {imageData && (
+                        <button
+                          type="button"
+                          onClick={() => void recognize()}
+                          disabled={loading}
+                          className="rounded-xl border border-white/10 px-3 py-2 text-xs text-gray-300 hover:text-white"
+                        >
+                          Попробовать снова
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={startManualSpread}
+                        disabled={loading || runesBlocked}
+                        className="rounded-xl border border-aura-gold/25 px-3 py-2 text-xs text-aura-gold hover:bg-aura-gold/10"
+                      >
+                        Собрать вручную
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={loading}
+                        className="rounded-xl border border-white/10 px-3 py-2 text-xs text-gray-300 hover:text-white"
+                      >
+                        Другое фото
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
               )}
 
               {/* Not logged in */}
@@ -1021,35 +1574,29 @@ export default function PhotoReadingFlow({
               )}
             </div>
 
-            {/* ── FOOTER ACTIONS ── */}
-            <div className="shrink-0 border-t border-white/6 px-5 py-4">
+            <div className="photo-flow-dialog__footer shrink-0 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-4">
               {step === "upload" && (
                 <button
                   type="button"
                   onClick={() => void recognize()}
-                  disabled={!imageData || loading || runesBlocked}
-                  className="relative w-full overflow-hidden rounded-2xl py-3.5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-40"
-                  style={{
-                    background: (!imageData || loading || runesBlocked)
-                      ? "rgba(255,255,255,0.06)"
-                      : "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)",
-                    color: (!imageData || loading || runesBlocked) ? "rgba(255,255,255,0.3)" : "#1a0f00",
-                    boxShadow: (!imageData || loading || runesBlocked) ? "none" : "0 4px 24px rgba(212,175,55,0.35)",
-                  }}
+                  disabled={!imageData || loading || preparingImage || runesBlocked}
+                  className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <span className="flex items-center justify-center gap-2">
-                    {loading ? (
+                    {loading || preparingImage ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Sparkles className="h-4 w-4" />
                     )}
-                    {loading
+                    {preparingImage
+                      ? "Подготавливаем фото…"
+                      : loading
                       ? recognizeAttempt > 1
                         ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})…`
                         : "Распознаём и перерисовываем…"
                       : runeConfig.enabled
-                        ? `Распознать расклад · ${formatRunes(photoCost)}`
-                        : "Распознать расклад"}
+                        ? `Начать фото-расклад · ${formatRunes(photoCost)}`
+                        : "Начать фото-расклад"}
                   </span>
                 </button>
               )}
@@ -1060,12 +1607,7 @@ export default function PhotoReadingFlow({
                     type="button"
                     onClick={() => void interpret()}
                     disabled={!isPhotoSpreadComplete(redrawSpread) || loading || runesBlocked}
-                    className="relative flex-1 overflow-hidden rounded-2xl py-3.5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{
-                      background: "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)",
-                      color: "#1a0f00",
-                      boxShadow: "0 4px 24px rgba(212,175,55,0.3)",
-                    }}
+                    className="btn-luxe btn-luxe--md btn-luxe--gold flex-1 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <span className="flex items-center justify-center gap-2">
                       {loading ? (
@@ -1077,9 +1619,15 @@ export default function PhotoReadingFlow({
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setStep("upload"); setRedrawSpread(null); }}
+                    onClick={() => {
+                      setStep("upload");
+                      setRedrawSpread(null);
+                      setManualMode(false);
+                      setRecognitionFailed(false);
+                      setShowRescueActions(false);
+                    }}
                     disabled={loading}
-                    className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm text-gray-400 transition-colors hover:text-white disabled:opacity-40"
+                    className="btn-luxe btn-luxe--md btn-luxe--silver shrink-0 disabled:opacity-40"
                   >
                     Назад
                   </button>
@@ -1092,12 +1640,7 @@ export default function PhotoReadingFlow({
                     <button
                       type="button"
                       onClick={() => void handleContinueChat()}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-semibold transition-all"
-                      style={{
-                        background: "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)",
-                        color: "#1a0f00",
-                        boxShadow: "0 4px 24px rgba(212,175,55,0.3)",
-                      }}
+                      className="btn-luxe btn-luxe--md btn-luxe--gold flex flex-1 items-center justify-center gap-2"
                     >
                       <MessageCircle className="h-4 w-4" />
                       Перейти в чат
@@ -1106,16 +1649,17 @@ export default function PhotoReadingFlow({
                   <button
                     type="button"
                     onClick={() => { setResult(null); setRedrawSpread(null); setStep("upload"); clearImage(); }}
-                    className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3.5 text-sm text-gray-400 transition-colors hover:text-white"
+                    className="btn-luxe btn-luxe--md btn-luxe--silver shrink-0"
                   >
                     Новое фото
                   </button>
                 </div>
               )}
             </div>
+            </motion.div>
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </BodyPortal>
   );
 }

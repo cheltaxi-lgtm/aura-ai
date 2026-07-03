@@ -1,4 +1,6 @@
 export const BRAND_NAME = "Zovus";
+/** Wordmark text beside the Z mark (mark already shows “Z”). */
+export const BRAND_WORDMARK = "OVUS";
 export const BRAND_DOMAIN = "zovus.ru";
 export const BRAND_URL = `https://${BRAND_DOMAIN}`;
 export const BRAND_TAGLINE = "эзотерический оракул";

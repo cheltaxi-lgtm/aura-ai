@@ -50,7 +50,7 @@ export default function SpreadFlipRow({
             <button
               type="button"
               onClick={() => onFlip(i)}
-              disabled={flipped[i]}
+              disabled={flipped[i] || (i > 0 && !flipped[i - 1])}
               className="perspective-[900px] focus:outline-none disabled:cursor-default"
               style={{ width: cardWidth, height: cardHeight }}
               aria-label={flipped[i] ? card.name : `Перевернуть ${positions[i]}`}

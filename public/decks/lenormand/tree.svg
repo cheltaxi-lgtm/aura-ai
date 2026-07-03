@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 320" width="200" height="320">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a2240"/>
+      <stop offset="45%" stop-color="#16102a"/>
+      <stop offset="100%" stop-color="#0a0814"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5E6B8"/>
+      <stop offset="50%" stop-color="#C9A24A"/>
+      <stop offset="100%" stop-color="#7a5a22"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="45%">
+      <stop offset="0%" stop-color="#E8C77E" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#E8C77E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#bg)" rx="10"/>
+  <rect width="100%" height="100%" fill="url(#glow)" rx="10"/>
+  <rect x="10" y="14" width="180" height="292" fill="none" stroke="url(#gold)" stroke-width="1.8" opacity="0.8" rx="7"/>
+  <rect x="18" y="22" width="164" height="276" fill="none" stroke="#E8C77E" stroke-width="0.6" opacity="0.25" rx="5"/>
+  <text x="100" y="48" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="url(#gold)" opacity="0.85">5</text>
+  
+    <g transform="translate(100 158)" stroke="#E8C77E" stroke-width="1.3" fill="none">
+      <rect x="-5" y="8" width="10" height="32" fill="#3a2a18" stroke="#C9A24A"/>
+      <circle cx="0" cy="-8" r="22"/>
+      <circle cx="-16" cy="4" r="14"/>
+      <circle cx="16" cy="4" r="14"/>
+      <path d="M-28 40 Q0 46 28 40" stroke-width="1" opacity="0.4"/>
+    </g>
+  <text x="100" y="278" text-anchor="middle" font-family="Georgia, serif" font-size="11" letter-spacing="0.5" fill="#E8C77E" opacity="0.9">Дерево</text>
+</svg>

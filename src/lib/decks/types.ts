@@ -4,7 +4,8 @@ export type DeckSystem =
   | "tarot-marina"
   | "slavic"
   | "astrology"
-  | "numerology";
+  | "numerology"
+  | "lenormand";
 
 export interface SpreadSymbol {
   id: number;
@@ -13,7 +14,7 @@ export interface SpreadSymbol {
   slug?: string;
   arcana?: "major" | "minor";
   suit?: "cups" | "wands" | "swords" | "pentacles";
-  kind?: "rune" | "tarot" | "slavic" | "planet" | "zodiac" | "numerology";
+  kind?: "rune" | "tarot" | "slavic" | "planet" | "zodiac" | "numerology" | "lenormand";
 }
 
 export interface DeckDefinition {

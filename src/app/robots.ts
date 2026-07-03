@@ -24,6 +24,8 @@ export default function robots(): MetadataRoute.Robots {
         "/expert",
         "/expert/",
         "/runes/success",
+        "/share/",
+        "/master/",
         "/_next/",
       ],
     },

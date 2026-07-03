@@ -1,5 +1,6 @@
 import { clearChatCache } from "@/lib/chat-cache";
 import { clearGuestTriplet } from "@/lib/guest-triplet";
+import { RUNE_PENDING_PAYMENT_KEY } from "@/lib/rune-purchase-client";
 
 export const AUTH_LOGOUT_EVENT = "aura:logout";
 
@@ -14,6 +15,7 @@ const STORAGE_KEYS = [
   "aura_last_visit",
   "aura_last_triplet_at",
   "aura_runes_before_purchase",
+  RUNE_PENDING_PAYMENT_KEY,
 ] as const;
 
 /** Drop all client-side session/profile data for the current browser tab. */

@@ -4,6 +4,8 @@ export type AndroidReleaseInfo = {
   minVersionCode: number;
   apkUrl: string;
   releaseNotes: string;
+  playStoreUrl?: string;
+  updateChannel?: "auto" | "play" | "apk";
 };
 
 export async function fetchAndroidReleaseInfo(): Promise<AndroidReleaseInfo | null> {

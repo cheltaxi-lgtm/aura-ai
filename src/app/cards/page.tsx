@@ -7,13 +7,15 @@ import {
 } from "@/lib/card-seo";
 import { getAllCardCombinations } from "@/lib/card-combinations/registry";
 import { BRAND_NAME } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildSeoMetadata({
   title: `Значения карт Таро — справочник | ${BRAND_NAME}`,
   description:
     "Значения старших и младших арканов Таро — для самостоятельного изучения и подготовки к раскладу с мастером Zovus.",
-};
+  path: "/cards",
+});
 
 export default function CardsCatalogPage() {
   const major = getMajorTarotCards();

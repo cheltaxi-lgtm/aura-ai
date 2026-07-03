@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "items": {
+    "rider": {
+      "name": "Всадник",
+      "file": "rider.svg",
+      "source": "programmatic",
+      "id": 1
+    },
+    "clover": {
+      "name": "Клевер",
+      "file": "clover.svg",
+      "source": "programmatic",
+      "id": 2
+    },
+    "ship": {
+      "name": "Корабль",
+      "file": "ship.svg",
+      "source": "programmatic",
+      "id": 3
+    },
+    "house": {
+      "name": "Дом",
+      "file": "house.svg",
+      "source": "programmatic",
+      "id": 4
+    },
+    "tree": {
+      "name": "Дерево",
+      "file": "tree.svg",
+      "source": "programmatic",
+      "id": 5
+    },
+    "clouds": {
+      "name": "Тучи",
+      "file": "clouds.svg",
+      "source": "programmatic",
+      "id": 6
+    },
+    "snake": {
+      "name": "Змея",
+      "file": "snake.svg",
+      "source": "programmatic",
+      "id": 7
+    },
+    "coffin": {
+      "name": "Гроб",
+      "file": "coffin.svg",
+      "source": "programmatic",
+      "id": 8
+    },
+    "bouquet": {
+      "name": "Букет",
+      "file": "bouquet.svg",
+      "source": "programmatic",
+      "id": 9
+    },
+    "scythe": {
+      "name": "Коса",
+      "file": "scythe.svg",
+      "source": "programmatic",
+      "id": 10
+    },
+    "whip": {
+      "name": "Метла",
+      "file": "whip.svg",
+      "source": "programmatic",
+      "id": 11
+    },
+    "birds": {
+      "name": "Птицы",
+      "file": "birds.svg",
+      "source": "programmatic",
+      "id": 12
+    },
+    "child": {
+      "name": "Ребёнок",
+      "file": "child.svg",
+      "source": "programmatic",
+      "id": 13
+    },
+    "fox": {
+      "name": "Лиса",
+      "file": "fox.svg",
+      "source": "programmatic",
+      "id": 14
+    },
+    "bear": {
+      "name": "Медведь",
+      "file": "bear.svg",
+      "source": "programmatic",
+      "id": 15
+    },
+    "stars": {
+      "name": "Звёзды",
+      "file": "stars.svg",
+      "source": "programmatic",
+      "id": 16
+    },
+    "stork": {
+      "name": "Аист",
+      "file": "stork.svg",
+      "source": "programmatic",
+      "id": 17
+    },
+    "dog": {
+      "name": "Собака",
+      "file": "dog.svg",
+      "source": "programmatic",
+      "id": 18
+    },
+    "tower": {
+      "name": "Башня",
+      "file": "tower.svg",
+      "source": "programmatic",
+      "id": 19
+    },
+    "garden": {
+      "name": "Сад",
+      "file": "garden.svg",
+      "source": "programmatic",
+      "id": 20
+    },
+    "mountain": {
+      "name": "Гора",
+      "file": "mountain.svg",
+      "source": "programmatic",
+      "id": 21
+    },
+    "crossroads": {
+      "name": "Дорога",
+      "file": "crossroads.svg",
+      "source": "programmatic",
+      "id": 22
+    },
+    "mice": {
+      "name": "Мыши",
+      "file": "mice.svg",
+      "source": "programmatic",
+      "id": 23
+    },
+    "heart": {
+      "name": "Сердце",
+      "file": "heart.svg",
+      "source": "programmatic",
+      "id": 24
+    },
+    "ring": {
+      "name": "Кольцо",
+      "file": "ring.svg",
+      "source": "programmatic",
+      "id": 25
+    },
+    "book": {
+      "name": "Книга",
+      "file": "book.svg",
+      "source": "programmatic",
+      "id": 26
+    },
+    "letter": {
+      "name": "Письмо",
+      "file": "letter.svg",
+      "source": "programmatic",
+      "id": 27
+    },
+    "man": {
+      "name": "Мужчина",
+      "file": "man.svg",
+      "source": "programmatic",
+      "id": 28
+    },
+    "woman": {
+      "name": "Женщина",
+      "file": "woman.svg",
+      "source": "programmatic",
+      "id": 29
+    },
+    "lily": {
+      "name": "Лилия",
+      "file": "lily.svg",
+      "source": "programmatic",
+      "id": 30
+    },
+    "sun": {
+      "name": "Солнце",
+      "file": "sun.svg",
+      "source": "programmatic",
+      "id": 31
+    },
+    "moon": {
+      "name": "Луна",
+      "file": "moon.svg",
+      "source": "programmatic",
+      "id": 32
+    },
+    "key": {
+      "name": "Ключ",
+      "file": "key.svg",
+      "source": "programmatic",
+      "id": 33
+    },
+    "fish": {
+      "name": "Рыбы",
+      "file": "fish.svg",
+      "source": "programmatic",
+      "id": 34
+    },
+    "anchor": {
+      "name": "Якорь",
+      "file": "anchor.svg",
+      "source": "programmatic",
+      "id": 35
+    },
+    "cross": {
+      "name": "Крест",
+      "file": "cross.svg",
+      "source": "programmatic",
+      "id": 36
+    }
+  }
+}

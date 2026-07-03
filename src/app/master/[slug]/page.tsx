@@ -16,7 +16,7 @@ export default async function MasterPage({ params }: MasterPageProps) {
   return (
     <>
       <MasterStructuredData slug={slug} />
-      <HomePage referrerSlug={slug} />
+      <HomePage referrerSlug={slug} autoOpenMasterId={slug} />
     </>
   );
 }

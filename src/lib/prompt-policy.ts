@@ -1,6 +1,7 @@
 import { DARK_TOPICS_POLICY } from "@/lib/prompts/format";
 import { SPREAD_TRUTH_RULES } from "@/lib/prompts/gender-context";
 import { getSetting } from "@/lib/settings";
+import { buildDateAnchorBlock } from "@/lib/prompt-date";
 
 /** Единая политика: символическая честность, без фактических приговоров. */
 export const HONESTY_POLICY = `
@@ -22,5 +23,7 @@ export async function wrapSystemPrompt(prompt: string): Promise<string> {
   } catch {
     /* defaults only */
   }
-  return [prefix, SPREAD_TRUTH_RULES, HONESTY_POLICY, DARK_TOPICS_POLICY, prompt].filter(Boolean).join("\n\n");
+  return [prefix, buildDateAnchorBlock(), SPREAD_TRUTH_RULES, HONESTY_POLICY, DARK_TOPICS_POLICY, prompt]
+    .filter(Boolean)
+    .join("\n\n");
 }

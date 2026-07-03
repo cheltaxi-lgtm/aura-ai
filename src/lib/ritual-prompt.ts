@@ -5,6 +5,7 @@ import {
   formatRitualCalendarDate,
   type RitualSchedule,
 } from "@/lib/ritual-timing";
+import { buildDateAnchorBlock } from "@/lib/prompt-date";
 
 export { formatRitualCalendarDate } from "@/lib/ritual-timing";
 
@@ -38,6 +39,8 @@ export function buildRitualPrompt(params: {
 
   return `
 ${masterStyle}
+
+${buildDateAnchorBlock(today)}
 
 Ты только что провёл диагностику и расклад.
 Теперь составляешь персональный ритуал.
@@ -115,6 +118,7 @@ ${params.cards.map((c) => `— ${c.position}: ${c.name}`).join("\n")}
 
 ЗАПРЕЩЕНО:
 — менять дату или время ритуала
+— называть текущим или предстоящим годом любой год, отличный от указанного в блоке ТЕКУЩАЯ ДАТА выше
 — «результат гарантирован»
 — «он/она вернётся»
 — «деньги придут»
@@ -152,18 +156,71 @@ interface RitualLlmPayload {
   ritual_signs: string[];
 }
 
+function stripMarkdownFence(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+/** Pull the outermost `{...}` object from model output. */
+function extractJsonObject(raw: string): string | null {
+  const cleaned = stripMarkdownFence(raw);
+  try {
+    JSON.parse(cleaned);
+    return cleaned;
+  } catch {
+    /* fall through */
+  }
+
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+
+  const slice = cleaned.slice(start, end + 1);
+  try {
+    JSON.parse(slice);
+    return slice;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRitualPayload(parsed: RitualLlmPayload): RitualLlmPayload | null {
+  const steps = Array.isArray(parsed.ritual_steps)
+    ? parsed.ritual_steps.filter(
+        (s) => s && typeof s.step === "string" && typeof s.description === "string"
+      )
+    : [];
+  const place =
+    typeof parsed.ritual_place === "string" ? parsed.ritual_place.trim() : "";
+  if (!steps.length || !place) return null;
+
+  return {
+    ...parsed,
+    ritual_place: place,
+    ritual_steps: steps,
+    ritual_items: Array.isArray(parsed.ritual_items) ? parsed.ritual_items : [],
+    ritual_forbids: Array.isArray(parsed.ritual_forbids) ? parsed.ritual_forbids : [],
+    ritual_signs: Array.isArray(parsed.ritual_signs) ? parsed.ritual_signs : [],
+  };
+}
+
 export function parseRitualJson(
   raw: string,
   schedule: RitualSchedule
 ): RitualGeneratedContent | null {
+  const jsonText = extractJsonObject(raw);
+  if (!jsonText) {
+    console.warn("Ritual JSON extract failed:", raw.slice(0, 200));
+    return null;
+  }
+
   try {
-    const cleaned = raw
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "");
-    const parsed = JSON.parse(cleaned) as RitualLlmPayload;
-    if (!parsed.ritual_steps?.length || !parsed.ritual_place) return null;
+    const parsed = normalizeRitualPayload(JSON.parse(jsonText) as RitualLlmPayload);
+    if (!parsed) return null;
 
     const reason = parsed.ritual_time_reason?.trim() || null;
     const ritual_time = buildRitualTimeString(schedule, reason);
@@ -173,14 +230,15 @@ export function parseRitualJson(
       ritual_place: parsed.ritual_place,
       ritual_items: parsed.ritual_items ?? [],
       ritual_steps: parsed.ritual_steps,
-      ritual_words: parsed.ritual_words,
-      ritual_word_of_power: parsed.ritual_word_of_power,
+      ritual_words: parsed.ritual_words ?? "",
+      ritual_word_of_power: parsed.ritual_word_of_power ?? "",
       ritual_word_of_power_transcription:
         parsed.ritual_word_of_power_transcription?.trim() ?? "",
       ritual_forbids: parsed.ritual_forbids ?? [],
       ritual_signs: parsed.ritual_signs ?? [],
     };
-  } catch {
+  } catch (error) {
+    console.warn("Ritual JSON parse failed:", error, jsonText.slice(0, 200));
     return null;
   }
 }

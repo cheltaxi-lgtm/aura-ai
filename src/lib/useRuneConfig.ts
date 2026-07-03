@@ -23,6 +23,7 @@ const FALLBACK: RuneConfig = {
     DESTINY_CARD: 20,
     JOINT_READING: 25,
     DAILY_AMULET: 5,
+    DAILY_EXTENDED: 10,
     FINAL_REPORT: 30,
   },
   labels: {
@@ -33,6 +34,7 @@ const FALLBACK: RuneConfig = {
     DESTINY_CARD: "Карта судьбы",
     JOINT_READING: "Совместный расклад",
     DAILY_AMULET: "Амулет дня",
+    DAILY_EXTENDED: "Расширенный день",
     FINAL_REPORT: "Арт-отчёт сеанса",
   },
 };

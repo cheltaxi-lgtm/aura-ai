@@ -1,5 +1,10 @@
 import type { SpreadId } from "@/lib/spreads";
 import type { SpreadIntentCategory, SpreadIntentDefinition } from "./types";
+import { BULK_INTENT_SEEDS } from "./bulk-seeds";
+import { HIGH_VOLUME_INTENT_SEEDS } from "./high-volume-seeds";
+import { EXTENDED_INTENT_SEEDS } from "./extended-seeds";
+import { applySpreadOverride } from "./spread-overrides";
+import { getSeoMetaOverride } from "@/lib/seo/seo-meta-overrides";
 
 const S5 = ["Ситуация", "Препятствие", "Корень", "Совет", "Итог"] as const;
 const LOVE5 = ["Его мысли", "Его чувства", "Что скрыто", "Что мешает", "Итог"] as const;
@@ -25,29 +30,17 @@ type IntentSeed = {
   positions: readonly string[];
   related?: string[];
   featured?: boolean;
+  requiresPartnerInfo?: boolean;
 };
 
 function defaultMaster(category: SpreadIntentCategory): string {
-  switch (category) {
-    case "love":
-    case "choice":
-      return "veronika";
-    case "career":
-    case "money":
-      return "ragnar";
-    case "future":
-    case "family":
-    case "ritual":
-      return "agafya";
-    case "self":
-      return "shri-raj";
-    default:
-      return "veronika";
-  }
+  void category;
+  return "veronika";
 }
 
 function buildIntent(seed: IntentSeed): SpreadIntentDefinition {
   const master = seed.master ?? defaultMaster(seed.category);
+  const meta = getSeoMetaOverride(seed.slug);
   return {
     slug: seed.slug,
     title: seed.title,
@@ -56,14 +49,17 @@ function buildIntent(seed: IntentSeed): SpreadIntentDefinition {
     spreadId: seed.spreadId,
     recommendedMasterId: master,
     questionTemplate: seed.question,
-    seoTitle: `${seed.title} — расклад Таро онлайн | Zovus`,
-    seoDescription: `${seed.intro} Персональный расклад с ИИ-мастером Zovus: память сессии, чат и расшифровка.`,
-    h1: seed.title,
+    seoTitle: meta?.seoTitle ?? `${seed.title} — расклад Таро онлайн | Zovus`,
+    seoDescription:
+      meta?.seoDescription ??
+      `${seed.intro} Персональный расклад с ИИ-мастером Zovus: память сессии, чат и расшифровка.`,
+    h1: meta?.h1 ?? seed.title,
     intro: seed.intro,
     positionsPreview: [...seed.positions],
     relatedSlugs: seed.related ?? [],
     runeAction: "INTENTION_SPREAD",
     isFeatured: seed.featured,
+    requiresPartnerInfo: seed.requiresPartnerInfo,
   };
 }
 
@@ -204,6 +200,7 @@ const SEEDS: IntentSeed[] = [
     positions: LOVE7,
     related: ["perspektiva-otnosheniy", "budem-li-my-vmeste", "chto-mezhdu-nami"],
     featured: true,
+    requiresPartnerInfo: true,
   },
   {
     slug: "pauza-ili-konec",
@@ -395,21 +392,25 @@ const SEEDS: IntentSeed[] = [
     slug: "god-vpered",
     title: "Год вперёд",
     category: "future",
-    spreadId: "celtic-cross",
+    spreadId: "year-ahead",
     question: "Что несёт мне ближайший год?",
-    intro: "Глубокий расклад Кельтский крест — десять позиций на годовой цикл.",
+    intro: "Тринадцать карт — по месяцам и итог года.",
     positions: [
-      "Настоящее",
-      "Вызов",
-      "Прошлое",
-      "Будущее",
-      "Сознание",
-      "Подсознание",
-      "Совет",
-      "Окружение",
-      "Надежды",
-      "Итог",
+      "Январь",
+      "Февраль",
+      "Март",
+      "Апрель",
+      "Май",
+      "Июнь",
+      "Июль",
+      "Август",
+      "Сентябрь",
+      "Октябрь",
+      "Ноябрь",
+      "Декабрь",
+      "Итог года",
     ],
+    featured: true,
     related: ["na-mesyats", "moya-tsel-na-god", "blizhayshee-budushchee"],
   },
   {
@@ -683,7 +684,60 @@ const SEEDS: IntentSeed[] = [
   },
 ];
 
-export const SPREAD_INTENT_REGISTRY: SpreadIntentDefinition[] = SEEDS.map(buildIntent);
+const ALL_SEEDS: IntentSeed[] = (() => {
+  const merged: IntentSeed[] = [
+    ...SEEDS,
+    ...BULK_INTENT_SEEDS.map((seed) => ({
+      slug: seed.slug,
+      title: seed.title,
+      category: seed.category,
+      spreadId: seed.spreadId ?? "situation-5",
+      master: seed.master,
+      question: seed.question,
+      intro: seed.intro,
+      positions: seed.positions ?? S5,
+      related: seed.related,
+      featured: seed.featured,
+      requiresPartnerInfo: seed.requiresPartnerInfo,
+    })),
+    ...HIGH_VOLUME_INTENT_SEEDS.map((seed) => ({
+      slug: seed.slug,
+      title: seed.title,
+      category: seed.category,
+      spreadId: seed.spreadId ?? "situation-5",
+      master: seed.master,
+      question: seed.question,
+      intro: seed.intro,
+      positions: seed.positions ?? S5,
+      related: seed.related,
+      featured: seed.featured,
+      requiresPartnerInfo: seed.requiresPartnerInfo,
+    })),
+    ...EXTENDED_INTENT_SEEDS.map((seed) => ({
+      slug: seed.slug,
+      title: seed.title,
+      category: seed.category,
+      spreadId: seed.spreadId ?? "situation-5",
+      master: seed.master,
+      question: seed.question,
+      intro: seed.intro,
+      positions: seed.positions ?? S5,
+      related: seed.related,
+      featured: seed.featured,
+      requiresPartnerInfo: seed.requiresPartnerInfo,
+    })),
+  ];
+  const seen = new Set<string>();
+  return merged
+    .filter((seed) => {
+      if (seen.has(seed.slug)) return false;
+      seen.add(seed.slug);
+      return true;
+    })
+    .map((seed) => applySpreadOverride(seed));
+})();
+
+export const SPREAD_INTENT_REGISTRY: SpreadIntentDefinition[] = ALL_SEEDS.map(buildIntent);
 
 const BY_SLUG = new Map(SPREAD_INTENT_REGISTRY.map((i) => [i.slug, i]));
 
@@ -705,9 +759,13 @@ export function getSpreadIntentsByCategory(
   return SPREAD_INTENT_REGISTRY.filter((i) => i.category === category);
 }
 
+export function getSpreadIntentsBySpreadId(spreadId: SpreadId): SpreadIntentDefinition[] {
+  return SPREAD_INTENT_REGISTRY.filter((i) => i.spreadId === spreadId);
+}
+
 export function getRelatedSpreadIntents(
   intent: SpreadIntentDefinition,
-  limit = 4
+  limit = 6
 ): SpreadIntentDefinition[] {
   const related: SpreadIntentDefinition[] = [];
   for (const slug of intent.relatedSlugs) {

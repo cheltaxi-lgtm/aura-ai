@@ -40,6 +40,8 @@ export interface NumerologToolDef {
   drawCount: number;
   positions: string[];
   needsForm?: NumerologToolForm;
+  /** Short line on the picker card. */
+  tagline?: string;
   description?: string;
   buildMessage: (params?: NumerologToolParams) => string;
 }
@@ -90,7 +92,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 3,
     positions: ["Твоё число пути", "Энергия периода", "Совет чисел"],
-    description: "Классический открывающий расклад",
+    tagline: "Путь, энергия периода и совет — акцент на ближайшее время",
+    description: "Классический открывающий расклад: три числа связывают ваш код с текущим моментом.",
     buildMessage: () => "draw_three_numbers",
   },
   {
@@ -102,7 +105,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 0,
     positions: [],
-    description: "Психоматрица по дате рождения — без случайного draw",
+    tagline: "Психоматрица: сильные стороны, пробелы и потенциал",
+    description: "Полный квадрат Пифагора по дате рождения — без случайного draw, сразу по профилю.",
     buildMessage: () => "Разбери мой квадрат Пифагора",
   },
   {
@@ -114,7 +118,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 1,
     positions: ["Личный год"],
-    description: "Энергия текущего года",
+    tagline: "Главная тема и задачи текущего года",
+    description: "Энергия личного года — на что опираться в решениях сейчас.",
     buildMessage: () => "Что меня ждёт в этом году?",
   },
   {
@@ -126,7 +131,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 9,
     positions: ["Год 1", "Год 2", "Год 3", "Год 4", "Год 5", "Год 6", "Год 7", "Год 8", "Год 9"],
-    description: "Циклы на девять лет вперёд",
+    tagline: "Девять лет цикла — старт, пик и завершение",
+    description: "Прогноз личных годов на девять лет вперёд — общая дуга, без списка «год за годом».",
     buildMessage: () => "Покажи мой прогноз на 9 лет",
   },
   {
@@ -138,7 +144,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 3,
     positions: ["Лучший день", "Окно возможности", "День осторожности"],
-    description: "Благоприятные даты для решений",
+    tagline: "Когда лучше начинать дела и принимать решения",
+    description: "Благоприятные, нейтральные и осторожные даты — под ваш запрос.",
     buildMessage: () => "Какие благоприятные даты для меня?",
   },
   {
@@ -150,7 +157,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 3,
     positions: ["Кармический урок", "Долг", "Путь исцеления"],
-    description: "Кармические уроки и долги",
+    tagline: "Уроки, долги и направление исцеления",
+    description: "Кармический разбор — что проработать и куда двигаться мягче.",
     buildMessage: () => "Разбери мою карму",
   },
   {
@@ -162,7 +170,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 3,
     positions: ["Число души", "Число личности", "Число судьбы"],
-    description: "Числа имени по халдейской системе",
+    tagline: "Числа имени по древней халдейской системе",
+    description: "Душа, личность и судьба по полному ФИО — нужны имя и фамилия.",
     buildMessage: () => "Посчитай мои числа имени по халдейской системе",
   },
   {
@@ -175,7 +184,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     drawCount: 2,
     positions: ["Ваш код", "Код партнёра"],
     needsForm: "compat",
-    description: "Совместимость с партнёром",
+    tagline: "Сильные стороны пары и точки роста",
+    description: "Сравнение двух людей — укажите имя и дату рождения партнёра.",
     buildMessage: (params) => {
       const date = params?.partnerDate?.trim() ?? "";
       const name = params?.partnerName?.trim() || "партнёр";
@@ -192,7 +202,8 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     drawCount: 1,
     positions: ["Число объекта"],
     needsForm: "phone",
-    description: "Телефон, авто, адрес или бренд",
+    tagline: "Вибрация телефона, авто, адреса или названия",
+    description: "Эвелина определит тип объекта и посчитает его число.",
     buildMessage: (params) => {
       const value = params?.objectValue?.trim() ?? "";
       return `Рассчитай число объекта «${value}»`;
@@ -359,6 +370,37 @@ export function validateNumerologSessionReady(
     return "Укажите имя в профиле — без него этот расчёт недоступен.";
   }
   return null;
+}
+
+export function validatePartnerInfo(params?: NumerologToolParams | null): string | null {
+  const date = params?.partnerDate?.trim() ?? "";
+  if (!date) return "Укажите дату рождения партнёра.";
+  if (!parseBirthDate(date)) {
+    return "Некорректная дата. Формат: ДД.ММ.ГГГГ (например, 17.03.1993).";
+  }
+  return null;
+}
+
+export function partnerInfoReady(params?: NumerologToolParams | null): boolean {
+  return validatePartnerInfo(params) === null;
+}
+
+export function formatPartnerContext(params?: NumerologToolParams | null): string {
+  const date = params?.partnerDate?.trim();
+  if (!date) return "";
+  const name = params?.partnerName?.trim() || "партнёр";
+  return `Партнёр: ${name}, дата рождения ${date}.`;
+}
+
+export function appendPartnerContextToQuestion(
+  question: string,
+  params?: NumerologToolParams | null
+): string {
+  const base = question.trim();
+  const ctx = formatPartnerContext(params);
+  if (!base) return ctx;
+  if (!ctx) return base;
+  return `${base} ${ctx}`;
 }
 
 export function parseNumerologToolParams(raw: {

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import type { MouseEvent } from "react";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 
 export default function SeoTrackedCta({
@@ -21,15 +21,19 @@ export default function SeoTrackedCta({
       ? "btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
       : "btn-luxe btn-luxe--md btn-luxe--ghost inline-flex";
 
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (trackGoal) trackSeoEvent(trackGoal, trackParams);
+    window.location.assign(href);
+  };
+
   return (
-    <Link
+    <a
       href={href}
       className={cls}
-      onClick={() => {
-        if (trackGoal) trackSeoEvent(trackGoal, trackParams);
-      }}
+      onClick={handleClick}
     >
       {children}
-    </Link>
+    </a>
   );
 }

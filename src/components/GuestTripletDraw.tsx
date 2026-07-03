@@ -1,40 +1,106 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { drawSpread, getDeckPositions, DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { getDeckPositions, DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
+import {
+  buildSeededTableDeck,
+  resolvePickedSpread,
+  resolveTableSize,
+} from "@/lib/spread-draw";
+import { buildGuestSpreadSeed } from "@/lib/spread-seed";
+import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import DeckCard from "@/components/DeckCard";
+import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import ShareButton from "@/components/share/ShareButton";
 import { tripletToSharePayload } from "@/lib/share/payload-builders";
+
+const GUEST_ID_KEY = "zovus_guest_id";
+const CARD_COUNT = 3;
+
+function getGuestId(): string {
+  if (typeof window === "undefined") return "guest";
+  let id = localStorage.getItem(GUEST_ID_KEY);
+  if (!id) {
+    id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `g-${Date.now()}`;
+    localStorage.setItem(GUEST_ID_KEY, id);
+  }
+  return id;
+}
+
+type GuestStep = "age" | "ritual" | "pick" | "flip" | "done";
 
 export default function GuestTripletDraw() {
   const system = DEFAULT_DECK_SYSTEM;
   const positions = getDeckPositions(system);
-  const [deck] = useState(() => drawSpread(system, 3));
+  const tableSize = resolveTableSize(system);
+  const [step, setStep] = useState<GuestStep>("age");
+  const [sessionSeed, setSessionSeed] = useState("");
+  const [deck, setDeck] = useState<SpreadSymbol[]>([]);
+  const [pickedIndices, setPickedIndices] = useState<number[]>([]);
   const [revealed, setRevealed] = useState<boolean[]>([false, false, false]);
-  const [done, setDone] = useState(false);
-  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [ageConfirming, setAgeConfirming] = useState(false);
 
+  const ritualCopy = useMemo(
+    () => getSpreadRitualCopy("veronika", { hasBirthDate: false, cardCount: CARD_COUNT }),
+    []
+  );
+
   useEffect(() => {
-    setAgeConfirmed(isAgeGateConfirmed());
+    if (isAgeGateConfirmed()) setStep("ritual");
   }, []);
 
-  const allRevealed = revealed.every(Boolean);
+  useEffect(() => {
+    if (step !== "ritual" || sessionSeed) return;
+    setSessionSeed(
+      buildGuestSpreadSeed({
+        guestId: getGuestId(),
+        masterId: "veronika",
+        spreadId: "triplet",
+        topic: "guest_preview",
+      })
+    );
+  }, [step, sessionSeed]);
 
   const handleAgeConfirm = async () => {
     setAgeConfirming(true);
     const ok = await confirmAgeGateOnServer();
     setAgeConfirming(false);
-    if (ok) setAgeConfirmed(true);
+    if (ok) setStep("ritual");
   };
 
+  const resolveGuestPicks = useCallback(
+    (indices: number[]) => {
+      if (!sessionSeed) return;
+      const table = buildSeededTableDeck({ system, seed: sessionSeed });
+      const cards = resolvePickedSpread(table, indices);
+      setDeck(cards);
+      setStep("flip");
+    },
+    [sessionSeed, system]
+  );
+
+  const handleTablePick = useCallback(
+    (index: number) => {
+      if (pickedIndices.includes(index)) return;
+      const next = [...pickedIndices, index];
+      setPickedIndices(next);
+      if (next.length >= CARD_COUNT) {
+        resolveGuestPicks(next);
+      }
+    },
+    [pickedIndices, resolveGuestPicks]
+  );
+
   const handleFlip = (index: number) => {
-    if (!ageConfirmed || revealed[index]) return;
+    if (revealed[index] || !deck[index]?.name) return;
     setRevealed((prev) => {
       const next = [...prev];
       next[index] = true;
@@ -42,7 +108,10 @@ export default function GuestTripletDraw() {
     });
   };
 
+  const allRevealed = revealed.every(Boolean);
+
   const handleFinish = () => {
+    if (deck.length < CARD_COUNT) return;
     const teaser = `Три карты легли на ваш стол: «${deck[0].name}» · «${deck[1].name}» · «${deck[2].name}». Зарегистрируйтесь — мастер расшифрует расклад.`;
     saveGuestTriplet({
       tarotCards: deck,
@@ -50,11 +119,11 @@ export default function GuestTripletDraw() {
       teaser,
       completedAt: new Date().toISOString(),
     });
-    setDone(true);
+    setStep("done");
   };
 
   const sharePayload = useMemo(() => {
-    if (!done) return null;
+    if (step !== "done" || deck.length < CARD_COUNT) return null;
     const teaser = `Три карты легли на ваш стол: «${deck[0].name}» · «${deck[1].name}» · «${deck[2].name}». Зарегистрируйтесь — мастер расшифрует расклад.`;
     return tripletToSharePayload({
       userName: "Гость",
@@ -62,9 +131,9 @@ export default function GuestTripletDraw() {
       deckSystem: system,
       teaser,
     });
-  }, [done, deck, system]);
+  }, [step, deck, system]);
 
-  if (!ageConfirmed) {
+  if (step === "age") {
     return (
       <div className="mx-auto mb-12 max-w-md px-4">
         <div className="glass-panel space-y-5 p-8 text-center">
@@ -84,22 +153,91 @@ export default function GuestTripletDraw() {
     );
   }
 
+  if (step === "ritual") {
+    return (
+      <div className="mx-auto mb-12 max-w-md px-4">
+        <div className="glass-panel space-y-5 p-8 text-center">
+          <p className="lux-label">Бесплатный расклад · 3 карты</p>
+          <h2 className="font-display text-xl font-semibold text-[#EDE6DA]">{ritualCopy.title}</h2>
+          <p className="text-sm leading-relaxed text-aura-ivory/75">{ritualCopy.body}</p>
+          <p className="text-xs uppercase tracking-widest text-aura-gold/80">{ritualCopy.personalNote}</p>
+          <button
+            type="button"
+            disabled={!sessionSeed}
+            onClick={() => {
+              setPickedIndices([]);
+              setDeck([]);
+              setRevealed([false, false, false]);
+              setStep("pick");
+            }}
+            className="btn-primary w-full px-8 py-3.5 disabled:opacity-50"
+          >
+            К столу карт
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "pick") {
+    return (
+      <MagicalSpreadTable
+        tableSize={tableSize}
+        cardCount={CARD_COUNT}
+        system={system}
+        masterId="veronika"
+        pickedIndices={pickedIndices}
+        onPick={handleTablePick}
+        pickHint={ritualCopy.pickHint}
+        personalNote={ritualCopy.personalNote}
+        title="Выберите три карты"
+        standalone
+        onBack={() => {
+          setPickedIndices([]);
+          setStep("ritual");
+        }}
+      />
+    );
+  }
+
+  if (step === "done") {
+    return (
+      <motion.div
+        className="glass-panel mx-auto mb-12 max-w-md space-y-5 p-8 text-center"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+      >
+        <p className="text-sm leading-relaxed text-aura-ivory/75">
+          Расклад сохранён. Остался один шаг — быстрая регистрация и выбор мастера.
+        </p>
+        <div className="flex flex-col gap-3">
+          <Link href="/auth/user/register?returnTo=/" className="btn-primary inline-block px-10 py-3.5">
+            Получить расшифровку
+          </Link>
+          {sharePayload ? (
+            <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />
+          ) : null}
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <div className="mx-auto mb-12 max-w-3xl">
-      <p className="lux-label mb-8 text-center">
-        Бесплатный расклад · 3 карты до регистрации
-      </p>
+      <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
+      <p className="mb-8 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
 
       <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
-        {deck.map((card, i) => (
-          <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
-            <p className="lux-label">{positions[i]}</p>
+        {positions.map((pos, i) => (
+          <div key={pos} className="flex flex-col items-center gap-2">
+            <p className="lux-label">{pos}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
-              disabled={revealed[i]}
+              disabled={revealed[i] || !deck[i]?.name}
               className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
-              aria-label={revealed[i] ? card.name : `Открыть ${positions[i]}`}
+              aria-label={revealed[i] ? deck[i]?.name ?? pos : `Открыть ${pos}`}
             >
               <motion.div
                 className="relative h-full w-full preserve-3d"
@@ -108,7 +246,7 @@ export default function GuestTripletDraw() {
               >
                 <div className="absolute inset-0 backface-hidden">
                   <DeckCard
-                    card={card}
+                    card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
                     system={system}
                     faceDown
                     showMeaning={false}
@@ -118,7 +256,7 @@ export default function GuestTripletDraw() {
                 </div>
                 <div className="absolute inset-0 backface-hidden rotate-y-180">
                   <DeckCard
-                    card={card}
+                    card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
                     system={system}
                     showMeaning={false}
                     size="md"
@@ -131,33 +269,12 @@ export default function GuestTripletDraw() {
         ))}
       </div>
 
-      {allRevealed && !done && (
+      {allRevealed && (
         <div className="text-center">
           <button type="button" onClick={handleFinish} className="btn-primary px-10 py-3.5">
             Сохранить расклад и продолжить
           </button>
         </div>
-      )}
-
-      {done && (
-        <motion.div
-          className="glass-panel mx-auto max-w-md space-y-5 p-8 text-center"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45 }}
-        >
-          <p className="text-sm leading-relaxed text-aura-ivory/75">
-            Расклад сохранён. Остался один шаг — быстрая регистрация и выбор мастера.
-          </p>
-          <div className="flex flex-col gap-3">
-            <Link href="/auth/user/register?returnTo=/" className="btn-primary inline-block px-10 py-3.5">
-              Получить расшифровку
-            </Link>
-            {sharePayload && (
-              <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />
-            )}
-          </div>
-        </motion.div>
       )}
     </div>
   );

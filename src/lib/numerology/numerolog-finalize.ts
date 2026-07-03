@@ -1,6 +1,7 @@
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import { getSetting } from "@/lib/settings";
 import { NUMEROLOG_MAIN_READING_SYSTEM_PROMPT, NUMEROLOG_SPREAD_THREE_SYSTEM_PROMPT } from "@/lib/prompts/masters/numerolog";
+import { buildDateAnchorBlock, todayLabelRu } from "@/lib/prompt-date";
 
 import {
   appendNumerologFinale,
@@ -8,6 +9,7 @@ import {
   NUMEROLOG_FINALE_HEADER,
   polishNumerologClientReply,
   stripProstymiSlovamiSection,
+  deniesHavingSpreadNumbers,
 } from "./numerolog-finale-client";
 
 export { appendNumerologFinale, NUMEROLOG_FINALE_HEADER, stripProstymiSlovamiSection, polishNumerologClientReply };
@@ -101,14 +103,6 @@ function mergeProseContinuation(prev: string, next: string): string {
 
   const gap = /[.!?…]$/.test(a) ? " " : a.endsWith(",") || a.endsWith(";") ? " " : " ";
   return `${a}${gap}${b}`;
-}
-
-function todayLabelRu(): string {
-  return new Date().toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
 }
 
 const MAIN_READING_MAX_TOKENS: Partial<Record<NumerologFinaleTopic, number>> = {
@@ -232,7 +226,7 @@ export async function generateNumerologMainReading(params: {
     [
       {
         role: "system",
-        content: [systemBase, extra, `Фокус расчёта: ${topicLabel}.`]
+        content: [systemBase, buildDateAnchorBlock(), extra, `Фокус расчёта: ${topicLabel}.`]
           .filter(Boolean)
           .join(" "),
       },
@@ -265,6 +259,9 @@ export async function generateNumerologMainReading(params: {
   if (/только движком|что разобрать\?/i.test(trimmed)) {
     return polishNumerologClientReply(params.fallback);
   }
+  if (params.topic === "spread_opening" && deniesHavingSpreadNumbers(trimmed)) {
+    return params.fallback;
+  }
   return polishNumerologClientReply(trimmed);
 }
 
@@ -295,6 +292,7 @@ export async function generateNumerologFinale(params: {
           "Без заголовков, списков и markdown (#, *, _). Не повторяй дословно весь разбор и не копируй списки годов.",
           "Не пиши заголовок «Простыми словами» — его добавит система.",
           "Завершай каждое предложение полностью — не обрывай текст на полуслове.",
+          buildDateAnchorBlock(),
           `Тема: ${topicLabel}.`,
           extra,
         ]

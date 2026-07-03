@@ -3,6 +3,7 @@ import { BRAND_NAME, BRAND_TAGLINE, BRAND_URL, getAppUrl } from "@/lib/brand";
 import { readAndroidReleaseConfig } from "@/lib/android-release";
 import { appShellStartUrl } from "@/lib/app-shell";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { WEB_DOWNLOAD_BTN } from "@/lib/web-download-ui";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = buildSeoMetadata({
@@ -35,16 +36,10 @@ export default function AppDownloadPage() {
       </p>
 
       <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-        <a
-          href={release.apkUrl}
-          className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-amber-700 to-amber-500 px-8 py-4 text-center font-semibold text-black transition hover:brightness-110"
-        >
-          Скачать APK
+        <a href={release.apkUrl} download className={WEB_DOWNLOAD_BTN}>
+          Скачать
         </a>
-        <Link
-          href={webAppHref}
-          className="inline-flex items-center justify-center rounded-2xl border border-white/15 px-8 py-4 text-center text-white transition hover:border-aura-champagne/40"
-        >
+        <Link href={webAppHref} className={WEB_DOWNLOAD_BTN}>
           Открыть в браузере
         </Link>
       </div>
@@ -52,7 +47,7 @@ export default function AppDownloadPage() {
       <section className="mt-14 rounded-3xl border border-white/10 bg-black/40 p-6">
         <h2 className="font-display text-xl text-white">Как установить</h2>
         <ol className="mt-4 list-decimal space-y-3 pl-5 text-gray-300">
-          <li>Нажмите «Скачать APK» и дождитесь загрузки файла.</li>
+          <li>Нажмите «Скачать» и дождитесь загрузки файла.</li>
           <li>Если браузер спросит — разрешите установку из этого источника.</li>
           <li>Откройте скачанный файл и подтвердите установку.</li>
           <li>Запустите {BRAND_NAME} с домашнего экрана.</li>

@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" fill="none">
+  <defs>
+    <linearGradient id="woodTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5A2B"/>
+      <stop offset="35%" stop-color="#5C3A18"/>
+      <stop offset="70%" stop-color="#3D2410"/>
+      <stop offset="100%" stop-color="#2A1608"/>
+    </linearGradient>
+    <linearGradient id="woodEdge" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#A0713D"/>
+      <stop offset="100%" stop-color="#241208"/>
+    </linearGradient>
+    <radialGradient id="felt" cx="50%" cy="42%" r="58%">
+      <stop offset="0%" stop-color="#1E4538"/>
+      <stop offset="45%" stop-color="#142E26"/>
+      <stop offset="100%" stop-color="#0A1814"/>
+    </radialGradient>
+    <pattern id="feltWeave" width="6" height="6" patternUnits="userSpaceOnUse">
+      <path d="M0 6L6 0" stroke="#ffffff" stroke-opacity="0.025" stroke-width="0.5"/>
+    </pattern>
+    <linearGradient id="brass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F0D890"/>
+      <stop offset="50%" stop-color="#C9A24A"/>
+      <stop offset="100%" stop-color="#8A6520"/>
+    </linearGradient>
+    <filter id="tableShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="24" flood-color="#000" flood-opacity="0.65"/>
+    </filter>
+    <filter id="innerGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <!-- Floor shadow -->
+  <ellipse cx="450" cy="580" rx="340" ry="42" fill="#000" fill-opacity="0.45"/>
+  <!-- Table apron (front edge) -->
+  <path d="M80 420 Q450 470 820 420 L820 455 Q450 510 80 455 Z" fill="url(#woodEdge)" opacity="0.95"/>
+  <!-- Main wood top -->
+  <rect x="36" y="48" width="828" height="392" rx="28" fill="url(#woodTop)" filter="url(#tableShadow)"/>
+  <!-- Wood grain lines -->
+  <g opacity="0.12" stroke="#FFE4B5" stroke-width="0.8">
+    <path d="M60 100 Q300 90 540 105 T840 95"/>
+    <path d="M50 180 Q350 170 650 185 T860 175"/>
+    <path d="M55 260 Q400 250 750 265"/>
+    <path d="M65 340 Q320 330 580 345 T830 335"/>
+  </g>
+  <!-- Brass inlay frame -->
+  <rect x="52" y="64" width="796" height="360" rx="20" stroke="url(#brass)" stroke-width="2.5" fill="none" opacity="0.85"/>
+  <rect x="58" y="70" width="784" height="348" rx="18" stroke="#E8C77E" stroke-width="0.6" fill="none" opacity="0.35"/>
+  <!-- Felt playing surface -->
+  <rect x="78" y="88" width="744" height="312" rx="14" fill="url(#felt)"/>
+  <rect x="78" y="88" width="744" height="312" rx="14" fill="url(#feltWeave)"/>
+  <rect x="78" y="88" width="744" height="312" rx="14" fill="url(#felt)" fill-opacity="0.92"/>
+  <!-- Corner ornaments -->
+  <g stroke="url(#brass)" stroke-width="1.2" opacity="0.7">
+    <path d="M98 108h28M98 108v28M802 108h-28M802 108v28M98 380h28M98 380v-28M802 380h-28M802 380v-28"/>
+  </g>
+  <!-- Candle light pools on felt -->
+  <ellipse cx="120" cy="240" rx="90" ry="120" fill="#FFB347" fill-opacity="0.06"/>
+  <ellipse cx="780" cy="240" rx="90" ry="120" fill="#FFB347" fill-opacity="0.06"/>
+  <ellipse cx="450" cy="200" rx="200" ry="80" fill="#E8C77E" fill-opacity="0.04"/>
+</svg>

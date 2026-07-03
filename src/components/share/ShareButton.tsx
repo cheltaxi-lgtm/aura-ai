@@ -29,7 +29,7 @@ export default function ShareButton({
   const share = useShareOptional();
   const [pressed, setPressed] = useState(false);
 
-  if (!share) return null;
+  if (!share || !share.enabled) return null;
 
   const handleClick = () => {
     share.openShare(payload);

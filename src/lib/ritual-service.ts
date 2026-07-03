@@ -266,6 +266,42 @@ export async function markRitualPaidAndGenerating(
   return rows[0] ? mapRitualRow(rows[0]) : null;
 }
 
+export async function markRitualGenerationFailed(id: string): Promise<void> {
+  await query(
+    `UPDATE rituals
+     SET status = 'payment', payment_status = 'pending', updated_at = NOW()
+     WHERE id = $1 AND status = 'generating'`,
+    [id]
+  );
+}
+
+/** Rituals stuck in `generating` (e.g. after server restart). */
+export async function listStuckGeneratingRituals(
+  olderThanMinutes = 15
+): Promise<RitualRow[]> {
+  const { rows } = await query<Record<string, unknown>>(
+    `SELECT * FROM rituals
+     WHERE status = 'generating'
+       AND payment_status = 'paid'
+       AND updated_at < NOW() - ($1 || ' minutes')::interval
+     ORDER BY updated_at ASC
+     LIMIT 50`,
+    [String(Math.max(5, olderThanMinutes))]
+  );
+  return rows.map(mapRitualRow);
+}
+
+export async function attemptRitualGeneration(
+  ritualId: string,
+  userProfile: { name: string; zodiac: string }
+): Promise<RitualRow | null> {
+  const ritual = await getRitualById(ritualId);
+  if (!ritual) return null;
+  if (ritual.status === "completed" || ritual.status === "reviewed") return ritual;
+  if (ritual.status !== "generating") return null;
+  return generateRitualContent(ritual, userProfile);
+}
+
 export async function saveGeneratedRitual(
   id: string,
   content: RitualGeneratedContent
@@ -385,12 +421,29 @@ export async function generateRitualContent(
     schedule,
   });
 
-  const response = await completeChat({
+  const llmBase = {
     messages: [{ role: "user", content: prompt }],
-    maxTokens: 2000,
-    temperature: 0.85,
-    isPaid: true,
-  });
+    maxTokens: 4096,
+    temperature: 0.55,
+    allowReasoningFallback: true,
+    jsonObject: true,
+    timeoutMs: 120_000,
+    maxAttempts: 2,
+  };
+
+  let response = await completeChat(llmBase);
+
+  if (!response) {
+    const fallbackModel =
+      process.env.RITUAL_LLM_MODEL?.trim() || "deepseek/deepseek-chat-v3-0324";
+    console.warn("Ritual LLM primary failed, trying fallback:", fallbackModel);
+    response = await completeChat({
+      ...llmBase,
+      modelOverride: fallbackModel,
+      allowReasoningFallback: false,
+      temperature: 0.45,
+    });
+  }
 
   if (!response) return null;
 

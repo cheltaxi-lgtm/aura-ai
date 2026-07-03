@@ -25,6 +25,8 @@ export async function getDashboardStats() {
     messages: string;
     payments_ok: string;
     revenue: string;
+    rune_purchases: string;
+    rune_revenue: string;
     influencers: string;
     bloggers: string;
   }>(`
@@ -36,20 +38,38 @@ export async function getDashboardStats() {
       (SELECT COUNT(*) FROM chat_messages)::text AS messages,
       (SELECT COUNT(*) FROM payments WHERE status = 'succeeded')::text AS payments_ok,
       (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'succeeded')::text AS revenue,
+      (SELECT COUNT(*) FROM rune_transactions WHERE type = 'purchase' AND payment_id IS NOT NULL)::text AS rune_purchases,
+      (SELECT COALESCE(SUM(
+        CASE
+          WHEN rt.description ~ 'Пополнение на [0-9]+ ₽'
+            THEN (regexp_match(rt.description, 'Пополнение на ([0-9]+) ₽'))[1]::numeric
+          ELSE COALESCE(rp.price_rub, 0)
+        END
+      ), 0)
+       FROM rune_transactions rt
+       LEFT JOIN rune_packages rp
+         ON rt.type = 'purchase'
+        AND rt.description LIKE 'Пакет рун «' || rp.name || '»:%'
+       WHERE rt.type = 'purchase' AND rt.payment_id IS NOT NULL)::text AS rune_revenue,
       (SELECT COUNT(*) FROM influencers)::text AS influencers,
       (SELECT COUNT(*) FROM bloggers)::text AS bloggers
   `),
     getSupportAdminStats(),
   ]);
   const s = rows[0];
+  const legacyRevenue = parseFloat(s?.revenue ?? "0");
+  const runeRevenue = parseFloat(s?.rune_revenue ?? "0");
   return {
     users: parseInt(s?.users ?? "0", 10),
     experts: parseInt(s?.experts ?? "0", 10),
     profiles: parseInt(s?.profiles ?? "0", 10),
     sessions: parseInt(s?.sessions ?? "0", 10),
     messages: parseInt(s?.messages ?? "0", 10),
-    paymentsOk: parseInt(s?.payments_ok ?? "0", 10),
-    revenue: parseFloat(s?.revenue ?? "0"),
+    paymentsOk: parseInt(s?.payments_ok ?? "0", 10) + parseInt(s?.rune_purchases ?? "0", 10),
+    runePurchases: parseInt(s?.rune_purchases ?? "0", 10),
+    revenue: legacyRevenue + runeRevenue,
+    legacyRevenue,
+    runeRevenue,
     influencers: parseInt(s?.influencers ?? "0", 10),
     bloggers: parseInt(s?.bloggers ?? "0", 10),
     supportOpen: support.open,
@@ -219,13 +239,54 @@ export async function listPayments(limit = 50, offset = 0) {
     id: string;
     order_id: string | null;
     amount: string;
+    runes: string | null;
     payment_type: string;
     status: string;
     referrer_slug: string | null;
+    user_email: string | null;
+    source: string;
     created_at: Date;
   }>(
-    `SELECT id, order_id, amount::text, payment_type, status, referrer_slug, created_at
-     FROM payments ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+    `SELECT * FROM (
+       SELECT
+         p.id::text AS id,
+         p.order_id,
+         p.amount::text AS amount,
+         NULL::text AS runes,
+         p.payment_type,
+         p.status,
+         p.referrer_slug,
+         NULL::text AS user_email,
+         'legacy'::text AS source,
+         p.created_at
+       FROM payments p
+
+       UNION ALL
+
+       SELECT
+         rt.payment_id AS id,
+         rt.payment_id AS order_id,
+         COALESCE(
+           (regexp_match(rt.description, 'Пополнение на ([0-9]+) ₽'))[1],
+           rp.price_rub::text,
+           '0'
+         ) AS amount,
+         rt.amount::text AS runes,
+         'rune_purchase'::text AS payment_type,
+         'succeeded'::text AS status,
+         NULL::text AS referrer_slug,
+         ua.email AS user_email,
+         'runes'::text AS source,
+         rt.created_at
+       FROM rune_transactions rt
+       LEFT JOIN rune_packages rp
+         ON rt.description LIKE 'Пакет рун «' || rp.name || '»:%'
+       LEFT JOIN users u ON u.id = rt.user_id
+       LEFT JOIN user_accounts ua ON ua.profile_user_id = u.id
+       WHERE rt.type = 'purchase' AND rt.payment_id IS NOT NULL
+     ) combined
+     ORDER BY created_at DESC
+     LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
   return rows;
@@ -329,9 +390,35 @@ export async function deleteKnowledge(id: string) {
 
 export async function getRecentPaymentsChart() {
   const { rows } = await query<{ day: string; count: string; total: string }>(
-    `SELECT DATE(created_at)::text AS day, COUNT(*)::text AS count, COALESCE(SUM(amount),0)::text AS total
-     FROM payments WHERE status = 'succeeded' AND created_at > NOW() - INTERVAL '30 days'
-     GROUP BY DATE(created_at) ORDER BY day DESC LIMIT 30`
+    `SELECT day, SUM(cnt)::text AS count, SUM(total)::text AS total
+     FROM (
+       SELECT DATE(created_at)::text AS day, COUNT(*)::numeric AS cnt, COALESCE(SUM(amount), 0)::numeric AS total
+       FROM payments WHERE status = 'succeeded' AND created_at > NOW() - INTERVAL '30 days'
+       GROUP BY DATE(created_at)
+
+       UNION ALL
+
+       SELECT
+         DATE(rt.created_at)::text AS day,
+         COUNT(*)::numeric AS cnt,
+         COALESCE(SUM(
+           CASE
+             WHEN rt.description ~ 'Пополнение на [0-9]+ ₽'
+               THEN (regexp_match(rt.description, 'Пополнение на ([0-9]+) ₽'))[1]::numeric
+             ELSE COALESCE(rp.price_rub, 0)
+           END
+         ), 0)::numeric AS total
+       FROM rune_transactions rt
+       LEFT JOIN rune_packages rp
+         ON rt.description LIKE 'Пакет рун «' || rp.name || '»:%'
+       WHERE rt.type = 'purchase'
+         AND rt.payment_id IS NOT NULL
+         AND rt.created_at > NOW() - INTERVAL '30 days'
+       GROUP BY DATE(rt.created_at)
+     ) daily
+     GROUP BY day
+     ORDER BY day DESC
+     LIMIT 30`
   );
   return rows;
 }

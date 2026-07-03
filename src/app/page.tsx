@@ -1,23 +1,32 @@
 import type { Metadata } from "next";
 import HomePage from "@/components/HomePage";
+import HomeSeoContent from "@/components/seo/HomeSeoContent";
 import StructuredData from "@/components/StructuredData";
 import { BRAND_URL } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
+  ...buildSeoMetadata({
+    title: "Расклад Таро онлайн — чувства, отношения, будущее | Zovus",
+    description:
+      "Персональные расклады Таро с ИИ-мастерами: чувства, верность, карьера. Расшифровка в чате, уточняющие вопросы, история в кабинете.",
+    path: "/",
+  }),
   alternates: {
     canonical: BRAND_URL,
   },
 };
 
-/** Главная: онбординг → триплет Таро → выбор наставника */
+/** Главная: онбординг → триплет Таро → выбор наставника. SEO-текст — sr-only в конце. */
 export default function Page() {
   return (
     <>
       <StructuredData />
       <HomePage />
+      <HomeSeoContent />
     </>
   );
 }

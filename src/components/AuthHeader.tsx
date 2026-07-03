@@ -26,7 +26,12 @@ export default function AuthHeader({
 
   const openCabinet = () => {
     window.dispatchEvent(new CustomEvent(NAVIGATE_CABINET_EVENT));
-    window.location.assign("/cabinet");
+    const inAppShell =
+      typeof window !== "undefined" &&
+      (document.documentElement.dataset.appShell === "android" ||
+        sessionStorage.getItem("zovus_app_shell") === "1" ||
+        /(?:^|[?&])app=1(?:&|$)/.test(window.location.search));
+    window.location.assign(inAppShell ? "/cabinet?app=1" : "/cabinet");
   };
 
   const btnClass = compact

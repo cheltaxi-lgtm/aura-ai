@@ -13,4 +13,5 @@ fi
 
 BASE="http://127.0.0.1:3000"
 echo "[$(date -Is)] ritual/remind:    $(curl -sS -m 60 -H "x-cron-secret: $SECRET" "$BASE/api/ritual/remind" || echo 'request failed')"
+echo "[$(date -Is)] ritual/recover:   $(curl -sS -m 300 -H "x-cron-secret: $SECRET" "$BASE/api/ritual/recover-stuck" || echo 'request failed')"
 echo "[$(date -Is)] event-reminders:  $(curl -sS -m 60 -H "x-cron-secret: $SECRET" "$BASE/api/cron/event-reminders?leadDays=3" || echo 'request failed')"

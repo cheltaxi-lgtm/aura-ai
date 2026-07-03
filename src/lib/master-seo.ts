@@ -70,6 +70,7 @@ export function buildMasterMetadata(slug: string): Metadata {
   return {
     title: pageTitle,
     description: ogDescription,
+    robots: { index: false, follow: true },
     alternates: {
       canonical: pageUrl,
     },
