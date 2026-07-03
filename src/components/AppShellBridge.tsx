@@ -10,7 +10,7 @@ import AppShellBottomNav from "@/components/AppShellBottomNav";
 import AppShellOfflineGate from "@/components/AppShellOfflineGate";
 import AppExitConfirm from "@/components/AppExitConfirm";
 import AppUpdatePrompt, { type AppUpdatePromptState } from "@/components/AppUpdatePrompt";
-import { APP_UPDATE_RECHECK_EVENT, AppShellVersionBar } from "@/components/AppShellVersionFooter";
+import { APP_UPDATE_RECHECK_EVENT } from "@/hooks/useAppShellVersion";
 
 const UPDATE_POLL_MS = 30 * 60 * 1000;
 
@@ -200,7 +200,6 @@ export default function AppShellBridge() {
         />
       ) : null}
       {showTabs ? <AppShellBottomNav /> : null}
-      {inShell && splashDone && !showGate && !updateAvailable?.forced ? <AppShellVersionBar /> : null}
     </>
   );
 }

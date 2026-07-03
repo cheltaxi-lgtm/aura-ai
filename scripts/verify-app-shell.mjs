@@ -42,6 +42,11 @@ const checks = [
   () => mustInclude("mobile/android/app/src/main/java/ru/zovus/app/MainActivity.java", "registerPlugin(AppUpdatePlugin.class)", "plugin registration"),
   () => mustExist("src/components/cabinet/CabinetAppVersion.tsx"),
   () => mustInclude("src/components/AppUpdatePrompt.tsx", "app-shell-update-gate", "forced update gate"),
+  () => mustExist("public/sw-app-shell.js"),
+  () => mustExist("src/components/AppShellServiceWorker.tsx"),
+  () => mustInclude("src/components/Providers.tsx", "AppShellServiceWorker", "SW registration wired"),
+  () => mustExist("src/app/session/intention/page.tsx"),
+  () => mustInclude("src/components/session/SessionFlowLayout.tsx", "FlowStepper", "flow stepper on session routes"),
 ];
 
 let failed = 0;

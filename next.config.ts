@@ -16,6 +16,19 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/sw-app-shell.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=0, must-revalidate",
+          },
+          {
+            key: "Service-Worker-Allowed",
+            value: "/",
+          },
+        ],
+      },
+      {
         // SEO/SSG pages: allow CDN/proxy cache; avoid no-store on every crawl.
         source:
           "/((?!_next/static|_next/image|favicon.ico|decks/|icon.svg|apple-icon.svg|opengraph-image|api/).*)",

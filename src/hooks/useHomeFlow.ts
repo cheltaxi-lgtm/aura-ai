@@ -18,6 +18,7 @@ import {
   persistStep,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
+import { APP_SHELL_QUERY, APP_SHELL_VALUE } from "@/lib/app-shell";
 
 export type { StoredProfile };
 
@@ -228,6 +229,15 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
 
       if (parsed.tarotCards?.length >= 3) {
         if (savedStep === "intention") {
+          const pendingMaster = localStorage.getItem(PENDING_MASTER_KEY);
+          if (pendingMaster) {
+            const qs = new URLSearchParams({
+              master: pendingMaster,
+              [APP_SHELL_QUERY]: APP_SHELL_VALUE,
+            });
+            window.location.assign(`/session/intention?${qs.toString()}`);
+            return;
+          }
           localStorage.removeItem(PENDING_MASTER_KEY);
           setStepState("masters");
           persistStep("masters");

@@ -1,5 +1,6 @@
 "use client";
 
+import AppShellServiceWorker from "@/components/AppShellServiceWorker";
 import AppShellBridge from "@/components/AppShellBridge";
 import AppShellErrorBoundary from "@/components/AppShellErrorBoundary";
 import AppMotionConfig from "@/components/AppMotionConfig";
@@ -12,6 +13,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <ShareProvider>
         <AppMotionConfig>
           <AppShellErrorBoundary>
+            <AppShellServiceWorker />
             <AppShellBridge />
           </AppShellErrorBoundary>
           {children}

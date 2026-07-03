@@ -15,13 +15,20 @@ const STEPS: { id: FlowStep; label: string }[] = [
 
 interface FlowStepperProps {
   current: FlowStep;
+  /** When set, only these steps show as completed; otherwise all steps before `current` are done. */
+  completed?: FlowStep[];
 }
 
-export default function FlowStepper({ current }: FlowStepperProps) {
+export default function FlowStepper({ current, completed }: FlowStepperProps) {
   const currentIndex = STEPS.findIndex((s) => s.id === current);
   if (current === "intro") return null;
 
   const visibleSteps = STEPS.slice(1);
+
+  const isStepDone = (stepId: FlowStep, index: number) => {
+    if (completed) return completed.includes(stepId);
+    return index < currentIndex;
+  };
 
   return (
     <motion.nav
@@ -33,8 +40,8 @@ export default function FlowStepper({ current }: FlowStepperProps) {
       <ol className="mx-auto flex max-w-xl items-start justify-between gap-1">
         {visibleSteps.map((step, i) => {
           const index = i + 1;
-          const isActive = index === currentIndex;
-          const isDone = index < currentIndex;
+          const isActive = step.id === current;
+          const isDone = isStepDone(step.id, index);
 
           return (
             <li key={step.id} className="relative flex flex-1 flex-col items-center">

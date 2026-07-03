@@ -37,7 +37,8 @@ import {
 } from "@/lib/intention";
 import { buildSessionSpreadCards, resolveSpreadSymbols } from "@/lib/intention-draw";
 import { toSessionTopicId } from "@/lib/session-topics";
-import { postIntentionSpreadRequest, pollIntentionSpreadReading } from "@/lib/intention-spread-client";
+import { navigateToSessionIntention } from "@/lib/session-intention-nav";
+import { pollIntentionSpreadReading, postIntentionSpreadRequest } from "@/lib/intention-spread-client";
 import { getJointReadingRole, clearJointReadingToken, resolveJointReadingToken } from "@/lib/joint-reading-storage";
 import { postJointReadingComplete } from "@/lib/joint-reading-client";
 import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
@@ -1565,10 +1566,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             skipRitualFinally = true;
             closeSpreadReadingRitual();
             setIntentionSpreadLoading(false);
-            setStep("intention");
-            setPendingMasterId(masterId);
-            localStorage.setItem(PENDING_MASTER_KEY, masterId);
-            persistStep("intention");
+            navigateToSessionIntention(masterId);
             deps.setSelectedCharacter(null);
             deps.chatLoadedForRef.current = null;
             return;
@@ -2978,6 +2976,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (!continueMaster) return;
 
     const resumeChat = params.get("resume") === "chat";
+    const intentionSkip = params.get("intentionSkip") === "1";
+    const intentionRaw = params.get("intention");
+    const intentionModeRaw = params.get("intentionMode");
     if (!resumeChat && selectedCharacter) return;
 
     autoResumeDoneRef.current = true;
@@ -3014,6 +3015,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         continueMaster,
         sessionIdParam ?? undefined
       );
+      if (intentionSkip) {
+        await beginChatAfterIntention(continueMaster, null, "existing");
+        return;
+      }
+      if (intentionRaw) {
+        const intention = intentionRaw as SessionIntention;
+        const mode: IntentionStartMode =
+          intentionModeRaw === "fresh" || intentionModeRaw === "existing"
+            ? intentionModeRaw
+            : "fresh";
+        await beginChatAfterIntention(continueMaster, intention, mode);
+        return;
+      }
       await beginChatAfterIntention(continueMaster, null, "existing");
     })();
   }, [

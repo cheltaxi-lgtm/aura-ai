@@ -76,10 +76,9 @@ export default function AppTopHeader({
         <div className="app-top-header__brand flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           <BrandLogo
             linkToHome
-            iconOnlyOnMobile
             showTagline={false}
             markSize={32}
-            titleClassName="font-display text-lg font-bold text-white neon-text sm:text-2xl"
+            titleClassName="font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl"
           />
         </div>
 
