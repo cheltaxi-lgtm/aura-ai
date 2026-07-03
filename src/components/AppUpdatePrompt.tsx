@@ -171,7 +171,9 @@ export default function AppUpdatePrompt({ update, onDismiss }: AppUpdatePromptPr
             <Sparkles className="app-shell-update-gate__badge-icon" strokeWidth={1.5} />
           </div>
           <p className="app-shell-update-gate__title">Нужно обновление</p>
-          <p className="app-shell-update-gate__version">Версия {update.versionName}</p>
+          <p className="app-shell-update-gate__version">
+            {update.versionName} · сборка {update.versionCode}
+          </p>
           {notesBlock}
           {actions}
           <p className="app-shell-update-gate__hint">
@@ -198,7 +200,9 @@ export default function AppUpdatePrompt({ update, onDismiss }: AppUpdatePromptPr
         ) : null}
         <div className="app-shell-update-banner__copy">
           <p className="app-shell-update-banner__eyebrow">Новая версия</p>
-          <p className="app-shell-update-banner__title">{update.versionName}</p>
+          <p className="app-shell-update-banner__title">
+            {update.versionName} · сборка {update.versionCode}
+          </p>
           {notesBlock}
         </div>
         {actions}

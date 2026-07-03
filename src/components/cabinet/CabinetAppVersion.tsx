@@ -46,13 +46,13 @@ export default function CabinetAppVersion() {
         <div className="flex justify-between gap-3">
           <dt>Установлено</dt>
           <dd className="text-gray-200">
-            {installed ? `${installed.version} (${installed.build})` : "—"}
+            {installed ? `${installed.version} · сборка ${installed.build}` : "—"}
           </dd>
         </div>
         <div className="flex justify-between gap-3">
           <dt>На сервере</dt>
           <dd className="text-gray-200">
-            {remote ? `${remote.versionName} (${remote.versionCode})` : "—"}
+            {remote ? `${remote.versionName} · сборка ${remote.versionCode}` : "—"}
           </dd>
         </div>
       </dl>

@@ -7,18 +7,24 @@ import {
 } from "@/lib/app-connectivity";
 import { readAppShellFromDocument, shouldUseAppShellClient } from "@/lib/app-shell";
 
-const GRACE_MS = 8_000;
-const POLL_MS = 30_000;
-const FAIL_THRESHOLD = 4;
+const GRACE_MS = 4_000;
+const POLL_MS = 45_000;
 
-export function useAppShellConnectivity(): {
+type UseAppShellConnectivityOptions = {
+  /** Wait until launch splash finished — avoids false blocks during cold start. */
+  enabled?: boolean;
+};
+
+export function useAppShellConnectivity(
+  options: UseAppShellConnectivityOptions = {}
+): {
   blocked: AppConnectivityReason | null;
   checking: boolean;
   retry: () => void;
 } {
+  const enabled = options.enabled !== false;
   const [blocked, setBlocked] = useState<AppConnectivityReason | null>(null);
-  const [checking, setChecking] = useState(true);
-  const [failStreak, setFailStreak] = useState(0);
+  const [checking, setChecking] = useState(false);
   const [inShell, setInShell] = useState(false);
 
   useEffect(() => {
@@ -35,29 +41,29 @@ export function useAppShellConnectivity(): {
     };
   }, []);
 
+  useEffect(() => {
+    if (enabled) return;
+    setBlocked(null);
+    setChecking(false);
+  }, [enabled]);
+
   const runProbe = useCallback(async () => {
-    if (!inShell) {
-      setBlocked(null);
-      setChecking(false);
+    if (!enabled || !inShell) {
+      if (!inShell) {
+        setBlocked(null);
+        setChecking(false);
+      }
       return;
     }
+
     setChecking(true);
     const reason = await probeAppConnectivity();
-    if (reason) {
-      setFailStreak((n) => {
-        const next = n + 1;
-        if (next >= FAIL_THRESHOLD) setBlocked(reason);
-        return next;
-      });
-    } else {
-      setFailStreak(0);
-      setBlocked(null);
-    }
+    setBlocked(reason);
     setChecking(false);
-  }, [inShell]);
+  }, [enabled, inShell]);
 
   useEffect(() => {
-    if (!inShell) return;
+    if (!enabled || !inShell) return;
     const grace = window.setTimeout(() => void runProbe(), GRACE_MS);
     const poll = window.setInterval(() => void runProbe(), POLL_MS);
     const onOnline = () => void runProbe();
@@ -69,13 +75,57 @@ export function useAppShellConnectivity(): {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOnline);
     };
-  }, [inShell, runProbe]);
+  }, [enabled, inShell, runProbe]);
+
+  useEffect(() => {
+    if (!enabled || !inShell) return;
+    const cap = (
+      window as Window & {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          Plugins?: {
+            Network?: {
+              addListener: (
+                event: "networkStatusChange",
+                cb: () => void
+              ) => Promise<{ remove: () => void }> | { remove: () => void };
+            };
+          };
+        };
+      }
+    ).Capacitor;
+    if (!cap?.isNativePlatform?.()) return;
+    const network = cap.Plugins?.Network;
+    if (!network?.addListener) return;
+
+    let handle: { remove: () => void } | undefined;
+    let cancelled = false;
+    void Promise.resolve(
+      network.addListener("networkStatusChange", () => {
+        if (!cancelled) void runProbe();
+      })
+    )
+      .then((listener) => {
+        if (cancelled) {
+          listener.remove();
+          return;
+        }
+        handle = listener;
+      })
+      .catch(() => {
+        /* plugin unavailable */
+      });
+
+    return () => {
+      cancelled = true;
+      handle?.remove();
+    };
+  }, [enabled, inShell, runProbe]);
 
   return {
     blocked,
     checking,
     retry: () => {
-      setFailStreak(0);
       void runProbe();
     },
   };

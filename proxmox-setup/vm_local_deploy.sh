@@ -3,9 +3,19 @@
 set -euo pipefail
 
 TARBALL="${1:-/tmp/aura-ai-deploy.tgz}"
+RELEASES_BACKUP=""
 
 if [ -f "$TARBALL" ]; then
+  if [ -d "/opt/aura-ai/public/releases" ]; then
+    RELEASES_BACKUP="$(mktemp -d)"
+    cp -a /opt/aura-ai/public/releases/. "$RELEASES_BACKUP/"
+  fi
   tar -xzf "$TARBALL" -C /opt/aura-ai
+  if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
+    mkdir -p /opt/aura-ai/public/releases
+    cp -a "$RELEASES_BACKUP/." /opt/aura-ai/public/releases/
+    rm -rf "$RELEASES_BACKUP"
+  fi
   if id ubuntu >/dev/null 2>&1; then
     if [ "$(id -u)" -eq 0 ]; then
       chown -R ubuntu:ubuntu /opt/aura-ai

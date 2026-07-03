@@ -1,4 +1,6 @@
 import { getAppUrl } from "@/lib/brand";
+import fs from "node:fs";
+import path from "node:path";
 
 export type AndroidReleaseConfig = {
   versionCode: number;
@@ -17,10 +19,45 @@ function parseIntEnv(name: string, fallback: number): number {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+function readBuiltManifest(): { versionCode: number; versionName: string } | null {
+  try {
+    const file = path.join(process.cwd(), "public/releases/android-version.json");
+    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      versionCode?: unknown;
+      versionName?: unknown;
+    };
+    const versionCode = Number.parseInt(String(raw.versionCode ?? ""), 10);
+    const versionName = typeof raw.versionName === "string" ? raw.versionName.trim() : "";
+    if (!Number.isFinite(versionCode) || versionCode < 1 || !versionName) return null;
+    return { versionCode, versionName };
+  } catch {
+    return null;
+  }
+}
+
+function readGradleVersion(): { versionCode: number; versionName: string } | null {
+  try {
+    const file = path.join(process.cwd(), "mobile/android/app/build.gradle");
+    const text = fs.readFileSync(file, "utf8");
+    const versionCode = Number.parseInt(text.match(/versionCode\s+(\d+)/)?.[1] ?? "", 10);
+    const versionName = text.match(/versionName\s+"([^"]+)"/)?.[1]?.trim() ?? "";
+    if (!Number.isFinite(versionCode) || versionCode < 1 || !versionName) return null;
+    return { versionCode, versionName };
+  } catch {
+    return null;
+  }
+}
+
 export function readAndroidReleaseConfig(): AndroidReleaseConfig {
   const base = getAppUrl();
-  const versionCode = parseIntEnv("ANDROID_VERSION_CODE", 1);
-  const versionName = process.env.ANDROID_VERSION_NAME?.trim() || "1.0.0";
+  const built = readBuiltManifest();
+  const gradle = readGradleVersion();
+  const versionCode =
+    built?.versionCode ?? gradle?.versionCode ?? parseIntEnv("ANDROID_VERSION_CODE", 1);
+  const versionName =
+    built?.versionName ??
+    gradle?.versionName ??
+    (process.env.ANDROID_VERSION_NAME?.trim() || "1.0.0");
   const minVersionCode = parseIntEnv("ANDROID_MIN_VERSION_CODE", 1);
   const apkUrl =
     process.env.ANDROID_APK_URL?.trim() ||

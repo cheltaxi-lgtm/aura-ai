@@ -35,7 +35,7 @@ export default function AppShellBridge() {
     if (!shouldUseAppShellClient()) return true;
     return isAppShellSplashDone();
   });
-  const { blocked, checking, retry } = useAppShellConnectivity();
+  const { blocked, checking, retry } = useAppShellConnectivity({ enabled: splashDone });
   const inShell = shouldUseAppShellClient();
   const showGate = splashDone && Boolean(blocked) && !updateAvailable?.forced;
   const showTabs = inShell && splashDone && !showGate && !updateAvailable?.forced;

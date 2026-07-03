@@ -19,7 +19,10 @@ export function useAuth() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetchWithTimeout("/api/auth/me", { timeoutMs: 10_000 });
+      const res = await fetchWithTimeout("/api/auth/me", {
+        timeoutMs: 10_000,
+        credentials: "include",
+      });
       const data = await res.json();
       setUser(data.authenticated ? data.user : null);
     } catch {

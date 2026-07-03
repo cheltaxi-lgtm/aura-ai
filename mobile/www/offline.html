@@ -67,13 +67,58 @@
     <div class="card">
       <div class="mark" aria-hidden="true"></div>
       <h1>Нет соединения</h1>
-      <p>Проверьте интернет и попробуйте снова — Zovus работает онлайн.</p>
+      <p>Проверьте интернет — Zovus работает онлайн. Карты вернутся, когда связь восстановится.</p>
       <button type="button" id="retry">Проверить снова</button>
     </div>
     <script>
-      document.getElementById("retry").addEventListener("click", function () {
-        location.reload();
-      });
+      (function () {
+        var APP_URL = "https://zovus.ru/?app=1";
+
+        function hideNativeSplash() {
+          try {
+            var cap = window.Capacitor;
+            if (cap && cap.Plugins && cap.Plugins.SplashScreen && cap.Plugins.SplashScreen.hide) {
+              cap.Plugins.SplashScreen.hide();
+            }
+          } catch (e) {}
+        }
+
+        function getNetworkPlugin() {
+          try {
+            return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Network;
+          } catch (e) {
+            return null;
+          }
+        }
+
+        async function isConnected() {
+          var network = getNetworkPlugin();
+          if (network && network.getStatus) {
+            try {
+              var status = await network.getStatus();
+              return !!status.connected;
+            } catch (e) {}
+          }
+          return navigator.onLine !== false;
+        }
+
+        async function retry() {
+          if (await isConnected()) {
+            window.location.replace(APP_URL);
+            return;
+          }
+          hideNativeSplash();
+        }
+
+        document.getElementById("retry").addEventListener("click", retry);
+
+        var network = getNetworkPlugin();
+        if (network && network.addListener) {
+          network.addListener("networkStatusChange", retry);
+        }
+
+        hideNativeSplash();
+      })();
     </script>
   </body>
 </html>

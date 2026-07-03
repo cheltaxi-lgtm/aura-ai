@@ -83,6 +83,7 @@ chmod +x gradlew
 
 mkdir -p "${APP_ROOT}/public/releases"
 cp -f app/build/outputs/apk/debug/app-debug.apk "${APK_OUT}"
+node "${APP_ROOT}/scripts/write-android-release-manifest.mjs"
 ls -lh "${APK_OUT}"
 echo "APK ready: ${APK_OUT}"
 

@@ -5,6 +5,7 @@ import BrandMark from "@/components/BrandMark";
 import AppShellOfflineGate from "@/components/AppShellOfflineGate";
 import { shouldUseAppShellClient, isAppShellSplashDone, markAppShellSplashDone } from "@/lib/app-shell";
 import {
+  probeAppBootstrapConnectivity,
   probeAppConnectivity,
   type AppConnectivityReason,
 } from "@/lib/app-connectivity";
@@ -31,7 +32,7 @@ export default function AppShellSplash() {
   const skipSplash = isAppShellSplashDone();
   const [visible, setVisible] = useState(false);
   const [phase, setPhase] = useState<SplashPhase>(skipSplash ? "done" : "playing");
-  const [blockedReason, setBlockedReason] = useState<AppConnectivityReason>("server");
+  const [blockedReason, setBlockedReason] = useState<AppConnectivityReason>("offline");
   const [checking, setChecking] = useState(false);
   const [statusLine, setStatusLine] = useState("проверяем соединение…");
   const startedRef = useRef(0);
@@ -66,7 +67,7 @@ export default function AppShellSplash() {
   const runBootstrapProbe = useCallback(async () => {
     setChecking(true);
     setStatusLine("проверяем соединение…");
-    const reason = await probeAppConnectivity({ bootstrap: true });
+    const reason = await probeAppBootstrapConnectivity();
     setChecking(false);
     applyProbeResult(reason);
   }, [applyProbeResult]);
@@ -103,7 +104,7 @@ export default function AppShellSplash() {
       void hideNativeSplash();
     });
 
-    void probeAppConnectivity({ bootstrap: true }).then((reason) => {
+    void probeAppBootstrapConnectivity().then((reason) => {
       probeResultRef.current = reason;
       if (decidedRef.current) return;
       const elapsed = Date.now() - startedRef.current;
@@ -123,7 +124,7 @@ export default function AppShellSplash() {
       if (decidedRef.current) return;
       decidedRef.current = true;
       const result = probeResultRef.current;
-      applyProbeResult(result === "pending" ? "server" : result);
+      applyProbeResult(result === "pending" ? null : result);
     }, MAX_SPLASH_MS);
 
     return () => {

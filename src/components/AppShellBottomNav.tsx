@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Camera, Home, Layers, LayoutGrid, User } from "lucide-react";
 import {
   navigateToAppHome,
+  navigateToCabinet,
   navigateToDecksModal,
   navigateToPhotoReading,
   navigateToSpreadCatalog,
@@ -99,24 +100,19 @@ export default function AppShellBottomNav() {
           <span className="app-shell-tabs__label">Расклад</span>
         </button>
 
-        <a
-          href="/cabinet?app=1"
-          className={`app-shell-tabs__item app-shell-tabs__item--link app-shell-tabs__item--right${isCabinet ? " app-shell-tabs__item--active" : ""}`}
+        <button
+          type="button"
+          className={`app-shell-tabs__item${isCabinet ? " app-shell-tabs__item--active" : ""}`}
           onClick={() => {
             void triggerAppHaptic("light");
-            try {
-              sessionStorage.setItem("zovus_app_shell", "1");
-              document.documentElement.dataset.appShell = "android";
-            } catch {
-              /* private mode */
-            }
+            navigateToCabinet();
           }}
         >
           <span className="app-shell-tabs__icon-wrap">
             <User className="app-shell-tabs__icon" strokeWidth={1.75} aria-hidden />
           </span>
           <span className="app-shell-tabs__label">Кабинет</span>
-        </a>
+        </button>
       </div>
 
       {!hidden ? (

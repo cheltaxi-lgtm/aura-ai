@@ -1,11 +1,18 @@
 "use client";
 
+import { useEffect } from "react";
+
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    console.error("[global-error]", error?.message, error?.digest);
+  }, [error]);
+
   return (
     <html lang="ru">
       <body
@@ -29,7 +36,13 @@ export default function GlobalError({
           </p>
           <button
             type="button"
-            onClick={() => reset()}
+            onClick={() => {
+              try {
+                reset();
+              } catch {
+                window.location.reload();
+              }
+            }}
             style={{
               background: "linear-gradient(135deg, #c9a24a, #e8c77e)",
               border: "none",
