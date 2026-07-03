@@ -1,4 +1,7 @@
-import { preferWebpDeckPath } from "@/lib/deck-image-url";import { getSymbolDescription } from "@/data/descriptions";
+import type { DeckSystem } from "@/lib/decks/types";
+import { getDeckImagePath, DECK_BACK_PATHS } from "@/data/decks";
+import { preferWebpDeckPath } from "@/lib/deck-image-url";
+import { getSymbolDescription } from "@/data/descriptions";
 import {
   getDeckDefinition,
   resolveMasterDeckSystem,
