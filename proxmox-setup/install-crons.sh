@@ -14,7 +14,8 @@ chmod +x "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
          "$REPO/proxmox-setup/cron-proactive-reminders.sh" \
          "$REPO/proxmox-setup/cron-daily-reading-remind.sh" \
          "$REPO/proxmox-setup/cron-reconcile-rune-payments.sh" \
-         "$REPO/proxmox-setup/cron-pg-backup.sh" 2>/dev/null || true
+         "$REPO/proxmox-setup/cron-pg-backup.sh" \
+         "$REPO/proxmox-setup/cron-cleanup-empty-sessions.sh" 2>/dev/null || true
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 # Drop any previously-managed block, keep everything else untouched.
@@ -33,6 +34,8 @@ CLEANED="$(printf '%s\n' "$CURRENT" | sed "/${MARK_BEGIN}/,/${MARK_END}/d")"
   echo "*/15 * * * * $REPO/proxmox-setup/cron-reconcile-rune-payments.sh >> $LOG_DIR/rune-reconcile.log 2>&1"
   # PostgreSQL backup — daily at 02:45 UTC.
   echo "45 2 * * * $REPO/proxmox-setup/cron-pg-backup.sh >> $LOG_DIR/pg-backup.log 2>&1"
+  # Empty consultation stubs (no chat / intention) — daily at 04:10 UTC.
+  echo "10 4 * * * $REPO/proxmox-setup/cron-cleanup-empty-sessions.sh >> $LOG_DIR/session-cleanup.log 2>&1"
   echo "$MARK_END"
 } | crontab -
 

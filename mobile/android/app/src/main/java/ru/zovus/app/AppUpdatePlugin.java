@@ -2,6 +2,8 @@ package ru.zovus.app;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -84,6 +86,7 @@ public class AppUpdatePlugin extends Plugin {
                 }
 
                 notifyProgress(100);
+                assertApkPackage(apkFile);
                 installFromUri(Uri.fromFile(apkFile));
                 call.resolve();
             } catch (Exception e) {
@@ -146,6 +149,7 @@ public class AppUpdatePlugin extends Plugin {
         if (apkFile == null || !apkFile.exists()) {
             throw new IllegalStateException("APK file not found");
         }
+        assertApkPackage(apkFile);
 
         String authority = ctx.getPackageName() + ".fileprovider";
         Uri contentUri = FileProvider.getUriForFile(ctx, authority, apkFile);
@@ -192,6 +196,17 @@ public class AppUpdatePlugin extends Plugin {
         }
 
         return null;
+    }
+
+    private void assertApkPackage(File apkFile) {
+        PackageManager pm = getContext().getPackageManager();
+        PackageInfo info = pm.getPackageArchiveInfo(apkFile.getAbsolutePath(), 0);
+        if (info == null) {
+            throw new IllegalStateException("Invalid APK file");
+        }
+        if (!getContext().getPackageName().equals(info.packageName)) {
+            throw new IllegalStateException("APK package mismatch");
+        }
     }
 
     private boolean isAllowedApkUrl(String raw) {

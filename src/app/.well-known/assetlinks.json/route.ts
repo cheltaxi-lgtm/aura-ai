@@ -12,6 +12,11 @@ function readFingerprints(): string[] {
     .map((part) => part.trim().replace(/:/g, "").toUpperCase())
     .filter(Boolean);
   if (fromEnv.length > 0) return fromEnv;
+  if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "assetlinks.json: ANDROID_ASSETLINKS_SHA256 is unset — App Links verification will fail"
+    );
+  }
   return ["REPLACE_WITH_RELEASE_KEY_SHA256_FINGERPRINT"];
 }
 

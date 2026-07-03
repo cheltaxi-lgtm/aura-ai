@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading, fallbackReading } from "@/lib/chat-prompts";
@@ -66,6 +67,12 @@ import {
 import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
+import {
+  completeAsyncJob,
+  createAsyncJob,
+  failAsyncJob,
+  markAsyncJobRunning,
+} from "@/lib/async-jobs";
 
 async function persistReadingToSession(input: {
   sessionId: string | undefined;
@@ -176,9 +183,13 @@ export async function POST(request: NextRequest) {
   let spreadIdRaw = "";
   let numerologToolIdRaw = "";
   let numerologToolParams: NumerologToolParams = {};
+  let asyncRequested = false;
+  let rawBody: Record<string, unknown> = {};
 
   try {
     const body = await request.json();
+    rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    asyncRequested = body.async === true;
     characterId = await resolveApiCharacterId(body.characterId);
     userName = sanitizeTextField(body.userName, 80) ?? userName;
     gender = sanitizeTextField(body.gender, 20) ?? gender;
@@ -251,6 +262,44 @@ export async function POST(request: NextRequest) {
 
   const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "reading");
   if (rateLimited) return rateLimited;
+
+  if (asyncRequested) {
+    if (!(await ensureDb())) {
+      return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    }
+    const jobPayload = { ...rawBody, async: false };
+    const jobId = await createAsyncJob({
+      userId: authed.profileUserId,
+      kind: "reading",
+      payload: jobPayload,
+    });
+    after(async () => {
+      await markAsyncJobRunning(jobId);
+      try {
+        const innerReq = new NextRequest(request.url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            cookie: request.headers.get("cookie") ?? "",
+          },
+          body: JSON.stringify(jobPayload),
+        });
+        const res = await POST(innerReq);
+        const data = (await res.json()) as Record<string, unknown> & { error?: string };
+        if (!res.ok) {
+          await failAsyncJob(jobId, data.error ?? `HTTP ${res.status}`);
+          return;
+        }
+        await completeAsyncJob(jobId, data);
+      } catch (err) {
+        await failAsyncJob(jobId, err instanceof Error ? err.message : "reading job failed");
+      }
+    });
+    return NextResponse.json(
+      { jobId, status: "pending", pollUrl: `/api/jobs/${jobId}` },
+      { status: 202 }
+    );
+  }
 
   let spentRunes = 0;
   let billingCharge: BillingChargeResult | null = null;

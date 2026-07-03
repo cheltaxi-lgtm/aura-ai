@@ -21,8 +21,8 @@ import {
 import { getInfluencerByToken, recordInfluencerClick } from "@/lib/influencers";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
-import { resolveSessionForUser } from "@/lib/session-access";
-import { setSessionClaimCookie, verifySessionClaimForId } from "@/lib/session-claim";
+import { resolveSessionForUser, assertSessionReadAccess } from "@/lib/session-access";
+import { setSessionClaimCookie } from "@/lib/session-claim";
 import { parseNumerologToolParams, decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
 import { upsertSessionMemoryFromChat } from "@/lib/session-memory";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
@@ -265,16 +265,15 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "auth_required" }, { status: 401 });
       }
       const profileUserId = await getProfileUserIdForAccount(auth.sub);
-      if (!profileUserId || session.user_id !== profileUserId) {
-        return NextResponse.json({ error: "session_forbidden" }, { status: 403 });
-      }
+      const blocked = await assertSessionReadAccess(request, session, profileUserId);
+      if (blocked) return blocked;
     } else {
-      const claimToken = request.cookies.get("aura_session_claim")?.value;
-      const claimed = await verifySessionClaimForId(sessionId, claimToken);
-      if (!claimed) {
-        return NextResponse.json({ error: "session_claim_required" }, { status: 403 });
-      }
+      const blocked = await assertSessionReadAccess(request, session, null);
+      if (blocked) return blocked;
     }
+
+    const profileUserId =
+      auth?.role === "user" ? await getProfileUserIdForAccount(auth.sub) : null;
 
     const unlimited = await resolveUnlimitedAccess({
       accountId: auth?.role === "user" ? auth.sub : undefined,

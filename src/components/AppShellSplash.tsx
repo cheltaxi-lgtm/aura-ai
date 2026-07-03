@@ -10,9 +10,9 @@ import {
   type AppConnectivityReason,
 } from "@/lib/app-connectivity";
 
-const MIN_SPLASH_MS = 4_500;
+const MIN_SPLASH_MS = 3_200;
 const EXIT_MS = 650;
-const MAX_SPLASH_MS = 9_000;
+const MAX_SPLASH_MS = 7_500;
 
 export const APP_SHELL_SPLASH_HIDDEN_EVENT = "zovus:splash-hidden";
 

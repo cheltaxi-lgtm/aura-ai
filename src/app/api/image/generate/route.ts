@@ -1,4 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
 import { enforceImageGenRateLimit } from "@/lib/api-guards";
 import { generateSceneImage, isImageGenConfigured } from "@/lib/image-gen";
@@ -19,6 +20,13 @@ import {
 import { isRuneBillingActive } from "@/lib/rune-service";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import type { RuneActionType } from "@/lib/rune-costs";
+import {
+  completeAsyncJob,
+  createAsyncJob,
+  failAsyncJob,
+  markAsyncJobRunning,
+} from "@/lib/async-jobs";
+import { ensureDb } from "@/lib/db";
 
 export const maxDuration = 120;
 
@@ -61,11 +69,15 @@ export async function POST(request: NextRequest) {
   }
 
   let body: ImageGenerateRequest;
+  let rawBody: Record<string, unknown> = {};
   try {
-    body = await request.json();
+    rawBody = await request.json();
+    body = rawBody as unknown as ImageGenerateRequest;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const asyncRequested = rawBody.async === true;
 
   const scene = String(body.scene ?? "");
   if (!isSceneType(scene)) {
@@ -93,6 +105,47 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Final report requires paid access", code: "payment_required" },
       { status: 402 }
+    );
+  }
+
+  if (asyncRequested) {
+    if (!profileUserId) {
+      return NextResponse.json({ error: "Profile required", code: "auth_required" }, { status: 401 });
+    }
+    if (!(await ensureDb())) {
+      return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    }
+    const jobPayload = { ...rawBody, async: false };
+    const jobId = await createAsyncJob({
+      userId: profileUserId,
+      kind: "image_generate",
+      payload: jobPayload,
+    });
+    after(async () => {
+      await markAsyncJobRunning(jobId);
+      try {
+        const innerReq = new NextRequest(request.url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            cookie: request.headers.get("cookie") ?? "",
+          },
+          body: JSON.stringify(jobPayload),
+        });
+        const res = await POST(innerReq);
+        const data = (await res.json()) as Record<string, unknown> & { error?: string };
+        if (!res.ok) {
+          await failAsyncJob(jobId, data.error ?? `HTTP ${res.status}`);
+          return;
+        }
+        await completeAsyncJob(jobId, data);
+      } catch (err) {
+        await failAsyncJob(jobId, err instanceof Error ? err.message : "image job failed");
+      }
+    });
+    return NextResponse.json(
+      { jobId, status: "pending", pollUrl: `/api/jobs/${jobId}` },
+      { status: 202 }
     );
   }
 

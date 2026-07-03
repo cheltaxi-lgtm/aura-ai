@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings 50",
-    "build:decks": "node scripts/build-decks.mjs",
+    "generate:deck-webp": "node scripts/generate-deck-webp.mjs",
     "fix:deck-cards": "node scripts/fix-deck-cards-targeted.mjs",
     "normalize:deck-cards": "node scripts/deck-card-normalize.mjs",
     "verify:photo-aliases": "npx tsx scripts/verify-photo-aliases.mjs",

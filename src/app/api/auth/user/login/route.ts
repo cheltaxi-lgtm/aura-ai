@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { findUserByEmail } from "@/lib/accounts";
 import { setAuthCookie, verifyPassword, normalizeAuthEmail } from "@/lib/auth";
-import { resolveLoginHint } from "@/lib/login-hints";
+import { resolveLoginHint, getLoginFormHints, LOGIN_FAILURE_MESSAGE } from "@/lib/login-hints";
 import { clientIp, enforceLoginRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     if (!user || !(await verifyPassword(password, user.password_hash))) {
       const hint = await resolveLoginHint(email, "user");
       return NextResponse.json(
-        { error: hint ?? "Неверный email или пароль" },
+        { error: hint ?? LOGIN_FAILURE_MESSAGE },
         { status: 401 }
       );
     }

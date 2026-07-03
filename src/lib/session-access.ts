@@ -1,11 +1,47 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { query } from "@/lib/db";
 import { createSession, getSession, type SessionRow } from "@/lib/session";
 import {
   readSessionClaimCookie,
+  SESSION_CLAIM_COOKIE,
   setSessionClaimCookie,
   verifySessionClaimForId,
 } from "@/lib/session-claim";
+
+export function readSessionClaimFromRequest(request: NextRequest): string | null {
+  return request.cookies.get(SESSION_CLAIM_COOKIE)?.value ?? null;
+}
+
+export async function assertOrphanSessionClaim(
+  sessionId: string,
+  claimToken: string | null | undefined
+): Promise<NextResponse | null> {
+  const claimed = await verifySessionClaimForId(sessionId, claimToken);
+  if (!claimed) {
+    return NextResponse.json({ error: "session_claim_required" }, { status: 403 });
+  }
+  return null;
+}
+
+/** Read access for a session row: owner JWT or signed orphan claim cookie. */
+export async function assertSessionReadAccess(
+  request: NextRequest,
+  session: SessionRow,
+  profileUserId: string | null
+): Promise<NextResponse | null> {
+  if (session.user_id) {
+    if (!profileUserId) {
+      return NextResponse.json({ error: "auth_required" }, { status: 401 });
+    }
+    if (session.user_id !== profileUserId) {
+      return NextResponse.json({ error: "session_forbidden" }, { status: 403 });
+    }
+    return null;
+  }
+
+  return assertOrphanSessionClaim(session.id, readSessionClaimFromRequest(request));
+}
 
 export async function linkSessionToProfile(sessionId: string, profileUserId: string): Promise<void> {
   await query(
@@ -65,19 +101,10 @@ export async function resolveSessionForUser(
 
     if (!session.user_id) {
       const claim = await resolveSessionClaim(opts);
-      const ownsOrphan = await verifySessionClaimForId(sessionId, claim);
-      if (!ownsOrphan) {
+      const blocked = await assertOrphanSessionClaim(sessionId, claim);
+      if (blocked) {
         console.warn("Rejected orphan session link attempt:", sessionId, profileUserId);
-        return {
-          session: null,
-          error: NextResponse.json(
-            {
-              error: "session_forbidden",
-              message: "Сессия не принадлежит этому аккаунту",
-            },
-            { status: 403 }
-          ),
-        };
+        return { session: null, error: blocked };
       }
 
       await linkSessionToProfile(sessionId, profileUserId);

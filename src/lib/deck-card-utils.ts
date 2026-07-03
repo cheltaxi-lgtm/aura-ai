@@ -1,6 +1,4 @@
-import type { DeckSystem } from "@/lib/decks/types";
-import { getDeckImagePath, DECK_BACK_PATHS } from "@/data/decks";
-import { getSymbolDescription } from "@/data/descriptions";
+import { preferWebpDeckPath } from "@/lib/deck-image-url";import { getSymbolDescription } from "@/data/descriptions";
 import {
   getDeckDefinition,
   resolveMasterDeckSystem,
@@ -83,7 +81,7 @@ export function resolveDeckCard(
   return {
     system: effectiveSystem,
     name: formatReversedCardName(resolvedSymbol.name, reversed),
-    imagePath: usePreresolvedArt ? card.imagePath! : deckImagePath,
+    imagePath: usePreresolvedArt ? card.imagePath! : preferWebpDeckPath(deckImagePath),
     shortMeaning: desc.shortMeaning || resolvedSymbol.meaning,
     fullMeaning: desc.fullMeaning,
     keywords: desc.keywords,

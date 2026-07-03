@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Image from "next/image";
+import { deckImageSources } from "@/lib/deck-image-url";
 
 interface DeckGalleryFaceProps {
   name: string;
@@ -23,11 +25,22 @@ export default function DeckGalleryFace({
   onImageError,
 }: DeckGalleryFaceProps) {
   const useUnoptimized = unoptimized ?? imagePath.startsWith("/decks/");
+  const { webp, fallback } = deckImageSources(imagePath);
+  const [src, setSrc] = useState(webp);
+
+  const handleError = () => {
+    if (src !== fallback) {
+      setSrc(fallback);
+      return;
+    }
+    onImageError?.();
+  };
+
   const inner = (
     <>
       <div className="deck-gallery-face__frame">
         <Image
-          src={imagePath}
+          src={src}
           alt={name}
           width={533}
           height={800}
@@ -35,7 +48,7 @@ export default function DeckGalleryFace({
           unoptimized={useUnoptimized}
           className="deck-gallery-face__img"
           onLoad={onImageLoad}
-          onError={onImageError}
+          onError={handleError}
         />
       </div>
       {!hideLabel && <p className="deck-gallery-face__name">{name}</p>}
@@ -47,7 +60,7 @@ export default function DeckGalleryFace({
       <button
         type="button"
         onClick={onClick}
-        className="deck-gallery-face group"
+        className="deck-gallery-face group min-h-11 touch-manipulation"
         aria-label={`Открыть ${name}`}
       >
         {inner}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
+import { getLoginFormHints } from "@/lib/login-hints";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import ProfileAstroFields, {
@@ -356,6 +357,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           Google.
         </p>
       )}
+
+      {mode === "login" ? (
+        <ul className="space-y-1 text-xs leading-relaxed text-gray-500">
+          {getLoginFormHints(role).map((hint) => (
+            <li key={hint}>• {hint}</li>
+          ))}
+        </ul>
+      ) : null}
 
       <button
         type="submit"

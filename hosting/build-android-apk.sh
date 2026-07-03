@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Capacitor Android debug APK and publish to public/releases/zovus-latest.apk
+# Build Capacitor Android release APK and publish to public/releases/zovus-latest.apk
 # Usage: bash hosting/build-android-apk.sh [/opt/aura-ai]
 set -euo pipefail
 
@@ -7,9 +7,45 @@ APP_ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 APK_OUT="${APP_ROOT}/public/releases/zovus-latest.apk"
 CMDLINE_TOOLS="${ANDROID_HOME}/cmdline-tools/latest"
+ENV_FILE="${APP_ROOT}/.env.local"
+DEFAULT_KEYSTORE="${ANDROID_SECRETS_DIR:-/opt/secrets}/zovus-release.jks"
 
 export ANDROID_HOME
 export PATH="${PATH}:${CMDLINE_TOOLS}/bin:${ANDROID_HOME}/platform-tools"
+
+load_keystore_env() {
+  if [ -f "${ENV_FILE}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source <(grep -E '^ANDROID_(KEYSTORE_|KEY_|VERSION_)' "${ENV_FILE}" 2>/dev/null | sed 's/\r$//') || true
+    set +a
+  fi
+  ANDROID_KEYSTORE_PATH="${ANDROID_KEYSTORE_PATH:-${DEFAULT_KEYSTORE}}"
+  ANDROID_KEY_ALIAS="${ANDROID_KEY_ALIAS:-zovus}"
+}
+
+verify_release_apk() {
+  local apk="$1"
+  if [ ! -f "${apk}" ]; then
+    echo "ERROR: APK missing at ${apk}"
+    return 1
+  fi
+  local apksigner=""
+  if [ -n "${ANDROID_HOME:-}" ] && [ -d "${ANDROID_HOME}/build-tools" ]; then
+    apksigner="$(find "${ANDROID_HOME}/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -1 || true)"
+  fi
+  if [ -n "${apksigner}" ] && [ -x "${apksigner}" ]; then
+    "${apksigner}" verify --print-certs "${apk}" >/dev/null
+    echo ">>> Verified release signature (apksigner)"
+    return 0
+  fi
+  if jarsigner -verify "${apk}" >/dev/null 2>&1; then
+    echo ">>> Verified release signature (jarsigner)"
+    return 0
+  fi
+  echo "ERROR: APK is not signed — refusing to publish ${apk}"
+  return 1
+}
 
 ensure_java() {
   if command -v java >/dev/null 2>&1; then
@@ -43,8 +79,14 @@ ensure_java
 ensure_android_sdk
 
 GRADLE="${APP_ROOT}/mobile/android/app/build.gradle"
-ENV_FILE="${APP_ROOT}/.env.local"
 MANIFEST="${APP_ROOT}/public/releases/android-version.json"
+
+load_keystore_env
+
+# Production server builds must never publish a debug-signed APK.
+if [ "${REQUIRE_RELEASE_SIGNING:-0}" = "1" ] || [ "${APP_ROOT}" = "/opt/aura-ai" ]; then
+  REQUIRE_RELEASE_SIGNING=1
+fi
 
 # versionCode source of truth: the max of every place a code can live.
 # build.gradle gets overwritten by each deploy from the dev machine, so on its
@@ -97,23 +139,35 @@ chmod +x gradlew
 
 KEYSTORE_PROPS="${APP_ROOT}/mobile/android/keystore.properties"
 APK_SRC=""
+HAS_KEYSTORE=0
 if [ -n "${ANDROID_KEYSTORE_PATH:-}" ] && [ -f "${ANDROID_KEYSTORE_PATH}" ] \
   && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] \
   && [ -n "${ANDROID_KEY_ALIAS:-}" ] \
   && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
+  HAS_KEYSTORE=1
   cat > "${KEYSTORE_PROPS}" <<EOF
 storeFile=${ANDROID_KEYSTORE_PATH}
 storePassword=${ANDROID_KEYSTORE_PASSWORD}
 keyAlias=${ANDROID_KEY_ALIAS}
 keyPassword=${ANDROID_KEY_PASSWORD}
 EOF
-  echo ">>> Building signed release APK..."
+  echo ">>> Building signed release APK (keystore ${ANDROID_KEYSTORE_PATH})..."
   ./gradlew assembleRelease --no-daemon
   APK_SRC="app/build/outputs/apk/release/app-release.apk"
+elif [ "${REQUIRE_RELEASE_SIGNING}" = "1" ]; then
+  rm -f "${KEYSTORE_PROPS}"
+  echo "ERROR: Release keystore not configured."
+  echo "Run: bash hosting/ensure-android-release-keystore.sh ${APP_ROOT}"
+  exit 1
 else
-  echo ">>> WARN: release keystore not configured — building debug APK"
+  rm -f "${KEYSTORE_PROPS}"
+  echo ">>> WARN: release keystore not configured — building debug APK (local dev only)"
   ./gradlew assembleDebug --no-daemon
   APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
+fi
+
+if [ "${HAS_KEYSTORE}" = "1" ]; then
+  verify_release_apk "${APK_SRC}"
 fi
 
 mkdir -p "${APP_ROOT}/public/releases"

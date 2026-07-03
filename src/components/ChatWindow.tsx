@@ -544,7 +544,7 @@ export default function ChatWindow({
         <button
           onClick={onClose}
           aria-label={closeAriaLabel}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple sm:h-11 sm:w-11"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple touch-manipulation"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -583,7 +583,7 @@ export default function ChatWindow({
               onClick={onCompleteSession}
               disabled={isLoading || completingSession}
               title="Завершить сеанс"
-              className="hidden rounded-xl border border-aura-emerald/30 px-3 py-2 text-xs font-semibold text-aura-emerald transition-colors hover:border-aura-emerald/60 disabled:opacity-40 sm:inline-flex"
+              className="hidden min-h-11 items-center rounded-xl border border-aura-emerald/30 px-3 py-2 text-xs font-semibold text-aura-emerald transition-colors hover:border-aura-emerald/60 disabled:opacity-40 sm:inline-flex touch-manipulation"
             >
               {completingSession ? "…" : "Завершить сеанс"}
             </button>
@@ -595,7 +595,7 @@ export default function ChatWindow({
               disabled={isLoading}
               title="Очистить переписку"
               aria-label="Очистить переписку"
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-red-400/40 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-40"
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-red-400/40 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-40 touch-manipulation"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -768,7 +768,7 @@ export default function ChatWindow({
                 type="button"
                 onClick={onLoadMore}
                 disabled={loadingMoreHistory || isLoading}
-                className="rounded-full border border-white/10 bg-black/30 px-4 py-1.5 text-xs text-gray-400 transition-colors hover:border-aura-gold/30 hover:text-aura-gold disabled:opacity-50"
+                className="min-h-11 rounded-full border border-white/10 bg-black/30 px-4 py-2.5 text-xs text-gray-400 transition-colors hover:border-aura-gold/30 hover:text-aura-gold disabled:opacity-50 touch-manipulation"
               >
                 {loadingMoreHistory ? (
                   <span className="inline-flex items-center gap-2">
@@ -949,7 +949,7 @@ export default function ChatWindow({
             <button
               type="button"
               onClick={onOpenPaywall}
-              className="mt-2 text-sm font-bold text-aura-neon underline"
+              className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-aura-neon underline touch-manipulation"
             >
               Получить полный доступ →
             </button>
@@ -1105,7 +1105,7 @@ export default function ChatWindow({
                 ? "Остановить запись голоса"
                 : "Голосовой ввод"
           }
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30 ${
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30 touch-manipulation ${
             isRecording
               ? "border-red-500/50 bg-red-500/10 text-red-400"
               : voicePhase === "transcribing"
@@ -1155,7 +1155,7 @@ export default function ChatWindow({
           type="submit"
           disabled={!input.trim() || inputBlocked}
           aria-label="Отправить сообщение"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-aura-purple/30 text-aura-neon transition-all hover:bg-aura-purple/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-aura-purple/30 text-aura-neon transition-all hover:bg-aura-purple/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30 touch-manipulation"
         >
           <Send className="h-5 w-5" />
         </button>

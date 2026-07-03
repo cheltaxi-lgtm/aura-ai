@@ -25,7 +25,7 @@ import {
 } from "@/lib/services/billing-service";
 import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
-import { ensureChatSession } from "@/lib/session-access";
+import { ensureChatSession, assertSessionReadAccess } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
 import {
@@ -151,6 +151,9 @@ export async function POST(request: NextRequest) {
     } else if (sessionId) {
       const row = await getSession(sessionId);
       if (row) {
+        const blocked = await assertSessionReadAccess(request, row, null);
+        if (blocked) return blocked;
+        resolvedSessionId = row.id;
         isPaid = hasPaidAccess(row, { unlimited });
         referrerSlug = row.referrer_slug;
       }

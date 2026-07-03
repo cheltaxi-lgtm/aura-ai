@@ -609,7 +609,7 @@ export async function completeOtherActiveSessions(
     prediction: string | null;
   }>(
     `SELECT s.id,
-            (SELECT COUNT(*)::text FROM chat_messages cm WHERE cm.session_id = s.id) AS msg_count,
+            COALESCE(s.message_count, 0)::text AS msg_count,
             s.cards,
             sm.prediction
      FROM sessions s
@@ -647,7 +647,7 @@ export async function pruneEmptySessionStubs(userId: string): Promise<number> {
      LEFT JOIN session_memories sm ON sm.session_id = s.id
      WHERE s.user_id = $1
        AND s.character_key IS NOT NULL
-       AND (SELECT COUNT(*) FROM chat_messages cm WHERE cm.session_id = s.id) = 0
+       AND COALESCE(s.message_count, 0) = 0
        AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
        AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''`,
     [userId]
@@ -667,7 +667,7 @@ export async function pruneDuplicateActiveSessions(userId: string): Promise<numb
      WHERE s.user_id = $1
        AND s.character_key IS NOT NULL
        AND TRIM(s.character_key) <> ''
-       AND (SELECT COUNT(*) FROM chat_messages cm WHERE cm.session_id = s.id) = 0
+       AND COALESCE(s.message_count, 0) = 0
        AND EXISTS (
          SELECT 1 FROM sessions s2
          WHERE s2.user_id = s.user_id
@@ -786,15 +786,10 @@ export async function listConsultationSessions(
     SELECT s.id, s.intention, s.spread_type, s.spread_id, s.cards,
            COALESCE(s.status, 'active') AS status,
            s.created_at, s.updated_at,
-           COALESCE(mc.message_count, 0)::int AS message_count,
+           COALESCE(s.message_count, 0)::int AS message_count,
            sm.topic_summary, sm.key_cards, sm.prediction
      FROM sessions s
      LEFT JOIN session_memories sm ON sm.session_id = s.id
-     LEFT JOIN (
-       SELECT session_id, COUNT(*)::int AS message_count
-       FROM chat_messages
-       GROUP BY session_id
-     ) mc ON mc.session_id = s.id
      WHERE s.user_id = $1
        AND s.character_key = $2`;
 
@@ -829,6 +824,31 @@ export async function listConsultationSessions(
   };
 }
 
+/** Detach or expire joint readings that reference a consultation session. */
+async function detachJointReadingsForSession(
+  sessionId: string,
+  userId: string
+): Promise<void> {
+  await query(
+    `UPDATE joint_readings
+     SET status = CASE
+           WHEN status IN ('pending_partner', 'partner_done') THEN 'expired'
+           ELSE status
+         END,
+         initiator_session_id = CASE
+           WHEN initiator_session_id = $1 THEN NULL
+           ELSE initiator_session_id
+         END,
+         partner_session_id = CASE
+           WHEN partner_session_id = $1 THEN NULL
+           ELSE partner_session_id
+         END
+     WHERE (initiator_session_id = $1 AND initiator_user_id = $2)
+        OR (partner_session_id = $1 AND partner_user_id = $2)`,
+    [sessionId, userId]
+  );
+}
+
 /** Remove consultation session, chat, memory and cabinet history entry. */
 export async function deleteConsultationSession(
   sessionId: string,
@@ -836,6 +856,8 @@ export async function deleteConsultationSession(
 ): Promise<boolean> {
   const session = await getSession(sessionId);
   if (!session || session.user_id !== userId) return false;
+
+  await detachJointReadingsForSession(sessionId, userId);
 
   await query(`DELETE FROM session_memories WHERE session_id = $1`, [sessionId]);
   await query(`DELETE FROM chat_messages WHERE session_id = $1`, [sessionId]);
