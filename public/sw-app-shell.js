@@ -1,5 +1,5 @@
 /* Zovus app-shell service worker — precache shell + cache static assets for Capacitor WebView. */
-const CACHE = "zovus-shell-v1";
+const CACHE = "zovus-shell-v2";
 const PRECACHE_URLS = ["/", "/?app=1", "/session/intention?app=1", "/icon.svg", "/manifest.webmanifest"];
 
 function isSameOrigin(url) {
@@ -70,8 +70,6 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(request);
-      if (cached) return cached;
       try {
         const response = await fetch(request);
         if (response.ok) {
@@ -79,7 +77,9 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       } catch {
-        return cached || Response.error();
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        return Response.error();
       }
     })
   );

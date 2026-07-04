@@ -25,6 +25,18 @@ const checks = [
   () => mustExist("src/components/AppShellOfflineGate.tsx"),
   () => mustInclude("src/components/AppShellBridge.tsx", "AppShellOfflineGate", "offline gate wired"),
   () => mustInclude("src/components/AppShellBridge.tsx", "AppShellBottomNav", "bottom nav wired"),
+  () => {
+    const text = readFile(path.join(root, "src/components/AppShellBridge.tsx"), "utf8");
+    return text.then((t) => {
+      assert.ok(!t.includes("AppShellVersionBar"), "AppShellBridge must not render AppShellVersionBar");
+    });
+  },
+  () => {
+    const text = readFile(path.join(root, "src/components/AppTopHeader.tsx"), "utf8");
+    return text.then((t) => {
+      assert.ok(!t.includes("iconOnlyOnMobile"), "AppTopHeader must show full wordmark on mobile");
+    });
+  },
   () => mustInclude("src/components/AppShellBridge.tsx", "checkAndroidAppUpdate", "update check wired"),
   () => mustInclude("mobile/capacitor.config.ts", "errorPath", "capacitor errorPath"),
   () => mustInclude("mobile/capacitor.config.ts", "offline.html", "offline fallback path"),
