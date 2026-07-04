@@ -22,19 +22,34 @@
 
 ## 1. DNS на Beget
 
+**Важно:** `changeRecords` заменяет все записи зоны — всегда задавайте A + MX + TXT одним вызовом.
+
 ```bash
-export BEGET_LOGIN=...
-export BEGET_PASSWORD=...
-# опционально: RESEND_DKIM_VALUE из панели Resend
+# через homeserver (креды в ~/.acme.sh/account.conf)
+scp hosting/fix-mail-dns-beget.py ubuntu@192.168.1.50:/tmp/
+ssh ubuntu@192.168.1.50 \
+  'source ~/.acme.sh/account.conf; export BEGET_LOGIN="$SAVED_Beget_Username" BEGET_PASSWORD="$SAVED_Beget_Password"; \
+   python3 /tmp/fix-mail-dns-beget.py ~/.acme.sh/account.conf 217.12.37.32 7902ba7dfdb76ac3 yandex'
+
+# или bash-скрипт (тоже задаёт A+MX+TXT разом)
+export BEGET_LOGIN=... BEGET_PASSWORD=...
 ./hosting/setup-mail-dns-beget.sh
 ```
 
+Почта Beget через API (`hosting/setup-beget-mail.py`) работает только при **тарифе с почтой** (на VPS-only аккаунте API возвращает ошибку 1208).
+
 ## 2. Yandex 360
 
-1. [connect.yandex.ru](https://connect.yandex.ru) → подключить домен `zovus.ru`
-2. Подтвердить владение (MX уже укажет на Yandex)
+1. [admin.yandex.ru](https://admin.yandex.ru) → подключить домен `zovus.ru`
+2. MX уже указывает на `mx.yandex.net` (настроено через Beget DNS)
 3. Создать пользователей/алиасы из таблицы выше
-4. Для `noreply@` — **пароль приложения** → `SMTP_PASS`
+4. Для `noreply@` — **пароль приложения** → `SMTP_PASS` в `.env.local`
+
+```bash
+bash hosting/apply-mail-env.sh /opt/aura-ai/.env.local
+# добавить SMTP_PASS=re_... или пароль приложения Yandex
+systemctl restart aura-ai
+```
 
 ## 3. Resend (рекомендуется)
 

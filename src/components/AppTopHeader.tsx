@@ -5,6 +5,7 @@ import AppDownloadButton from "@/components/AppDownloadButton";
 import AppHeaderMenu from "@/components/AppHeaderMenu";
 import BrandLogo from "@/components/BrandLogo";
 import AuthHeader from "@/components/AuthHeader";
+import NotificationBell from "@/components/NotificationBell";
 import RuneBalance from "@/components/RuneBalance";
 import TariffsModal from "@/components/TariffsModal";
 import type { AuthUser } from "@/lib/useAuth";
@@ -127,9 +128,10 @@ export default function AppTopHeader({
           <AuthHeader user={authUser} loading={authLoading} />
         </div>
 
-        {/* Mobile: logo + runes + menu */}
-        <div className="app-top-header__mobile flex shrink-0 items-center gap-2 md:hidden">
+        {/* Mobile: logo + runes + notifications + menu */}
+        <div className="app-top-header__mobile flex shrink-0 items-center gap-1.5 md:hidden">
           {isLoggedIn ? <RuneBalance compact onBuyClick={onOpenPaywall} /> : null}
+          {authUser?.role === "user" && !authLoading ? <NotificationBell /> : null}
           <AppHeaderMenu
             photoNavLabel={photoNavLabel}
             isLoggedIn={isLoggedIn}

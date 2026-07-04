@@ -4226,10 +4226,9 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   top: calc(var(--app-header-h, 3.25rem) + 0.35rem);
   right: 0.75rem;
   left: 0.75rem;
-  max-height: min(72dvh, 32rem);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 1.15rem;
   border: 1px solid rgba(232, 199, 126, 0.22);
   background:
@@ -4246,7 +4245,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.85rem 1rem 0.65rem;
+  padding: 0.65rem 0.85rem 0.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -4271,22 +4270,8 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   color: rgba(255, 255, 255, 0.55);
 }
 
-.app-header-menu-panel__notifications {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.55rem 1rem 0.65rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  overflow: visible;
-}
-
-.app-header-menu-panel__notifications-label {
-  font-size: 0.8125rem;
-  color: rgba(255, 255, 255, 0.72);
-}
-
 .app-header-menu-panel__kicker {
-  padding: 0.65rem 1rem 0.25rem;
+  padding: 0.5rem 1rem 0.15rem;
   font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.14em;
@@ -4295,18 +4280,18 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .app-header-menu-panel__section {
-  overflow-y: auto;
-  padding: 0.35rem 0.5rem 0.65rem;
+  overflow: visible;
+  padding: 0.25rem 0.5rem 0.5rem;
 }
 
 .app-header-menu-item {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 0.75rem;
-  border-radius: 0.85rem;
+  gap: 0.65rem;
+  border-radius: 0.75rem;
   border: 1px solid transparent;
-  padding: 0.72rem 0.75rem;
+  padding: 0.58rem 0.65rem;
   text-align: left;
   font-size: 0.875rem;
   color: rgba(255, 255, 255, 0.82);

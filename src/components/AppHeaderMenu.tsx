@@ -15,7 +15,6 @@ import {
   User,
   X,
 } from "lucide-react";
-import NotificationBell from "@/components/NotificationBell";
 import { performClientLogout } from "@/lib/client-logout";
 import { navigateToCabinet } from "@/lib/app-shell-nav";
 import { shouldUseAppShellClient } from "@/lib/app-shell";
@@ -225,13 +224,6 @@ export default function AppHeaderMenu({
                   <X className="h-4 w-4" aria-hidden />
                 </button>
               </div>
-
-              {authUser?.role === "user" ? (
-                <div className="app-header-menu-panel__notifications">
-                  <NotificationBell />
-                  <span className="app-header-menu-panel__notifications-label">Уведомления</span>
-                </div>
-              ) : null}
 
               <div className="app-header-menu-panel__section">
                 {navItems.map((item) => (
