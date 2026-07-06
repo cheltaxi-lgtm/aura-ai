@@ -106,7 +106,26 @@ export interface CabinetPhotoSpreadRow {
     tarotCards?: { name: string; meaning?: string }[];
     redrawSpread?: RedrawSpread;
     question?: string;
+    /** Personal note the client attaches to a saved reading — own journaling, not shown to the master. */
+    notes?: string;
   };
+}
+
+export const MAX_PHOTO_SPREAD_NOTE_LENGTH = 500;
+
+export async function updateCabinetPhotoSpreadNote(
+  userId: string,
+  historyId: string,
+  notes: string
+): Promise<{ ok: boolean }> {
+  const trimmed = notes.trim().slice(0, MAX_PHOTO_SPREAD_NOTE_LENGTH);
+  const result = await query(
+    `UPDATE history
+     SET context_data = jsonb_set(context_data, '{notes}', to_jsonb($3::text))
+     WHERE id = $1 AND user_id = $2 AND context_data->>'type' = 'photo_reading'`,
+    [historyId, userId, trimmed]
+  );
+  return { ok: (result.rowCount ?? 0) > 0 };
 }
 
 export interface CabinetDailyReadingRow {

@@ -14,6 +14,16 @@ export function parseRecognitionConfidence(deckType?: string): PhotoRecognitionC
   return "unknown";
 }
 
+/** Normalize a free-form per-card confidence label from the vision model into a fixed enum. */
+export function normalizeCardConfidence(raw?: string | null): PhotoRecognitionConfidence {
+  const text = (raw ?? "").trim().toLowerCase();
+  if (!text) return "unknown";
+  if (/выс|high/.test(text)) return "high";
+  if (/сред|medium/.test(text)) return "medium";
+  if (/низ|low/.test(text)) return "low";
+  return "unknown";
+}
+
 export function confidenceLabel(confidence: PhotoRecognitionConfidence): string {
   switch (confidence) {
     case "high":

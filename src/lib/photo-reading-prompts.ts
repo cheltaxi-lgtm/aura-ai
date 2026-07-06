@@ -1,10 +1,15 @@
-import { completeChat, isRejectedLlmOutput, type ChatMessage } from "@/lib/llm";
+import { completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { todayLabelRu } from "@/lib/prompt-date";
 import { buildChatPrompt, buildHumanChatPrompt } from "@/lib/chat-prompts";
 import type { UserContext } from "@/lib/chat-prompts";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import { isAiMasterId } from "@/lib/showcase-masters";
+import {
+  MAX_PHOTO_CARDS,
+  normalizeCardConfidence,
+  type PhotoRecognitionConfidence,
+} from "@/lib/photo-reading-constants";
 
 export interface PhotoReadingContext extends Partial<UserContext> {
   question?: string;
@@ -14,49 +19,12 @@ export interface PhotoReadingMetadata {
   deckType?: string;
   spreadType?: string;
   detectedCards: string[];
+  /** Per-card confidence, index-aligned with detectedCards. Defaults to "unknown" when the model didn't provide structured JSON. */
+  cardConfidences: PhotoRecognitionConfidence[];
 }
 
 import { MAX_SPREAD_CARD_COUNT } from "@/lib/spreads";
 import { spreadFinalConclusionRules } from "@/lib/prompts/format";
-
-const PHOTO_READING_RULES = `
-Ты — эксперт по чтению карт по фото: классическое таро (78), Марсель, Тота (Кроули), Ленорман (36), оракулы, метафорические и психологические колоды, авторские, тематические и коллекционные колоды, а также скриншоты из мобильных приложений (Golden Thread, Labyrinthos, Facade, Tarot.com и др.).
-
-ЭТАП 1 — АВТООПРЕДЕЛЕНИЕ КОЛОДЫ (обязательно):
-- Определи тип колоды по стилю иллюстраций, символам, рамкам, языку подписей, номерам мастей.
-- Примеры: Rider-Waite / Универсальное, Марсельское, Тота, Shadow Work, Wild Unknown, Deviant Moon, оракул «Goddess», колода Ленорман, смешанная выкладка из разных колод.
-- Если виден логотип или интерфейс приложения — укажи источник.
-- Если колода неизвестная — опиши честно («авторская колода, минималистичный стиль») и читай по названиям/образам на картах.
-- Для Ленорман используй названия Ленорман (Всадник, Клевер, Корабль…), не смешивай с таро.
-- Для оракулов — название с карты или краткое описание образа в кавычках.
-- Укажи уверенность: высокая / средняя / низкая.
-
-ЭТАП 2 — РАСКЛАД И НАЗНАЧЕНИЕ:
-- Определи схему: одна карта, три карты, кельтский крест, подкова, «да/нет», годовой, расклад на отношения/карьеру/решение, расклад из приложения с подписями позиций, свободная выкладка и т.д.
-- Читай подписи позиций на фото буквально (Прошлое, Mind/Body/Spirit, Ситуация/Препятствие/Совет…).
-- Если назначение не подписано — предположи по числу карт и геометрии, отметь это в строке РАСКЛАД.
-
-ЭТАП 3 — РАСПОЗНАВАНИЕ КАРТ:
-- Называй карты в терминологии ЭТОЙ колоды на фото (RWS: «Two of Swords» или «2 Мечей», Тота: «Adjustment», Ленорман: «Всадник», оракул: текст с карты).
-- Перевёрнутые — «(перев.)» после названия.
-- Разбери все различимые карты (1–20+); при незнакомой колоде всё равно перечисли видимые названия/образы.
-- Если часть неразборчива — перечисли только видимые и попроси более чёткое фото в конце расшифровки.
-
-ФОРМАТ ОТВЕТА (строго в начале, три строки):
-КОЛОДА: [тип/название · уверенность: высокая/средняя/низкая]
-РАСКЛАД: [название или описание · N карт · назначение если ясно]
-КАРТЫ: «Карта1» · «Карта2» · …
-
-Затем — персональная расшифровка от лица мастера, 4–8 абзацев на русском:
-- учитывай систему колоды (таро ≠ Ленорман ≠ оракул);
-- связывай значение с позицией в раскладе;
-- свяжи с вопросом клиента и астрологическим профилем (если есть);
-- не используй markdown (* ** #);
-- соблюдай глобальные правила мастера: русский язык, честность без цензуры, пять-пятнадцать предложений;
-- оставайся в образе; на прямой вопрос «ты ИИ?» — честно, в образе мастера;
-- применяй политику честности: не смягчай негатив, не отказывай от «тёмных» тем, если они видны в раскладе или в вопросе.
-
-${spreadFinalConclusionRules(MAX_SPREAD_CARD_COUNT)}`;
 
 /** Rules for the SECOND step: cards already confirmed in the Zovus deck, no recognition needed. */
 const PHOTO_INTERPRETATION_RULES = `
@@ -65,6 +33,7 @@ const PHOTO_INTERPRETATION_RULES = `
 
 Дай персональную расшифровку от лица мастера, 4–8 абзацев на русском живым текстом:
 - по каждой карте: название → значение в её позиции расклада → вывод для клиента;
+- обращай внимание не только на отдельные карты, но и на комбинации соседних и повторяющихся карт (масти, числа, стихии, конфликтующие или усиливающие друг друга образы) — если видна значимая связка, отдельно назови её и что она добавляет к смыслу расклада;
 - свяжи с вопросом клиента и астрологическим профилем (если есть);
 - честно, без смягчения негатива и без отказа от «тёмных» тем;
 - не используй markdown (* ** #) и нумерованные списки;
@@ -94,22 +63,15 @@ function buildPersonaBase(
   return base;
 }
 
-export function buildPhotoReadingPrompt(
+/** Lean persona-only base for the recognition pass — no interpretation rules, PHOTO_RECOGNITION_ONLY carries the actual instructions. */
+export function buildPhotoRecognitionPrompt(
   characterId: string,
   ctx: PhotoReadingContext,
   bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
 ): string {
   const base = buildPersonaBase(characterId, ctx, bloggerOverlay);
-
-  const questionLine = ctx.question?.trim()
-    ? `Вопрос клиента к этому раскладу: «${ctx.question.trim()}».`
-    : "Клиент не задал отдельный вопрос — определи назначение расклада по схеме и дай общую расшифровку.";
-
   return `${base}
 
-${PHOTO_READING_RULES}
-
-${questionLine}
 Сегодня: ${ctx.today ?? todayLabelRu()}.`;
 }
 
@@ -152,6 +114,7 @@ function parseMetadataLine(analysis: string, key: string): string | undefined {
 export interface DetectedCardEntry {
   name: string;
   reversed: boolean;
+  confidence: PhotoRecognitionConfidence;
 }
 
 function splitCardTokens(raw: string): string[] {
@@ -171,12 +134,14 @@ function splitCardTokens(raw: string): string[] {
 
 function parseJsonCardArray(raw: string): DetectedCardEntry[] {
   try {
-    const arr = JSON.parse(raw) as Array<{ name?: string; reversed?: boolean }>;
+    const arr = JSON.parse(raw) as Array<{ name?: string; reversed?: boolean; confidence?: string }>;
     if (!Array.isArray(arr)) return [];
     return arr
+      .slice(0, MAX_PHOTO_CARDS)
       .map((item) => ({
         name: String(item.name ?? "").trim(),
         reversed: Boolean(item.reversed),
+        confidence: normalizeCardConfidence(item.confidence),
       }))
       .filter((c) => c.name.length > 0);
   } catch {
@@ -256,47 +221,21 @@ export function parseDetectedCards(analysis: string): string[] {
   return [];
 }
 
+/** Per-card confidence, index-aligned with parseDetectedCards() when КАРТЫ_JSON was provided; empty otherwise. */
+function parseDetectedCardConfidences(analysis: string): PhotoRecognitionConfidence[] {
+  return parseDetectedCardsJson(analysis).map((entry) => entry.confidence);
+}
+
 export function parsePhotoReadingResponse(analysis: string): PhotoReadingMetadata {
+  const detectedCards = parseDetectedCards(analysis);
+  const rawConfidences = parseDetectedCardConfidences(analysis);
+  const cardConfidences = detectedCards.map((_, i) => rawConfidences[i] ?? "unknown");
   return {
     deckType: parseMetadataLine(analysis, "КОЛОДА"),
     spreadType: parseMetadataLine(analysis, "РАСКЛАД"),
-    detectedCards: parseDetectedCards(analysis),
+    detectedCards,
+    cardConfidences,
   };
-}
-
-/** Убирает служебные строки КОЛОДА/РАСКЛАД/КАРТЫ из текста для показа пользователю. */
-export function stripPhotoReadingHeader(analysis: string): string {
-  return analysis
-    .replace(/^КОЛОДА:.+\n\n?/im, "")
-    .replace(/^РАСКЛАД:.+\n\n?/im, "")
-    .replace(/^КАРТЫ_JSON:.+\n\n?/im, "")
-    .replace(/^КАРТЫ:.+\n\n?/im, "")
-    .trim();
-}
-
-export async function generatePhotoReading(
-  systemPrompt: string,
-  imageBase64: string,
-  userText: string,
-  mimeType?: string
-): Promise<string | null> {
-  const fullPrompt = await wrapSystemPrompt(systemPrompt);
-  const messages: ChatMessage[] = [
-    { role: "system", content: fullPrompt },
-    buildPhotoVisionMessage(
-      userText ||
-        "Изучи фото: определи тип колоды и расклад, назови все видимые карты и дай расшифровку.",
-      imageBase64,
-      mimeType ?? "image/jpeg"
-    ),
-  ];
-
-  return completeChat({
-    messages,
-    maxTokens: 1800,
-    temperature: 0.65,
-    vision: true,
-  });
 }
 
 export function photoReadingFallback(userName?: string): string {
@@ -318,20 +257,20 @@ const PHOTO_RECOGNITION_ONLY = `
 
 КОЛОДА: [тип/название · уверенность: высокая/средняя/низкая]
 РАСКЛАД: [название или описание · N символов · назначение если ясно]
-КАРТЫ_JSON: [{"name":"Название с фото","reversed":false}, ...]
+КАРТЫ_JSON: [{"name":"Название с фото","reversed":false,"confidence":"высокая"}, ...]
 КАРТЫ: «Символ1» · «Символ2 (перев.)» · …
 
 Правила КАРТЫ_JSON и КАРТЫ:
-- Перечисли ВСЕ различимые символы на фото — не сокращай до 3, если видно больше.
-- Порядок: слева направо / сверху вниз, как на фото.
+- Перечисли ВСЕ различимые символы на фото слева направо / сверху вниз, как они лежат на фото.
+- Максимум 12 символов — если на фото больше, перечисли 12 самых различимых, остальные клиент добавит вручную.
 - Если символов 1–2 — перечисли только видимые; клиент может добавить вручную.
-- Перечисли символы слева направо / сверху вниз.
 - Названия — в терминологии ЭТОЙ колоды на фото (English RWS: "Two of Swords", Ленорман: "Всадник", оракул: текст с карты).
 - reversed: true если карта перевёрнута (перев.), иначе false.
+- confidence — твоя уверенность именно в ЭТОЙ карте (не в колоде целиком): "высокая" если название читается чётко, "средняя" при частичном перекрытии/блике, "низкая" при угадывании по обрывку образа.
 - Для Rider-Waite / универсального таро можно дублировать русское «2 Мечей».
 - НЕ отказывайся от распознавания из-за незнакомой колоды — опиши каждую видимую карту.
 - КАРТЫ: не удалось распознать — ТОЛЬКО если на фото точно нет карт/рун/символов (портрет, пейзаж, пустой стол).
-- Если видна хотя бы 1 карта — перечисли её; при сомнении укажи лучшее предположение и низкую уверенность в КОЛОДА.`;
+- Если видна хотя бы 1 карта — перечисли её; при сомнении укажи лучшее предположение и низкую уверенность и в КОЛОДА, и в confidence этой карты.`;
 
 export async function generatePhotoRecognition(
   systemPrompt: string,
@@ -361,49 +300,12 @@ export async function generatePhotoRecognition(
   });
 }
 
-export async function generatePhotoInterpretation(
-  systemPrompt: string,
-  spreadSummary: string,
-  question?: string
-): Promise<string | null> {
-  const fullPrompt = await wrapSystemPrompt(systemPrompt);
-  const questionLine = question?.trim()
-    ? `Вопрос: «${question.trim()}»`
-    : "";
-
-  const userBlock = [
-    spreadSummary,
-    questionLine,
-    "Дай персональную расшифровку.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
-  const messages: ChatMessage[] = [
-    { role: "system", content: fullPrompt },
-    { role: "user", content: userBlock },
-  ];
-
-  const raw = await completeChat({
-    messages,
-    maxTokens: 1800,
-    temperature: 0.65,
-    vision: false,
-  });
-
-  if (!raw || isRejectedLlmOutput(raw)) {
-    return null;
-  }
-
-  return raw;
-}
-
-export async function resolvePhotoReadingPrompt(
+export async function resolvePhotoRecognitionPrompt(
   characterId: string,
   ctx: PhotoReadingContext,
   referrerSlug?: string | null
 ): Promise<string> {
-  return resolvePromptWithBuilder(buildPhotoReadingPrompt, characterId, ctx, referrerSlug);
+  return resolvePromptWithBuilder(buildPhotoRecognitionPrompt, characterId, ctx, referrerSlug);
 }
 
 export async function resolvePhotoInterpretationPrompt(

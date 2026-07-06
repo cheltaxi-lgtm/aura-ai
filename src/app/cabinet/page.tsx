@@ -258,6 +258,39 @@ export default function CabinetPage() {
     }
   };
 
+  const handleSavePhotoSpreadNote = async (historyId: string, notes: string): Promise<boolean> => {
+    try {
+      const res = await fetch(
+        `/api/cabinet/photo-spreads/${encodeURIComponent(historyId)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes }),
+        }
+      );
+      if (!res.ok) throw new Error("Не удалось сохранить заметку");
+      const savedNotes = notes.trim().slice(0, 500);
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              photoSpreads: prev.photoSpreads.map((s) =>
+                s.id === historyId
+                  ? { ...s, contextData: { ...s.contextData, notes: savedNotes } }
+                  : s
+              ),
+            }
+          : prev
+      );
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сохранения заметки");
+      return false;
+    }
+  };
+
   const handleDeleteDiaryEntry = async (entryId: string) => {
     const confirmed = window.confirm(
       "Удалить эту запись дневника безвозвратно?"
@@ -435,6 +468,7 @@ export default function CabinetPage() {
               spreads={photoSpreads}
               onDelete={(id) => void handleDeletePhotoSpread(id)}
               deletingId={deletingPhotoSpreadId}
+              onSaveNote={handleSavePhotoSpreadNote}
             />
             <CabinetDailySpreads readings={dailyReadings} />
           </div>

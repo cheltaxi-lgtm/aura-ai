@@ -2739,6 +2739,10 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   @apply hover:border-red-400/35 hover:bg-red-500/10 hover:text-red-200;
 }
 
+.photo-spread-preview__tool--active {
+  @apply border-aura-gold/60 bg-aura-gold/15 text-aura-champagne;
+}
+
 .photo-spread-preview__tool--labeled span {
   @apply sr-only;
 }

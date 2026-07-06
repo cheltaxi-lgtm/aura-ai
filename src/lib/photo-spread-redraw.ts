@@ -12,6 +12,7 @@ import {
   MAX_PHOTO_CARD_NAME_LENGTH,
   MAX_PHOTO_CARDS,
   MAX_PHOTO_POSITION_LENGTH,
+  type PhotoRecognitionConfidence,
 } from "@/lib/photo-reading-constants";
 
 export { parseCardOrientation, formatReversedCardName } from "@/lib/card-orientation";
@@ -26,6 +27,8 @@ export interface RedrawSpreadCard {
   shortMeaning: string;
   placeholder: boolean;
   order: number;
+  /** Model's confidence in THIS specific card; "high" once the user manually confirms/edits it. */
+  confidence?: PhotoRecognitionConfidence;
 }
 
 export interface RedrawSpread {
@@ -145,6 +148,7 @@ export function normalizeRedrawSpreadForMaster(
   const cardCount = count > 0 ? count : spread.cards.length;
   const positions = inferSpreadPositions(cardCount, system, spread.spreadType);
   const detected = spread.cards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name));
+  const confidences = spread.cards.map((c) => c.confidence ?? "unknown");
 
   const remapped = mapDetectedToRedrawSpread({
     detectedCards: detected,
@@ -152,6 +156,7 @@ export function normalizeRedrawSpreadForMaster(
     deckType: spread.deckType,
     spreadType: spread.spreadType ?? `${cardCount} ${cardCount === 1 ? "символ" : cardCount < 5 ? "символа" : "символов"}`,
     positions: positions.slice(0, detected.length),
+    confidences,
   });
 
   return {
@@ -217,6 +222,8 @@ export function mapDetectedToRedrawSpread(params: {
   deckType?: string;
   spreadType?: string;
   positions?: string[];
+  /** Per-card confidence, index-aligned with detectedCards. Missing entries default to "unknown". */
+  confidences?: PhotoRecognitionConfidence[];
 }): RedrawSpread {
   const { detectedCards, system, deckType, spreadType } = params;
   const positions =
@@ -245,6 +252,7 @@ export function mapDetectedToRedrawSpread(params: {
       shortMeaning: desc.shortMeaning || symbol?.meaning || "",
       placeholder,
       order: index,
+      confidence: params.confidences?.[index] ?? "unknown",
     };
   });
 

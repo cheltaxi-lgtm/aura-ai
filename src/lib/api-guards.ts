@@ -43,11 +43,14 @@ export const PAID_ROUTE_LIMITS = {
   reading: { max: 10, windowMs: 60_000 },
   numerolog_tool: { max: 12, windowMs: 60_000 },
   photo_reading: { max: 5, windowMs: 60_000 },
+  /** Vision recognition is free (no rune charge), so it needs its own tighter cap to stop it being used as a free OpenRouter vision proxy. */
+  photo_recognize: { max: 10, windowMs: 60_000 },
   intention_spread: { max: 10, windowMs: 60_000 },
   image_generate: { max: IMAGE_GEN_LIMIT, windowMs: IMAGE_GEN_WINDOW_MS },
   daily_bonus: { max: 1, windowMs: 86_400_000 },
   rune_purchase: { max: 10, windowMs: 3_600_000 },
   spread_metrics: { max: 120, windowMs: 60_000 },
+  cabinet_notes: { max: 20, windowMs: 60_000 },
 } as const;
 
 export type PaidRateLimitAction = keyof typeof PAID_ROUTE_LIMITS;

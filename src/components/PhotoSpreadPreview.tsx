@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Pencil, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowLeftRight, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { RedrawSpread, RedrawSpreadCard } from "@/lib/photo-spread-redraw";
 import { listDeckCards, type DeckCardInput } from "@/lib/deck-card-utils";
@@ -70,6 +70,7 @@ export default function PhotoSpreadPreview({
 }: PhotoSpreadPreviewProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [addingCard, setAddingCard] = useState(false);
+  const [swapIndex, setSwapIndex] = useState<number | null>(null);
   const deckOptions = useMemo(() => listDeckCards(spread.system), [spread.system]);
   const positions = useMemo(
     () => inferSpreadPositions(spread.cards.length, spread.system, spread.spreadType),
@@ -80,13 +81,14 @@ export default function PhotoSpreadPreview({
     onChange({ ...spread, cards });
   };
 
-  const remapFromDetected = (detected: string[]) => {
+  const remapFromDetected = (detected: string[], confidences: PhotoRecognitionConfidence[]) => {
     return mapDetectedToRedrawSpread({
       detectedCards: detected,
       system: spread.system,
       deckType: spread.deckType,
       spreadType: spread.spreadType ?? `${detected.length} символов`,
       positions: inferSpreadPositions(detected.length, spread.system, spread.spreadType),
+      confidences,
     }).cards.map((c, i) => ({
       ...c,
       order: i,
@@ -115,12 +117,35 @@ export default function PhotoSpreadPreview({
     );
   };
 
+  /** Two-tap reorder for long spreads: pick a card, then pick its new slot — faster than moving step by step. */
+  const handleSwapTap = (index: number) => {
+    if (swapIndex === null) {
+      setSwapIndex(index);
+      return;
+    }
+    if (swapIndex === index) {
+      setSwapIndex(null);
+      return;
+    }
+    const cards = [...spread.cards];
+    [cards[swapIndex], cards[index]] = [cards[index], cards[swapIndex]];
+    updateCards(
+      cards.map((c, i) => ({
+        ...c,
+        order: i,
+        position: inferSpreadPositions(cards.length, spread.system, spread.spreadType)[i] ?? c.position,
+      }))
+    );
+    setSwapIndex(null);
+  };
+
   const replaceCard = (index: number, name: string) => {
     const detected = spread.cards.map((c, i) => {
       if (i !== index) return c.reversed ? `${c.name} (перев.)` : c.name;
       return spread.cards[index].reversed ? `${name} (перев.)` : name;
     });
-    updateCards(remapFromDetected(detected));
+    const confidences = spread.cards.map((c, i) => (i === index ? "high" : c.confidence ?? "unknown"));
+    updateCards(remapFromDetected(detected, confidences));
     setEditingIndex(null);
   };
 
@@ -130,7 +155,8 @@ export default function PhotoSpreadPreview({
       ...spread.cards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name)),
       name,
     ];
-    updateCards(remapFromDetected(detected));
+    const confidences = [...spread.cards.map((c) => c.confidence ?? "unknown"), "high" as const];
+    updateCards(remapFromDetected(detected, confidences));
     setAddingCard(false);
   };
 
@@ -139,8 +165,12 @@ export default function PhotoSpreadPreview({
     const detected = spread.cards
       .filter((_, i) => i !== index)
       .map((c) => (c.reversed ? `${c.name} (перев.)` : c.name));
-    updateCards(remapFromDetected(detected));
+    const confidences = spread.cards
+      .filter((_, i) => i !== index)
+      .map((c) => c.confidence ?? "unknown");
+    updateCards(remapFromDetected(detected, confidences));
     setEditingIndex(null);
+    setSwapIndex(null);
   };
 
   const cardCount = spread.cards.length;
@@ -179,6 +209,19 @@ export default function PhotoSpreadPreview({
           </p>
         )}
 
+        {swapIndex !== null && (
+          <p className="mt-3 text-center text-xs text-aura-gold/80">
+            Выбрана «{spread.cards[swapIndex]?.name}» — нажмите на другую карту, чтобы поменять местами.{" "}
+            <button
+              type="button"
+              onClick={() => setSwapIndex(null)}
+              className="underline underline-offset-2 hover:text-aura-champagne"
+            >
+              Отмена
+            </button>
+          </p>
+        )}
+
         <div className={`photo-spread-preview__grid mt-4 ${gridClass(cardCount)}`}>
           {spread.cards.map((card, index) => (
             <div key={`${card.order}-${card.name}-${index}`} className="photo-spread-preview__item">
@@ -207,6 +250,15 @@ export default function PhotoSpreadPreview({
                   Перевёрнутая
                 </p>
               )}
+              {!card.placeholder && (card.confidence === "low" || card.confidence === "medium") && (
+                <p
+                  className={`text-center text-[10px] uppercase tracking-wider ${
+                    card.confidence === "low" ? "text-orange-300/80" : "text-amber-200/70"
+                  }`}
+                >
+                  {card.confidence === "low" ? "Низкая уверенность" : "Проверьте карту"}
+                </p>
+              )}
 
               <div className="photo-spread-preview__tools">
                 <button
@@ -227,6 +279,19 @@ export default function PhotoSpreadPreview({
                   <RotateCcw className="h-3.5 w-3.5" />
                   <span>Перевернуть</span>
                 </button>
+                {spread.cards.length > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => handleSwapTap(index)}
+                    className={`photo-spread-preview__tool photo-spread-preview__tool--labeled${
+                      swapIndex === index ? " photo-spread-preview__tool--active" : ""
+                    }`}
+                    title="Переместить"
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                    <span>{swapIndex === index ? "Куда?" : "Переместить"}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => moveCard(index, -1)}

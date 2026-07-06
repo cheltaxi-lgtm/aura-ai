@@ -32,6 +32,7 @@ import {
 import {
   confidenceLabel,
   parseRecognitionConfidence,
+  MAX_PHOTO_CARDS as MAX_PHOTO_CARDS_LIMIT,
   type PhotoRecognitionConfidence,
 } from "@/lib/photo-reading-constants";
 import { canAffordRunes } from "@/lib/rune-afford-client";
@@ -135,6 +136,23 @@ interface PhotoReadingFlowProps {
   isUnlimited?: boolean;
   onOpenPaywall?: () => void;
   initialMode?: PhotoReadingEntryMode;
+}
+
+/** Appends newly recognized cards to an already-confirmed spread (for long spreads split across two photos), capped at MAX_PHOTO_CARDS_LIMIT. */
+function mergeSpreadCards(
+  base: RedrawSpread,
+  addition: RedrawSpread,
+  masterId: string
+): { spread: RedrawSpread; overflow: number } {
+  const combinedCards = [...base.cards, ...addition.cards];
+  const overflow = Math.max(0, combinedCards.length - MAX_PHOTO_CARDS_LIMIT);
+  const merged: RedrawSpread = {
+    system: base.system,
+    deckType: base.deckType ?? addition.deckType,
+    spreadType: undefined,
+    cards: combinedCards.slice(0, MAX_PHOTO_CARDS_LIMIT),
+  };
+  return { spread: normalizeRedrawSpreadForMaster(merged, masterId), overflow };
 }
 
 function logPhotoClientError(payload: Record<string, unknown>) {
@@ -313,6 +331,9 @@ export default function PhotoReadingFlow({
   const sourcePhotoUrlRef = useRef<string | null>(null);
   const recognizeInFlightRef = useRef(false);
   const interpretIdempotencyKeyRef = useRef<string | null>(null);
+  /** Set when the client asks to add cards from a second photo to an already-confirmed spread (long spreads that don't fit one frame). */
+  const mergeBaseSpreadRef = useRef<RedrawSpread | null>(null);
+  const [mergeBaseCount, setMergeBaseCount] = useState<number | null>(null);
   const recognizeCacheRef = useRef<
     Map<
       string,
@@ -655,6 +676,8 @@ export default function PhotoReadingFlow({
   };
 
   const clearImage = () => {
+    mergeBaseSpreadRef.current = null;
+    setMergeBaseCount(null);
     if (previewObjectUrlRef.current) {
       URL.revokeObjectURL(previewObjectUrlRef.current);
       previewObjectUrlRef.current = null;
@@ -672,6 +695,17 @@ export default function PhotoReadingFlow({
     setShowSourceCompare(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
+  };
+
+  /** From the confirm step: keep already-confirmed cards and go take/upload a second photo to add more. */
+  const startAddPhotoMerge = () => {
+    if (!redrawSpread) return;
+    mergeBaseSpreadRef.current = redrawSpread;
+    setMergeBaseCount(redrawSpread.cards.length);
+    setResult(null);
+    setError("");
+    setStep("upload");
+    trackPhotoReadingPhase("merge_photo_start");
   };
 
   const recognize = async () => {
@@ -825,6 +859,21 @@ export default function PhotoReadingFlow({
       }
 
       if (response.status === 422) {
+        const mergeBase = mergeBaseSpreadRef.current;
+        mergeBaseSpreadRef.current = null;
+        setMergeBaseCount(null);
+        if (mergeBase) {
+          preserveSourcePhoto(previewUrl);
+          openConfirmStep(mergeBase, {
+            confidence: recognitionConfidence,
+            manual: manualMode,
+            recognitionFailed: recognitionFailed,
+            notice: "Не удалось распознать второе фото — можете добавить карты вручную к уже подтверждённому раскладу.",
+          });
+          trackPhotoReadingPhase("recognize_partial");
+          return;
+        }
+
         const partialCards = filterRecognizedCardLabels(
           Array.isArray(data.detectedCards) ? (data.detectedCards as string[]) : []
         );
@@ -869,23 +918,48 @@ export default function PhotoReadingFlow({
       }
 
       const rawSpread = data.redrawSpread as RedrawSpread;
-      const { spread, manual } = sanitizeRecognizedRedrawSpread(rawSpread, masterId);
+      const { spread: recognizedSpread, manual } = sanitizeRecognizedRedrawSpread(rawSpread, masterId);
       const confidence = parseRecognitionConfidence(
-        typeof data.deckType === "string" ? data.deckType : spread?.deckType
+        typeof data.deckType === "string" ? data.deckType : recognizedSpread?.deckType
       );
+      const overflowCards = Array.isArray(data.overflowCards) ? (data.overflowCards as string[]) : [];
+      const truncatedNotice = data.truncated
+        ? `Мы распознали ${data.totalDetected} карт, но расклад поддерживает не больше ${MAX_PHOTO_CARDS_LIMIT}. Показаны первые ${MAX_PHOTO_CARDS_LIMIT}${
+            overflowCards.length ? ` — «${overflowCards.join("», «")}» можно добавить вручную` : ""
+          }.`
+        : undefined;
+
+      const mergeBase = mergeBaseSpreadRef.current;
+      mergeBaseSpreadRef.current = null;
+      setMergeBaseCount(null);
+      let spread = recognizedSpread;
+      let mergeNotice: string | undefined;
+      if (mergeBase && !manual) {
+        const { spread: merged, overflow } = mergeSpreadCards(mergeBase, recognizedSpread, masterId);
+        spread = merged;
+        mergeNotice = overflow > 0
+          ? `Добавили карты со второго фото. Расклад заполнен до ${MAX_PHOTO_CARDS_LIMIT} — ${overflow} лишних карт со второго фото не поместились, добавьте их вручную при необходимости.`
+          : "Карты со второго фото добавлены к раскладу.";
+      } else if (mergeBase && manual) {
+        mergeNotice = "Не удалось распознать второе фото — можете добавить карты вручную к уже подтверждённому раскладу.";
+        spread = mergeBase;
+      }
+
       preserveSourcePhoto(previewUrl);
       openConfirmStep(spread, {
-        confidence: Boolean(data.partial) && confidence === "high" ? "medium" : confidence,
-        manual,
-        recognitionFailed: manual,
+        confidence: mergeBase ? recognitionConfidence : Boolean(data.partial) && confidence === "high" ? "medium" : confidence,
+        manual: mergeBase ? manualMode : manual,
+        recognitionFailed: mergeBase ? recognitionFailed : manual,
         notice:
-          manual
+          mergeNotice ??
+          truncatedNotice ??
+          (manual
             ? (typeof data.message === "string" && data.message) ||
               "На фото не удалось распознать расклад — соберите его вручную."
             : typeof data.message === "string" && data.partial
               ? data.message
-              : undefined,
-        recognizeCacheKey: cacheKey,
+              : undefined),
+        recognizeCacheKey: mergeBase ? undefined : cacheKey,
       });
       trackPhotoReadingPhase(manual ? "recognize_partial" : "recognize_ok");
       setPreviewUrl(null);
@@ -1253,6 +1327,13 @@ export default function PhotoReadingFlow({
               {/* ── STEP: UPLOAD ── */}
               {step === "upload" && (
                 <>
+                  {mergeBaseCount !== null && (
+                    <div className="photo-flow-panel photo-flow-panel--status mb-3">
+                      <span className="photo-flow-badge photo-flow-badge--medium">
+                        Добавляем ко {mergeBaseCount} уже подтверждённым картам
+                      </span>
+                    </div>
+                  )}
                   {/* Guide */}
                   <PhotoReadingGuide compact={!!previewUrl} />
 
@@ -1284,27 +1365,39 @@ export default function PhotoReadingFlow({
                       </button>
                     </div>
                   ) : (
-                    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={previewUrl}
-                        alt="Ваш расклад"
-                        className="max-h-36 w-full object-contain sm:max-h-52"
-                      />
-                      {preparingImage ? (
-                        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/45 text-sm text-gray-200">
-                          <Loader2 className="h-4 w-4 animate-spin text-aura-gold" />
-                          Подготавливаем фото…
+                    <div>
+                      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewUrl}
+                          alt="Ваш расклад"
+                          className="max-h-36 w-full object-contain sm:max-h-52"
+                        />
+                        {/* Framing guide: helps the client self-check composition before sending — corners of the recommended crop area. */}
+                        <div className="pointer-events-none absolute inset-3 sm:inset-4" aria-hidden>
+                          <span className="absolute left-0 top-0 h-5 w-5 rounded-tl-sm border-l-2 border-t-2 border-aura-gold/60" />
+                          <span className="absolute right-0 top-0 h-5 w-5 rounded-tr-sm border-r-2 border-t-2 border-aura-gold/60" />
+                          <span className="absolute bottom-0 left-0 h-5 w-5 rounded-bl-sm border-b-2 border-l-2 border-aura-gold/60" />
+                          <span className="absolute bottom-0 right-0 h-5 w-5 rounded-br-sm border-b-2 border-r-2 border-aura-gold/60" />
                         </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={clearImage}
-                        className="absolute right-2.5 top-2.5 rounded-full bg-black/70 p-1.5 text-gray-300 hover:text-white"
-                        aria-label="Удалить фото"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                        {preparingImage ? (
+                          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/45 text-sm text-gray-200">
+                            <Loader2 className="h-4 w-4 animate-spin text-aura-gold" />
+                            Подготавливаем фото…
+                          </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={clearImage}
+                          className="absolute right-2.5 top-2.5 rounded-full bg-black/70 p-1.5 text-gray-300 hover:text-white"
+                          aria-label="Удалить фото"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <p className="mt-1.5 text-center text-[11px] text-white/40">
+                        Все карты видны в рамке? Без бликов и теней?
+                      </p>
                     </div>
                   )}
 
@@ -1420,6 +1513,18 @@ export default function PhotoReadingFlow({
                     recognitionFailed={recognitionFailed}
                     hideStatusLine
                   />
+
+                  {redrawSpread.cards.length < MAX_PHOTO_CARDS_LIMIT && (
+                    <div className="mt-3 text-center">
+                      <button
+                        type="button"
+                        onClick={startAddPhotoMerge}
+                        className="photo-flow-link"
+                      >
+                        + Добавить карты с другого фото
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
 

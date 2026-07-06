@@ -4,23 +4,23 @@ import { requireUserAuth } from "@/lib/require-auth";
 import {
   generatePhotoRecognition,
   parsePhotoReadingResponse,
-  resolvePhotoReadingPrompt,
+  resolvePhotoRecognitionPrompt,
 } from "@/lib/photo-reading-prompts";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getUserById, serializeUserProfile } from "@/lib/users";
-import { enforceChatRateLimit, MAX_IMAGE_BYTES, validateImageMime, validateImageBase64Payload } from "@/lib/api-guards";
+import { enforcePaidRouteRateLimit, MAX_IMAGE_BYTES, validateImageMime, validateImageBase64Payload } from "@/lib/api-guards";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
 import {
-  filterRecognizedCardLabels,
   isRecognizedSpread,
+  isUnrecognizedCardLabel,
   mapDetectedToRedrawSpread,
   normalizeRedrawSpreadForMaster,
   redrawSpreadToTarotCards,
 } from "@/lib/photo-spread-redraw";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import {
+  MAX_PHOTO_CARDS,
   parseRecognitionConfidence,
-  type PhotoRecognitionConfidence,
 } from "@/lib/photo-reading-constants";
 
 export const maxDuration = 120;
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
   }
 
-  const rateLimited = await enforceChatRateLimit(auth.sub);
+  const rateLimited = await enforcePaidRouteRateLimit(auth.sub, "photo_recognize");
   if (rateLimited) return rateLimited;
 
   let characterId = "veronika";
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const systemPrompt = await resolvePhotoReadingPrompt(characterId, ctx);
+    const systemPrompt = await resolvePhotoRecognitionPrompt(characterId, ctx);
     const llmText = await generatePhotoRecognition(
       systemPrompt,
       imageBase64,
@@ -183,19 +183,31 @@ export async function POST(request: NextRequest) {
     }
 
     const analysis = llmText;
-    const { deckType, spreadType, detectedCards } = parsePhotoReadingResponse(analysis);
+    const parsed = parsePhotoReadingResponse(analysis);
+    const { deckType, spreadType } = parsed;
+    /** The vision prompt caps itself at MAX_PHOTO_CARDS, but stay defensive in case a model overshoots — clamp upfront so what the user sees always matches what /stream will accept. */
+    const totalDetected = parsed.detectedCards.length;
+    const truncated = totalDetected > MAX_PHOTO_CARDS;
+    const detectedCards = truncated ? parsed.detectedCards.slice(0, MAX_PHOTO_CARDS) : parsed.detectedCards;
+    const cardConfidences = truncated
+      ? parsed.cardConfidences.slice(0, MAX_PHOTO_CARDS)
+      : parsed.cardConfidences;
+    const overflowCards = truncated ? parsed.detectedCards.slice(MAX_PHOTO_CARDS) : [];
     const spreadCheck = isRecognizedSpread({ detectedCards, deckType, spreadType });
 
     if (!spreadCheck.ok) {
-      const partialCards = filterRecognizedCardLabels(detectedCards);
-      if (partialCards.length > 0) {
+      const partialPairs = detectedCards
+        .map((name, i) => ({ name, confidence: cardConfidences[i] ?? "unknown" }))
+        .filter((p) => !isUnrecognizedCardLabel(p.name));
+      if (partialPairs.length > 0) {
         const system = resolveMasterDeckSystem(characterId);
         const redrawSpread = normalizeRedrawSpreadForMaster(
           mapDetectedToRedrawSpread({
-            detectedCards: partialCards,
+            detectedCards: partialPairs.map((p) => p.name),
             system,
             deckType,
             spreadType,
+            confidences: partialPairs.map((p) => p.confidence),
           }),
           characterId
         );
@@ -205,10 +217,13 @@ export async function POST(request: NextRequest) {
           tarotCards: redrawSpreadToTarotCards(redrawSpread),
           deckType,
           spreadType,
-          detectedCards: partialCards,
+          detectedCards: partialPairs.map((p) => p.name),
           deckSystem: system,
           confidence,
           partial: true,
+          truncated,
+          totalDetected,
+          overflowCards,
           message: spreadCheck.reason,
         });
       }
@@ -232,6 +247,7 @@ export async function POST(request: NextRequest) {
         system,
         deckType,
         spreadType,
+        confidences: cardConfidences,
       }),
       characterId
     );
@@ -242,6 +258,7 @@ export async function POST(request: NextRequest) {
       ms: Date.now() - startedAt,
       cards: detectedCards.length,
       confidence,
+      truncated,
     });
 
     return NextResponse.json({
@@ -253,6 +270,9 @@ export async function POST(request: NextRequest) {
       deckSystem: system,
       confidence,
       partial: false,
+      truncated,
+      totalDetected,
+      overflowCards,
     });
   } catch (error) {
     console.error("[VISION_UPLOAD_ERROR]", {

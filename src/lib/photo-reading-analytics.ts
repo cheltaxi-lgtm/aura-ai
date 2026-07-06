@@ -6,6 +6,7 @@ export type PhotoReadingAnalyticsPhase =
   | "open"
   | "upload"
   | "recognize_start"
+  | "merge_photo_start"
   | "recognize_ok"
   | "recognize_partial"
   | "recognize_fail"

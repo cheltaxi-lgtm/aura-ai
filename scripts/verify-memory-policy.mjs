@@ -19,7 +19,7 @@ function assert(name, cond) {
   }
 }
 
-const photoRoute = read("src/app/api/photo-reading/route.ts");
+const photoRoute = read("src/app/api/photo-reading/stream/route.ts");
 assert(
   "photo-reading uses composeMemoryQueryText",
   photoRoute.includes("composeMemoryQueryText") &&

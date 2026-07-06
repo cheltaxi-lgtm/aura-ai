@@ -21,7 +21,10 @@ interface Props {
   spreads: CabinetPhotoSpreadRow[];
   onDelete?: (id: string) => void;
   deletingId?: string | null;
+  onSaveNote?: (id: string, notes: string) => Promise<boolean>;
 }
+
+const MAX_NOTE_LENGTH = 500;
 
 function toGalleryEntries(spreads: CabinetPhotoSpreadRow[]): MySpreadEntry[] {
   return spreads.map((s) => ({
@@ -36,15 +39,29 @@ function toGalleryEntries(spreads: CabinetPhotoSpreadRow[]): MySpreadEntry[] {
   }));
 }
 
-export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = null }: Props) {
+export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = null, onSaveNote }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = spreads.find((s) => s.id === activeId) ?? null;
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteState, setNoteState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
     if (activeId && !spreads.some((s) => s.id === activeId)) {
       setActiveId(null);
     }
   }, [activeId, spreads]);
+
+  useEffect(() => {
+    setNoteDraft(active?.contextData.notes ?? "");
+    setNoteState("idle");
+  }, [active?.id, active?.contextData.notes]);
+
+  const handleSaveNote = async () => {
+    if (!active || !onSaveNote) return;
+    setNoteState("saving");
+    const ok = await onSaveNote(active.id, noteDraft);
+    setNoteState(ok ? "saved" : "error");
+  };
 
   const masterLabel = (id: string) => masterDisplay(id).name;
 
@@ -158,6 +175,49 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                   role="assistant"
                 />
               </div>
+
+              {onSaveNote && (
+                <div className="mt-4">
+                  <label htmlFor="photo-spread-note" className="text-xs font-medium text-gray-400">
+                    Личная заметка (видна только вам)
+                  </label>
+                  <textarea
+                    id="photo-spread-note"
+                    value={noteDraft}
+                    onChange={(e) => {
+                      setNoteDraft(e.target.value.slice(0, MAX_NOTE_LENGTH));
+                      setNoteState("idle");
+                    }}
+                    placeholder="Как сложилось предсказание? Что заметили позже?"
+                    rows={2}
+                    maxLength={MAX_NOTE_LENGTH}
+                    className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/85 placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none"
+                  />
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <span className="text-[11px] text-white/30">
+                      {noteDraft.length}/{MAX_NOTE_LENGTH}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {noteState === "saved" && (
+                        <span className="text-[11px] text-emerald-400/80">Сохранено</span>
+                      )}
+                      {noteState === "error" && (
+                        <span className="text-[11px] text-red-400/80">Ошибка сохранения</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveNote()}
+                        disabled={
+                          noteState === "saving" || noteDraft === (active.contextData.notes ?? "")
+                        }
+                        className="cabinet-btn cabinet-btn--secondary px-3 py-1.5 text-xs disabled:opacity-40"
+                      >
+                        {noteState === "saving" ? "Сохранение…" : "Сохранить заметку"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                 <Link

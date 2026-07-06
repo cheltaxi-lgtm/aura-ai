@@ -53,20 +53,26 @@ export default function PhotoReadingGuide({ compact = false }: { compact?: boole
 
       {open ? (
         <div id="photo-reading-guide-body" className="mt-3 border-t border-white/8 pt-3">
-          <div className="flex justify-center gap-3 sm:gap-4" aria-hidden>
-            {PHOTO_SPREAD_LAYOUT_LABELS.map((label, index) => (
-              <div key={label} className="flex flex-col items-center gap-1.5">
-                <div className="flex h-[4.5rem] w-11 items-center justify-center rounded-lg border border-white/12 bg-black/25 text-[10px] font-bold text-aura-gold/75 sm:h-20 sm:w-12">
-                  {index + 1}
+          <div className="relative mx-auto w-fit px-4 py-2" aria-hidden>
+            <span className="absolute left-0 top-0 h-4 w-4 rounded-tl-sm border-l-2 border-t-2 border-aura-gold/50" />
+            <span className="absolute right-0 top-0 h-4 w-4 rounded-tr-sm border-r-2 border-t-2 border-aura-gold/50" />
+            <span className="absolute bottom-0 left-0 h-4 w-4 rounded-bl-sm border-b-2 border-l-2 border-aura-gold/50" />
+            <span className="absolute bottom-0 right-0 h-4 w-4 rounded-br-sm border-b-2 border-r-2 border-aura-gold/50" />
+            <div className="flex justify-center gap-3 sm:gap-4">
+              {PHOTO_SPREAD_LAYOUT_LABELS.map((label, index) => (
+                <div key={label} className="flex flex-col items-center gap-1.5">
+                  <div className="flex h-[4.5rem] w-11 items-center justify-center rounded-lg border border-white/12 bg-black/25 text-[10px] font-bold text-aura-gold/75 sm:h-20 sm:w-12">
+                    {index + 1}
+                  </div>
+                  <span className="max-w-[4.5rem] text-center text-[10px] leading-tight text-white/38">
+                    {label}
+                  </span>
                 </div>
-                <span className="max-w-[4.5rem] text-center text-[10px] leading-tight text-white/38">
-                  {label}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
           <p className="mt-2 text-center text-[10px] text-white/35">
-            Слева → направо · перевёрнутые оставляй как легли
+            Камера строго сверху · рамка = кадр фото · перевёрнутые оставляй как легли
           </p>
 
           <ol className="mt-4 space-y-2.5 border-t border-white/8 pt-4">
