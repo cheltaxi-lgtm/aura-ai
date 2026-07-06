@@ -49,6 +49,12 @@ export default function RaskladyCatalogPage() {
         <Link href="/cards" className="text-sm text-aura-gold hover:underline">
           Значения карт
         </Link>
+        <Link href="/rasklad" className="text-sm text-aura-gold hover:underline">
+          Схемы раскладов
+        </Link>
+        <Link href="/prognoz" className="text-sm text-aura-gold hover:underline">
+          Прогнозы
+        </Link>
       </section>
     </SeoPageShell>
   );

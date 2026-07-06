@@ -15,6 +15,12 @@ export const metadata: Metadata = {
       "Персональные расклады Таро с ИИ-мастерами: чувства, верность, карьера. Расшифровка в чате, уточняющие вопросы, история в кабинете.",
     path: "/",
   }),
+  // `force-dynamic` on this route means the root layout's `title.template`
+  // isn't reliably applied to a plain string title, so pin the fully
+  // resolved string here to guarantee the brand suffix renders exactly once.
+  title: {
+    absolute: "Расклад Таро онлайн — чувства, отношения, будущее | Zovus",
+  },
   alternates: {
     canonical: BRAND_URL,
   },

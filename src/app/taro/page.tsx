@@ -76,6 +76,10 @@ export default function TaroPillarPage() {
           <Link href="/statyi/kak-gadat-na-taro" className="text-aura-gold hover:underline">
             руководство для начинающих
           </Link>
+          . Все схемы —{" "}
+          <Link href="/rasklad" className="text-aura-gold hover:underline">
+            в каталоге раскладов
+          </Link>
           .
         </p>
       </SeoSection>
