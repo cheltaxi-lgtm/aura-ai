@@ -83,6 +83,7 @@ async function persistReadingToSession(input: {
   intention?: string;
   spreadType?: "daily" | "new";
   spreadId?: string;
+  customQuestion?: string;
 }): Promise<string | null> {
   return ensureSpreadReadingInChatMessages({
     sessionId: input.sessionId,
@@ -93,6 +94,7 @@ async function persistReadingToSession(input: {
     intention: input.intention,
     spreadType: input.spreadType,
     spreadId: input.spreadId,
+    customQuestion: input.customQuestion,
   });
 }
 
@@ -106,6 +108,7 @@ async function respondWithExistingSpreadReading(input: {
   intention?: string;
   spreadType?: "daily" | "new";
   spreadId?: string;
+  customQuestion?: string;
   userName: string;
   birthDate: string;
   isPaid: boolean;
@@ -142,6 +145,7 @@ async function respondWithExistingSpreadReading(input: {
       intention: input.intention,
       spreadType: input.spreadType,
       spreadId: input.spreadId,
+      customQuestion: input.customQuestion,
     });
   } catch (err) {
     console.warn("Reading chat save failed:", err);
@@ -426,6 +430,7 @@ export async function POST(request: NextRequest) {
           intention: intention || undefined,
           spreadType: isDailySpread ? "daily" : undefined,
           spreadId: storedSpreadId,
+          customQuestion: customQuestion || undefined,
           userName,
           birthDate,
           isPaid,
@@ -558,6 +563,7 @@ export async function POST(request: NextRequest) {
               sessionId,
               profileUserId: authed.profileUserId,
               characterId,
+              customQuestion: customQuestion || undefined,
               reading,
               tarotCards,
               intention: intention || undefined,
@@ -749,6 +755,7 @@ export async function POST(request: NextRequest) {
             sessionId,
             profileUserId: authed.profileUserId,
             characterId,
+            customQuestion: customQuestion || undefined,
             reading,
             tarotCards,
             intention: intention || undefined,
@@ -790,6 +797,7 @@ export async function POST(request: NextRequest) {
         intention: intention || undefined,
         spreadType: isDailySpread ? "daily" : undefined,
         spreadId: storedSpreadId,
+        customQuestion: customQuestion || undefined,
         userName,
         birthDate,
         isPaid,

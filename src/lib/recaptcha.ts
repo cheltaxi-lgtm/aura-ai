@@ -69,11 +69,25 @@ export async function isRecaptchaScopeEnabled(scope: RecaptchaScope): Promise<bo
   return scopes[scope] === true;
 }
 
+/**
+ * Admin login is the only door into the settings UI that controls reCAPTCHA
+ * itself. Never gate it behind a score check: a false-positive "suspicious"
+ * score (VPN, ad blocker, corporate proxy, etc.) would permanently lock every
+ * admin out with no self-service way back in, since the toggle to disable it
+ * lives inside the admin panel. Password + login rate limiting already guard
+ * this endpoint, so the security trade-off isn't worth the lockout risk.
+ */
+const RECAPTCHA_LOCKOUT_EXEMPT_SCOPES: ReadonlySet<RecaptchaScope> = new Set(["adminLogin"]);
+
 export async function verifyRecaptchaForScope(
   token: string | undefined,
   scope: RecaptchaScope,
   remoteIp?: string | null
 ): Promise<RecaptchaResult> {
+  if (RECAPTCHA_LOCKOUT_EXEMPT_SCOPES.has(scope)) {
+    return { ok: true };
+  }
+
   const features = await getSetting("features");
   const mergedScopes = mergeRecaptchaScopes(features.recaptchaScopes);
   const scopeRequested = features.recaptchaEnabled && mergedScopes[scope] !== false;

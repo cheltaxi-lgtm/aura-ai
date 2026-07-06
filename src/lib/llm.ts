@@ -2,7 +2,7 @@ import { getAdminAiSettings, getChatModel, getVisionModel } from "./ai-model";
 import { openRouterAppHeaders } from "./brand";
 import { isDegenerateLlmOutput } from "./chat-reply-sanitize";
 import type { ChatHistoryMessage } from "./chat-sanitize";
-import { acquireLlmSlot, withLlmSlot, wrapStreamWithLlmRelease } from "./llm-concurrency";
+import { acquireLlmSlot, withLlmSlot, wrapStreamWithLlmRelease, type LlmPool } from "./llm-concurrency";
 
 const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -175,7 +175,8 @@ async function callChatCompletions(
   body: Record<string, unknown>,
   timeoutMs = 90000,
   maxAttempts = MAX_LLM_ATTEMPTS,
-  extractOpts?: CompletionExtractOptions
+  extractOpts?: CompletionExtractOptions,
+  pool?: LlmPool
 ): Promise<string | null> {
   const result = await callChatCompletionsDetailed(
     url,
@@ -183,7 +184,8 @@ async function callChatCompletions(
     body,
     timeoutMs,
     maxAttempts,
-    extractOpts
+    extractOpts,
+    pool
   );
   return result.text;
 }
@@ -199,7 +201,8 @@ async function callChatCompletionsDetailed(
   body: Record<string, unknown>,
   timeoutMs = 90000,
   maxAttempts = MAX_LLM_ATTEMPTS,
-  extractOpts?: CompletionExtractOptions
+  extractOpts?: CompletionExtractOptions,
+  pool?: LlmPool
 ): Promise<ChatCompletionResult> {
   const isOpenRouter = url.includes("openrouter.ai");
   const model = String(body.model ?? "");
@@ -258,7 +261,7 @@ async function callChatCompletionsDetailed(
       }
     }
     return { text: null, finishReason: null };
-  });
+  }, pool);
 
   return result ?? { text: null, finishReason: null };
 }
@@ -308,6 +311,12 @@ type CompleteChatOptions = {
   jsonObject?: boolean;
   /** Override admin chat model (e.g. ritual fallback). */
   modelOverride?: string;
+  /**
+   * "background" routes this call through a small dedicated concurrency pool
+   * so fire-and-forget work (e.g. memory fact extraction) can never starve
+   * user-facing completions of slots in the shared queue.
+   */
+  priority?: "background";
 };
 
 async function completeChatInternal(
@@ -324,6 +333,7 @@ async function completeChatInternal(
     allowReasoningFallback = false,
     jsonObject = false,
     modelOverride,
+    priority,
   } = params;
   const aiSettings = await resolveAiSettings();
   const model = modelOverride ?? (await resolveModel(vision));
@@ -331,6 +341,7 @@ async function completeChatInternal(
     allowReasoningFallback,
     structuredJson: allowReasoningFallback && jsonObject,
   };
+  const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
 
   const tryOnce = async (temp?: number) =>
     acceptLlmText(
@@ -344,7 +355,8 @@ async function completeChatInternal(
         }),
         timeoutMs,
         maxAttempts,
-        extractOpts
+        extractOpts,
+        pool
       )
     );
 
@@ -375,6 +387,7 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
     allowReasoningFallback = false,
     jsonObject = false,
     modelOverride,
+    priority,
   } = params;
   const aiSettings = await resolveAiSettings();
   const model = modelOverride ?? (await resolveModel(vision));
@@ -382,6 +395,7 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
     allowReasoningFallback,
     structuredJson: allowReasoningFallback && jsonObject,
   };
+  const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
 
   const tryOnce = async (temp?: number) =>
     callChatCompletionsDetailed(
@@ -394,7 +408,8 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
       }),
       timeoutMs,
       maxAttempts,
-      extractOpts
+      extractOpts,
+      pool
     );
 
   if (!isOpenRouterConfigured()) return { text: null, finishReason: null };

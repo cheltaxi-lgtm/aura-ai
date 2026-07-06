@@ -19,7 +19,9 @@ export const DEFAULT_RECAPTCHA_SCOPES: RecaptchaScopeSettings = {
   login: true,
   expertRegister: true,
   expertLogin: true,
-  adminLogin: true,
+  // Always force-exempted in verifyRecaptchaForScope (see recaptcha.ts) to
+  // prevent a low score from locking every admin out with no way back in.
+  adminLogin: false,
   support: true,
   chat: true,
   payments: true,
@@ -31,7 +33,7 @@ export const RECAPTCHA_SCOPE_LABELS: Record<RecaptchaScope, string> = {
   login: "Вход пользователя",
   expertRegister: "Регистрация эзотерика",
   expertLogin: "Вход эзотерика",
-  adminLogin: "Вход в админку",
+  adminLogin: "Вход в админку (защита от самоблокировки)",
   support: "Техподдержка (сообщения)",
   chat: "Чат с мастером",
   payments: "Оплата и покупка рун",

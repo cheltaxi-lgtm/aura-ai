@@ -51,16 +51,33 @@ function readGradleVersion(): { versionCode: number; versionName: string } | nul
   }
 }
 
+function readEnvVersion(): { versionCode: number; versionName: string } | null {
+  const versionCode = parseIntEnv("ANDROID_VERSION_CODE", 0);
+  const versionName = process.env.ANDROID_VERSION_NAME?.trim() ?? "";
+  if (versionCode < 1 || !versionName) return null;
+  return { versionCode, versionName };
+}
+
 export function readAndroidReleaseConfig(): AndroidReleaseConfig {
   const base = getAppUrl();
   const built = readBuiltManifest();
   const gradle = readGradleVersion();
-  const versionCode =
-    built?.versionCode ?? gradle?.versionCode ?? parseIntEnv("ANDROID_VERSION_CODE", 1);
-  const versionName =
-    built?.versionName ??
-    gradle?.versionName ??
-    (process.env.ANDROID_VERSION_NAME?.trim() || "1.0.0");
+  const env = readEnvVersion();
+  // versionCode source of truth: the max of every place it can live (mirrors
+  // hosting/build-android-apk.sh's own reasoning). public/releases/*.json and
+  // mobile/android/app/build.gradle are checked into git and get overwritten
+  // by every code deploy with whatever was last committed, so on their own
+  // they can go backwards after a server-side APK build bumped them past what
+  // the dev machine has. ANDROID_VERSION_CODE in .env.local is never touched
+  // by a code deploy (deploys explicitly exclude .env.local), so taking the
+  // max keeps the reported "latest build" monotonic across deploys.
+  const winner = [built, gradle, env].reduce<{ versionCode: number; versionName: string } | null>(
+    (max, candidate) =>
+      candidate && (!max || candidate.versionCode > max.versionCode) ? candidate : max,
+    null
+  );
+  const versionCode = winner?.versionCode ?? parseIntEnv("ANDROID_VERSION_CODE", 1);
+  const versionName = winner?.versionName ?? (process.env.ANDROID_VERSION_NAME?.trim() || "1.0.0");
   const minVersionCode = parseIntEnv("ANDROID_MIN_VERSION_CODE", 1);
   const apkUrl =
     process.env.ANDROID_APK_URL?.trim() ||

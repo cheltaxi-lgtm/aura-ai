@@ -36,6 +36,16 @@ export function parseRussianDayMonthInText(text: string, ref: Date): Date | null
   return startOfDay(new Date(ref.getFullYear(), month, day));
 }
 
+/**
+ * The day+month text fallback has no year, so `parseRussianDayMonthInText` always
+ * reconstructs it against `ref`'s current year. Once the calendar rolls past the
+ * date, that reconstruction jumps a full year forward and looks "upcoming" again —
+ * a fact mentioning "26 декабря" would otherwise read as future forever. Treat a
+ * same-year reconstruction that's implausibly far ahead as a stale wrap-around
+ * from a prior year instead of a genuine near-term date.
+ */
+const TEXT_DATE_FAR_FUTURE_DAYS = 180;
+
 /** True when the fact refers to an event that already happened. */
 export function isPastEventFact(f: UserFact, now = new Date()): boolean {
   const today = startOfDay(now);
@@ -43,10 +53,15 @@ export function isPastEventFact(f: UserFact, now = new Date()): boolean {
   if (f.eventDate) {
     const d = parseIsoDate(f.eventDate);
     if (d && d < today) return true;
+    return false;
   }
 
   const parsed = parseRussianDayMonthInText(f.fact, now);
-  if (parsed && parsed < today) return true;
+  if (parsed) {
+    if (parsed < today) return true;
+    const daysAhead = Math.round((parsed.getTime() - today.getTime()) / 86_400_000);
+    if (daysAhead > TEXT_DATE_FAR_FUTURE_DAYS) return true;
+  }
 
   return false;
 }

@@ -77,7 +77,7 @@ async function embedOne(text: string, timeoutMs?: number): Promise<number[] | nu
 }
 
 /** Short timeout for the user-facing read path so chat never stalls. */
-const SEARCH_EMBED_TIMEOUT_MS = 6000;
+const SEARCH_EMBED_TIMEOUT_MS = 2500;
 
 /** Keep only the top MAX_FACTS_PER_USER facts for a user. */
 async function pruneUser(userId: string): Promise<void> {
@@ -233,7 +233,11 @@ export async function searchFacts(
   return [];
 }
 
-/** Dated events from today forward (always surfaced regardless of query). */
+/**
+ * Dated events from today forward, up to `withinDays` out. This only fetches
+ * candidates — callers (see ClientMemory.loadClientMemoryBlock) still relevance-gate
+ * anything beyond the imminent lead time before injecting it into the prompt.
+ */
 export async function getUpcomingEvents(
   userId: string,
   withinDays = 45,

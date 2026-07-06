@@ -202,21 +202,31 @@ export default function AdminSettingsPage() {
 
           <div className={`space-y-3 border-t border-white/10 pt-4 ${recaptchaMaster ? "" : "opacity-50"}`}>
             <p className="text-xs text-gray-500">Где проверять (невидимо для пользователя):</p>
-            {RECAPTCHA_SCOPES.map((scope) => (
-              <label
-                key={scope}
-                className={`flex items-center justify-between ${recaptchaMaster ? "cursor-pointer" : "cursor-not-allowed"}`}
-              >
-                <span className="text-sm text-gray-300">{RECAPTCHA_SCOPE_LABELS[scope]}</span>
-                <input
-                  type="checkbox"
-                  disabled={!recaptchaMaster}
-                  checked={recaptchaScopes[scope] !== false}
-                  onChange={() => toggleRecaptchaScope(scope)}
-                  className="h-4 w-4 accent-aura-purple disabled:opacity-40"
-                />
-              </label>
-            ))}
+            {RECAPTCHA_SCOPES.map((scope) => {
+              const isLockoutExempt = scope === "adminLogin";
+              return (
+                <label
+                  key={scope}
+                  className={`flex items-center justify-between ${
+                    recaptchaMaster && !isLockoutExempt ? "cursor-pointer" : "cursor-not-allowed"
+                  }`}
+                >
+                  <span className="text-sm text-gray-300">
+                    {RECAPTCHA_SCOPE_LABELS[scope]}
+                    {isLockoutExempt && (
+                      <span className="ml-1 text-xs text-gray-500">(всегда выключено — защита от блокировки)</span>
+                    )}
+                  </span>
+                  <input
+                    type="checkbox"
+                    disabled={!recaptchaMaster || isLockoutExempt}
+                    checked={!isLockoutExempt && recaptchaScopes[scope] !== false}
+                    onChange={() => toggleRecaptchaScope(scope)}
+                    className="h-4 w-4 accent-aura-purple disabled:opacity-40"
+                  />
+                </label>
+              );
+            })}
           </div>
         </div>
 

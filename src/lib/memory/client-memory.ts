@@ -24,6 +24,17 @@ import {
 
 const MAX_BLOCK_CHARS = 3500;
 const MAX_FACT_LINES = 10;
+/** Matches the cron reminder's default lead time (see getGlobalUpcomingEvents). */
+const IMMINENT_EVENT_DAYS = 3;
+
+function daysUntil(eventDate: string | null): number | null {
+  if (!eventDate) return null;
+  const d = new Date(`${eventDate}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86_400_000);
+}
 
 function formatEventDate(iso: string | null): string {
   if (!iso) return "";
@@ -76,8 +87,16 @@ export async function loadClientMemoryBlock(params: {
   if (!queryTrimmed) return "";
 
   const relevantSearch = filterActiveMemoryFacts(relevant);
+  // Events that are days away get surfaced unconditionally (same lead time as the
+  // cron reminder), since "it's happening very soon" is worth mentioning even when
+  // the current message isn't obviously about it. Everything further out still goes
+  // through the relevance gate to avoid cluttering unrelated turns.
   upcoming = filterActiveMemoryFacts(
-    upcoming.filter((f) => isTextRelevantToQuery(queryTrimmed, f.fact))
+    upcoming.filter((f) => {
+      const days = daysUntil(f.eventDate);
+      if (days !== null && days <= IMMINENT_EVENT_DAYS) return true;
+      return isTextRelevantToQuery(queryTrimmed, f.fact);
+    })
   );
   const criticalFiltered = filterActiveMemoryFacts(
     critical.filter(

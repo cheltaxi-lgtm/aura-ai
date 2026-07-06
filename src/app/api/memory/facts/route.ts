@@ -7,7 +7,11 @@ import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { validateUserSubmittedFact } from "@/lib/memory/user-fact-input";
 import { deleteFact, listFacts, searchFacts, upsertFact } from "@/lib/memory/user-facts";
 
-const MAX_FACTS_PER_USER = 100;
+/**
+ * Cap for user-submitted (manually entered) facts specifically, distinct from
+ * the global auto-extracted fact cap in lib/memory/user-facts.ts.
+ */
+const MAX_MANUAL_FACTS_PER_USER = 100;
 
 function mapFact(f: {
   id: string;
@@ -40,7 +44,7 @@ export async function GET() {
     return NextResponse.json({ error: "profile_required" }, { status: 400 });
   }
 
-  const facts = await listFacts(profileUserId, MAX_FACTS_PER_USER);
+  const facts = await listFacts(profileUserId, MAX_MANUAL_FACTS_PER_USER);
   return NextResponse.json({
     facts: facts.map(mapFact),
     count: facts.length,
@@ -107,12 +111,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const existing = await listFacts(profileUserId, MAX_FACTS_PER_USER + 1);
-  if (existing.length >= MAX_FACTS_PER_USER) {
+  const existing = await listFacts(profileUserId, MAX_MANUAL_FACTS_PER_USER + 1);
+  if (existing.length >= MAX_MANUAL_FACTS_PER_USER) {
     return NextResponse.json(
       {
         error: "limit_reached",
-        message: `Достигнут лимит ${MAX_FACTS_PER_USER} фактов. Удалите старые, чтобы добавить новые.`,
+        message: `Достигнут лимит ${MAX_MANUAL_FACTS_PER_USER} фактов. Удалите старые, чтобы добавить новые.`,
       },
       { status: 409 }
     );

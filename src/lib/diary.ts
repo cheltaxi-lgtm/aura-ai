@@ -35,13 +35,54 @@ export async function saveDiaryEntry(
   userId: string,
   characterKey: string,
   entryText: string,
-  cards: string[] = []
+  cards: string[] = [],
+  sessionId?: string | null
 ): Promise<void> {
   await query(
-    `INSERT INTO diary_entries (user_id, character_key, entry_text, cards)
-     VALUES ($1, $2, $3, $4)`,
-    [userId, characterKey, entryText.slice(0, 2000), limitSpreadKeyCards(cards)]
+    `INSERT INTO diary_entries (user_id, character_key, entry_text, cards, session_id)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [
+      userId,
+      characterKey,
+      entryText.slice(0, 2000),
+      limitSpreadKeyCards(cards),
+      sessionId ?? null,
+    ]
   );
+}
+
+export async function diaryEntryExistsForSession(
+  userId: string,
+  sessionId: string
+): Promise<boolean> {
+  const { rows } = await query<{ ok: number }>(
+    `SELECT 1 AS ok FROM diary_entries WHERE user_id = $1 AND session_id = $2 LIMIT 1`,
+    [userId, sessionId]
+  );
+  return rows.length > 0;
+}
+
+/** One diary note per consultation session — after spread or session completion. */
+export async function createDiaryEntryForSession(params: {
+  userId: string;
+  characterKey: string;
+  sessionId: string;
+  history: { role: string; content: string }[];
+  cards?: string[];
+}): Promise<boolean> {
+  const { userId, characterKey, sessionId, history, cards = [] } = params;
+
+  if (!history.some((m) => m.content.trim())) return false;
+
+  if (await diaryEntryExistsForSession(userId, sessionId)) {
+    return false;
+  }
+
+  const text = await generateDiaryEntry(history);
+  if (!text?.trim()) return false;
+
+  await saveDiaryEntry(userId, characterKey, text.trim(), cards, sessionId);
+  return true;
 }
 
 export async function generateDiaryEntry(
@@ -73,19 +114,4 @@ ${transcript}`,
     maxTokens: 300,
     temperature: 0.7,
   });
-}
-
-export async function maybeCreateDiaryEntry(
-  userId: string,
-  characterKey: string,
-  userMessageCount: number,
-  history: { role: string; content: string }[],
-  cards: string[] = []
-): Promise<void> {
-  if (userMessageCount < 3 || userMessageCount % 3 !== 0) return;
-
-  const text = await generateDiaryEntry(history);
-  if (!text?.trim()) return;
-
-  await saveDiaryEntry(userId, characterKey, text.trim(), cards);
 }

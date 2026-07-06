@@ -363,11 +363,16 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   character_key TEXT NOT NULL,
   entry_text    TEXT NOT NULL,
   cards         TEXT[] DEFAULT '{}',
+  session_id    UUID REFERENCES sessions(id) ON DELETE SET NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_diary_user
   ON diary_entries (user_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_entries_user_session
+  ON diary_entries (user_id, session_id)
+  WHERE session_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS user_achievements (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -26,7 +26,6 @@ import {
 } from "@/lib/spread-reading-complete";
 import type { ChatMessage } from "@/lib/llm";
 import { query } from "@/lib/db";
-import { maybeCreateDiaryEntry } from "@/lib/diary";
 import { intentionPromptBlock } from "@/lib/intention";
 import { buildSpreadBlock, buildPeriodSpreadBlock } from "@/lib/spread-block";
 import { getSpread, hasCompleteSpread, normalizeSpreadId, requiredCardCount, sliceForSpread } from "@/lib/spreads";
@@ -1038,20 +1037,6 @@ export class ChatOrchestrator {
 
       if (this.session) {
         try {
-          const { rows: countRows } = await query<{ cnt: string }>(
-            `SELECT COUNT(*)::text AS cnt FROM chat_messages
-             WHERE session_id = $1 AND role = 'user'`,
-            [this.session.id]
-          );
-          const userMsgCount = Number(countRows[0]?.cnt ?? 0);
-          void maybeCreateDiaryEntry(
-            this.profileUserId,
-            this.characterId,
-            userMsgCount,
-            this.llmMessages.map((m) => ({ role: m.role, content: m.content })),
-            this.tarotCards?.map((c) => c.name) ?? []
-          ).catch((err) => console.warn("Diary entry failed:", err));
-
           void maybePersistSessionMemory({
             userId: this.profileUserId,
             sessionId: this.session.id,

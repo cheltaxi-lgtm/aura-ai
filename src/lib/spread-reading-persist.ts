@@ -3,6 +3,8 @@ import { ensureDb, query } from "@/lib/db";
 import { saveMessage, updateSessionChatMeta } from "@/lib/session";
 import { ensureChatSession } from "@/lib/session-access";
 import { upsertSessionMemoryFromChat } from "@/lib/session-memory";
+import { createDiaryEntryForSession } from "@/lib/diary";
+import { ClientMemory } from "@/lib/memory/client-memory";
 import { topicLabel, isValidSessionIntention, type SessionTopicId } from "@/lib/session-topics";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import { getDeckImagePath } from "@/data/decks";
@@ -154,6 +156,14 @@ export async function ensureSpreadReadingInChatMessages(
       formattedReading,
       input.profileUserId
     );
+
+    void createDiaryEntryForSession({
+      userId: input.profileUserId,
+      characterKey: input.characterId,
+      sessionId,
+      history: [{ role: "assistant", content: formattedReading }],
+      cards: resolvedCardNames.length ? resolvedCardNames : cardNames,
+    }).catch((err) => console.warn("Diary entry after spread failed:", err));
   }
 
   const topicSummary =
@@ -166,6 +176,19 @@ export async function ensureSpreadReadingInChatMessages(
           : input.spreadType === "daily"
             ? "Три карты дня"
             : "Сеанс";
+
+  // Only feed the extractor real user-authored text. Generic topic labels
+  // ("Любовь и отношения", "Три карты дня", ...) never carry personal facts and
+  // would just burn an embedding call on every spread for nothing.
+  const userTurnText = input.customQuestion?.trim();
+  if (!alreadySaved && userTurnText) {
+    void ClientMemory.recordTurn({
+      userId: input.profileUserId,
+      characterId: input.characterId,
+      userMessage: userTurnText,
+      assistantReply: formattedReading,
+    }).catch((err) => console.warn("[memory] recordTurn after spread failed:", err));
+  }
 
   await upsertSessionMemoryFromChat({
     userId: input.profileUserId,

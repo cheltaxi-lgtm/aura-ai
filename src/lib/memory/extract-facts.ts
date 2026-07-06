@@ -161,6 +161,7 @@ export async function extractFactsFromTurn(
     maxTokens: 600,
     timeoutMs: 30000,
     skipTemperatureRetry: true,
+    priority: "background",
   });
   if (!raw) return [];
   return parseFacts(raw);
