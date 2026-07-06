@@ -95,7 +95,6 @@ export default function MajorArcanaHubPage() {
               description:
                 "Старшие арканы Таро: значение всех 22 карт от Шута до Мира.",
               path: "/cards/starshie-arkany",
-              breadcrumbs,
               faq,
             })
           ),

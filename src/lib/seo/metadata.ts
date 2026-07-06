@@ -1,6 +1,18 @@
 import type { Metadata } from "next";
 import { BRAND_NAME, getAppUrl } from "@/lib/brand";
 
+/**
+ * The root layout sets `title.template = "%s | Zovus"`, so any page-level
+ * title that already ends in "| Zovus" would render doubled
+ * ("... | Zovus | Zovus"). Strip that suffix here so callers can keep writing
+ * explicit "| Zovus" titles (for readability / existing content) without
+ * producing duplicated branding in the actual <title> tag.
+ */
+function stripBrandSuffix(title: string): string {
+  const suffix = new RegExp(`\\s*[|·-]\\s*${BRAND_NAME}\\s*$`, "i");
+  return title.replace(suffix, "").trim();
+}
+
 export function buildSeoMetadata({
   title,
   description,
@@ -11,8 +23,9 @@ export function buildSeoMetadata({
   path?: string;
 }): Metadata {
   const url = path ? `${getAppUrl()}${path}` : getAppUrl();
+  const cleanTitle = stripBrandSuffix(title);
   return {
-    title,
+    title: cleanTitle,
     description,
     alternates: {
       canonical: url,

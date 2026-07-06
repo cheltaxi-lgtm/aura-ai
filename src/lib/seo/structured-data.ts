@@ -1,28 +1,29 @@
-import type { BreadcrumbItem } from "@/lib/seo/breadcrumbs";
-import { buildBreadcrumbJsonLd } from "@/lib/seo/breadcrumbs";
 import { getAppUrl, BRAND_NAME } from "@/lib/brand";
 import type { CardFaqItem } from "@/lib/seo/card-faq";
+
+/**
+ * Note: BreadcrumbList is intentionally omitted here — <SeoBreadcrumbs> already
+ * renders its own BreadcrumbList JSON-LD alongside the visible breadcrumb nav.
+ * Adding it here too would duplicate the schema on the same page.
+ */
 
 export function buildCardStructuredData({
   name,
   slug,
   description,
   keyword,
-  breadcrumbs,
   faq,
 }: {
   name: string;
   slug: string;
   description: string;
   keyword: string;
-  breadcrumbs: BreadcrumbItem[];
   faq: CardFaqItem[];
 }) {
   const url = `${getAppUrl()}/cards/${slug}`;
   return {
     "@context": "https://schema.org",
     "@graph": [
-      buildBreadcrumbJsonLd(breadcrumbs),
       {
         "@type": "Article",
         headline: `${name} — значение карты Таро`,
@@ -50,18 +51,15 @@ export function buildSpreadStructuredData({
   description,
   path,
   faq,
-  breadcrumbs,
 }: {
   title: string;
   description: string;
   path: string;
   faq: { question: string; answer: string }[];
-  breadcrumbs: BreadcrumbItem[];
 }) {
   return {
     "@context": "https://schema.org",
     "@graph": [
-      buildBreadcrumbJsonLd(breadcrumbs),
       {
         "@type": "Article",
         headline: title,
@@ -85,17 +83,14 @@ export function buildArticleStructuredData({
   title,
   description,
   path,
-  breadcrumbs,
 }: {
   title: string;
   description: string;
   path: string;
-  breadcrumbs: BreadcrumbItem[];
 }) {
   return {
     "@context": "https://schema.org",
     "@graph": [
-      buildBreadcrumbJsonLd(breadcrumbs),
       {
         "@type": "Article",
         headline: title,
@@ -112,19 +107,16 @@ export function buildForecastStructuredData({
   title,
   description,
   path,
-  breadcrumbs,
   faq,
 }: {
   title: string;
   description: string;
   path: string;
-  breadcrumbs: BreadcrumbItem[];
   faq: { q: string; a: string }[];
 }) {
   return {
     "@context": "https://schema.org",
     "@graph": [
-      buildBreadcrumbJsonLd(breadcrumbs),
       {
         "@type": "Article",
         headline: title,

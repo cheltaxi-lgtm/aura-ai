@@ -103,7 +103,6 @@ export default async function StatyiArticlePage({
               title: article.title,
               description: article.description,
               path: `/statyi/${slug}`,
-              breadcrumbs,
             })
           ),
         }}

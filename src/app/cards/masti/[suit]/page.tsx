@@ -102,7 +102,6 @@ export default async function SuitHubPage({
               title: hub.seoTitle,
               description: hub.seoDescription,
               path: `/cards/masti/${hub.slug}`,
-              breadcrumbs,
               faq: hub.faq,
             })
           ),

@@ -166,7 +166,6 @@ export default function TaroPillarPage() {
               description:
                 "Таро онлайн бесплатно: расклады на отношения, будущее и карьеру. 78 карт с толкованиями.",
               path: "/taro",
-              breadcrumbs,
               faq,
             })
           ),

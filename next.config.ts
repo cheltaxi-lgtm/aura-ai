@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { getCanonicalRedirects } from "./src/lib/seo/canonical-aliases";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -12,6 +13,9 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [{ protocol: "https", hostname: "**" }],
+  },
+  async redirects() {
+    return getCanonicalRedirects();
   },
   async headers() {
     return [

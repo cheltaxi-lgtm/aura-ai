@@ -45,7 +45,6 @@ export default function CardMeaningTemplate({
     slug,
     description: general,
     keyword,
-    breadcrumbs,
     faq,
   });
 

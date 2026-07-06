@@ -6,7 +6,6 @@ import {
 } from "@/lib/spread-intents";
 import type { SpreadHubConfig } from "@/lib/seo/hubs";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
-import { buildBreadcrumbJsonLd } from "@/lib/seo/breadcrumbs";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
@@ -90,7 +89,6 @@ export default function SpreadHubPage({ hub }: { hub: SpreadHubConfig }) {
           __html: JSON.stringify({
             "@context": "https://schema.org",
             "@graph": [
-              buildBreadcrumbJsonLd(breadcrumbs),
               {
                 "@type": "FAQPage",
                 mainEntity: hub.faq.map((item) => ({

@@ -54,7 +54,6 @@ export default async function SpreadLandingPage({
     description: spread.description,
     path: `/rasklad/${slug}`,
     faq,
-    breadcrumbs,
   });
 
   return (
