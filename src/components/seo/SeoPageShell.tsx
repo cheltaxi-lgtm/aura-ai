@@ -49,12 +49,14 @@ export function SeoCtaButton({
 export function SeoSection({
   title,
   children,
+  id,
 }: {
   title: string;
   children: React.ReactNode;
+  id?: string;
 }) {
   return (
-    <section className="mt-10">
+    <section className="mt-10" id={id}>
       <h2 className="font-display text-lg text-aura-gold">{title}</h2>
       <div className="mt-4 space-y-3 text-white/75">{children}</div>
     </section>

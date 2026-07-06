@@ -1,0 +1,94 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import {
+  FORECAST_MONTHS,
+  FORECAST_YEARS,
+  getCurrentForecastMonth,
+  getCurrentForecastYear,
+} from "@/lib/seo/seasonal";
+import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Прогноз Таро — по месяцам и знакам зодиака | Zovus",
+  description:
+    "Прогнозы Таро на год и месяц, расклады по знакам зодиака. Актуальные периоды — онлайн на Zovus.",
+  path: "/prognoz",
+});
+
+export default function PrognozIndexPage() {
+  const year = getCurrentForecastYear();
+  const month = getCurrentForecastMonth();
+
+  return (
+    <SeoPageShell backHref="/taro" backLabel="Таро онлайн">
+      <p className="text-sm text-aura-gold/80">Прогнозы</p>
+      <h1 className="mt-2 font-display text-3xl font-bold">Прогноз Таро</h1>
+      <p className="mt-4 text-white/70">
+        Годовые и месячные обзоры по картам, а также прогнозы для каждого знака зодиака.
+      </p>
+
+      <SeoSection title="Актуальный период">
+        <ul className="space-y-2">
+          <li>
+            <Link href={`/prognoz/${year}`} className="text-aura-gold hover:underline">
+              Прогноз на {year} год
+            </Link>
+          </li>
+          <li>
+            <Link href={`/prognoz/${year}/${month.slug}`} className="text-aura-gold hover:underline">
+              Таро на {month.name} {year}
+            </Link>
+          </li>
+        </ul>
+      </SeoSection>
+
+      <SeoSection title="Годы">
+        <ul className="flex flex-wrap gap-2">
+          {FORECAST_YEARS.map((y) => (
+            <li key={y}>
+              <Link
+                href={`/prognoz/${y}`}
+                className="rounded-full border border-white/15 px-3 py-1.5 text-sm hover:border-aura-gold/40"
+              >
+                {y}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </SeoSection>
+
+      <SeoSection title={`Месяцы ${year}`}>
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {FORECAST_MONTHS.map((m) => (
+            <li key={m.slug}>
+              <Link
+                href={`/prognoz/${year}/${m.slug}`}
+                className="block rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-aura-gold hover:underline"
+              >
+                {m.name.charAt(0).toUpperCase()}
+                {m.name.slice(1)} {year}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </SeoSection>
+
+      <SeoSection title="Знаки зодиака">
+        <ul className="flex flex-wrap gap-2">
+          {SEO_ZODIAC_SIGNS.map((sign) => (
+            <li key={sign.slug}>
+              <Link
+                href={`/prognoz/znak/${sign.slug}`}
+                className="rounded-full border border-white/15 px-3 py-1.5 text-sm hover:border-aura-gold/40"
+              >
+                {sign.name} {sign.emoji}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </SeoSection>
+    </SeoPageShell>
+  );
+}

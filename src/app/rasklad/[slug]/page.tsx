@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSpreadBySeoSlug, SPREAD_REGISTRY } from "@/lib/spreads/registry";
-import { BRAND_NAME } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
+import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
+import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import { buildSpreadStructuredData } from "@/lib/seo/structured-data";
 
 export function generateStaticParams() {
   return Object.values(SPREAD_REGISTRY)
@@ -18,10 +22,11 @@ export async function generateMetadata({
   const { slug } = await params;
   const spread = getSpreadBySeoSlug(slug);
   if (!spread) return { title: "Расклад" };
-  return {
-    title: `${spread.label} — расклад Таро онлайн | ${BRAND_NAME}`,
+  return buildSeoMetadata({
+    title: `${spread.label} — расклад Таро онлайн | Zovus`,
     description: spread.description,
-  };
+    path: `/rasklad/${slug}`,
+  });
 }
 
 export default async function SpreadLandingPage({
@@ -38,15 +43,29 @@ export default async function SpreadLandingPage({
     answer: p.hint ?? `Карта в позиции «${p.label}» раскрывает этот аспект вашего вопроса.`,
   }));
 
+  const breadcrumbs = [
+    { name: "Zovus", path: "/" },
+    { name: "Схемы раскладов", path: "/rasklad" },
+    { name: spread.label, path: `/rasklad/${slug}` },
+  ];
+
+  const structuredData = buildSpreadStructuredData({
+    title: `${spread.label} — расклад Таро онлайн`,
+    description: spread.description,
+    path: `/rasklad/${slug}`,
+    faq,
+    breadcrumbs,
+  });
+
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12 text-white">
+    <SeoPageShell backHref="/rasklad" backLabel="Схемы раскладов">
+      <SeoBreadcrumbs items={breadcrumbs} />
       <p className="text-sm text-aura-gold/80">Расклад · {spread.cardCount} карт</p>
       <h1 className="mt-2 font-display text-3xl font-bold">{spread.label}</h1>
       <p className="mt-4 text-white/70">{spread.description}</p>
 
-      <section className="mt-8">
-        <h2 className="font-display text-lg text-aura-gold">Позиции расклада</h2>
-        <ol className="mt-4 space-y-2">
+      <SeoSection title="Позиции расклада">
+        <ol className="space-y-2">
           {spread.positions.map((p, i) => (
             <li key={p.key} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
               <span className="text-aura-gold">{i + 1}.</span> {p.label}
@@ -54,31 +73,40 @@ export default async function SpreadLandingPage({
             </li>
           ))}
         </ol>
-      </section>
+      </SeoSection>
 
-      <section className="mt-10">
-        <Link
+      <SeoSection title="Когда использовать схему">
+        <p>
+          Подходит для конкретного вопроса, когда нужна структура ответа. Для готовых формулировок
+          смотрите{" "}
+          <Link href="/rasklady" className="text-aura-gold hover:underline">
+            каталог раскладов
+          </Link>
+          .
+        </p>
+      </SeoSection>
+
+      <div className="mt-8">
+        <SeoTrackedCta
           href={spread.id === "daily-extended" ? "/?daily=extended" : `/?spread=${spread.id}`}
-          className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
         >
           {spread.id === "daily-extended" ? "Открыть расширенный день" : "Начать расклад с мастером"}
-        </Link>
-      </section>
+        </SeoTrackedCta>
+      </div>
+
+      <SeoSection title="Частые вопросы">
+        {faq.map((item) => (
+          <div key={item.question}>
+            <h3 className="font-medium text-white">{item.question}</h3>
+            <p className="mt-1">{item.answer}</p>
+          </div>
+        ))}
+      </SeoSection>
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "FAQPage",
-            mainEntity: faq.map((item) => ({
-              "@type": "Question",
-              name: item.question,
-              acceptedAnswer: { "@type": "Answer", text: item.answer },
-            })),
-          }),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-    </main>
+    </SeoPageShell>
   );
 }

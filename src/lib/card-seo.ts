@@ -55,3 +55,11 @@ export function getMajorTarotCards(): TarotCard[] {
 export function getFeaturedTarotCards(limit = 22): TarotCard[] {
   return MAJOR_ARCANA.slice(0, limit);
 }
+
+export function getMinorTarotCards(): TarotCard[] {
+  return FULL_DECK.filter((c) => c.arcana === "minor");
+}
+
+export function getTarotCardsBySuit(suit: NonNullable<TarotCard["suit"]>): TarotCard[] {
+  return FULL_DECK.filter((c) => c.suit === suit);
+}

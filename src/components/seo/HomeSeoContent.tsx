@@ -56,8 +56,28 @@ export default function HomeSeoContent() {
       <h2 className="mt-8 font-display text-lg text-aura-gold">Тематические разделы</h2>
       <ul className="mt-3 flex flex-wrap gap-2 text-sm">
         <li>
+          <Link href="/taro" className="text-aura-gold hover:underline">
+            Таро онлайн
+          </Link>
+        </li>
+        <li>
+          <Link href="/prognoz" className="text-aura-gold hover:underline">
+            Прогнозы Таро
+          </Link>
+        </li>
+        <li>
+          <Link href="/cards" className="text-aura-gold hover:underline">
+            Значения карт
+          </Link>
+        </li>
+        <li>
           <Link href="/rasklady/lyubov" className="text-aura-gold hover:underline">
             Расклады на любовь
+          </Link>
+        </li>
+        <li>
+          <Link href="/rasklady/budushchee" className="text-aura-gold hover:underline">
+            На будущее
           </Link>
         </li>
         <li>

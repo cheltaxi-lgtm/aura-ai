@@ -18,7 +18,7 @@ export default function CombinationsCatalogPage() {
   return (
     <SeoPageShell backHref="/cards" backLabel="Карты Таро">
       <p className="text-sm text-aura-gold/80">Сочетания</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Сочетания карт Таро</h1>
+      <h1 className="mt-2 font-display text-3xl font-bold">Сочетание карт Таро: значения пар</h1>
       <p className="mt-4 text-white/70">
         Две карты рядом создают новый смысл. Изучите популярные пары — или задайте свой вопрос
         мастеру.

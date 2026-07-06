@@ -2,21 +2,43 @@ import type { MetadataRoute } from "next";
 import { getAllTarotCardSeoSlugs } from "@/lib/card-seo";
 import { getAllCardCombinations } from "@/lib/card-combinations/registry";
 import { getAppUrl } from "@/lib/brand";
-import { CHARACTERS } from "@/lib/characters";
 import { RITUAL_PAGE_SLUGS } from "@/lib/ritual-recommendations";
 import { getAllSpreadIntents } from "@/lib/spread-intents";
 import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
+import { getAllSeoArticleSlugs } from "@/lib/seo/articles";
+import { getAllSpreadHubSlugs } from "@/lib/seo/hubs";
+import {
+  FORECAST_MONTHS,
+  FORECAST_YEARS,
+} from "@/lib/seo/seasonal";
+import { getAllSeoZodiacSlugs } from "@/lib/seo/zodiac-signs";
+import { getAllSuitHubSlugs } from "@/lib/seo/suit-hubs";
+
+const ABOUT_PATHS = [
+  "/about",
+  "/about/methodology",
+  "/about/how-readings-work",
+  "/about/masters",
+  "/about/limitations",
+  "/about/privacy-practices",
+];
+
+const LENORMAND_PATHS = ["/lenormand", "/lenormand/sochetaniya"];
+
+function staticPage(path: string, priority: number, changeFrequency: MetadataRoute.Sitemap[0]["changeFrequency"] = "weekly") {
+  const base = getAppUrl();
+  const now = new Date();
+  return {
+    url: `${base}${path}`,
+    lastModified: now,
+    changeFrequency,
+    priority,
+  };
+}
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = getAppUrl();
   const now = new Date();
-
-  const masterPages: MetadataRoute.Sitemap = CHARACTERS.map((character) => ({
-    url: `${base}/master/${character.id}`,
-    lastModified: now,
-    changeFrequency: "weekly" as const,
-    priority: 0.7,
-  }));
 
   const spreadPages: MetadataRoute.Sitemap = Object.values(SPREAD_REGISTRY)
     .filter((s) => s.seoSlug)
@@ -32,6 +54,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: now,
     changeFrequency: "monthly" as const,
     priority: 0.75,
+  }));
+
+  const hubPages: MetadataRoute.Sitemap = getAllSpreadHubSlugs().map((slug) => ({
+    url: `${base}/rasklady/${slug}`,
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: 0.8,
   }));
 
   const ritualPages: MetadataRoute.Sitemap = Object.values(RITUAL_PAGE_SLUGS).map((slug) => ({
@@ -55,62 +84,92 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.45,
   }));
 
-  const landingPages: MetadataRoute.Sitemap = [
-    { path: "/rasklady", priority: 0.85 },
-    { path: "/photo-rasklad", priority: 0.7 },
-    { path: "/app", priority: 0.75 },
-    { path: "/obryady", priority: 0.65 },
-    { path: "/joint-reading", priority: 0.6 },
-    { path: "/numerology", priority: 0.6 },
-    { path: "/numerology/pythagoras-square", priority: 0.55 },
-    { path: "/numerology/compatibility", priority: 0.55 },
-    { path: "/numerology/favorable-dates", priority: 0.55 },
-    { path: "/cards", priority: 0.55 },
-    { path: "/cards/combinations", priority: 0.5 },
-  ].map(({ path, priority }) => ({
-    url: `${base}${path}`,
+  const suitHubPages: MetadataRoute.Sitemap = getAllSuitHubSlugs().map((slug) => ({
+    url: `${base}/cards/masti/${slug}`,
     lastModified: now,
-    changeFrequency: "weekly" as const,
-    priority,
+    changeFrequency: "monthly" as const,
+    priority: 0.55,
   }));
 
+  const articlePages: MetadataRoute.Sitemap = getAllSeoArticleSlugs().map((slug) => ({
+    url: `${base}/statyi/${slug}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.6,
+  }));
+
+  const yearPages: MetadataRoute.Sitemap = FORECAST_YEARS.map((year) => ({
+    url: `${base}/prognoz/${year}`,
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: 0.85,
+  }));
+
+  const monthPages: MetadataRoute.Sitemap = FORECAST_YEARS.flatMap((year) =>
+    FORECAST_MONTHS.map((month) => ({
+      url: `${base}/prognoz/${year}/${month.slug}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    }))
+  );
+
+  const zodiacPages: MetadataRoute.Sitemap = getAllSeoZodiacSlugs().map((sign) => ({
+    url: `${base}/prognoz/znak/${sign}`,
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: 0.65,
+  }));
+
+  const zodiacMonthPages: MetadataRoute.Sitemap = getAllSeoZodiacSlugs().flatMap((sign) =>
+    FORECAST_MONTHS.map((month) => ({
+      url: `${base}/prognoz/znak/${sign}/${month.slug}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
+    }))
+  );
+
+  const landingPages: MetadataRoute.Sitemap = [
+    staticPage("/taro", 0.95),
+    staticPage("/prognoz", 0.85),
+    staticPage("/rasklady", 0.85),
+    staticPage("/rasklad", 0.7),
+    staticPage("/photo-rasklad", 0.7),
+    staticPage("/app", 0.75),
+    staticPage("/obryady", 0.65),
+    staticPage("/joint-reading", 0.6),
+    staticPage("/numerology", 0.6),
+    staticPage("/numerology/pythagoras-square", 0.55, "monthly"),
+    staticPage("/numerology/compatibility", 0.55, "monthly"),
+    staticPage("/numerology/favorable-dates", 0.55, "monthly"),
+    staticPage("/cards", 0.7),
+    staticPage("/cards/starshie-arkany", 0.65, "monthly"),
+    staticPage("/cards/combinations", 0.5),
+    staticPage("/statyi", 0.65),
+    staticPage("/faq", 0.5, "monthly"),
+    ...ABOUT_PATHS.map((path) => staticPage(path, 0.45, "monthly")),
+    ...LENORMAND_PATHS.map((path) => staticPage(path, 0.5, "monthly")),
+  ];
+
   return [
-    {
-      url: base,
-      lastModified: now,
-      changeFrequency: "weekly",
-      priority: 1,
-    },
-    {
-      url: `${base}/privacy`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.3,
-    },
-    {
-      url: `${base}/terms`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.3,
-    },
-    {
-      url: `${base}/offer`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.3,
-    },
-    {
-      url: `${base}/disclaimer`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.3,
-    },
-    ...masterPages,
-    ...spreadPages,
+    staticPage("/", 1),
+    staticPage("/privacy", 0.3, "monthly"),
+    staticPage("/terms", 0.3, "monthly"),
+    staticPage("/offer", 0.3, "monthly"),
+    staticPage("/disclaimer", 0.3, "monthly"),
     ...landingPages,
+    ...yearPages,
+    ...monthPages,
+    ...zodiacPages,
+    ...zodiacMonthPages,
+    ...hubPages,
+    ...spreadPages,
     ...intentPages,
     ...ritualPages,
+    ...suitHubPages,
     ...cardPages,
     ...combinationPages,
+    ...articlePages,
   ];
 }
