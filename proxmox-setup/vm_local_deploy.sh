@@ -119,7 +119,8 @@ cd /opt/aura-ai
 # rsync --delete above removes stale files; keep only legacy one-offs if needed.
 rm -f \
   src/components/NumerologToolHub.tsx \
-  src/components/numerolog/NumerologToolResultModal.tsx
+  src/components/numerolog/NumerologToolResultModal.tsx \
+  src/app/api/photo-reading/route.ts
 
 npm ci --legacy-peer-deps
 set -a
