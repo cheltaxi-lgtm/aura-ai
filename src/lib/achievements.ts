@@ -1,6 +1,7 @@
-import { query, queryClient, withTransaction } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
+import { ensureStarterGrantMarker } from "@/lib/rune-service";
+import { getDaysWithUs } from "@/lib/user-lifetime-stats";
 import type { CharacterKey } from "@/lib/prompts/types";
-
 export const ACHIEVEMENTS = {
   first_message: {
     label: "Первый шаг",
@@ -52,7 +53,7 @@ export const ACHIEVEMENTS = {
   },
   month_in: {
     label: "Постоянный",
-    description: "30 дней в приложении",
+    description: "30 дней с нами в приложении",
     bonus: 50,
     phrase: {
       ragnar: "Тридцать дней. Ты часть этого пути.",
@@ -72,8 +73,21 @@ const BRAVE_RE =
 export interface UserStats {
   totalMessages: number;
   sessionsWithMaster: number;
+  maxSessionsOneMaster: number;
   currentStreak: number;
   daysTotal: number;
+  daysWithUs: number;
+}
+
+async function getMaxSessionsWithOneMaster(userId: string): Promise<number> {
+  const { rows } = await query<{ cnt: string }>(
+    `SELECT MAX(c)::text AS cnt FROM (
+       SELECT COUNT(*) AS c FROM session_memories
+       WHERE user_id = $1 GROUP BY character_key
+     ) sub`,
+    [userId]
+  );
+  return Number.parseInt(rows[0]?.cnt ?? "0", 10);
 }
 
 export async function getUserStats(
@@ -117,12 +131,16 @@ export async function getUserStats(
 
   const totalMessages = Number(msgRows[0]?.cnt ?? 0);
   const sessionsWithMaster = Math.floor(Number(masterRows[0]?.cnt ?? 0) / 3);
+  const maxSessionsOneMaster = await getMaxSessionsWithOneMaster(userId);
+  const daysWithUs = await getDaysWithUs(userId);
 
   return {
     totalMessages,
     sessionsWithMaster,
+    maxSessionsOneMaster,
     currentStreak: streak,
     daysTotal: days.length,
+    daysWithUs,
   };
 }
 
@@ -133,15 +151,15 @@ function checkAchievement(
 ): boolean {
   switch (key) {
     case "first_message":
-      return stats.totalMessages === 1;
+      return stats.totalMessages >= 1;
     case "week_streak":
       return stats.currentStreak >= 7;
     case "loyal_master":
-      return stats.sessionsWithMaster >= 10;
+      return stats.maxSessionsOneMaster >= 10;
     case "brave_question":
       return BRAVE_RE.test(message);
     case "month_in":
-      return stats.daysTotal >= 30;
+      return stats.daysWithUs >= 30;
     default:
       return false;
   }
@@ -155,6 +173,104 @@ export interface AchievementEarned {
   phrase: string;
 }
 
+async function runQuery<T extends { [key: string]: unknown }>(
+  client: PoolClient | undefined,
+  text: string,
+  params?: unknown[]
+) {
+  if (client) return queryClient<T>(client, text, params);
+  return query<T>(text, params);
+}
+
+/** True if this one-time achievement was ever credited or recorded. */
+async function hasAchievementBeenGranted(
+  userId: string,
+  key: AchievementKey,
+  client?: PoolClient
+): Promise<boolean> {
+  const { rows: existing } = await runQuery<{ id: string }>(
+    client,
+    `SELECT id FROM user_achievements WHERE user_id = $1 AND achievement = $2`,
+    [userId, key]
+  );
+  if (existing[0]) return true;
+
+  const label = ACHIEVEMENTS[key].label;
+  const { rows: paid } = await runQuery<{ id: string }>(
+    client,
+    `SELECT id FROM rune_transactions
+     WHERE user_id = $1
+       AND type IN ('achievement', 'bonus')
+       AND (
+         action_type = $2
+         OR description LIKE 'Достижение:%' || $3 || '%'
+       )
+     LIMIT 1`,
+    [userId, key, label]
+  );
+  return Boolean(paid[0]);
+}
+
+/** Restore user_achievements row from ledger without crediting runes again. */
+async function ensureAchievementRowFromLedger(
+  userId: string,
+  key: AchievementKey,
+  client?: PoolClient
+): Promise<boolean> {
+  if (await hasAchievementBeenGranted(userId, key, client)) {
+    const { rows: existing } = await runQuery<{ id: string }>(
+      client,
+      `SELECT id FROM user_achievements WHERE user_id = $1 AND achievement = $2`,
+      [userId, key]
+    );
+    if (existing[0]) return true;
+
+    const label = ACHIEVEMENTS[key].label;
+    const { rows: paid } = await runQuery<{ earned_at: Date }>(
+      client,
+      `SELECT MIN(created_at) AS earned_at FROM rune_transactions
+       WHERE user_id = $1
+         AND type IN ('achievement', 'bonus')
+         AND (
+           action_type = $2
+           OR description LIKE 'Достижение:%' || $3 || '%'
+         )`,
+      [userId, key, label]
+    );
+    if (!paid[0]?.earned_at) return false;
+
+    await runQuery(
+      client,
+      `INSERT INTO user_achievements (user_id, achievement, earned_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, achievement) DO NOTHING`,
+      [userId, key, paid[0].earned_at]
+    );
+    return true;
+  }
+
+  return false;
+}
+
+/** Sync achievement markers from ledger — never credits runes. Safe after cabinet purge. */
+export async function syncAchievementGrantsFromLedger(
+  userId: string,
+  client?: PoolClient
+): Promise<void> {
+  for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
+    await ensureAchievementRowFromLedger(userId, key, client);
+  }
+}
+
+/** Keep one-time grants after activity purge (achievements + starter flag). */
+export async function preservePermanentGrants(
+  userId: string,
+  client?: PoolClient
+): Promise<void> {
+  await syncAchievementGrantsFromLedger(userId, client);
+  await ensureStarterGrantMarker(userId, client);
+}
+
 async function grantAchievement(
   userId: string,
   key: AchievementKey,
@@ -162,6 +278,21 @@ async function grantAchievement(
 ): Promise<boolean> {
   try {
     return await withTransaction(async (client) => {
+      // Serialize per-user grants — parallel chat/cabinet requests used to double-credit.
+      await queryClient(client, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+
+      const { rows: existing } = await queryClient<{ id: string }>(
+        client,
+        `SELECT id FROM user_achievements WHERE user_id = $1 AND achievement = $2`,
+        [userId, key]
+      );
+      if (existing[0]) return false;
+
+      if (await hasAchievementBeenGranted(userId, key, client)) {
+        await ensureAchievementRowFromLedger(userId, key, client);
+        return false;
+      }
+
       const { rows: inserted } = await queryClient<{ id: string }>(
         client,
         `INSERT INTO user_achievements (user_id, achievement)
@@ -209,11 +340,7 @@ export async function checkAchievements(
     : "ragnar") as CharacterKey;
 
   for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
-    const { rows: existing } = await query<{ id: string }>(
-      `SELECT id FROM user_achievements WHERE user_id = $1 AND achievement = $2`,
-      [userId, key]
-    );
-    if (existing[0]) continue;
+    if (await hasAchievementBeenGranted(userId, key)) continue;
 
     if (!checkAchievement(key, stats, message)) continue;
 
@@ -231,4 +358,19 @@ export async function checkAchievements(
   }
 
   return null;
+}
+
+/** Grant numeric achievements that were earned before checks ran (cabinet refresh). */
+export async function syncRetroactiveAchievements(userId: string): Promise<void> {
+  await syncAchievementGrantsFromLedger(userId);
+
+  const stats = await getUserStats(userId, "veronika");
+
+  for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
+    if (key === "brave_question") continue;
+    if (await hasAchievementBeenGranted(userId, key)) continue;
+    if (!checkAchievement(key, stats, "")) continue;
+
+    await grantAchievement(userId, key, ACHIEVEMENTS[key]);
+  }
 }

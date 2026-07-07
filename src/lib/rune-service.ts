@@ -475,6 +475,44 @@ export async function creditRunesFromPayment(payment: {
   }
 }
 
+/** Restore starter flag from ledger without crediting runes again. */
+export async function ensureStarterGrantMarker(
+  userId: string,
+  client?: PoolClient
+): Promise<void> {
+  if (client) {
+    const { rows: prior } = await queryClient<{ id: string }>(
+      client,
+      `SELECT id FROM rune_transactions
+       WHERE user_id = $1 AND description LIKE 'Стартовый пакет%'
+       LIMIT 1`,
+      [userId]
+    );
+    if (!prior[0]) return;
+    await queryClient(
+      client,
+      `UPDATE users SET starter_runes_granted = TRUE
+       WHERE id = $1 AND starter_runes_granted = FALSE`,
+      [userId]
+    );
+    return;
+  }
+
+  const { rows: prior } = await query<{ id: string }>(
+    `SELECT id FROM rune_transactions
+     WHERE user_id = $1 AND description LIKE 'Стартовый пакет%'
+     LIMIT 1`,
+    [userId]
+  );
+  if (!prior[0]) return;
+
+  await query(
+    `UPDATE users SET starter_runes_granted = TRUE
+     WHERE id = $1 AND starter_runes_granted = FALSE`,
+    [userId]
+  );
+}
+
 /** Одноразовый стартовый бонус при создании профиля */
 export async function grantStarterRunesIfNeeded(
   userId: string
@@ -484,6 +522,25 @@ export async function grantStarterRunesIfNeeded(
 
   try {
     return await withTransaction(async (client) => {
+      await queryClient(client, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+
+      const { rows: priorStarter } = await queryClient<{ id: string }>(
+        client,
+        `SELECT id FROM rune_transactions
+         WHERE user_id = $1 AND description LIKE 'Стартовый пакет%'
+         LIMIT 1`,
+        [userId]
+      );
+      if (priorStarter[0]) {
+        await queryClient(
+          client,
+          `UPDATE users SET starter_runes_granted = TRUE
+           WHERE id = $1 AND starter_runes_granted = FALSE`,
+          [userId]
+        );
+        return null;
+      }
+
       const { rows: flagged } = await queryClient<{ rune_balance: number }>(
         client,
         `UPDATE users

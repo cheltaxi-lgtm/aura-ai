@@ -291,6 +291,17 @@ export interface UseChatActionsOptions {
   ) => Promise<void>;
   /** Archive active session and spawn a fresh one — required before every new spread. */
   beginNewSpreadSession?: (masterId: string) => Promise<string | undefined>;
+  refreshSessionsList?: (masterId: string) => Promise<void>;
+  persistSessionMetaToServer?: (
+    sid: string | undefined,
+    meta: {
+      characterKey: string;
+      intention?: string | null;
+      spreadType?: string | null;
+      spreadId?: string | null;
+      cards?: string[];
+    }
+  ) => Promise<void>;
   setRetryDraft: Dispatch<SetStateAction<{ content: string; imageBase64?: string } | null>>;
   setAchievementPopup: Dispatch<
     SetStateAction<{
@@ -391,6 +402,8 @@ export function useChatActions(options: UseChatActionsOptions) {
     chatDisplaySpread,
     attachSceneToAssistantMessage,
     beginNewSpreadSession,
+    refreshSessionsList,
+    persistSessionMetaToServer,
     setRetryDraft,
     setAchievementPopup,
   } = options;
@@ -754,6 +767,9 @@ export function useChatActions(options: UseChatActionsOptions) {
               return updated;
             });
             refreshSavedReadings();
+            if (refreshSessionsList) {
+              void refreshSessionsList(characterId);
+            }
           } else {
             setMessages([
               {
@@ -825,6 +841,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       showRateLimit,
       formatRunes,
       refresh,
+      refreshSessionsList,
       pendingReadingMasterRef,
       sessionSpreadMetaRef,
       intentionSpread,
@@ -1504,6 +1521,18 @@ export function useChatActions(options: UseChatActionsOptions) {
             consultationSessionIdRef.current = spreadSessionId;
             setConsultationReadOnly(false);
             archiveSessionIdRef.current = null;
+            const cardNames =
+              sessionSpreadMetaRef.current?.cardNames ??
+              chatSessionSpread?.cards?.map((c) => c.name);
+            if (persistSessionMetaToServer && cardNames?.length) {
+              await persistSessionMetaToServer(spreadSessionId, {
+                characterKey: selectedCharacter,
+                intention: sessionIntention,
+                spreadType: sessionSpreadMetaRef.current?.spreadType ?? "new",
+                spreadId: sessionSpreadMetaRef.current?.spreadId,
+                cards: cardNames,
+              });
+            }
           }
           setMessages([]);
         }
@@ -1566,8 +1595,38 @@ export function useChatActions(options: UseChatActionsOptions) {
             consultationSessionIdRef.current = newSessionId;
             setConsultationReadOnly(false);
             archiveSessionIdRef.current = null;
+            if (persistSessionMetaToServer) {
+              await persistSessionMetaToServer(newSessionId, {
+                characterKey: selectedCharacter,
+                spreadType: "new",
+                spreadId: DEFAULT_SPREAD_ID,
+                cards: drawn.cards.map((c) => c.name),
+              });
+            }
           }
           setMessages([]);
+        }
+      }
+
+      if (
+        sessionOnlyChat &&
+        !session?.offline &&
+        !consultationSessionIdRef.current &&
+        !periodScope &&
+        !imageBase64 &&
+        beginNewSpreadSession
+      ) {
+        const newSessionId = await beginNewSpreadSession(selectedCharacter);
+        if (newSessionId) {
+          setConsultationSessionId(newSessionId);
+          consultationSessionIdRef.current = newSessionId;
+          setConsultationReadOnly(false);
+          archiveSessionIdRef.current = null;
+          if (persistSessionMetaToServer) {
+            await persistSessionMetaToServer(newSessionId, {
+              characterKey: selectedCharacter,
+            });
+          }
         }
       }
 
@@ -1870,6 +1929,9 @@ export function useChatActions(options: UseChatActionsOptions) {
           if (refreshSessionId) {
             void refresh(refreshSessionId).catch(() => undefined);
           }
+          if (!llmFailed && effectiveText && refreshSessionsList) {
+            void refreshSessionsList(selectedCharacter);
+          }
 
           const streamNumerologyUi = streamMeta.numerologyUi as
             | Message["numerologyUi"]
@@ -1948,6 +2010,9 @@ export function useChatActions(options: UseChatActionsOptions) {
         if (refreshSessionId) {
           void refresh(refreshSessionId).catch(() => undefined);
         }
+        if (!data.llmFailed && reply && refreshSessionsList) {
+          void refreshSessionsList(selectedCharacter);
+        }
       } catch (err) {
         const aborted = err instanceof DOMException && err.name === "AbortError";
         setRetryDraft({ content: content.trim(), imageBase64 });
@@ -2014,6 +2079,18 @@ export function useChatActions(options: UseChatActionsOptions) {
       persistIntentionSpreadState,
       setChatSessionSpread,
       setSpreadFlipped,
+      beginNewSpreadSession,
+      refreshSessionsList,
+      persistSessionMetaToServer,
+      setConsultationSessionId,
+      setConsultationReadOnly,
+      archiveSessionIdRef,
+      consultationSessionIdRef,
+      setSpreadReadingRitualOpen,
+      setReadingRitualActive,
+      setReadingRitualCountdownDone,
+      setIntentionSpreadLoading,
+      sessionOnlyChat,
     ]
   );
 

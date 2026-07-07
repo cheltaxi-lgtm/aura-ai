@@ -54,6 +54,9 @@ grep -q '^OPENROUTER_MODEL=' "$ENV_FILE" \
   && sed -i 's|^OPENROUTER_MODEL=.*|OPENROUTER_MODEL=openai/gpt-4o-mini|' "$ENV_FILE" \
   || echo 'OPENROUTER_MODEL=openai/gpt-4o-mini' >> "$ENV_FILE"
 
+grep -q '^OPENROUTER_HTTPS_PROXY=' "$ENV_FILE" \
+  || echo 'OPENROUTER_HTTPS_PROXY=http://45.156.20.127:3128' >> "$ENV_FILE"
+
 grep -q '^RECAPTCHA_ENABLED=' "$ENV_FILE" \
   || echo 'RECAPTCHA_ENABLED=true' >> "$ENV_FILE"
 

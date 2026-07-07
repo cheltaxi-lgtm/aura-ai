@@ -1,317 +1,230 @@
 import { NextResponse } from "next/server";
-
 import type { NextRequest } from "next/server";
-
 import { jwtVerify } from "jose";
-
-
+import {
+  fetchMaintenanceModeActive,
+  isMaintenanceBypassPath,
+  MAINTENANCE_PAGE_PATH,
+} from "@/lib/maintenance-mode";
 
 const COOKIE = "aura_auth";
 
-
-
 type AuthRole = "user" | "expert" | "admin";
 
-
-
 /** API routes reachable without a valid JWT (handlers may still enforce their own rules). */
-
 const PUBLIC_API_EXACT = new Set([
-
   "/api/health",
-
   "/api/masters",
-
   "/api/platform/features",
-
   "/api/platform/status",
-
   "/api/runes/config",
-
   "/api/runes/packages",
-
   "/api/ritual/moon",
-
   "/api/ritual/stats",
-
   "/api/age-gate/confirm",
-
   "/api/session",
-
   "/api/debug/client-log",
-
   "/api/influencer/register",
-
   "/api/intention-spread",
-
   "/api/payment/webhook",
-
   "/api/payments/webhook",
-
   "/api/runes/webhook",
-
   "/api/share",
-
 ]);
-
-
 
 const PUBLIC_API_PREFIXES = ["/api/auth/", "/api/app/", "/api/scene-art/", "/api/share/"] as const;
 
-
-
 function resolveSecretKey(): Uint8Array | null {
-
   const secret = process.env.AUTH_SECRET;
-
   if (!secret || secret === "dev-secret-change-in-production") {
-
     if (process.env.NODE_ENV === "production") {
-
       return null;
-
     }
-
     return new TextEncoder().encode("dev-secret-change-in-production");
-
   }
-
   return new TextEncoder().encode(secret);
-
 }
-
-
 
 function isPublicApiRoute(pathname: string): boolean {
-
   if (PUBLIC_API_EXACT.has(pathname)) return true;
-
   return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-
 }
-
-
 
 function loginPathForRole(role: AuthRole): string {
-
   if (role === "expert") return "/auth/expert/login";
-
   if (role === "admin") return "/admin/login";
-
   return "/auth/user/login";
-
 }
-
-
 
 async function verifyRole(token: string, secretKey: Uint8Array): Promise<AuthRole | null> {
-
   try {
-
     const { payload } = await jwtVerify(token, secretKey);
-
     const role = payload.role as AuthRole;
-
     if (role === "user" || role === "expert" || role === "admin") return role;
-
     return null;
-
   } catch {
-
     return null;
-
   }
-
 }
 
-
+async function isAdminSession(request: NextRequest, secretKey: Uint8Array | null): Promise<boolean> {
+  if (!secretKey) return false;
+  const token = request.cookies.get(COOKIE)?.value;
+  if (!token) return false;
+  const role = await verifyRole(token, secretKey);
+  return role === "admin";
+}
 
 function redirectToLogin(request: NextRequest, role: AuthRole) {
-
   const url = request.nextUrl.clone();
-
   url.pathname = loginPathForRole(role);
-
   url.searchParams.set("returnTo", request.nextUrl.pathname + request.nextUrl.search);
-
   return NextResponse.redirect(url);
-
 }
-
-
 
 function misconfiguredResponse(pathname: string) {
-
   if (pathname.startsWith("/api/")) {
-
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-
   }
-
   return new NextResponse("Server misconfigured", { status: 500 });
-
 }
-
-
 
 function unauthorizedApiResponse() {
-
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
 }
-
-
 
 function forbiddenApiResponse() {
-
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
 }
 
-
+function maintenanceApiResponse() {
+  return NextResponse.json(
+    {
+      error: "maintenance",
+      maintenanceMode: true,
+      message: "Сервис временно на обслуживании",
+    },
+    { status: 503 }
+  );
+}
 
 function requiredApiRole(pathname: string): AuthRole | null {
-
   if (pathname.startsWith("/api/admin/")) return "admin";
-
   if (pathname.startsWith("/api/expert/")) return "expert";
-
   return null;
-
 }
 
+function isAdminAreaPath(pathname: string): boolean {
+  return pathname.startsWith("/admin") || pathname.startsWith("/api/admin/");
+}
 
+function withNoStore(response: NextResponse): NextResponse {
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return response;
+}
 
-export async function middleware(request: NextRequest) {
+async function enforceMaintenanceMode(
+  request: NextRequest,
+  pathname: string,
+  secretKey: Uint8Array | null
+): Promise<NextResponse | null> {
+  if (isMaintenanceBypassPath(pathname)) return null;
 
-  const { pathname } = request.nextUrl;
+  const active = await fetchMaintenanceModeActive();
+  const isAdmin = await isAdminSession(request, secretKey);
+  const adminArea = isAdminAreaPath(pathname);
 
-
-
-  if (request.method === "OPTIONS") {
-
-    return NextResponse.next();
-
+  if (!active) {
+    if (pathname === MAINTENANCE_PAGE_PATH) {
+      return withNoStore(NextResponse.redirect(new URL("/", request.url)));
+    }
+    return null;
   }
 
+  if (adminArea && isAdmin) return null;
 
+  if (pathname.startsWith("/api/")) {
+    return maintenanceApiResponse();
+  }
+
+  if (pathname !== MAINTENANCE_PAGE_PATH) {
+    const url = request.nextUrl.clone();
+    url.pathname = MAINTENANCE_PAGE_PATH;
+    url.search = "";
+    return withNoStore(NextResponse.redirect(url));
+  }
+
+  return null;
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (request.method === "OPTIONS") {
+    return NextResponse.next();
+  }
 
   const secretKey = resolveSecretKey();
 
+  const maintenanceResponse = await enforceMaintenanceMode(request, pathname, secretKey);
+  if (maintenanceResponse) return maintenanceResponse;
+
   const needsAuthSecret =
-
     pathname.startsWith("/api/") ||
-
     pathname.startsWith("/cabinet") ||
-
     pathname.startsWith("/expert") ||
-
     (pathname.startsWith("/admin") && !pathname.startsWith("/admin/login"));
 
-
-
   if (needsAuthSecret && !secretKey) {
-
     return misconfiguredResponse(pathname);
-
   }
-
-
 
   if (pathname.startsWith("/api/")) {
-
     if (isPublicApiRoute(pathname)) {
-
       return NextResponse.next();
-
     }
-
-
 
     const token = request.cookies.get(COOKIE)?.value;
-
     if (!token || !secretKey) {
-
       return unauthorizedApiResponse();
-
     }
-
-
 
     const role = await verifyRole(token, secretKey);
-
     if (!role) {
-
       return unauthorizedApiResponse();
-
     }
-
-
 
     const apiRole = requiredApiRole(pathname);
-
     if (apiRole && role !== apiRole) {
-
       return forbiddenApiResponse();
-
     }
 
-
-
     return NextResponse.next();
-
   }
-
-
 
   let requiredRole: AuthRole | null = null;
-
   if (pathname.startsWith("/cabinet")) requiredRole = "user";
-
   else if (pathname.startsWith("/expert")) requiredRole = "expert";
-
   else if (pathname.startsWith("/admin") && !pathname.startsWith("/admin/login")) {
-
     requiredRole = "admin";
-
   }
-
-
 
   if (!requiredRole) return NextResponse.next();
 
-
-
   const token = request.cookies.get(COOKIE)?.value;
-
   if (!token || !secretKey) return redirectToLogin(request, requiredRole);
 
-
-
   const role = await verifyRole(token, secretKey);
-
   if (!role || role !== requiredRole) {
-
     return redirectToLogin(request, requiredRole);
-
   }
 
-
-
   return NextResponse.next();
-
 }
-
-
 
 export const config = {
   matcher: [
-    "/cabinet/:path*",
-    "/expert/:path*",
-    "/admin/:path*",
-    // Photo upload + cron routes auth in their handlers (body buffering / x-cron-secret).
-    "/api/((?!photo-reading/recognize|photo-reading/client-log|photo-reading/pricing|cron/|ritual/remind).*)",
+    "/",
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.svg|opengraph-image|decks/|sw-app-shell.js|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|css|js|map|txt|xml)$).*)",
   ],
 };
-
-

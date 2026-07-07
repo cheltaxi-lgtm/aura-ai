@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getAllSettings, setSetting } from "@/lib/settings";
+import { invalidateMaintenanceModeCache } from "@/lib/maintenance-mode";
 import { logAdminAction } from "@/lib/admin";
 
 export async function GET() {
@@ -19,6 +20,9 @@ export async function PATCH(request: NextRequest) {
   }
 
   const updated = await setSetting(section, values, auth.sub);
+  if (section === "features") {
+    invalidateMaintenanceModeCache();
+  }
   await logAdminAction(auth.sub, "update_settings", section, section, values);
   return NextResponse.json({ ok: true, [section]: updated });
 }

@@ -156,7 +156,7 @@ export default function AdminAiPage() {
         </div>
 
         <p className="text-xs text-gray-600">
-          Модели подгружаются из OpenRouter. API-ключ: OPENROUTER_API_KEY в .env
+          Каталог моделей подгружается напрямую из OpenRouter в браузере (полный список). Если не загрузился — короткий запасной список или введите ID вручную: provider/model
         </p>
 
         <div className="rounded-xl border border-aura-emerald/20 bg-aura-emerald/5 p-4 space-y-4">

@@ -1389,6 +1389,8 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     setRetryDraft,
     setAchievementPopup,
     beginNewSpreadSession,
+    refreshSessionsList,
+    persistSessionMetaToServer,
   });
 
   loadReadingRef.current = loadReading;
@@ -1417,7 +1419,13 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
       readingInFlightRef.current = true;
       skipNextReadingRef.current = true;
       try {
-        await bindSessionToMaster(resolved);
+        const newSessionId = await beginNewSpreadSession(resolved);
+        if (newSessionId) {
+          setConsultationSessionId(newSessionId);
+          consultationSessionIdRef.current = newSessionId;
+          archiveSessionIdRef.current = null;
+          await persistSessionMetaToServer(newSessionId, { characterKey: resolved });
+        }
         await openChatWithCharacterRef.current(resolved, {
           sessionOnly: true,
           intention: null,
@@ -1432,7 +1440,11 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     isLoggedIn,
     masters,
     recommendedId,
-    bindSessionToMaster,
+    beginNewSpreadSession,
+    persistSessionMetaToServer,
+    setConsultationSessionId,
+    consultationSessionIdRef,
+    archiveSessionIdRef,
     readingInFlightRef,
   ]);
 

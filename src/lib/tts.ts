@@ -13,6 +13,7 @@ import {
 import { isOpenRouterConfigured } from "@/lib/llm";
 import { withLlmSlot } from "@/lib/llm-concurrency";
 import { openRouterAppHeaders } from "@/lib/brand";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 import { getSetting, type TtsSettings } from "@/lib/settings";
 import { isPrimarilyCyrillic, reorderTtsModelChainForText } from "@/lib/tts-locale";
 
@@ -48,7 +49,7 @@ function openRouterSpeechHeaders(): Record<string, string> {
 
 async function callOpenRouterSpeech(body: Record<string, unknown>): Promise<SynthesizeResult | null> {
   return withLlmSlot(`tts:${body.model ?? "unknown"}`, async () => {
-  const response = await fetch(OPENROUTER_SPEECH_API, {
+  const response = await openRouterFetch(OPENROUTER_SPEECH_API, {
     method: "POST",
     headers: openRouterSpeechHeaders(),
     body: JSON.stringify(body),

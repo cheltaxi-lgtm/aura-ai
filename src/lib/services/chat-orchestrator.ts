@@ -28,7 +28,7 @@ import type { ChatMessage } from "@/lib/llm";
 import { query } from "@/lib/db";
 import { intentionPromptBlock } from "@/lib/intention";
 import { buildSpreadBlock, buildPeriodSpreadBlock } from "@/lib/spread-block";
-import { getSpread, hasCompleteSpread, normalizeSpreadId, requiredCardCount, sliceForSpread } from "@/lib/spreads";
+import { getSpread, hasCompleteSpread, limitSpreadKeyCards, normalizeSpreadId, requiredCardCount, sliceForSpread } from "@/lib/spreads";
 import {
   LIFE_DEATH_TOPIC,
   LIFE_DEATH_LLM_OVERRIDE,
@@ -42,6 +42,7 @@ import {
   countSessionMemories,
   getSessionMemories,
   maybePersistSessionMemory,
+  upsertSessionMemoryFromChat,
 } from "@/lib/session-memory";
 import type { ChargeChatBillingParams } from "@/lib/services/billing-service";
 import type { ChatBillingHandle } from "@/lib/services/billing-service";
@@ -88,9 +89,12 @@ import {
 } from "@/lib/chat-reply-sanitize";
 import {
   detectPeriodSpreadScope,
+  periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
 import { composeMemoryQueryText, filterLlmMessagesByTopic } from "@/lib/memory/memory-relevance";
+import { MIN_SPREAD_READING_CHARS } from "@/lib/chat-cache";
+import { topicLabel, isValidSessionIntention, type SessionTopicId } from "@/lib/session-topics";
 
 export type ChatRequestBody = {
   characterId: string;
@@ -845,6 +849,34 @@ export class ChatOrchestrator {
       : this.tarotCards?.map((c) => c.name) ?? [];
   }
 
+  /** Topic line for cabinet / session list after a one-shot spread reply. */
+  private quickSpreadTopicSummary(cardNames: string[]): string {
+    if (this.periodSpreadScope) {
+      return periodSpreadTaskLabel(this.periodSpreadScope);
+    }
+    const intention = this.resolvedIntention ?? this.intention;
+    if (intention === "custom" && this.customQuestion?.trim()) {
+      return this.customQuestion.trim().slice(0, 120);
+    }
+    if (intention && isValidSessionIntention(intention)) {
+      return topicLabel(intention as SessionTopicId);
+    }
+    const spreadId = normalizeSpreadId(this.resolvedSpreadId ?? this.spreadId);
+    const spread = getSpread(spreadId);
+    if (spread.id !== "triplet" || this.resolvedSpreadType === "new") {
+      return spread.label;
+    }
+    const q = this.lastUserMsg.trim();
+    return q.length > 0 ? q.slice(0, 120) : "Сеанс";
+  }
+
+  /** Persist to cabinet immediately — all quick spreads + first consultation turn. */
+  private shouldPersistSessionMemoryImmediately(finalReply: string): boolean {
+    if (this.isLongFormSpreadReply()) return true;
+    const userTurns = this.messages.filter((m) => m.role === "user").length;
+    return userTurns === 1 && finalReply.trim().length >= MIN_SPREAD_READING_CHARS;
+  }
+
   private async buildSpreadContextMessages(systemPrompt: string): Promise<ChatMessage[]> {
     const fullPrompt = await wrapSystemPrompt(systemPrompt);
     return [
@@ -1037,14 +1069,30 @@ export class ChatOrchestrator {
 
       if (this.session) {
         try {
-          void maybePersistSessionMemory({
-            userId: this.profileUserId,
-            sessionId: this.session.id,
-            characterKey: this.characterId,
-            messages: this.llmMessages.map((m) => ({ role: m.role, content: m.content })),
-            cardNames: this.tarotCards?.map((c) => c.name) ?? [],
-            lastAssistantReply: finalReply,
-          }).catch((err) => console.warn("Session memory persist failed:", err));
+          const cardNames =
+            this.tarotCards?.map((c) => c.name) ??
+            (this.resolvedCardNames.length ? this.resolvedCardNames : []);
+          // Quick spreads (period chips, inline cards) and first consultation turn
+          // must appear in cabinet / master session list without waiting for 3+ chat turns.
+          if (this.shouldPersistSessionMemoryImmediately(finalReply)) {
+            await upsertSessionMemoryFromChat({
+              userId: this.profileUserId,
+              sessionId: this.session.id,
+              characterKey: this.characterId,
+              topicSummary: this.quickSpreadTopicSummary(cardNames),
+              keyCards: limitSpreadKeyCards(cardNames),
+              prediction: finalReply,
+            });
+          } else {
+            void maybePersistSessionMemory({
+              userId: this.profileUserId,
+              sessionId: this.session.id,
+              characterKey: this.characterId,
+              messages: this.llmMessages.map((m) => ({ role: m.role, content: m.content })),
+              cardNames,
+              lastAssistantReply: finalReply,
+            }).catch((err) => console.warn("Session memory persist failed:", err));
+          }
         } catch (diaryErr) {
           console.warn("Diary count failed:", diaryErr);
         }

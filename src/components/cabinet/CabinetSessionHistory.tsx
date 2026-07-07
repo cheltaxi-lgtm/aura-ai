@@ -15,6 +15,7 @@ import {
   moodEmoji,
   outcomeRatingLabel,
   sessionMastersFromList,
+  sortCabinetSessionsByDate,
   truncate,
 } from "@/lib/cabinet-utils";
 import type { CabinetSessionRow } from "@/lib/cabinet-data";
@@ -120,7 +121,7 @@ function SessionCard({
             <p className="font-semibold text-white">
               {master.emoji} {master.name}
             </p>
-            <p className="text-xs text-white/40">{formatCabinetDate(session.createdAt)}</p>
+            <p className="text-xs text-white/40">{formatCabinetDate(session.sessionDate)}</p>
           </div>
         </div>
         {session.outcomeRating != null && (
@@ -218,10 +219,10 @@ export default function CabinetSessionHistory({
 
   const masters = useMemo(() => sessionMastersFromList(sessions), [sessions]);
 
-  const filtered = useMemo(
-    () => (filter === "all" ? sessions : sessions.filter((s) => s.characterKey === filter)),
-    [sessions, filter]
-  );
+  const filtered = useMemo(() => {
+    const list = filter === "all" ? sessions : sessions.filter((s) => s.characterKey === filter);
+    return sortCabinetSessionsByDate(list);
+  }, [sessions, filter]);
 
   const handleRate = async (rating: 1 | 2 | 3) => {
     if (!rateTarget) return;

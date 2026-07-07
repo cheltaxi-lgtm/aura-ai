@@ -1,0 +1,2 @@
+-- One-time data repair — superseded by migration 053_migrate_rune_ledger_repair.sql
+-- Kept for manual re-run reference only.

@@ -29,36 +29,134 @@ export function pickFavoriteMaster(masterCounts: Record<string, number>): string
 }
 
 async function computeLiveStatsForBackfill(userId: string): Promise<UserLifetimeStatsRow> {
-  const [sessionCount, masterRows, cardsRow] = await Promise.all([
-    query<{ cnt: string }>(
-      `SELECT COUNT(*)::text AS cnt
-       FROM sessions
-       WHERE user_id = $1 AND character_key IS NOT NULL AND TRIM(character_key) <> ''`,
-      [userId]
-    ),
-    query<{ character_key: string; cnt: string }>(
-      `SELECT character_key, COUNT(*)::text AS cnt
-       FROM session_memories WHERE user_id = $1
-       GROUP BY character_key`,
-      [userId]
-    ),
-    query<{ total: string }>(
-      `SELECT COALESCE(SUM(COALESCE(array_length(key_cards, 1), 0)), 0)::text AS total
-       FROM session_memories WHERE user_id = $1`,
-      [userId]
-    ),
-  ]);
+  const { rows } = await query<{
+    total_sessions: string;
+    total_cards: string;
+    master_counts: unknown;
+  }>(
+    `WITH memory_rows AS (
+       SELECT
+         sm.character_key,
+         sm.session_id,
+         COALESCE(array_length(sm.key_cards, 1), 0) AS memory_cards
+       FROM session_memories sm
+       WHERE sm.user_id = $1
+     ),
+     session_rows AS (
+       SELECT
+         s.id AS session_id,
+         s.character_key,
+         CASE
+           WHEN s.cards IS NOT NULL AND jsonb_typeof(s.cards) = 'array'
+           THEN jsonb_array_length(s.cards)
+           ELSE 0
+         END AS session_cards
+       FROM sessions s
+       WHERE s.user_id = $1
+     ),
+     merged_sessions AS (
+       SELECT
+         COALESCE(m.session_id, sr.session_id) AS session_id,
+         COALESCE(m.character_key, sr.character_key) AS character_key,
+         GREATEST(COALESCE(m.memory_cards, 0), COALESCE(sr.session_cards, 0)) AS card_count
+       FROM memory_rows m
+       FULL OUTER JOIN session_rows sr ON sr.session_id = m.session_id
+       WHERE COALESCE(m.character_key, sr.character_key) IS NOT NULL
+         AND TRIM(COALESCE(m.character_key, sr.character_key)) <> ''
+     ),
+     orphan_sessions AS (
+       SELECT s.id AS session_id, s.character_key, 0 AS card_count
+       FROM sessions s
+       WHERE s.user_id = $1
+         AND s.character_key IS NOT NULL
+         AND TRIM(s.character_key) <> ''
+         AND COALESCE(s.message_count, 0) > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM session_memories sm
+           WHERE sm.session_id = s.id AND sm.user_id = s.user_id
+         )
+     ),
+     history_only AS (
+       SELECT
+         h.character_name AS character_key,
+         COALESCE(
+           CASE
+             WHEN jsonb_typeof(h.context_data->'cards') = 'array'
+             THEN jsonb_array_length(h.context_data->'cards')
+           END,
+           CASE
+             WHEN jsonb_typeof(h.context_data->'cardNames') = 'array'
+             THEN jsonb_array_length(h.context_data->'cardNames')
+           END,
+           CASE
+             WHEN h.context_data ? 'reading'
+               OR h.context_data->>'type' IN (
+                 'reading', 'intention_spread', 'photo_reading', 'daily_energy'
+               )
+             THEN 3
+             ELSE 0
+           END,
+           0
+         ) AS card_count
+       FROM history h
+       WHERE h.user_id = $1
+         AND (
+           h.context_data ? 'cards'
+           OR h.context_data ? 'cardNames'
+           OR h.context_data ? 'reading'
+           OR h.context_data->>'type' IN (
+             'reading', 'intention_spread', 'photo_reading', 'daily_energy'
+           )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM session_memories sm
+           WHERE sm.user_id = h.user_id
+             AND h.context_data->>'sessionId' IS NOT NULL
+             AND sm.session_id::text = h.context_data->>'sessionId'
+         )
+     ),
+     all_activities AS (
+       SELECT character_key, card_count FROM merged_sessions
+       UNION ALL
+       SELECT character_key, card_count FROM orphan_sessions
+       UNION ALL
+       SELECT character_key, card_count FROM history_only WHERE card_count > 0
+     ),
+     master_agg AS (
+       SELECT character_key, COUNT(*)::int AS session_cnt
+       FROM all_activities
+       WHERE character_key IS NOT NULL AND TRIM(character_key) <> ''
+       GROUP BY character_key
+     )
+     SELECT
+       (SELECT COUNT(*)::text FROM all_activities
+        WHERE character_key IS NOT NULL AND TRIM(character_key) <> '') AS total_sessions,
+       (SELECT COALESCE(SUM(card_count), 0)::text FROM all_activities) AS total_cards,
+       (SELECT COALESCE(jsonb_object_agg(character_key, session_cnt), '{}'::jsonb)
+        FROM master_agg) AS master_counts`,
+    [userId]
+  );
 
-  const masterCounts: Record<string, number> = {};
-  for (const row of masterRows.rows) {
-    masterCounts[row.character_key] = Number.parseInt(row.cnt ?? "0", 10);
-  }
-
+  const row = rows[0];
   return {
-    totalSessions: Number.parseInt(sessionCount.rows[0]?.cnt ?? "0", 10),
-    totalCards: Number.parseInt(cardsRow.rows[0]?.total ?? "0", 10),
-    masterCounts,
+    totalSessions: Number.parseInt(row?.total_sessions ?? "0", 10),
+    totalCards: Number.parseInt(row?.total_cards ?? "0", 10),
+    masterCounts: parseMasterCounts(row?.master_counts),
   };
+}
+
+async function syncLifetimeStatsCache(userId: string, live: UserLifetimeStatsRow): Promise<void> {
+  await query(
+    `INSERT INTO user_lifetime_stats (user_id, total_sessions, total_cards, master_counts, backfilled_at, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, NOW(), NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       total_sessions = EXCLUDED.total_sessions,
+       total_cards = EXCLUDED.total_cards,
+       master_counts = EXCLUDED.master_counts,
+       updated_at = NOW()`,
+    [userId, live.totalSessions, live.totalCards, JSON.stringify(live.masterCounts)]
+  );
+  await backfillSessionSnapshots(userId);
 }
 
 async function backfillSessionSnapshots(userId: string): Promise<void> {
@@ -73,29 +171,8 @@ async function backfillSessionSnapshots(userId: string): Promise<void> {
 }
 
 async function ensureLifetimeStatsRow(userId: string): Promise<UserLifetimeStatsRow> {
-  const existing = await query<{
-    total_sessions: number;
-    total_cards: number;
-    master_counts: unknown;
-  }>(`SELECT total_sessions, total_cards, master_counts FROM user_lifetime_stats WHERE user_id = $1`, [
-    userId,
-  ]);
-
-  if (existing.rows[0]) {
-    return {
-      totalSessions: existing.rows[0].total_sessions,
-      totalCards: existing.rows[0].total_cards,
-      masterCounts: parseMasterCounts(existing.rows[0].master_counts),
-    };
-  }
-
   const live = await computeLiveStatsForBackfill(userId);
-  await query(
-    `INSERT INTO user_lifetime_stats (user_id, total_sessions, total_cards, master_counts, backfilled_at)
-     VALUES ($1, $2, $3, $4::jsonb, NOW())`,
-    [userId, live.totalSessions, live.totalCards, JSON.stringify(live.masterCounts)]
-  );
-  await backfillSessionSnapshots(userId);
+  await syncLifetimeStatsCache(userId, live);
   return live;
 }
 
@@ -129,8 +206,8 @@ async function incrementLifetimeStats(
        SET total_sessions = total_sessions + $2,
            total_cards = total_cards + $3,
            master_counts = master_counts || jsonb_build_object(
-             $4,
-             COALESCE((master_counts->>$4)::int, 0) + $5
+             $4::text,
+             COALESCE((master_counts->>($4::text))::int, 0) + $5
            ),
            updated_at = NOW()
        WHERE user_id = $1`,

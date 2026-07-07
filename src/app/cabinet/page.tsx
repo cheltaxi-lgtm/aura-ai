@@ -20,6 +20,7 @@ import {
   persistIntentionSpreadState,
 } from "@/lib/intention";
 import { clearChatCache } from "@/lib/chat-cache";
+import { sortCabinetSessionsByDate } from "@/lib/cabinet-utils";
 import CabinetProfileHeader, {
   CabinetProfileHeaderSkeleton,
 } from "@/components/cabinet/CabinetProfileHeader";
@@ -127,10 +128,10 @@ export default function CabinetPage() {
       setSessions((prev) => {
         const ids = new Set(prev.map((s) => s.id));
         const merged = [...prev, ...json.sessions.filter((s) => !ids.has(s.id))];
-        return merged;
+        return sortCabinetSessionsByDate(merged);
       });
     } else {
-      setSessions(json.sessions);
+      setSessions(sortCabinetSessionsByDate(json.sessions));
       setData(json);
     }
     setSessionsHasMore(json.sessionsHasMore);

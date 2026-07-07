@@ -1,9 +1,16 @@
 import { CHARACTERS, getCharacterById } from "@/lib/characters";
+import type { CabinetSessionRow } from "@/lib/cabinet-data";
 import {
   MARKDOWN_IMAGE_LINE_PATTERN,
   MARKDOWN_IMAGE_PATTERN,
 } from "@/lib/reading-text-polish";
 import { ZODIAC_SIGNS, getZodiacFromDate, type ZodiacSign } from "@/utils/zodiac";
+
+export function sortCabinetSessionsByDate(sessions: CabinetSessionRow[]): CabinetSessionRow[] {
+  return [...sessions].sort(
+    (a, b) => Date.parse(b.sessionDate) - Date.parse(a.sessionDate)
+  );
+}
 
 export function masterDisplay(key: string) {
   const c = getCharacterById(key);

@@ -18,6 +18,7 @@ import {
   ACHIEVEMENTS,
   type AchievementKey,
   getUserStats,
+  preservePermanentGrants,
 } from "@/lib/achievements";
 import type { RedrawSpread } from "@/lib/photo-spread-redraw";
 
@@ -364,7 +365,7 @@ export async function getCabinetSessions(
            AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
            AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''
          )
-       ORDER BY COALESCE(s.updated_at, sm.created_at, s.created_at) DESC
+       ORDER BY COALESCE(sm.session_date, s.updated_at, s.created_at) DESC
        LIMIT $2 OFFSET $3`,
       [userId, limit, offset]
     ),
@@ -443,8 +444,11 @@ export async function getCabinetAchievements(
   );
 
   const earnedKeys = new Set(earnedRows.map((r) => r.achievement));
-  const stats = await getUserStats(userId, "veronika");
-  const maxMasterSessions = await maxSessionsWithOneMaster(userId);
+  const [stats, maxMasterSessions, daysWithUs] = await Promise.all([
+    getUserStats(userId, "veronika"),
+    maxSessionsWithOneMaster(userId),
+    getDaysWithUs(userId),
+  ]);
 
   const earned: CabinetAchievementEarned[] = earnedRows
     .filter((r) => r.achievement in ACHIEVEMENTS)
@@ -479,7 +483,7 @@ export async function getCabinetAchievements(
       case "week_streak":
         progress = stats.currentStreak;
         progressMax = 7;
-        progressLabel = `${Math.min(stats.currentStreak, 7)}/7 дней`;
+        progressLabel = `${Math.min(stats.currentStreak, 7)}/7 дней подряд`;
         break;
       case "loyal_master":
         progress = maxMasterSessions;
@@ -492,9 +496,9 @@ export async function getCabinetAchievements(
         progressLabel = "Спроси о сложном";
         break;
       case "month_in":
-        progress = stats.daysTotal;
+        progress = daysWithUs;
         progressMax = 30;
-        progressLabel = `${Math.min(stats.daysTotal, 30)}/30 дней`;
+        progressLabel = `${Math.min(daysWithUs, 30)}/30 дней`;
         break;
     }
 
@@ -734,6 +738,8 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
          AND EXISTS (SELECT 1 FROM payments p WHERE p.session_id = sessions.id)`,
       [userId]
     );
+
+    await preservePermanentGrants(userId, client);
 
     return {
       sessionsRemoved,

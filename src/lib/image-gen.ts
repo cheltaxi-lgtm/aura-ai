@@ -1,5 +1,6 @@
 import { buildImagePrompt, type ImageGenerateRequest } from "@/lib/image-prompts";
 import { openRouterAppHeaders } from "@/lib/brand";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 import { isOpenRouterConfigured } from "@/lib/llm";
 import { withLlmSlot } from "@/lib/llm-concurrency";
 import { distillSceneVisualPrompt } from "@/lib/scene-visual-prompt";
@@ -72,7 +73,7 @@ async function callOpenRouterImage(
   quality: ImageQuality
 ): Promise<string | null> {
   return withLlmSlot(`image:${model}`, async () => {
-  const response = await fetch(OPENROUTER_API, {
+  const response = await openRouterFetch(OPENROUTER_API, {
     method: "POST",
     headers: openRouterHeaders(),
     body: JSON.stringify({

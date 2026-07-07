@@ -96,6 +96,14 @@ export default function ModelPicker({
     setOpen(false);
   };
 
+  const commitManualModelId = (raw: string) => {
+    const id = raw.trim();
+    if (!id.includes("/") || id.length < 3) return;
+    onChange(id);
+    setSearch("");
+    setOpen(false);
+  };
+
   const poolLabel = speechOnly
     ? " для озвучки"
     : imageOnly
@@ -124,6 +132,16 @@ export default function ModelPicker({
           onChange={(e) => {
             setSearch(e.target.value);
             setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitManualModelId(search);
+            }
+            if (e.key === "Escape") {
+              setOpen(false);
+              setSearch("");
+            }
           }}
           className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-10 pr-10 text-sm text-white"
         />
@@ -183,6 +201,7 @@ export default function ModelPicker({
         {loading
           ? "Загрузка…"
           : `${pool.length} моделей${poolLabel}${source ? ` · ${source}` : ""}${listType === "chat" && pool.length > 50 ? " · введите текст для поиска" : ""}`}
+        {!loading && source === "fallback" ? " · короткий список, введите ID вручную (provider/model)" : ""}
       </p>
     </div>
   );

@@ -1,5 +1,6 @@
 import { getAdminAiSettings, getChatModel, getVisionModel } from "./ai-model";
 import { openRouterAppHeaders } from "./brand";
+import { openRouterFetch } from "./openrouter-fetch";
 import { isDegenerateLlmOutput } from "./chat-reply-sanitize";
 import type { ChatHistoryMessage } from "./chat-sanitize";
 import { acquireLlmSlot, withLlmSlot, wrapStreamWithLlmRelease, type LlmPool } from "./llm-concurrency";
@@ -213,7 +214,7 @@ async function callChatCompletionsDetailed(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const response = await fetch(url, {
+        const response = await (isOpenRouter ? openRouterFetch : fetch)(url, {
           method: "POST",
           headers,
           body: JSON.stringify(payload),
@@ -450,7 +451,7 @@ export async function streamChat(params: {
   }
 
   try {
-    const response = await fetch(OPENROUTER_API, {
+    const response = await openRouterFetch(OPENROUTER_API, {
       method: "POST",
       headers: openRouterHeaders(),
       body: JSON.stringify(body),

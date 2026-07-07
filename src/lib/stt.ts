@@ -1,5 +1,6 @@
 import { isOpenRouterConfigured } from "@/lib/llm";
 import { openRouterAppHeaders } from "@/lib/brand";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 
 const OPENROUTER_TRANSCRIBE_API = "https://openrouter.ai/api/v1/audio/transcriptions";
 const DEFAULT_STT_MODEL = "openai/whisper-1";
@@ -40,7 +41,7 @@ export async function transcribeSpeech(params: {
   const data = params.audioBase64.replace(/^data:[^;]+;base64,/, "").trim();
   if (!data) return null;
 
-  const response = await fetch(OPENROUTER_TRANSCRIBE_API, {
+  const response = await openRouterFetch(OPENROUTER_TRANSCRIBE_API, {
     method: "POST",
     headers: openRouterHeaders(),
     body: JSON.stringify({

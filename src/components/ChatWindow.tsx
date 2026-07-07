@@ -186,6 +186,17 @@ export default function ChatWindow({
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
   const textInputRef = useNativeInputSync<HTMLTextAreaElement>(setInput);
+  const clearChatInput = useCallback(() => {
+    setInput("");
+    const el = textInputRef.current;
+    if (el) el.value = "";
+  }, []);
+
+  useEffect(() => {
+    const el = textInputRef.current;
+    if (!el || el.value === input) return;
+    el.value = input;
+  }, [input]);
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
   const isNumerologChat = characterId === "numerolog" && !readOnly;
   const [statusText, setStatusText] = useState("Считывает энергетику...");
@@ -487,10 +498,11 @@ export default function ChatWindow({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || inputBlocked) return;
+    const text = input.trim();
+    if (!text || inputBlocked) return;
     pinnedToBottomRef.current = true;
-    onSendMessage(input);
-    setInput("");
+    onSendMessage(text);
+    clearChatInput();
     textInputRef.current?.focus();
   };
 
@@ -1140,7 +1152,7 @@ export default function ChatWindow({
               if (input.trim() && !inputBlocked) {
                 pinnedToBottomRef.current = true;
                 onSendMessage(input.trim());
-                setInput("");
+                clearChatInput();
               }
             }
           }}

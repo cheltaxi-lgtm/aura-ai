@@ -7,6 +7,7 @@
  * without a vector / fall back to lexical + salience).
  */
 import { openRouterAppHeaders } from "@/lib/brand";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 
 const OPENROUTER_EMBED_API = "https://openrouter.ai/api/v1/embeddings";
 const DEFAULT_EMBED_MODEL = "baai/bge-m3";
@@ -43,7 +44,7 @@ export async function embedTexts(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(OPENROUTER_EMBED_API, {
+    const res = await openRouterFetch(OPENROUTER_EMBED_API, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,

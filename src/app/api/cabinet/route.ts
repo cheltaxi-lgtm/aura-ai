@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
+import { syncRetroactiveAchievements } from "@/lib/achievements";
 import { pruneDuplicateActiveSessions, pruneEmptySessionStubs } from "@/lib/session";
 import {  getCabinetProfile,
   getCabinetStats,
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest) {
       async () => {
         await pruneEmptySessionStubs(profileUserId);
         await pruneDuplicateActiveSessions(profileUserId);
+        await syncRetroactiveAchievements(profileUserId);
       },
       undefined,
       []
