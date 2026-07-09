@@ -10,6 +10,7 @@ export type SpreadId =
   | "yes-no"
   | "celtic-cross"
   | "daily-extended"
+  | "week-overview"
   | "year-ahead"
   | "compatibility-12"
   | "lenormand-line";

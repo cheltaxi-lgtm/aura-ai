@@ -9,6 +9,15 @@ import { getSeoMetaOverride } from "@/lib/seo/seo-meta-overrides";
 const S5 = ["Ситуация", "Препятствие", "Корень", "Совет", "Итог"] as const;
 const LOVE5 = ["Его мысли", "Его чувства", "Что скрыто", "Что мешает", "Итог"] as const;
 const TRIPLET = ["Прошлое", "Настоящее", "Будущее"] as const;
+const WEEK7 = [
+  "Начало недели",
+  "Работа и дела",
+  "Отношения",
+  "Энергия",
+  "Поворот недели",
+  "Совет",
+  "Итог недели",
+] as const;
 const LOVE7 = [
   "Вы",
   "Партнёр",
@@ -372,10 +381,10 @@ const SEEDS: IntentSeed[] = [
     slug: "na-nedelyu",
     title: "На неделю",
     category: "future",
-    spreadId: "daily-extended",
+    spreadId: "week-overview",
     question: "Что ждёт меня на этой неделе?",
     intro: "Расширенный обзор недели по сферам жизни.",
-    positions: ["Утро", "Дела", "Отношения", "Энергия", "Вечер", "Совет", "Послание"],
+    positions: WEEK7,
     related: ["na-mesyats", "blizhayshee-budushchee", "na-segodnya"],
   },
   {

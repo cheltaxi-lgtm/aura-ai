@@ -1062,6 +1062,9 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     if (spread.source === "numerolog") {
       return cards.length >= (spread.cardCount ?? 1);
     }
+    if (spread.source === "period") {
+      return cards.length >= 3;
+    }
     const spreadType =
       spread.source === "photo"
         ? "photo"
@@ -1116,7 +1119,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
         chatDisplaySpread.spreadId ?? DEFAULT_SPREAD_ID,
         chatDisplaySpread.source === "photo"
           ? "photo"
-          : chatDisplaySpread.source === "intention"
+          : chatDisplaySpread.source === "intention" || chatDisplaySpread.source === "period"
             ? "new"
             : "daily"
       );
@@ -1137,7 +1140,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
       hasCompleteSpread(
         chatDisplaySpread?.cards?.map((c) => c.name),
         chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
-        chatDisplaySpread?.source === "photo" ? "photo" : chatDisplaySpread?.source === "intention" ? "new" : "daily"
+        chatDisplaySpread?.source === "photo" ? "photo" : chatDisplaySpread?.source === "intention" || chatDisplaySpread?.source === "period" ? "new" : "daily"
       )
     ) {
       setChatHeaderImage(null);
@@ -1226,11 +1229,11 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
         userName: activeProfile.name,
         zodiac: activeProfile.zodiac,
         cards: tarotCardNames(
-          chatDisplaySpread?.source === "intention"
+          chatDisplaySpread?.source === "intention" || chatDisplaySpread?.source === "period"
             ? chatDisplaySpread.cards?.map((c) => ({ name: c.name }))
             : activeProfile.tarotCards,
           chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
-          chatDisplaySpread?.source === "intention" ? "new" : "daily"
+          chatDisplaySpread?.source === "intention" || chatDisplaySpread?.source === "period" ? "new" : "daily"
         ),
         spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
         userQuestionText: scene === "scene_illustration" ? userQuestion : undefined,
@@ -1272,7 +1275,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
       hasCompleteSpread(
         chatDisplaySpread?.cards?.map((c) => c.name),
         chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
-        chatDisplaySpread?.source === "photo" ? "photo" : chatDisplaySpread?.source === "intention" ? "new" : "daily"
+        chatDisplaySpread?.source === "photo" ? "photo" : chatDisplaySpread?.source === "intention" || chatDisplaySpread?.source === "period" ? "new" : "daily"
       )
     ) {
       return;

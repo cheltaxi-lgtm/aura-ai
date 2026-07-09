@@ -17,6 +17,7 @@ export async function registerAppShellServiceWorker(): Promise<ServiceWorkerRegi
     void registration.update();
     if ("caches" in window) {
       void caches.delete("zovus-shell-v1");
+      void caches.delete("zovus-shell-v2");
     }
     return registration;
   } catch (err) {
@@ -27,7 +28,7 @@ export async function registerAppShellServiceWorker(): Promise<ServiceWorkerRegi
 
 export async function precacheDeckImages(urls: string[]): Promise<void> {
   if (!("caches" in window)) return;
-  const cache = await caches.open("zovus-shell-v2");
+  const cache = await caches.open("zovus-shell-v3");
   await Promise.all(
     urls.slice(0, 24).map(async (raw) => {
       try {

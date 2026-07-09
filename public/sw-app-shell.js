@@ -1,5 +1,5 @@
 /* Zovus app-shell service worker — precache shell + cache static assets for Capacitor WebView. */
-const CACHE = "zovus-shell-v2";
+const CACHE = "zovus-shell-v3";
 const PRECACHE_URLS = ["/", "/?app=1", "/session/intention?app=1", "/icon.svg", "/manifest.webmanifest"];
 
 function isSameOrigin(url) {

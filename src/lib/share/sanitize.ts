@@ -1,3 +1,5 @@
+import { truncateAtWord } from "./build-url";
+
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/gi;
 const PHONE_RE = /(?:\+?\d[\d\s()-]{8,}\d)/g;
 
@@ -70,7 +72,7 @@ export function sanitizeSharePayload<T extends { title?: string; excerpt?: strin
 ): T {
   return {
     ...input,
-    title: (input.title ?? "Расклад Zovus").trim().slice(0, 120),
+    title: truncateAtWord((input.title ?? "Расклад Zovus").trim(), 120),
     excerpt: input.excerpt ? sanitizeShareBody(input.excerpt) : undefined,
     userName: sanitizeDisplayName(input.userName),
   };

@@ -29,6 +29,7 @@ import {
   sliceForSpread,
   type SpreadId,
 } from "@/lib/spreads";
+import { hasActivePeriodSpread, type PeriodSpreadScope } from "@/lib/master-quick-chips";
 
 export function cardLabel(card: SpreadSymbol | { name?: string } | string): string {
   if (typeof card === "string") return card;
@@ -83,6 +84,7 @@ export function resolveSpreadCardsForReading(input: {
     spreadType?: "daily" | "new" | "photo";
     spreadId?: SpreadId | string;
     cardNames?: string[];
+    periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: NumerologToolId;
     numerologToolParams?: NumerologToolParams;
   } | null;
@@ -118,6 +120,12 @@ export function resolveSpreadCardsForReading(input: {
   const spreadType = sessionSpreadMeta?.spreadType;
   const metaCardNames = sessionSpreadMeta?.cardNames;
 
+  if (hasActivePeriodSpread(sessionSpreadMeta) && metaCardNames?.length) {
+    if (hasCompleteSpread(metaCardNames, spreadId, spreadType ?? "new")) {
+      return buildSessionSpreadCards(characterId, metaCardNames).spreadCards;
+    }
+  }
+
   const metaCards =
     metaCardNames?.length &&
     hasCompleteSpread(metaCardNames, spreadId, spreadType)
@@ -143,6 +151,7 @@ export function resolveSpreadCardsForReading(input: {
   }
 
   if (
+    !hasActivePeriodSpread(sessionSpreadMeta) &&
     input.chatSessionSpread?.masterId === characterId &&
     hasCompleteSpread(
       cardNamesFromSpread(input.chatSessionSpread.cards),
@@ -211,6 +220,7 @@ export function resolveTarotCardsForOutgoingChat(input: {
     spreadType?: "daily" | "new" | "photo";
     spreadId?: SpreadId | string;
     cardNames?: string[];
+    periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: NumerologToolId;
     numerologToolParams?: NumerologToolParams;
   } | null;

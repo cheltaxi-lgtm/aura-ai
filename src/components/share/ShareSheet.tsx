@@ -21,7 +21,7 @@ import {
   openShareChannel,
   shareViaNative,
 } from "@/lib/share/channels-client";
-import { buildSharePageUrl } from "@/lib/share/build-url";
+import { buildSharePageUrl, type ShareMessageInput } from "@/lib/share/build-url";
 import {
   trackShareChannel,
   trackShareCopyFail,
@@ -142,6 +142,17 @@ export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNE
   const sharePayload = savedPayload;
   const cleanUrl = token ? buildSharePageUrl(token) : "";
 
+  const shareMessageInput: ShareMessageInput | null = sharePayload
+    ? {
+        title: sharePayload.title,
+        masterName: sharePayload.masterName,
+        excerpt: sharePayload.excerpt,
+        kind: sharePayload.kind,
+        cards: sharePayload.cards?.map((c) => c.name),
+        date: sharePayload.date,
+      }
+    : null;
+
   const visibleChannels = ALL_CHANNELS.filter((ch) => channels[ch.id] !== false);
 
   const showStatus = (message: string) => {
@@ -150,12 +161,9 @@ export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNE
   };
 
   const handleChannel = async (channel: ShareChannel) => {
-    if (!sharePayload || !token || busyChannel) return;
+    if (!sharePayload || !token || !shareMessageInput || busyChannel) return;
     setBusyChannel(channel);
     try {
-      const title = sharePayload.title;
-      const masterName = sharePayload.masterName;
-
       if (channel === "copy") {
         const ok = await copyToClipboard(cleanUrl);
         showStatus(ok ? "Ссылка скопирована" : "Не удалось скопировать");
@@ -173,7 +181,7 @@ export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNE
       }
 
       if (channel === "native") {
-        const result = await shareViaNative(token, title, masterName);
+        const result = await shareViaNative(token, shareMessageInput);
         if (result === "shared") showStatus("Отправлено");
         else if (result === "copied") showStatus("Скопировано");
         else showStatus("Не удалось поделиться");
@@ -181,7 +189,7 @@ export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNE
         return;
       }
 
-      openShareChannel(channel, token, title, masterName);
+      openShareChannel(channel, token, shareMessageInput);
       trackShareChannel(channel, sharePayload.kind);
     } finally {
       setBusyChannel(null);
@@ -241,6 +249,10 @@ export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNE
                     token={token}
                     title={sharePayload.title}
                     masterName={sharePayload.masterName}
+                    excerpt={sharePayload.excerpt}
+                    kind={sharePayload.kind}
+                    cards={sharePayload.cards?.map((c) => c.name)}
+                    date={sharePayload.date}
                     cleanUrl={cleanUrl}
                   />
                 ) : null}

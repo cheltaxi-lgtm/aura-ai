@@ -18,6 +18,7 @@ import {
   loadChatCacheAny,
   saveChatCache,
   chatHasSpreadReading,
+  clearChatCache,
   MIN_SPREAD_READING_CHARS,
 } from "@/lib/chat-cache";
 import { mergeChatMessageMetadata, applyNumerologyUiToLastAssistant } from "@/lib/merge-chat-message-metadata";
@@ -76,7 +77,7 @@ import {
 import {
   detectPeriodSpreadScope,
   drawPeriodSpread,
-  hasMasterQuickChips,
+  hasActivePeriodSpread,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
 import { FLOW_STEP_KEY, LAST_MASTER_KEY } from "@/lib/home-flow-storage";
@@ -229,12 +230,14 @@ export interface UseChatActionsOptions {
     masterId: string;
     cards: SpreadSymbol[];
     system: DeckSystem;
+    periodScope?: PeriodSpreadScope;
   } | null;
   setChatSessionSpread: Dispatch<
     SetStateAction<{
       masterId: string;
       cards: SpreadSymbol[];
       system: DeckSystem;
+      periodScope?: PeriodSpreadScope;
     } | null>
   >;
 
@@ -259,6 +262,7 @@ export interface UseChatActionsOptions {
     spreadType?: "daily" | "new" | "photo";
     spreadId?: string;
     cardNames?: string[];
+    periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: NumerologToolId;
     numerologToolParams?: NumerologToolParams;
   } | null>;
@@ -273,7 +277,7 @@ export interface UseChatActionsOptions {
   allSpreadFlipped: boolean;
   shouldAutoLoadSpreadReading: (masterId: string, cardsKey: string) => boolean;
   chatDisplaySpread: {
-    source?: "triplet" | "photo" | "intention" | "master" | "numerolog";
+    source?: "triplet" | "photo" | "intention" | "master" | "numerolog" | "period";
     cards?: DeckCardInput[];
     system?: DeckSystem;
     spreadId?: SpreadId | string;
@@ -442,7 +446,14 @@ export function useChatActions(options: UseChatActionsOptions) {
         spreadCardsOverride?: SpreadSymbol[];
       }
     ) => {
+      const isPeriodReadingRequest = Boolean(loadOptions?.readingScope);
+      const shouldDiscardStaleDailyReading = () =>
+        !isPeriodReadingRequest &&
+        (hasActivePeriodSpread(sessionSpreadMetaRef.current) ||
+          Boolean(chatSessionSpread?.periodScope));
+
       const appendReadingMessage = (prev: Message[], readingMsg: Message): Message[] => {
+        if (shouldDiscardStaleDailyReading()) return prev;
         if (loadOptions?.replaceExisting || loadOptions?.preserveChat) {
           const idx = prev.findLastIndex(
             (m) =>
@@ -476,6 +487,14 @@ export function useChatActions(options: UseChatActionsOptions) {
       try {
         const activeProfile = profileOverride ?? getActiveProfile();
         if (!activeProfile) {
+          return;
+        }
+
+        if (
+          !loadOptions?.readingScope &&
+          (hasActivePeriodSpread(sessionSpreadMetaRef.current) ||
+            chatSessionSpread?.periodScope)
+        ) {
           return;
         }
 
@@ -547,6 +566,7 @@ export function useChatActions(options: UseChatActionsOptions) {
           const chatCached =
             loadChatCacheForMaster(characterId, cardsKey) ?? loadChatCacheAny(characterId);
           if (chatHasSpreadReading(chatCached)) {
+            if (shouldDiscardStaleDailyReading()) return;
             setMessages((prev) => (chatHasSpreadReading(prev) ? prev : chatCached!));
             return;
           }
@@ -568,6 +588,7 @@ export function useChatActions(options: UseChatActionsOptions) {
           };
           const readingText = coerceSpreadReadingText(ctx.reading ?? "", cardNames);
           if (readingText) {
+            if (shouldDiscardStaleDailyReading()) return;
             const readingTs = cachedReading.createdAt
               ? new Date(cachedReading.createdAt)
               : new Date();
@@ -996,10 +1017,14 @@ export function useChatActions(options: UseChatActionsOptions) {
         ((data.spreadType as "daily" | "new" | undefined) ?? "new");
 
       if (cardNames.length) {
+        const preservedPeriodScope =
+          sessionSpreadMetaRef.current?.periodSpreadScope ??
+          chatSessionSpread?.periodScope;
         sessionSpreadMetaRef.current = {
           spreadType,
           spreadId,
           cardNames,
+          ...(preservedPeriodScope ? { periodSpreadScope: preservedPeriodScope } : {}),
           ...(numerologToolId
             ? {
                 numerologToolId,
@@ -1069,6 +1094,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       setChatSessionSpread,
       setSpreadFlipped,
       getActiveProfile,
+      chatSessionSpread?.periodScope,
     ]
   );
 
@@ -1181,6 +1207,9 @@ export function useChatActions(options: UseChatActionsOptions) {
             return;
           }
           if (skipSpreadLoad) return;
+          if (hasActivePeriodSpread(sessionSpreadMetaRef.current) || chatSessionSpread?.periodScope) {
+            return;
+          }
           if (needsSpreadFlip && !allSpreadFlipped) return;
           const attemptKey = `${selectedCharacter}:${activeSpreadCardsKey}`;
           if (loadReadingAttemptKeyRef.current === attemptKey) return;
@@ -1199,6 +1228,9 @@ export function useChatActions(options: UseChatActionsOptions) {
         }
 
         if (skipSpreadLoad) return;
+        if (hasActivePeriodSpread(sessionSpreadMetaRef.current) || chatSessionSpread?.periodScope) {
+          return;
+        }
         if (needsSpreadFlip && !allSpreadFlipped) return;
         const attemptKey = `${selectedCharacter}:${activeSpreadCardsKey}`;
         if (loadReadingAttemptKeyRef.current === attemptKey) return;
@@ -1269,6 +1301,12 @@ export function useChatActions(options: UseChatActionsOptions) {
 
   useEffect(() => {
     if (!selectedCharacter || !allSpreadFlipped || sessionOnlyChat) return;
+    if (
+      hasActivePeriodSpread(sessionSpreadMetaRef.current) ||
+      chatSessionSpread?.periodScope
+    ) {
+      return;
+    }
     if (chatHasSpreadReading(messages)) return;
     if (readingInFlightRef.current || isLoadingHistory) return;
     if (!needsSpreadFlip) return;
@@ -1303,6 +1341,12 @@ export function useChatActions(options: UseChatActionsOptions) {
 
   useEffect(() => {
     if (!selectedCharacter || sessionOnlyChat || isLoadingHistory) return;
+    if (
+      hasActivePeriodSpread(sessionSpreadMetaRef.current) ||
+      chatSessionSpread?.periodScope
+    ) {
+      return;
+    }
     if (chatHasSpreadReading(messages)) return;
     if (readingInFlightRef.current || isLoading) return;
 
@@ -1344,6 +1388,12 @@ export function useChatActions(options: UseChatActionsOptions) {
 
     setMessages((prev) => {
       if (chatHasSpreadReading(prev)) return prev;
+      if (
+        hasActivePeriodSpread(sessionSpreadMetaRef.current) ||
+        chatSessionSpread?.periodScope
+      ) {
+        return prev;
+      }
       return [
         {
           id: generateId(),
@@ -1564,11 +1614,14 @@ export function useChatActions(options: UseChatActionsOptions) {
       let periodSpreadCards: SpreadSymbol[] | null = null;
       let periodRitualStartedAt: number | null = null;
 
-      if (!imageBase64 && periodScope && hasMasterQuickChips(selectedCharacter)) {
+      if (!imageBase64 && periodScope) {
         const drawn = drawPeriodSpread(selectedCharacter);
         periodSpreadCards = drawn.cards;
         loadReadingAttemptKeyRef.current = null;
         loadReadingInFlightKeyRef.current = null;
+        skipNextReadingRef.current = true;
+        readingInFlightRef.current = false;
+        clearChatCache(selectedCharacter);
         setIntentionSpread(null);
         persistIntentionSpreadState(selectedCharacter, null);
         setSessionIntention(null);
@@ -1577,17 +1630,20 @@ export function useChatActions(options: UseChatActionsOptions) {
           masterId: selectedCharacter,
           cards: drawn.cards,
           system: drawn.system,
+          periodScope,
         });
         setSpreadFlipped(spreadFlippedState(drawn.cards.length, true));
         sessionSpreadMetaRef.current = {
           spreadType: "new",
           spreadId: DEFAULT_SPREAD_ID,
           cardNames: drawn.cards.map((c) => c.name),
+          periodSpreadScope: periodScope,
         };
         periodRitualStartedAt = Date.now();
         setSpreadReadingRitualOpen(true);
         setReadingRitualActive(true);
         setReadingRitualCountdownDone(false);
+        setMessages([]);
         if (beginNewSpreadSession) {
           const newSessionId = await beginNewSpreadSession(selectedCharacter);
           if (newSessionId) {
@@ -1604,7 +1660,6 @@ export function useChatActions(options: UseChatActionsOptions) {
               });
             }
           }
-          setMessages([]);
         }
       }
 
@@ -1675,7 +1730,10 @@ export function useChatActions(options: UseChatActionsOptions) {
         timestamp: new Date(),
       };
 
-      const outgoing = [...messages, userMessage];
+      const outgoing =
+        periodSpreadCards && periodSpreadCards.length >= 3
+          ? [userMessage]
+          : [...messages, userMessage];
       setMessages(outgoing);
       setIsLoading(true);
       const controller = new AbortController();
@@ -1687,7 +1745,9 @@ export function useChatActions(options: UseChatActionsOptions) {
             sessionId: session?.offline
               ? undefined
               : (consultationSessionIdRef.current ?? session?.sessionId),
-            newChatThread: pendingNewChatThreadRef.current,
+            newChatThread:
+              (periodSpreadCards && periodSpreadCards.length >= 3) ||
+              pendingNewChatThreadRef.current,
             messages: outgoing.map((m) => ({ role: m.role, content: m.content })),
             imageBase64,
             userProfile: activeProfile

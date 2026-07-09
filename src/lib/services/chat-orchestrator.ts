@@ -231,13 +231,15 @@ export class ChatOrchestrator {
     this.spreadType = parsed.spreadType;
     this.spreadCardNames = parsed.cards;
     this.spreadId = parsed.spreadId;
+    this.lastUserMsg = parsed.messages[parsed.messages.length - 1]?.content ?? "";
     this.periodSpreadScope =
-      parsed.periodSpreadScope ?? detectPeriodSpreadScope(this.lastUserMsg) ?? undefined;
+      parsed.periodSpreadScope ??
+      detectPeriodSpreadScope(this.lastUserMsg) ??
+      undefined;
     this.resolvedIntention = parsed.intention;
     this.resolvedSpreadType = parsed.spreadType;
     this.resolvedSpreadId = parsed.spreadId;
     this.resolvedCardNames = parsed.cards?.length ? [...parsed.cards] : [];
-    this.lastUserMsg = parsed.messages[parsed.messages.length - 1]?.content ?? "";
   }
 
   /** Load profile, ensure DB session — call before billing. */

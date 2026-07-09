@@ -14,6 +14,12 @@ export type MasterQuickChipMasterId = (typeof MASTER_QUICK_CHIP_MASTERS)[number]
 
 export type PeriodSpreadScope = "today" | "week" | "month";
 
+export function hasActivePeriodSpread(
+  meta: { periodSpreadScope?: PeriodSpreadScope } | null | undefined
+): boolean {
+  return Boolean(meta?.periodSpreadScope);
+}
+
 export const MASTER_PERIOD_CHIP_MESSAGES: Record<PeriodSpreadScope, string> = {
   today: "Расклад на сегодня",
   week: "Расклад на неделю",

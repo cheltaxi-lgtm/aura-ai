@@ -50,6 +50,11 @@ import {
   spreadKey,
 } from "@/lib/decks";
 import { DEFAULT_SPREAD_ID, getSpread, hasCompleteSpread, normalizeSpreadId, resolveSpreadPositions, spreadFlippedState, resolveClientSpreadId, hasExplicitClientSpreadId, requiredCardCount, type SpreadId } from "@/lib/spreads";
+import {
+  hasActivePeriodSpread,
+  periodSpreadPositions,
+  type PeriodSpreadScope,
+} from "@/lib/master-quick-chips";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckCardInput } from "@/lib/deck-card-utils";
@@ -385,6 +390,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     masterId: string;
     cards: SpreadSymbol[];
     system: DeckSystem;
+    periodScope?: PeriodSpreadScope;
   } | null>(null);
   const [pendingMasterId, setPendingMasterId] = useState<string | null>(null);
   const [spreadFlipped, setSpreadFlipped] = useState([false, false, false]);
@@ -398,6 +404,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     spreadType?: "daily" | "new" | "photo";
     spreadId?: SpreadId | string;
     cardNames?: string[];
+    periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: import("@/lib/numerology/tools").NumerologToolId;
     numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams;
   } | null>(null);
@@ -774,17 +781,30 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return persisted.cardsKey || spreadKey(persisted.cards);
       }
     }
+    if (
+      chatSessionSpread?.periodScope &&
+      chatSessionSpread.masterId === selectedCharacter &&
+      chatSessionSpread.cards.length
+    ) {
+      return spreadKey(chatSessionSpread.cards);
+    }
     if (chatSpread?.cardsKey && hasCompleteSpread(chatSpread.cards.map((c) => c.name), DEFAULT_SPREAD_ID, "daily")) {
       return chatSpread.cardsKey;
     }
     return spreadCardsKey;
-  }, [intentionSpread, selectedCharacter, chatSpread, spreadCardsKey, sessionSpreadMetaRef]);
+  }, [intentionSpread, selectedCharacter, chatSpread, spreadCardsKey, sessionSpreadMetaRef, chatSessionSpread]);
 
   const shouldAutoLoadSpreadReading = useCallback(
     (masterId: string, cardsKey: string) => {
       const deps = chat();
       if (!cardsKey || deps?.sessionOnlyChat) return false;
       if (deps && chatHasSpreadReading(deps.messages)) return false;
+      if (
+        hasActivePeriodSpread(sessionSpreadMetaRef.current) ||
+        chatSessionSpread?.periodScope
+      ) {
+        return false;
+      }
 
       if (sessionSpreadMetaRef.current?.spreadType === "daily") {
         return !masterHasReadingForSpread(savedReadings, masterId, cardsKey);
@@ -800,7 +820,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       if (anyMasterReadingForSpread(savedReadings, cardsKey, masterId)) return false;
       return true;
     },
-    [savedReadings, intentionSpread, selectedCharacter, tripletOwnerMasterId, chatDepsRef, sessionSpreadMetaRef]
+    [savedReadings, intentionSpread, selectedCharacter, tripletOwnerMasterId, chatDepsRef, sessionSpreadMetaRef, chatSessionSpread?.periodScope]
   );
 
   const cachedChatSpread = useMemo((): CachedChatSpread | null => {
@@ -828,12 +848,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   ]);
 
   const chatDisplaySpread = useMemo((): {
-    source: "photo" | "triplet" | "intention" | "master" | "numerolog";
+    source: "photo" | "triplet" | "intention" | "master" | "numerolog" | "period";
     cards: SpreadSymbol[] | DeckCardInput[];
     system: DeckSystem;
     spreadId: SpreadId | string;
     cardCount?: number;
     positions?: string[];
+    periodScope?: PeriodSpreadScope;
   } | null => {
     const deps = chat();
     if (deps?.sessionOnlyChat || hideChatSpread) return null;
@@ -945,8 +966,29 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     const metaSpreadId = sessionSpreadMetaRef.current?.spreadId ?? DEFAULT_SPREAD_ID;
+    const periodScope =
+      chatSessionSpread?.periodScope ?? sessionSpreadMetaRef.current?.periodSpreadScope;
+    const periodCardNames = sessionSpreadMetaRef.current?.cardNames ?? [];
+
+    if (periodScope && selectedCharacter && periodCardNames.length >= 3) {
+      const masterCtx = resolveMasterSpread(profile, selectedCharacter, masters);
+      const cards =
+        chatSessionSpread?.masterId === selectedCharacter &&
+        chatSessionSpread.cards.length >= 3
+          ? chatSessionSpread.cards
+          : buildSessionSpreadCards(selectedCharacter, periodCardNames).spreadCards;
+      return {
+        source: "period" as const,
+        cards,
+        system: chatSessionSpread?.system ?? masterCtx.system,
+        spreadId: DEFAULT_SPREAD_ID,
+        periodScope,
+        positions: [...periodSpreadPositions(periodScope)],
+      };
+    }
 
     if (
+      !periodScope &&
       chatSessionSpread?.masterId === selectedCharacter &&
       hasCompleteSpread(
         chatSessionSpread.cards.map((c) => c.name),

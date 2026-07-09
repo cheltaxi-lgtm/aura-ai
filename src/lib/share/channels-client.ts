@@ -6,6 +6,7 @@ import {
   buildShareLinkMessage,
   buildSharePageUrl,
   shareOgImageUrl,
+  type ShareMessageInput,
 } from "@/lib/share/build-url";
 
 export async function copyToClipboard(text: string): Promise<boolean> {
@@ -43,11 +44,12 @@ export async function downloadShareOgImage(token: string, filename: string): Pro
 export function openShareChannel(
   channel: ShareChannel,
   token: string,
-  title: string,
-  masterName?: string
+  input: ShareMessageInput
 ): "opened" | "unsupported" {
-  const url = buildSharePageUrl(token, channel);
-  const channelUrl = buildChannelUrl(channel, url, title, masterName);
+  const trackedUrl = buildSharePageUrl(token, channel);
+  const cleanUrl = buildSharePageUrl(token);
+  const shareUrl = channel === "telegram" ? cleanUrl : trackedUrl;
+  const channelUrl = buildChannelUrl(channel, shareUrl, input);
 
   if (channelUrl && typeof window !== "undefined") {
     window.open(channelUrl, "_blank", "noopener,noreferrer");
@@ -60,11 +62,10 @@ export function openShareChannel(
 /** Картинка + короткий текст + ссылка (без тела расклада). */
 export async function shareViaNative(
   token: string,
-  title: string,
-  masterName?: string
+  input: ShareMessageInput
 ): Promise<"shared" | "copied" | "failed"> {
   const url = buildSharePageUrl(token, "native");
-  const text = buildShareLinkMessage(title, url, masterName);
+  const text = buildShareLinkMessage(input, url);
 
   if (typeof navigator !== "undefined" && navigator.share) {
     try {
@@ -72,13 +73,13 @@ export async function shareViaNative(
       if (blob && navigator.canShare?.({ files: [new File([blob], "zovus-reading.png", { type: "image/png" })] })) {
         const file = new File([blob], "zovus-reading.png", { type: "image/png" });
         await navigator.share({
-          title: title.slice(0, 100),
+          title: input.title.slice(0, 100),
           text,
           files: [file],
         });
         return "shared";
       }
-      await navigator.share({ title: title.slice(0, 100), text });
+      await navigator.share({ title: input.title.slice(0, 100), text });
       return "shared";
     } catch (err) {
       if ((err as Error)?.name === "AbortError") return "failed";
