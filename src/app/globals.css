@@ -3251,7 +3251,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .aura-landing-hero {
-  @apply relative mb-12 overflow-hidden rounded-[2rem] border border-aura-gold/20 px-4 py-10 sm:px-8 sm:py-14 md:mb-16;
+  @apply relative mx-auto mb-12 max-w-6xl overflow-hidden rounded-[2rem] border border-aura-gold/20 px-4 py-10 sm:px-8 sm:py-14 md:mb-16;
   background:
     radial-gradient(ellipse 65% 55% at 75% 18%, rgba(123, 94, 167, 0.32), transparent 60%),
     radial-gradient(ellipse 70% 60% at 12% 88%, rgba(89, 28, 64, 0.34), transparent 58%),
@@ -3453,7 +3453,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .quick-questions {
-  @apply relative mx-auto mb-16 mt-12 max-w-5xl px-4 sm:mb-20 md:mt-16;
+  @apply relative mx-auto mb-16 mt-12 max-w-6xl sm:mb-20 md:mt-16;
 }
 
 .aura-landing:not(:has(.aura-landing-hero)) .quick-questions {
@@ -3559,7 +3559,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .offline-spread {
-  @apply mx-auto mb-12 max-w-6xl px-4 md:mb-16 md:px-6;
+  @apply mx-auto mb-12 max-w-6xl md:mb-16;
 }
 
 .offline-spread__panel {
@@ -3599,6 +3599,35 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 .offline-spread__cta--link {
   @apply text-aura-gold/90 hover:text-aura-gold;
+}
+
+.ritual-cta-banner {
+  @apply mx-auto mb-8 max-w-6xl md:mb-10;
+}
+
+.ritual-cta-banner__inner {
+  @apply flex flex-col items-center gap-4 rounded-3xl border border-amber-500/20 p-5 text-center sm:flex-row sm:items-center sm:gap-5 sm:p-6 sm:text-left;
+  background: linear-gradient(135deg, rgba(201, 162, 74, 0.1), rgba(139, 90, 200, 0.06));
+}
+
+.ritual-cta-banner__icon {
+  @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10 text-2xl;
+}
+
+.ritual-cta-banner__copy {
+  @apply flex-1;
+}
+
+.ritual-cta-banner__title {
+  @apply font-display text-lg font-bold text-white;
+}
+
+.ritual-cta-banner__text {
+  @apply mt-1 text-sm leading-relaxed text-white/60;
+}
+
+.ritual-cta-banner__btn {
+  @apply w-full shrink-0 sm:w-auto;
 }
 
 .rasklady-filters__chip {
@@ -6033,20 +6062,93 @@ body.cookie-banner-visible .legal-page {
   color: rgba(251, 191, 36, 0.9);
 }
 
-.share-card-ritual__master {
-  font-size: 24px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: rgba(251, 191, 36, 0.7);
+.share-card-ritual {
+  align-items: center;
   text-align: center;
 }
 
-.share-card-ritual__moon,
+.share-card-ritual__eyebrow {
+  font-size: 24px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(201, 162, 74, 0.8);
+}
+
+.share-card-frame--og .share-card-ritual__eyebrow {
+  font-size: 14px;
+}
+
+.share-card-ritual__master {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 28px;
+  font-size: 28px;
+  color: rgba(251, 191, 36, 0.85);
+}
+
+.share-card-ritual__meta {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 24px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.share-card-frame--og .share-card-ritual__meta {
+  font-size: 15px;
+}
+
+.share-card-ritual__meta-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
 .share-card-ritual__cards {
-  margin-top: 16px;
+  margin-top: 20px;
   font-size: 26px;
   text-align: center;
   color: rgba(255, 255, 255, 0.55);
+}
+
+.share-card-ritual__quote {
+  margin-top: auto;
+  padding-top: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.share-card-ritual__quote-line {
+  width: 48px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(201, 162, 74, 0.8), transparent);
+}
+
+.share-card-ritual__quote p {
+  font-size: 30px;
+  line-height: 1.55;
+  font-style: italic;
+  color: rgba(237, 230, 218, 0.9);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  -webkit-line-clamp: 6;
+  word-break: break-word;
+}
+
+.share-card-frame--og .share-card-ritual__quote {
+  padding-top: 12px;
+}
+
+.share-card-frame--og .share-card-ritual__quote p {
+  font-size: 18px;
+  -webkit-line-clamp: 4;
 }
 
 .share-landing {

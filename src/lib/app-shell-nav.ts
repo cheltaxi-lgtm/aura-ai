@@ -6,6 +6,7 @@ export const APP_SHELL_SECTIONS = {
 } as const;
 
 export const OPEN_DECKS_MODAL_KEY = "zovus:openDecksModal";
+export const OPEN_RITUAL_FLOW_KEY = "zovus:openRitualFlow";
 
 function primeHomeFlowState(): void {
   try {
@@ -79,6 +80,27 @@ export function consumeOpenDecksModalFlag(): boolean {
   try {
     if (sessionStorage.getItem(OPEN_DECKS_MODAL_KEY) !== "1") return false;
     sessionStorage.removeItem(OPEN_DECKS_MODAL_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Обряд с любой страницы (кабинет, сеанс и т.д.) — флаг в sessionStorage, затем главная. */
+export function navigateToRitualFlow(): void {
+  primeHomeFlowState();
+  try {
+    sessionStorage.setItem(OPEN_RITUAL_FLOW_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+  window.location.assign("/?app=1");
+}
+
+export function consumeOpenRitualFlowFlag(): boolean {
+  try {
+    if (sessionStorage.getItem(OPEN_RITUAL_FLOW_KEY) !== "1") return false;
+    sessionStorage.removeItem(OPEN_RITUAL_FLOW_KEY);
     return true;
   } catch {
     return false;

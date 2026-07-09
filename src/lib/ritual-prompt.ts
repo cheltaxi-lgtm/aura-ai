@@ -1,4 +1,9 @@
-import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
+import {
+  RITUAL_MASTER_PROMPT_STYLE,
+  RITUAL_TYPES,
+  isRitualMaster,
+  type RitualType,
+} from "@/lib/ritual-config";
 import {
   buildRitualTimeString,
   computeRitualSchedule,
@@ -26,16 +31,15 @@ export function buildRitualPrompt(params: {
   const todayLabel = formatRitualCalendarDate(today);
   const { schedule } = params;
 
-  const masterStyle =
-    params.characterKey === "ragnar"
-      ? `Ты Рагнар — скандинавский воин-мистик. Стиль: огонь,
-       руны, сталь. Атрибуты из твоей системы: свечи (красная,
-       чёрная), руническое слово силы, монеты, металл, пепел.
-       Тон: жёсткий, конкретный, без лирики.`
-      : `Ты Агафья — славянская ведунья. Стиль: вода, травы,
-       земля, нить. Атрибуты: травы (полынь, мята, ромашка),
-       вода (ключевая, дождевая), нить (красная, белая), соль,
-       земля. Тон: мягкий, древний, образный.`;
+  const masterStyle = isRitualMaster(params.characterKey)
+    ? RITUAL_MASTER_PROMPT_STYLE[params.characterKey]
+    : RITUAL_MASTER_PROMPT_STYLE.agafya;
+
+  const healthGuardrail =
+    params.ritualType === "health"
+      ? `\n— «вылечит», «гарантированное исцеление», любые обещания
+       медицинского результата — обряд поддерживает, не заменяет лечение`
+      : "";
 
   return `
 ${masterStyle}
@@ -125,7 +129,7 @@ ${params.cards.map((c) => `— ${c.position}: ${c.name}`).join("\n")}
 — общие фразы без привязки к картам и ответам
 — атрибуты которых нет дома
 — более 4 атрибутов
-— более 3 шагов
+— более 3 шагов${healthGuardrail}
 
 Отвечай ТОЛЬКО валидным JSON. Без текста до и после.
 `;

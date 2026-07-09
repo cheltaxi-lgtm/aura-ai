@@ -2,9 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { getCharacterById } from "@/lib/characters";
 
 const RAGNAR_RUNES = ["ᚠ", "ᚢ", "ᚦ", "ᚨ", "ᚱ", "ᚲ", "ᚷ", "ᚹ"];
 const AGAFYA_SYMBOLS = ["🌿", "🧵", "💧", "🌾", "✨"];
+const VERONIKA_SYMBOLS = ["🕯", "🪞", "🌙", "💫", "🤍"];
+const SHRI_RAJ_SYMBOLS = ["🔥", "🕉", "✨", "🪔", "🌌"];
+const NUMEROLOG_SYMBOLS = ["7", "3", "9", "🔢", "✦"];
+
+const GENERATING_SYMBOLS: Record<string, string[]> = {
+  ragnar: RAGNAR_RUNES,
+  agafya: AGAFYA_SYMBOLS,
+  veronika: VERONIKA_SYMBOLS,
+  "shri-raj": SHRI_RAJ_SYMBOLS,
+  numerolog: NUMEROLOG_SYMBOLS,
+};
 
 const PHASES = [
   { key: "moon", label: "сверяет лунное окно…" },
@@ -19,10 +31,17 @@ const POLL_MS = 2500;
 const FAIL_AFTER_MS = 180_000;
 const GENERATE_TIMEOUT_MS = 130_000;
 
+export interface RitualAchievementPayload {
+  label: string;
+  description: string;
+  bonus: number;
+  phrase: string;
+}
+
 interface Props {
   characterKey: string;
   ritualId: string;
-  onReady: () => void;
+  onReady: (achievement?: RitualAchievementPayload | null) => void;
   onFailed: (opts?: { refunded?: boolean }) => void;
 }
 
@@ -45,8 +64,8 @@ export default function RitualGenerating({
     onFailedRef.current = onFailed;
   }, [onReady, onFailed]);
 
-  const masterName = characterKey === "ragnar" ? "Рагнар" : "Агафья";
-  const symbols = characterKey === "ragnar" ? RAGNAR_RUNES : AGAFYA_SYMBOLS;
+  const masterName = getCharacterById(characterKey)?.name ?? "Мастер";
+  const symbols = GENERATING_SYMBOLS[characterKey] ?? AGAFYA_SYMBOLS;
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -70,9 +89,17 @@ export default function RitualGenerating({
   }, [ritualId]);
 
   const handleGenerationResult = useCallback(
-    (data: { status?: string; error?: string; ritual?: { status?: string } }, resOk: boolean) => {
+    (
+      data: {
+        status?: string;
+        error?: string;
+        ritual?: { status?: string };
+        achievement?: RitualAchievementPayload | null;
+      },
+      resOk: boolean
+    ) => {
       if ((resOk && data.status === "completed") || data.ritual?.status === "completed") {
-        onReadyRef.current();
+        onReadyRef.current(data.achievement ?? null);
         return true;
       }
       if (
@@ -112,6 +139,7 @@ export default function RitualGenerating({
           status?: string;
           error?: string;
           ritual?: { status?: string };
+          achievement?: RitualAchievementPayload | null;
         };
         return handleGenerationResult(data, res.ok);
       } catch {

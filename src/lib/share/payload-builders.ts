@@ -82,6 +82,7 @@ export function tripletToSharePayload(input: {
 
 export function ritualToSharePayload(ritual: RitualClientData): SharePayload {
   const cfg = RITUAL_TYPES[ritual.ritualType];
+  const master = masterDisplay(ritual.characterKey);
   const date = new Date(ritual.createdAt).toLocaleDateString("ru-RU", {
     day: "numeric",
     month: "long",
@@ -94,6 +95,7 @@ export function ritualToSharePayload(ritual: RitualClientData): SharePayload {
       ritualType: ritual.ritualType,
       ritualLabel: cfg.label,
       masterKey: ritual.characterKey,
+      masterName: master.name,
       excerpt: ritual.ritualWords ?? ritual.ritualWordOfPower ?? undefined,
       moonPhase: ritual.moonPhase,
       moonSign: ritual.moonSign,
@@ -102,6 +104,27 @@ export function ritualToSharePayload(ritual: RitualClientData): SharePayload {
     },
     "ritual",
     ritual.id
+  );
+}
+
+export function jointReadingToSharePayload(input: {
+  token: string;
+  initiatorName?: string | null;
+  partnerName?: string | null;
+  combinedReading: string;
+  date?: string;
+}): SharePayload {
+  const labelA = input.initiatorName?.trim() || "Он";
+  const labelB = input.partnerName?.trim() || "Она";
+  return withSource(
+    {
+      kind: "joint",
+      title: `Совместный расклад: ${labelA} и ${labelB}`,
+      excerpt: input.combinedReading,
+      date: input.date,
+    },
+    "joint",
+    input.token
   );
 }
 

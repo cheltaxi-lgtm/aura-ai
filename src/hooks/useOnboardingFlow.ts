@@ -1676,7 +1676,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             deps.skipNextReadingRef.current = false;
             deps.pendingNewChatThreadRef.current = false;
             const jointRedirect = jointFailureMessage
-              ? `/joint-reading/${encodeURIComponent(jointToken)}?jointError=${encodeURIComponent(jointFailureMessage)}`
+              ? `/joint-reading/${encodeURIComponent(jointToken)}?jointError=${encodeURIComponent(jointFailureMessage)}&jointSessionId=${encodeURIComponent(chatSessionId ?? "")}`
               : `/joint-reading/${encodeURIComponent(jointToken)}`;
             window.location.assign(jointRedirect);
             return;
@@ -2655,8 +2655,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           setIntentionSpreadLoading(false);
           readingInFlightRef.current = false;
           deps.skipNextReadingRef.current = false;
+          const jointSessionIdForRetry = spreadSessionId ?? chatSessionId;
           const jointRedirect = jointFailureMessage
-            ? `/joint-reading/${encodeURIComponent(jointToken)}?jointError=${encodeURIComponent(jointFailureMessage)}`
+            ? `/joint-reading/${encodeURIComponent(jointToken)}?jointError=${encodeURIComponent(jointFailureMessage)}&jointSessionId=${encodeURIComponent(jointSessionIdForRetry ?? "")}`
             : `/joint-reading/${encodeURIComponent(jointToken)}`;
           window.location.assign(jointRedirect);
           return;

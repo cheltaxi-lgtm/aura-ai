@@ -6,7 +6,14 @@ import { clientIp, enforceShareCreateRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { createShareSnapshot, isShareEnabled, type ShareKind, type SharePayload } from "@/lib/share";
 
-const VALID_KINDS = new Set<ShareKind>(["reading", "ritual", "daily", "triplet", "session"]);
+const VALID_KINDS = new Set<ShareKind>([
+  "reading",
+  "ritual",
+  "daily",
+  "triplet",
+  "session",
+  "joint",
+]);
 
 function isValidPayload(body: unknown): body is SharePayload {
   if (!body || typeof body !== "object") return false;

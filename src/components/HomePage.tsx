@@ -27,7 +27,11 @@ import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
 import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
 import { setJointReadingToken, setJointReadingRole } from "@/lib/joint-reading-storage";
 import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
-import { resolveRitualMasterKey, type RitualType } from "@/lib/ritual-config";
+import {
+  resolveRitualMasterKey,
+  resolveRitualMasterForType,
+  type RitualType,
+} from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import AuraSellingLanding from "@/components/AuraSellingLanding";
 import DeckGallery from "@/components/DeckGallery";
@@ -49,6 +53,7 @@ import { getCharacterById } from "@/lib/characters";
 import {
   APP_SHELL_SECTIONS,
   consumeOpenDecksModalFlag,
+  consumeOpenRitualFlowFlag,
   navigateToAppSection,
   navigateToDecksModal,
   navigateToPhotoReading as navigateToPhotoReadingHard,
@@ -119,6 +124,8 @@ export interface HomePageProps {
   referrerSlug?: string;
   /** From /master/[slug] — open that master's session flow on load. */
   autoOpenMasterId?: string;
+  /** From /master/[slug]?ritual=... (deep link from /obryady SEO pages). */
+  autoOpenRitualType?: RitualType;
 }
 
 function resolveDestinyCardUrl(
@@ -138,7 +145,11 @@ function resolveDestinyCardUrl(
   return null;
 }
 
-export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePageProps) {
+export default function HomePage({
+  referrerSlug,
+  autoOpenMasterId,
+  autoOpenRitualType,
+}: HomePageProps) {
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
   const { isLoggedIn, loading: authLoading, user: authUser } = useAuth();
   const { openPaywall, showRateLimit } = usePaywall();
@@ -322,7 +333,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
   const [photoReadingInitialMode, setPhotoReadingInitialMode] =
     useState<PhotoReadingEntryMode>("upload");
   const [showRitualFlow, setShowRitualFlow] = useState(false);
-  const [ritualFlowMaster, setRitualFlowMaster] = useState<string>("ragnar");
+  const [ritualFlowMaster, setRitualFlowMaster] = useState<string | null>("ragnar");
   const [pendingRitualType, setPendingRitualType] = useState<RitualType | null>(null);
   const [openRitualId, setOpenRitualId] = useState<string | null>(null);
   const [achievementPopup, setAchievementPopup] = useState<{
@@ -680,6 +691,17 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
       const character = getCharacterById(autoOpenMasterId);
       if (!character) return;
       masterAutoOpenParsedRef.current = true;
+
+      if (autoOpenRitualType) {
+        setRitualFlowMaster(resolveRitualMasterForType(autoOpenRitualType, autoOpenMasterId));
+        setPendingRitualType(autoOpenRitualType);
+        setShowRitualFlow(true);
+        if (window.location.pathname.startsWith("/master/")) {
+          window.history.replaceState(null, "", "/");
+        }
+        return;
+      }
+
       setSessionFlowPreselectedMaster(autoOpenMasterId);
       setEnergyFlowMasterId(autoOpenMasterId);
       setSeoFlowOpen(true);
@@ -704,7 +726,13 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     url.searchParams.delete("numerolog");
     url.searchParams.delete("tool");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }, [autoOpenMasterId, openNumerologSessionFlow, setSessionFlowPreselectedMaster, setShowSessionFlow]);
+  }, [
+    autoOpenMasterId,
+    autoOpenRitualType,
+    openNumerologSessionFlow,
+    setSessionFlowPreselectedMaster,
+    setShowSessionFlow,
+  ]);
 
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
@@ -2222,6 +2250,24 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
     void startPersonalFlow();
   }, [exitToLandingForNav, startPersonalFlow]);
 
+  const handleNavRitual = useCallback(() => {
+    if (!isLoggedIn) {
+      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent("/")}`;
+      return;
+    }
+    exitToLandingForNav();
+    setRitualFlowMaster(null);
+    setOpenRitualId(null);
+    setPendingRitualType(null);
+    setShowRitualFlow(true);
+  }, [isLoggedIn, exitToLandingForNav]);
+
+  useEffect(() => {
+    if (bootstrapping || !isLoggedIn) return;
+    if (!consumeOpenRitualFlowFlag()) return;
+    handleNavRitual();
+  }, [bootstrapping, isLoggedIn, handleNavRitual]);
+
   const landingInsufficientRunes = (payload: { balance: number; required: number }) => {
     setInsufficientRunes(payload);
     handleOpenPaywall({
@@ -2282,6 +2328,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
       onNavTariffs={() => scrollToSection(APP_SHELL_SECTIONS.tariffs)}
       onNavPhoto={() => openPhotoReading()}
       onNavDecks={openDecksModal}
+      onNavRitual={handleNavRitual}
       onStartReading={handleStartReadingFromHeader}
     />
   );
@@ -2796,6 +2843,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
                   showHero={!isLoggedIn}
                   showSellingSections={!isLoggedIn}
                   showTariffs
+                  onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
                   afterQuickQuestions={
                     isLoggedIn ? (
                       <PremiumEnergyBlock
@@ -2969,7 +3017,7 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
 
       <RitualFlow
         isOpen={showRitualFlow}
-        characterKey={resolveRitualMasterKey(ritualFlowMaster)}
+        characterKey={ritualFlowMaster === null ? null : resolveRitualMasterKey(ritualFlowMaster)}
         userName={effectiveProfile.name || authUser?.name || "друг"}
         userZodiac={effectiveProfile.zodiac || ""}
         balance={runeBalance}
@@ -2980,6 +3028,10 @@ export default function HomePage({ referrerSlug, autoOpenMasterId }: HomePagePro
           setShowRitualFlow(false);
           setOpenRitualId(null);
           setPendingRitualType(null);
+        }}
+        onAchievement={(ach) => {
+          setAchievementPopup(ach);
+          setTimeout(() => setAchievementPopup(null), 4000);
         }}
         onBalanceChange={(b) => {
           setRuneBalance(b);

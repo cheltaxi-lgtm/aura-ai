@@ -7,6 +7,7 @@ import {
   sendEmail,
   jointReadingCompletedEmailHtml,
   jointReadingPartnerDoneEmailHtml,
+  jointReadingExpiringEmailHtml,
 } from "@/lib/email/send";
 
 export type JointReadingStatus = "pending_partner" | "partner_done" | "completed" | "expired";
@@ -34,6 +35,7 @@ export interface JointReadingRow {
   expires_at: string;
   created_at: string;
   completed_at: string | null;
+  reminder_sent_at: string | null;
 }
 
 export type JointSubmitResult =
@@ -97,6 +99,7 @@ function mapRow(row: Record<string, unknown>): JointReadingRow {
     expires_at: String(row.expires_at),
     created_at: String(row.created_at),
     completed_at: row.completed_at ? String(row.completed_at) : null,
+    reminder_sent_at: row.reminder_sent_at ? String(row.reminder_sent_at) : null,
   };
 }
 
@@ -252,6 +255,71 @@ export async function getActiveJointInviteForInitiator(
   );
   if (!res.rows[0]) return null;
   return mapRow(res.rows[0] as Record<string, unknown>);
+}
+
+export interface JointReadingAdminStats {
+  total: number;
+  byStatus: Record<JointReadingStatus, number>;
+  completionRate: number;
+}
+
+export async function getJointReadingAdminStats(): Promise<JointReadingAdminStats> {
+  const { rows } = await query<{ status: JointReadingStatus; count: string }>(
+    `SELECT status, COUNT(*) AS count FROM joint_readings GROUP BY status`
+  );
+  const byStatus: Record<JointReadingStatus, number> = {
+    pending_partner: 0,
+    partner_done: 0,
+    completed: 0,
+    expired: 0,
+  };
+  let total = 0;
+  for (const row of rows) {
+    const count = Number(row.count) || 0;
+    byStatus[row.status] = count;
+    total += count;
+  }
+  const completionRate = total > 0 ? Math.round((byStatus.completed / total) * 1000) / 10 : 0;
+  return { total, byStatus, completionRate };
+}
+
+export interface JointReadingAdminListItem {
+  id: string;
+  token: string;
+  initiatorName: string | null;
+  partnerName: string | null;
+  status: JointReadingStatus;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export async function listRecentJointReadingsForAdmin(
+  limit = 30
+): Promise<JointReadingAdminListItem[]> {
+  const { rows } = await query<{
+    id: string;
+    token: string;
+    initiator_name: string | null;
+    partner_name: string | null;
+    status: JointReadingStatus;
+    created_at: string;
+    expires_at: string;
+  }>(
+    `SELECT id, token, initiator_name, partner_name, status, created_at, expires_at
+     FROM joint_readings
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    token: row.token,
+    initiatorName: row.initiator_name,
+    partnerName: row.partner_name,
+    status: row.status,
+    createdAt: String(row.created_at),
+    expiresAt: String(row.expires_at),
+  }));
 }
 
 export async function listJointReadingsForUser(userId: string, limit = 20): Promise<JointReadingRow[]> {
@@ -487,8 +555,8 @@ async function generateCombinedReading(row: JointReadingRow): Promise<string> {
       userMessage,
     });
     if (generated.text?.trim()) return generated.text.trim();
-  } catch {
-    /* fallback below */
+  } catch (err) {
+    console.warn("Joint reading combined synthesis failed, using plain fallback:", err);
   }
 
   return [
@@ -505,4 +573,94 @@ async function generateCombinedReading(row: JointReadingRow): Promise<string> {
 export function buildJointReadingUrl(token: string): string {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://zovus.ru";
   return `${base}/joint-reading/${token}`;
+}
+
+export interface UserJointReadingAchievementStats {
+  totalCompleted: number;
+  maxWithOnePartner: number;
+}
+
+export async function getUserJointReadingAchievementStats(
+  userId: string
+): Promise<UserJointReadingAchievementStats> {
+  const { rows: totalRows } = await query<{ c: string }>(
+    `SELECT COUNT(*) AS c FROM joint_readings
+     WHERE status = 'completed' AND (initiator_user_id = $1 OR partner_user_id = $1)`,
+    [userId]
+  );
+  const { rows: partnerRows } = await query<{ max_c: string | null }>(
+    `SELECT MAX(c) AS max_c FROM (
+       SELECT COUNT(*) AS c
+       FROM joint_readings
+       WHERE status = 'completed' AND (initiator_user_id = $1 OR partner_user_id = $1)
+       GROUP BY CASE WHEN initiator_user_id = $1 THEN partner_user_id ELSE initiator_user_id END
+     ) sub`,
+    [userId]
+  );
+  return {
+    totalCompleted: Number(totalRows[0]?.c ?? 0),
+    maxWithOnePartner: Number(partnerRows[0]?.max_c ?? 0),
+  };
+}
+
+/**
+ * Flips lazily-expired invites to status='expired' in bulk, instead of only on
+ * next read of that specific token. Safe to call repeatedly (cron-driven).
+ */
+export async function sweepExpiredJointReadings(): Promise<number> {
+  const res = await query(
+    `UPDATE joint_readings
+     SET status = 'expired'
+     WHERE status IN ('pending_partner', 'partner_done') AND expires_at < NOW()`
+  );
+  return res.rowCount ?? 0;
+}
+
+/**
+ * Nudges initiators whose invite is about to expire while the partner hasn't
+ * even started — the only proactive reminder in the flow besides the static
+ * "expires on {date}" footer. Each invite is reminded at most once.
+ */
+export async function sendExpiringJointReadingReminders(withinDays = 3): Promise<number> {
+  const { rows } = await query(
+    `SELECT * FROM joint_readings
+     WHERE status = 'pending_partner'
+       AND reminder_sent_at IS NULL
+       AND expires_at > NOW()
+       AND expires_at < NOW() + ($1 || ' days')::interval`,
+    [withinDays]
+  );
+
+  let sent = 0;
+  for (const raw of rows) {
+    const row = mapRow(raw as Record<string, unknown>);
+    try {
+      const { name, email } = await getProfileContact(row.initiator_user_id);
+      if (email) {
+        const ctaUrl = buildJointReadingUrl(row.token);
+        await sendEmail({
+          to: email,
+          subject: "Zovus — приглашение на совместный расклад скоро истечёт",
+          html: jointReadingExpiringEmailHtml(name, ctaUrl),
+          text: `Приглашение на совместный расклад скоро истечёт. Откройте: ${ctaUrl}`,
+          template: "joint_reading_expiring",
+        });
+      }
+      await dispatchNotification({
+        userId: row.initiator_user_id,
+        type: "joint_reading_expiring",
+        title: "Приглашение скоро истечёт",
+        body: "Партнёр ещё не прошёл совместный расклад — отправьте ему ссылку ещё раз.",
+        ctaPath: `/joint-reading/${row.token}`,
+        ctaLabel: "Открыть приглашение",
+        data: { token: row.token },
+      });
+      sent += 1;
+    } catch (err) {
+      console.warn("Joint reading expiry reminder failed:", err);
+    } finally {
+      await query(`UPDATE joint_readings SET reminder_sent_at = NOW() WHERE id = $1`, [row.id]);
+    }
+  }
+  return sent;
 }

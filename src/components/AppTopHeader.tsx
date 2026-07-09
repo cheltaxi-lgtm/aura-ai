@@ -1,6 +1,8 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Flame } from "lucide-react";
 import AppDownloadButton from "@/components/AppDownloadButton";
 import AppHeaderMenu from "@/components/AppHeaderMenu";
 import BrandLogo from "@/components/BrandLogo";
@@ -21,6 +23,7 @@ export interface AppTopHeaderProps {
   onNavTariffs?: () => void;
   onNavPhoto: () => void;
   onNavDecks: () => void;
+  onNavRitual: () => void;
   onStartReading: () => void;
 }
 
@@ -34,6 +37,7 @@ export default function AppTopHeader({
   onNavTariffs,
   onNavPhoto,
   onNavDecks,
+  onNavRitual,
   onStartReading,
 }: AppTopHeaderProps) {
   const headerRef = useRef<HTMLElement>(null);
@@ -112,11 +116,25 @@ export default function AppTopHeader({
           >
             Тарифы
           </button>
+          <Link
+            href="/joint-reading"
+            className="relative z-[5010] text-sm text-gray-400 transition-colors hover:text-aura-neon"
+          >
+            Вдвоём
+          </Link>
         </nav>
 
         {/* Desktop actions */}
         <div className="app-top-header__actions hidden shrink-0 items-center gap-2 md:flex md:gap-3">
           <AppDownloadButton compact />
+          <button
+            type="button"
+            onClick={onNavRitual}
+            className="relative z-[5010] inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/8 px-3.5 py-2 text-sm text-amber-200/90 transition-colors hover:border-amber-500/45 hover:text-amber-100"
+          >
+            <Flame className="h-3.5 w-3.5" aria-hidden />
+            Обряд
+          </button>
           <button
             type="button"
             onClick={onStartReading}
@@ -141,6 +159,7 @@ export default function AppTopHeader({
             onNavDecks={onNavDecks}
             onNavPhoto={onNavPhoto}
             onNavTariffs={openTariffs}
+            onNavRitual={onNavRitual}
             onStartReading={onStartReading}
           />
         </div>

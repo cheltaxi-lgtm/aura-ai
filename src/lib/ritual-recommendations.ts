@@ -46,6 +46,8 @@ export const RITUAL_PAGE_SLUGS: Record<RitualType, string> = {
   protection: "zashchita",
   luck: "udacha",
   release: "otpustit",
+  health: "isceleniye",
+  career: "uspeh-v-delah",
 };
 
 export function ritualPageSlug(type: RitualType): string {

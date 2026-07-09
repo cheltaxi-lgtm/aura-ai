@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { getMoonPhase } from "@/lib/moon";
 import {
   RITUAL_TYPES,
@@ -9,6 +10,7 @@ import {
   isRitualAllowedForMaster,
   type RitualMasterKey,
 } from "@/lib/ritual-config";
+import { getRitualSettings, isRitualTypeEnabled, ritualCostFromSettings } from "@/lib/ritual-settings";
 import { createRitual, ritualToClient } from "@/lib/ritual-service";
 
 export async function POST(request: NextRequest) {
@@ -18,6 +20,9 @@ export async function POST(request: NextRequest) {
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "ritual_create");
+  if (rateLimited) return rateLimited;
 
   let body: { characterKey?: string; ritualType?: string };
   try {
@@ -39,8 +44,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ritual type not available for master" }, { status: 400 });
   }
 
+  const ritualSettings = await getRitualSettings();
+  if (!isRitualTypeEnabled(ritualSettings, ritualType)) {
+    return NextResponse.json({ error: "Ritual type disabled" }, { status: 400 });
+  }
+
   const moon = getMoonPhase();
   const config = RITUAL_TYPES[ritualType];
+  const cost = ritualCostFromSettings(ritualSettings, ritualType);
 
   const ritual = await createRitual({
     userId: authed.profileUserId,
@@ -48,7 +59,7 @@ export async function POST(request: NextRequest) {
     ritualType,
     moonPhase: moon.phase,
     moonSign: moon.sign,
-    runeCost: config.cost,
+    runeCost: cost,
   });
 
   return NextResponse.json({
@@ -56,7 +67,7 @@ export async function POST(request: NextRequest) {
     questions: config.questions,
     moonPhase: moon.phase,
     moonSign: moon.sign,
-    cost: config.cost,
+    cost,
     favorableForType: moon.favorable.includes(ritualType),
     ritual: ritualToClient(ritual),
   });

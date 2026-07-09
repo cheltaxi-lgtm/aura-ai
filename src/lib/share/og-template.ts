@@ -19,6 +19,7 @@ const KIND_LABELS: Record<OgVisualKind, string> = {
   daily: "Энергия дня",
   triplet: "Три карты",
   ritual: "Ритуал",
+  joint: "Совместный расклад",
   numerology: "Нумерология",
   runes: "Руны",
 };
@@ -29,6 +30,7 @@ const KIND_ACCENT: Record<OgVisualKind, string> = {
   daily: "rgba(147, 197, 253, 0.95)",
   triplet: "rgba(196, 181, 253, 0.95)",
   ritual: "rgba(251, 191, 36, 0.95)",
+  joint: "rgba(244, 114, 182, 0.95)",
   numerology: "rgba(167, 139, 250, 0.95)",
   runes: "rgba(248, 113, 113, 0.95)",
 };

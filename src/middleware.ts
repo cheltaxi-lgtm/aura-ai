@@ -21,6 +21,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/runes/packages",
   "/api/ritual/moon",
   "/api/ritual/stats",
+  "/api/ritual/config",
   "/api/age-gate/confirm",
   "/api/session",
   "/api/debug/client-log",
@@ -32,7 +33,16 @@ const PUBLIC_API_EXACT = new Set([
   "/api/share",
 ]);
 
-const PUBLIC_API_PREFIXES = ["/api/auth/", "/api/app/", "/api/scene-art/", "/api/share/"] as const;
+const PUBLIC_API_PREFIXES = [
+  "/api/auth/",
+  "/api/app/",
+  "/api/scene-art/",
+  "/api/share/",
+  // GET /api/joint-reading/[token] must be reachable by a guest partner who hasn't
+  // logged in yet (the page shows a login gate) — create/complete/mine still enforce
+  // their own requireProfileUserId() check inside the handler.
+  "/api/joint-reading/",
+] as const;
 
 function resolveSecretKey(): Uint8Array | null {
   const secret = process.env.AUTH_SECRET;

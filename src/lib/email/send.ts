@@ -10,6 +10,7 @@ export {
   passwordResetEmailHtml,
   jointReadingPartnerDoneEmailHtml,
   jointReadingCompletedEmailHtml,
+  jointReadingExpiringEmailHtml,
   supportReplyEmailHtml,
   supportNewTicketAdminEmailHtml,
   supportAutoReplyEmailHtml,

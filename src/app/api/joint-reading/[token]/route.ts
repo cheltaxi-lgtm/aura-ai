@@ -6,13 +6,18 @@ import {
   resolveJointParticipantRole,
 } from "@/lib/joint-reading-service";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { clientIp, enforcePaidRouteRateLimit } from "@/lib/api-guards";
+import { checkJointReadingAchievementsSilently } from "@/lib/achievements";
 
 type RouteParams = { params: Promise<{ token: string }> };
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
   }
+
+  const rateLimited = await enforcePaidRouteRateLimit(clientIp(request), "joint_reading_view");
+  if (rateLimited) return rateLimited;
 
   const { token } = await params;
   let row = await getJointReadingByToken(token);
@@ -22,6 +27,20 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
   if (row.initiator_reading?.trim() && row.partner_reading?.trim() && !row.combined_reading) {
     row = await ensureCombinedReading(row);
+    if (row.combined_reading) {
+      if (row.initiator_user_id) {
+        void checkJointReadingAchievementsSilently(
+          row.initiator_user_id,
+          row.initiator_character ?? "ragnar"
+        );
+      }
+      if (row.partner_user_id) {
+        void checkJointReadingAchievementsSilently(
+          row.partner_user_id,
+          row.partner_character ?? "ragnar"
+        );
+      }
+    }
   }
 
   const authed = await requireProfileUserId();
@@ -30,9 +49,13 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   const isInitiator = participantRole === "initiator";
   const isPartner = participantRole === "partner";
   const canViewPrivate = isInitiator || isPartner || row.status === "completed";
-  const canStartAsInitiator = Boolean(viewerId === row.initiator_user_id && !row.initiator_reading);
+  const isExpired = row.status === "expired";
+  const canStartAsInitiator = Boolean(
+    !isExpired && viewerId === row.initiator_user_id && !row.initiator_reading
+  );
   const canStartAsPartner = Boolean(
-    viewerId &&
+    !isExpired &&
+      viewerId &&
       viewerId !== row.initiator_user_id &&
       !row.partner_reading &&
       (!row.partner_user_id || row.partner_user_id === viewerId)

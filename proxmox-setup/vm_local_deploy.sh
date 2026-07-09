@@ -191,7 +191,8 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/cron-daily-reading-remind.sh \
   /opt/aura-ai/proxmox-setup/cron-reconcile-rune-payments.sh \
   /opt/aura-ai/proxmox-setup/cron-pg-backup.sh \
-  /opt/aura-ai/proxmox-setup/cron-cleanup-empty-sessions.sh 2>/dev/null || true
+  /opt/aura-ai/proxmox-setup/cron-cleanup-empty-sessions.sh \
+  /opt/aura-ai/proxmox-setup/cron-joint-reading-sweep.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
 
 echo "Deploy complete: https://zovus.ru"

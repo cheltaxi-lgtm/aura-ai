@@ -4,6 +4,7 @@ import { usePaywall } from "@/contexts/PaywallContext";
 import RuneCost from "@/components/RuneCost";
 import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
 import { canAffordRunes } from "@/lib/rune-afford-client";
+import { getCharacterById } from "@/lib/characters";
 
 interface Props {
   ritualType: RitualType;
@@ -36,7 +37,7 @@ export default function RitualPayment({
   });
   const shortage = Math.max(0, cost - balance);
 
-  const masterName = characterKey === "ragnar" ? "Рагнар" : "Агафья";
+  const masterName = getCharacterById(characterKey)?.name ?? "Мастер";
 
   return (
     <div className="px-5 py-6">

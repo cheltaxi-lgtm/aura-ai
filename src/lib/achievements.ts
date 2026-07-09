@@ -1,6 +1,14 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { ensureStarterGrantMarker } from "@/lib/rune-service";
 import { getDaysWithUs } from "@/lib/user-lifetime-stats";
+import {
+  getUserRitualAchievementStats,
+  type UserRitualAchievementStats,
+} from "@/lib/ritual-service";
+import {
+  getUserJointReadingAchievementStats,
+  type UserJointReadingAchievementStats,
+} from "@/lib/joint-reading-service";
 import type { CharacterKey } from "@/lib/prompts/types";
 export const ACHIEVEMENTS = {
   first_message: {
@@ -63,9 +71,90 @@ export const ACHIEVEMENTS = {
       numerolog: "Месяц в коде — ты уже не случайный гость.",
     },
   },
+  ritual_first: {
+    label: "Первый обряд",
+    description: "Провёл первый обряд до конца",
+    bonus: 15,
+    phrase: {
+      ragnar: "Первый обряд завершён. Норны запомнили твою просьбу.",
+      agafya: "Первый обряд свершился. Пусть знаки придут.",
+      veronika: "Первый обряд позади. Карты держат твоё желание.",
+      "shri-raj": "Первый обряд завершён — карма услышала тебя.",
+      numerolog: "Первый обряд закрыт в цифрах. Число услышало просьбу.",
+    },
+  },
+  ritual_elements: {
+    label: "Все стихии",
+    description: "Провёл обряды всех 5 видов",
+    bonus: 50,
+    phrase: {
+      ragnar: "Все пять стихий пройдены. Ты знаешь силу каждой.",
+      agafya: "Прошла все пять обрядов. Редкий путь, дитя.",
+      veronika: "Все пять обрядов испытаны — ты знаешь всю палитру.",
+      "shri-raj": "Пять стихий пройдены — колесо сделало полный круг.",
+      numerolog: "Все пять чисел обряда сошлись в одном пути.",
+    },
+  },
+  ritual_full_moon: {
+    label: "Сила полнолуния",
+    description: "Провёл обряд в полнолуние",
+    bonus: 20,
+    phrase: {
+      ragnar: "Обряд в полнолуние — сила луны с тобой.",
+      agafya: "Полная луна слышала твой обряд. Это большая сила.",
+      veronika: "Обряд под полной луной — редкая удача.",
+      "shri-raj": "Полнолуние усилило твой обряд многократно.",
+      numerolog: "Число луны в полной фазе усилило твой обряд.",
+    },
+  },
+  ritual_loyal: {
+    label: "Голос стихий",
+    description: "5 обрядов у одного мастера",
+    bonus: 35,
+    phrase: {
+      ragnar: "Пять обрядов со мной. Норны видят твою верность.",
+      agafya: "Пять раз пришла ко мне с обрядом. Я запомнила.",
+      veronika: "Пять обрядов вместе — это уже традиция.",
+      "shri-raj": "Пять обрядов на одном пути — карма это ценит.",
+      numerolog: "Пять обрядов в одном числе — устойчивый цикл.",
+    },
+  },
+  joint_first: {
+    label: "Вдвоём",
+    description: "Прошли совместный расклад до общей интерпретации",
+    bonus: 15,
+    phrase: {
+      ragnar: "Два пути сошлись в один узор. Норны видят вас обоих.",
+      agafya: "Прошли расклад вдвоём — редкий и добрый знак.",
+      veronika: "Ваши карты сплелись в одну историю.",
+      "shri-raj": "Общий путь пройден — карма двоих услышана.",
+      numerolog: "Два числа сошлись в одном раскладе — сильное совпадение.",
+    },
+  },
+  joint_loyal: {
+    label: "Постоянные спутники",
+    description: "3 совместных расклада с одним и тем же партнёром",
+    bonus: 30,
+    phrase: {
+      ragnar: "Три раза вместе — это уже судьба, а не случай.",
+      agafya: "Третий совместный расклад с одним человеком. Это не просто так.",
+      veronika: "Три общих расклада — карты запомнили вашу связь.",
+      "shri-raj": "Три совместных пути — карма этой связи крепнет.",
+      numerolog: "Число «три» в вашей паре — устойчивый цикл близости.",
+    },
+  },
 } as const;
 
 export type AchievementKey = keyof typeof ACHIEVEMENTS;
+
+export const RITUAL_ACHIEVEMENT_KEYS: AchievementKey[] = [
+  "ritual_first",
+  "ritual_elements",
+  "ritual_full_moon",
+  "ritual_loyal",
+];
+
+export const JOINT_ACHIEVEMENT_KEYS: AchievementKey[] = ["joint_first", "joint_loyal"];
 
 const BRAVE_RE =
   /смерт|болезн|порч|измен|враг|развод|умер|умрёт|сглаз|проклят/i;
@@ -160,6 +249,38 @@ function checkAchievement(
       return BRAVE_RE.test(message);
     case "month_in":
       return stats.daysWithUs >= 30;
+    default:
+      return false;
+  }
+}
+
+function checkRitualAchievement(
+  key: AchievementKey,
+  stats: UserRitualAchievementStats
+): boolean {
+  switch (key) {
+    case "ritual_first":
+      return stats.totalCompleted >= 1;
+    case "ritual_elements":
+      return stats.distinctTypesCompleted >= 5;
+    case "ritual_full_moon":
+      return stats.hasFullMoonRitual;
+    case "ritual_loyal":
+      return stats.maxWithOneMaster >= 5;
+    default:
+      return false;
+  }
+}
+
+function checkJointAchievement(
+  key: AchievementKey,
+  stats: UserJointReadingAchievementStats
+): boolean {
+  switch (key) {
+    case "joint_first":
+      return stats.totalCompleted >= 1;
+    case "joint_loyal":
+      return stats.maxWithOnePartner >= 3;
     default:
       return false;
   }
@@ -360,6 +481,78 @@ export async function checkAchievements(
   return null;
 }
 
+/** Check + grant ritual-specific achievements (first obryad, all elements, full moon, loyal). */
+export async function checkRitualAchievements(
+  userId: string,
+  characterKey: string
+): Promise<AchievementEarned | null> {
+  const stats = await getUserRitualAchievementStats(userId);
+  const charKey = (characterKey in ACHIEVEMENTS.ritual_first.phrase
+    ? characterKey
+    : "ragnar") as CharacterKey;
+
+  for (const key of RITUAL_ACHIEVEMENT_KEYS) {
+    if (await hasAchievementBeenGranted(userId, key)) continue;
+    if (!checkRitualAchievement(key, stats)) continue;
+
+    const ach = ACHIEVEMENTS[key];
+    const granted = await grantAchievement(userId, key, ach);
+    if (!granted) continue;
+
+    return {
+      achievement: key,
+      label: ach.label,
+      description: ach.description,
+      bonus: ach.bonus,
+      phrase: ach.phrase[charKey as keyof typeof ach.phrase] ?? ach.phrase.ragnar,
+    };
+  }
+
+  return null;
+}
+
+/** Check + grant joint-reading achievements (first joint reading, 3+ with one partner). */
+export async function checkJointReadingAchievements(
+  userId: string,
+  characterKey: string
+): Promise<AchievementEarned | null> {
+  const stats = await getUserJointReadingAchievementStats(userId);
+  const charKey = (characterKey in ACHIEVEMENTS.joint_first.phrase
+    ? characterKey
+    : "ragnar") as CharacterKey;
+
+  for (const key of JOINT_ACHIEVEMENT_KEYS) {
+    if (await hasAchievementBeenGranted(userId, key)) continue;
+    if (!checkJointAchievement(key, stats)) continue;
+
+    const ach = ACHIEVEMENTS[key];
+    const granted = await grantAchievement(userId, key, ach);
+    if (!granted) continue;
+
+    return {
+      achievement: key,
+      label: ach.label,
+      description: ach.description,
+      bonus: ach.bonus,
+      phrase: ach.phrase[charKey as keyof typeof ach.phrase] ?? ach.phrase.ragnar,
+    };
+  }
+
+  return null;
+}
+
+/** Keep in-app notification path silent — background credit only, no live popup UI yet. */
+export async function checkJointReadingAchievementsSilently(
+  userId: string,
+  characterKey: string
+): Promise<void> {
+  try {
+    await checkJointReadingAchievements(userId, characterKey);
+  } catch (err) {
+    console.warn("Joint reading achievement check failed:", err);
+  }
+}
+
 /** Grant numeric achievements that were earned before checks ran (cabinet refresh). */
 export async function syncRetroactiveAchievements(userId: string): Promise<void> {
   await syncAchievementGrantsFromLedger(userId);
@@ -367,9 +560,30 @@ export async function syncRetroactiveAchievements(userId: string): Promise<void>
   const stats = await getUserStats(userId, "veronika");
 
   for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
-    if (key === "brave_question") continue;
+    if (
+      key === "brave_question" ||
+      RITUAL_ACHIEVEMENT_KEYS.includes(key) ||
+      JOINT_ACHIEVEMENT_KEYS.includes(key)
+    )
+      continue;
     if (await hasAchievementBeenGranted(userId, key)) continue;
     if (!checkAchievement(key, stats, "")) continue;
+
+    await grantAchievement(userId, key, ACHIEVEMENTS[key]);
+  }
+
+  const ritualStats = await getUserRitualAchievementStats(userId);
+  for (const key of RITUAL_ACHIEVEMENT_KEYS) {
+    if (await hasAchievementBeenGranted(userId, key)) continue;
+    if (!checkRitualAchievement(key, ritualStats)) continue;
+
+    await grantAchievement(userId, key, ACHIEVEMENTS[key]);
+  }
+
+  const jointStats = await getUserJointReadingAchievementStats(userId);
+  for (const key of JOINT_ACHIEVEMENT_KEYS) {
+    if (await hasAchievementBeenGranted(userId, key)) continue;
+    if (!checkJointAchievement(key, jointStats)) continue;
 
     await grantAchievement(userId, key, ACHIEVEMENTS[key]);
   }

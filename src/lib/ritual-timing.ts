@@ -18,6 +18,8 @@ const TYPE_WEEKDAY: Record<RitualType, number[]> = {
   protection: [6],
   luck: [3, 0],
   release: [1, 6],
+  health: [0, 1],
+  career: [4, 3],
 };
 
 const TYPE_HOUR: Record<RitualType, number> = {
@@ -26,6 +28,8 @@ const TYPE_HOUR: Record<RitualType, number> = {
   protection: 18,
   luck: 21,
   release: 22,
+  health: 9,
+  career: 11,
 };
 
 const TYPE_PLANET_HINT: Record<RitualType, string> = {
@@ -34,6 +38,8 @@ const TYPE_PLANET_HINT: Record<RitualType, string> = {
   protection: "Сатурн укрепляет границы и защиту",
   luck: "Меркурий и Солнце активируют удачу",
   release: "Луна и Сатурн помогают отпустить",
+  health: "Солнце и Луна поддерживают восстановление сил",
+  career: "Юпитер и Меркурий открывают путь к успеху",
 };
 
 export function formatRitualCalendarDate(date: Date): string {

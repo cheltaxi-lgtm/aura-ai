@@ -6,6 +6,7 @@ import {
   ritualGenerationResponse,
   runRitualGenerationForUser,
 } from "@/lib/ritual-generation-runner";
+import { checkRitualAchievements } from "@/lib/achievements";
 
 export const maxDuration = 120;
 
@@ -28,7 +29,20 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   });
 
   const balance = await getRuneBalance(authed.profileUserId);
-  const body = ritualGenerationResponse(outcome);
+
+  let achievement = null;
+  if (outcome.ok && outcome.freshlyCompleted) {
+    try {
+      achievement = await checkRitualAchievements(
+        authed.profileUserId,
+        outcome.ritual.character_key
+      );
+    } catch (err) {
+      console.warn("Ritual achievement check failed:", err);
+    }
+  }
+
+  const body = ritualGenerationResponse(outcome, achievement);
 
   if (outcome.ok) {
     return NextResponse.json({ ...body, balance });

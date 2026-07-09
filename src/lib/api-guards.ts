@@ -51,6 +51,12 @@ export const PAID_ROUTE_LIMITS = {
   rune_purchase: { max: 10, windowMs: 3_600_000 },
   spread_metrics: { max: 120, windowMs: 60_000 },
   cabinet_notes: { max: 20, windowMs: 60_000 },
+  ritual_create: { max: 10, windowMs: 60_000 },
+  ritual_pay: { max: 10, windowMs: 60_000 },
+  joint_reading_create: { max: 10, windowMs: 60_000 },
+  joint_reading_complete: { max: 10, windowMs: 60_000 },
+  /** Unauthenticated GET, polled every 3s by both participants — capped per-IP, generous enough for normal use. */
+  joint_reading_view: { max: 40, windowMs: 60_000 },
 } as const;
 
 export type PaidRateLimitAction = keyof typeof PAID_ROUTE_LIMITS;

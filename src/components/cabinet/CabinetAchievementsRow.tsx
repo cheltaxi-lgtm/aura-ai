@@ -61,7 +61,11 @@ export default function CabinetAchievementsRow({ earned, locked }: Props) {
             {locked.map((a, i) => {
               const pct = a.progressMax > 0 ? Math.min(100, (a.progress / a.progressMax) * 100) : 0;
               const isStreak =
-                a.key === "week_streak" || a.key === "month_in" || a.key === "loyal_master";
+                a.key === "week_streak" ||
+                a.key === "month_in" ||
+                a.key === "loyal_master" ||
+                a.key === "ritual_elements" ||
+                a.key === "ritual_loyal";
 
               return (
                 <motion.div

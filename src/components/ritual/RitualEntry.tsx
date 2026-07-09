@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   RITUAL_TYPES,
+  RITUAL_TYPE_KEYS,
   getMasterRitualTypes,
+  resolveRitualMasterForType,
   type RitualMasterKey,
   type RitualType,
 } from "@/lib/ritual-config";
@@ -24,7 +26,10 @@ interface TypeStats {
 }
 
 interface Props {
-  characterKey: RitualMasterKey;
+  /** Fixed master's ritual catalog. When null/omitted with `allTypes`, show the full catalog. */
+  characterKey?: RitualMasterKey | null;
+  /** Show all 7 ritual types (not just this master's) — for a "no master chosen yet" entry point. */
+  allTypes?: boolean;
   onStart: (ritualType: RitualType) => void;
   onClose: () => void;
   balance?: number;
@@ -32,6 +37,7 @@ interface Props {
 
 export default function RitualEntry({
   characterKey,
+  allTypes = false,
   onStart,
   onClose,
   balance,
@@ -39,7 +45,29 @@ export default function RitualEntry({
   const [moon, setMoon] = useState<MoonData | null>(null);
   const [stats, setStats] = useState<Record<string, TypeStats>>({});
   const [loading, setLoading] = useState(true);
-  const ritualTypes = getMasterRitualTypes(characterKey);
+  const [confirmType, setConfirmType] = useState<RitualType | null>(null);
+  const [typeConfig, setTypeConfig] = useState<
+    Record<string, { enabled: boolean; cost: number }>
+  >({});
+  const catalogTypes = allTypes || !characterKey
+    ? RITUAL_TYPE_KEYS
+    : getMasterRitualTypes(characterKey);
+  const ritualTypes = catalogTypes.filter((t) => typeConfig[t]?.enabled !== false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ritual/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.types) setTypeConfig(d.types);
+      })
+      .catch(() => {
+        /* fall back to static defaults */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +83,7 @@ export default function RitualEntry({
     };
 
     (async () => {
-      const types = getMasterRitualTypes(characterKey);
+      const types = allTypes || !characterKey ? RITUAL_TYPE_KEYS : getMasterRitualTypes(characterKey);
       try {
         const moonRes = await fetchWithTimeout("/api/ritual/moon");
         const moonData = moonRes.ok ? await moonRes.json() : getMoonPhase();
@@ -69,9 +97,10 @@ export default function RitualEntry({
       try {
         const entries = await Promise.all(
           types.map(async (type) => {
+            const statsMaster = characterKey ?? resolveRitualMasterForType(type);
             try {
               const res = await fetchWithTimeout(
-                `/api/ritual/stats?type=${type}&characterKey=${characterKey}`
+                `/api/ritual/stats?type=${type}&characterKey=${statsMaster}`
               );
               if (!res.ok) return [type, { total: 0, signsReported: 0 }] as const;
               const data = await res.json();
@@ -90,12 +119,53 @@ export default function RitualEntry({
     return () => {
       cancelled = true;
     };
-  }, [characterKey]);
+  }, [characterKey, allTypes]);
 
   const favorableLabels = moon?.favorable
     ?.filter((t) => ritualTypes.includes(t))
     .map((t) => RITUAL_TYPES[t].label)
     .join(", ");
+
+  const handleTypeClick = (type: RitualType) => {
+    if (moon && moon.favorable.length > 0 && !moon.favorable.includes(type)) {
+      setConfirmType(type);
+      return;
+    }
+    onStart(type);
+  };
+
+  if (confirmType) {
+    const cfg = RITUAL_TYPES[confirmType];
+    return (
+      <div className="flex max-h-[85vh] flex-col items-center justify-center px-6 py-10 text-center">
+        <p className="text-2xl">🌙</p>
+        <h3 className="mt-3 font-display text-lg font-bold text-white">
+          Сейчас не лучший день для «{cfg.label}»
+        </h3>
+        <p className="mt-3 max-w-xs text-sm leading-relaxed text-white/60">
+          Луна сейчас благоприятствует другому:{" "}
+          {favorableLabels || "другим целям"}. Обряд всё равно подействует, но
+          можно усилить эффект, выбрав более удачный день.
+        </p>
+        <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => onStart(confirmType)}
+            className="btn-luxe btn-luxe--md btn-luxe--gold"
+          >
+            Всё равно продолжить
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmType(null)}
+            className="btn-luxe btn-luxe--md btn-luxe--ghost"
+          >
+            Выбрать другой обряд
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex max-h-[85vh] flex-col">
@@ -118,6 +188,7 @@ export default function RitualEntry({
           <div className="space-y-3">
             {ritualTypes.map((type) => {
               const cfg = RITUAL_TYPES[type];
+              const cost = typeConfig[type]?.cost ?? cfg.cost;
               const st = stats[type];
               const isFavorable = moon?.favorable?.includes(type);
 
@@ -126,7 +197,7 @@ export default function RitualEntry({
                   key={type}
                   type="button"
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => onStart(type)}
+                  onClick={() => handleTypeClick(type)}
                   className="w-full rounded-2xl border border-amber-400/40 bg-amber-950/20 p-4 text-left transition-all hover:border-amber-400"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -139,7 +210,7 @@ export default function RitualEntry({
                           луна ✦
                         </span>
                       ) : null}
-                      <RuneCost cost={cfg.cost} enabled className="text-sm" />
+                      <RuneCost cost={cost} enabled className="text-sm" />
                     </div>
                   </div>
                   <p className="mt-1 text-xs text-white/70">{cfg.desc}</p>

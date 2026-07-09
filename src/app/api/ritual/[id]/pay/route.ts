@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import {
   BillingService,
@@ -27,6 +28,9 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "ritual_pay");
+  if (rateLimited) return rateLimited;
 
   const { id } = await context.params;
   const ritual = await getRitualById(id);
@@ -70,7 +74,10 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     }
   }
 
-  const generating = await markRitualPaidAndGenerating(id);
+  const generating = await markRitualPaidAndGenerating(id, {
+    paymentStatus: billingCharge ? "paid" : "free",
+    transactionId: billingCharge?.transactionId ?? null,
+  });
   if (!generating) {
     if (billingCharge) {
       await BillingService.rollbackCharge({

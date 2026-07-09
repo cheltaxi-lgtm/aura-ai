@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Link2, Loader2, Share2 } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
 import { readStoredProfile } from "@/lib/home-flow-storage";
@@ -8,12 +8,20 @@ import {
   estimateJointSpreadCostPerPerson,
   JOINT_INVITE_RUNE_COST,
 } from "@/lib/joint-reading-pricing";
+import type { SpreadId } from "@/lib/spreads";
+
+const SPREAD_OPTIONS: { id: SpreadId; label: string; hint: string }[] = [
+  { id: "triplet-love", label: "Быстрый", hint: "3 карты" },
+  { id: "love-7", label: "Глубокий", hint: "7 карт" },
+  { id: "compatibility-12", label: "Максимальный", hint: "12 карт" },
+];
 
 export default function JointReadingInvite() {
   const { user, isLoggedIn, loading: authLoading } = useAuth();
   const prefilledRef = useRef(false);
   const [partnerName, setPartnerName] = useState("");
   const [initiatorName, setInitiatorName] = useState("");
+  const [spreadId, setSpreadId] = useState<SpreadId>("love-7");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -39,7 +47,7 @@ export default function JointReadingInvite() {
         body: JSON.stringify({
           initiatorName: initiatorName.trim() || undefined,
           partnerName: partnerName.trim() || undefined,
-          spreadId: "love-7",
+          spreadId,
           intentSlug: "sovmestimost-pary",
         }),
       });
@@ -50,6 +58,10 @@ export default function JointReadingInvite() {
       };
       if (res.status === 402) {
         setError("Недостаточно рун для совместного расклада.");
+        return;
+      }
+      if (res.status === 403 && data.error) {
+        setError(data.error);
         return;
       }
       if (!res.ok || !data.url) {
@@ -69,7 +81,12 @@ export default function JointReadingInvite() {
     } finally {
       setLoading(false);
     }
-  }, [initiatorName, partnerName]);
+  }, [initiatorName, partnerName, spreadId]);
+
+  const perPersonCost = useMemo(
+    () => estimateJointSpreadCostPerPerson(undefined, spreadId),
+    [spreadId]
+  );
 
   const copyLink = useCallback(async () => {
     if (!inviteUrl) return;
@@ -107,8 +124,28 @@ export default function JointReadingInvite() {
       </div>
       <p className="mt-2 text-sm text-white/60">
         Создайте приглашение ({JOINT_INVITE_RUNE_COST} ᚢ). Затем каждый проходит свой расклад (~
-        {estimateJointSpreadCostPerPerson(undefined, "love-7")} ᚢ за человека) — вы оба получите общую интерпретацию, когда оба завершат.
+        {perPersonCost} ᚢ за человека) — вы оба получите общую интерпретацию, когда оба завершат.
       </p>
+
+      {!inviteUrl ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {SPREAD_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setSpreadId(opt.id)}
+              className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                spreadId === opt.id
+                  ? "border-aura-gold/50 bg-aura-gold/10 text-aura-gold"
+                  : "border-white/10 bg-black/20 text-white/55 hover:border-white/20"
+              }`}
+            >
+              <span className="block font-medium">{opt.label}</span>
+              <span className="block text-white/40">{opt.hint}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="block text-xs text-white/45">
@@ -140,7 +177,7 @@ export default function JointReadingInvite() {
           type="button"
           disabled={loading}
           onClick={() => void createInvite()}
-          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-aura-gold/30 bg-aura-gold/10 px-4 py-2.5 text-sm text-aura-gold disabled:opacity-50"
+          className="btn-luxe btn-luxe--md btn-luxe--gold mt-4"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           Создать ссылку-приглашение
@@ -154,16 +191,13 @@ export default function JointReadingInvite() {
             Сначала пройдите свой расклад, затем отправьте ссылку партнёру.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <a
-              href={inviteUrl}
-              className="inline-flex items-center gap-2 rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-[#1a1028]"
-            >
+            <a href={inviteUrl} className="btn-luxe btn-luxe--md btn-luxe--gold">
               Пройти мой расклад
             </a>
             <button
               type="button"
               onClick={() => void copyLink()}
-              className="inline-flex items-center gap-2 rounded-xl border border-aura-gold/30 bg-aura-gold/10 px-4 py-2 text-sm text-aura-gold"
+              className="btn-luxe btn-luxe--sm border-aura-gold/30 bg-aura-gold/10 text-aura-gold"
             >
               <Copy className="h-4 w-4" />
               {copied ? "Скопировано" : "Копировать"}
@@ -171,7 +205,7 @@ export default function JointReadingInvite() {
             <button
               type="button"
               onClick={() => void shareLink()}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-white/70"
+              className="btn-luxe btn-luxe--sm border-white/10 bg-white/5 text-white/70"
             >
               <Share2 className="h-4 w-4" />
               Поделиться

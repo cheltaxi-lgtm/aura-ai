@@ -1,6 +1,13 @@
-export type ShareKind = "reading" | "ritual" | "daily" | "triplet" | "session";
+export type ShareKind = "reading" | "ritual" | "daily" | "triplet" | "session" | "joint";
 
-export type ShareSourceType = "session" | "history" | "daily" | "ritual" | "triplet" | "inline";
+export type ShareSourceType =
+  | "session"
+  | "history"
+  | "daily"
+  | "ritual"
+  | "triplet"
+  | "joint"
+  | "inline";
 
 export type ShareChannel = "telegram" | "vk" | "copy" | "native" | "download";
 

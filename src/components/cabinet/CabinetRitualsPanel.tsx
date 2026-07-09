@@ -128,6 +128,8 @@ export default function CabinetRitualsPanel({
         protection: stats.protectionCount,
         luck: stats.luckCount,
         release: stats.releaseCount,
+        health: stats.healthCount,
+        career: stats.careerCount,
       }
     : null;
 

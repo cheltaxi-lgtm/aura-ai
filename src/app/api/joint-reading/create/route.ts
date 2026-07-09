@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
+import { isJointReadingEnabled } from "@/lib/settings";
 import {
   BillingService,
   InsufficientFundsError,
@@ -26,6 +28,13 @@ export async function POST(request: NextRequest) {
   const authed = await requireProfileUserId();
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(authed.profileUserId, "joint_reading_create");
+  if (rateLimited) return rateLimited;
+
+  if (!(await isJointReadingEnabled())) {
+    return NextResponse.json({ error: "Совместные расклады временно отключены." }, { status: 403 });
   }
 
   let initiatorName: string | undefined;

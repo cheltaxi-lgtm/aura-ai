@@ -11,7 +11,19 @@ const PRIVATE_KEYS = new Set([
 export function extractShareSourceMeta(input: SharePayload): ShareSourceMeta {
   const sourceType =
     input.sourceType ??
-    (input.sessionId ? "session" : input.historyId ? "history" : input.kind === "daily" ? "daily" : input.kind === "ritual" ? "ritual" : input.kind === "triplet" ? "triplet" : "inline");
+    (input.sessionId
+      ? "session"
+      : input.historyId
+        ? "history"
+        : input.kind === "daily"
+          ? "daily"
+          : input.kind === "ritual"
+            ? "ritual"
+            : input.kind === "triplet"
+              ? "triplet"
+              : input.kind === "joint"
+                ? "joint"
+                : "inline");
 
   const sourceId =
     input.sourceId ??

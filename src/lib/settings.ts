@@ -1,6 +1,7 @@
 import { query } from "./db";
 import { BRAND_NAME } from "./brand";
 import { DEFAULT_RUNE_COSTS, type RuneActionType } from "./rune-costs";
+import { RITUAL_TYPES, RITUAL_TYPE_KEYS, type RitualType } from "./ritual-config";
 import {
   DEFAULT_RECAPTCHA_SCOPES,
   mergeRecaptchaScopes,
@@ -88,6 +89,19 @@ export interface VisualSettings {
   };
 }
 
+export interface RitualTypePlatformSetting {
+  enabled: boolean;
+  cost: number;
+}
+
+export interface RitualPlatformSettings {
+  types: Record<RitualType, RitualTypePlatformSetting>;
+}
+
+export interface JointReadingPlatformSettings {
+  enabled: boolean;
+}
+
 export interface SharePlatformSettings {
   enabled: boolean;
   expiryDays: number;
@@ -171,6 +185,14 @@ const DEFAULTS = {
       download: false,
     },
   },
+  rituals: {
+    types: Object.fromEntries(
+      RITUAL_TYPE_KEYS.map((key) => [key, { enabled: true, cost: RITUAL_TYPES[key].cost }])
+    ) as Record<RitualType, RitualTypePlatformSetting>,
+  },
+  jointReading: {
+    enabled: true,
+  },
 };
 
 export async function getSetting<K extends keyof typeof DEFAULTS>(
@@ -223,17 +245,25 @@ export async function setSetting<K extends keyof typeof DEFAULTS>(
 }
 
 export async function getAllSettings() {
-  const [ai, pricing, features, prompts, tts, visual, runes, share] = await Promise.all([
-    getSetting("ai"),
-    getSetting("pricing"),
-    getSetting("features"),
-    getSetting("prompts"),
-    getSetting("tts"),
-    getSetting("visual"),
-    getSetting("runes"),
-    getSetting("share"),
-  ]);
-  return { ai, pricing, features, prompts, tts, visual, runes, share };
+  const [ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading] =
+    await Promise.all([
+      getSetting("ai"),
+      getSetting("pricing"),
+      getSetting("features"),
+      getSetting("prompts"),
+      getSetting("tts"),
+      getSetting("visual"),
+      getSetting("runes"),
+      getSetting("share"),
+      getSetting("rituals"),
+      getSetting("jointReading"),
+    ]);
+  return { ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading };
+}
+
+export async function isJointReadingEnabled(): Promise<boolean> {
+  const settings = await getSetting("jointReading");
+  return settings.enabled !== false;
 }
 
 export async function isExpertRegistrationEnabled(): Promise<boolean> {

@@ -14,6 +14,7 @@ import {
   navigateToDecksModal,
   navigateToHomeSpreadFlow,
   navigateToPhotoReading,
+  navigateToRitualFlow,
 } from "@/lib/app-shell-nav";
 import {
   persistSessionIntention,
@@ -576,6 +577,7 @@ export default function CabinetPage() {
               onNavTariffs={() => navigateToAppSection(APP_SHELL_SECTIONS.tariffs)}
               onNavPhoto={() => navigateToPhotoReading()}
               onNavDecks={() => navigateToDecksModal()}
+              onNavRitual={() => navigateToRitualFlow()}
               onStartReading={() => navigateToHomeSpreadFlow()}
             />,
             document.body

@@ -7,9 +7,10 @@ import {
   type RitualRow,
 } from "@/lib/ritual-service";
 import { getUserById } from "@/lib/users";
+import { checkRitualAchievements } from "@/lib/achievements";
 
 export type RitualGenerationOutcome =
-  | { ok: true; status: "completed"; ritual: RitualRow }
+  | { ok: true; status: "completed"; ritual: RitualRow; freshlyCompleted: boolean }
   | { ok: false; status: "failed"; error: string; ritual: RitualRow | null };
 
 async function rollbackPaidRitual(userId: string, cost: number): Promise<void> {
@@ -37,7 +38,7 @@ export async function runRitualGenerationForUser(params: {
   }
 
   if (ritual.status === "completed" || ritual.status === "reviewed") {
-    return { ok: true, status: "completed", ritual };
+    return { ok: true, status: "completed", ritual, freshlyCompleted: false };
   }
 
   // Paid but rolled back to payment after failed generation — allow re-pay flow.
@@ -58,7 +59,7 @@ export async function runRitualGenerationForUser(params: {
   try {
     const result = await attemptRitualGeneration(params.ritualId, userProfile);
     if (result) {
-      return { ok: true, status: "completed", ritual: result };
+      return { ok: true, status: "completed", ritual: result, freshlyCompleted: true };
     }
 
     await markRitualGenerationFailed(params.ritualId);
@@ -89,11 +90,15 @@ export async function runRitualGenerationForUser(params: {
   }
 }
 
-export function ritualGenerationResponse(outcome: RitualGenerationOutcome) {
+export function ritualGenerationResponse(
+  outcome: RitualGenerationOutcome,
+  achievement?: Awaited<ReturnType<typeof checkRitualAchievements>>
+) {
   return {
     ok: outcome.ok,
     status: outcome.status,
     error: outcome.ok ? undefined : outcome.error,
     ritual: outcome.ritual ? ritualToClient(outcome.ritual) : null,
+    achievement: achievement ?? undefined,
   };
 }

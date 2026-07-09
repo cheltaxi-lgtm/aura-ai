@@ -20,6 +20,8 @@ import {
   getUserStats,
   preservePermanentGrants,
 } from "@/lib/achievements";
+import { getUserRitualAchievementStats } from "@/lib/ritual-service";
+import { getUserJointReadingAchievementStats } from "@/lib/joint-reading-service";
 import type { RedrawSpread } from "@/lib/photo-spread-redraw";
 
 export interface CabinetProfile {
@@ -444,10 +446,12 @@ export async function getCabinetAchievements(
   );
 
   const earnedKeys = new Set(earnedRows.map((r) => r.achievement));
-  const [stats, maxMasterSessions, daysWithUs] = await Promise.all([
+  const [stats, maxMasterSessions, daysWithUs, ritualStats, jointStats] = await Promise.all([
     getUserStats(userId, "veronika"),
     maxSessionsWithOneMaster(userId),
     getDaysWithUs(userId),
+    getUserRitualAchievementStats(userId),
+    getUserJointReadingAchievementStats(userId),
   ]);
 
   const earned: CabinetAchievementEarned[] = earnedRows
@@ -499,6 +503,36 @@ export async function getCabinetAchievements(
         progress = daysWithUs;
         progressMax = 30;
         progressLabel = `${Math.min(daysWithUs, 30)}/30 дней`;
+        break;
+      case "ritual_first":
+        progress = Math.min(ritualStats.totalCompleted, 1);
+        progressMax = 1;
+        progressLabel = ritualStats.totalCompleted >= 1 ? "1/1" : "0/1";
+        break;
+      case "ritual_elements":
+        progress = ritualStats.distinctTypesCompleted;
+        progressMax = 5;
+        progressLabel = `${Math.min(ritualStats.distinctTypesCompleted, 5)}/5 видов`;
+        break;
+      case "ritual_full_moon":
+        progress = ritualStats.hasFullMoonRitual ? 1 : 0;
+        progressMax = 1;
+        progressLabel = "Обряд в полнолуние";
+        break;
+      case "ritual_loyal":
+        progress = ritualStats.maxWithOneMaster;
+        progressMax = 5;
+        progressLabel = `${Math.min(ritualStats.maxWithOneMaster, 5)}/5 обрядов`;
+        break;
+      case "joint_first":
+        progress = Math.min(jointStats.totalCompleted, 1);
+        progressMax = 1;
+        progressLabel = jointStats.totalCompleted >= 1 ? "1/1" : "0/1";
+        break;
+      case "joint_loyal":
+        progress = jointStats.maxWithOnePartner;
+        progressMax = 3;
+        progressLabel = `${Math.min(jointStats.maxWithOnePartner, 3)}/3 раскладов`;
         break;
     }
 

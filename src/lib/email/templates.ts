@@ -71,6 +71,15 @@ export function jointReadingCompletedEmailHtml(name: string, ctaUrl: string): st
   );
 }
 
+export function jointReadingExpiringEmailHtml(name: string, ctaUrl: string): string {
+  return jointReadingEmailShell(
+    name,
+    `<p>Ваше приглашение на совместный расклад скоро истечёт, а партнёр пока не прошёл свою часть. Отправьте ему ссылку ещё раз, пока приглашение действует.</p>`,
+    ctaUrl,
+    "Открыть приглашение"
+  );
+}
+
 export function passwordResetEmailHtml(name: string, resetUrl: string): string {
   const safeName = name.trim() || "друг";
   return shell(

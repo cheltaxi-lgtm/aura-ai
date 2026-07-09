@@ -57,6 +57,8 @@ function shareKindLabel(kind?: ShareKind): string {
       return "Три карты";
     case "ritual":
       return "Ритуал";
+    case "joint":
+      return "Совместный расклад";
     default:
       return "Расклад";
   }

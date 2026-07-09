@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   Camera,
   Download,
+  Flame,
   Layers,
   LayoutGrid,
   LogIn,
@@ -13,6 +14,7 @@ import {
   Menu,
   Sparkles,
   User,
+  Users,
   X,
 } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
@@ -33,6 +35,7 @@ export type AppHeaderMenuProps = {
   onNavDecks: () => void;
   onNavPhoto: () => void;
   onNavTariffs: () => void;
+  onNavRitual: () => void;
   onStartReading: () => void;
 };
 
@@ -56,6 +59,7 @@ export default function AppHeaderMenu({
   onNavDecks,
   onNavPhoto,
   onNavTariffs,
+  onNavRitual,
   onStartReading,
 }: AppHeaderMenuProps) {
   const [open, setOpen] = useState(false);
@@ -129,6 +133,19 @@ export default function AppHeaderMenu({
       label: "Тарифы",
       icon: <LayoutGrid className="h-4 w-4" aria-hidden />,
       onClick: () => run(onNavTariffs),
+    },
+    {
+      id: "joint-reading",
+      label: "Совместный расклад",
+      icon: <Users className="h-4 w-4" aria-hidden />,
+      href: "/joint-reading",
+    },
+    {
+      id: "ritual",
+      label: "Заказать обряд",
+      icon: <Flame className="h-4 w-4" aria-hidden />,
+      onClick: () => run(onNavRitual),
+      accent: true,
     },
     {
       id: "reading",

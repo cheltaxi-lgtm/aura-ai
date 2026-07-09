@@ -404,7 +404,7 @@ CREATE TABLE IF NOT EXISTS rituals (
   user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   character_key    TEXT NOT NULL,
   ritual_type      TEXT NOT NULL
-    CHECK (ritual_type IN ('love','money','protection','luck','release')),
+    CHECK (ritual_type IN ('love','money','protection','luck','release','health','career')),
   status           TEXT NOT NULL DEFAULT 'questions'
     CHECK (status IN ('questions','spread','payment','generating','completed','reviewed')),
   answers          JSONB DEFAULT '[]',
@@ -541,10 +541,14 @@ CREATE TABLE IF NOT EXISTS joint_readings (
   rune_charged          BOOLEAN NOT NULL DEFAULT FALSE,
   expires_at            TIMESTAMPTZ NOT NULL,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  completed_at          TIMESTAMPTZ
+  completed_at          TIMESTAMPTZ,
+  reminder_sent_at      TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_joint_readings_token ON joint_readings (token);
+CREATE INDEX IF NOT EXISTS idx_joint_readings_initiator ON joint_readings (initiator_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_joint_readings_partner ON joint_readings (partner_user_id, created_at DESC)
+  WHERE partner_user_id IS NOT NULL;
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS notification_prefs JSONB NOT NULL DEFAULT '{

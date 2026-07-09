@@ -7,6 +7,7 @@ import {
   submitJointReadingSide,
 } from "@/lib/joint-reading-service";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { getSpread } from "@/lib/spreads";
 
 type RouteParams = { params: Promise<{ token: string }> };
@@ -20,6 +21,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rateLimited = await enforcePaidRouteRateLimit(authed.profileUserId, "joint_reading_complete");
+  if (rateLimited) return rateLimited;
 
   const { token } = await params;
   const existing = await getJointReadingByToken(token);
@@ -51,12 +55,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (reading.length < 40) {
+  // Matches the MIN_STORED_READING_CHARS convention used elsewhere (e.g.
+  // src/lib/session-spread-reading.ts) for "is this a real reading" checks.
+  if (reading.length < 80) {
     return NextResponse.json({ error: "Reading too short" }, { status: 400 });
   }
 
   const expectedCardCount = getSpread(existing.spread_id).cardCount;
-  if (cards.length > 0 && cards.length < expectedCardCount) {
+  if (cards.length !== expectedCardCount) {
     return NextResponse.json({ error: "Cards do not match the invite's spread" }, { status: 400 });
   }
 

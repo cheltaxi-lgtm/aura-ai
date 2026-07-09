@@ -5,17 +5,30 @@ import { RITUAL_PAGE_SLUGS } from "@/lib/ritual-recommendations";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
+import { ensureDb } from "@/lib/db";
+import { listPublicRitualOutcomes } from "@/lib/ritual-service";
+import RitualOutcomesShowcase from "@/components/ritual/RitualOutcomesShowcase";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Обряды Zovus — энергетические практики с мастерами | ${BRAND_NAME}`,
   description:
-    "Расклад показывает, что происходит. Обряд помогает сделать следующий шаг: притяжение, достаток, защита, удача, отпускание.",
+    "Расклад показывает, что происходит. Обряд помогает сделать следующий шаг: притяжение, достаток, защита, удача, здоровье, карьера, отпускание.",
   path: "/obryady",
 });
 
-const RITUAL_ORDER: RitualType[] = ["love", "money", "protection", "luck", "release"];
+const RITUAL_ORDER: RitualType[] = [
+  "love",
+  "money",
+  "protection",
+  "luck",
+  "health",
+  "career",
+  "release",
+];
 
-export default function ObryadyPage() {
+export default async function ObryadyPage() {
+  const outcomes = (await ensureDb()) ? await listPublicRitualOutcomes(6).catch(() => []) : [];
+
   return (
     <SeoPageShell>
       <p className="text-sm text-aura-gold/80">Обряды</p>
@@ -48,13 +61,27 @@ export default function ObryadyPage() {
         Обряды проводят мастера{" "}
         <Link href="/master/ragnar" className="text-aura-gold hover:underline">
           Рагнар
-        </Link>{" "}
-        и{" "}
+        </Link>
+        ,{" "}
         <Link href="/master/agafya" className="text-aura-gold hover:underline">
           Агафья
         </Link>
+        ,{" "}
+        <Link href="/master/veronika" className="text-aura-gold hover:underline">
+          Вероника
+        </Link>
+        ,{" "}
+        <Link href="/master/shri-raj" className="text-aura-gold hover:underline">
+          Гуру Шри Радж
+        </Link>{" "}
+        и{" "}
+        <Link href="/master/numerolog" className="text-aura-gold hover:underline">
+          Эвелина
+        </Link>
         .
       </p>
+
+      <RitualOutcomesShowcase outcomes={outcomes} />
     </SeoPageShell>
   );
 }

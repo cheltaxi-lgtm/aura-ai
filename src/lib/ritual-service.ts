@@ -176,6 +176,8 @@ export interface CabinetRitualStats {
   protectionCount: number;
   luckCount: number;
   releaseCount: number;
+  healthCount: number;
+  careerCount: number;
 }
 
 export async function getCabinetRitualStats(
@@ -197,7 +199,9 @@ export async function getCabinetRitualStats(
        COUNT(*) FILTER (WHERE ritual_type = 'money')::int AS money_count,
        COUNT(*) FILTER (WHERE ritual_type = 'protection')::int AS protection_count,
        COUNT(*) FILTER (WHERE ritual_type = 'luck')::int AS luck_count,
-       COUNT(*) FILTER (WHERE ritual_type = 'release')::int AS release_count
+       COUNT(*) FILTER (WHERE ritual_type = 'release')::int AS release_count,
+       COUNT(*) FILTER (WHERE ritual_type = 'health')::int AS health_count,
+       COUNT(*) FILTER (WHERE ritual_type = 'career')::int AS career_count
      FROM rituals
      WHERE user_id = $1`,
     [userId]
@@ -214,6 +218,8 @@ export async function getCabinetRitualStats(
     protectionCount: Number(row.protection_count ?? 0),
     luckCount: Number(row.luck_count ?? 0),
     releaseCount: Number(row.release_count ?? 0),
+    healthCount: Number(row.health_count ?? 0),
+    careerCount: Number(row.career_count ?? 0),
   };
 }
 
@@ -254,14 +260,16 @@ export async function saveRitualCards(
 }
 
 export async function markRitualPaidAndGenerating(
-  id: string
+  id: string,
+  opts?: { paymentStatus?: "paid" | "free"; transactionId?: string | null }
 ): Promise<RitualRow | null> {
+  const paymentStatus = opts?.paymentStatus ?? "paid";
   const { rows } = await query<Record<string, unknown>>(
     `UPDATE rituals
-     SET payment_status = 'paid', status = 'generating', updated_at = NOW()
+     SET payment_status = $2, transaction_id = $3, status = 'generating', updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
-    [id]
+    [id, paymentStatus, opts?.transactionId ?? null]
   );
   return rows[0] ? mapRitualRow(rows[0]) : null;
 }
@@ -340,6 +348,45 @@ export async function saveGeneratedRitual(
   return rows[0] ? mapRitualRow(rows[0]) : null;
 }
 
+export interface UserRitualAchievementStats {
+  totalCompleted: number;
+  distinctTypesCompleted: number;
+  maxWithOneMaster: number;
+  hasFullMoonRitual: boolean;
+}
+
+export async function getUserRitualAchievementStats(
+  userId: string
+): Promise<UserRitualAchievementStats> {
+  const { rows } = await query<{
+    total_completed: string;
+    distinct_types: string;
+    max_with_one_master: string;
+    has_full_moon: boolean;
+  }>(
+    `WITH done AS (
+       SELECT ritual_type, character_key, moon_phase
+       FROM rituals
+       WHERE user_id = $1 AND status IN ('completed', 'reviewed')
+     )
+     SELECT
+       (SELECT COUNT(*) FROM done)::text AS total_completed,
+       (SELECT COUNT(DISTINCT ritual_type) FROM done)::text AS distinct_types,
+       (SELECT COALESCE(MAX(c), 0) FROM (
+          SELECT COUNT(*) AS c FROM done GROUP BY character_key
+        ) sub)::text AS max_with_one_master,
+       EXISTS(SELECT 1 FROM done WHERE moon_phase = 'Полнолуние') AS has_full_moon`,
+    [userId]
+  );
+  const row = rows[0];
+  return {
+    totalCompleted: Number(row?.total_completed ?? 0),
+    distinctTypesCompleted: Number(row?.distinct_types ?? 0),
+    maxWithOneMaster: Number(row?.max_with_one_master ?? 0),
+    hasFullMoonRitual: Boolean(row?.has_full_moon),
+  };
+}
+
 export async function getRitualStats(
   ritualType: string,
   characterKey: string
@@ -356,6 +403,45 @@ export async function getRitualStats(
   const signsReported = Number(rows[0]?.signs_reported ?? 0);
   const percentage = total > 0 ? Math.round((signsReported / total) * 100) : 0;
   return { total, signsReported, percentage };
+}
+
+export interface PublicRitualOutcome {
+  ritualType: RitualType;
+  characterKey: string;
+  outcomeText: string;
+  outcomeRating: number;
+  createdAt: string;
+}
+
+/** Recent well-rated anonymous outcomes for social proof on /obryady. */
+export async function listPublicRitualOutcomes(
+  limit = 6,
+  ritualType?: RitualType
+): Promise<PublicRitualOutcome[]> {
+  const params: unknown[] = [Math.max(1, Math.min(20, limit))];
+  let sql = `SELECT ritual_type, character_key, outcome_text, outcome_rating, created_at
+     FROM ritual_outcomes_public
+     WHERE outcome_rating >= 4 AND LENGTH(outcome_text) >= 12`;
+  if (ritualType) {
+    params.push(ritualType);
+    sql += ` AND ritual_type = $${params.length}`;
+  }
+  sql += ` ORDER BY created_at DESC LIMIT $1`;
+  const { rows } = await query<{
+    ritual_type: RitualType;
+    character_key: string;
+    outcome_text: string;
+    outcome_rating: number;
+    created_at: Date;
+  }>(sql, params);
+  return rows.map((r) => ({
+    ritualType: r.ritual_type,
+    characterKey: r.character_key,
+    outcomeText: r.outcome_text,
+    outcomeRating: r.outcome_rating,
+    createdAt:
+      r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }));
 }
 
 export async function submitRitualReview(

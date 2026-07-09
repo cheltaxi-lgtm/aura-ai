@@ -150,6 +150,8 @@ export interface AuraSellingLandingProps {
   onOpenPhotoReading?: () => void;
   onOpenMarkCards?: () => void;
   photoNavLabel?: string;
+  /** Explicit "get a ritual" CTA — shown right under quick questions, no scrolling needed. */
+  onOpenRitual?: () => void;
 }
 
 export default function AuraSellingLanding({
@@ -173,6 +175,7 @@ export default function AuraSellingLanding({
   onOpenPhotoReading,
   onOpenMarkCards,
   photoNavLabel,
+  onOpenRitual,
 }: AuraSellingLandingProps) {
   const { config, cost, formatRunes } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
@@ -304,6 +307,32 @@ export default function AuraSellingLanding({
       ) : null}
 
       {showHero || afterQuickQuestions ? <QuickQuestions showQuestionField={!showHero} /> : null}
+
+      {onOpenRitual ? (
+        <section className="ritual-cta-banner" aria-labelledby="ritual-cta-banner-title">
+          <div className="ritual-cta-banner__inner">
+            <span className="ritual-cta-banner__icon" aria-hidden>
+              🕯
+            </span>
+            <div className="ritual-cta-banner__copy">
+              <h2 id="ritual-cta-banner-title" className="ritual-cta-banner__title">
+                Обряд с мастером
+              </h2>
+              <p className="ritual-cta-banner__text">
+                Притяжение, достаток, защита, удача, здоровье, карьера — ритуал с картами,
+                атрибутами и словом силы под вашу ситуацию.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenRitual}
+              className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn"
+            >
+              Заказать обряд
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {showHero ? (
         <OfflineSpreadBlock

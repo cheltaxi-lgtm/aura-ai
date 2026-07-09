@@ -56,6 +56,8 @@ export type BillingChargeResult = {
   slotReserved: boolean;
   questionIndex?: number;
   freeQuestionsRemaining?: number;
+  /** rune_transactions.id when this charge wrote a ledger row (paid path only). */
+  transactionId?: string;
 };
 
 export type ChargeForSessionParams = {
@@ -117,14 +119,16 @@ async function logRuneSpend(
   balanceAfter: number,
   description: string,
   actionType: string
-): Promise<void> {
-  await queryClient(
+): Promise<string | undefined> {
+  const { rows } = await queryClient<{ id: string }>(
     client,
     `INSERT INTO rune_transactions
        (user_id, type, amount, balance_after, description, action_type)
-     VALUES ($1, 'spend', $2, $3, $4, $5)`,
+     VALUES ($1, 'spend', $2, $3, $4, $5)
+     RETURNING id`,
     [userId, -amount, balanceAfter, description, actionType]
   );
+  return rows[0]?.id;
 }
 
 async function reserveQuestionIndex(
@@ -276,7 +280,7 @@ async function executeChargeForSession(
       ? RUNE_ACTION_LABELS[actionType as RuneActionType]
       : actionType);
 
-  await logRuneSpend(client, userId, cost, newBalance, label, actionType);
+  const transactionId = await logRuneSpend(client, userId, cost, newBalance, label, actionType);
 
   return {
     spentRunes: cost,
@@ -287,6 +291,7 @@ async function executeChargeForSession(
     slotReserved,
     questionIndex,
     freeQuestionsRemaining,
+    transactionId,
   };
 }
 

@@ -50,11 +50,11 @@ export function getMoonPhase(date: Date = new Date()): {
 
   const favorable: RitualType[] =
     phaseKey === "waxing"
-      ? ["love", "money", "luck"]
+      ? ["love", "money", "luck", "career"]
       : phaseKey === "full"
-        ? ["love", "money", "luck", "protection"]
+        ? ["love", "money", "luck", "protection", "career", "health"]
         : phaseKey === "waning"
-          ? ["protection", "release"]
+          ? ["protection", "release", "health"]
           : ["release"];
 
   return {

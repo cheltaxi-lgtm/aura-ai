@@ -7,12 +7,15 @@ import RitualEntry from "@/components/ritual/RitualEntry";
 import RitualQuestions from "@/components/ritual/RitualQuestions";
 import RitualSpread from "@/components/ritual/RitualSpread";
 import RitualPayment from "@/components/ritual/RitualPayment";
-import RitualGenerating from "@/components/ritual/RitualGenerating";
+import RitualGenerating, {
+  type RitualAchievementPayload,
+} from "@/components/ritual/RitualGenerating";
 import RitualCard, { type RitualClientData } from "@/components/ritual/RitualCard";
 import RitualReview from "@/components/ritual/RitualReview";
 import {
   RITUAL_TYPES,
   needsReview,
+  resolveRitualMasterForType,
   type RitualMasterKey,
   type RitualType,
 } from "@/lib/ritual-config";
@@ -30,7 +33,8 @@ type Step =
 
 interface Props {
   isOpen: boolean;
-  characterKey: RitualMasterKey;
+  /** Fixed master for this session. Pass null to let the user pick from the full 7-type catalog first — the master is then resolved automatically per chosen type. */
+  characterKey: RitualMasterKey | null;
   userName: string;
   userZodiac: string;
   balance?: number;
@@ -40,6 +44,7 @@ interface Props {
   initialRitualType?: RitualType | null;
   onClose: () => void;
   onBalanceChange?: (balance: number) => void;
+  onAchievement?: (achievement: RitualAchievementPayload) => void;
 }
 
 export default function RitualFlow({
@@ -53,6 +58,7 @@ export default function RitualFlow({
   initialRitualType,
   onClose,
   onBalanceChange,
+  onAchievement,
 }: Props) {
   const [step, setStep] = useState<Step>("entry");
   const [ritualId, setRitualId] = useState<string | null>(null);
@@ -62,7 +68,11 @@ export default function RitualFlow({
   const [ritual, setRitual] = useState<RitualClientData | null>(null);
   const [cards, setCards] = useState<Array<{ name: string; position: string }>>([]);
   const [paying, setPaying] = useState(false);
+  const [resolvedCharacterKey, setResolvedCharacterKey] = useState<RitualMasterKey | null>(null);
   const { openPaywall } = usePaywall();
+
+  /** Master to use once a ritual type is chosen — fixed prop wins, else the one resolved from the picked type. */
+  const effectiveCharacterKey = characterKey ?? resolvedCharacterKey;
 
   useEffect(() => {
     setLocalBalance(balance);
@@ -81,6 +91,7 @@ export default function RitualFlow({
       setRitualId(null);
       setRitualType(null);
       setRitual(null);
+      setResolvedCharacterKey(null);
       return;
     }
 
@@ -107,10 +118,12 @@ export default function RitualFlow({
   }, [isOpen, initialRitualId, loadRitual]);
 
   const handleStartType = async (type: RitualType) => {
+    const master = characterKey ?? resolveRitualMasterForType(type, resolvedCharacterKey);
+    if (!characterKey) setResolvedCharacterKey(master);
     const res = await fetch("/api/ritual/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ characterKey, ritualType: type }),
+      body: JSON.stringify({ characterKey: master, ritualType: type }),
     });
     if (!res.ok) return;
     const data = await res.json();
@@ -170,14 +183,20 @@ export default function RitualFlow({
     }
   }, [ritualId, localBalance, cost, openPaywall, onBalanceChange]);
 
-  const handleGenerated = useCallback(async () => {
-    if (!ritualId) return;
-    const r = await loadRitual(ritualId);
-    if (r) {
-      setRitual(r);
-      setStep("card");
-    }
-  }, [ritualId, loadRitual]);
+  const handleGenerated = useCallback(
+    async (achievement?: RitualAchievementPayload | null) => {
+      if (!ritualId) return;
+      const r = await loadRitual(ritualId);
+      if (r) {
+        setRitual(r);
+        setStep("card");
+      }
+      if (achievement?.label) {
+        onAchievement?.(achievement);
+      }
+    },
+    [ritualId, loadRitual, onAchievement]
+  );
 
   const handleGenerationFailed = useCallback(
     async (opts?: { refunded?: boolean }) => {
@@ -230,16 +249,17 @@ export default function RitualFlow({
             {step === "entry" && (
               <RitualEntry
                 characterKey={characterKey}
+                allTypes={!characterKey}
                 onStart={(type) => void handleStartType(type)}
                 onClose={onClose}
                 balance={localBalance}
               />
             )}
 
-            {step === "questions" && ritualId && ritualType && (
+            {step === "questions" && ritualId && ritualType && effectiveCharacterKey && (
               <RitualQuestions
                 ritualId={ritualId}
-                characterKey={characterKey}
+                characterKey={effectiveCharacterKey}
                 ritualType={ritualType}
                 userName={userName}
                 userZodiac={userZodiac}
@@ -247,9 +267,9 @@ export default function RitualFlow({
               />
             )}
 
-            {step === "spread" && ritualId && (
+            {step === "spread" && ritualId && effectiveCharacterKey && (
               <RitualSpread
-                characterKey={characterKey}
+                characterKey={effectiveCharacterKey}
                 ritualId={ritualId}
                 cost={cost}
                 isUnlimited={isUnlimited}
@@ -257,10 +277,10 @@ export default function RitualFlow({
               />
             )}
 
-            {step === "payment" && ritualType && (
+            {step === "payment" && ritualType && effectiveCharacterKey && (
               <RitualPayment
                 ritualType={ritualType}
-                characterKey={characterKey}
+                characterKey={effectiveCharacterKey}
                 cost={cost}
                 balance={localBalance}
                 isUnlimited={isUnlimited}
@@ -270,9 +290,9 @@ export default function RitualFlow({
               />
             )}
 
-            {step === "generating" && ritualId && (
+            {step === "generating" && ritualId && effectiveCharacterKey && (
               <RitualGenerating
-                characterKey={characterKey}
+                characterKey={effectiveCharacterKey}
                 ritualId={ritualId}
                 onReady={handleGenerated}
                 onFailed={handleGenerationFailed}
@@ -283,10 +303,10 @@ export default function RitualFlow({
               <RitualCard ritual={ritual} onDone={onClose} />
             )}
 
-            {step === "review" && ritualId && (
+            {step === "review" && ritualId && effectiveCharacterKey && (
               <RitualReview
                 ritualId={ritualId}
-                characterKey={characterKey}
+                characterKey={effectiveCharacterKey}
                 onComplete={onClose}
                 onSkip={onClose}
               />

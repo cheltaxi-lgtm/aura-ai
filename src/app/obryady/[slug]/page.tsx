@@ -7,6 +7,9 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import { ensureDb } from "@/lib/db";
+import { listPublicRitualOutcomes } from "@/lib/ritual-service";
+import RitualOutcomesShowcase from "@/components/ritual/RitualOutcomesShowcase";
 
 const SLUG_TO_TYPE = Object.fromEntries(
   (Object.entries(RITUAL_PAGE_SLUGS) as [RitualType, string][]).map(([type, slug]) => [
@@ -41,6 +44,8 @@ const MASTER_FOR_RITUAL: Record<RitualType, string> = {
   protection: "agafya",
   luck: "ragnar",
   release: "agafya",
+  health: "agafya",
+  career: "ragnar",
 };
 
 const FAQ = [
@@ -69,6 +74,9 @@ export default async function ObryadyDetailPage({
 
   const ritual = RITUAL_TYPES[type];
   const masterId = MASTER_FOR_RITUAL[type];
+  const outcomes = (await ensureDb())
+    ? await listPublicRitualOutcomes(4, type).catch(() => [])
+    : [];
 
   return (
     <SeoPageShell backHref="/obryady" backLabel="Все обряды">
@@ -80,7 +88,7 @@ export default async function ObryadyDetailPage({
 
       <div className="mt-8">
         <SeoTrackedCta
-          href={`/master/${masterId}`}
+          href={`/master/${masterId}?ritual=${type}`}
           trackGoal="ritual_landing_cta_click"
           trackParams={{ slug }}
         >
@@ -120,6 +128,11 @@ export default async function ObryadyDetailPage({
           </div>
         ))}
       </SeoSection>
+
+      <RitualOutcomesShowcase
+        outcomes={outcomes}
+        title={`Знаки после обряда «${ritual.label}»`}
+      />
 
       <p className="mt-8">
         <Link href="/rasklady" className="text-sm text-aura-gold hover:underline">

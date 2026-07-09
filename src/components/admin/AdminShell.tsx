@@ -19,6 +19,8 @@ import {
   Mail,
   Menu,
   X,
+  Flame,
+  HeartHandshake,
 } from "lucide-react";
 
 const NAV = [
@@ -28,6 +30,8 @@ const NAV = [
   { href: "/admin/influencers", label: "Блогеры", icon: Share2 },
   { href: "/admin/payments", label: "Платежи", icon: CreditCard },
   { href: "/admin/runes", label: "Руны", icon: Coins },
+  { href: "/admin/rituals", label: "Обряды", icon: Flame },
+  { href: "/admin/joint-readings", label: "Совместные расклады", icon: HeartHandshake },
   { href: "/admin/sessions", label: "Сессии и чат", icon: MessageSquare },
   { href: "/admin/support", label: "Поддержка", icon: Headphones },
   { href: "/admin/email", label: "Почта", icon: Mail },
