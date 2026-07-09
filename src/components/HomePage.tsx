@@ -508,10 +508,16 @@ export default function HomePage({
   const openSpreadIntentFlow = useCallback(
     (
       intent: NonNullable<ReturnType<typeof getSpreadIntentBySlug>>,
-      options?: { customQuestion?: string | null }
+      options?: { customQuestion?: string | null; spreadIdOverride?: SpreadId }
     ) => {
-      if (isDailyOnlySpread(intent.spreadId)) {
-        setDailyEnergySpreadId(intent.spreadId);
+      // Joint-reading invites let the initiator pick a card depth (3/7/12) that
+      // differs from the intent's default spreadId in the registry — honor that
+      // override so the flow draws the layout actually stored on the invite,
+      // instead of silently falling back to love-7 and desyncing from the
+      // server-side spreadId enforced in /api/intention-spread.
+      const resolvedSpreadId = options?.spreadIdOverride ?? intent.spreadId;
+      if (isDailyOnlySpread(resolvedSpreadId)) {
+        setDailyEnergySpreadId(resolvedSpreadId);
         setDailyEnergyAutoOpen(true);
         return;
       }
@@ -521,7 +527,7 @@ export default function HomePage({
         gender === "male" || gender === "female" ? gender : null
       );
       const question = options?.customQuestion?.trim() || copy.questionTemplate;
-      setDeepLinkSpreadId(intent.spreadId);
+      setDeepLinkSpreadId(resolvedSpreadId);
       setSeoFlowIntentSlug(intent.slug);
       setSessionFlowPreselectedMaster(resolveIntentMasterId(intent));
       setSessionFlowInitialTopic("custom");
@@ -603,8 +609,15 @@ export default function HomePage({
       if (intent) {
         deepLinkSpreadParsedRef.current = true;
         const askWithIntent = params.get("ask")?.trim();
+        // For joint-reading deep links, the invite's own `spread` param (chosen at
+        // invite creation — 3/7/12 cards) takes priority over the intent's default
+        // spreadId in the registry, so the drawn layout matches what the server
+        // will enforce via the invite's stored spread_id.
+        const jointSpreadParam =
+          jointParam && jointRole ? params.get("spread")?.trim() : undefined;
         openSpreadIntentFlow(intent, {
           customQuestion: askWithIntent || undefined,
+          spreadIdOverride: jointSpreadParam ? normalizeSpreadId(jointSpreadParam) : undefined,
         });
         if (jointParam && jointRole) {
           // Joint reading: each side draws their own cards independently and the
@@ -619,6 +632,8 @@ export default function HomePage({
         url.searchParams.delete("joint");
         url.searchParams.delete("jointRole");
         url.searchParams.delete("jointInvite");
+        url.searchParams.delete("jointPartnerName");
+        url.searchParams.delete("spread");
         window.history.replaceState(null, "", url.pathname + url.search + url.hash);
         return;
       }

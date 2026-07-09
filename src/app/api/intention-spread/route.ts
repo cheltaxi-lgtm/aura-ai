@@ -80,6 +80,7 @@ import {
 } from "@/lib/spreads";
 import { resolveSpreadCost } from "@/lib/spreads/spread-pricing";
 import { attachSpreadToJointReading, getJointReadingByToken } from "@/lib/joint-reading-service";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import type { SessionTopicId } from "@/lib/session-topics";
 
 async function loadSpreadSeedParts(
@@ -478,8 +479,19 @@ export async function POST(request: NextRequest) {
       );
     }
     spreadId = normalizeSpreadId(joint.spread_id);
+    // `intent_slug` is a spread-intents *registry* slug (e.g. "sovmestimost-pary"),
+    // not a `SessionTopicId` — assigning it to `intention` directly used to fail
+    // `isValidSessionIntention` below on every single joint-reading submission.
+    // Resolve it through the registry instead, same as the client-side deep link
+    // flow (which always sends `intention: "custom"` for intent-slug spreads).
     if (joint.intent_slug) {
-      intention = sanitizeTextField(joint.intent_slug, 40) ?? intention;
+      const jointIntent = getSpreadIntentBySlug(joint.intent_slug);
+      if (jointIntent) {
+        intention = "custom";
+        customQuestion = customQuestion || jointIntent.questionTemplate;
+      } else {
+        intention = sanitizeTextField(joint.intent_slug, 40) ?? intention;
+      }
     }
   }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AdminShell, { AdminBtn, AdminTitle } from "@/components/admin/AdminShell";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 interface JointReadingSettings {
   enabled: boolean;
@@ -18,6 +19,7 @@ interface JointReadingListItem {
   token: string;
   initiatorName: string | null;
   partnerName: string | null;
+  intentSlug: string;
   status: "pending_partner" | "partner_done" | "completed" | "expired";
   createdAt: string;
   expiresAt: string;
@@ -107,6 +109,7 @@ export default function AdminJointReadingsPage() {
             <thead>
               <tr className="border-b border-white/10 text-xs uppercase text-gray-500">
                 <th className="pb-3 pr-4 font-medium">Инициатор → Партнёр</th>
+                <th className="pb-3 pr-4 font-medium">Тема</th>
                 <th className="pb-3 pr-4 font-medium">Статус</th>
                 <th className="pb-3 pr-4 font-medium">Создано</th>
                 <th className="pb-3 font-medium">Истекает</th>
@@ -126,6 +129,9 @@ export default function AdminJointReadingsPage() {
                     </a>
                   </td>
                   <td className="py-3 pr-4 text-gray-400">
+                    {getSpreadIntentBySlug(item.intentSlug)?.title ?? item.intentSlug}
+                  </td>
+                  <td className="py-3 pr-4 text-gray-400">
                     {STATUS_LABEL[item.status] ?? item.status}
                   </td>
                   <td className="py-3 pr-4 text-gray-500">
@@ -138,7 +144,7 @@ export default function AdminJointReadingsPage() {
               ))}
               {recent.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-6 text-center text-gray-500">
+                  <td colSpan={5} className="py-6 text-center text-gray-500">
                     Пока нет ни одного приглашения
                   </td>
                 </tr>

@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const RUNE_BALANCE_EVENT = "aura:rune-balance";
 
+export { RUNE_BALANCE_EVENT };
+
 export function emitRuneBalanceUpdate(balance: number) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(RUNE_BALANCE_EVENT, { detail: balance }));
@@ -60,20 +62,24 @@ export default function RuneBalance({ onBuyClick, compact = false }: RuneBalance
       <button
         type="button"
         onClick={onBuyClick}
-        className={`flex items-center gap-1 rounded-xl border font-semibold transition-all hover:scale-105 active:scale-95 ${
-          compact ? "px-2 py-1.5 text-[11px]" : "gap-1.5 px-3 py-1.5 text-xs"
-        } ${
-          isLow
-            ? "animate-pulse border-amber-500/60 bg-amber-500/15 text-amber-300"
-            : "border-white/15 bg-white/5 text-white/80"
-        }`}
+        className={
+          compact
+            ? `flex items-center gap-1 rounded-xl border px-2 py-1.5 text-[11px] font-semibold transition-all hover:scale-105 active:scale-95 ${
+                isLow
+                  ? "animate-pulse border-amber-500/60 bg-amber-500/15 text-amber-300"
+                  : "border-white/15 bg-white/5 text-white/80"
+              }`
+            : `app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill ${
+                isLow ? "btn-luxe--bronze animate-pulse" : "btn-luxe--gold"
+              }`
+        }
         aria-label={`Баланс рун: ${balance}`}
       >
-        <span className={`leading-none ${compact ? "text-sm" : "text-base"}`}>ᚢ</span>
+        <span className={`leading-none ${compact ? "text-sm" : "text-xs"}`}>ᚢ</span>
         <motion.span
           key={balance}
           initial={{ scale: 1.3, color: "#fbbf24" }}
-          animate={{ scale: 1, color: "#ffffff" }}
+          animate={{ scale: 1, color: compact ? "#ffffff" : "#1a0f06" }}
           transition={{ duration: 0.4 }}
         >
           {balance}

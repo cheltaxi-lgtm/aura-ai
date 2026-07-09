@@ -4,6 +4,7 @@ import type { SharePayload, ShareSourceType } from "@/lib/share/types";
 import type { RitualClientData } from "@/components/ritual/RitualCard";
 import { RITUAL_TYPES } from "@/lib/ritual-config";
 import type { SpreadSymbol } from "@/lib/decks/types";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 function withSource(
   payload: SharePayload,
@@ -112,14 +113,17 @@ export function jointReadingToSharePayload(input: {
   initiatorName?: string | null;
   partnerName?: string | null;
   combinedReading: string;
+  intentSlug?: string | null;
   date?: string;
 }): SharePayload {
-  const labelA = input.initiatorName?.trim() || "Он";
-  const labelB = input.partnerName?.trim() || "Она";
+  const labelA = input.initiatorName?.trim() || "Первый участник";
+  const labelB = input.partnerName?.trim() || "Второй участник";
+  const themeTitle = input.intentSlug ? getSpreadIntentBySlug(input.intentSlug)?.title : undefined;
+  const titlePrefix = themeTitle ?? "Совместный расклад";
   return withSource(
     {
       kind: "joint",
-      title: `Совместный расклад: ${labelA} и ${labelB}`,
+      title: `${titlePrefix}: ${labelA} и ${labelB}`,
       excerpt: input.combinedReading,
       date: input.date,
     },

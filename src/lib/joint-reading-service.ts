@@ -124,7 +124,7 @@ async function notifyJointReadingEvent(params: {
   const isCompleted = params.type === "joint_reading_completed";
   const title = isCompleted ? "Совместный расклад готов" : "Партнёр завершил расклад";
   const body = isCompleted
-    ? "Оба расклада собраны — откройте общую интерпретацию пары."
+    ? "Оба расклада собраны — откройте общую интерпретацию."
     : "Ваш партнёр прошёл свою часть совместного расклада. Откройте результат.";
   const ctaLabel = isCompleted ? "Читать результат" : "Открыть результат";
   const ctaPath = `/joint-reading/${params.token}`;
@@ -288,6 +288,7 @@ export interface JointReadingAdminListItem {
   token: string;
   initiatorName: string | null;
   partnerName: string | null;
+  intentSlug: string;
   status: JointReadingStatus;
   createdAt: string;
   expiresAt: string;
@@ -301,11 +302,12 @@ export async function listRecentJointReadingsForAdmin(
     token: string;
     initiator_name: string | null;
     partner_name: string | null;
+    intent_slug: string;
     status: JointReadingStatus;
     created_at: string;
     expires_at: string;
   }>(
-    `SELECT id, token, initiator_name, partner_name, status, created_at, expires_at
+    `SELECT id, token, initiator_name, partner_name, intent_slug, status, created_at, expires_at
      FROM joint_readings
      ORDER BY created_at DESC
      LIMIT $1`,
@@ -316,6 +318,7 @@ export async function listRecentJointReadingsForAdmin(
     token: row.token,
     initiatorName: row.initiator_name,
     partnerName: row.partner_name,
+    intentSlug: row.intent_slug,
     status: row.status,
     createdAt: String(row.created_at),
     expiresAt: String(row.expires_at),
@@ -539,13 +542,21 @@ export async function attachSpreadToJointReading(params: {
   });
 }
 
+/** Relationship-flavoured framing for the LLM synthesis prompt, based on the invite's theme. */
+function jointReadingRelationLabel(intentSlug: string): string {
+  if (intentSlug === "sovmestimost-druzhba") return "друзья";
+  if (intentSlug === "sovmestimost-biznes") return "бизнес-партнёры";
+  return "пара";
+}
+
 async function generateCombinedReading(row: JointReadingRow): Promise<string> {
   const initiatorLabel = row.initiator_name?.trim() || "Инициатор";
   const partnerLabel = row.partner_name?.trim() || "Партнёр";
+  const relation = jointReadingRelationLabel(row.intent_slug);
   try {
-    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей на основе двух готовых текстов. Пиши по-русски, тепло, без markdown-заголовков.`;
+    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов. Пиши по-русски, тепло, без markdown-заголовков. Не используй романтические формулировки, если это не пара — учитывай, что перед тобой ${relation}.`;
 
-    const userMessage = `${initiatorLabel} (инициатор):\n${row.initiator_reading ?? ""}\n\n${partnerLabel} (партнёр):\n${row.partner_reading ?? ""}\n\nСинтезируй: суть связи, сильные стороны, зоны напряжения, совет, перспектива.`;
+    const userMessage = `${initiatorLabel} (инициатор):\n${row.initiator_reading ?? ""}\n\n${partnerLabel} (партнёр):\n${row.partner_reading ?? ""}\n\nСинтезируй: суть связи между ${relation}, сильные стороны, зоны напряжения, совет, перспектива.`;
 
     const generated = await generateReading(systemPrompt, {
       userName: initiatorLabel,
@@ -566,7 +577,7 @@ async function generateCombinedReading(row: JointReadingRow): Promise<string> {
     "",
     row.partner_reading ?? "",
     "",
-    "Карты показывают, что у пары есть общий ресурс для сближения — обсудите выводы с мастером в чате.",
+    `Карты показывают, что у вас как у ${relation} есть общий ресурс для сближения — обсудите выводы с мастером в чате.`,
   ].join("\n");
 }
 

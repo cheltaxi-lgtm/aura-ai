@@ -15,6 +15,10 @@ interface NotificationItem {
 
 const POLL_MS = 60_000;
 
+export const OPEN_NOTIFICATIONS_EVENT = "aura:open-notifications";
+
+export const NOTIFICATION_COUNT_EVENT = "aura:notification-count";
+
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
@@ -31,7 +35,17 @@ function timeAgo(iso: string): string {
 
 type PopoverAnchor = { top: number; right: number; maxWidth: number };
 
-export default function NotificationBell() {
+interface NotificationBellProps {
+  /** Match header gold pill buttons on desktop/mobile bar. */
+  variant?: "default" | "headerPill";
+  /** Render popover only — trigger is opened via OPEN_NOTIFICATIONS_EVENT. */
+  hiddenTrigger?: boolean;
+}
+
+export default function NotificationBell({
+  variant = "default",
+  hiddenTrigger = false,
+}: NotificationBellProps) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -45,7 +59,13 @@ export default function NotificationBell() {
       const res = await fetch("/api/notifications", { credentials: "include" });
       if (!res.ok) return;
       const json = (await res.json()) as { notifications?: NotificationItem[] };
-      setItems(Array.isArray(json.notifications) ? json.notifications : []);
+      const next = Array.isArray(json.notifications) ? json.notifications : [];
+      setItems(next);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(NOTIFICATION_COUNT_EVENT, { detail: next.length })
+        );
+      }
     } catch {
       // best-effort — notifications are non-critical
     } finally {
@@ -59,15 +79,28 @@ export default function NotificationBell() {
     void load();
     const timer = setInterval(load, POLL_MS);
     const onFocus = () => void load();
+    const onOpen = () => setOpen(true);
     window.addEventListener("focus", onFocus);
+    window.addEventListener(OPEN_NOTIFICATIONS_EVENT, onOpen);
     return () => {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener(OPEN_NOTIFICATIONS_EVENT, onOpen);
     };
   }, [load]);
 
   const syncAnchor = useCallback(() => {
     const btn = buttonRef.current;
+    if (hiddenTrigger) {
+      setAnchor({
+        top: parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--app-header-h")
+        ) + 8 || 52,
+        right: 12,
+        maxWidth: Math.min(320, window.innerWidth - 24),
+      });
+      return;
+    }
     if (!btn) return;
     const rect = btn.getBoundingClientRect();
     setAnchor({
@@ -75,7 +108,7 @@ export default function NotificationBell() {
       right: Math.max(12, window.innerWidth - rect.right),
       maxWidth: Math.min(320, window.innerWidth - 24),
     });
-  }, []);
+  }, [hiddenTrigger]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -113,6 +146,9 @@ export default function NotificationBell() {
 
   const markAllRead = useCallback(async () => {
     setItems([]);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(NOTIFICATION_COUNT_EVENT, { detail: 0 }));
+    }
     try {
       await fetch("/api/notifications", { method: "POST", credentials: "include" });
     } catch {
@@ -122,7 +158,7 @@ export default function NotificationBell() {
 
   const count = items.length;
 
-  if (!loaded && count === 0) {
+  if (!loaded && count === 0 && !hiddenTrigger) {
     // Avoid layout flash before first load resolves.
     return (
       <div className="relative z-10 shrink-0">
@@ -212,6 +248,22 @@ export default function NotificationBell() {
         )
       : null;
 
+  const triggerClass =
+    variant === "headerPill"
+      ? "app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
+      : "relative inline-flex h-8 w-8 items-center justify-center rounded-xl text-gray-300 transition hover:bg-white/5 hover:text-white";
+
+  if (hiddenTrigger) {
+    return (
+      <>
+        <button ref={buttonRef} type="button" className="sr-only" tabIndex={-1} aria-hidden>
+          Уведомления
+        </button>
+        {popover}
+      </>
+    );
+  }
+
   return (
     <div className="relative z-10 shrink-0">
       <button
@@ -221,7 +273,7 @@ export default function NotificationBell() {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl text-gray-300 transition hover:bg-white/5 hover:text-white"
+        className={triggerClass}
         title="Уведомления"
         aria-label={count > 0 ? `Уведомления: ${count} новых` : "Уведомления"}
         aria-haspopup="dialog"

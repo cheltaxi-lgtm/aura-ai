@@ -72,7 +72,6 @@ export default function QuickQuestions({ showQuestionField = true }: { showQuest
             С чего начнём?
           </h2>
         </div>
-        {showQuestionField ? <HeroQuestionField compact className="mb-5" /> : null}
         <p className="quick-questions__subtitle">
           Выберите вопрос — мы подберём мастера и расклад.
           {userGender === "male"
@@ -81,7 +80,9 @@ export default function QuickQuestions({ showQuestionField = true }: { showQuest
               ? " Формулировки про партнёра."
               : null}
         </p>
+        {showQuestionField ? <HeroQuestionField compact className="quick-questions__search" /> : null}
 
+        <p className="quick-questions__section-label">Популярные вопросы</p>
         <div className="quick-questions__chips">
           {QUICK_INTENT_SLUGS.map((slug) => (
             <a
@@ -95,12 +96,15 @@ export default function QuickQuestions({ showQuestionField = true }: { showQuest
           ))}
         </div>
 
-        <div className="quick-questions__entries" aria-label="Разделы Zovus">
+        <div className="quick-questions__entries-wrap">
+          <p className="quick-questions__section-label">Разделы</p>
+          <div className="quick-questions__entries" aria-label="Разделы Zovus">
           {ENTRY_LINKS.map((item) => (
             <a key={item.href} href={item.href} onClick={go(item.href)} className="quick-questions__entry">
               {item.label}
             </a>
           ))}
+          </div>
         </div>
 
         {featured.length > 0 ? (

@@ -14,6 +14,7 @@ import { estimateJointSpreadCostPerPerson } from "@/lib/joint-reading-pricing";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import ShareButton from "@/components/share/ShareButton";
 import { jointReadingToSharePayload } from "@/lib/share/payload-builders";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 type JointPayload = {
   token: string;
@@ -219,17 +220,18 @@ export default function JointReadingTokenPage() {
   const labelB = data.partnerName?.trim() || "Партнёр";
   const bothDone = data.hasInitiatorReading && data.hasPartnerReading;
   const spreadLabel = getSpread(data.spreadId).label;
+  const themeTitle = getSpreadIntentBySlug(data.intentSlug)?.title ?? spreadLabel;
   const isExpired = data.status === "expired";
 
   return (
     <SeoPageShell backHref="/joint-reading" backLabel="Совместные расклады">
       <div className="flex items-center gap-2 text-aura-gold">
         <Users className="h-5 w-5" />
-        <h1 className="font-display text-2xl text-white">Совместный расклад</h1>
+        <h1 className="font-display text-2xl text-white">{themeTitle}</h1>
       </div>
       <p className="mt-2 text-sm text-white/55">
-        {labelA} и {labelB} — каждый проходит свой расклад «{spreadLabel}», затем вы получаете
-        общую интерпретацию.
+        {labelA} и {labelB} — каждый проходит свой расклад («{spreadLabel}», {getSpread(data.spreadId).cardCount} карт),
+        затем вы получаете общую интерпретацию.
       </p>
       {spreadCost ? (
         <p className="mt-2 text-xs text-white/40">
@@ -334,6 +336,7 @@ export default function JointReadingTokenPage() {
                 initiatorName: data.initiatorName,
                 partnerName: data.partnerName,
                 combinedReading: data.combinedReading,
+                intentSlug: data.intentSlug,
               })}
               variant="pill"
               label="Поделиться"

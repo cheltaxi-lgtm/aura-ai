@@ -16,12 +16,19 @@ const SPREAD_OPTIONS: { id: SpreadId; label: string; hint: string }[] = [
   { id: "compatibility-12", label: "Максимальный", hint: "12 карт" },
 ];
 
+const THEME_OPTIONS: { id: string; label: string; partnerLabel: string }[] = [
+  { id: "sovmestimost-pary", label: "Пара", partnerLabel: "Имя партнёра" },
+  { id: "sovmestimost-druzhba", label: "Дружба", partnerLabel: "Имя друга" },
+  { id: "sovmestimost-biznes", label: "Бизнес", partnerLabel: "Имя партнёра по делу" },
+];
+
 export default function JointReadingInvite() {
   const { user, isLoggedIn, loading: authLoading } = useAuth();
   const prefilledRef = useRef(false);
   const [partnerName, setPartnerName] = useState("");
   const [initiatorName, setInitiatorName] = useState("");
   const [spreadId, setSpreadId] = useState<SpreadId>("love-7");
+  const [intentSlug, setIntentSlug] = useState<string>("sovmestimost-pary");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,7 +55,7 @@ export default function JointReadingInvite() {
           initiatorName: initiatorName.trim() || undefined,
           partnerName: partnerName.trim() || undefined,
           spreadId,
-          intentSlug: "sovmestimost-pary",
+          intentSlug,
         }),
       });
       const data = (await res.json()) as {
@@ -81,7 +88,10 @@ export default function JointReadingInvite() {
     } finally {
       setLoading(false);
     }
-  }, [initiatorName, partnerName, spreadId]);
+  }, [initiatorName, partnerName, spreadId, intentSlug]);
+
+  const partnerLabel =
+    THEME_OPTIONS.find((opt) => opt.id === intentSlug)?.partnerLabel ?? "Имя партнёра";
 
   const perPersonCost = useMemo(
     () => estimateJointSpreadCostPerPerson(undefined, spreadId),
@@ -128,23 +138,44 @@ export default function JointReadingInvite() {
       </p>
 
       {!inviteUrl ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {SPREAD_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setSpreadId(opt.id)}
-              className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-                spreadId === opt.id
-                  ? "border-aura-gold/50 bg-aura-gold/10 text-aura-gold"
-                  : "border-white/10 bg-black/20 text-white/55 hover:border-white/20"
-              }`}
-            >
-              <span className="block font-medium">{opt.label}</span>
-              <span className="block text-white/40">{opt.hint}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <p className="mt-4 text-xs uppercase tracking-wide text-white/35">Тема</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setIntentSlug(opt.id)}
+                className={`rounded-xl border px-3 py-2 text-xs transition ${
+                  intentSlug === opt.id
+                    ? "border-aura-gold/50 bg-aura-gold/10 text-aura-gold"
+                    : "border-white/10 bg-black/20 text-white/55 hover:border-white/20"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          <p className="mt-4 text-xs uppercase tracking-wide text-white/35">Глубина</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {SPREAD_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setSpreadId(opt.id)}
+                className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                  spreadId === opt.id
+                    ? "border-aura-gold/50 bg-aura-gold/10 text-aura-gold"
+                    : "border-white/10 bg-black/20 text-white/55 hover:border-white/20"
+                }`}
+              >
+                <span className="block font-medium">{opt.label}</span>
+                <span className="block text-white/40">{opt.hint}</span>
+              </button>
+            ))}
+          </div>
+        </>
       ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -160,7 +191,7 @@ export default function JointReadingInvite() {
           />
         </label>
         <label className="block text-xs text-white/45">
-          Имя партнёра
+          {partnerLabel}
           <input
             type="text"
             value={partnerName}

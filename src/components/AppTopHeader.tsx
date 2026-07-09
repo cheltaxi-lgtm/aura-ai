@@ -1,14 +1,15 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { Flame } from "lucide-react";
-import AppDownloadButton from "@/components/AppDownloadButton";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import AppHeaderMenu from "@/components/AppHeaderMenu";
+import AppTopHeaderAccount from "@/components/AppTopHeaderAccount";
+import AppTopHeaderNav from "@/components/AppTopHeaderNav";
 import BrandLogo from "@/components/BrandLogo";
-import AuthHeader from "@/components/AuthHeader";
-import NotificationBell from "@/components/NotificationBell";
-import RuneBalance from "@/components/RuneBalance";
+import NotificationBell, {
+  NOTIFICATION_COUNT_EVENT,
+  OPEN_NOTIFICATIONS_EVENT,
+} from "@/components/NotificationBell";
+import RuneBalance, { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import TariffsModal from "@/components/TariffsModal";
 import type { AuthUser } from "@/lib/useAuth";
 
@@ -42,10 +43,56 @@ export default function AppTopHeader({
 }: AppTopHeaderProps) {
   const headerRef = useRef<HTMLElement>(null);
   const [tariffsOpen, setTariffsOpen] = useState(false);
+  const [runeBalance, setRuneBalance] = useState<number | null>(null);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   const openTariffs = () => {
     onNavTariffs?.();
     setTariffsOpen(true);
+  };
+
+  const navCallbacks = {
+    photoNavLabel,
+    onNavPhoto,
+    onNavMasters,
+    onNavDecks,
+    onNavTariffs: openTariffs,
+    onNavRitual,
+    onStartReading,
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setRuneBalance(null);
+      return;
+    }
+    fetch("/api/runes/balance")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (typeof d?.balance === "number") setRuneBalance(d.balance);
+      })
+      .catch(() => undefined);
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    const onBalance = (e: Event) => {
+      const next = (e as CustomEvent<number>).detail;
+      if (typeof next === "number") setRuneBalance(next);
+    };
+    const onNotifications = (e: Event) => {
+      const next = (e as CustomEvent<number>).detail;
+      if (typeof next === "number") setNotificationCount(next);
+    };
+    window.addEventListener(RUNE_BALANCE_EVENT, onBalance);
+    window.addEventListener(NOTIFICATION_COUNT_EVENT, onNotifications);
+    return () => {
+      window.removeEventListener(RUNE_BALANCE_EVENT, onBalance);
+      window.removeEventListener(NOTIFICATION_COUNT_EVENT, onNotifications);
+    };
+  }, []);
+
+  const openNotifications = () => {
+    window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATIONS_EVENT));
   };
 
   useLayoutEffect(() => {
@@ -77,7 +124,7 @@ export default function AppTopHeader({
       ref={headerRef}
       className="app-top-header pointer-events-auto fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md max-md:bg-[#080512] max-md:backdrop-blur-none"
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-4">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
         <div className="app-top-header__brand flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           <BrandLogo
             linkToHome
@@ -87,69 +134,32 @@ export default function AppTopHeader({
           />
         </div>
 
-        <nav className="app-top-header__nav hidden items-center gap-8 md:flex">
-          <button
-            type="button"
-            onClick={onNavPhoto}
-            className="relative z-[5010] text-sm text-gray-400 transition-colors hover:text-aura-neon"
-          >
-            {photoNavLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onNavMasters}
-            className="relative z-[5010] text-sm text-gray-400 transition-colors hover:text-aura-neon"
-          >
-            Мастера
-          </button>
-          <button
-            type="button"
-            onClick={onNavDecks}
-            className="relative z-[5010] text-sm text-gray-400 transition-colors hover:text-aura-neon"
-          >
-            Колоды
-          </button>
-          <button
-            type="button"
-            onClick={openTariffs}
-            className="relative z-[5010] text-sm text-gray-400 transition-colors hover:text-aura-neon"
-          >
-            Тарифы
-          </button>
-          <Link
-            href="/joint-reading"
-            className="relative z-[5010] text-sm text-gray-400 transition-colors hover:text-aura-neon"
-          >
-            Вдвоём
-          </Link>
-        </nav>
-
-        {/* Desktop actions */}
-        <div className="app-top-header__actions hidden shrink-0 items-center gap-2 md:flex md:gap-3">
-          <AppDownloadButton compact />
-          <button
-            type="button"
-            onClick={onNavRitual}
-            className="relative z-[5010] inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/8 px-3.5 py-2 text-sm text-amber-200/90 transition-colors hover:border-amber-500/45 hover:text-amber-100"
-          >
-            <Flame className="h-3.5 w-3.5" aria-hidden />
-            Обряд
-          </button>
+        {/* Desktop: three premium pills — Меню · CTA · Аккаунт */}
+        <div className="app-top-header__actions hidden min-w-0 flex-1 items-center justify-end gap-2 md:flex md:gap-2.5">
+          <AppTopHeaderNav {...navCallbacks} />
           <button
             type="button"
             onClick={onStartReading}
-            className="btn-primary relative z-[5010] inline-flex shrink-0 items-center px-4 py-2 text-sm"
+            className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
           >
             Получить расклад
           </button>
-          {isLoggedIn ? <RuneBalance onBuyClick={onOpenPaywall} /> : null}
-          <AuthHeader user={authUser} loading={authLoading} />
+          <AppTopHeaderAccount
+            user={authUser}
+            loading={authLoading}
+            runeBalance={runeBalance}
+            notificationCount={notificationCount}
+            onBuyRunes={onOpenPaywall}
+            onOpenNotifications={openNotifications}
+          />
+          {isLoggedIn && authUser?.role === "user" ? (
+            <NotificationBell hiddenTrigger />
+          ) : null}
         </div>
 
-        {/* Mobile: logo + runes + notifications + menu */}
+        {/* Mobile: runes + menu (notifications inside account section of sheet) */}
         <div className="app-top-header__mobile flex shrink-0 items-center gap-1.5 md:hidden">
           {isLoggedIn ? <RuneBalance compact onBuyClick={onOpenPaywall} /> : null}
-          {authUser?.role === "user" && !authLoading ? <NotificationBell /> : null}
           <AppHeaderMenu
             photoNavLabel={photoNavLabel}
             isLoggedIn={isLoggedIn}
@@ -162,6 +172,9 @@ export default function AppTopHeader({
             onNavRitual={onNavRitual}
             onStartReading={onStartReading}
           />
+          {isLoggedIn && authUser?.role === "user" ? (
+            <NotificationBell hiddenTrigger />
+          ) : null}
         </div>
       </div>
       <TariffsModal

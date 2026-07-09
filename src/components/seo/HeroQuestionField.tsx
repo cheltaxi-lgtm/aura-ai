@@ -60,7 +60,10 @@ export default function HeroQuestionField({ compact = false, className = "" }: H
           id="hero-question-compact"
           placeholder="Спросите, что хотите узнать…"
         />
-        <button type="submit" className="hero-question__submit hero-question__submit--compact">
+        <button
+          type="submit"
+          className="hero-question__submit hero-question__submit--compact btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
+        >
           Разложить
         </button>
       </form>
@@ -78,7 +81,7 @@ export default function HeroQuestionField({ compact = false, className = "" }: H
           id="hero-question"
           placeholder="Например: вернётся ли он? стоит ли менять работу?"
         />
-        <button type="submit" className="hero-question__submit">
+        <button type="submit" className="hero-question__submit btn-luxe btn-luxe--md btn-luxe--gold">
           <Sparkles className="h-4 w-4" aria-hidden />
           Разложить карты
         </button>

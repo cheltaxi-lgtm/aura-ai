@@ -36,7 +36,7 @@ export default function AuthHeader({
 
   const btnClass = compact
     ? "btn-neon relative z-10 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
-    : "btn-neon relative z-10 flex items-center gap-2 text-sm";
+    : "app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold";
 
   if (loading) {
     return <div className="h-8 w-8 shrink-0 animate-pulse rounded-xl bg-white/5 sm:w-24" />;
@@ -45,7 +45,7 @@ export default function AuthHeader({
   if (user?.role === "user") {
     return (
       <div className="relative z-10 flex shrink-0 items-center gap-1 sm:gap-2">
-        <NotificationBell />
+        <NotificationBell variant="headerPill" />
         <button type="button" onClick={openCabinet} className={btnClass} title="Личный кабинет">
           <User className="h-4 w-4 shrink-0" aria-hidden />
           <span className={compact ? "hidden sm:inline" : undefined}>
@@ -55,11 +55,11 @@ export default function AuthHeader({
         <button
           type="button"
           onClick={logout}
-          className="relative z-10 shrink-0 p-1 text-gray-500 hover:text-white"
+          className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold px-2.5"
           title="Выйти"
           aria-label="Выйти"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
     );
@@ -75,11 +75,11 @@ export default function AuthHeader({
         <button
           type="button"
           onClick={logout}
-          className="relative z-10 shrink-0 p-1 text-gray-500 hover:text-white"
+          className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold px-2.5"
           title="Выйти"
           aria-label="Выйти"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
     );
@@ -95,11 +95,11 @@ export default function AuthHeader({
         <button
           type="button"
           onClick={logout}
-          className="relative z-10 shrink-0 p-1 text-gray-500 hover:text-white"
+          className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold px-2.5"
           title="Выйти"
           aria-label="Выйти"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
     );

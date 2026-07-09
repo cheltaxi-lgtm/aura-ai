@@ -4,27 +4,22 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
-  Camera,
-  Download,
-  Flame,
-  Layers,
-  LayoutGrid,
+  Bell,
   LogIn,
   LogOut,
   Menu,
   Sparkles,
   User,
-  Users,
   X,
 } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
 import { navigateToCabinet } from "@/lib/app-shell-nav";
 import { shouldUseAppShellClient } from "@/lib/app-shell";
 import { triggerAppHaptic } from "@/lib/app-haptics";
+import { buildHeaderNavSections } from "@/lib/header-nav-items";
+import type { HeaderNavItem } from "@/lib/header-nav-items";
+import { OPEN_NOTIFICATIONS_EVENT } from "@/components/NotificationBell";
 import type { AuthUser } from "@/lib/useAuth";
-
-const APK_URL =
-  process.env.NEXT_PUBLIC_ANDROID_APK_URL?.trim() || "/releases/zovus-latest.apk";
 
 export type AppHeaderMenuProps = {
   photoNavLabel: string;
@@ -39,20 +34,17 @@ export type AppHeaderMenuProps = {
   onStartReading: () => void;
 };
 
-type MenuItem = {
+type AccountItem = {
   id: string;
   label: string;
   icon: ReactNode;
   onClick?: () => void;
   href?: string;
-  download?: boolean;
-  accent?: boolean;
   danger?: boolean;
 };
 
 export default function AppHeaderMenu({
   photoNavLabel,
-  isLoggedIn,
   authUser,
   authLoading,
   onNavMasters,
@@ -109,54 +101,17 @@ export default function AppHeaderMenu({
     };
   }, [open]);
 
-  const navItems: MenuItem[] = [
-    {
-      id: "photo",
-      label: photoNavLabel,
-      icon: <Camera className="h-4 w-4" aria-hidden />,
-      onClick: () => run(onNavPhoto),
-    },
-    {
-      id: "masters",
-      label: "Мастера",
-      icon: <Sparkles className="h-4 w-4" aria-hidden />,
-      onClick: () => run(onNavMasters),
-    },
-    {
-      id: "decks",
-      label: "Колоды",
-      icon: <Layers className="h-4 w-4" aria-hidden />,
-      onClick: () => run(onNavDecks),
-    },
-    {
-      id: "tariffs",
-      label: "Тарифы",
-      icon: <LayoutGrid className="h-4 w-4" aria-hidden />,
-      onClick: () => run(onNavTariffs),
-    },
-    {
-      id: "joint-reading",
-      label: "Совместный расклад",
-      icon: <Users className="h-4 w-4" aria-hidden />,
-      href: "/joint-reading",
-    },
-    {
-      id: "ritual",
-      label: "Заказать обряд",
-      icon: <Flame className="h-4 w-4" aria-hidden />,
-      onClick: () => run(onNavRitual),
-      accent: true,
-    },
-    {
-      id: "reading",
-      label: "Получить расклад",
-      icon: <Sparkles className="h-4 w-4" aria-hidden />,
-      onClick: () => run(onStartReading),
-      accent: true,
-    },
-  ];
+  const sections = buildHeaderNavSections({
+    photoNavLabel,
+    onNavPhoto,
+    onNavMasters,
+    onNavDecks,
+    onNavTariffs,
+    onNavRitual,
+    onStartReading,
+  });
 
-  const accountItems: MenuItem[] = [];
+  const accountItems: AccountItem[] = [];
 
   if (authLoading) {
     /* skeleton handled on trigger */
@@ -166,6 +121,15 @@ export default function AppHeaderMenu({
       label: "Личный кабинет",
       icon: <User className="h-4 w-4" aria-hidden />,
       onClick: openCabinet,
+    });
+    accountItems.push({
+      id: "notifications",
+      label: "Уведомления",
+      icon: <Bell className="h-4 w-4" aria-hidden />,
+      onClick: () => {
+        close();
+        window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATIONS_EVENT));
+      },
     });
   } else if (authUser?.role === "admin") {
     accountItems.push({
@@ -187,7 +151,6 @@ export default function AppHeaderMenu({
       label: "Войти",
       icon: <LogIn className="h-4 w-4" aria-hidden />,
       href: inAppShell ? "/auth/user/login?returnTo=/?app=1" : "/auth",
-      accent: true,
     });
   }
 
@@ -198,16 +161,6 @@ export default function AppHeaderMenu({
       icon: <LogOut className="h-4 w-4" aria-hidden />,
       onClick: () => void logout(),
       danger: true,
-    });
-  }
-
-  if (!inAppShell) {
-    navItems.push({
-      id: "download",
-      label: "Скачать приложение",
-      icon: <Download className="h-4 w-4" aria-hidden />,
-      href: APK_URL,
-      download: true,
     });
   }
 
@@ -242,18 +195,23 @@ export default function AppHeaderMenu({
                 </button>
               </div>
 
-              <div className="app-header-menu-panel__section">
-                {navItems.map((item) => (
-                  <MenuRow key={item.id} item={item} onNavigate={close} />
-                ))}
-              </div>
+              {sections.map((section) => (
+                <div key={section.id}>
+                  <p className="app-header-menu-panel__kicker">{section.title}</p>
+                  <div className="app-header-menu-panel__section">
+                    {section.items.map((item) => (
+                      <NavRow key={item.id} item={item} onNavigate={close} onAction={run} />
+                    ))}
+                  </div>
+                </div>
+              ))}
 
               {accountItems.length > 0 ? (
                 <>
                   <p className="app-header-menu-panel__kicker">Аккаунт</p>
                   <div className="app-header-menu-panel__section">
                     {accountItems.map((item) => (
-                      <MenuRow key={item.id} item={item} onNavigate={close} />
+                      <AccountRow key={item.id} item={item} onNavigate={close} />
                     ))}
                   </div>
                 </>
@@ -272,7 +230,9 @@ export default function AppHeaderMenu({
     <>
       <button
         type="button"
-        className={`app-header-menu-trigger${open ? " app-header-menu-trigger--open" : ""}`}
+        className={`app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold app-header-menu-trigger${
+          open ? " app-header-menu-trigger--open" : ""
+        }`}
         aria-label={open ? "Закрыть меню" : "Открыть меню"}
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -281,23 +241,69 @@ export default function AppHeaderMenu({
           setOpen((v) => !v);
         }}
       >
-        {open ? <X className="h-4 w-4" aria-hidden /> : <Menu className="h-4 w-4" aria-hidden />}
+        {open ? <X className="h-3.5 w-3.5" aria-hidden /> : <Menu className="h-3.5 w-3.5" aria-hidden />}
+        Меню
       </button>
       {panel}
     </>
   );
 }
 
-function MenuRow({
+function NavRow({
+  item,
+  onNavigate,
+  onAction,
+}: {
+  item: HeaderNavItem;
+  onNavigate: () => void;
+  onAction: (fn: () => void) => void;
+}) {
+  const Icon = item.icon;
+  const content = (
+    <>
+      <span className="app-header-menu-item__icon">
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <span className="app-header-menu-item__label">{item.label}</span>
+    </>
+  );
+
+  if (item.href) {
+    return (
+      <Link
+        href={item.href}
+        download={item.download || undefined}
+        className="app-header-menu-item"
+        onClick={() => {
+          void triggerAppHaptic("light");
+          onNavigate();
+        }}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="app-header-menu-item"
+      onClick={() => item.onClick && onAction(item.onClick)}
+    >
+      {content}
+    </button>
+  );
+}
+
+function AccountRow({
   item,
   onNavigate,
 }: {
-  item: MenuItem;
+  item: AccountItem;
   onNavigate: () => void;
 }) {
   const className = [
     "app-header-menu-item",
-    item.accent ? "app-header-menu-item--accent" : "",
     item.danger ? "app-header-menu-item--danger" : "",
   ]
     .filter(Boolean)
@@ -314,7 +320,6 @@ function MenuRow({
     return (
       <Link
         href={item.href}
-        download={item.download || undefined}
         className={className}
         onClick={() => {
           void triggerAppHaptic("light");

@@ -65,7 +65,7 @@ export function jointReadingPartnerDoneEmailHtml(name: string, ctaUrl: string): 
 export function jointReadingCompletedEmailHtml(name: string, ctaUrl: string): string {
   return jointReadingEmailShell(
     name,
-    `<p>Оба расклада собраны — общая интерпретация вашей пары уже готова.</p>`,
+    `<p>Оба расклада собраны — ваша общая интерпретация уже готова.</p>`,
     ctaUrl,
     "Читать результат"
   );

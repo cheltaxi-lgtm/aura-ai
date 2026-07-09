@@ -131,6 +131,12 @@ set -a
 # shellcheck disable=SC1090
 source <(grep -E '^(NEXT_PUBLIC_RECAPTCHA_SITE_KEY|NEXT_PUBLIC_RECAPTCHA_ENABLED|NEXT_PUBLIC_APP_URL)=' "$ENV_FILE" | sed 's/\r$//')
 set +a
+# A stale webpack persistent cache (.next/cache) can produce a build where some
+# shared chunk's on-disk filename hash no longer matches the hash baked into the
+# page/runtime manifest referencing it — the browser then 404/400s on that chunk
+# and crashes on hydration (ChunkLoadError) for every visitor. Force a clean
+# build every deploy so the manifest and emitted files are always consistent.
+rm -rf .next
 npm run build
 
 echo ">>> Launch env check..."
