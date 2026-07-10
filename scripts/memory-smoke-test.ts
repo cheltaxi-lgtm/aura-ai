@@ -110,8 +110,15 @@ async function main() {
     ok(/ДОЛГОСРОЧНАЯ ПАМЯТЬ/.test(block), "assembled block has memory header");
     ok(/БЛИЖАЙШИЕ СОБЫТИЯ/.test(block), "assembled block has upcoming-events section");
 
+    // Empty query (e.g. a daily pull with no intention/mainQuestion) must still
+    // surface imminent dated events unconditionally, but must NOT drag in
+    // unrelated general/critical facts that require relevance matching.
     const emptyBlock = await loadClientMemoryBlock({ userId: U, queryText: "" });
-    ok(emptyBlock === "", "empty query returns no memory block");
+    ok(
+      /БЛИЖАЙШИЕ СОБЫТИЯ/.test(emptyBlock) && /Артём|выпускн/i.test(emptyBlock),
+      "empty query still surfaces imminent event unconditionally"
+    );
+    ok(!/развод/i.test(emptyBlock), "empty query does not drag in unrelated critical fact");
   } finally {
     await cleanup();
   }
