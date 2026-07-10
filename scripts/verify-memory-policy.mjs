@@ -57,8 +57,13 @@ assert(
 
 const clientMemory = read("src/lib/memory/client-memory.ts");
 assert(
-  "loadClientMemoryBlock rejects empty query",
-  clientMemory.includes("if (!queryTrimmed) return \"\";")
+  "loadClientMemoryBlock does NOT early-return on empty query (would make the " +
+    "imminent-events-are-unconditional branch below it unreachable)",
+  !clientMemory.includes('if (!queryTrimmed) return "";')
+);
+assert(
+  "loadClientMemoryBlock still surfaces imminent events unconditionally of query relevance",
+  clientMemory.includes("days <= IMMINENT_EVENT_DAYS) return true;")
 );
 
 const userMemory = read("src/lib/user-memory.ts");

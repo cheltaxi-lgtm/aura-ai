@@ -84,7 +84,13 @@ export async function loadClientMemoryBlock(params: {
 
   const upcomingIds = new Set(upcoming.map((f) => f.id));
   const queryTrimmed = queryText.trim();
-  if (!queryTrimmed) return "";
+  // NB: no early `if (!queryTrimmed) return ""` here — that used to make the
+  // "imminent events are unconditional" branch below unreachable whenever the
+  // composed query was empty (e.g. a daily 3-card pull with no intention and
+  // no saved main question, or a short chat reply). searchFacts()/relevance
+  // checks already degrade correctly on their own for an empty query (see
+  // their own guards), so removing this just lets imminent events through as
+  // documented instead of suppressing the whole block.
 
   const relevantSearch = filterActiveMemoryFacts(relevant);
   // Events that are days away get surfaced unconditionally (same lead time as the

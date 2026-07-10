@@ -14,7 +14,6 @@ const PLACEHOLDER_PREDICTION = "Сеанс в процессе";
 export type SessionAnchorFallback = {
   cardNames?: string[];
   intention?: string | null;
-  mainQuestion?: string | null;
 };
 
 function formatSessionAnchor(parts: {
