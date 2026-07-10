@@ -49,6 +49,7 @@ import {
 } from "@/lib/photo-followups";
 import {
   appCameraErrorMessage,
+  appCameraErrorReason,
   isAppCameraAvailable,
   pickPhotoFromApp,
 } from "@/lib/app-camera";
@@ -327,6 +328,8 @@ export default function PhotoReadingFlow({
   const { config: runeConfig, cost: runeCost, formatRunes, formatRunesWithRub } = useRuneConfig();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const appCameraBusyRef = useRef(false);
+  const [appCameraBusy, setAppCameraBusy] = useState(false);
   const previewObjectUrlRef = useRef<string | null>(null);
   const sourcePhotoUrlRef = useRef<string | null>(null);
   const recognizeInFlightRef = useRef(false);
@@ -666,12 +669,28 @@ export default function PhotoReadingFlow({
       else fileInputRef.current?.click();
       return;
     }
+    if (appCameraBusyRef.current) return;
+    appCameraBusyRef.current = true;
+    setAppCameraBusy(true);
+    logPhotoClientError({ phase: "native_camera_open", name: source });
     try {
       const file = await pickPhotoFromApp(source);
-      if (file) await handleFile(file, source);
+      if (file) {
+        await handleFile(file, source);
+      } else {
+        logPhotoClientError({ phase: "native_camera_empty_result", name: source });
+      }
     } catch (err) {
+      logPhotoClientError({
+        phase: "native_camera_error",
+        name: source,
+        error: appCameraErrorReason(err),
+      });
       const message = appCameraErrorMessage(err);
       if (message) setError(message);
+    } finally {
+      appCameraBusyRef.current = false;
+      setAppCameraBusy(false);
     }
   };
 
@@ -1344,12 +1363,19 @@ export default function PhotoReadingFlow({
                         <button
                           type="button"
                           onClick={() => void pickFromAppSource("camera")}
-                          className="photo-flow-upload-tile"
+                          disabled={appCameraBusy}
+                          className="photo-flow-upload-tile disabled:opacity-60"
                         >
                           <span className="photo-flow-upload-tile__icon">
-                            <Camera className="h-6 w-6" />
+                            {appCameraBusy ? (
+                              <Loader2 className="h-6 w-6 animate-spin" />
+                            ) : (
+                              <Camera className="h-6 w-6" />
+                            )}
                           </span>
-                          <span className="text-xs font-medium text-white/85">Сделать фото</span>
+                          <span className="text-xs font-medium text-white/85">
+                            {appCameraBusy ? "Открываем камеру…" : "Сделать фото"}
+                          </span>
                         </button>
                       )}
                       <button
