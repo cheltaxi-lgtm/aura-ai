@@ -71,6 +71,13 @@ export async function checkAndroidAppUpdate(options?: {
       if (buildCode < remote.minVersionCode && isForcedUpdateGraceActive(remote.minVersionCode)) {
         return null;
       }
+      // A dismissed, non-forced reinstall prompt must stay dismissed for the
+      // rest of the session — previously this branch never consulted the
+      // dismissed-state at all, so the banner reappeared on every foreground
+      // resume and every 30-minute poll regardless of "Позже".
+      if (!forcedByMin && !options?.ignoreDismissed && isOptionalUpdateDismissed(remote.versionCode)) {
+        return null;
+      }
       return buildReinstallPrompt(remote, buildCode, forcedByMin);
     }
 

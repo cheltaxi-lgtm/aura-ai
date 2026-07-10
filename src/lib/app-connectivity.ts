@@ -3,7 +3,7 @@
 export type AppConnectivityReason = "offline" | "maintenance" | "server";
 
 const STATUS_PATH = "/api/platform/status";
-const PROBE_TIMEOUT_MS = 8_000;
+const PROBE_TIMEOUT_MS = 4_000;
 const NATIVE_NETWORK_TIMEOUT_MS = 2_500;
 const NATIVE_OFFLINE_CONFIRM_MS = 600;
 

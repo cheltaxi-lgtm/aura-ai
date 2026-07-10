@@ -10,9 +10,13 @@ import {
   type AppConnectivityReason,
 } from "@/lib/app-connectivity";
 
-const MIN_SPLASH_MS = 3_200;
-const EXIT_MS = 650;
-const MAX_SPLASH_MS = 7_500;
+// Was 3200/7500 — the extra artificial delay on every cold launch was a
+// leading cause of "the app takes forever to load" complaints, especially
+// stacked on top of the connectivity probe below. Keep just enough for the
+// brand flash to register without stalling the actual app.
+const MIN_SPLASH_MS = 1_100;
+const EXIT_MS = 450;
+const MAX_SPLASH_MS = 4_500;
 
 export const APP_SHELL_SPLASH_HIDDEN_EVENT = "zovus:splash-hidden";
 
