@@ -20,8 +20,23 @@ export function getPool(): Pool {
           ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false" }
           : undefined,
     });
-    void pool.query("SET statement_timeout = '30s'").catch(() => {
-      /* optional — some hosts restrict SET */
+    // A one-shot `pool.query(SET ...)` only affects the single connection it
+    // borrows, not every physical connection the pool later opens (up to
+    // `max`). Apply session GUCs on every new connection instead so they
+    // reliably hold for the pool's whole lifetime.
+    pool.on("connect", (client) => {
+      client.query("SET statement_timeout = '30s'").catch(() => {
+        /* optional — some hosts restrict SET */
+      });
+      // pgvector HNSW filtered search (e.g. `WHERE user_id = $1 ORDER BY
+      // embedding <=> $2 LIMIT n`) can under-return once user_facts grows to
+      // many users' vectors mixed in one index, because the ANN walk isn't
+      // scoped to the filter. Iterative scan (pgvector >= 0.8) keeps walking
+      // until enough post-filter matches are found. No-op / harmless on older
+      // pgvector — the GUC simply won't exist and this fails silently.
+      client.query("SET hnsw.iterative_scan = relaxed_order").catch(() => {
+        /* older pgvector without iterative scan support — ignore */
+      });
     });
   }
   return pool;

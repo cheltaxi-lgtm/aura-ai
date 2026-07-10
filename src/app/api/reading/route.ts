@@ -27,13 +27,7 @@ import {
 } from "@/lib/reading-idempotency";
 import { createHistoryEntry, patchTripletInterpretation, getUserById } from "@/lib/users";
 import { tarotCardsKey } from "@/lib/tarot";
-import {
-  appendUserMemoryToPrompt,
-  buildClientBlock,
-  buildMemoryBlock,
-} from "@/lib/user-memory";
-import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
-import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
+import { buildMemoryContext, appendMemoryContextToPrompt } from "@/lib/memory/build-memory-context";
 import {
   buildSpreadUserMessage,
   enrichCardsForSpreadContext,
@@ -368,7 +362,11 @@ export async function POST(request: NextRequest) {
 
     let systemPrompt = buildCharacterPrompt(characterId, ctx, {
       sessionNumber,
-      memory: sessionMemories,
+      // Past-session memory is rendered once, below, via buildMemoryContext()
+      // (relevance-gated against the actual question). Passing `sessionMemories`
+      // here too used to render the *same* rows a second time through the
+      // legacy formatLegacySessionMemories() path — doubling prompt tokens.
+      memory: [],
       intention: intention || null,
       spreadId,
     });
@@ -623,39 +621,17 @@ export async function POST(request: NextRequest) {
           [...chatTail].reverse().find((m) => m.role === "user")?.content?.trim() ?? "";
       }
 
-      const memoryQuery = composeMemoryQueryText({
+      const memoryCtx = await buildMemoryContext({
+        userId: authed.profileUserId,
+        characterId,
+        sessionId,
+        profile: { name: userName, gender, zodiac, birthDate, mainQuestion, lifeFocus },
         lastUserMessage: lastChatUserMessage,
         intention,
         customQuestion,
         mainQuestion,
       });
-      const memoryBlock = sessionId
-        ? await buildMemoryBlock(
-            authed.profileUserId,
-            characterId,
-            sessionId,
-            memoryQuery
-          )
-        : "";
-      const factsBlock = await loadClientMemoryBlock({
-        userId: authed.profileUserId,
-        queryText: memoryQuery,
-      });
-      const clientBlock = buildClientBlock(
-        {
-          name: userName,
-          gender,
-          zodiac,
-          birthDate,
-          mainQuestion,
-          lifeFocus,
-        },
-        memoryQuery
-      );
-      systemPrompt = appendUserMemoryToPrompt(
-        systemPrompt,
-        `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null
-      );
+      systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
 
       const deckSystem = resolveMasterDeckSystem(characterId);
       const userForContext = userContextFromProfile({

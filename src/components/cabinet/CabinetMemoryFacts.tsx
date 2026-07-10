@@ -34,6 +34,7 @@ type MemoryFact = {
   category: string | null;
   eventDate: string | null;
   salience: number;
+  addedByUser?: boolean;
 };
 
 const CATEGORY_ICONS: Record<UserFactCategory, LucideIcon> = {
@@ -68,6 +69,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [pdConsent, setPdConsent] = useState(false);
+  const [purging, setPurging] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,6 +155,35 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     }
   };
 
+  const handlePurgeAll = async () => {
+    if (
+      !window.confirm(
+        "Полностью очистить память? Мастер забудет все сохранённые факты и итоги прошлых сеансов. Действие необратимо."
+      )
+    ) {
+      return;
+    }
+    setPurging(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/memory/purge", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) {
+        throw new Error(data.message ?? "purge_failed");
+      }
+      setFacts([]);
+    } catch {
+      setError("Не удалось очистить память. Попробуйте позже.");
+    } finally {
+      setPurging(false);
+    }
+  };
+
   const handleDelete = async (factId: string) => {
     if (!window.confirm("Удалить этот факт из памяти мастера?")) return;
     setDeletingId(factId);
@@ -204,6 +235,20 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             Добавить факт
           </button>
         </div>
+
+        {!loading && facts.length > 0 ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handlePurgeAll()}
+              disabled={purging}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/35 transition-colors hover:text-red-300 disabled:opacity-50"
+            >
+              {purging ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Очистить всю память
+            </button>
+          </div>
+        ) : null}
 
         <div>
           {loading ? (
@@ -258,6 +303,13 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                           {f.salience >= 5 ? (
                             <span className="text-[10px] font-medium text-amber-400/80">важное</span>
                           ) : null}
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-medium ${
+                              f.addedByUser ? "text-emerald-400/70" : "text-white/30"
+                            }`}
+                          >
+                            {f.addedByUser ? "добавлено вами" : "замечено автоматически"}
+                          </span>
                         </div>
                         <p className="text-[15px] leading-relaxed text-white/92">
                           {formatMemoryFactForDisplay(f.fact)}

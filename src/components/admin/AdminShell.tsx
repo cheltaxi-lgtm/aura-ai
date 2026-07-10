@@ -21,6 +21,7 @@ import {
   X,
   Flame,
   HeartHandshake,
+  Database,
 } from "lucide-react";
 
 const NAV = [
@@ -32,6 +33,7 @@ const NAV = [
   { href: "/admin/runes", label: "Руны", icon: Coins },
   { href: "/admin/rituals", label: "Обряды", icon: Flame },
   { href: "/admin/joint-readings", label: "Совместные расклады", icon: HeartHandshake },
+  { href: "/admin/memory", label: "Память", icon: Database },
   { href: "/admin/sessions", label: "Сессии и чат", icon: MessageSquare },
   { href: "/admin/support", label: "Поддержка", icon: Headphones },
   { href: "/admin/email", label: "Почта", icon: Mail },

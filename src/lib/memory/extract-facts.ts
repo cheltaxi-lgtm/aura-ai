@@ -122,6 +122,17 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Fact extraction is a structured JSON extraction task (not creative writing),
+ * yet it runs once per chat turn on the admin-configured *chat* model by
+ * default — the same model users pay to talk to a master with. An optional
+ * dedicated/cheaper model can be set for this background task specifically,
+ * without touching the chat model settings.
+ */
+function extractModelOverride(): string | undefined {
+  return process.env.MEMORY_EXTRACT_MODEL?.trim() || undefined;
+}
+
 /** Short acknowledgements / greetings that never carry durable facts. */
 const FACTLESS_RE =
   /^(спасибо[!.\s]*|благодарю[!.\s]*|привет[!.\s]*|здравствуй(те)?[!.\s]*|да[!.\s]*|нет[!.\s]*|ок(ей)?[!.\s]*|хорошо[!.\s]*|понятно[!.\s]*|ясно[!.\s]*|угу[!.\s]*|ага[!.\s]*|спс[!.\s]*)+$/i;
@@ -162,6 +173,7 @@ export async function extractFactsFromTurn(
     timeoutMs: 30000,
     skipTemperatureRetry: true,
     priority: "background",
+    modelOverride: extractModelOverride(),
   });
   if (!raw) return [];
   return parseFacts(raw);

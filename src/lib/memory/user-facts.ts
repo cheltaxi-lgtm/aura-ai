@@ -29,12 +29,28 @@ export interface FactInput {
   salience?: number;
 }
 
-/** Cosine distance under which two facts are treated as duplicates (merge). */
-const DEDUP_MAX_DISTANCE = 0.18;
+/**
+ * Cosine distance under which two facts are treated as duplicates (merge).
+ * 0.18 was too tight — near-identical paraphrases of the same fact across
+ * sessions ("ищет работу" vs "в поисках работы") often sat just above it and
+ * accumulated as separate rows instead of merging. Widened to catch more
+ * paraphrases while still well clear of SEARCH_MAX_DISTANCE below.
+ */
+const DEDUP_MAX_DISTANCE = 0.22;
 /** Cosine distance ceiling for a fact to be considered relevant to a query. */
 const SEARCH_MAX_DISTANCE = 0.62;
 /** Max facts retained per user; excess is pruned by salience then recency. */
-const MAX_FACTS_PER_USER = 300;
+export const MAX_FACTS_PER_USER = 300;
+/**
+ * "Critical" facts (salience>=5) with no dated event never expire on their
+ * own — unlike dated events (see fact-date-filter.ts), a crisis fact like
+ * "клиент разводится" has nothing to compare against "now". Without decay it
+ * would keep forcing itself into getCriticalFacts()/loadClientMemoryBlock
+ * indefinitely, long after it stopped being current. Step it down to a
+ * normal-salience fact (still retrievable by search, just no longer forced)
+ * once it has gone quiet for this long.
+ */
+const CRITICAL_DECAY_AFTER_DAYS = 120;
 
 type FactRow = {
   id: string;
@@ -343,13 +359,36 @@ export async function reembedMissingFacts(userId: string, limit = 5): Promise<nu
 }
 
 /**
+ * Step down undated "critical" facts that have gone quiet for
+ * CRITICAL_DECAY_AFTER_DAYS — see the constant's doc comment. Dated events are
+ * handled separately (isPastEventFact) so they're excluded here.
+ */
+export async function decayStaleCriticalFacts(limit = 500): Promise<number> {
+  const { rows } = await query<{ id: string }>(
+    `UPDATE user_facts
+        SET salience = 4
+      WHERE id IN (
+        SELECT id FROM user_facts
+         WHERE salience >= 5
+           AND event_date IS NULL
+           AND updated_at < NOW() - INTERVAL '${CRITICAL_DECAY_AFTER_DAYS} days'
+         LIMIT $1
+      )
+      RETURNING id`,
+    [limit]
+  );
+  return rows.length;
+}
+
+/**
  * Maintenance pass (cron/admin): heal facts left without a vector across all
- * users (e.g. inserted while the embeddings provider was down). Stops early if
- * embeddings are unavailable.
+ * users (e.g. inserted while the embeddings provider was down), and decay
+ * stale critical facts. Re-embedding stops early if embeddings are unavailable;
+ * decay is independent and always runs.
  */
 export async function runMemoryMaintenance(
   limit = 200
-): Promise<{ scanned: number; reembedded: number }> {
+): Promise<{ scanned: number; reembedded: number; decayed: number }> {
   const { rows } = await query<{ id: string; fact: string }>(
     `SELECT id, fact FROM user_facts WHERE embedding IS NULL ORDER BY updated_at ASC LIMIT $1`,
     [limit]
@@ -364,7 +403,8 @@ export async function runMemoryMaintenance(
     ]);
     reembedded++;
   }
-  return { scanned: rows.length, reembedded };
+  const decayed = await decayStaleCriticalFacts().catch(() => 0);
+  return { scanned: rows.length, reembedded, decayed };
 }
 
 export async function countFacts(userId: string): Promise<number> {

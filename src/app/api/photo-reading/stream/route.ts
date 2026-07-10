@@ -10,13 +10,7 @@ import {
 import { createPhotoInterpretationStream } from "@/lib/photo-reading-stream";
 import { getUserById, serializeUserProfile } from "@/lib/users";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
-import {
-  appendUserMemoryToPrompt,
-  buildClientBlock,
-  buildMemoryBlock,
-} from "@/lib/user-memory";
-import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
-import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
+import { buildMemoryContext, appendMemoryContextToPrompt } from "@/lib/memory/build-memory-context";
 import {
   BillingService,
   InsufficientFundsError,
@@ -251,12 +245,11 @@ export async function POST(request: NextRequest) {
     let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
 
     if (profileUserId && resolvedSessionId) {
-      const memoryQuery = composeMemoryQueryText({
-        lastUserMessage: question,
-        mainQuestion: ctx.mainQuestion,
-      });
-      const clientBlock = buildClientBlock(
-        {
+      const memoryCtx = await buildMemoryContext({
+        userId: profileUserId,
+        characterId,
+        sessionId: resolvedSessionId,
+        profile: {
           name: ctx.userName,
           gender: ctx.gender,
           zodiac: ctx.zodiac,
@@ -264,22 +257,10 @@ export async function POST(request: NextRequest) {
           mainQuestion: ctx.mainQuestion,
           lifeFocus: ctx.lifeFocus,
         },
-        memoryQuery
-      );
-      const memoryBlock = await buildMemoryBlock(
-        profileUserId,
-        characterId,
-        resolvedSessionId,
-        memoryQuery
-      );
-      const factsBlock = await loadClientMemoryBlock({
-        userId: profileUserId,
-        queryText: memoryQuery,
+        lastUserMessage: question,
+        mainQuestion: ctx.mainQuestion,
       });
-      systemPrompt = appendUserMemoryToPrompt(
-        systemPrompt,
-        `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null
-      );
+      systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
     }
 
     const sse = await createPhotoInterpretationStream({

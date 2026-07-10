@@ -54,9 +54,7 @@ import {
 import { drawNumerologSessionSpread } from "@/lib/numerology/session-draw";
 import { buildNumerologSessionResult } from "@/lib/numerology/session-result";
 import { getNumerologSessionCopy } from "@/lib/numerology/session-copy";
-import { appendUserMemoryToPrompt, buildClientBlock, buildMemoryBlock } from "@/lib/user-memory";
-import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
-import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
+import { buildMemoryContext, appendMemoryContextToPrompt } from "@/lib/memory/build-memory-context";
 import {
   buildSpreadUserMessage,
   enrichCardsForSpreadContext,
@@ -766,13 +764,11 @@ export async function POST(request: NextRequest) {
 
   systemPrompt += intentionSpreadPromptBlock(intention, customQuestion);
 
-  const memoryQuery = composeMemoryQueryText({
-    intention,
-    customQuestion,
-    mainQuestion,
-  });
-  const clientBlock = buildClientBlock(
-    {
+  const memoryCtx = await buildMemoryContext({
+    userId: authed.profileUserId,
+    characterId,
+    sessionId,
+    profile: {
       name: userName,
       gender,
       zodiac,
@@ -780,24 +776,11 @@ export async function POST(request: NextRequest) {
       mainQuestion: intention === "custom" ? customQuestion : mainQuestion,
       lifeFocus,
     },
-    memoryQuery
-  );
-  const memoryBlock = sessionId
-    ? await buildMemoryBlock(
-        authed.profileUserId,
-        characterId,
-        sessionId,
-        memoryQuery
-      )
-    : "";
-  const factsBlock = await loadClientMemoryBlock({
-    userId: authed.profileUserId,
-    queryText: memoryQuery,
+    intention,
+    customQuestion,
+    mainQuestion,
   });
-  systemPrompt = appendUserMemoryToPrompt(
-    systemPrompt,
-    `${clientBlock}${memoryBlock}${factsBlock}`.trim() || null
-  );
+  systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
 
   let reading: string;
   try {

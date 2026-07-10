@@ -19,11 +19,34 @@ function assert(name, cond) {
   }
 }
 
+const buildMemoryContextSrc = read("src/lib/memory/build-memory-context.ts");
+assert(
+  "shared buildMemoryContext exists and composes query text",
+  buildMemoryContextSrc.includes("export async function buildMemoryContext") &&
+    buildMemoryContextSrc.includes("composeMemoryQueryText")
+);
+
 const photoRoute = read("src/app/api/photo-reading/stream/route.ts");
 assert(
-  "photo-reading uses composeMemoryQueryText",
-  photoRoute.includes("composeMemoryQueryText") &&
-    photoRoute.includes("queryText: memoryQuery")
+  "photo-reading uses the shared memory-context helper (not hand-rolled blocks)",
+  photoRoute.includes("buildMemoryContext") && photoRoute.includes("appendMemoryContextToPrompt")
+);
+
+const intentionSpreadRoute = read("src/app/api/intention-spread/route.ts");
+assert(
+  "intention-spread uses the shared memory-context helper",
+  intentionSpreadRoute.includes("buildMemoryContext") &&
+    intentionSpreadRoute.includes("appendMemoryContextToPrompt")
+);
+
+const readingRoute = read("src/app/api/reading/route.ts");
+assert(
+  "reading route uses the shared memory-context helper",
+  readingRoute.includes("buildMemoryContext") && readingRoute.includes("appendMemoryContextToPrompt")
+);
+assert(
+  "reading route does not double-inject session memory via the legacy formatter",
+  /memory:\s*\[\]/.test(readingRoute)
 );
 
 const userFacts = read("src/lib/memory/user-facts.ts");
@@ -140,6 +163,72 @@ assert(
   "user fact input is client-safe",
   userFactInput.includes("validateUserSubmittedFact") &&
     !userFactInput.includes("@/lib/llm")
+);
+
+assert(
+  "chat-orchestrator uses the shared memory-context helper",
+  orchestrator.includes("buildMemoryContext")
+);
+
+assert(
+  "dead code getUserMemoryPreview was removed",
+  !userMemory.includes("getUserMemoryPreview")
+);
+
+const sessionMemorySemantic = read("src/lib/memory/session-memory-semantic.ts");
+assert(
+  "session-memory relevance has a semantic (embeddings) fallback, not lexical-only",
+  sessionMemorySemantic.includes("isTextRelevantToQueryAsync") &&
+    sessionMemorySemantic.includes("embedTexts")
+);
+assert(
+  "memory-relevance.ts stays client-bundle-safe (no Node-only embeddings import)",
+  !/^import .*from ["']@\/lib\/memory\/embeddings["']/m.test(relevance) &&
+    !/^import .*from ["']@\/lib\/db["']/m.test(relevance)
+);
+
+const dbSrc = read("src/lib/db.ts");
+assert(
+  "db pool applies session GUCs on every new connection, not a one-shot query",
+  dbSrc.includes('pool.on("connect"') && dbSrc.includes("hnsw.iterative_scan")
+);
+
+assert(
+  "user_facts has a decay path for stale undated critical facts",
+  userFacts.includes("decayStaleCriticalFacts") && userFacts.includes("CRITICAL_DECAY_AFTER_DAYS")
+);
+assert(
+  "MAX_FACTS_PER_USER is exported for reuse by the facts API cap check",
+  userFacts.includes("export const MAX_FACTS_PER_USER")
+);
+
+assert(
+  "manual-fact cap counts only user-submitted facts, not auto-extracted ones",
+  factsRoute.includes('sourceCharacter === "user"') &&
+    !factsRoute.includes("existing.length >= MAX_MANUAL_FACTS_PER_USER")
+);
+assert(
+  "memory facts API exposes fact source to the client",
+  factsRoute.includes("addedByUser")
+);
+
+const purgeRoute = read("src/app/api/memory/purge/route.ts");
+assert(
+  "self-service full memory purge exists, is authenticated, and requires confirmation",
+  purgeRoute.includes("export async function POST") &&
+    purgeRoute.includes("requireUserAuth") &&
+    purgeRoute.includes("purgeAllUserMemory") &&
+    purgeRoute.includes("confirm")
+);
+assert(
+  "cabinet UI exposes the self-service purge action",
+  cabinetMemory.includes("/api/memory/purge") && cabinetMemory.includes("Очистить всю память")
+);
+
+const adminMemoryStatsRoute = read("src/app/api/admin/memory/stats/route.ts");
+assert(
+  "admin memory stats route requires admin auth",
+  adminMemoryStatsRoute.includes("requireAdmin")
 );
 
 const deployYml = read(".github/workflows/deploy.yml");

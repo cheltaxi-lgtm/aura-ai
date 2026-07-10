@@ -70,13 +70,8 @@ import {
 import { ensureDb } from "@/lib/db";
 import { getUserById } from "@/lib/users";
 import { MAX_IMAGE_BYTES, validateImageBase64Payload, validateLastUserMessage } from "@/lib/api-guards";
-import {
-  appendUserMemoryToPrompt,
-  buildClientBlock,
-  buildMemoryBlock,
-  buildCurrentSessionAnchorBlock,
-  buildPeriodSpreadAnchorBlock,
-} from "@/lib/user-memory";
+import { appendUserMemoryToPrompt, buildPeriodSpreadAnchorBlock } from "@/lib/user-memory";
+import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 import {
   recoverSpreadMetaFromChatMessages,
   recoverSpreadMetaFromHistory,
@@ -92,7 +87,7 @@ import {
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
-import { composeMemoryQueryText, filterLlmMessagesByTopic } from "@/lib/memory/memory-relevance";
+import { filterLlmMessagesByTopic } from "@/lib/memory/memory-relevance";
 import { MIN_SPREAD_READING_CHARS } from "@/lib/chat-cache";
 import { topicLabel, isValidSessionIntention, type SessionTopicId } from "@/lib/session-topics";
 
@@ -217,6 +212,7 @@ export class ChatOrchestrator {
   private numerologyUi: NumerologyUi | undefined;
   private memoryBlock = "";
   private memoryQuery = "";
+  private clientMemoryBlock = "";
   private lastSystemPrompt = "";
   private chatTemperature: number | undefined;
 
@@ -559,46 +555,42 @@ export class ChatOrchestrator {
         ? this.resolvedCardNames
         : this.tarotCards?.map((c) => c.name);
 
-    const memoryQuery = composeMemoryQueryText({
+    const ctx = await buildMemoryContext({
+      userId: this.profileUserId,
+      characterId: this.characterId,
+      sessionId: this.dbOk && this.session ? this.session.id : null,
+      profile: this.userProfile
+        ? {
+            name: this.userProfile.name,
+            gender: this.userProfile.gender,
+            zodiac: this.userProfile.zodiac,
+            birthDate: this.userProfile.birthDate,
+            mainQuestion: this.userProfile.mainQuestion,
+            lifeFocus: this.userProfile.lifeFocus,
+          }
+        : null,
       lastUserMessage: this.lastUserMsg,
       intention: this.periodSpreadScope ? null : this.resolvedIntention,
       customQuestion: this.customQuestion,
       mainQuestion: this.userProfile?.mainQuestion,
+      includePastSessions: !this.periodSpreadScope,
+      includeSessionAnchor: true,
+      sessionAnchorFallback: { cardNames, intention: this.resolvedIntention },
     });
-    this.memoryQuery = memoryQuery;
 
-    const [clientFacts, pastSessions, sessionAnchor] = await Promise.all([
-      ClientMemory.loadClientMemoryBlock({
-        userId: this.profileUserId,
-        queryText: memoryQuery,
-      }),
-      this.dbOk && this.session && !this.periodSpreadScope
-        ? buildMemoryBlock(
-            this.profileUserId,
-            this.characterId,
-            this.session.id,
-            memoryQuery
-          )
-        : Promise.resolve(""),
+    // Period spreads ("на неделю"/"на месяц") get a fresh, topic-scoped anchor
+    // instead of the DB-derived "continue where we left off" one — otherwise a
+    // quick period spread would drag the previous chat topic into its prompt.
+    const sessionAnchor =
       this.periodSpreadScope && cardNames?.length
-        ? Promise.resolve(
-            buildPeriodSpreadAnchorBlock(this.periodSpreadScope, cardNames)
-          )
-        : this.dbOk && this.session
-          ? buildCurrentSessionAnchorBlock(
-              this.profileUserId,
-              this.session.id,
-              this.characterId,
-              {
-                cardNames,
-                intention: this.resolvedIntention,
-              },
-              memoryQuery
-            )
-          : Promise.resolve(""),
-    ]);
+        ? buildPeriodSpreadAnchorBlock(this.periodSpreadScope, cardNames)
+        : ctx.sessionAnchorBlock;
 
-    this.memoryBlock = [sessionAnchor, pastSessions, clientFacts].filter(Boolean).join("\n\n");
+    this.memoryQuery = ctx.queryText;
+    this.clientMemoryBlock = ctx.clientBlock;
+    this.memoryBlock = [sessionAnchor, ctx.pastSessionsBlock, ctx.factsBlock]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   private async loadLlmMessages(): Promise<void> {
@@ -739,20 +731,12 @@ export class ChatOrchestrator {
     }
 
     if (this.profileUserId) {
-      const clientBlock = buildClientBlock(
-        {
-          name: this.userProfile?.name,
-          gender: this.userProfile?.gender,
-          zodiac: this.userProfile?.zodiac,
-          birthDate: this.userProfile?.birthDate,
-          mainQuestion: this.userProfile?.mainQuestion,
-          lifeFocus: this.userProfile?.lifeFocus,
-        },
-        this.memoryQuery
-      );
+      // clientMemoryBlock/memoryBlock were already computed once in
+      // loadPromptMemory() — reusing them here avoids re-running buildClientBlock
+      // (and its relevance gating) a second time for the same request.
       systemPrompt = appendUserMemoryToPrompt(
         systemPrompt,
-        `${clientBlock}${this.memoryBlock}`.trim() || null
+        `${this.clientMemoryBlock}${this.memoryBlock}`.trim() || null
       );
     }
 

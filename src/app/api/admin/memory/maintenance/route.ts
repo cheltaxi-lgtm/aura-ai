@@ -6,8 +6,9 @@ import { runMemoryMaintenance } from "@/lib/memory/user-facts";
 
 /**
  * Re-embeds long-term memory facts that were stored without a vector
- * (e.g. while the embeddings provider was unavailable). Safe to call
- * repeatedly; intended for an admin button or a cron job.
+ * (e.g. while the embeddings provider was unavailable), and decays stale
+ * "critical" facts back to normal salience. Safe to call repeatedly;
+ * intended for an admin button or a cron job.
  */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin();

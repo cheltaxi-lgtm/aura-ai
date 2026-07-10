@@ -5,7 +5,7 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { sanitizeTextField } from "@/lib/chat-sanitize";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { validateUserSubmittedFact } from "@/lib/memory/user-fact-input";
-import { deleteFact, listFacts, searchFacts, upsertFact } from "@/lib/memory/user-facts";
+import { deleteFact, listFacts, searchFacts, upsertFact, MAX_FACTS_PER_USER } from "@/lib/memory/user-facts";
 
 /**
  * Cap for user-submitted (manually entered) facts specifically, distinct from
@@ -19,6 +19,7 @@ function mapFact(f: {
   category: string | null;
   eventDate: string | null;
   salience: number;
+  sourceCharacter: string | null;
 }) {
   return {
     id: f.id,
@@ -26,6 +27,9 @@ function mapFact(f: {
     category: f.category,
     eventDate: f.eventDate,
     salience: f.salience,
+    // "user" = added by hand in the cabinet; anything else (a character id, or
+    // null for older rows) was picked up automatically from a chat/reading.
+    addedByUser: f.sourceCharacter === "user",
   };
 }
 
@@ -44,7 +48,9 @@ export async function GET() {
     return NextResponse.json({ error: "profile_required" }, { status: 400 });
   }
 
-  const facts = await listFacts(profileUserId, MAX_MANUAL_FACTS_PER_USER);
+  // Show everything the system knows for this user, not just the manual-entry
+  // cap — auto-extracted facts are just as relevant for the user to review/delete.
+  const facts = await listFacts(profileUserId, MAX_FACTS_PER_USER);
   return NextResponse.json({
     facts: facts.map(mapFact),
     count: facts.length,
@@ -111,12 +117,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const existing = await listFacts(profileUserId, MAX_MANUAL_FACTS_PER_USER + 1);
-  if (existing.length >= MAX_MANUAL_FACTS_PER_USER) {
+  // Count only facts the user typed themselves — `listFacts` also returns
+  // facts auto-extracted from chat (sourceCharacter = a character id / null),
+  // which must not count against this manual-entry cap (they have their own,
+  // much larger cap — MAX_FACTS_PER_USER in lib/memory/user-facts.ts).
+  const existing = await listFacts(profileUserId, MAX_FACTS_PER_USER);
+  const manualCount = existing.filter((f) => f.sourceCharacter === "user").length;
+  if (manualCount >= MAX_MANUAL_FACTS_PER_USER) {
     return NextResponse.json(
       {
         error: "limit_reached",
-        message: `Достигнут лимит ${MAX_MANUAL_FACTS_PER_USER} фактов. Удалите старые, чтобы добавить новые.`,
+        message: `Достигнут лимит ${MAX_MANUAL_FACTS_PER_USER} фактов, добавленных вручную. Удалите старые, чтобы добавить новые.`,
       },
       { status: 409 }
     );

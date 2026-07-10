@@ -13,6 +13,8 @@ const EMBED_API = "https://openrouter.ai/api/v1/embeddings";
 const EMBED_MODEL = process.env.MEMORY_EMBED_MODEL || "baai/bge-m3";
 const API_KEY = process.env.OPENROUTER_API_KEY || "";
 const LIMIT = Math.min(Number(process.argv[2]) || 500, 5000);
+/** Mirrors CRITICAL_DECAY_AFTER_DAYS in src/lib/memory/user-facts.ts. */
+const CRITICAL_DECAY_AFTER_DAYS = 120;
 
 async function embed(text) {
   if (!API_KEY) return null;
@@ -61,6 +63,20 @@ async function main() {
       reembedded++;
     }
     console.log(`memory-maintenance: scanned ${rows.length}, re-embedded ${reembedded}`);
+
+    const decay = await c.query(
+      `UPDATE user_facts
+          SET salience = 4
+        WHERE id IN (
+          SELECT id FROM user_facts
+           WHERE salience >= 5
+             AND event_date IS NULL
+             AND updated_at < NOW() - INTERVAL '${CRITICAL_DECAY_AFTER_DAYS} days'
+           LIMIT 500
+        )
+        RETURNING id`
+    );
+    console.log(`memory-maintenance: decayed ${decay.rowCount} stale critical fact(s)`);
   } finally {
     await c.end();
   }

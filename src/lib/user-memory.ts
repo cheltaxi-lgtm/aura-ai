@@ -1,4 +1,3 @@
-import { getUserById } from "@/lib/users";
 import { query, ensureDb } from "@/lib/db";
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 import { tarotCardsKey } from "@/lib/tarot";
@@ -6,10 +5,8 @@ import {
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
-import {
-  isTextRelevantToQuery,
-  MEMORY_USAGE_RULES,
-} from "@/lib/memory/memory-relevance";
+import { isTextRelevantToQuery, MEMORY_USAGE_RULES } from "@/lib/memory/memory-relevance";
+import { isTextRelevantToQueryAsync } from "@/lib/memory/session-memory-semantic";
 
 const MAX_BLOCK_CHARS = 4000;
 const PLACEHOLDER_PREDICTION = "Сеанс в процессе";
@@ -44,7 +41,7 @@ function formatSessionAnchor(parts: {
   return lines.join("\n");
 }
 
-function buildRelevantSessionAnchor(
+async function buildRelevantSessionAnchor(
   topicQuery: string,
   parts: {
     topicSummary?: string;
@@ -53,19 +50,19 @@ function buildRelevantSessionAnchor(
     cardNames?: string[];
     intention?: string | null;
   }
-): string {
+): Promise<string> {
   if (!topicQuery) return "";
 
   const narrative = `${parts.topicSummary ?? ""} ${parts.prediction ?? ""}`.trim();
-  const narrativeRelevant = narrative ? isTextRelevantToQuery(topicQuery, narrative) : false;
-
   const cardNames = parts.cardNames ?? [];
-  const cardsRelevant =
-    cardNames.length > 0 && isTextRelevantToQuery(topicQuery, cardNames.join(" "));
-
+  const cardsText = cardNames.join(" ");
   const intention = parts.intention?.trim() ?? "";
-  const intentionRelevant =
-    Boolean(intention) && isTextRelevantToQuery(topicQuery, intention);
+
+  // Batched semantic + lexical relevance in one round-trip (see memory-relevance.ts).
+  const [narrativeRelevant, cardsRelevant, intentionRelevant] = await isTextRelevantToQueryAsync(
+    topicQuery,
+    [narrative, cardsText, intention]
+  );
 
   if (!narrativeRelevant && !cardsRelevant && !intentionRelevant) return "";
 
@@ -90,7 +87,7 @@ export async function buildCurrentSessionAnchorBlock(
   if (!topicQuery) return "";
 
   if (!(await ensureDb())) {
-    return buildRelevantSessionAnchor(topicQuery, {
+    return await buildRelevantSessionAnchor(topicQuery, {
       cardNames: fallback?.cardNames,
       intention: fallback?.intention ?? undefined,
     });
@@ -111,21 +108,19 @@ export async function buildCurrentSessionAnchorBlock(
 
   const row = rows[0];
   if (!row) {
-    return buildRelevantSessionAnchor(topicQuery, {
+    return await buildRelevantSessionAnchor(topicQuery, {
       cardNames: fallback?.cardNames,
       intention: fallback?.intention ?? undefined,
     });
   }
 
-  return (
-    buildRelevantSessionAnchor(topicQuery, {
-      topicSummary: row.topic_summary,
-      prediction: row.prediction,
-      mood: row.mood,
-      cardNames: row.key_cards ?? fallback?.cardNames,
-      intention: fallback?.intention ?? undefined,
-    }) || ""
-  );
+  return await buildRelevantSessionAnchor(topicQuery, {
+    topicSummary: row.topic_summary,
+    prediction: row.prediction,
+    mood: row.mood,
+    cardNames: row.key_cards ?? fallback?.cardNames,
+    intention: fallback?.intention ?? undefined,
+  });
 }
 
 /** Fresh anchor for quick period spreads — no «continue old topic» bleed. */
@@ -219,12 +214,11 @@ export async function buildMemoryBlock(
   const topicQuery = queryText?.trim() ?? "";
   if (!topicQuery) return "";
 
-  const filtered = rows.filter((m) =>
-    isTextRelevantToQuery(
-      topicQuery,
-      `${m.topic_summary} ${m.prediction} ${(m.key_cards ?? []).join(" ")}`
-    )
+  const candidateTexts = rows.map(
+    (m) => `${m.topic_summary} ${m.prediction} ${(m.key_cards ?? []).join(" ")}`
   );
+  const relevanceFlags = await isTextRelevantToQueryAsync(topicQuery, candidateTexts);
+  const filtered = rows.filter((_, i) => relevanceFlags[i]);
 
   if (!filtered.length) return "";
 
@@ -252,37 +246,6 @@ ${MEMORY_USAGE_RULES}
 export function appendUserMemoryToPrompt(systemPrompt: string, memoryBlock: string | null): string {
   if (!memoryBlock?.trim()) return systemPrompt;
   return `${systemPrompt}\n\n--- служебный контекст (не включать в ответ) ---\n${memoryBlock}\n--- конец служебного контекста ---`;
-}
-
-export async function getUserMemoryPreview(profileUserId: string): Promise<{
-  readingCount: number;
-  chatTurnCount: number;
-  factsCount: number;
-  hasMainQuestion: boolean;
-}> {
-  if (!(await ensureDb())) {
-    return { readingCount: 0, chatTurnCount: 0, factsCount: 0, hasMainQuestion: false };
-  }
-
-  const [memoryCount, factsCount, user] = await Promise.all([
-    query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM session_memories
-       WHERE user_id = $1 AND session_id IS NOT NULL`,
-      [profileUserId]
-    ),
-    query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM user_facts WHERE user_id = $1`,
-      [profileUserId]
-    ),
-    getUserById(profileUserId),
-  ]);
-
-  return {
-    readingCount: Number.parseInt(memoryCount.rows[0]?.count ?? "0", 10),
-    chatTurnCount: 0,
-    factsCount: Number.parseInt(factsCount.rows[0]?.count ?? "0", 10),
-    hasMainQuestion: Boolean(user?.main_question),
-  };
 }
 
 export function cardsKeyFromTarot(cards: { name: string }[] | undefined): string | undefined {
