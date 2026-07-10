@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="cache" path="." />
+    <!--
+      @capacitor/camera's native camera capture (CameraUtils.createImageFile)
+      writes the temp photo to getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+      then hands that path to FileProvider.getUriForFile(). Without a matching
+      <external-files-path> entry here, FileProvider throws
+      "Failed to find configured root" / the plugin surfaces it as
+      "Unable to create photo on disk" and the camera silently fails after
+      the photo is taken.
+    -->
+    <external-files-path name="external_files" path="." />
 </paths>
