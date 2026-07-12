@@ -1,0 +1,124 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
+import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
+import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import { buildArticleStructuredData } from "@/lib/seo/structured-data";
+
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Гадание онлайн бесплатно: Таро, руны, нумерология | Zovus",
+  description:
+    "Гадание онлайн на выбор: Таро, руны, нумерология и Ленорман. Быстрый ответ да/нет, расклад на любовь или подробный разбор ситуации с живым мастером в чате.",
+  path: "/gadanie",
+});
+
+const METHODS = [
+  {
+    title: "Таро онлайн",
+    text: "Классические расклады Таро на любовь, ситуацию и будущее с мастером Вероникой или Мариной.",
+    href: "/taro",
+    cta: "Гадать на картах Таро",
+  },
+  {
+    title: "Гадание на рунах",
+    text: "Скандинавские руны старшего Футарка — прямой, лаконичный ответ с Рагнаром.",
+    href: "/runy",
+    cta: "Гадать на рунах",
+  },
+  {
+    title: "Нумерология по дате рождения",
+    text: "Числа судьбы, матрица судьбы, квадрат Пифагора и совместимость пары с Эвелиной.",
+    href: "/numerology",
+    cta: "Рассчитать нумерологию",
+  },
+  {
+    title: "Ленорман онлайн",
+    text: "Прямой оракул Ленорман — короткая фраза из карт «основа → исход» без длинных интерпретаций.",
+    href: "/lenormand",
+    cta: "Гадать на Ленорман",
+  },
+] as const;
+
+const faq = [
+  {
+    question: "Какое гадание онлайн самое точное?",
+    answer:
+      "Точность зависит не от метода, а от чёткости вопроса и опыта мастера. Таро подходит для многослойных ситуаций, руны и Ленорман — для короткого прямого ответа, нумерология — для расчётов по дате рождения и имени.",
+  },
+  {
+    question: "Можно ли гадать онлайн бесплатно?",
+    answer:
+      "Первый расклад и знакомство с мастером доступны бесплатно. Полные сессии с развёрнутой трактовкой и продолжением в чате оплачиваются рунами Zovus по невысокой цене за расклад.",
+  },
+  {
+    question: "Гадание да или нет — какой метод выбрать?",
+    answer:
+      "Быстрее всего — одна карта Таро или одна руна: см. страницу «Гадание да или нет». Оба варианта дают прямой ответ «да», «нет» или «не сейчас» с коротким объяснением.",
+  },
+];
+
+export default function GadaniePage() {
+  const structuredData = buildArticleStructuredData({
+    title: "Гадание онлайн",
+    description:
+      "Гадание онлайн: Таро, руны, нумерология и Ленорман — выбор метода и живой мастер в чате.",
+    path: "/gadanie",
+    bodyText: [
+      ...METHODS.map((m) => `${m.title}: ${m.text}`),
+      ...faq.map((f) => `${f.question} ${f.answer}`),
+    ].join(" "),
+  });
+
+  return (
+    <SeoPageShell backHref="/" backLabel="На главную">
+      <SeoPageTracker goal="gadanie_hub_view" />
+      <p className="text-sm text-aura-gold/80">Гадание онлайн</p>
+      <h1 className="mt-2 font-display text-3xl font-bold">Гадание онлайн</h1>
+      <p className="mt-4 text-white/70">
+        Zovus собрал несколько способов гадания онлайн в одном месте: карты Таро, скандинавские
+        руны, нумерологию по дате рождения и оракул Ленорман. Выберите метод под свой вопрос — и
+        живой мастер разберёт ситуацию в чате, а не выдаст шаблонный текст.
+      </p>
+
+      <SeoSection title="Выберите способ гадания">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {METHODS.map((m) => (
+            <Link
+              key={m.href}
+              href={m.href}
+              className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-aura-gold/40"
+            >
+              <p className="font-medium text-white">{m.title}</p>
+              <p className="mt-1 text-sm text-white/70">{m.text}</p>
+              <p className="mt-2 text-sm text-aura-gold">{m.cta} →</p>
+            </Link>
+          ))}
+        </div>
+      </SeoSection>
+
+      <div className="mt-8 flex flex-wrap gap-3">
+        <SeoTrackedCta href="/gadanie/da-net" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "da-net" }}>
+          Быстрое гадание да / нет
+        </SeoTrackedCta>
+        <SeoTrackedCta href="/taro" variant="ghost" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "taro" }}>
+          Все расклады Таро
+        </SeoTrackedCta>
+      </div>
+
+      <SeoSection title="Частые вопросы">
+        {faq.map((item) => (
+          <div key={item.question}>
+            <h3 className="font-medium text-white">{item.question}</h3>
+            <p className="mt-1">{item.answer}</p>
+          </div>
+        ))}
+      </SeoSection>
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+    </SeoPageShell>
+  );
+}

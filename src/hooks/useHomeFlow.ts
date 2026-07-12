@@ -3,8 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import type { FlowStep } from "@/components/FlowStepper";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
-import { loadGuestTriplet } from "@/lib/guest-triplet";
+import { loadGuestTriplet, clearGuestTriplet, GUEST_TRIPLET_KEY } from "@/lib/guest-triplet";
 import { mergeGuestTripletIntoProfile } from "@/lib/guest-triplet";
+import {
+  POST_AUTH_RETURN_TO_KEY,
+  PENDING_INTENT_KEY,
+} from "@/lib/post-auth-return";
 import { useAuraSession } from "@/lib/useSession";
 import type { StoredProfile } from "@/types/stored-profile";
 import {
@@ -14,6 +18,9 @@ import {
   LAST_VISIT_KEY,
   PENDING_MASTER_KEY,
   PROFILE_KEY,
+  NEEDS_PROFILE_KEY,
+  clearNeedsServerProfile,
+  markNeedsServerProfile,
   persistProfileData,
   persistStep,
   readStoredProfile,
@@ -26,7 +33,7 @@ export interface UseHomeFlowOptions {
   referrerSlug?: string;
   isLoggedIn: boolean;
   authLoading: boolean;
-  authUser: { sub: string } | null | undefined;
+  authUser: { sub: string; profileUserId?: string | null } | null | undefined;
   /** Clears chat selection and messages when leaving chat via browser history. */
   onPopStateLeaveChat?: () => void;
   /** Full reset when history returns to intro. */
@@ -194,7 +201,21 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       if (params.get("resume") === "chat" && params.get("master")) {
         return;
       }
+      const urlStep = params.get("step") as FlowStep | null;
+      if (urlStep === "onboarding") {
+        setStepState("onboarding");
+        persistStep("onboarding");
+        return;
+      }
     }
+
+    if (!authUser?.profileUserId) {
+      markNeedsServerProfile();
+      setStepState("onboarding");
+      persistStep("onboarding");
+      return;
+    }
+    clearNeedsServerProfile();
 
     const stored = localStorage.getItem(PROFILE_KEY);
     const savedStep = localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null;
@@ -215,6 +236,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         localStorage.setItem(PROFILE_KEY, JSON.stringify(draft));
         setProfile(draft);
         setStepState(guest.tarotCards.length >= 3 ? "onboarding" : "triplet");
+        persistStep(guest.tarotCards.length >= 3 ? "onboarding" : "triplet");
       }
       return;
     }
@@ -225,6 +247,12 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         parsed = mergeGuestTripletIntoProfile(parsed) as StoredProfile;
         localStorage.setItem(PROFILE_KEY, JSON.stringify(parsed));
         setProfile(parsed);
+      }
+
+      if (!String(parsed.birthDate ?? "").trim()) {
+        setStepState("onboarding");
+        persistStep("onboarding");
+        return;
       }
 
       if (parsed.tarotCards?.length >= 3) {
@@ -261,7 +289,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     } catch {
       localStorage.removeItem(PROFILE_KEY);
     }
-  }, [authLoading, isLoggedIn, onRestoreChatMaster]);
+  }, [authLoading, isLoggedIn, authUser?.profileUserId, onRestoreChatMaster]);
 
   useEffect(() => {
     if (authLoading || !isLoggedIn || !authUser?.sub) return;
@@ -272,6 +300,11 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       localStorage.removeItem(FLOW_STEP_KEY);
       localStorage.removeItem(LAST_MASTER_KEY);
       localStorage.removeItem(PENDING_MASTER_KEY);
+      localStorage.removeItem(NEEDS_PROFILE_KEY);
+      localStorage.removeItem(POST_AUTH_RETURN_TO_KEY);
+      localStorage.removeItem(PENDING_INTENT_KEY);
+      localStorage.removeItem(GUEST_TRIPLET_KEY);
+      clearGuestTriplet();
       setProfile(null);
       setStepState("intro");
       onAccountSwitch?.();

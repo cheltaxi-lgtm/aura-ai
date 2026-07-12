@@ -41,7 +41,15 @@ function readUserGender(): UserGender {
   return profile?.gender === "male" || profile?.gender === "female" ? profile.gender : null;
 }
 
-export default function QuickQuestions({ showQuestionField = true }: { showQuestionField?: boolean }) {
+type QuickQuestionsProps = {
+  showQuestionField?: boolean;
+  onQuestionSelect?: (question: string) => void;
+};
+
+export default function QuickQuestions({
+  showQuestionField = true,
+  onQuestionSelect,
+}: QuickQuestionsProps) {
   const [userGender, setUserGender] = useState<UserGender>(null);
 
   useEffect(() => {
@@ -50,9 +58,15 @@ export default function QuickQuestions({ showQuestionField = true }: { showQuest
 
   const featured = getFeaturedSpreadIntents(4);
 
-  const go = (href: string, slug?: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+  const go =
+    (href: string, slug?: string, question?: string) =>
+    (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     if (slug) trackQuickQuestionClick(slug);
+    if (question && onQuestionSelect) {
+      onQuestionSelect(question);
+      return;
+    }
     window.location.assign(href);
   };
 
@@ -80,7 +94,13 @@ export default function QuickQuestions({ showQuestionField = true }: { showQuest
               ? " Формулировки про партнёра."
               : null}
         </p>
-        {showQuestionField ? <HeroQuestionField compact className="quick-questions__search" /> : null}
+        {showQuestionField ? (
+          <HeroQuestionField
+            compact
+            className="quick-questions__search"
+            onQuestionSubmit={onQuestionSelect}
+          />
+        ) : null}
 
         <p className="quick-questions__section-label">Популярные вопросы</p>
         <div className="quick-questions__chips">
@@ -88,7 +108,7 @@ export default function QuickQuestions({ showQuestionField = true }: { showQuest
             <a
               key={slug}
               href={`/?intent=${encodeURIComponent(slug)}`}
-              onClick={go(`/?intent=${encodeURIComponent(slug)}`, slug)}
+              onClick={go(`/?intent=${encodeURIComponent(slug)}`, slug, quickLabel(slug))}
               className="quick-questions__chip"
             >
               {quickLabel(slug)}
@@ -115,7 +135,11 @@ export default function QuickQuestions({ showQuestionField = true }: { showQuest
                 {i > 0 ? " · " : ""}
                 <a
                   href={`/?intent=${encodeURIComponent(item.slug)}`}
-                  onClick={go(`/?intent=${encodeURIComponent(item.slug)}`, item.slug)}
+                  onClick={go(
+                    `/?intent=${encodeURIComponent(item.slug)}`,
+                    item.slug,
+                    resolveIntentCopy(item, userGender).title
+                  )}
                   className="quick-questions__featured-link"
                 >
                   {resolveIntentCopy(item, userGender).title}

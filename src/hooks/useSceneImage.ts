@@ -9,6 +9,9 @@ export function useSceneImage(request: ImageGenerateRequest | null, enabled = tr
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const fetchedRef = useRef<string>("");
+  const requestRef = useRef<ImageGenerateRequest | null>(request);
+  const [retryVersion, setRetryVersion] = useState(0);
+  requestRef.current = request;
 
   const sig = request
     ? JSON.stringify({
@@ -24,15 +27,17 @@ export function useSceneImage(request: ImageGenerateRequest | null, enabled = tr
     : "";
 
   useEffect(() => {
-    if (!enabled || !request) {
+    const currentRequest = requestRef.current;
+    if (!enabled || !currentRequest) {
       setImageUrl(null);
       setLoading(false);
       setFailed(false);
       return;
     }
 
-    if (fetchedRef.current === sig) return;
-    fetchedRef.current = sig;
+    const fetchKey = `${sig}:${retryVersion}`;
+    if (fetchedRef.current === fetchKey) return;
+    fetchedRef.current = fetchKey;
 
     let cancelled = false;
     setLoading(true);
@@ -44,7 +49,7 @@ export function useSceneImage(request: ImageGenerateRequest | null, enabled = tr
       setFailed(true);
     }, 80_000);
 
-    requestSceneImage(request).then((url) => {
+    requestSceneImage(currentRequest).then((url) => {
       if (cancelled) return;
       clearTimeout(timeout);
       setImageUrl(url);
@@ -56,7 +61,12 @@ export function useSceneImage(request: ImageGenerateRequest | null, enabled = tr
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [enabled, request, sig]);
+  }, [enabled, sig, retryVersion]);
 
-  return { imageUrl, loading, failed };
+  const retry = () => {
+    fetchedRef.current = "";
+    setRetryVersion((version) => version + 1);
+  };
+
+  return { imageUrl, loading, failed, retry };
 }

@@ -5,6 +5,8 @@ import { Sparkles } from "lucide-react";
 import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
 import { buildAskUrl, buildSpreadStartUrl } from "@/lib/spread-intents/router";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
+import { LANDING_QUESTION_KEY } from "@/lib/landing-offer";
+import { trackHeroQuestionStarted, trackHeroQuestionSubmitted } from "@/lib/seo/metrika";
 
 export function navigateFromQuestion(question: string, master = "veronika"): void {
   const q = question.trim();
@@ -23,16 +25,41 @@ type HeroQuestionFieldProps = {
   /** Compact row for QuickQuestions block */
   compact?: boolean;
   className?: string;
+  /** Landing guest flow: keep the user in-page and start the preview spread. */
+  onQuestionSubmit?: (question: string) => void;
 };
 
-export default function HeroQuestionField({ compact = false, className = "" }: HeroQuestionFieldProps) {
+export default function HeroQuestionField({
+  compact = false,
+  className = "",
+  onQuestionSubmit,
+}: HeroQuestionFieldProps) {
   const [question, setQuestion] = useState("");
   const inputRef = useNativeInputSync<HTMLInputElement>(setQuestion);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const value = inputRef.current?.value ?? question;
-    navigateFromQuestion(value);
+    const value = (inputRef.current?.value ?? question).trim();
+    if (!value) return;
+
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(LANDING_QUESTION_KEY, value);
+    }
+
+    trackHeroQuestionSubmitted(compact ? "quick_questions" : "hero");
+
+    if (onQuestionSubmit) {
+      onQuestionSubmit(value);
+      return;
+    }
+
+    const matched = matchSpreadIntentFromQuestion(value);
+    if (matched) {
+      window.location.assign(buildSpreadStartUrl(matched, value));
+      return;
+    }
+
+    window.location.assign(buildAskUrl(value, "veronika", { spread: true }));
   };
 
   const inputProps = {
@@ -47,6 +74,7 @@ export default function HeroQuestionField({ compact = false, className = "" }: H
     enterKeyHint: "go" as const,
     className: "hero-question__input",
     maxLength: 280,
+    onFocus: () => trackHeroQuestionStarted(),
   };
 
   if (compact) {

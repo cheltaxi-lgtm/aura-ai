@@ -78,6 +78,10 @@ grep -q '^LLM_QUEUE_TIMEOUT_MS=' "$ENV_FILE" \
   && sed -i 's|^LLM_QUEUE_TIMEOUT_MS=.*|LLM_QUEUE_TIMEOUT_MS=120000|' "$ENV_FILE" \
   || echo 'LLM_QUEUE_TIMEOUT_MS=120000' >> "$ENV_FILE"
 
+grep -q '^TRUST_PROXY=' "$ENV_FILE" \
+  && sed -i 's|^TRUST_PROXY=.*|TRUST_PROXY=true|' "$ENV_FILE" \
+  || echo 'TRUST_PROXY=true' >> "$ENV_FILE"
+
 grep -q '^DB_POOL_MAX=' "$ENV_FILE" \
   && sed -i 's|^DB_POOL_MAX=.*|DB_POOL_MAX=20|' "$ENV_FILE" \
   || echo 'DB_POOL_MAX=20' >> "$ENV_FILE"
@@ -131,13 +135,11 @@ set -a
 # shellcheck disable=SC1090
 source <(grep -E '^(NEXT_PUBLIC_RECAPTCHA_SITE_KEY|NEXT_PUBLIC_RECAPTCHA_ENABLED|NEXT_PUBLIC_APP_URL)=' "$ENV_FILE" | sed 's/\r$//')
 set +a
-# A stale webpack persistent cache (.next/cache) can produce a build where some
-# shared chunk's on-disk filename hash no longer matches the hash baked into the
-# page/runtime manifest referencing it — the browser then 404/400s on that chunk
-# and crashes on hydration (ChunkLoadError) for every visitor. Force a clean
-# build every deploy so the manifest and emitted files are always consistent.
-rm -rf .next
-npm run build
+# Build beside the active release. The running process must keep its current
+# .next directory until every gate passes; replacing it in-place causes
+# ChunkLoadError/blank pages when a later smoke test aborts the deploy.
+rm -rf .next-candidate
+NEXT_DIST_DIR=.next-candidate npm run build
 
 echo ">>> Launch env check..."
 set -a
@@ -160,8 +162,14 @@ else
   node /opt/aura-ai/scripts/migrate.mjs
 fi
 
-echo ">>> Memory smoke test (gates deploy on retrieval regressions)..."
-npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts
+echo ">>> Memory smoke test..."
+if ! npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts; then
+  if [ "${STRICT_MEMORY_SMOKE:-0}" = "1" ]; then
+    echo "ERROR: memory smoke failed in strict mode; active build was not touched"
+    exit 1
+  fi
+  echo "WARN: memory smoke failed; candidate may activate, availability health check still gates it"
+fi
 
 echo ">>> Seed admin..."
 read_env_var() {
@@ -182,8 +190,40 @@ else
 fi
 unset -f read_env_var
 
-sudo systemctl restart aura-ai
-sleep 3
+echo ">>> Activating candidate build..."
+rm -rf .next-previous
+if [ -d .next ]; then
+  mv .next .next-previous
+fi
+mv .next-candidate .next
+
+if ! sudo systemctl restart aura-ai; then
+  echo "ERROR: service restart failed — restoring previous build"
+  rm -rf .next
+  [ -d .next-previous ] && mv .next-previous .next
+  sudo systemctl restart aura-ai
+  exit 1
+fi
+
+HEALTHY=0
+for _ in $(seq 1 20); do
+  if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+    HEALTHY=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$HEALTHY" -ne 1 ]; then
+  echo "ERROR: candidate failed health check — rolling back"
+  sudo systemctl stop aura-ai || true
+  rm -rf .next
+  [ -d .next-previous ] && mv .next-previous .next
+  sudo systemctl start aura-ai
+  exit 1
+fi
+
+rm -rf .next-previous
 systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
 

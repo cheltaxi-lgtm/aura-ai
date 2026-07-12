@@ -17,10 +17,22 @@ const TOPICS = {
       "Квадрат Пифагора показывает сильные и слабые стороны личности через числа в дате рождения — без шаблонов, с учётом вашего контекста.",
   },
   compatibility: {
-    title: "Совместимость по числам",
-    description: "Числовой анализ пары — сильные стороны и точки роста.",
+    title: "Совместимость по дате рождения",
+    description: "Нумерологический расчёт совместимости пары по датам рождения обоих партнёров.",
     intro:
-      "Эвелина сравнивает числа двух людей и показывает, где пара усиливает друг друга, а где нужна осознанность.",
+      "Совместимость по дате рождения — числовой анализ пары: Эвелина сравнивает числа судьбы двух людей и показывает, где пара усиливает друг друга, а где нужна осознанность.",
+  },
+  "name-compatibility": {
+    title: "Совместимость имён",
+    description: "Совместимость имён и дат рождения — нумерологический разбор пары по именам.",
+    intro:
+      "Совместимость имён учитывает не только буквы имени, но и дату рождения обоих партнёров — Эвелина считает числовые коды по именам и датам и показывает точки притяжения и трения в паре.",
+  },
+  "destiny-matrix": {
+    title: "Матрица судьбы",
+    description: "Таро-нумерологическая матрица судьбы по дате рождения — 22 аркана Таро.",
+    intro:
+      "Матрица судьбы — авторский расчёт Zovus по дате рождения на основе 22 арканов Таро: Эвелина строит вашу матрицу и показывает точки предназначения, денег, отношений и кармы.",
   },
   "favorable-dates": {
     title: "Благоприятные даты",
@@ -33,6 +45,8 @@ const TOPICS = {
 const NUMEROLOGY_TOPIC_TOOLS: Record<TopicSlug, NumerologToolId> = {
   "pythagoras-square": "pythagoras",
   compatibility: "compatibility",
+  "name-compatibility": "compatibility",
+  "destiny-matrix": "destiny_matrix",
   "favorable-dates": "favorable_dates",
 };
 
@@ -51,7 +65,7 @@ export async function generateMetadata({
   const topic = TOPICS[slug as TopicSlug];
   if (!topic) return { title: "Нумерология" };
   return buildSeoMetadata({
-    title: `${topic.title} — нумерология Zovus`,
+    title: `${topic.title} — нумерология`,
     description: topic.description,
     path: `/numerology/${slug}`,
   });

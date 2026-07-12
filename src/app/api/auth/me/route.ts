@@ -17,6 +17,7 @@ export async function GET() {
 
   return NextResponse.json({
     authenticated: true,
+    needsProfile: auth.role === "user" && !profileUserId,
     user: { ...auth, profileUserId },
   });
 }

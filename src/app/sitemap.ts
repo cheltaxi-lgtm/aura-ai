@@ -13,6 +13,8 @@ import {
 } from "@/lib/seo/seasonal";
 import { getAllSeoZodiacSlugs } from "@/lib/seo/zodiac-signs";
 import { getAllSuitHubSlugs } from "@/lib/seo/suit-hubs";
+import { getAllLenormandCombinationSlugs } from "@/lib/seo/lenormand-combinations";
+import { getAllRuneMeaningSlugs } from "@/lib/seo/rune-meanings";
 
 const ABOUT_PATHS = [
   "/about",
@@ -98,6 +100,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
+  const lenormandCombinationPages: MetadataRoute.Sitemap = getAllLenormandCombinationSlugs().map((slug) => ({
+    url: `${base}/lenormand/sochetaniya/${slug}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.45,
+  }));
+
+  const runeMeaningPages: MetadataRoute.Sitemap = getAllRuneMeaningSlugs().map((slug) => ({
+    url: `${base}/runy/${slug}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.5,
+  }));
+
   const yearPages: MetadataRoute.Sitemap = FORECAST_YEARS.map((year) => ({
     url: `${base}/prognoz/${year}`,
     lastModified: now,
@@ -142,7 +158,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     staticPage("/numerology", 0.6),
     staticPage("/numerology/pythagoras-square", 0.55, "monthly"),
     staticPage("/numerology/compatibility", 0.55, "monthly"),
+    staticPage("/numerology/name-compatibility", 0.55, "monthly"),
+    staticPage("/numerology/destiny-matrix", 0.55, "monthly"),
     staticPage("/numerology/favorable-dates", 0.55, "monthly"),
+    staticPage("/sovmestimost-znakov-zodiaka", 0.75, "monthly"),
+    staticPage("/gadanie", 0.9),
+    staticPage("/gadanie/da-net", 0.8),
+    staticPage("/runy", 0.75),
     staticPage("/cards", 0.7),
     staticPage("/cards/starshie-arkany", 0.65, "monthly"),
     staticPage("/cards/combinations", 0.5),
@@ -171,5 +193,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...cardPages,
     ...combinationPages,
     ...articlePages,
+    ...lenormandCombinationPages,
+    ...runeMeaningPages,
   ];
 }

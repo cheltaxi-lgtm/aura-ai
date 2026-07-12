@@ -6,6 +6,7 @@ import {
   parsePhotoReadingResponse,
   resolvePhotoRecognitionPrompt,
 } from "@/lib/photo-reading-prompts";
+import { isLandscapePhotoBase64 } from "@/lib/image-dimensions";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getUserById, serializeUserProfile } from "@/lib/users";
 import { enforcePaidRouteRateLimit, MAX_IMAGE_BYTES, validateImageMime, validateImageBase64Payload } from "@/lib/api-guards";
@@ -157,13 +158,15 @@ export async function POST(request: NextRequest) {
   };
 
   try {
+    const landscapePhoto = isLandscapePhotoBase64(imageBase64, mimeType);
     const systemPrompt = await resolvePhotoRecognitionPrompt(characterId, ctx);
+    const recognitionUserText = question.trim()
+      ? `Мой вопрос: ${question.trim()}. Определи колоду, схему расклада и все видимые карты/руны/символы.`
+      : "Определи колоду, схему расклада и все видимые карты/руны/символы.";
     const llmText = await generatePhotoRecognition(
       systemPrompt,
       imageBase64,
-      question.trim()
-        ? `Мой вопрос: ${question.trim()}. Определи колоду, схему расклада и все видимые карты/руны/символы с ориентацией.`
-        : "Определи колоду, схему расклада и все видимые карты/руны/символы с ориентацией.",
+      recognitionUserText,
       mimeType
     );
 
@@ -183,7 +186,7 @@ export async function POST(request: NextRequest) {
     }
 
     const analysis = llmText;
-    const parsed = parsePhotoReadingResponse(analysis);
+    const parsed = parsePhotoReadingResponse(analysis, { landscapePhoto });
     const { deckType, spreadType } = parsed;
     /** The vision prompt caps itself at MAX_PHOTO_CARDS, but stay defensive in case a model overshoots — clamp upfront so what the user sees always matches what /stream will accept. */
     const totalDetected = parsed.detectedCards.length;

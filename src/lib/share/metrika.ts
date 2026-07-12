@@ -4,11 +4,16 @@ const YANDEX_METRIKA_ID = 110138367;
 
 declare global {
   interface Window {
-    ym?: (id: number, method: string, goal: string, params?: Record<string, string>) => void;
+    ym?: (
+      id: number,
+      method: string,
+      goal: string,
+      params?: Record<string, string | number>
+    ) => void;
   }
 }
 
-export function trackShareEvent(goal: string, params?: Record<string, string>): void {
+export function trackShareEvent(goal: string, params?: Record<string, string | number>): void {
   if (typeof window === "undefined" || !window.ym) return;
   try {
     window.ym(YANDEX_METRIKA_ID, "reachGoal", goal, params);

@@ -10,6 +10,7 @@ import {
   personalityNumber,
 } from "./calculator";
 import { compatibility } from "./compatibility";
+import { destinyMatrix } from "./destiny-matrix";
 import { favorableDates } from "./favorable-dates";
 import { personalYearForecast } from "./forecast";
 import { fullProfile, type FullNumerologyProfile } from "./profile";
@@ -34,6 +35,7 @@ export type NumerologyTopic =
   | "personal_cycle"
   | "karma"
   | "pythagoras_square"
+  | "destiny_matrix"
   | "sphere_health"
   | "sphere_finance"
   | "sphere_relations"
@@ -68,7 +70,9 @@ const TOPIC_PATTERNS: Record<NumerologyTopic, RegExp> = {
   karma:
     /карм(а|ический|ические|ического|у)|кarmic|кармическ(ий|ого|ие|их)\s+(долг|урок)|долг\s*(13|14|16|19)?|урок\s*(числ|судьб)|чему\s+(я\s+)?учусь|отсутствующ(ие|их)\s+числ/i,
   pythagoras_square:
-    /квадрат\s+пифагора|психоматриц|\bматриц(а|у|ы)\b|матриц(а|у|ы)\s*(судьб|личност|рожден)|сильн(ые|ых)\s+сторон|слаб(ые|ых)\s+сторон|мои\s+цифр|(?:ещё|еще)\s+раз\s+вывед|попробуй.*вывед/i,
+    /квадрат\s+пифагора|психоматриц|\bматриц(а|у|ы)\b(?!\s*судьб)|матриц(а|у|ы)\s*(личност|рожден)|сильн(ые|ых)\s+сторон|слаб(ые|ых)\s+сторон|мои\s+цифр|(?:ещё|еще)\s+раз\s+вывед|попробуй.*вывед/i,
+  destiny_matrix:
+    /матриц(а|у|ы)\s*судьб|матрица\s+предназначен|22\s*аркан|таро.?нумеролог/i,
   sphere_health:
     /(?:^|[\s,.!?])(?:давай|разбер[её]м|про|по|моё|моё\s+)?(?:с\s+)?здоров(?:ье|ья|ью|и|ьем|ьём)(?:[\s,.!?]|$)|самочувств|иммунитет|болезн|тахикард|аритми|сердц|давлен|гипертон|беспокоит/i,
   sphere_finance:
@@ -388,6 +392,27 @@ function buildTopicBlock(
       };
     }
 
+    case "destiny_matrix": {
+      if (!parseBirthDate(birthDate)) {
+        return { text: "МАТРИЦА СУДЬБЫ: нужна дата рождения." };
+      }
+      const matrix = destinyMatrix(birthDate);
+      if (!matrix) return { text: "МАТРИЦА СУДЬБЫ: не удалось построить по дате." };
+      return {
+        text: [
+          "МАТРИЦА СУДЬБЫ / 22 АРКАНА (реальный расчёт, авторская адаптация Zovus):",
+          `Точка тела и характера: ${matrix.body.number} — ${matrix.body.arcanaName} (${matrix.body.arcanaMeaning}).`,
+          `Точка энергии: ${matrix.energy.number} — ${matrix.energy.arcanaName} (${matrix.energy.arcanaMeaning}).`,
+          `Точка рода и корней: ${matrix.roots.number} — ${matrix.roots.arcanaName} (${matrix.roots.arcanaMeaning}).`,
+          `Ось предназначения (главное число матрицы): ${matrix.purpose.number} — ${matrix.purpose.arcanaName} (${matrix.purpose.arcanaMeaning}).`,
+          `Точка отношений: ${matrix.relationships.number} — ${matrix.relationships.arcanaName} (${matrix.relationships.arcanaMeaning}).`,
+          `Точка денег и ресурса: ${matrix.money.number} — ${matrix.money.arcanaName} (${matrix.money.arcanaMeaning}).`,
+          `Точка кармы и задачи: ${matrix.karma.number} — ${matrix.karma.arcanaName} (${matrix.karma.arcanaMeaning}).`,
+          "Подчеркни, что это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы» (таро-нумерология на основе 22 арканов), а не научный факт — используй его как психологический инструмент для рефлексии.",
+        ].join("\n"),
+      };
+    }
+
     case "sphere_health":
     case "sphere_finance":
     case "sphere_relations": {
@@ -569,7 +594,7 @@ export function buildNumerologyChatContext(
 
   if (topics.length === 0 && hasBirth) {
     parts.push(
-      "ПОДСКАЗКА МАСТЕРУ: клиент может спросить про личный год/месяц/день, карму, квадрат Пифагора, прогноз на 9 лет, удачные даты, число телефона/адреса, совместимость или халдейскую систему — предложи при уместности."
+      "ПОДСКАЗКА МАСТЕРУ: клиент может спросить про личный год/месяц/день, карму, квадрат Пифагора, матрицу судьбы (22 аркана), прогноз на 9 лет, удачные даты, число телефона/адреса, совместимость или халдейскую систему — предложи при уместности."
     );
   }
 

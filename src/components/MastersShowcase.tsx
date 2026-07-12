@@ -24,10 +24,13 @@ interface MastersShowcaseProps {
   formatRunes?: (amount: number) => string;
   runeBalance?: number;
   isUnlimited?: boolean;
+  /** Guests may choose a master before registration; enforce wallet balance only for signed-in users. */
+  enforceBalance?: boolean;
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
   title?: string;
   subtitle?: string;
   showExpertCta?: boolean;
+  showDisclaimer?: boolean;
   layout?: ShowcaseLayout;
   className?: string;
   onBrowseDeck?: (master: ShowcaseMaster) => void;
@@ -45,11 +48,13 @@ export default function MastersShowcase({
   formatRunes,
   runeBalance = 0,
   isUnlimited = false,
+  enforceBalance = true,
   onInsufficientRunes,
   onBrowseDeck,
   title = "Мастера Zovus",
   subtitle = MASTER_SECTION_SUBTITLE,
   showExpertCta = false,
+  showDisclaimer = true,
   layout = "grid",
   className = "",
 }: MastersShowcaseProps) {
@@ -62,6 +67,7 @@ export default function MastersShowcase({
       ? (readingCost ?? 0)
       : (questionCost ?? readingCost ?? 0);
     const actionBlocked =
+      enforceBalance &&
       runesEnabled &&
       !isUnlimited &&
       !canContinue &&
@@ -132,7 +138,9 @@ export default function MastersShowcase({
         <div className="master-picker-panel glass-panel mx-auto max-w-xl">
           <ul className="master-list">{listBody}</ul>
 
-          <MasterServiceDisclaimer className="master-picker-panel__footer px-4 pb-4" />
+          {showDisclaimer ? (
+            <MasterServiceDisclaimer className="master-picker-panel__footer px-4 pb-4" />
+          ) : null}
 
           {showExpertCta ? (
             <p className="master-picker-panel__footer border-t border-white/5 pt-3">
@@ -161,7 +169,9 @@ export default function MastersShowcase({
           {listBody}
         </div>
 
-        <MasterServiceDisclaimer className="master-showcase-section__disclaimer mx-auto mt-6 max-w-3xl text-center" />
+        {showDisclaimer ? (
+          <MasterServiceDisclaimer className="master-showcase-section__disclaimer mx-auto mt-6 max-w-3xl text-center" />
+        ) : null}
 
         {showExpertCta ? (
           <motion.div

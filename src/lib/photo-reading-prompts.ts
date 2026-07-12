@@ -5,6 +5,7 @@ import { buildChatPrompt, buildHumanChatPrompt } from "@/lib/chat-prompts";
 import type { UserContext } from "@/lib/chat-prompts";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import { isAiMasterId } from "@/lib/showcase-masters";
+import { formatReversedCardName, parseCardOrientation } from "@/lib/card-orientation";
 import {
   MAX_PHOTO_CARDS,
   normalizeCardConfidence,
@@ -13,6 +14,11 @@ import {
 
 export interface PhotoReadingContext extends Partial<UserContext> {
   question?: string;
+}
+
+export interface PhotoReadingParseOptions {
+  /** Landscape camera frame — common source of false reversed flags on multi-card rows. */
+  landscapePhoto?: boolean;
 }
 
 export interface PhotoReadingMetadata {
@@ -195,41 +201,88 @@ function parseDetectedCardsFromLists(analysis: string): string[] {
   return items;
 }
 
-export function parseDetectedCards(analysis: string): string[] {
-  const jsonCards = parseDetectedCardsJson(analysis);
-  if (jsonCards.length) {
-    return jsonCards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name));
-  }
+/** Corrects common false reversed flags when many cards are shot in a landscape frame. */
+export function sanitizeLandscapeReversedGuesses(
+  cards: DetectedCardEntry[],
+  opts?: PhotoReadingParseOptions
+): DetectedCardEntry[] {
+  if (!opts?.landscapePhoto || cards.length < 4) return cards;
+
+  const reversedCount = cards.filter((card) => card.reversed).length;
+  if (reversedCount === 0) return cards;
+
+  const ratio = reversedCount / cards.length;
+  const alternating =
+    cards.every((card, index) => card.reversed === (index % 2 === 0)) ||
+    cards.every((card, index) => card.reversed === (index % 2 === 1));
+
+  const shouldClear =
+    cards.length >= 5 ||
+    ratio >= 0.5 ||
+    alternating ||
+    (cards.length >= 4 && reversedCount >= 2);
+
+  if (!shouldClear) return cards;
+
+  return cards.map((card) => ({ ...card, reversed: false }));
+}
+
+function parseDetectedCardEntries(
+  analysis: string,
+  opts?: PhotoReadingParseOptions
+): DetectedCardEntry[] {
+  const jsonCards = sanitizeLandscapeReversedGuesses(parseDetectedCardsJson(analysis), opts);
+  if (jsonCards.length) return jsonCards;
 
   const match = analysis.match(/^КАРТЫ:\s*([\s\S]+?)(?:\n\n|\nКОЛОДА:|\nРАСКЛАД:|$)/im);
   if (match) {
     const tokens = splitCardTokens(match[1]);
-    if (tokens.length) return tokens;
-
-    const fallback = match[1]
-      .replace(/\s+/g, " ")
-      .trim()
-      .split(/\s+·\s+/)
-      .map((s) => s.replace(/[«»"']/g, "").trim())
-      .filter(Boolean);
-    if (fallback.length) return fallback;
+    if (tokens.length) {
+      return sanitizeLandscapeReversedGuesses(
+        tokens.map((token) => {
+          const { name, reversed } = parseCardOrientation(token);
+          return { name, reversed, confidence: "unknown" as const };
+        }),
+        opts
+      );
+    }
   }
 
   const listCards = parseDetectedCardsFromLists(analysis);
-  if (listCards.length) return listCards;
+  if (listCards.length) {
+    return sanitizeLandscapeReversedGuesses(
+      listCards.map((token) => {
+        const { name, reversed } = parseCardOrientation(token);
+        return { name, reversed, confidence: "unknown" as const };
+      }),
+      opts
+    );
+  }
 
   return [];
 }
 
-/** Per-card confidence, index-aligned with parseDetectedCards() when КАРТЫ_JSON was provided; empty otherwise. */
-function parseDetectedCardConfidences(analysis: string): PhotoRecognitionConfidence[] {
-  return parseDetectedCardsJson(analysis).map((entry) => entry.confidence);
+export function parseDetectedCards(analysis: string, opts?: PhotoReadingParseOptions): string[] {
+  return parseDetectedCardEntries(analysis, opts).map((card) =>
+    formatReversedCardName(card.name, card.reversed)
+  );
 }
 
-export function parsePhotoReadingResponse(analysis: string): PhotoReadingMetadata {
-  const detectedCards = parseDetectedCards(analysis);
-  const rawConfidences = parseDetectedCardConfidences(analysis);
-  const cardConfidences = detectedCards.map((_, i) => rawConfidences[i] ?? "unknown");
+/** Per-card confidence, index-aligned with parseDetectedCards() when КАРТЫ_JSON was provided; empty otherwise. */
+function parseDetectedCardConfidences(
+  analysis: string,
+  opts?: PhotoReadingParseOptions
+): PhotoRecognitionConfidence[] {
+  return parseDetectedCardEntries(analysis, opts).map((entry) => entry.confidence);
+}
+
+export function parsePhotoReadingResponse(
+  analysis: string,
+  opts?: PhotoReadingParseOptions
+): PhotoReadingMetadata {
+  const entries = parseDetectedCardEntries(analysis, opts);
+  const detectedCards = entries.map((card) => formatReversedCardName(card.name, card.reversed));
+  const cardConfidences = entries.map((entry) => entry.confidence);
   return {
     deckType: parseMetadataLine(analysis, "КОЛОДА"),
     spreadType: parseMetadataLine(analysis, "РАСКЛАД"),
@@ -265,12 +318,21 @@ const PHOTO_RECOGNITION_ONLY = `
 - Максимум 12 символов — если на фото больше, перечисли 12 самых различимых, остальные клиент добавит вручную.
 - Если символов 1–2 — перечисли только видимые; клиент может добавить вручную.
 - Названия — в терминологии ЭТОЙ колоды на фото (English RWS: "Two of Swords", Ленорман: "Всадник", оракул: текст с карты).
-- reversed: true если карта перевёрнута (перев.), иначе false.
+- Ориентация и reversed (критично — частая ошибка на горизонтальных фото):
+  - Сначала для КАЖДОЙ карты отдельно определи её ориентацию по собственным визуальным признакам: положение номера, названия, символов и изображения относительно рамки самой карты.
+  - НЕ суди о перевёрнутости относительно рамки всего фото, экрана, телефона или горизонтального кадра — только относительно границ конкретной карты.
+  - Фото часто снимают горизонтально, когда в кадре много карт в один ряд. Это НЕ делает карты перевёрнутыми. Мысленно поверни кадр так, чтобы ряд стал привычным горизонтальным рядом обычных вертикальных карт (длинная сторона каждой карты вертикальна), и только после этого определяй reversed.
+  - Типичная ошибка: карты лежат прямо, но из-за горизонтального фото модель помечает часть карт как reversed. Так делать нельзя.
+  - reversed: true только если внутри рамки карты изображение/текст перевёрнуты на 180° относительно нормального положения этой колоды; иначе false.
+  - При сомнении в reversed всегда ставь false — клиент поправит вручную. Ложный reversed хуже, чем пропущенный реальный переворот.
 - confidence — твоя уверенность именно в ЭТОЙ карте (не в колоде целиком): "высокая" если название читается чётко, "средняя" при частичном перекрытии/блике, "низкая" при угадывании по обрывку образа.
 - Для Rider-Waite / универсального таро можно дублировать русское «2 Мечей».
 - НЕ отказывайся от распознавания из-за незнакомой колоды — опиши каждую видимую карту.
 - КАРТЫ: не удалось распознать — ТОЛЬКО если на фото точно нет карт/рун/символов (портрет, пейзаж, пустой стол).
 - Если видна хотя бы 1 карта — перечисли её; при сомнении укажи лучшее предположение и низкую уверенность и в КОЛОДА, и в confidence этой карты.`;
+
+const PHOTO_RECOGNITION_USER_HINT =
+  "Важно: фото может быть горизонтальным, особенно если карт много в ряд. Ориентацию reversed определяй только по рамке каждой карты, не по рамке всего фото. При сомнении reversed=false.";
 
 export async function generatePhotoRecognition(
   systemPrompt: string,
@@ -282,8 +344,9 @@ export async function generatePhotoRecognition(
   const messages: ChatMessage[] = [
     { role: "system", content: fullPrompt },
     buildPhotoVisionMessage(
-      userText ||
-        "Распознай колоду, схему расклада и все видимые символы. Только строки КОЛОДА/РАСКЛАД/КАРТЫ.",
+      userText
+        ? `${userText}\n\n${PHOTO_RECOGNITION_USER_HINT}`
+        : `Распознай колоду, схему расклада и все видимые символы. Только строки КОЛОДА/РАСКЛАД/КАРТЫ.\n\n${PHOTO_RECOGNITION_USER_HINT}`,
       imageBase64,
       mimeType ?? "image/jpeg"
     ),

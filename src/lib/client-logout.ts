@@ -1,5 +1,9 @@
 import { clearChatCache } from "@/lib/chat-cache";
 import { clearGuestTriplet } from "@/lib/guest-triplet";
+import {
+  POST_AUTH_RETURN_TO_KEY,
+  PENDING_INTENT_KEY,
+} from "@/lib/post-auth-return";
 import { RUNE_PENDING_PAYMENT_KEY } from "@/lib/rune-purchase-client";
 
 export const AUTH_LOGOUT_EVENT = "aura:logout";
@@ -12,6 +16,9 @@ const STORAGE_KEYS = [
   "aura_last_master",
   "aura_pending_master",
   "aura_pending_reading",
+  "aura_needs_profile",
+  POST_AUTH_RETURN_TO_KEY,
+  PENDING_INTENT_KEY,
   "aura_last_visit",
   "aura_last_triplet_at",
   "aura_runes_before_purchase",

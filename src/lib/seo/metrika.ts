@@ -4,11 +4,16 @@ const YANDEX_METRIKA_ID = 110138367;
 
 declare global {
   interface Window {
-    ym?: (id: number, method: string, goal: string, params?: Record<string, string>) => void;
+    ym?: (
+      id: number,
+      method: string,
+      goal: string,
+      params?: Record<string, string | number>
+    ) => void;
   }
 }
 
-export function trackSeoEvent(goal: string, params?: Record<string, string>): void {
+export function trackSeoEvent(goal: string, params?: Record<string, string | number>): void {
   if (typeof window === "undefined" || !window.ym) return;
   try {
     window.ym(YANDEX_METRIKA_ID, "reachGoal", goal, params);
@@ -59,4 +64,70 @@ export function trackCardMeaningView(slug: string): void {
 
 export function trackCardCombinationView(slug: string): void {
   trackSeoEvent("card_combination_view", { slug });
+}
+
+/** Revenue goal — order_price/currency are recognized by Metrika for monetary reporting. */
+export function trackLandingEvent(
+  goal: string,
+  params?: Record<string, string | number>
+): void {
+  trackSeoEvent(goal, params);
+}
+
+export function trackLandingView(): void {
+  trackLandingEvent("landing_view");
+}
+
+export function trackHeroQuestionStarted(): void {
+  trackLandingEvent("hero_question_started");
+}
+
+export function trackHeroQuestionSubmitted(entryPoint: string): void {
+  trackLandingEvent("hero_question_submitted", { entry_point: entryPoint });
+}
+
+export function trackGuestSpreadStarted(): void {
+  trackLandingEvent("guest_spread_started");
+}
+
+export function trackGuestCardRevealed(index: number): void {
+  trackLandingEvent("guest_card_revealed", { index });
+}
+
+export function trackGuestSpreadCompleted(): void {
+  trackLandingEvent("guest_spread_completed");
+}
+
+export function trackRegistrationGateView(source: string): void {
+  trackLandingEvent("registration_gate_view", { source });
+}
+
+export function trackRegistrationStarted(source: string): void {
+  trackLandingEvent("registration_started", { source });
+}
+
+/** Account row created (before birth-date profile). */
+export function trackRegistrationAccountCreated(source: string): void {
+  trackLandingEvent("registration_account_created", { source });
+}
+
+export function trackRegistrationCompleted(source: string): void {
+  trackLandingEvent("registration_completed", { source });
+}
+
+export function trackRegistrationError(errorType: string): void {
+  trackLandingEvent("registration_error", { error_type: errorType });
+}
+
+export function trackRunePurchase(amountRub: number, packageId?: string): void {
+  if (typeof window === "undefined" || !window.ym || !Number.isFinite(amountRub)) return;
+  try {
+    window.ym(YANDEX_METRIKA_ID, "reachGoal", "rune_purchase", {
+      order_price: amountRub,
+      currency: "RUB",
+      ...(packageId ? { packageId } : {}),
+    });
+  } catch {
+    /* analytics optional */
+  }
 }

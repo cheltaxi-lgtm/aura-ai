@@ -1,26 +1,24 @@
 "use client";
 
 import Script from "next/script";
-import { useEffect, useState } from "react";
-import { COOKIE_CONSENT_EVENT, hasCookieConsent } from "@/lib/cookie-consent";
 
 const YANDEX_METRIKA_ID = 110138367;
 
+// Analytics cookies are covered by the implied-consent notice in CookieBanner
+// ("continuing to browse the site" = consent) — no explicit opt-in gate here.
+// Gating this behind a click-through previously meant the counter script never
+// rendered (even the no-JS <img> pixel), so Yandex couldn't verify the counter
+// was installed and almost no real traffic was ever measured.
+//
+// strategy="beforeInteractive" (rather than the default afterInteractive) is
+// required here too: afterInteractive scripts are injected client-side after
+// hydration and never appear in the raw server-rendered HTML, so Yandex's
+// crawler (which mostly reads static HTML) kept reporting the counter as
+// "not installed" even though real browsers ran it fine.
 export default function YandexMetrika() {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    setEnabled(hasCookieConsent());
-    const onConsent = () => setEnabled(true);
-    window.addEventListener(COOKIE_CONSENT_EVENT, onConsent);
-    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, onConsent);
-  }, []);
-
-  if (!enabled) return null;
-
   return (
     <>
-      <Script id="yandex-metrika" strategy="afterInteractive">
+      <Script id="yandex-metrika" strategy="beforeInteractive">
         {`(function(m,e,t,r,i,k,a){
         m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
         m[i].l=1*new Date();

@@ -46,6 +46,7 @@ export default function CardMeaningTemplate({
     description: general,
     keyword,
     faq,
+    extraText: [love, money, self, reversed].filter(Boolean).join(" "),
   });
 
   return (

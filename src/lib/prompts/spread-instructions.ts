@@ -57,7 +57,7 @@ ${spread.cardCount + 3}. КОНКРЕТНЫЕ ДЕЙСТВИЯ (3 пункта)
 
 function buildMarkdownOutput(spread: SpreadDefinition): string {
   const compact = spread.compactPrompt ?? spread.cardCount > 3;
-  if (spread.id === "yes-no") {
+  if (spread.id === "yes-no" || spread.id === "runes-yes-no") {
     return `
 ФОРМАТ ДЛЯ ДА/НЕТ:
 1. Одно предложение — название карты **жирным**.

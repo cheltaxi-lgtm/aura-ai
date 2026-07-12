@@ -9,6 +9,8 @@ export interface GuestTripletDraft {
   deckSystem?: DeckSystem;
   teaser: string;
   completedAt: string;
+  question?: string;
+  masterId?: string;
 }
 
 export function loadGuestTriplet(): GuestTripletDraft | null {
@@ -35,7 +37,13 @@ export function clearGuestTriplet(): void {
 }
 
 export function mergeGuestTripletIntoProfile<
-  T extends { tarotCards?: SpreadSymbol[]; deckSystem?: DeckSystem; teaser?: string },
+  T extends {
+    tarotCards?: SpreadSymbol[];
+    deckSystem?: DeckSystem;
+    teaser?: string;
+    mainQuestion?: string;
+    tripletMasterId?: string;
+  },
 >(profile: T): T {
   const guest = loadGuestTriplet();
   if (!guest || profile.tarotCards?.length) return profile;
@@ -44,5 +52,7 @@ export function mergeGuestTripletIntoProfile<
     tarotCards: guest.tarotCards,
     deckSystem: guest.deckSystem ?? DEFAULT_DECK_SYSTEM,
     teaser: guest.teaser,
+    mainQuestion: guest.question || profile.mainQuestion,
+    tripletMasterId: guest.masterId || profile.tripletMasterId,
   };
 }

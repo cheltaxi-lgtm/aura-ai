@@ -52,6 +52,7 @@ const ENGINE_REPLY_TOPICS = new Set<NumerologyTopic>([
   "chaldean",
   "object_number",
   "compatibility",
+  "destiny_matrix",
 ]);
 
 const CLARIFICATION_RE =
@@ -417,6 +418,7 @@ function pickPrimaryTopic(topics: NumerologyTopic[]): NumerologyTopic | null {
     "sphere_health",
     "sphere_finance",
     "sphere_relations",
+    "destiny_matrix",
     "pythagoras_square",
   ];
   for (const p of priority) {
@@ -718,6 +720,12 @@ function formatFromContextBlock(
     const block = prompt.split("\n\n").find((p) => p.startsWith("СОВМЕСТИМОСТЬ") || p.includes("score"));
     if (block) return `${name}, ${block.trim()}`;
   }
+  if (topics.includes("destiny_matrix")) {
+    const block = prompt.split("\n\n").find((p) => p.startsWith("МАТРИЦА СУДЬБЫ"));
+    if (block) {
+      return `${name}, твоя матрица судьбы:\n\n${block.replace("МАТРИЦА СУДЬБЫ / 22 АРКАНА (реальный расчёт, авторская адаптация Zovus):", "").trim()}`;
+    }
+  }
   return null;
 }
 
@@ -817,7 +825,9 @@ export function buildNumerologEngineReply(
       reply = buildPersonalCycleNarrativeReading({ name, birthDate });
     }
   } else if (
-    ["favorable_dates", "chaldean", "object_number", "compatibility"].includes(primary)
+    ["favorable_dates", "chaldean", "object_number", "compatibility", "destiny_matrix"].includes(
+      primary
+    )
   ) {
     reply = formatFromContextBlock(name, topicsToUse, ctx.prompt, clarify);
   }

@@ -9,6 +9,16 @@ export interface DeleteUserAccountResult {
   userRemoved: number;
 }
 
+/** Delete account row only (no linked profile yet). */
+export async function deleteUserAccountOnly(
+  accountId: string
+): Promise<Pick<DeleteUserAccountResult, "accountRemoved">> {
+  return withTransaction(async (client) => {
+    const result = await client.query(`DELETE FROM user_accounts WHERE id = $1`, [accountId]);
+    return { accountRemoved: result.rowCount ?? 0 };
+  });
+}
+
 /**
  * Irreversibly deletes a user account and all associated data (152-FZ right to erasure).
  */

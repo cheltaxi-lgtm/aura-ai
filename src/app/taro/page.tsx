@@ -124,6 +124,19 @@ export default function TaroPillarPage() {
             </Link>
           </li>
         </ul>
+        <h3 className="mt-4 font-medium text-white">Быстрый ответ на один вопрос</h3>
+        <ul className="mt-2 space-y-1">
+          <li>
+            <Link href="/rasklad/da-net" className="text-aura-gold hover:underline">
+              Таро да нет
+            </Link>
+          </li>
+          <li>
+            <Link href="/rasklad/odna-karta" className="text-aura-gold hover:underline">
+              Таро одна карта
+            </Link>
+          </li>
+        </ul>
       </SeoSection>
 
       <SeoSection title="Значения 78 карт колоды Уэйта">

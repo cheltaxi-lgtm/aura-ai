@@ -10,6 +10,7 @@ export type NumerologToolId =
   | "period_week"
   | "period_month"
   | "pythagoras"
+  | "destiny_matrix"
   | "personal_year"
   | "forecast_9y"
   | "favorable_dates"
@@ -108,6 +109,19 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     tagline: "Психоматрица: сильные стороны, пробелы и потенциал",
     description: "Полный квадрат Пифагора по дате рождения — без случайного draw, сразу по профилю.",
     buildMessage: () => "Разбери мой квадрат Пифагора",
+  },
+  {
+    id: "destiny_matrix",
+    emoji: "🌌",
+    label: "Матрица судьбы",
+    topic: "destiny_matrix",
+    group: "session",
+    cost: SESSION_COST,
+    drawCount: 0,
+    positions: [],
+    tagline: "22 аркана по дате рождения: предназначение, деньги, отношения, карма",
+    description: "Таро-нумерологическая матрица судьбы — авторский расчёт Zovus по дате рождения, без случайного draw.",
+    buildMessage: () => "Построй мою матрицу судьбы",
   },
   {
     id: "personal_year",
@@ -336,6 +350,7 @@ export function numerologSpreadComplete(
 export const NUMEROLOG_BIRTH_DATE_TOOLS = new Set<NumerologToolId>([
   "spread_three_numbers",
   "pythagoras",
+  "destiny_matrix",
   "personal_year",
   "forecast_9y",
   "favorable_dates",

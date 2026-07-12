@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb, query } from "@/lib/db";
-import { getProfileUserIdForAccount, linkAccountToProfile } from "@/lib/accounts";
+import { getAccountConsentSnapshot, getProfileUserIdForAccount } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
+import { validateDisplayName } from "@/lib/auth-policy";
 import {
-  createUserProfile,
+  createUserProfileForAccount,
   createHistoryEntry,
   getUserById,
   serializeUserProfile,
   updateUserProfile,
   getLatestHistoryEntry,
+  linkSessionToUser,
   recordTripletDrawAnchor,
 } from "@/lib/users";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
-import { buildAstroMeta } from "@/lib/astro-profile";
+import type { AstroMeta } from "@/lib/astro-profile";
+import { astroMetaFromBirthDate } from "@/lib/registration-consent";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { tarotCardsKey } from "@/lib/tarot";
 
@@ -43,13 +46,12 @@ export async function POST(request: NextRequest) {
       birthCity,
       lifeFocus,
       mainQuestion,
-      sessionId: _sessionId,
+      sessionId,
       tarotCards,
       teaser,
       deckSystem,
       masterId,
     } = await request.json();
-    void _sessionId;
 
     if (!name || !gender || !birthDate || !zodiac) {
       const missing = [
@@ -63,6 +65,11 @@ export async function POST(request: NextRequest) {
         { error: "Заполните профиль", code: "MISSING_PROFILE", missing },
         { status: 400 }
       );
+    }
+
+    const nameError = validateDisplayName(name);
+    if (nameError) {
+      return NextResponse.json({ error: nameError, code: "INVALID_NAME" }, { status: 400 });
     }
 
     if (!tarotCards?.length) {
@@ -84,7 +91,13 @@ export async function POST(request: NextRequest) {
     const normalizedBirthCity = normalizeOptionalText(birthCity);
 
     step = "astro_meta";
-    const astroMeta = buildAstroMeta(birthDate) ?? undefined;
+    const consent = (await getAccountConsentSnapshot(auth.sub)) ?? {
+      termsAcceptedAt: null,
+      ageConfirmedAt: null,
+      marketingConsent: false,
+      marketingConsentAt: null,
+    };
+    const astroMeta = astroMetaFromBirthDate(String(birthDate), consent) as AstroMeta | undefined;
     let profileUserId = await getProfileUserIdForAccount(auth.sub);
     if (profileUserId) {
       const linkedUser = await getUserById(profileUserId);
@@ -97,36 +110,34 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       step = "create_user";
-      user = await createUserProfile({
-        name,
-        gender,
-        birthDate,
-        zodiac,
-        birthTime: normalizedBirthTime,
-        birthCity: normalizedBirthCity,
-        lifeFocus,
-        mainQuestion,
-        astroMeta,
-      });
-      step = "link_account";
-      const linked = await linkAccountToProfile(auth.sub, user.id);
-      if (!linked) {
-        return NextResponse.json(
-          { error: "Профиль уже привязан к другому аккаунту", code: "PROFILE_OWNERSHIP_CONFLICT" },
-          { status: 409 }
-        );
+      try {
+        user = await createUserProfileForAccount(auth.sub, {
+          name: String(name).trim(),
+          gender,
+          birthDate,
+          zodiac,
+          birthTime: normalizedBirthTime,
+          birthCity: normalizedBirthCity,
+          lifeFocus,
+          mainQuestion,
+          astroMeta,
+        });
+      } catch (error) {
+        if ((error as Error).message === "PROFILE_OWNERSHIP_CONFLICT") {
+          return NextResponse.json(
+            { error: "Профиль уже привязан к другому аккаунту", code: "PROFILE_OWNERSHIP_CONFLICT" },
+            { status: 409 }
+          );
+        }
+        throw error;
       }
       profileUserId = user.id;
       step = "starter_runes";
-      try {
-        await grantStarterRunesIfNeeded(user.id);
-      } catch (starterErr) {
-        console.error("Starter runes skipped:", starterErr);
-      }
+      await grantStarterRunesIfNeeded(user.id);
     } else {
       step = "update_user";
       const updated = await updateUserProfile(user.id, {
-        name,
+        name: String(name).trim(),
         gender,
         birthDate,
         zodiac,
@@ -137,6 +148,7 @@ export async function POST(request: NextRequest) {
         astroMeta,
       });
       if (updated) user = updated;
+      await grantStarterRunesIfNeeded(user.id);
     }
 
     const verifiedUser = await getUserById(user.id);
@@ -145,17 +157,24 @@ export async function POST(request: NextRequest) {
     }
     user = verifiedUser;
 
+    if (sessionId) {
+      try {
+        await linkSessionToUser(String(sessionId), user.id);
+      } catch (linkError) {
+        console.warn("Onboarding session link skipped:", linkError);
+      }
+    }
+
     step = "cooldown_check";
     const cooldown = await checkTripletCooldown(user.id);
     if (!cooldown.allowed) {
-      return NextResponse.json(
-        {
-          error: "TRIPLET_COOLDOWN",
-          message: "Новый расклад из 3 карт доступен один раз в сутки",
-          nextAvailableAt: cooldown.nextAvailableAt,
-        },
-        { status: 429 }
-      );
+      return NextResponse.json({
+        userId: user.id,
+        profile: serializeUserProfile(user),
+        cooldownBlocked: true,
+        message: "Новый расклад из 3 карт доступен один раз в сутки",
+        nextAvailableAt: cooldown.nextAvailableAt,
+      });
     }
 
     const cardsKey = tarotCardsKey(tarotCards ?? []);

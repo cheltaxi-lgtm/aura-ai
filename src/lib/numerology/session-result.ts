@@ -1,5 +1,6 @@
 import type { PythagorasSquareResult } from "./pythagoras-square";
 import { pythagorasSquare } from "./pythagoras-square";
+import { destinyMatrix } from "./destiny-matrix";
 import { drawNumerologSessionSpread } from "./session-draw";
 import {
   getNumerologTool,
@@ -100,6 +101,36 @@ export function buildNumerologSessionResult(input: {
         positions: [],
         cardNames: [],
         pythagorasSquare: square,
+      };
+    }
+    if (input.toolId === "destiny_matrix") {
+      const parsed = parseBirthDate(input.birthDate ?? "");
+      if (!parsed) return null;
+      const matrix = destinyMatrix(input.birthDate!);
+      if (!matrix) return null;
+      const points: { label: string; value: string; detail: string }[] = [
+        { label: "Тело и характер", value: matrix.body.arcanaName, detail: matrix.body.arcanaMeaning },
+        { label: "Энергия", value: matrix.energy.arcanaName, detail: matrix.energy.arcanaMeaning },
+        { label: "Род и корни", value: matrix.roots.arcanaName, detail: matrix.roots.arcanaMeaning },
+        {
+          label: "Предназначение",
+          value: matrix.purpose.arcanaName,
+          detail: matrix.purpose.arcanaMeaning,
+        },
+        {
+          label: "Отношения",
+          value: matrix.relationships.arcanaName,
+          detail: matrix.relationships.arcanaMeaning,
+        },
+        { label: "Деньги", value: matrix.money.arcanaName, detail: matrix.money.arcanaMeaning },
+        { label: "Карма", value: matrix.karma.arcanaName, detail: matrix.karma.arcanaMeaning },
+      ];
+      return {
+        toolId: input.toolId,
+        title: tool.label,
+        subtitle: tool.tagline ?? tool.description ?? "Матрица судьбы по дате рождения",
+        positions: points,
+        cardNames: points.map((p) => p.value),
       };
     }
     return null;

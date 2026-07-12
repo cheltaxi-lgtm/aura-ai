@@ -9,6 +9,7 @@ import ProfileAstroFields, {
 } from "@/components/ProfileAstroFields";
 import { formatZodiacLabel, genderLabel, getZodiacFromDate } from "@/utils/zodiac";
 import { lifeFocusLabel, type AstroMeta, type LifeFocus } from "@/lib/astro-profile";
+import { clearNeedsServerProfile } from "@/lib/home-flow-storage";
 
 export interface CabinetProfile {
   id: string;
@@ -119,6 +120,7 @@ export default function CabinetProfilePanel({
       const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -129,6 +131,7 @@ export default function CabinetProfilePanel({
 
       if (data.profile) {
         onSaved(data.profile as CabinetProfile);
+        clearNeedsServerProfile();
         localStorage.setItem(
           "aura_profile",
           JSON.stringify({

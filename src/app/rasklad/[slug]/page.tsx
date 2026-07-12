@@ -23,7 +23,7 @@ export async function generateMetadata({
   const spread = getSpreadBySeoSlug(slug);
   if (!spread) return { title: "Расклад" };
   return buildSeoMetadata({
-    title: `${spread.label} — расклад Таро онлайн | Zovus`,
+    title: spread.seo?.title ?? `${spread.label} — расклад Таро онлайн | Zovus`,
     description: spread.description,
     path: `/rasklad/${slug}`,
   });
@@ -50,7 +50,7 @@ export default async function SpreadLandingPage({
   ];
 
   const structuredData = buildSpreadStructuredData({
-    title: `${spread.label} — расклад Таро онлайн`,
+    title: spread.seo?.title ?? `${spread.label} — расклад Таро онлайн`,
     description: spread.description,
     path: `/rasklad/${slug}`,
     faq,
@@ -60,8 +60,8 @@ export default async function SpreadLandingPage({
     <SeoPageShell backHref="/rasklad" backLabel="Схемы раскладов">
       <SeoBreadcrumbs items={breadcrumbs} />
       <p className="text-sm text-aura-gold/80">Расклад · {spread.cardCount} карт</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">{spread.label}</h1>
-      <p className="mt-4 text-white/70">{spread.description}</p>
+      <h1 className="mt-2 font-display text-3xl font-bold">{spread.seo?.h1 ?? spread.label}</h1>
+      <p className="mt-4 text-white/70">{spread.seo?.intro ?? spread.description}</p>
 
       <SeoSection title="Позиции расклада">
         <ol className="space-y-2">
@@ -73,6 +73,14 @@ export default async function SpreadLandingPage({
           ))}
         </ol>
       </SeoSection>
+
+      {spread.seo?.extra ? (
+        <SeoSection title={spread.seo.extra.heading}>
+          {spread.seo.extra.body.map((paragraph) => (
+            <p key={paragraph}>{paragraph}</p>
+          ))}
+        </SeoSection>
+      ) : null}
 
       <SeoSection title="Когда использовать схему">
         <p>

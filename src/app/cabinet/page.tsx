@@ -11,6 +11,7 @@ import { useRuneConfig } from "@/lib/useRuneConfig";
 import {
   APP_SHELL_SECTIONS,
   navigateToAppSection,
+  navigateToBirthProfileOnboarding,
   navigateToDecksModal,
   navigateToHomeSpreadFlow,
   navigateToPhotoReading,
@@ -22,6 +23,9 @@ import {
 } from "@/lib/intention";
 import { clearChatCache } from "@/lib/chat-cache";
 import { sortCabinetSessionsByDate } from "@/lib/cabinet-utils";
+import CabinetProfilePanel, {
+  type CabinetProfile as EditableCabinetProfile,
+} from "@/components/CabinetProfilePanel";
 import CabinetProfileHeader, {
   CabinetProfileHeaderSkeleton,
 } from "@/components/cabinet/CabinetProfileHeader";
@@ -92,7 +96,7 @@ const TAB_MOTION = {
 export default function CabinetPage() {
   const router = useRouter();
   const { openPaywall } = usePaywall();
-  const { user: authUser, loading: authLoading } = useAuth();
+  const { user: authUser, loading: authLoading, refresh: refreshAuth } = useAuth();
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
   const [headerMounted, setHeaderMounted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -110,6 +114,7 @@ export default function CabinetPage() {
   const [openRitualId, setOpenRitualId] = useState<string | null>(null);
   const [ritualFlowMaster, setRitualFlowMaster] = useState<RitualMasterKey>("ragnar");
   const [ritualStats, setRitualStats] = useState<CabinetRitualStats | null>(null);
+  const [editableProfile, setEditableProfile] = useState<EditableCabinetProfile | null>(null);
   const sessionsOffset = useRef(0);
 
   const fetchCabinet = useCallback(async (offset = 0, append = false) => {
@@ -166,6 +171,25 @@ export default function CabinetPage() {
   useEffect(() => {
     setHeaderMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (authLoading || !authUser) return;
+    fetch("/api/profile", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        setEditableProfile(json?.profile ?? null);
+      })
+      .catch(() => undefined);
+  }, [authLoading, authUser, data?.needsOnboarding]);
+
+  const handleProfileSaved = useCallback(
+    async (saved: EditableCabinetProfile) => {
+      setEditableProfile(saved);
+      await refreshAuth();
+      await fetchCabinet(0, false);
+    },
+    [fetchCabinet, refreshAuth]
+  );
 
   const photoNavLabel = runeConfig.enabled
     ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`
@@ -424,12 +448,20 @@ export default function CabinetPage() {
       case "profile":
         return (
           <div className="space-y-6">
-            {profile ? (
+            {profile && !data.needsOnboarding ? (
               <CabinetProfileHeader
                 profile={profile}
                 onTopUp={runesEnabled ? handleTopUp : undefined}
                 showRuneTopUp={runesEnabled}
                 balancePulse={balancePulse}
+              />
+            ) : null}
+            {authUser?.email ? (
+              <CabinetProfilePanel
+                email={authUser.email}
+                accountName={authUser.name}
+                profile={editableProfile}
+                onSaved={(saved) => void handleProfileSaved(saved)}
               />
             ) : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}
@@ -540,7 +572,22 @@ export default function CabinetPage() {
               title="Руны и доступ"
               subtitle="Пополнение, история операций и статус подписки."
             />
-            {runesEnabled && runes ? (
+            {data.needsOnboarding ? (
+              <div className="rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-5 text-sm text-aura-champagne">
+                <p className="font-medium text-white">Баланс появится после профиля</p>
+                <p className="mt-2 text-white/70">
+                  Укажите дату рождения — мы создадим профиль, начислим стартовые руны и откроем
+                  историю операций.
+                </p>
+                <button
+                  type="button"
+                  className="btn-luxe btn-luxe--sm btn-luxe--gold mt-4"
+                  onClick={() => navigateToBirthProfileOnboarding()}
+                >
+                  Указать дату рождения
+                </button>
+              </div>
+            ) : runesEnabled && runes ? (
               <CabinetRunesPanel
                 balance={runes.balance}
                 enabled={runes.enabled}
@@ -553,7 +600,9 @@ export default function CabinetPage() {
                 onOpenPaywall={() => openPaywall()}
               />
             ) : (
-              <CabinetRunesPanelSkeleton />
+              <section className="cabinet-empty-state text-sm text-white/60">
+                Система рун временно недоступна. Попробуйте обновить страницу позже.
+              </section>
             )}
           </div>
         );
@@ -597,16 +646,17 @@ export default function CabinetPage() {
 
         {data?.needsOnboarding ? (
           <div className="mb-6 rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-4 text-sm text-aura-champagne">
-            <p className="font-medium text-white">Завершите регистрацию</p>
+            <p className="font-medium text-white">Укажите дату рождения</p>
             <p className="mt-1 text-white/70">
-              Чтобы открыть кабинет, пройдите короткий старт на главной — выберите карты и заполните профиль.
+              Аккаунт уже создан. Остался один шаг — дата рождения для персонализации раскладов.
+              После этого откроется кабинет и начислятся стартовые руны.
             </p>
             <button
               type="button"
               className="btn-luxe btn-luxe--sm btn-luxe--gold mt-4"
-              onClick={() => navigateToHomeSpreadFlow()}
+              onClick={() => navigateToBirthProfileOnboarding()}
             >
-              На главную
+              Указать дату рождения
             </button>
           </div>
         ) : null}

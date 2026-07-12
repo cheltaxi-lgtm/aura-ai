@@ -29,8 +29,9 @@ export default function HomeSeoContent() {
         расшифровки можно уточнять детали, сохранять историю в кабинете и продолжать диалог.
       </p>
       <p className="mt-3 leading-relaxed">
-        Три карты дня — бесплатно каждый день. Полные расклады, фото-анализ домашних раскладов,
-        нумерология и обряды — по тарифу в рунах ᚢ. Это не медицинская и не юридическая услуга:{" "}
+        Откройте бесплатный расклад из трёх карт на главной. После регистрации расклад сохраняется в
+        кабинете. Полные расклады, фото-анализ, нумерология и обряды — по тарифу в рунах ᚢ. Это не
+        медицинская и не юридическая услуга:{" "}
         <Link href="/disclaimer" className="text-aura-gold hover:underline">
           подробнее об ограничениях
         </Link>
@@ -56,8 +57,33 @@ export default function HomeSeoContent() {
       <h2 className="mt-8 font-display text-lg text-aura-gold">Тематические разделы</h2>
       <ul className="mt-3 flex flex-wrap gap-2 text-sm">
         <li>
+          <Link href="/gadanie" className="text-aura-gold hover:underline">
+            Гадание онлайн
+          </Link>
+        </li>
+        <li>
+          <Link href="/gadanie/da-net" className="text-aura-gold hover:underline">
+            Гадание да или нет
+          </Link>
+        </li>
+        <li>
           <Link href="/taro" className="text-aura-gold hover:underline">
             Таро онлайн
+          </Link>
+        </li>
+        <li>
+          <Link href="/runy" className="text-aura-gold hover:underline">
+            Гадание на рунах
+          </Link>
+        </li>
+        <li>
+          <Link href="/numerology" className="text-aura-gold hover:underline">
+            Нумерология
+          </Link>
+        </li>
+        <li>
+          <Link href="/sovmestimost-znakov-zodiaka" className="text-aura-gold hover:underline">
+            Совместимость знаков зодиака
           </Link>
         </li>
         <li>

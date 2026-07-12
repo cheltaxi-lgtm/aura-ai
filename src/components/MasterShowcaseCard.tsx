@@ -141,6 +141,7 @@ export default function MasterShowcaseCard({
           type="button"
           onClick={() => onSelect(master.id)}
           disabled={actionBlocked}
+          aria-label={`${actionBlocked ? "Нужны руны" : ctaLabel} с мастером ${displayName}`}
           className="master-showcase-card__cta disabled:cursor-not-allowed disabled:opacity-50"
         >
           {actionBlocked ? "Нужны руны" : ctaLabel}

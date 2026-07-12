@@ -112,6 +112,7 @@ import {
   LAST_MASTER_KEY,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
+import { persistPendingIntent } from "@/lib/post-auth-return";
 import {
   isNumerologSessionToolId,
   type NumerologToolId,
@@ -151,7 +152,7 @@ export default function HomePage({
   autoOpenRitualType,
 }: HomePageProps) {
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
-  const { isLoggedIn, loading: authLoading, user: authUser } = useAuth();
+  const { isLoggedIn, loading: authLoading, user: authUser, refresh: refreshAuth } = useAuth();
   const { openPaywall, showRateLimit } = usePaywall();
 
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
@@ -420,6 +421,7 @@ export default function HomePage({
     pendingReadingMasterRef,
     syncPhotoSessionForMaster,
     onRuneBalancePayload: applyRuneBalancePayload,
+    refreshAuth,
   });
 
   resetSpreadOnAccountSwitchRef.current = onboarding.resetSpreadOnAccountSwitch;
@@ -973,8 +975,12 @@ export default function HomePage({
 
   useEffect(() => {
     if (authLoading || !isLoggedIn || step !== "intro") return;
+    if (!authUser?.profileUserId) {
+      setStep("onboarding");
+      return;
+    }
     setStep("masters");
-  }, [authLoading, isLoggedIn, step, setStep]);
+  }, [authLoading, isLoggedIn, step, setStep, authUser?.profileUserId]);
 
   useEffect(() => {
     if (authLoading || !isLoggedIn) return;
@@ -2035,8 +2041,9 @@ export default function HomePage({
     setShowSessionFlow(false);
     setShowRitualFlow(false);
     setPhotoReadingOpen(false);
-    setStep("masters");
-    localStorage.setItem(FLOW_STEP_KEY, "masters");
+    const nextStep = !authUser?.profileUserId ? "onboarding" : "masters";
+    setStep(nextStep);
+    localStorage.setItem(FLOW_STEP_KEY, nextStep);
   }, [
     selectedCharacter,
     messages,
@@ -2045,6 +2052,7 @@ export default function HomePage({
     refreshSavedReadings,
     setStep,
     setSessionListMaster,
+    authUser?.profileUserId,
   ]);
 
   useEffect(() => {
@@ -2240,9 +2248,9 @@ export default function HomePage({
     const timer = window.setTimeout(() => setBootstrapTimedOut(true), 12_000);
     return () => window.clearTimeout(timer);
   }, []);
-  const bootstrapping = (sessionLoading || authLoading) && !bootstrapTimedOut;
-  /** Marketing landing — guests only, after auth/session bootstrap. */
-  const showSeoLanding = !isLoggedIn && showLanding && !bootstrapping;
+  const bootstrapping = isLoggedIn && (sessionLoading || authLoading) && !bootstrapTimedOut && step !== "onboarding" && step !== "triplet";
+  /** Marketing landing — guests only; never blocked by session bootstrap. */
+  const showSeoLanding = !isLoggedIn && showLanding;
   const showSalonHome = showSeoLanding || (!bootstrapping && step === "masters" && !selectedCharacter);
   const landingMasters = masters.length > 0 ? masters : getAiMasters();
 
@@ -2957,7 +2965,7 @@ export default function HomePage({
             if (!isLoggedIn) {
               if (typeof window !== "undefined") {
                 if (seoFlowIntentSlug) {
-                  window.sessionStorage.setItem("zovus_pending_intent", seoFlowIntentSlug);
+                  persistPendingIntent(seoFlowIntentSlug);
                 }
                 const returnTo = seoFlowIntentSlug ? `/?intent=${encodeURIComponent(seoFlowIntentSlug)}` : "/";
                 window.location.href = `/auth/user/register?returnTo=${encodeURIComponent(returnTo)}`;

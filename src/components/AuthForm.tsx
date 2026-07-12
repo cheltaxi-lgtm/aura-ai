@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
@@ -8,26 +8,29 @@ import { getLoginFormHints } from "@/lib/login-hints";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { APP_SHELL_HEADER, shouldUseAppShellClient } from "@/lib/app-shell";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
-import ProfileAstroFields, {
-  profileAstroToPayload,
-  type ProfileAstroValues,
-} from "@/components/ProfileAstroFields";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { clearClientAuthState } from "@/lib/client-logout";
+import { loadGuestTriplet } from "@/lib/guest-triplet";
+import {
+  clearNeedsServerProfile,
+  markNeedsServerProfile,
+} from "@/lib/home-flow-storage";
+import {
+  captureReturnToFromUrl,
+  buildAuthHref,
+  onboardingRedirectUrl,
+  persistPostAuthReturnTo,
+} from "@/lib/post-auth-return";
+import {
+  trackRegistrationAccountCreated,
+  trackRegistrationError,
+  trackRegistrationStarted,
+} from "@/lib/seo/metrika";
 
 interface AuthFormProps {
   mode: "login" | "register";
   role: "user" | "expert";
 }
-
-const DEFAULT_ASTRO: ProfileAstroValues = {
-  gender: "female",
-  birthDate: "",
-  birthTime: "",
-  birthCity: "",
-  lifeFocus: "general",
-  mainQuestion: "",
-};
 
 export default function AuthForm({ mode, role }: AuthFormProps) {
   const router = useRouter();
@@ -37,14 +40,28 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [title, setTitle] = useState("");
-  const [astro, setAstro] = useState<ProfileAstroValues>(DEFAULT_ASTRO);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [returnTo, setReturnTo] = useState("/");
 
   const isExpert = role === "expert";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("returnTo") ?? params.get("next");
+    const fallback = isExpert ? "/expert" : "/";
+    const safe = sanitizeReturnTo(raw, fallback);
+    setReturnTo(safe);
+    captureReturnToFromUrl(window.location.search, fallback);
+  }, [isExpert]);
+
+  const loginHref = buildAuthHref(`/auth/${role}/login`, returnTo, isExpert ? "/expert" : "/");
+  const registerHref = buildAuthHref(`/auth/${role}/register`, returnTo, isExpert ? "/expert" : "/");
+
   const isUserRegister = mode === "register" && role === "user";
   const isExpertRegister = mode === "register" && role === "expert";
   const requiresLegalConsent = role === "user";
@@ -70,6 +87,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     e.preventDefault();
     setError("");
     setLoading(true);
+    if (isUserRegister) trackRegistrationStarted("auth_form");
 
     const body: Record<string, unknown> = { email: email.trim(), password };
 
@@ -84,16 +102,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       }
 
       if (isUserRegister) {
-        const profilePayload = profileAstroToPayload(name, astro);
-        if (!profilePayload) {
-          setError("Укажите дату рождения и имя");
-          setLoading(false);
-          return;
-        }
-        Object.assign(body, profilePayload);
         body.sessionId = localStorage.getItem("aura_session_id") ?? undefined;
         body.marketingConsent = marketingConsent;
         body.ageConfirmed = ageConfirmed;
+        body.acceptedTerms = acceptedTerms;
       }
 
       const captchaErr = await attachRecaptchaToken(
@@ -137,41 +149,85 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         } else {
           setError(data.message ?? data.error ?? "Ошибка");
         }
+        if (isUserRegister) trackRegistrationError(String(data.error ?? "unknown"));
         return;
       }
 
       if (typeof window !== "undefined") {
-        if (mode === "login") {
+        if (mode === "login" && role !== "user") {
           clearClientAuthState();
           localStorage.setItem("aura_flow_step", "masters");
-        } else if (isUserRegister && !data.sessionLinked) {
+        } else if (isUserRegister && data.profile && !data.sessionLinked) {
           localStorage.removeItem("aura_session_id");
         }
       }
 
-      if (isUserRegister && data.profile) {
-        localStorage.setItem(
-          "aura_profile",
-          JSON.stringify({
-            ...data.profile,
-            tarotCards: [],
-          })
-        );
-        localStorage.setItem("aura_flow_step", "triplet");
+      if (isUserRegister) {
+        trackRegistrationAccountCreated("auth_form");
+        const guest = loadGuestTriplet();
+        if (data.profile) {
+          clearNeedsServerProfile();
+          localStorage.setItem(
+            "aura_profile",
+            JSON.stringify({
+              ...data.profile,
+              tarotCards: guest?.tarotCards ?? [],
+              deckSystem: guest?.deckSystem,
+              teaser: guest?.teaser,
+            })
+          );
+          localStorage.setItem("aura_flow_step", guest?.tarotCards?.length ? "masters" : "triplet");
+        } else {
+          localStorage.setItem(
+            "aura_profile",
+            JSON.stringify({
+              name: name.trim(),
+              gender: "female",
+              birthDate: "",
+              zodiac: "",
+              tarotCards: guest?.tarotCards ?? [],
+              deckSystem: guest?.deckSystem,
+              teaser: guest?.teaser,
+              mainQuestion: guest?.question,
+              tripletMasterId: guest?.masterId,
+            })
+          );
+          localStorage.setItem("aura_flow_step", "onboarding");
+          markNeedsServerProfile();
+        }
       }
 
-      const returnParams =
-        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-      let destination = returnParams
-        ? sanitizeReturnTo(
-            returnParams.get("returnTo") ?? returnParams.get("next"),
-            isExpert ? "/expert" : "/"
-          )
-        : isExpert
-          ? "/expert"
-          : "/";
+      let destination = returnTo;
+
+      if (typeof window !== "undefined" && isUserRegister && !data.profile) {
+        persistPostAuthReturnTo(destination);
+        window.location.assign(onboardingRedirectUrl());
+        return;
+      }
 
       if (typeof window !== "undefined" && mode === "login" && role === "user") {
+        const meRes = await fetch("/api/auth/me", { credentials: "include" });
+        const me = meRes.ok ? await meRes.json() : null;
+        const needsProfile = Boolean(me?.needsProfile || !me?.user?.profileUserId);
+        if (needsProfile) {
+          markNeedsServerProfile();
+          persistPostAuthReturnTo(destination);
+          localStorage.setItem(
+            "aura_profile",
+            JSON.stringify({
+              name: me?.user?.name ?? "",
+              gender: "female",
+              birthDate: "",
+              zodiac: "",
+              tarotCards: [],
+            })
+          );
+          localStorage.setItem("aura_flow_step", "onboarding");
+          window.location.assign(onboardingRedirectUrl());
+          return;
+        }
+        clearClientAuthState();
+        clearNeedsServerProfile();
         const landing = new URL(destination, window.location.origin);
         landing.searchParams.delete("step");
         destination = `${landing.pathname}${landing.search}${landing.hash}`;
@@ -200,6 +256,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
+              autoComplete="name"
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
           </div>
@@ -227,12 +284,6 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               </div>
             </>
           )}
-          {isUserRegister && (
-            <ProfileAstroFields
-              values={astro}
-              onChange={(patch) => setAstro((prev) => ({ ...prev, ...patch }))}
-            />
-          )}
         </>
       )}
 
@@ -248,6 +299,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
           </div>
@@ -260,8 +312,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               minLength={mode === "register" ? MIN_PASSWORD_LENGTH : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
+            {mode === "register" ? (
+              <p className="mt-2 text-xs text-gray-500">
+                Минимум {MIN_PASSWORD_LENGTH} символов
+              </p>
+            ) : null}
             {mode === "login" && role === "user" ? (
               <p className="mt-2 text-right">
                 <Link
@@ -387,7 +445,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         disabled={!canSubmit}
         className="btn-neon w-full py-3 text-sm disabled:opacity-50"
       >
-        {loading ? "..." : mode === "login" ? "Войти" : "Создать аккаунт и открыть карты"}
+        {loading ? "Сохраняем…" : mode === "login" ? "Войти" : "Создать аккаунт и продолжить"}
       </button>
 
       {(mode === "login" && showRegisterLink) || mode === "register" ? (
@@ -395,14 +453,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           {mode === "login" ? (
             <>
               Нет аккаунта?{" "}
-              <Link href={`/auth/${role}/register`} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+              <Link href={registerHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
                 Регистрация
               </Link>
             </>
           ) : (
             <>
               Уже есть аккаунт?{" "}
-              <Link href={`/auth/${role}/login`} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+              <Link href={loginHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
                 Войти
               </Link>
             </>

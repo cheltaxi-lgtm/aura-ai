@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   parseDetectedCards,
   parsePhotoReadingResponse,
+  sanitizeLandscapeReversedGuesses,
 } from "../src/lib/photo-reading-prompts.ts";
 import {
   parseRecognitionConfidence,
@@ -49,6 +50,48 @@ const meta = parsePhotoReadingResponse(jsonSample);
 assert.ok(meta.deckType?.includes("Rider-Waite"), "deck type parsed");
 assert.equal(parseRecognitionConfidence(meta.deckType), "high");
 assert.match(confidenceLabel("low"), /Низкая/u);
+
+const landscapeSanitized = sanitizeLandscapeReversedGuesses(
+  [
+    { name: "Сила", reversed: false, confidence: "high" },
+    { name: "Солнце", reversed: true, confidence: "high" },
+    { name: "Луна", reversed: false, confidence: "high" },
+    { name: "Башня", reversed: true, confidence: "medium" },
+    { name: "Звезда", reversed: false, confidence: "high" },
+  ],
+  { landscapePhoto: true }
+);
+assert.ok(
+  landscapeSanitized.every((card) => !card.reversed),
+  "landscape multi-card clears false reversed flags"
+);
+
+const portraitKeeps = sanitizeLandscapeReversedGuesses(
+  [
+    { name: "Сила", reversed: false, confidence: "high" },
+    { name: "Солнце", reversed: true, confidence: "high" },
+    { name: "Луна", reversed: false, confidence: "high" },
+  ],
+  { landscapePhoto: false }
+);
+assert.equal(portraitKeeps[1].reversed, true, "portrait keeps real reversed card");
+
+const landscapeParsed = parsePhotoReadingResponse(
+  `КОЛОДА: Rider-Waite · уверенность: высокая
+РАСКЛАД: пять карт · 5 символов
+КАРТЫ_JSON: [
+  {"name":"Сила","reversed":false,"confidence":"высокая"},
+  {"name":"Солнце","reversed":true,"confidence":"высокая"},
+  {"name":"Луна","reversed":false,"confidence":"высокая"},
+  {"name":"Башня","reversed":true,"confidence":"средняя"},
+  {"name":"Звезда","reversed":false,"confidence":"высокая"}
+]`,
+  { landscapePhoto: true }
+);
+assert.ok(
+  landscapeParsed.detectedCards.every((card) => !/\(перев/i.test(card)),
+  "landscape parse clears reversed markers"
+);
 
 const partial = buildPartialRedrawSpread("veronika", ["Сила", "Императрица"], "RWS");
 assert.equal(partial.cards.length, 2, "partial redraw");

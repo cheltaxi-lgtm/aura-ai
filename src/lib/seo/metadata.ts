@@ -24,6 +24,7 @@ export function buildSeoMetadata({
 }): Metadata {
   const url = path ? `${getAppUrl()}${path}` : getAppUrl();
   const cleanTitle = stripBrandSuffix(title);
+  const ogImageUrl = `${getAppUrl()}/opengraph-image`;
   return {
     title: cleanTitle,
     description,
@@ -36,11 +37,13 @@ export function buildSeoMetadata({
       url,
       type: "website",
       siteName: BRAND_NAME,
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: BRAND_NAME }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
+      images: [ogImageUrl],
     },
   };
 }

@@ -141,6 +141,36 @@ export async function updateUserAccountName(accountId: string, name: string) {
   await query("UPDATE user_accounts SET name = $2 WHERE id = $1", [accountId, name.trim()]);
 }
 
+export interface AccountConsentSnapshot {
+  termsAcceptedAt: string | null;
+  ageConfirmedAt: string | null;
+  marketingConsent: boolean;
+  marketingConsentAt: string | null;
+}
+
+export async function getAccountConsentSnapshot(
+  accountId: string
+): Promise<AccountConsentSnapshot | null> {
+  const { rows } = await query<{
+    terms_accepted_at: Date | null;
+    age_confirmed_at: Date | null;
+    marketing_consent: boolean;
+    marketing_consent_at: Date | null;
+  }>(
+    `SELECT terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at
+     FROM user_accounts WHERE id = $1`,
+    [accountId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    termsAcceptedAt: row.terms_accepted_at?.toISOString() ?? null,
+    ageConfirmedAt: row.age_confirmed_at?.toISOString() ?? null,
+    marketingConsent: Boolean(row.marketing_consent),
+    marketingConsentAt: row.marketing_consent_at?.toISOString() ?? null,
+  };
+}
+
 export async function linkAccountToProfile(
   accountId: string,
   profileUserId: string

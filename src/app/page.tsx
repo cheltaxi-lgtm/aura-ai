@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   },
 };
 
-/** Главная: онбординг → триплет Таро → выбор наставника. SEO-текст — sr-only в конце. */
+/** Главная: guest spread → регистрация → мастер. SEO-текст — sr-only в конце. */
 export default function Page() {
   return (
     <>

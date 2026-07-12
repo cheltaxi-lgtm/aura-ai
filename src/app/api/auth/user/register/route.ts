@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDb } from "@/lib/db";
-import { createUser, findUserByEmail, linkAccountToProfile } from "@/lib/accounts";
-import { validatePasswordLength } from "@/lib/auth-policy";
+import { ensureDb, queryClient, withTransaction } from "@/lib/db";
+import { findUserByEmail } from "@/lib/accounts";
+import { validateDisplayName, validatePasswordLength } from "@/lib/auth-policy";
 import { hashPassword, setAuthCookie, normalizeAuthEmail } from "@/lib/auth";
 import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { getZodiacFromDate, formatZodiacLabel } from "@/utils/zodiac";
-import { createUserProfile, linkSessionToUser, serializeUserProfile } from "@/lib/users";
+import { linkSessionToUser, serializeUserProfile, type UserRow } from "@/lib/users";
 import { sendEmail, welcomeEmailHtml } from "@/lib/email/send";
+import { mergeConsentIntoAstroMeta } from "@/lib/registration-consent";
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,15 +34,29 @@ export async function POST(request: NextRequest) {
       recaptchaToken,
       marketingConsent,
       ageConfirmed,
+      acceptedTerms,
     } = body;
 
-    if (!rawEmail || !password || !name || !gender || !birthDate) {
+    if (!rawEmail || !password || !name) {
       return NextResponse.json({ error: "Заполните все обязательные поля" }, { status: 400 });
+    }
+
+    if (acceptedTerms !== true) {
+      return NextResponse.json(
+        { error: "Подтвердите согласие с пользовательским соглашением" },
+        { status: 400 }
+      );
     }
 
     if (ageConfirmed !== true) {
       return NextResponse.json({ error: "Подтвердите, что вам исполнилось 18 лет" }, { status: 400 });
     }
+
+    const nameError = validateDisplayName(name);
+    if (nameError) {
+      return NextResponse.json({ error: nameError }, { status: 400 });
+    }
+    const trimmedName = String(name).trim();
 
     const email = normalizeAuthEmail(String(rawEmail));
 
@@ -61,45 +76,110 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email уже зарегистрирован" }, { status: 409 });
     }
 
-    const sign = getZodiacFromDate(birthDate);
-    const baseAstroMeta = buildAstroMeta(birthDate);
-    if (!sign || !baseAstroMeta) {
-      return NextResponse.json({ error: "Некорректная дата рождения" }, { status: 400 });
-    }
-
-    const astroMeta = {
-      ...baseAstroMeta,
-      ageConfirmed: true,
-      ageConfirmedAt: new Date().toISOString(),
+    const consentNow = new Date().toISOString();
+    const accountConsent = {
+      termsAcceptedAt: consentNow,
+      ageConfirmedAt: consentNow,
       marketingConsent: Boolean(marketingConsent),
-      ...(marketingConsent
-        ? { marketingConsentAt: new Date().toISOString() }
-        : {}),
+      marketingConsentAt: marketingConsent ? consentNow : null,
     };
 
-    const account = await createUser(email, await hashPassword(password), name.trim());
+    const hasAstroProfile = Boolean(gender && birthDate);
+    let profilePayload: {
+      gender: "male" | "female";
+      birthDate: string;
+      zodiac: string;
+      birthTime?: string;
+      birthCity?: string;
+      lifeFocus?: string;
+      mainQuestion?: string;
+      astroMeta: Record<string, unknown>;
+    } | null = null;
 
-    const profile = await createUserProfile({
-      name: name.trim(),
-      gender,
-      birthDate,
-      zodiac: zodiac || formatZodiacLabel(sign),
-      birthTime,
-      birthCity,
-      lifeFocus,
-      mainQuestion,
-      astroMeta,
+    if (hasAstroProfile) {
+      const sign = getZodiacFromDate(String(birthDate));
+      const baseAstroMeta = buildAstroMeta(String(birthDate));
+      if (!sign || !baseAstroMeta) {
+        return NextResponse.json({ error: "Некорректная дата рождения" }, { status: 400 });
+      }
+
+      profilePayload = {
+        gender,
+        birthDate: String(birthDate),
+        zodiac: zodiac || formatZodiacLabel(sign),
+        birthTime,
+        birthCity,
+        lifeFocus,
+        mainQuestion,
+        astroMeta: mergeConsentIntoAstroMeta(
+          baseAstroMeta as unknown as Record<string, unknown>,
+          accountConsent
+        ),
+      };
+    }
+
+    const passwordHash = await hashPassword(String(password));
+    const { account, profile } = await withTransaction(async (client) => {
+      const accountResult = await queryClient<{ id: string; email: string; name: string }>(
+        client,
+        `INSERT INTO user_accounts (
+           email, password_hash, name,
+           terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at
+         )
+         VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6, $7::timestamptz)
+         RETURNING id, email, name`,
+        [
+          email,
+          passwordHash,
+          trimmedName,
+          accountConsent.termsAcceptedAt,
+          accountConsent.ageConfirmedAt,
+          accountConsent.marketingConsent,
+          accountConsent.marketingConsentAt,
+        ]
+      );
+      const createdAccount = accountResult.rows[0];
+      let createdProfile: UserRow | null = null;
+
+      if (profilePayload) {
+        const profileResult = await queryClient<UserRow>(
+          client,
+          `INSERT INTO users (
+             name, gender, birth_date, zodiac,
+             birth_time, birth_city, life_focus, main_question, astro_meta
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id, name, gender, birth_date::text, zodiac,
+             birth_time::text, birth_city, life_focus, main_question, astro_meta, created_at`,
+          [
+            trimmedName,
+            profilePayload.gender,
+            profilePayload.birthDate,
+            profilePayload.zodiac,
+            profilePayload.birthTime ?? null,
+            profilePayload.birthCity ?? null,
+            profilePayload.lifeFocus ?? "general",
+            profilePayload.mainQuestion ?? null,
+            JSON.stringify(profilePayload.astroMeta),
+          ]
+        );
+        createdProfile = profileResult.rows[0];
+        await queryClient(
+          client,
+          "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
+          [createdAccount.id, createdProfile.id]
+        );
+      }
+
+      return { account: createdAccount, profile: createdProfile };
     });
 
-    const profileLinked = await linkAccountToProfile(account.id, profile.id);
-    if (!profileLinked) {
-      console.error("Profile link on register failed: profile already owned by another account");
-      return NextResponse.json({ error: "Не удалось создать профиль" }, { status: 500 });
+    if (profile) {
+      await grantStarterRunesIfNeeded(profile.id);
     }
-    await grantStarterRunesIfNeeded(profile.id);
 
     let sessionLinked = false;
-    if (sessionId) {
+    if (sessionId && profile) {
       try {
         sessionLinked = await linkSessionToUser(sessionId, profile.id);
         if (!sessionLinked) {
@@ -131,10 +211,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       user: { id: account.id, email: account.email, name: account.name },
-      profile: serializeUserProfile(profile),
+      profile: profile ? serializeUserProfile(profile) : null,
       sessionLinked,
+      needsProfile: !profile,
     });
   } catch (error) {
+    if ((error as { code?: string })?.code === "23505") {
+      return NextResponse.json({ error: "Email уже зарегистрирован" }, { status: 409 });
+    }
     console.error("User register error:", error);
     return NextResponse.json({ error: "Ошибка регистрации" }, { status: 500 });
   }

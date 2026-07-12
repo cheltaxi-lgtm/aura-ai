@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { getDeckPositions, DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
   buildSeededTableDeck,
@@ -14,6 +14,17 @@ import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
+import {
+  GUEST_SPREAD_START_EVENT,
+  LANDING_QUESTION_KEY,
+  type GuestSpreadStartDetail,
+} from "@/lib/landing-offer";
+import {
+  trackGuestCardRevealed,
+  trackGuestSpreadCompleted,
+  trackGuestSpreadStarted,
+  trackRegistrationGateView,
+} from "@/lib/seo/metrika";
 import DeckCard from "@/components/DeckCard";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import ShareButton from "@/components/share/ShareButton";
@@ -37,8 +48,13 @@ function getGuestId(): string {
 
 type GuestStep = "age" | "ritual" | "pick" | "flip" | "done";
 
-export default function GuestTripletDraw() {
-  const system = DEFAULT_DECK_SYSTEM;
+type GuestTripletDrawProps = {
+  className?: string;
+};
+
+export default function GuestTripletDraw({ className = "" }: GuestTripletDrawProps) {
+  const [masterId, setMasterId] = useState("veronika");
+  const system = resolveMasterDeckSystem(masterId);
   const positions = getDeckPositions(system);
   const tableSize = resolveTableSize(system);
   const [step, setStep] = useState<GuestStep>("age");
@@ -47,11 +63,46 @@ export default function GuestTripletDraw() {
   const [pickedIndices, setPickedIndices] = useState<number[]>([]);
   const [revealed, setRevealed] = useState<boolean[]>([false, false, false]);
   const [ageConfirming, setAgeConfirming] = useState(false);
+  const [landingQuestion, setLandingQuestion] = useState("");
 
   const ritualCopy = useMemo(
-    () => getSpreadRitualCopy("veronika", { hasBirthDate: false, cardCount: CARD_COUNT }),
-    []
+    () => getSpreadRitualCopy(masterId, { hasBirthDate: false, cardCount: CARD_COUNT }),
+    [masterId]
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = sessionStorage.getItem(LANDING_QUESTION_KEY);
+    if (stored) setLandingQuestion(stored);
+  }, []);
+
+  useEffect(() => {
+    const onStart = (event: Event) => {
+      const detail = (event as CustomEvent<GuestSpreadStartDetail>).detail;
+      const nextQuestion = detail?.question?.trim();
+      const nextMasterId = detail?.masterId || "veronika";
+      setMasterId(nextMasterId);
+      setSessionSeed("");
+      setPickedIndices([]);
+      setDeck([]);
+      setRevealed([false, false, false]);
+      if (nextQuestion) {
+        sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
+        setLandingQuestion(nextQuestion);
+      }
+      trackGuestSpreadStarted();
+      if (isAgeGateConfirmed()) {
+        setStep("ritual");
+      } else {
+        setStep("age");
+      }
+      window.requestAnimationFrame(() => {
+        document.getElementById("guest-spread")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+    window.addEventListener(GUEST_SPREAD_START_EVENT, onStart);
+    return () => window.removeEventListener(GUEST_SPREAD_START_EVENT, onStart);
+  }, []);
 
   useEffect(() => {
     if (isAgeGateConfirmed()) setStep("ritual");
@@ -62,12 +113,12 @@ export default function GuestTripletDraw() {
     setSessionSeed(
       buildGuestSpreadSeed({
         guestId: getGuestId(),
-        masterId: "veronika",
+        masterId,
         spreadId: "triplet",
         topic: "guest_preview",
       })
     );
-  }, [step, sessionSeed]);
+  }, [step, sessionSeed, masterId]);
 
   const handleAgeConfirm = async () => {
     setAgeConfirming(true);
@@ -101,6 +152,7 @@ export default function GuestTripletDraw() {
 
   const handleFlip = (index: number) => {
     if (revealed[index] || !deck[index]?.name) return;
+    trackGuestCardRevealed(index + 1);
     setRevealed((prev) => {
       const next = [...prev];
       next[index] = true;
@@ -118,7 +170,11 @@ export default function GuestTripletDraw() {
       deckSystem: system,
       teaser,
       completedAt: new Date().toISOString(),
+      question: landingQuestion || undefined,
+      masterId,
     });
+    trackGuestSpreadCompleted();
+    trackRegistrationGateView("guest_triplet_done");
     setStep("done");
   };
 
@@ -135,7 +191,7 @@ export default function GuestTripletDraw() {
 
   if (step === "age") {
     return (
-      <div className="mx-auto mb-12 max-w-md px-4">
+      <div className={`mx-auto max-w-md px-4 ${className}`.trim()}>
         <div className="glass-panel space-y-5 p-8 text-center">
           <p className="text-sm leading-relaxed text-aura-ivory/75">
             Бесплатный расклад доступен пользователям от 18 лет. Сервис носит развлекательно-ознакомительный характер.
@@ -155,9 +211,12 @@ export default function GuestTripletDraw() {
 
   if (step === "ritual") {
     return (
-      <div className="mx-auto mb-12 max-w-md px-4">
+      <div className={`mx-auto max-w-md px-4 ${className}`.trim()}>
         <div className="glass-panel space-y-5 p-8 text-center">
           <p className="lux-label">Бесплатный расклад · 3 карты</p>
+          {landingQuestion ? (
+            <p className="text-sm text-aura-champagne/80">Ваш вопрос: «{landingQuestion}»</p>
+          ) : null}
           <h2 className="font-display text-xl font-semibold text-[#EDE6DA]">{ritualCopy.title}</h2>
           <p className="text-sm leading-relaxed text-aura-ivory/75">{ritualCopy.body}</p>
           <p className="text-xs uppercase tracking-widest text-aura-gold/80">{ritualCopy.personalNote}</p>
@@ -185,7 +244,7 @@ export default function GuestTripletDraw() {
         tableSize={tableSize}
         cardCount={CARD_COUNT}
         system={system}
-        masterId="veronika"
+        masterId={masterId}
         pickedIndices={pickedIndices}
         onPick={handleTablePick}
         pickHint={ritualCopy.pickHint}
@@ -203,16 +262,21 @@ export default function GuestTripletDraw() {
   if (step === "done") {
     return (
       <motion.div
-        className="glass-panel mx-auto mb-12 max-w-md space-y-5 p-8 text-center"
+        className={`glass-panel mx-auto max-w-md space-y-5 p-8 text-center ${className}`.trim()}
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
       >
         <p className="text-sm leading-relaxed text-aura-ivory/75">
-          Расклад сохранён. Остался один шаг — быстрая регистрация и выбор мастера.
+          Карты открыты и сохранены. Зарегистрируйтесь — мастер расшифрует расклад и вы сможете задать
+          первые вопросы бесплатно.
         </p>
         <div className="flex flex-col gap-3">
-          <Link href="/auth/user/register?returnTo=/" className="btn-primary inline-block px-10 py-3.5">
+          <Link
+            href="/auth/user/register?returnTo=%2F%23%D0%BD%D0%B0%D1%81%D1%82%D0%B0%D0%B2%D0%BD%D0%B8%D0%BA%D0%B8"
+            className="btn-luxe btn-luxe--md btn-luxe--gold inline-block px-10 py-3.5"
+            onClick={() => trackRegistrationGateView("guest_triplet_register")}
+          >
             Получить расшифровку
           </Link>
           {sharePayload ? (
@@ -224,7 +288,7 @@ export default function GuestTripletDraw() {
   }
 
   return (
-    <div className="mx-auto mb-12 max-w-3xl">
+    <div className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
       <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
       <p className="mb-8 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
 

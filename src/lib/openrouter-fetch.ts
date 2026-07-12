@@ -1,7 +1,12 @@
+import { setDefaultResultOrder } from "node:dns";
 import { fetch as undiciFetch, ProxyAgent, type RequestInit as UndiciRequestInit } from "undici";
 
 const OPENROUTER_HOST = "openrouter.ai";
-const PROXY_RETRY_STATUSES = new Set([403, 407, 502, 503, 504]);
+const PROXY_RETRY_STATUSES = new Set([401, 403, 407, 502, 503, 504]);
+
+// Production VM has no working IPv6 route. Node may otherwise select OpenRouter's
+// IPv6 address first and fail before trying IPv4.
+setDefaultResultOrder("ipv4first");
 
 function isOpenRouterUrl(url: string): boolean {
   try {
@@ -28,6 +33,14 @@ async function fetchViaProxy(
   return undiciFetch(url, options) as unknown as Response;
 }
 
+async function fetchDirectIpv4(
+  url: string,
+  init: RequestInit | undefined
+): Promise<Response> {
+  const options: UndiciRequestInit = { ...(init as UndiciRequestInit) };
+  return undiciFetch(url, options) as unknown as Response;
+}
+
 /**
  * OpenRouter requests: primary via OPENROUTER_HTTPS_PROXY (Latvia),
  * fallback without proxy (wg-foxdpi split routes on prod when configured).
@@ -42,7 +55,7 @@ export async function openRouterFetch(
 
   const primaryProxy = proxyUrlFromEnv("OPENROUTER_HTTPS_PROXY");
   if (!primaryProxy) {
-    return fetch(url, init);
+    return fetchDirectIpv4(url, init);
   }
 
   try {
@@ -50,9 +63,10 @@ export async function openRouterFetch(
     if (primary.ok || !PROXY_RETRY_STATUSES.has(primary.status)) {
       return primary;
     }
+    await primary.body?.cancel();
   } catch (error) {
     console.warn("[openrouter] primary proxy failed:", error);
   }
 
-  return fetch(url, init);
+  return fetchDirectIpv4(url, init);
 }

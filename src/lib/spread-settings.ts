@@ -15,6 +15,7 @@ export const SPREAD_ADMIN_LABELS: Record<SpreadId, string> = {
   "triplet-love": "Любовный триплет",
   "love-7": "Волшебная любовь (7)",
   "yes-no": "Да / Нет",
+  "runes-yes-no": "Руны да / нет",
   "celtic-cross": "Кельтский крест",
   "daily-extended": "Расширенный день",
   "week-overview": "Расклад на неделю (7)",

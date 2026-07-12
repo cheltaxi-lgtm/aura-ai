@@ -208,6 +208,7 @@ const HTTP_CASES: HttpCase[] = [
       gender: "female",
       birthDate: "1990-01-15",
       ageConfirmed: true,
+      acceptedTerms: true,
     },
     expectMissingCode: "recaptcha_failed",
   },

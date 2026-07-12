@@ -39,6 +39,10 @@ if [ -f "$ENV_BACKUP" ]; then
   echo "Restored production .env.local"
 fi
 
+grep -q '^TRUST_PROXY=' "$APP_DIR/.env.local" \
+  && sed -i 's|^TRUST_PROXY=.*|TRUST_PROXY=true|' "$APP_DIR/.env.local" \
+  || echo 'TRUST_PROXY=true' >> "$APP_DIR/.env.local"
+
 cd "$APP_DIR"
 npm ci
 npm run build

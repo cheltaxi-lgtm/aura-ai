@@ -23,7 +23,9 @@ export function clientIp(request: NextRequest): string {
   const realIp = request.headers.get("x-real-ip")?.trim();
   if (realIp) return realIp;
 
-  if (process.env.TRUST_PROXY === "true") {
+  const trustForwarded =
+    process.env.TRUST_PROXY === "true" || process.env.NODE_ENV === "production";
+  if (trustForwarded) {
     const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
     if (forwarded) return forwarded;
   }

@@ -103,6 +103,10 @@ export default async function StatyiArticlePage({
               title: article.title,
               description: article.description,
               path: `/statyi/${slug}`,
+              bodyText: [
+                article.intro,
+                ...article.sections.map((section) => `${section.heading}. ${section.body}`),
+              ].join(" "),
             })
           ),
         }}

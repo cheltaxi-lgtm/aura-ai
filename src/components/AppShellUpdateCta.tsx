@@ -6,9 +6,9 @@ import AppUpdatePrompt, { type AppUpdatePromptState } from "@/components/AppUpda
 import {
   APP_UPDATE_RECHECK_EVENT,
   useAppShellVersion,
+  useNativeCapacitorApp,
 } from "@/hooks/useAppShellVersion";
 import { checkAndroidAppUpdate } from "@/lib/app-shell-update-check";
-import { shouldUseAppShellClient } from "@/lib/app-shell";
 import { triggerAppHaptic } from "@/lib/app-haptics";
 
 type Variant = "bar" | "cabinet" | "inline";
@@ -20,6 +20,7 @@ type Props = {
 
 /** Unified update CTA for app shell bar and cabinet. */
 export default function AppShellUpdateCta({ variant = "inline", className = "" }: Props) {
+  const nativeApp = useNativeCapacitorApp();
   const { installed, remote, ready } = useAppShellVersion();
   const [update, setUpdate] = useState<AppUpdatePromptState | null>(null);
   const [checking, setChecking] = useState(false);
@@ -42,7 +43,7 @@ export default function AppShellUpdateCta({ variant = "inline", className = "" }
     return () => window.removeEventListener(APP_UPDATE_RECHECK_EVENT, onRecheck);
   }, [handleCheck, variant]);
 
-  if (!shouldUseAppShellClient()) return null;
+  if (!nativeApp) return null;
 
   if (variant === "bar") {
     const versionLabel = installed

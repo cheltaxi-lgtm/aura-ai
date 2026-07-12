@@ -108,6 +108,7 @@ export async function createYukassaRunePayment(params: {
       metadata: {
         userId: params.userId,
         packageId: params.packageId,
+        packageName: params.packageName,
         runesAmount: String(params.totalRunes),
         runes_count: String(params.totalRunes),
         type: "rune_purchase",

@@ -90,6 +90,7 @@ import {
   resolveNumerologToolId,
 } from "@/lib/numerology/tools";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet } from "@/lib/guest-triplet";
+import { GUEST_SPREAD_SECTION_ID, GUEST_SPREAD_START_EVENT } from "@/lib/landing-offer";
 import {
   formatTripletCooldownRu,
   tripletCooldownFromLastDraw,
@@ -106,6 +107,7 @@ import {
   FLOW_STEP_KEY,
   LAST_MASTER_KEY,
   PENDING_MASTER_KEY,
+  clearNeedsServerProfile,
   persistStep,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
@@ -129,6 +131,11 @@ import type { StoredProfile } from "@/types/stored-profile";
 import type { Message } from "@/types";
 import type { RestoreChatResult } from "@/hooks/useChatSession";
 import { useTripletCountdown } from "@/hooks/useTripletCountdown";
+import {
+  postOnboardingNeedsHardNavigation,
+  resolvePostOnboardingDestination,
+} from "@/lib/post-auth-return";
+import { trackRegistrationCompleted } from "@/lib/seo/metrika";
 
 export { masterVisualKey };
 
@@ -286,6 +293,7 @@ export interface UseOnboardingFlowOptions {
       newTransactions?: Array<{ id: string; amount: number; description?: string }>;
     } | null
   ) => void;
+  refreshAuth?: () => Promise<void>;
 }
 
 function defaultSyncPhotoSessionForMaster(
@@ -335,6 +343,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     pendingReadingMasterRef,
     syncPhotoSessionForMaster = defaultSyncPhotoSessionForMaster,
     onRuneBalancePayload,
+    refreshAuth,
   } = options;
 
   const chat = () => chatDepsRef.current;
@@ -585,7 +594,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     fetch("/api/profile")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!data?.profile) return;
+        if (!data?.profile) {
+          setStepState((prev) => (prev === "chat" ? prev : "onboarding"));
+          persistStep("onboarding");
+          return;
+        }
 
         if (Array.isArray(data.readings)) {
           setSavedReadings(mapProfileReadings(data.readings));
@@ -1376,13 +1389,38 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   );
 
   const handleOnboardingComplete = async (data: OnboardingData) => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      throw new Error("Войдите в аккаунт, чтобы сохранить профиль.");
+    }
 
-    try {
-      await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    const finishProfileOnboarding = (nextStep: FlowStep) => {
+      trackRegistrationCompleted("onboarding");
+      const destination = resolvePostOnboardingDestination();
+      if (postOnboardingNeedsHardNavigation(destination) && typeof window !== "undefined") {
+        window.location.assign(destination);
+        return;
+      }
+      setStep(nextStep);
+    };
+
+    const existingCards = profile?.tarotCards?.length ? profile.tarotCards : [];
+    let savedUserId = profile?.userId;
+    const hasGuestSpread = existingCards.length >= 3;
+    const endpoint = hasGuestSpread ? "/api/onboarding" : "/api/profile";
+    const payload = hasGuestSpread
+      ? {
+          ...data,
+          mainQuestion: data.mainQuestion || profile?.mainQuestion,
+          sessionId: session?.offline ? undefined : session?.sessionId,
+          tarotCards: existingCards,
+          teaser: profile?.teaser,
+          deckSystem: profile?.deckSystem ?? DEFAULT_DECK_SYSTEM,
+          masterId:
+            profile?.tripletMasterId ||
+            localStorage.getItem(PENDING_MASTER_KEY) ||
+            undefined,
+        }
+      : {
           name: data.name,
           gender: data.gender,
           birthDate: data.birthDate,
@@ -1390,34 +1428,67 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           birthCity: data.birthCity,
           lifeFocus: data.lifeFocus,
           mainQuestion: data.mainQuestion,
-        }),
-      });
-    } catch {
-      /* сохраним локально даже без сети */
-    }
+          sessionId: session?.offline ? undefined : session?.sessionId,
+        };
 
-    const existingCards = profile?.tarotCards?.length ? profile.tarotCards : [];
+    const response = await fetch(endpoint, {
+      method: hasGuestSpread ? "POST" : "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const responseData = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        responseData.message || responseData.error || "Не удалось сохранить профиль."
+      );
+    }
+    if (responseData.userId || responseData.profileUserId) {
+      savedUserId = responseData.userId || responseData.profileUserId;
+    }
+    clearNeedsServerProfile();
+    await refreshAuth?.();
+    if (hasGuestSpread) clearGuestTriplet();
+
+    if (responseData.cooldownBlocked) {
+      persistProfile({
+        ...data,
+        tarotCards: existingCards,
+        teaser: profile?.teaser,
+        userId: savedUserId,
+        name: data.name || authUser?.name || data.name,
+      });
+      refreshSavedReadings();
+      setTripletNotice(
+        responseData.message ??
+          "Профиль сохранён. Новый расклад из 3 карт доступен один раз в сутки."
+      );
+      finishProfileOnboarding("masters");
+      return;
+    }
 
     if (effectiveTripletCooldown && !effectiveTripletCooldown.allowed) {
       persistProfile({
         ...data,
         tarotCards: existingCards,
         teaser: profile?.teaser,
-        userId: profile?.userId,
+        userId: savedUserId,
         name: data.name || authUser?.name || data.name,
       });
-      setStep("masters");
+      refreshSavedReadings();
+      finishProfileOnboarding("masters");
       return;
     }
     persistProfile({
       ...data,
       tarotCards: existingCards,
       teaser: profile?.teaser,
-      userId: profile?.userId,
+      userId: savedUserId,
       name: data.name || authUser?.name || data.name,
     });
+    refreshSavedReadings();
     if (existingCards.length >= 3) {
-      setStep("masters");
+      finishProfileOnboarding("masters");
       return;
     }
     const defaultMaster = resolveDefaultTripletMasterId(masters, {
@@ -1427,7 +1498,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (defaultMaster) {
       applyTripletMaster(defaultMaster);
     }
-    setStep("triplet");
+    finishProfileOnboarding("triplet");
   };
 
   const beginChatAfterIntention = useCallback(
@@ -1955,6 +2026,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         const res = await fetch("/api/onboarding", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(postBody),
         });
 
@@ -2183,7 +2255,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   const startPersonalFlow = useCallback(async () => {
     if (!isLoggedIn) {
-      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent("/")}`;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT));
+        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       return;
     }
     setTripletNotice(null);
@@ -2762,7 +2837,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     localStorage.setItem(PENDING_MASTER_KEY, masterId);
 
     if (!isLoggedIn) {
-      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent("/#наставники")}`;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(GUEST_SPREAD_START_EVENT, { detail: { masterId } })
+        );
+        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       return;
     }
 

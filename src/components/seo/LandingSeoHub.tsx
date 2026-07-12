@@ -10,6 +10,7 @@ import {
   Sparkles,
   Stars,
 } from "lucide-react";
+import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 
 const SERVICES = [
   {
@@ -56,25 +57,6 @@ const SERVICES = [
   },
 ] as const;
 
-const FAQ = [
-  {
-    q: "Можно ли получить расклад бесплатно?",
-    a: "Да: три карты дня — раз в сутки без оплаты, плюс новый расклад из трёх карт — один раз в день. Первые вопросы в сеансе с мастером тоже включены бесплатно.",
-  },
-  {
-    q: "Как устроена оплата на Zovus?",
-    a: "Основная валюта сеансов — руны ᚢ. Полная расшифровка, расклад на тему, фото-анализ и дополнительные вопросы списываются с баланса. Актуальный прайс и курс к рублю — в разделе «Тарифы» в шапке сайта.",
-  },
-  {
-    q: "Чем онлайн-расклад на Zovus отличается от живого таролога?",
-    a: "Вы выбираете мастера и систему (Таро, руны, астрология, славянское ведовство), формулируете вопрос и получаете ответ в чате с учётом выпавших символов. Это не гадание «на удачу», а структурированный диалог с ИИ-наставником в выбранной традиции.",
-  },
-  {
-    q: "Нужна ли регистрация?",
-    a: "Базовый расклад из трёх карт доступен после быстрой регистрации. Сеансы с мастерами, дневник, кабинет и платные функции — для авторизованных пользователей.",
-  },
-] as const;
-
 const go = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
   event.preventDefault();
   window.location.assign(href);
@@ -117,10 +99,10 @@ export default function LandingSeoHub() {
         <div className="landing-seo-hub__faq">
           <h3 className="landing-seo-hub__faq-title">Частые вопросы</h3>
           <div className="landing-seo-hub__faq-list">
-            {FAQ.map(({ q, a }) => (
-              <details key={q} className="landing-seo-hub__faq-item">
-                <summary className="landing-seo-hub__faq-q">{q}</summary>
-                <p className="landing-seo-hub__faq-a">{a}</p>
+            {LANDING_FAQ_ITEMS.map(({ question, answer }) => (
+              <details key={question} className="landing-seo-hub__faq-item">
+                <summary className="landing-seo-hub__faq-q">{question}</summary>
+                <p className="landing-seo-hub__faq-a">{answer}</p>
               </details>
             ))}
           </div>

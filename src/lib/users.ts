@@ -1,4 +1,4 @@
-﻿import { query } from "./db";
+﻿import { query, queryClient, withTransaction } from "./db";
 import { deleteUserChatForCharacter } from "./accounts";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
 import { buildAstroMeta } from "./astro-profile";
@@ -33,6 +33,66 @@ export interface CreateUserProfileInput {
 
 const USER_COLUMNS = `id, name, gender, birth_date::text, zodiac,
   birth_time::text, birth_city, life_focus, main_question, astro_meta, created_at`;
+
+/** Create profile row and link account in one transaction. */
+export async function createUserProfileForAccount(
+  accountId: string,
+  data: CreateUserProfileInput
+): Promise<UserRow> {
+  return withTransaction(async (client) => {
+    const profileResult = await queryClient<UserRow>(
+      client,
+      `INSERT INTO users (
+        name, gender, birth_date, zodiac,
+        birth_time, birth_city, life_focus, main_question, astro_meta
+      )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING ${USER_COLUMNS}`,
+      [
+        data.name.trim(),
+        data.gender,
+        data.birthDate,
+        data.zodiac,
+        data.birthTime ?? null,
+        data.birthCity ?? null,
+        data.lifeFocus ?? "general",
+        data.mainQuestion ?? null,
+        JSON.stringify(data.astroMeta ?? {}),
+      ]
+    );
+    const created = profileResult.rows[0];
+    if (!created) throw new Error("Failed to create profile");
+
+    const accountResult = await queryClient<{
+      id: string;
+      profile_user_id: string | null;
+    }>(client, "SELECT id, profile_user_id FROM user_accounts WHERE id = $1 FOR UPDATE", [
+      accountId,
+    ]);
+    const account = accountResult.rows[0];
+    if (!account) throw new Error("Account not found");
+    if (account.profile_user_id && account.profile_user_id !== created.id) {
+      throw new Error("PROFILE_OWNERSHIP_CONFLICT");
+    }
+
+    const conflict = await queryClient<{ id: string }>(
+      client,
+      `SELECT id FROM user_accounts
+       WHERE profile_user_id = $1 AND id <> $2
+       LIMIT 1
+       FOR UPDATE`,
+      [created.id, accountId]
+    );
+    if (conflict.rows[0]) throw new Error("PROFILE_OWNERSHIP_CONFLICT");
+
+    await queryClient(
+      client,
+      "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
+      [accountId, created.id]
+    );
+    return created;
+  });
+}
 
 export async function createUserProfile(data: CreateUserProfileInput): Promise<UserRow> {
   const { rows } = await query<UserRow>(

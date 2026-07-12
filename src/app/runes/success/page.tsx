@@ -5,9 +5,13 @@ import Link from "next/link";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import {
   clearPendingRunePurchase,
+  hasFiredRunePurchaseGoal,
+  markRunePurchaseGoalFired,
   readPendingRunePaymentId,
   RUNE_BALANCE_BEFORE_KEY,
 } from "@/lib/rune-purchase-client";
+import { trackRunePurchase } from "@/lib/seo/metrika";
+import { pushEcommercePurchase } from "@/lib/seo/ecommerce";
 
 const LAST_MASTER_KEY = "aura_last_master";
 const PENDING_READING_KEY = "aura_pending_reading";
@@ -62,6 +66,26 @@ export default function RunePurchaseSuccessPage() {
           const confirmData = await confirmRes.json();
           if (typeof confirmData.balance === "number") {
             if (confirmData.credited || confirmData.alreadyCredited || confirmData.status === "already_credited") {
+              const goalPaymentId =
+                typeof confirmData.paymentId === "string" ? confirmData.paymentId : pendingPaymentId;
+              if (
+                goalPaymentId &&
+                typeof confirmData.amountRub === "number" &&
+                !hasFiredRunePurchaseGoal(goalPaymentId)
+              ) {
+                trackRunePurchase(confirmData.amountRub, confirmData.packageId);
+                pushEcommercePurchase({
+                  paymentId: goalPaymentId,
+                  amountRub: confirmData.amountRub,
+                  product: {
+                    id: confirmData.packageId ?? "custom",
+                    name: confirmData.packageName ?? confirmData.packageId ?? "Пакет рун",
+                    price: confirmData.amountRub,
+                    category: "runes",
+                  },
+                });
+                markRunePurchaseGoalFired(goalPaymentId);
+              }
               markReady(confirmData.balance);
               return;
             }

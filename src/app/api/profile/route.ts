@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import {
+  getAccountConsentSnapshot,
   getProfileUserIdForAccount,
-  linkAccountToProfile,
   updateUserAccountName,
 } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
+import { validateDisplayName } from "@/lib/auth-policy";
 import {
-  createUserProfile,
+  createUserProfileForAccount,
   getUserById,
   serializeUserProfile,
   updateUserProfile,
+  linkSessionToUser,
 } from "@/lib/users";
 import { getUserReadingHistory } from "@/lib/accounts";
 import { upsertFact } from "@/lib/memory/user-facts";
 import { mastersWithReadingForSpread } from "@/lib/reading-progress";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
+import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import {
   cleanupStaleTripletDisplay,
   userHasConsultationActivity,
@@ -25,9 +28,9 @@ import { tarotCardsKey } from "@/lib/tarot";
 import { resolveTripletDisplaySpread } from "@/lib/spread-context";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread } from "@/lib/spreads";
-import { buildAstroMeta } from "@/lib/astro-profile";
+import { astroMetaFromBirthDate } from "@/lib/registration-consent";
 import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
-import type { LifeFocus } from "@/lib/astro-profile";
+import type { LifeFocus, AstroMeta } from "@/lib/astro-profile";
 
 export async function GET() {
   if (!(await ensureDb())) {
@@ -41,7 +44,16 @@ export async function GET() {
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
-    return NextResponse.json({ profile: null, readings: [] });
+    return NextResponse.json({
+      profile: null,
+      profileUserId: null,
+      needsProfile: true,
+      readings: [],
+    });
+  }
+
+  if (profileUserId) {
+    await grantStarterRunesIfNeeded(profileUserId);
   }
 
   const [profile, readingsRaw, hasConsultationActivity] = await Promise.all([
@@ -81,6 +93,7 @@ export async function GET() {
 
   return NextResponse.json({
     profileUserId,
+    needsProfile: false,
     profile: profile ? serializeUserProfile(profile) : null,
     readings: mappedReadings,
     continueMasterIds,
@@ -111,6 +124,7 @@ export async function PATCH(request: NextRequest) {
       birthCity,
       lifeFocus,
       mainQuestion,
+      sessionId,
     } = body as {
       name?: string;
       gender?: "male" | "female";
@@ -119,7 +133,15 @@ export async function PATCH(request: NextRequest) {
       birthCity?: string;
       lifeFocus?: LifeFocus;
       mainQuestion?: string;
+      sessionId?: string;
     };
+
+    if (name !== undefined) {
+      const nameError = validateDisplayName(name);
+      if (nameError) {
+        return NextResponse.json({ error: nameError }, { status: 400 });
+      }
+    }
 
     if (!birthDate && !name && !gender && !lifeFocus) {
       return NextResponse.json({ error: "Нет данных для обновления" }, { status: 400 });
@@ -134,7 +156,13 @@ export async function PATCH(request: NextRequest) {
 
     const effectiveBirthDate = birthDate ?? profile!.birth_date;
     const sign = getZodiacFromDate(effectiveBirthDate);
-    const astroMeta = buildAstroMeta(effectiveBirthDate);
+    const consent = (await getAccountConsentSnapshot(auth.sub)) ?? {
+      termsAcceptedAt: null,
+      ageConfirmedAt: null,
+      marketingConsent: false,
+      marketingConsentAt: null,
+    };
+    const astroMeta = astroMetaFromBirthDate(effectiveBirthDate, consent) as AstroMeta | undefined;
     if (!sign || !astroMeta) {
       return NextResponse.json({ error: "Некорректная дата рождения" }, { status: 400 });
     }
@@ -153,15 +181,28 @@ export async function PATCH(request: NextRequest) {
 
     if (profileUserId && profile) {
       profile = await updateUserProfile(profileUserId, payload);
+      await grantStarterRunesIfNeeded(profileUserId);
     } else {
-      profile = await createUserProfile(payload);
+      try {
+        profile = await createUserProfileForAccount(auth.sub, payload);
+      } catch (error) {
+        if ((error as Error).message === "PROFILE_OWNERSHIP_CONFLICT") {
+          return NextResponse.json(
+            { error: "Профиль уже привязан к другому аккаунту", code: "PROFILE_OWNERSHIP_CONFLICT" },
+            { status: 409 }
+          );
+        }
+        throw error;
+      }
       profileUserId = profile.id;
-      const linked = await linkAccountToProfile(auth.sub, profileUserId);
-      if (!linked) {
-        return NextResponse.json(
-          { error: "Профиль уже привязан к другому аккаунту", code: "PROFILE_OWNERSHIP_CONFLICT" },
-          { status: 409 }
-        );
+      await grantStarterRunesIfNeeded(profileUserId);
+    }
+
+    if (sessionId && profileUserId) {
+      try {
+        await linkSessionToUser(String(sessionId), profileUserId);
+      } catch (linkError) {
+        console.warn("Profile session link skipped:", linkError);
       }
     }
 
@@ -186,6 +227,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       profileUserId,
+      needsProfile: false,
       profile: serialized,
     });
   } catch (error) {

@@ -1,13 +1,15 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
   Compass,
   Flame,
+  Lock,
   Moon,
+  Shield,
   Sparkles,
   Star,
   Sun,
@@ -16,13 +18,23 @@ import {
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MastersShowcase from "@/components/MastersShowcase";
 import MasterAvatar from "@/components/MasterAvatar";
+import GuestTripletDraw from "@/components/GuestTripletDraw";
 import QuickQuestions from "@/components/seo/QuickQuestions";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import OfflineSpreadBlock from "@/components/seo/OfflineSpreadBlock";
 import AndroidDownloadBlock from "@/components/seo/AndroidDownloadBlock";
 import LandingSeoHub from "@/components/seo/LandingSeoHub";
+import LandingStickyCta from "@/components/seo/LandingStickyCta";
+import {
+  buildLandingOfferCopy,
+  GUEST_SPREAD_SECTION_ID,
+  GUEST_SPREAD_START_EVENT,
+  LANDING_QUESTION_KEY,
+  type GuestSpreadStartDetail,
+} from "@/lib/landing-offer";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import { trackLandingView } from "@/lib/seo/metrika";
 
 const BENEFITS = [
   {
@@ -36,8 +48,8 @@ const BENEFITS = [
     icon: Compass,
   },
   {
-    title: "Быстрый результат",
-    text: "Три символа выпадают сразу после выбора наставника — расшифровка доступна в чате.",
+    title: "Живой диалог",
+    text: "После расклада можно уточнять детали в чате — мастер помнит контекст и ваш вопрос.",
     icon: Zap,
   },
   {
@@ -50,18 +62,18 @@ const BENEFITS = [
 const STEPS = [
   {
     num: "01",
-    title: "Выберите мастера",
-    text: "Каждый проводник работает в своей системе — от классического Таро до рун и звёзд.",
-  },
-  {
-    num: "02",
     title: "Задайте вопрос",
     text: "Сформулируйте то, что важно сейчас: отношения, путь, решение или скрытый смысл.",
   },
   {
+    num: "02",
+    title: "Откройте три карты",
+    text: "Выберите символы на столе — расклад формируется под ваш запрос ещё до регистрации.",
+  },
+  {
     num: "03",
     title: "Получите расшифровку",
-    text: "Мастер раскроет символы в чате — с контекстом, советом и атмосферой живого сеанса.",
+    text: "Зарегистрируйтесь, чтобы сохранить расклад и продолжить сеанс с мастером в чате.",
   },
 ] as const;
 
@@ -98,29 +110,23 @@ const DIRECTIONS = [
   },
 ] as const;
 
-const TESTIMONIALS = [
+const TRUST_POINTS = [
   {
-    quote: "Карты легли точно по моему вопросу, а не «вообще про любовь». Поняла, что делать дальше.",
-    author: "Анна, Москва",
+    title: "ИИ-мастера в образах",
+    text: "Наставники — художественные персонажи Zovus. Мы честно обозначаем это до начала сеанса.",
+    icon: Sparkles,
   },
   {
-    quote: "Сначала показали расклад, и только потом — продолжение с мастером. Без навязывания, очень по-салонному.",
-    author: "Елена, Санкт-Петербург",
+    title: "Конфиденциальность",
+    text: "Ваш вопрос и переписка сохраняются в личном кабинете и не публикуются.",
+    icon: Lock,
   },
   {
-    quote: "Рунический разбор с Рагнаром помог увидеть ситуацию иначе. Атмосфера — как у личного таролога.",
-    author: "Дмитрий, Казань",
+    title: "Прозрачная оплата",
+    text: "Бесплатный расклад виден заранее. Платные действия показывают цену до списания рун.",
+    icon: Shield,
   },
 ] as const;
-
-function parseTestimonialAuthor(author: string) {
-  const [namePart, cityPart] = author.split(",").map((part) => part.trim());
-  return {
-    name: namePart || author,
-    city: cityPart || "",
-    initial: (namePart || author).charAt(0).toUpperCase(),
-  };
-}
 
 function parseSessionsCount(sessions: string): number {
   const m = sessions.match(/(\d+)/);
@@ -179,6 +185,11 @@ export default function AuraSellingLanding({
 }: AuraSellingLandingProps) {
   const { config, cost, formatRunes } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
+  const offer = buildLandingOfferCopy(config, formatRunes);
+
+  useEffect(() => {
+    if (showHero && !isLoggedIn) trackLandingView();
+  }, [showHero, isLoggedIn]);
 
   const totalSessions = masters.reduce((sum, m) => sum + parseSessionsCount(m.sessions ?? ""), 0);
   const hasSessionStats = totalSessions > 0;
@@ -189,12 +200,25 @@ export default function AuraSellingLanding({
     document.getElementById("наставники")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const startGuestSpread = (question?: string, masterId?: string) => {
+    const normalizedQuestion = question?.trim();
+    if (normalizedQuestion) {
+      sessionStorage.setItem(LANDING_QUESTION_KEY, normalizedQuestion);
+    }
+    const detail: GuestSpreadStartDetail = {
+      question: normalizedQuestion,
+      masterId,
+    };
+    window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+    document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const handlePrimaryCta = () => {
     if (isLoggedIn) {
       onStartReading();
       return;
     }
-    window.location.href = "/auth/user/register?returnTo=/#наставники";
+    startGuestSpread();
   };
 
   const handleSecondaryCta = () => {
@@ -242,32 +266,20 @@ export default function AuraSellingLanding({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
-              <p className="aura-landing-hero__eyebrow">Закрытый салон Таро онлайн</p>
-              <h1 className="font-mystic-display aura-landing-hero__title">
-                Вероника раскладывает классическое Таро под ваш вопрос
-              </h1>
-              <p className="aura-landing-hero__subtitle">
-                Выберите ситуацию, откройте карты и продолжите разговор с мастером в личном чате.
-                Zovus сохраняет контекст, историю и расшифровку без ощущения обычного AI-бота.
-              </p>
-              <HeroQuestionField className="mt-6" />
+              <p className="aura-landing-hero__eyebrow">{offer.heroEyebrow}</p>
+              <h1 className="font-mystic-display aura-landing-hero__title">{offer.heroTitle}</h1>
+              <p className="aura-landing-hero__subtitle">{offer.heroSubtitle}</p>
+              <HeroQuestionField className="mt-6" onQuestionSubmit={(question) => startGuestSpread(question)} />
               <div className="aura-landing-hero__actions">
                 <button type="button" onClick={handlePrimaryCta} className="btn-luxe btn-luxe--md btn-luxe--gold">
-                  Открыть расклад
+                  {offer.primaryCta}
                 </button>
                 <button type="button" onClick={handleSecondaryCta} className="btn-luxe btn-luxe--md btn-luxe--ghost">
-                  Посмотреть мастеров
+                  {offer.secondaryCta}
                 </button>
               </div>
-              <p className="aura-landing-hero__trust">
-                Вероника по умолчанию · классическое Таро · карты видны до начала сеанса
-              </p>
-              {config.enabled ? (
-                <p className="aura-landing-hero__pricing">
-                  Расклад из 3 карт и расшифровка — бесплатно ·{" "}
-                  {config.freeQuestions} вопроса бесплатно
-                </p>
-              ) : null}
+              <p className="aura-landing-hero__trust aura-landing-hero__trust--prominent">{offer.heroMicrocopy}</p>
+              <p className="aura-landing-hero__pricing">{offer.pricingLine}</p>
             </motion.div>
 
             <motion.div
@@ -306,7 +318,26 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showHero || afterQuickQuestions ? <QuickQuestions showQuestionField={!showHero} /> : null}
+      {!isLoggedIn && showHero ? (
+        <section id={GUEST_SPREAD_SECTION_ID} className="aura-landing-section aura-landing-section--guest-spread">
+          <div className="mx-auto max-w-6xl">
+            <div className="aura-landing-section__head">
+              <h2 className="font-mystic-display aura-landing-section__title">Ваш бесплатный расклад</h2>
+              <p className="aura-landing-section__subtitle">
+                Откройте три карты сейчас — регистрация понадобится только для расшифровки и продолжения.
+              </p>
+            </div>
+            <GuestTripletDraw />
+          </div>
+        </section>
+      ) : null}
+
+      {showHero || afterQuickQuestions ? (
+        <QuickQuestions
+          showQuestionField={false}
+          onQuestionSelect={!isLoggedIn ? (question) => startGuestSpread(question) : undefined}
+        />
+      ) : null}
 
       {onOpenRitual ? (
         <section className="ritual-cta-banner" aria-labelledby="ritual-cta-banner-title">
@@ -334,76 +365,8 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showHero ? (
-        <OfflineSpreadBlock
-          onOpenPhoto={onOpenPhotoReading}
-          onOpenMarkCards={onOpenMarkCards}
-          photoCostLabel={photoNavLabel?.replace(/^Фото ·\s*/, "")}
-        />
-      ) : null}
-
       {afterQuickQuestions ? (
         <div className="aura-landing__after-quick">{afterQuickQuestions}</div>
-      ) : null}
-
-      {showSellingSections ? <AndroidDownloadBlock /> : null}
-
-      {showSellingSections ? (
-      <>
-      <section className="aura-landing-section">
-        <div className="mx-auto max-w-6xl">
-          <div className="aura-landing-section__head">
-            <h2 className="font-mystic-display aura-landing-section__title">Почему это ощущается как личный салон</h2>
-            <p className="aura-landing-section__subtitle">
-              Меньше шаблонов, больше внимания к вашему вопросу, картам и продолжению диалога.
-            </p>
-          </div>
-          <div className="aura-landing-benefits">
-            {BENEFITS.map((item, i) => (
-              <motion.article
-                key={item.title}
-                className="aura-landing-benefit glass-panel"
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08, duration: 0.45 }}
-              >
-                <div className="aura-landing-benefit__icon">
-                  <item.icon className="h-5 w-5 text-aura-champagne" strokeWidth={1.5} />
-                </div>
-                <h3 className="font-display aura-landing-benefit__title">{item.title}</h3>
-                <p className="aura-landing-benefit__text">{item.text}</p>
-              </motion.article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="aura-landing-section">
-        <div className="mx-auto max-w-6xl">
-          <div className="aura-landing-section__head">
-            <h2 className="font-mystic-display aura-landing-section__title">Как это работает</h2>
-            <p className="aura-landing-section__subtitle">Три шага от вопроса до ясности</p>
-          </div>
-          <div className="aura-landing-steps">
-            {STEPS.map((step, i) => (
-              <motion.div
-                key={step.num}
-                className="aura-landing-step glass-panel"
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.45 }}
-              >
-                <span className="aura-landing-step__num">{step.num}</span>
-                <h3 className="font-display aura-landing-step__title">{step.title}</h3>
-                <p className="aura-landing-step__text">{step.text}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-      </>
       ) : null}
 
       {showMasters ? (
@@ -420,6 +383,7 @@ export default function AuraSellingLanding({
           formatRunes={formatRunes}
           runeBalance={runeBalance}
           isUnlimited={isUnlimited}
+          enforceBalance={isLoggedIn}
           onInsufficientRunes={(payload) => {
             onInsufficientRunes?.(payload);
             onOpenPaywall?.();
@@ -428,129 +392,185 @@ export default function AuraSellingLanding({
           title="Выберите своего проводника"
           subtitle="Каждый мастер работает в своей системе — от классического Таро до рун и астрологии."
           showExpertCta={expertRegistrationEnabled}
+          showDisclaimer={false}
           className="aura-landing-masters"
         />
       ) : null}
 
       {showSellingSections ? (
-      <>
-      <section className="aura-landing-section">
-        <div className="mx-auto max-w-6xl">
-          <div className="aura-landing-section__head">
-            <h2 className="font-mystic-display aura-landing-section__title">Направления</h2>
-            <p className="aura-landing-section__subtitle">
-              Выберите систему, которая откликается — или доверьтесь мастеру.
-            </p>
+        <section className="aura-landing-section">
+          <div className="mx-auto max-w-6xl">
+            <div className="aura-landing-section__head">
+              <h2 className="font-mystic-display aura-landing-section__title">Как это работает</h2>
+              <p className="aura-landing-section__subtitle">Три шага от вопроса до ясности</p>
+            </div>
+            <div className="aura-landing-steps">
+              {STEPS.map((step, i) => (
+                <motion.div
+                  key={step.num}
+                  className="aura-landing-step glass-panel"
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1, duration: 0.45 }}
+                >
+                  <span className="aura-landing-step__num">{step.num}</span>
+                  <h3 className="font-display aura-landing-step__title">{step.title}</h3>
+                  <p className="aura-landing-step__text">{step.text}</p>
+                </motion.div>
+              ))}
+            </div>
           </div>
-          <div className="aura-landing-directions">
-            {DIRECTIONS.map((dir, i) => (
-              <motion.button
-                key={dir.title}
-                type="button"
-                onClick={() => handleDirection(dir.filter)}
-                className="aura-landing-direction glass-panel text-left"
-                initial={{ opacity: 0, y: 12 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.06, duration: 0.4 }}
-              >
-                <dir.icon className="mb-3 h-5 w-5 text-aura-champagne/80" strokeWidth={1.5} />
-                <h3 className="font-display text-base font-semibold text-white">{dir.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-aura-ivory/60">{dir.text}</p>
-                <span className="aura-landing-direction__link">
-                  К мастерам
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </span>
-              </motion.button>
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="aura-landing-section aura-landing-section--trust">
-        <div className="mx-auto max-w-6xl">
-          <div className="aura-landing-section__head">
-            <h2 className="font-mystic-display aura-landing-section__title">Что говорят о сеансах</h2>
-            <p className="aura-landing-section__subtitle">
-              Карты сначала, решение потом — без навязывания и без ощущения бота.
-            </p>
+      {showHero ? (
+        <OfflineSpreadBlock
+          onOpenPhoto={onOpenPhotoReading}
+          onOpenMarkCards={onOpenMarkCards}
+          photoCostLabel={photoNavLabel?.replace(/^Фото ·\s*/, "")}
+        />
+      ) : null}
+
+      {showSellingSections ? (
+        <section className="aura-landing-section">
+          <div className="mx-auto max-w-6xl">
+            <div className="aura-landing-section__head">
+              <h2 className="font-mystic-display aura-landing-section__title">Почему Zovus</h2>
+              <p className="aura-landing-section__subtitle">
+                Меньше шаблонов, больше внимания к вашему вопросу, картам и продолжению диалога.
+              </p>
+            </div>
+            <div className="aura-landing-benefits">
+              {BENEFITS.map((item, i) => (
+                <motion.article
+                  key={item.title}
+                  className="aura-landing-benefit glass-panel"
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.08, duration: 0.45 }}
+                >
+                  <div className="aura-landing-benefit__icon">
+                    <item.icon className="h-5 w-5 text-aura-champagne" strokeWidth={1.5} />
+                  </div>
+                  <h3 className="font-display aura-landing-benefit__title">{item.title}</h3>
+                  <p className="aura-landing-benefit__text">{item.text}</p>
+                </motion.article>
+              ))}
+            </div>
           </div>
-          <div className="aura-landing-trust">
-            <div className="aura-landing-trust__stats">
-              {hasSessionStats ? (
+        </section>
+      ) : null}
+
+      {showSellingSections ? (
+        <section className="aura-landing-section aura-landing-section--trust">
+          <div className="mx-auto max-w-6xl">
+            <div className="aura-landing-section__head">
+              <h2 className="font-mystic-display aura-landing-section__title">Доверие и прозрачность</h2>
+              <p className="aura-landing-section__subtitle">
+                Сначала карты и ясность — потом регистрация и продолжение сеанса.
+              </p>
+            </div>
+            <div className="aura-landing-trust">
+              <div className="aura-landing-trust__stats">
+                {hasSessionStats ? (
+                  <div className="aura-landing-trust__stat">
+                    <span className="aura-landing-trust__value">{totalSessions}+</span>
+                    <span className="aura-landing-trust__label">сеансов на платформе</span>
+                  </div>
+                ) : null}
                 <div className="aura-landing-trust__stat">
-                  <span className="aura-landing-trust__value">{totalSessions}+</span>
-                  <span className="aura-landing-trust__label">сеансов на платформе</span>
+                  <span className="aura-landing-trust__value">{masters.length}</span>
+                  <span className="aura-landing-trust__label">проводников в витрине</span>
                 </div>
-              ) : null}
-              <div className="aura-landing-trust__stat">
-                <span className="aura-landing-trust__value">{masters.length}</span>
-                <span className="aura-landing-trust__label">проводников в витрине</span>
+              </div>
+              <div className="aura-landing-trust__quotes">
+                {TRUST_POINTS.map((item) => (
+                  <article key={item.title} className="aura-landing-review">
+                    <div className="aura-landing-benefit__icon mb-3">
+                      <item.icon className="h-5 w-5 text-aura-champagne" strokeWidth={1.5} />
+                    </div>
+                    <h3 className="font-display text-base font-semibold text-white">{item.title}</h3>
+                    <p className="aura-landing-review__text mt-2">{item.text}</p>
+                  </article>
+                ))}
               </div>
             </div>
-
-            <div className="aura-landing-trust__quotes">
-              {TESTIMONIALS.map((t) => {
-                const author = parseTestimonialAuthor(t.author);
-                return (
-                  <article key={t.author} className="aura-landing-review">
-                    <span className="aura-landing-review__quote-mark" aria-hidden>
-                      &ldquo;
-                    </span>
-                    <p className="aura-landing-review__text">{t.quote}</p>
-                    <footer className="aura-landing-review__footer">
-                      <span className="aura-landing-review__avatar">{author.initial}</span>
-                      <div className="aura-landing-review__author-meta">
-                        <span className="aura-landing-review__name">{author.name}</span>
-                        {author.city ? (
-                          <span className="aura-landing-review__city">{author.city}</span>
-                        ) : null}
-                      </div>
-                    </footer>
-                  </article>
-                );
-              })}
-            </div>
-            <p className="mt-4 text-center text-xs text-aura-ivory/40">
-              Примеры отзывов пользователей. Ответы генерируются ИИ-наставниками в художественных образах.
-            </p>
           </div>
-        </div>
-      </section>
-      </>
+        </section>
       ) : null}
 
       {showTariffs ? <LandingSeoHub /> : null}
 
       {showSellingSections ? (
-      <section className="aura-landing-section aura-landing-section--final">
-        <motion.div
-          className="aura-landing-final__panel mx-auto max-w-3xl text-center"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-        >
-          <h2 className="font-mystic-display aura-landing-final__title">
-            Задайте вопрос — и получите свой расклад
-          </h2>
-          <p className="aura-landing-final__text">
-            Выберите мастера и откройте подсказку, которая нужна вам сейчас.
-          </p>
-          <button type="button" onClick={handlePrimaryCta} className="aura-landing-btn aura-landing-btn--primary">
-            Начать расклад
-            <ArrowRight className="h-4 w-4" />
-          </button>
-          {!isLoggedIn ? (
-            <p className="aura-landing-final__login">
-              Уже есть аккаунт?{" "}
-              <Link href="/auth/user/login?returnTo=/" className="aura-landing-final__login-link">
-                Войти
-              </Link>
-            </p>
-          ) : null}
-        </motion.div>
-      </section>
+        <section className="aura-landing-section">
+          <div className="mx-auto max-w-6xl">
+            <div className="aura-landing-section__head">
+              <h2 className="font-mystic-display aura-landing-section__title">Направления</h2>
+              <p className="aura-landing-section__subtitle">
+                Выберите систему, которая откликается — или доверьтесь мастеру.
+              </p>
+            </div>
+            <div className="aura-landing-directions">
+              {DIRECTIONS.map((dir, i) => (
+                <motion.button
+                  key={dir.title}
+                  type="button"
+                  onClick={() => handleDirection(dir.filter)}
+                  className="aura-landing-direction glass-panel text-left"
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.06, duration: 0.4 }}
+                >
+                  <dir.icon className="mb-3 h-5 w-5 text-aura-champagne/80" strokeWidth={1.5} />
+                  <h3 className="font-display text-base font-semibold text-white">{dir.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-aura-ivory/60">{dir.text}</p>
+                  <span className="aura-landing-direction__link">
+                    К мастерам
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {showSellingSections ? <AndroidDownloadBlock /> : null}
+
+      {showSellingSections ? (
+        <section className="aura-landing-section aura-landing-section--final px-4 sm:px-0">
+          <motion.div
+            className="aura-landing-final__panel mx-auto max-w-3xl text-center"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <h2 className="font-mystic-display aura-landing-final__title">
+              Откройте карты — и получите свой ответ
+            </h2>
+            <p className="aura-landing-final__text">{offer.heroSubtitle}</p>
+            <button type="button" onClick={handlePrimaryCta} className="btn-luxe btn-luxe--md btn-luxe--gold">
+              {offer.primaryCta}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+            {!isLoggedIn ? (
+              <p className="aura-landing-final__login">
+                Уже есть аккаунт?{" "}
+                <Link href="/auth/user/login?returnTo=/" className="aura-landing-final__login-link">
+                  Войти
+                </Link>
+              </p>
+            ) : null}
+          </motion.div>
+        </section>
+      ) : null}
+
+      {!isLoggedIn && showHero ? (
+        <LandingStickyCta label={offer.primaryCta} onClick={handlePrimaryCta} />
       ) : null}
     </div>
   );

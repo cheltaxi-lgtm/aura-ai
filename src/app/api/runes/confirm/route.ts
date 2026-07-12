@@ -34,5 +34,8 @@ export async function POST(request: NextRequest) {
     credited: result.status === "credited",
     pending: result.status === "pending",
     alreadyCredited: result.status === "already_credited",
+    amountRub: result.amountRub,
+    packageId: result.packageId,
+    packageName: result.packageName,
   });
 }

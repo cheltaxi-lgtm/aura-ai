@@ -2,6 +2,7 @@
 
 export const RUNE_BALANCE_BEFORE_KEY = "aura_runes_before_purchase";
 export const RUNE_PENDING_PAYMENT_KEY = "aura_pending_rune_payment_id";
+const RUNE_GOAL_FIRED_PREFIX = "aura_rune_goal_fired_";
 
 export function storePendingRunePurchase(paymentId: string, balanceBefore: number): void {
   if (typeof window === "undefined") return;
@@ -40,6 +41,25 @@ export function clearPendingRunePurchase(): void {
     localStorage.removeItem(RUNE_PENDING_PAYMENT_KEY);
   } catch {
     /* ignore */
+  }
+}
+
+/** Analytics goals fire once per payment even though the success page polls repeatedly. */
+export function markRunePurchaseGoalFired(paymentId: string): void {
+  if (typeof window === "undefined" || !paymentId) return;
+  try {
+    localStorage.setItem(`${RUNE_GOAL_FIRED_PREFIX}${paymentId}`, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function hasFiredRunePurchaseGoal(paymentId: string): boolean {
+  if (typeof window === "undefined" || !paymentId) return false;
+  try {
+    return localStorage.getItem(`${RUNE_GOAL_FIRED_PREFIX}${paymentId}`) === "1";
+  } catch {
+    return false;
   }
 }
 

@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { getCanonicalRedirects } from "./src/lib/seo/canonical-aliases";
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
   experimental: {
     middlewareClientMaxBodySize: "10mb",

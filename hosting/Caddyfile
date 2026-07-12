@@ -1,4 +1,8 @@
-zovus.ru, www.zovus.ru {
+www.zovus.ru {
+	redir https://zovus.ru{uri} permanent
+}
+
+zovus.ru {
 	encode gzip
 	reverse_proxy 127.0.0.1:3000
 }

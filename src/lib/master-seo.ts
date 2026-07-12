@@ -124,7 +124,6 @@ export function getMasterStructuredData(slug: string) {
         description: `${description} Художественный образ ИИ-наставника, не публичное лицо.`,
         provider: { "@id": `${BRAND_URL}/#organization` },
         areaServed: { "@type": "Country", name: "Россия" },
-        availableLanguage: ["ru"],
         url: pageUrl,
         image: imageUrl,
       },

@@ -9,9 +9,9 @@ import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: `Нумерология онлайн — числа судьбы | ${BRAND_NAME}`,
+  title: `Нумерология по дате рождения онлайн | ${BRAND_NAME}`,
   description:
-    "Эвелина поможет увидеть числа судьбы, совместимость, квадрат Пифагора и благоприятные даты.",
+    "Нумерология по дате рождения: числа судьбы, совместимость по дате рождения, квадрат Пифагора и благоприятные даты с Эвелиной.",
   path: "/numerology",
 });
 
@@ -27,9 +27,14 @@ const NUMEROLOGY_DIRECTIONS = [
     action: "В том же сеансе выберите «Квадрат Пифагора» и подтвердите дату рождения из профиля.",
   },
   {
-    title: "Совместимость",
+    title: "Совместимость по дате рождения и имени",
     text: "Числовой анализ пары — сильные стороны и точки роста.",
     action: "После «Начать с Эвелиной» укажите свои данные и данные партнёра в форме совместимости.",
+  },
+  {
+    title: "Матрица судьбы (22 аркана)",
+    text: "Таро-нумерологическая матрица: предназначение, деньги, отношения, карма.",
+    action: "В списке расчётов Эвелины выберите «Матрица судьбы» — нужна только дата рождения.",
   },
   {
     title: "Благоприятные даты",
@@ -45,10 +50,10 @@ export default function NumerologyPage() {
   return (
     <SeoPageShell>
       <p className="text-sm text-aura-gold/80">Нумерология</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Нумерология Zovus</h1>
+      <h1 className="mt-2 font-display text-3xl font-bold">Нумерология по дате рождения онлайн</h1>
       <p className="mt-4 text-white/70">
-        {evelina?.name ?? "Эвелина"} поможет увидеть числа судьбы, совместимость и благоприятные
-        даты — с памятью сессии и продолжением в чате.
+        {evelina?.name ?? "Эвелина"} рассчитает числа судьбы по дате рождения, совместимость пары,
+        квадрат Пифагора и благоприятные даты — с памятью сессии и продолжением в чате.
       </p>
 
       <p className="mt-4 text-sm text-white/50">Полная сессия · от {sessionCost} ᚢ</p>
@@ -77,6 +82,41 @@ export default function NumerologyPage() {
             </div>
           ))}
         </div>
+      </SeoSection>
+
+      <SeoSection title="Отдельные страницы расчётов">
+        <ul className="space-y-2">
+          <li>
+            <Link href="/numerology/pythagoras-square" className="text-aura-gold hover:underline">
+              Квадрат Пифагора
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/compatibility" className="text-aura-gold hover:underline">
+              Совместимость по дате рождения
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/name-compatibility" className="text-aura-gold hover:underline">
+              Совместимость имён
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+              Матрица судьбы
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/favorable-dates" className="text-aura-gold hover:underline">
+              Благоприятные даты
+            </Link>
+          </li>
+          <li>
+            <Link href="/sovmestimost-znakov-zodiaka" className="text-aura-gold hover:underline">
+              Совместимость знаков зодиака
+            </Link>
+          </li>
+        </ul>
       </SeoSection>
 
       <p className="mt-10">

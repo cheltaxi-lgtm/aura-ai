@@ -8,6 +8,7 @@ export type SpreadId =
   | "love-7"
   | "triplet-love"
   | "yes-no"
+  | "runes-yes-no"
   | "celtic-cross"
   | "daily-extended"
   | "week-overview"
@@ -37,6 +38,20 @@ export interface SpreadDefinition {
   seoSlug?: string;
   /** Shorter LLM blocks for 5+ cards */
   compactPrompt?: boolean;
+  /**
+   * Optional keyword-targeted copy for the /rasklad/[slug] landing page.
+   * Use for spreads that map to a specific high-demand search phrase
+   * (per Yandex Wordstat/Wordcraft data) where the generic
+   * "{label} — расклад Таро онлайн" template doesn't contain the exact
+   * phrase people search for.
+   */
+  seo?: {
+    title: string;
+    h1: string;
+    intro: string;
+    /** Extra body section rendered after the position list (heading + paragraphs). */
+    extra?: { heading: string; body: string[] };
+  };
 }
 
 export interface SpreadSettingsOverride {

@@ -9,7 +9,8 @@ export default function UserRegisterPage() {
       </Link>
       <h1 className="font-display mb-2 text-center text-3xl text-white">Создать профиль</h1>
       <p className="mb-8 text-center text-sm text-aura-ivory/45">
-        Дата рождения и ваш вопрос — чтобы мастера точнее подсказали путь
+        Имя, email и пароль — чтобы сохранить расклад и продолжить сеанс. Дату рождения можно добавить
+        позже для персонализации.
       </p>
       <AuthForm mode="register" role="user" />
     </div>

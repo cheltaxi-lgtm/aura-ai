@@ -7,6 +7,9 @@ export async function confirmRunePurchaseForUser(
 ): Promise<{
   status: "credited" | "already_credited" | "pending" | "invalid" | "forbidden";
   balance: number;
+  amountRub?: number;
+  packageId?: string;
+  packageName?: string;
 }> {
   const balance = await getRuneBalance(profileUserId);
 
@@ -48,6 +51,9 @@ export async function confirmRunePurchaseForUser(
   return {
     status: credited ? "credited" : "already_credited",
     balance: newBalance,
+    amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
+    packageId: metadata.packageId,
+    packageName: metadata.packageName,
   };
 }
 
@@ -56,6 +62,9 @@ export async function reconcileRecentRunePurchasesForUser(profileUserId: string)
   credited: boolean;
   balance: number;
   paymentId?: string;
+  amountRub?: number;
+  packageId?: string;
+  packageName?: string;
 }> {
   const balance = await getRuneBalance(profileUserId);
   if (!isYukassaConfigured()) {
@@ -84,6 +93,9 @@ export async function reconcileRecentRunePurchasesForUser(profileUserId: string)
         credited: true,
         balance: await getRuneBalance(profileUserId),
         paymentId: payment.id,
+        amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
+        packageId: metadata.packageId,
+        packageName: metadata.packageName,
       };
     }
   }
@@ -98,6 +110,9 @@ export async function confirmOrReconcileRunePurchase(
   status: "credited" | "already_credited" | "pending" | "invalid" | "forbidden" | "none";
   balance: number;
   paymentId?: string;
+  amountRub?: number;
+  packageId?: string;
+  packageName?: string;
 }> {
   if (paymentId?.trim()) {
     const direct = await confirmRunePurchaseForUser(paymentId.trim(), profileUserId);
@@ -110,6 +125,9 @@ export async function confirmOrReconcileRunePurchase(
       status: "credited",
       balance: reconciled.balance,
       paymentId: reconciled.paymentId,
+      amountRub: reconciled.amountRub,
+      packageId: reconciled.packageId,
+      packageName: reconciled.packageName,
     };
   }
 

@@ -7,6 +7,7 @@ import ProfileAstroFields, {
   type ProfileAstroValues,
 } from "@/components/ProfileAstroFields";
 import type { AstroMeta, LifeFocus } from "@/lib/astro-profile";
+import { MIN_DISPLAY_NAME_LENGTH } from "@/lib/auth-policy";
 
 export interface OnboardingData {
   name: string;
@@ -22,11 +23,13 @@ export interface OnboardingData {
 
 interface OnboardingFormProps {
   initialName?: string;
-  onComplete: (data: OnboardingData) => void;
+  onComplete: (data: OnboardingData) => Promise<void>;
 }
 
 export default function OnboardingForm({ initialName = "", onComplete }: OnboardingFormProps) {
-  const [name, setName] = useState(initialName);
+  const accountName = initialName.trim();
+  const nameLocked = accountName.length >= MIN_DISPLAY_NAME_LENGTH;
+  const [name, setName] = useState(accountName);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [astro, setAstro] = useState<ProfileAstroValues>({
@@ -38,17 +41,23 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
     mainQuestion: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
     setFormError(null);
-    const payload = profileAstroToPayload(name, astro);
+    const effectiveName = nameLocked ? accountName : name;
+    const payload = profileAstroToPayload(effectiveName, astro);
     if (!payload) {
       setFormError("Укажите имя и корректную дату рождения.");
       return;
     }
     setSubmitting(true);
-    onComplete(payload);
+    try {
+      await onComplete(payload);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Не удалось сохранить профиль.");
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -60,24 +69,34 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
       transition={{ duration: 0.35 }}
     >
       <h2 className="font-display text-center text-xl font-semibold text-white">
-        Раскрой свой астральный код
+        Один шаг до старта
       </h2>
+      <p className="text-center text-sm text-gray-400">
+        Аккаунт уже создан. Укажите дату рождения — мы рассчитаем знак зодиака, откроем кабинет и
+        начислим стартовые руны на расклады.
+      </p>
 
-      <div>
-        <label htmlFor="onboarding-name" className="mb-1 block text-xs text-gray-500">
-          Имя *
-        </label>
-        <input
-          id="onboarding-name"
-          type="text"
-          required
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Как к вам обращаться?"
-          className="ui-input w-full"
-        />
-      </div>
+      {nameLocked ? (
+        <p className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center text-sm text-gray-300">
+          {accountName}, добро пожаловать
+        </p>
+      ) : (
+        <div>
+          <label htmlFor="onboarding-name" className="mb-1 block text-xs text-gray-500">
+            Имя *
+          </label>
+          <input
+            id="onboarding-name"
+            type="text"
+            required
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Как к вам обращаться?"
+            className="ui-input w-full"
+          />
+        </div>
+      )}
 
       <ProfileAstroFields
         compact
@@ -93,7 +112,7 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
       )}
 
       <button type="submit" disabled={submitting} className="btn-neon w-full py-3 text-sm">
-        {submitting ? "Сохраняем…" : "Открыть карты"}
+        {submitting ? "Сохраняем…" : "Продолжить"}
       </button>
     </motion.form>
   );

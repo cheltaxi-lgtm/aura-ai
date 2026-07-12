@@ -12,6 +12,7 @@ import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
+import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
 
 export interface RunePackage {
   id: string;
@@ -82,6 +83,17 @@ function RuneShopView({
     highlightPackageId ?? pickHighlightPackage(packages, shortage);
 
   useEffect(() => {
+    pushEcommerceDetail(
+      packages.map((pkg) => ({
+        id: pkg.id,
+        name: pkg.name,
+        price: pkg.price_rub,
+        category: "runes",
+      }))
+    );
+  }, [packages]);
+
+  useEffect(() => {
     fetch("/api/runes/daily/status")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -147,6 +159,10 @@ function RuneShopView({
         return;
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
+      const pkg = packages.find((p) => p.id === packageId);
+      if (pkg) {
+        pushEcommerceAdd({ id: pkg.id, name: pkg.name, price: pkg.price_rub, category: "runes" });
+      }
       window.location.href = data.paymentUrl;
     } catch {
       setError("Ошибка соединения");
@@ -184,6 +200,7 @@ function RuneShopView({
         return;
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
+      pushEcommerceAdd({ id: "custom", name: "Произвольная сумма", price: amountRub, category: "runes" });
       window.location.href = data.paymentUrl;
     } catch {
       setError("Ошибка соединения");

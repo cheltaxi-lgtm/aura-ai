@@ -5,7 +5,7 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { clearAuthCookie } from "@/lib/auth";
 import { requireUserAuth } from "@/lib/require-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
-import { deleteUserAccountCompletely } from "@/lib/user-deletion";
+import { deleteUserAccountCompletely, deleteUserAccountOnly } from "@/lib/user-deletion";
 
 export async function DELETE() {
   const auth = await requireUserAuth();
@@ -19,7 +19,24 @@ export async function DELETE() {
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
-    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    const { allowed, retryAfterSec } = await checkRateLimit(
+      rateLimitKey("user_delete", auth.sub),
+      3,
+      86_400_000
+    );
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          error: "rate_limit",
+          message: "Удаление аккаунта можно выполнять не чаще нескольких раз в сутки.",
+          retryAfterSec,
+        },
+        { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 86400) } }
+      );
+    }
+    const result = await deleteUserAccountOnly(auth.sub);
+    await clearAuthCookie();
+    return NextResponse.json({ ok: true, ...result });
   }
 
   const { allowed, retryAfterSec } = await checkRateLimit(

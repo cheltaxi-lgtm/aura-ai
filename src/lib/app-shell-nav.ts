@@ -1,4 +1,4 @@
-import { FLOW_STEP_KEY } from "@/lib/home-flow-storage";
+import { persistStep, primeHomeFlowStep } from "@/lib/home-flow-storage";
 
 export const APP_SHELL_SECTIONS = {
   masters: "наставники",
@@ -10,10 +10,20 @@ export const OPEN_RITUAL_FLOW_KEY = "zovus:openRitualFlow";
 
 function primeHomeFlowState(): void {
   try {
-    localStorage.setItem(FLOW_STEP_KEY, "masters");
+    primeHomeFlowStep();
   } catch {
     /* private mode */
   }
+}
+
+/** Birth-date onboarding after minimal registration (no server profile yet). */
+export function navigateToBirthProfileOnboarding(): void {
+  try {
+    persistStep("onboarding");
+  } catch {
+    /* private mode */
+  }
+  window.location.assign("/?step=onboarding&app=1");
 }
 
 /** Переход к секции главной с любой страницы (кабинет, чат по deep link и т.д.). */

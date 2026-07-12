@@ -4,6 +4,8 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { syncRetroactiveAchievements } from "@/lib/achievements";
 import { pruneDuplicateActiveSessions, pruneEmptySessionStubs } from "@/lib/session";
+import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
+import { getRuneSettings } from "@/lib/rune-settings";
 import {  getCabinetProfile,
   getCabinetStats,
   getCabinetAchievements,
@@ -44,8 +46,10 @@ export async function GET(request: NextRequest) {
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
+    const runeSettings = await getRuneSettings();
     return NextResponse.json({
       needsOnboarding: true,
+      needsProfile: true,
       profile: {
         id: auth.sub,
         name: auth.name ?? "Пользователь",
@@ -66,12 +70,15 @@ export async function GET(request: NextRequest) {
       sessionsTotal: 0,
       sessionsHasMore: false,
       diaryPreview: [],
-      runes: { enabled: false, balance: 0, transactions: [] },
+      runes: { enabled: runeSettings.enabled, balance: 0, transactions: [] },
       legacyAccess: null,
       photoSpreads: [],
       dailyReadings: [],
     });
   }
+
+  await grantStarterRunesIfNeeded(profileUserId);
+
   const { searchParams } = new URL(request.url);
   const sessionsLimit = Math.min(
     50,
