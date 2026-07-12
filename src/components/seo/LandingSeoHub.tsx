@@ -13,6 +13,16 @@ import {
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 
 const SERVICES = [
+  { href: "/rasklady", label: "Расклады Таро" },
+  { href: "/photo-rasklad", label: "Фото-расклад" },
+  { href: "/numerology", label: "Нумерология" },
+  { href: "/cards", label: "Значения карт" },
+  { href: "/obryady", label: "Обряды" },
+  { href: "/lenormand", label: "Ленорман" },
+  { href: "/joint-reading", label: "Совместимость" },
+] as const;
+
+const SERVICE_DETAILS = [
   {
     href: "/rasklady",
     title: "Расклады Таро онлайн",
@@ -62,7 +72,18 @@ const go = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
   window.location.assign(href);
 };
 
-export default function LandingSeoHub() {
+type LandingSeoHubProps = {
+  rubPerRune?: number;
+  readingPriceLabel?: string;
+  /** Compact link row instead of large service cards (default). */
+  compact?: boolean;
+};
+
+export default function LandingSeoHub({
+  rubPerRune = 2,
+  readingPriceLabel,
+  compact = true,
+}: LandingSeoHubProps) {
   return (
     <section
       id="тарифы"
@@ -71,30 +92,40 @@ export default function LandingSeoHub() {
     >
       <div className="mx-auto max-w-6xl">
         <header className="aura-landing-section__head landing-seo-hub__head">
-          <p className="landing-seo-hub__eyebrow">Справочник и направления</p>
+          <p className="landing-seo-hub__eyebrow">Справочник и тарифы</p>
           <h2 id="landing-seo-hub-title" className="aura-landing-section__title">
             Таро, руны, астрология и нумерология онлайн
           </h2>
           <p className="aura-landing-section__subtitle">
-            Zovus — сервис персональных раскладов и расчётов с ИИ-мастерами. Выберите тему,
-            откройте символы и получите расшифровку в чате — без звонков и очередей.
+            Zovus — сервис персональных раскладов и расчётов с наставниками в художественных образах.
+            Выберите тему, откройте символы и получите расшифровку в чате.
           </p>
         </header>
 
-        <ul className="landing-seo-hub__grid">
-          {SERVICES.map(({ href, title, text, icon: Icon }) => (
-            <li key={href}>
-              <a href={href} onClick={go(href)} className="landing-seo-hub__card group">
-                <span className="landing-seo-hub__card-icon" aria-hidden>
-                  <Icon className="h-5 w-5" />
-                </span>
-                <h3 className="landing-seo-hub__card-title">{title}</h3>
-                <p className="landing-seo-hub__card-text">{text}</p>
-                <span className="landing-seo-hub__card-link">Подробнее →</span>
+        {compact ? (
+          <nav className="landing-seo-hub__link-row" aria-label="Разделы сервиса">
+            {SERVICES.map(({ href, label }) => (
+              <a key={href} href={href} onClick={go(href)} className="landing-seo-hub__link">
+                {label}
               </a>
-            </li>
-          ))}
-        </ul>
+            ))}
+          </nav>
+        ) : (
+          <ul className="landing-seo-hub__grid">
+            {SERVICE_DETAILS.map(({ href, title, text, icon: Icon }) => (
+              <li key={href}>
+                <a href={href} onClick={go(href)} className="landing-seo-hub__card group">
+                  <span className="landing-seo-hub__card-icon" aria-hidden>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <h3 className="landing-seo-hub__card-title">{title}</h3>
+                  <p className="landing-seo-hub__card-text">{text}</p>
+                  <span className="landing-seo-hub__card-link">Подробнее →</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="landing-seo-hub__faq">
           <h3 className="landing-seo-hub__faq-title">Частые вопросы</h3>
@@ -109,8 +140,21 @@ export default function LandingSeoHub() {
         </div>
 
         <p className="landing-seo-hub__pricing-note">
-          Полный прайс в рунах и курс к рублю — кнопка{" "}
-          <strong className="text-aura-champagne/90">«Тарифы»</strong> в верхнем меню.
+          {readingPriceLabel ? (
+            <>
+              Полная расшифровка расклада — <strong className="text-aura-champagne/90">{readingPriceLabel}</strong>
+              {rubPerRune > 0 ? (
+                <span className="text-aura-ivory/55"> · курс 1 ᚢ = {rubPerRune} ₽</span>
+              ) : null}
+              . Подробный прайс — кнопка{" "}
+              <strong className="text-aura-champagne/90">«Тарифы»</strong> в верхнем меню.
+            </>
+          ) : (
+            <>
+              Полный прайс в рунах и курс к рублю — кнопка{" "}
+              <strong className="text-aura-champagne/90">«Тарифы»</strong> в верхнем меню.
+            </>
+          )}
         </p>
       </div>
     </section>

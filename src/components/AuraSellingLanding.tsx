@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -34,7 +34,7 @@ import {
 } from "@/lib/landing-offer";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
-import { trackLandingView } from "@/lib/seo/metrika";
+import { trackLandingView, trackSocialProofView } from "@/lib/seo/metrika";
 
 const BENEFITS = [
   {
@@ -73,7 +73,7 @@ const STEPS = [
   {
     num: "03",
     title: "Получите расшифровку",
-    text: "Зарегистрируйтесь, чтобы сохранить расклад и продолжить сеанс с мастером в чате.",
+    text: "Увидите краткий ориентир по символам, затем зарегистрируйтесь для полной трактовки и чата с мастером.",
   },
 ] as const;
 
@@ -128,9 +128,15 @@ const TRUST_POINTS = [
   },
 ] as const;
 
-function parseSessionsCount(sessions: string): number {
-  const m = sessions.match(/(\d+)/);
-  return m ? Number.parseInt(m[1], 10) : 0;
+type PlatformStats = {
+  sessions: number;
+  users: number;
+};
+
+function formatPlatformCount(value: number): string {
+  if (value >= 10_000) return `${Math.floor(value / 1000)}k+`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(".0", "")}k+`;
+  return `${value}+`;
 }
 
 export interface AuraSellingLandingProps {
@@ -183,16 +189,35 @@ export default function AuraSellingLanding({
   photoNavLabel,
   onOpenRitual,
 }: AuraSellingLandingProps) {
-  const { config, cost, formatRunes } = useRuneConfig();
+  const { config, cost, formatRunes, formatRunesWithRub } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
-  const offer = buildLandingOfferCopy(config, formatRunes);
+  const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub);
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
 
   useEffect(() => {
     if (showHero && !isLoggedIn) trackLandingView();
   }, [showHero, isLoggedIn]);
 
-  const totalSessions = masters.reduce((sum, m) => sum + parseSessionsCount(m.sessions ?? ""), 0);
-  const hasSessionStats = totalSessions > 0;
+  useEffect(() => {
+    if (!showSellingSections) return;
+    void fetch("/api/stats/public")
+      .then((r) => r.json())
+      .then((data: PlatformStats) => {
+        if (typeof data.sessions === "number" && data.sessions > 0) {
+          setPlatformStats({
+            sessions: data.sessions,
+            users: typeof data.users === "number" ? data.users : 0,
+          });
+          trackSocialProofView();
+        }
+      })
+      .catch(() => {
+        /* optional */
+      });
+  }, [showSellingSections]);
+
+  const hasSessionStats = (platformStats?.sessions ?? 0) > 0;
+  const hasUserStats = (platformStats?.users ?? 0) > 0;
 
   const scrollToMasters = () => {
     document.getElementById("наставники")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -299,7 +324,8 @@ export default function AuraSellingLanding({
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Ваш бесплатный расклад</h2>
               <p className="aura-landing-section__subtitle">
-                Откройте три карты сейчас — регистрация понадобится только для расшифровки и продолжения.
+                Откройте три карты — увидите краткий ориентир по символам. Регистрация понадобится для полной
+                расшифровки.
               </p>
             </div>
             <GuestTripletDraw />
@@ -451,8 +477,18 @@ export default function AuraSellingLanding({
               <div className="aura-landing-trust__stats">
                 {hasSessionStats ? (
                   <div className="aura-landing-trust__stat">
-                    <span className="aura-landing-trust__value">{totalSessions}+</span>
-                    <span className="aura-landing-trust__label">сеансов на платформе</span>
+                    <span className="aura-landing-trust__value">
+                      {formatPlatformCount(platformStats!.sessions)}
+                    </span>
+                    <span className="aura-landing-trust__label">раскладов на платформе</span>
+                  </div>
+                ) : null}
+                {hasUserStats ? (
+                  <div className="aura-landing-trust__stat">
+                    <span className="aura-landing-trust__value">
+                      {formatPlatformCount(platformStats!.users)}
+                    </span>
+                    <span className="aura-landing-trust__label">пользователей</span>
                   </div>
                 ) : null}
                 <div className="aura-landing-trust__stat">
@@ -475,8 +511,6 @@ export default function AuraSellingLanding({
           </div>
         </section>
       ) : null}
-
-      {showTariffs ? <LandingSeoHub /> : null}
 
       {showSellingSections ? (
         <section className="aura-landing-section">
@@ -513,6 +547,14 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
+      {showTariffs ? (
+        <LandingSeoHub
+          rubPerRune={config.rubPerRune}
+          readingPriceLabel={config.enabled ? formatRunesWithRub(cost("READING")) : undefined}
+          compact
+        />
+      ) : null}
+
       {showSellingSections ? <AndroidDownloadBlock /> : null}
 
       {showSellingSections ? (
@@ -527,7 +569,7 @@ export default function AuraSellingLanding({
             <h2 className="font-mystic-display aura-landing-final__title">
               Откройте карты — и получите свой ответ
             </h2>
-            <p className="aura-landing-final__text">{offer.heroSubtitle}</p>
+            <p className="aura-landing-final__text">{offer.finalCtaText}</p>
             <button type="button" onClick={handlePrimaryCta} className="btn-luxe btn-luxe--md btn-luxe--gold">
               {offer.primaryCta}
               <ArrowRight className="h-4 w-4" />

@@ -78,6 +78,10 @@ export function trackLandingView(): void {
   trackLandingEvent("landing_view");
 }
 
+export function trackSocialProofView(): void {
+  trackLandingEvent("social_proof_view");
+}
+
 export function trackHeroQuestionStarted(): void {
   trackLandingEvent("hero_question_started");
 }

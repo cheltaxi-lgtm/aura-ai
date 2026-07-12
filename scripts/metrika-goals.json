@@ -9,6 +9,7 @@
   ],
   "goals": [
     { "id": "landing_view", "group": "landing" },
+    { "id": "social_proof_view", "group": "landing" },
     { "id": "hero_question_started", "group": "landing" },
     { "id": "hero_question_submitted", "group": "landing" },
     { "id": "guest_spread_started", "group": "guest_triplet" },
