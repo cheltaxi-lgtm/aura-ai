@@ -9,8 +9,6 @@ type LandingStickyCtaProps = {
   hidden?: boolean;
 };
 
-const SCROLL_SHOW_Y = 420;
-const MOBILE_MQ = "(max-width: 768px)";
 const VISIBILITY_DEBOUNCE_MS = 140;
 
 const INLINE_CTA_SELECTORS = [
@@ -22,7 +20,6 @@ const INLINE_CTA_SELECTORS = [
 export default function LandingStickyCta({ label, onClick, hidden }: LandingStickyCtaProps) {
   const [visible, setVisible] = useState(false);
   const obscuredRef = useRef(new Set<Element>());
-  const scrolledEnoughRef = useRef(false);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -31,11 +28,9 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
       return;
     }
 
-    const mobileQuery = window.matchMedia(MOBILE_MQ);
-
     const applyVisibility = () => {
-      const next =
-        mobileQuery.matches && scrolledEnoughRef.current && obscuredRef.current.size === 0;
+      // Show when no inline CTA block is in view (hero button may be below fold on desktop).
+      const next = obscuredRef.current.size === 0;
       setVisible((prev) => (prev === next ? prev : next));
     };
 
@@ -45,19 +40,6 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
         debounceRef.current = null;
         applyVisibility();
       }, VISIBILITY_DEBOUNCE_MS);
-    };
-
-    const syncScroll = () => {
-      scrolledEnoughRef.current = window.scrollY > SCROLL_SHOW_Y;
-      scheduleApply();
-    };
-
-    const onMobileChange = () => {
-      if (!mobileQuery.matches) {
-        setVisible(false);
-        return;
-      }
-      scheduleApply();
     };
 
     const observer = new IntersectionObserver(
@@ -83,16 +65,15 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
     );
     targets.forEach((target) => observer.observe(target));
 
-    scrolledEnoughRef.current = window.scrollY > SCROLL_SHOW_Y;
     applyVisibility();
 
-    window.addEventListener("scroll", syncScroll, { passive: true });
-    mobileQuery.addEventListener("change", onMobileChange);
+    window.addEventListener("scroll", scheduleApply, { passive: true });
+    window.addEventListener("resize", scheduleApply);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("scroll", syncScroll);
-      mobileQuery.removeEventListener("change", onMobileChange);
+      window.removeEventListener("scroll", scheduleApply);
+      window.removeEventListener("resize", scheduleApply);
       if (debounceRef.current !== null) {
         window.clearTimeout(debounceRef.current);
         debounceRef.current = null;

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MastersShowcase from "@/components/MastersShowcase";
-import MasterAvatar from "@/components/MasterAvatar";
+import LandingHeroVisual from "@/components/seo/LandingHeroVisual";
 import GuestTripletDraw from "@/components/GuestTripletDraw";
 import QuickQuestions from "@/components/seo/QuickQuestions";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
@@ -194,8 +194,6 @@ export default function AuraSellingLanding({
   const totalSessions = masters.reduce((sum, m) => sum + parseSessionsCount(m.sessions ?? ""), 0);
   const hasSessionStats = totalSessions > 0;
 
-  const featuredMasters = masters.slice(0, 3);
-
   const scrollToMasters = () => {
     document.getElementById("наставники")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -289,30 +287,7 @@ export default function AuraSellingLanding({
               transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
               aria-hidden
             >
-              <div className="aura-landing-hero__orb" />
-              <div className="aura-landing-hero__ring aura-landing-hero__ring--outer" />
-              <div className="aura-landing-hero__ring aura-landing-hero__ring--inner" />
-              <div className="aura-landing-hero__portraits">
-                {featuredMasters.map((m, i) => (
-                  <div
-                    key={m.id}
-                    className={`aura-landing-hero__portrait aura-landing-hero__portrait--${i}`}
-                  >
-                    <MasterAvatar masterId={m.id} masterName={m.name} size="md" priority />
-                  </div>
-                ))}
-              </div>
-              <div className="aura-landing-hero__cards">
-                <div className="aura-landing-hero__card aura-landing-hero__card--1">
-                  <span>Его мысли</span>
-                </div>
-                <div className="aura-landing-hero__card aura-landing-hero__card--2">
-                  <span>Его чувства</span>
-                </div>
-                <div className="aura-landing-hero__card aura-landing-hero__card--3">
-                  <span>Совет</span>
-                </div>
-              </div>
+              <LandingHeroVisual masters={masters} />
             </motion.div>
           </div>
         </section>

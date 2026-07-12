@@ -60,6 +60,61 @@ html[data-app-shell="android"] .aura-landing-hero {
   min-height: auto;
 }
 
+/* Hero portraits use desktop absolute layout — hide on narrow WebView to avoid overlapping mobile cards. */
+@media (max-width: 1023px) {
+  html[data-app-shell="android"] .aura-landing-hero__orb,
+  html[data-app-shell="android"] .aura-landing-hero__ring,
+  html[data-app-shell="android"] .aura-landing-hero__portraits {
+    display: none !important;
+  }
+
+  html[data-app-shell="android"] .aura-landing-hero__spread {
+    position: relative;
+    inset: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 0.55rem;
+    padding-top: 0.25rem;
+  }
+
+  html[data-app-shell="android"] .aura-landing-hero__spread-slot {
+    position: relative;
+    inset: auto;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    transform: none !important;
+  }
+
+  html[data-app-shell="android"] .aura-landing-hero__spread-slot--0 {
+    transform: rotate(-10deg) translateY(0.2rem) !important;
+  }
+
+  html[data-app-shell="android"] .aura-landing-hero__spread-slot--1 {
+    transform: translateY(-0.45rem) scale(1.05) !important;
+    z-index: 2;
+  }
+
+  html[data-app-shell="android"] .aura-landing-hero__spread-slot--2 {
+    transform: rotate(10deg) translateY(0.2rem) !important;
+  }
+
+  html[data-app-shell="android"] .aura-landing-hero__spread-slot--0 .aura-landing-hero__spread-card,
+  html[data-app-shell="android"] .aura-landing-hero__spread-slot--1 .aura-landing-hero__spread-card,
+  html[data-app-shell="android"] .aura-landing-hero__spread-slot--2 .aura-landing-hero__spread-card {
+    width: 5.25rem;
+    opacity: 1;
+  }
+
+  html[data-app-shell="android"] .aura-landing-hero__visual {
+    min-height: auto;
+    max-width: 100%;
+    aspect-ratio: auto;
+  }
+}
+
 html[data-app-shell="android"] .bootstrap-overlay {
   display: none !important;
 }

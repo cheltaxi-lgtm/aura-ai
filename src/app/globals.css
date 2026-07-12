@@ -2292,26 +2292,24 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   }
 
   .aura-landing-hero__visual {
-    min-height: 180px;
-    max-width: 280px;
+    min-height: auto;
+    max-width: 100%;
     margin-inline: auto;
+    aspect-ratio: auto;
   }
 
-  .aura-landing-hero__cards {
+  .aura-landing-hero__spread {
     position: relative;
     inset: auto;
     display: flex;
     justify-content: center;
-    gap: 0.65rem;
-    padding-top: 0.5rem;
+    align-items: flex-end;
+    gap: 0.55rem;
+    padding-top: 0.25rem;
   }
 
-  .aura-landing-hero__card {
-    position: relative;
-    inset: auto !important;
-    transform: none !important;
-    width: 3rem !important;
-    height: 4.5rem !important;
+  .aura-landing-hero__spread-card {
+    width: 5.25rem;
   }
 
   .aura-landing-hero {
@@ -3340,7 +3338,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   right: 0;
   bottom: calc(0.85rem + var(--cookie-banner-offset, 0px) + env(safe-area-inset-bottom, 0px));
   z-index: 35;
-  display: none;
+  display: flex;
   justify-content: center;
   padding: 0 1rem;
   pointer-events: none;
@@ -3443,6 +3441,45 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   min-height: 280px;
 }
 
+.aura-landing-hero__glow {
+  position: absolute;
+  left: 50%;
+  top: 54%;
+  z-index: 0;
+  width: min(88%, 15rem);
+  height: min(88%, 15rem);
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(183, 148, 246, 0.38) 0%,
+    rgba(123, 94, 167, 0.2) 36%,
+    rgba(201, 162, 74, 0.1) 58%,
+    transparent 72%
+  );
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.aura-landing-hero__orbit-art {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  width: min(92%, 17.5rem);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.aura-landing-hero__orbit-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .aura-landing-hero__orb {
   @apply absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full;
   background: radial-gradient(circle, rgba(183, 148, 246, 0.42) 0%, rgba(123, 94, 167, 0.22) 38%, rgba(201, 162, 74, 0.12) 60%, transparent 72%);
@@ -3489,52 +3526,78 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   z-index: 1;
 }
 
-.aura-landing-hero__cards {
-  @apply pointer-events-none absolute inset-0;
+.aura-landing-hero__spread {
+  @apply pointer-events-none absolute inset-0 z-[2];
 }
 
-.aura-landing-hero__card {
-  @apply absolute flex items-end justify-center rounded-xl border border-aura-gold/35 px-2 pb-2 text-center text-[0.6rem] uppercase tracking-[0.16em] text-aura-champagne/75;
-  background:
-    linear-gradient(180deg, rgba(232, 199, 126, 0.16), transparent 38%),
-    linear-gradient(145deg, rgba(22, 18, 40, 0.92), rgba(8, 6, 18, 0.98));
-  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.48);
+.aura-landing-hero__spread-slot {
+  @apply absolute m-0 flex flex-col items-center gap-2;
 }
 
-.aura-landing-hero__card span {
-  @apply relative z-[1];
+.aura-landing-hero__spread-card {
+  position: relative;
+  width: 4rem;
+  aspect-ratio: 140 / 220;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.46),
+    0 0 28px rgba(201, 162, 74, 0.16);
 }
 
-.aura-landing-hero__card--1 {
-  width: 3.5rem;
-  height: 5.25rem;
+.aura-landing-hero__spread-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.aura-landing-hero__spread-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.14) 0%, transparent 42%, transparent 100%);
+  pointer-events: none;
+}
+
+.aura-landing-hero__spread-label {
+  display: none;
+  max-width: 4.75rem;
+  font-size: 0.5625rem;
+  line-height: 1.25;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.78);
+}
+
+.aura-landing-hero__spread-slot--0 {
   left: 8%;
-  top: 18%;
+  top: 16%;
   transform: rotate(-12deg);
 }
 
-.aura-landing-hero__card--2 {
-  width: 3.25rem;
-  height: 4.875rem;
-  right: 10%;
-  top: 22%;
-  transform: rotate(8deg);
+.aura-landing-hero__spread-slot--1 {
+  right: 8%;
+  top: 20%;
+  transform: rotate(9deg);
 }
 
-.aura-landing-hero__card--3 {
-  width: 3rem;
-  height: 4.5rem;
-  left: 42%;
-  bottom: 12%;
+.aura-landing-hero__spread-slot--2 {
+  left: 40%;
+  bottom: 8%;
   transform: rotate(-4deg);
-  opacity: 0.85;
+}
+
+.aura-landing-hero__spread-slot--1 .aura-landing-hero__spread-card {
+  width: 4.25rem;
+}
+
+.aura-landing-hero__spread-slot--2 .aura-landing-hero__spread-card {
+  width: 3.75rem;
+  opacity: 0.92;
 }
 
 @media (max-width: 768px) {
-  .landing-sticky-cta {
-    display: flex;
-  }
-
   html.app-shell-has-tabs .landing-sticky-cta {
     bottom: calc(
       4.85rem + 0.85rem + var(--cookie-banner-offset, 0px) + env(safe-area-inset-bottom, 0px)
@@ -3547,30 +3610,60 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
     }
   }
 
+  /* After base `.aura-landing-hero__portraits { @apply flex }` — must live here, not only in the early mobile block. */
+  .aura-landing-hero__orb,
+  .aura-landing-hero__ring,
+  .aura-landing-hero__portraits {
+    display: none;
+  }
+
   .aura-landing-hero__visual {
-    min-height: 180px;
-    max-width: 280px;
+    min-height: auto;
+    max-width: 100%;
     aspect-ratio: auto;
   }
 
-  .aura-landing-hero__cards {
+  .aura-landing-hero__spread {
     position: relative;
     inset: auto;
     display: flex;
     justify-content: center;
-    gap: 0.65rem;
-    padding-top: 0.5rem;
+    align-items: flex-end;
+    gap: 0.55rem;
+    padding-top: 0.25rem;
   }
 
-  .aura-landing-hero__card,
-  .aura-landing-hero__card--1,
-  .aura-landing-hero__card--2,
-  .aura-landing-hero__card--3 {
+  .aura-landing-hero__spread-slot {
     position: relative;
     inset: auto;
-    transform: none;
-    width: 3rem;
-    height: 4.5rem;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+  }
+
+  .aura-landing-hero__spread-slot--0 {
+    transform: rotate(-10deg) translateY(0.2rem);
+  }
+
+  .aura-landing-hero__spread-slot--1 {
+    transform: translateY(-0.45rem) scale(1.05);
+    z-index: 2;
+  }
+
+  .aura-landing-hero__spread-slot--2 {
+    transform: rotate(10deg) translateY(0.2rem);
+  }
+
+  .aura-landing-hero__spread-slot--0 .aura-landing-hero__spread-card,
+  .aura-landing-hero__spread-slot--1 .aura-landing-hero__spread-card,
+  .aura-landing-hero__spread-slot--2 .aura-landing-hero__spread-card {
+    width: 5.25rem;
+    opacity: 1;
+  }
+
+  .aura-landing-hero__spread-label {
+    display: block;
   }
 }
 

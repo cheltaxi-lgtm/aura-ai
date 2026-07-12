@@ -16,7 +16,7 @@
     { "id": "guest_spread_completed", "group": "guest_triplet" },
     { "id": "registration_gate_view", "group": "registration" },
     { "id": "registration_started", "group": "registration" },
-    { "id": "registration_account_created", "group": "registration", "new": true },
+    { "id": "registration_account_created", "group": "registration", "metrikaGoalId": 581740543 },
     { "id": "registration_completed", "group": "registration" },
     { "id": "registration_error", "group": "registration" },
     { "id": "quick_question_click", "group": "seo" },
