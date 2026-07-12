@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -34,7 +34,10 @@ import {
 } from "@/lib/landing-offer";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
-import { trackLandingView, trackSocialProofView } from "@/lib/seo/metrika";
+import { trackLandingView } from "@/lib/seo/metrika";
+import LandingSocialProofStats, {
+  useLandingSocialProofVisible,
+} from "@/components/seo/LandingSocialProofStats";
 
 const BENEFITS = [
   {
@@ -128,17 +131,6 @@ const TRUST_POINTS = [
   },
 ] as const;
 
-type PlatformStats = {
-  sessions: number;
-  users: number;
-};
-
-function formatPlatformCount(value: number): string {
-  if (value >= 10_000) return `${Math.floor(value / 1000)}k+`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(".0", "")}k+`;
-  return `${value}+`;
-}
-
 export interface AuraSellingLandingProps {
   isLoggedIn: boolean;
   masters: ShowcaseMaster[];
@@ -192,32 +184,11 @@ export default function AuraSellingLanding({
   const { config, cost, formatRunes, formatRunesWithRub } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
   const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub);
-  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
+  useLandingSocialProofVisible(showSellingSections || (showHero && !isLoggedIn));
 
   useEffect(() => {
     if (showHero && !isLoggedIn) trackLandingView();
   }, [showHero, isLoggedIn]);
-
-  useEffect(() => {
-    if (!showSellingSections) return;
-    void fetch("/api/stats/public")
-      .then((r) => r.json())
-      .then((data: PlatformStats) => {
-        if (typeof data.sessions === "number" && data.sessions > 0) {
-          setPlatformStats({
-            sessions: data.sessions,
-            users: typeof data.users === "number" ? data.users : 0,
-          });
-          trackSocialProofView();
-        }
-      })
-      .catch(() => {
-        /* optional */
-      });
-  }, [showSellingSections]);
-
-  const hasSessionStats = (platformStats?.sessions ?? 0) > 0;
-  const hasUserStats = (platformStats?.users ?? 0) > 0;
 
   const scrollToMasters = () => {
     document.getElementById("наставники")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -303,6 +274,7 @@ export default function AuraSellingLanding({
               </div>
               <p className="aura-landing-hero__trust aura-landing-hero__trust--prominent">{offer.heroMicrocopy}</p>
               <p className="aura-landing-hero__pricing">{offer.pricingLine}</p>
+              {!isLoggedIn ? <LandingSocialProofStats variant="hero" className="mt-5" /> : null}
             </motion.div>
 
             <motion.div
@@ -470,32 +442,11 @@ export default function AuraSellingLanding({
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Доверие и прозрачность</h2>
               <p className="aura-landing-section__subtitle">
-                Сначала карты и ясность — потом регистрация и продолжение сеанса.
+                Тысячи людей уже открыли карты сегодня — присоединяйтесь, пока мастера онлайн.
               </p>
             </div>
             <div className="aura-landing-trust">
-              <div className="aura-landing-trust__stats">
-                {hasSessionStats ? (
-                  <div className="aura-landing-trust__stat">
-                    <span className="aura-landing-trust__value">
-                      {formatPlatformCount(platformStats!.sessions)}
-                    </span>
-                    <span className="aura-landing-trust__label">раскладов на платформе</span>
-                  </div>
-                ) : null}
-                {hasUserStats ? (
-                  <div className="aura-landing-trust__stat">
-                    <span className="aura-landing-trust__value">
-                      {formatPlatformCount(platformStats!.users)}
-                    </span>
-                    <span className="aura-landing-trust__label">пользователей</span>
-                  </div>
-                ) : null}
-                <div className="aura-landing-trust__stat">
-                  <span className="aura-landing-trust__value">{masters.length}</span>
-                  <span className="aura-landing-trust__label">проводников в витрине</span>
-                </div>
-              </div>
+              <LandingSocialProofStats variant="trust" className="aura-landing-trust__stats" />
               <div className="aura-landing-trust__quotes">
                 {TRUST_POINTS.map((item) => (
                   <article key={item.title} className="aura-landing-review">

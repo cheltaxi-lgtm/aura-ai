@@ -4045,6 +4045,116 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   overflow: hidden;
 }
 
+.landing-social-proof {
+  display: grid;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.landing-social-proof--hero {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-radius: 1rem;
+  border: 1px solid rgba(232, 199, 126, 0.14);
+  background: linear-gradient(165deg, rgba(22, 13, 40, 0.72), rgba(8, 5, 18, 0.55));
+  padding: 0.85rem 0.65rem;
+}
+
+.landing-social-proof--trust {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding-bottom: 2rem;
+  text-align: center;
+}
+
+.landing-social-proof__stat {
+  position: relative;
+  padding-inline: 0.35rem;
+}
+
+.landing-social-proof--trust .landing-social-proof__stat:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 10%;
+  right: 0;
+  width: 1px;
+  height: 80%;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.landing-social-proof__value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-family: var(--font-display, serif);
+  font-weight: 700;
+  line-height: 1.1;
+  background: var(--aura-gold-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.landing-social-proof--hero .landing-social-proof__value {
+  font-size: 1.05rem;
+}
+
+.landing-social-proof--trust .landing-social-proof__value {
+  font-size: 1.75rem;
+}
+
+@media (min-width: 640px) {
+  .landing-social-proof--trust .landing-social-proof__value {
+    font-size: 2.25rem;
+  }
+}
+
+.landing-social-proof__label {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(237, 230, 218, 0.45);
+}
+
+.landing-social-proof--hero .landing-social-proof__label {
+  font-size: 0.5rem;
+}
+
+.landing-social-proof__live {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: #4ade80;
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.65);
+  animation: landing-social-proof-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes landing-social-proof-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 479px) {
+  .landing-social-proof--hero,
+  .landing-social-proof--trust {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .landing-social-proof--trust .landing-social-proof__stat:not(:last-child)::after {
+    display: none;
+  }
+}
+
 .master-avatar--showcase .master-avatar__frame {
   box-shadow:
     0 0 0 1px rgba(243, 220, 142, 0.35),
