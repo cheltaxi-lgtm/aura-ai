@@ -33,6 +33,7 @@ if [ -f "$TARBALL" ]; then
     --exclude='.next-candidate/' \
     --exclude='.next-previous/' \
     --exclude='node_modules/' \
+    --exclude='logs/' \
     "$STAGE/" /opt/aura-ai/
   echo ">>> Rsync complete ($(test -f /opt/aura-ai/deploy-sha.txt && tr -d '\r\n' < /opt/aura-ai/deploy-sha.txt || echo no-sha))"
   rm -rf "$STAGE"

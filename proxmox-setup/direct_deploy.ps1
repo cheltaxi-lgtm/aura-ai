@@ -58,6 +58,7 @@ rsync -a --delete --ignore-times \
   --exclude='.next-candidate/' \
   --exclude='.next-previous/' \
   --exclude='node_modules/' \
+  --exclude='logs/' \
   "$STAGE/" /opt/aura-ai/
 if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
   mkdir -p /opt/aura-ai/public/releases
