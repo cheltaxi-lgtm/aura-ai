@@ -207,12 +207,18 @@ else
   fi
   set -a
   # shellcheck disable=SC1090
-  source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
+  source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|OPENROUTER_HTTPS_PROXY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
   set +a
   node /opt/aura-ai/scripts/migrate.mjs
 fi
 
 echo ">>> Memory smoke test..."
+# Re-export OPENROUTER_HTTPS_PROXY for the smoke test — embed code falls back to
+# a flaky direct connection without it (server IPv6/TLS to openrouter.ai is unreliable).
+set -a
+# shellcheck disable=SC1090
+source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|OPENROUTER_HTTPS_PROXY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
+set +a
 if ! npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts; then
   if [ "${STRICT_MEMORY_SMOKE:-1}" = "1" ]; then
     echo "ERROR: memory smoke failed in strict mode; active build was not touched"
