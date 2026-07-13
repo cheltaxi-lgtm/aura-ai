@@ -7,7 +7,7 @@ export interface UserAccount {
   id: string;
   email: string;
   name: string;
-  password_hash: string;
+  password_hash: string | null;
 }
 
 export interface ExpertAccount {

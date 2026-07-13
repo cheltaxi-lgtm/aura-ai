@@ -25,7 +25,20 @@ export async function POST(request: NextRequest) {
     if (rateLimited) return rateLimited;
 
     const user = await findUserByEmail(email);
-    if (!user || !(await verifyPassword(password, user.password_hash))) {
+    if (!user) {
+      const hint = await resolveLoginHint(email, "user");
+      return NextResponse.json(
+        { error: hint ?? LOGIN_FAILURE_MESSAGE },
+        { status: 401 }
+      );
+    }
+    if (!user.password_hash) {
+      return NextResponse.json(
+        { error: "Для этого аккаунта используйте вход через VK, Yandex или Mail.ru" },
+        { status: 401 }
+      );
+    }
+    if (!(await verifyPassword(password, user.password_hash))) {
       const hint = await resolveLoginHint(email, "user");
       return NextResponse.json(
         { error: hint ?? LOGIN_FAILURE_MESSAGE },

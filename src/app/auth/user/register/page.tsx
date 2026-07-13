@@ -9,8 +9,8 @@ export default function UserRegisterPage() {
       </Link>
       <h1 className="font-display mb-2 text-center text-3xl text-white">Создать профиль</h1>
       <p className="mb-8 text-center text-sm text-aura-ivory/45">
-        Имя, email и пароль — чтобы сохранить расклад и продолжить сеанс. Дату рождения можно указать
-        сразу или на следующем шаге.
+        Войдите через VK, Yandex или Mail.ru — или создайте аккаунт по email. Дату рождения можно
+        указать сразу или на следующем шаге.
       </p>
       <AuthForm mode="register" role="user" />
     </div>

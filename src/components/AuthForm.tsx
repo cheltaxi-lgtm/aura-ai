@@ -44,6 +44,8 @@ import {
   trackRegistrationError,
   trackRegistrationStarted,
 } from "@/lib/seo/metrika";
+import SocialAuthButtons, { OAuthErrorBanner } from "@/components/auth/SocialAuthButtons";
+import type { OAuthMode } from "@/lib/oauth/types";
 
 interface AuthFormProps {
   mode: "login" | "register";
@@ -68,6 +70,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [recaptchaFailed, setRecaptchaFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [returnTo, setReturnTo] = useState("/");
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
@@ -91,6 +94,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     if (isUserRegister && isAgeGateConfirmed()) {
       setAgeConfirmed(true);
     }
+    const oauthErr = params.get("oauthError");
+    if (oauthErr) setOauthError(oauthErr);
   }, [isExpert, isUserRegister]);
 
   useEffect(() => {
@@ -376,6 +381,20 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
+      {role === "user" ? (
+        <>
+          <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
+          <SocialAuthButtons
+            mode={mode as OAuthMode}
+            returnTo={returnTo}
+            requireConsent={mode === "register"}
+            acceptedTerms={acceptedTerms}
+            ageConfirmed={ageConfirmed}
+            marketingConsent={marketingConsent}
+            disabled={loading}
+          />
+        </>
+      ) : null}
       {mode === "register" && (
         <>
           <div>

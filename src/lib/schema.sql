@@ -131,16 +131,33 @@ CREATE INDEX IF NOT EXISTS idx_payments_referrer ON payments(referrer_slug);
 CREATE TABLE IF NOT EXISTS user_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   name TEXT NOT NULL,
   profile_user_id UUID REFERENCES users(id),
   is_unlimited BOOLEAN NOT NULL DEFAULT FALSE,
+  terms_accepted_at TIMESTAMPTZ,
+  age_confirmed_at TIMESTAMPTZ,
+  marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
+  marketing_consent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT user_accounts_profile_user_id_unique UNIQUE (profile_user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_accounts_unlimited ON user_accounts(is_unlimited)
   WHERE is_unlimited = TRUE;
+
+CREATE TABLE IF NOT EXISTS user_oauth_identities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_account_id UUID NOT NULL REFERENCES user_accounts(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL CHECK (provider IN ('vk', 'yandex', 'mailru')),
+  provider_user_id TEXT NOT NULL,
+  provider_email TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (provider, provider_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_identities_account
+  ON user_oauth_identities(user_account_id);
 
 CREATE TABLE IF NOT EXISTS expert_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
