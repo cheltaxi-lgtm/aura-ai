@@ -41,6 +41,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: DB migrations
+        run: |
+          if [ -n "${DATABASE_URL:-}" ]; then
+            node scripts/migrate.mjs
+          else
+            echo "Skipping migrations: DATABASE_URL secret not set"
+          fi
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Pull Vercel environment
         run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         env:

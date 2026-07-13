@@ -75,6 +75,20 @@ grep -q '^NEXT_PUBLIC_RECAPTCHA_SITE_KEY=' "$ENV_FILE" \
 grep -q '^RECAPTCHA_SECRET_KEY=' "$ENV_FILE" \
   || echo 'RECAPTCHA_SECRET_KEY=' >> "$ENV_FILE"
 
+# OAuth (VK ID, Yandex, Mail.ru) — seed empty keys; never overwrite on deploy.
+grep -q '^YANDEX_OAUTH_CLIENT_ID=' "$ENV_FILE" \
+  || echo 'YANDEX_OAUTH_CLIENT_ID=' >> "$ENV_FILE"
+grep -q '^YANDEX_OAUTH_CLIENT_SECRET=' "$ENV_FILE" \
+  || echo 'YANDEX_OAUTH_CLIENT_SECRET=' >> "$ENV_FILE"
+grep -q '^VK_CLIENT_ID=' "$ENV_FILE" \
+  || echo 'VK_CLIENT_ID=' >> "$ENV_FILE"
+grep -q '^VK_CLIENT_SECRET=' "$ENV_FILE" \
+  || echo 'VK_CLIENT_SECRET=' >> "$ENV_FILE"
+grep -q '^MAILRU_CLIENT_ID=' "$ENV_FILE" \
+  || echo 'MAILRU_CLIENT_ID=' >> "$ENV_FILE"
+grep -q '^MAILRU_CLIENT_SECRET=' "$ENV_FILE" \
+  || echo 'MAILRU_CLIENT_SECRET=' >> "$ENV_FILE"
+
 grep -q '^LLM_CONCURRENCY_MAX=' "$ENV_FILE" \
   && sed -i 's|^LLM_CONCURRENCY_MAX=.*|LLM_CONCURRENCY_MAX=25|' "$ENV_FILE" \
   || echo 'LLM_CONCURRENCY_MAX=25' >> "$ENV_FILE"

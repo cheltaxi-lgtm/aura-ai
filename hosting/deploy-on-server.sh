@@ -32,12 +32,26 @@ grep -q '^NEXT_PUBLIC_APP_URL=' .env.local 2>/dev/null || echo 'NEXT_PUBLIC_APP_
 grep -q '^COOKIE_SECURE=' .env.local 2>/dev/null || echo 'COOKIE_SECURE=true' >> .env.local
 grep -q '^DATABASE_URL=' .env.local 2>/dev/null || echo 'DATABASE_URL=postgresql://auraai:auraai_secret@localhost:5432/auraai' >> .env.local
 
+grep -q '^YANDEX_OAUTH_CLIENT_ID=' .env.local 2>/dev/null || echo 'YANDEX_OAUTH_CLIENT_ID=' >> .env.local
+grep -q '^YANDEX_OAUTH_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'YANDEX_OAUTH_CLIENT_SECRET=' >> .env.local
+grep -q '^VK_CLIENT_ID=' .env.local 2>/dev/null || echo 'VK_CLIENT_ID=' >> .env.local
+grep -q '^VK_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'VK_CLIENT_SECRET=' >> .env.local
+grep -q '^MAILRU_CLIENT_ID=' .env.local 2>/dev/null || echo 'MAILRU_CLIENT_ID=' >> .env.local
+grep -q '^MAILRU_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'MAILRU_CLIENT_SECRET=' >> .env.local
+
 npm ci --legacy-peer-deps
 set -a
 # shellcheck disable=SC1091
 source <(grep -E '^(NEXT_PUBLIC_RECAPTCHA_SITE_KEY|NEXT_PUBLIC_RECAPTCHA_ENABLED|NEXT_PUBLIC_APP_URL)=' .env.local | sed 's/\r$//')
 set +a
 npm run build
+
+echo ">>> DB migrations..."
+set -a
+# shellcheck disable=SC1091
+source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|MEMORY_EMBED_MODEL)=' .env.local | sed 's/\r$//')
+set +a
+node scripts/migrate.mjs
 
 cp hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 systemctl daemon-reload
