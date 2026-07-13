@@ -45,7 +45,7 @@ export default function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <div className="mx-auto max-w-md px-6 py-16 text-center">
+      <div className="auth-page mx-auto max-w-md px-6 py-16 text-center">
         <p className="text-sm text-red-400">Ссылка недействительна.</p>
         <Link href="/auth/user/forgot-password" className="btn-primary mt-6 inline-block px-6 py-2.5 text-sm">
           Запросить новую
@@ -55,7 +55,7 @@ export default function ResetPasswordForm() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-6 py-16">
+    <div className="auth-page mx-auto max-w-md px-6 py-16">
       <h1 className="font-display text-center text-2xl font-bold text-white">Новый пароль</h1>
       <form onSubmit={(e) => void submit(e)} className="mt-8 space-y-4">
         <div>

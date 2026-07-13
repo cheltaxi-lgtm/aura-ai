@@ -44,6 +44,8 @@ interface ReadingRecapProps {
   readingHint?: string;
   onOpenGallery?: () => void;
   spreadId?: SpreadId;
+  /** When true, «Продолжить» opens chat instead of starting a new reading ritual. */
+  readingComplete?: boolean;
 }
 
 function zodiacFromBirthDate(birthDate?: string) {
@@ -83,6 +85,7 @@ export default function ReadingRecap({
   readingHint,
   onOpenGallery,
   spreadId: spreadIdProp,
+  readingComplete = false,
 }: ReadingRecapProps) {
   const spreadId = normalizeSpreadId(spreadIdProp ?? DEFAULT_SPREAD_ID);
   const spreadDef = getSpread(spreadId);
@@ -238,7 +241,9 @@ export default function ReadingRecap({
               className="reading-recap__btn-primary btn-luxe btn-luxe--md"
             >
               <MasterAvatarInline masterId={lastMaster!.id} masterName={lastMaster!.name} size="xs" />
-              Продолжить с {lastMaster!.name}
+              {readingComplete
+                ? `Продолжить в чате с ${lastMaster!.name}`
+                : `Продолжить с ${lastMaster!.name}`}
             </button>
           ) : null}
           {onUnlock ? (

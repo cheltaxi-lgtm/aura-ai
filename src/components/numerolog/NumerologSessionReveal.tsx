@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { NumerologSessionResult } from "@/lib/numerology/session-result";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
+import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
 
 interface NumerologSessionRevealProps {
   result: NumerologSessionResult;
@@ -36,6 +37,7 @@ export default function NumerologSessionReveal({ result, onAllRevealed }: Numero
 
   const isForecast = result.toolId === "forecast_9y";
   const isCompat = result.toolId === "compatibility";
+  const isMatrix = result.toolId === "destiny_matrix" && result.destinyMatrix;
 
   if (!result.pythagorasSquare && result.positions.length === 0) {
     return (
@@ -53,7 +55,7 @@ export default function NumerologSessionReveal({ result, onAllRevealed }: Numero
   }
 
   return (
-    <div className="numerolog-reveal mx-auto w-full max-w-lg">
+    <div className={`numerolog-reveal mx-auto w-full ${isMatrix ? "max-w-md" : "max-w-lg"}`}>
       <div className="numerolog-reveal__head">
         <p className="numerolog-reveal__eyebrow">Ваш расчёт</p>
         <h3 className="numerolog-reveal__title">{result.title}</h3>
@@ -72,6 +74,8 @@ export default function NumerologSessionReveal({ result, onAllRevealed }: Numero
             сеансе.
           </p>
         </motion.div>
+      ) : isMatrix ? (
+        <DestinyMatrixGrid matrix={result.destinyMatrix!} revealed={revealed} />
       ) : (
         <div
           className={`numerolog-reveal__grid ${isForecast ? "numerolog-reveal__grid--timeline" : ""} ${isCompat ? "numerolog-reveal__grid--compat" : ""}`}

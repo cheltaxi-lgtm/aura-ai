@@ -49,6 +49,7 @@ export default function NumerologyPage() {
 
   return (
     <SeoPageShell>
+      <SeoPageTracker goal="numerology_hub_view" />
       <p className="text-sm text-aura-gold/80">Нумерология</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Нумерология по дате рождения онлайн</h1>
       <p className="mt-4 text-white/70">

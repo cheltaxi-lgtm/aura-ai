@@ -25,7 +25,7 @@ import { DEFAULT_SPREAD_ID, hasCompleteSpread, isDailyOnlySpread, normalizeSprea
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
 import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
-import { setJointReadingToken, setJointReadingRole } from "@/lib/joint-reading-storage";
+import { setJointReadingToken, setJointReadingRole, getJointReadingIntentSlug, setJointReadingIntentSlug } from "@/lib/joint-reading-storage";
 import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
 import {
   resolveRitualMasterKey,
@@ -34,6 +34,7 @@ import {
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import AuraSellingLanding from "@/components/AuraSellingLanding";
+import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
 import type { PhotoReadingChatPayload, PhotoReadingEntryMode } from "@/components/PhotoReadingFlow";
 import { buildPhotoReadingChatMessages, mergePhotoReadingIntoChat } from "@/lib/photo-chat";
@@ -51,6 +52,7 @@ import {
 } from "@/lib/showcase-masters";
 import { getCharacterById } from "@/lib/characters";
 import {
+  APP_SHELL_HOME_EVENT,
   APP_SHELL_SECTIONS,
   consumeOpenDecksModalFlag,
   consumeOpenRitualFlowFlag,
@@ -77,6 +79,7 @@ import {
   clearChatCache,
   saveChatCache,
   chatHasSpreadReading,
+  appendSpreadReadingMessage,
   SESSION_ONLY_CACHE_KEY,
   MIN_SPREAD_READING_CHARS,
   type CachedChatSpread,
@@ -110,10 +113,19 @@ import {
 import {
   FLOW_STEP_KEY,
   LAST_MASTER_KEY,
+  PENDING_MASTER_KEY,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
-import { persistPendingIntent } from "@/lib/post-auth-return";
 import {
+  consumePendingGuestQuestion,
+  persistPendingIntent,
+  buildRegisterHref,
+  resolveRegistrationReturnTo,
+} from "@/lib/post-auth-return";
+import { OPEN_RITUAL_FLOW_KEY } from "@/lib/app-shell-nav";
+import { trackFirstChatOpened } from "@/lib/seo/metrika";
+import {
+  decodeNumerologSpreadId,
   isNumerologSessionToolId,
   type NumerologToolId,
 } from "@/lib/numerology/tools";
@@ -258,6 +270,7 @@ export default function HomePage({
     step,
     setStepState,
     setStep,
+    flowBootstrapped,
     profile,
     setProfile,
     persistProfile,
@@ -280,7 +293,10 @@ export default function HomePage({
     setSelectedCharacter,
     onPopStateLeaveChat: () => chatClearRef.current(),
     onPopStateReset: () => chatClearRef.current(),
-    onRestoreChatMaster: (masterId) => setSelectedCharacter(masterId),
+    onRestoreChatMaster: (masterId) => {
+      setSelectedCharacter(masterId);
+      setLastMasterId(masterId);
+    },
     onPaymentChatReady: (masterId) => setSelectedCharacter(masterId),
     onAccountSwitch: () => {
       clearChatCache();
@@ -471,8 +487,10 @@ export default function HomePage({
     sessionSpreadMetaRef,
     displayTarotCards,
     displayDeckSystem,
+    displayTeaser,
     tripletOwnerMasterId,
     continueMasterIds,
+    hasActiveSpread,
     spreadReadingDone,
     recapContinueMasterId,
     canChangeTripletMaster,
@@ -493,6 +511,8 @@ export default function HomePage({
     handleOnboardingComplete,
     handleTripletComplete,
     handleTripletBack,
+    handleNewReading,
+    handleClearTripletFromMain,
     startPersonalFlow,
     handleTripletMasterChange,
     handleTripletDraft,
@@ -528,9 +548,12 @@ export default function HomePage({
         intent,
         gender === "male" || gender === "female" ? gender : null
       );
-      const question = options?.customQuestion?.trim() || copy.questionTemplate;
-      setDeepLinkSpreadId(resolvedSpreadId);
-      setSeoFlowIntentSlug(intent.slug);
+      const userQuestion = options?.customQuestion?.trim() ?? "";
+      const question = userQuestion || copy.questionTemplate;
+      // Free-form wording keeps the user's question but must not lock spread depth.
+      setDeepLinkSpreadId(userQuestion ? null : resolvedSpreadId);
+      // User's own wording must stay the session question — intent slug is only for catalog CTAs.
+      setSeoFlowIntentSlug(userQuestion ? null : intent.slug);
       setSessionFlowPreselectedMaster(resolveIntentMasterId(intent));
       setSessionFlowInitialTopic("custom");
       setSessionFlowInitialQuestion(question);
@@ -539,6 +562,55 @@ export default function HomePage({
       setShowSessionFlow(false);
     },
     [setShowSessionFlow, setSessionFlowPreselectedMaster]
+  );
+
+  const handleLandingCustomQuestion = useCallback(
+    (question: string) => {
+      const q = question.trim();
+      if (!q) return;
+      consumePendingGuestQuestion();
+
+      if (isLoggedIn) {
+        const matched = matchSpreadIntentFromQuestion(q);
+        autoAskOpenedRef.current = false;
+        autoAskSentRef.current = false;
+        autoAskMasterRef.current = null;
+        setAutoAsk({
+          master: matched ? resolveIntentMasterId(matched) : "veronika",
+          question: q,
+        });
+        return;
+      }
+
+      const matched = matchSpreadIntentFromQuestion(q);
+      setDeepLinkSpreadId(null);
+      setSeoFlowIntentSlug(null);
+      setSessionFlowPreselectedMaster(
+        matched ? resolveIntentMasterId(matched) : "veronika"
+      );
+      setSessionFlowInitialTopic("custom");
+      setSessionFlowInitialQuestion(q);
+      setSessionFlowRequiresPartnerInfo(Boolean(matched?.requiresPartnerInfo));
+      setSeoFlowOpen(true);
+      setShowSessionFlow(false);
+    },
+    [isLoggedIn, setShowSessionFlow, setSessionFlowPreselectedMaster]
+  );
+
+  const handleLandingQuickQuestion = useCallback(
+    (question: string) => {
+      const q = question.trim();
+      if (!q || !isLoggedIn) return;
+      const matched = matchSpreadIntentFromQuestion(q);
+      autoAskOpenedRef.current = false;
+      autoAskSentRef.current = false;
+      autoAskMasterRef.current = null;
+      setAutoAsk({
+        master: matched ? resolveIntentMasterId(matched) : "veronika",
+        question: q,
+      });
+    },
+    [isLoggedIn]
   );
 
   useEffect(() => {
@@ -556,6 +628,10 @@ export default function HomePage({
       setJointReadingToken(jointParam);
       if (jointRole === "initiator" || jointRole === "partner") {
         setJointReadingRole(jointRole);
+      }
+      const jointIntent = params.get("intent")?.trim();
+      if (jointIntent) {
+        setJointReadingIntentSlug(jointIntent);
       }
       const spreadParam = params.get("spread")?.trim();
       if (spreadParam) {
@@ -582,7 +658,8 @@ export default function HomePage({
       if (matched) {
         openSpreadIntentFlow(matched, { customQuestion: askParam });
       } else if (spreadFromHero || !isLoggedIn) {
-        setDeepLinkSpreadId("situation-5");
+        consumePendingGuestQuestion();
+        setDeepLinkSpreadId(null);
         setSeoFlowIntentSlug(null);
         setSessionFlowPreselectedMaster(params.get("master")?.trim() || "veronika");
         setSessionFlowInitialTopic("custom");
@@ -604,7 +681,9 @@ export default function HomePage({
       return;
     }
 
-    const intentParam = params.get("intent")?.trim();
+    const intentParam =
+      params.get("intent")?.trim() ||
+      (jointParam && jointRole ? getJointReadingIntentSlug()?.trim() : undefined);
 
     if (intentParam) {
       const intent = getSpreadIntentBySlug(intentParam);
@@ -627,6 +706,10 @@ export default function HomePage({
           // "partner birth date" step is irrelevant here (and unused downstream),
           // so don't force it or it silently blocks the whole flow.
           setSessionFlowRequiresPartnerInfo(false);
+          setStep("masters");
+          if (typeof window !== "undefined") {
+            localStorage.setItem(FLOW_STEP_KEY, "masters");
+          }
         }
         const url = new URL(window.location.href);
         url.searchParams.delete("intent");
@@ -636,6 +719,9 @@ export default function HomePage({
         url.searchParams.delete("jointInvite");
         url.searchParams.delete("jointPartnerName");
         url.searchParams.delete("spread");
+        if (jointParam && jointRole) {
+          url.searchParams.delete("step");
+        }
         window.history.replaceState(null, "", url.pathname + url.search + url.hash);
         return;
       }
@@ -688,7 +774,7 @@ export default function HomePage({
     const url = new URL(window.location.href);
     url.searchParams.delete("spread");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }, [openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster, isLoggedIn]);
+  }, [openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster, isLoggedIn, setStep]);
 
   const openNumerologSessionFlow = useCallback(
     (tool?: NumerologToolId | null) => {
@@ -974,22 +1060,44 @@ export default function HomePage({
   }, [clearMessages, setSpreadRitual]);
 
   useEffect(() => {
-    if (authLoading || !isLoggedIn || step !== "intro") return;
+    if (authLoading || !flowBootstrapped || !isLoggedIn || step !== "intro") return;
+    if (typeof window !== "undefined") {
+      const savedStep = localStorage.getItem(FLOW_STEP_KEY);
+      const urlStep = new URLSearchParams(window.location.search).get("step");
+      if (
+        (savedStep && savedStep !== "intro") ||
+        (urlStep && urlStep !== "intro")
+      ) {
+        return;
+      }
+    }
     if (!authUser?.profileUserId) {
       setStep("onboarding");
       return;
     }
     setStep("masters");
-  }, [authLoading, isLoggedIn, step, setStep, authUser?.profileUserId]);
+  }, [authLoading, flowBootstrapped, isLoggedIn, step, setStep, authUser?.profileUserId]);
 
   useEffect(() => {
-    if (authLoading || !isLoggedIn) return;
+    if (!isLoggedIn || step !== "chat") return;
+    trackFirstChatOpened("home_chat");
+  }, [isLoggedIn, step]);
+
+  useEffect(() => {
+    if (authLoading || !flowBootstrapped || !isLoggedIn) return;
     if (sessionListMaster) return;
     if (step !== "chat" || selectedCharacter) return;
     if (pendingChatOptsRef.current) return;
     if (readingInFlightRef.current) return;
 
-    const masterId = localStorage.getItem(LAST_MASTER_KEY) || lastMasterId;
+    const urlStep = new URLSearchParams(window.location.search).get("step");
+    const savedStep = localStorage.getItem(FLOW_STEP_KEY);
+    const wantsChat = urlStep === "chat" || savedStep === "chat";
+
+    const masterId =
+      localStorage.getItem(LAST_MASTER_KEY) ||
+      lastMasterId ||
+      localStorage.getItem(PENDING_MASTER_KEY);
     if (masterId) {
       void bindSessionToMaster(masterId).finally(() => {
         setSelectedCharacter(masterId);
@@ -998,9 +1106,15 @@ export default function HomePage({
       return;
     }
 
+    if (wantsChat) {
+      setStep("masters");
+      return;
+    }
+
     setStep("masters");
   }, [
     authLoading,
+    flowBootstrapped,
     isLoggedIn,
     step,
     selectedCharacter,
@@ -1017,6 +1131,7 @@ export default function HomePage({
     if (!selectedCharacter || !intentionSpread) return;
     if (intentionSpread.masterId !== selectedCharacter) return;
     if (sessionIntention === "life_death") return;
+    if (readingInFlightRef.current) return;
     if (chatHasSpreadReading(messages)) return;
     if (
       !hasCompleteSpread(
@@ -1056,22 +1171,16 @@ export default function HomePage({
         const cardNames = intentionSpread.cards.map((c) => c.name);
         const readingText = resolveClientReadingText(raw, cardNames);
         if (!readingText || cancelled) return;
-      setMessages((prev) => {
-        if (chatHasSpreadReading(prev)) return prev;
-        const readingMsg: Message = {
-          id: generateId(),
-          role: "assistant",
-          content: readingText,
-          timestamp: new Date(),
-        };
-        const next = [...prev, readingMsg];
-        saveChatCache(selectedCharacter, next, cardsKey, {
-          cards: intentionSpread.cards,
-          system: intentionSpread.system,
-          variant: "intention",
+        setMessages((prev) => {
+          const next = appendSpreadReadingMessage(prev, readingText);
+          if (next === prev) return prev;
+          saveChatCache(selectedCharacter, next, cardsKey, {
+            cards: intentionSpread.cards,
+            system: intentionSpread.system,
+            variant: "intention",
+          });
+          return next;
         });
-        return next;
-      });
       } finally {
         if (!cancelled) {
           await ensureMinSpreadRitualDisplay(ritualStartedAt);
@@ -1093,6 +1202,7 @@ export default function HomePage({
     chatDisplaySpread?.spreadId,
     sessionIntention,
     messages,
+    readingInFlightRef,
     setMessages,
     onboarding.spreadReadingRecoveryKeyRef,
     setReadingRitualCountdownDone,
@@ -1104,10 +1214,13 @@ export default function HomePage({
   const spreadAwaitingReading = useMemo(() => {
     if (insufficientRunes) return false;
     if (chatHasSpreadReading(messages)) return false;
-    const cards = chatDisplaySpread?.cards;
-    if (!cards?.length) return false;
     const spread = chatDisplaySpread;
     if (!spread) return false;
+    if (spread.source === "numerolog" && spread.computedOnly) {
+      return true;
+    }
+    const cards = spread.cards;
+    if (!cards?.length) return false;
     if (spread.source === "numerolog") {
       return cards.length >= (spread.cardCount ?? 1);
     }
@@ -1162,16 +1275,17 @@ export default function HomePage({
         : messages;
 
     const headerSpreadActive =
-      chatDisplaySpread?.cards?.length &&
-      hasCompleteSpread(
-        chatDisplaySpread.cards.map((c) => c.name),
-        chatDisplaySpread.spreadId ?? DEFAULT_SPREAD_ID,
-        chatDisplaySpread.source === "photo"
-          ? "photo"
-          : chatDisplaySpread.source === "intention" || chatDisplaySpread.source === "period"
-            ? "new"
-            : "daily"
-      );
+      chatDisplaySpread?.computedOnly ||
+      (chatDisplaySpread?.cards?.length &&
+        hasCompleteSpread(
+          chatDisplaySpread.cards.map((c) => c.name),
+          chatDisplaySpread.spreadId ?? DEFAULT_SPREAD_ID,
+          chatDisplaySpread.source === "photo"
+            ? "photo"
+            : chatDisplaySpread.source === "intention" || chatDisplaySpread.source === "period"
+              ? "new"
+              : "daily"
+        ));
 
     if (headerSpreadActive) {
       msgs = msgs.map((m) => {
@@ -2243,13 +2357,28 @@ export default function HomePage({
 
   const showLanding = step === "intro";
   const inPersonalFlow = isLoggedIn && step !== "intro";
+  const [hasDeepLinkStep, setHasDeepLinkStep] = useState(false);
+  useEffect(() => {
+    const urlStep = new URLSearchParams(window.location.search).get("step");
+    setHasDeepLinkStep(
+      urlStep === "chat" || urlStep === "masters" || urlStep === "onboarding"
+    );
+  }, []);
   const [bootstrapTimedOut, setBootstrapTimedOut] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(() => setBootstrapTimedOut(true), 12_000);
     return () => window.clearTimeout(timer);
   }, []);
-  const bootstrapping = isLoggedIn && (sessionLoading || authLoading) && !bootstrapTimedOut && step !== "onboarding" && step !== "triplet";
+  const bootstrapping =
+    (isLoggedIn || (authLoading && hasDeepLinkStep)) &&
+    (sessionLoading || authLoading) &&
+    !flowBootstrapped &&
+    !bootstrapTimedOut &&
+    step !== "onboarding" &&
+    step !== "triplet" &&
+    step !== "chat";
   /** Marketing landing — guests only; never blocked by session bootstrap. */
+  /** Guests always get intro landing when step=intro; deep-link ?step= must not hide it. */
   const showSeoLanding = !isLoggedIn && showLanding;
   const showSalonHome = showSeoLanding || (!bootstrapping && step === "masters" && !selectedCharacter);
   const landingMasters = masters.length > 0 ? masters : getAiMasters();
@@ -2275,7 +2404,12 @@ export default function HomePage({
 
   const handleNavRitual = useCallback(() => {
     if (!isLoggedIn) {
-      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent("/")}`;
+      try {
+        sessionStorage.setItem(OPEN_RITUAL_FLOW_KEY, "1");
+      } catch {
+        /* private mode */
+      }
+      window.location.href = buildRegisterHref(resolveRegistrationReturnTo());
       return;
     }
     exitToLandingForNav();
@@ -2356,7 +2490,15 @@ export default function HomePage({
     />
   );
 
-  const inActiveChat = Boolean(selectedCharacter);
+  const inActiveChat = step === "chat" || Boolean(selectedCharacter);
+
+  useEffect(() => {
+    const onAppHomeNav = () => {
+      setStep("masters");
+    };
+    window.addEventListener(APP_SHELL_HOME_EVENT, onAppHomeNav);
+    return () => window.removeEventListener(APP_SHELL_HOME_EVENT, onAppHomeNav);
+  }, [setStep]);
 
   useEffect(() => {
     document.body.classList.toggle("chat-session-active", inActiveChat);
@@ -2365,11 +2507,11 @@ export default function HomePage({
 
   return (
     <div
-      className={`pt-[var(--app-header-h,3.25rem)] ${
+      className={
         inActiveChat
-          ? "home-active-chat relative z-10 flex h-[calc(100dvh-var(--app-header-h,3.25rem))] max-h-[calc(100dvh-var(--app-header-h,3.25rem))] min-h-0 flex-1 flex-col overflow-hidden"
-          : "relative min-h-screen"
-      }`}
+          ? "home-active-chat relative z-10 flex min-h-0 flex-1 flex-col"
+          : "relative min-h-screen pt-[var(--app-header-h,3.25rem)]"
+      }
     >
       {headerMounted ? createPortal(topHeader, document.body) : null}
 
@@ -2501,6 +2643,8 @@ export default function HomePage({
             compact
             title="Войдите для продолжения сеанса"
             description="Аккаунт нужен, чтобы сохранить переписку с мастером и историю раскладов."
+            returnTo={resolveRegistrationReturnTo({ guestSpread: true })}
+            source="chat_register_gate"
           />
         ) : selectedCharacter ? (
           <>
@@ -2530,6 +2674,7 @@ export default function HomePage({
             spreadLoading={
               intentionSpreadLoading &&
               !(chatDisplaySpread?.cards?.length ?? 0) &&
+              !chatDisplaySpread?.computedOnly &&
               !spreadReadingLoading
             }
             spreadReadingLoading={spreadReadingLoading}
@@ -2546,6 +2691,14 @@ export default function HomePage({
             spreadId={chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID}
             spreadCardCount={chatDisplaySpread?.cardCount}
             spreadPositions={chatDisplaySpread?.positions}
+            spreadComputedOnly={chatDisplaySpread?.computedOnly}
+            spreadPythagorasSquare={chatDisplaySpread?.pythagorasSquare ?? null}
+            spreadDestinyMatrix={chatDisplaySpread?.destinyMatrix ?? null}
+            numerologSessionToolId={
+              chatDisplaySpread?.source === "numerolog"
+                ? (decodeNumerologSpreadId(chatDisplaySpread.spreadId) ?? null)
+                : null
+            }
             spreadInteractiveFlip={
               needsSpreadFlip &&
               !chatHasSpreadReading(messages) &&
@@ -2767,6 +2920,30 @@ export default function HomePage({
 
             {step === "masters" && !bootstrapping && (
               <>
+                {isLoggedIn && hasActiveSpread && recapContinueMasterId ? (
+                  <ReadingRecap
+                    userName={effectiveProfile.name || authUser?.name || "друг"}
+                    birthDate={effectiveProfile.birthDate}
+                    tarotCards={displayTarotCards}
+                    deckSystem={displayDeckSystem}
+                    teaser={displayTeaser}
+                    lastMasterId={recapContinueMasterId}
+                    masters={masters}
+                    cooldownReady={Boolean(tripletCooldown)}
+                    cooldownAllowed={tripletCooldown?.allowed ?? true}
+                    nextAvailableAt={tripletCooldown?.nextAvailableAt}
+                    readingHint={
+                      spreadReadingDone
+                        ? undefined
+                        : "Нажмите «Продолжить» — мастер даст полную расшифровку ваших карт."
+                    }
+                    readingComplete={spreadReadingDone}
+                    onContinue={() => void handleMasterPick(recapContinueMasterId)}
+                    onNewReading={() => void handleNewReading()}
+                    onClearSpread={handleClearTripletFromMain}
+                    onOpenGallery={() => setDeckGalleryOpen(true)}
+                  />
+                ) : null}
                 {isLoggedIn && (
                   <>
                     <MasterSessionFlow
@@ -2856,7 +3033,7 @@ export default function HomePage({
 
                 <AuraSellingLanding
                   isLoggedIn={isLoggedIn}
-                  masters={masters}
+                  masters={landingMasters}
                   onStartReading={() => void startPersonalFlow()}
                   onSelectMaster={(id) => void handleMasterPick(id)}
                   onBrowseDeck={handleBrowseDeck}
@@ -2867,6 +3044,10 @@ export default function HomePage({
                   showSellingSections={!isLoggedIn}
                   showTariffs
                   onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
+                  onCustomQuestionSubmit={
+                    isLoggedIn ? handleLandingCustomQuestion : undefined
+                  }
+                  onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}
                   afterQuickQuestions={
                     isLoggedIn ? (
                       <PremiumEnergyBlock
@@ -2948,6 +3129,7 @@ export default function HomePage({
           requiresPartnerInfo={sessionFlowRequiresPartnerInfo}
           initialNumerologTool={sessionFlowInitialNumerologTool ?? undefined}
           initialPartnerInfo={sessionFlowInitialPartnerInfo ?? undefined}
+          spreadIntentSlug={seoFlowIntentSlug}
           masters={masters}
           userBirthDate={effectiveProfile.birthDate}
           userFullName={effectiveProfile.name}
@@ -2967,11 +3149,14 @@ export default function HomePage({
                 if (seoFlowIntentSlug) {
                   persistPendingIntent(seoFlowIntentSlug);
                 }
-                const returnTo = seoFlowIntentSlug ? `/?intent=${encodeURIComponent(seoFlowIntentSlug)}` : "/";
-                window.location.href = `/auth/user/register?returnTo=${encodeURIComponent(returnTo)}`;
+                const returnTo = seoFlowIntentSlug
+                  ? resolveRegistrationReturnTo({ intentSlug: seoFlowIntentSlug })
+                  : resolveRegistrationReturnTo();
+                window.location.href = buildRegisterHref(returnTo);
               }
               return;
             }
+            consumePendingGuestQuestion();
             setSeoFlowOpen(false);
             setShowSessionFlow(false);
             setSeoFlowIntentSlug(null);

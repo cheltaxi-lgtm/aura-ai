@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, Copy } from "lucide-react";
 import { copyToClipboard } from "@/lib/share/channels-client";
 import { trackShareLandingCta, trackShareLandingCopy } from "@/lib/share/metrika";
+import { storeShareRegistrationAttribution } from "@/lib/share/registration-attribution";
 
 interface Props {
   token: string;
@@ -33,7 +34,10 @@ export default function ShareLandingActions({ token, kind, shareUrl, ctaHref }: 
       <Link
         href={ctaHref}
         className="btn-luxe btn-luxe--gold share-landing__cta"
-        onClick={() => trackShareLandingCta(token, kind)}
+        onClick={() => {
+          storeShareRegistrationAttribution(token, kind);
+          trackShareLandingCta(token, kind);
+        }}
       >
         Получить свой расклад
       </Link>

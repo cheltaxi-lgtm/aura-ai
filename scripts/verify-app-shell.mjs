@@ -44,6 +44,20 @@ const checks = [
   () => mustInclude("src/components/HomePage.tsx", 'dailyParam === "1"', "daily=1 deep link"),
   () => mustExist("src/lib/app-connectivity.ts"),
   () => mustInclude("src/lib/app-connectivity.ts", "probeAppConnectivity", "connectivity probe"),
+  () =>
+    mustInclude(
+      "src/lib/app-connectivity.ts",
+      "if (status === null) return null",
+      "trust successful status probe"
+    ),
+  () =>
+    mustInclude(
+      "src/hooks/useAppConnectivity.ts",
+      "FAILURE_THRESHOLD",
+      "debounced offline gate"
+    ),
+  () =>
+    mustInclude("mobile/www/offline.html", "canReachServer", "offline fallback probes API"),
   () => mustExist("src/hooks/useAppConnectivity.ts"),
   () => mustExist("src/app/api/platform/status/route.ts"),
   () => mustExist("src/lib/app-shell-update-check.ts"),

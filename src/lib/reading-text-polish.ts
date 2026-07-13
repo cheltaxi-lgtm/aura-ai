@@ -73,6 +73,104 @@ export function inferSpreadCardNames(text: string, cardNames?: string[]): string
   return fromBold.slice(0, limit);
 }
 
+/** Latin terms allowed in Russian master voice (runes, vedic, deck names). */
+const ALLOWED_LATIN_WORDS = new Set([
+  "fehu", "uruz", "thurisaz", "ansuz", "raido", "raidho", "kenaz", "gebo", "wunjo",
+  "hagalaz", "nauthiz", "isa", "jera", "eihwaz", "perthro", "algiz", "ehwaz", "sowilo",
+  "tiwaz", "berkano", "dagaz", "othala", "ingwaz", "mannaz", "laguz", "odin",
+  "shani", "rahu", "ketu", "guru", "dharma", "karma", "surya", "chandra", "mangal",
+  "budha", "shukra",
+  "rider", "waite", "lenormand", "tarot", "rws",
+  "ace", "king", "queen", "knight", "page", "of", "wands", "cups", "swords", "pentacles",
+]);
+
+/** Common English leaks from LLM → Russian replacements. */
+const ENGLISH_TO_RUSSIAN: Record<string, string> = {
+  guarded: "закрыта",
+  hidden: "скрыта",
+  safely: "безопасно",
+  safe: "безопасно",
+  carefully: "аккуратно",
+  careful: "осторожно",
+  quietly: "тихо",
+  slowly: "медленно",
+  instead: "вместо этого",
+  however: "однако",
+  maybe: "может",
+  important: "важно",
+  information: "информация",
+  energy: "энергия",
+  shadow: "тень",
+  challenge: "испытание",
+  opportunity: "возможность",
+  situation: "ситуация",
+  focus: "фокус",
+  release: "отпускание",
+  blocked: "заблокировано",
+  blocking: "мешает",
+  inner: "внутренний",
+  outer: "внешний",
+  truly: "по-настоящему",
+  really: "действительно",
+  actually: "на самом деле",
+  simply: "просто",
+  clearly: "ясно",
+  directly: "прямо",
+  gently: "мягко",
+  deeply: "глубоко",
+  strongly: "сильно",
+  likely: "вероятно",
+  unlikely: "маловероятно",
+  potential: "потенциал",
+  obvious: "очевидно",
+  subtle: "тонко",
+  private: "личное",
+  public: "публичное",
+  open: "открыто",
+  closed: "закрыто",
+  alone: "один",
+  together: "вместе",
+  trust: "доверие",
+  fear: "страх",
+  hope: "надежда",
+  truth: "правда",
+  lie: "ложь",
+  lies: "ложь",
+  self: "себя",
+  yourself: "себя",
+};
+
+/**
+ * Remove or translate stray English words in predominantly Russian readings.
+ * Keeps rune/vedic/deck terms; maps common leaks; drops unknown Latin tokens.
+ */
+export function stripEnglishLeakageFromRussianText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+
+  const cyrillic = (trimmed.match(/[\u0400-\u04FF]/g) ?? []).length;
+  const latin = (trimmed.match(/[a-zA-Z]/g) ?? []).length;
+  if (cyrillic < 16 || latin < 2) return trimmed;
+
+  let out = trimmed.replace(
+    /(?<![A-Za-z0-9_/])([A-Za-z]{2,})(?![A-Za-z0-9_/])/g,
+    (word) => {
+      const lower = word.toLowerCase();
+      if (ALLOWED_LATIN_WORDS.has(lower)) return word;
+      const repl = ENGLISH_TO_RUSSIAN[lower];
+      if (repl) return repl;
+      return "";
+    }
+  );
+
+  return out
+    .replace(/\s+([.,!?;:—–-])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/ \n/g, "\n")
+    .replace(/\n /g, "\n")
+    .trim();
+}
+
 /** Replace empty emphasis / orphan stars; optionally inject spread card names. */
 export function polishSpreadReadingText(text: string, cardNames?: string[]): string {
   let out = text.replace(/\r\n/g, "\n");
@@ -91,6 +189,8 @@ export function polishSpreadReadingText(text: string, cardNames?: string[]): str
   // Leftover empty emphasis only — keep valid **Name** pairs intact.
   out = out.replace(/\*\s+\*/g, "");
   out = out.replace(/\*\*(?:\s|\u00a0)*\*\*/g, "");
+
+  out = stripEnglishLeakageFromRussianText(out);
 
   return out.replace(/  +/g, " ").trim();
 }

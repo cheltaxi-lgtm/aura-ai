@@ -17,12 +17,19 @@ export interface PlatformFeatures {
   recaptcha: PlatformRecaptchaConfig;
 }
 
+const FALLBACK_SCOPES = Object.fromEntries(
+  (Object.keys(DEFAULT_RECAPTCHA_SCOPES) as (keyof RecaptchaScopeSettings)[]).map((scope) => [
+    scope,
+    false,
+  ])
+) as RecaptchaScopeSettings;
+
 const FALLBACK: PlatformFeatures = {
   expertRegistrationEnabled: true,
   recaptcha: {
     configured: false,
     masterEnabled: false,
-    scopes: { ...DEFAULT_RECAPTCHA_SCOPES },
+    scopes: FALLBACK_SCOPES,
   },
 };
 
@@ -68,10 +75,14 @@ export function invalidatePlatformFeaturesCache() {
 
 export function usePlatformFeatures() {
   const [features, setFeatures] = useState<PlatformFeatures>(cached ?? FALLBACK);
+  const [featuresLoaded, setFeaturesLoaded] = useState(cached !== null);
 
   useEffect(() => {
-    void fetchPlatformFeatures().then(setFeatures);
+    void fetchPlatformFeatures().then((next) => {
+      setFeatures(next);
+      setFeaturesLoaded(true);
+    });
   }, []);
 
-  return features;
+  return { ...features, featuresLoaded };
 }

@@ -22,6 +22,7 @@ interface MaintenanceResult {
   scanned: number;
   reembedded: number;
   decayed: number;
+  sessionsPruned: number;
 }
 
 export default function AdminMemoryPage() {
@@ -52,7 +53,12 @@ export default function AdminMemoryPage() {
       const res = await fetch("/api/admin/memory/maintenance?limit=500", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "failed");
-      setResult({ scanned: data.scanned, reembedded: data.reembedded, decayed: data.decayed });
+      setResult({
+        scanned: data.scanned,
+        reembedded: data.reembedded,
+        decayed: data.decayed,
+        sessionsPruned: data.sessionsPruned ?? 0,
+      });
       load();
     } catch {
       setError("Не удалось запустить обслуживание памяти");
@@ -116,7 +122,7 @@ export default function AdminMemoryPage() {
           {result ? (
             <p className="mt-3 text-xs text-emerald-400">
               Просканировано: {result.scanned} · дозаполнено embedding: {result.reembedded} · понижено
-              критических: {result.decayed}
+              критических: {result.decayed} · удалено лишних сводок: {result.sessionsPruned}
             </p>
           ) : null}
           {error ? <p className="mt-3 text-xs text-red-400">{error}</p> : null}

@@ -20,6 +20,8 @@ interface NumerologCalculationPickerProps {
   userBirthDate?: string;
   /** Full name from profile — required for chaldean/karma. */
   userFullName?: string;
+  /** Summary block is rendered in the modal footer — hide duplicate panel here. */
+  hideSummaryPanel?: boolean;
 }
 
 function drawMeta(tool: NumerologToolDef): string {
@@ -44,6 +46,7 @@ export default function NumerologCalculationPicker({
   runeBillingEnabled = false,
   userBirthDate,
   userFullName,
+  hideSummaryPanel = false,
 }: NumerologCalculationPickerProps) {
   const [partnerDateError, setPartnerDateError] = useState("");
   const selected = getNumerologTool(selectedId);
@@ -67,8 +70,8 @@ export default function NumerologCalculationPicker({
     "mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white placeholder:text-white/35 outline-none focus:border-amber-400/45";
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+    <div className="numerolog-calc-picker space-y-4">
+      <div className="numerolog-calc-picker__grid grid grid-cols-2 gap-2">
         {NUMEROLOG_SESSION_TOOLS.map((tool) => {
           const active = tool.id === selectedId;
           const tagline = tool.tagline ?? tool.description ?? "";
@@ -78,7 +81,7 @@ export default function NumerologCalculationPicker({
               key={tool.id}
               type="button"
               onClick={() => onSelect(tool.id)}
-              className={`group relative overflow-hidden rounded-2xl border p-3.5 text-left transition-all duration-300 ${
+              className={`numerolog-calc-picker__card group relative min-w-0 rounded-2xl border p-3 text-left transition-all duration-300 ${
                 active
                   ? "border-aura-gold/55 bg-gradient-to-br from-amber-950/45 via-[#1a1228]/90 to-purple-950/35 shadow-[0_0_28px_rgba(201,153,58,0.14)]"
                   : "border-white/10 bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.07]"
@@ -91,9 +94,9 @@ export default function NumerologCalculationPicker({
                 />
               ) : null}
 
-              <div className="flex items-start gap-3">
+              <div className="flex min-w-0 items-start gap-2">
                 <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg transition-colors ${
+                  className={`numerolog-calc-picker__emoji flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-base transition-colors ${
                     active
                       ? "border-aura-gold/35 bg-amber-950/40"
                       : "border-white/10 bg-black/35 group-hover:border-white/20"
@@ -104,27 +107,30 @@ export default function NumerologCalculationPicker({
                 </span>
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-display text-[15px] font-semibold leading-snug text-white">
+                  <div className="flex min-w-0 items-start gap-1">
+                    <p className="numerolog-calc-picker__title min-w-0 flex-1 font-display font-semibold text-white">
                       {tool.label}
                     </p>
                     {active ? (
-                      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-aura-gold">
+                      <span
+                        className="shrink-0 text-[10px] font-medium text-aura-gold"
+                        aria-hidden
+                      >
                         ✓
                       </span>
                     ) : null}
                   </div>
 
                   {tagline ? (
-                    <p className="mt-1 text-xs leading-relaxed text-white/55">{tagline}</p>
+                    <p className="numerolog-calc-picker__tagline mt-1 text-white/55">{tagline}</p>
                   ) : null}
 
-                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/45">
+                  <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span className="rounded-full border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/45">
                       {drawMeta(tool)}
                     </span>
                     {runeBillingEnabled ? (
-                      <RuneCost cost={tool.cost} enabled className="text-[10px] text-amber-200/75" />
+                      <RuneCost cost={tool.cost} enabled className="text-[9px] text-amber-200/75" />
                     ) : null}
                   </div>
                 </div>
@@ -134,15 +140,17 @@ export default function NumerologCalculationPicker({
         })}
       </div>
 
-      <div className="rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/25 via-black/20 to-transparent px-4 py-3.5">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-aura-gold/80">
-          {selected.label}
-        </p>
-        <p className="mt-1.5 text-sm leading-relaxed text-white/70">
-          {selected.description ?? selected.tagline ?? ""}
-        </p>
-        <p className="mt-2 text-xs text-white/45">{drawActionHint(selected)}</p>
-      </div>
+      {!hideSummaryPanel ? (
+        <div className="numerolog-calc-picker__summary rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/25 via-black/20 to-transparent px-4 py-3.5">
+          <p className="numerolog-calc-picker__summary-title font-medium text-aura-gold/80">
+            {selected.label}
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-white/70">
+            {selected.description ?? selected.tagline ?? ""}
+          </p>
+          <p className="mt-2 text-xs text-white/45">{drawActionHint(selected)}</p>
+        </div>
+      ) : null}
 
       {selected.needsForm === "compat" ? (
         <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
@@ -198,6 +206,15 @@ export default function NumerologCalculationPicker({
       ) : null}
     </div>
   );
+}
+
+export function numerologCalculationSummary(toolId: NumerologToolId) {
+  const tool = getNumerologTool(toolId);
+  return {
+    label: tool.label,
+    description: tool.description ?? tool.tagline ?? "",
+    hint: drawActionHint(tool),
+  };
 }
 
 export function numerologCalculationReady(

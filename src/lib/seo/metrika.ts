@@ -74,8 +74,8 @@ export function trackLandingEvent(
   trackSeoEvent(goal, params);
 }
 
-export function trackLandingView(): void {
-  trackLandingEvent("landing_view");
+export function trackLandingView(params?: Record<string, string | number>): void {
+  trackLandingEvent("landing_view", params);
 }
 
 export function trackSocialProofView(): void {
@@ -104,6 +104,29 @@ export function trackGuestSpreadCompleted(): void {
 
 export function trackRegistrationGateView(source: string): void {
   trackLandingEvent("registration_gate_view", { source });
+}
+
+export function trackRegistrationCtaClick(source: string): void {
+  trackLandingEvent("registration_cta_click", { source });
+}
+
+export function trackLandingPrimaryCtaClick(placement: string): void {
+  trackLandingEvent("landing_primary_cta_click", { placement });
+}
+
+export function trackOnboardingStarted(): void {
+  trackLandingEvent("onboarding_started");
+}
+
+export function trackFirstChatOpened(source: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (sessionStorage.getItem("zovus_tracked_first_chat") === "1") return;
+    sessionStorage.setItem("zovus_tracked_first_chat", "1");
+  } catch {
+    return;
+  }
+  trackLandingEvent("first_chat_opened", { source });
 }
 
 export function trackRegistrationStarted(source: string): void {

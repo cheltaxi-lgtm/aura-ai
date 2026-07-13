@@ -10,18 +10,35 @@ export function masterBillingKind(system: DeckSystem): MasterBillingKind {
   return "tarot";
 }
 
+export type MasterPriceKind = "reading" | "question";
+
 /** Per-question unit label derived from the master's deck system. */
 export function masterQuestionUnit(system: DeckSystem): string {
   switch (masterBillingKind(system)) {
     case "runes":
-      return "по рунам за вопрос";
+      return "за вопрос мастеру";
     case "tarot":
     case "slavic":
-      return "по картам за вопрос";
+      return "за вопрос по картам";
     case "astrology":
-      return "по знакам за вопрос";
+      return "за вопрос по знакам";
     case "numerology":
-      return "по числам за вопрос";
+      return "за вопрос по числам";
+  }
+}
+
+/** Full spread reading label — matches hero/FAQ «расшифровка расклада». */
+export function masterReadingUnit(system: DeckSystem): string {
+  switch (masterBillingKind(system)) {
+    case "runes":
+      return "за расшифровку по рунам";
+    case "tarot":
+    case "slavic":
+      return "за расшифровку расклада";
+    case "astrology":
+      return "за расшифровку по знакам";
+    case "numerology":
+      return "за расшифровку по числам";
   }
 }
 
@@ -38,18 +55,24 @@ export function formatMasterPriceDisplay(params: {
   readingCost?: number;
   questionCost?: number;
   sessionOnly?: boolean;
+  /** When set, overrides sessionOnly for which tariff to show on cards. */
+  priceKind?: MasterPriceKind;
   formatRunes?: (n: number) => string;
 }): MasterPriceDisplay {
-  const unit = masterQuestionUnit(params.system);
-  const { runesEnabled, readingCost, questionCost, sessionOnly, priceFrom, formatRunes } = params;
+  const { runesEnabled, readingCost, questionCost, sessionOnly, priceKind, priceFrom, formatRunes } =
+    params;
 
   if (runesEnabled && formatRunes) {
+    const kind: MasterPriceKind =
+      priceKind ?? (sessionOnly && questionCost != null ? "question" : "reading");
     const runeAmount =
-      sessionOnly && questionCost != null
-        ? questionCost
-        : readingCost ?? questionCost ?? 15;
+      kind === "question"
+        ? (questionCost ?? readingCost ?? 15)
+        : (readingCost ?? questionCost ?? 15);
+    const unit = kind === "question" ? masterQuestionUnit(params.system) : masterReadingUnit(params.system);
     return { amount: `от ${formatRunes(runeAmount)}`, unit };
   }
 
+  const unit = masterReadingUnit(params.system);
   return { amount: `от ${priceFrom}`, unit };
 }

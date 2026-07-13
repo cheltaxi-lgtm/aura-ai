@@ -44,11 +44,14 @@ function readUserGender(): UserGender {
 type QuickQuestionsProps = {
   showQuestionField?: boolean;
   onQuestionSelect?: (question: string) => void;
+  /** Custom question field only — chips keep using intent links when logged in. */
+  onCustomQuestionSubmit?: (question: string) => void;
 };
 
 export default function QuickQuestions({
   showQuestionField = true,
   onQuestionSelect,
+  onCustomQuestionSubmit,
 }: QuickQuestionsProps) {
   const [userGender, setUserGender] = useState<UserGender>(null);
 
@@ -98,7 +101,7 @@ export default function QuickQuestions({
           <HeroQuestionField
             compact
             className="quick-questions__search"
-            onQuestionSubmit={onQuestionSelect}
+            onQuestionSubmit={onCustomQuestionSubmit ?? onQuestionSelect}
           />
         ) : null}
 

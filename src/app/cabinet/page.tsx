@@ -472,7 +472,7 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetSupportLink />
-            <CabinetJointReadings />
+            <CabinetJointReadings variant="compact" />
             <CabinetDailyNotifications />
             <CabinetAppVersion />
             <CabinetDangerZone onPurged={handlePurgeAll} />
@@ -488,6 +488,7 @@ export default function CabinetPage() {
               title="История сеансов"
               subtitle="Все расклады, карты и расшифровки — в одном месте."
             />
+            <CabinetJointReadings />
             <CabinetSessionHistory
               sessions={sessions}
               hasMore={sessionsHasMore}

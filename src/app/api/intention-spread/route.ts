@@ -30,7 +30,7 @@ import {
   type SpreadSeedParts,
 } from "@/lib/spread-draw";
 import { buildNumerologPickTable } from "@/lib/spread-table";
-import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
+import { getSpreadRitualCopy, resolveSpreadRitualTopicLabel } from "@/lib/spread-ritual-copy";
 import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import {
   buildCharacterPrompt,
@@ -363,9 +363,17 @@ export async function GET(request: NextRequest) {
   const profileUser = await getUserById(authed.profileUserId);
 
   if (sessionInit) {
+    const intentSlugParam = request.nextUrl.searchParams.get("intentSlug")?.trim();
+    const customQuestionInit = seedParts.customQuestion ?? undefined;
+    const topicLabelOverride = resolveSpreadRitualTopicLabel({
+      topic: topic as SessionTopicId,
+      customQuestion: customQuestionInit,
+      intentSlug: intentSlugParam,
+    });
     const init = buildSpreadSessionInitResponse({
       ...seedParts,
       topic: topic as SessionTopicId,
+      topicLabelOverride,
       hasBirthDate: Boolean(profileUser?.birth_date),
       system,
     });
@@ -397,6 +405,11 @@ export async function GET(request: NextRequest) {
 
   const ritualCopy = getSpreadRitualCopy(characterId, {
     topic: topic as SessionTopicId,
+    topicLabelOverride: resolveSpreadRitualTopicLabel({
+      topic: topic as SessionTopicId,
+      customQuestion,
+      intentSlug: request.nextUrl.searchParams.get("intentSlug")?.trim(),
+    }),
     hasBirthDate: Boolean(profileUser?.birth_date),
     cardCount,
   });

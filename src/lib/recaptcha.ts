@@ -7,7 +7,17 @@ import {
 } from "@/lib/recaptcha-scopes";
 
 const RECAPTCHA_VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify";
-const MIN_SCORE = 0.5;
+const DEFAULT_MIN_SCORE = 0.5;
+
+/** Lower threshold for signup flows — VPN/ad-block users often score 0.2–0.4. */
+const MIN_SCORE_BY_SCOPE: Partial<Record<RecaptchaScope, number>> = {
+  register: 0.3,
+  expertRegister: 0.3,
+};
+
+function minScoreForScope(scope: RecaptchaScope): number {
+  return MIN_SCORE_BY_SCOPE[scope] ?? DEFAULT_MIN_SCORE;
+}
 
 const IP_V4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const IP_V6 = /^[0-9a-f:]+$/i;
@@ -107,12 +117,13 @@ export async function verifyRecaptchaForScope(
     return { ok: true };
   }
 
-  return verifyRecaptcha(token, remoteIp);
+  return verifyRecaptcha(token, remoteIp, minScoreForScope(scope));
 }
 
 export async function verifyRecaptcha(
   token: string | undefined,
-  remoteIp?: string | null
+  remoteIp?: string | null,
+  minScore = DEFAULT_MIN_SCORE
 ): Promise<RecaptchaResult> {
   if (!hasRecaptchaCredentials()) {
     if (process.env.NODE_ENV === "production") {
@@ -180,8 +191,8 @@ export async function verifyRecaptcha(
     return { ok: false, error: "Проверка reCAPTCHA не пройдена" };
   }
 
-  if (data.score !== undefined && data.score < MIN_SCORE) {
-    console.warn("reCAPTCHA low score:", data.score);
+  if (data.score !== undefined && data.score < minScore) {
+    console.warn("reCAPTCHA low score:", data.score, "min:", minScore);
     return {
       ok: false,
       error:

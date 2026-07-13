@@ -86,9 +86,10 @@ export async function createYukassaRunePayment(params: {
   priceRub: number;
   totalRunes: number;
   userId: string;
-  returnUrl: string;
+  appUrl: string;
 }) {
   const idempotenceKey = `rune-${params.userId}-${params.packageId}-${Date.now()}`;
+  const returnUrl = `${params.appUrl.replace(/\/$/, "")}/runes/success`;
 
   const response = await fetch(`${YUKASSA_API}/payments`, {
     method: "POST",
@@ -102,7 +103,7 @@ export async function createYukassaRunePayment(params: {
       capture: true,
       confirmation: {
         type: "redirect",
-        return_url: params.returnUrl,
+        return_url: returnUrl,
       },
       description: `Zovus — ${params.packageName}: ${params.totalRunes} ᚢ рун`,
       metadata: {

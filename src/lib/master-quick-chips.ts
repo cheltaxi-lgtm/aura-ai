@@ -61,6 +61,19 @@ export function periodSpreadTaskLabel(scope: PeriodSpreadScope): string {
   }
 }
 
+export function encodePeriodSpreadId(scope: PeriodSpreadScope): string {
+  return `period:${scope}`;
+}
+
+export function decodePeriodSpreadId(
+  spreadId: string | null | undefined
+): PeriodSpreadScope | null {
+  if (!spreadId?.startsWith("period:")) return null;
+  const scope = spreadId.slice("period:".length);
+  if (scope === "today" || scope === "week" || scope === "month") return scope;
+  return null;
+}
+
 export function drawPeriodSpread(characterId: string): {
   cards: SpreadSymbol[];
   system: DeckSystem;

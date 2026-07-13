@@ -17,7 +17,7 @@ import {
 } from "@/lib/session-memory";
 import { query } from "@/lib/db";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
-import { limitSpreadKeyCards, requiredCardCount } from "@/lib/spreads";
+import { limitSpreadKeyCards, MAX_SPREAD_CARD_COUNT, requiredCardCount } from "@/lib/spreads";
 import { createDiaryEntryForSession } from "@/lib/diary";
 import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
 
@@ -83,7 +83,10 @@ export async function PATCH(request: NextRequest) {
   }
 
   const cardNames = session.cards?.length ? session.cards : [];
-  const keyCardLimit = requiredCardCount(session.spread_id, session.spread_type);
+  const keyCardLimit =
+    session.spread_type === "photo"
+      ? cardNames.length || MAX_SPREAD_CARD_COUNT
+      : requiredCardCount(session.spread_id, session.spread_type);
   const messages = await getActiveSessionMessages(
     profileUserId,
     characterKey,

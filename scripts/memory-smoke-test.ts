@@ -76,10 +76,14 @@ async function main() {
     [U]
   );
 
+  // Always in the near future — a hardcoded date silently rots and starts
+  // failing the upcoming-events checks once it passes.
+  const eventDate = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+
   try {
     // Seed via the REAL write path (embeds; no chat LLM → not flaky).
     await upsertFacts(U, [
-      { fact: "У клиента сын Артём, выпускной 2026-07-10", category: "event", eventDate: "2026-07-10", salience: 3 },
+      { fact: `У клиента сын Артём, выпускной ${eventDate}`, category: "event", eventDate, salience: 3 },
       { fact: "Клиент работает программистом и думает сменить работу", category: "work", salience: 3 },
       { fact: "Клиент разводится с женой", category: "relationship", salience: 5 },
       { fact: "У клиента ипотека, переживает из-за долгов", category: "money", salience: 4 },

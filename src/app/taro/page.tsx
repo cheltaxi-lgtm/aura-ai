@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
@@ -46,6 +47,7 @@ export default function TaroPillarPage() {
 
   return (
     <SeoPageShell backHref="/" backLabel="На главную">
+      <SeoPageTracker goal="taro_hub_view" />
       <SeoBreadcrumbs items={breadcrumbs} />
       <p className="text-sm text-aura-gold/80">Таро · Zovus</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Таро онлайн: расклады и значения карт</h1>

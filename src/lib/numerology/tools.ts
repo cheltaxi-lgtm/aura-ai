@@ -252,6 +252,11 @@ export function numerologToolDrawCount(toolId: NumerologToolId): number {
   return getNumerologTool(toolId).drawCount;
 }
 
+/** Tools calculated from birth date only — no drawable number "cards". */
+export function numerologComputedOnlyTool(toolId: NumerologToolId): boolean {
+  return numerologToolDrawCount(toolId) === 0;
+}
+
 export function numerologToolPositions(
   toolId: NumerologToolId,
   opts?: { fromYear?: number }

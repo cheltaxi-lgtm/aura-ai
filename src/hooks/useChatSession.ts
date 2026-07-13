@@ -24,6 +24,8 @@ import { generateId } from "@/lib/id";
 import { resolveMasterSpread } from "@/lib/spread-context";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread } from "@/lib/spreads";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { enrichNumerologMessagesOnRestore } from "@/lib/numerology/resolve-message-ui";
+import { decodeNumerologSpreadId } from "@/lib/numerology/tools";
 
 export interface RestoreChatResult {
   messages: Message[];
@@ -231,12 +233,21 @@ export function useChatSession(options: UseChatSessionOptions) {
           }[];
 
           if (isLoggedIn) {
-            const restored: Message[] = rows.map((m) => ({
-              id: m.id,
-              role: m.role as "user" | "assistant",
-              content: m.content,
-              timestamp: new Date(m.timestamp),
-            }));
+            const numerologToolId =
+              (data.numerologToolId as RestoreChatResult["numerologToolId"]) ??
+              decodeNumerologSpreadId(data.spreadId as string | null | undefined);
+            const restored: Message[] = enrichNumerologMessagesOnRestore(
+              rows.map((m) => ({
+                id: m.id,
+                role: m.role as "user" | "assistant",
+                content: m.content,
+                timestamp: new Date(m.timestamp),
+              })),
+              {
+                numerologToolId,
+                birthDate: activeProfile?.birthDate,
+              }
+            );
 
             const spread = data.spread as RestoreChatResult["spread"] | null | undefined;
             return {

@@ -28,6 +28,10 @@ import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
+import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
+import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
+import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
+import type { NumerologToolId } from "@/lib/numerology/tools";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
 import MasterQuickChips from "@/components/MasterQuickChips";
 import { hasMasterQuickChips } from "@/lib/master-quick-chips";
@@ -92,6 +96,11 @@ interface ChatWindowProps {
   spreadCardCount?: number;
   /** Position labels for numerolog number cards. */
   spreadPositions?: string[];
+  /** Computed numerolog tools (Pythagoras / destiny matrix) — no drawable cards. */
+  spreadComputedOnly?: boolean;
+  spreadPythagorasSquare?: PythagorasSquareResult | null;
+  spreadDestinyMatrix?: DestinyMatrixResult | null;
+  numerologSessionToolId?: NumerologToolId | null;
   spreadInteractiveFlip?: boolean;
   spreadFlipped?: boolean[];
   onSpreadFlip?: (index: number) => void;
@@ -149,6 +158,10 @@ export default function ChatWindow({
   spreadId = DEFAULT_SPREAD_ID,
   spreadCardCount,
   spreadPositions,
+  spreadComputedOnly = false,
+  spreadPythagorasSquare = null,
+  spreadDestinyMatrix = null,
+  numerologSessionToolId = null,
   spreadInteractiveFlip = false,
   spreadFlipped = spreadFlippedState(3, true),
   onSpreadFlip,
@@ -427,20 +440,24 @@ export default function ChatWindow({
 
   const requiredSpreadCount =
     spreadVariant === "numerolog"
-      ? (spreadCardCount ?? 1)
+      ? spreadComputedOnly
+        ? 0
+        : (spreadCardCount ?? 1)
       : spreadVariant === "photo"
         ? 1
         : 3;
-  const spreadCardsVisible = (spreadCards?.length ?? 0) >= requiredSpreadCount;
+  const spreadCardsVisible =
+    spreadComputedOnly || (spreadCards?.length ?? 0) >= requiredSpreadCount;
   const headerSpreadVisible = Boolean(
-    spreadCards?.length &&
-      (spreadVariant === "numerolog"
-        ? spreadCardsVisible
-        : hasCompleteSpread(
-            spreadCards.map((c) => c.name),
-            spreadVariant === "photo" ? null : spreadId,
-            spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
-          ))
+    spreadComputedOnly ||
+      (spreadCards?.length &&
+        (spreadVariant === "numerolog"
+          ? spreadCardsVisible
+          : hasCompleteSpread(
+              spreadCards.map((c) => c.name),
+              spreadVariant === "photo" ? null : spreadId,
+              spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
+            )))
   );
 
   const spreadSharePayload = useMemo(() => {
@@ -686,32 +703,41 @@ export default function ChatWindow({
         </div>
       )}
 
-      {spreadCards &&
-        (spreadVariant === "numerolog"
-          ? spreadCards.length >= requiredSpreadCount
-          : hasCompleteSpread(
-              spreadCards.map((c) => c.name),
-              spreadVariant === "photo" ? null : spreadId,
-              spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
-            )) && (
+      {spreadCardsVisible &&
+        (spreadComputedOnly ||
+          (spreadVariant === "numerolog"
+            ? (spreadCards?.length ?? 0) >= requiredSpreadCount
+            : hasCompleteSpread(
+                spreadCards!.map((c) => c.name),
+                spreadVariant === "photo" ? null : spreadId,
+                spreadVariant === "photo" ? "photo" : spreadVariant === "intention" ? "new" : "daily"
+              ))) && (
         <div className="rounded-xl border border-aura-gold/15 bg-black/30 p-4">
           <p className="mb-3 text-center text-[10px] uppercase tracking-widest text-aura-gold">
             {spreadVariant === "photo"
               ? "Расклад по фото"
               : spreadVariant === "numerolog"
-                ? "Ваши числа"
+                ? spreadComputedOnly && spreadPythagorasSquare
+                  ? "Квадрат Пифагора"
+                  : spreadComputedOnly && spreadDestinyMatrix
+                    ? "Матрица судьбы"
+                    : "Ваши числа"
                 : spreadVariant === "intention"
                   ? sessionIntention
                     ? `${getSpread(spreadId).label} · ${topicLabel(sessionIntention)}`
                     : getSpread(spreadId).label
                   : "Ваш расклад"}
           </p>
-          {spreadInteractiveFlip &&
+          {spreadComputedOnly && spreadPythagorasSquare ? (
+            <PythagorasSquareGrid square={spreadPythagorasSquare} />
+          ) : spreadComputedOnly && spreadDestinyMatrix ? (
+            <DestinyMatrixGrid matrix={spreadDestinyMatrix} revealed={7} />
+          ) : spreadInteractiveFlip &&
           (spreadVariant === "triplet" || spreadVariant === "intention") ? (
             spreadVariant === "intention" && spreadId ? (
               <SpreadLayout
                 spreadId={spreadId as SpreadId}
-                cards={spreadCards.slice(0, requiredCardCount(spreadId, "new"))}
+                cards={(spreadCards ?? []).slice(0, requiredCardCount(spreadId, "new"))}
                 system={spreadDeckSystem ?? DEFAULT_DECK_SYSTEM}
                 topic={(sessionIntention as SessionTopicId | null) ?? null}
                 flipped={spreadFlipped}
@@ -720,7 +746,7 @@ export default function ChatWindow({
               />
             ) : (
               <SpreadFlipRow
-                cards={spreadCards.slice(0, requiredCardCount(spreadId, "daily"))}
+                cards={(spreadCards ?? []).slice(0, requiredCardCount(spreadId, "daily"))}
                 system={spreadDeckSystem ?? DEFAULT_DECK_SYSTEM}
                 masterId={characterId}
                 flipped={spreadFlipped}
@@ -735,10 +761,10 @@ export default function ChatWindow({
             <TarotCardsRow
               cards={
                 spreadVariant === "photo"
-                  ? spreadCards
+                  ? (spreadCards ?? [])
                   : spreadVariant === "numerolog"
-                    ? spreadCards.slice(0, requiredSpreadCount)
-                    : spreadCards.slice(0, requiredCardCount(spreadId, spreadVariant === "intention" ? "new" : "daily"))
+                    ? (spreadCards ?? []).slice(0, requiredSpreadCount)
+                    : (spreadCards ?? []).slice(0, requiredCardCount(spreadId, spreadVariant === "intention" ? "new" : "daily"))
               }
               system={spreadDeckSystem}
               masterId={characterId}
@@ -844,7 +870,12 @@ export default function ChatWindow({
             {messages.map((msg, msgIndex) => {
               const pythagorasSquare =
                 characterId === "numerolog" && msg.role === "assistant"
-                  ? resolvePythagorasSquareForMessage(messages, msgIndex, userBirthDate)
+                  ? resolvePythagorasSquareForMessage(
+                      messages,
+                      msgIndex,
+                      userBirthDate,
+                      numerologSessionToolId
+                    )
                   : null;
               const assistantContent =
                 msg.role === "assistant"
@@ -894,7 +925,7 @@ export default function ChatWindow({
                         role="assistant"
                         hideSpreadCardImages={headerSpreadVisible}
                       />
-                      {pythagorasSquare ? (
+                      {pythagorasSquare && !(spreadComputedOnly && spreadPythagorasSquare) ? (
                         <PythagorasSquareGrid
                           square={pythagorasSquare}
                           className="mt-3"

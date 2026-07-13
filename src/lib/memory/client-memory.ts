@@ -146,9 +146,46 @@ export async function loadClientMemoryBlock(params: {
   return block.length > MAX_BLOCK_CHARS ? `${block.slice(0, MAX_BLOCK_CHARS - 1)}…` : block;
 }
 
+/** Retry schedule for the background write pipeline (fire-and-forget path). */
+const RECORD_TURN_RETRY_DELAYS_MS = [5_000, 30_000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function recordTurnOnce(params: {
+  userId: string;
+  characterId?: string;
+  userMessage: string;
+  assistantReply: string;
+}): Promise<void> {
+  const { userId, characterId, userMessage, assistantReply } = params;
+
+  // Best-effort: heal any facts stored without a vector while embeddings were down.
+  await reembedMissingFacts(userId).catch(() => 0);
+
+  // Context lookup (Mem0-style): give the extractor the related known facts
+  // so it skips duplicates and phrases changes against current state.
+  const known = await searchFacts(userId, userMessage, { topK: 12 }).catch(() => []);
+  const facts = await extractFactsFromTurn(
+    userMessage,
+    assistantReply,
+    known.map((f) => f.fact)
+  );
+  if (!facts.length) return;
+  await upsertFacts(
+    userId,
+    facts.map((f) => ({ ...f, sourceCharacter: characterId ?? f.sourceCharacter ?? null }))
+  );
+  console.log(`[memory] stored ${facts.length} fact(s) for user ${userId.slice(0, 8)}…`);
+}
+
 /**
  * Extract and persist durable facts from one conversational exchange.
- * Fire-and-forget: never await on the user-facing path.
+ * Fire-and-forget: never await on the user-facing path. Transient LLM/DB
+ * failures are retried in-process with backoff instead of silently dropping
+ * the turn (upsert is idempotent via dedup, so a retry after partial success
+ * only merges).
  */
 export async function recordTurn(params: {
   userId: string;
@@ -156,29 +193,21 @@ export async function recordTurn(params: {
   userMessage: string;
   assistantReply: string;
 }): Promise<void> {
-  const { userId, characterId, userMessage, assistantReply } = params;
-  if (!userId || !userMessage?.trim()) return;
+  if (!params.userId || !params.userMessage?.trim()) return;
 
-  try {
-    // Best-effort: heal any facts stored without a vector while embeddings were down.
-    await reembedMissingFacts(userId).catch(() => 0);
-
-    // Context lookup (Mem0-style): give the extractor the related known facts
-    // so it skips duplicates and phrases changes against current state.
-    const known = await searchFacts(userId, userMessage, { topK: 12 }).catch(() => []);
-    const facts = await extractFactsFromTurn(
-      userMessage,
-      assistantReply,
-      known.map((f) => f.fact)
-    );
-    if (!facts.length) return;
-    await upsertFacts(
-      userId,
-      facts.map((f) => ({ ...f, sourceCharacter: characterId ?? f.sourceCharacter ?? null }))
-    );
-    console.log(`[memory] stored ${facts.length} fact(s) for user ${userId.slice(0, 8)}…`);
-  } catch (err) {
-    console.warn("[memory] recordTurn failed:", err instanceof Error ? err.message : err);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await recordTurnOnce(params);
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt >= RECORD_TURN_RETRY_DELAYS_MS.length) {
+        console.warn(`[memory] recordTurn failed after ${attempt + 1} attempts:`, message);
+        return;
+      }
+      console.warn(`[memory] recordTurn attempt ${attempt + 1} failed, will retry:`, message);
+      await sleep(RECORD_TURN_RETRY_DELAYS_MS[attempt]);
+    }
   }
 }
 

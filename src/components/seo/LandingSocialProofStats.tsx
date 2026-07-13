@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { getLandingSocialProofStats, type LandingSocialProofStat } from "@/lib/landing-social-proof";
+import { useEffect, useState } from "react";
+import {
+  getLandingSocialProofStats,
+  mergeLandingSocialProofWithPublicStats,
+  type LandingSocialProofStat,
+} from "@/lib/landing-social-proof";
 import { trackSocialProofView } from "@/lib/seo/metrika";
 
 type LandingSocialProofStatsProps = {
@@ -34,21 +38,44 @@ export default function LandingSocialProofStats({
   const [stats, setStats] = useState<LandingSocialProofStat[]>(() => getLandingSocialProofStats());
 
   useEffect(() => {
-    setStats(getLandingSocialProofStats());
-    const interval = window.setInterval(() => {
-      setStats(getLandingSocialProofStats());
-    }, 60_000);
-    return () => window.clearInterval(interval);
-  }, []);
+    let cancelled = false;
 
-  const items = useMemo(() => stats, [stats]);
+    const refresh = async () => {
+      const base = getLandingSocialProofStats();
+      try {
+        const res = await fetch("/api/stats/public");
+        if (!res.ok) {
+          if (!cancelled) setStats(base);
+          return;
+        }
+        const data = (await res.json()) as { sessions?: number; users?: number };
+        const merged = mergeLandingSocialProofWithPublicStats(
+          base,
+          typeof data.sessions === "number" ? data.sessions : 0,
+          typeof data.users === "number" ? data.users : 0
+        );
+        if (!cancelled) setStats(merged);
+      } catch {
+        if (!cancelled) setStats(base);
+      }
+    };
+
+    void refresh();
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 300_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   return (
     <div
       className={`landing-social-proof landing-social-proof--${variant} ${className}`.trim()}
       aria-label="Активность на платформе"
     >
-      {items.map((stat) => (
+      {stats.map((stat) => (
         <StatItem key={stat.key} stat={stat} variant={variant} />
       ))}
     </div>

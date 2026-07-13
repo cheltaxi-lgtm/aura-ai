@@ -1,4 +1,5 @@
 import { persistStep, primeHomeFlowStep } from "@/lib/home-flow-storage";
+import { onboardingRedirectUrl } from "@/lib/post-auth-return";
 
 export const APP_SHELL_SECTIONS = {
   masters: "наставники",
@@ -23,7 +24,7 @@ export function navigateToBirthProfileOnboarding(): void {
   } catch {
     /* private mode */
   }
-  window.location.assign("/?step=onboarding&app=1");
+  window.location.assign(onboardingRedirectUrl());
 }
 
 /** Переход к секции главной с любой страницы (кабинет, чат по deep link и т.д.). */
@@ -33,9 +34,21 @@ export function navigateToAppSection(sectionId: string): void {
 }
 
 /** Главная — сброс SPA-состояния и переход на домашний экран. */
+export const APP_SHELL_HOME_EVENT = "zovus:app-shell-home-nav";
+
 export function navigateToAppHome(): void {
   primeHomeFlowState();
-  window.location.assign("/?app=1");
+  if (typeof window !== "undefined" && window.location.pathname === "/") {
+    try {
+      sessionStorage.setItem("zovus_app_shell", "1");
+    } catch {
+      /* private mode */
+    }
+    window.history.replaceState(null, "", "/?app=1&step=masters");
+    window.dispatchEvent(new CustomEvent(APP_SHELL_HOME_EVENT));
+    return;
+  }
+  window.location.assign("/?app=1&step=masters");
 }
 
 /** @deprecated alias */
@@ -67,7 +80,7 @@ export function navigateToDecksModal(): void {
   } catch {
     /* private mode */
   }
-  window.location.assign("/?app=1");
+  window.location.assign("/?app=1&step=masters");
 }
 
 /** Кабинет — явная навигация с сохранением app-shell в WebView. */
@@ -104,7 +117,7 @@ export function navigateToRitualFlow(): void {
   } catch {
     /* private mode */
   }
-  window.location.assign("/?app=1");
+  window.location.assign("/?app=1&step=masters");
 }
 
 export function consumeOpenRitualFlowFlag(): boolean {

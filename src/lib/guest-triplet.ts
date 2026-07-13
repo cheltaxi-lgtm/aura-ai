@@ -1,6 +1,8 @@
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { buildOnboardingPostBody } from "@/lib/onboarding-flow-helpers";
+import type { StoredProfile } from "@/types/stored-profile";
 
 export const GUEST_TRIPLET_KEY = "aura_guest_triplet";
 
@@ -34,6 +36,39 @@ export function saveGuestTriplet(draft: GuestTripletDraft): void {
 export function clearGuestTriplet(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(GUEST_TRIPLET_KEY);
+}
+
+/** Persist guest triplet to server after register (profile with birth date already exists). */
+export async function syncGuestSpreadToServer(
+  profile: StoredProfile,
+  guest?: GuestTripletDraft | null
+): Promise<boolean> {
+  const draft = guest ?? loadGuestTriplet();
+  const cards = profile.tarotCards?.length ? profile.tarotCards : draft?.tarotCards;
+  if (!cards || cards.length < 3 || !profile.birthDate?.trim()) return false;
+
+  const masterId = profile.tripletMasterId ?? draft?.masterId;
+  const teaser = profile.teaser ?? draft?.teaser ?? "";
+  const body = buildOnboardingPostBody(
+    profile,
+    cards,
+    teaser,
+    typeof window !== "undefined" ? localStorage.getItem("aura_session_id") ?? undefined : undefined,
+    profile.deckSystem ?? draft?.deckSystem,
+    masterId
+  );
+
+  try {
+    const res = await fetch("/api/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function mergeGuestTripletIntoProfile<

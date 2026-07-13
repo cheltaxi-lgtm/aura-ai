@@ -1,5 +1,6 @@
 import type { Message } from "@/types";
 import type { DeckSystem } from "@/lib/decks/types";
+import { generateId } from "@/lib/id";
 
 const CHAT_CACHE_KEY = "aura_chat_cache";
 const CHAT_SYNC_CHANNEL = "aura-chat-sync";
@@ -58,6 +59,21 @@ export function chatHasSpreadReading(
   return messages.some(
     (m) => m.role === "assistant" && (m.content?.trim().length ?? 0) >= minChars
   );
+}
+
+/** Append spread reading once — never duplicate an existing full reading message. */
+export function appendSpreadReadingMessage(prev: Message[], content: string): Message[] {
+  const text = content.trim();
+  if (!text || chatHasSpreadReading(prev)) return prev;
+  return [
+    ...prev,
+    {
+      id: generateId(),
+      role: "assistant" as const,
+      content: text,
+      timestamp: new Date(),
+    },
+  ];
 }
 
 function serializeMessages(messages: Message[]): Message[] {

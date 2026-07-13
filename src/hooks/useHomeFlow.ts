@@ -20,12 +20,15 @@ import {
   PROFILE_KEY,
   NEEDS_PROFILE_KEY,
   clearNeedsServerProfile,
+  clearPendingMasterResume,
+  hasGuestExplicitMasterResume,
   markNeedsServerProfile,
   persistProfileData,
   persistStep,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
 import { APP_SHELL_QUERY, APP_SHELL_VALUE } from "@/lib/app-shell";
+import { isJointSpreadStartUrl } from "@/lib/joint-reading-nav";
 
 export type { StoredProfile };
 
@@ -65,6 +68,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     useAuraSession(referrerSlug);
 
   const [step, setStepState] = useState<FlowStep>("intro");
+  const [flowBootstrapped, setFlowBootstrapped] = useState(false);
   const [profile, setProfile] = useState<StoredProfile | null>(readStoredProfile);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -95,6 +99,16 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       setReconnecting(false);
     }
   }, [reconnectSession, referrerSlug]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const urlStep = params.get("step") as FlowStep | null;
+    // Only honor explicit URL deep-links here; storage restore waits for auth bootstrap.
+    if (urlStep && urlStep !== "intro") {
+      setStepState(urlStep);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -191,20 +205,48 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
   useEffect(() => {
     if (authLoading) return;
 
+    const finishBootstrap = () => setFlowBootstrapped(true);
+
     if (!isLoggedIn) {
-      setStepState("intro");
+      const params = new URLSearchParams(window.location.search);
+      const urlStep = params.get("step") as FlowStep | null;
+      const savedStep = localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null;
+      const deepStep =
+        urlStep && urlStep !== "intro" ? urlStep : savedStep;
+      const guestTriplet = loadGuestTriplet();
+      if (deepStep === "triplet" && guestTriplet) {
+        setStepState("triplet");
+        persistStep("triplet");
+      } else {
+        setStepState("intro");
+        persistStep("intro");
+        if (deepStep && deepStep !== "intro" && deepStep !== "triplet") {
+          localStorage.removeItem(FLOW_STEP_KEY);
+        }
+      }
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("step")) {
+          url.searchParams.delete("step");
+          const nextSearch = url.searchParams.toString();
+          window.history.replaceState(null, "", nextSearch ? `${url.pathname}?${nextSearch}` : url.pathname);
+        }
+      }
+      finishBootstrap();
       return;
     }
 
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("resume") === "chat" && params.get("master")) {
+        finishBootstrap();
         return;
       }
       const urlStep = params.get("step") as FlowStep | null;
       if (urlStep === "onboarding") {
         setStepState("onboarding");
         persistStep("onboarding");
+        finishBootstrap();
         return;
       }
     }
@@ -213,12 +255,25 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       markNeedsServerProfile();
       setStepState("onboarding");
       persistStep("onboarding");
+      finishBootstrap();
       return;
     }
     clearNeedsServerProfile();
 
     const stored = localStorage.getItem(PROFILE_KEY);
+    const params = new URLSearchParams(window.location.search);
+    // Joint-reading spread deep links must not resurrect an old chat session under
+    // the modal — force masters step until the spread flow finishes.
+    if (isJointSpreadStartUrl(window.location.search)) {
+      setStepState("masters");
+      persistStep("masters");
+      finishBootstrap();
+      return;
+    }
+    const urlStep = params.get("step") as FlowStep | null;
     const savedStep = localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null;
+    const effectiveStep =
+      urlStep && urlStep !== "intro" ? urlStep : savedStep;
     const savedMaster = localStorage.getItem(LAST_MASTER_KEY);
 
     if (!stored) {
@@ -238,6 +293,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         setStepState(guest.tarotCards.length >= 3 ? "onboarding" : "triplet");
         persistStep(guest.tarotCards.length >= 3 ? "onboarding" : "triplet");
       }
+      finishBootstrap();
       return;
     }
 
@@ -252,11 +308,12 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       if (!String(parsed.birthDate ?? "").trim()) {
         setStepState("onboarding");
         persistStep("onboarding");
+        finishBootstrap();
         return;
       }
 
       if (parsed.tarotCards?.length >= 3) {
-        if (savedStep === "intention") {
+        if (effectiveStep === "intention") {
           const pendingMaster = localStorage.getItem(PENDING_MASTER_KEY);
           if (pendingMaster) {
             const qs = new URLSearchParams({
@@ -266,29 +323,45 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
             window.location.assign(`/session/intention?${qs.toString()}`);
             return;
           }
-          localStorage.removeItem(PENDING_MASTER_KEY);
+          clearPendingMasterResume();
           setStepState("masters");
           persistStep("masters");
-        } else if (savedStep === "chat" && savedMaster) {
-          setStepState("chat");
-          onRestoreChatMaster?.(savedMaster);
-        } else if (savedStep === "chat") {
-          setStepState("masters");
-          persistStep("masters");
-        } else if (savedStep === "intro") {
+        } else if (effectiveStep === "chat") {
+          const restoreMaster =
+            savedMaster ?? localStorage.getItem(PENDING_MASTER_KEY);
+          if (!restoreMaster) {
+            setStepState("masters");
+            persistStep("masters");
+          } else {
+            setStepState("chat");
+            persistStep("chat");
+            onRestoreChatMaster?.(restoreMaster);
+          }
+        } else if (effectiveStep === "intro") {
+          if (!hasGuestExplicitMasterResume()) clearPendingMasterResume();
           setStepState("masters");
           persistStep("masters");
         } else {
-          setStepState(savedStep ?? "masters");
+          if (effectiveStep === "masters" && !hasGuestExplicitMasterResume()) {
+            clearPendingMasterResume();
+          }
+          setStepState(effectiveStep ?? "masters");
+          if (effectiveStep) persistStep(effectiveStep);
         }
       } else if (parsed.name || parsed.birthDate) {
-        setStepState(savedStep === "intro" ? "masters" : savedStep ?? "triplet");
-      } else if (savedStep && savedStep !== "intro") {
-        setStepState(savedStep);
+        const next =
+          effectiveStep === "intro" ? "masters" : effectiveStep ?? "triplet";
+        setStepState(next);
+        persistStep(next);
+      } else if (effectiveStep && effectiveStep !== "intro") {
+        setStepState(effectiveStep);
+        persistStep(effectiveStep);
       }
     } catch {
       localStorage.removeItem(PROFILE_KEY);
     }
+
+    finishBootstrap();
   }, [authLoading, isLoggedIn, authUser?.profileUserId, onRestoreChatMaster]);
 
   useEffect(() => {
@@ -299,7 +372,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       localStorage.removeItem(PROFILE_KEY);
       localStorage.removeItem(FLOW_STEP_KEY);
       localStorage.removeItem(LAST_MASTER_KEY);
-      localStorage.removeItem(PENDING_MASTER_KEY);
+      clearPendingMasterResume();
       localStorage.removeItem(NEEDS_PROFILE_KEY);
       localStorage.removeItem(POST_AUTH_RETURN_TO_KEY);
       localStorage.removeItem(PENDING_INTENT_KEY);
@@ -316,6 +389,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     step,
     setStepState,
     setStep,
+    flowBootstrapped,
     profile,
     setProfile,
     persistProfile,

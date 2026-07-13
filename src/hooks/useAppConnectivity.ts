@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   probeAppConnectivity,
+  isNativeCapacitorClient,
   type AppConnectivityReason,
 } from "@/lib/app-connectivity";
 import { readAppShellFromDocument, shouldUseAppShellClient } from "@/lib/app-shell";
 
 const GRACE_MS = 4_000;
 const POLL_MS = 45_000;
+/** Consecutive automatic probe failures before the full-screen gate appears. */
+const FAILURE_THRESHOLD = 3;
 
 type UseAppShellConnectivityOptions = {
   /** Wait until launch splash finished — avoids false blocks during cold start. */
@@ -26,6 +29,7 @@ export function useAppShellConnectivity(
   const [blocked, setBlocked] = useState<AppConnectivityReason | null>(null);
   const [checking, setChecking] = useState(false);
   const [inShell, setInShell] = useState(false);
+  const failureStreakRef = useRef(0);
 
   useEffect(() => {
     const sync = () => setInShell(shouldUseAppShellClient() || readAppShellFromDocument());
@@ -45,25 +49,46 @@ export function useAppShellConnectivity(
     if (enabled) return;
     setBlocked(null);
     setChecking(false);
+    failureStreakRef.current = 0;
   }, [enabled]);
 
-  const runProbe = useCallback(async () => {
-    if (!enabled || !inShell) {
-      if (!inShell) {
-        setBlocked(null);
-        setChecking(false);
+  const runProbe = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!enabled || !inShell) {
+        if (!inShell) {
+          setBlocked(null);
+          setChecking(false);
+          failureStreakRef.current = 0;
+        }
+        return;
       }
-      return;
-    }
 
-    setChecking(true);
-    const reason = await probeAppConnectivity();
-    setBlocked(reason);
-    setChecking(false);
-  }, [enabled, inShell]);
+      setChecking(true);
+      const reason = await probeAppConnectivity({
+        bootstrap: !isNativeCapacitorClient(),
+      });
+
+      if (reason === null) {
+        failureStreakRef.current = 0;
+        setBlocked(null);
+      } else if (opts?.force) {
+        failureStreakRef.current = FAILURE_THRESHOLD;
+        setBlocked(reason);
+      } else {
+        failureStreakRef.current += 1;
+        if (failureStreakRef.current >= FAILURE_THRESHOLD) {
+          setBlocked(reason);
+        }
+      }
+      setChecking(false);
+    },
+    [enabled, inShell]
+  );
 
   useEffect(() => {
     if (!enabled || !inShell) return;
+    if (!isNativeCapacitorClient()) return;
+
     const grace = window.setTimeout(() => void runProbe(), GRACE_MS);
     const poll = window.setInterval(() => void runProbe(), POLL_MS);
     const onOnline = () => void runProbe();
@@ -126,7 +151,7 @@ export function useAppShellConnectivity(
     blocked,
     checking,
     retry: () => {
-      void runProbe();
+      void runProbe({ force: true });
     },
   };
 }

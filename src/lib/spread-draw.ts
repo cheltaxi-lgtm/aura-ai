@@ -16,10 +16,13 @@ import { resolveSpreadDeckSystem } from "@/lib/decks";
 export type { SpreadSeedParts };
 
 export const NUMEROLOG_TABLE_SIZE = 12;
+export const GUEST_TRIPLET_TABLE_SIZE = 18;
 
 /** Full master deck — every symbol lies face-down on the table. */
-export function resolveTableSize(system: DeckSystem): number {
-  return DECK_REGISTRY[system].symbols.length;
+export function resolveTableSize(system: DeckSystem, guestTriplet = false): number {
+  const full = DECK_REGISTRY[system].symbols.length;
+  if (guestTriplet) return Math.min(GUEST_TRIPLET_TABLE_SIZE, full);
+  return full;
 }
 
 export function resolveSpreadSessionSeed(parts: SpreadSeedParts): string {
@@ -44,8 +47,9 @@ function drawFullSpread(
 export function buildSeededTableDeck(options: {
   system: DeckSystem;
   seed: string;
+  tableSize?: number;
 }): SpreadSymbol[] {
-  const count = resolveTableSize(options.system);
+  const count = options.tableSize ?? resolveTableSize(options.system);
   return drawSeededUniformSpread(options.system, count, `${options.seed}:table`);
 }
 
@@ -170,6 +174,7 @@ export function drawSeededSessionSpread(options: {
 export function buildSpreadSessionInitResponse(
   parts: SpreadSeedParts & {
     topic?: SessionTopicId | null;
+    topicLabelOverride?: string | null;
     hasBirthDate?: boolean;
     system?: DeckSystem;
     numerolog?: boolean;
@@ -185,6 +190,7 @@ export function buildSpreadSessionInitResponse(
     resolveSpreadDeckSystem(parts.spreadId, parts.masterId);
   const copy = getSpreadRitualCopy(parts.masterId, {
     topic: parts.topic ?? null,
+    topicLabelOverride: parts.topicLabelOverride ?? null,
     hasBirthDate: parts.hasBirthDate,
     cardCount,
     deckSystem: system,

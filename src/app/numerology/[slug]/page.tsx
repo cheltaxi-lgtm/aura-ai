@@ -87,7 +87,7 @@ export default async function NumerologyTopicPage({
 
   return (
     <SeoPageShell backHref="/numerology" backLabel="Нумерология">
-      <SeoPageTracker goal="numerology_cta_click" params={{ topic: slug }} />
+      <SeoPageTracker goal="numerology_topic_view" params={{ topic: slug }} />
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
       <h1 className="mt-2 font-display text-3xl font-bold">{topic.title}</h1>
       <p className="mt-4 text-white/70">{topic.intro}</p>

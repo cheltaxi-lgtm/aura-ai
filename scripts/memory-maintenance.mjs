@@ -71,12 +71,29 @@ async function main() {
           SELECT id FROM user_facts
            WHERE salience >= 5
              AND event_date IS NULL
-             AND updated_at < NOW() - INTERVAL '${CRITICAL_DECAY_AFTER_DAYS} days'
+             AND updated_at < NOW() - ($1 || ' days')::interval
            LIMIT 500
         )
-        RETURNING id`
+        RETURNING id`,
+      [String(CRITICAL_DECAY_AFTER_DAYS)]
     );
     console.log(`memory-maintenance: decayed ${decay.rowCount} stale critical fact(s)`);
+
+    // Mirrors MAX_SESSION_MEMORIES_PER_USER in src/lib/session-memory.ts.
+    const sessionsPruned = await c.query(
+      `DELETE FROM session_memories
+        WHERE id IN (
+          SELECT id FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY user_id ORDER BY session_date DESC
+                   ) AS rn
+              FROM session_memories
+          ) ranked
+          WHERE ranked.rn > 200
+        )`
+    );
+    console.log(`memory-maintenance: pruned ${sessionsPruned.rowCount} excess session memorie(s)`);
   } finally {
     await c.end();
   }

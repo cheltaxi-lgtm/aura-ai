@@ -273,7 +273,7 @@ export default function SessionList({
         <div className="mb-3" />
       )}
 
-      {loading ? (
+      {loading && !active && completed.length === 0 ? (
         <p className="text-center text-sm text-gray-400">Загрузка сеансов…</p>
       ) : null}
 

@@ -163,12 +163,14 @@ export default async function SpreadIntentPage({
             Если расклад покажет, что нужен не только анализ, но и энергетическое действие, может
             подойти обряд «{ritual.label}».
           </p>
-          <Link
+          <SeoTrackedCta
             href={`/obryady/${ritualPageSlug(ritualType!)}`}
-            className="inline-block text-aura-gold hover:underline"
+            variant="ghost"
+            trackGoal="ritual_recommendation_click"
+            trackParams={{ slug }}
           >
             Подробнее об обряде →
-          </Link>
+          </SeoTrackedCta>
         </SeoSection>
       ) : null}
 

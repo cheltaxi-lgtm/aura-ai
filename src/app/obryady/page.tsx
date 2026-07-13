@@ -5,6 +5,7 @@ import { RITUAL_PAGE_SLUGS } from "@/lib/ritual-recommendations";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { ensureDb } from "@/lib/db";
 import { listPublicRitualOutcomes } from "@/lib/ritual-service";
 import RitualOutcomesShowcase from "@/components/ritual/RitualOutcomesShowcase";
@@ -31,6 +32,7 @@ export default async function ObryadyPage() {
 
   return (
     <SeoPageShell>
+      <SeoPageTracker goal="ritual_catalog_view" />
       <p className="text-sm text-aura-gold/80">Обряды</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Обряды Zovus</h1>
       <p className="mt-4 text-white/70">

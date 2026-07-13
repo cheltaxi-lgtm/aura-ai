@@ -23,11 +23,11 @@ export default function CabinetAchievementsRow({ earned, locked }: Props) {
   }
 
   return (
-    <section id="cabinet-achievements" className="space-y-4">
+    <section id="cabinet-achievements" className="min-w-0 space-y-4">
       <h2 className="text-lg font-semibold text-white">Достижения</h2>
 
       {earned.length > 0 && (
-        <div>
+        <div className="min-w-0">
           <p className="cabinet-achievements__section-label cabinet-achievements__section-label--earned">
             Полученные
           </p>
@@ -55,7 +55,7 @@ export default function CabinetAchievementsRow({ earned, locked }: Props) {
       )}
 
       {locked.length > 0 && (
-        <div>
+        <div className="min-w-0">
           <p className="cabinet-achievements__section-label">Впереди</p>
           <div className="cabinet-achievements__scroll">
             {locked.map((a, i) => {
@@ -107,7 +107,7 @@ export function CabinetAchievementsSkeleton() {
   return (
     <div className="space-y-3">
       <div className="h-6 w-32 animate-pulse rounded bg-white/10" />
-      <div className="flex gap-3 overflow-hidden">
+      <div className="cabinet-achievements__scroll">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-28 min-w-[240px] animate-pulse rounded-2xl bg-white/5" />
         ))}

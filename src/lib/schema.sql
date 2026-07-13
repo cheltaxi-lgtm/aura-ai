@@ -289,7 +289,7 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_reset ON rate_limit_buckets(reset_at);
 CREATE TABLE IF NOT EXISTS session_memories (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  session_id      UUID REFERENCES sessions(id) ON DELETE SET NULL,
+  session_id      UUID REFERENCES sessions(id) ON DELETE CASCADE,
   character_key   TEXT NOT NULL,
   session_date    TIMESTAMPTZ NOT NULL DEFAULT now(),
   topic_summary   TEXT NOT NULL,

@@ -2,56 +2,310 @@
   "counterId": 110138367,
   "site": "https://zovus.ru",
   "updated": "2026-07-12",
+  "syncedInMetrikaUi": "2026-07-12",
   "notes": [
+    "Все 48 JS-целей созданы в Метрике (счётчик 110138367) через UI.",
+    "Для повторной синхронизации: node scripts/sync-metrika-goals.mjs (нужен YANDEX_METRIKA_OAUTH_TOKEN).",
     "Создайте цели типа JavaScript-событие с идентификатором = goal id.",
     "Воронка регистрации: registration_started → registration_account_created → registration_completed.",
     "registration_completed теперь срабатывает после онбординга (дата рождения), не при создании аккаунта."
   ],
   "goals": [
-    { "id": "landing_view", "group": "landing" },
-    { "id": "social_proof_view", "group": "landing" },
-    { "id": "hero_question_started", "group": "landing" },
-    { "id": "hero_question_submitted", "group": "landing" },
-    { "id": "guest_spread_started", "group": "guest_triplet" },
-    { "id": "guest_card_revealed", "group": "guest_triplet" },
-    { "id": "guest_spread_completed", "group": "guest_triplet" },
-    { "id": "registration_gate_view", "group": "registration" },
-    { "id": "registration_started", "group": "registration" },
-    { "id": "registration_account_created", "group": "registration", "metrikaGoalId": 581740543 },
-    { "id": "registration_completed", "group": "registration" },
-    { "id": "registration_error", "group": "registration" },
-    { "id": "quick_question_click", "group": "seo" },
-    { "id": "spread_intent_view", "group": "seo" },
-    { "id": "spread_intent_start", "group": "seo" },
-    { "id": "photo_landing_cta_click", "group": "photo" },
-    { "id": "photo_reading_step", "group": "photo" },
-    { "id": "ritual_landing_view", "group": "ritual" },
-    { "id": "ritual_landing_cta_click", "group": "ritual" },
-    { "id": "ritual_recommendation_view", "group": "ritual" },
-    { "id": "ritual_recommendation_click", "group": "ritual" },
-    { "id": "joint_reading_cta_click", "group": "joint" },
-    { "id": "numerology_cta_click", "group": "numerology" },
-    { "id": "card_meaning_view", "group": "cards" },
-    { "id": "card_combination_view", "group": "cards" },
-    { "id": "gadanie_hub_view", "group": "seo_hub" },
-    { "id": "gadanie_hub_cta_click", "group": "seo_hub" },
-    { "id": "gadanie_da_net_view", "group": "seo_hub" },
-    { "id": "gadanie_da_net_cta_click", "group": "seo_hub" },
-    { "id": "runes_hub_view", "group": "seo_hub" },
-    { "id": "runes_hub_cta_click", "group": "seo_hub" },
-    { "id": "rune_meaning_view", "group": "seo_hub" },
-    { "id": "rune_meaning_cta_click", "group": "seo_hub" },
-    { "id": "zodiac_compat_view", "group": "seo_hub" },
-    { "id": "zodiac_compat_cta_click", "group": "seo_hub" },
-    { "id": "lenormand_combo_cta", "group": "seo" },
-    { "id": "rune_purchase", "group": "revenue", "monetary": true },
-    { "id": "share_open", "group": "share" },
-    { "id": "share_create_success", "group": "share" },
-    { "id": "share_create_fail", "group": "share" },
-    { "id": "share_copy_success", "group": "share" },
-    { "id": "share_copy_fail", "group": "share" },
-    { "id": "share_landing_view", "group": "share" },
-    { "id": "share_landing_copy", "group": "share" },
-    { "id": "share_landing_cta", "group": "share" }
+    {
+      "id": "landing_view",
+      "group": "landing",
+      "metrikaGoalId": 581800124
+    },
+    {
+      "id": "social_proof_view",
+      "group": "landing",
+      "metrikaGoalId": 581800476
+    },
+    {
+      "id": "hero_question_started",
+      "group": "landing",
+      "metrikaGoalId": 581800493
+    },
+    {
+      "id": "hero_question_submitted",
+      "group": "landing",
+      "metrikaGoalId": 581800510
+    },
+    {
+      "id": "guest_spread_started",
+      "group": "guest_triplet",
+      "metrikaGoalId": 581800511
+    },
+    {
+      "id": "guest_card_revealed",
+      "group": "guest_triplet",
+      "metrikaGoalId": 581800544
+    },
+    {
+      "id": "guest_spread_completed",
+      "group": "guest_triplet",
+      "metrikaGoalId": 581800395
+    },
+    {
+      "id": "registration_gate_view",
+      "group": "registration",
+      "metrikaGoalId": 581800545
+    },
+    {
+      "id": "registration_cta_click",
+      "group": "registration",
+      "metrikaGoalId": 581800546
+    },
+    {
+      "id": "landing_primary_cta_click",
+      "group": "landing",
+      "metrikaGoalId": 581799568
+    },
+    {
+      "id": "onboarding_started",
+      "group": "registration",
+      "metrikaGoalId": 581800579
+    },
+    {
+      "id": "first_chat_opened",
+      "group": "registration",
+      "metrikaGoalId": 581800582
+    },
+    {
+      "id": "registration_started",
+      "group": "registration",
+      "metrikaGoalId": 581800616
+    },
+    {
+      "id": "registration_account_created",
+      "group": "registration",
+      "metrikaGoalId": 581740543
+    },
+    {
+      "id": "registration_completed",
+      "group": "registration",
+      "metrikaGoalId": 581800617
+    },
+    {
+      "id": "registration_error",
+      "group": "registration",
+      "metrikaGoalId": 581800618
+    },
+    {
+      "id": "quick_question_click",
+      "group": "seo",
+      "metrikaGoalId": 580956551
+    },
+    {
+      "id": "spread_intent_view",
+      "group": "seo",
+      "metrikaGoalId": 581800659
+    },
+    {
+      "id": "spread_intent_start",
+      "group": "seo",
+      "metrikaGoalId": 581800685
+    },
+    {
+      "id": "photo_landing_cta_click",
+      "group": "photo",
+      "metrikaGoalId": 580954566
+    },
+    {
+      "id": "photo_reading_step",
+      "group": "photo",
+      "metrikaGoalId": 580953932
+    },
+    {
+      "id": "ritual_landing_view",
+      "group": "ritual",
+      "metrikaGoalId": 581800690
+    },
+    {
+      "id": "ritual_landing_cta_click",
+      "group": "ritual",
+      "metrikaGoalId": 580954948
+    },
+    {
+      "id": "ritual_recommendation_view",
+      "group": "ritual",
+      "metrikaGoalId": 581800692
+    },
+    {
+      "id": "ritual_recommendation_click",
+      "group": "ritual",
+      "metrikaGoalId": 581800874
+    },
+    {
+      "id": "joint_reading_cta_click",
+      "group": "joint",
+      "metrikaGoalId": 580955314
+    },
+    {
+      "id": "numerology_cta_click",
+      "group": "numerology",
+      "metrikaGoalId": 580955836
+    },
+    {
+      "id": "card_meaning_view",
+      "group": "cards",
+      "metrikaGoalId": 581800879
+    },
+    {
+      "id": "card_combination_view",
+      "group": "cards",
+      "metrikaGoalId": 581800880
+    },
+    {
+      "id": "gadanie_hub_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800881
+    },
+    {
+      "id": "gadanie_hub_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800896
+    },
+    {
+      "id": "gadanie_da_net_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800899
+    },
+    {
+      "id": "gadanie_da_net_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800934
+    },
+    {
+      "id": "runes_hub_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800937
+    },
+    {
+      "id": "runes_hub_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800989
+    },
+    {
+      "id": "rune_meaning_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800993
+    },
+    {
+      "id": "rune_meaning_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 581800995
+    },
+    {
+      "id": "zodiac_compat_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 581801000
+    },
+    {
+      "id": "zodiac_compat_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 581801002
+    },
+    {
+      "id": "lenormand_combo_cta",
+      "group": "seo",
+      "metrikaGoalId": 581801004
+    },
+    {
+      "id": "rune_purchase",
+      "group": "revenue",
+      "monetary": true,
+      "metrikaGoalId": 580953383
+    },
+    {
+      "id": "share_open",
+      "group": "share",
+      "metrikaGoalId": 580954267
+    },
+    {
+      "id": "share_create_success",
+      "group": "share",
+      "metrikaGoalId": 581800986
+    },
+    {
+      "id": "share_create_fail",
+      "group": "share",
+      "metrikaGoalId": 581800990
+    },
+    {
+      "id": "share_copy_success",
+      "group": "share",
+      "metrikaGoalId": 581800994
+    },
+    {
+      "id": "share_copy_fail",
+      "group": "share",
+      "metrikaGoalId": 581800997
+    },
+    {
+      "id": "share_landing_view",
+      "group": "share",
+      "metrikaGoalId": 581801001
+    },
+    {
+      "id": "share_landing_copy",
+      "group": "share",
+      "metrikaGoalId": 581801003
+    },
+    {
+      "id": "share_landing_cta",
+      "group": "share",
+      "metrikaGoalId": 581801006
+    },
+    {
+      "id": "share_channel",
+      "group": "share",
+      "metrikaGoalId": 582035036
+    },
+    {
+      "id": "rasklady_hub_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 582035037
+    },
+    {
+      "id": "lenormand_hub_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 582035038
+    },
+    {
+      "id": "taro_hub_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 582035039
+    },
+    {
+      "id": "cards_hub_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 582035040
+    },
+    {
+      "id": "photo_landing_view",
+      "group": "photo",
+      "metrikaGoalId": 582035041
+    },
+    {
+      "id": "ritual_catalog_view",
+      "group": "ritual",
+      "metrikaGoalId": 582035042
+    },
+    {
+      "id": "numerology_hub_view",
+      "group": "numerology",
+      "metrikaGoalId": 582035043
+    },
+    {
+      "id": "numerology_topic_view",
+      "group": "numerology",
+      "metrikaGoalId": 582035076
+    },
+    {
+      "id": "lenormand_combo_view",
+      "group": "seo",
+      "metrikaGoalId": 582035077
+    }
   ]
 }

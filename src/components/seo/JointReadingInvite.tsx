@@ -8,7 +8,9 @@ import {
   estimateJointSpreadCostPerPerson,
   JOINT_INVITE_RUNE_COST,
 } from "@/lib/joint-reading-pricing";
-import type { SpreadId } from "@/lib/spreads";
+import { buildJointSpreadStartPath } from "@/lib/joint-reading-nav";
+import { withAppShellIfNeeded } from "@/lib/post-auth-return";
+import { getSpread, normalizeSpreadId, type SpreadId } from "@/lib/spreads";
 
 const SPREAD_OPTIONS: { id: SpreadId; label: string; hint: string }[] = [
   { id: "triplet-love", label: "Быстрый", hint: "3 карты" },
@@ -30,9 +32,15 @@ export default function JointReadingInvite() {
   const [spreadId, setSpreadId] = useState<SpreadId>("love-7");
   const [intentSlug, setIntentSlug] = useState<string>("sovmestimost-pary");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [createdInvite, setCreatedInvite] = useState<{
+    token: string;
+    intentSlug: string;
+    spreadId: SpreadId;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [configUpdated, setConfigUpdated] = useState(false);
 
   useEffect(() => {
     if (authLoading || prefilledRef.current) return;
@@ -46,6 +54,7 @@ export default function JointReadingInvite() {
   const createInvite = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setConfigUpdated(false);
     try {
       const res = await fetch("/api/joint-reading/create", {
         method: "POST",
@@ -60,8 +69,12 @@ export default function JointReadingInvite() {
       });
       const data = (await res.json()) as {
         url?: string;
+        token?: string;
+        intentSlug?: string;
+        spreadId?: string;
         error?: string;
         reused?: boolean;
+        configUpdated?: boolean;
       };
       if (res.status === 402) {
         setError("Недостаточно рун для совместного расклада.");
@@ -80,6 +93,15 @@ export default function JointReadingInvite() {
         return;
       }
       setInviteUrl(data.url);
+      setConfigUpdated(Boolean(data.configUpdated));
+      if (data.token && data.intentSlug && data.spreadId) {
+        setCreatedInvite({
+          token: data.token,
+          intentSlug: data.intentSlug,
+          spreadId: normalizeSpreadId(data.spreadId),
+        });
+        setSpreadId(normalizeSpreadId(data.spreadId));
+      }
       if (data.reused) {
         setError(null);
       }
@@ -97,6 +119,11 @@ export default function JointReadingInvite() {
     () => estimateJointSpreadCostPerPerson(undefined, spreadId),
     [spreadId]
   );
+
+  const activeSpreadLabel = useMemo(() => {
+    const spread = getSpread(spreadId);
+    return `${spread.label} · ${spread.cardCount} карт`;
+  }, [spreadId]);
 
   const copyLink = useCallback(async () => {
     if (!inviteUrl) return;
@@ -218,11 +245,32 @@ export default function JointReadingInvite() {
           <p className="mt-4 break-all rounded-lg bg-black/30 px-3 py-2 font-mono text-xs text-white/50">
             {inviteUrl}
           </p>
+          <p className="mt-3 text-sm text-aura-gold/90">Схема приглашения: {activeSpreadLabel}</p>
+          {configUpdated ? (
+            <p className="mt-2 text-xs text-white/50">
+              Обновили глубину расклада в активном приглашении — оба участника пройдут именно эту схему.
+            </p>
+          ) : null}
           <p className="mt-4 text-sm text-white/55">
             Сначала пройдите свой расклад, затем отправьте ссылку партнёру.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <a href={inviteUrl} className="btn-luxe btn-luxe--md btn-luxe--gold">
+            <a
+              href={
+                createdInvite
+                  ? withAppShellIfNeeded(
+                      buildJointSpreadStartPath({
+                        token: createdInvite.token,
+                        role: "initiator",
+                        intentSlug: createdInvite.intentSlug,
+                        spreadId: createdInvite.spreadId,
+                        partnerName: partnerName.trim() || undefined,
+                      })
+                    )
+                  : inviteUrl
+              }
+              className="btn-luxe btn-luxe--md btn-luxe--gold"
+            >
               Пройти мой расклад
             </a>
             <button

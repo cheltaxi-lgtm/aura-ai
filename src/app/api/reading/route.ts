@@ -551,10 +551,12 @@ export async function POST(request: NextRequest) {
           });
           historyId = entry.id;
 
-          void patchTripletInterpretation(authed.profileUserId, cardsKey, {
-            text: reading,
-            masterId: characterId,
-          }).catch((err) => console.warn("Triplet interpretation patch failed:", err));
+          if (!isNumerologMaster(characterId)) {
+            void patchTripletInterpretation(authed.profileUserId, cardsKey, {
+              text: reading,
+              masterId: characterId,
+            }).catch((err) => console.warn("Triplet interpretation patch failed:", err));
+          }
 
           try {
             await persistReadingToSession({
@@ -565,7 +567,7 @@ export async function POST(request: NextRequest) {
               reading,
               tarotCards,
               intention: intention || undefined,
-              spreadType: isDailySpread ? "daily" : undefined,
+              spreadType: isDailySpread ? "daily" : "new",
               spreadId: storedSpreadId,
             });
           } catch (err) {

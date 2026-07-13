@@ -17,7 +17,14 @@ html[data-app-shell="android"] body {
 }
 
 html.app-shell-has-tabs body {
-  padding-bottom: calc(4.85rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+html.app-shell-has-tabs #наставники,
+html.app-shell-has-tabs .master-showcase-section,
+html.app-shell-has-tabs .aura-landing-masters {
+  scroll-margin-bottom: calc(6.75rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 html[data-app-shell="android"] .app-top-header {
@@ -976,48 +983,12 @@ html[data-app-shell="android"] .app-shell-splash__ring--inner {
   }
 }
 
-/*
- * Full-screen chat. The container starts at the top of the viewport and already
- * carries the fixed header as padding-top, so its height must be the full
- * 100dvh — subtracting the header here again would leave a header-sized empty
- * band at the bottom of the screen.
- */
-html[data-app-shell="android"] .home-active-chat {
-  height: 100dvh;
-  max-height: 100dvh;
-  min-height: 0;
-  overflow: hidden;
-}
-
 html[data-app-shell="android"] body.chat-session-active {
-  overflow: hidden;
-  height: 100dvh;
-  overscroll-behavior: none;
-  /* The tab bar is hidden during a chat — drop the space reserved for it even
-     if the `app-shell-has-tabs` class lags behind for a frame. */
+  /* Tab bar is hidden during chat — drop reserved space if class lags a frame. */
   padding-bottom: 0 !important;
 }
 
-html[data-app-shell="android"] .home-active-chat > main {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-html[data-app-shell="android"] .home-active-chat .chat-stage {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  max-height: 100%;
-}
-
 html[data-app-shell="android"] .home-active-chat .chat-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 }
 

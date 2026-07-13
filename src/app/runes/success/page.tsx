@@ -16,6 +16,34 @@ import { pushEcommercePurchase } from "@/lib/seo/ecommerce";
 const LAST_MASTER_KEY = "aura_last_master";
 const PENDING_READING_KEY = "aura_pending_reading";
 
+async function firePurchaseAnalytics(paymentId: string | null): Promise<void> {
+  if (!paymentId || hasFiredRunePurchaseGoal(paymentId)) return;
+  try {
+    const confirmRes = await fetch("/api/runes/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentId }),
+    });
+    if (!confirmRes.ok) return;
+    const confirmData = await confirmRes.json();
+    if (typeof confirmData.amountRub !== "number") return;
+    trackRunePurchase(confirmData.amountRub, confirmData.packageId);
+    pushEcommercePurchase({
+      paymentId,
+      amountRub: confirmData.amountRub,
+      product: {
+        id: confirmData.packageId ?? "custom",
+        name: confirmData.packageName ?? confirmData.packageId ?? "Пакет рун",
+        price: confirmData.amountRub,
+        category: "runes",
+      },
+    });
+    markRunePurchaseGoalFired(paymentId);
+  } catch {
+    /* analytics optional */
+  }
+}
+
 export default function RunePurchaseSuccessPage() {
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
   const [status, setStatus] = useState<"polling" | "ready" | "timeout">("polling");
@@ -46,7 +74,8 @@ export default function RunePurchaseSuccessPage() {
     let attempts = 0;
     const maxAttempts = 20;
 
-    const markReady = (balance: number) => {
+    const markReady = async (balance: number) => {
+      await firePurchaseAnalytics(pendingPaymentId);
       emitRuneBalanceUpdate(balance);
       setStatus("ready");
       clearPendingRunePurchase();
@@ -86,7 +115,7 @@ export default function RunePurchaseSuccessPage() {
                 });
                 markRunePurchaseGoalFired(goalPaymentId);
               }
-              markReady(confirmData.balance);
+              await markReady(confirmData.balance);
               return;
             }
           }
@@ -101,7 +130,7 @@ export default function RunePurchaseSuccessPage() {
           const data = await res.json();
           if (typeof data.balance === "number") {
             if (!data.pending || (expected !== null && data.balance > expected)) {
-              markReady(data.balance);
+              await markReady(data.balance);
               return;
             }
           }

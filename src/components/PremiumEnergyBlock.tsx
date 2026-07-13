@@ -337,7 +337,7 @@ export default function PremiumEnergyBlock({
       <motion.section
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative mb-8 overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 shadow-2xl max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md sm:p-7"
+        className="relative mb-8 scroll-mt-[calc(var(--app-header-h,3.25rem)+0.75rem)] overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 shadow-2xl max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md sm:p-7"
       >
         <div
           className="pointer-events-none absolute -right-16 -top-16 hidden h-48 w-48 rounded-full bg-amber-500/10 blur-3xl md:block"
@@ -426,7 +426,7 @@ export default function PremiumEnergyBlock({
                 </button>
               </div>
 
-              <div className="lux-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
+              <div className="lux-scroll lux-scroll--above-footer min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
                 {lockedToday ? (
                   <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
                     <p className="text-sm text-gray-200">

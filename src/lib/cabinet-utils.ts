@@ -3,6 +3,7 @@ import type { CabinetSessionRow } from "@/lib/cabinet-data";
 import {
   MARKDOWN_IMAGE_LINE_PATTERN,
   MARKDOWN_IMAGE_PATTERN,
+  stripEnglishLeakageFromRussianText,
 } from "@/lib/reading-text-polish";
 import { ZODIAC_SIGNS, getZodiacFromDate, type ZodiacSign } from "@/utils/zodiac";
 
@@ -118,13 +119,17 @@ export function formatCabinetPredictionPreview(text: string, maxLength = 220): s
 export function sanitizeCabinetDisplayText(text: string): string {
   const preview = formatCabinetPredictionPreview(text, 2000);
   if (preview) {
-    return preview
+    return stripEnglishLeakageFromRussianText(
+      preview
       .replace(/\bв контексте ваша ситуация\b/gi, "в контексте вашей ситуации")
-      .replace(/\bв контексте ваш ситуация\b/gi, "в контексте вашей ситуации");
+      .replace(/\bв контексте ваш ситуация\b/gi, "в контексте вашей ситуации")
+    );
   }
-  return stripMarkdownText(text)
+  return stripEnglishLeakageFromRussianText(
+    stripMarkdownText(text)
     .replace(/\bв контексте ваша ситуация\b/gi, "в контексте вашей ситуации")
-    .replace(/\bв контексте ваш ситуация\b/gi, "в контексте вашей ситуации");
+    .replace(/\bв контексте ваш ситуация\b/gi, "в контексте вашей ситуации")
+  );
 }
 
 export function formatCabinetDisplayName(name: string): string {

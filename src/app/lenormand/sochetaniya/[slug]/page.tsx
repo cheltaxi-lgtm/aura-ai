@@ -9,6 +9,7 @@ import {
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { buildSpreadStartUrl } from "@/lib/spread-intents/router";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
@@ -53,6 +54,7 @@ export default async function LenormandCombinationPage({
 
   return (
     <SeoPageShell backHref="/lenormand/sochetaniya" backLabel="Все сочетания">
+      <SeoPageTracker goal="lenormand_combo_view" params={{ slug }} />
       <SeoBreadcrumbs items={breadcrumbs} />
       <h1 className="font-display text-3xl font-bold">{combo.title}</h1>
       <p className="mt-2 text-sm text-aura-gold/80">{combo.cards.join(" + ")}</p>

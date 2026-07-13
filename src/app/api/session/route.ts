@@ -176,22 +176,18 @@ export async function PATCH(request: NextRequest) {
       await setSessionAwaitingContext(sessionId, awaitingContext);
     }
 
-    if (
-      characterKey !== undefined ||
-      intention !== undefined ||
-      spreadType !== undefined ||
-      spreadId !== undefined ||
-      cards !== undefined ||
-      numerologToolParams !== undefined
-    ) {
-      await updateSessionChatMeta(sessionId, {
-        characterKey,
-        intention: intention ?? null,
-        spreadType: spreadType ?? null,
-        spreadId: spreadId ?? null,
-        cards: cards ?? null,
-        numerologToolParams: numerologToolParams ?? null,
-      });
+    const chatMetaPatch: Parameters<typeof updateSessionChatMeta>[1] = {};
+    if (characterKey !== undefined) chatMetaPatch.characterKey = characterKey;
+    if (intention !== undefined) chatMetaPatch.intention = intention ?? null;
+    if (spreadType !== undefined) chatMetaPatch.spreadType = spreadType ?? null;
+    if (spreadId !== undefined) chatMetaPatch.spreadId = spreadId ?? null;
+    if (cards !== undefined) chatMetaPatch.cards = cards ?? null;
+    if (numerologToolParams !== undefined) {
+      chatMetaPatch.numerologToolParams = numerologToolParams ?? null;
+    }
+
+    if (Object.keys(chatMetaPatch).length > 0) {
+      await updateSessionChatMeta(sessionId, chatMetaPatch);
 
       const sessionAfterMeta = await getSession(sessionId);
       const numerologToolId = decodeNumerologSpreadId(

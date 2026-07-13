@@ -57,6 +57,11 @@ grep -q '^OPENROUTER_MODEL=' "$ENV_FILE" \
 grep -q '^OPENROUTER_HTTPS_PROXY=' "$ENV_FILE" \
   || echo 'OPENROUTER_HTTPS_PROXY=http://45.156.20.127:3128' >> "$ENV_FILE"
 
+# Pin background fact extraction to a cheap model regardless of the
+# admin-configured chat model (structured JSON task, no creative writing).
+grep -q '^MEMORY_EXTRACT_MODEL=' "$ENV_FILE" \
+  || echo 'MEMORY_EXTRACT_MODEL=openai/gpt-4o-mini' >> "$ENV_FILE"
+
 grep -q '^RECAPTCHA_ENABLED=' "$ENV_FILE" \
   || echo 'RECAPTCHA_ENABLED=true' >> "$ENV_FILE"
 

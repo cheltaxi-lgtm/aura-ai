@@ -181,7 +181,7 @@ export default function RitualEntry({
         </button>
       </div>
 
-      <div className="lux-scroll flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+      <div className="lux-scroll lux-scroll--above-footer flex-1 overflow-y-auto overscroll-contain px-5 py-4">
         {loading ? (
           <p className="text-center text-sm text-white/50">Загрузка…</p>
         ) : (

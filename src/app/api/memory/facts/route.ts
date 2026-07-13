@@ -48,6 +48,20 @@ export async function GET() {
     return NextResponse.json({ error: "profile_required" }, { status: 400 });
   }
 
+  // Generous — normal cabinet usage is a handful of loads; this only stops
+  // scripted scraping/enumeration of the memory endpoint.
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("memory_fact_list", auth.sub),
+    120,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", retryAfterSec, message: "Слишком много запросов. Попробуйте позже." },
+      { status: 429 }
+    );
+  }
+
   // Show everything the system knows for this user, not just the manual-entry
   // cap — auto-extracted facts are just as relevant for the user to review/delete.
   const facts = await listFacts(profileUserId, MAX_FACTS_PER_USER);
@@ -156,6 +170,18 @@ export async function DELETE(request: NextRequest) {
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
     return NextResponse.json({ error: "profile_required" }, { status: 400 });
+  }
+
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("memory_fact_delete", auth.sub),
+    60,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", retryAfterSec, message: "Слишком много удалений. Попробуйте позже." },
+      { status: 429 }
+    );
   }
 
   const factId = request.nextUrl.searchParams.get("factId")?.trim();

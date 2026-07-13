@@ -3,8 +3,16 @@
 import BrandLogo from "@/components/BrandLogo";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { Sparkles, Compass, ArrowRight } from "lucide-react";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import {
+  buildLoginHref,
+  buildRegisterHref,
+  captureReturnToFromUrl,
+  readPostAuthReturnTo,
+  resolveRegistrationReturnTo,
+} from "@/lib/post-auth-return";
 
 const CARD_STAGGER = 0.1;
 
@@ -84,6 +92,22 @@ function RoleCard({
 
 export default function AuthPortalPage() {
   const { expertRegistrationEnabled } = usePlatformFeatures();
+  const [userLoginHref, setUserLoginHref] = useState("/auth/user/login");
+  const [userRegisterHref, setUserRegisterHref] = useState("/auth/user/register");
+  const [expertLoginHref, setExpertLoginHref] = useState("/auth/expert/login");
+  const [expertRegisterHref, setExpertRegisterHref] = useState("/auth/expert/register");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("returnTo") ?? params.get("next");
+    captureReturnToFromUrl(window.location.search, "/");
+    const userReturn = raw ?? readPostAuthReturnTo() ?? resolveRegistrationReturnTo();
+    setUserLoginHref(buildLoginHref(userReturn));
+    setUserRegisterHref(buildRegisterHref(userReturn));
+    setExpertLoginHref(buildLoginHref("/expert", "/expert"));
+    setExpertRegisterHref(buildRegisterHref("/expert", "/expert"));
+  }, []);
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-5 py-12">
@@ -122,8 +146,8 @@ export default function AuthPortalPage() {
           title="Искатель"
           description="Расклады, мастера и личный кабинет — путь к подсказкам и ясности"
           accent="violet"
-          loginHref="/auth/user/login"
-          registerHref="/auth/user/register"
+          loginHref={userLoginHref}
+          registerHref={userRegisterHref}
           delay={CARD_STAGGER}
         />
         {expertRegistrationEnabled ? (
@@ -132,8 +156,8 @@ export default function AuthPortalPage() {
             title="Мастер"
             description="Своя страница, white-label и доход 80% — делитесь знанием с миром"
             accent="gold"
-            loginHref="/auth/expert/login"
-            registerHref="/auth/expert/register"
+            loginHref={expertLoginHref}
+            registerHref={expertRegisterHref}
             delay={CARD_STAGGER * 2}
           />
         ) : null}

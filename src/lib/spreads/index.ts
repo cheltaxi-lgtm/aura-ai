@@ -46,3 +46,14 @@ export {
 export { logSpreadMetric, type SpreadMetricEvent, type SpreadMetricPayload } from "./metrics";
 
 export { spreadCardsKey, spreadCardNamesForScene } from "./spread-cards-key";
+
+export {
+  CUSTOM_QUESTION_SPREAD_TIERS,
+  listCustomQuestionSpreadIds,
+} from "./custom-question-spreads";
+
+export {
+  buildIntentionChatSpreadDisplay,
+  spreadCardsMatchSpreadId,
+  type IntentionChatSpreadDisplay,
+} from "./intention-session-display";

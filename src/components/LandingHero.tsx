@@ -6,6 +6,7 @@ import GuestTripletDraw from "@/components/GuestTripletDraw";
 import { Check, Sparkles } from "lucide-react";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import { buildLoginHref, buildRegisterHref, resolveRegistrationReturnTo } from "@/lib/post-auth-return";
 
 interface LandingHeroProps {
   isLoggedIn: boolean;
@@ -71,10 +72,13 @@ export default function LandingHero({ isLoggedIn, masterCount, onStart }: Landin
         </button>
       ) : (
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-          <Link href="/auth/user/register?returnTo=/" className="btn-primary px-12 py-4 text-base">
+          <Link
+            href={buildRegisterHref(resolveRegistrationReturnTo({ guestSpread: true }))}
+            className="btn-primary px-12 py-4 text-base"
+          >
             Зарегистрироваться
           </Link>
-          <Link href="/auth/user/login?returnTo=/" className="btn-ghost px-8 py-3.5 text-sm">
+          <Link href={buildLoginHref(resolveRegistrationReturnTo())} className="btn-ghost px-8 py-3.5 text-sm">
             Уже есть аккаунт
           </Link>
         </div>

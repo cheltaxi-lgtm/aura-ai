@@ -63,6 +63,8 @@ export default function MastersShowcase({
   const listBody = masters.map((master, index) => {
     const canContinue = continueSet.has(master.id);
     const sessionOnly = !canContinue;
+    const priceKind: "reading" | "question" =
+      !enforceBalance ? "reading" : sessionOnly ? "question" : "reading";
     const requiredCost = canContinue
       ? (readingCost ?? 0)
       : (questionCost ?? readingCost ?? 0);
@@ -95,6 +97,7 @@ export default function MastersShowcase({
           recommended={recommendedId === master.id}
           canContinue={canContinue}
           sessionOnly={sessionOnly}
+          priceKind={priceKind}
           readingCost={readingCost}
           questionCost={questionCost}
           runesEnabled={runesEnabled}
@@ -114,6 +117,7 @@ export default function MastersShowcase({
         recommended={recommendedId === master.id}
         canContinue={canContinue}
         sessionOnly={sessionOnly}
+        priceKind={priceKind}
         readingCost={readingCost}
         questionCost={questionCost}
         runesEnabled={runesEnabled}

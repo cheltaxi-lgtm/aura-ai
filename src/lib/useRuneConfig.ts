@@ -72,20 +72,23 @@ export function invalidateRuneConfigCache() {
 }
 
 export function useRuneConfig() {
-  const [config, setConfig] = useState<RuneConfig>(cached ?? FALLBACK);
+  const [config, setConfig] = useState<RuneConfig | null>(cached);
+  const ready = config !== null;
 
   useEffect(() => {
     void fetchRuneConfig().then(setConfig);
   }, []);
 
-  const cost = (action: RuneActionType) => config.costs[action] ?? 0;
+  const effective = config ?? FALLBACK;
+
+  const cost = (action: RuneActionType) => effective.costs[action] ?? 0;
 
   const formatRunes = (amount: number) => `${amount} ᚢ`;
 
   const formatRunesWithRub = (amount: number) => {
-    const rub = Math.round(amount * config.rubPerRune);
+    const rub = Math.round(amount * effective.rubPerRune);
     return `${amount} ᚢ · ~${rub} ₽`;
   };
 
-  return { config, cost, formatRunes, formatRunesWithRub };
+  return { config: effective, cost, formatRunes, formatRunesWithRub, ready };
 }

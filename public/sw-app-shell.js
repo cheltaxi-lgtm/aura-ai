@@ -1,6 +1,5 @@
-/* Zovus app-shell service worker — precache shell + cache static assets for Capacitor WebView. */
-const CACHE = "zovus-shell-v3";
-const PRECACHE_URLS = ["/", "/?app=1", "/session/intention?app=1", "/icon.svg", "/manifest.webmanifest"];
+/* Zovus app-shell service worker — native WebView only. Network-first HTML; cache assets for offline. */
+const CACHE = "zovus-shell-v4";
 
 function isSameOrigin(url) {
   return url.origin === self.location.origin;
@@ -20,13 +19,7 @@ function isCacheableAsset(url) {
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
-      .catch(() => self.skipWaiting())
-  );
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
@@ -45,23 +38,14 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (!isSameOrigin(url) || isApi(url)) return;
 
+  /* Never cache HTML — stale shell breaks Next.js chunk URLs after deploy. */
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          if (cached) return cached;
-          const root = await caches.match("/?app=1");
-          if (root) return root;
-          return caches.match("/");
-        })
+      fetch(request).catch(async () => {
+        const offline = await caches.match("/?app=1");
+        if (offline) return offline;
+        return caches.match("/");
+      })
     );
     return;
   }
@@ -69,18 +53,18 @@ self.addEventListener("fetch", (event) => {
   if (!isCacheableAsset(url)) return;
 
   event.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      try {
-        const response = await fetch(request);
+    fetch(request)
+      .then((response) => {
         if (response.ok) {
-          cache.put(request, response.clone());
+          const copy = response.clone();
+          void caches.open(CACHE).then((cache) => cache.put(request, copy));
         }
         return response;
-      } catch {
-        const cached = await cache.match(request);
+      })
+      .catch(async () => {
+        const cached = await caches.open(CACHE).then((cache) => cache.match(request));
         if (cached) return cached;
         return Response.error();
-      }
-    })
+      })
   );
 });

@@ -5,6 +5,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import LenormandCatalog from "@/components/seo/LenormandCatalog";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Ленорман онлайн — линия из 5 карт и расклады | ${BRAND_NAME}`,
@@ -21,6 +22,7 @@ export default function LenormandHubPage() {
 
   return (
     <SeoPageShell backHref="/rasklady" backLabel="Каталог раскладов">
+      <SeoPageTracker goal="lenormand_hub_view" />
       <SeoBreadcrumbs items={breadcrumbs} />
       <p className="text-sm text-aura-gold/80">Оракул Ленорман</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Расклады Ленорман онлайн</h1>

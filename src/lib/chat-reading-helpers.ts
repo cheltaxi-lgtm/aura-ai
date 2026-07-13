@@ -114,6 +114,11 @@ export function resolveSpreadCardsForReading(input: {
       if (numerologToolDrawCount(numerologToolId) === 0) return [];
       return buildNumerologSpreadCards(characterId, metaNames, numerologToolId).spreadCards;
     }
+    return [];
+  }
+
+  if (sessionSpreadMeta?.spreadType === "photo" && sessionSpreadMeta.cardNames?.length) {
+    return buildSessionSpreadCards(characterId, sessionSpreadMeta.cardNames).spreadCards;
   }
 
   const spreadId = sessionSpreadMeta?.spreadId ?? DEFAULT_SPREAD_ID;
@@ -160,6 +165,10 @@ export function resolveSpreadCardsForReading(input: {
     )
   ) {
     return input.chatSessionSpread.cards;
+  }
+
+  if (sessionSpreadMeta?.spreadType === "new") {
+    return metaCards.length ? metaCards : [];
   }
 
   const masterCtx = resolveMasterSpread(profile, characterId, input.masters);
@@ -229,6 +238,7 @@ export function resolveTarotCardsForOutgoingChat(input: {
   periodSpreadCards?: SpreadSymbol[] | null;
   activeProfile: StoredProfile | null;
   masters?: ShowcaseMaster[];
+  sessionOnly?: boolean;
 }): { name: string; meaning: string }[] | undefined {
   const {
     characterId,
@@ -238,7 +248,13 @@ export function resolveTarotCardsForOutgoingChat(input: {
     periodSpreadCards,
     activeProfile,
     masters,
+    sessionOnly = false,
   } = input;
+
+  if (sessionSpreadMeta?.spreadType === "photo" && sessionSpreadMeta.cardNames?.length) {
+    const built = buildSessionSpreadCards(characterId, sessionSpreadMeta.cardNames);
+    return built.spreadCards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+  }
 
   if (periodSpreadCards?.length) {
     return periodSpreadCards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
@@ -291,21 +307,27 @@ export function resolveTarotCardsForOutgoingChat(input: {
     return chatSessionSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
   }
 
-  const masterSpread = activeProfile
-    ? resolveMasterSpread(activeProfile, characterId, masters)
-    : null;
-  if (
-    masterSpread &&
-    hasCompleteSpread(
-      masterSpread.cards.map((c) => c.name),
-      DEFAULT_SPREAD_ID,
-      "daily"
-    )
-  ) {
-    return masterSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+  if (!sessionOnly) {
+    const masterSpread = activeProfile
+      ? resolveMasterSpread(activeProfile, characterId, masters)
+      : null;
+    if (
+      masterSpread &&
+      hasCompleteSpread(
+        masterSpread.cards.map((c) => c.name),
+        DEFAULT_SPREAD_ID,
+        "daily"
+      )
+    ) {
+      return masterSpread.cards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+    }
+
+    if (activeProfile?.tarotCards?.length) {
+      return activeProfile.tarotCards.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+    }
   }
 
-  return activeProfile?.tarotCards?.map((c) => ({ name: c.name, meaning: c.meaning ?? "" }));
+  return undefined;
 }
 
 export function readingPayloadForMaster(
@@ -352,6 +374,19 @@ export function readingPayloadForMaster(
         | undefined,
       numerologToolId: toolId,
       numerologToolParams,
+    };
+  }
+
+  if (spreadType === "photo" && cards.length) {
+    return {
+      ...base,
+      tarotCards: cards.map((c) => ({
+        name: c.name,
+        meaning: c.meaning ?? "",
+      })),
+      deckSystem: (base.deckSystem ?? resolveMasterSpread(profile, masterId, mastersList).system) as
+        | DeckSystem
+        | undefined,
     };
   }
 

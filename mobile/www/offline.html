@@ -66,13 +66,15 @@
   <body>
     <div class="card">
       <div class="mark" aria-hidden="true"></div>
-      <h1>Нет соединения</h1>
-      <p>Проверьте интернет — Zovus работает онлайн. Карты вернутся, когда связь восстановится.</p>
+      <h1 id="title">Нет соединения</h1>
+      <p id="body">Проверьте интернет — Zovus работает онлайн. Карты вернутся, когда связь восстановится.</p>
       <button type="button" id="retry">Проверить снова</button>
     </div>
     <script>
       (function () {
         var APP_URL = "https://zovus.ru/?app=1";
+        var STATUS_URL = "https://zovus.ru/api/platform/status";
+        var PROBE_TIMEOUT_MS = 5000;
 
         function hideNativeSplash() {
           try {
@@ -102,10 +104,47 @@
           return navigator.onLine !== false;
         }
 
+        async function canReachServer() {
+          try {
+            var controller = new AbortController();
+            var timer = setTimeout(function () {
+              controller.abort();
+            }, PROBE_TIMEOUT_MS);
+            var res = await fetch(STATUS_URL, { cache: "no-store", signal: controller.signal });
+            clearTimeout(timer);
+            if (!res.ok) return false;
+            var data = await res.json().catch(function () {
+              return null;
+            });
+            return !!(data && data.ok !== false && !data.maintenanceMode);
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function setCopy(mode) {
+          var title = document.getElementById("title");
+          var body = document.getElementById("body");
+          if (mode === "server") {
+            title.textContent = "Сервер не отвечает";
+            body.textContent =
+              "Сайт временно недоступен. Мы уже разбираемся — попробуйте ещё раз через минуту.";
+          } else {
+            title.textContent = "Нет соединения";
+            body.textContent =
+              "Проверьте интернет — Zovus работает онлайн. Карты вернутся, когда связь восстановится.";
+          }
+        }
+
         async function retry() {
-          if (await isConnected()) {
+          if (await canReachServer()) {
             window.location.replace(APP_URL);
             return;
+          }
+          if (await isConnected()) {
+            setCopy("server");
+          } else {
+            setCopy("offline");
           }
           hideNativeSplash();
         }
@@ -118,6 +157,7 @@
         }
 
         hideNativeSplash();
+        void retry();
       })();
     </script>
   </body>

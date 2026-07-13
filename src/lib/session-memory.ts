@@ -33,6 +33,28 @@ export interface SessionMemoryRow {
   mood: string | null;
 }
 
+/**
+ * Episodic memory cap — mirrors MAX_FACTS_PER_USER for user_facts. Without it
+ * long-term users accumulate unbounded session_memories rows. Newest rows win;
+ * excess is trimmed opportunistically after writes and by the maintenance cron.
+ */
+export const MAX_SESSION_MEMORIES_PER_USER = 200;
+
+/** Trim a user's episodic memory to the cap (newest kept). */
+export async function pruneSessionMemories(userId: string): Promise<void> {
+  await query(
+    `DELETE FROM session_memories
+      WHERE user_id = $1
+        AND id NOT IN (
+          SELECT id FROM session_memories
+           WHERE user_id = $1
+           ORDER BY session_date DESC
+           LIMIT $2
+        )`,
+    [userId, MAX_SESSION_MEMORIES_PER_USER]
+  );
+}
+
 export async function getSessionMemories(
   userId: string,
   characterKey: string,
@@ -52,7 +74,7 @@ export async function getSessionMemories(
        AND character_key = $2
        AND session_id IS NOT NULL
        AND ($4::uuid IS NULL OR session_id <> $4)
-     ORDER BY session_date DESC
+     ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
      LIMIT $3`,
     [userId, characterKey, limit, excludeSessionId ?? null]
   );
@@ -125,6 +147,7 @@ export async function saveSessionMemory(input: {
     characterKey: input.characterKey,
     cardCount: input.keyCards.length,
   }).catch((err) => console.warn("[lifetime-stats] orphan memory:", err));
+  void pruneSessionMemories(input.userId).catch(() => {});
 }
 
 /** Create or refresh cabinet row when a consultation session starts or updates. */
@@ -184,6 +207,7 @@ export async function upsertSessionMemoryFromChat(input: {
     characterKey: input.characterKey,
     cardCount: limitSpreadKeyCards(input.keyCards).length,
   }).catch((err) => console.warn("[lifetime-stats] session activity:", err));
+  void pruneSessionMemories(input.userId).catch(() => {});
 }
 
 function parseSessionSummary(

@@ -91,7 +91,7 @@ export default function MagicalSpreadTable({
       <div className="deck-pick__glow" aria-hidden />
 
       <header className="deck-pick__header">
-        {!standalone && onBack ? (
+        {onBack ? (
           <button type="button" onClick={onBack} className="deck-pick__back">
             ← Назад
           </button>

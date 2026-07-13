@@ -35,7 +35,7 @@ export function trackShareCreateFail(kind: string): void {
 }
 
 export function trackShareChannel(channel: string, kind: string): void {
-  trackShareEvent(`share_channel_${channel}`, { kind });
+  trackShareEvent("share_channel", { channel, kind });
 }
 
 export function trackShareCopySuccess(kind: string): void {

@@ -1,28 +1,46 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
+import { isAgeGateConfirmed } from "@/lib/age-gate";
+import {
+  PASSWORD_STRENGTH_COLORS,
+  PASSWORD_STRENGTH_LABELS,
+  scorePasswordStrength,
+} from "@/lib/password-strength";
 import { getLoginFormHints } from "@/lib/login-hints";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { APP_SHELL_HEADER, shouldUseAppShellClient } from "@/lib/app-shell";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import { preloadRecaptchaScript } from "@/lib/useRecaptcha";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { clearClientAuthState } from "@/lib/client-logout";
-import { loadGuestTriplet } from "@/lib/guest-triplet";
+import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
   clearNeedsServerProfile,
+  clearPendingMasterResume,
+  hasGuestExplicitMasterResume,
   markNeedsServerProfile,
+  PENDING_MASTER_KEY,
 } from "@/lib/home-flow-storage";
 import {
   captureReturnToFromUrl,
   buildAuthHref,
   onboardingRedirectUrl,
   persistPostAuthReturnTo,
+  persistPendingGuestQuestion,
+  resolveGuestSpreadMasterId,
+  resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import {
+  clearShareRegistrationAttribution,
+  resolveRegistrationSource,
+} from "@/lib/share/registration-attribution";
+import {
   trackRegistrationAccountCreated,
+  trackRegistrationCompleted,
   trackRegistrationError,
   trackRegistrationStarted,
 } from "@/lib/seo/metrika";
@@ -34,7 +52,7 @@ interface AuthFormProps {
 
 export default function AuthForm({ mode, role }: AuthFormProps) {
   const router = useRouter();
-  const { expertRegistrationEnabled, recaptcha } = usePlatformFeatures();
+  const { expertRegistrationEnabled, recaptcha, featuresLoaded } = usePlatformFeatures();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -43,11 +61,24 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const [optionalBirthDate, setOptionalBirthDate] = useState("");
+  const [optionalGender, setOptionalGender] = useState<"male" | "female">("female");
+  const [emailExists, setEmailExists] = useState(false);
   const [error, setError] = useState("");
+  const [recaptchaFailed, setRecaptchaFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [returnTo, setReturnTo] = useState("/");
 
   const isExpert = role === "expert";
+  const isUserRegister = mode === "register" && role === "user";
+  const recaptchaScope =
+    mode === "login"
+      ? isExpert
+        ? "expertLogin"
+        : "login"
+      : isExpert
+        ? "expertRegister"
+        : "register";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -57,15 +88,30 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     const safe = sanitizeReturnTo(raw, fallback);
     setReturnTo(safe);
     captureReturnToFromUrl(window.location.search, fallback);
-  }, [isExpert]);
+    if (isUserRegister && isAgeGateConfirmed()) {
+      setAgeConfirmed(true);
+    }
+  }, [isExpert, isUserRegister]);
+
+  useEffect(() => {
+    document.body.classList.add("auth-recaptcha-hidden");
+    return () => document.body.classList.remove("auth-recaptcha-hidden");
+  }, []);
+
+  useEffect(() => {
+    if (!featuresLoaded || shouldUseAppShellClient()) return;
+    if (recaptcha.masterEnabled && recaptcha.scopes[recaptchaScope]) {
+      preloadRecaptchaScript();
+    }
+  }, [featuresLoaded, recaptcha, recaptchaScope]);
 
   const loginHref = buildAuthHref(`/auth/${role}/login`, returnTo, isExpert ? "/expert" : "/");
   const registerHref = buildAuthHref(`/auth/${role}/register`, returnTo, isExpert ? "/expert" : "/");
 
-  const isUserRegister = mode === "register" && role === "user";
   const isExpertRegister = mode === "register" && role === "expert";
   const requiresLegalConsent = role === "user";
   const canSubmit =
+    featuresLoaded &&
     !loading &&
     (!requiresLegalConsent || acceptedTerms) &&
     (!isUserRegister && !isExpertRegister || ageConfirmed);
@@ -73,21 +119,18 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     mode === "login" && (role !== "expert" || expertRegistrationEnabled);
   const endpoint = `/api/auth/${role}/${mode === "login" ? "login" : "register"}`;
 
-  const recaptchaScope =
-    mode === "login"
-      ? isExpert
-        ? "expertLogin"
-        : "login"
-      : isExpert
-        ? "expertRegister"
-        : "register";
-  const showRecaptchaBadge = recaptcha.masterEnabled && recaptcha.scopes[recaptchaScope];
+  const passwordStrength = useMemo(
+    () => (mode === "register" ? scorePasswordStrength(password) : null),
+    [mode, password]
+  );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setError("");
+    setEmailExists(false);
+    setRecaptchaFailed(false);
     setLoading(true);
-    if (isUserRegister) trackRegistrationStarted("auth_form");
+    if (isUserRegister) trackRegistrationStarted(resolveRegistrationSource("auth_form"));
 
     const body: Record<string, unknown> = { email: email.trim(), password };
 
@@ -106,6 +149,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         body.marketingConsent = marketingConsent;
         body.ageConfirmed = ageConfirmed;
         body.acceptedTerms = acceptedTerms;
+        if (optionalBirthDate.trim()) {
+          body.gender = optionalGender;
+          body.birthDate = optionalBirthDate.trim();
+        }
       }
 
       const captchaErr = await attachRecaptchaToken(
@@ -115,6 +162,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       );
       if (captchaErr) {
         setError(captchaErr);
+        if (isUserRegister) trackRegistrationError("recaptcha_client");
         setLoading(false);
         return;
       }
@@ -126,6 +174,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       );
       if (captchaErr) {
         setError(captchaErr);
+        if (isUserRegister) trackRegistrationError("recaptcha_client");
         setLoading(false);
         return;
       }
@@ -144,12 +193,26 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 409 && isUserRegister) {
+          setEmailExists(true);
+          trackRegistrationError("email_exists");
+          return;
+        }
         if (data.error === "rate_limit") {
           setError(data.message ?? "Слишком много попыток. Подождите и попробуйте снова.");
+        } else if (data.code === "recaptcha_failed") {
+          setRecaptchaFailed(true);
+          setError(
+            data.error ??
+              "Проверка безопасности не прошла. Нажмите «Повторить» или обновите страницу."
+          );
+          if (isUserRegister) trackRegistrationError("recaptcha_failed");
         } else {
           setError(data.message ?? data.error ?? "Ошибка");
         }
-        if (isUserRegister) trackRegistrationError(String(data.error ?? "unknown"));
+        if (isUserRegister && data.code !== "recaptcha_failed") {
+          trackRegistrationError(String(data.error ?? "unknown"));
+        }
         return;
       }
 
@@ -162,21 +225,40 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         }
       }
 
+      let guestRegisterMasterId: string | null = null;
+      let guestRegisterHasCards = false;
+
       if (isUserRegister) {
-        trackRegistrationAccountCreated("auth_form");
+        const regSource = resolveRegistrationSource("auth_form");
+        trackRegistrationAccountCreated(regSource);
         const guest = loadGuestTriplet();
+        const guestMasterId = resolveGuestSpreadMasterId(guest?.masterId);
+        const hasGuestCards = Boolean(guest?.tarotCards?.length);
+        guestRegisterMasterId = guestMasterId;
+        guestRegisterHasCards = hasGuestCards;
+
         if (data.profile) {
+          trackRegistrationCompleted(regSource);
+          clearShareRegistrationAttribution();
           clearNeedsServerProfile();
-          localStorage.setItem(
-            "aura_profile",
-            JSON.stringify({
-              ...data.profile,
-              tarotCards: guest?.tarotCards ?? [],
-              deckSystem: guest?.deckSystem,
-              teaser: guest?.teaser,
-            })
-          );
-          localStorage.setItem("aura_flow_step", guest?.tarotCards?.length ? "masters" : "triplet");
+          const mergedProfile = {
+            ...data.profile,
+            tarotCards: guest?.tarotCards ?? data.profile.tarotCards ?? [],
+            deckSystem: guest?.deckSystem ?? data.profile.deckSystem,
+            teaser: guest?.teaser ?? data.profile.teaser,
+            mainQuestion: guest?.question || data.profile.mainQuestion,
+            tripletMasterId: guestMasterId,
+          };
+          localStorage.setItem("aura_profile", JSON.stringify(mergedProfile));
+          if (hasGuestCards) {
+            localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+            localStorage.setItem("aura_flow_step", "masters");
+          } else if (!hasGuestExplicitMasterResume()) {
+            clearPendingMasterResume();
+            localStorage.setItem("aura_flow_step", "triplet");
+          } else {
+            localStorage.setItem("aura_flow_step", "triplet");
+          }
         } else {
           localStorage.setItem(
             "aura_profile",
@@ -189,9 +271,12 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               deckSystem: guest?.deckSystem,
               teaser: guest?.teaser,
               mainQuestion: guest?.question,
-              tripletMasterId: guest?.masterId,
+              tripletMasterId: guestMasterId,
             })
           );
+          if (hasGuestCards) {
+            localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+          }
           localStorage.setItem("aura_flow_step", "onboarding");
           markNeedsServerProfile();
         }
@@ -199,9 +284,54 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
       let destination = returnTo;
 
+      if (typeof window !== "undefined" && isUserRegister && guestRegisterHasCards) {
+        const guest = loadGuestTriplet();
+        const guestMasterId = guestRegisterMasterId ?? resolveGuestSpreadMasterId(guest?.masterId);
+        destination = resolveRegistrationReturnTo({
+          guestSpread: true,
+          guestMasterId,
+          guestQuestion: guest?.question,
+        });
+        if (guest?.question?.trim()) {
+          persistPendingGuestQuestion(guest.question);
+        }
+        if (data.profile) {
+          try {
+            const raw = localStorage.getItem("aura_profile");
+            const mergedProfile = raw ? JSON.parse(raw) : null;
+            if (mergedProfile) {
+              await syncGuestSpreadToServer(mergedProfile, guest);
+            }
+          } catch {
+            /* reading can still load from local profile */
+          }
+          clearGuestTriplet();
+        }
+      }
+
       if (typeof window !== "undefined" && isUserRegister && !data.profile) {
-        persistPostAuthReturnTo(destination);
+        persistPostAuthReturnTo(
+          guestRegisterHasCards
+            ? resolveRegistrationReturnTo({
+                guestSpread: true,
+                guestMasterId:
+                  guestRegisterMasterId ??
+                  resolveGuestSpreadMasterId(loadGuestTriplet()?.masterId),
+                guestQuestion: loadGuestTriplet()?.question,
+              })
+            : destination
+        );
         window.location.assign(onboardingRedirectUrl());
+        return;
+      }
+
+      if (
+        typeof window !== "undefined" &&
+        isUserRegister &&
+        data.profile &&
+        guestRegisterHasCards
+      ) {
+        window.location.assign(destination);
         return;
       }
 
@@ -245,7 +375,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="glass-panel mx-auto max-w-lg space-y-5 p-8">
+    <form onSubmit={handleSubmit} className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
       {mode === "register" && (
         <>
           <div>
@@ -316,9 +446,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
             {mode === "register" ? (
-              <p className="mt-2 text-xs text-gray-500">
-                Минимум {MIN_PASSWORD_LENGTH} символов
-              </p>
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-gray-500">Минимум {MIN_PASSWORD_LENGTH} символов</p>
+                {password.length > 0 && passwordStrength ? (
+                  <p className={`text-xs ${PASSWORD_STRENGTH_COLORS[passwordStrength]}`}>
+                    Надёжность: {PASSWORD_STRENGTH_LABELS[passwordStrength]}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
             {mode === "login" && role === "user" ? (
               <p className="mt-2 text-right">
@@ -334,7 +469,61 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </div>
       </div>
 
-      {error && <p className="text-center text-sm text-red-400">{error}</p>}
+      {isUserRegister ? (
+        <details className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+          <summary className="cursor-pointer text-sm text-gray-400">
+            Дата рождения (необязательно) — пропустить отдельный шаг
+          </summary>
+          <div className="mt-4 space-y-3">
+            <p className="text-xs leading-relaxed text-gray-500">
+              Если укажете сейчас, сразу откроем кабинет и начислим стартовые руны. Иначе спросим на
+              следующем экране.
+            </p>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Дата рождения</label>
+              <input
+                type="date"
+                value={optionalBirthDate}
+                onChange={(e) => setOptionalBirthDate(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Пол</label>
+              <select
+                value={optionalGender}
+                onChange={(e) => setOptionalGender(e.target.value as "male" | "female")}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              >
+                <option value="female">Женский</option>
+                <option value="male">Мужской</option>
+              </select>
+            </div>
+          </div>
+        </details>
+      ) : null}
+
+      {emailExists ? (
+        <p className="text-center text-sm text-amber-300/90">
+          Этот email уже зарегистрирован.{" "}
+          <Link href={loginHref} className="text-aura-champagne underline underline-offset-2">
+            Войти в аккаунт
+          </Link>
+        </p>
+      ) : error ? (
+        <div className="space-y-2 text-center">
+          <p className="text-sm text-red-400">{error}</p>
+          {recaptchaFailed ? (
+            <button
+              type="button"
+              onClick={() => void handleSubmit()}
+              className="text-sm text-aura-champagne underline underline-offset-2 hover:text-white"
+            >
+              Повторить проверку
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {requiresLegalConsent && (
         <div className="space-y-3 rounded-xl border border-white/8 bg-white/[0.02] p-4">
@@ -406,30 +595,6 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             </label>
           )}
         </div>
-      )}
-
-      {showRecaptchaBadge && (
-        <p className="text-center text-[10px] text-gray-600">
-          Защищено reCAPTCHA. Применяются{" "}
-          <a
-            href="https://policies.google.com/privacy"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-500 hover:underline"
-          >
-            Политика конфиденциальности
-          </a>{" "}
-          и{" "}
-          <a
-            href="https://policies.google.com/terms"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-500 hover:underline"
-          >
-            Условия использования
-          </a>{" "}
-          Google.
-        </p>
       )}
 
       {mode === "login" ? (

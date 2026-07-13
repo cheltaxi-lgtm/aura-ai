@@ -1942,6 +1942,63 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   background: rgba(232, 199, 126, 0.52);
 }
 
+/* Breathing room above pinned modal footers (master session, photo flow, etc.) */
+.lux-scroll--above-footer {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Numerolog calculation step: footer has summary + CTA */
+.lux-scroll--above-footer-tall {
+  padding-bottom: calc(11.5rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: calc(11.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.numerolog-calc-picker__grid {
+  min-width: 0;
+}
+
+.numerolog-calc-picker__card {
+  min-width: 0;
+  overflow: visible;
+}
+
+.numerolog-calc-picker__title {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.numerolog-calc-picker__tagline {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.numerolog-calc-picker__summary-title,
+.numerolog-calc-picker__footer-title {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.numerolog-calc-picker__footer-summary {
+  min-width: 0;
+}
+
+.numerolog-calc-picker__footer-summary p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -3368,7 +3425,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .aura-landing-section--guest-spread {
-  scroll-margin-top: 5rem;
+  scroll-margin-top: calc(var(--app-header-h, 3.25rem) + 0.75rem);
 }
 
 .hero-question {
@@ -3864,6 +3921,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 .ritual-cta-banner {
   @apply mx-auto mb-8 max-w-6xl md:mb-10;
+  scroll-margin-top: calc(var(--app-header-h, 3.25rem) + 0.75rem);
 }
 
 .ritual-cta-banner__inner {
@@ -4636,6 +4694,17 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 .app-top-header {
   z-index: 5000;
+  pointer-events: none;
+}
+
+.app-top-header a,
+.app-top-header button,
+.app-top-header input,
+.app-top-header select,
+.app-top-header textarea,
+.app-top-header [role="menu"],
+.app-top-header [role="menuitem"],
+.app-top-header .brand-logo-home {
   pointer-events: auto;
 }
 
@@ -5078,8 +5147,55 @@ body.chat-session-active .site-legal-footer {
 }
 
 body.chat-session-active {
-  min-height: 100dvh;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.chat-session-active .app-main-column {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+/*
+ * Full-screen master chat: fixed header is portaled to body, so this shell
+ * uses padding-top + height 100dvh (border-box). Do not also subtract the
+ * header from height — that leaves an empty band at the bottom.
+ */
+.home-active-chat {
+  box-sizing: border-box;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: var(--app-header-h, 3.25rem);
+}
+
+.home-active-chat > main {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.home-active-chat .chat-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.home-active-chat .chat-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Spread ritual loader ── */
@@ -5410,13 +5526,44 @@ body.chat-session-active {
 .cabinet-achievements__scroll {
   display: flex;
   gap: 0.75rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 0.5rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 
 .cabinet-achievements__scroll::-webkit-scrollbar {
   display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cabinet-achievements__scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(232, 199, 126, 0.35) transparent;
+  }
+
+  .cabinet-achievements__scroll::-webkit-scrollbar {
+    display: block;
+    height: 6px;
+  }
+
+  .cabinet-achievements__scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .cabinet-achievements__scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(232, 199, 126, 0.32);
+  }
+
+  .cabinet-achievements__scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(232, 199, 126, 0.52);
+  }
 }
 
 .cabinet-achievement-card {
@@ -5870,8 +6017,13 @@ body.chat-session-active.cookie-banner-visible {
   pointer-events: auto;
 }
 
-body.cookie-banner-visible .legal-page {
-  padding-bottom: calc(2rem + var(--cookie-banner-offset, 0px) + env(safe-area-inset-bottom, 0px));
+body.cookie-banner-visible .legal-page,
+body.cookie-banner-visible .auth-page {
+  padding-bottom: calc(5rem + var(--cookie-banner-offset, 0px) + env(safe-area-inset-bottom, 0px));
+}
+
+body.cookie-banner-visible .auth-page .auth-form {
+  margin-bottom: 0.5rem;
 }
 
 .cookie-banner__docs {
@@ -7264,12 +7416,14 @@ body.cookie-banner-visible .legal-page {
 }
 
 .numerolog-reveal__cell {
+  min-width: 0;
   border-radius: 1rem;
   border: 1px solid rgba(196, 160, 255, 0.12);
   background: linear-gradient(145deg, rgba(40, 24, 64, 0.55), rgba(0, 0, 0, 0.35));
   padding: 0.85rem 0.75rem;
   text-align: center;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
 }
 
 .numerolog-reveal__cell--visible {
@@ -7286,11 +7440,14 @@ body.cookie-banner-visible .legal-page {
 .numerolog-reveal__value {
   margin-top: 0.35rem;
   font-family: var(--font-display, inherit);
-  font-size: 1.75rem;
+  font-size: clamp(1.125rem, 4.5vw, 1.75rem);
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.2;
   color: #f3ebff;
   text-shadow: 0 0 20px rgba(196, 160, 255, 0.35);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .numerolog-reveal__detail {
@@ -7298,4 +7455,106 @@ body.cookie-banner-visible .legal-page {
   font-size: 0.6875rem;
   line-height: 1.4;
   color: rgba(255, 255, 255, 0.42);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Destiny matrix (22-arcana) reveal ── */
+.destiny-matrix {
+  display: grid;
+  margin-top: 1rem;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.destiny-matrix__slot {
+  min-width: 0;
+}
+
+@media (min-width: 420px) {
+  .destiny-matrix {
+    grid-template-areas:
+      ". energy ."
+      "body purpose roots"
+      "rel money karma";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+}
+
+.destiny-matrix__cell {
+  min-width: 0;
+  height: 100%;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(196, 160, 255, 0.14);
+  background: linear-gradient(155deg, rgba(36, 22, 58, 0.72), rgba(8, 6, 18, 0.55));
+  padding: 0.65rem 0.5rem 0.7rem;
+  text-align: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.destiny-matrix__cell--featured {
+  border-color: rgba(212, 175, 90, 0.35);
+  background: linear-gradient(155deg, rgba(52, 36, 18, 0.55), rgba(28, 18, 48, 0.65));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28), inset 0 0 24px rgba(212, 175, 90, 0.06);
+}
+
+.destiny-matrix__cell--visible {
+  border-color: rgba(196, 160, 255, 0.3);
+}
+
+.destiny-matrix__cell--featured.destiny-matrix__cell--visible {
+  border-color: rgba(212, 175, 90, 0.45);
+}
+
+.destiny-matrix__label {
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  color: rgba(196, 160, 255, 0.68);
+}
+
+.destiny-matrix__cell--featured .destiny-matrix__label {
+  color: rgba(212, 175, 90, 0.82);
+}
+
+.destiny-matrix__number {
+  margin-top: 0.25rem;
+  font-family: var(--font-display, inherit);
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #f8f2ff;
+  text-shadow: 0 0 18px rgba(196, 160, 255, 0.4);
+}
+
+.destiny-matrix__cell--featured .destiny-matrix__number {
+  font-size: 1.875rem;
+  color: #fff6e0;
+  text-shadow: 0 0 20px rgba(212, 175, 90, 0.45);
+}
+
+.destiny-matrix__name {
+  margin-top: 0.3rem;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.72);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.destiny-matrix__hint {
+  margin-top: 0.75rem;
+  text-align: center;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+body.auth-recaptcha-hidden .grecaptcha-badge {
+  visibility: hidden;
 }

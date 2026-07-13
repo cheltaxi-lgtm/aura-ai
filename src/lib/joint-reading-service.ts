@@ -9,6 +9,7 @@ import {
   jointReadingPartnerDoneEmailHtml,
   jointReadingExpiringEmailHtml,
 } from "@/lib/email/send";
+import { stripEnglishLeakageFromRussianText } from "@/lib/reading-text-polish";
 
 export type JointReadingStatus = "pending_partner" | "partner_done" | "completed" | "expired";
 
@@ -44,31 +45,6 @@ export type JointSubmitResult =
 
 function generateToken(): string {
   return randomBytes(8).toString("base64url").slice(0, 10);
-}
-
-function normalizePersonName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\s-]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * Lenient match for the partner name entered at invite creation vs. the
- * profile name of whoever claims the partner slot — people commonly use
- * nicknames, only a first name, or a different name order.
- */
-function namesLikelyMatch(expected: string, claim: string): boolean {
-  const expectedNorm = normalizePersonName(expected);
-  const claimNorm = normalizePersonName(claim);
-  if (!expectedNorm || !claimNorm) return true;
-  if (expectedNorm === claimNorm) return true;
-  if (claimNorm.includes(expectedNorm) || expectedNorm.includes(claimNorm)) return true;
-  const expectedFirst = expectedNorm.split(" ")[0];
-  const claimFirst = claimNorm.split(" ")[0];
-  return Boolean(expectedFirst && claimFirst && expectedFirst === claimFirst);
 }
 
 function mapRow(row: Record<string, unknown>): JointReadingRow {
@@ -178,23 +154,15 @@ export async function createJointReadingInvite(params: {
   runeCharged?: boolean;
 }): Promise<JointReadingRow> {
   if (params.reuseExisting !== false) {
-    const existing = await getActiveJointInviteForInitiator(params.initiatorUserId);
-    if (existing) {
-      if (params.initiatorName || params.partnerName) {
-        await query(
-          `UPDATE joint_readings SET
-             initiator_name = COALESCE($2, initiator_name),
-             partner_name = COALESCE($3, partner_name)
-           WHERE id = $1`,
-          [
-            existing.id,
-            params.initiatorName?.trim().slice(0, 40) || null,
-            params.partnerName?.trim().slice(0, 40) || null,
-          ]
-        );
-        return (await getJointReadingByToken(existing.token)) ?? existing;
-      }
-      return existing;
+    const reconciled = await reconcileActiveJointInviteForCreation({
+      userId: params.initiatorUserId,
+      spreadId: params.spreadId ?? "love-7",
+      intentSlug: params.intentSlug ?? "sovmestimost-pary",
+      initiatorName: params.initiatorName,
+      partnerName: params.partnerName,
+    });
+    if (reconciled.row && !reconciled.createFresh) {
+      return reconciled.row;
     }
   }
 
@@ -255,6 +223,64 @@ export async function getActiveJointInviteForInitiator(
   );
   if (!res.rows[0]) return null;
   return mapRow(res.rows[0] as Record<string, unknown>);
+}
+
+/** Whether an active invite can be retargeted to another spread/theme (no readings yet). */
+export function jointInviteHasAnyReading(row: JointReadingRow): boolean {
+  return Boolean(row.initiator_reading?.trim() || row.partner_reading?.trim());
+}
+
+/**
+ * Reuse an active invite when settings match, retarget spread/theme when empty,
+ * or signal that a fresh invite is needed (e.g. user picked 12 cards but old
+ * invite already has a 3-card reading in progress).
+ */
+export async function reconcileActiveJointInviteForCreation(params: {
+  userId: string;
+  spreadId: SpreadId;
+  intentSlug: string;
+  initiatorName?: string;
+  partnerName?: string;
+}): Promise<{ row: JointReadingRow | null; createFresh: boolean; configUpdated: boolean }> {
+  const existing = await getActiveJointInviteForInitiator(params.userId);
+  if (!existing) {
+    return { row: null, createFresh: true, configUpdated: false };
+  }
+
+  const nextSpread = normalizeSpreadId(params.spreadId);
+  const currentSpread = normalizeSpreadId(existing.spread_id);
+  const nextIntent = params.intentSlug.trim().slice(0, 80);
+  const configChanged = nextSpread !== currentSpread || existing.intent_slug !== nextIntent;
+
+  if (configChanged && jointInviteHasAnyReading(existing)) {
+    return { row: null, createFresh: true, configUpdated: false };
+  }
+
+  const initiatorName = params.initiatorName?.trim().slice(0, 40) || null;
+  const partnerName = params.partnerName?.trim().slice(0, 40) || null;
+
+  if (configChanged) {
+    await query(
+      `UPDATE joint_readings SET
+         spread_id = $2,
+         intent_slug = $3,
+         initiator_name = COALESCE($4, initiator_name),
+         partner_name = COALESCE($5, partner_name)
+       WHERE id = $1`,
+      [existing.id, nextSpread, nextIntent, initiatorName, partnerName]
+    );
+  } else if (initiatorName || partnerName) {
+    await query(
+      `UPDATE joint_readings SET
+         initiator_name = COALESCE($2, initiator_name),
+         partner_name = COALESCE($3, partner_name)
+       WHERE id = $1`,
+      [existing.id, initiatorName, partnerName]
+    );
+  }
+
+  const row = (await getJointReadingByToken(existing.token)) ?? existing;
+  return { row, createFresh: false, configUpdated: configChanged };
 }
 
 export interface JointReadingAdminStats {
@@ -402,14 +428,6 @@ export async function submitJointReadingSide(params: {
     if (existing.partner_reading?.trim() && existing.partner_user_id === params.userId) {
       return { ok: true, row: existing, alreadySaved: true };
     }
-    const expectedPartner = existing.partner_name?.trim();
-    const claimName = params.profileName?.trim();
-    if (expectedPartner && claimName && !namesLikelyMatch(expectedPartner, claimName)) {
-      return {
-        ok: false,
-        error: `Это приглашение для «${expectedPartner}». Войдите под аккаунтом партнёра или попросите новую ссылку.`,
-      };
-    }
   }
 
   if (isInitiator) {
@@ -440,6 +458,10 @@ export async function submitJointReadingSide(params: {
     const partnerUpdate = await query(
       `UPDATE joint_readings SET
          partner_user_id = COALESCE(partner_user_id, $2),
+         partner_name = CASE
+           WHEN partner_user_id IS NULL AND NULLIF($7, '') IS NOT NULL THEN $7
+           ELSE partner_name
+         END,
          partner_reading = $3,
          partner_cards = $4,
          partner_session_id = $5,
@@ -453,6 +475,7 @@ export async function submitJointReadingSide(params: {
         JSON.stringify(params.cards),
         params.sessionId ?? null,
         params.characterKey,
+        params.profileName?.trim() ?? null,
       ]
     );
     if (!partnerUpdate.rowCount) {
@@ -549,14 +572,73 @@ function jointReadingRelationLabel(intentSlug: string): string {
   return "пара";
 }
 
+function formatJointCardsForPrompt(
+  cards: JointReadingRow["initiator_cards"] | JointReadingRow["partner_cards"]
+): string {
+  if (!cards?.length) return "—";
+  return cards
+    .map((card) => (card.position?.trim() ? `${card.position}: ${card.name}` : card.name))
+    .join("; ");
+}
+
+function stripMarkdownForSynthesis(text: string): string {
+  return text
+    .replace(/\*\*/g, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
+function polishCombinedReading(text: string): string {
+  let out = stripMarkdownForSynthesis(text);
+  out = out.replace(/\(\s*\)/g, "");
+  out = out.replace(/,\s*\./g, ".");
+  out = out.replace(/\s+\./g, ".");
+  out = out.replace(/\.{2,}/g, ".");
+  out = out.replace(/…+/g, "…");
+
+  const paragraphs = out
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const unique = paragraphs.filter((p) => {
+    const key = p.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return stripEnglishLeakageFromRussianText(unique.join("\n\n"));
+}
+
 async function generateCombinedReading(row: JointReadingRow): Promise<string> {
   const initiatorLabel = row.initiator_name?.trim() || "Инициатор";
   const partnerLabel = row.partner_name?.trim() || "Партнёр";
   const relation = jointReadingRelationLabel(row.intent_slug);
-  try {
-    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов. Пиши по-русски, тепло, без markdown-заголовков. Не используй романтические формулировки, если это не пара — учитывай, что перед тобой ${relation}.`;
+  const initiatorText = stripMarkdownForSynthesis(row.initiator_reading ?? "");
+  const partnerText = stripMarkdownForSynthesis(row.partner_reading ?? "");
 
-    const userMessage = `${initiatorLabel} (инициатор):\n${row.initiator_reading ?? ""}\n\n${partnerLabel} (партнёр):\n${row.partner_reading ?? ""}\n\nСинтезируй: суть связи между ${relation}, сильные стороны, зоны напряжения, совет, перспектива.`;
+  try {
+    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов.
+
+Правила:
+- Пиши по-русски, тепло, связным прозой (4–6 абзацев).
+- Без markdown, без заголовков, без списков и без «**».
+- Не оставляй пустых скобок, обрывков вроде «твои .» или «()» — каждое предложение должно быть законченным.
+- Не повторяй один и тот же абзац или мысль дважды.
+- Не цитируй тексты дословно — синтезируй смысл обоих раскладов.
+- Не используй романтические формулировки, если это не пара — перед тобой ${relation}.
+- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива.`;
+
+    const userMessage = [
+      `${initiatorLabel} (инициатор), карты: ${formatJointCardsForPrompt(row.initiator_cards)}`,
+      initiatorText,
+      "",
+      `${partnerLabel} (партнёр), карты: ${formatJointCardsForPrompt(row.partner_cards)}`,
+      partnerText,
+      "",
+      `Синтезируй общую интерпретацию для ${initiatorLabel} и ${partnerLabel} как ${relation}.`,
+    ].join("\n");
 
     const generated = await generateReading(systemPrompt, {
       userName: initiatorLabel,
@@ -565,20 +647,22 @@ async function generateCombinedReading(row: JointReadingRow): Promise<string> {
       characterId: row.initiator_character ?? "veronika",
       userMessage,
     });
-    if (generated.text?.trim()) return generated.text.trim();
+    if (generated.text?.trim()) return polishCombinedReading(generated.text);
   } catch (err) {
     console.warn("Joint reading combined synthesis failed, using plain fallback:", err);
   }
 
-  return [
-    `Совместный расклад ${initiatorLabel} и ${partnerLabel}.`,
-    "",
-    row.initiator_reading ?? "",
-    "",
-    row.partner_reading ?? "",
-    "",
-    `Карты показывают, что у вас как у ${relation} есть общий ресурс для сближения — обсудите выводы с мастером в чате.`,
-  ].join("\n");
+  return polishCombinedReading(
+    [
+      `Совместный расклад ${initiatorLabel} и ${partnerLabel}.`,
+      "",
+      initiatorText,
+      "",
+      partnerText,
+      "",
+      `Карты показывают, что у вас как у ${relation} есть общий ресурс для сближения — обсудите выводы вместе.`,
+    ].join("\n")
+  );
 }
 
 export function buildJointReadingUrl(token: string): string {

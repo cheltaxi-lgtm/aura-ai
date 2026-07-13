@@ -121,7 +121,9 @@ export default function RitualQuestions({
     <div className="flex h-full min-h-[400px] flex-col">
       <div
         ref={scrollRef}
-        className="lux-scroll flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4"
+        className={`lux-scroll flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4${
+          answerIndex < questions.length && !typing ? " lux-scroll--above-footer" : ""
+        }`}
       >
         {messages.map((msg, i) => (
           <motion.div

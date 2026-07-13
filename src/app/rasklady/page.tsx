@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import RaskladyCatalog from "@/components/seo/RaskladyCatalog";
 
 export const metadata: Metadata = buildSeoMetadata({
@@ -15,6 +16,7 @@ export const metadata: Metadata = buildSeoMetadata({
 export default function RaskladyCatalogPage() {
   return (
     <SeoPageShell backHref="/" backLabel="На главную">
+      <SeoPageTracker goal="rasklady_hub_view" />
       <p className="text-sm text-aura-gold/80">Каталог раскладов</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Расклады Zovus</h1>
       <p className="mt-4 text-white/70">

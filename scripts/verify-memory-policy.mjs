@@ -68,8 +68,13 @@ assert(
 
 const userMemory = read("src/lib/user-memory.ts");
 assert(
-  "buildMemoryBlock rejects empty query",
-  userMemory.includes("if (!topicQuery) return \"\";")
+  "buildMemoryBlock degrades to a single recent-visit line on empty query (no full history injection)",
+  userMemory.includes("ПОСЛЕДНИЙ ВИЗИТ КЛИЕНТА") &&
+    userMemory.includes("Не возвращайся к прошлой теме сам")
+);
+assert(
+  "past-session retrieval downranks sessions the client rated poorly (1-2)",
+  userMemory.includes("outcome_rating IS NOT NULL AND outcome_rating <= 2")
 );
 assert(
   "buildClientBlock gates mainQuestion by relevance",

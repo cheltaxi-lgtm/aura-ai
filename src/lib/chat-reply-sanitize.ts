@@ -1,3 +1,10 @@
+/** Client-safe reply sanitizers (no server/DB imports). */
+
+import {
+  polishSpreadReadingText,
+  stripEnglishLeakageFromRussianText,
+} from "@/lib/reading-text-polish";
+
 /** Remove theater / voice stage directions like «(Голос низкий, хриплый…)». */
 export function stripStageDirections(text: string): string {
   let out = text.trim();
@@ -29,12 +36,10 @@ export function stripTheaterFromReply(text: string): string {
     ""
   );
 
-  return out.replace(/\n{3,}/g, "\n\n").replace(/  +/g, " ").trim();
+  return stripEnglishLeakageFromRussianText(
+    out.replace(/\n{3,}/g, "\n\n").replace(/  +/g, " ").trim()
+  );
 }
-
-/** Client-safe reply sanitizers (no server/DB imports). */
-
-import { polishSpreadReadingText } from "@/lib/reading-text-polish";
 
 function normalizeCompareText(text: string): string {
   return text

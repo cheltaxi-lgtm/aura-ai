@@ -7,6 +7,25 @@ export const FLOW_STEP_KEY = "aura_flow_step";
 export const LAST_VISIT_KEY = "aura_last_visit";
 export const LAST_MASTER_KEY = "aura_last_master";
 export const PENDING_MASTER_KEY = "aura_pending_master";
+/** Set when a guest explicitly taps a master before auth (not triplet default). */
+export const GUEST_EXPLICIT_MASTER_KEY = "aura_guest_explicit_master";
+
+export function markGuestExplicitMaster(masterId: string) {
+  localStorage.setItem(PENDING_MASTER_KEY, masterId);
+  localStorage.setItem(GUEST_EXPLICIT_MASTER_KEY, masterId);
+}
+
+export function clearPendingMasterResume() {
+  localStorage.removeItem(PENDING_MASTER_KEY);
+  localStorage.removeItem(GUEST_EXPLICIT_MASTER_KEY);
+}
+
+/** True when guest chose a master before register and PENDING still matches. */
+export function hasGuestExplicitMasterResume(): boolean {
+  const explicit = localStorage.getItem(GUEST_EXPLICIT_MASTER_KEY);
+  const pending = localStorage.getItem(PENDING_MASTER_KEY);
+  return Boolean(explicit && pending && explicit === pending);
+}
 export const PENDING_READING_KEY = "aura_pending_reading";
 /** Set when server account exists but profile_user_id is still null. */
 export const NEEDS_PROFILE_KEY = "aura_needs_profile";

@@ -20,7 +20,7 @@ import { SUIT_HUBS } from "@/lib/seo/suit-hubs";
 
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
-
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
 
 export const metadata: Metadata = buildSeoMetadata({
 
@@ -49,6 +49,8 @@ export default function CardsCatalogPage() {
   return (
 
     <SeoPageShell backHref="/taro" backLabel="Таро онлайн">
+
+      <SeoPageTracker goal="cards_hub_view" />
 
       <p className="text-sm text-aura-gold/80">Справочник · 78 арканов</p>
 

@@ -57,6 +57,12 @@ import { trackPhotoReadingPhase } from "@/lib/photo-reading-analytics";
 import ChatMessageRenderer from "@/components/ChatMessageRenderer";
 import ShareButton from "@/components/share/ShareButton";
 import { chatSpreadToSharePayload } from "@/lib/share/payload-builders";
+import {
+  buildLoginHref,
+  buildRegisterHref,
+  resolveRegistrationReturnTo,
+} from "@/lib/post-auth-return";
+import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
 
 export const PHOTO_READING_RETURN = "/?photo=1";
 const PHOTO_STREAM_URL = "/api/photo-reading/stream";
@@ -580,7 +586,7 @@ export default function PhotoReadingFlow({
 
   const startManualSpread = () => {
     if (!isLoggedIn) {
-      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`;
+      window.location.href = buildRegisterHref(resolveRegistrationReturnTo({ photo: true }));
       return;
     }
     if (runesBlocked) {
@@ -738,7 +744,7 @@ export default function PhotoReadingFlow({
       originalBytes: fileOriginalBytes,
     });
     if (!isLoggedIn) {
-      window.location.href = `/auth/user/register?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`;
+      window.location.href = buildRegisterHref(resolveRegistrationReturnTo({ photo: true }));
       return;
     }
     if (!imageData) {
@@ -857,7 +863,7 @@ export default function PhotoReadingFlow({
       }
 
       if (response.status === 401) {
-        window.location.href = `/auth/user/login?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`;
+        window.location.href = buildLoginHref(resolveRegistrationReturnTo({ photo: true }));
         return;
       }
 
@@ -1324,7 +1330,7 @@ export default function PhotoReadingFlow({
               </div>
             )}
 
-            <div className="lux-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3 sm:space-y-4 sm:px-5 sm:py-4">
+            <div className="lux-scroll lux-scroll--above-footer min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3 sm:space-y-4 sm:px-5 sm:py-4">
 
               {loading && (
                 <motion.div
@@ -1683,7 +1689,8 @@ export default function PhotoReadingFlow({
                 <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-5 text-center">
                   <p className="text-sm text-gray-400">Войдите чтобы получить расшифровку</p>
                   <Link
-                    href={`/auth/user/register?returnTo=${encodeURIComponent(PHOTO_READING_RETURN)}`}
+                    href={buildRegisterHref(resolveRegistrationReturnTo({ photo: true }))}
+                    onClick={() => trackRegistrationCtaClick("photo_reading")}
                     className="btn-luxe btn-luxe--sm btn-luxe--gold"
                   >
                     Зарегистрироваться

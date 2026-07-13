@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -30,11 +30,18 @@ import {
   GUEST_SPREAD_SECTION_ID,
   GUEST_SPREAD_START_EVENT,
   LANDING_QUESTION_KEY,
+  resolveLandingHeroVariant,
   type GuestSpreadStartDetail,
+  type LandingHeroVariant,
 } from "@/lib/landing-offer";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
-import { trackLandingView } from "@/lib/seo/metrika";
+import { trackLandingView, trackLandingPrimaryCtaClick } from "@/lib/seo/metrika";
+import {
+  buildLoginHref,
+  buildRegisterHref,
+  resolveRegistrationReturnTo,
+} from "@/lib/post-auth-return";
 import LandingSocialProofStats, {
   useLandingSocialProofVisible,
 } from "@/components/seo/LandingSocialProofStats";
@@ -156,6 +163,10 @@ export interface AuraSellingLandingProps {
   photoNavLabel?: string;
   /** Explicit "get a ritual" CTA — shown right under quick questions, no scrolling needed. */
   onOpenRitual?: () => void;
+  /** Logged-in home: open spread flow from the custom question field (hero is hidden). */
+  onCustomQuestionSubmit?: (question: string) => void;
+  /** Logged-in home: lightweight session-only chat from quick question chips. */
+  onQuickQuestionSelect?: (question: string) => void;
 }
 
 export default function AuraSellingLanding({
@@ -180,14 +191,19 @@ export default function AuraSellingLanding({
   onOpenMarkCards,
   photoNavLabel,
   onOpenRitual,
+  onCustomQuestionSubmit,
+  onQuickQuestionSelect,
 }: AuraSellingLandingProps) {
-  const { config, cost, formatRunes, formatRunesWithRub } = useRuneConfig();
+  const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
-  const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub);
+  const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
+  const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub, heroVariant);
   useLandingSocialProofVisible(showSellingSections || (showHero && !isLoggedIn));
 
   useEffect(() => {
-    if (showHero && !isLoggedIn) trackLandingView();
+    const variant = resolveLandingHeroVariant();
+    setHeroVariant(variant);
+    if (showHero && !isLoggedIn) trackLandingView({ hero_variant: variant });
   }, [showHero, isLoggedIn]);
 
   const scrollToMasters = () => {
@@ -207,12 +223,15 @@ export default function AuraSellingLanding({
     document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const handlePrimaryCta = () => {
+  const handlePrimaryCta = (placement: "hero" | "sticky" | "final") => {
     if (isLoggedIn) {
       onStartReading();
       return;
     }
-    startGuestSpread();
+    trackLandingPrimaryCtaClick(placement);
+    const storedQuestion =
+      typeof window !== "undefined" ? sessionStorage.getItem(LANDING_QUESTION_KEY)?.trim() : "";
+    startGuestSpread(storedQuestion || undefined);
   };
 
   const handleSecondaryCta = () => {
@@ -265,7 +284,11 @@ export default function AuraSellingLanding({
               <p className="aura-landing-hero__subtitle">{offer.heroSubtitle}</p>
               <HeroQuestionField className="mt-6" onQuestionSubmit={(question) => startGuestSpread(question)} />
               <div className="aura-landing-hero__actions">
-                <button type="button" onClick={handlePrimaryCta} className="btn-luxe btn-luxe--md btn-luxe--gold">
+                <button
+                  type="button"
+                  onClick={() => handlePrimaryCta("hero")}
+                  className="btn-luxe btn-luxe--md btn-luxe--gold"
+                >
                   {offer.primaryCta}
                 </button>
                 <button type="button" onClick={handleSecondaryCta} className="btn-luxe btn-luxe--md btn-luxe--ghost">
@@ -273,7 +296,7 @@ export default function AuraSellingLanding({
                 </button>
               </div>
               <p className="aura-landing-hero__trust aura-landing-hero__trust--prominent">{offer.heroMicrocopy}</p>
-              <p className="aura-landing-hero__pricing">{offer.pricingLine}</p>
+              {ready ? <p className="aura-landing-hero__pricing">{offer.pricingLine}</p> : null}
               {!isLoggedIn ? <LandingSocialProofStats variant="hero" className="mt-5" /> : null}
             </motion.div>
 
@@ -290,7 +313,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {!isLoggedIn && showHero ? (
+      {!isLoggedIn ? (
         <section id={GUEST_SPREAD_SECTION_ID} className="aura-landing-section aura-landing-section--guest-spread">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
@@ -307,8 +330,19 @@ export default function AuraSellingLanding({
 
       {showHero || afterQuickQuestions ? (
         <QuickQuestions
-          showQuestionField={false}
-          onQuestionSelect={!isLoggedIn ? (question) => startGuestSpread(question) : undefined}
+          showQuestionField={!showHero}
+          onQuestionSelect={
+            !isLoggedIn
+              ? (question) => startGuestSpread(question)
+              : onQuickQuestionSelect
+          }
+          onCustomQuestionSubmit={
+            isLoggedIn
+              ? onCustomQuestionSubmit
+              : !showHero
+                ? (question) => startGuestSpread(question)
+                : undefined
+          }
         />
       ) : null}
 
@@ -353,7 +387,7 @@ export default function AuraSellingLanding({
           runesEnabled={config.enabled}
           readingCost={config.enabled ? cost("READING") : undefined}
           questionCost={config.enabled ? cost("QUESTION") : undefined}
-          formatRunes={formatRunes}
+          formatRunes={ready ? formatRunesWithRub : formatRunes}
           runeBalance={runeBalance}
           isUnlimited={isUnlimited}
           enforceBalance={isLoggedIn}
@@ -501,7 +535,9 @@ export default function AuraSellingLanding({
       {showTariffs ? (
         <LandingSeoHub
           rubPerRune={config.rubPerRune}
-          readingPriceLabel={config.enabled ? formatRunesWithRub(cost("READING")) : undefined}
+          readingPriceLabel={
+            ready && config.enabled ? formatRunesWithRub(cost("READING")) : undefined
+          }
           compact
         />
       ) : null}
@@ -521,15 +557,29 @@ export default function AuraSellingLanding({
               Откройте карты — и получите свой ответ
             </h2>
             <p className="aura-landing-final__text">{offer.finalCtaText}</p>
-            <button type="button" onClick={handlePrimaryCta} className="btn-luxe btn-luxe--md btn-luxe--gold">
+            <button
+              type="button"
+              onClick={() => handlePrimaryCta("final")}
+              className="btn-luxe btn-luxe--md btn-luxe--gold"
+            >
               {offer.primaryCta}
               <ArrowRight className="h-4 w-4" />
             </button>
             {!isLoggedIn ? (
               <p className="aura-landing-final__login">
                 Уже есть аккаунт?{" "}
-                <Link href="/auth/user/login?returnTo=/" className="aura-landing-final__login-link">
+                <Link
+                  href={buildLoginHref(resolveRegistrationReturnTo())}
+                  className="aura-landing-final__login-link"
+                >
                   Войти
+                </Link>
+                {" · "}
+                <Link
+                  href={buildRegisterHref(resolveRegistrationReturnTo({ guestSpread: true }))}
+                  className="aura-landing-final__login-link"
+                >
+                  Создать аккаунт
                 </Link>
               </p>
             ) : null}
@@ -537,8 +587,8 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {!isLoggedIn && showHero ? (
-        <LandingStickyCta label={offer.primaryCta} onClick={handlePrimaryCta} />
+      {!isLoggedIn ? (
+        <LandingStickyCta label={offer.primaryCta} onClick={() => handlePrimaryCta("sticky")} />
       ) : null}
     </div>
   );

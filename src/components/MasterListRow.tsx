@@ -6,7 +6,7 @@ import { ChevronRight, Layers } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { MASTER_PUBLIC_BADGE } from "@/lib/master-disclosure";
 import { isRitualMaster, RITUAL_MASTER_SHOWCASE_BADGE } from "@/lib/ritual-config";
-import { formatMasterPriceDisplay } from "@/lib/master-pricing";
+import { formatMasterPriceDisplay, type MasterPriceKind } from "@/lib/master-pricing";
 import { getDeckDefinition, resolveMasterDeckSystem } from "@/lib/decks";
 import { DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
 import MasterAvatar from "@/components/MasterAvatar";
@@ -17,6 +17,7 @@ export interface MasterListRowProps {
   recommended?: boolean;
   canContinue?: boolean;
   sessionOnly?: boolean;
+  priceKind?: MasterPriceKind;
   readingCost?: number;
   questionCost?: number;
   runesEnabled?: boolean;
@@ -32,6 +33,7 @@ export default function MasterListRow({
   recommended = false,
   canContinue = false,
   sessionOnly = false,
+  priceKind,
   readingCost,
   questionCost,
   runesEnabled = false,
@@ -48,6 +50,7 @@ export default function MasterListRow({
     readingCost,
     questionCost,
     sessionOnly,
+    priceKind,
     formatRunes,
   });
   const deckCount = getDeckDefinition(deckSystem).symbols.length;

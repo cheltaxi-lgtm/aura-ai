@@ -4,6 +4,8 @@ export type AppConnectivityReason = "offline" | "maintenance" | "server";
 
 const STATUS_PATH = "/api/platform/status";
 const PROBE_TIMEOUT_MS = 4_000;
+const STATUS_PROBE_ATTEMPTS = 3;
+const STATUS_PROBE_RETRY_MS = 500;
 const NATIVE_NETWORK_TIMEOUT_MS = 2_500;
 const NATIVE_OFFLINE_CONFIRM_MS = 600;
 
@@ -89,7 +91,7 @@ function parseStatusPayload(
   };
 }
 
-async function probeStatusEndpoint(
+async function probeStatusEndpointOnce(
   options?: ProbeAppConnectivityOptions
 ): Promise<AppConnectivityReason | null> {
   const controller = new AbortController();
@@ -103,14 +105,30 @@ async function probeStatusEndpoint(
     const data = parseStatusPayload(await res.json().catch(() => null));
     if (data.maintenanceMode) return "maintenance";
     if (!res.ok || data.ok === false) {
-      return options?.bootstrap ? null : "server";
+      return options?.bootstrap || !isNativeCapacitorClient() ? null : "server";
     }
     return null;
   } catch {
-    return options?.bootstrap ? null : "server";
+    return options?.bootstrap || !isNativeCapacitorClient() ? null : "server";
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Retry transient status failures (resume from background, cold radio, brief 503). */
+async function probeStatusEndpoint(
+  options?: ProbeAppConnectivityOptions
+): Promise<AppConnectivityReason | null> {
+  for (let attempt = 0; attempt < STATUS_PROBE_ATTEMPTS; attempt += 1) {
+    const reason = await probeStatusEndpointOnce(options);
+    if (reason === null || reason === "maintenance") return reason;
+    if (attempt < STATUS_PROBE_ATTEMPTS - 1) {
+      await sleep(STATUS_PROBE_RETRY_MS);
+    } else {
+      return reason;
+    }
+  }
+  return null;
 }
 
 async function probeRuntimeOffline(): Promise<AppConnectivityReason | null> {
@@ -127,18 +145,26 @@ async function probeRuntimeOffline(): Promise<AppConnectivityReason | null> {
   return null;
 }
 
-/** Returns a block reason, or null when the app can proceed. */
+/**
+ * Returns a block reason, or null when the app can proceed.
+ *
+ * Trust model: a successful /api/platform/status response means the app is
+ * online — do NOT second-guess with Capacitor Network (it false-negatives on
+ * Wi‑Fi↔LTE handoff, screen wake, etc.). Offline is shown only when the status
+ * probe fails AND native/browser signals agree there is no network.
+ */
 export async function probeAppConnectivity(
   options?: ProbeAppConnectivityOptions
 ): Promise<AppConnectivityReason | null> {
   const status = await probeStatusEndpoint(options);
-  if (status) return status;
+  if (status === "maintenance") return status;
+  if (status === null) return null;
 
-  if (options?.bootstrap) {
-    return null;
-  }
+  if (options?.bootstrap) return null;
 
-  return probeRuntimeOffline();
+  const offline = await probeRuntimeOffline();
+  if (offline === "offline") return "offline";
+  return status;
 }
 
 /** Splash bootstrap probe — never block on transient offline signals at cold start. */

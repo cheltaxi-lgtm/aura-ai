@@ -1,5 +1,6 @@
 import { topicLabel } from "@/lib/session-topics";
 import type { SessionTopicId } from "@/lib/session-topics";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 type UnitKind = "card" | "rune" | "symbol" | "number";
 
@@ -121,10 +122,35 @@ const MASTER_RITUAL: Record<
   },
 };
 
+/** Short label for ritual UI when the user typed their own question. */
+export function formatCustomQuestionRitualLabel(question: string, maxLen = 72): string {
+  const q = question.replace(/\s+/g, " ").trim();
+  if (!q) return "";
+  if (q.length <= maxLen) return q;
+  return `${q.slice(0, maxLen - 1).trim()}…`;
+}
+
+export function resolveSpreadRitualTopicLabel(options: {
+  topic?: SessionTopicId | null;
+  customQuestion?: string | null;
+  intentSlug?: string | null;
+}): string | null {
+  if (options.topic === "custom" && options.customQuestion?.trim()) {
+    return formatCustomQuestionRitualLabel(options.customQuestion);
+  }
+  const slug = options.intentSlug?.trim();
+  if (slug) {
+    return getSpreadIntentBySlug(slug)?.title ?? null;
+  }
+  return null;
+}
+
 export function getSpreadRitualCopy(
   masterId: string,
   options?: {
     topic?: SessionTopicId | null;
+    /** SEO / joint-reading intent title — overrides generic «Свой вопрос» for custom topic. */
+    topicLabelOverride?: string | null;
     hasBirthDate?: boolean;
     cardCount?: number;
     deckSystem?: import("@/lib/decks/types").DeckSystem;
@@ -135,7 +161,9 @@ export function getSpreadRitualCopy(
     options?.deckSystem === "lenormand" ? "lenormand" : masterId;
   const base = MASTER_RITUAL[ritualKey] ?? MASTER_RITUAL.veronika;
   const unit = spreadUnitWordRu(count, masterId);
-  const topic = options?.topic ? topicLabel(options.topic) : null;
+  const topic =
+    options?.topicLabelOverride?.trim() ||
+    (options?.topic ? topicLabel(options.topic) : null);
   const deckLabel =
     options?.deckSystem === "lenormand" ? "Колода Ленорман" : "Колода";
   const birthHint = options?.hasBirthDate

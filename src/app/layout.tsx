@@ -35,7 +35,7 @@ export default function RootLayout({
     <html lang="ru" className={`${inter.variable} ${cormorant.variable} ${cinzel.variable}`}>
       <body className="font-body relative flex min-h-screen flex-col">
         <Script id="app-shell-detect" strategy="beforeInteractive">
-          {`(function(){try{var cap=window.Capacitor;if(cap&&cap.isNativePlatform&&cap.isNativePlatform()){document.documentElement.dataset.appShell="android";document.documentElement.dataset.motionLite="1";return}var q=window.location.search;if(/(?:^|[?&])app=1(?:&|$)/.test(q)){document.documentElement.dataset.appShell="android";document.documentElement.dataset.motionLite="1";try{sessionStorage.setItem("zovus_app_shell","1")}catch(e){}}}catch(e){}})();`}
+          {`(function(){try{var cap=window.Capacitor;if(cap&&cap.isNativePlatform&&cap.isNativePlatform()){document.documentElement.dataset.appShell="android";document.documentElement.dataset.motionLite="1";return}var q=window.location.search;if(/(?:^|[?&])app=1(?:&|$)/.test(q)){document.documentElement.dataset.appShell="android";document.documentElement.dataset.motionLite="1";try{sessionStorage.setItem("zovus_app_shell","1")}catch(e){}}if("serviceWorker"in navigator&&!cap?.isNativePlatform?.()){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){r.unregister()})});if(window.caches&&caches.keys){caches.keys().then(function(keys){keys.forEach(function(k){if(k.indexOf("zovus-shell")===0)caches.delete(k)})})}}}catch(e){}})();`}
         </Script>
         <svg width="0" height="0" aria-hidden className="absolute">
           <defs>
@@ -47,7 +47,7 @@ export default function RootLayout({
         </svg>
         <MysticBackground />
         <Providers>
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col">{children}</div>
+          <div className="app-main-column relative z-10 flex min-h-0 flex-1 flex-col">{children}</div>
           <AppAwareSiteFooter />
         </Providers>
         <AppAwareCookieBanner />

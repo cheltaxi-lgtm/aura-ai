@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Mic, MicOff } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
+import { resolveJointReadingToken } from "@/lib/joint-reading-storage";
 import {
   SESSION_TOPICS,
   topicLabel,
@@ -20,6 +21,7 @@ import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import SpreadPicker from "@/components/SpreadPicker";
 import NumerologCalculationPicker, {
   numerologCalculationReady,
+  numerologCalculationSummary,
 } from "@/components/numerolog/NumerologCalculationPicker";
 import NumerologSessionReveal from "@/components/numerolog/NumerologSessionReveal";
 import type { NumerologSessionResult } from "@/lib/numerology/session-result";
@@ -85,6 +87,8 @@ interface MasterSessionFlowProps {
   userFullName?: string;
   /** Pre-fill partner fields for compatibility / joint flows. */
   initialPartnerInfo?: { partnerName?: string; partnerDate?: string };
+  /** SEO / joint-reading intent slug — used for ritual copy instead of «Свой вопрос». */
+  spreadIntentSlug?: string | null;
 }
 
 type Step = "topic" | "master" | "cards" | "scheme" | "calculation" | "ritual" | "reveal" | "pick" | "flip" | "partner";
@@ -157,6 +161,7 @@ export default function MasterSessionFlow({
   userBirthDate,
   userFullName,
   initialPartnerInfo,
+  spreadIntentSlug,
 }: MasterSessionFlowProps) {
   const [step, setStep] = useState<Step>("topic");
   const [topic, setTopic] = useState<SessionTopicId | null>(null);
@@ -261,7 +266,7 @@ export default function MasterSessionFlow({
   const goToNewSpreadDraw = goToDrawStep;
 
   const hasDailyCards = dailyCards.length >= 3 && !newSpreadOnly;
-  const showCardsChoice = hasDailyCards;
+  const showCardsChoice = hasDailyCards && !numerologFlow;
   const allFlipped = flipped.slice(0, cardCount).every(Boolean);
   const spreadReady =
     newCards.slice(0, cardCount).filter((c) => c.name.trim()).length >= cardCount;
@@ -353,11 +358,37 @@ export default function MasterSessionFlow({
     initialNumerologTool,
   ]);
 
+  const flowOpenedRef = useRef(false);
+
   useEffect(() => {
-    if (isOpen) {
-      initializeFlow();
+    if (!isOpen) {
+      flowOpenedRef.current = false;
+      return;
     }
+    if (flowOpenedRef.current) return;
+    flowOpenedRef.current = true;
+    initializeFlow();
   }, [isOpen, initializeFlow]);
+
+  const spreadDrawSpreadIdRef = useRef<SpreadId | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      spreadDrawSpreadIdRef.current = null;
+      return;
+    }
+    if (spreadDrawSpreadIdRef.current === selectedSpreadId) return;
+    if (spreadDrawSpreadIdRef.current !== null) {
+      setSessionSeed("");
+      setPickedIndices([]);
+      setTableCards([]);
+      setNewCards([]);
+      setDrawError(null);
+      setPickResolving(false);
+      setFlipped(emptyFlipped(getSpread(selectedSpreadId).cardCount));
+    }
+    spreadDrawSpreadIdRef.current = selectedSpreadId;
+  }, [isOpen, selectedSpreadId]);
 
   // SEO / intent deep links: spread is fixed — never show the scheme picker.
   useEffect(() => {
@@ -447,6 +478,13 @@ export default function MasterSessionFlow({
       if (!numerologFlow) {
         qs.set("spreadId", selectedSpreadId);
       }
+      if (spreadIntentSlug?.trim()) {
+        qs.set("intentSlug", spreadIntentSlug.trim());
+      }
+      const jointToken = resolveJointReadingToken();
+      if (jointToken) {
+        qs.set("jointToken", jointToken);
+      }
       if (reshuffleSalt) qs.set("reshuffleSalt", reshuffleSalt);
       if (extra) {
         for (const [k, v] of Object.entries(extra)) qs.set(k, v);
@@ -462,6 +500,7 @@ export default function MasterSessionFlow({
       selectedNumerologTool,
       numerologToolParams,
       reshuffleSalt,
+      spreadIntentSlug,
     ]
   );
 
@@ -616,6 +655,7 @@ export default function MasterSessionFlow({
     drawLoading,
     drawError,
     numerologFlow,
+    selectedSpreadId,
     initSpreadSession,
   ]);
 
@@ -660,7 +700,7 @@ export default function MasterSessionFlow({
   };
 
   const handleStartDaily = () => {
-    if (!master) return;
+    if (!master || numerologFlow) return;
     onStart({
       characterKey: master,
       intention: null,
@@ -826,7 +866,7 @@ export default function MasterSessionFlow({
           } else if (!master) {
             setStep("master");
           } else {
-            setStep("ritual");
+            goToRitualStep();
           }
         }}
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
@@ -839,21 +879,34 @@ export default function MasterSessionFlow({
         ) : null}
       </button>
     ) : step === "calculation" && numerologFlow ? (
-      <button
-        type="button"
-        disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)}
-        onClick={() => {
-          setFlipped(emptyFlipped(cardCount));
-          setNewCards([]);
-          goToRitualStep();
-        }}
-        className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
-      >
-        <span>Посчитать</span>
-        {runeConfig.enabled ? (
-          <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
-        ) : null}
-      </button>
+      <div className="space-y-3">
+        {(() => {
+          const summary = numerologCalculationSummary(selectedNumerologTool);
+          return (
+            <div className="numerolog-calc-picker__footer-summary rounded-xl border border-aura-gold/15 bg-amber-950/20 px-3 py-2.5">
+              <p className="numerolog-calc-picker__footer-title font-medium text-aura-gold/90">
+                {summary.label}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-white/60">{summary.description}</p>
+            </div>
+          );
+        })()}
+        <button
+          type="button"
+          disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)}
+          onClick={() => {
+            setFlipped(emptyFlipped(cardCount));
+            setNewCards([]);
+            goToRitualStep();
+          }}
+          className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
+        >
+          <span>Посчитать</span>
+          {runeConfig.enabled ? (
+            <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+          ) : null}
+        </button>
+      </div>
     ) : step === "reveal" && numerologResult && numerologRevealReady ? (
       <button
         type="button"
@@ -969,7 +1022,15 @@ export default function MasterSessionFlow({
             </button>
           </div>
 
-          <div className="lux-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6">
+          <div
+            className={`lux-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6${
+              actionFooter
+                ? step === "calculation" && numerologFlow
+                  ? " lux-scroll--above-footer-tall"
+                  : " lux-scroll--above-footer"
+                : ""
+            }`}
+          >
             {/* Step 1 — Topic */}
             {step === "topic" && !numerologFlow && (
               <motion.div
@@ -1269,6 +1330,7 @@ export default function MasterSessionFlow({
                     runeBillingEnabled={runeConfig.enabled}
                     userBirthDate={userBirthDate}
                     userFullName={userFullName}
+                    hideSummaryPanel
                   />
                 </div>
               </motion.div>
@@ -1346,8 +1408,6 @@ export default function MasterSessionFlow({
                     selectedId={selectedSpreadId}
                     onSelect={(id) => {
                       setSelectedSpreadId(id);
-                      setFlipped(emptyFlipped(getSpread(id).cardCount));
-                      setNewCards([]);
                     }}
                     masterId={master}
                     topic={topic}
@@ -1517,7 +1577,7 @@ export default function MasterSessionFlow({
 
           {actionFooter ? (
             <div
-              className="shrink-0 border-t border-white/10 bg-black/90 px-5 py-4"
+              className="shrink-0 border-t border-white/10 bg-black/95 px-5 py-4 shadow-[0_-12px_32px_rgba(0,0,0,0.45)]"
               style={footerPadding}
             >
               {actionFooter}

@@ -25,18 +25,25 @@ export function getPool(): Pool {
     // `max`). Apply session GUCs on every new connection instead so they
     // reliably hold for the pool's whole lifetime.
     pool.on("connect", (client) => {
-      client.query("SET statement_timeout = '30s'").catch(() => {
-        /* optional — some hosts restrict SET */
-      });
-      // pgvector HNSW filtered search (e.g. `WHERE user_id = $1 ORDER BY
-      // embedding <=> $2 LIMIT n`) can under-return once user_facts grows to
-      // many users' vectors mixed in one index, because the ANN walk isn't
-      // scoped to the filter. Iterative scan (pgvector >= 0.8) keeps walking
-      // until enough post-filter matches are found. No-op / harmless on older
-      // pgvector — the GUC simply won't exist and this fails silently.
-      client.query("SET hnsw.iterative_scan = relaxed_order").catch(() => {
-        /* older pgvector without iterative scan support — ignore */
-      });
+      // Sequential on purpose: parallel unawaited client.query() calls on the
+      // same connection trigger a pg deprecation warning (and each GUC must
+      // fail independently — e.g. hnsw.* doesn't exist without pgvector).
+      void (async () => {
+        // Optional — some hosts restrict SET.
+        await client.query("SET statement_timeout = '30s'").catch(() => {});
+        // pgvector HNSW filtered search (e.g. `WHERE user_id = $1 ORDER BY
+        // embedding <=> $2 LIMIT n`) can under-return once user_facts grows to
+        // many users' vectors mixed in one index, because the ANN walk isn't
+        // scoped to the filter. Iterative scan (pgvector >= 0.8) keeps walking
+        // until enough post-filter matches are found. No-op / harmless on older
+        // pgvector — the GUC simply won't exist and this fails silently.
+        await client.query("SET hnsw.iterative_scan = relaxed_order").catch(() => {});
+        // Belt-and-braces for the same filtered-HNSW under-return problem on
+        // installs where iterative_scan is unavailable: widen the candidate
+        // list the ANN walk considers (default 40). Costs a little CPU per
+        // vector query; user_facts queries are low-QPS background/prompt work.
+        await client.query("SET hnsw.ef_search = 100").catch(() => {});
+      })();
     });
   }
   return pool;

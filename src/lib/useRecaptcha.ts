@@ -2,6 +2,12 @@
 
 let scriptPromise: Promise<void> | null = null;
 
+export function preloadRecaptchaScript(): void {
+  const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+  if (!siteKey || typeof window === "undefined") return;
+  void loadRecaptchaScript(siteKey).catch(() => {});
+}
+
 function loadRecaptchaScript(siteKey: string): Promise<void> {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("no window"));

@@ -3,7 +3,7 @@
  * Post-deploy SEO sync: verify Metrika/Webmaster prerequisites, ping sitemap, IndexNow.
  * Usage: node scripts/post-deploy-seo.mjs [baseUrl]
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -12,6 +12,22 @@ const INDEXNOW_KEY = "107274032904532db6ae0e4b2f39c4b3";
 const METRIKA_ID = 110138367;
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+
+function loadEnvFile(path) {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq);
+    const value = trimmed.slice(eq + 1);
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
+loadEnvFile(join(__dir, "..", ".env.local"));
+
 const goalsDoc = JSON.parse(readFileSync(join(__dir, "metrika-goals.json"), "utf8"));
 
 const PRIORITY_URLS = [
@@ -89,12 +105,46 @@ await checkUrl("/sitemap.xml", 200, "<urlset");
 await pingYandexSitemap();
 await submitIndexNow();
 
-const regGoals = goalsDoc.goals.filter((g) => g.group === "registration");
-console.log("\n=== Metrika: цели регистрации (создать вручную в UI) ===");
-for (const g of regGoals) {
-  console.log(`  - ${g.id}${g.new ? " (НОВАЯ)" : ""}`);
+async function verifyMetrikaGoals() {
+  const token = process.env.YANDEX_METRIKA_OAUTH_TOKEN;
+  if (!token) {
+    ok("Metrika API goals", false, "YANDEX_METRIKA_OAUTH_TOKEN not set");
+    return;
+  }
+  const res = await fetch(
+    `https://api-metrika.yandex.net/management/v1/counter/${METRIKA_ID}/goals`,
+    { headers: { Authorization: `OAuth ${token}` } }
+  );
+  if (!res.ok) {
+    ok("Metrika API goals", false, `status=${res.status}`);
+    return;
+  }
+  const data = await res.json();
+  const byUrl = new Map();
+  for (const g of data.goals ?? []) {
+    const url = g.conditions?.[0]?.url;
+    if (url) byUrl.set(url, g.id);
+  }
+  const missing = goalsDoc.goals.filter((g) => !byUrl.has(g.id));
+  ok(
+    "Metrika API goals",
+    missing.length === 0,
+    `${goalsDoc.goals.length - missing.length}/${goalsDoc.goals.length} in counter`
+  );
+  if (missing.length > 0) {
+    console.log("  missing:", missing.map((g) => g.id).join(", "));
+  }
+  const regGoals = goalsDoc.goals.filter((g) => g.group === "registration");
+  const regMissing = regGoals.filter((g) => !byUrl.has(g.id));
+  ok(
+    "Metrika registration funnel goals",
+    regMissing.length === 0,
+    `${regGoals.length - regMissing.length}/${regGoals.length}`
+  );
 }
-console.log(`\nВсего целей в scripts/metrika-goals.json: ${goalsDoc.goals.length}`);
-console.log(`Счётчик: ${goalsDoc.counterId}`);
+
+console.log("\n=== Metrika API ===");
+await verifyMetrikaGoals();
+console.log(`Счётчик: ${goalsDoc.counterId}, целей в манифесте: ${goalsDoc.goals.length}`);
 
 process.exit(failed > 0 ? 1 : 0);

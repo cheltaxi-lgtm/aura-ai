@@ -2,11 +2,12 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { motion } from "framer-motion";
+import { useMotionLite } from "@/lib/motion-lite";
 import { ArrowRight, UserRound } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { MASTER_PUBLIC_BADGE } from "@/lib/master-disclosure";
 import { isRitualMaster, RITUAL_MASTER_SHOWCASE_BADGE } from "@/lib/ritual-config";
-import { formatMasterPriceDisplay } from "@/lib/master-pricing";
+import { formatMasterPriceDisplay, type MasterPriceKind } from "@/lib/master-pricing";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import MasterAvatar from "@/components/MasterAvatar";
 
@@ -47,6 +48,7 @@ export interface MasterShowcaseCardProps {
   recommended?: boolean;
   canContinue?: boolean;
   sessionOnly?: boolean;
+  priceKind?: MasterPriceKind;
   readingCost?: number;
   questionCost?: number;
   runesEnabled?: boolean;
@@ -63,6 +65,7 @@ export default function MasterShowcaseCard({
   recommended = false,
   canContinue = false,
   sessionOnly = false,
+  priceKind,
   readingCost,
   questionCost,
   runesEnabled = false,
@@ -71,6 +74,7 @@ export default function MasterShowcaseCard({
   compact = true,
   actionBlocked = false,
 }: MasterShowcaseCardProps) {
+  const motionLite = useMotionLite();
   const deckSystem = master.system ?? resolveMasterDeckSystem(master.id);
   const price = formatMasterPriceDisplay({
     system: deckSystem,
@@ -79,6 +83,7 @@ export default function MasterShowcaseCard({
     readingCost,
     questionCost,
     sessionOnly,
+    priceKind,
     formatRunes,
   });
 
@@ -91,10 +96,15 @@ export default function MasterShowcaseCard({
         compact ? "master-showcase-card--compact" : ""
       } ${recommended ? "master-showcase-card--recommended" : ""}`}
       style={{ "--master-glow": master.glowColor } as CSSProperties}
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.45, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
+      initial={motionLite ? false : { opacity: 0, y: 20 }}
+      animate={motionLite ? { opacity: 1, y: 0 } : undefined}
+      whileInView={motionLite ? undefined : { opacity: 1, y: 0 }}
+      viewport={motionLite ? undefined : { once: true }}
+      transition={
+        motionLite
+          ? undefined
+          : { duration: 0.45, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }
+      }
     >
       <div className="master-showcase-card__glow pointer-events-none" aria-hidden />
 

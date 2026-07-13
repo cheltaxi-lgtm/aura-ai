@@ -203,7 +203,7 @@ export async function buildMemoryBlock(
        AND character_key = $2
        AND session_id IS NOT NULL
        AND session_id <> $3
-     ORDER BY session_date DESC
+     ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
      LIMIT 3`,
     [userId, characterKey, currentSessionId]
   );
@@ -211,7 +211,26 @@ export async function buildMemoryBlock(
   if (!rows.length) return "";
 
   const topicQuery = queryText?.trim() ?? "";
-  if (!topicQuery) return "";
+  if (!topicQuery) {
+    // No active topic (e.g. a daily pull with no intention and no saved main
+    // question). Full relevance gating is impossible, but going completely
+    // silent loses continuity — surface only the single most recent visit,
+    // compactly, with an explicit "don't steer back to it" rule.
+    const last = [...rows].sort(
+      (a, b) => new Date(b.session_date).getTime() - new Date(a.session_date).getTime()
+    )[0];
+    const date = new Date(last.session_date).toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "long",
+    });
+    return [
+      "",
+      "ПОСЛЕДНИЙ ВИЗИТ КЛИЕНТА (только для мягкой преемственности):",
+      `— ${date}: ${last.topic_summary}.`,
+      "Не возвращайся к прошлой теме сам — упомяни её только если клиент сам о ней заговорит.",
+      "",
+    ].join("\n");
+  }
 
   const candidateTexts = rows.map(
     (m) => `${m.topic_summary} ${m.prediction} ${(m.key_cards ?? []).join(" ")}`

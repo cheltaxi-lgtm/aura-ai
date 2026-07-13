@@ -9,7 +9,7 @@
  * Hygiene: near-duplicate facts are merged on write, and each user is capped
  * to MAX_FACTS_PER_USER (lowest-salience/oldest pruned).
  */
-import { query } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { EMBED_DIM, embedTexts } from "@/lib/memory/embeddings";
 
 export interface UserFact {
@@ -95,9 +95,16 @@ async function embedOne(text: string, timeoutMs?: number): Promise<number[] | nu
 /** Short timeout for the user-facing read path so chat never stalls. */
 const SEARCH_EMBED_TIMEOUT_MS = 2500;
 
+/**
+ * Advisory-lock class for per-user fact writes. Any distinct constant works —
+ * it only has to differ from other advisory-lock namespaces in this app.
+ */
+const FACT_WRITE_LOCK_CLASS = 823_401;
+
 /** Keep only the top MAX_FACTS_PER_USER facts for a user. */
-async function pruneUser(userId: string): Promise<void> {
-  await query(
+async function pruneUser(client: PoolClient, userId: string): Promise<void> {
+  await queryClient(
+    client,
     `DELETE FROM user_facts
       WHERE user_id = $1
         AND id NOT IN (
@@ -111,8 +118,13 @@ async function pruneUser(userId: string): Promise<void> {
 }
 
 /**
- * Insert a fact, or merge into a near-identical existing fact (vector dedup).
- * Prunes the user's facts to the cap afterward. No-op on empty text.
+ * Insert a fact, or merge into a near-identical existing fact (vector dedup,
+ * with a normalized-text fallback while embeddings are unavailable). The
+ * dedup lookup + write + prune run in one transaction under a per-user
+ * advisory lock, so concurrent recordTurn calls for the same user serialize
+ * instead of racing read-then-write into near-duplicate rows. No-op on empty
+ * text. The embedding call happens *before* the transaction — never hold the
+ * lock across a network round-trip.
  */
 export async function upsertFact(userId: string, input: FactInput): Promise<void> {
   const fact = input.fact?.trim();
@@ -121,9 +133,30 @@ export async function upsertFact(userId: string, input: FactInput): Promise<void
   const salience = clampSalience(input.salience);
   const embedding = await embedOne(fact);
 
+  await withTransaction(async (client) => {
+    await queryClient(client, `SELECT pg_advisory_xact_lock($1, hashtext($2))`, [
+      FACT_WRITE_LOCK_CLASS,
+      userId,
+    ]);
+    await upsertFactLocked(client, userId, input, salience, embedding);
+    await pruneUser(client, userId);
+  });
+}
+
+/** Dedup + write for one fact. Caller must hold the per-user advisory lock. */
+async function upsertFactLocked(
+  client: PoolClient,
+  userId: string,
+  input: FactInput,
+  salience: number,
+  embedding: number[] | null
+): Promise<void> {
+  const fact = input.fact.trim();
+
   if (embedding) {
     const vec = toVectorLiteral(embedding);
-    const { rows } = await query<{ id: string; distance: number }>(
+    const { rows } = await queryClient<{ id: string; distance: number }>(
+      client,
       `SELECT id, (embedding <=> $2::vector) AS distance
          FROM user_facts
         WHERE user_id = $1 AND embedding IS NOT NULL
@@ -133,7 +166,8 @@ export async function upsertFact(userId: string, input: FactInput): Promise<void
     );
     const nearest = rows[0];
     if (nearest && Number(nearest.distance) <= DEDUP_MAX_DISTANCE) {
-      await query(
+      await queryClient(
+        client,
         `UPDATE user_facts
             SET fact = $2,
                 category = COALESCE($3, category),
@@ -149,7 +183,8 @@ export async function upsertFact(userId: string, input: FactInput): Promise<void
       return;
     }
 
-    await query(
+    await queryClient(
+      client,
       `INSERT INTO user_facts
          (user_id, fact, category, event_date, source_character, salience, embedding)
        VALUES ($1, $2, $3, $4::date, $5, $6, $7::vector)`,
@@ -159,8 +194,35 @@ export async function upsertFact(userId: string, input: FactInput): Promise<void
     return;
   }
 
-  // No embedding (provider offline) — store without vector; re-embedded later.
-  await query(
+  // No embedding (provider offline) — fall back to normalized-text dedup so
+  // outages don't accumulate exact/near-exact duplicate rows. Re-embedded later.
+  const { rows: textDup } = await queryClient<{ id: string }>(
+    client,
+    `SELECT id FROM user_facts
+      WHERE user_id = $1
+        AND lower(regexp_replace(fact, '\\s+', ' ', 'g')) =
+            lower(regexp_replace($2, '\\s+', ' ', 'g'))
+      LIMIT 1`,
+    [userId, fact.slice(0, 600)]
+  );
+  if (textDup[0]) {
+    await queryClient(
+      client,
+      `UPDATE user_facts
+          SET category = COALESCE($2, category),
+              event_date = COALESCE($3::date, event_date),
+              source_character = COALESCE($4, source_character),
+              salience = GREATEST(salience, $5),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [textDup[0].id, input.category ?? null, input.eventDate ?? null,
+       input.sourceCharacter ?? null, salience]
+    );
+    return;
+  }
+
+  await queryClient(
+    client,
     `INSERT INTO user_facts
        (user_id, fact, category, event_date, source_character, salience)
      VALUES ($1, $2, $3, $4::date, $5, $6)`,
@@ -170,17 +232,12 @@ export async function upsertFact(userId: string, input: FactInput): Promise<void
 }
 
 export async function upsertFacts(userId: string, inputs: FactInput[]): Promise<void> {
-  let changed = false;
   for (const input of inputs) {
     try {
       await upsertFact(userId, input);
-      changed = true;
     } catch (err) {
       console.warn("[memory] upsertFact failed:", err instanceof Error ? err.message : err);
     }
-  }
-  if (changed) {
-    await pruneUser(userId).catch(() => {});
   }
 }
 
@@ -371,24 +428,51 @@ export async function decayStaleCriticalFacts(limit = 500): Promise<number> {
         SELECT id FROM user_facts
          WHERE salience >= 5
            AND event_date IS NULL
-           AND updated_at < NOW() - INTERVAL '${CRITICAL_DECAY_AFTER_DAYS} days'
+           AND updated_at < NOW() - ($2 || ' days')::interval
          LIMIT $1
       )
       RETURNING id`,
-    [limit]
+    [limit, String(CRITICAL_DECAY_AFTER_DAYS)]
   );
   return rows.length;
 }
 
 /**
+ * Cap episodic memory per user (mirrors MAX_SESSION_MEMORIES_PER_USER in
+ * session-memory.ts). Global pass for the maintenance cron — trims users that
+ * grew past the cap before opportunistic per-write pruning existed.
+ */
+export const SESSION_MEMORIES_MAINTENANCE_CAP = 200;
+
+export async function pruneAllSessionMemories(
+  cap = SESSION_MEMORIES_MAINTENANCE_CAP
+): Promise<number> {
+  const { rowCount } = await query(
+    `DELETE FROM session_memories
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY user_id ORDER BY session_date DESC
+                 ) AS rn
+            FROM session_memories
+        ) ranked
+        WHERE ranked.rn > $1
+      )`,
+    [cap]
+  );
+  return rowCount ?? 0;
+}
+
+/**
  * Maintenance pass (cron/admin): heal facts left without a vector across all
- * users (e.g. inserted while the embeddings provider was down), and decay
- * stale critical facts. Re-embedding stops early if embeddings are unavailable;
- * decay is independent and always runs.
+ * users (e.g. inserted while the embeddings provider was down), decay stale
+ * critical facts, and trim episodic memory to the per-user cap. Re-embedding
+ * stops early if embeddings are unavailable; the other steps always run.
  */
 export async function runMemoryMaintenance(
   limit = 200
-): Promise<{ scanned: number; reembedded: number; decayed: number }> {
+): Promise<{ scanned: number; reembedded: number; decayed: number; sessionsPruned: number }> {
   const { rows } = await query<{ id: string; fact: string }>(
     `SELECT id, fact FROM user_facts WHERE embedding IS NULL ORDER BY updated_at ASC LIMIT $1`,
     [limit]
@@ -404,7 +488,8 @@ export async function runMemoryMaintenance(
     reembedded++;
   }
   const decayed = await decayStaleCriticalFacts().catch(() => 0);
-  return { scanned: rows.length, reembedded, decayed };
+  const sessionsPruned = await pruneAllSessionMemories().catch(() => 0);
+  return { scanned: rows.length, reembedded, decayed, sessionsPruned };
 }
 
 export async function countFacts(userId: string): Promise<number> {

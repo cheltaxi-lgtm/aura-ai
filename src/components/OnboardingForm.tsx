@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import ProfileAstroFields, {
   profileAstroToPayload,
@@ -8,6 +8,7 @@ import ProfileAstroFields, {
 } from "@/components/ProfileAstroFields";
 import type { AstroMeta, LifeFocus } from "@/lib/astro-profile";
 import { MIN_DISPLAY_NAME_LENGTH } from "@/lib/auth-policy";
+import { trackOnboardingStarted } from "@/lib/seo/metrika";
 
 export interface OnboardingData {
   name: string;
@@ -32,6 +33,7 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
   const [name, setName] = useState(accountName);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [astro, setAstro] = useState<ProfileAstroValues>({
     gender: "female",
     birthDate: "",
@@ -40,6 +42,15 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
     lifeFocus: "general",
     mainQuestion: "",
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("welcome") === "1") {
+      setShowWelcome(true);
+      trackOnboardingStarted();
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +82,17 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
       <h2 className="font-display text-center text-xl font-semibold text-white">
         Один шаг до старта
       </h2>
+
+      {showWelcome ? (
+        <div className="rounded-xl border border-aura-gold/25 bg-aura-gold/10 px-4 py-4 text-center">
+          <p className="text-sm font-medium text-aura-champagne">Аккаунт создан</p>
+          <p className="mt-1 text-xs leading-relaxed text-gray-400">
+            Остался один шаг — дата рождения для персонализации. После сохранения начислим стартовые
+            руны и откроем ваш расклад.
+          </p>
+        </div>
+      ) : null}
+
       <p className="text-center text-sm text-gray-400">
         Аккаунт уже создан. Укажите дату рождения — мы рассчитаем знак зодиака, откроем кабинет и
         начислим стартовые руны на расклады.

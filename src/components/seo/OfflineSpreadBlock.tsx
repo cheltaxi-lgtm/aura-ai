@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Camera, Grid3X3, Sparkles } from "lucide-react";
 import { buildPhotoMarkUrl, buildPhotoReadingUrl } from "@/lib/spread-intents/router";
+import { trackPhotoLandingCtaClick } from "@/lib/seo/metrika";
 
 export interface OfflineSpreadBlockProps {
   onOpenPhoto?: () => void;
@@ -19,12 +20,14 @@ export default function OfflineSpreadBlock({
   const markHref = buildPhotoMarkUrl();
 
   const handlePhoto = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    trackPhotoLandingCtaClick();
     if (!onOpenPhoto) return;
     event.preventDefault();
     onOpenPhoto();
   };
 
   const handleMark = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    trackPhotoLandingCtaClick();
     if (!onOpenMarkCards) return;
     event.preventDefault();
     onOpenMarkCards();
@@ -58,7 +61,11 @@ export default function OfflineSpreadBlock({
             <Grid3X3 className="h-4 w-4" aria-hidden />
             Отметить карты
           </Link>
-          <Link href="/photo-rasklad" className="offline-spread__cta offline-spread__cta--link">
+          <Link
+            href="/photo-rasklad"
+            onClick={() => trackPhotoLandingCtaClick()}
+            className="offline-spread__cta offline-spread__cta--link"
+          >
             <Sparkles className="h-4 w-4" aria-hidden />
             Как это работает
           </Link>

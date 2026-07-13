@@ -2,9 +2,11 @@
 
 import { formatSpreadUnitRu } from "@/lib/spread-ritual-copy";
 import {
+  CUSTOM_QUESTION_SPREAD_TIERS,
   getSpread,
   listSpreads,
   logSpreadMetric,
+  spreadMatchesSystem,
   type SpreadId,
 } from "@/lib/spreads";
 import type { DeckSystem } from "@/lib/decks/types";
@@ -30,7 +32,19 @@ export default function SpreadPicker({
 }: SpreadPickerProps) {
   const { config, cost: runeCost } = useRuneConfig();
   const system = resolveMasterDeckSystem(masterId);
-  const spreads = listSpreads({ topic: topic ?? undefined, system });
+  const customTiers = topic === "custom" ? CUSTOM_QUESTION_SPREAD_TIERS : null;
+  const spreads = customTiers
+    ? customTiers
+        .map((tier) => {
+          const spread = getSpread(tier.id);
+          if (!spreadMatchesSystem(spread, system)) return null;
+          return { ...spread, tierLabel: tier.tierLabel };
+        })
+        .filter((spread): spread is NonNullable<typeof spread> => spread !== null)
+    : listSpreads({ topic: topic ?? undefined, system }).map((spread) => ({
+        ...spread,
+        tierLabel: null as string | null,
+      }));
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -40,6 +54,7 @@ export default function SpreadPicker({
           1,
           Math.round(runeCost("INTENTION_SPREAD") * spread.costMultiplier)
         );
+        const title = spread.tierLabel ?? spread.label;
 
         return (
           <button
@@ -61,7 +76,7 @@ export default function SpreadPicker({
             } disabled:opacity-50`}
           >
             <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="font-medium text-white">{spread.label}</span>
+              <span className="font-medium text-white">{title}</span>
               <span className="rounded-full bg-black/30 px-2 py-0.5 text-xs text-aura-gold">
                 {formatSpreadUnitRu(spread.cardCount, masterId ?? "veronika", "nominative")}
               </span>

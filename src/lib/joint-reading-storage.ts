@@ -1,5 +1,6 @@
 const STORAGE_KEY = "aura_joint_token";
 const ROLE_KEY = "aura_joint_role";
+const INTENT_KEY = "aura_joint_intent";
 
 export function setJointReadingToken(token: string): void {
   if (typeof window === "undefined") return;
@@ -16,6 +17,24 @@ export function setJointReadingRole(role: "initiator" | "partner"): void {
     sessionStorage.setItem(ROLE_KEY, role);
   } catch {
     /* ignore */
+  }
+}
+
+export function setJointReadingIntentSlug(slug: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(INTENT_KEY, slug.trim());
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getJointReadingIntentSlug(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return sessionStorage.getItem(INTENT_KEY);
+  } catch {
+    return null;
   }
 }
 
@@ -53,6 +72,7 @@ export function clearJointReadingToken(): void {
   try {
     sessionStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(ROLE_KEY);
+    sessionStorage.removeItem(INTENT_KEY);
   } catch {
     /* ignore */
   }

@@ -14,6 +14,8 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
+
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
 
@@ -81,6 +83,8 @@ export default function PhotoRaskladPage() {
   return (
 
     <SeoPageShell>
+
+      <SeoPageTracker goal="photo_landing_view" />
 
       <p className="text-sm text-aura-gold/80">Фото-расклад</p>
 

@@ -7,7 +7,10 @@ import { Copy, Loader2, Users } from "lucide-react";
 import {
   setJointReadingToken,
   setJointReadingRole,
+  setJointReadingIntentSlug,
 } from "@/lib/joint-reading-storage";
+import { buildJointSpreadStartPath } from "@/lib/joint-reading-nav";
+import { withAppShellIfNeeded } from "@/lib/post-auth-return";
 import { toParagraphs } from "@/lib/format-paragraphs";
 import { getSpread } from "@/lib/spreads";
 import { estimateJointSpreadCostPerPerson } from "@/lib/joint-reading-pricing";
@@ -15,6 +18,12 @@ import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import ShareButton from "@/components/share/ShareButton";
 import { jointReadingToSharePayload } from "@/lib/share/payload-builders";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
+import {
+  buildLoginHref,
+  buildRegisterHref,
+  resolveRegistrationReturnTo,
+} from "@/lib/post-auth-return";
+import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
 
 type JointPayload = {
   token: string;
@@ -120,18 +129,19 @@ export default function JointReadingTokenPage() {
     if (!data) return;
     setJointReadingToken(token);
     setJointReadingRole(role);
-    const qs = new URLSearchParams();
-    qs.set("intent", data.intentSlug);
-    qs.set("spread", data.spreadId);
-    qs.set("joint", token);
-    qs.set("jointRole", role);
-    if (role === "partner" && data.initiatorName) {
-      qs.set("jointInvite", data.initiatorName);
-    }
-    if (role === "initiator" && data.partnerName) {
-      qs.set("jointPartnerName", data.partnerName);
-    }
-    router.push(`/?${qs.toString()}`);
+    setJointReadingIntentSlug(data.intentSlug);
+    router.push(
+      withAppShellIfNeeded(
+        buildJointSpreadStartPath({
+          token,
+          role,
+          intentSlug: data.intentSlug,
+          spreadId: data.spreadId,
+          initiatorName: data.initiatorName,
+          partnerName: data.partnerName,
+        })
+      )
+    );
   };
 
   const copyLink = async () => {
@@ -144,7 +154,9 @@ export default function JointReadingTokenPage() {
     }
   };
 
-  const loginHref = `/auth/user/login?returnTo=${encodeURIComponent(`/joint-reading/${token}`)}`;
+  const jointReturn = resolveRegistrationReturnTo({ jointToken: token });
+  const loginHref = buildLoginHref(jointReturn);
+  const registerHref = buildRegisterHref(jointReturn);
 
   const retryAttach = async () => {
     if (!jointRetrySessionId || retrying) return;
@@ -360,6 +372,14 @@ export default function JointReadingTokenPage() {
           <Link href={loginHref} className="text-aura-gold hover:underline">
             Войдите
           </Link>
+          {" или "}
+          <Link
+            href={registerHref}
+            onClick={() => trackRegistrationCtaClick("joint_reading")}
+            className="text-aura-gold hover:underline"
+          >
+            создайте аккаунт
+          </Link>
           , чтобы пройти расклад по приглашению. После входа вы вернётесь на эту страницу.
         </div>
       ) : (
@@ -372,8 +392,19 @@ export default function JointReadingTokenPage() {
           ) : null}
           {data.canStartAsPartner ? (
             <p className="text-sm text-white/60">
-              Вы проходите расклад как {labelB}. Имя инициатора ({labelA}) подставится в форму
-              партнёра автоматически.
+              Вы проходите расклад как партнёр ({labelB}). Имя инициатора ({labelA}) подставится в
+              форму автоматически. Войдите под своим аккаунтом — имя в профиле может отличаться от
+              подписи в приглашении.
+            </p>
+          ) : null}
+          {data.isLoggedIn &&
+          data.viewerRole === "initiator" &&
+          !data.hasPartnerReading &&
+          !data.canStartAsInitiator &&
+          !isExpired ? (
+            <p className="text-sm text-amber-200/80">
+              Это ваша ссылка как инициатора. Отправьте её партнёру ({labelB}) — со своего аккаунта
+              пройти расклад партнёра нельзя.
             </p>
           ) : null}
           {data.viewerRole === "guest" && !data.canStartAsPartner && !bothDone && !isExpired ? (

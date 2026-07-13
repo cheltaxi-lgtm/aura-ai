@@ -3,7 +3,7 @@ import AuthForm from "@/components/AuthForm";
 
 export default function UserLoginPage() {
   return (
-    <div className="min-h-screen px-6 py-16">
+    <div className="auth-page min-h-screen px-6 py-16">
       <Link href="/auth" className="mb-8 inline-block text-sm text-gray-500 hover:text-aura-neon">
         ← Выбор аккаунта
       </Link>

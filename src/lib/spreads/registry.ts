@@ -553,6 +553,7 @@ export function sliceForSpread<T>(
   spreadId?: SpreadId | string | null,
   spreadType?: string | null
 ): T[] {
+  if (spreadType === "photo") return items;
   return items.slice(0, requiredCardCount(spreadId, spreadType));
 }
 

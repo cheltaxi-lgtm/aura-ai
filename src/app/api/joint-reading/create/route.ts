@@ -13,9 +13,8 @@ import {
 import {
   createJointReadingInvite,
   buildJointReadingUrl,
-  getActiveJointInviteForInitiator,
+  reconcileActiveJointInviteForCreation,
 } from "@/lib/joint-reading-service";
-import { query } from "@/lib/db";
 import { getUserById } from "@/lib/users";
 import type { SpreadId } from "@/lib/spreads";
 import { normalizeSpreadId } from "@/lib/spreads";
@@ -59,23 +58,25 @@ export async function POST(request: NextRequest) {
     initiatorName?.trim().slice(0, 40) || profile?.name?.trim().slice(0, 40) || undefined;
   const resolvedPartnerName = partnerName?.trim().slice(0, 40) || undefined;
 
-  const existing = !forceNew ? await getActiveJointInviteForInitiator(authed.profileUserId) : null;
-  if (existing) {
-    if (resolvedInitiatorName || resolvedPartnerName) {
-      await query(
-        `UPDATE joint_readings SET
-           initiator_name = COALESCE($2, initiator_name),
-           partner_name = COALESCE($3, partner_name)
-         WHERE id = $1`,
-        [existing.id, resolvedInitiatorName ?? null, resolvedPartnerName ?? null]
-      );
-    }
-    return NextResponse.json({
-      token: existing.token,
-      url: buildJointReadingUrl(existing.token),
-      expiresAt: existing.expires_at,
-      reused: true,
+  if (!forceNew) {
+    const reconciled = await reconcileActiveJointInviteForCreation({
+      userId: authed.profileUserId,
+      spreadId,
+      intentSlug,
+      initiatorName: resolvedInitiatorName,
+      partnerName: resolvedPartnerName,
     });
+    if (reconciled.row && !reconciled.createFresh) {
+      return NextResponse.json({
+        token: reconciled.row.token,
+        url: buildJointReadingUrl(reconciled.row.token),
+        intentSlug: reconciled.row.intent_slug,
+        spreadId: reconciled.row.spread_id,
+        expiresAt: reconciled.row.expires_at,
+        reused: true,
+        configUpdated: reconciled.configUpdated,
+      });
+    }
   }
 
   const hasAccess = await resolveUnlimitedAccess({
@@ -113,12 +114,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       token: invite.token,
       url: buildJointReadingUrl(invite.token),
+      intentSlug: invite.intent_slug,
+      spreadId: invite.spread_id,
       expiresAt: invite.expires_at,
       reused: false,
+      configUpdated: false,
     });
   } catch (err) {
-    // Invite creation failed after we already charged runes for it — refund so
-    // the user isn't billed for something that doesn't exist.
     if (charge) {
       await BillingService.rollbackCharge({
         userId: authed.profileUserId,
