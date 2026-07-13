@@ -4,6 +4,20 @@ set -euo pipefail
 
 TARBALL="${1:-/tmp/aura-ai-deploy.tgz}"
 RELEASES_BACKUP=""
+DEPLOY_LOG="/opt/aura-ai/logs/deploy-journal.txt"
+DEPLOY_STARTED="$(date -Iseconds)"
+GIT_SHA="unknown"
+DEPLOY_STATUS="failed"
+
+mkdir -p /opt/aura-ai/logs
+
+log_deploy() {
+  local status="$1"
+  local detail="${2:-}"
+  echo "${DEPLOY_STARTED} sha=${GIT_SHA} status=${status}${detail:+ detail=${detail}}" >> "${DEPLOY_LOG}"
+}
+
+trap 'log_deploy "${DEPLOY_STATUS}"' EXIT
 
 if [ -f "$TARBALL" ]; then
   if [ -d "/opt/aura-ai/public/releases" ]; then
@@ -33,6 +47,10 @@ if [ -f "$TARBALL" ]; then
       sudo chown -R ubuntu:ubuntu /opt/aura-ai
     fi
   fi
+fi
+
+if [ -f /opt/aura-ai/deploy-sha.txt ]; then
+  GIT_SHA="$(tr -d '\r\n' < /opt/aura-ai/deploy-sha.txt)"
 fi
 
 ENV_FILE="/opt/aura-ai/.env.local"
@@ -150,6 +168,9 @@ fi
 
 cd /opt/aura-ai
 
+echo ">>> Sync Android version (monotonic)..."
+node /opt/aura-ai/scripts/sync-android-version-monotonic.mjs || echo "WARN: android version sync skipped"
+
 # rsync --delete above removes stale files; keep only legacy one-offs if needed.
 rm -f \
   src/components/NumerologToolHub.tsx \
@@ -191,8 +212,9 @@ fi
 
 echo ">>> Memory smoke test..."
 if ! npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts; then
-  if [ "${STRICT_MEMORY_SMOKE:-0}" = "1" ]; then
+  if [ "${STRICT_MEMORY_SMOKE:-1}" = "1" ]; then
     echo "ERROR: memory smoke failed in strict mode; active build was not touched"
+    DEPLOY_STATUS="memory_smoke_failed"
     exit 1
   fi
   echo "WARN: memory smoke failed; candidate may activate, availability health check still gates it"
@@ -229,6 +251,7 @@ if ! sudo systemctl restart aura-ai; then
   rm -rf .next
   [ -d .next-previous ] && mv .next-previous .next
   sudo systemctl restart aura-ai
+  DEPLOY_STATUS="service_restart_failed"
   exit 1
 fi
 
@@ -247,6 +270,7 @@ if [ "$HEALTHY" -ne 1 ]; then
   rm -rf .next
   [ -d .next-previous ] && mv .next-previous .next
   sudo systemctl start aura-ai
+  DEPLOY_STATUS="health_check_failed"
   exit 1
 fi
 
@@ -268,4 +292,5 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/cron-joint-reading-sweep.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
 
+DEPLOY_STATUS="success"
 echo "Deploy complete: https://zovus.ru"

@@ -1,5 +1,5 @@
-/* Zovus app-shell service worker — native WebView only. Network-first HTML; cache assets for offline. */
-const CACHE = "zovus-shell-v4";
+/* Zovus app-shell service worker — native WebView only. Network-first HTML; cache decks/fonts offline. */
+const CACHE = "zovus-shell-v5";
 
 function isSameOrigin(url) {
   return url.origin === self.location.origin;
@@ -9,9 +9,12 @@ function isApi(url) {
   return url.pathname.startsWith("/api/");
 }
 
-function isCacheableAsset(url) {
+function isNextStatic(url) {
+  return url.pathname.startsWith("/_next/static/");
+}
+
+function isOfflineAsset(url) {
   return (
-    url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/decks/") ||
     url.pathname.endsWith(".woff2") ||
     url.pathname === "/icon.svg"
@@ -50,7 +53,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (!isCacheableAsset(url)) return;
+  /* Next.js chunks are content-hashed; caching them caused stale UI after deploy. */
+  if (isNextStatic(url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  if (!isOfflineAsset(url)) return;
 
   event.respondWith(
     fetch(request)

@@ -16,11 +16,19 @@ $Root = Split-Path $PSScriptRoot -Parent
 $Tarball = Join-Path $env:TEMP "aura-ai-deploy.tgz"
 $DefaultKey = Join-Path $env:USERPROFILE ".ssh\aura_deploy_ed25519"
 $SshKey = if ($env:DEPLOY_SSH_KEY) { $env:DEPLOY_SSH_KEY } elseif (Test-Path $DefaultKey) { $DefaultKey } else { $null }
+$KnownHosts = Join-Path $env:USERPROFILE ".ssh\known_hosts_aura_beget"
 
 function Get-SshBaseArgs {
-  $args = @("-o", "StrictHostKeyChecking=no")
-  if ($SshKey) { $args += @("-i", $SshKey) }
-  return $args
+  if ($SshKey) {
+    $dir = Split-Path $KnownHosts -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    return @(
+      "-o", "StrictHostKeyChecking=accept-new",
+      "-o", "UserKnownHostsFile=$KnownHosts",
+      "-i", $SshKey
+    )
+  }
+  return @()
 }
 
 if (-not $SshKey -and -not $Password) {
@@ -50,7 +58,14 @@ function Copy-Remote($local, $remote) {
 
 Write-Host ">>> Pack sources..."
 if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
+$DeployShaFile = Join-Path $Root "deploy-sha.txt"
+try {
+  git -C $Root rev-parse HEAD 2>$null | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
+} catch {
+  "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
+}
 tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local .
+Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ">>> Upload tarball..."
 Copy-Remote $Tarball "/tmp/aura-ai-deploy.tgz"
@@ -96,3 +111,8 @@ try {
 }
 
 Write-Host "Done."
+
+$LocalJournal = Join-Path $Root "scripts\prod-journal.txt"
+$sha = try { git -C $Root rev-parse HEAD 2>$null } catch { "unknown" }
+$stamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssK"
+"local ${stamp} sha=${sha} host=${DeployHost} status=deploy_script_finished" | Add-Content -Path $LocalJournal

@@ -177,7 +177,7 @@ export async function downloadAndInstallApk(
     if (message.includes("неизвестных источников") || message.includes("Unknown sources")) {
       throw new Error(message);
     }
-    throw new Error(normalizeUpdateError(message));
+    /* Native plugin failed — try JS download + install fallback. */
   }
 
   try {

@@ -1,14 +1,12 @@
-name: Deploy
+# Production (zovus.ru) is deployed manually via hosting/deploy-beget.ps1 on Beget VPS.
+# This workflow is optional Vercel preview only — it does NOT update zovus.ru.
+name: Vercel preview (not production)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
 
 concurrency:
-  group: production-deploy
+  group: vercel-preview
   cancel-in-progress: false
 
 jobs:
@@ -52,13 +50,13 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Pull Vercel environment
-        run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-      - name: Deploy to Vercel
-        run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy Vercel preview
+        run: npx vercel deploy --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
