@@ -3,12 +3,16 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { getUserById, linkSessionToUser, serializeUserProfile } from "@/lib/users";
 import { sendEmail, welcomeEmailHtml } from "@/lib/email/send";
-import type { OAuthFinishResult, OAuthMode, OAuthPendingState } from "./types";
+import type { OAuthFinishResult, OAuthMode, OAuthTransaction } from "./types";
 import { upsertOAuthAccount, type OAuthAccountConsent } from "./accounts";
 import type { OAuthProvider, OAuthUserInfo } from "./types";
 
-function buildConsentFromState(state: OAuthPendingState): OAuthAccountConsent | null {
-  if (!state.acceptedTerms || !state.ageConfirmed) return null;
+export function hasRequiredOAuthConsent(state: OAuthTransaction): boolean {
+  return state.acceptedTerms && state.ageConfirmed;
+}
+
+function buildConsentFromState(state: OAuthTransaction): OAuthAccountConsent | null {
+  if (!hasRequiredOAuthConsent(state)) return null;
   const now = new Date().toISOString();
   return {
     termsAcceptedAt: now,
@@ -21,7 +25,7 @@ function buildConsentFromState(state: OAuthPendingState): OAuthAccountConsent | 
 export async function finishOAuthLogin(opts: {
   provider: OAuthProvider;
   info: OAuthUserInfo;
-  pending: OAuthPendingState;
+  pending: OAuthTransaction;
   request?: CookieRequestContext;
 }): Promise<OAuthFinishResult> {
   const consent = buildConsentFromState(opts.pending);

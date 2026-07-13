@@ -25,11 +25,60 @@ const MAJOR_SLUGS: Record<string, string> = {
   Мир: "mir",
 };
 
+/**
+ * Cyrillic → Latin transliteration map, matching the scheme already used for
+ * MAJOR_SLUGS above (е/ё→e, й/ы→y, х→kh, ц→ts, ч→ch, ш→sh, щ→shch, ъ/ь→dropped,
+ * ю→yu, я→ya). Minor-arcana slugs used to keep raw Cyrillic characters, which
+ * self-hosted Next.js (`next start`) fails to route for dynamic segments
+ * (returns 404 — see https://github.com/vercel/next.js/issues/56047), so every
+ * minor-arcana card page was unreachable. Transliterating keeps URLs ASCII-only.
+ */
+const CYRILLIC_TO_LATIN: Record<string, string> = {
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+  ё: "e",
+  ж: "zh",
+  з: "z",
+  и: "i",
+  й: "y",
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
+  х: "kh",
+  ц: "ts",
+  ч: "ch",
+  ш: "sh",
+  щ: "shch",
+  ъ: "",
+  ы: "y",
+  ь: "",
+  э: "e",
+  ю: "yu",
+  я: "ya",
+};
+
+function transliterate(text: string): string {
+  return text
+    .split("")
+    .map((ch) => CYRILLIC_TO_LATIN[ch] ?? ch)
+    .join("");
+}
+
 function slugifyMinor(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/ё/g, "e")
-    .replace(/[^a-z0-9а-я]+/gi, "-")
+  return transliterate(name.toLowerCase())
+    .replace(/[^a-z0-9]+/gi, "-")
     .replace(/^-|-$/g, "");
 }
 

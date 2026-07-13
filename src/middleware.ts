@@ -6,6 +6,7 @@ import {
   isMaintenanceBypassPath,
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
+import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
 
 const COOKIE = "aura_auth";
 
@@ -170,12 +171,31 @@ async function enforceMaintenanceMode(
   return null;
 }
 
+function legacyCyrillicRedirect(request: NextRequest, pathname: string): NextResponse | null {
+  // pathname may arrive either already-decoded or still percent-encoded
+  // depending on how Next's router normalized it — try both forms.
+  let decoded = pathname;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    // malformed percent-encoding — fall through with the raw pathname
+  }
+  const target = LEGACY_CYRILLIC_REDIRECTS[decoded] ?? LEGACY_CYRILLIC_REDIRECTS[pathname];
+  if (!target) return null;
+  const url = request.nextUrl.clone();
+  url.pathname = target;
+  return NextResponse.redirect(url, 308);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (request.method === "OPTIONS") {
     return NextResponse.next();
   }
+
+  const legacyRedirect = legacyCyrillicRedirect(request, pathname);
+  if (legacyRedirect) return legacyRedirect;
 
   const secretKey = resolveSecretKey();
 

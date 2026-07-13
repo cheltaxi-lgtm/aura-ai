@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { clearAuthCookie, getAuth } from "@/lib/auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getLatestOAuthGenderForAccount } from "@/lib/oauth/accounts";
 
 export const dynamic = "force-dynamic";
 
@@ -11,14 +12,18 @@ export async function GET() {
   }
 
   let profileUserId: string | null = null;
+  let oauthGender: "male" | "female" | null = null;
   if (auth.role === "user") {
-    profileUserId = await getProfileUserIdForAccount(auth.sub);
+    [profileUserId, oauthGender] = await Promise.all([
+      getProfileUserIdForAccount(auth.sub),
+      getLatestOAuthGenderForAccount(auth.sub),
+    ]);
   }
 
   return NextResponse.json({
     authenticated: true,
     needsProfile: auth.role === "user" && !profileUserId,
-    user: { ...auth, profileUserId },
+    user: { ...auth, profileUserId, oauthGender },
   });
 }
 

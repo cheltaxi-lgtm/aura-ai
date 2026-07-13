@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(AppUpdatePlugin.class);
+    registerPlugin(VkAuthPlugin.class);
     super.onCreate(savedInstanceState);
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
   }

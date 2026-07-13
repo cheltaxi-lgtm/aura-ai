@@ -31,6 +31,7 @@ import {
   onboardingRedirectUrl,
   persistPostAuthReturnTo,
   persistPendingGuestQuestion,
+  readPostAuthReturnTo,
   resolveGuestSpreadMasterId,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
@@ -45,6 +46,7 @@ import {
   trackRegistrationStarted,
 } from "@/lib/seo/metrika";
 import SocialAuthButtons, { OAuthErrorBanner } from "@/components/auth/SocialAuthButtons";
+import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 import type { OAuthMode } from "@/lib/oauth/types";
 
 interface AuthFormProps {
@@ -71,6 +73,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [loading, setLoading] = useState(false);
   const [returnTo, setReturnTo] = useState("/");
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [showEmailRegister, setShowEmailRegister] = useState(false);
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
@@ -86,7 +89,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const raw = params.get("returnTo") ?? params.get("next");
+    const raw = params.get("returnTo") ?? params.get("next") ?? readPostAuthReturnTo();
     const fallback = isExpert ? "/expert" : "/";
     const safe = sanitizeReturnTo(raw, fallback);
     setReturnTo(safe);
@@ -95,7 +98,24 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       setAgeConfirmed(true);
     }
     const oauthErr = params.get("oauthError");
-    if (oauthErr) setOauthError(oauthErr);
+    if (oauthErr) {
+      setOauthError(oauthErr);
+      if (oauthErr === "consent_required") {
+        setShowEmailRegister(false);
+        requestAnimationFrame(() => {
+          document.getElementById("oauth-consent-block")?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        });
+      }
+      if (oauthErr === "email_exists") {
+        setShowEmailRegister(true);
+      }
+    }
+    if (params.get("method") === "email") {
+      setShowEmailRegister(true);
+    }
   }, [isExpert, isUserRegister]);
 
   useEffect(() => {
@@ -379,23 +399,105 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     }
   };
 
+  const legalConsentFields =
+    requiresLegalConsent ? (
+      <div
+        id="oauth-consent-block"
+        className={`rounded-xl border bg-white/[0.02] p-4 ${
+          oauthError === "consent_required"
+            ? "border-amber-400/40 ring-1 ring-amber-400/20"
+            : "border-white/8"
+        }`}
+      >
+        <OAuthConsentFields
+          acceptedTerms={acceptedTerms}
+          ageConfirmed={ageConfirmed}
+          marketingConsent={marketingConsent}
+          onAcceptedTermsChange={(value) => {
+            setAcceptedTerms(value);
+            if (oauthError === "consent_required") setOauthError(null);
+          }}
+          onAgeConfirmedChange={(value) => {
+            setAgeConfirmed(value);
+            if (oauthError === "consent_required") setOauthError(null);
+          }}
+          onMarketingConsentChange={setMarketingConsent}
+          showMarketing={mode === "register"}
+          showDisclaimer
+          termsId="legal-terms-consent"
+          ageId="legal-age-consent"
+        />
+        {mode === "register" && (!acceptedTerms || !ageConfirmed) ? (
+          <p className="mt-3 text-center text-xs text-amber-200/80">
+            Отметьте согласие с условиями и подтвердите возраст 18+.
+          </p>
+        ) : null}
+      </div>
+    ) : null;
+
+  if (isUserRegister && !showEmailRegister) {
+    return (
+      <div className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
+        <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
+        {legalConsentFields}
+        <SocialAuthButtons
+          mode="register"
+          returnTo={returnTo}
+          requireConsent
+          acceptedTerms={acceptedTerms}
+          ageConfirmed={ageConfirmed}
+          marketingConsent={marketingConsent}
+          disabled={loading}
+          consentScrollTargetId="oauth-consent-block"
+          showEmailDivider={false}
+        />
+        <button
+          type="button"
+          onClick={() => setShowEmailRegister(true)}
+          className="btn-luxe btn-luxe--md btn-luxe--ghost w-full py-3 text-sm"
+        >
+          Регистрация по email
+        </button>
+        <p className="text-center text-xs text-gray-600">
+          Уже есть аккаунт?{" "}
+          <Link href={loginHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+            Войти
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
-      {role === "user" ? (
+      {isUserRegister ? (
+        <button
+          type="button"
+          onClick={() => setShowEmailRegister(false)}
+          className="text-xs text-gray-500 transition hover:text-aura-champagne"
+        >
+          ← Войти через VK или Яндекс
+        </button>
+      ) : null}
+      {role === "user" && !isUserRegister ? (
         <>
           <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
           <SocialAuthButtons
             mode={mode as OAuthMode}
             returnTo={returnTo}
-            requireConsent={mode === "register"}
+            requireConsent={false}
             acceptedTerms={acceptedTerms}
             ageConfirmed={ageConfirmed}
             marketingConsent={marketingConsent}
             disabled={loading}
+            consentScrollTargetId="oauth-consent-block"
           />
         </>
       ) : null}
-      {mode === "register" && (
+      {isUserRegister ? (
+        <p className="text-center text-sm text-gray-400">Создайте аккаунт по email</p>
+      ) : null}
+      {mode === "register" && !isUserRegister ? (
         <>
           <div>
             <label className="mb-1 block text-xs text-gray-500">Имя *</label>
@@ -434,7 +536,25 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             </>
           )}
         </>
-      )}
+      ) : null}
+
+      {mode === "register" && isUserRegister ? (
+        <>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">Имя *</label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Как к вам обращаться?"
+              autoComplete="name"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+          {legalConsentFields}
+        </>
+      ) : null}
 
       <div className={isUserRegister ? "border-t border-white/10 pt-5" : ""}>
         <p className={isUserRegister ? "mb-4 text-center text-xs text-gray-500" : "hidden"}>
@@ -544,77 +664,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </div>
       ) : null}
 
-      {requiresLegalConsent && (
-        <div className="space-y-3 rounded-xl border border-white/8 bg-white/[0.02] p-4">
-          <div className="flex items-start gap-2.5 text-xs leading-relaxed text-gray-400">
-            <input
-              id="legal-terms-consent"
-              type="checkbox"
-              checked={acceptedTerms}
-              onChange={(e) => setAcceptedTerms(e.target.checked)}
-              required
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
-            />
-            <p className="m-0">
-              <label htmlFor="legal-terms-consent" className="cursor-pointer">
-                Я согласен с
-              </label>{" "}
-              <a
-                href="/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="touch-manipulation text-aura-champagne/90 underline underline-offset-2 hover:text-aura-champagne"
-              >
-                Пользовательским соглашением
-              </a>{" "}
-              и{" "}
-              <a
-                href="/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="touch-manipulation text-aura-champagne/90 underline underline-offset-2 hover:text-aura-champagne"
-              >
-                Политикой обработки персональных данных
-              </a>
-              . Ознакомлен с{" "}
-              <a
-                href="/disclaimer"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="touch-manipulation text-aura-champagne/90 underline underline-offset-2 hover:text-aura-champagne"
-              >
-                отказом от ответственности
-              </a>
-            </p>
-          </div>
-
-          {mode === "register" && (
-            <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-gray-400">
-              <input
-                id="legal-age-consent"
-                type="checkbox"
-                checked={ageConfirmed}
-                onChange={(e) => setAgeConfirmed(e.target.checked)}
-                required
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
-              />
-              <span>Мне есть 18 лет</span>
-            </label>
-          )}
-
-          {mode === "register" && (
-            <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-gray-500">
-              <input
-                type="checkbox"
-                checked={marketingConsent}
-                onChange={(e) => setMarketingConsent(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
-              />
-              <span>Я согласен на получение рекламных рассылок</span>
-            </label>
-          )}
-        </div>
-      )}
+      {mode === "login" ? legalConsentFields : null}
 
       {mode === "login" ? (
         <ul className="space-y-1 text-xs leading-relaxed text-gray-500">

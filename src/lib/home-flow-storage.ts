@@ -34,6 +34,35 @@ export function persistStep(step: FlowStep) {
   localStorage.setItem(FLOW_STEP_KEY, step);
 }
 
+/** Remove onboarding deep-link params after profile is saved. */
+export function clearOnboardingUrlParams(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("step");
+  url.searchParams.delete("welcome");
+  const nextSearch = url.searchParams.toString();
+  window.history.replaceState(
+    null,
+    "",
+    nextSearch ? `${url.pathname}?${nextSearch}${url.hash}` : `${url.pathname}${url.hash}`
+  );
+}
+
+/** Never restore onboarding once birth date is already stored locally. */
+export function resolveStoredFlowStep(
+  stored: StoredProfile | null,
+  preferred: FlowStep | null | undefined
+): FlowStep {
+  const birthComplete = Boolean(String(stored?.birthDate ?? "").trim());
+  if (preferred === "onboarding" && birthComplete) {
+    return (stored?.tarotCards?.length ?? 0) >= 3 ? "masters" : "triplet";
+  }
+  if (!preferred || preferred === "intro") {
+    return birthComplete ? ((stored?.tarotCards?.length ?? 0) >= 3 ? "masters" : "triplet") : "onboarding";
+  }
+  return preferred;
+}
+
 export function readStoredProfile(): StoredProfile | null {
   if (typeof window === "undefined") return null;
   try {

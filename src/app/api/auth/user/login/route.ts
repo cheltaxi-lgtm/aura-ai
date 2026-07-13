@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
     if (!user.password_hash) {
       return NextResponse.json(
-        { error: "Для этого аккаунта используйте вход через VK, Yandex или Mail.ru" },
+        { error: "Для этого аккаунта используйте вход через VK или Яндекс" },
         { status: 401 }
       );
     }

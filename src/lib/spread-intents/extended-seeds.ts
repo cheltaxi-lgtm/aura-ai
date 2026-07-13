@@ -21,7 +21,7 @@ export type ExtendedSeed = {
 
 export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
   {
-    "slug": "da-net-он-вернётся",
+    "slug": "da-net-on-vernetsya",
     "title": "Он вернётся",
     "category": "love" as SpreadIntentCategory,
     "question": "Вернётся ли он?",
@@ -33,7 +33,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-вернётся",
+    "slug": "da-net-ona-vernetsya",
     "title": "Она вернётся",
     "category": "love" as SpreadIntentCategory,
     "question": "Вернётся ли она?",
@@ -45,7 +45,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-позвонит",
+    "slug": "da-net-on-pozvonit",
     "title": "Он позвонит",
     "category": "love" as SpreadIntentCategory,
     "question": "Позвонит ли он?",
@@ -57,7 +57,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-позвонит",
+    "slug": "da-net-ona-pozvonit",
     "title": "Она позвонит",
     "category": "love" as SpreadIntentCategory,
     "question": "Позвонит ли она?",
@@ -69,7 +69,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-напишет",
+    "slug": "da-net-on-napishet",
     "title": "Он напишет",
     "category": "love" as SpreadIntentCategory,
     "question": "Напишет ли он?",
@@ -81,7 +81,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-напишет",
+    "slug": "da-net-ona-napishet",
     "title": "Она напишет",
     "category": "love" as SpreadIntentCategory,
     "question": "Напишет ли она?",
@@ -93,7 +93,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-любит",
+    "slug": "da-net-on-lyubit",
     "title": "Он любит",
     "category": "love" as SpreadIntentCategory,
     "question": "Любит ли он меня?",
@@ -105,7 +105,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-любит",
+    "slug": "da-net-ona-lyubit",
     "title": "Она любит",
     "category": "love" as SpreadIntentCategory,
     "question": "Любит ли она меня?",
@@ -117,7 +117,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-изменяет",
+    "slug": "da-net-on-izmenyaet",
     "title": "Он изменяет",
     "category": "love" as SpreadIntentCategory,
     "question": "Изменяет ли он?",
@@ -129,7 +129,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-изменяет",
+    "slug": "da-net-ona-izmenyaet",
     "title": "Она изменяет",
     "category": "love" as SpreadIntentCategory,
     "question": "Изменяет ли она?",
@@ -141,7 +141,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-женится",
+    "slug": "da-net-on-zhenitsya",
     "title": "Он женится",
     "category": "love" as SpreadIntentCategory,
     "question": "Женится ли он на мне?",
@@ -153,7 +153,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-выйдет-замуж",
+    "slug": "da-net-ona-vyydet-zamuzh",
     "title": "Она выйдет замуж",
     "category": "love" as SpreadIntentCategory,
     "question": "Выйдет ли она за меня?",
@@ -165,7 +165,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-простит",
+    "slug": "da-net-on-prostit",
     "title": "Он простит",
     "category": "love" as SpreadIntentCategory,
     "question": "Простит ли он?",
@@ -177,7 +177,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-простит",
+    "slug": "da-net-ona-prostit",
     "title": "Она простит",
     "category": "love" as SpreadIntentCategory,
     "question": "Простит ли она?",
@@ -189,7 +189,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-уйдёт",
+    "slug": "da-net-on-uydet",
     "title": "Он уйдёт",
     "category": "love" as SpreadIntentCategory,
     "question": "Уйдёт ли он?",
@@ -201,7 +201,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-уйдёт",
+    "slug": "da-net-ona-uydet",
     "title": "Она уйдёт",
     "category": "love" as SpreadIntentCategory,
     "question": "Уйдёт ли она?",
@@ -213,7 +213,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-ревнует",
+    "slug": "da-net-on-revnuet",
     "title": "Он ревнует",
     "category": "love" as SpreadIntentCategory,
     "question": "Ревнует ли он?",
@@ -225,7 +225,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-ревнует",
+    "slug": "da-net-ona-revnuet",
     "title": "Она ревнует",
     "category": "love" as SpreadIntentCategory,
     "question": "Ревнует ли она?",
@@ -237,7 +237,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-скучает",
+    "slug": "da-net-on-skuchaet",
     "title": "Он скучает",
     "category": "love" as SpreadIntentCategory,
     "question": "Скучает ли он?",
@@ -249,7 +249,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-скучает",
+    "slug": "da-net-ona-skuchaet",
     "title": "Она скучает",
     "category": "love" as SpreadIntentCategory,
     "question": "Скучает ли она?",
@@ -261,7 +261,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-вспоминает",
+    "slug": "da-net-on-vspominaet",
     "title": "Он вспоминает",
     "category": "love" as SpreadIntentCategory,
     "question": "Вспоминает ли он меня?",
@@ -273,7 +273,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-вспоминает",
+    "slug": "da-net-ona-vspominaet",
     "title": "Она вспоминает",
     "category": "love" as SpreadIntentCategory,
     "question": "Вспоминает ли она меня?",
@@ -285,7 +285,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-хочет-детей",
+    "slug": "da-net-on-khochet-detey",
     "title": "Он хочет детей",
     "category": "love" as SpreadIntentCategory,
     "question": "Хочет ли он детей со мной?",
@@ -297,7 +297,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-хочет-детей",
+    "slug": "da-net-ona-khochet-detey",
     "title": "Она хочет детей",
     "category": "love" as SpreadIntentCategory,
     "question": "Хочет ли она детей со мной?",
@@ -309,7 +309,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-серьёзен",
+    "slug": "da-net-on-serezen",
     "title": "Он серьёзен",
     "category": "love" as SpreadIntentCategory,
     "question": "Серьёзен ли он?",
@@ -321,7 +321,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-серьёзна",
+    "slug": "da-net-ona-serezna",
     "title": "Она серьёзна",
     "category": "love" as SpreadIntentCategory,
     "question": "Серьёзна ли она?",
@@ -333,7 +333,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-свободен",
+    "slug": "da-net-on-svoboden",
     "title": "Он свободен",
     "category": "love" as SpreadIntentCategory,
     "question": "Свободен ли он?",
@@ -345,7 +345,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-свободна",
+    "slug": "da-net-ona-svobodna",
     "title": "Она свободна",
     "category": "love" as SpreadIntentCategory,
     "question": "Свободна ли она?",
@@ -357,7 +357,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-боится",
+    "slug": "da-net-on-boitsya",
     "title": "Он боится",
     "category": "love" as SpreadIntentCategory,
     "question": "Боится ли он отношений?",
@@ -369,7 +369,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-боится",
+    "slug": "da-net-ona-boitsya",
     "title": "Она боится",
     "category": "love" as SpreadIntentCategory,
     "question": "Боится ли она отношений?",
@@ -381,7 +381,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-готов",
+    "slug": "da-net-on-gotov",
     "title": "Он готов",
     "category": "love" as SpreadIntentCategory,
     "question": "Готов ли он к отношениям?",
@@ -393,7 +393,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-готова",
+    "slug": "da-net-ona-gotova",
     "title": "Она готова",
     "category": "love" as SpreadIntentCategory,
     "question": "Готова ли она к отношениям?",
@@ -405,7 +405,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-приедет",
+    "slug": "da-net-on-priedet",
     "title": "Он приедет",
     "category": "love" as SpreadIntentCategory,
     "question": "Приедет ли он?",
@@ -417,7 +417,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-приедет",
+    "slug": "da-net-ona-priedet",
     "title": "Она приедет",
     "category": "love" as SpreadIntentCategory,
     "question": "Приедет ли она?",
@@ -429,7 +429,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-признается",
+    "slug": "da-net-on-priznaetsya",
     "title": "Он признается",
     "category": "love" as SpreadIntentCategory,
     "question": "Признается ли он в любви?",
@@ -441,7 +441,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-признается",
+    "slug": "da-net-ona-priznaetsya",
     "title": "Она признается",
     "category": "love" as SpreadIntentCategory,
     "question": "Признается ли она в любви?",
@@ -453,7 +453,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-ждёт",
+    "slug": "da-net-on-zhdet",
     "title": "Он ждёт",
     "category": "love" as SpreadIntentCategory,
     "question": "Ждёт ли он меня?",
@@ -465,7 +465,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-ждёт",
+    "slug": "da-net-ona-zhdet",
     "title": "Она ждёт",
     "category": "love" as SpreadIntentCategory,
     "question": "Ждёт ли она меня?",
@@ -477,7 +477,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-думает-обо-мне",
+    "slug": "da-net-on-dumaet-obo-mne",
     "title": "Он думает обо мне",
     "category": "love" as SpreadIntentCategory,
     "question": "Думает ли он обо мне?",
@@ -489,7 +489,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-думает-обо-мне",
+    "slug": "da-net-ona-dumaet-obo-mne",
     "title": "Она думает обо мне",
     "category": "love" as SpreadIntentCategory,
     "question": "Думает ли она обо мне?",
@@ -501,7 +501,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-хочет-встречи",
+    "slug": "da-net-on-khochet-vstrechi",
     "title": "Он хочет встречи",
     "category": "love" as SpreadIntentCategory,
     "question": "Хочет ли он встречи?",
@@ -513,7 +513,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-хочет-встречи",
+    "slug": "da-net-ona-khochet-vstrechi",
     "title": "Она хочет встречи",
     "category": "love" as SpreadIntentCategory,
     "question": "Хочет ли она встречи?",
@@ -525,7 +525,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-боится-потерять",
+    "slug": "da-net-on-boitsya-poteryat",
     "title": "Он боится потерять",
     "category": "love" as SpreadIntentCategory,
     "question": "Боится ли он меня потерять?",
@@ -537,7 +537,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-боится-потерять",
+    "slug": "da-net-ona-boitsya-poteryat",
     "title": "Она боится потерять",
     "category": "love" as SpreadIntentCategory,
     "question": "Боится ли она меня потерять?",
@@ -549,7 +549,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-вернёт-подарок",
+    "slug": "da-net-on-vernet-podarok",
     "title": "Он вернёт подарок",
     "category": "love" as SpreadIntentCategory,
     "question": "Вернёт ли он подарок?",
@@ -561,7 +561,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-познакомит-с-родными",
+    "slug": "da-net-on-poznakomit-s-rodnymi",
     "title": "Он познакомит с родными",
     "category": "love" as SpreadIntentCategory,
     "question": "Познакомит ли с родными?",
@@ -573,7 +573,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-познакомит-с-родными",
+    "slug": "da-net-ona-poznakomit-s-rodnymi",
     "title": "Она познакомит с родными",
     "category": "love" as SpreadIntentCategory,
     "question": "Познакомит ли с родными?",
@@ -585,7 +585,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-предложит-руку",
+    "slug": "da-net-on-predlozhit-ruku",
     "title": "Он предложит руку",
     "category": "love" as SpreadIntentCategory,
     "question": "Сделает ли предложение?",
@@ -597,7 +597,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-согласится",
+    "slug": "da-net-ona-soglasitsya",
     "title": "Она согласится",
     "category": "love" as SpreadIntentCategory,
     "question": "Согласится ли она?",
@@ -609,7 +609,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-простит-измену",
+    "slug": "da-net-on-prostit-izmenu",
     "title": "Он простит измену",
     "category": "love" as SpreadIntentCategory,
     "question": "Простит ли измену?",
@@ -621,7 +621,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-простит-измену",
+    "slug": "da-net-ona-prostit-izmenu",
     "title": "Она простит измену",
     "category": "love" as SpreadIntentCategory,
     "question": "Простит ли измену?",
@@ -633,7 +633,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-вернётся-после-ссоры",
+    "slug": "da-net-on-vernetsya-posle-ssory",
     "title": "Он вернётся после ссоры",
     "category": "love" as SpreadIntentCategory,
     "question": "Вернётся ли после ссоры?",
@@ -645,7 +645,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-вернётся-после-ссоры",
+    "slug": "da-net-ona-vernetsya-posle-ssory",
     "title": "Она вернётся после ссоры",
     "category": "love" as SpreadIntentCategory,
     "question": "Вернётся ли после ссоры?",
@@ -657,7 +657,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-он-хочет-семью",
+    "slug": "da-net-on-khochet-semyu",
     "title": "Он хочет семью",
     "category": "love" as SpreadIntentCategory,
     "question": "Хочет ли он семью со мной?",
@@ -669,7 +669,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-она-хочет-семью",
+    "slug": "da-net-ona-khochet-semyu",
     "title": "Она хочет семью",
     "category": "love" as SpreadIntentCategory,
     "question": "Хочет ли она семью со мной?",
@@ -681,7 +681,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-повышение",
+    "slug": "da-net-povyshenie",
     "title": "Повышение",
     "category": "career" as SpreadIntentCategory,
     "question": "Будет ли повышение?",
@@ -693,7 +693,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-увольнение",
+    "slug": "da-net-uvolnenie",
     "title": "Увольнение",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли увольняться?",
@@ -705,7 +705,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-смена-работы",
+    "slug": "da-net-smena-raboty",
     "title": "Смена работы",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли менять работу?",
@@ -717,7 +717,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-собеседование",
+    "slug": "da-net-sobesedovanie",
     "title": "Собеседование",
     "category": "career" as SpreadIntentCategory,
     "question": "Пройду ли собеседование?",
@@ -729,7 +729,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-контракт",
+    "slug": "da-net-kontrakt",
     "title": "Контракт",
     "category": "career" as SpreadIntentCategory,
     "question": "Подпишут ли контракт?",
@@ -741,7 +741,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-премия",
+    "slug": "da-net-premiya",
     "title": "Премия",
     "category": "career" as SpreadIntentCategory,
     "question": "Будет ли премия?",
@@ -753,7 +753,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-бизнес",
+    "slug": "da-net-biznes",
     "title": "Бизнес",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли открыть бизнес?",
@@ -765,7 +765,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-партнёрство",
+    "slug": "da-net-partnerstvo",
     "title": "Партнёрство",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли партнёрство?",
@@ -777,7 +777,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-кредит",
+    "slug": "da-net-kredit",
     "title": "Кредит",
     "category": "money" as SpreadIntentCategory,
     "question": "Стоит ли брать кредит?",
@@ -789,7 +789,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-ипотека",
+    "slug": "da-net-ipoteka",
     "title": "Ипотека",
     "category": "money" as SpreadIntentCategory,
     "question": "Одобрят ли ипотеку?",
@@ -801,7 +801,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-долг-вернут",
+    "slug": "da-net-dolg-vernut",
     "title": "Долг вернут",
     "category": "money" as SpreadIntentCategory,
     "question": "Вернут ли долг?",
@@ -813,7 +813,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-выигрыш",
+    "slug": "da-net-vyigrysh",
     "title": "Выигрыш",
     "category": "money" as SpreadIntentCategory,
     "question": "Будет ли выигрыш?",
@@ -825,7 +825,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-инвестиция",
+    "slug": "da-net-investitsiya",
     "title": "Инвестиция",
     "category": "money" as SpreadIntentCategory,
     "question": "Стоит ли инвестировать?",
@@ -837,7 +837,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-переезд",
+    "slug": "da-net-pereezd",
     "title": "Переезд",
     "category": "choice" as SpreadIntentCategory,
     "question": "Стоит ли переезжать?",
@@ -849,7 +849,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-экзамен",
+    "slug": "da-net-ekzamen",
     "title": "Экзамен",
     "category": "career" as SpreadIntentCategory,
     "question": "Сдам ли экзамен?",
@@ -861,7 +861,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-защита-диплома",
+    "slug": "da-net-zashchita-diploma",
     "title": "Защита диплома",
     "category": "career" as SpreadIntentCategory,
     "question": "Удачно ли пройдёт защита?",
@@ -873,7 +873,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-стартап",
+    "slug": "da-net-startap",
     "title": "Стартап",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли стартап?",
@@ -885,7 +885,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-начальник-поможет",
+    "slug": "da-net-nachalnik-pomozhet",
     "title": "Начальник поможет",
     "category": "career" as SpreadIntentCategory,
     "question": "Поможет ли начальник?",
@@ -897,7 +897,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-коллега-поможет",
+    "slug": "da-net-kollega-pomozhet",
     "title": "Коллега поможет",
     "category": "career" as SpreadIntentCategory,
     "question": "Поможет ли коллега?",
@@ -909,7 +909,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-проект-успешен",
+    "slug": "da-net-proekt-uspeshen",
     "title": "Проект успешен",
     "category": "career" as SpreadIntentCategory,
     "question": "Будет ли проект успешен?",
@@ -921,7 +921,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-клиент-подпишет",
+    "slug": "da-net-klient-podpishet",
     "title": "Клиент подпишет",
     "category": "career" as SpreadIntentCategory,
     "question": "Подпишет ли клиент?",
@@ -933,7 +933,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-суд-выиграю",
+    "slug": "da-net-sud-vyigrayu",
     "title": "Суд выиграю",
     "category": "career" as SpreadIntentCategory,
     "question": "Выиграю ли суд?",
@@ -945,7 +945,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-налоговая-проверка",
+    "slug": "da-net-nalogovaya-proverka",
     "title": "Налоговая проверка",
     "category": "career" as SpreadIntentCategory,
     "question": "Пройду ли проверку?",
@@ -957,7 +957,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-наследство",
+    "slug": "da-net-nasledstvo",
     "title": "Наследство",
     "category": "money" as SpreadIntentCategory,
     "question": "Получу ли наследство?",
@@ -969,7 +969,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-продажа-квартиры",
+    "slug": "da-net-prodazha-kvartiry",
     "title": "Продажа квартиры",
     "category": "money" as SpreadIntentCategory,
     "question": "Продастся ли квартира?",
@@ -981,7 +981,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-покупка-авто",
+    "slug": "da-net-pokupka-avto",
     "title": "Покупка авто",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли покупать авто?",
@@ -993,7 +993,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-вторая-работа",
+    "slug": "da-net-vtoraya-rabota",
     "title": "Вторая работа",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли вторая работа?",
@@ -1005,7 +1005,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-фриланс",
+    "slug": "da-net-frilans",
     "title": "Фриланс",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли уйти во фриланс?",
@@ -1017,7 +1017,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-командировка",
+    "slug": "da-net-komandirovka",
     "title": "Командировка",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли командировка?",
@@ -1029,7 +1029,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-повышение-зарплаты",
+    "slug": "da-net-povyshenie-zarplaty",
     "title": "Повышение зарплаты",
     "category": "career" as SpreadIntentCategory,
     "question": "Будет ли повышение зарплаты?",
@@ -1041,7 +1041,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-бонус",
+    "slug": "da-net-bonus",
     "title": "Бонус",
     "category": "money" as SpreadIntentCategory,
     "question": "Будет ли бонус?",
@@ -1053,7 +1053,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-штраф",
+    "slug": "da-net-shtraf",
     "title": "Штраф",
     "category": "money" as SpreadIntentCategory,
     "question": "Будет ли штраф?",
@@ -1065,7 +1065,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-сокращение",
+    "slug": "da-net-sokrashchenie",
     "title": "Сокращение",
     "category": "career" as SpreadIntentCategory,
     "question": "Будет ли сокращение?",
@@ -1077,7 +1077,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-новый-проект",
+    "slug": "da-net-novyy-proekt",
     "title": "Новый проект",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли новый проект?",
@@ -1089,7 +1089,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-партнёр-изменит",
+    "slug": "da-net-partner-izmenit",
     "title": "Партнёр изменит",
     "category": "career" as SpreadIntentCategory,
     "question": "Изменит ли партнёр условия?",
@@ -1101,7 +1101,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-грант",
+    "slug": "da-net-grant",
     "title": "Грант",
     "category": "money" as SpreadIntentCategory,
     "question": "Получу ли грант?",
@@ -1113,7 +1113,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-стипендия",
+    "slug": "da-net-stipendiya",
     "title": "Стипендия",
     "category": "money" as SpreadIntentCategory,
     "question": "Получу ли стипендию?",
@@ -1125,7 +1125,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "da-net-виза",
+    "slug": "da-net-viza",
     "title": "Виза",
     "category": "choice" as SpreadIntentCategory,
     "question": "Дадут ли визу?",
@@ -1137,7 +1137,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-гражданство",
+    "slug": "da-net-grazhdanstvo",
     "title": "Гражданство",
     "category": "choice" as SpreadIntentCategory,
     "question": "Получу ли гражданство?",
@@ -1149,7 +1149,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-развод",
+    "slug": "da-net-razvod",
     "title": "Развод",
     "category": "family" as SpreadIntentCategory,
     "question": "Стоит ли развод?",
@@ -1161,7 +1161,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-примирение",
+    "slug": "da-net-primirenie",
     "title": "Примирение",
     "category": "family" as SpreadIntentCategory,
     "question": "Стоит ли примирение?",
@@ -1173,7 +1173,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-переезд-к-родным",
+    "slug": "da-net-pereezd-k-rodnym",
     "title": "Переезд к родным",
     "category": "family" as SpreadIntentCategory,
     "question": "Стоит ли переезд к родным?",
@@ -1185,7 +1185,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-продать-бизнес",
+    "slug": "da-net-prodat-biznes",
     "title": "Продать бизнес",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли продать бизнес?",
@@ -1197,7 +1197,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-купить-долю",
+    "slug": "da-net-kupit-dolyu",
     "title": "Купить долю",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли купить долю?",
@@ -1209,7 +1209,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "da-net-сменить-специальность",
+    "slug": "da-net-smenit-spetsialnost",
     "title": "Сменить специальность",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли сменить специальность?",
@@ -1221,7 +1221,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-завтра",
+    "slug": "prognoz-na-zavtra",
     "title": "На завтра",
     "category": "future" as SpreadIntentCategory,
     "question": "Что ждёт завтра?",
@@ -1235,7 +1235,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-послезавтра",
+    "slug": "prognoz-na-poslezavtra",
     "title": "На послезавтра",
     "category": "future" as SpreadIntentCategory,
     "question": "Что ждёт послезавтра?",
@@ -1249,7 +1249,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-3-дня",
+    "slug": "prognoz-na-3-dnya",
     "title": "На 3 дня",
     "category": "future" as SpreadIntentCategory,
     "question": "Что будет через 3 дня?",
@@ -1263,7 +1263,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-неделю-вперёд",
+    "slug": "prognoz-na-nedelyu-vpered",
     "title": "На неделю вперёд",
     "category": "future" as SpreadIntentCategory,
     "question": "Что ждёт на неделе?",
@@ -1277,7 +1277,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-2-недели",
+    "slug": "prognoz-na-2-nedeli",
     "title": "На 2 недели",
     "category": "future" as SpreadIntentCategory,
     "question": "Что будет через 2 недели?",
@@ -1291,7 +1291,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-21-день",
+    "slug": "prognoz-na-21-den",
     "title": "На 21 день",
     "category": "future" as SpreadIntentCategory,
     "question": "Что изменится за 21 день?",
@@ -1305,7 +1305,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-месяц-вперёд",
+    "slug": "prognoz-na-mesyats-vpered",
     "title": "На месяц вперёд",
     "category": "future" as SpreadIntentCategory,
     "question": "Что ждёт в ближайший месяц?",
@@ -1319,7 +1319,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-2-месяца",
+    "slug": "prognoz-na-2-mesyatsa",
     "title": "На 2 месяца",
     "category": "future" as SpreadIntentCategory,
     "question": "Что будет через 2 месяца?",
@@ -1333,7 +1333,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-квартал",
+    "slug": "prognoz-na-kvartal",
     "title": "На квартал",
     "category": "future" as SpreadIntentCategory,
     "question": "Что ждёт в квартале?",
@@ -1347,7 +1347,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-полгода",
+    "slug": "prognoz-na-polgoda",
     "title": "На полгода",
     "category": "future" as SpreadIntentCategory,
     "question": "Что будет через полгода?",
@@ -1361,7 +1361,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-лето",
+    "slug": "prognoz-na-leto",
     "title": "На лето",
     "category": "future" as SpreadIntentCategory,
     "question": "Что принесёт лето?",
@@ -1375,7 +1375,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-осень",
+    "slug": "prognoz-na-osen",
     "title": "На осень",
     "category": "future" as SpreadIntentCategory,
     "question": "Что принесёт осень?",
@@ -1389,7 +1389,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-зиму",
+    "slug": "prognoz-na-zimu",
     "title": "На зиму",
     "category": "future" as SpreadIntentCategory,
     "question": "Что принесёт зима?",
@@ -1403,7 +1403,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-на-весну",
+    "slug": "prognoz-na-vesnu",
     "title": "На весну",
     "category": "future" as SpreadIntentCategory,
     "question": "Что принесёт весна?",
@@ -1417,7 +1417,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-ближайшие-события",
+    "slug": "prognoz-blizhayshie-sobytiya",
     "title": "Ближайшие события",
     "category": "future" as SpreadIntentCategory,
     "question": "Какие события близко?",
@@ -1431,7 +1431,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-неожиданный-поворот",
+    "slug": "prognoz-neozhidannyy-povorot",
     "title": "Неожиданный поворот",
     "category": "future" as SpreadIntentCategory,
     "question": "Будет ли неожиданный поворот?",
@@ -1445,7 +1445,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-счастливый-день",
+    "slug": "prognoz-schastlivyy-den",
     "title": "Счастливый день",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда счастливый день?",
@@ -1459,7 +1459,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-сложный-период",
+    "slug": "prognoz-slozhnyy-period",
     "title": "Сложный период",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда сложный период?",
@@ -1473,7 +1473,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-переломный-момент",
+    "slug": "prognoz-perelomnyy-moment",
     "title": "Переломный момент",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда перелом?",
@@ -1487,7 +1487,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-новая-возможность",
+    "slug": "prognoz-novaya-vozmozhnost",
     "title": "Новая возможность",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда новая возможность?",
@@ -1501,7 +1501,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-путешествие",
+    "slug": "prognoz-puteshestvie",
     "title": "Путешествие",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда путешествие?",
@@ -1515,7 +1515,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-переезд",
+    "slug": "prognoz-pereezd",
     "title": "Переезд",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда переезд?",
@@ -1529,7 +1529,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-встреча-судьбы",
+    "slug": "prognoz-vstrecha-sudby",
     "title": "Встреча судьбы",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда встреча?",
@@ -1543,7 +1543,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-разговор",
+    "slug": "prognoz-razgovor",
     "title": "Разговор",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда важный разговор?",
@@ -1557,7 +1557,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-решение",
+    "slug": "prognoz-reshenie",
     "title": "Решение",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда принять решение?",
@@ -1571,7 +1571,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-удача",
+    "slug": "prognoz-udacha",
     "title": "Удача",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда удача?",
@@ -1585,7 +1585,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-испытание",
+    "slug": "prognoz-ispytanie",
     "title": "Испытание",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда испытание?",
@@ -1599,7 +1599,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-отдых",
+    "slug": "prognoz-otdykh",
     "title": "Отдых",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда отдых?",
@@ -1613,7 +1613,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-рост",
+    "slug": "prognoz-rost",
     "title": "Рост",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда рост?",
@@ -1627,7 +1627,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-застой",
+    "slug": "prognoz-zastoy",
     "title": "Застой",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда застой?",
@@ -1641,7 +1641,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-просветление",
+    "slug": "prognoz-prosvetlenie",
     "title": "Просветление",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда просветление?",
@@ -1655,7 +1655,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-сюрприз",
+    "slug": "prognoz-syurpriz",
     "title": "Сюрприз",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда сюрприз?",
@@ -1669,7 +1669,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-конец-цикла",
+    "slug": "prognoz-konets-tsikla",
     "title": "Конец цикла",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда конец цикла?",
@@ -1683,7 +1683,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-начало-цикла",
+    "slug": "prognoz-nachalo-tsikla",
     "title": "Начало цикла",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда начало цикла?",
@@ -1697,7 +1697,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-финансовый-прорыв",
+    "slug": "prognoz-finansovyy-proryv",
     "title": "Финансовый прорыв",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда финансовый прорыв?",
@@ -1711,7 +1711,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-любовная-встреча",
+    "slug": "prognoz-lyubovnaya-vstrecha",
     "title": "Любовная встреча",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда любовная встреча?",
@@ -1725,7 +1725,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-смена-работы",
+    "slug": "prognoz-smena-raboty",
     "title": "Смена работы",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда смена работы?",
@@ -1739,7 +1739,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-примирение",
+    "slug": "prognoz-primirenie",
     "title": "Примирение",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда примирение?",
@@ -1753,7 +1753,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-расставание",
+    "slug": "prognoz-rasstavanie",
     "title": "Расставание",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда расставание?",
@@ -1767,7 +1767,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "prognoz-беременность",
+    "slug": "prognoz-beremennost",
     "title": "Беременность",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда беременность?",
@@ -1781,7 +1781,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-мы-вместе",
+    "slug": "para-my-vmeste",
     "title": "Мы вместе",
     "category": "love" as SpreadIntentCategory,
     "question": "Будем ли мы вместе?",
@@ -1795,7 +1795,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-он-и-я",
+    "slug": "para-on-i-ya",
     "title": "Он и я",
     "category": "love" as SpreadIntentCategory,
     "question": "Что между нами?",
@@ -1809,7 +1809,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-она-и-я",
+    "slug": "para-ona-i-ya",
     "title": "Она и я",
     "category": "love" as SpreadIntentCategory,
     "question": "Что между нами?",
@@ -1823,7 +1823,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-чувства",
+    "slug": "para-nashi-chuvstva",
     "title": "Наши чувства",
     "category": "love" as SpreadIntentCategory,
     "question": "Какие наши чувства?",
@@ -1837,7 +1837,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наше-будущее",
+    "slug": "para-nashe-budushchee",
     "title": "Наше будущее",
     "category": "love" as SpreadIntentCategory,
     "question": "Какое наше будущее?",
@@ -1851,7 +1851,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наша-связь",
+    "slug": "para-nasha-svyaz",
     "title": "Наша связь",
     "category": "love" as SpreadIntentCategory,
     "question": "Насколько сильна связь?",
@@ -1865,7 +1865,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наш-конфликт",
+    "slug": "para-nash-konflikt",
     "title": "Наш конфликт",
     "category": "love" as SpreadIntentCategory,
     "question": "Как разрешится конфликт?",
@@ -1879,7 +1879,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наша-тайна",
+    "slug": "para-nasha-tayna",
     "title": "Наша тайна",
     "category": "love" as SpreadIntentCategory,
     "question": "Какая тайна в паре?",
@@ -1893,7 +1893,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-планы",
+    "slug": "para-nashi-plany",
     "title": "Наши планы",
     "category": "love" as SpreadIntentCategory,
     "question": "Совпадут ли планы?",
@@ -1907,7 +1907,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-страхи",
+    "slug": "para-nashi-strakhi",
     "title": "Наши страхи",
     "category": "love" as SpreadIntentCategory,
     "question": "Чего боимся в паре?",
@@ -1921,7 +1921,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-желания",
+    "slug": "para-nashi-zhelaniya",
     "title": "Наши желания",
     "category": "love" as SpreadIntentCategory,
     "question": "Чего хотим друг от друга?",
@@ -1935,7 +1935,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-границы",
+    "slug": "para-nashi-granitsy",
     "title": "Наши границы",
     "category": "love" as SpreadIntentCategory,
     "question": "Где границы пары?",
@@ -1949,7 +1949,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-дети",
+    "slug": "para-nashi-deti",
     "title": "Наши дети",
     "category": "love" as SpreadIntentCategory,
     "question": "Будут ли дети?",
@@ -1963,7 +1963,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наш-брак",
+    "slug": "para-nash-brak",
     "title": "Наш брак",
     "category": "love" as SpreadIntentCategory,
     "question": "Будет ли брак?",
@@ -1977,7 +1977,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наша-страсть",
+    "slug": "para-nasha-strast",
     "title": "Наша страсть",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли страсть?",
@@ -1991,7 +1991,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наша-дружба",
+    "slug": "para-nasha-druzhba",
     "title": "Наша дружба",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли дружба?",
@@ -2005,7 +2005,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-родные",
+    "slug": "para-nashi-rodnye",
     "title": "Наши родные",
     "category": "love" as SpreadIntentCategory,
     "question": "Как отнесутся родные?",
@@ -2019,7 +2019,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-деньги",
+    "slug": "para-nashi-dengi",
     "title": "Наши деньги",
     "category": "love" as SpreadIntentCategory,
     "question": "Как деньги в паре?",
@@ -2033,7 +2033,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-ревности",
+    "slug": "para-nashi-revnosti",
     "title": "Наши ревности",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли ревность?",
@@ -2047,7 +2047,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-измены",
+    "slug": "para-nashi-izmeny",
     "title": "Наши измены",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли измена?",
@@ -2061,7 +2061,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-расстояния",
+    "slug": "para-nashi-rasstoyaniya",
     "title": "Наши расстояния",
     "category": "love" as SpreadIntentCategory,
     "question": "Выдержит ли расстояние?",
@@ -2075,7 +2075,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-ссоры",
+    "slug": "para-nashi-ssory",
     "title": "Наши ссоры",
     "category": "love" as SpreadIntentCategory,
     "question": "Прекратятся ли ссоры?",
@@ -2089,7 +2089,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-примирения",
+    "slug": "para-nashi-primireniya",
     "title": "Наши примирения",
     "category": "love" as SpreadIntentCategory,
     "question": "Будет ли примирение?",
@@ -2103,7 +2103,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-прошлые",
+    "slug": "para-nashi-proshlye",
     "title": "Наши прошлые",
     "category": "love" as SpreadIntentCategory,
     "question": "Влияет ли прошлое?",
@@ -2117,7 +2117,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-кармические",
+    "slug": "para-nashi-karmicheskie",
     "title": "Наши кармические",
     "category": "love" as SpreadIntentCategory,
     "question": "Кармическая ли связь?",
@@ -2131,7 +2131,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-души",
+    "slug": "para-nashi-dushi",
     "title": "Наши души",
     "category": "love" as SpreadIntentCategory,
     "question": "Родственные ли души?",
@@ -2145,7 +2145,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-цели",
+    "slug": "para-nashi-tseli",
     "title": "Наши цели",
     "category": "love" as SpreadIntentCategory,
     "question": "Совпадут ли цели?",
@@ -2159,7 +2159,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-мечты",
+    "slug": "para-nashi-mechty",
     "title": "Наши мечты",
     "category": "love" as SpreadIntentCategory,
     "question": "Сбудутся ли мечты?",
@@ -2173,7 +2173,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-испытания",
+    "slug": "para-nashi-ispytaniya",
     "title": "Наши испытания",
     "category": "love" as SpreadIntentCategory,
     "question": "Какие испытания ждут?",
@@ -2187,7 +2187,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-уроки",
+    "slug": "para-nashi-uroki",
     "title": "Наши уроки",
     "category": "love" as SpreadIntentCategory,
     "question": "Какой урок отношений?",
@@ -2201,7 +2201,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-перспективы",
+    "slug": "para-nashi-perspektivy",
     "title": "Наши перспективы",
     "category": "love" as SpreadIntentCategory,
     "question": "Какие перспектives?",
@@ -2215,7 +2215,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-тайные",
+    "slug": "para-nashi-taynye",
     "title": "Наши тайные",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли тайный поклонник?",
@@ -2229,7 +2229,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-соседи",
+    "slug": "para-nashi-sosedi",
     "title": "Наши соседи",
     "category": "love" as SpreadIntentCategory,
     "question": "Мешают ли посторонние?",
@@ -2243,7 +2243,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-праздники",
+    "slug": "para-nashi-prazdniki",
     "title": "Наши праздники",
     "category": "love" as SpreadIntentCategory,
     "question": "Как пройдут праздники?",
@@ -2257,7 +2257,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "para-наши-отпуска",
+    "slug": "para-nashi-otpuska",
     "title": "Наши отпуска",
     "category": "love" as SpreadIntentCategory,
     "question": "Как пройдёт отпуск?",
@@ -2271,7 +2271,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "sovmestimost-совместимость-с-ним",
+    "slug": "sovmestimost-sovmestimost-s-nim",
     "title": "Совместимость с ним",
     "category": "love" as SpreadIntentCategory,
     "question": "Насколько мы совместимы?",
@@ -2290,7 +2290,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-совместимость-с-ней",
+    "slug": "sovmestimost-sovmestimost-s-ney",
     "title": "Совместимость с ней",
     "category": "love" as SpreadIntentCategory,
     "question": "Насколько мы совместимы?",
@@ -2309,7 +2309,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-брак-с-ним",
+    "slug": "sovmestimost-brak-s-nim",
     "title": "Брак с ним",
     "category": "love" as SpreadIntentCategory,
     "question": "Стоит ли брак с ним?",
@@ -2328,7 +2328,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-брак-с-ней",
+    "slug": "sovmestimost-brak-s-ney",
     "title": "Брак с ней",
     "category": "love" as SpreadIntentCategory,
     "question": "Стоит ли брак с ней?",
@@ -2347,7 +2347,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-семья-с-ним",
+    "slug": "sovmestimost-semya-s-nim",
     "title": "Семья с ним",
     "category": "love" as SpreadIntentCategory,
     "question": "Будет ли семья?",
@@ -2366,7 +2366,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-семья-с-ней",
+    "slug": "sovmestimost-semya-s-ney",
     "title": "Семья с ней",
     "category": "love" as SpreadIntentCategory,
     "question": "Будет ли семья?",
@@ -2385,7 +2385,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-долгие-отношения",
+    "slug": "sovmestimost-dolgie-otnosheniya",
     "title": "Долгие отношения",
     "category": "love" as SpreadIntentCategory,
     "question": "Выдержат ли отношения?",
@@ -2404,7 +2404,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-кармическая-пара",
+    "slug": "sovmestimost-karmicheskaya-para",
     "title": "Кармическая пара",
     "category": "love" as SpreadIntentCategory,
     "question": "Кармическая ли пара?",
@@ -2423,7 +2423,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-будущее-пары",
+    "slug": "sovmestimost-budushchee-pary",
     "title": "Будущее пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Какое будущее пары?",
@@ -2442,7 +2442,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-сила-пары",
+    "slug": "sovmestimost-sila-pary",
     "title": "Сила пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Насколько сильна пара?",
@@ -2461,7 +2461,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-слабость-пары",
+    "slug": "sovmestimost-slabost-pary",
     "title": "Слабость пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Где слабое место?",
@@ -2480,7 +2480,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-совет-для-пары",
+    "slug": "sovmestimost-sovet-dlya-pary",
     "title": "Совет для пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Как укрепить пару?",
@@ -2499,7 +2499,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-тайны-партнёра",
+    "slug": "sovmestimost-tayny-partnera",
     "title": "Тайны партнёра",
     "category": "love" as SpreadIntentCategory,
     "question": "Какие тайны партнёра?",
@@ -2518,7 +2518,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-чувства-партнёра",
+    "slug": "sovmestimost-chuvstva-partnera",
     "title": "Чувства партнёра",
     "category": "love" as SpreadIntentCategory,
     "question": "Что чувствует партнёр?",
@@ -2537,7 +2537,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-намерения-партнёра",
+    "slug": "sovmestimost-namereniya-partnera",
     "title": "Намерения партнёра",
     "category": "love" as SpreadIntentCategory,
     "question": "Какие намерения?",
@@ -2556,7 +2556,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-препятствия-пары",
+    "slug": "sovmestimost-prepyatstviya-pary",
     "title": "Препятствия пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Что мешает паре?",
@@ -2575,7 +2575,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-родители-и-пара",
+    "slug": "sovmestimost-roditeli-i-para",
     "title": "Родители и пара",
     "category": "love" as SpreadIntentCategory,
     "question": "Как родители влияют?",
@@ -2594,7 +2594,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-друзья-и-пара",
+    "slug": "sovmestimost-druzya-i-para",
     "title": "Друзья и пара",
     "category": "love" as SpreadIntentCategory,
     "question": "Как друзья влияют?",
@@ -2613,7 +2613,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-работа-и-пара",
+    "slug": "sovmestimost-rabota-i-para",
     "title": "Работа и пара",
     "category": "love" as SpreadIntentCategory,
     "question": "Как работа влияет?",
@@ -2632,7 +2632,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-деньги-и-пара",
+    "slug": "sovmestimost-dengi-i-para",
     "title": "Деньги и пара",
     "category": "love" as SpreadIntentCategory,
     "question": "Как деньги в паре?",
@@ -2651,7 +2651,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-дети-и-пара",
+    "slug": "sovmestimost-deti-i-para",
     "title": "Дети и пара",
     "category": "love" as SpreadIntentCategory,
     "question": "Как дети изменят пару?",
@@ -2670,7 +2670,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-ревность-в-паре",
+    "slug": "sovmestimost-revnost-v-pare",
     "title": "Ревность в паре",
     "category": "love" as SpreadIntentCategory,
     "question": "Как ревность влияет?",
@@ -2689,7 +2689,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-измена-в-паре",
+    "slug": "sovmestimost-izmena-v-pare",
     "title": "Измена в паре",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли измена?",
@@ -2708,7 +2708,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-примирение-пары",
+    "slug": "sovmestimost-primirenie-pary",
     "title": "Примирение пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Как примириться?",
@@ -2727,7 +2727,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-развод-пары",
+    "slug": "sovmestimost-razvod-pary",
     "title": "Развод пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Будет ли развод?",
@@ -2746,7 +2746,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-вторая-шанс",
+    "slug": "sovmestimost-vtoraya-shans",
     "title": "Вторая шанс",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли второй шанс?",
@@ -2765,7 +2765,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-новая-любовь",
+    "slug": "sovmestimost-novaya-lyubov",
     "title": "Новая любовь",
     "category": "love" as SpreadIntentCategory,
     "question": "Придёт ли новая любовь?",
@@ -2784,7 +2784,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-судьба-пары",
+    "slug": "sovmestimost-sudba-pary",
     "title": "Судьба пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Какова судьба пары?",
@@ -2803,7 +2803,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-энергия-пары",
+    "slug": "sovmestimost-energiya-pary",
     "title": "Энергия пары",
     "category": "love" as SpreadIntentCategory,
     "question": "Какая энергия пары?",
@@ -2822,7 +2822,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "sovmestimost-итог-пары",
+    "slug": "sovmestimost-itog-pary",
     "title": "Итог пары",
     "category": "love" as SpreadIntentCategory,
     "question": "К чему приведёт пара?",
@@ -2841,7 +2841,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "requiresPartnerInfo": true
   },
   {
-    "slug": "lenormand-быстрый-ответ",
+    "slug": "lenormand-bystryy-otvet",
     "title": "Ленорман: Быстрый ответ",
     "category": "future" as SpreadIntentCategory,
     "question": "Какой быстрый ответ?",
@@ -2854,10 +2854,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-срок-события",
+    "slug": "lenormand-srok-sobytiya",
     "title": "Ленорман: Срок события",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда событие?",
@@ -2870,10 +2870,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-суть-ситуации",
+    "slug": "lenormand-sut-situatsii",
     "title": "Ленорман: Суть ситуации",
     "category": "future" as SpreadIntentCategory,
     "question": "В чём суть?",
@@ -2886,10 +2886,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-скрытый-фактор",
+    "slug": "lenormand-skrytyy-faktor",
     "title": "Ленорман: Скрытый фактор",
     "category": "future" as SpreadIntentCategory,
     "question": "Что скрыто?",
@@ -2902,10 +2902,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-совет-оракула",
+    "slug": "lenormand-sovet-orakula",
     "title": "Ленорман: Совет оракула",
     "category": "future" as SpreadIntentCategory,
     "question": "Какой совет?",
@@ -2918,10 +2918,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-исход-дела",
+    "slug": "lenormand-iskhod-dela",
     "title": "Ленорман: Исход дела",
     "category": "future" as SpreadIntentCategory,
     "question": "Каков исход?",
@@ -2934,10 +2934,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-путь-вперёд",
+    "slug": "lenormand-put-vpered",
     "title": "Ленорман: Путь вперёд",
     "category": "future" as SpreadIntentCategory,
     "question": "Куда ведёт путь?",
@@ -2950,10 +2950,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-препятствие",
+    "slug": "lenormand-prepyatstvie",
     "title": "Ленорман: Препятствие",
     "category": "future" as SpreadIntentCategory,
     "question": "Что мешает?",
@@ -2966,10 +2966,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-помощь",
+    "slug": "lenormand-pomoshch",
     "title": "Ленорман: Помощь",
     "category": "future" as SpreadIntentCategory,
     "question": "Откуда помощь?",
@@ -2982,10 +2982,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-предупреждение",
+    "slug": "lenormand-preduprezhdenie",
     "title": "Ленорман: Предупреждение",
     "category": "future" as SpreadIntentCategory,
     "question": "О чём предупреждение?",
@@ -2998,10 +2998,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-удача",
+    "slug": "lenormand-udacha",
     "title": "Ленорман: Удача",
     "category": "future" as SpreadIntentCategory,
     "question": "Будет ли удача?",
@@ -3014,10 +3014,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-любовный-знак",
+    "slug": "lenormand-lyubovnyy-znak",
     "title": "Ленорман: Любовный знак",
     "category": "love" as SpreadIntentCategory,
     "question": "Какой любовный знак?",
@@ -3030,10 +3030,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-денежный-знак",
+    "slug": "lenormand-denezhnyy-znak",
     "title": "Ленорман: Денежный знак",
     "category": "money" as SpreadIntentCategory,
     "question": "Какой денежный знак?",
@@ -3046,10 +3046,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-здоровье",
+    "slug": "lenormand-zdorove",
     "title": "Ленорман: Здоровье",
     "category": "self" as SpreadIntentCategory,
     "question": "Что с энергией?",
@@ -3062,10 +3062,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-путешествие",
+    "slug": "lenormand-puteshestvie",
     "title": "Ленорман: Путешествие",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт поездка?",
@@ -3078,10 +3078,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-переезд",
+    "slug": "lenormand-pereezd",
     "title": "Ленорман: Переезд",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт переезд?",
@@ -3094,10 +3094,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-сделка",
+    "slug": "lenormand-sdelka",
     "title": "Ленорман: Сделка",
     "category": "money" as SpreadIntentCategory,
     "question": "Как пройдёт сделка?",
@@ -3110,10 +3110,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-суд",
+    "slug": "lenormand-sud",
     "title": "Ленорман: Суд",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт суд?",
@@ -3126,10 +3126,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-экзамен",
+    "slug": "lenormand-ekzamen",
     "title": "Ленорман: Экзамен",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт экзамен?",
@@ -3142,10 +3142,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-свидание",
+    "slug": "lenormand-svidanie",
     "title": "Ленорман: Свидание",
     "category": "love" as SpreadIntentCategory,
     "question": "Как пройдёт свидание?",
@@ -3158,10 +3158,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-разговор",
+    "slug": "lenormand-razgovor",
     "title": "Ленорман: Разговор",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт разговор?",
@@ -3174,10 +3174,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-конфликт",
+    "slug": "lenormand-konflikt",
     "title": "Ленорман: Конфликт",
     "category": "future" as SpreadIntentCategory,
     "question": "Как разрешится конфликт?",
@@ -3190,10 +3190,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-новость",
+    "slug": "lenormand-novost",
     "title": "Ленорман: Новость",
     "category": "future" as SpreadIntentCategory,
     "question": "Какая новость?",
@@ -3206,10 +3206,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-сюрприз",
+    "slug": "lenormand-syurpriz",
     "title": "Ленорман: Сюрприз",
     "category": "future" as SpreadIntentCategory,
     "question": "Какой сюрприз?",
@@ -3222,10 +3222,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-ключ",
+    "slug": "lenormand-klyuch",
     "title": "Ленорман: Ключ",
     "category": "future" as SpreadIntentCategory,
     "question": "Где ключ?",
@@ -3238,10 +3238,10 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
       "Исход",
       "Ключ"
     ],
-    "master": "veronika"
+    "master": "gadalka_marina"
   },
   {
-    "slug": "lyubov-почему-он-молчит",
+    "slug": "lyubov-pochemu-on-molchit",
     "title": "Почему он молчит",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему он молчит?",
@@ -3257,7 +3257,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-она-молчит",
+    "slug": "lyubov-pochemu-ona-molchit",
     "title": "Почему она молчит",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему она молчит?",
@@ -3273,7 +3273,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-он-злится",
+    "slug": "lyubov-pochemu-on-zlitsya",
     "title": "Почему он злится",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему он злится?",
@@ -3289,7 +3289,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-она-злится",
+    "slug": "lyubov-pochemu-ona-zlitsya",
     "title": "Почему она злится",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему она злится?",
@@ -3305,7 +3305,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-он-ревнует",
+    "slug": "lyubov-pochemu-on-revnuet",
     "title": "Почему он ревнует",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему он ревнует?",
@@ -3321,7 +3321,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-она-ревнует",
+    "slug": "lyubov-pochemu-ona-revnuet",
     "title": "Почему она ревнует",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему она ревнует?",
@@ -3337,7 +3337,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-он-ушёл",
+    "slug": "lyubov-pochemu-on-ushel",
     "title": "Почему он ушёл",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему он ушёл?",
@@ -3353,7 +3353,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-она-ушла",
+    "slug": "lyubov-pochemu-ona-ushla",
     "title": "Почему она ушла",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему она ушла?",
@@ -3369,7 +3369,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-он-вернулся",
+    "slug": "lyubov-pochemu-on-vernulsya",
     "title": "Почему он вернулся",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему он вернулся?",
@@ -3385,7 +3385,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-почему-она-вернулась",
+    "slug": "lyubov-pochemu-ona-vernulas",
     "title": "Почему она вернулась",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему она вернулась?",
@@ -3401,7 +3401,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-он-скрывает",
+    "slug": "lyubov-chto-on-skryvaet",
     "title": "Что он скрывает",
     "category": "love" as SpreadIntentCategory,
     "question": "Что он скрывает?",
@@ -3417,7 +3417,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-она-скрывает",
+    "slug": "lyubov-chto-ona-skryvaet",
     "title": "Что она скрывает",
     "category": "love" as SpreadIntentCategory,
     "question": "Что она скрывает?",
@@ -3433,7 +3433,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-он-думает",
+    "slug": "lyubov-chto-on-dumaet",
     "title": "Что он думает",
     "category": "love" as SpreadIntentCategory,
     "question": "Что он думает обо мне?",
@@ -3449,7 +3449,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-она-думает",
+    "slug": "lyubov-chto-ona-dumaet",
     "title": "Что она думает",
     "category": "love" as SpreadIntentCategory,
     "question": "Что она думает обо мне?",
@@ -3465,7 +3465,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-он-чувствует",
+    "slug": "lyubov-chto-on-chuvstvuet",
     "title": "Что он чувствует",
     "category": "love" as SpreadIntentCategory,
     "question": "Что он чувствует?",
@@ -3481,7 +3481,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-она-чувствует",
+    "slug": "lyubov-chto-ona-chuvstvuet",
     "title": "Что она чувствует",
     "category": "love" as SpreadIntentCategory,
     "question": "Что она чувствует?",
@@ -3497,7 +3497,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-мешает-ему",
+    "slug": "lyubov-chto-meshaet-emu",
     "title": "Что мешает ему",
     "category": "love" as SpreadIntentCategory,
     "question": "Что мешает ему?",
@@ -3513,7 +3513,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-мешает-ей",
+    "slug": "lyubov-chto-meshaet-ey",
     "title": "Что мешает ей",
     "category": "love" as SpreadIntentCategory,
     "question": "Что мешает ей?",
@@ -3529,7 +3529,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-ждёт-нас",
+    "slug": "lyubov-chto-zhdet-nas",
     "title": "Что ждёт нас",
     "category": "love" as SpreadIntentCategory,
     "question": "Что ждёт нас?",
@@ -3545,7 +3545,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-что-между-нами",
+    "slug": "lyubov-chto-mezhdu-nami",
     "title": "Что между нами",
     "category": "love" as SpreadIntentCategory,
     "question": "Что между нами?",
@@ -3561,7 +3561,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-кто-его-новая",
+    "slug": "lyubov-kto-ego-novaya",
     "title": "Кто его новая",
     "category": "love" as SpreadIntentCategory,
     "question": "Кто его новая?",
@@ -3577,7 +3577,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-кто-её-новый",
+    "slug": "lyubov-kto-ee-novyy",
     "title": "Кто её новый",
     "category": "love" as SpreadIntentCategory,
     "question": "Кто её новый?",
@@ -3593,7 +3593,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-когда-он-напишет",
+    "slug": "lyubov-kogda-on-napishet",
     "title": "Когда он напишет",
     "category": "love" as SpreadIntentCategory,
     "question": "Когда он напишет?",
@@ -3609,7 +3609,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-когда-она-напишет",
+    "slug": "lyubov-kogda-ona-napishet",
     "title": "Когда она напишет",
     "category": "love" as SpreadIntentCategory,
     "question": "Когда она напишет?",
@@ -3625,7 +3625,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-когда-встреча",
+    "slug": "lyubov-kogda-vstrecha",
     "title": "Когда встреча",
     "category": "love" as SpreadIntentCategory,
     "question": "Когда будет встреча?",
@@ -3641,7 +3641,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-когда-примирение",
+    "slug": "lyubov-kogda-primirenie",
     "title": "Когда примирение",
     "category": "love" as SpreadIntentCategory,
     "question": "Когда примирение?",
@@ -3657,7 +3657,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-когда-расставание",
+    "slug": "lyubov-kogda-rasstavanie",
     "title": "Когда расставание",
     "category": "love" as SpreadIntentCategory,
     "question": "Когда расставание?",
@@ -3673,7 +3673,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-вернуть-его",
+    "slug": "lyubov-kak-vernut-ego",
     "title": "Как вернуть его",
     "category": "love" as SpreadIntentCategory,
     "question": "Как вернуть его?",
@@ -3689,7 +3689,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-вернуть-её",
+    "slug": "lyubov-kak-vernut-ee",
     "title": "Как вернуть её",
     "category": "love" as SpreadIntentCategory,
     "question": "Как вернуть её?",
@@ -3705,7 +3705,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-удержать-его",
+    "slug": "lyubov-kak-uderzhat-ego",
     "title": "Как удержать его",
     "category": "love" as SpreadIntentCategory,
     "question": "Как удержать его?",
@@ -3721,7 +3721,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-удержать-её",
+    "slug": "lyubov-kak-uderzhat-ee",
     "title": "Как удержать её",
     "category": "love" as SpreadIntentCategory,
     "question": "Как удержать её?",
@@ -3737,7 +3737,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-отпустить-его",
+    "slug": "lyubov-kak-otpustit-ego",
     "title": "Как отпустить его",
     "category": "love" as SpreadIntentCategory,
     "question": "Как отпустить его?",
@@ -3753,7 +3753,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-отпустить-её",
+    "slug": "lyubov-kak-otpustit-ee",
     "title": "Как отпустить её",
     "category": "love" as SpreadIntentCategory,
     "question": "Как отпустить её?",
@@ -3769,7 +3769,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-простить-его",
+    "slug": "lyubov-kak-prostit-ego",
     "title": "Как простить его",
     "category": "love" as SpreadIntentCategory,
     "question": "Как простить его?",
@@ -3785,7 +3785,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-простить-её",
+    "slug": "lyubov-kak-prostit-ee",
     "title": "Как простить её",
     "category": "love" as SpreadIntentCategory,
     "question": "Как простить её?",
@@ -3801,7 +3801,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-понять-его",
+    "slug": "lyubov-kak-ponyat-ego",
     "title": "Как понять его",
     "category": "love" as SpreadIntentCategory,
     "question": "Как понять его?",
@@ -3817,7 +3817,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-понять-её",
+    "slug": "lyubov-kak-ponyat-ee",
     "title": "Как понять её",
     "category": "love" as SpreadIntentCategory,
     "question": "Как понять её?",
@@ -3833,7 +3833,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-привлечь-его",
+    "slug": "lyubov-kak-privlech-ego",
     "title": "Как привлечь его",
     "category": "love" as SpreadIntentCategory,
     "question": "Как привлечь его?",
@@ -3849,7 +3849,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-привлечь-её",
+    "slug": "lyubov-kak-privlech-ee",
     "title": "Как привлечь её",
     "category": "love" as SpreadIntentCategory,
     "question": "Как привлечь её?",
@@ -3865,7 +3865,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-забыть-его",
+    "slug": "lyubov-kak-zabyt-ego",
     "title": "Как забыть его",
     "category": "love" as SpreadIntentCategory,
     "question": "Как забыть его?",
@@ -3881,7 +3881,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-как-забыть-её",
+    "slug": "lyubov-kak-zabyt-ee",
     "title": "Как забыть её",
     "category": "love" as SpreadIntentCategory,
     "question": "Как забыть её?",
@@ -3897,7 +3897,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-его-новая-любовь",
+    "slug": "lyubov-ego-novaya-lyubov",
     "title": "Его новая любовь",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли новая любовь?",
@@ -3913,7 +3913,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-её-новая-любовь",
+    "slug": "lyubov-ee-novaya-lyubov",
     "title": "Её новая любовь",
     "category": "love" as SpreadIntentCategory,
     "question": "Есть ли новая любовь?",
@@ -3929,7 +3929,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-его-семья",
+    "slug": "lyubov-ego-semya",
     "title": "Его семья",
     "category": "love" as SpreadIntentCategory,
     "question": "Что с его семьёй?",
@@ -3945,7 +3945,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-её-семья",
+    "slug": "lyubov-ee-semya",
     "title": "Её семья",
     "category": "love" as SpreadIntentCategory,
     "question": "Что с её семьёй?",
@@ -3961,7 +3961,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-его-работа",
+    "slug": "lyubov-ego-rabota",
     "title": "Его работа",
     "category": "love" as SpreadIntentCategory,
     "question": "Как работа влияет?",
@@ -3977,7 +3977,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-её-работа",
+    "slug": "lyubov-ee-rabota",
     "title": "Её работа",
     "category": "love" as SpreadIntentCategory,
     "question": "Как работа влияет?",
@@ -3993,7 +3993,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-его-прошлое",
+    "slug": "lyubov-ego-proshloe",
     "title": "Его прошлое",
     "category": "love" as SpreadIntentCategory,
     "question": "Что в его прошлом?",
@@ -4009,7 +4009,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-её-прошлое",
+    "slug": "lyubov-ee-proshloe",
     "title": "Её прошлое",
     "category": "love" as SpreadIntentCategory,
     "question": "Что в её прошлом?",
@@ -4025,7 +4025,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-его-страхи",
+    "slug": "lyubov-ego-strakhi",
     "title": "Его страхи",
     "category": "love" as SpreadIntentCategory,
     "question": "Чего он боится?",
@@ -4041,7 +4041,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "lyubov-её-страхи",
+    "slug": "lyubov-ee-strakhi",
     "title": "Её страхи",
     "category": "love" as SpreadIntentCategory,
     "question": "Чего она боится?",
@@ -4057,7 +4057,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-на-работе",
+    "slug": "situatsiya-na-rabote",
     "title": "На работе",
     "category": "career" as SpreadIntentCategory,
     "question": "Что на работе?",
@@ -4073,7 +4073,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-начальником",
+    "slug": "situatsiya-s-nachalnikom",
     "title": "С начальником",
     "category": "career" as SpreadIntentCategory,
     "question": "Как с начальником?",
@@ -4089,7 +4089,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-коллегами",
+    "slug": "situatsiya-s-kollegami",
     "title": "С коллегами",
     "category": "career" as SpreadIntentCategory,
     "question": "Как с коллегами?",
@@ -4105,7 +4105,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-клиентами",
+    "slug": "situatsiya-s-klientami",
     "title": "С клиентами",
     "category": "career" as SpreadIntentCategory,
     "question": "Как с клиентами?",
@@ -4121,7 +4121,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-конкурентами",
+    "slug": "situatsiya-s-konkurentami",
     "title": "С конкурентами",
     "category": "career" as SpreadIntentCategory,
     "question": "Как с конкурентами?",
@@ -4137,7 +4137,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-партнёром-по-бизнесу",
+    "slug": "situatsiya-s-partnerom-po-biznesu",
     "title": "С партнёром по бизнесу",
     "category": "career" as SpreadIntentCategory,
     "question": "Как с партнёром?",
@@ -4153,7 +4153,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-проектом",
+    "slug": "situatsiya-s-proektom",
     "title": "С проектом",
     "category": "career" as SpreadIntentCategory,
     "question": "Как с проектом?",
@@ -4169,7 +4169,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-увольнением",
+    "slug": "situatsiya-s-uvolneniem",
     "title": "С увольнением",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли увольняться?",
@@ -4185,7 +4185,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-повышением",
+    "slug": "situatsiya-s-povysheniem",
     "title": "С повышением",
     "category": "career" as SpreadIntentCategory,
     "question": "Как с повышением?",
@@ -4201,7 +4201,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-собеседованием",
+    "slug": "situatsiya-s-sobesedovaniem",
     "title": "С собеседованием",
     "category": "career" as SpreadIntentCategory,
     "question": "Как пройдёт собеседование?",
@@ -4217,7 +4217,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-финансами",
+    "slug": "situatsiya-s-finansami",
     "title": "С финансами",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с финансами?",
@@ -4233,7 +4233,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-долгами",
+    "slug": "situatsiya-s-dolgami",
     "title": "С долгами",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с долгами?",
@@ -4249,7 +4249,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-кредитом",
+    "slug": "situatsiya-s-kreditom",
     "title": "С кредитом",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с кредитом?",
@@ -4265,7 +4265,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-инвестициями",
+    "slug": "situatsiya-s-investitsiyami",
     "title": "С инвестициями",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с инвестициями?",
@@ -4281,7 +4281,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-покупкой",
+    "slug": "situatsiya-s-pokupkoy",
     "title": "С покупкой",
     "category": "money" as SpreadIntentCategory,
     "question": "Стоит ли покупка?",
@@ -4297,7 +4297,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-продажей",
+    "slug": "situatsiya-s-prodazhey",
     "title": "С продажей",
     "category": "money" as SpreadIntentCategory,
     "question": "Стоит ли продажа?",
@@ -4313,7 +4313,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-зарплатой",
+    "slug": "situatsiya-s-zarplatoy",
     "title": "С зарплатой",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с зарплатой?",
@@ -4329,7 +4329,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-бизнесом",
+    "slug": "situatsiya-s-biznesom",
     "title": "С бизнесом",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с бизнесом?",
@@ -4345,7 +4345,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-налогами",
+    "slug": "situatsiya-s-nalogami",
     "title": "С налогами",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с налогами?",
@@ -4361,7 +4361,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-с-наследством",
+    "slug": "situatsiya-s-nasledstvom",
     "title": "С наследством",
     "category": "money" as SpreadIntentCategory,
     "question": "Что с наследством?",
@@ -4377,7 +4377,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "ragnar"
   },
   {
-    "slug": "situatsiya-со-здоровьем",
+    "slug": "situatsiya-so-zdorovem",
     "title": "Со здоровьем",
     "category": "self" as SpreadIntentCategory,
     "question": "Что со здоровьем?",
@@ -4393,7 +4393,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-энергией",
+    "slug": "situatsiya-s-energiey",
     "title": "С энергией",
     "category": "self" as SpreadIntentCategory,
     "question": "Что с энергией?",
@@ -4409,7 +4409,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-со-стрессом",
+    "slug": "situatsiya-so-stressom",
     "title": "Со стрессом",
     "category": "self" as SpreadIntentCategory,
     "question": "Что со стрессом?",
@@ -4425,7 +4425,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-со-сном",
+    "slug": "situatsiya-so-snom",
     "title": "Со сном",
     "category": "self" as SpreadIntentCategory,
     "question": "Что со сном?",
@@ -4441,7 +4441,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-тревогой",
+    "slug": "situatsiya-s-trevogoy",
     "title": "С тревогой",
     "category": "self" as SpreadIntentCategory,
     "question": "Что с тревогой?",
@@ -4457,7 +4457,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-уверенностью",
+    "slug": "situatsiya-s-uverennostyu",
     "title": "С уверенностью",
     "category": "self" as SpreadIntentCategory,
     "question": "Как обрести уверенность?",
@@ -4473,7 +4473,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-предназначением",
+    "slug": "situatsiya-s-prednaznacheniem",
     "title": "С предназначением",
     "category": "self" as SpreadIntentCategory,
     "question": "Какое предназначение?",
@@ -4489,7 +4489,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-талантами",
+    "slug": "situatsiya-s-talantami",
     "title": "С талантами",
     "category": "self" as SpreadIntentCategory,
     "question": "Какие таланты?",
@@ -4505,7 +4505,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-кармой",
+    "slug": "situatsiya-s-karmoy",
     "title": "С кармой",
     "category": "self" as SpreadIntentCategory,
     "question": "Какая карма?",
@@ -4521,7 +4521,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-защитой",
+    "slug": "situatsiya-s-zashchitoy",
     "title": "С защитой",
     "category": "ritual" as SpreadIntentCategory,
     "question": "Нужна ли защита?",
@@ -4537,7 +4537,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-очищением",
+    "slug": "situatsiya-s-ochishcheniem",
     "title": "С очищением",
     "category": "ritual" as SpreadIntentCategory,
     "question": "Нужно ли очищение?",
@@ -4553,7 +4553,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-обрядом",
+    "slug": "situatsiya-s-obryadom",
     "title": "С обрядом",
     "category": "ritual" as SpreadIntentCategory,
     "question": "Какой обряд нужен?",
@@ -4569,7 +4569,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-семьёй",
+    "slug": "situatsiya-s-semey",
     "title": "С семьёй",
     "category": "family" as SpreadIntentCategory,
     "question": "Что с семьёй?",
@@ -4585,7 +4585,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-родителями",
+    "slug": "situatsiya-s-roditelyami",
     "title": "С родителями",
     "category": "family" as SpreadIntentCategory,
     "question": "Что с родителями?",
@@ -4601,7 +4601,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-детьми",
+    "slug": "situatsiya-s-detmi",
     "title": "С детьми",
     "category": "family" as SpreadIntentCategory,
     "question": "Что с детьми?",
@@ -4617,7 +4617,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-родственниками",
+    "slug": "situatsiya-s-rodstvennikami",
     "title": "С родственниками",
     "category": "family" as SpreadIntentCategory,
     "question": "Что с родственниками?",
@@ -4633,7 +4633,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-соседями",
+    "slug": "situatsiya-s-sosedyami",
     "title": "С соседями",
     "category": "family" as SpreadIntentCategory,
     "question": "Что с соседями?",
@@ -4649,7 +4649,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-выбором",
+    "slug": "situatsiya-s-vyborom",
     "title": "С выбором",
     "category": "choice" as SpreadIntentCategory,
     "question": "Какой выбор?",
@@ -4665,7 +4665,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-двумя-путями",
+    "slug": "situatsiya-s-dvumya-putyami",
     "title": "С двумя путями",
     "category": "choice" as SpreadIntentCategory,
     "question": "Какой путь?",
@@ -4681,7 +4681,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-переездом",
+    "slug": "situatsiya-s-pereezdom",
     "title": "С переездом",
     "category": "choice" as SpreadIntentCategory,
     "question": "Стоит ли переезд?",
@@ -4697,7 +4697,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-учёбой",
+    "slug": "situatsiya-s-ucheboy",
     "title": "С учёбой",
     "category": "choice" as SpreadIntentCategory,
     "question": "Стоит ли учёба?",
@@ -4713,7 +4713,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-разводом",
+    "slug": "situatsiya-s-razvodom",
     "title": "С разводом",
     "category": "family" as SpreadIntentCategory,
     "question": "Стоит ли развод?",
@@ -4729,7 +4729,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-примирением",
+    "slug": "situatsiya-s-primireniem",
     "title": "С примирением",
     "category": "family" as SpreadIntentCategory,
     "question": "Стоит ли примирение?",
@@ -4745,7 +4745,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-судом",
+    "slug": "situatsiya-s-sudom",
     "title": "С судом",
     "category": "career" as SpreadIntentCategory,
     "question": "Как пройдёт суд?",
@@ -4761,7 +4761,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-экзаменом",
+    "slug": "situatsiya-s-ekzamenom",
     "title": "С экзаменом",
     "category": "career" as SpreadIntentCategory,
     "question": "Как пройдёт экзамен?",
@@ -4777,7 +4777,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-переездом-на-работу",
+    "slug": "situatsiya-s-pereezdom-na-rabotu",
     "title": "С переездом на работу",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли переезд?",
@@ -4793,7 +4793,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-фрилансом",
+    "slug": "situatsiya-s-frilansom",
     "title": "С фрилансом",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли фриланс?",
@@ -4809,7 +4809,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-стартапом",
+    "slug": "situatsiya-s-startapom",
     "title": "С стартапом",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли стартап?",
@@ -4825,7 +4825,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-партнёрством",
+    "slug": "situatsiya-s-partnerstvom",
     "title": "С партнёрством",
     "category": "career" as SpreadIntentCategory,
     "question": "Стоит ли партнёрство?",
@@ -4841,7 +4841,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-конкуренцией",
+    "slug": "situatsiya-s-konkurentsiey",
     "title": "С конкуренцией",
     "category": "career" as SpreadIntentCategory,
     "question": "Как обойти конкурента?",
@@ -4857,7 +4857,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "veronika"
   },
   {
-    "slug": "situatsiya-с-выгоранием",
+    "slug": "situatsiya-s-vygoraniem",
     "title": "С выгоранием",
     "category": "self" as SpreadIntentCategory,
     "question": "Что с выгоранием?",
@@ -4873,7 +4873,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-мотивацией",
+    "slug": "situatsiya-s-motivatsiey",
     "title": "С мотивацией",
     "category": "self" as SpreadIntentCategory,
     "question": "Где мотивация?",
@@ -4889,7 +4889,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-одиночеством",
+    "slug": "situatsiya-s-odinochestvom",
     "title": "С одиночеством",
     "category": "self" as SpreadIntentCategory,
     "question": "Что с одиночеством?",
@@ -4905,7 +4905,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-депрессией",
+    "slug": "situatsiya-s-depressiey",
     "title": "С депрессией",
     "category": "self" as SpreadIntentCategory,
     "question": "Что с тяжёлым состоянием?",
@@ -4921,7 +4921,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "agafya"
   },
   {
-    "slug": "situatsiya-с-переменами",
+    "slug": "situatsiya-s-peremenami",
     "title": "С переменами",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдут перемены?",

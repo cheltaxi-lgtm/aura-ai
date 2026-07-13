@@ -11,6 +11,7 @@ export interface AuthUser {
   name: string;
   slug?: string;
   profileUserId?: string | null;
+  oauthGender?: "male" | "female" | null;
 }
 
 export function useAuth() {

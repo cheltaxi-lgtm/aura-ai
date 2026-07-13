@@ -23,10 +23,28 @@ function add(s) {
   seeds.push(s);
 }
 
-function slugify(s) {
+// Matches the transliteration scheme in src/lib/card-seo.ts. Slugs used to
+// keep raw Cyrillic characters, which self-hosted Next.js (`next start`)
+// fails to route for dynamic segments — every request 404s (see
+// https://github.com/vercel/next.js/issues/56047). Transliterating keeps
+// generated URLs ASCII-only and reachable.
+const CYRILLIC_TO_LATIN = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z",
+  и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r",
+  с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh",
+  щ: "shch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+};
+
+function transliterate(s) {
   return s
-    .toLowerCase()
-    .replace(/[^a-zа-яё0-9\s-]/gi, "")
+    .split("")
+    .map((ch) => CYRILLIC_TO_LATIN[ch.toLowerCase()] ?? ch)
+    .join("");
+}
+
+function slugify(s) {
+  return transliterate(s.toLowerCase())
+    .replace(/[^a-z0-9\s-]/gi, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")

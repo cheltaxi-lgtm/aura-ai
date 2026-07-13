@@ -39,5 +39,8 @@ echo "=== DEPLOYED ===" && test -f /opt/aura-ai/src/app/app/page.tsx && echo mod
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
 $sshArgs = @(Get-SshBaseArgs) + @($VmHost, "bash", "-s")
 $DeployCmd | & ssh.exe @sshArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "Remote deploy failed with exit code $LASTEXITCODE"
+}
 
 Write-Host ">>> Done: https://zovus.ru"

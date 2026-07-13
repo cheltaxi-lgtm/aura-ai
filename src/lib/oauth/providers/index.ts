@@ -1,20 +1,18 @@
 import type { OAuthProvider, OAuthUserInfo } from "../types";
-import { buildMailRuAuthorizeUrl, exchangeMailRuCode } from "./mailru";
 import { buildVkAuthorizeUrl, exchangeVkCode } from "./vk";
 import { buildYandexAuthorizeUrl, exchangeYandexCode } from "./yandex";
 
 export function buildProviderAuthorizeUrl(
   provider: OAuthProvider,
   state: string,
-  codeChallenge: string
+  codeChallenge: string,
+  redirectUri: string
 ): string {
   switch (provider) {
     case "yandex":
-      return buildYandexAuthorizeUrl(state, codeChallenge);
+      return buildYandexAuthorizeUrl(state, codeChallenge, redirectUri);
     case "vk":
-      return buildVkAuthorizeUrl(state, codeChallenge);
-    case "mailru":
-      return buildMailRuAuthorizeUrl(state, codeChallenge);
+      return buildVkAuthorizeUrl(state, codeChallenge, redirectUri);
     default:
       throw new Error(`Unknown OAuth provider: ${provider satisfies never}`);
   }
@@ -23,15 +21,15 @@ export function buildProviderAuthorizeUrl(
 export async function exchangeProviderCode(
   provider: OAuthProvider,
   code: string,
-  codeVerifier: string
+  codeVerifier: string,
+  redirectUri: string,
+  options?: { deviceId?: string; state?: string }
 ): Promise<OAuthUserInfo> {
   switch (provider) {
     case "yandex":
-      return exchangeYandexCode(code, codeVerifier);
+      return exchangeYandexCode(code, codeVerifier, redirectUri);
     case "vk":
-      return exchangeVkCode(code, codeVerifier);
-    case "mailru":
-      return exchangeMailRuCode(code, codeVerifier);
+      return exchangeVkCode(code, codeVerifier, redirectUri, options);
     default:
       throw new Error(`Unknown OAuth provider: ${provider satisfies never}`);
   }

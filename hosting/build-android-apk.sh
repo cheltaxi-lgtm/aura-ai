@@ -17,7 +17,7 @@ load_keystore_env() {
   if [ -f "${ENV_FILE}" ]; then
     set -a
     # shellcheck disable=SC1090
-    source <(grep -E '^ANDROID_(KEYSTORE_|KEY_|VERSION_)' "${ENV_FILE}" 2>/dev/null | sed 's/\r$//') || true
+    source <(grep -E '^(ANDROID_(KEYSTORE_|KEY_|VERSION_)|ANDROID_REINSTALL_BELOW_CODE|VK_ANDROID_)' "${ENV_FILE}" 2>/dev/null | sed 's/\r$//') || true
     set +a
   fi
   ANDROID_KEYSTORE_PATH="${ANDROID_KEYSTORE_PATH:-${DEFAULT_KEYSTORE}}"

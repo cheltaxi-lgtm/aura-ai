@@ -122,6 +122,7 @@ import {
   buildRegisterHref,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
+import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import { OPEN_RITUAL_FLOW_KEY } from "@/lib/app-shell-nav";
 import { trackFirstChatOpened } from "@/lib/seo/metrika";
 import {
@@ -2793,6 +2794,11 @@ export default function HomePage({
               <section className="mb-12">
                 <OnboardingForm
                   initialName={authUser?.name ?? profile?.name}
+                  initialGender={
+                    authUser?.oauthGender === "male" || authUser?.oauthGender === "female"
+                      ? authUser.oauthGender
+                      : profile?.gender
+                  }
                   onComplete={handleOnboardingComplete}
                 />
               </section>
@@ -2813,8 +2819,8 @@ export default function HomePage({
                   tripletMasterId &&
                   (!tripletCooldown || tripletCooldown.allowed) ? (
                     <MasterSelect
-                      masters={masters}
-                      value={tripletMasterId}
+                      masters={masters.filter((m) => m.id === GUEST_TRIPLET_MASTER_ID)}
+                      value={tripletMasterId || GUEST_TRIPLET_MASTER_ID}
                       onChange={handleTripletMasterChange}
                       disabled={!canChangeTripletMaster}
                       className="ml-auto"

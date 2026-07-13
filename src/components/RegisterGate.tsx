@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   buildLoginHref,
   buildRegisterHref,
@@ -10,6 +10,9 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
+import { isAgeGateConfirmed } from "@/lib/age-gate";
+import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
+import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 
 interface RegisterGateProps {
   title?: string;
@@ -30,8 +33,11 @@ export default function RegisterGate({
     () => returnTo ?? readPostAuthReturnTo() ?? resolveRegistrationReturnTo({ guestSpread: true }),
     [returnTo]
   );
-  const registerHref = buildRegisterHref(destination);
+  const emailRegisterHref = buildRegisterHref(destination, "/", { method: "email" });
   const loginHref = buildLoginHref(destination);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [ageConfirmed, setAgeConfirmed] = useState(() => isAgeGateConfirmed());
+  const [marketingConsent, setMarketingConsent] = useState(false);
 
   return (
     <motion.section
@@ -58,13 +64,37 @@ export default function RegisterGate({
               {description}
             </p>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <div id="register-gate-oauth-consent" className="mb-6 rounded-xl border border-white/8 bg-black/20 p-4 text-left">
+              <OAuthConsentFields
+                acceptedTerms={acceptedTerms}
+                ageConfirmed={ageConfirmed}
+                marketingConsent={marketingConsent}
+                onAcceptedTermsChange={setAcceptedTerms}
+                onAgeConfirmedChange={setAgeConfirmed}
+                onMarketingConsentChange={setMarketingConsent}
+                termsId="register-gate-terms"
+                ageId="register-gate-age"
+              />
+            </div>
+
+            <SocialAuthButtons
+              mode="register"
+              returnTo={destination}
+              requireConsent
+              acceptedTerms={acceptedTerms}
+              ageConfirmed={ageConfirmed}
+              marketingConsent={marketingConsent}
+              consentScrollTargetId="register-gate-oauth-consent"
+              showEmailDivider={false}
+            />
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
               <Link
-                href={registerHref}
+                href={emailRegisterHref}
                 onClick={() => trackRegistrationCtaClick(source)}
-                className="btn-neon inline-flex items-center justify-center px-8 py-3.5 text-sm font-medium"
+                className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-8 py-3.5 text-sm text-gray-300 transition-all hover:border-aura-purple/40 hover:bg-white/[0.06] hover:text-white"
               >
-                Создать аккаунт
+                Регистрация по email
               </Link>
               <Link
                 href={loginHref}

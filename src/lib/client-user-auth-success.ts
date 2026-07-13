@@ -7,6 +7,7 @@ import {
   clearPendingMasterResume,
   hasGuestExplicitMasterResume,
   markNeedsServerProfile,
+  clearOnboardingUrlParams,
   PENDING_MASTER_KEY,
 } from "@/lib/home-flow-storage";
 import {
@@ -33,14 +34,16 @@ export type UserAuthSuccessOptions = {
   needsProfile: boolean;
   userName?: string;
   profile?: Record<string, unknown> | null;
+  oauthGender?: "male" | "female";
 };
 
 export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promise<string> {
   const returnTo = sanitizeReturnTo(opts.returnTo, "/");
-  const isRegisterFlow = opts.mode === "register" || opts.isNewUser;
+  const isRegisterFlow = opts.isNewUser;
   const guest = loadGuestTriplet();
   const guestMasterId = resolveGuestSpreadMasterId(guest?.masterId);
   const hasGuestCards = Boolean(guest?.tarotCards?.length);
+  const defaultGender = opts.oauthGender ?? "female";
 
   if (isRegisterFlow) {
     const regSource = resolveRegistrationSource("oauth");
@@ -73,7 +76,7 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
         "aura_profile",
         JSON.stringify({
           name: opts.userName?.trim() || "",
-          gender: "female",
+          gender: defaultGender,
           birthDate: "",
           zodiac: "",
           tarotCards: guest?.tarotCards ?? [],
@@ -126,6 +129,7 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
           })
         : destination
     );
+    clearOnboardingUrlParams();
     return onboardingRedirectUrl();
   }
 
@@ -133,7 +137,7 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
     return destination;
   }
 
-  if (opts.mode === "login" && !isRegisterFlow) {
+  if (!isRegisterFlow) {
     const meRes = await fetch("/api/auth/me", { credentials: "include" });
     const me = meRes.ok ? await meRes.json() : null;
     const needsProfile = Boolean(me?.needsProfile || !me?.user?.profileUserId);
@@ -144,7 +148,7 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
         "aura_profile",
         JSON.stringify({
           name: me?.user?.name ?? "",
-          gender: "female",
+          gender: defaultGender,
           birthDate: "",
           zodiac: "",
           tarotCards: [],

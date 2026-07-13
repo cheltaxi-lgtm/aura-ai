@@ -2,10 +2,10 @@ import type { CharacterVisualKey } from "@/lib/image-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import {
   findShowcaseMaster,
-  recommendShowcaseMaster,
   type ShowcaseMaster,
 } from "@/lib/showcase-masters";
-import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { DEFAULT_DECK_SYSTEM, resolveMasterDeckSystem } from "@/lib/decks";
+import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
@@ -64,18 +64,40 @@ export function mergeActiveProfile(
   return merged;
 }
 
+function isTripletTarotSystem(system: DeckSystem): boolean {
+  return system === "tarot-veronika" || system === "tarot-marina";
+}
+
+function resolveClassicTripletMasterId(masters: ShowcaseMaster[]): string {
+  return findShowcaseMaster(GUEST_TRIPLET_MASTER_ID, masters)?.id ?? GUEST_TRIPLET_MASTER_ID;
+}
+
+function normalizeTripletMasterId(
+  masterId: string | null | undefined,
+  masters: ShowcaseMaster[]
+): string | null {
+  if (!masterId) return null;
+  const master = findShowcaseMaster(masterId, masters);
+  if (!master) return null;
+  const system = master.system ?? resolveMasterDeckSystem(master.id);
+  if (!isTripletTarotSystem(system)) return null;
+  return resolveClassicTripletMasterId(masters);
+}
+
 export function resolveTripletChatMasterId(
   masters: ShowcaseMaster[],
   tripletSystem: DeckSystem,
   preferredId?: string | null
 ): string {
-  if (preferredId) {
-    const preferred = findShowcaseMaster(preferredId, masters);
-    if (preferred?.system === tripletSystem) return preferredId;
+  const classicMasterId = resolveClassicTripletMasterId(masters);
+  if (!isTripletTarotSystem(tripletSystem)) {
+    return classicMasterId;
   }
-  const bySystem = masters.find((m) => m.system === tripletSystem);
-  if (bySystem) return bySystem.id;
-  return preferredId ?? masters[0]?.id ?? "";
+
+  const normalizedPreferred = normalizeTripletMasterId(preferredId, masters);
+  if (normalizedPreferred) return normalizedPreferred;
+
+  return classicMasterId;
 }
 
 export function resolveDefaultTripletMasterId(
@@ -86,19 +108,12 @@ export function resolveDefaultTripletMasterId(
     tarotCards?: SpreadSymbol[];
   }
 ): string {
-  if (options.pending && findShowcaseMaster(options.pending, masters)) {
-    return options.pending;
-  }
-  if (options.recapMasterId && findShowcaseMaster(options.recapMasterId, masters)) {
-    return options.recapMasterId;
-  }
-  if (options.tarotCards?.length) {
-    const recommended = recommendShowcaseMaster(options.tarotCards, masters);
-    if (recommended && findShowcaseMaster(recommended, masters)) {
-      return recommended;
-    }
-  }
-  return masters[0]?.id ?? "";
+  void options.tarotCards;
+  const normalizedPending = normalizeTripletMasterId(options.pending, masters);
+  if (normalizedPending) return normalizedPending;
+  const normalizedRecap = normalizeTripletMasterId(options.recapMasterId, masters);
+  if (normalizedRecap) return normalizedRecap;
+  return resolveClassicTripletMasterId(masters);
 }
 
 export function mapProfileReadings(
@@ -208,12 +223,18 @@ export function mergeProfileWithServer(
 
   return {
     ...restored,
-    tarotCards: [],
-    deckSystem: undefined,
-    deckSpreads: undefined,
-    teaser: undefined,
-    tripletMasterId: undefined,
-    lastTripletDrawAt: astroAnchor,
+    birthDate: restored.birthDate || prev?.birthDate || "",
+    zodiac: restored.zodiac || prev?.zodiac || "",
+    birthTime: restored.birthTime ?? prev?.birthTime,
+    birthCity: restored.birthCity ?? prev?.birthCity,
+    tarotCards: prevHasSpread ? prev!.tarotCards! : [],
+    deckSystem: prevHasSpread ? prev!.deckSystem ?? restored.deckSystem : undefined,
+    deckSpreads: prevHasSpread ? prev!.deckSpreads ?? restored.deckSpreads : undefined,
+    teaser: prevHasSpread ? prev!.teaser ?? restored.teaser : undefined,
+    tripletMasterId: prevHasSpread
+      ? prev!.tripletMasterId ?? restored.tripletMasterId
+      : undefined,
+    lastTripletDrawAt: prev?.lastTripletDrawAt ?? astroAnchor,
   };
 }
 

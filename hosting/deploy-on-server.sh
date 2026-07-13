@@ -35,9 +35,8 @@ grep -q '^DATABASE_URL=' .env.local 2>/dev/null || echo 'DATABASE_URL=postgresql
 grep -q '^YANDEX_OAUTH_CLIENT_ID=' .env.local 2>/dev/null || echo 'YANDEX_OAUTH_CLIENT_ID=' >> .env.local
 grep -q '^YANDEX_OAUTH_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'YANDEX_OAUTH_CLIENT_SECRET=' >> .env.local
 grep -q '^VK_CLIENT_ID=' .env.local 2>/dev/null || echo 'VK_CLIENT_ID=' >> .env.local
-grep -q '^VK_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'VK_CLIENT_SECRET=' >> .env.local
-grep -q '^MAILRU_CLIENT_ID=' .env.local 2>/dev/null || echo 'MAILRU_CLIENT_ID=' >> .env.local
-grep -q '^MAILRU_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'MAILRU_CLIENT_SECRET=' >> .env.local
+grep -q '^VK_CLIENT_PROTECTED_KEY=' .env.local 2>/dev/null || echo 'VK_CLIENT_PROTECTED_KEY=' >> .env.local
+grep -q '^VK_SERVICE_TOKEN=' .env.local 2>/dev/null || echo 'VK_SERVICE_TOKEN=' >> .env.local
 
 npm ci --legacy-peer-deps
 set -a

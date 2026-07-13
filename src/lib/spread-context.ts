@@ -8,7 +8,17 @@ import {
 } from "@/lib/decks";
 import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
+import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import { MAX_SPREAD_CARD_COUNT } from "@/lib/spreads/registry";
+
+function normalizeTripletOwnerMasterId(masterId: string | null | undefined): string | null {
+  if (!masterId) return null;
+  const system = resolveMasterDeckSystem(masterId);
+  if (system === "tarot-veronika" || system === "tarot-marina") {
+    return GUEST_TRIPLET_MASTER_ID;
+  }
+  return null;
+}
 
 const ALL_DECK_SYSTEMS = Object.keys(DECK_REGISTRY) as DeckSystem[];
 
@@ -234,10 +244,10 @@ export function resolveTripletOwnerMasterId(
     const at = row.createdAt ?? "";
     if (!latest || at > latest.at) latest = { at, masterId };
   }
-  if (latest?.masterId) return latest.masterId;
+  if (latest?.masterId) return normalizeTripletOwnerMasterId(latest.masterId);
 
-  if (profile?.tripletMasterId) return profile.tripletMasterId;
-  if (fallbacks.tripletMasterId) return fallbacks.tripletMasterId;
+  if (profile?.tripletMasterId) return normalizeTripletOwnerMasterId(profile.tripletMasterId);
+  if (fallbacks.tripletMasterId) return normalizeTripletOwnerMasterId(fallbacks.tripletMasterId);
   return null;
 }
 

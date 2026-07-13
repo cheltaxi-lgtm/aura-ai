@@ -10,7 +10,17 @@ if [ -f "$TARBALL" ]; then
     RELEASES_BACKUP="$(mktemp -d)"
     cp -a /opt/aura-ai/public/releases/. "$RELEASES_BACKUP/"
   fi
-  tar -xzf "$TARBALL" -C /opt/aura-ai
+  STAGE="$(mktemp -d)"
+  tar -xzf "$TARBALL" -C "$STAGE"
+  rsync -a --delete --ignore-times \
+    --exclude='.env.local' \
+    --exclude='public/releases/' \
+    --exclude='.next/' \
+    --exclude='.next-candidate/' \
+    --exclude='.next-previous/' \
+    --exclude='node_modules/' \
+    "$STAGE/" /opt/aura-ai/
+  rm -rf "$STAGE"
   if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
     mkdir -p /opt/aura-ai/public/releases
     cp -a "$RELEASES_BACKUP/." /opt/aura-ai/public/releases/
@@ -82,12 +92,10 @@ grep -q '^YANDEX_OAUTH_CLIENT_SECRET=' "$ENV_FILE" \
   || echo 'YANDEX_OAUTH_CLIENT_SECRET=' >> "$ENV_FILE"
 grep -q '^VK_CLIENT_ID=' "$ENV_FILE" \
   || echo 'VK_CLIENT_ID=' >> "$ENV_FILE"
-grep -q '^VK_CLIENT_SECRET=' "$ENV_FILE" \
-  || echo 'VK_CLIENT_SECRET=' >> "$ENV_FILE"
-grep -q '^MAILRU_CLIENT_ID=' "$ENV_FILE" \
-  || echo 'MAILRU_CLIENT_ID=' >> "$ENV_FILE"
-grep -q '^MAILRU_CLIENT_SECRET=' "$ENV_FILE" \
-  || echo 'MAILRU_CLIENT_SECRET=' >> "$ENV_FILE"
+grep -q '^VK_CLIENT_PROTECTED_KEY=' "$ENV_FILE" \
+  || echo 'VK_CLIENT_PROTECTED_KEY=' >> "$ENV_FILE"
+grep -q '^VK_SERVICE_TOKEN=' "$ENV_FILE" \
+  || echo 'VK_SERVICE_TOKEN=' >> "$ENV_FILE"
 
 grep -q '^LLM_CONCURRENCY_MAX=' "$ENV_FILE" \
   && sed -i 's|^LLM_CONCURRENCY_MAX=.*|LLM_CONCURRENCY_MAX=25|' "$ENV_FILE" \

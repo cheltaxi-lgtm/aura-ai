@@ -1,6 +1,7 @@
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import { buildOnboardingPostBody } from "@/lib/onboarding-flow-helpers";
 import type { StoredProfile } from "@/types/stored-profile";
 
@@ -47,7 +48,7 @@ export async function syncGuestSpreadToServer(
   const cards = profile.tarotCards?.length ? profile.tarotCards : draft?.tarotCards;
   if (!cards || cards.length < 3 || !profile.birthDate?.trim()) return false;
 
-  const masterId = profile.tripletMasterId ?? draft?.masterId;
+  const masterId = GUEST_TRIPLET_MASTER_ID;
   const teaser = profile.teaser ?? draft?.teaser ?? "";
   const body = buildOnboardingPostBody(
     profile,
@@ -88,6 +89,6 @@ export function mergeGuestTripletIntoProfile<
     deckSystem: guest.deckSystem ?? DEFAULT_DECK_SYSTEM,
     teaser: guest.teaser,
     mainQuestion: guest.question || profile.mainQuestion,
-    tripletMasterId: guest.masterId || profile.tripletMasterId,
+    tripletMasterId: GUEST_TRIPLET_MASTER_ID,
   };
 }

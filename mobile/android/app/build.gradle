@@ -1,10 +1,13 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+def vkAndroidClientId = System.getenv("VK_ANDROID_CLIENT_ID") ?: ""
+def vkAndroidClientSecret = System.getenv("VK_ANDROID_CLIENT_SECRET") ?: ""
 
 android {
     namespace = "ru.zovus.app"
@@ -15,6 +18,12 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 15
         versionName "1.0.6"
+        manifestPlaceholders = [
+            VKIDClientID: vkAndroidClientId,
+            VKIDClientSecret: vkAndroidClientSecret,
+            VKIDRedirectHost: "vk.ru",
+            VKIDRedirectScheme: "vk${vkAndroidClientId}"
+        ]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -55,6 +64,7 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    implementation "com.vk.id:vkid:2.7.1"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

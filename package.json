@@ -32,10 +32,12 @@
     "mobile:icons": "node scripts/generate-android-icons.mjs",
     "mobile:cert-sha": "node scripts/print-android-cert-sha.mjs",
     "verify:module-a": "node scripts/verify-module-a.mjs",
-    "verify:app-shell": "node scripts/verify-app-shell.mjs"
+    "verify:app-shell": "node scripts/verify-app-shell.mjs",
+    "verify:oauth": "tsx scripts/verify-oauth-helpers.ts"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
     "@capacitor/camera": "^8.2.0",
     "@capacitor/core": "^8.4.1",
     "@capacitor/filesystem": "^8.1.2",

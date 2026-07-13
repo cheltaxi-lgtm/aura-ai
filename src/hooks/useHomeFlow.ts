@@ -20,12 +20,15 @@ import {
   PROFILE_KEY,
   NEEDS_PROFILE_KEY,
   clearNeedsServerProfile,
+  clearOnboardingUrlParams,
   clearPendingMasterResume,
   hasGuestExplicitMasterResume,
+  hasPendingServerProfile,
   markNeedsServerProfile,
   persistProfileData,
   persistStep,
   readStoredProfile,
+  resolveStoredFlowStep,
 } from "@/lib/home-flow-storage";
 import { APP_SHELL_QUERY, APP_SHELL_VALUE } from "@/lib/app-shell";
 import { isJointSpreadStartUrl } from "@/lib/joint-reading-nav";
@@ -244,6 +247,19 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       }
       const urlStep = params.get("step") as FlowStep | null;
       if (urlStep === "onboarding") {
+        const localProfile = readStoredProfile();
+        const localBirthComplete = Boolean(String(localProfile?.birthDate ?? "").trim());
+        if (localBirthComplete && !hasPendingServerProfile()) {
+          const nextStep = resolveStoredFlowStep(
+            localProfile,
+            localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null
+          );
+          clearOnboardingUrlParams();
+          setStepState(nextStep);
+          persistStep(nextStep);
+          finishBootstrap();
+          return;
+        }
         setStepState("onboarding");
         persistStep("onboarding");
         finishBootstrap();
@@ -252,6 +268,15 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     }
 
     if (!authUser?.profileUserId) {
+      const localProfile = readStoredProfile();
+      const localBirthComplete = Boolean(String(localProfile?.birthDate ?? "").trim());
+      if (localBirthComplete && !hasPendingServerProfile()) {
+        const nextStep = resolveStoredFlowStep(localProfile, localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null);
+        setStepState(nextStep);
+        persistStep(nextStep);
+        finishBootstrap();
+        return;
+      }
       markNeedsServerProfile();
       setStepState("onboarding");
       persistStep("onboarding");
@@ -272,8 +297,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     }
     const urlStep = params.get("step") as FlowStep | null;
     const savedStep = localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null;
-    const effectiveStep =
-      urlStep && urlStep !== "intro" ? urlStep : savedStep;
+    const rawEffectiveStep = urlStep && urlStep !== "intro" ? urlStep : savedStep;
     const savedMaster = localStorage.getItem(LAST_MASTER_KEY);
 
     if (!stored) {
@@ -304,6 +328,8 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         localStorage.setItem(PROFILE_KEY, JSON.stringify(parsed));
         setProfile(parsed);
       }
+
+      const effectiveStep = resolveStoredFlowStep(parsed, rawEffectiveStep);
 
       if (!String(parsed.birthDate ?? "").trim()) {
         setStepState("onboarding");

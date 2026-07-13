@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const FEATURED_SLUGS = [
   "lenormand-liniya",
-  "lenormand-свидание",
+  "lenormand-svidanie",
   "kak-proyti-sobesedovanie",
   "na-novoe-znakomstvo",
 ] as const;

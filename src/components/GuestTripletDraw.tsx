@@ -17,6 +17,7 @@ import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
   GUEST_SPREAD_SECTION_ID,
   GUEST_SPREAD_START_EVENT,
+  GUEST_TRIPLET_MASTER_ID,
   LANDING_QUESTION_KEY,
   type GuestSpreadStartDetail,
 } from "@/lib/landing-offer";
@@ -24,6 +25,8 @@ import {
   buildRegisterHref,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
+import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
+import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 import {
   trackGuestCardRevealed,
   trackGuestSpreadCompleted,
@@ -84,7 +87,7 @@ function readGuestSpreadDraft(): GuestSpreadDraft | null {
 }
 
 export default function GuestTripletDraw({ className = "" }: GuestTripletDrawProps) {
-  const [masterId, setMasterId] = useState("veronika");
+  const masterId = GUEST_TRIPLET_MASTER_ID;
   const system = resolveMasterDeckSystem(masterId);
   const positions = getDeckPositions(system);
   const tableSize = resolveTableSize(system, true);
@@ -97,8 +100,20 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
   const [ageGateError, setAgeGateError] = useState("");
   const [landingQuestion, setLandingQuestion] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
-  const [explicitMasterPick, setExplicitMasterPick] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [oauthAgeConfirmed, setOauthAgeConfirmed] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
+
+  const oauthReturnTo = useMemo(
+    () =>
+      resolveRegistrationReturnTo({
+        guestSpread: true,
+        guestMasterId: masterId,
+        guestQuestion: landingQuestion || undefined,
+      }),
+    [masterId, landingQuestion]
+  );
 
   const ritualCopy = useMemo(
     () => getSpreadRitualCopy(masterId, { hasBirthDate: false, cardCount: CARD_COUNT }),
@@ -115,16 +130,18 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     const stored = sessionStorage.getItem(LANDING_QUESTION_KEY);
     if (stored) setLandingQuestion(stored);
     setAgeConfirmed(isAgeGateConfirmed());
+    setOauthAgeConfirmed(isAgeGateConfirmed());
 
     const draft = readGuestSpreadDraft();
-    if (draft) {
-      setMasterId(draft.masterId);
+    if (draft && draft.masterId === GUEST_TRIPLET_MASTER_ID) {
       setStep(draft.step);
       setSessionSeed(draft.sessionSeed);
       setPickedIndices(draft.pickedIndices);
       setDeck(draft.deck);
       setRevealed(draft.revealed);
       setLandingQuestion(draft.landingQuestion);
+    } else if (draft) {
+      sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     }
     setDraftRestored(true);
   }, [draftRestored]);
@@ -173,9 +190,6 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     const onStart = (event: Event) => {
       const detail = (event as CustomEvent<GuestSpreadStartDetail>).detail;
       const nextQuestion = detail?.question?.trim();
-      const nextMasterId = detail?.masterId || "veronika";
-      setMasterId(nextMasterId);
-      setExplicitMasterPick(Boolean(detail?.masterId));
       resetSpreadState();
       setAgeGateError("");
       if (nextQuestion) {
@@ -184,7 +198,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       }
       const seed = buildGuestSpreadSeed({
         guestId: getGuestId(),
-        masterId: nextMasterId,
+        masterId: GUEST_TRIPLET_MASTER_ID,
         spreadId: "triplet",
         topic: "guest_preview",
       });
@@ -281,7 +295,9 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
           guestSpread: true,
           guestMasterId: masterId,
           guestQuestion: landingQuestion || undefined,
-        })
+        }),
+        "/",
+        { method: "email" }
       )
     );
   }, [masterId, landingQuestion]);
@@ -333,13 +349,11 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     return (
       <div className={`mx-auto max-w-md px-4 ${className}`.trim()}>
         <div className="glass-panel space-y-5 p-8 text-center">
-          <p className="lux-label">Бесплатный расклад · 3 карты</p>
-          {explicitMasterPick && pickedMasterName ? (
-            <p className="text-sm text-aura-champagne/85">
-              Мастер {pickedMasterName} проведёт ваш бесплатный расклад — откройте три карты, затем зарегистрируйтесь
-              для полной расшифровки.
-            </p>
-          ) : null}
+          <p className="lux-label">Бесплатный расклад · 3 карты · классическое Таро</p>
+          <p className="text-sm text-aura-champagne/85">
+            Мастер {pickedMasterName ?? "Вероника"} проведёт ваш бесплатный расклад — откройте три карты,
+            затем зарегистрируйтесь для полной расшифровки.
+          </p>
           {landingQuestion ? (
             <p className="text-sm text-aura-champagne/80">Ваш вопрос: «{landingQuestion}»</p>
           ) : null}
@@ -408,13 +422,39 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
           Зарегистрируйтесь — мастер даст полную связную расшифровку, и вы сможете задать первые вопросы
           бесплатно.
         </p>
+
+        <div id="guest-oauth-consent" className="rounded-xl border border-white/8 bg-black/20 p-4">
+          <OAuthConsentFields
+            acceptedTerms={acceptedTerms}
+            ageConfirmed={oauthAgeConfirmed}
+            marketingConsent={marketingConsent}
+            onAcceptedTermsChange={setAcceptedTerms}
+            onAgeConfirmedChange={setOauthAgeConfirmed}
+            onMarketingConsentChange={setMarketingConsent}
+            termsId="guest-oauth-terms"
+            ageId="guest-oauth-age"
+          />
+        </div>
+
+        <SocialAuthButtons
+          mode="register"
+          returnTo={oauthReturnTo}
+          requireConsent
+          acceptedTerms={acceptedTerms}
+          ageConfirmed={oauthAgeConfirmed}
+          marketingConsent={marketingConsent}
+          consentScrollTargetId="guest-oauth-consent"
+          showEmailDivider
+          emailDividerLabel="или email"
+        />
+
         <div className="flex flex-col gap-3">
           <button
             type="button"
             onClick={goToRegistration}
-            className="btn-luxe btn-luxe--md btn-luxe--gold inline-block px-10 py-3.5 text-center"
+            className="btn-luxe btn-luxe--md btn-luxe--ghost inline-block px-10 py-3.5 text-center"
           >
-            Получить полную расшифровку
+            Регистрация по email
           </button>
           {sharePayload ? (
             <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />

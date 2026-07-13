@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { isOAuthProviderEnabled } from "@/lib/oauth/config";
-import { createCodeChallenge, createCodeVerifier, createOAuthState } from "@/lib/oauth/pkce";
+import { isOAuthProviderEnabled, getOAuthRedirectUri, resolveOAuthOrigin, oauthAbsoluteUrl } from "@/lib/oauth/config";
+import { createCodeChallenge, createCodeVerifier } from "@/lib/oauth/pkce";
 import { buildProviderAuthorizeUrl } from "@/lib/oauth/providers";
-import { setOAuthPendingState } from "@/lib/oauth/state-cookie";
+import { createOAuthTransaction } from "@/lib/oauth/storage";
+import {
+  checkOAuthRequestRateLimit,
+  OAUTH_NO_STORE_HEADERS,
+} from "@/lib/oauth/request-security";
 import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 
@@ -15,6 +19,13 @@ function parseBool(value: string | null): boolean {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const rate = await checkOAuthRequestRateLimit(request, "start", 20);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: { ...OAUTH_NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterSec ?? 60) } }
+      );
+    }
     if (!(await ensureDb())) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
     }
@@ -27,40 +38,40 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const url = request.nextUrl;
     const mode = (url.searchParams.get("mode") === "login" ? "login" : "register") as OAuthMode;
-    const returnTo = sanitizeReturnTo(url.searchParams.get("returnTo"), "/");
-    const sessionId = url.searchParams.get("sessionId")?.trim() || undefined;
+    let returnTo = sanitizeReturnTo(url.searchParams.get("returnTo"), "/");
+    const appFlow = parseBool(url.searchParams.get("app"));
+    if (appFlow && !returnTo.includes("app=1")) {
+      const dest = new URL(returnTo, "https://zovus.ru");
+      dest.searchParams.set("app", "1");
+      returnTo = `${dest.pathname}${dest.search}${dest.hash}`;
+    }
+    const sessionId = url.searchParams.get("sessionId")?.trim() || null;
     const acceptedTerms = parseBool(url.searchParams.get("acceptedTerms"));
     const ageConfirmed = parseBool(url.searchParams.get("ageConfirmed"));
     const marketingConsent = parseBool(url.searchParams.get("marketingConsent"));
 
-    if (mode === "register" && (!acceptedTerms || !ageConfirmed)) {
-      const redirect = `/auth/user/register?oauthError=consent_required&returnTo=${encodeURIComponent(returnTo)}`;
-      return NextResponse.redirect(new URL(redirect, request.url));
-    }
-
     const codeVerifier = createCodeVerifier();
     const codeChallenge = createCodeChallenge(codeVerifier);
-    const nonce = createOAuthState();
+    const redirectUri = getOAuthRedirectUri(provider, resolveOAuthOrigin(request));
 
-    await setOAuthPendingState(
-      {
-        provider,
-        codeVerifier,
-        returnTo,
-        sessionId,
-        acceptedTerms,
-        ageConfirmed,
-        marketingConsent,
-        mode,
-        nonce,
-      },
-      request
-    );
+    const pending = {
+      provider,
+      codeVerifier,
+      redirectUri,
+      returnTo,
+      sessionId,
+      acceptedTerms,
+      ageConfirmed,
+      marketingConsent,
+      mode,
+      appFlow,
+    };
 
-    const authorizeUrl = buildProviderAuthorizeUrl(provider, nonce, codeChallenge);
-    return NextResponse.redirect(authorizeUrl);
+    const state = await createOAuthTransaction(pending);
+    const authorizeUrl = buildProviderAuthorizeUrl(provider, state, codeChallenge, redirectUri);
+    return NextResponse.redirect(authorizeUrl, { headers: OAUTH_NO_STORE_HEADERS });
   } catch (error) {
     console.error("OAuth start error:", error);
-    return NextResponse.redirect(new URL("/auth/user/login?oauthError=start_failed", request.url));
+    return NextResponse.redirect(oauthAbsoluteUrl(request, "/auth/user/login?oauthError=start_failed"));
   }
 }

@@ -104,11 +104,28 @@ export default function AppShellBridge() {
           })();
         });
 
+        let lastHandledUrl = "";
+        const handleDeepLink = async (url: string | undefined) => {
+          if (!url || url === lastHandledUrl) return;
+          const target = resolveAppShellDeepLink(url);
+          if (!target) return;
+          lastHandledUrl = url;
+          if (target.includes("/auth/oauth/complete")) {
+            try {
+              const { Browser } = await import("@capacitor/browser");
+              await Browser.close();
+            } catch {
+              /* browser may already be closed */
+            }
+          }
+          window.location.replace(target);
+        };
+
         urlListener = await app.App.addListener("appUrlOpen", (event) => {
-          if (!event.url) return;
-          const target = resolveAppShellDeepLink(event.url);
-          if (target) window.location.assign(target);
+          void handleDeepLink(event.url);
         });
+        const launch = await app.App.getLaunchUrl();
+        if (!cancelled) await handleDeepLink(launch?.url);
 
         try {
           const { NativeBiometric } = await import("@capgo/capacitor-native-biometric");

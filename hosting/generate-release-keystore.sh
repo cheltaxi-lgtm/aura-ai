@@ -23,8 +23,15 @@ upsert_env() {
 }
 
 if [ -f "${KEYSTORE}" ]; then
-  echo ">>> Release keystore already exists: ${KEYSTORE}"
-  exit 0
+  if grep -q '^ANDROID_KEYSTORE_PASSWORD=.' "${ENV_FILE}" \
+    && grep -q '^ANDROID_KEY_PASSWORD=.' "${ENV_FILE}" \
+    && grep -q '^ANDROID_KEY_ALIAS=.' "${ENV_FILE}"; then
+    echo ">>> Release keystore and credentials already exist: ${KEYSTORE}"
+    exit 0
+  fi
+  echo "ERROR: Release keystore exists but its credentials are missing from ${ENV_FILE}."
+  echo "Restore the credentials or archive the unusable keystore before provisioning a new key."
+  exit 1
 fi
 
 if ! command -v keytool >/dev/null 2>&1; then

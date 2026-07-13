@@ -1,90 +1,148 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { isOAuthProviderEnabled } from "@/lib/oauth/config";
+import { isOAuthProviderEnabled, oauthAbsoluteUrl } from "@/lib/oauth/config";
 import { finishOAuthLogin, oauthErrorRedirect } from "@/lib/oauth/finish";
+import { createOAuthHandoff } from "@/lib/oauth/handoff";
 import { exchangeProviderCode } from "@/lib/oauth/providers";
-import { clearOAuthPendingState, readOAuthPendingState } from "@/lib/oauth/state-cookie";
+import {
+  consumeOAuthTransaction,
+  createPendingOAuthRegistration,
+} from "@/lib/oauth/storage";
+import { parseOAuthCallbackParams } from "@/lib/oauth/callback-params";
 import type { OAuthProvider } from "@/lib/oauth/types";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
+import {
+  checkOAuthRequestRateLimit,
+  OAUTH_NO_STORE_HEADERS,
+} from "@/lib/oauth/request-security";
+import { buildAppOAuthCompleteUrl } from "@/lib/oauth/app-return";
 
 type RouteParams = { params: Promise<{ provider: string }> };
+
+function redirectNoStore(url: string | URL) {
+  return NextResponse.redirect(url, { headers: OAUTH_NO_STORE_HEADERS });
+}
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const fallbackReturn = "/";
   let mode: "login" | "register" = "login";
+  let returnTo = fallbackReturn;
 
   try {
+    const rate = await checkOAuthRequestRateLimit(request, "callback", 40);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "rate_limited" },
+        {
+          status: 429,
+          headers: {
+            ...OAUTH_NO_STORE_HEADERS,
+            "Retry-After": String(rate.retryAfterSec ?? 60),
+          },
+        }
+      );
+    }
     if (!(await ensureDb())) {
-      return NextResponse.redirect(
-        new URL(oauthErrorRedirect("db_unavailable", mode, fallbackReturn), request.url)
+      return redirectNoStore(
+        oauthAbsoluteUrl(request, oauthErrorRedirect("db_unavailable", mode, fallbackReturn))
       );
     }
 
     const { provider: rawProvider } = await params;
     if (!isOAuthProviderEnabled(rawProvider)) {
-      return NextResponse.redirect(
-        new URL(oauthErrorRedirect("provider_unavailable", mode, fallbackReturn), request.url)
+      return redirectNoStore(
+        oauthAbsoluteUrl(request, oauthErrorRedirect("provider_unavailable", mode, fallbackReturn))
       );
     }
     const provider = rawProvider as OAuthProvider;
 
     const url = request.nextUrl;
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const providerError = url.searchParams.get("error");
+    const callbackParams = parseOAuthCallbackParams(provider, url);
+    const code = callbackParams.code;
+    const state = callbackParams.state;
+    const providerError = callbackParams.error;
 
-    const pending = await readOAuthPendingState();
+    const pending = state ? await consumeOAuthTransaction(state) : null;
     mode = pending?.mode ?? "login";
-    const returnTo = sanitizeReturnTo(pending?.returnTo, fallbackReturn);
+    returnTo = sanitizeReturnTo(pending?.returnTo, fallbackReturn);
 
     if (providerError || !code || !state) {
-      await clearOAuthPendingState();
-      return NextResponse.redirect(
-        new URL(oauthErrorRedirect("provider_denied", mode, returnTo), request.url)
+      return redirectNoStore(
+        oauthAbsoluteUrl(request, oauthErrorRedirect("provider_denied", mode, returnTo))
       );
     }
 
-    if (!pending || pending.provider !== provider || pending.nonce !== state) {
-      await clearOAuthPendingState();
-      return NextResponse.redirect(
-        new URL(oauthErrorRedirect("state_mismatch", mode, returnTo), request.url)
+    if (!pending || pending.provider !== provider) {
+      return redirectNoStore(
+        oauthAbsoluteUrl(request, oauthErrorRedirect("state_mismatch", mode, returnTo))
       );
     }
 
-    const info = await exchangeProviderCode(provider, code, pending.codeVerifier);
-    const result = await finishOAuthLogin({
+    const deviceId = callbackParams.deviceId?.trim() || undefined;
+    if (provider === "vk" && !deviceId) {
+      return redirectNoStore(
+        oauthAbsoluteUrl(request, oauthErrorRedirect("vk_device_id_required", mode, returnTo))
+      );
+    }
+    const info = await exchangeProviderCode(
       provider,
-      info,
-      pending,
-      request,
-    });
-
-    await clearOAuthPendingState();
+      code,
+      pending.codeVerifier,
+      pending.redirectUri,
+      { deviceId, state: state ?? undefined }
+    );
+    let result;
+    try {
+      result = await finishOAuthLogin({
+        provider,
+        info,
+        pending,
+        request,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "CONSENT_REQUIRED") {
+        const registration = await createPendingOAuthRegistration({
+          provider,
+          info,
+          returnTo,
+          sessionId: pending.sessionId,
+          appFlow: pending.appFlow,
+        });
+        const completePath = `/auth/oauth/complete?registration=${encodeURIComponent(registration)}`;
+        return redirectNoStore(
+          pending.appFlow
+            ? buildAppOAuthCompleteUrl(completePath)
+            : oauthAbsoluteUrl(request, completePath)
+        );
+      }
+      throw error;
+    }
 
     const completeParams = new URLSearchParams({
       returnTo,
-      mode: pending.mode,
+      mode,
       new: result.isNewUser ? "1" : "0",
       needsProfile: result.needsProfile ? "1" : "0",
     });
-    if (result.profile) {
-      completeParams.set("hasProfile", "1");
+    if (result.profile) completeParams.set("hasProfile", "1");
+    if (pending.appFlow) {
+      const handoff = await createOAuthHandoff(result.account.id);
+      completeParams.set("handoff", handoff);
     }
 
-    return NextResponse.redirect(
-      new URL(`/auth/oauth/complete?${completeParams.toString()}`, request.url)
+    const completePath = `/auth/oauth/complete?${completeParams.toString()}`;
+    return redirectNoStore(
+      pending.appFlow
+        ? buildAppOAuthCompleteUrl(completePath)
+        : oauthAbsoluteUrl(request, completePath)
     );
   } catch (error) {
-    await clearOAuthPendingState();
     const message = error instanceof Error ? error.message : "oauth_failed";
-    console.error("OAuth callback error:", error);
+    console.error("OAuth callback failed:", message);
 
     let code = "oauth_failed";
-    if (message === "CONSENT_REQUIRED") code = "consent_required";
-    if (message === "EMAIL_ACCOUNT_EXISTS") code = "email_exists";
+    if (message === "vk_device_id_required") code = "vk_device_id_required";
 
-    return NextResponse.redirect(
-      new URL(oauthErrorRedirect(code, mode, fallbackReturn), request.url)
-    );
+    return redirectNoStore(oauthAbsoluteUrl(request, oauthErrorRedirect(code, mode, returnTo)));
   }
 }

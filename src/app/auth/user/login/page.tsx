@@ -9,7 +9,7 @@ export default function UserLoginPage() {
       </Link>
       <h1 className="font-display mb-2 text-center text-3xl text-white">Вход</h1>
       <p className="mb-8 text-center text-sm text-aura-ivory/45">
-        VK, Yandex, Mail.ru или email — личный кабинет Искателя
+        VK, Яндекс или email — личный кабинет Искателя
       </p>
       <AuthForm mode="login" role="user" />
     </div>

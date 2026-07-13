@@ -24,10 +24,15 @@ export interface OnboardingData {
 
 interface OnboardingFormProps {
   initialName?: string;
+  initialGender?: "male" | "female";
   onComplete: (data: OnboardingData) => Promise<void>;
 }
 
-export default function OnboardingForm({ initialName = "", onComplete }: OnboardingFormProps) {
+export default function OnboardingForm({
+  initialName = "",
+  initialGender = "female",
+  onComplete,
+}: OnboardingFormProps) {
   const accountName = initialName.trim();
   const nameLocked = accountName.length >= MIN_DISPLAY_NAME_LENGTH;
   const [name, setName] = useState(accountName);
@@ -35,7 +40,7 @@ export default function OnboardingForm({ initialName = "", onComplete }: Onboard
   const [submitting, setSubmitting] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [astro, setAstro] = useState<ProfileAstroValues>({
-    gender: "female",
+    gender: initialGender,
     birthDate: "",
     birthTime: "",
     birthCity: "",

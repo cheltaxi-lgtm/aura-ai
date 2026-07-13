@@ -89,7 +89,7 @@ try {
   if ($oauth.providers.Count -gt 0) {
     Write-Host ($oauth.providers -join ", ")
   } else {
-    Write-Host "(none — fill YANDEX_OAUTH / VK / MAILRU keys in /opt/aura-ai/.env.local)"
+    Write-Host "(none - fill YANDEX_OAUTH / VK keys in /opt/aura-ai/.env.local)"
   }
 } catch {
   Write-Host "WARN: oauth endpoint not ready"

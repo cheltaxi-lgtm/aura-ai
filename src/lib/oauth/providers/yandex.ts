@@ -1,4 +1,4 @@
-import { getOAuthRedirectUri, requireOAuthProviderConfig } from "../config";
+import { requireOAuthProviderConfig } from "../config";
 import type { OAuthUserInfo } from "../types";
 
 interface YandexTokenResponse {
@@ -18,24 +18,31 @@ interface YandexUserInfo {
   display_name?: string;
   first_name?: string;
   last_name?: string;
+  sex?: "male" | "female" | null;
 }
 
-export function buildYandexAuthorizeUrl(state: string, codeChallenge: string): string {
+export function buildYandexAuthorizeUrl(
+  state: string,
+  codeChallenge: string,
+  redirectUri: string
+): string {
   const { clientId } = requireOAuthProviderConfig("yandex");
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    redirect_uri: getOAuthRedirectUri("yandex"),
+    redirect_uri: redirectUri,
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
+    scope: "login:info login:email",
   });
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
 }
 
 export async function exchangeYandexCode(
   code: string,
-  codeVerifier: string
+  codeVerifier: string,
+  redirectUri: string
 ): Promise<OAuthUserInfo> {
   const { clientId, clientSecret } = requireOAuthProviderConfig("yandex");
   const body = new URLSearchParams({
@@ -43,7 +50,7 @@ export async function exchangeYandexCode(
     code,
     client_id: clientId,
     client_secret: clientSecret,
-    redirect_uri: getOAuthRedirectUri("yandex"),
+    redirect_uri: redirectUri,
     code_verifier: codeVerifier,
   });
 
@@ -51,6 +58,7 @@ export async function exchangeYandexCode(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
+    signal: AbortSignal.timeout(10_000),
   });
   const tokenData = (await tokenRes.json()) as YandexTokenResponse;
   if (!tokenRes.ok || !tokenData.access_token) {
@@ -59,6 +67,7 @@ export async function exchangeYandexCode(
 
   const userRes = await fetch("https://login.yandex.ru/info?format=json", {
     headers: { Authorization: `OAuth ${tokenData.access_token}` },
+    signal: AbortSignal.timeout(10_000),
   });
   const user = (await userRes.json()) as YandexUserInfo;
   if (!userRes.ok || !user.id) {
@@ -73,10 +82,13 @@ export async function exchangeYandexCode(
     user.login?.trim() ||
     "Искатель";
 
+  const gender = user.sex === "male" || user.sex === "female" ? user.sex : undefined;
+
   return {
     providerUserId: String(user.id),
     email: email?.trim().toLowerCase() ?? null,
     name,
     emailVerified: Boolean(email),
+    gender,
   };
 }
