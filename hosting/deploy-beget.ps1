@@ -73,10 +73,29 @@ Copy-Remote $Tarball "/tmp/aura-ai-deploy.tgz"
 Write-Host ">>> Deploy on server (vm_local_deploy.sh)..."
 $DeployCmd = @'
 set -e
-mkdir -p /opt/aura-ai/proxmox-setup
+mkdir -p /opt/aura-ai/proxmox-setup /opt/aura-ai/logs
 STAGE="$(mktemp -d)"
 tar -xzf /tmp/aura-ai-deploy.tgz -C "$STAGE"
 cp "$STAGE/proxmox-setup/vm_local_deploy.sh" /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
+RELEASES_BACKUP=""
+if [ -d "/opt/aura-ai/public/releases" ]; then
+  RELEASES_BACKUP="$(mktemp -d)"
+  cp -a /opt/aura-ai/public/releases/. "$RELEASES_BACKUP/"
+fi
+echo ">>> Bootstrap rsync from tarball..."
+rsync -a --delete --ignore-times \
+  --exclude='.env.local' \
+  --exclude='public/releases/' \
+  --exclude='.next/' \
+  --exclude='.next-candidate/' \
+  --exclude='.next-previous/' \
+  --exclude='node_modules/' \
+  "$STAGE/" /opt/aura-ai/
+if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
+  mkdir -p /opt/aura-ai/public/releases
+  cp -a "$RELEASES_BACKUP/." /opt/aura-ai/public/releases/
+  rm -rf "$RELEASES_BACKUP"
+fi
 rm -rf "$STAGE"
 sed -i 's/\r$//' /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
 chmod +x /opt/aura-ai/proxmox-setup/vm_local_deploy.sh

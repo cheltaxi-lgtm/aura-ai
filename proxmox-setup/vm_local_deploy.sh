@@ -34,6 +34,7 @@ if [ -f "$TARBALL" ]; then
     --exclude='.next-previous/' \
     --exclude='node_modules/' \
     "$STAGE/" /opt/aura-ai/
+  echo ">>> Rsync complete ($(test -f /opt/aura-ai/deploy-sha.txt && tr -d '\r\n' < /opt/aura-ai/deploy-sha.txt || echo no-sha))"
   rm -rf "$STAGE"
   if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
     mkdir -p /opt/aura-ai/public/releases
