@@ -445,7 +445,6 @@ export default function PhotoReadingFlow({
         }
       })
       .catch(() => undefined);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isLoggedIn]);
 
   useEffect(() => {
