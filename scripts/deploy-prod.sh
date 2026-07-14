@@ -45,7 +45,10 @@ grep -q '^TRUST_PROXY=' "$APP_DIR/.env.local" \
 
 cd "$APP_DIR"
 npm ci
+[ -f data/geonames/cities.min.json ] || npm run build:geonames
+npm run migrate
 npm run build
+sudo -u ubuntu bash proxmox-setup/install-crons.sh
 sudo systemctl restart aura-ai
 systemctl is-active aura-ai
 REMOTE

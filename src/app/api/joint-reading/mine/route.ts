@@ -4,6 +4,7 @@ import { requireProfileUserId } from "@/lib/require-auth";
 import { buildJointReadingUrl, listJointReadingsForUser } from "@/lib/joint-reading-service";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { stripMarkdownText } from "@/lib/cabinet-utils";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 
 export async function GET() {
   if (!(await ensureDb())) {
@@ -14,6 +15,11 @@ export async function GET() {
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const rateLimited = await enforcePaidRouteRateLimit(
+    authed.profileUserId,
+    "joint_reading_mine"
+  );
+  if (rateLimited) return rateLimited;
 
   const rows = await listJointReadingsForUser(authed.profileUserId);
 
@@ -22,7 +28,7 @@ export async function GET() {
       const isInitiator = row.initiator_user_id === authed.profileUserId;
       const ownReading = isInitiator ? row.initiator_reading : row.partner_reading;
       const combined = row.combined_reading?.trim() || null;
-      const previewSource = combined || ownReading || row.initiator_reading || row.partner_reading;
+      const previewSource = combined || ownReading;
       const preview = previewSource
         ? stripMarkdownText(previewSource).replace(/\s+/g, " ").trim().slice(0, 320)
         : null;

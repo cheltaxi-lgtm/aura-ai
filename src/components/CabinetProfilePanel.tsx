@@ -29,12 +29,14 @@ interface CabinetProfilePanelProps {
   accountName: string;
   profile: CabinetProfile | null;
   onSaved: (profile: CabinetProfile) => void;
+  enableNatalFields?: boolean;
 }
 
 const EMPTY_ASTRO: ProfileAstroValues = {
   gender: "female",
   birthDate: "",
   birthTime: "",
+  birthTimeUnknown: false,
   birthCity: "",
   lifeFocus: "general",
   mainQuestion: "",
@@ -50,6 +52,7 @@ function profileToForm(profile: CabinetProfile | null, fallbackName: string): {
       gender: profile?.gender ?? "female",
       birthDate: profile?.birthDate ?? "",
       birthTime: profile?.birthTime ?? "",
+      birthTimeUnknown: Boolean(profile?.birthDate && !profile?.birthTime),
       birthCity: profile?.birthCity ?? "",
       lifeFocus: (profile?.lifeFocus ?? "general") as LifeFocus,
       mainQuestion: profile?.mainQuestion ?? "",
@@ -71,6 +74,7 @@ export default function CabinetProfilePanel({
   accountName,
   profile,
   onSaved,
+  enableNatalFields = false,
 }: CabinetProfilePanelProps) {
   const [editing, setEditing] = useState(!profile?.birthDate);
   const [name, setName] = useState(profile?.name ?? accountName);
@@ -211,6 +215,7 @@ export default function CabinetProfilePanel({
           <ProfileAstroFields
             values={astro}
             onChange={(patch) => setAstro((prev) => ({ ...prev, ...patch }))}
+            enableCitySearch={enableNatalFields}
           />
 
           {error && <p className="mt-4 text-sm text-red-400">{error}</p>}

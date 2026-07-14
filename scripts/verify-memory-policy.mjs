@@ -243,8 +243,8 @@ assert(
 
 const deployYml = read(".github/workflows/deploy.yml");
 assert(
-  "deploy.yml triggers on master",
-  deployYml.includes("- master")
+  "deploy.yml is manual preview-only",
+  deployYml.includes("workflow_dispatch") && !deployYml.includes("- master")
 );
 
 const gitignore = read(".gitignore");

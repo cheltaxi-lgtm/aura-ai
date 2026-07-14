@@ -102,6 +102,14 @@ export interface JointReadingPlatformSettings {
   enabled: boolean;
 }
 
+export type NatalEphemerisBackend = "celestine" | "natalengine";
+
+export interface NatalChartPlatformSettings {
+  enabled: boolean;
+  /** Western ephemeris backend (default: Celestine MIT). */
+  ephemeris?: NatalEphemerisBackend;
+}
+
 /** Admin-stored OpenRouter management key (activity / per-model stats). */
 export interface OpenRouterPlatformSettings {
   managementKey: string;
@@ -198,6 +206,10 @@ const DEFAULTS = {
   jointReading: {
     enabled: true,
   },
+  natalChart: {
+    enabled: false,
+    ephemeris: "celestine",
+  },
   openrouter: {
     managementKey: "",
   },
@@ -253,7 +265,7 @@ export async function setSetting<K extends keyof typeof DEFAULTS>(
 }
 
 export async function getAllSettings() {
-  const [ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading] =
+  const [ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading, natalChart] =
     await Promise.all([
       getSetting("ai"),
       getSetting("pricing"),
@@ -265,13 +277,19 @@ export async function getAllSettings() {
       getSetting("share"),
       getSetting("rituals"),
       getSetting("jointReading"),
+      getSetting("natalChart"),
     ]);
-  return { ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading };
+  return { ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading, natalChart };
 }
 
 export async function isJointReadingEnabled(): Promise<boolean> {
   const settings = await getSetting("jointReading");
   return settings.enabled !== false;
+}
+
+export async function isNatalChartEnabled(): Promise<boolean> {
+  const settings = await getSetting("natalChart");
+  return settings.enabled === true;
 }
 
 export async function isExpertRegistrationEnabled(): Promise<boolean> {

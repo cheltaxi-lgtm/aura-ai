@@ -25,6 +25,7 @@ const FALLBACK: RuneConfig = {
     DAILY_AMULET: 5,
     DAILY_EXTENDED: 10,
     FINAL_REPORT: 30,
+    NATAL_READING: 20,
   },
   labels: {
     QUESTION: "Вопрос мастеру",
@@ -36,6 +37,7 @@ const FALLBACK: RuneConfig = {
     DAILY_AMULET: "Амулет дня",
     DAILY_EXTENDED: "Расширенный день",
     FINAL_REPORT: "Арт-отчёт сеанса",
+    NATAL_READING: "Полная натальная трактовка",
   },
 };
 

@@ -197,6 +197,7 @@ export function buildCharacterPrompt(
     lastUserMessage?: string;
     customQuestion?: string | null;
     numerologyBlock?: string;
+    natalChartBlock?: string;
   }
 ): string {
   const { character, user } = fromLegacyContext(characterId, ctx, extras);
@@ -207,6 +208,7 @@ export function buildCharacterPrompt(
     lastUserMessage: extras?.lastUserMessage ?? ctx.mainQuestion,
     customQuestion: extras?.customQuestion ?? null,
     numerologyBlock: extras?.numerologyBlock,
+    natalChartBlock: extras?.natalChartBlock,
   });
 }
 
@@ -219,6 +221,7 @@ export function buildChatPrompt(
     lastUserMessage?: string;
     intention?: string | null;
     numerologyBlock?: string;
+    natalChartBlock?: string;
   }
 ): string {
   const { character, user, lastUserMessage } = fromLegacyContext(characterId, ctx, extras);
@@ -227,6 +230,7 @@ export function buildChatPrompt(
     lastUserMessage: extras?.lastUserMessage ?? lastUserMessage,
     intention: extras?.intention,
     numerologyBlock: extras?.numerologyBlock,
+    natalChartBlock: extras?.natalChartBlock,
   });
 }
 

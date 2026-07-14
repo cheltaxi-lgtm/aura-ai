@@ -16,6 +16,7 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { PRICING } from "@/lib/config/pricing";
+import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
 import { generateNumerologSessionReading } from "@/lib/services/numerology-service";
 import { resolveSessionForUser } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -360,6 +361,11 @@ export async function POST(request: NextRequest) {
       (intention || null) as SessionTopicId | null
     ).map((p) => p.label);
 
+    const natalChartBlock = await buildNatalPromptContext({
+      profileUserId: authed.profileUserId,
+      characterId,
+    });
+
     let systemPrompt = buildCharacterPrompt(characterId, ctx, {
       sessionNumber,
       // Past-session memory is rendered once, below, via buildMemoryContext()
@@ -369,6 +375,7 @@ export async function POST(request: NextRequest) {
       memory: [],
       intention: intention || null,
       spreadId,
+      natalChartBlock,
     });
 
     if (!isAiMasterId(characterId) && (await ensureDb())) {

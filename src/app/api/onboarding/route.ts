@@ -18,6 +18,8 @@ import type { AstroMeta } from "@/lib/astro-profile";
 import { astroMetaFromBirthDate } from "@/lib/registration-consent";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { tarotCardsKey } from "@/lib/tarot";
+import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
+import { isNatalChartEnabled } from "@/lib/settings";
 
 function normalizeOptionalText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -156,6 +158,10 @@ export async function POST(request: NextRequest) {
       throw new Error(`Profile user ${user.id} not found after save`);
     }
     user = verifiedUser;
+
+    if (await isNatalChartEnabled()) {
+      scheduleNatalChartCompute(user.id);
+    }
 
     if (sessionId) {
       try {

@@ -106,11 +106,11 @@ test("buildShareHook excludes full reading body", () => {
 
   const hook = buildShareHook("Нумерология", "Эвелина");
 
-  assert.match(hook, /Посмотри мой расклад/);
+  assert.match(hook, /ZOVUS · РАСКЛАД/);
 
-  assert.match(hook, /Полный текст/);
+  assert.match(hook, /Нумерология/);
 
-  assert.match(hook, /Мастер: Эвелина/);
+  assert.match(hook, /Мастер Эвелина/);
 
   assert.equal(hook.includes("совместимость"), false);
 
@@ -124,9 +124,9 @@ test("buildSharePreviewLines has no duplicate master block", () => {
 
   const lines = buildSharePreviewLines("Нумерология", "Эвелина");
 
-  assert.equal(lines.filter((l) => l.startsWith("Мастер:")).length, 1);
+  assert.equal(lines.filter((l) => l.startsWith("Мастер ")).length, 1);
 
-  assert.equal(lines.length, 4);
+  assert.equal(lines.length, 3);
 
 });
 
