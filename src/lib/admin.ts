@@ -90,9 +90,19 @@ export async function listUserAccounts(limit = 50, offset = 0) {
     is_unlimited: boolean;
     last_triplet_draw_at: string | null;
     rune_balance: number | null;
+    oauth_provider: string | null;
+    has_password: boolean;
   }>(
     `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited,
             ua.profile_user_id,
+            (ua.password_hash IS NOT NULL) AS has_password,
+            (
+              SELECT oi.provider
+              FROM user_oauth_identities oi
+              WHERE oi.user_account_id = ua.id
+              ORDER BY oi.last_login_at DESC NULLS LAST, oi.created_at DESC
+              LIMIT 1
+            ) AS oauth_provider,
             u.name AS profile_name, u.zodiac,
             u.rune_balance,
             u.astro_meta->>'lastTripletDrawAt' AS last_triplet_draw_at,

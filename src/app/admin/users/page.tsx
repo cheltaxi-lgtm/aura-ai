@@ -19,6 +19,46 @@ function formatRunes(value: unknown): string {
   return `${n.toLocaleString("ru-RU")} ᚢ`;
 }
 
+const OAUTH_PROVIDER_LABELS: Record<string, string> = {
+  yandex: "Яндекс",
+  vk: "ВКонтакте",
+  mailru: "Mail.ru",
+};
+
+function accountAuthLabel(oauthProvider: string | null, hasPassword: boolean): string {
+  if (oauthProvider) return OAUTH_PROVIDER_LABELS[oauthProvider] ?? oauthProvider;
+  if (hasPassword) return "Email";
+  return "—";
+}
+
+function AccountStatusBadge({
+  profileUserId,
+  oauthProvider,
+  hasPassword,
+}: {
+  profileUserId: string | null;
+  oauthProvider: string | null;
+  hasPassword: boolean;
+}) {
+  const awaitingOnboarding = !profileUserId;
+  return (
+    <div className="flex flex-col gap-1">
+      <span
+        className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-medium ${
+          awaitingOnboarding
+            ? "bg-amber-500/20 text-amber-300"
+            : "bg-emerald-500/20 text-emerald-300"
+        }`}
+      >
+        {awaitingOnboarding ? "Ожидает onboarding" : "Активен"}
+      </span>
+      <span className="text-[11px] text-gray-500">
+        Вход: {accountAuthLabel(oauthProvider, hasPassword)}
+      </span>
+    </div>
+  );
+}
+
 export default function AdminUsersPage() {
   const [tab, setTab] = useState<"accounts" | "profiles">("accounts");
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
@@ -206,7 +246,7 @@ export default function AdminUsersPage() {
 
       {tab === "accounts" ? (
         <AdminTable
-          headers={["Email", "Имя", "Профиль", "Знак", "Сессий", "3 карты", "Безлимит", "Руны", "Создан", ""]}
+          headers={["Email", "Имя", "Статус", "Профиль", "Знак", "Сессий", "3 карты", "Безлимит", "Руны", "Создан", ""]}
           rows={items.map((u) => {
             const id = String(u.id);
             const profileUserId = u.profile_user_id ? String(u.profile_user_id) : null;
@@ -214,10 +254,18 @@ export default function AdminUsersPage() {
             const lastTriplet = u.last_triplet_draw_at ? String(u.last_triplet_draw_at) : null;
             const tripletStatus = tripletCooldownLabel(lastTriplet);
             const email = String(u.email);
+            const oauthProvider = u.oauth_provider ? String(u.oauth_provider) : null;
+            const hasPassword = Boolean(u.has_password);
             return [
               email,
               String(u.name),
-              String(u.profile_name ?? "—"),
+              <AccountStatusBadge
+                key="status"
+                profileUserId={profileUserId}
+                oauthProvider={oauthProvider}
+                hasPassword={hasPassword}
+              />,
+              profileUserId ? String(u.profile_name ?? "—") : <span className="text-gray-500">не создан</span>,
               String(u.zodiac ?? "—"),
               String(u.sessions_count ?? "0"),
               profileUserId ? (
