@@ -55,6 +55,7 @@ import {
   type NumerologEngineParams,
   type NumerologyUi,
 } from "@/lib/services/numerology-service";
+import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
 import {
   getSession,
   saveMessage,
@@ -675,6 +676,10 @@ export class ChatOrchestrator {
       profileName: this.userProfile?.name,
       lastUserMessage: this.lastUserMsg,
     });
+    const natalChartBlock = await buildNatalPromptContext({
+      characterId: this.characterId,
+      profileUserId: this.profileUserId,
+    });
 
     let sessionNumber = 1;
     if (this.profileUserId && this.dbOk) {
@@ -699,6 +704,7 @@ export class ChatOrchestrator {
       lastUserMessage: this.lastUserMsg,
       intention: this.periodSpreadScope ? null : this.resolvedIntention,
       numerologyBlock,
+      natalChartBlock,
     });
 
     if (this.dbOk) {

@@ -23,6 +23,7 @@ import {
 } from "@/lib/intention";
 import { clearChatCache } from "@/lib/chat-cache";
 import { sortCabinetSessionsByDate } from "@/lib/cabinet-utils";
+import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import CabinetProfilePanel, {
   type CabinetProfile as EditableCabinetProfile,
 } from "@/components/CabinetProfilePanel";
@@ -146,6 +147,8 @@ export default function CabinetPage() {
   const [ritualStats, setRitualStats] = useState<CabinetRitualStats | null>(null);
   const [editableProfile, setEditableProfile] = useState<EditableCabinetProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [natalChartEnabled, setNatalChartEnabled] = useState(false);
+  const [natalChartRefreshKey, setNatalChartRefreshKey] = useState(0);
   const sessionsOffset = useRef(0);
 
   const needsOnboarding =
@@ -214,6 +217,15 @@ export default function CabinetPage() {
   }, [authLoading, authUser, fetchCabinet, router]);
 
   useEffect(() => {
+    void fetch("/api/platform/features", { credentials: "include" })
+      .then((res) => res.json())
+      .then((json: { natalChartEnabled?: boolean }) => {
+        setNatalChartEnabled(Boolean(json.natalChartEnabled));
+      })
+      .catch(() => setNatalChartEnabled(false));
+  }, []);
+
+  useEffect(() => {
     if (authLoading || !authUser?.profileUserId) return;
     if (!data?.needsOnboarding) return;
     void fetchCabinet(0, false);
@@ -262,6 +274,7 @@ export default function CabinetPage() {
       setEditableProfile(saved);
       await refreshAuth();
       await fetchCabinet(0, false);
+      setNatalChartRefreshKey((value) => value + 1);
     },
     [fetchCabinet, refreshAuth]
   );
@@ -537,10 +550,12 @@ export default function CabinetPage() {
                 accountName={authUser.name}
                 profile={editableProfile}
                 onSaved={(saved) => void handleProfileSaved(saved)}
+                enableNatalFields={natalChartEnabled}
               />
             ) : authUser?.email && profileLoading ? (
               <CabinetProfileHeaderSkeleton />
             ) : null}
+            {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}
             {achievements ? (
               <CabinetAchievementsRow

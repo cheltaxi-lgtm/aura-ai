@@ -180,6 +180,10 @@ rm -f \
   src/app/api/photo-reading/route.ts
 
 npm ci --legacy-peer-deps
+if [ ! -f data/geonames/cities.min.json ]; then
+  echo ">>> Building GeoNames index..."
+  npm run build:geonames
+fi
 set -a
 # NEXT_PUBLIC_* must be present during `next build` (inlined into client bundle).
 # shellcheck disable=SC1090
@@ -298,6 +302,7 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/cron-pg-backup.sh \
   /opt/aura-ai/proxmox-setup/cron-cleanup-empty-sessions.sh \
   /opt/aura-ai/proxmox-setup/cron-joint-reading-sweep.sh \
+  /opt/aura-ai/proxmox-setup/cron-natal-transits.sh \
   /opt/aura-ai/proxmox-setup/cron-reengagement-emails.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
 

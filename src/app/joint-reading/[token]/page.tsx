@@ -16,6 +16,7 @@ import { getSpread } from "@/lib/spreads";
 import { estimateJointSpreadCostPerPerson } from "@/lib/joint-reading-pricing";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import ShareButton from "@/components/share/ShareButton";
+import NatalSynastryWheel from "@/components/natal/NatalSynastryWheel";
 import { jointReadingToSharePayload } from "@/lib/share/payload-builders";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import {
@@ -42,6 +43,18 @@ type JointPayload = {
   canStartAsInitiator: boolean;
   canStartAsPartner: boolean;
   isLoggedIn: boolean;
+  synastry?: {
+    overallScore?: number;
+    highlights?: string[];
+    crossAspects?: Array<{
+      bodyAKey: string;
+      bodyBKey: string;
+      aspect: string;
+      orb?: number;
+    }>;
+    chartA?: { label?: string | null; western?: Record<string, unknown> } | null;
+    chartB?: { label?: string | null; western?: Record<string, unknown> } | null;
+  } | null;
 };
 
 export default function JointReadingTokenPage() {
@@ -354,6 +367,34 @@ export default function JointReadingTokenPage() {
               label="Поделиться"
             />
           </div>
+
+          {data.synastry?.chartA?.western && data.synastry?.chartB?.western ? (
+            <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-center text-xs font-medium uppercase tracking-wide text-amber-200/70">
+                Синастрия
+                {typeof data.synastry.overallScore === "number"
+                  ? ` · индекс ${data.synastry.overallScore}/100`
+                  : ""}
+              </p>
+              <div className="mt-3">
+                <NatalSynastryWheel
+                  chartA={data.synastry.chartA.western}
+                  chartB={data.synastry.chartB.western}
+                  crossAspects={data.synastry.crossAspects}
+                  labelA={data.synastry.chartA.label ?? labelA}
+                  labelB={data.synastry.chartB.label ?? labelB}
+                />
+              </div>
+              {data.synastry.highlights?.length ? (
+                <ul className="mt-3 space-y-1 text-xs text-white/60">
+                  {data.synastry.highlights.slice(0, 4).map((h) => (
+                    <li key={h}>· {h}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/80">
             {toParagraphs(data.combinedReading).map((p, i) => (
               <p key={i}>{p}</p>

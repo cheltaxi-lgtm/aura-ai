@@ -22,6 +22,7 @@ export default function AdminSettingsPage() {
     maxExcerptLength: 50000,
     channels: { telegram: true, vk: true, native: true, copy: true, download: false },
   });
+  const [natalChart, setNatalChart] = useState<Record<string, unknown>>({ enabled: false });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function AdminSettingsPage() {
           maxExcerptLength: 50000,
           channels: { telegram: true, vk: true, native: true, copy: true, download: false },
         });
+        setNatalChart(d.natalChart ?? { enabled: false });
       });
   }, []);
 
@@ -66,12 +68,19 @@ export default function AdminSettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ section: "share", values: share }),
     });
+    await fetch("/api/admin/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ section: "natalChart", values: natalChart }),
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
   const toggle = (key: string) => setFeatures({ ...features, [key]: !features[key] });
   const toggleShare = (key: string) => setShare({ ...share, [key]: !share[key] });
+  const toggleNatalChart = (key: string) =>
+    setNatalChart({ ...natalChart, [key]: !natalChart[key] });
   const shareChannels = (share.channels ?? {}) as Record<string, boolean>;
   const toggleShareChannel = (key: string) =>
     setShare({
@@ -179,6 +188,23 @@ export default function AdminSettingsPage() {
               className="w-24 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
           </div>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
+          <h2 className="font-display text-lg text-white">Натальная карта</h2>
+          <p className="text-xs text-gray-500">
+            Премиальный модуль: западная + ведическая карта, кабинет и контекст для Шри Раджа.
+            По умолчанию выключено — безопасный rollout.
+          </p>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-gray-300">Включить модуль</span>
+            <input
+              type="checkbox"
+              checked={Boolean(natalChart.enabled)}
+              onChange={() => toggleNatalChart("enabled")}
+              className="h-4 w-4 accent-aura-purple"
+            />
+          </label>
         </div>
 
         <div className="glass-panel space-y-4 p-6">

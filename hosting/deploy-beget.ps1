@@ -57,6 +57,10 @@ function Copy-Remote($local, $remote) {
 }
 
 Write-Host ">>> Pack sources..."
+$GeoNamesIndex = Join-Path $Root "data\geonames\cities.min.json"
+if (-not (Test-Path $GeoNamesIndex)) {
+  throw "GeoNames index is missing. Run npm run build:geonames before deploy."
+}
 if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
 $DeployShaFile = Join-Path $Root "deploy-sha.txt"
 try {
@@ -64,7 +68,7 @@ try {
 } catch {
   "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
 }
-tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local .
+tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip .
 Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ">>> Upload tarball..."

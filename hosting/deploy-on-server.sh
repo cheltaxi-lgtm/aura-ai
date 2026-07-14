@@ -39,6 +39,10 @@ grep -q '^VK_CLIENT_PROTECTED_KEY=' .env.local 2>/dev/null || echo 'VK_CLIENT_PR
 grep -q '^VK_SERVICE_TOKEN=' .env.local 2>/dev/null || echo 'VK_SERVICE_TOKEN=' >> .env.local
 
 npm ci --legacy-peer-deps
+if [ ! -f data/geonames/cities.min.json ]; then
+  echo ">>> Building GeoNames index..."
+  npm run build:geonames
+fi
 set -a
 # shellcheck disable=SC1091
 source <(grep -E '^(NEXT_PUBLIC_RECAPTCHA_SITE_KEY|NEXT_PUBLIC_RECAPTCHA_ENABLED|NEXT_PUBLIC_APP_URL)=' .env.local | sed 's/\r$//')

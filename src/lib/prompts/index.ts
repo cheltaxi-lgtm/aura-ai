@@ -146,6 +146,8 @@ export interface BuildPromptOptions {
   customQuestion?: string | null;
   /** Pre-built numerology block (avoids double computation in chat API). */
   numerologyBlock?: string;
+  /** Pre-built natal chart block for Shri Raj (server-computed). */
+  natalChartBlock?: string;
 }
 
 export function buildSystemPrompt(
@@ -225,6 +227,7 @@ export function buildSystemPrompt(
   const parts = [
     persona,
     numerologyBlock,
+    options.natalChartBlock ?? "",
     CONTEXT_RULES,
     SPREAD_TRUTH_RULES,
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),

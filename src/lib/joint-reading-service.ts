@@ -10,6 +10,10 @@ import {
   jointReadingExpiringEmailHtml,
 } from "@/lib/email/send";
 import { stripEnglishLeakageFromRussianText } from "@/lib/reading-text-polish";
+import { isNatalChartEnabled } from "@/lib/settings";
+import { getOrComputeNatalChart } from "@/lib/services/natal-chart-service";
+import { computeSynastry } from "@/lib/natal/synastry";
+import { getNotificationPrefs } from "@/lib/daily-reminder-service";
 
 export type JointReadingStatus = "pending_partner" | "partner_done" | "completed" | "expired";
 
@@ -32,6 +36,7 @@ export interface JointReadingRow {
   partner_cards: { name: string; position?: string }[];
   partner_character: string | null;
   combined_reading: string | null;
+  synastry_data: Record<string, unknown> | null;
   rune_charged: boolean;
   expires_at: string;
   created_at: string;
@@ -71,6 +76,10 @@ function mapRow(row: Record<string, unknown>): JointReadingRow {
       : [],
     partner_character: row.partner_character ? String(row.partner_character) : null,
     combined_reading: row.combined_reading ? String(row.combined_reading) : null,
+    synastry_data:
+      row.synastry_data && typeof row.synastry_data === "object"
+        ? (row.synastry_data as Record<string, unknown>)
+        : null,
     rune_charged: Boolean(row.rune_charged),
     expires_at: String(row.expires_at),
     created_at: String(row.created_at),
@@ -92,7 +101,7 @@ async function getProfileContact(userId: string): Promise<{ name: string; email:
 }
 
 /** In-app notification + best-effort transactional email for a joint-reading milestone. */
-async function notifyJointReadingEvent(params: {
+export async function notifyJointReadingEvent(params: {
   userId: string;
   type: "joint_reading_partner_done" | "joint_reading_completed";
   token: string;
@@ -104,18 +113,22 @@ async function notifyJointReadingEvent(params: {
     : "Ваш партнёр прошёл свою часть совместного расклада. Откройте результат.";
   const ctaLabel = isCompleted ? "Читать результат" : "Открыть результат";
   const ctaPath = `/joint-reading/${params.token}`;
+  const prefs = await getNotificationPrefs(params.userId);
 
-  await dispatchNotification({
-    userId: params.userId,
-    type: params.type,
-    title,
-    body,
-    ctaPath,
-    ctaLabel,
-    data: { token: params.token },
-  });
+  if (prefs.dailyInApp) {
+    await dispatchNotification({
+      userId: params.userId,
+      type: params.type,
+      title,
+      body,
+      ctaPath,
+      ctaLabel,
+      data: { token: params.token },
+    });
+  }
 
   try {
+    if (!prefs.dailyEmail) return;
     const { name, email } = await getProfileContact(params.userId);
     if (!email) return;
     const ctaUrl = buildJointReadingUrl(params.token);
@@ -378,10 +391,11 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
   }
 
   try {
-    const combined = await generateCombinedReading(row);
+    const synastry = await resolveJointSynastry(row);
+    const combined = await generateCombinedReading(row, synastry);
     await query(
-      `UPDATE joint_readings SET combined_reading = $2, completed_at = COALESCE(completed_at, NOW()), status = 'completed' WHERE token = $1`,
-      [row.token, combined]
+      `UPDATE joint_readings SET combined_reading = $2, synastry_data = $3::jsonb, completed_at = COALESCE(completed_at, NOW()), status = 'completed' WHERE token = $1`,
+      [row.token, combined, synastry ? JSON.stringify(synastry) : null]
     );
     return (await getJointReadingByToken(row.token)) ?? { ...row, combined_reading: combined, status: "completed" };
   } catch (err) {
@@ -611,7 +625,25 @@ function polishCombinedReading(text: string): string {
   return stripEnglishLeakageFromRussianText(unique.join("\n\n"));
 }
 
-async function generateCombinedReading(row: JointReadingRow): Promise<string> {
+export async function resolveJointSynastry(row: JointReadingRow) {
+  if (!(await isNatalChartEnabled())) return null;
+  if (!row.partner_user_id) return null;
+
+  const [chartA, chartB] = await Promise.all([
+    getOrComputeNatalChart(row.initiator_user_id),
+    getOrComputeNatalChart(row.partner_user_id),
+  ]);
+  if (!chartA || !chartB) return null;
+  return computeSynastry(chartA, chartB, {
+    a: row.initiator_name,
+    b: row.partner_name,
+  });
+}
+
+async function generateCombinedReading(
+  row: JointReadingRow,
+  synastry: Awaited<ReturnType<typeof resolveJointSynastry>> = null
+): Promise<string> {
   const initiatorLabel = row.initiator_name?.trim() || "Инициатор";
   const partnerLabel = row.partner_name?.trim() || "Партнёр";
   const relation = jointReadingRelationLabel(row.intent_slug);
@@ -619,7 +651,12 @@ async function generateCombinedReading(row: JointReadingRow): Promise<string> {
   const partnerText = stripMarkdownForSynthesis(row.partner_reading ?? "");
 
   try {
-    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов.
+    const synastryBlock =
+      synastry && synastry.highlights.length
+        ? `\n\nДанные синастрии (расчёт движка, не выдумывай):\n- Балл: ${synastry.overallScore}\n${synastry.highlights.map((h) => `- ${h}`).join("\n")}`
+        : "";
+
+    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
 
 Правила:
 - Пиши по-русски, тепло, связным прозой (4–6 абзацев).
@@ -638,7 +675,10 @@ async function generateCombinedReading(row: JointReadingRow): Promise<string> {
       partnerText,
       "",
       `Синтезируй общую интерпретацию для ${initiatorLabel} и ${partnerLabel} как ${relation}.`,
-    ].join("\n");
+      synastryBlock,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     const generated = await generateReading(systemPrompt, {
       userName: initiatorLabel,

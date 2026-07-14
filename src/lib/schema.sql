@@ -613,6 +613,7 @@ CREATE TABLE IF NOT EXISTS joint_readings (
   partner_cards         JSONB DEFAULT '[]'::jsonb,
   partner_character     TEXT,
   combined_reading      TEXT,
+  synastry_data         JSONB,
   rune_charged          BOOLEAN NOT NULL DEFAULT FALSE,
   expires_at            TIMESTAMPTZ NOT NULL,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -640,3 +641,23 @@ CREATE TABLE IF NOT EXISTS daily_reminder_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(user_id, sent_date, channel)
 );
+
+-- === Natal charts (optional premium module) ===
+CREATE TABLE IF NOT EXISTS natal_charts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  birth_lat DOUBLE PRECISION,
+  birth_lon DOUBLE PRECISION,
+  birth_tzid TEXT,
+  birth_place_label TEXT,
+  time_known BOOLEAN NOT NULL DEFAULT FALSE,
+  house_system TEXT NOT NULL DEFAULT 'placidus',
+  chart_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  engine_version TEXT NOT NULL DEFAULT 'v1',
+  computed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_transit_notify_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_natal_charts_user ON natal_charts(user_id);

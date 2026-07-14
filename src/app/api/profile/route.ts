@@ -30,6 +30,7 @@ import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread } from "@/lib/spreads";
 import { astroMetaFromBirthDate } from "@/lib/registration-consent";
 import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
+import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
 import type { LifeFocus, AstroMeta } from "@/lib/astro-profile";
 
 export async function GET() {
@@ -222,6 +223,12 @@ export async function PATCH(request: NextRequest) {
         salience: 4,
         sourceCharacter: "profile",
       }).catch((err) => console.warn("[memory] seed main question failed:", err));
+    }
+
+    const birthFieldsTouched =
+      birthDate !== undefined || birthTime !== undefined || birthCity !== undefined;
+    if (profileUserId && birthFieldsTouched) {
+      scheduleNatalChartCompute(profileUserId);
     }
 
     return NextResponse.json({

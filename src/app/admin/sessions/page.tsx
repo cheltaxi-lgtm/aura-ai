@@ -14,6 +14,8 @@ export default function AdminSessionsPage() {
       .then((r) => r.json())
       .then((d) => setItems(d.items ?? []));
   };
+  // Search is intentionally submitted by the "Найти" button, not on every keystroke.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [tab]);
 
   const deleteMsg = async (id: string) => {

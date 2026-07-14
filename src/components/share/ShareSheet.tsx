@@ -136,7 +136,6 @@ export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNE
     }
     createSnapshot(payload);
     return () => abortRef.current?.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload]);
 
   const sharePayload = savedPayload;

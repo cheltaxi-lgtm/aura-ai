@@ -24,6 +24,9 @@ jobs:
       - name: Guardrails
         run: npm run verify:guardrails
 
+      - name: Verify GeoNames artifact
+        run: test -s data/geonames/cities.min.json
+
       - name: Spread and chat quality tests
         run: npm run test
 

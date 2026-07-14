@@ -18,6 +18,9 @@ const CLIENT_FORBIDDEN_IMPORTS = [
   "@/lib/settings",
   "@/lib/session",
   "@/lib/numerology/numerolog-finalize",
+  "natalengine",
+  "celestine",
+  "ephimeris-moshier",
   "lib/db",
   "lib/llm",
   "lib/settings",
@@ -109,6 +112,9 @@ function importForbidden(spec) {
   if (exactOrSubpath("@/lib/settings") || s.endsWith("/lib/settings")) return "@/lib/settings";
   if (s === "@/lib/session" || s.endsWith("/lib/session")) return "@/lib/session";
   if (s.includes("numerolog-finalize")) return "numerolog-finalize";
+  if (s === "natalengine" || s.startsWith("natalengine/")) return "natalengine";
+  if (s === "celestine" || s.startsWith("celestine/")) return "celestine";
+  if (s === "ephimeris-moshier" || s.startsWith("ephimeris-moshier/")) return "ephimeris-moshier";
 
   for (const pkg of ["pg", "net", "tls", "fs", "path", "crypto", "server-only"]) {
     if (s === pkg) return pkg;
@@ -180,6 +186,22 @@ function checkSchema() {
     fail("schema.sql: CREATE TABLE session_memories block not found");
   } else if (!memoriesBlock.includes("session_id")) {
     fail("schema.sql: session_memories.session_id missing in CREATE TABLE");
+  }
+
+  const natalBlock = extractCreateTableBlock(sql, "natal_charts");
+  if (!natalBlock) {
+    fail("schema.sql: CREATE TABLE natal_charts block not found");
+  } else {
+    for (const col of ["user_id", "house_system", "chart_data", "engine_version", "last_transit_notify_at"]) {
+      if (!natalBlock.includes(col)) {
+        fail(`schema.sql: natal_charts.${col} missing in CREATE TABLE`);
+      }
+    }
+  }
+
+  const jointBlock = extractCreateTableBlock(sql, "joint_readings");
+  if (!jointBlock || !jointBlock.includes("synastry_data")) {
+    fail("schema.sql: joint_readings.synastry_data missing in CREATE TABLE");
   }
 
   for (const idx of SCHEMA_INDEXES) {

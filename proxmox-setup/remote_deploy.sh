@@ -31,7 +31,7 @@ echo ">>> Docker Compose..."
 run_vm "cd /opt/aura-ai && sudo docker compose up -d"
 
 echo ">>> Build Next.js..."
-run_vm "cd /opt/aura-ai && npm install && npm run build"
+run_vm "cd /opt/aura-ai && npm install && ([ -f data/geonames/cities.min.json ] || npm run build:geonames) && npm run migrate && npm run build && bash proxmox-setup/install-crons.sh"
 
 echo ">>> Systemd service..."
 run_vm "sudo tee /etc/systemd/system/aura-ai.service > /dev/null <<'UNIT'

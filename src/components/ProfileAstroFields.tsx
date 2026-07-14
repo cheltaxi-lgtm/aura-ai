@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { formatZodiacLabel, genderLabel, getZodiacFromDate } from "@/utils/zodiac";
 import {
@@ -16,6 +16,7 @@ export interface ProfileAstroValues {
   gender: "male" | "female";
   birthDate: string;
   birthTime: string;
+  birthTimeUnknown: boolean;
   birthCity: string;
   lifeFocus: LifeFocus;
   mainQuestion: string;
@@ -26,6 +27,7 @@ interface ProfileAstroFieldsProps {
   onChange: (patch: Partial<ProfileAstroValues>) => void;
   compact?: boolean;
   enableSceneArt?: boolean;
+  enableCitySearch?: boolean;
 }
 
 export default function ProfileAstroFields({
@@ -33,7 +35,32 @@ export default function ProfileAstroFields({
   onChange,
   compact,
   enableSceneArt = false,
+  enableCitySearch = false,
 }: ProfileAstroFieldsProps) {
+  const [citySuggestions, setCitySuggestions] = useState<
+    Array<{ label: string; latitude: number; longitude: number; timezone: string }>
+  >([]);
+  const [cityLoading, setCityLoading] = useState(false);
+
+  useEffect(() => {
+    if (!enableCitySearch || values.birthCity.trim().length < 2) {
+      setCitySuggestions([]);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      setCityLoading(true);
+      void fetch(`/api/natal-chart/places?q=${encodeURIComponent(values.birthCity.trim())}`, {
+        credentials: "include",
+      })
+        .then((res) => res.json())
+        .then((data: { places?: typeof citySuggestions }) => {
+          setCitySuggestions(data.places ?? []);
+        })
+        .catch(() => setCitySuggestions([]))
+        .finally(() => setCityLoading(false));
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [enableCitySearch, values.birthCity]);
   const zodiac = useMemo(() => {
     if (!values.birthDate) return null;
     return getZodiacFromDate(values.birthDate);
@@ -108,14 +135,29 @@ export default function ProfileAstroFields({
           <input
             type="time"
             value={values.birthTime}
-            onChange={(e) => onChange({ birthTime: e.target.value })}
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            disabled={values.birthTimeUnknown}
+            onChange={(e) => onChange({ birthTime: e.target.value, birthTimeUnknown: false })}
+            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white disabled:opacity-40"
           />
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-gray-500">
+            <input
+              type="checkbox"
+              checked={values.birthTimeUnknown}
+              onChange={(e) =>
+                onChange({
+                  birthTimeUnknown: e.target.checked,
+                  birthTime: e.target.checked ? "" : values.birthTime,
+                })
+              }
+              className="rounded border-white/20"
+            />
+            Время рождения неизвестно
+          </label>
           <p className="mt-1 text-[10px] text-gray-600">Для натальной карты и джйотиш</p>
         </div>
       </div>
 
-      <div>
+      <div className="relative">
         <label className="mb-1 block text-xs text-gray-500">Город рождения</label>
         <input
           type="text"
@@ -123,7 +165,29 @@ export default function ProfileAstroFields({
           onChange={(e) => onChange({ birthCity: e.target.value })}
           placeholder="Москва, Алматы..."
           className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+          autoComplete="off"
         />
+        {enableCitySearch && citySuggestions.length > 0 ? (
+          <ul className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-xl border border-white/10 bg-[#121018] py-1 shadow-lg">
+            {citySuggestions.map((place) => (
+              <li key={place.label}>
+                <button
+                  type="button"
+                  className="w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/5"
+                  onClick={() => {
+                    onChange({ birthCity: place.label });
+                    setCitySuggestions([]);
+                  }}
+                >
+                  {place.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {enableCitySearch && cityLoading ? (
+          <p className="mt-1 text-[10px] text-gray-600">Поиск города…</p>
+        ) : null}
       </div>
 
       {zodiac && astroMeta && (
@@ -250,7 +314,7 @@ export function profileAstroToPayload(
     gender: values.gender,
     birthDate: values.birthDate,
     zodiac: formatZodiacLabel(zodiac),
-    birthTime: values.birthTime || undefined,
+    birthTime: values.birthTimeUnknown ? undefined : values.birthTime || undefined,
     birthCity: values.birthCity.trim() || undefined,
     lifeFocus: values.lifeFocus,
     mainQuestion: values.mainQuestion.trim() || undefined,

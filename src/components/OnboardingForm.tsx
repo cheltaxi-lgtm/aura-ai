@@ -43,6 +43,7 @@ export default function OnboardingForm({
     gender: initialGender,
     birthDate: "",
     birthTime: "",
+    birthTimeUnknown: false,
     birthCity: "",
     lifeFocus: "general",
     mainQuestion: "",
@@ -128,6 +129,7 @@ export default function OnboardingForm({
       <ProfileAstroFields
         compact
         enableSceneArt
+        enableCitySearch
         values={astro}
         onChange={(patch) => setAstro((prev) => ({ ...prev, ...patch }))}
       />
