@@ -7,12 +7,18 @@ export type NotificationPrefs = {
   dailyInApp: boolean;
   /** Hour in Europe/Moscow (0–23). Default 9:00. */
   reminderHourMsk: number;
+  /** Evening email when daily rune bonus is claimable. */
+  bonusEmail: boolean;
+  /** Win-back emails for inactive users (requires marketing_consent). */
+  marketingEmail: boolean;
 };
 
 const DEFAULT_PREFS: NotificationPrefs = {
   dailyEmail: true,
   dailyInApp: true,
   reminderHourMsk: 9,
+  bonusEmail: true,
+  marketingEmail: true,
 };
 
 export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
@@ -28,6 +34,8 @@ export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
     dailyEmail: o.dailyEmail !== false,
     dailyInApp: o.dailyInApp !== false,
     reminderHourMsk,
+    bonusEmail: o.bonusEmail !== false,
+    marketingEmail: o.marketingEmail !== false,
   };
 }
 

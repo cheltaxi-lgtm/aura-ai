@@ -5,7 +5,7 @@ import {
   supportNewTicketAdminEmailHtml,
   supportReplyEmailHtml,
 } from "@/lib/email/send";
-import { getSiteUrl } from "@/lib/email/mail-config";
+import { getSiteUrl, getSupportEmail } from "@/lib/email/mail-config";
 import { SUPPORT_CATEGORY_LABELS, type SupportCategory } from "@/lib/support-service";
 
 export async function emailSupportTicketCreated(params: {
@@ -26,7 +26,7 @@ export async function emailSupportTicketCreated(params: {
     html: supportAutoReplyEmailHtml(params.userName, params.subject, ticketUrl),
     text: `Обращение принято: ${ticketUrl}`,
     template: "support_auto_reply",
-    replyTo: undefined,
+    replyTo: getSupportEmail(),
   });
 
   void sendAdminNotification({

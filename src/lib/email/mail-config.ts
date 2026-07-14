@@ -38,8 +38,13 @@ export function getClaimsEmail(): string {
   return env("MAIL_CLAIMS", SERVICE_MAILBOXES.claims);
 }
 
+/** Ops inbox for support alerts — must be a real mailbox that can receive mail. */
 export function getAdminNotifyEmail(): string {
-  return env("MAIL_ADMIN_NOTIFY", env("ADMIN_SEED_EMAIL", SERVICE_MAILBOXES.admin));
+  const explicit = process.env.MAIL_ADMIN_NOTIFY?.trim();
+  if (explicit) return explicit;
+  const seed = process.env.ADMIN_SEED_EMAIL?.trim();
+  if (seed) return seed;
+  return SERVICE_MAILBOXES.admin;
 }
 
 export function getSiteUrl(): string {
@@ -78,12 +83,11 @@ export function isEmailConfigured(): boolean {
 }
 
 export function getEmailSetupGaps(): string[] {
-  const gaps: string[] = [];
-  if (process.env.RESEND_API_KEY?.trim()) return gaps;
+  if (process.env.RESEND_API_KEY?.trim()) return [];
   const smtp = getSmtpConfig();
+  const gaps: string[] = [];
   if (!smtp.host) gaps.push("SMTP_HOST");
   if (!smtp.user) gaps.push("SMTP_USER");
   if (!smtp.pass) gaps.push("SMTP_PASS");
-  if (!process.env.RESEND_API_KEY?.trim()) gaps.push("RESEND_API_KEY (рекомендуется)");
   return gaps;
 }

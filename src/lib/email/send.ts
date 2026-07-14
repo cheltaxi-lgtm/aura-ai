@@ -2,10 +2,14 @@ import { deliverEmail } from "@/lib/email/transport";
 import { logEmailAttempt } from "@/lib/email/log";
 import { getAdminNotifyEmail, getSupportEmail } from "@/lib/email/mail-config";
 
+const SUPPORT_REPLY = () => getSupportEmail();
+
 export type { SendEmailParams } from "@/lib/email/types";
 
 export {
   dailyReminderEmailHtml,
+  dailyBonusReminderEmailHtml,
+  inactiveUserEmailHtml,
   welcomeEmailHtml,
   passwordResetEmailHtml,
   passwordChangedEmailHtml,
@@ -30,7 +34,7 @@ export async function sendEmail(
     subject: params.subject,
     html: params.html,
     text: params.text,
-    replyTo: params.replyTo,
+    replyTo: params.replyTo ?? SUPPORT_REPLY(),
   });
 
   await logEmailAttempt({

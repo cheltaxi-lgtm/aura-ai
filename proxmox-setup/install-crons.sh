@@ -13,6 +13,7 @@ mkdir -p "$LOG_DIR"
 chmod +x "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
          "$REPO/proxmox-setup/cron-proactive-reminders.sh" \
          "$REPO/proxmox-setup/cron-daily-reading-remind.sh" \
+         "$REPO/proxmox-setup/cron-reengagement-emails.sh" \
          "$REPO/proxmox-setup/cron-reconcile-rune-payments.sh" \
          "$REPO/proxmox-setup/cron-pg-backup.sh" \
          "$REPO/proxmox-setup/cron-cleanup-empty-sessions.sh" \
@@ -31,6 +32,8 @@ CLEANED="$(printf '%s\n' "$CURRENT" | sed "/${MARK_BEGIN}/,/${MARK_END}/d")"
   echo "30 9 * * * $REPO/proxmox-setup/cron-proactive-reminders.sh >> $LOG_DIR/reminders.log 2>&1"
   # Daily reading reminders (in-app + email) — every hour UTC.
   echo "0 * * * * $REPO/proxmox-setup/cron-daily-reading-remind.sh >> $LOG_DIR/daily-remind.log 2>&1"
+  # Re-engagement emails (bonus runes 19 MSK, win-back 10 MSK) — every hour UTC.
+  echo "5 * * * * $REPO/proxmox-setup/cron-reengagement-emails.sh >> $LOG_DIR/reengagement.log 2>&1"
   # Missed YooKassa rune purchase reconciliation — every 15 minutes.
   echo "*/15 * * * * $REPO/proxmox-setup/cron-reconcile-rune-payments.sh >> $LOG_DIR/rune-reconcile.log 2>&1"
   # PostgreSQL backup — daily at 02:45 UTC.

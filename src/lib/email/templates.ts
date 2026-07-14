@@ -57,9 +57,46 @@ export function dailyReminderEmailHtml(name: string, siteUrl?: string): string {
   const safeName = name.trim() || "друг";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
-     <p>Новый день — новая энергия. Откройте расклад на сутки и узнайте, что несёт сегодняшний день.</p>
-     ${cta(`${url}/?daily=1`, "Открыть карты дня")}`,
+     <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
+     ${cta(`${url}/?daily=1`, "Открыть карты дня бесплатно")}`,
     "Напоминание можно отключить в профиле Zovus."
+  );
+}
+
+export function dailyBonusReminderEmailHtml(
+  name: string,
+  bonusAmount: number,
+  siteUrl?: string
+): string {
+  const url = siteUrl || getSiteUrl();
+  const safeName = name.trim() || "друг";
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Ваш ежедневный бонус готов: <strong>${bonusAmount} рун</strong> можно забрать бесплатно в личном кабинете.</p>
+     <p style="font-size:14px;color:#555">Руны — валюта для раскладов с мастерами. Не пропустите сегодняшний подарок.</p>
+     ${cta(`${url}/cabinet`, `Забрать ${bonusAmount} рун`)}`,
+    "Напоминание о бонусе можно отключить в профиле Zovus."
+  );
+}
+
+export function inactiveUserEmailHtml(
+  name: string,
+  inactiveDays: number,
+  siteUrl?: string
+): string {
+  const url = siteUrl || getSiteUrl();
+  const safeName = name.trim() || "друг";
+  const body =
+    inactiveDays <= 7
+      ? `<p>Вы давно не заходили — а карты уже готовы к <strong>бесплатному</strong> раскладу на сегодня.</p>
+         <p style="font-size:14px;color:#555">Один клик — и вы снова в потоке: суточный расклад, бонусные руны и ваши сохранённые сессии.</p>`
+      : `<p>Мы скучаем! Прошло уже две недели — за это время накопилось много нового: расклады, бонусы и персональные подсказки.</p>
+         <p style="font-size:14px;color:#555">Вернитесь на минуту: бесплатный расклад на сутки и ежедневные руны ждут вас.</p>`;
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     ${body}
+     ${cta(`${url}/?daily=1`, "Вернуться на Zovus")}`,
+    `Вы согласились на рассылку Zovus. Отписаться можно в профиле или написав на ${getSupportEmail()}.`
   );
 }
 
