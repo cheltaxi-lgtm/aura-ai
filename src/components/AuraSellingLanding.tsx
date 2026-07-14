@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  Check,
   Compass,
   Flame,
   Lock,
@@ -13,6 +14,7 @@ import {
   Sparkles,
   Star,
   Sun,
+  X,
   Zap,
 } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
@@ -27,7 +29,6 @@ import LandingSeoHub from "@/components/seo/LandingSeoHub";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
 import {
   buildLandingOfferCopy,
-  GUEST_SPREAD_SECTION_ID,
   GUEST_SPREAD_START_EVENT,
   LANDING_QUESTION_KEY,
   resolveLandingHeroVariant,
@@ -120,6 +121,39 @@ const DIRECTIONS = [
   },
 ] as const;
 
+const COMPARISON_ROWS = [
+  {
+    title: "Отвечает на ваш вопрос, а не выдаёт шаблон",
+    them: "Общие фразы под любую карту — одинаковый текст для всех",
+    us: "Расклад собирается под ваш вопрос и продолжается в диалоге с мастером",
+  },
+  {
+    title: "Помнит контекст беседы",
+    them: "Каждое сообщение — как в первый раз, бот не помнит предыдущий расклад",
+    us: "Мастер удерживает контекст и ваши прошлые обращения",
+  },
+  {
+    title: "Честная цена",
+    them: "«Бесплатно» — пока не дойдёте до полной расшифровки или подписки",
+    us: "Стоимость видна заранее в рублях, платите только за то, что открываете",
+  },
+  {
+    title: "Доступ без ожидания",
+    them: "Живой таролог — запись, очередь, оплата по минутам",
+    us: "Мастер на связи 24/7, ответ за секунды",
+  },
+  {
+    title: "Все традиции в одном месте",
+    them: "Один сайт — одна система: либо Таро, либо гороскопы",
+    us: "Таро, руны, астрология, нумерология, славянские обряды — в одном окне",
+  },
+  {
+    title: "Честно об ИИ",
+    them: "Либо скрывают, что отвечает бот, либо безликий генератор без характера",
+    us: "Открыто: с вами говорит ИИ-наставник в живом образе — без обмана",
+  },
+] as const;
+
 const TRUST_POINTS = [
   {
     title: "ИИ-мастера в образах",
@@ -165,8 +199,8 @@ export interface AuraSellingLandingProps {
   onOpenRitual?: () => void;
   /** Logged-in home: open spread flow from the custom question field (hero is hidden). */
   onCustomQuestionSubmit?: (question: string) => void;
-  /** Logged-in home: lightweight session-only chat from quick question chips. */
-  onQuickQuestionSelect?: (question: string) => void;
+  /** Logged-in home: start the selected catalog spread from quick question chips. */
+  onQuickQuestionSelect?: (question: string, intentSlug?: string) => void;
 }
 
 export default function AuraSellingLanding({
@@ -220,7 +254,6 @@ export default function AuraSellingLanding({
       masterId,
     };
     window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
-    document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handlePrimaryCta = (placement: "hero" | "sticky" | "final") => {
@@ -313,20 +346,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {!isLoggedIn ? (
-        <section id={GUEST_SPREAD_SECTION_ID} className="aura-landing-section aura-landing-section--guest-spread">
-          <div className="mx-auto max-w-6xl">
-            <div className="aura-landing-section__head">
-              <h2 className="font-mystic-display aura-landing-section__title">Ваш бесплатный расклад</h2>
-              <p className="aura-landing-section__subtitle">
-                Откройте три карты — увидите краткий ориентир по символам. Регистрация понадобится для полной
-                расшифровки.
-              </p>
-            </div>
-            <GuestTripletDraw />
-          </div>
-        </section>
-      ) : null}
+      {!isLoggedIn ? <GuestTripletDraw /> : null}
 
       {showHero || afterQuickQuestions ? (
         <QuickQuestions
@@ -464,6 +484,51 @@ export default function AuraSellingLanding({
                   <h3 className="font-display aura-landing-benefit__title">{item.title}</h3>
                   <p className="aura-landing-benefit__text">{item.text}</p>
                 </motion.article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {showSellingSections ? (
+        <section className="aura-landing-section aura-landing-section--compare">
+          <div className="mx-auto max-w-4xl">
+            <div className="aura-landing-section__head">
+              <span className="aura-landing-compare__eyebrow">Сравнение</span>
+              <h2 className="font-mystic-display aura-landing-section__title">Zovus устроен иначе</h2>
+              <p className="aura-landing-section__subtitle">
+                Мы изучили, как обычно работают боты-гадалки, шаблонные сайты и платные консультации —
+                и сделали по-другому.
+              </p>
+            </div>
+            <div className="aura-landing-compare glass-panel">
+              <div className="aura-landing-compare__header">
+                <span className="aura-landing-compare__col-label aura-landing-compare__col-label--them">
+                  Как обычно
+                </span>
+                <span className="aura-landing-compare__col-label aura-landing-compare__col-label--us">
+                  В Zovus
+                </span>
+              </div>
+              {COMPARISON_ROWS.map((row, i) => (
+                <motion.div
+                  key={row.title}
+                  className="aura-landing-compare__row"
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.06, duration: 0.4 }}
+                >
+                  <h3 className="aura-landing-compare__row-title">{row.title}</h3>
+                  <div className="aura-landing-compare__cell aura-landing-compare__cell--them">
+                    <X className="aura-landing-compare__icon aura-landing-compare__icon--them" strokeWidth={1.75} />
+                    <span>{row.them}</span>
+                  </div>
+                  <div className="aura-landing-compare__cell aura-landing-compare__cell--us">
+                    <Check className="aura-landing-compare__icon aura-landing-compare__icon--us" strokeWidth={1.75} />
+                    <span>{row.us}</span>
+                  </div>
+                </motion.div>
               ))}
             </div>
           </div>
