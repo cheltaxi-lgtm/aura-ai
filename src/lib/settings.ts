@@ -102,6 +102,11 @@ export interface JointReadingPlatformSettings {
   enabled: boolean;
 }
 
+/** Admin-stored OpenRouter management key (activity / per-model stats). */
+export interface OpenRouterPlatformSettings {
+  managementKey: string;
+}
+
 export interface SharePlatformSettings {
   enabled: boolean;
   expiryDays: number;
@@ -192,6 +197,9 @@ const DEFAULTS = {
   },
   jointReading: {
     enabled: true,
+  },
+  openrouter: {
+    managementKey: "",
   },
 };
 

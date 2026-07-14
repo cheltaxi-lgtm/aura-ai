@@ -36,6 +36,10 @@ type Snapshot = {
   keyStatus: "ok" | "missing" | "invalid" | "low_balance" | "error";
   keyStatusMessage: string;
   keyHint: string | null;
+  managementKeyConfigured: boolean;
+  managementKeyHint: string | null;
+  managementKeySource: "env" | "admin" | null;
+  managementKeyEditable: boolean;
   key: {
     label: string;
     limit: number | null;
@@ -149,6 +153,10 @@ export default function OpenRouterDashboard() {
   const [data, setData] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [mgmtInput, setMgmtInput] = useState("");
+  const [mgmtSaving, setMgmtSaving] = useState(false);
+  const [mgmtError, setMgmtError] = useState<string | null>(null);
+  const [mgmtSaved, setMgmtSaved] = useState(false);
 
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -168,6 +176,35 @@ export default function OpenRouterDashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const saveManagementKey = async (clear = false) => {
+    setMgmtSaving(true);
+    setMgmtError(null);
+    setMgmtSaved(false);
+    try {
+      const res = await fetch("/api/admin/openrouter", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ managementKey: clear ? "" : mgmtInput.trim() }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        snapshot?: Snapshot;
+      };
+      if (!res.ok) {
+        setMgmtError(json.error ?? "Не удалось сохранить ключ");
+        return;
+      }
+      if (json.snapshot) setData(json.snapshot);
+      else await load(true);
+      setMgmtInput("");
+      setMgmtSaved(true);
+      setTimeout(() => setMgmtSaved(false), 2500);
+    } finally {
+      setMgmtSaving(false);
+    }
+  };
 
   if (loading && !data) {
     return (
@@ -208,6 +245,92 @@ export default function OpenRouterDashboard() {
           Обновить
         </button>
       </div>
+
+      {!data.activityAvailable || !data.managementKeyConfigured ? (
+        <div className="rounded-2xl border border-aura-gold/30 bg-aura-gold/5 p-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+            <KeyRound className="h-4 w-4 text-aura-gold" />
+            Management API key
+          </h3>
+          <p className="mt-2 text-xs leading-relaxed text-gray-400">
+            Нужен для таблицы по моделям и расхода по дням. Создайте в{" "}
+            <a
+              href="https://openrouter.ai/settings/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-aura-gold hover:underline"
+            >
+              openrouter.ai/settings/keys
+            </a>{" "}
+            → Management API Keys, вставьте сюда и нажмите «Сохранить».
+          </p>
+
+          {data.managementKeySource === "env" ? (
+            <p className="mt-3 text-sm text-green-400">
+              Ключ задан на сервере в .env.local
+              {data.managementKeyHint ? ` (${data.managementKeyHint})` : ""} — приоритет над полем ниже.
+            </p>
+          ) : null}
+
+          {data.managementKeyConfigured && data.managementKeySource === "admin" ? (
+            <p className="mt-3 text-sm text-green-400">
+              Сохранён в админке
+              {data.managementKeyHint ? ` · ${data.managementKeyHint}` : ""}
+              {data.activityAvailable ? " · activity OK" : ""}
+            </p>
+          ) : null}
+
+          {data.managementKeyEditable ? (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
+                <label className="mb-1 block text-xs text-gray-500">Management key</label>
+                <input
+                  type="password"
+                  value={mgmtInput}
+                  onChange={(e) => {
+                    setMgmtInput(e.target.value);
+                    setMgmtError(null);
+                  }}
+                  placeholder="sk-or-v1-…"
+                  autoComplete="off"
+                  className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 font-mono text-sm text-white"
+                />
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  disabled={mgmtSaving || !mgmtInput.trim()}
+                  onClick={() => void saveManagementKey(false)}
+                  className="btn-neon px-4 py-2.5 text-sm disabled:opacity-50"
+                >
+                  {mgmtSaving ? "Проверка…" : mgmtSaved ? "Сохранено ✓" : "Сохранить"}
+                </button>
+                {data.managementKeySource === "admin" ? (
+                  <button
+                    type="button"
+                    disabled={mgmtSaving}
+                    onClick={() => void saveManagementKey(true)}
+                    className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-gray-400 hover:bg-white/5"
+                  >
+                    Удалить
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {mgmtError ? <p className="mt-2 text-xs text-red-400">{mgmtError}</p> : null}
+          {data.activityNote && !data.activityAvailable ? (
+            <p className="mt-2 text-xs text-gray-500">{data.activityNote}</p>
+          ) : null}
+        </div>
+      ) : data.managementKeyConfigured ? (
+        <p className="text-xs text-gray-500">
+          Management key активен
+          {data.managementKeyHint ? ` (${data.managementKeyHint})` : ""}
+          {data.managementKeySource === "env" ? " · из .env.local" : " · из админки"}
+        </p>
+      ) : null}
 
       <div className={`rounded-2xl border px-4 py-3 ${st.bg}`}>
         <div className="flex flex-wrap items-center gap-3">
@@ -463,7 +586,7 @@ export default function OpenRouterDashboard() {
       ) : null}
 
       <p className="text-[10px] text-gray-600">
-        Детальная аналитика:{" "}
+        Подробнее на{" "}
         <a
           href="https://openrouter.ai/activity"
           target="_blank"
@@ -472,8 +595,7 @@ export default function OpenRouterDashboard() {
         >
           openrouter.ai/activity
         </a>
-        . Для баланса аккаунта и разбивки по моделям задайте{" "}
-        <code className="text-gray-400">OPENROUTER_MANAGEMENT_KEY</code> в .env.local.
+        .
       </p>
     </section>
   );

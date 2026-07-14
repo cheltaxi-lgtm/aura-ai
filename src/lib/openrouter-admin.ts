@@ -3,7 +3,7 @@ import { openRouterFetch } from "@/lib/openrouter-fetch";
 import { isOpenRouterConfigured } from "@/lib/llm";
 import { getLlmConcurrencyStats } from "@/lib/llm-concurrency";
 import { getAdminAiSettings } from "@/lib/ai-model";
-import { getSetting } from "@/lib/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 
@@ -72,12 +72,18 @@ export type OpenRouterBalanceForecast = {
   urgency: "ok" | "warning" | "critical" | "unknown";
 };
 
+export type OpenRouterManagementKeySource = "env" | "admin" | null;
+
 export type OpenRouterAdminSnapshot = {
   fetchedAt: string;
   keyConfigured: boolean;
   keyStatus: OpenRouterKeyStatus;
   keyStatusMessage: string;
   keyHint: string | null;
+  managementKeyConfigured: boolean;
+  managementKeyHint: string | null;
+  managementKeySource: OpenRouterManagementKeySource;
+  managementKeyEditable: boolean;
   key: OpenRouterKeyInfo | null;
   credits: OpenRouterCreditsInfo | null;
   creditsAvailable: boolean;
@@ -259,12 +265,60 @@ function apiKey(): string | undefined {
   return process.env.OPENROUTER_API_KEY?.trim() || undefined;
 }
 
-function managementKey(): string | undefined {
-  return (
-    process.env.OPENROUTER_MANAGEMENT_KEY?.trim() ||
-    process.env.OPENROUTER_API_KEY?.trim() ||
-    undefined
-  );
+export async function resolveOpenRouterManagementKey(): Promise<{
+  key: string | undefined;
+  source: OpenRouterManagementKeySource;
+}> {
+  const env = process.env.OPENROUTER_MANAGEMENT_KEY?.trim();
+  if (env) return { key: env, source: "env" };
+
+  const settings = await getSetting("openrouter");
+  const admin = settings.managementKey?.trim();
+  if (admin) return { key: admin, source: "admin" };
+
+  return { key: undefined, source: null };
+}
+
+export async function validateOpenRouterManagementKey(
+  candidate: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const key = candidate.trim();
+  if (!key) return { ok: false, error: "Ключ пустой" };
+
+  const activity = await fetchJson<{ data: unknown[] }>("/activity", key);
+  if (activity.ok) return { ok: true };
+
+  if (activity.status === 403) {
+    return {
+      ok: false,
+      error:
+        "Это не Management key. Создайте его в openrouter.ai/settings/keys (раздел Management API Keys).",
+    };
+  }
+
+  return {
+    ok: false,
+    error: activity.error ?? "OpenRouter отклонил ключ",
+  };
+}
+
+export async function saveOpenRouterManagementKey(
+  managementKey: string,
+  adminId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmed = managementKey.trim();
+  if (!trimmed) {
+    await setSetting("openrouter", { managementKey: "" }, adminId);
+    invalidateOpenRouterAdminCache();
+    return { ok: true };
+  }
+
+  const check = await validateOpenRouterManagementKey(trimmed);
+  if (!check.ok) return check;
+
+  await setSetting("openrouter", { managementKey: trimmed }, adminId);
+  invalidateOpenRouterAdminCache();
+  return { ok: true };
 }
 
 function headers(key: string): Record<string, string> {
@@ -386,7 +440,8 @@ export async function getOpenRouterAdminSnapshot(force = false): Promise<OpenRou
   }
 
   const key = apiKey();
-  const mgmt = managementKey();
+  const { key: mgmtKey, source: mgmtSource } = await resolveOpenRouterManagementKey();
+  const creditsKey = mgmtKey || key;
   const ai = await getAdminAiSettings();
   const tts = await getSetting("tts");
   const visual = await getSetting("visual");
@@ -420,10 +475,10 @@ export async function getOpenRouterAdminSnapshot(force = false): Promise<OpenRou
   let creditsAvailable = false;
   let creditsNote: string | null = null;
 
-  if (mgmt) {
+  if (creditsKey) {
     const creditsRes = await fetchJson<{ data: { total_credits: number; total_usage: number } }>(
       "/credits",
-      mgmt
+      creditsKey
     );
     if (creditsRes.ok && creditsRes.data?.data) {
       creditsAvailable = true;
@@ -435,7 +490,7 @@ export async function getOpenRouterAdminSnapshot(force = false): Promise<OpenRou
       };
     } else if (creditsRes.status === 403) {
       creditsNote =
-        "Баланс аккаунта доступен только с Management API key (OPENROUTER_MANAGEMENT_KEY)";
+        "Баланс аккаунта доступен только с Management API key (вставьте ниже или задайте OPENROUTER_MANAGEMENT_KEY)";
     } else if (!creditsRes.ok) {
       creditsNote = creditsRes.error ?? "Не удалось загрузить баланс аккаунта";
     }
@@ -445,8 +500,11 @@ export async function getOpenRouterAdminSnapshot(force = false): Promise<OpenRou
   let activityAvailable = false;
   let activityNote: string | null = null;
 
-  if (mgmt) {
-    const activityRes = await fetchJson<{ data: Array<Record<string, unknown>> }>("/activity", mgmt);
+  if (mgmtKey) {
+    const activityRes = await fetchJson<{ data: Array<Record<string, unknown>> }>(
+      "/activity",
+      mgmtKey
+    );
     if (activityRes.ok && Array.isArray(activityRes.data?.data)) {
       activityAvailable = true;
       activityRows = activityRes.data.data.map((row) => ({
@@ -461,12 +519,13 @@ export async function getOpenRouterAdminSnapshot(force = false): Promise<OpenRou
       }));
     } else if (activityRes.status === 403) {
       activityNote =
-        "Статистика по моделям (30 дней) требует Management API key (OPENROUTER_MANAGEMENT_KEY)";
+        "Ключ не подходит для activity — нужен Management API key из openrouter.ai/settings/keys";
     } else if (!activityRes.ok) {
       activityNote = activityRes.error ?? "Не удалось загрузить activity";
     }
   } else {
-    activityNote = "Management key не задан — доступны только метрики ключа (день/неделя/месяц)";
+    activityNote =
+      "Вставьте Management key ниже — тогда появится разбивка по моделям и расход по дням";
   }
 
   const dailySpend = aggregateDaily(activityRows).slice(0, 30);
@@ -477,6 +536,10 @@ export async function getOpenRouterAdminSnapshot(force = false): Promise<OpenRou
     keyStatus,
     keyStatusMessage,
     keyHint: maskKeyHint(key),
+    managementKeyConfigured: Boolean(mgmtKey),
+    managementKeyHint: maskKeyHint(mgmtKey),
+    managementKeySource: mgmtSource,
+    managementKeyEditable: mgmtSource !== "env",
     key: keyInfo,
     credits,
     creditsAvailable,

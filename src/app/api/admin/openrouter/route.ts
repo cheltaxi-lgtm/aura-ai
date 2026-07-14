@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { logAdminAction } from "@/lib/admin";
 import {
   getOpenRouterAdminSnapshot,
   invalidateOpenRouterAdminCache,
+  saveOpenRouterManagementKey,
 } from "@/lib/openrouter-admin";
 
 export async function GET(request: NextRequest) {
@@ -14,4 +16,34 @@ export async function GET(request: NextRequest) {
 
   const snapshot = await getOpenRouterAdminSnapshot(force);
   return NextResponse.json(snapshot, { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function PATCH(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const body = (await request.json().catch(() => ({}))) as { managementKey?: unknown };
+  if (typeof body.managementKey !== "string") {
+    return NextResponse.json({ error: "managementKey required" }, { status: 400 });
+  }
+
+  const result = await saveOpenRouterManagementKey(body.managementKey, auth.sub);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+
+  await logAdminAction(auth.sub, "update_settings", "openrouter", "managementKey", {
+    configured: Boolean(body.managementKey.trim()),
+  });
+
+  const snapshot = await getOpenRouterAdminSnapshot(true);
+  return NextResponse.json({
+    ok: true,
+    cleared: !body.managementKey.trim(),
+    activityAvailable: snapshot.activityAvailable,
+    managementKeyConfigured: snapshot.managementKeyConfigured,
+    managementKeyHint: snapshot.managementKeyHint,
+    managementKeySource: snapshot.managementKeySource,
+    snapshot,
+  });
 }
