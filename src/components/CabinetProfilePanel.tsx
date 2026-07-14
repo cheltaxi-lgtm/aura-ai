@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Pencil, Save, UserRound, X } from "lucide-react";
 import ProfileAstroFields, {
@@ -74,10 +74,19 @@ export default function CabinetProfilePanel({
 }: CabinetProfilePanelProps) {
   const [editing, setEditing] = useState(!profile?.birthDate);
   const [name, setName] = useState(profile?.name ?? accountName);
-  const [astro, setAstro] = useState<ProfileAstroValues>(() => profileToForm(profile, "").astro);
+  const [astro, setAstro] = useState<ProfileAstroValues>(() => profileToForm(profile, accountName).astro);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    if (!profile) return;
+    setName(profile.name ?? accountName);
+    setAstro(profileToForm(profile, accountName).astro);
+    if (profile.birthDate) {
+      setEditing(false);
+    }
+  }, [profile, accountName]);
 
   const meta = profile?.astroMeta as AstroMeta | undefined;
   const zodiacSign = profile?.birthDate ? getZodiacFromDate(profile.birthDate) : null;

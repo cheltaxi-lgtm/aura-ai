@@ -93,6 +93,36 @@ const TAB_MOTION = {
   transition: { duration: 0.22, ease: "easeOut" as const },
 };
 
+const FETCH_RETRY_ATTEMPTS = 3;
+const FETCH_RETRY_DELAY_MS = 600;
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < FETCH_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await fetch(input, init);
+      if (res.status >= 500 && attempt < FETCH_RETRY_ATTEMPTS - 1) {
+        await sleep(FETCH_RETRY_DELAY_MS * (attempt + 1));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (attempt < FETCH_RETRY_ATTEMPTS - 1) {
+        await sleep(FETCH_RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Network error");
+}
+
 export default function CabinetPage() {
   const router = useRouter();
   const { openPaywall } = usePaywall();
@@ -115,10 +145,14 @@ export default function CabinetPage() {
   const [ritualFlowMaster, setRitualFlowMaster] = useState<RitualMasterKey>("ragnar");
   const [ritualStats, setRitualStats] = useState<CabinetRitualStats | null>(null);
   const [editableProfile, setEditableProfile] = useState<EditableCabinetProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const sessionsOffset = useRef(0);
 
+  const needsOnboarding =
+    Boolean(data?.needsOnboarding) && !authUser?.profileUserId && !data?.profile?.birthDate;
+
   const fetchCabinet = useCallback(async (offset = 0, append = false) => {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `/api/cabinet?sessionsLimit=20&sessionsOffset=${offset}`,
       { credentials: "include" }
     );
@@ -146,11 +180,22 @@ export default function CabinetPage() {
   }, [router]);
 
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!authUser) {
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
+    setLoading(true);
+    setError(null);
+
     (async () => {
       try {
         await fetchCabinet(0, false);
-        const statsRes = await fetch("/api/ritual/cabinet-stats", {
+        const statsRes = await fetchWithRetry("/api/ritual/cabinet-stats", {
           credentials: "include",
         });
         if (statsRes.ok && !cancelled) {
@@ -166,20 +211,50 @@ export default function CabinetPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchCabinet]);
+  }, [authLoading, authUser, fetchCabinet, router]);
+
+  useEffect(() => {
+    if (authLoading || !authUser?.profileUserId) return;
+    if (!data?.needsOnboarding) return;
+    void fetchCabinet(0, false);
+  }, [authLoading, authUser?.profileUserId, data?.needsOnboarding, fetchCabinet]);
 
   useEffect(() => {
     setHeaderMounted(true);
   }, []);
 
   useEffect(() => {
-    if (authLoading || !authUser) return;
-    fetch("/api/profile", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        setEditableProfile(json?.profile ?? null);
-      })
-      .catch(() => undefined);
+    if (authLoading || !authUser) {
+      setProfileLoading(authLoading);
+      return;
+    }
+
+    let cancelled = false;
+    setProfileLoading(true);
+
+    (async () => {
+      const startedAt = Date.now();
+      for (let attempt = 0; attempt < FETCH_RETRY_ATTEMPTS; attempt += 1) {
+        try {
+          const r = await fetchWithRetry("/api/profile", { credentials: "include" });
+          const json = r.ok ? await r.json() : null;
+          if (cancelled) return;
+          setEditableProfile(json?.profile ?? null);
+          setProfileLoading(false);
+          return;
+        } catch {
+          if (attempt >= FETCH_RETRY_ATTEMPTS - 1) {
+            if (!cancelled) setProfileLoading(false);
+          } else {
+            await sleep(FETCH_RETRY_DELAY_MS * (attempt + 1));
+          }
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, authUser, data?.needsOnboarding]);
 
   const handleProfileSaved = useCallback(
@@ -448,7 +523,7 @@ export default function CabinetPage() {
       case "profile":
         return (
           <div className="space-y-6">
-            {profile && !data.needsOnboarding ? (
+            {profile && !needsOnboarding ? (
               <CabinetProfileHeader
                 profile={profile}
                 onTopUp={runesEnabled ? handleTopUp : undefined}
@@ -456,13 +531,15 @@ export default function CabinetPage() {
                 balancePulse={balancePulse}
               />
             ) : null}
-            {authUser?.email ? (
+            {authUser?.email && !profileLoading ? (
               <CabinetProfilePanel
                 email={authUser.email}
                 accountName={authUser.name}
                 profile={editableProfile}
                 onSaved={(saved) => void handleProfileSaved(saved)}
               />
+            ) : authUser?.email && profileLoading ? (
+              <CabinetProfileHeaderSkeleton />
             ) : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}
             {achievements ? (
@@ -573,7 +650,7 @@ export default function CabinetPage() {
               title="Руны и доступ"
               subtitle="Пополнение, история операций и статус подписки."
             />
-            {data.needsOnboarding ? (
+            {needsOnboarding ? (
               <div className="rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-5 text-sm text-aura-champagne">
                 <p className="font-medium text-white">Баланс появится после профиля</p>
                 <p className="mt-2 text-white/70">
@@ -645,7 +722,7 @@ export default function CabinetPage() {
           </div>
         )}
 
-        {data?.needsOnboarding ? (
+        {needsOnboarding ? (
           <div className="mb-6 rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-4 text-sm text-aura-champagne">
             <p className="font-medium text-white">Укажите дату рождения</p>
             <p className="mt-1 text-white/70">

@@ -20,9 +20,10 @@ export async function GET() {
     ]);
   }
 
+  const needsProfile = auth.role === "user" && !profileUserId;
   return NextResponse.json({
     authenticated: true,
-    needsProfile: auth.role === "user" && !profileUserId,
+    needsProfile,
     user: { ...auth, profileUserId, oauthGender },
   });
 }
