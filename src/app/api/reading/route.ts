@@ -364,6 +364,8 @@ export async function POST(request: NextRequest) {
     const natalChartBlock = await buildNatalPromptContext({
       profileUserId: authed.profileUserId,
       characterId,
+      topic: customQuestion || mainQuestion || intention,
+      purpose: "tarot",
     });
 
     let systemPrompt = buildCharacterPrompt(characterId, ctx, {

@@ -11,6 +11,7 @@ import {
 import type { NatalChartInput, NatalChartRecord, NatalPlace } from "./types";
 import { NATAL_ENGINE_VERSION, buildBirthFingerprint } from "./types";
 import { computeWesternChart } from "./western";
+import { normalizeVedicChart } from "./vedic";
 
 function normalizeBirthDate(raw: string): string {
   const d = raw.trim().slice(0, 10);
@@ -59,7 +60,7 @@ export async function computeNatalChartRecord(
   const effectiveTimeKnown = timeKnown && decimalHour != null;
 
   let western: Record<string, unknown> | null = null;
-  let vedic: Record<string, unknown> | null = null;
+  let vedic: NatalChartRecord["vedic"] = null;
 
   if (place) {
     const timeStr = birthTimeLabel(effectiveHour);
@@ -91,13 +92,20 @@ export async function computeNatalChartRecord(
       warnings.push(...houseWarnings);
     }
 
-    vedic = calculateVedic(
+    const calculatedVedic = calculateVedic(
       birthDate,
       effectiveHour,
       utcOffset,
       place.latitude,
       place.longitude
-    ) as Record<string, unknown>;
+    );
+    vedic = normalizeVedicChart(calculatedVedic, {
+      timeKnown: effectiveTimeKnown,
+      hasLocation: true,
+    });
+    if (!vedic) {
+      warnings.push("Движок вернул неполный ведический расчёт.");
+    }
 
     if (!effectiveTimeKnown) {
       warnings.push("Точное время неизвестно — асцендент и дома приблизительны (полдень).");

@@ -57,6 +57,14 @@ export async function resolveBirthPlace(city: string): Promise<GeocodedPlace | n
   const geonames = resolveGeonamesCity(city);
   if (geonames) return geonames;
 
+  const primaryName = city.split(",")[0]?.trim();
+  if (primaryName && primaryName !== city.trim()) {
+    const primaryFallback = resolveFallbackCity(primaryName);
+    if (primaryFallback) return fromFallback(primaryFallback);
+    const primaryGeonames = resolveGeonamesCity(primaryName);
+    if (primaryGeonames) return primaryGeonames;
+  }
+
   const hits = await searchBirthPlaces(city, 1);
   return hits[0] ?? null;
 }

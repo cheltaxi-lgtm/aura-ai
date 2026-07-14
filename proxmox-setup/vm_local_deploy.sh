@@ -9,6 +9,21 @@ DEPLOY_STARTED="$(date -Iseconds)"
 GIT_SHA="unknown"
 DEPLOY_STATUS="failed"
 
+verify_geonames_index() {
+  local file="$1"
+  [ -s "$file" ] || {
+    echo "ERROR: required GeoNames index is missing or empty: $file" >&2
+    return 1
+  }
+  node -e '
+    const fs = require("fs");
+    const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (!Array.isArray(value) || value.length === 0) {
+      throw new Error("GeoNames index must be a non-empty JSON array");
+    }
+  ' "$file"
+}
+
 mkdir -p /opt/aura-ai/logs
 
 log_deploy() {
@@ -26,6 +41,11 @@ if [ -f "$TARBALL" ]; then
   fi
   STAGE="$(mktemp -d)"
   tar -xzf "$TARBALL" -C "$STAGE"
+  echo ">>> Verifying staged GeoNames index before rsync..."
+  verify_geonames_index "$STAGE/data/geonames/cities.min.json"
+  if [ -e /opt/aura-ai/data/geonames/cities.min.json ]; then
+    verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
+  fi
   rsync -a --delete --ignore-times \
     --exclude='.env.local' \
     --exclude='public/releases/' \
@@ -35,6 +55,8 @@ if [ -f "$TARBALL" ]; then
     --exclude='node_modules/' \
     --exclude='logs/' \
     "$STAGE/" /opt/aura-ai/
+  echo ">>> Verifying installed GeoNames index after rsync..."
+  verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
   echo ">>> Rsync complete ($(test -f /opt/aura-ai/deploy-sha.txt && tr -d '\r\n' < /opt/aura-ai/deploy-sha.txt || echo no-sha))"
   rm -rf "$STAGE"
   if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
@@ -56,12 +78,10 @@ if [ -f /opt/aura-ai/deploy-sha.txt ]; then
 fi
 
 ENV_FILE="/opt/aura-ai/.env.local"
-ENV_BACKUP="/tmp/aura-ai-env.local.bak"
 YUKASSA_SHOP_BACKUP=""
 YUKASSA_SECRET_BACKUP=""
 
 if [ -f "$ENV_FILE" ]; then
-  cp "$ENV_FILE" "$ENV_BACKUP"
   YUKASSA_SHOP_BACKUP="$(grep '^YUKASSA_SHOP_ID=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
   YUKASSA_SECRET_BACKUP="$(grep '^YUKASSA_SECRET_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
 fi
@@ -76,9 +96,17 @@ grep -q '^COOKIE_SECURE=' "$ENV_FILE" \
   && sed -i 's|^COOKIE_SECURE=.*|COOKIE_SECURE=true|' "$ENV_FILE" \
   || echo 'COOKIE_SECURE=true' >> "$ENV_FILE"
 
-grep -q '^OPENROUTER_API_KEY=' "$ENV_FILE" \
-  && sed -i 's|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY='"'"'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'"'"'|' "$ENV_FILE" \
-  || echo 'OPENROUTER_API_KEY=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' >> "$ENV_FILE"
+_openrouter_key="$(grep '^OPENROUTER_API_KEY=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+if [ -z "${_openrouter_key//[[:space:]]/}" ]; then
+  if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+    sed -i '/^OPENROUTER_API_KEY=/d' "$ENV_FILE"
+    printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" >> "$ENV_FILE"
+  else
+    echo "ERROR: OPENROUTER_API_KEY is missing; preserve it in .env.local or supply it in the deploy process environment" >&2
+    exit 1
+  fi
+fi
+unset _openrouter_key
 
 grep -q '^OPENROUTER_MODEL=' "$ENV_FILE" \
   && sed -i 's|^OPENROUTER_MODEL=.*|OPENROUTER_MODEL=openai/gpt-4o-mini|' "$ENV_FILE" \
@@ -180,16 +208,19 @@ rm -f \
   src/app/api/photo-reading/route.ts
 
 npm ci --legacy-peer-deps
-if [ ! -f data/geonames/cities.min.json ]; then
-  echo ">>> Building GeoNames index..."
-  npm run build:geonames
-fi
+echo ">>> Verifying packaged GeoNames index..."
+verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
 set -a
 # NEXT_PUBLIC_* must be present during `next build` (inlined into client bundle).
 # shellcheck disable=SC1090
 source <(grep -E '^(NEXT_PUBLIC_RECAPTCHA_SITE_KEY|NEXT_PUBLIC_RECAPTCHA_ENABLED|NEXT_PUBLIC_APP_URL)=' "$ENV_FILE" | sed 's/\r$//')
 set +a
-# Build beside the active release. The running process must keep its current
+# Run the complete test suite before building or touching the active release.
+# A failure leaves the currently running .next directory untouched.
+echo ">>> Candidate tests..."
+npm test
+
+# Build beside the active release exactly once. The running process must keep its current
 # .next directory until every gate passes; replacing it in-place causes
 # ChunkLoadError/blank pages when a later smoke test aborts the deploy.
 rm -rf .next-candidate
@@ -215,6 +246,8 @@ else
   set +a
   node /opt/aura-ai/scripts/migrate.mjs
 fi
+echo ">>> Natal migration/schema gate..."
+node /opt/aura-ai/scripts/verify-natal-deploy-schema.mjs
 
 echo ">>> Memory smoke test..."
 # Re-export OPENROUTER_HTTPS_PROXY for the smoke test — embed code falls back to
@@ -286,7 +319,6 @@ if [ "$HEALTHY" -ne 1 ]; then
   exit 1
 fi
 
-rm -rf .next-previous
 systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
 
@@ -304,22 +336,52 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/cron-joint-reading-sweep.sh \
   /opt/aura-ai/proxmox-setup/cron-natal-transits.sh \
   /opt/aura-ai/proxmox-setup/cron-reengagement-emails.sh 2>/dev/null || true
-bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
+bash /opt/aura-ai/proxmox-setup/install-crons.sh
+if ! crontab -l 2>/dev/null | grep -Fq "/opt/aura-ai/proxmox-setup/cron-natal-transits.sh"; then
+  echo "ERROR: natal transit cron was not installed — rolling back"
+  sudo systemctl stop aura-ai || true
+  rm -rf .next
+  [ -d .next-previous ] && mv .next-previous .next
+  sudo systemctl start aura-ai
+  DEPLOY_STATUS="natal_cron_install_failed"
+  exit 1
+fi
+echo "natal_cron_installed=1"
 
-echo ">>> Cron secret smoke test..."
+echo ">>> Authenticated natal cron smoke test..."
 _CRON_SECRET="$(grep '^CRON_SECRET=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' | tr -d '[:space:]')"
 if [ -z "$_CRON_SECRET" ]; then
-  echo "WARN: CRON_SECRET missing after deploy — background crons will skip"
+  echo "ERROR: CRON_SECRET missing after deploy — rolling back"
+  sudo systemctl stop aura-ai || true
+  rm -rf .next
+  [ -d .next-previous ] && mv .next-previous .next
+  sudo systemctl start aura-ai
+  DEPLOY_STATUS="natal_cron_secret_missing"
+  exit 1
 else
-  _CRON_PROBE="$(curl -sS -m 15 -H "x-cron-secret: $_CRON_SECRET" "http://127.0.0.1:3000/api/cron/reengagement-emails?hourMsk=12" 2>/dev/null || echo '{"error":"probe_failed"}')"
-  if echo "$_CRON_PROBE" | grep -qE '"error":"(Forbidden|Unauthorized)"'; then
-    echo "ERROR: cron secret rejected by app: $_CRON_PROBE"
-    DEPLOY_STATUS="cron_secret_failed"
+  _CRON_BODY="$(mktemp)"
+  _CRON_STATUS="$(curl -sS -m 120 -o "$_CRON_BODY" -w '%{http_code}' \
+    -H "x-cron-secret: $_CRON_SECRET" \
+    "http://127.0.0.1:3000/api/cron/natal-transits" || printf '000')"
+  if ! printf '%s' "$_CRON_STATUS" | grep -qE '^2[0-9][0-9]$'; then
+    echo "ERROR: natal cron endpoint failed authentication/health (HTTP $_CRON_STATUS) — rolling back"
+    rm -f "$_CRON_BODY"
+    sudo systemctl stop aura-ai || true
+    rm -rf .next
+    [ -d .next-previous ] && mv .next-previous .next
+    sudo systemctl start aura-ai
+    DEPLOY_STATUS="natal_cron_probe_failed"
     exit 1
   fi
-  echo "cron_ok: $_CRON_PROBE"
+  if grep -q '"skipped"[[:space:]]*:[[:space:]]*true' "$_CRON_BODY"; then
+    echo "natal_cron_endpoint=skipped_feature"
+  else
+    echo "natal_cron_endpoint=ok"
+  fi
+  rm -f "$_CRON_BODY"
 fi
-unset _CRON_SECRET _CRON_PROBE
+unset _CRON_SECRET _CRON_BODY _CRON_STATUS
 
+rm -rf .next-previous
 DEPLOY_STATUS="success"
 echo "Deploy complete: https://zovus.ru"

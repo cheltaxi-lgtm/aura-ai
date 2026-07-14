@@ -27,11 +27,8 @@ jobs:
       - name: Verify GeoNames artifact
         run: test -s data/geonames/cities.min.json
 
-      - name: Spread and chat quality tests
-        run: npm run test
+      - name: Production predeploy tests and build
+        run: npm run predeploy:check
 
       - name: Lint
         run: npm run lint
-
-      - name: Build
-        run: npm run build

@@ -679,6 +679,8 @@ export class ChatOrchestrator {
     const natalChartBlock = await buildNatalPromptContext({
       characterId: this.characterId,
       profileUserId: this.profileUserId,
+      topic: this.lastUserMsg,
+      purpose: "chat",
     });
 
     let sessionNumber = 1;

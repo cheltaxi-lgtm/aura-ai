@@ -17,6 +17,9 @@ import { estimateJointSpreadCostPerPerson } from "@/lib/joint-reading-pricing";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import ShareButton from "@/components/share/ShareButton";
 import NatalSynastryWheel from "@/components/natal/NatalSynastryWheel";
+import CompositeWheel from "@/components/natal/CompositeWheel";
+import type { CompositeChart } from "@/lib/natal/composite";
+import type { SynastryDimension } from "@/lib/natal/synastry";
 import { jointReadingToSharePayload } from "@/lib/share/payload-builders";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import {
@@ -45,13 +48,16 @@ type JointPayload = {
   isLoggedIn: boolean;
   synastry?: {
     overallScore?: number;
+    dimensions?: SynastryDimension[];
     highlights?: string[];
     crossAspects?: Array<{
       bodyAKey: string;
       bodyBKey: string;
       aspect: string;
       orb?: number;
+      id?: string;
     }>;
+    composite?: CompositeChart;
     chartA?: { label?: string | null; western?: Record<string, unknown> } | null;
     chartB?: { label?: string | null; western?: Record<string, unknown> } | null;
   } | null;
@@ -392,6 +398,30 @@ export default function JointReadingTokenPage() {
                   ))}
                 </ul>
               ) : null}
+              {data.synastry.dimensions?.length ? (
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {data.synastry.dimensions.map((dimension) => (
+                    <article key={dimension.key} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="text-white/70">{dimension.label}</span>
+                        <span className="text-amber-100/70">{dimension.band} · {dimension.index}/100</span>
+                      </div>
+                      <ul className="mt-2 space-y-1 text-[11px] text-white/40">
+                        {dimension.supportingAspectIds.map((id) => {
+                          const aspect = data.synastry?.crossAspects?.find((item) => item.id === id);
+                          return aspect ? <li key={id}>{aspect.bodyAKey} — {aspect.aspect} — {aspect.bodyBKey}; орб {aspect.orb}°</li> : null;
+                        })}
+                      </ul>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+              {data.synastry.composite ? (
+                <div className="mt-6 border-t border-white/10 pt-5">
+                  <h3 className="text-center text-sm font-medium text-amber-100">Композит отношений</h3>
+                  <CompositeWheel composite={data.synastry.composite} />
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -400,6 +430,9 @@ export default function JointReadingTokenPage() {
               <p key={i}>{p}</p>
             ))}
           </div>
+          <Link href={`/joint-reading/${encodeURIComponent(token)}/print`} className="mt-5 inline-flex text-xs text-amber-200">
+            Печатная версия / PDF
+          </Link>
         </article>
       ) : bothDone ? (
         <p className="mt-8 flex items-center justify-center gap-2 text-center text-sm text-white/50">

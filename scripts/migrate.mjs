@@ -4,7 +4,7 @@
  *
  * Usage:
  *   node scripts/migrate.mjs           — apply pending migrations
- *   node scripts/migrate.mjs --baseline — mark all files as applied (existing DB, no SQL)
+ *   node scripts/migrate.mjs --baseline — mark historical files through 063 as applied
  *   node scripts/migrate.mjs --status   — list applied / pending
  *
  * Env: DATABASE_URL (from .env.local or environment)
@@ -17,6 +17,10 @@ import pg from "pg";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+// Existing databases predate the migration ledger. Only migrations known to
+// have been represented by the historical schema may be baselined without
+// executing SQL. Never advance this cutoff for a newly shipped migration.
+const BASELINE_MAX_VERSION = 63;
 
 const SCHEMA_MIGRATIONS_DDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -76,11 +80,24 @@ async function isDatabaseInitialized(client) {
   return Boolean(rows[0]?.ready);
 }
 
+function migrationNumber(file) {
+  const match = /^(\d+)_/.exec(file);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function baselineFiles(files) {
+  return files.filter((file) => {
+    const version = migrationNumber(file);
+    return version !== null && version <= BASELINE_MAX_VERSION;
+  });
+}
+
 async function markBaseline(client, files) {
   await ensureMigrationsTable(client);
   const applied = await getAppliedVersions(client);
   let inserted = 0;
-  for (const file of files) {
+  const historical = baselineFiles(files);
+  for (const file of historical) {
     if (applied.has(file)) continue;
     await client.query(
       "INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT (version) DO NOTHING",
@@ -89,7 +106,15 @@ async function markBaseline(client, files) {
     inserted++;
     console.log(`[baseline] marked ${file}`);
   }
-  console.log(`Baseline complete: ${inserted} migration(s) recorded.`);
+  const protectedPending = files.filter((file) => !historical.includes(file) && !applied.has(file));
+  console.log(
+    `Baseline complete: ${inserted} historical migration(s) recorded (cutoff ${String(BASELINE_MAX_VERSION).padStart(3, "0")}).`
+  );
+  if (protectedPending.length > 0) {
+    console.log(
+      `Protected pending migrations require SQL execution: ${protectedPending.join(", ")}`
+    );
+  }
 }
 
 async function runMigrations(client, files, applied) {
@@ -161,6 +186,9 @@ async function main() {
 
     if (baseline) {
       await markBaseline(client, files);
+      const afterBaseline = await getAppliedVersions(client);
+      const ran = await runMigrations(client, files, afterBaseline);
+      console.log(`Done: ${ran} protected pending migration(s) applied.`);
       return;
     }
 
@@ -171,9 +199,12 @@ async function main() {
       !args.has("--force")
     ) {
       console.log(
-        "Existing database with empty schema_migrations — baselining (use --force to re-apply all)."
+        `Existing database with empty schema_migrations — baselining historical migrations through ${String(BASELINE_MAX_VERSION).padStart(3, "0")} (use --force to re-apply all).`
       );
       await markBaseline(client, files);
+      const afterBaseline = await getAppliedVersions(client);
+      const ran = await runMigrations(client, files, afterBaseline);
+      console.log(`Done: ${ran} protected pending migration(s) applied.`);
       return;
     }
 

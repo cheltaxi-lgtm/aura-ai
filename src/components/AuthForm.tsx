@@ -562,8 +562,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </p>
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Email *</label>
+            <label htmlFor={`${role}-${mode}-email`} className="mb-1 block text-xs text-gray-500">Email *</label>
             <input
+              id={`${role}-${mode}-email`}
               type="email"
               required
               value={email}
@@ -574,8 +575,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Пароль *</label>
+            <label htmlFor={`${role}-${mode}-password`} className="mb-1 block text-xs text-gray-500">Пароль *</label>
             <input
+              id={`${role}-${mode}-password`}
               type="password"
               required
               minLength={mode === "register" ? MIN_PASSWORD_LENGTH : undefined}

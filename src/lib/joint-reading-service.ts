@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { query } from "@/lib/db";
 import { generateReading } from "@/lib/chat-prompts";
 import { dispatchNotification } from "@/lib/notify";
@@ -36,6 +36,9 @@ export interface JointReadingRow {
   partner_cards: { name: string; position?: string }[];
   partner_character: string | null;
   combined_reading: string | null;
+  combined_claim_token: string | null;
+  combined_claim_at: string | null;
+  completion_notified_at: string | null;
   synastry_data: Record<string, unknown> | null;
   rune_charged: boolean;
   expires_at: string;
@@ -76,6 +79,9 @@ function mapRow(row: Record<string, unknown>): JointReadingRow {
       : [],
     partner_character: row.partner_character ? String(row.partner_character) : null,
     combined_reading: row.combined_reading ? String(row.combined_reading) : null,
+    combined_claim_token: row.combined_claim_token ? String(row.combined_claim_token) : null,
+    combined_claim_at: row.combined_claim_at ? String(row.combined_claim_at) : null,
+    completion_notified_at: row.completion_notified_at ? String(row.completion_notified_at) : null,
     synastry_data:
       row.synastry_data && typeof row.synastry_data === "object"
         ? (row.synastry_data as Record<string, unknown>)
@@ -382,9 +388,14 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
   // Both sides poll this endpoint independently, so two requests can race here.
   // Atomically claim the generation slot first so we never call the LLM twice
   // (wasted cost) or clobber a result that already finished.
+  const claimToken = randomUUID();
   const claim = await query(
-    `UPDATE joint_readings SET combined_reading = '' WHERE token = $1 AND combined_reading IS NULL`,
-    [row.token]
+    `UPDATE joint_readings
+     SET combined_claim_token = $2, combined_claim_at = NOW()
+     WHERE token = $1
+       AND combined_reading IS NULL
+       AND (combined_claim_token IS NULL OR combined_claim_at < NOW() - INTERVAL '10 minutes')`,
+    [row.token, claimToken]
   );
   if (!claim.rowCount) {
     return (await getJointReadingByToken(row.token)) ?? row;
@@ -394,18 +405,32 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
     const synastry = await resolveJointSynastry(row);
     const combined = await generateCombinedReading(row, synastry);
     await query(
-      `UPDATE joint_readings SET combined_reading = $2, synastry_data = $3::jsonb, completed_at = COALESCE(completed_at, NOW()), status = 'completed' WHERE token = $1`,
-      [row.token, combined, synastry ? JSON.stringify(synastry) : null]
+      `UPDATE joint_readings
+       SET combined_reading = $2, synastry_data = $3::jsonb,
+           completed_at = COALESCE(completed_at, NOW()), status = 'completed',
+           combined_claim_token = NULL, combined_claim_at = NULL
+       WHERE token = $1 AND combined_claim_token = $4`,
+      [row.token, combined, synastry ? JSON.stringify(synastry) : null, claimToken]
     );
     return (await getJointReadingByToken(row.token)) ?? { ...row, combined_reading: combined, status: "completed" };
   } catch (err) {
-    // Release the claim so a later request can retry instead of getting stuck forever.
     await query(
-      `UPDATE joint_readings SET combined_reading = NULL WHERE token = $1 AND combined_reading = ''`,
-      [row.token]
+      `UPDATE joint_readings SET combined_claim_token = NULL, combined_claim_at = NULL
+       WHERE token = $1 AND combined_claim_token = $2`,
+      [row.token, claimToken]
     );
     throw err;
   }
+}
+
+/** Atomically reserves the one completion-notification fanout for this reading. */
+export async function claimJointCompletionNotification(token: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE joint_readings SET completion_notified_at = NOW()
+     WHERE token = $1 AND combined_reading IS NOT NULL AND completion_notified_at IS NULL`,
+    [token]
+  );
+  return result.rowCount === 1;
 }
 
 export async function submitJointReadingSide(params: {
@@ -522,17 +547,19 @@ export async function submitJointReadingSide(params: {
   ) {
     updated = await ensureCombinedReading(updated);
 
-    await notifyJointReadingEvent({
-      userId: updated.initiator_user_id,
-      type: "joint_reading_completed",
-      token: params.token,
-    });
-    if (updated.partner_user_id) {
+    if (updated.combined_reading && await claimJointCompletionNotification(params.token)) {
       await notifyJointReadingEvent({
-        userId: updated.partner_user_id,
+        userId: updated.initiator_user_id,
         type: "joint_reading_completed",
         token: params.token,
       });
+      if (updated.partner_user_id) {
+        await notifyJointReadingEvent({
+          userId: updated.partner_user_id,
+          type: "joint_reading_completed",
+          token: params.token,
+        });
+      }
     }
   }
 

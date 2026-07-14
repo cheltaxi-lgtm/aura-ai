@@ -13,6 +13,18 @@ import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
 import type { SpreadId } from "@/lib/spreads/types";
 import { DEFAULT_SPREAD_CATALOG_SETTINGS } from "@/lib/spreads/types";
 
+type NatalEphemeris = "celestine" | "natalengine";
+
+interface NatalChartSettings {
+  enabled: boolean;
+  ephemeris: NatalEphemeris;
+}
+
+const DEFAULT_NATAL_CHART_SETTINGS: NatalChartSettings = {
+  enabled: false,
+  ephemeris: "celestine",
+};
+
 export default function AdminSettingsPage() {
   const [pricing, setPricing] = useState<Record<string, unknown>>({});
   const [features, setFeatures] = useState<Record<string, unknown>>({});
@@ -22,7 +34,9 @@ export default function AdminSettingsPage() {
     maxExcerptLength: 50000,
     channels: { telegram: true, vk: true, native: true, copy: true, download: false },
   });
-  const [natalChart, setNatalChart] = useState<Record<string, unknown>>({ enabled: false });
+  const [natalChart, setNatalChart] = useState<NatalChartSettings>(
+    DEFAULT_NATAL_CHART_SETTINGS
+  );
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -48,7 +62,14 @@ export default function AdminSettingsPage() {
           maxExcerptLength: 50000,
           channels: { telegram: true, vk: true, native: true, copy: true, download: false },
         });
-        setNatalChart(d.natalChart ?? { enabled: false });
+        const natal = d.natalChart as Partial<NatalChartSettings> | undefined;
+        setNatalChart({
+          enabled: typeof natal?.enabled === "boolean" ? natal.enabled : false,
+          ephemeris:
+            natal?.ephemeris === "celestine" || natal?.ephemeris === "natalengine"
+              ? natal.ephemeris
+              : "celestine",
+        });
       });
   }, []);
 
@@ -79,8 +100,6 @@ export default function AdminSettingsPage() {
 
   const toggle = (key: string) => setFeatures({ ...features, [key]: !features[key] });
   const toggleShare = (key: string) => setShare({ ...share, [key]: !share[key] });
-  const toggleNatalChart = (key: string) =>
-    setNatalChart({ ...natalChart, [key]: !natalChart[key] });
   const shareChannels = (share.channels ?? {}) as Record<string, boolean>;
   const toggleShareChannel = (key: string) =>
     setShare({
@@ -200,11 +219,39 @@ export default function AdminSettingsPage() {
             <span className="text-sm text-gray-300">Включить модуль</span>
             <input
               type="checkbox"
-              checked={Boolean(natalChart.enabled)}
-              onChange={() => toggleNatalChart("enabled")}
+              checked={natalChart.enabled}
+              onChange={() =>
+                setNatalChart((current) => ({ ...current, enabled: !current.enabled }))
+              }
               className="h-4 w-4 accent-aura-purple"
             />
           </label>
+          <div>
+            <label
+              htmlFor="natal-ephemeris"
+              className="mb-1 block text-xs text-gray-500"
+            >
+              Эфемериды
+            </label>
+            <select
+              id="natal-ephemeris"
+              value={natalChart.ephemeris}
+              onChange={(e) =>
+                setNatalChart({
+                  ...natalChart,
+                  ephemeris: e.target.value as NatalEphemeris,
+                })
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            >
+              <option value="celestine">Celestine — рекомендуется</option>
+              <option value="natalengine">NatalEngine — legacy, ограниченный</option>
+            </select>
+            <p className="mt-1 text-[11px] text-gray-500">
+              Celestine используется по умолчанию и поддерживает дома и паттерны.
+              NatalEngine оставлен для совместимости и не предоставляет эти данные.
+            </p>
+          </div>
         </div>
 
         <div className="glass-panel space-y-4 p-6">

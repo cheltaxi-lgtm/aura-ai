@@ -5,11 +5,31 @@ set -euo pipefail
 APP_DIR="/opt/aura-ai"
 TARBALL="${1:-/tmp/aura-ai-deploy.tgz}"
 DUMP="${2:-/tmp/auraai.dump}"
+ENV_FILE="${APP_DIR}/.env.local"
+ENV_BACKUP=""
+
+cleanup_env_backup() {
+  if [ -n "$ENV_BACKUP" ] && [ -f "$ENV_BACKUP" ]; then
+    rm -f -- "$ENV_BACKUP"
+  fi
+}
+trap cleanup_env_backup EXIT
 
 cd "$APP_DIR"
 
+if [ -f "$ENV_FILE" ]; then
+  ENV_BACKUP="$(mktemp)"
+  cp -- "$ENV_FILE" "$ENV_BACKUP"
+fi
+
 if [ -f "$TARBALL" ]; then
   tar -xzf "$TARBALL" -C /opt/aura-ai
+fi
+
+if [ -n "$ENV_BACKUP" ]; then
+  cp -- "$ENV_BACKUP" "$ENV_FILE"
+  rm -f -- "$ENV_BACKUP"
+  ENV_BACKUP=""
 fi
 
 sed -i 's/\r$//' hosting/deploy-on-server.sh hosting/bootstrap-beget.sh proxmox-setup/*.sh scripts/*.sh 2>/dev/null || true
@@ -37,6 +57,18 @@ grep -q '^YANDEX_OAUTH_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'YANDEX_OA
 grep -q '^VK_CLIENT_ID=' .env.local 2>/dev/null || echo 'VK_CLIENT_ID=' >> .env.local
 grep -q '^VK_CLIENT_PROTECTED_KEY=' .env.local 2>/dev/null || echo 'VK_CLIENT_PROTECTED_KEY=' >> .env.local
 grep -q '^VK_SERVICE_TOKEN=' .env.local 2>/dev/null || echo 'VK_SERVICE_TOKEN=' >> .env.local
+
+_openrouter_key="$(grep '^OPENROUTER_API_KEY=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+if [ -z "${_openrouter_key//[[:space:]]/}" ]; then
+  if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+    sed -i '/^OPENROUTER_API_KEY=/d' "$ENV_FILE"
+    printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" >> "$ENV_FILE"
+  else
+    echo "ERROR: OPENROUTER_API_KEY is missing; preserve it in .env.local or supply it in the deploy process environment" >&2
+    exit 1
+  fi
+fi
+unset _openrouter_key
 
 npm ci --legacy-peer-deps
 if [ ! -f data/geonames/cities.min.json ]; then

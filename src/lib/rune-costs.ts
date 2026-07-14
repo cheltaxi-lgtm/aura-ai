@@ -9,6 +9,7 @@ export const DEFAULT_RUNE_COSTS = {
   DAILY_EXTENDED: 10,
   FINAL_REPORT: 30,
   NATAL_READING: 20,
+  FORECAST_REPORT: 20,
 } as const;
 
 export type RuneActionType = keyof typeof DEFAULT_RUNE_COSTS;
@@ -30,6 +31,7 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
   DAILY_EXTENDED: "Расширенный день (7 карт)",
   FINAL_REPORT: "Арт-отчёт сеанса",
   NATAL_READING: "Полная натальная трактовка",
+  FORECAST_REPORT: "Персональный прогноз",
 };
 
 export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
@@ -42,5 +44,6 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   DAILY_AMULET: "Карта-амулет дня",
   DAILY_EXTENDED: "Семь карт на сферы дня — один раз в сутки",
   FINAL_REPORT: "Итоговый арт-коллаж сеанса",
-  NATAL_READING: "Глубокая интерпретация натальной карты (западная + ведическая)",
+  NATAL_READING: "Глубокая интерпретация одной выбранной традиции: западной или ведической",
+  FORECAST_REPORT: "Один персональный прогноз выбранного горизонта; списание только после явного подтверждения",
 };

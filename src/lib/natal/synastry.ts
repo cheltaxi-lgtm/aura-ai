@@ -1,29 +1,45 @@
 import { angularSeparation } from "./math";
+import { computeCompositeChart, sanitizeCompositeChart, type CompositeChart } from "./composite";
 import type { NatalChartRecord } from "./types";
 
+export const SYNASTRY_VERSION = "2.0" as const;
+export type SynastryDimensionKey =
+  | "communication"
+  | "emotional"
+  | "attraction"
+  | "stability"
+  | "growth";
+
 export type SynastryCrossAspect = {
+  id: string;
   bodyAKey: string;
   bodyBKey: string;
   aspect: string;
   orb: number;
   label: string;
+  strength: number;
+};
+
+export type SynastryDimension = {
+  key: SynastryDimensionKey;
+  label: string;
+  index: number;
+  band: "напряжённо" | "смешанно" | "поддерживающе";
+  supportingAspectIds: string[];
 };
 
 export type SynastrySummary = {
+  version: typeof SYNASTRY_VERSION;
   overallScore: number;
   highlights: string[];
   crossAspects: SynastryCrossAspect[];
+  dimensions: SynastryDimension[];
+  composite: CompositeChart;
   chartA?: { label: string | null; western: Record<string, unknown> } | null;
   chartB?: { label: string | null; western: Record<string, unknown> } | null;
 };
 
-export type ClientSynastryPayload = {
-  overallScore: number;
-  highlights: string[];
-  crossAspects: SynastryCrossAspect[];
-  chartA?: { label: string | null; western: Record<string, unknown> } | null;
-  chartB?: { label: string | null; western: Record<string, unknown> } | null;
-};
+export type ClientSynastryPayload = SynastrySummary;
 
 const BODY_KEYS = ["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "rising"] as const;
 
@@ -65,6 +81,32 @@ const SYNASTRY_RULES: Array<{ name: string; angle: number; orb: number; score: n
   { name: "opposition", angle: 180, orb: 6, score: -4 },
 ];
 
+const DIMENSIONS: Record<SynastryDimensionKey, {
+  label: string;
+  pairs: ReadonlyArray<readonly [string, string]>;
+}> = {
+  communication: {
+    label: "Коммуникация",
+    pairs: [["mercury", "mercury"], ["mercury", "sun"], ["mercury", "moon"], ["mercury", "jupiter"]],
+  },
+  emotional: {
+    label: "Эмоциональная связь",
+    pairs: [["moon", "moon"], ["moon", "sun"], ["moon", "venus"], ["moon", "saturn"]],
+  },
+  attraction: {
+    label: "Притяжение",
+    pairs: [["venus", "mars"], ["venus", "venus"], ["mars", "mars"], ["rising", "venus"], ["rising", "mars"]],
+  },
+  stability: {
+    label: "Устойчивость",
+    pairs: [["saturn", "sun"], ["saturn", "moon"], ["saturn", "venus"], ["saturn", "saturn"]],
+  },
+  growth: {
+    label: "Рост",
+    pairs: [["jupiter", "sun"], ["jupiter", "moon"], ["jupiter", "mercury"], ["jupiter", "venus"], ["jupiter", "saturn"]],
+  },
+};
+
 function bodyLongitude(western: Record<string, unknown>, key: string): number | null {
   const body =
     key === "sun" || key === "moon" || key === "rising"
@@ -82,7 +124,7 @@ function collectBodies(western: Record<string, unknown>) {
   });
 }
 
-function computeCrossAspects(
+export function computeCrossAspects(
   chartA: Record<string, unknown>,
   chartB: Record<string, unknown>
 ): SynastryCrossAspect[] {
@@ -97,11 +139,13 @@ function computeCrossAspects(
         const orb = Math.abs(sep - rule.angle);
         if (orb > rule.orb) continue;
         hits.push({
+          id: `${a.key}:${rule.name}:${b.key}`,
           bodyAKey: a.key,
           bodyBKey: b.key,
           aspect: rule.name,
           orb: Number(orb.toFixed(2)),
           label: `${a.label} — ${ASPECT_LABELS[rule.name] ?? rule.name} — ${b.label} (орб ${orb.toFixed(1)}°)`,
+          strength: Number(Math.max(0, 1 - orb / rule.orb).toFixed(3)),
         });
         break;
       }
@@ -122,6 +166,40 @@ function scoreFromAspects(aspects: SynastryCrossAspect[]): number {
     score += rule.score * closeness * bodyWeight;
   }
   return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function pairMatches(hit: SynastryCrossAspect, pair: readonly [string, string]): boolean {
+  return (
+    (hit.bodyAKey === pair[0] && hit.bodyBKey === pair[1]) ||
+    (hit.bodyAKey === pair[1] && hit.bodyBKey === pair[0])
+  );
+}
+
+export function computeSynastryDimensions(
+  aspects: readonly SynastryCrossAspect[]
+): SynastryDimension[] {
+  return (Object.entries(DIMENSIONS) as Array<
+    [SynastryDimensionKey, (typeof DIMENSIONS)[SynastryDimensionKey]]
+  >).map(([key, definition]) => {
+    const relevant = aspects
+      .filter((hit) => definition.pairs.some((pair) => pairMatches(hit, pair)))
+      .sort((a, b) => b.strength - a.strength || a.id.localeCompare(b.id))
+      .slice(0, 6);
+    let value = 50;
+    for (const hit of relevant) {
+      const rule = SYNASTRY_RULES.find((candidate) => candidate.name === hit.aspect);
+      if (!rule) continue;
+      value += rule.score * hit.strength * 2;
+    }
+    const index = Math.max(0, Math.min(100, Math.round(value / 5) * 5));
+    return {
+      key,
+      label: definition.label,
+      index,
+      band: index >= 65 ? "поддерживающе" : index <= 35 ? "напряжённо" : "смешанно",
+      supportingAspectIds: relevant.slice(0, 3).map((hit) => hit.id),
+    };
+  });
 }
 
 function wheelOnlyWestern(western: Record<string, unknown>): Record<string, unknown> {
@@ -162,9 +240,12 @@ export function computeSynastry(
   }
 
   return {
+    version: SYNASTRY_VERSION,
     overallScore,
     highlights,
     crossAspects: crossAspects.slice(0, 16),
+    dimensions: computeSynastryDimensions(crossAspects),
+    composite: computeCompositeChart(chartA.western, chartB.western),
     chartA: {
       label: labels?.a ?? null,
       western: wheelOnlyWestern(chartA.western),
@@ -181,24 +262,45 @@ export function sanitizeSynastryForClient(
 ): ClientSynastryPayload | null {
   if (!data || typeof data !== "object") return null;
 
-  const overallScore =
-    typeof (data as SynastrySummary).overallScore === "number"
-      ? (data as SynastrySummary).overallScore
-      : 0;
   const highlights = Array.isArray((data as SynastrySummary).highlights)
-    ? (data as SynastrySummary).highlights.slice(0, 6)
+    ? (data as SynastrySummary).highlights.filter((item): item is string => typeof item === "string").slice(0, 6)
     : [];
-  const crossAspects = Array.isArray((data as SynastrySummary).crossAspects)
-    ? (data as SynastrySummary).crossAspects.slice(0, 16)
-    : [];
+  const rawAspects = Array.isArray((data as SynastrySummary).crossAspects)
+    ? (data as SynastrySummary).crossAspects : [];
+  const crossAspects = rawAspects.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const hit = item as Partial<SynastryCrossAspect>;
+    if (
+      typeof hit.bodyAKey !== "string" || !BODY_KEYS.includes(hit.bodyAKey as typeof BODY_KEYS[number]) ||
+      typeof hit.bodyBKey !== "string" || !BODY_KEYS.includes(hit.bodyBKey as typeof BODY_KEYS[number]) ||
+      typeof hit.aspect !== "string" || !SYNASTRY_RULES.some((rule) => rule.name === hit.aspect) ||
+      typeof hit.orb !== "number" || !Number.isFinite(hit.orb)
+    ) return [];
+    const id = `${hit.bodyAKey}:${hit.aspect}:${hit.bodyBKey}`;
+    return [{
+      id,
+      bodyAKey: hit.bodyAKey,
+      bodyBKey: hit.bodyBKey,
+      aspect: hit.aspect,
+      orb: Math.max(0, Math.min(20, hit.orb)),
+      label: typeof hit.label === "string" ? hit.label.slice(0, 160) : id,
+      strength: typeof hit.strength === "number" ? Math.max(0, Math.min(1, hit.strength)) : 0,
+    }];
+  }).slice(0, 16);
+  const dimensions = computeSynastryDimensions(crossAspects);
 
   const chartA = (data as SynastrySummary).chartA;
   const chartB = (data as SynastrySummary).chartB;
 
   return {
-    overallScore,
+    version: SYNASTRY_VERSION,
+    // The score and dimensions must describe the exact same sanitized aspect
+    // set; never trust a persisted/client-supplied aggregate.
+    overallScore: scoreFromAspects(crossAspects),
     highlights,
     crossAspects,
+    dimensions,
+    composite: sanitizeCompositeChart((data as SynastrySummary).composite),
     chartA: chartA?.western
       ? { label: chartA.label ?? null, western: wheelOnlyWestern(chartA.western) }
       : null,

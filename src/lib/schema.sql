@@ -305,7 +305,7 @@ INSERT INTO platform_settings (key, value) VALUES
   ('prompts', '{"globalPrefix":"Ты — мастер эзотерической платформы Zovus. Отвечай на русском."}'),
   ('tts', '{"enabled":false,"model":"google/gemini-3.1-flash-tts-preview","fallbackModel":"hexgrad/kokoro-82m","fallbackEnabled":true,"chunkChars":4000}'),
   ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Zovus mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":true,"destiny_card":true,"scene_illustration":true,"final_report":true}}'),
-  ('runes', '{"enabled":true,"rubPerRune":2,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"FINAL_REPORT":30}}')
+  ('runes', '{"enabled":true,"rubPerRune":2,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"INTENTION_SPREAD":20,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":20,"FORECAST_REPORT":20}}')
 ON CONFLICT (key) DO NOTHING;
 
 -- === Runes (internal currency) ===
@@ -318,6 +318,7 @@ CREATE TABLE IF NOT EXISTS rune_transactions (
   description     TEXT NOT NULL,
   action_type     TEXT,
   payment_id      TEXT,
+  refund_of_transaction_id UUID REFERENCES rune_transactions(id) ON DELETE SET NULL,
   shown_receipt   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -328,6 +329,10 @@ CREATE INDEX IF NOT EXISTS idx_rune_transactions_user
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_payment_purchase
   ON rune_transactions (payment_id)
   WHERE type = 'purchase' AND payment_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_refund_once
+  ON rune_transactions (refund_of_transaction_id)
+  WHERE type = 'refund' AND refund_of_transaction_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_rune_transactions_unshown
   ON rune_transactions (user_id, created_at DESC)
@@ -613,6 +618,9 @@ CREATE TABLE IF NOT EXISTS joint_readings (
   partner_cards         JSONB DEFAULT '[]'::jsonb,
   partner_character     TEXT,
   combined_reading      TEXT,
+  combined_claim_token  UUID,
+  combined_claim_at     TIMESTAMPTZ,
+  completion_notified_at TIMESTAMPTZ,
   synastry_data         JSONB,
   rune_charged          BOOLEAN NOT NULL DEFAULT FALSE,
   expires_at            TIMESTAMPTZ NOT NULL,
@@ -661,3 +669,155 @@ CREATE TABLE IF NOT EXISTS natal_charts (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_natal_charts_user ON natal_charts(user_id);
+
+CREATE TABLE IF NOT EXISTS natal_report_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  birth_fingerprint TEXT NOT NULL,
+  engine_version TEXT NOT NULL,
+  ephemeris TEXT NOT NULL,
+  tradition TEXT NOT NULL CHECK (tradition IN ('western', 'vedic')),
+  report_type TEXT NOT NULL DEFAULT 'interpretation',
+  content TEXT NOT NULL CHECK (length(btrim(content)) > 0),
+  structured_data JSONB,
+  evidence_refs JSONB,
+  rune_cost INTEGER CHECK (rune_cost IS NULL OR rune_cost >= 0),
+  charge_transaction_id UUID REFERENCES rune_transactions(id) ON DELETE SET NULL,
+  claim_token UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT natal_report_history_version_unique UNIQUE (
+    user_id,
+    birth_fingerprint,
+    engine_version,
+    ephemeris,
+    tradition,
+    report_type
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_natal_report_history_charge
+  ON natal_report_history(charge_transaction_id)
+  WHERE charge_transaction_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_natal_report_history_user_created
+  ON natal_report_history(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS private_report_shares (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE CHECK (length(token) >= 43),
+  report_kind TEXT NOT NULL CHECK (report_kind IN ('natal', 'relationship')),
+  report_id UUID NOT NULL,
+  selected_sections TEXT[] NOT NULL CHECK (cardinality(selected_sections) > 0),
+  public_payload JSONB NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_private_report_shares_owner
+  ON private_report_shares(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_private_report_shares_active_token
+  ON private_report_shares(token)
+  WHERE revoked_at IS NULL;
+
+CREATE OR REPLACE FUNCTION validate_private_report_share_target()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.report_kind = 'natal' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM natal_report_history
+      WHERE id = NEW.report_id AND user_id = NEW.owner_user_id
+    ) THEN
+      RAISE EXCEPTION 'invalid natal report share target' USING ERRCODE = '23503';
+    END IF;
+  ELSIF NEW.report_kind = 'relationship' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM joint_readings
+      WHERE id = NEW.report_id
+        AND status = 'completed'
+        AND (initiator_user_id = NEW.owner_user_id OR partner_user_id = NEW.owner_user_id)
+    ) THEN
+      RAISE EXCEPTION 'invalid relationship report share target' USING ERRCODE = '23503';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_validate_private_report_share_target ON private_report_shares;
+CREATE TRIGGER trg_validate_private_report_share_target
+  BEFORE INSERT OR UPDATE OF owner_user_id, report_kind, report_id
+  ON private_report_shares
+  FOR EACH ROW EXECUTE FUNCTION validate_private_report_share_target();
+
+CREATE TABLE IF NOT EXISTS natal_timing_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  horizon_days INTEGER NOT NULL CHECK (horizon_days IN (7, 30, 90, 365)),
+  window_start DATE NOT NULL,
+  window_end DATE NOT NULL,
+  engine_version TEXT NOT NULL,
+  birth_fingerprint TEXT NOT NULL,
+  timing_data JSONB,
+  generated_at TIMESTAMPTZ,
+  claim_token UUID,
+  claim_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT natal_timing_cache_window_unique UNIQUE (
+    user_id, horizon_days, window_start, engine_version, birth_fingerprint
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_natal_timing_cache_user_generated
+  ON natal_timing_cache(user_id, generated_at DESC);
+
+CREATE TABLE IF NOT EXISTS natal_event_preferences (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  horizons INTEGER[] NOT NULL DEFAULT ARRAY[7, 30],
+  categories TEXT[] NOT NULL DEFAULT ARRAY[
+    'identity', 'emotions', 'relationships', 'career', 'growth', 'pressure', 'transformation'
+  ],
+  planet_importance TEXT[] NOT NULL DEFAULT ARRAY['jupiter', 'saturn', 'uranus', 'neptune', 'pluto'],
+  frequency TEXT NOT NULL DEFAULT 'daily' CHECK (frequency IN ('daily', 'weekly')),
+  in_app BOOLEAN NOT NULL DEFAULT TRUE,
+  push BOOLEAN NOT NULL DEFAULT FALSE,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  last_notified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT natal_event_preferences_horizons CHECK (
+    horizons <@ ARRAY[7, 30, 90, 365] AND cardinality(horizons) <= 4
+  ),
+  CONSTRAINT natal_event_preferences_categories CHECK (
+    categories <@ ARRAY[
+      'identity', 'emotions', 'relationships', 'career', 'growth', 'pressure', 'transformation'
+    ] AND cardinality(categories) <= 7
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_natal_event_preferences_due
+  ON natal_event_preferences(timezone, frequency, last_notified_at)
+  WHERE enabled = TRUE AND in_app = TRUE;
+
+CREATE TABLE IF NOT EXISTS natal_ai_preferences (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  ai_context_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  tarot_context_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS natal_event_delivery_log (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  event_key TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('in_app', 'push')),
+  delivered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, event_key, channel)
+);
+
+CREATE INDEX IF NOT EXISTS idx_natal_event_delivery_log_delivered
+  ON natal_event_delivery_log(delivered_at);

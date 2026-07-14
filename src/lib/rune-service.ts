@@ -186,28 +186,84 @@ export async function refundRunes(
   userId: string,
   amount: number,
   description: string,
-  action?: RuneActionType
+  action?: RuneActionType,
+  originalTransactionId?: string
 ): Promise<number> {
   if (amount <= 0) {
     return getRuneBalance(userId);
   }
 
   return withTransaction(async (client) => {
+    const { rows: lockedUsers } = await queryClient<{ rune_balance: number }>(
+      client,
+      `SELECT rune_balance FROM users WHERE id = $1 FOR UPDATE`,
+      [userId]
+    );
+    const currentBalance = lockedUsers[0]?.rune_balance;
+    if (currentBalance == null) throw new Error("user_not_found");
+
+    let refundTransactionId: string | undefined;
+    if (originalTransactionId) {
+      const { rows: claimed } = await queryClient<{ id: string }>(
+        client,
+        `INSERT INTO rune_transactions (
+           user_id, type, amount, balance_after, description, action_type,
+           refund_of_transaction_id
+         )
+         SELECT $1, 'refund', 0, $2, $3, $4, source.id
+         FROM rune_transactions source
+         WHERE source.id = $5
+           AND source.user_id = $1
+           AND source.type = 'spend'
+         ON CONFLICT (refund_of_transaction_id)
+           WHERE type = 'refund' AND refund_of_transaction_id IS NOT NULL
+         DO NOTHING
+         RETURNING id`,
+        [userId, currentBalance, description, action ?? null, originalTransactionId]
+      );
+      refundTransactionId = claimed[0]?.id;
+      if (!refundTransactionId) {
+        const { rows: existing } = await queryClient<{ id: string }>(
+          client,
+          `SELECT id
+           FROM rune_transactions
+           WHERE user_id = $1
+             AND type = 'refund'
+             AND refund_of_transaction_id = $2`,
+          [userId, originalTransactionId]
+        );
+        if (existing[0]) return currentBalance;
+        throw new Error("refund_source_transaction_not_found");
+      }
+    }
+
     const { rows } = await queryClient<{ new_balance: number }>(
       client,
-      `UPDATE users SET rune_balance = rune_balance + $2 WHERE id = $1 RETURNING rune_balance AS new_balance`,
+      `UPDATE users
+       SET rune_balance = rune_balance + $2
+       WHERE id = $1
+       RETURNING rune_balance AS new_balance`,
       [userId, amount]
     );
+    const newBalance = rows[0]!.new_balance;
 
-    const newBalance = rows[0]?.new_balance ?? 0;
-
-    await queryClient(
-      client,
-      `INSERT INTO rune_transactions
-         (user_id, type, amount, balance_after, description, action_type)
-       VALUES ($1, 'refund', $2, $3, $4, $5)`,
-      [userId, amount, newBalance, description, action ?? null]
-    );
+    if (refundTransactionId) {
+      await queryClient(
+        client,
+        `UPDATE rune_transactions
+         SET amount = $2, balance_after = $3
+         WHERE id = $1`,
+        [refundTransactionId, amount, newBalance]
+      );
+    } else {
+      await queryClient(
+        client,
+        `INSERT INTO rune_transactions
+           (user_id, type, amount, balance_after, description, action_type)
+         VALUES ($1, 'refund', $2, $3, $4, $5)`,
+        [userId, amount, newBalance, description, action ?? null]
+      );
+    }
 
     return newBalance;
   });

@@ -26,6 +26,7 @@ const FALLBACK: RuneConfig = {
     DAILY_EXTENDED: 10,
     FINAL_REPORT: 30,
     NATAL_READING: 20,
+    FORECAST_REPORT: 20,
   },
   labels: {
     QUESTION: "Вопрос мастеру",
@@ -38,6 +39,7 @@ const FALLBACK: RuneConfig = {
     DAILY_EXTENDED: "Расширенный день",
     FINAL_REPORT: "Арт-отчёт сеанса",
     NATAL_READING: "Полная натальная трактовка",
+    FORECAST_REPORT: "Персональный прогноз",
   },
 };
 

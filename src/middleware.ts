@@ -45,6 +45,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/app/",
   "/api/scene-art/",
   "/api/share/",
+  // Public report shares use high-entropy, expiring, revocable tokens and enforce
+  // rate limits in the handler. Keep this narrower than the /api/public namespace.
+  "/api/public/reports/",
   "/api/cron/",
   // GET /api/joint-reading/[token] must be reachable by a guest partner who hasn't
   // logged in yet (the page shows a login gate) — create/complete/mine still enforce

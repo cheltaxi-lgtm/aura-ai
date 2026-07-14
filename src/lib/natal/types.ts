@@ -1,8 +1,14 @@
-export const NATAL_ENGINE_VERSION = "v3-celestine-placidus-1.0";
+export const NATAL_ENGINE_VERSION = "v3-celestine-placidus-1.1";
 
 import type { TransitHit } from "./transits";
+import type { VedicChart } from "./vedic";
 
 export type NatalTradition = "western" | "vedic";
+
+export interface NatalInterpretationClaim {
+  token: string;
+  claimedAtEpoch: number;
+}
 
 export interface NatalPlace {
   label: string;
@@ -23,11 +29,13 @@ export interface NatalChartRecord {
   timeKnown: boolean;
   place: NatalPlace | null;
   western: Record<string, unknown> | null;
-  vedic: Record<string, unknown> | null;
+  vedic: VedicChart | null;
   transits?: TransitHit[];
   transitCacheDate?: string;
   birthFingerprint?: string;
   interpretation?: string;
+  interpretations?: Partial<Record<NatalTradition, string>>;
+  interpretationClaims?: Partial<Record<NatalTradition, NatalInterpretationClaim>>;
   computedAt: string | null;
   engineVersion: string;
   warnings: string[];

@@ -7,6 +7,20 @@ import {
 } from "@/lib/services/natal-chart-service";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 
+function natalCalculationError(error: unknown) {
+  if (error instanceof Error && error.message === "INVALID_BIRTH_DATE") {
+    return NextResponse.json(
+      { error: "Проверьте дату рождения в профиле." },
+      { status: 400 }
+    );
+  }
+  console.warn("[natal-chart] calculation failed");
+  return NextResponse.json(
+    { error: "Не удалось рассчитать натальную карту." },
+    { status: 500 }
+  );
+}
+
 export async function GET() {
   if (!(await isNatalChartEnabled())) {
     return NextResponse.json({ enabled: false, chart: null });
@@ -20,8 +34,12 @@ export async function GET() {
   const rateLimited = await enforcePaidRouteRateLimit(ctx.profileUserId, "natal_chart_read");
   if (rateLimited) return rateLimited;
 
-  const chart = await getOrComputeNatalChart(ctx.profileUserId);
-  return NextResponse.json({ enabled: true, chart });
+  try {
+    const chart = await getOrComputeNatalChart(ctx.profileUserId);
+    return NextResponse.json({ enabled: true, chart });
+  } catch (error) {
+    return natalCalculationError(error);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -37,6 +55,10 @@ export async function POST(request: NextRequest) {
   const rateLimited = await enforcePaidRouteRateLimit(ctx.profileUserId, "natal_chart_recompute");
   if (rateLimited) return rateLimited;
 
-  const chart = await computeAndStoreNatalChart(ctx.profileUserId);
-  return NextResponse.json({ ok: true, enabled: true, chart });
+  try {
+    const chart = await computeAndStoreNatalChart(ctx.profileUserId);
+    return NextResponse.json({ ok: true, enabled: true, chart });
+  } catch (error) {
+    return natalCalculationError(error);
+  }
 }

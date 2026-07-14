@@ -56,11 +56,43 @@ function Copy-Remote($local, $remote) {
   & $Pscp -pw $Password -hostkey $HostKey $local "${User}@${DeployHost}:${remote}"
 }
 
+Write-Host ">>> Deploy artifact preflight..."
+$RequiredArtifacts = @(
+  "data/geonames/cities.min.json",
+  "scripts/migrate.mjs",
+  "scripts/verify-natal-deploy-schema.mjs",
+  "scripts/migrations/064_migrate_natal_report_history.sql",
+  "scripts/migrations/065_migrate_natal_timing.sql",
+  "scripts/migrations/066_migrate_natal_ai_preferences.sql",
+  "scripts/migrations/067_migrate_private_report_shares.sql",
+  "scripts/migrations/068_harden_natal_backend.sql",
+  "proxmox-setup/vm_local_deploy.sh",
+  "proxmox-setup/install-crons.sh",
+  "proxmox-setup/cron-natal-transits.sh",
+  "src/app/api/cron/natal-transits/route.ts",
+  "src/app/api/natal-chart/ai-preferences/route.ts",
+  "src/app/api/natal-chart/event-preferences/route.ts",
+  "src/app/api/natal-chart/history/route.ts",
+  "src/app/api/natal-chart/interpretation/route.ts",
+  "src/app/api/natal-chart/route.ts",
+  "src/app/api/natal-chart/timing/route.ts",
+  "src/app/api/public/reports/[token]/route.ts",
+  "src/app/api/report-shares/[id]/route.ts",
+  "src/app/api/report-shares/route.ts"
+)
+$MissingArtifacts = @($RequiredArtifacts | Where-Object {
+  -not (Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf)
+})
+if ($MissingArtifacts.Count -gt 0) {
+  throw "Missing required deploy artifacts: $($MissingArtifacts -join ', ')"
+}
+$RequiredArtifacts | ForEach-Object { Write-Host "  [artifact] $_" }
+Write-Host "Required deploy artifacts: $($RequiredArtifacts.Count)"
+
 Write-Host ">>> Pack sources..."
 $GeoNamesIndex = Join-Path $Root "data\geonames\cities.min.json"
-if (-not (Test-Path $GeoNamesIndex)) {
-  throw "GeoNames index is missing. Run npm run build:geonames before deploy."
-}
+& node -e "const fs=require('fs');const value=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(!Array.isArray(value)||!value.length)throw new Error('GeoNames index must be a non-empty JSON array')" $GeoNamesIndex
+if ($LASTEXITCODE -ne 0) { throw "GeoNames index validation failed; deploy will not rebuild or download it." }
 if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
 $DeployShaFile = Join-Path $Root "deploy-sha.txt"
 try {
@@ -77,9 +109,16 @@ Copy-Remote $Tarball "/tmp/aura-ai-deploy.tgz"
 Write-Host ">>> Deploy on server (vm_local_deploy.sh)..."
 $DeployCmd = @'
 set -e
+verify_geonames_index() {
+  local file="$1"
+  test -s "$file"
+  node -e 'const fs=require("fs");const value=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!Array.isArray(value)||!value.length)throw new Error("invalid GeoNames index")' "$file"
+}
 mkdir -p /opt/aura-ai/proxmox-setup /opt/aura-ai/logs
 STAGE="$(mktemp -d)"
 tar -xzf /tmp/aura-ai-deploy.tgz -C "$STAGE"
+echo ">>> Verify GeoNames index before rsync..."
+verify_geonames_index "$STAGE/data/geonames/cities.min.json"
 cp "$STAGE/proxmox-setup/vm_local_deploy.sh" /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
 RELEASES_BACKUP=""
 if [ -d "/opt/aura-ai/public/releases" ]; then
@@ -96,6 +135,8 @@ rsync -a --delete --ignore-times \
   --exclude='node_modules/' \
   --exclude='logs/' \
   "$STAGE/" /opt/aura-ai/
+echo ">>> Verify GeoNames index after rsync..."
+verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
 if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
   mkdir -p /opt/aura-ai/public/releases
   cp -a "$RELEASES_BACKUP/." /opt/aura-ai/public/releases/

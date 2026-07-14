@@ -1,241 +1,259 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo, useState } from "react";
+import { useReducedMotion } from "framer-motion";
+import { ASPECT_NAMES, BODY_NAMES, asRecord, signLabel, signName } from "@/lib/natal/presentation";
 
 const SIGNS = [
-  "Овен",
-  "Телец",
-  "Близнецы",
-  "Рак",
-  "Лев",
-  "Дева",
-  "Весы",
-  "Скорпион",
-  "Стрелец",
-  "Козерог",
-  "Водолей",
-  "Рыбы",
-];
+  ["Овен", "♈"], ["Телец", "♉"], ["Близнецы", "♊"], ["Рак", "♋"],
+  ["Лев", "♌"], ["Дева", "♍"], ["Весы", "♎"], ["Скорпион", "♏"],
+  ["Стрелец", "♐"], ["Козерог", "♑"], ["Водолей", "♒"], ["Рыбы", "♓"],
+] as const;
 
-const PLANET_KEYS: Array<{ key: string; label: string; color: string }> = [
-  { key: "sun", label: "☉", color: "#fbbf24" },
-  { key: "moon", label: "☽", color: "#e2e8f0" },
-  { key: "mercury", label: "☿", color: "#94a3b8" },
-  { key: "venus", label: "♀", color: "#f472b6" },
-  { key: "mars", label: "♂", color: "#ef4444" },
-  { key: "jupiter", label: "♃", color: "#a78bfa" },
-  { key: "saturn", label: "♄", color: "#64748b" },
-];
+const PLANETS = [
+  ["sun", "☉", "#fbbf24"], ["moon", "☽", "#e2e8f0"], ["mercury", "☿", "#94a3b8"],
+  ["venus", "♀", "#f472b6"], ["mars", "♂", "#ef4444"], ["jupiter", "♃", "#a78bfa"],
+  ["saturn", "♄", "#94a3b8"], ["uranus", "♅", "#22d3ee"], ["neptune", "♆", "#818cf8"],
+  ["pluto", "♇", "#c084fc"],
+] as const;
 
 const ASPECT_COLORS: Record<string, string> = {
-  conjunction: "#fbbf24",
-  sextile: "#34d399",
-  square: "#ef4444",
-  trine: "#60a5fa",
-  opposition: "#f97316",
+  conjunction: "#fbbf24", sextile: "#34d399", square: "#ef4444",
+  trine: "#60a5fa", opposition: "#f97316", "semi-sextile": "#a3a3a3", quincunx: "#d8b4fe",
 };
 
-type Props = {
-  western: Record<string, unknown>;
-  size?: number;
+type Selection =
+  | { kind: "body"; id: string; title: string; detail: string }
+  | { kind: "house"; id: string; title: string; detail: string }
+  | { kind: "aspect"; id: string; title: string; detail: string }
+  | null;
+
+type Props = { western: Record<string, unknown>; timeKnown: boolean; size?: number };
+type WheelBody = {
+  key: string;
+  glyph: string;
+  color: string;
+  longitude: number;
+  lane: number;
+  sign: string | null;
+  retrograde: boolean;
 };
 
-function longitudeOf(body: unknown): number | null {
-  if (!body || typeof body !== "object") return null;
-  const lon = (body as { longitude?: number }).longitude;
-  return typeof lon === "number" ? lon : null;
+export function longitudeOf(body: unknown): number | null {
+  const longitude = asRecord(body)?.longitude;
+  return typeof longitude === "number" && Number.isFinite(longitude) ? longitude : null;
 }
 
-function polar(cx: number, cy: number, r: number, longitude: number) {
-  const deg = 90 - longitude;
-  const rad = (deg * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
+export function filterAspectNature<T extends { nature: string }>(
+  aspects: T[],
+  filter: "all" | "major" | "minor"
+): T[] {
+  return filter === "all" ? aspects : aspects.filter((aspect) => aspect.nature === filter);
 }
 
-export default function NatalChartWheel({ western, size = 280 }: Props) {
+function polar(cx: number, cy: number, radius: number, longitude: number) {
+  const radians = ((90 - longitude) * Math.PI) / 180;
+  return { x: cx + radius * Math.cos(radians), y: cy - radius * Math.sin(radians) };
+}
+
+function keyboardSelect(event: React.KeyboardEvent, action: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    action();
+  }
+}
+
+export default function NatalChartWheel({ western, timeKnown, size = 520 }: Props) {
+  const gradientId = useId().replace(/:/g, "");
+  const reducedMotion = useReducedMotion();
+  const [selection, setSelection] = useState<Selection>(null);
+  const [nature, setNature] = useState<"all" | "major" | "minor">("major");
+  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => new Set(Object.keys(ASPECT_COLORS)));
   const cx = size / 2;
   const cy = size / 2;
-  const outerR = size * 0.46;
-  const innerR = size * 0.28;
-  const houseR = size * 0.32;
-  const planetR = size * 0.36;
-  const ascLongitude = longitudeOf(western.rising);
-  const longitudeRotation = ascLongitude == null ? 0 : 270 - ascLongitude;
+  const outerR = size * 0.475;
+  const zodiacR = size * 0.39;
+  const houseR = size * 0.25;
+  const aspectR = size * 0.23;
+  const asc = timeKnown ? longitudeOf(western.rising) : null;
+  const rotation = asc == null ? 0 : 270 - asc;
 
-  const houseCusps = useMemo(() => {
-    const raw = western.houses;
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .map((h) => {
-        if (!h || typeof h !== "object") return null;
-        const lon = (h as { longitude?: number }).longitude;
-        const house = (h as { house?: number }).house;
-        if (typeof lon !== "number" || typeof house !== "number") return null;
-        return { house, longitude: lon };
-      })
-      .filter(Boolean) as Array<{ house: number; longitude: number }>;
-  }, [western.houses]);
+  const houses = useMemo(() => {
+    if (!timeKnown || !Array.isArray(western.houses)) return [];
+    return western.houses.flatMap((item) => {
+      const house = asRecord(item);
+      return typeof house?.house === "number" && typeof house.longitude === "number"
+        ? [{ house: house.house, longitude: house.longitude }]
+        : [];
+    });
+  }, [timeKnown, western.houses]);
 
-  const planets = useMemo(() => {
-    const list: Array<{ key: string; label: string; color: string; longitude: number }> = [];
-    for (const p of PLANET_KEYS) {
-      const body =
-        p.key === "sun" || p.key === "moon"
-          ? western[p.key]
-          : (western.planets as Record<string, unknown> | undefined)?.[p.key];
+  const bodies = useMemo(() => {
+    const items: WheelBody[] = PLANETS.flatMap(([key, glyph, color]) => {
+      const body = key === "sun" || key === "moon" ? western[key] : asRecord(western.planets)?.[key];
       const longitude = longitudeOf(body);
-      if (longitude != null) list.push({ key: p.key, label: p.label, color: p.color, longitude });
+      if (longitude == null) return [];
+      const record = asRecord(body);
+      const sign = signName(body);
+      return [{ key, glyph, color, longitude, lane: 0, sign: sign ? signLabel(sign) : null, retrograde: record?.retrograde === true }];
+    });
+    if (timeKnown) {
+      for (const [key, glyph, color] of [["rising", "ASC", "#34d399"], ["midheaven", "MC", "#fb923c"]] as const) {
+        const longitude = longitudeOf(western[key]);
+        const bodySign = signName(western[key]);
+        if (longitude != null) items.push({ key, glyph, color, longitude, lane: 0, sign: bodySign ? signLabel(bodySign) : null, retrograde: false });
+      }
     }
-    const rising = longitudeOf(western.rising);
-    if (rising != null) {
-      list.push({ key: "asc", label: "ASC", color: "#34d399", longitude: rising });
-    }
-    return list;
-  }, [western]);
+    items.sort((a, b) => a.longitude - b.longitude);
+    items.forEach((item, index) => {
+      const previous = items[(index - 1 + items.length) % items.length];
+      const gap = index === 0 ? item.longitude + 360 - previous.longitude : item.longitude - previous.longitude;
+      item.lane = gap < 11 ? (previous.lane + 1) % 3 : 0;
+    });
+    return items;
+  }, [timeKnown, western]);
 
-  const aspectLines = useMemo(() => {
-    const aspects = Array.isArray(western.aspects) ? western.aspects : [];
-    const byKey = new Map(planets.map((p) => [p.key, p.longitude]));
-    const lines: Array<{ x1: number; y1: number; x2: number; y2: number; color: string; orb: number }> = [];
-    for (const a of aspects) {
-      if (!a || typeof a !== "object") continue;
-      const asp = a as {
-        planet1?: string;
-        planet2?: string;
-        aspect?: string;
-        nature?: string;
-        orb?: number;
-      };
-      if (asp.nature !== "major") continue;
-      const lon1 = byKey.get(String(asp.planet1));
-      const lon2 = byKey.get(String(asp.planet2));
-      if (lon1 == null || lon2 == null) continue;
-      const p1 = polar(cx, cy, planetR, lon1 + longitudeRotation);
-      const p2 = polar(cx, cy, planetR, lon2 + longitudeRotation);
-      lines.push({
-        x1: p1.x,
-        y1: p1.y,
-        x2: p2.x,
-        y2: p2.y,
-        color: ASPECT_COLORS[String(asp.aspect)] ?? "#ffffff33",
-        orb: typeof asp.orb === "number" ? asp.orb : Number.POSITIVE_INFINITY,
-      });
-    }
-    return lines.sort((a, b) => a.orb - b.orb).slice(0, 10);
-  }, [western.aspects, planets, cx, cy, planetR, longitudeRotation]);
+  const allAspects = useMemo(() => {
+    const byKey = new Map(bodies.map((body) => [body.key, body.longitude]));
+    if (!Array.isArray(western.aspects)) return [];
+    return western.aspects.flatMap((item, index) => {
+      const aspect = asRecord(item);
+      if (!aspect) return [];
+      const first = typeof aspect?.planet1 === "string" ? aspect.planet1 : null;
+      const second = typeof aspect?.planet2 === "string" ? aspect.planet2 : null;
+      const type = typeof aspect?.aspect === "string" ? aspect.aspect : null;
+      const firstLongitude = first ? byKey.get(first) : null;
+      const secondLongitude = second ? byKey.get(second) : null;
+      if (!first || !second || !type || firstLongitude == null || secondLongitude == null) return [];
+      return [{
+        id: `${first}-${type}-${second}-${index}`, first, second, type,
+        nature: typeof aspect.nature === "string" ? aspect.nature : "unknown",
+        orb: typeof aspect.orb === "number" ? aspect.orb : null,
+        firstLongitude, secondLongitude,
+      }];
+    });
+  }, [bodies, western.aspects]);
 
-  const houseSystem =
-    typeof western.houseSystem === "string" ? western.houseSystem : null;
+  const aspects = useMemo(
+    () => filterAspectNature(allAspects, nature).filter((aspect) => visibleTypes.has(aspect.type)),
+    [allAspects, nature, visibleTypes]
+  );
+  const related = selection?.kind === "body"
+    ? new Set(aspects.flatMap((aspect) => aspect.first === selection.id ? [aspect.second] : aspect.second === selection.id ? [aspect.first] : []))
+    : new Set<string>();
+
+  const selectBody = (body: WheelBody) => setSelection({
+    kind: "body", id: body.key, title: BODY_NAMES[body.key] ?? body.key,
+    detail: `${body.sign ?? "Знак не указан"} · ${body.longitude.toFixed(2)}°${body.retrograde ? " · ретроградно" : ""}`,
+  });
+
+  const toggleType = (type: string) => setVisibleTypes((previous) => {
+    const next = new Set(previous);
+    if (next.has(type)) next.delete(type); else next.add(type);
+    return next;
+  });
 
   return (
-    <svg
-      viewBox={`0 0 ${size} ${size}`}
-      className="mx-auto w-full max-w-[320px]"
-      role="img"
-      aria-label="Натальное колесо"
-    >
-      <defs>
-        <radialGradient id="wheelGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#1e1b4b" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#0f0a1a" stopOpacity="1" />
-        </radialGradient>
-      </defs>
-      <circle cx={cx} cy={cy} r={outerR + 4} fill="url(#wheelGlow)" stroke="#fbbf2440" strokeWidth="1" />
-      {SIGNS.map((sign, i) => {
-        const startLon = i * 30;
-        const endLon = (i + 1) * 30;
-        const p1 = polar(cx, cy, innerR, startLon + longitudeRotation);
-        const p2 = polar(cx, cy, outerR, startLon + longitudeRotation);
-        const p3 = polar(cx, cy, outerR, endLon + longitudeRotation);
-        const p4 = polar(cx, cy, innerR, endLon + longitudeRotation);
-        const mid = polar(cx, cy, (innerR + outerR) / 2, startLon + 15 + longitudeRotation);
-        return (
-          <g key={sign}>
-            <path
-              d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} A ${outerR} ${outerR} 0 0 1 ${p3.x} ${p3.y} L ${p4.x} ${p4.y} A ${innerR} ${innerR} 0 0 0 ${p1.x} ${p1.y}`}
-              fill={i % 2 === 0 ? "#ffffff06" : "#ffffff03"}
-              stroke="#ffffff12"
-              strokeWidth="0.5"
-            />
-            <text
-              x={mid.x}
-              y={mid.y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="#ffffff55"
-              fontSize={size * 0.038}
-            >
-              {sign.slice(0, 3)}
-            </text>
-          </g>
-        );
-      })}
-      {houseCusps.map((h) => {
-        const outer = polar(cx, cy, outerR, h.longitude + longitudeRotation);
-        const inner = polar(cx, cy, houseR, h.longitude + longitudeRotation);
-        return (
-          <g key={`house-${h.house}`}>
-            <line
-              x1={inner.x}
-              y1={inner.y}
-              x2={outer.x}
-              y2={outer.y}
-              stroke="#fbbf2455"
-              strokeWidth={h.house === 1 || h.house === 10 ? 1.2 : 0.6}
-            />
-            {h.house === 1 || h.house === 4 || h.house === 7 || h.house === 10 ? (
-              <text
-                x={polar(cx, cy, houseR - size * 0.04, h.longitude + longitudeRotation).x}
-                y={polar(cx, cy, houseR - size * 0.04, h.longitude + longitudeRotation).y}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill="#fbbf2488"
-                fontSize={size * 0.028}
-              >
-                {h.house}
-              </text>
-            ) : null}
-          </g>
-        );
-      })}
-      <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="#fbbf2433" strokeWidth="1" />
-      <circle cx={cx} cy={cy} r={planetR} fill="none" stroke="#ffffff10" strokeDasharray="3 4" />
-      {aspectLines.map((line, idx) => (
-        <line
-          key={`asp-${idx}`}
-          x1={line.x1}
-          y1={line.y1}
-          x2={line.x2}
-          y2={line.y2}
-          stroke={line.color}
-          strokeOpacity={0.45}
-          strokeWidth={0.8}
-        />
-      ))}
-      {planets.map((p, idx) => {
-        const { x, y } = polar(cx, cy, planetR, p.longitude + longitudeRotation);
-        return (
-          <g key={`${p.label}-${idx}`}>
-            <circle cx={x} cy={y} r={size * 0.028} fill={p.color} fillOpacity="0.25" stroke={p.color} strokeWidth="1" />
-            <text
-              x={x}
-              y={y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill={p.color}
-              fontSize={size * 0.045}
-              fontWeight="600"
-            >
-              {p.label}
-            </text>
-          </g>
-        );
-      })}
-      {houseSystem ? (
-        <text x={cx} y={size - 6} textAnchor="middle" fill="#ffffff44" fontSize={size * 0.028}>
-          {houseSystem}
-        </text>
-      ) : null}
-    </svg>
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
+      <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2" aria-label="Фильтры аспектов">
+          {(["major", "minor", "all"] as const).map((value) => (
+            <button key={value} type="button" onClick={() => setNature(value)}
+              aria-pressed={nature === value}
+              className={`rounded-full border px-3 py-1.5 text-xs transition ${nature === value ? "border-amber-300/40 bg-amber-300/15 text-amber-100" : "border-white/10 text-white/50 hover:text-white"}`}>
+              {value === "major" ? "Мажорные" : value === "minor" ? "Минорные" : "Все"}
+            </button>
+          ))}
+        </div>
+        <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-auto w-full max-w-[620px]"
+          role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
+          <title>Интерактивная натальная карта</title>
+          <desc>{timeKnown ? "Выберите планету, дом или аспект, чтобы увидеть подробности." : "Время рождения неизвестно: дома, асцендент и MC не показаны."}</desc>
+          <defs><radialGradient id={gradientId}><stop offset="0%" stopColor="#1e1b4b" /><stop offset="100%" stopColor="#0b0713" /></radialGradient></defs>
+          <circle cx={cx} cy={cy} r={outerR + 4} fill={`url(#${gradientId})`} stroke="#fbbf2440" />
+          {SIGNS.map(([name, glyph], index) => {
+            const start = index * 30;
+            const points = [
+              polar(cx, cy, zodiacR, start + rotation), polar(cx, cy, outerR, start + rotation),
+              polar(cx, cy, outerR, start + 30 + rotation), polar(cx, cy, zodiacR, start + 30 + rotation),
+            ];
+            const mid = polar(cx, cy, (zodiacR + outerR) / 2, start + 15 + rotation);
+            return <g key={name}>
+              <path d={`M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y} A ${outerR} ${outerR} 0 0 1 ${points[2].x} ${points[2].y} L ${points[3].x} ${points[3].y} A ${zodiacR} ${zodiacR} 0 0 0 ${points[0].x} ${points[0].y}`} fill={index % 2 ? "#ffffff06" : "#fbbf240d"} stroke="#ffffff20" />
+              <text x={mid.x} y={mid.y} textAnchor="middle" dominantBaseline="middle" fill="#fef3c7cc" fontSize={size * .052}>{glyph}</text>
+            </g>;
+          })}
+          {houses.map((house) => {
+            const outer = polar(cx, cy, zodiacR, house.longitude + rotation);
+            const inner = polar(cx, cy, houseR, house.longitude + rotation);
+            const label = polar(cx, cy, houseR + size * .045, house.longitude + rotation + 5);
+            const selected = selection?.kind === "house" && selection.id === String(house.house);
+            const action = () => setSelection({ kind: "house", id: String(house.house), title: `${house.house} дом`, detail: `Куспид: ${house.longitude.toFixed(2)}° · система ${String(western.houseSystem ?? "не указана")}` });
+            return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
+              <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#fff7d6" : "#fbbf24"} strokeOpacity={selected ? 1 : .6} strokeWidth={selected ? 3 : 1} />
+              <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#fde68a" fontSize={size * .028}>{house.house}</text>
+            </g>;
+          })}
+          <circle cx={cx} cy={cy} r={zodiacR} fill="none" stroke="#fbbf2455" />
+          <circle cx={cx} cy={cy} r={aspectR} fill="#08050e" fillOpacity=".35" stroke="#ffffff18" />
+          {aspects.map((aspect) => {
+            const first = polar(cx, cy, aspectR, aspect.firstLongitude + rotation);
+            const second = polar(cx, cy, aspectR, aspect.secondLongitude + rotation);
+            const selected = selection?.kind === "aspect" && selection.id === aspect.id;
+            const bodySelected = selection?.kind === "body" && (selection.id === aspect.first || selection.id === aspect.second);
+            const action = () => setSelection({ kind: "aspect", id: aspect.id, title: ASPECT_NAMES[aspect.type] ?? aspect.type, detail: `${BODY_NAMES[aspect.first] ?? aspect.first} — ${BODY_NAMES[aspect.second] ?? aspect.second}${aspect.orb == null ? "" : ` · орб ${aspect.orb.toFixed(2)}°`}` });
+            return <line key={aspect.id} role="button" tabIndex={0} aria-label={`${ASPECT_NAMES[aspect.type] ?? aspect.type}: ${BODY_NAMES[aspect.first] ?? aspect.first} и ${BODY_NAMES[aspect.second] ?? aspect.second}`}
+              onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
+              x1={first.x} y1={first.y} x2={second.x} y2={second.y}
+              stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"} strokeOpacity={selected ? 1 : bodySelected ? .85 : .38}
+              strokeWidth={selected ? 4 : bodySelected ? 2.5 : 1.2} className="cursor-pointer focus:outline-none" />;
+          })}
+          {bodies.map((body) => {
+            const radius = size * (.33 - body.lane * .035);
+            const point = polar(cx, cy, radius, body.longitude + rotation);
+            const tick = polar(cx, cy, zodiacR, body.longitude + rotation);
+            const selected = selection?.kind === "body" && selection.id === body.key;
+            const highlighted = selected || related.has(body.key);
+            const action = () => selectBody(body);
+            return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${body.longitude.toFixed(1)} градусов`}
+              onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
+              className={`cursor-pointer focus:outline-none ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .38 : 1}>
+              <line x1={tick.x} y1={tick.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".6" />
+              <circle cx={point.x} cy={point.y} r={size * (selected ? .033 : .027)} fill="#100a1d" stroke={body.color} strokeWidth={selected ? 3 : 1.5} />
+              <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={body.key === "rising" || body.key === "midheaven" ? size * .024 : size * .04} fontWeight="600">{body.glyph}</text>
+            </g>;
+          })}
+        </svg>
+      </div>
+
+      <aside className="space-y-4 lg:sticky lg:top-24">
+        <section className="min-h-28 rounded-xl border border-amber-300/15 bg-black/25 p-4" aria-live="polite">
+          <p className="text-[10px] uppercase tracking-[.18em] text-amber-200/50">Выбранный объект</p>
+          {selection ? <>
+            <h3 className="mt-2 font-medium text-white">{selection.title}</h3>
+            <p className="mt-1 text-xs leading-5 text-white/55">{selection.detail}</p>
+          </> : <p className="mt-2 text-xs leading-5 text-white/45">Нажмите на планету, линию аспекта или номер дома. Доступна навигация Tab, Enter и Space.</p>}
+        </section>
+        <section>
+          <h3 className="text-xs font-medium text-white/65">Легенда аспектов</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {Object.entries(ASPECT_COLORS).map(([type, color]) => (
+              <button key={type} type="button" onClick={() => toggleType(type)} aria-pressed={visibleTypes.has(type)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-[10px] text-white/55 disabled:opacity-30"
+                style={{ opacity: visibleTypes.has(type) ? 1 : .4 }}>
+                <span className="h-0.5 w-3" style={{ backgroundColor: color }} /> {ASPECT_NAMES[type] ?? type}
+              </button>
+            ))}
+          </div>
+        </section>
+        <details className="rounded-xl border border-white/10 bg-black/20 p-3">
+          <summary className="cursor-pointer text-xs text-white/60">Текстовая версия карты</summary>
+          <ul className="mt-3 space-y-1.5 text-xs leading-5 text-white/50">
+            {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
+            {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
+          </ul>
+        </details>
+      </aside>
+    </div>
   );
 }

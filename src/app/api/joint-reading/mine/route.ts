@@ -5,6 +5,7 @@ import { buildJointReadingUrl, listJointReadingsForUser } from "@/lib/joint-read
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { stripMarkdownText } from "@/lib/cabinet-utils";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
+import { sanitizeSynastryForClient } from "@/lib/natal/synastry";
 
 export async function GET() {
   if (!(await ensureDb())) {
@@ -34,6 +35,7 @@ export async function GET() {
         : null;
 
       return {
+        id: row.id,
         token: row.token,
         url: buildJointReadingUrl(row.token),
         status: row.status,
@@ -45,8 +47,12 @@ export async function GET() {
         hasCombined: Boolean(combined),
         preview,
         createdAt: row.created_at,
+        completedAt: row.completed_at,
         expiresAt: row.expires_at,
         isInitiator,
+        synastry: row.status === "completed"
+          ? sanitizeSynastryForClient(row.synastry_data)
+          : null,
       };
     }),
   });

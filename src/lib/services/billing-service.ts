@@ -79,6 +79,7 @@ export type RollbackChargeParams = {
   userId: string;
   cost: number;
   wasFreeQuestion: boolean;
+  transactionId?: string;
   sessionId?: string;
   slotReserved?: boolean;
   actionType?: string;
@@ -309,7 +310,15 @@ export async function chargeForSession(
 
 /** Refund runes or free-question slot after failed LLM generation. */
 export async function rollbackCharge(params: RollbackChargeParams): Promise<number> {
-  const { userId, cost, wasFreeQuestion, sessionId, slotReserved, actionType } = params;
+  const {
+    userId,
+    cost,
+    wasFreeQuestion,
+    transactionId,
+    sessionId,
+    slotReserved,
+    actionType,
+  } = params;
 
   if (slotReserved && sessionId) {
     try {
@@ -325,7 +334,8 @@ export async function rollbackCharge(params: RollbackChargeParams): Promise<numb
         userId,
         cost,
         "Возврат: ошибка генерации",
-        actionType as RuneActionType | undefined
+        actionType as RuneActionType | undefined,
+        transactionId
       );
     } catch (err) {
       console.error("[BillingService] rune rollback failed:", err);

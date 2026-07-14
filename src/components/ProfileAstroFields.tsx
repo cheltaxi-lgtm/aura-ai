@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { formatZodiacLabel, genderLabel, getZodiacFromDate } from "@/utils/zodiac";
 import {
@@ -41,26 +41,56 @@ export default function ProfileAstroFields({
     Array<{ label: string; latitude: number; longitude: number; timezone: string }>
   >([]);
   const [cityLoading, setCityLoading] = useState(false);
+  const [highlightedCityIndex, setHighlightedCityIndex] = useState(-1);
+  const [selectedCityLabel, setSelectedCityLabel] = useState<string | null>(null);
+  const cityInputId = useId();
+  const cityListboxId = `${cityInputId}-listbox`;
+  const cityListOpen = enableCitySearch && citySuggestions.length > 0;
+
+  const selectCity = (label: string) => {
+    setSelectedCityLabel(label);
+    onChange({ birthCity: label });
+    setCitySuggestions([]);
+    setHighlightedCityIndex(-1);
+  };
 
   useEffect(() => {
-    if (!enableCitySearch || values.birthCity.trim().length < 2) {
+    if (
+      !enableCitySearch ||
+      values.birthCity.trim().length < 2 ||
+      values.birthCity === selectedCityLabel
+    ) {
       setCitySuggestions([]);
+      setHighlightedCityIndex(-1);
+      setCityLoading(false);
       return;
     }
+    const controller = new AbortController();
     const handle = window.setTimeout(() => {
       setCityLoading(true);
       void fetch(`/api/natal-chart/places?q=${encodeURIComponent(values.birthCity.trim())}`, {
         credentials: "include",
+        signal: controller.signal,
       })
         .then((res) => res.json())
         .then((data: { places?: typeof citySuggestions }) => {
           setCitySuggestions(data.places ?? []);
+          setHighlightedCityIndex(-1);
         })
-        .catch(() => setCitySuggestions([]))
-        .finally(() => setCityLoading(false));
+        .catch((error: unknown) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            setCitySuggestions([]);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setCityLoading(false);
+        });
     }, 300);
-    return () => window.clearTimeout(handle);
-  }, [enableCitySearch, values.birthCity]);
+    return () => {
+      window.clearTimeout(handle);
+      controller.abort();
+    };
+  }, [enableCitySearch, selectedCityLabel, values.birthCity]);
   const zodiac = useMemo(() => {
     if (!values.birthDate) return null;
     return getZodiacFromDate(values.birthDate);
@@ -158,29 +188,76 @@ export default function ProfileAstroFields({
       </div>
 
       <div className="relative">
-        <label className="mb-1 block text-xs text-gray-500">Город рождения</label>
+        <label htmlFor={cityInputId} className="mb-1 block text-xs text-gray-500">
+          Город рождения
+        </label>
         <input
+          id={cityInputId}
           type="text"
           value={values.birthCity}
-          onChange={(e) => onChange({ birthCity: e.target.value })}
+          onChange={(e) => {
+            setSelectedCityLabel(null);
+            setHighlightedCityIndex(-1);
+            onChange({ birthCity: e.target.value });
+          }}
+          onKeyDown={(e) => {
+            if (!enableCitySearch) return;
+            if (e.key === "ArrowDown" && citySuggestions.length > 0) {
+              e.preventDefault();
+              setHighlightedCityIndex((current) =>
+                current < citySuggestions.length - 1 ? current + 1 : 0
+              );
+            } else if (e.key === "ArrowUp" && citySuggestions.length > 0) {
+              e.preventDefault();
+              setHighlightedCityIndex((current) =>
+                current > 0 ? current - 1 : citySuggestions.length - 1
+              );
+            } else if (
+              e.key === "Enter" &&
+              highlightedCityIndex >= 0 &&
+              citySuggestions[highlightedCityIndex]
+            ) {
+              e.preventDefault();
+              selectCity(citySuggestions[highlightedCityIndex].label);
+            } else if (e.key === "Escape" && cityListOpen) {
+              e.preventDefault();
+              setCitySuggestions([]);
+              setHighlightedCityIndex(-1);
+            }
+          }}
           placeholder="Москва, Алматы..."
           className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
           autoComplete="off"
+          role={enableCitySearch ? "combobox" : undefined}
+          aria-autocomplete={enableCitySearch ? "list" : undefined}
+          aria-expanded={enableCitySearch ? cityListOpen : undefined}
+          aria-controls={enableCitySearch ? cityListboxId : undefined}
+          aria-activedescendant={
+            cityListOpen && highlightedCityIndex >= 0
+              ? `${cityListboxId}-option-${highlightedCityIndex}`
+              : undefined
+          }
         />
-        {enableCitySearch && citySuggestions.length > 0 ? (
-          <ul className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-xl border border-white/10 bg-[#121018] py-1 shadow-lg">
-            {citySuggestions.map((place) => (
-              <li key={place.label}>
-                <button
-                  type="button"
-                  className="w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/5"
-                  onClick={() => {
-                    onChange({ birthCity: place.label });
-                    setCitySuggestions([]);
-                  }}
-                >
-                  {place.label}
-                </button>
+        {cityListOpen ? (
+          <ul
+            id={cityListboxId}
+            role="listbox"
+            className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-xl border border-white/10 bg-[#121018] py-1 shadow-lg"
+          >
+            {citySuggestions.map((place, index) => (
+              <li
+                id={`${cityListboxId}-option-${index}`}
+                key={`${place.label}-${place.latitude}-${place.longitude}`}
+                role="option"
+                aria-selected={highlightedCityIndex === index}
+                className={`cursor-pointer px-3 py-2 text-left text-xs text-white/80 ${
+                  highlightedCityIndex === index ? "bg-white/10" : "hover:bg-white/5"
+                }`}
+                onMouseEnter={() => setHighlightedCityIndex(index)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => selectCity(place.label)}
+              >
+                {place.label}
               </li>
             ))}
           </ul>

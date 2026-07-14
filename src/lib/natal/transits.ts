@@ -18,7 +18,11 @@ export type TransitHit = {
   orb?: number;
   note: string;
   relatedFacts?: string[];
+  methodology?: string;
 };
+
+const DEEP_TRANSIT_METHODOLOGY =
+  "Deep-transit summary: daily 00:00 local samples, selected Sun/Mars/Jupiter/Saturn aspects, and day-boundary ingresses. This is intentionally coarser and narrower than the refined personal-timing timeline.";
 
 const PLANET_LABELS: Record<string, string> = {
   sun: "Солнце",
@@ -95,6 +99,7 @@ function detectAspectHits(
         date: dateStr,
         orb: Number(orb.toFixed(2)),
         note: `Транзит ${tLabel} ${rule.name} к натальному ${natal.label} (орб ${orb.toFixed(1)}°)`,
+        methodology: DEEP_TRANSIT_METHODOLOGY,
       });
       break;
     }
@@ -126,6 +131,7 @@ export function detectSignIngresses(
       kind: "sign_change",
       date: dateStr,
       note: `Транзит ${label}: вход в ${endSign} (из ${startSign})`,
+      methodology: DEEP_TRANSIT_METHODOLOGY,
     });
   }
   return hits;

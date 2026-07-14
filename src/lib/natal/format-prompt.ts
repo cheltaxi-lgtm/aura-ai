@@ -1,4 +1,4 @@
-import type { NatalChartRecord } from "./types";
+import type { NatalChartRecord, NatalTradition } from "./types";
 
 function formatSignName(signRaw: unknown): string | undefined {
   if (typeof signRaw === "string") return signRaw;
@@ -18,7 +18,10 @@ function signLine(label: string, body: unknown): string | null {
   return degree ? `${label}: ${sign} (${degree}°)` : `${label}: ${sign}`;
 }
 
-export function buildNatalPromptBlock(chart: NatalChartRecord | null): string {
+export function buildNatalPromptBlock(
+  chart: NatalChartRecord | null,
+  tradition?: NatalTradition
+): string {
   if (!chart?.western && !chart?.vedic) return "";
 
   const lines: string[] = [
@@ -30,7 +33,7 @@ export function buildNatalPromptBlock(chart: NatalChartRecord | null): string {
   }
   lines.push(`Время рождения известно: ${chart.timeKnown ? "да" : "нет (осторожно с домами/асцендентом)"}`);
 
-  if (chart.western) {
+  if (chart.western && tradition !== "vedic") {
     const w = chart.western;
     lines.push("", "Западная (тропик):");
     const ephemeris = typeof w.ephemeris === "string" ? w.ephemeris : null;
@@ -119,21 +122,50 @@ export function buildNatalPromptBlock(chart: NatalChartRecord | null): string {
     }
   }
 
-  if (chart.vedic) {
+  if (chart.vedic && tradition !== "western") {
     const v = chart.vedic;
     lines.push("", "Ведическая (сидерик, Лахири):");
-    const moonSign = v.moonSign as Record<string, unknown> | undefined;
-    const summary =
-      moonSign && typeof moonSign.summary === "string" ? moonSign.summary : null;
-    if (summary) lines.push(summary);
-    const dasha = v.dasha as Record<string, unknown> | undefined;
-    const current = dasha?.current as Record<string, unknown> | undefined;
-    if (current?.maha && current?.antar) {
-      lines.push(`Текущая даша: ${current.maha} / ${current.antar}`);
+    if (v.moonSign.summary) lines.push(v.moonSign.summary);
+    const current = v.dasha.current;
+    if (current) {
+      lines.push(
+        `Текущая махадаша: ${current.lord} (${current.startDate.slice(0, 10)} — ${current.endDate.slice(0, 10)})`
+      );
     }
-    const nakshatra = v.nakshatra as Record<string, unknown> | undefined;
-    if (nakshatra && typeof nakshatra.name === "string") {
-      lines.push(`Накшатра Луны: ${nakshatra.name}`);
+    lines.push(
+      `Накшатра Луны: ${v.moonSign.nakshatra.name}, пада ${v.moonSign.nakshatra.pada}, управитель ${v.moonSign.nakshatra.lord}`
+    );
+
+    const labels = {
+      sun: "Солнце",
+      moon: "Луна",
+      mercury: "Меркурий",
+      venus: "Венера",
+      mars: "Марс",
+      jupiter: "Юпитер",
+      saturn: "Сатурн",
+      rahu: "Раху",
+      ketu: "Кету",
+      ascendant: "Лагна",
+    } as const;
+    const positionBits = Object.entries(labels).flatMap(([key, label]) => {
+      if (key === "ascendant" && !chart.timeKnown) return [];
+      const position = v.positions[key as keyof typeof v.positions];
+      return position ? [`${label}: ${position.rashi.name} ${position.degree}`] : [];
+    });
+    if (positionBits.length) {
+      lines.push(`Положения: ${positionBits.join(", ")}`);
+    }
+
+    if (chart.timeKnown && v.houses) {
+      const occupied = Object.entries(v.houses).flatMap(([house, data]) => {
+        if (!data?.planets.length) return [];
+        const names = data.planets.map((planet) => labels[planet.name as keyof typeof labels] ?? planet.name);
+        return [`д.${house}: ${names.join("/")}`];
+      });
+      if (occupied.length) {
+        lines.push(`Занятые дома: ${occupied.join(", ")}`);
+      }
     }
   }
 

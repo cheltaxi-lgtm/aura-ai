@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import {
+  claimJointCompletionNotification,
   ensureCombinedReading,
   getJointReadingByToken,
   notifyJointReadingEvent,
   resolveJointParticipantRole,
-  resolveJointSynastry,
 } from "@/lib/joint-reading-service";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { clientIp, enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -39,32 +39,36 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     row.partner_reading?.trim() &&
     !row.combined_reading
   ) {
-    row = await ensureCombinedReading(row);
-    if (row.combined_reading) {
-      await notifyJointReadingEvent({
-        userId: row.initiator_user_id,
-        type: "joint_reading_completed",
-        token: row.token,
-      });
-      if (row.partner_user_id) {
+    try {
+      row = await ensureCombinedReading(row);
+      if (row.combined_reading && await claimJointCompletionNotification(row.token)) {
         await notifyJointReadingEvent({
-          userId: row.partner_user_id,
+          userId: row.initiator_user_id,
           type: "joint_reading_completed",
           token: row.token,
         });
+        if (row.partner_user_id) {
+          await notifyJointReadingEvent({
+            userId: row.partner_user_id,
+            type: "joint_reading_completed",
+            token: row.token,
+          });
+        }
+        if (row.initiator_user_id) {
+          void checkJointReadingAchievementsSilently(
+            row.initiator_user_id,
+            row.initiator_character ?? "ragnar"
+          );
+        }
+        if (row.partner_user_id) {
+          void checkJointReadingAchievementsSilently(
+            row.partner_user_id,
+            row.partner_character ?? "ragnar"
+          );
+        }
       }
-      if (row.initiator_user_id) {
-        void checkJointReadingAchievementsSilently(
-          row.initiator_user_id,
-          row.initiator_character ?? "ragnar"
-        );
-      }
-      if (row.partner_user_id) {
-        void checkJointReadingAchievementsSilently(
-          row.partner_user_id,
-          row.partner_character ?? "ragnar"
-        );
-      }
+    } catch {
+      console.warn("[joint-reading] combined reading generation unavailable");
     }
     participantRole = viewerId ? resolveJointParticipantRole(row, viewerId) : null;
   }
@@ -73,9 +77,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const isPartner = participantRole === "partner";
   const canViewPrivate = isInitiator || isPartner;
   const natalEnabled = await isNatalChartEnabled();
+  // Completion owns computation and persistence. Polling only reads the
+  // immutable versioned snapshot, including for legacy rows without one.
   const currentSynastry =
-    natalEnabled && canViewPrivate && row.status === "completed"
-      ? await resolveJointSynastry(row)
+    natalEnabled && canViewPrivate && row.status === "completed" &&
+    row.synastry_data && typeof row.synastry_data === "object"
+      ? row.synastry_data
       : null;
   const isExpired = row.status === "expired";
   const canStartAsInitiator = Boolean(
@@ -109,11 +116,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     synastry:
       currentSynastry
         ? sanitizeSynastryForClient(currentSynastry)
-        : natalEnabled &&
-            canViewPrivate &&
-            row.synastry_data &&
-            typeof row.synastry_data === "object"
-          ? sanitizeSynastryForClient(row.synastry_data as Record<string, unknown>)
-          : null,
+        : null,
   });
 }
