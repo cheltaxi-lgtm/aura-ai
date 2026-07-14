@@ -73,6 +73,23 @@ type GuestTripletDrawProps = {
   className?: string;
 };
 
+function GuestSpreadSection({ children }: { children: React.ReactNode }) {
+  return (
+    <section id={GUEST_SPREAD_SECTION_ID} className="aura-landing-section aura-landing-section--guest-spread">
+      <div className="mx-auto max-w-6xl">
+        <div className="aura-landing-section__head">
+          <h2 className="font-mystic-display aura-landing-section__title">Ваш бесплатный расклад</h2>
+          <p className="aura-landing-section__subtitle">
+            Откройте три карты — увидите краткий ориентир по символам. Регистрация понадобится для полной
+            расшифровки.
+          </p>
+        </div>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 function readGuestSpreadDraft(): GuestSpreadDraft | null {
   if (typeof window === "undefined") return null;
   try {
@@ -206,7 +223,9 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       trackGuestSpreadStarted();
       setStep("intro");
       window.requestAnimationFrame(() => {
-        document.getElementById("guest-spread")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.requestAnimationFrame(() => {
+          document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       });
     };
     window.addEventListener(GUEST_SPREAD_START_EVENT, onStart);
@@ -332,21 +351,15 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     });
   }, [step, deck, system]);
 
-  if (step === "idle") {
-    return (
-      <div
-        id={GUEST_SPREAD_SECTION_ID}
-        className={`mx-auto max-w-lg px-4 py-10 text-center text-sm leading-relaxed text-aura-ivory/50 ${className}`.trim()}
-      >
-        Нажмите «Открыть 3 карты бесплатно» выше — здесь появится ваш бесплатный расклад из трёх карт.
-      </div>
-    );
-  }
-
   const pickedMasterName = getCharacterById(masterId)?.name;
+
+  if (step === "idle") {
+    return null;
+  }
 
   if (step === "intro") {
     return (
+      <GuestSpreadSection>
       <div className={`mx-auto max-w-md px-4 ${className}`.trim()}>
         <div className="glass-panel space-y-5 p-8 text-center">
           <p className="lux-label">Бесплатный расклад · 3 карты · классическое Таро</p>
@@ -381,11 +394,13 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
           </button>
         </div>
       </div>
+      </GuestSpreadSection>
     );
   }
 
   if (step === "pick") {
     return (
+      <GuestSpreadSection>
       <MagicalSpreadTable
         tableSize={tableSize}
         cardCount={CARD_COUNT}
@@ -402,13 +417,14 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
           setStep("intro");
         }}
       />
+      </GuestSpreadSection>
     );
   }
 
   if (step === "done") {
     return (
+      <GuestSpreadSection>
       <motion.div
-        id="guest-spread"
         className={`glass-panel mx-auto max-w-lg space-y-5 p-8 ${className}`.trim()}
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -461,11 +477,13 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
           ) : null}
         </div>
       </motion.div>
+      </GuestSpreadSection>
     );
   }
 
   return (
-    <div id="guest-spread-flip" className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
+    <GuestSpreadSection>
+    <div className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
       <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
       <p className="mb-2 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
       <p className="mb-8 text-center text-sm font-medium text-aura-champagne/80">
@@ -531,5 +549,6 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
         </button>
       </div>
     </div>
+    </GuestSpreadSection>
   );
 }

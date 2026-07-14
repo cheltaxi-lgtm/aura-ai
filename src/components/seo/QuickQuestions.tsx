@@ -43,7 +43,7 @@ function readUserGender(): UserGender {
 
 type QuickQuestionsProps = {
   showQuestionField?: boolean;
-  onQuestionSelect?: (question: string) => void;
+  onQuestionSelect?: (question: string, intentSlug?: string) => void;
   /** Custom question field only — chips keep using intent links when logged in. */
   onCustomQuestionSubmit?: (question: string) => void;
 };
@@ -67,7 +67,7 @@ export default function QuickQuestions({
     event.preventDefault();
     if (slug) trackQuickQuestionClick(slug);
     if (question && onQuestionSelect) {
-      onQuestionSelect(question);
+      onQuestionSelect(question, slug);
       return;
     }
     window.location.assign(href);
@@ -77,6 +77,11 @@ export default function QuickQuestions({
     const intent = getSpreadIntentBySlug(slug);
     if (!intent) return slug;
     return formatQuickQuestionLabel(resolveIntentCopy(intent, userGender).title);
+  };
+
+  const quickQuestion = (slug: string) => {
+    const intent = getSpreadIntentBySlug(slug);
+    return intent ? resolveIntentCopy(intent, userGender).questionTemplate : quickLabel(slug);
   };
 
   return (
@@ -111,7 +116,7 @@ export default function QuickQuestions({
             <a
               key={slug}
               href={`/?intent=${encodeURIComponent(slug)}`}
-              onClick={go(`/?intent=${encodeURIComponent(slug)}`, slug, quickLabel(slug))}
+              onClick={go(`/?intent=${encodeURIComponent(slug)}`, slug, quickQuestion(slug))}
               className="quick-questions__chip"
             >
               {quickLabel(slug)}
