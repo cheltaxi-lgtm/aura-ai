@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle } from "@/components/admin/AdminShell";
 import ModelPicker from "@/components/admin/ModelPicker";
+import OpenRouterDashboard from "@/components/admin/OpenRouterDashboard";
 
 const SCENE_TOGGLES = [
   { key: "zodiac_avatar", label: "Аватар знака зодиака (онбординг)" },
@@ -86,7 +87,10 @@ export default function AdminAiPage() {
 
   return (
     <AdminShell>
-      <AdminTitle title="Модели и промпты" subtitle="OpenRouter: чат, озвучка, визуализация" />
+      <AdminTitle title="Модели и промпты" subtitle="OpenRouter: баланс, расходы, чат, озвучка, визуализация" />
+
+      <OpenRouterDashboard />
+
       <div className="glass-panel max-w-2xl space-y-4 p-6">
         <div>
           <label className="mb-1 block text-xs text-gray-500">Провайдер (запасной канал)</label>

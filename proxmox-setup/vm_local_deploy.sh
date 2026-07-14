@@ -194,7 +194,7 @@ NEXT_DIST_DIR=.next-candidate npm run build
 echo ">>> Launch env check..."
 set -a
 # shellcheck disable=SC1090
-source <(grep -E '^(DATABASE_URL|AUTH_SECRET|OPENROUTER_API_KEY|NEXT_PUBLIC_APP_URL|YUKASSA_SHOP_ID|YUKASSA_SECRET_KEY|RECAPTCHA_SECRET_KEY|RECAPTCHA_ENABLED)=' "$ENV_FILE" | sed 's/\r$//')
+source <(grep -E '^(DATABASE_URL|AUTH_SECRET|OPENROUTER_API_KEY|NEXT_PUBLIC_APP_URL|YUKASSA_SHOP_ID|YUKASSA_SECRET_KEY|RECAPTCHA_SECRET_KEY|RECAPTCHA_ENABLED|CRON_SECRET)=' "$ENV_FILE" | sed 's/\r$//')
 set +a
 node /opt/aura-ai/scripts/verify-launch-env.mjs
 
@@ -297,8 +297,24 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/cron-reconcile-rune-payments.sh \
   /opt/aura-ai/proxmox-setup/cron-pg-backup.sh \
   /opt/aura-ai/proxmox-setup/cron-cleanup-empty-sessions.sh \
-  /opt/aura-ai/proxmox-setup/cron-joint-reading-sweep.sh 2>/dev/null || true
+  /opt/aura-ai/proxmox-setup/cron-joint-reading-sweep.sh \
+  /opt/aura-ai/proxmox-setup/cron-reengagement-emails.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh || echo "WARN: cron install failed (non-fatal)"
+
+echo ">>> Cron secret smoke test..."
+_CRON_SECRET="$(grep '^CRON_SECRET=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' | tr -d '[:space:]')"
+if [ -z "$_CRON_SECRET" ]; then
+  echo "WARN: CRON_SECRET missing after deploy — background crons will skip"
+else
+  _CRON_PROBE="$(curl -sS -m 15 -H "x-cron-secret: $_CRON_SECRET" "http://127.0.0.1:3000/api/cron/reengagement-emails?hourMsk=12" 2>/dev/null || echo '{"error":"probe_failed"}')"
+  if echo "$_CRON_PROBE" | grep -qE '"error":"(Forbidden|Unauthorized)"'; then
+    echo "ERROR: cron secret rejected by app: $_CRON_PROBE"
+    DEPLOY_STATUS="cron_secret_failed"
+    exit 1
+  fi
+  echo "cron_ok: $_CRON_PROBE"
+fi
+unset _CRON_SECRET _CRON_PROBE
 
 DEPLOY_STATUS="success"
 echo "Deploy complete: https://zovus.ru"

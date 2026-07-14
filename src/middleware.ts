@@ -35,6 +35,9 @@ const PUBLIC_API_EXACT = new Set([
   "/api/payments/webhook",
   "/api/runes/webhook",
   "/api/share",
+  // Background jobs authenticate via x-cron-secret inside the route handler.
+  "/api/ritual/remind",
+  "/api/ritual/recover-stuck",
 ]);
 
 const PUBLIC_API_PREFIXES = [
@@ -42,6 +45,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/app/",
   "/api/scene-art/",
   "/api/share/",
+  "/api/cron/",
   // GET /api/joint-reading/[token] must be reachable by a guest partner who hasn't
   // logged in yet (the page shows a login gate) — create/complete/mine still enforce
   // their own requireProfileUserId() check inside the handler.
