@@ -104,7 +104,16 @@ async function probeStatusEndpointOnce(
     });
     const data = parseStatusPayload(await res.json().catch(() => null));
     if (data.maintenanceMode) return "maintenance";
-    if (!res.ok || data.ok === false) {
+    if (res.ok && data.ok !== false) return null;
+
+    /* Transient backend slowness — not a hard offline signal. */
+    if (res.status === 503 || res.status === 502 || res.status === 504 || res.status === 429) {
+      return null;
+    }
+
+    if (data.ok === false) return null;
+
+    if (!res.ok) {
       return options?.bootstrap || !isNativeCapacitorClient() ? null : "server";
     }
     return null;

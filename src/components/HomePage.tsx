@@ -56,10 +56,10 @@ import {
   APP_SHELL_SECTIONS,
   consumeOpenDecksModalFlag,
   consumeOpenRitualFlowFlag,
-  navigateToAppSection,
   navigateToDecksModal,
   navigateToPhotoReading as navigateToPhotoReadingHard,
 } from "@/lib/app-shell-nav";
+import { registerAppShellHomeNavHandlers } from "@/lib/app-shell-nav-bus";
 import RegisterGate from "@/components/RegisterGate";
 import WelcomeBackBanner from "@/components/WelcomeBackBanner";
 import AppBootstrapScreen from "@/components/AppBootstrapScreen";
@@ -571,47 +571,46 @@ export default function HomePage({
       if (!q) return;
       consumePendingGuestQuestion();
 
-      if (isLoggedIn) {
-        const matched = matchSpreadIntentFromQuestion(q);
-        autoAskOpenedRef.current = false;
-        autoAskSentRef.current = false;
-        autoAskMasterRef.current = null;
-        setAutoAsk({
-          master: matched ? resolveIntentMasterId(matched) : "veronika",
-          question: q,
-        });
+      const matched = matchSpreadIntentFromQuestion(q);
+      if (matched) {
+        openSpreadIntentFlow(matched, { customQuestion: q });
         return;
       }
 
-      const matched = matchSpreadIntentFromQuestion(q);
       setDeepLinkSpreadId(null);
       setSeoFlowIntentSlug(null);
-      setSessionFlowPreselectedMaster(
-        matched ? resolveIntentMasterId(matched) : "veronika"
-      );
+      setSessionFlowPreselectedMaster("veronika");
       setSessionFlowInitialTopic("custom");
       setSessionFlowInitialQuestion(q);
-      setSessionFlowRequiresPartnerInfo(Boolean(matched?.requiresPartnerInfo));
+      setSessionFlowRequiresPartnerInfo(false);
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },
-    [isLoggedIn, setShowSessionFlow, setSessionFlowPreselectedMaster]
+    [openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
 
   const handleLandingQuickQuestion = useCallback(
-    (question: string) => {
+    (question: string, intentSlug?: string) => {
       const q = question.trim();
       if (!q || !isLoggedIn) return;
-      const matched = matchSpreadIntentFromQuestion(q);
-      autoAskOpenedRef.current = false;
-      autoAskSentRef.current = false;
-      autoAskMasterRef.current = null;
-      setAutoAsk({
-        master: matched ? resolveIntentMasterId(matched) : "veronika",
-        question: q,
-      });
+      const matched =
+        (intentSlug ? getSpreadIntentBySlug(intentSlug) : null) ??
+        matchSpreadIntentFromQuestion(q);
+      if (matched) {
+        openSpreadIntentFlow(matched);
+        return;
+      }
+
+      setDeepLinkSpreadId(null);
+      setSeoFlowIntentSlug(null);
+      setSessionFlowPreselectedMaster("veronika");
+      setSessionFlowInitialTopic("custom");
+      setSessionFlowInitialQuestion(q);
+      setSessionFlowRequiresPartnerInfo(false);
+      setSeoFlowOpen(true);
+      setShowSessionFlow(false);
     },
-    [isLoggedIn]
+    [isLoggedIn, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
 
   useEffect(() => {
@@ -849,11 +848,20 @@ export default function HomePage({
 
   const scrollToSection = useCallback((sectionId: string) => {
     if (typeof window !== "undefined" && window.location.pathname !== "/") {
-      navigateToAppSection(sectionId);
+      window.location.href = `/?app=1#${encodeURIComponent(sectionId)}`;
       return;
     }
     exitToLandingForNavRef.current?.();
     setPendingNav({ type: "section", id: sectionId });
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        const el = document.getElementById(sectionId);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.history.replaceState(null, "", `#${sectionId}`);
+        setPendingNav(null);
+      }, 80);
+    });
   }, []);
 
   const openPhotoReading = useCallback(
@@ -872,7 +880,7 @@ export default function HomePage({
       setPhotoReadingOpen(true);
       window.history.replaceState(null, "", window.location.pathname);
     },
-    []
+    [navigateToPhotoReadingHard]
   );
 
   const openMarkCards = useCallback(() => {
@@ -904,7 +912,7 @@ export default function HomePage({
     }
     exitToLandingForNavRef.current?.();
     setPendingNav({ type: "decks" });
-  }, []);
+  }, [navigateToDecksModal]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2177,7 +2185,6 @@ export default function HomePage({
   useEffect(() => {
     if (!pendingNav) return;
     if (selectedCharacter || sessionListMaster) return;
-    if (step !== "masters") return;
 
     if (pendingNav.type === "section") {
       const el = document.getElementById(pendingNav.id);
@@ -2188,6 +2195,7 @@ export default function HomePage({
       return;
     }
 
+    if (step !== "masters") return;
     setShowDecksModal(true);
     setPendingNav(null);
   }, [pendingNav, selectedCharacter, sessionListMaster, step]);
@@ -2425,6 +2433,28 @@ export default function HomePage({
     if (!consumeOpenRitualFlowFlag()) return;
     handleNavRitual();
   }, [bootstrapping, isLoggedIn, handleNavRitual]);
+
+  // In-app nav bus: bottom bar calls plain functions; when already on "/" they invoke
+  // these handlers directly (no reload). Cross-route still uses location.assign.
+  useEffect(() => {
+    return registerAppShellHomeNavHandlers({
+      goHome: () => {
+        exitToLandingForNav();
+      },
+      openPhotoReading: () => {
+        openPhotoReading();
+      },
+      openDecksModal: () => {
+        openDecksModal();
+      },
+      openRitualFlow: () => {
+        handleNavRitual();
+      },
+      scrollToSection: (sectionId: string) => {
+        scrollToSection(sectionId);
+      },
+    });
+  }, [exitToLandingForNav, openPhotoReading, openDecksModal, handleNavRitual, scrollToSection]);
 
   const landingInsufficientRunes = (payload: { balance: number; required: number }) => {
     setInsufficientRunes(payload);

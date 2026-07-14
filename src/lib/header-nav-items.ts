@@ -9,6 +9,7 @@ import {
   Users,
 } from "lucide-react";
 import { shouldUseAppShellClient } from "@/lib/app-shell";
+import { navigateToSpreadCatalog } from "@/lib/app-shell-nav";
 
 const APK_URL =
   process.env.NEXT_PUBLIC_ANDROID_APK_URL?.trim() || "/releases/zovus-latest.apk";
@@ -48,6 +49,12 @@ export function buildHeaderNavSections(callbacks: HeaderNavCallbacks): HeaderNav
       title: "Расклады",
       items: [
         {
+          id: "spread-catalog",
+          label: "Каталог раскладов",
+          icon: LayoutGrid,
+          onClick: navigateToSpreadCatalog,
+        },
+        {
           id: "reading",
           label: "Получить расклад",
           icon: Sparkles,
@@ -57,7 +64,7 @@ export function buildHeaderNavSections(callbacks: HeaderNavCallbacks): HeaderNav
           id: "joint",
           label: "Совместный расклад",
           icon: Users,
-          href: "/joint-reading",
+          href: inAppShell ? "/joint-reading?app=1" : "/joint-reading",
         },
         {
           id: "photo",

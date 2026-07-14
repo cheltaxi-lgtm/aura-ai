@@ -30,12 +30,6 @@ function useInActiveChat(): boolean {
   return active;
 }
 
-/**
- * Full-screen flow modals (master session, photo reading, ritual, tariffs, etc.)
- * all lock body scroll via `document.body.style.overflow = "hidden"` while open.
- * The tab bar renders at a lower z-index than most of them, so it visually
- * covers their bottom action button unless we hide it while any modal is open.
- */
 function useAnyModalOpen(): boolean {
   const [open, setOpen] = useState(
     () => typeof document !== "undefined" && document.body.style.overflow === "hidden"
@@ -112,6 +106,7 @@ export default function AppShellBottomNav() {
         <button
           type="button"
           className={`app-shell-tabs__item${isSpread ? " app-shell-tabs__item--active" : ""}`}
+          aria-current={isSpread ? "page" : undefined}
           onClick={() => {
             void triggerAppHaptic("light");
             navigateToSpreadCatalog();
@@ -126,6 +121,7 @@ export default function AppShellBottomNav() {
         <button
           type="button"
           className={`app-shell-tabs__item${isCabinet ? " app-shell-tabs__item--active" : ""}`}
+          aria-current={isCabinet ? "page" : undefined}
           onClick={() => {
             void triggerAppHaptic("light");
             navigateToCabinet();
@@ -139,19 +135,35 @@ export default function AppShellBottomNav() {
       </div>
 
       {!hidden ? (
-        <button
-          type="button"
-          className={`app-shell-tabs__fab${isHome ? " app-shell-tabs__fab--active" : ""}`}
-          aria-label="Главная"
-          onClick={() => {
-            void triggerAppHaptic("medium");
-            navigateToAppHome();
-          }}
-        >
-          <span className="app-shell-tabs__fab-core">
-            <Home className="app-shell-tabs__fab-icon" strokeWidth={2} aria-hidden />
-          </span>
-        </button>
+        isHome ? (
+          <button
+            type="button"
+            className={`app-shell-tabs__fab${isHome ? " app-shell-tabs__fab--active" : ""}`}
+            aria-label="Главная"
+            onClick={() => {
+              void triggerAppHaptic("medium");
+              navigateToAppHome();
+            }}
+          >
+            <span className="app-shell-tabs__fab-core">
+              <Home className="app-shell-tabs__fab-icon" strokeWidth={2} aria-hidden />
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="app-shell-tabs__fab app-shell-tabs__fab--active"
+            aria-label="Главная"
+            onClick={() => {
+              void triggerAppHaptic("medium");
+              navigateToAppHome();
+            }}
+          >
+            <span className="app-shell-tabs__fab-core">
+              <Home className="app-shell-tabs__fab-icon" strokeWidth={2} aria-hidden />
+            </span>
+          </button>
+        )
       ) : null}
     </nav>
   );

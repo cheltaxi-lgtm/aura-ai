@@ -3,7 +3,7 @@
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 
 const SW_URL = "/sw-app-shell.js";
-const LEGACY_CACHES = ["zovus-shell-v1", "zovus-shell-v2", "zovus-shell-v3"];
+const LEGACY_CACHES = ["zovus-shell-v1", "zovus-shell-v2", "zovus-shell-v3", "zovus-shell-v4", "zovus-shell-v5", "zovus-shell-v6"];
 
 /** Remove SW on web — stale cached HTML was breaking the site after every deploy. */
 export async function unregisterWebServiceWorkers(): Promise<void> {

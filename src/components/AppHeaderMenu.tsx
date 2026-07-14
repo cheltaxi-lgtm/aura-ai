@@ -249,6 +249,46 @@ export default function AppHeaderMenu({
   );
 }
 
+function MenuHref({
+  href,
+  className,
+  download,
+  onClick,
+  children,
+}: {
+  href: string;
+  className: string;
+  download?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const inAppShell = shouldUseAppShellClient();
+  if (inAppShell && href.startsWith("/")) {
+    return (
+      <a
+        href={href}
+        className={className}
+        onClick={() => {
+          try {
+            sessionStorage.setItem("zovus_app_shell", "1");
+          } catch {
+            /* private mode */
+          }
+          onClick();
+        }}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} download={download || undefined} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
+
 function NavRow({
   item,
   onNavigate,
@@ -270,7 +310,7 @@ function NavRow({
 
   if (item.href) {
     return (
-      <Link
+      <MenuHref
         href={item.href}
         download={item.download || undefined}
         className="app-header-menu-item"
@@ -280,7 +320,7 @@ function NavRow({
         }}
       >
         {content}
-      </Link>
+      </MenuHref>
     );
   }
 
@@ -318,7 +358,7 @@ function AccountRow({
 
   if (item.href) {
     return (
-      <Link
+      <MenuHref
         href={item.href}
         className={className}
         onClick={() => {
@@ -327,7 +367,7 @@ function AccountRow({
         }}
       >
         {content}
-      </Link>
+      </MenuHref>
     );
   }
 

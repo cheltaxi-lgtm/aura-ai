@@ -8,10 +8,11 @@ import {
 } from "@/lib/app-connectivity";
 import { readAppShellFromDocument, shouldUseAppShellClient } from "@/lib/app-shell";
 
-const GRACE_MS = 4_000;
-const POLL_MS = 45_000;
+const GRACE_MS = 6_000;
+const POLL_MS = 60_000;
+const NETWORK_CHANGE_DEBOUNCE_MS = 2_500;
 /** Consecutive automatic probe failures before the full-screen gate appears. */
-const FAILURE_THRESHOLD = 3;
+const FAILURE_THRESHOLD = 5;
 
 type UseAppShellConnectivityOptions = {
   /** Wait until launch splash finished — avoids false blocks during cold start. */
@@ -89,16 +90,22 @@ export function useAppShellConnectivity(
     if (!enabled || !inShell) return;
     if (!isNativeCapacitorClient()) return;
 
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        failureStreakRef.current = 0;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     const grace = window.setTimeout(() => void runProbe(), GRACE_MS);
     const poll = window.setInterval(() => void runProbe(), POLL_MS);
     const onOnline = () => void runProbe();
     window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOnline);
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
       clearTimeout(grace);
       clearInterval(poll);
       window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOnline);
     };
   }, [enabled, inShell, runProbe]);
 
@@ -125,9 +132,14 @@ export function useAppShellConnectivity(
 
     let handle: { remove: () => void } | undefined;
     let cancelled = false;
+    let debounceTimer: number | undefined;
     void Promise.resolve(
       network.addListener("networkStatusChange", () => {
-        if (!cancelled) void runProbe();
+        if (cancelled) return;
+        if (debounceTimer) window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => {
+          if (!cancelled) void runProbe();
+        }, NETWORK_CHANGE_DEBOUNCE_MS);
       })
     )
       .then((listener) => {
@@ -143,6 +155,7 @@ export function useAppShellConnectivity(
 
     return () => {
       cancelled = true;
+      if (debounceTimer) window.clearTimeout(debounceTimer);
       handle?.remove();
     };
   }, [enabled, inShell, runProbe]);

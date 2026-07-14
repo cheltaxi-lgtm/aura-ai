@@ -1,5 +1,6 @@
 /* Zovus app-shell service worker — native WebView only. Network-first HTML; cache decks/fonts offline. */
-const CACHE = "zovus-shell-v5";
+const CACHE = "zovus-shell-v7";
+const OFFLINE_URL = "/offline.html";
 
 function isSameOrigin(url) {
   return url.origin === self.location.origin;
@@ -22,7 +23,12 @@ function isOfflineAsset(url) {
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil(
+    Promise.all([
+      self.skipWaiting(),
+      caches.open(CACHE).then((cache) => cache.add(OFFLINE_URL)),
+    ])
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -34,6 +40,23 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchNavigateWithRetry(request, attempts = 3) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fetch(request);
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) await sleep(400 * (i + 1));
+    }
+  }
+  throw lastError;
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
@@ -41,13 +64,15 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (!isSameOrigin(url) || isApi(url)) return;
 
-  /* Never cache HTML — stale shell breaks Next.js chunk URLs after deploy. */
+  /* Never cache HTML — stale shell breaks Next.js chunk URLs after deploy.
+     On network failure, show the offline page (not a cached home page). */
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const offline = await caches.match("/?app=1");
+      fetchNavigateWithRetry(request).catch(async () => {
+        const cache = await caches.open(CACHE);
+        const offline = await cache.match(OFFLINE_URL);
         if (offline) return offline;
-        return caches.match("/");
+        return Response.error();
       })
     );
     return;

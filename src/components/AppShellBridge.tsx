@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { markAppShellOnDocument, shouldUseAppShellClient, isAppShellSplashDone } from "@/lib/app-shell";
+import { registerAppShellRouter } from "@/lib/app-shell-router-bus";
 import { resolveAppShellDeepLink } from "@/lib/allowed-hosts";
 import { checkAndroidAppUpdate, dismissOptionalUpdate } from "@/lib/app-shell-update-check";
 import { useAppShellConnectivity } from "@/hooks/useAppConnectivity";
@@ -15,6 +17,7 @@ import { APP_UPDATE_RECHECK_EVENT } from "@/hooks/useAppShellVersion";
 const UPDATE_POLL_MS = 30 * 60 * 1000;
 
 export default function AppShellBridge() {
+  const router = useRouter();
   const [updateAvailable, setUpdateAvailable] = useState<AppUpdatePromptState | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const exitAppRef = useRef<(() => Promise<void>) | null>(null);
@@ -42,6 +45,12 @@ export default function AppShellBridge() {
       clearInterval(timer);
     };
   }, [refreshUpdate]);
+
+  useEffect(() => {
+    return registerAppShellRouter((path) => {
+      router.push(path);
+    });
+  }, [router]);
 
   useEffect(() => {
     if (shouldUseAppShellClient()) markAppShellOnDocument();

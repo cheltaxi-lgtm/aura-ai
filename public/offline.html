@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Zovus — нет связи</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: radial-gradient(circle at 50% 20%, #2a1845 0%, #0b0714 55%, #050309 100%);
+        color: #fff;
+      }
+      .card {
+        max-width: 22rem;
+        width: 100%;
+        text-align: center;
+        border-radius: 1.25rem;
+        border: 1px solid rgba(232, 199, 126, 0.22);
+        background: linear-gradient(180deg, rgba(42, 24, 69, 0.55), rgba(11, 7, 20, 0.95));
+        padding: 1.5rem 1.25rem;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+      }
+      .mark {
+        width: 3rem;
+        height: 3rem;
+        margin: 0 auto 0.85rem;
+        border-radius: 9999px;
+        border: 1px solid rgba(232, 199, 126, 0.3);
+        background: rgba(232, 199, 126, 0.08);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+      }
+      p {
+        margin: 0.65rem 0 0;
+        font-size: 0.875rem;
+        line-height: 1.55;
+        color: rgba(255, 255, 255, 0.62);
+      }
+      button {
+        margin-top: 1.1rem;
+        border: none;
+        border-radius: 9999px;
+        background: linear-gradient(90deg, #b8862a, #e8c77e);
+        padding: 0.65rem 1.15rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #0b0714;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="mark" aria-hidden="true"></div>
+      <h1 id="title">Нет соединения</h1>
+      <p id="body">Проверьте интернет — Zovus работает онлайн. Карты вернутся, когда связь восстановится.</p>
+      <button type="button" id="retry">Проверить снова</button>
+    </div>
+    <script>
+      (function () {
+        var APP_URL = "https://zovus.ru/?app=1";
+        var STATUS_URL = "https://zovus.ru/api/platform/status";
+        var PROBE_TIMEOUT_MS = 5000;
+
+        function hideNativeSplash() {
+          try {
+            var cap = window.Capacitor;
+            if (cap && cap.Plugins && cap.Plugins.SplashScreen && cap.Plugins.SplashScreen.hide) {
+              cap.Plugins.SplashScreen.hide();
+            }
+          } catch (e) {}
+        }
+
+        function getNetworkPlugin() {
+          try {
+            return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Network;
+          } catch (e) {
+            return null;
+          }
+        }
+
+        async function isConnected() {
+          var network = getNetworkPlugin();
+          if (network && network.getStatus) {
+            try {
+              var status = await network.getStatus();
+              return !!status.connected;
+            } catch (e) {}
+          }
+          return navigator.onLine !== false;
+        }
+
+        async function canReachServer() {
+          try {
+            var controller = new AbortController();
+            var timer = setTimeout(function () {
+              controller.abort();
+            }, PROBE_TIMEOUT_MS);
+            var res = await fetch(STATUS_URL, { cache: "no-store", signal: controller.signal });
+            clearTimeout(timer);
+            if (!res.ok) return false;
+            var data = await res.json().catch(function () {
+              return null;
+            });
+            return !!(data && data.ok !== false && !data.maintenanceMode);
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function setCopy(mode) {
+          var title = document.getElementById("title");
+          var body = document.getElementById("body");
+          if (mode === "server") {
+            title.textContent = "Сервер не отвечает";
+            body.textContent =
+              "Сайт временно недоступен. Мы уже разбираемся — попробуйте ещё раз через минуту.";
+          } else {
+            title.textContent = "Нет соединения";
+            body.textContent =
+              "Проверьте интернет — Zovus работает онлайн. Карты вернутся, когда связь восстановится.";
+          }
+        }
+
+        async function retry() {
+          if (await canReachServer()) {
+            window.location.replace(APP_URL);
+            return;
+          }
+          if (await isConnected()) {
+            setCopy("server");
+          } else {
+            setCopy("offline");
+          }
+          hideNativeSplash();
+        }
+
+        document.getElementById("retry").addEventListener("click", retry);
+
+        var network = getNetworkPlugin();
+        if (network && network.addListener) {
+          network.addListener("networkStatusChange", retry);
+        }
+
+        hideNativeSplash();
+        void retry();
+      })();
+    </script>
+  </body>
+</html>

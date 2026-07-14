@@ -734,7 +734,7 @@ html[data-app-shell="android"] .app-shell-splash__ring--inner {
   padding: 0;
   border: none;
   background: transparent;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 3;
   transition: transform 0.28s ease, opacity 0.28s ease;
 }
