@@ -4,13 +4,18 @@ import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle } from "@/components/admin/AdminShell";
 
 type EmailStatus = {
+  configured: boolean;
+  setupGaps: string[];
+  templates: Array<{ id: string; label: string }>;
   transport: {
     mode: string;
     configured: boolean;
     from: string;
     smtpHost: string;
     smtpUserSet: boolean;
+    smtpPassSet: boolean;
     resendKeySet: boolean;
+    canSend: boolean;
   };
   mailboxes: Record<string, string>;
   stats24h: { sent: number; failed: number; skipped: number };
@@ -62,6 +67,25 @@ export default function AdminEmailPage() {
     <AdminShell>
       <AdminTitle title="Почта" subtitle="Транспорт, служебные ящики и журнал отправок" />
 
+      {data && !data.configured ? (
+        <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100">
+          <p className="font-semibold text-amber-200">Почта не настроена — письма не отправляются</p>
+          <p className="mt-2 text-amber-100/90">
+            На сервере задайте <code className="text-amber-50">RESEND_API_KEY</code> (рекомендуется) или{" "}
+            <code className="text-amber-50">SMTP_USER</code> + <code className="text-amber-50">SMTP_PASS</code> в{" "}
+            <code className="text-amber-50">/opt/aura-ai/.env.local</code>, затем перезапустите сервис.
+          </p>
+          {data.setupGaps.length > 0 ? (
+            <p className="mt-2 text-xs text-amber-200/80">
+              Не задано: {data.setupGaps.join(", ")}
+            </p>
+          ) : null}
+          <p className="mt-2 text-xs text-amber-200/70">
+            Инструкция: <code className="text-amber-50">hosting/MAIL-SETUP.md</code>
+          </p>
+        </div>
+      ) : null}
+
       {loading && !data ? (
         <p className="text-sm text-gray-500">Загрузка…</p>
       ) : data ? (
@@ -85,8 +109,12 @@ export default function AdminEmailPage() {
               </div>
               <div>
                 <dt className="text-gray-500">SMTP ({data.transport.smtpHost})</dt>
-                <dd className={data.transport.smtpUserSet ? "text-green-400" : "text-gray-500"}>
-                  {data.transport.smtpUserSet ? "настроен" : "не задан"}
+                <dd className={data.transport.smtpUserSet && data.transport.smtpPassSet ? "text-green-400" : "text-amber-400"}>
+                  {data.transport.smtpUserSet && data.transport.smtpPassSet
+                    ? "настроен"
+                    : data.transport.smtpUserSet
+                      ? "нужен SMTP_PASS"
+                      : "не задан"}
                 </dd>
               </div>
             </dl>
@@ -111,6 +139,18 @@ export default function AdminEmailPage() {
                 </div>
               ))}
             </dl>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <h2 className="text-sm font-semibold text-white">Шаблоны писем</h2>
+            <ul className="mt-3 space-y-2 text-sm text-gray-300">
+              {data.templates.map((tpl) => (
+                <li key={tpl.id} className="flex justify-between gap-4 border-b border-white/5 pb-2">
+                  <span>{tpl.label}</span>
+                  <span className="font-mono text-xs text-gray-500">{tpl.id}</span>
+                </li>
+              ))}
+            </ul>
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">

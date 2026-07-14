@@ -18,6 +18,7 @@ import {
   checkOAuthRequestRateLimit,
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
+import { sendWelcomeEmail } from "@/lib/email/send";
 
 type RegistrationBody = {
   code?: string;
@@ -113,6 +114,14 @@ export async function POST(request: NextRequest) {
     const handoff = completed.pending.appFlow
       ? await createOAuthHandoff(completed.account.accountId)
       : undefined;
+
+    if (completed.account.isNewUser) {
+      void sendWelcomeEmail(
+        completed.account.email,
+        completed.account.name || completed.account.email,
+        { needsOnboarding: !profileUserId }
+      );
+    }
 
     return NextResponse.json(
       {

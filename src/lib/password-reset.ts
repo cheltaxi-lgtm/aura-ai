@@ -4,9 +4,10 @@ import { findUserByEmail } from "@/lib/accounts";
 import { hashPassword } from "@/lib/auth";
 import {
   passwordResetEmailHtml,
+  passwordChangedEmailHtml,
   sendEmail,
 } from "@/lib/email/send";
-import { getSiteUrl } from "@/lib/email/mail-config";
+import { getSiteUrl, isDeliverableUserEmail } from "@/lib/email/mail-config";
 
 const TOKEN_TTL_MS = 60 * 60 * 1000;
 
@@ -16,7 +17,7 @@ function hashToken(token: string): string {
 
 export async function requestPasswordReset(email: string): Promise<{ ok: true }> {
   const user = await findUserByEmail(email);
-  if (!user) return { ok: true };
+  if (!user || !isDeliverableUserEmail(user.email)) return { ok: true };
 
   const rawToken = randomBytes(32).toString("hex");
   const tokenHash = hashToken(rawToken);
@@ -73,6 +74,21 @@ export async function completePasswordReset(
     passwordHash,
   ]);
   await query(`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`, [row.id]);
+
+  const accountRes = await query<{ email: string; name: string }>(
+    `SELECT email, name FROM user_accounts WHERE id = $1 LIMIT 1`,
+    [row.user_account_id]
+  );
+  const account = accountRes.rows[0];
+  if (account && isDeliverableUserEmail(account.email)) {
+    void sendEmail({
+      to: account.email,
+      subject: "Zovus — пароль изменён",
+      html: passwordChangedEmailHtml(account.name || account.email),
+      text: "Пароль вашего аккаунта Zovus был изменён.",
+      template: "password_changed",
+    });
+  }
 
   return { ok: true };
 }

@@ -6,10 +6,25 @@ import { getEmailTransportStatus } from "@/lib/email/send";
 import {
   getAdminNotifyEmail,
   getClaimsEmail,
+  getEmailSetupGaps,
   getPrivacyEmail,
   getSupportEmail,
+  isEmailConfigured,
   SERVICE_MAILBOXES,
 } from "@/lib/email/mail-config";
+
+const EMAIL_TEMPLATES = [
+  { id: "welcome", label: "Приветствие после регистрации" },
+  { id: "password_reset", label: "Сброс пароля" },
+  { id: "password_changed", label: "Пароль успешно изменён" },
+  { id: "daily_reminder", label: "Напоминание о картах дня (cron)" },
+  { id: "joint_reading_partner", label: "Совместный расклад — партнёр завершил" },
+  { id: "joint_reading_done", label: "Совместный расклад — оба готовы" },
+  { id: "joint_reading_expiring", label: "Совместный расклад — истекает приглашение" },
+  { id: "support_auto_reply", label: "Поддержка — автоответ пользователю" },
+  { id: "support_admin_new", label: "Поддержка — алерт админу" },
+  { id: "support_reply", label: "Поддержка — ответ админа" },
+];
 
 export async function GET() {
   await ensureDb();
@@ -20,6 +35,9 @@ export async function GET() {
 
   return NextResponse.json({
     transport: getEmailTransportStatus(),
+    configured: isEmailConfigured(),
+    setupGaps: getEmailSetupGaps(),
+    templates: EMAIL_TEMPLATES,
     mailboxes: {
       ...SERVICE_MAILBOXES,
       supportResolved: getSupportEmail(),

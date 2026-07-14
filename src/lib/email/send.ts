@@ -8,6 +8,7 @@ export {
   dailyReminderEmailHtml,
   welcomeEmailHtml,
   passwordResetEmailHtml,
+  passwordChangedEmailHtml,
   jointReadingPartnerDoneEmailHtml,
   jointReadingCompletedEmailHtml,
   jointReadingExpiringEmailHtml,
@@ -17,6 +18,8 @@ export {
 } from "@/lib/email/templates";
 
 import type { SendEmailParams } from "@/lib/email/types";
+import { isDeliverableUserEmail } from "@/lib/email/mail-config";
+import { welcomeEmailHtml } from "@/lib/email/templates";
 
 export async function sendEmail(
   params: SendEmailParams & { template?: string; replyTo?: string }
@@ -40,6 +43,23 @@ export async function sendEmail(
   });
 
   return result.ok;
+}
+
+export async function sendWelcomeEmail(
+  to: string,
+  name: string,
+  opts?: { needsOnboarding?: boolean }
+): Promise<boolean> {
+  if (!isDeliverableUserEmail(to)) return false;
+  return sendEmail({
+    to,
+    subject: "Добро пожаловать в Zovus",
+    html: welcomeEmailHtml(name || to, opts),
+    text: opts?.needsOnboarding
+      ? "Добро пожаловать в Zovus — завершите регистрацию на zovus.ru"
+      : "Добро пожаловать в Zovus — откройте расклад на zovus.ru",
+    template: "welcome",
+  });
 }
 
 /** Alert ops inbox about a new support ticket. */
@@ -74,4 +94,9 @@ export async function sendAdminNotification(params: {
 }
 
 export { getEmailTransportStatus } from "@/lib/email/transport";
-export { isEmailConfigured, getSupportEmail, SERVICE_MAILBOXES } from "@/lib/email/mail-config";
+export {
+  isEmailConfigured,
+  getEmailSetupGaps,
+  getSupportEmail,
+  SERVICE_MAILBOXES,
+} from "@/lib/email/mail-config";

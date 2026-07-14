@@ -20,15 +20,35 @@ function cta(href: string, label: string): string {
   return `<p style="margin:24px 0"><a href="${href}" style="display:inline-block;padding:12px 22px;background:#c9993a;color:#1a0f00;text-decoration:none;border-radius:8px;font-weight:600;font-family:sans-serif">${label}</a></p>`;
 }
 
-export function welcomeEmailHtml(name: string): string {
+export function welcomeEmailHtml(name: string, opts?: { needsOnboarding?: boolean }): string {
+  const siteUrl = getSiteUrl();
+  const safeName = name.trim() || "друг";
+  const needsOnboarding = opts?.needsOnboarding === true;
+  const ctaUrl = needsOnboarding
+    ? `${siteUrl}/?step=onboarding&welcome=1`
+    : `${siteUrl}/?app=1`;
+  const ctaLabel = needsOnboarding ? "Завершить регистрацию" : "Начать расклад";
+  const extra = needsOnboarding
+    ? `<p style="font-size:14px;color:#555">Остался один шаг — укажите дату рождения, чтобы открыть карты судьбы и личный кабинет.</p>`
+    : `<p style="font-size:14px;color:#555">Сохраните это письмо — здесь всегда можно вернуться на сайт.</p>`;
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Добро пожаловать в ${BRAND_NAME} — ваш персональный оракул: таро, руны, мастера и расклады на каждый день.</p>
+     ${cta(ctaUrl, ctaLabel)}
+     ${extra}`,
+    `Регистрация в ${BRAND_NAME}. Если вы не создавали аккаунт — проигнорируйте письмо.`
+  );
+}
+
+export function passwordChangedEmailHtml(name: string): string {
   const siteUrl = getSiteUrl();
   const safeName = name.trim() || "друг";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
-     <p>Добро пожаловать в ${BRAND_NAME} — ваш персональный оракул: таро, руны, мастера и расклады на каждый день.</p>
-     ${cta(`${siteUrl}/?app=1`, "Начать расклад")}
-     <p style="font-size:14px;color:#555">Сохраните это письмо — здесь всегда можно вернуться на сайт.</p>`,
-    `Регистрация в ${BRAND_NAME}. Если вы не создавали аккаунт — проигнорируйте письмо.`
+     <p>Пароль для вашего аккаунта ${BRAND_NAME} успешно изменён.</p>
+     <p style="font-size:14px;color:#555">Если это были не вы — срочно напишите в поддержку: ${getSupportEmail()}.</p>
+     ${cta(`${siteUrl}/auth/user/login`, "Войти в аккаунт")}`,
+    "Служебное уведомление о смене пароля."
   );
 }
 

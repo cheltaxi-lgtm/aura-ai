@@ -38,9 +38,9 @@ if (!process.env.CRON_SECRET?.trim()) {
 if (
   process.env.NODE_ENV === "production" &&
   !process.env.RESEND_API_KEY?.trim() &&
-  !process.env.SMTP_USER?.trim()
+  (!process.env.SMTP_USER?.trim() || !process.env.SMTP_PASS?.trim())
 ) {
-  warnings.push("Email not configured — set RESEND_API_KEY or SMTP_USER/SMTP_PASS");
+  warnings.push("Email not configured — set RESEND_API_KEY or SMTP_USER+SMTP_PASS");
 }
 
 for (const w of warnings) console.warn(`[launch-env] WARN: ${w}`);

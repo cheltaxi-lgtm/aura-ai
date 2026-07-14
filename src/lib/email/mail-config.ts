@@ -50,9 +50,16 @@ export function getSiteUrl(): string {
   );
 }
 
+export function isDeliverableUserEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized.includes("@")) return false;
+  return !normalized.endsWith("@oauth.zovus.local");
+}
+
 export function resolveMailTransportMode(): MailTransportMode {
   if (process.env.RESEND_API_KEY?.trim()) return "resend";
-  if (process.env.SMTP_HOST?.trim() && process.env.SMTP_USER?.trim()) return "smtp";
+  const smtp = getSmtpConfig();
+  if (smtp.host && smtp.user && smtp.pass) return "smtp";
   return "none";
 }
 
@@ -68,4 +75,15 @@ export function getSmtpConfig() {
 
 export function isEmailConfigured(): boolean {
   return resolveMailTransportMode() !== "none";
+}
+
+export function getEmailSetupGaps(): string[] {
+  const gaps: string[] = [];
+  if (process.env.RESEND_API_KEY?.trim()) return gaps;
+  const smtp = getSmtpConfig();
+  if (!smtp.host) gaps.push("SMTP_HOST");
+  if (!smtp.user) gaps.push("SMTP_USER");
+  if (!smtp.pass) gaps.push("SMTP_PASS");
+  if (!process.env.RESEND_API_KEY?.trim()) gaps.push("RESEND_API_KEY (рекомендуется)");
+  return gaps;
 }

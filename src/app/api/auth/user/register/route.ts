@@ -9,7 +9,7 @@ import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { getZodiacFromDate, formatZodiacLabel } from "@/utils/zodiac";
 import { linkSessionToUser, serializeUserProfile, type UserRow } from "@/lib/users";
-import { sendEmail, welcomeEmailHtml } from "@/lib/email/send";
+import { sendWelcomeEmail } from "@/lib/email/send";
 import { mergeConsentIntoAstroMeta } from "@/lib/registration-consent";
 
 export async function POST(request: NextRequest) {
@@ -200,12 +200,8 @@ export async function POST(request: NextRequest) {
       request
     );
 
-    void sendEmail({
-      to: account.email,
-      subject: "Добро пожаловать в Zovus",
-      html: welcomeEmailHtml(account.name || account.email),
-      text: "Добро пожаловать в Zovus — откройте расклад на zovus.ru",
-      template: "welcome",
+    void sendWelcomeEmail(account.email, account.name || account.email, {
+      needsOnboarding: !profile,
     });
 
     return NextResponse.json({

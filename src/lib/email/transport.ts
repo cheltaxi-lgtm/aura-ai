@@ -99,12 +99,17 @@ export async function deliverEmail(
 export function getEmailTransportStatus() {
   const mode = resolveMailTransportMode();
   const smtp = getSmtpConfig();
+  const resendKeySet = Boolean(process.env.RESEND_API_KEY?.trim());
+  const smtpUserSet = Boolean(smtp.user);
+  const smtpPassSet = Boolean(smtp.pass);
   return {
     mode,
     configured: mode !== "none",
     from: getMailFromAddress(),
     smtpHost: smtp.host,
-    smtpUserSet: Boolean(smtp.user),
-    resendKeySet: Boolean(process.env.RESEND_API_KEY?.trim()),
+    smtpUserSet,
+    smtpPassSet,
+    resendKeySet,
+    canSend: mode !== "none",
   };
 }

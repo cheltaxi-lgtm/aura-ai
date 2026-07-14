@@ -2,7 +2,7 @@ import { setAuthCookie, type CookieRequestContext } from "@/lib/auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { getUserById, linkSessionToUser, serializeUserProfile } from "@/lib/users";
-import { sendEmail, welcomeEmailHtml } from "@/lib/email/send";
+import { sendWelcomeEmail } from "@/lib/email/send";
 import type { OAuthFinishResult, OAuthMode, OAuthTransaction } from "./types";
 import { upsertOAuthAccount, type OAuthAccountConsent } from "./accounts";
 import type { OAuthProvider, OAuthUserInfo } from "./types";
@@ -65,13 +65,9 @@ export async function finishOAuthLogin(opts: {
     opts.request
   );
 
-  if (accountResult.isNewUser && accountResult.email.endsWith("@oauth.zovus.local") === false) {
-    void sendEmail({
-      to: accountResult.email,
-      subject: "Добро пожаловать в Zovus",
-      html: welcomeEmailHtml(accountResult.name || accountResult.email),
-      text: "Добро пожаловать в Zovus — откройте расклад на zovus.ru",
-      template: "welcome",
+  if (accountResult.isNewUser) {
+    void sendWelcomeEmail(accountResult.email, accountResult.name || accountResult.email, {
+      needsOnboarding: !profileUserId,
     });
   }
 
