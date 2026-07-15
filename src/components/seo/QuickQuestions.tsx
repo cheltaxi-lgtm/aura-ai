@@ -146,7 +146,7 @@ export default function QuickQuestions({
                   onClick={go(
                     `/?intent=${encodeURIComponent(item.slug)}`,
                     item.slug,
-                    resolveIntentCopy(item, userGender).title
+                    quickQuestion(item.slug)
                   )}
                   className="quick-questions__featured-link"
                 >

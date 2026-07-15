@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import BrandLogo from "@/components/BrandLogo";
+import { BRAND_LOGO_BREADCRUMB } from "@/lib/brand";
 import { BRAND_NAME } from "@/lib/brand";
 import {
   AlertTriangle, Archive, CalendarClock, CheckCircle2, Compass,
@@ -15,6 +16,8 @@ import NatalSettings from "./NatalSettings";
 import { VedicChartPair, VimshottariTimeline } from "./VedicCharts";
 import { AstrologyGuide, ExplainTerm, PanelBlock, PersonalMeaning, SectionIntroduction } from "./AstrologyGuide";
 import { usePaywall } from "@/contexts/PaywallContext";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { toParagraphs } from "@/lib/format-paragraphs";
 import {
@@ -46,6 +49,26 @@ type Report = {
   evidenceRefs: NatalEvidence[] | null;
   birthFingerprint: string;
 };
+
+const NATAL_MUTATION_TIMEOUT_MS = 240_000;
+
+type NatalMutationError = {
+  error?: string;
+  code?: string;
+  balance?: number;
+  cost?: number;
+  requiredRunes?: number;
+  action?: string;
+  retryAfter?: number;
+  retryAfterSec?: number;
+};
+
+function isAbortError(reason: unknown): boolean {
+  return (
+    (reason instanceof DOMException && reason.name === "AbortError") ||
+    (reason instanceof Error && reason.name === "AbortError")
+  );
+}
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Star }> = [
   { id: "overview", label: "Обзор", icon: Star },
@@ -180,18 +203,28 @@ export default function AstrologyWorkspace() {
   }, [selectTab]);
 
   const requestInterpretation = async (tradition: NatalTradition) => {
+    if (!chart?.[tradition]) {
+      setError("Сначала укажите дату и город рождения в настройках карты.");
+      selectTab("settings");
+      return;
+    }
     setBusy(tradition);
     setError("");
     try {
-      const response = await fetch("/api/natal-chart/interpretation", {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+      const response = await fetchWithTimeout("/api/natal-chart/interpretation", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tradition, aiDataUseAcknowledged: true }),
+        timeoutMs: NATAL_MUTATION_TIMEOUT_MS,
       });
-      const data = await responseJson<{
+      const data = await responseJson<NatalMutationError & {
         interpretation?: string; report?: NatalReport | null; evidence?: NatalEvidence[];
-        error?: string; balance?: number; cost?: number; requiredRunes?: number;
-        action?: string; retryAfter?: number; retryAfterSec?: number;
       }>(response);
+      if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        navigateToBirthProfileOnboarding();
+        return;
+      }
       if (response.status === 402) {
         openPaywall({
           currentBalance: data.balance ?? 0,
@@ -209,50 +242,80 @@ export default function AstrologyWorkspace() {
         if (stale) {
           setError(data.error || "Карта изменилась. Загружаем актуальный расчёт.");
           await loadChart();
+        } else if (data.code === "CLAIM_BUSY") {
+          setError(data.error || "Не удалось начать отчёт. Обновите страницу и попробуйте снова.");
         } else {
           setNotice(data.error || "Отчёт уже создаётся. Повторите попытку немного позже.");
         }
         return;
       }
       if (!response.ok) throw new Error(data.error || "Не удалось получить трактовку");
-      if (data.interpretation) {
-        const nextEvidence = Array.isArray(data.evidence) ? data.evidence : [];
-        setChart((previous) => previous ? {
-          ...previous, interpretations: { ...previous.interpretations, [tradition]: data.interpretation },
-        } : previous);
-        setFreshReports((previous) => ({
-          ...previous,
-          [tradition]: {
-            text: data.interpretation!,
-            report: isNatalReport(data.report) ? data.report : null,
-            evidence: nextEvidence,
-          },
-        }));
-        setNotice(`${tradition === "western" ? "Западный" : "Ведический"} отчёт готов.`);
-        void loadHistory();
+      if (!data.interpretation?.trim()) {
+        throw new Error("Сервер не вернул текст отчёта. Проверьте вкладку «Отчёты» или повторите попытку.");
       }
+      const nextEvidence = Array.isArray(data.evidence) ? data.evidence : [];
+      setChart((previous) => previous ? {
+        ...previous, interpretations: { ...previous.interpretations, [tradition]: data.interpretation },
+      } : previous);
+      setFreshReports((previous) => ({
+        ...previous,
+        [tradition]: {
+          text: data.interpretation!,
+          report: isNatalReport(data.report) ? data.report : null,
+          evidence: nextEvidence,
+        },
+      }));
+      setNotice(`${tradition === "western" ? "Западный" : "Ведический"} отчёт готов.`);
+      void loadHistory();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      if (isAbortError(reason)) {
+        const nextReports = await loadHistory();
+        const saved = chart
+          ? nextReports.find((report) =>
+              report.tradition === tradition &&
+              report.reportType === "interpretation" &&
+              matchesCurrentChart(report, chart)
+            )
+          : undefined;
+        if (saved) {
+          setNotice(`${tradition === "western" ? "Западный" : "Ведический"} отчёт готов — он уже в истории.`);
+          setSelectedReportId(saved.id);
+          selectTab("reports");
+          return;
+        }
+        setError("Генерация заняла слишком много времени. Проверьте вкладку «Отчёты» или повторите попытку.");
+      } else {
+        setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      }
     } finally {
       setBusy(null);
     }
   };
 
   const requestForecast = async (horizon: TimingHorizon) => {
+    if (!chart?.western) {
+      setError("Сначала укажите дату и город рождения в настройках карты.");
+      selectTab("settings");
+      return;
+    }
     setBusy("forecast");
     setError("");
     setNotice("");
     try {
-      const response = await fetch("/api/natal-chart/forecast", {
+      const response = await fetchWithTimeout("/api/natal-chart/forecast", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ horizon, aiDataUseAcknowledged: true }),
+        timeoutMs: NATAL_MUTATION_TIMEOUT_MS,
       });
-      const data = await responseJson<{
-        forecast?: string; error?: string; balance?: number; cost?: number; requiredRunes?: number;
-        action?: string; retryAfter?: number; retryAfterSec?: number; reportId?: string;
+      const data = await responseJson<NatalMutationError & {
+        forecast?: string; reportId?: string;
       }>(response);
+      if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        navigateToBirthProfileOnboarding();
+        return;
+      }
       if (response.status === 402) {
         openPaywall({
           currentBalance: data.balance ?? 0,
@@ -265,10 +328,21 @@ export default function AstrologyWorkspace() {
         return;
       }
       if (response.status === 409) {
-        setNotice(data.error || "Прогноз уже создаётся. Повторите попытку немного позже.");
+        const stale = /измени|обновите|пересчитайте|неполн/i.test(data.error ?? "");
+        if (stale) {
+          setError(data.error || "Карта изменилась. Загружаем актуальный расчёт.");
+          await loadChart();
+        } else if (data.code === "CLAIM_BUSY") {
+          setError(data.error || "Не удалось начать прогноз. Обновите страницу и попробуйте снова.");
+        } else {
+          setNotice(data.error || "Прогноз уже создаётся. Повторите попытку немного позже.");
+        }
         return;
       }
       if (!response.ok) throw new Error(data.error || "Не удалось получить прогноз");
+      if (!data.forecast?.trim() && !data.reportId) {
+        throw new Error("Сервер не вернул прогноз. Проверьте вкладку «Отчёты» или повторите попытку.");
+      }
       setNotice(`Персональный прогноз на ${horizon === 365 ? "1 год" : `${horizon} дней`} готов и сохранён в отчётах.`);
       const nextReports = await loadHistory();
       const reportId = data.reportId ?? (chart ? nextReports.find((report) =>
@@ -282,7 +356,24 @@ export default function AstrologyWorkspace() {
         window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      if (isAbortError(reason)) {
+        const nextReports = await loadHistory();
+        const saved = chart
+          ? nextReports.find((report) =>
+              report.reportType === `forecast:${horizon}` &&
+              matchesCurrentChart(report, chart)
+            )
+          : undefined;
+        if (saved) {
+          setNotice(`Прогноз на ${horizon === 365 ? "1 год" : `${horizon} дней`} готов — он уже в истории.`);
+          setSelectedReportId(saved.id);
+          selectTab("reports");
+          return;
+        }
+        setError("Генерация заняла слишком много времени. Проверьте вкладку «Отчёты» или повторите попытку.");
+      } else {
+        setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      }
     } finally {
       setBusy(null);
     }
@@ -340,7 +431,7 @@ export default function AstrologyWorkspace() {
       <div className="relative mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
         <header className="rounded-3xl border border-amber-300/15 bg-black/35 p-5 backdrop-blur-xl sm:p-7">
           <nav className="flex flex-wrap items-center gap-2 text-xs text-white/50" aria-label="Навигация по сайту">
-            <BrandLogo linkToHome showTagline={false} showBeta={false} markSize={24} titleClassName="font-display text-sm font-bold tracking-wider text-white sm:text-base" />
+            <BrandLogo {...BRAND_LOGO_BREADCRUMB} />
             <span aria-hidden>·</span>
             <Link href="/cabinet" className="transition hover:text-amber-100">
               Кабинет
@@ -579,7 +670,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenR
         <p className="text-sm leading-6 text-emerald-100/70">Прогноз для этого горизонта уже куплен и сохранён в истории.</p>
         <button type="button" onClick={onOpenReports} className="min-h-11 self-start rounded-xl border border-emerald-300/20 px-4 text-sm text-emerald-100">Открыть в отчётах</button>
       </PanelBlock> : <PanelBlock>
-        <p className="text-xs leading-5 text-amber-100/60">После подтверждения будет списано {forecastCost} ᚢ. Внешней языковой модели передаются только рассчитанные положения и периоды без даты, времени, города и координат рождения.</p>
+        <p className="text-xs leading-5 text-amber-100/60">После подтверждения будет списано {forecastCost} ᚢ.</p>
         <button type="button" disabled={!timing || busy !== null} onClick={() => onRequestForecast(horizon)}
           className="btn-neon flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50">
           {busy === "forecast" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -819,7 +910,7 @@ function reportLabel(report: Report): string {
 
 function ReportCard({ tradition, title, text, report, evidence, busy, cost, onRequest, onEvidence }: { tradition: NatalTradition; title: string; text?: string; report?: NatalReport | null; evidence?: NatalEvidence[] | null; busy: string | null; cost: number; onRequest: (tradition: NatalTradition) => void; onEvidence: (target: string) => void }) {
   return <Panel title={title} eyebrow={text ? "Готов" : "Отдельная покупка"}>
-    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся отдельно для этой традиции и сохраняется в истории.</p><p className="mt-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.05] p-3 text-xs leading-5 text-amber-100/65">Это разовое явное подтверждение для платного отчёта. Внешней языковой модели передаются только рассчитанные положения и периоды с идентификаторами расчёта; дата, время, город и координаты рождения исключены. Настройки чата и Таро не используются и не меняются. После подтверждения будет списано {cost} ᚢ.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-neon mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся отдельно для этой традиции и сохраняется в истории.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-neon mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
   </Panel>;
 }
 

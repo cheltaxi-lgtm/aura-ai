@@ -9,6 +9,7 @@ import { usePaywall } from "@/contexts/PaywallContext";
 import {
   APP_SHELL_SECTIONS,
   navigateToAppSection,
+  navigateToBirthProfileOnboarding,
   navigateToDecksModal,
   navigateToHomeSpreadFlow,
   navigateToPhotoReading,
@@ -37,6 +38,12 @@ export default function CabinetAstrologyPage() {
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent(returnTo));
     }
   }, [authLoading, authUser, router]);
+
+  useEffect(() => {
+    if (!authLoading && authUser && !authUser.profileUserId) {
+      navigateToBirthProfileOnboarding();
+    }
+  }, [authLoading, authUser]);
 
   const photoNavLabel = runeConfig.enabled
     ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`

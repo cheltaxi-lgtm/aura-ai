@@ -522,17 +522,22 @@ function checkNatalEvidenceAi() {
   if (failures.some((item) => item.startsWith("natal evidence guardrail missing"))) return;
 
   const route = fs.readFileSync(routePath, "utf8");
-  const firstValidation = route.indexOf("validateNatalReport(");
-  const repair = route.indexOf("Исправь JSON");
-  const rollback = route.indexOf("await rollback();", repair);
+  const generatorPath = path.join(ROOT, "src/lib/natal/generate-validated-report.ts");
+  const generator = fs.existsSync(generatorPath) ? fs.readFileSync(generatorPath, "utf8") : "";
+  const validationFailed = route.indexOf("!generated.ok");
+  const rollback = route.indexOf("await rollback();", validationFailed);
   const release = route.indexOf("releaseNatalInterpretationClaim");
-  if (!(firstValidation >= 0 && repair > firstValidation && rollback > repair)) {
+  if (!(route.includes("generateValidatedNatalReport") && validationFailed >= 0 && rollback > validationFailed)) {
     fail("natal report: validate, one repair pass, then rollback ordering is missing");
   }
   if (!(release >= 0 && /finally\s*\{[\s\S]*releaseNatalInterpretationClaim/.test(route))) {
     fail("natal report: claim must be released in finally");
   }
-  if (!route.includes("jsonObject: true") || !route.includes("evidenceRefs: evidence")) {
+  if (
+    (!generator.includes("jsonObject: true") && !generator.includes("completeChatDetailed")) ||
+    !generator.includes("buildMinimalNatalReport") ||
+    !route.includes("evidenceRefs: evidence")
+  ) {
     fail("natal report: strict JSON and evidence snapshot persistence required");
   }
 

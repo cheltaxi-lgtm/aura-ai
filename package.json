@@ -15,6 +15,7 @@
     "generate:deck-backs": "node scripts/deck-back-art.mjs",
     "generate:lenormand": "node scripts/generate-lenormand-art.mjs",
     "generate:avatars": "node scripts/generate-master-avatars.mjs",
+    "generate:landing-cards": "node scripts/generate-landing-cards.mjs",
     "verify:deck-images": "node scripts/verify-deck-images.mjs",
     "verify:guardrails": "node scripts/verify-guardrails.mjs",
     "verify:chat-quality": "npx tsx scripts/verify-chat-quality.mjs",

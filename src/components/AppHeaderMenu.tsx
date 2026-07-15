@@ -45,6 +45,7 @@ type AccountItem = {
 
 export default function AppHeaderMenu({
   photoNavLabel,
+  isLoggedIn,
   authUser,
   authLoading,
   onNavMasters,
@@ -101,15 +102,18 @@ export default function AppHeaderMenu({
     };
   }, [open]);
 
-  const sections = buildHeaderNavSections({
-    photoNavLabel,
-    onNavPhoto,
-    onNavMasters,
-    onNavDecks,
-    onNavTariffs,
-    onNavRitual,
-    onStartReading,
-  });
+  const sections = buildHeaderNavSections(
+    {
+      photoNavLabel,
+      onNavPhoto,
+      onNavMasters,
+      onNavDecks,
+      onNavTariffs,
+      onNavRitual,
+      onStartReading,
+    },
+    { isLoggedIn }
+  );
 
   const accountItems: AccountItem[] = [];
 

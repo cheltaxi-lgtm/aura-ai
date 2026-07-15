@@ -211,22 +211,8 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     const finishBootstrap = () => setFlowBootstrapped(true);
 
     if (!isLoggedIn) {
-      const params = new URLSearchParams(window.location.search);
-      const urlStep = params.get("step") as FlowStep | null;
-      const savedStep = localStorage.getItem(FLOW_STEP_KEY) as FlowStep | null;
-      const deepStep =
-        urlStep && urlStep !== "intro" ? urlStep : savedStep;
-      const guestTriplet = loadGuestTriplet();
-      if (deepStep === "triplet" && guestTriplet) {
-        setStepState("triplet");
-        persistStep("triplet");
-      } else {
-        setStepState("intro");
-        persistStep("intro");
-        if (deepStep && deepStep !== "intro" && deepStep !== "triplet") {
-          localStorage.removeItem(FLOW_STEP_KEY);
-        }
-      }
+      setStepState("intro");
+      persistStep("intro");
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
         if (url.searchParams.has("step")) {

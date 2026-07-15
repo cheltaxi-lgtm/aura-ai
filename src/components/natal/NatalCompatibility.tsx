@@ -71,7 +71,7 @@ function errorMessage(code?: string): string {
     partner_chart_unavailable: "Не удалось рассчитать карту второго человека. Проверьте данные.",
     charts_not_ready: "Сначала нужны обе натальные карты.",
     generation_in_progress: "Отчёт уже создаётся. Подождите немного.",
-    ai_data_use_acknowledgement_required: "Подтвердите передачу рассчитанных данных для AI-отчёта.",
+    ai_data_use_acknowledgement_required: "Не удалось начать создание отчёта. Попробуйте ещё раз.",
     invite_expired: "Срок действия приглашения истёк.",
     cannot_accept_own_invite: "Нельзя принять собственное приглашение.",
     invite_already_claimed: "Приглашение уже принято другим человеком.",
@@ -97,7 +97,6 @@ export default function NatalCompatibility() {
   const [inviteUrl, setInviteUrl] = useState("");
   const [inviteRecord, setInviteRecord] = useState<CompatibilityRecord | null>(null);
   const [participantLabel, setParticipantLabel] = useState("");
-  const [aiAcknowledged, setAiAcknowledged] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"create" | "invite" | "accept" | "generate" | "delete" | null>(null);
   const [error, setError] = useState("");
@@ -289,10 +288,6 @@ export default function NatalCompatibility() {
   };
 
   const generate = async (record: CompatibilityRecord) => {
-    if (!aiAcknowledged) {
-      setError("Подтвердите создание AI-отчёта по рассчитанным данным.");
-      return;
-    }
     setBusy("generate");
     setError("");
     setNotice("");
@@ -367,7 +362,7 @@ export default function NatalCompatibility() {
           </h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/55">
             Сравните коммуникацию, эмоциональную связь, притяжение, устойчивость и потенциал
-            роста. Расчёт колёс бесплатный; проверяемый AI-отчёт создаётся отдельно за{" "}
+            роста. Расчёт колёс бесплатный; полный отчёт создаётся отдельно за{" "}
             {cost("SYNASTRY_REPORT")} ᚢ.
           </p>
         </div>
@@ -385,8 +380,7 @@ export default function NatalCompatibility() {
           {inviteRecord.status === "pending" ? (
             <>
               <p className="mt-2 text-sm leading-6 text-white/50">
-                Используются данные рождения из вашего профиля. Вы явно подтверждаете
-                сопоставление карт; исходные дата, время и координаты не попадут в AI-отчёт.
+                Используются данные рождения из вашего профиля.
               </p>
               <input
                 value={participantLabel}
@@ -528,8 +522,6 @@ export default function NatalCompatibility() {
         isOwner={isOwner}
         cost={cost("SYNASTRY_REPORT")}
         busy={busy}
-        aiAcknowledged={aiAcknowledged}
-        onAcknowledged={setAiAcknowledged}
         onGenerate={() => void generate(selected)}
         onDelete={() => void remove(selected)}
       /> : null}
@@ -542,8 +534,6 @@ function CompatibilityViewer({
   isOwner,
   cost,
   busy,
-  aiAcknowledged,
-  onAcknowledged,
   onGenerate,
   onDelete,
 }: {
@@ -551,8 +541,6 @@ function CompatibilityViewer({
   isOwner: boolean;
   cost: number;
   busy: string | null;
-  aiAcknowledged: boolean;
-  onAcknowledged: (value: boolean) => void;
   onGenerate: () => void;
   onDelete: () => void;
 }) {
@@ -604,12 +592,8 @@ function CompatibilityViewer({
       {isOwner ? <ReportShareControls reportKind="compatibility" reportId={record.id} requireThirdPartyConsent /> : null}
     </div> : record.status === "ready" && isOwner ? <div className="mt-7 rounded-2xl border border-amber-300/15 bg-amber-300/[0.04] p-5">
       <h4 className="font-display text-xl text-amber-50">Получить полный разбор</h4>
-      <p className="mt-2 text-sm leading-6 text-white/50">AI свяжет рассчитанные аспекты в понятный отчёт по семи сферам. Каждое утверждение будет опираться на показанные данные.</p>
-      <label className="mt-4 flex items-start gap-3 text-xs leading-5 text-white/50">
-        <input type="checkbox" className="mt-1" checked={aiAcknowledged} onChange={(event) => onAcknowledged(event.target.checked)} />
-        Я подтверждаю создание отчёта. Во внешнюю модель передаются только рассчитанные аспекты и индексы, без дат, времени, города и координат рождения.
-      </label>
-      <button type="button" disabled={busy !== null || !aiAcknowledged} onClick={onGenerate}
+      <p className="mt-2 text-sm leading-6 text-white/50">Свяжем рассчитанные аспекты в понятный отчёт по семи сферам. Каждое утверждение опирается на показанные данные.</p>
+      <button type="button" disabled={busy !== null} onClick={onGenerate}
         className="btn-luxe btn-luxe--md btn-luxe--gold mt-4 disabled:opacity-50">
         {busy === "generate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
         Получить полный отчёт · {cost} ᚢ

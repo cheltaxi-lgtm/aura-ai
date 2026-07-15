@@ -6,6 +6,7 @@ import type { RuneActionType } from "@/lib/rune-costs";
 export interface RuneConfig {
   enabled: boolean;
   rubPerRune: number;
+  starterRunes: number;
   freeQuestions: number;
   costs: Record<RuneActionType, number>;
   labels: Record<RuneActionType, string>;
@@ -14,6 +15,7 @@ export interface RuneConfig {
 const FALLBACK: RuneConfig = {
   enabled: true,
   rubPerRune: 2,
+  starterRunes: 30,
   freeQuestions: 2,
   costs: {
     QUESTION: 10,
@@ -58,6 +60,7 @@ export function fetchRuneConfig(): Promise<RuneConfig> {
       const config: RuneConfig = {
         enabled: d.enabled !== false,
         rubPerRune: Number(d.rubPerRune) || FALLBACK.rubPerRune,
+        starterRunes: Number(d.starterRunes) || FALLBACK.starterRunes,
         freeQuestions: Number(d.freeQuestions) ?? FALLBACK.freeQuestions,
         costs: { ...FALLBACK.costs, ...(d.costs ?? {}) },
         labels: { ...FALLBACK.labels, ...(d.labels ?? {}) },

@@ -3742,6 +3742,10 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   @apply mt-2 sm:mt-4;
 }
 
+.editorial-landing:not(:has(.editorial-hero)) .quick-questions {
+  @apply mt-2 sm:mt-4;
+}
+
 .quick-questions__halo {
   position: absolute;
   inset: -3rem 1rem auto;
@@ -3946,7 +3950,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .ritual-cta-banner__btn {
-  @apply w-full shrink-0 sm:w-auto;
+  @apply w-full shrink-0 justify-center sm:w-44 sm:min-w-44;
 }
 
 .rasklady-filters__chip {
@@ -7187,6 +7191,16 @@ body.cookie-banner-visible .auth-page .auth-form {
   color: #ede6da;
 }
 
+/* Guest landing spread: keep site header (logo / menu) clickable above the table */
+.deck-pick.deck-pick--under-site-header {
+  z-index: 40;
+  top: var(--app-header-h, 3.75rem);
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: auto;
+}
+
 .deck-pick--runes { --dp-glow: rgba(180, 200, 220, 0.35); --dp-accent: #b8c8d8; }
 .deck-pick--slavic { --dp-glow: rgba(200, 90, 60, 0.32); --dp-accent: #d4845c; }
 .deck-pick--astrology { --dp-glow: rgba(120, 140, 255, 0.35); --dp-accent: #9aacff; }
@@ -7219,9 +7233,12 @@ body.cookie-banner-visible .auth-page .auth-form {
 
 .deck-pick__back {
   font-size: 0.8125rem;
-  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
   transition: color 0.2s;
   padding-top: 0.35rem;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .deck-pick__back:hover { color: var(--dp-accent); }

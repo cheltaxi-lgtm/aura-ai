@@ -26,6 +26,8 @@ interface MagicalSpreadTableProps {
   personalNote?: string;
   title?: string;
   onBack?: () => void;
+  backLabel?: string;
+  underSiteHeader?: boolean;
   standalone?: boolean;
   tableCards?: TableCardFace[];
 }
@@ -66,6 +68,8 @@ export default function MagicalSpreadTable({
   personalNote,
   title,
   onBack,
+  backLabel = "← Назад",
+  underSiteHeader = false,
   standalone = false,
   tableCards,
 }: MagicalSpreadTableProps) {
@@ -87,13 +91,16 @@ export default function MagicalSpreadTable({
   };
 
   return (
-    <div className={`deck-pick ${theme} ${accent}`} data-master={masterId}>
+    <div
+      className={`deck-pick ${theme} ${accent}${underSiteHeader ? " deck-pick--under-site-header" : ""}`}
+      data-master={masterId}
+    >
       <div className="deck-pick__glow" aria-hidden />
 
       <header className="deck-pick__header">
         {onBack ? (
           <button type="button" onClick={onBack} className="deck-pick__back">
-            ← Назад
+            {backLabel}
           </button>
         ) : (
           <span className="w-16 shrink-0" />

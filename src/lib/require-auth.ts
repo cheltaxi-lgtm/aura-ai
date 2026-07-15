@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { getAuth, type AuthPayload } from "./auth";
 import { getProfileUserIdForAccount } from "./accounts";
 
@@ -19,4 +20,14 @@ export async function requireProfileUserId(): Promise<{
   if (!profileUserId) return null;
 
   return { auth, profileUserId };
+}
+
+export function needsProfileResponse() {
+  return NextResponse.json(
+    {
+      error: "Завершите профиль: укажите дату и город рождения.",
+      code: "NEEDS_PROFILE",
+    },
+    { status: 401 }
+  );
 }

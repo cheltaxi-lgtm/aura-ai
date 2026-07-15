@@ -5,22 +5,20 @@ import { BillingService, InsufficientFundsError } from "@/lib/services/billing-s
 import { buildNatalEvidence, formatEvidencePrompt } from "@/lib/natal/evidence";
 import {
   buildNatalReportJsonInstructions,
-  extractJsonObject,
   natalReportToPlainText,
-  validateNatalReport,
-  withReportMetadataDefaults,
 } from "@/lib/natal/report";
+import { generateValidatedNatalReport } from "@/lib/natal/generate-validated-report";
 import { parseTimingHorizon } from "@/lib/natal/timing";
 import {
-  claimNatalInterpretation,
+  claimNatalInterpretationResilient,
   getOrComputeNatalChart,
   releaseNatalInterpretationClaim,
   saveCurrentNatalInterpretation,
 } from "@/lib/services/natal-chart-service";
 import { getOrComputePersonalTiming } from "@/lib/services/natal-timing-service";
-import { completeChat, type ChatMessage } from "@/lib/llm";
+import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
-import { requireProfileUserId } from "@/lib/require-auth";
+import { needsProfileResponse, requireProfileUserId } from "@/lib/require-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { getUserById } from "@/lib/users";
 
@@ -33,19 +31,12 @@ const FORECAST_METADATA_DEFAULTS = {
     "Прогноз построен по рассчитанным транзитам, солнечному возвращению и вторичным прогрессиям выбранного периода. Каждый вывод связан с указанными timing evidence; натальные положения используются только как дополнительный контекст.",
 };
 
-function parseForecastCandidate(raw: string | null | undefined): unknown {
-  return withReportMetadataDefaults(
-    extractJsonObject(raw ?? ""),
-    FORECAST_METADATA_DEFAULTS
-  );
-}
-
 export async function POST(request: NextRequest) {
   if (!(await isNatalChartEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
   const auth = await requireProfileUserId();
-  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!auth) return needsProfileResponse();
   const limited = await enforcePaidRouteRateLimit(auth.profileUserId, "natal_forecast");
   if (limited) return limited;
 
@@ -86,17 +77,23 @@ export async function POST(request: NextRequest) {
   const claimKey = reportType;
   const evidence = buildNatalEvidence(chart, { tradition: "western", timing });
   const evidenceBlock = formatEvidencePrompt(evidence);
-  const claim = await claimNatalInterpretation(
+  const timingEvidenceIds = evidence
+    .filter((item) => item.tradition === "timing")
+    .map((item) => item.id);
+  if (!timingEvidenceIds.length) {
+    return NextResponse.json(
+      { error: "Для выбранного периода нет расчётных событий. Попробуйте другой горизонт или обновите карту." },
+      { status: 422 }
+    );
+  }
+  const claim = await claimNatalInterpretationResilient(
     auth.profileUserId,
     "western",
     chart.birthFingerprint,
     chart.engineVersion,
     expectedEphemeris,
     { reportType, claimKey }
-  ).catch(() => null);
-  if (!claim) {
-    return NextResponse.json({ error: "Не удалось начать создание прогноза." }, { status: 500 });
-  }
+  );
   if (claim.status === "cached") {
     return NextResponse.json({
       forecast: claim.interpretation,
@@ -109,7 +106,7 @@ export async function POST(request: NextRequest) {
   }
   if (claim.status === "busy") {
     return NextResponse.json(
-      { error: "Прогноз уже создаётся. Подождите немного и попробуйте снова." },
+      { error: "Не удалось начать прогноз. Обновите страницу и попробуйте снова.", code: "CLAIM_BUSY" },
       { status: 409 }
     );
   }
@@ -124,7 +121,10 @@ ${buildNatalReportJsonInstructions("western", "forecast", horizon)}
 Координаты, дата, время и город рождения не переданы.
 
 EVIDENCE:
-${evidenceBlock}`);
+${evidenceBlock}
+
+TIMING EVIDENCE ID (обязательны в summary, currentPeriod, recommendations):
+${timingEvidenceIds.join("\n")}`);
 
   let charge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | undefined;
   let rollbackAttempted = false;
@@ -147,64 +147,29 @@ ${evidenceBlock}`);
       action: "FORECAST_REPORT",
     });
     const user = await getUserById(auth.profileUserId).catch(() => null);
-    const messages: ChatMessage[] = [
+    const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Создай прогноз для ${user?.name ?? "клиента"}. Верни только JSON.` },
+      {
+        role: "user",
+        content: `Создай прогноз для ${user?.name ?? "клиента"} на ${horizon} дней. horizonDays в JSON должен быть ${horizon}. Верни только JSON.`,
+      },
     ];
-    let raw = await completeChat({
-      messages,
-      maxTokens: 5200,
-      temperature: 0.3,
-      timeoutMs: 170_000,
-      maxAttempts: 1,
-      jsonObject: true,
-      allowReasoningFallback: true,
-      skipTemperatureRetry: true,
+    const generated = await generateValidatedNatalReport({
+      baseMessages,
+      evidence,
+      tradition: "western",
+      reportType: "forecast",
+      horizonDays: horizon,
+      metadataDefaults: FORECAST_METADATA_DEFAULTS,
+      evidenceIdsHint: timingEvidenceIds,
+      repairHint:
+        "В summary, currentPeriod и recommendations каждый claim должен ссылаться минимум на один timing evidence ID.",
     });
-    let validation = (() => {
-      try {
-        return validateNatalReport(parseForecastCandidate(raw), evidence, "western", "forecast", horizon);
-      } catch (error) {
-        return { ok: false as const, errors: [error instanceof Error ? error.message : "Некорректный JSON."] };
-      }
-    })();
-    if (!validation.ok) {
-      const timingEvidenceIds = evidence
-        .filter((item) => item.tradition === "timing")
-        .map((item) => item.id);
-      raw = await completeChat({
-        messages: [
-          ...messages,
-          { role: "assistant", content: raw ?? "{}" },
-          {
-            role: "user",
-            content: `Исправь JSON и верни его полностью, без сокращений и markdown. Не меняй порядок восьми разделов. Каждый claim прогноза должен содержать хотя бы один точный timing evidence ID из списка ниже.
-
-Ошибки:
-- ${validation.errors.join("\n- ")}
-
-Допустимые timing evidence ID:
-${timingEvidenceIds.join("\n")}`,
-          },
-        ],
-        maxTokens: 5200,
-        temperature: 0.15,
-        timeoutMs: 90_000,
-        maxAttempts: 1,
-        jsonObject: true,
-        allowReasoningFallback: true,
-        skipTemperatureRetry: true,
-      });
-      try {
-        validation = validateNatalReport(parseForecastCandidate(raw), evidence, "western", "forecast", horizon);
-      } catch (error) {
-        validation = { ok: false, errors: [error instanceof Error ? error.message : "Некорректный JSON."] };
-      }
-    }
-    if (!validation.ok) {
+    if (!generated.ok) {
       console.warn(
         "[natal-chart] forecast validation failed:",
-        validation.errors.slice(0, 12)
+        generated.errors.slice(0, 12),
+        `evidence=${evidence.length}`
       );
       await rollback();
       return NextResponse.json(
@@ -213,17 +178,18 @@ ${timingEvidenceIds.join("\n")}`,
       );
     }
 
+    const report = generated.report;
     const saved = await saveCurrentNatalInterpretation({
       userId: auth.profileUserId,
       tradition: "western",
-      interpretation: natalReportToPlainText(validation.report),
+      interpretation: natalReportToPlainText(report),
       expectedBirthFingerprint: chart.birthFingerprint,
       expectedEngineVersion: chart.engineVersion,
       expectedEphemeris,
       claimToken: claim.token,
       runeCost: charge.spentRunes,
       chargeTransactionId: charge.transactionId,
-      structuredData: validation.report as unknown as Record<string, unknown>,
+      structuredData: report as unknown as Record<string, unknown>,
       evidenceRefs: evidence,
       reportType,
       claimKey,

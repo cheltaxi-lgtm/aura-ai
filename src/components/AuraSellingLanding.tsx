@@ -46,6 +46,14 @@ import {
 import LandingSocialProofStats, {
   useLandingSocialProofVisible,
 } from "@/components/seo/LandingSocialProofStats";
+import EditorialHeroSection from "@/components/editorial/EditorialHeroSection";
+import EditorialTopicsSection from "@/components/editorial/EditorialTopicsSection";
+import EditorialSessionStepsSection from "@/components/editorial/EditorialSessionStepsSection";
+import EditorialStarterPackSection from "@/components/editorial/EditorialStarterPackSection";
+import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
+import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
+import { trackQuickQuestionClick } from "@/lib/seo/metrika";
 
 const BENEFITS = [
   {
@@ -148,16 +156,16 @@ const COMPARISON_ROWS = [
     us: "Таро, руны, астрология, нумерология, славянские обряды — в одном окне",
   },
   {
-    title: "Честно об ИИ",
-    them: "Либо скрывают, что отвечает бот, либо безликий генератор без характера",
-    us: "Открыто: с вами говорит ИИ-наставник в живом образе — без обмана",
+    title: "Честно о формате",
+    them: "Скрывают, кто отвечает, или дают безликий шаблон",
+    us: "Проводники в образах — с характером, традицией и прозрачными правилами",
   },
 ] as const;
 
 const TRUST_POINTS = [
   {
-    title: "ИИ-мастера в образах",
-    text: "Наставники — художественные персонажи Zovus. Мы честно обозначаем это до начала сеанса.",
+    title: "Проводники в образах",
+    text: "Каждый мастер ведёт в своей традиции — Таро, руны, астрология, нумерология.",
     icon: Sparkles,
   },
   {
@@ -201,6 +209,12 @@ export interface AuraSellingLandingProps {
   onCustomQuestionSubmit?: (question: string) => void;
   /** Logged-in home: start the selected catalog spread from quick question chips. */
   onQuickQuestionSelect?: (question: string, intentSlug?: string) => void;
+  /** Display name for logged-in welcome banner. */
+  homeUserName?: string | null;
+  /** When false, parent renders LoggedInHomeBanner (e.g. above ReadingRecap). */
+  showLoggedInHomeBanner?: boolean;
+  /** Classic mystic shell or editorial mockup shell — same blocks and handlers. */
+  layout?: "classic" | "editorial";
 }
 
 export default function AuraSellingLanding({
@@ -227,7 +241,13 @@ export default function AuraSellingLanding({
   onOpenRitual,
   onCustomQuestionSubmit,
   onQuickQuestionSelect,
+  homeUserName,
+  showLoggedInHomeBanner = true,
+  layout = "classic",
 }: AuraSellingLandingProps) {
+  const isEditorial = layout === "editorial";
+  const showLoggedInHome = isLoggedIn && !showHero && showLoggedInHomeBanner;
+  const showQuickQuestionsBlock = showHero || Boolean(afterQuickQuestions) || showLoggedInHome;
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
@@ -237,11 +257,28 @@ export default function AuraSellingLanding({
   useEffect(() => {
     const variant = resolveLandingHeroVariant();
     setHeroVariant(variant);
-    if (showHero && !isLoggedIn) trackLandingView({ hero_variant: variant });
-  }, [showHero, isLoggedIn]);
+    if (showHero && !isLoggedIn) {
+      trackLandingView({ hero_variant: isEditorial ? "editorial" : variant });
+    }
+  }, [showHero, isLoggedIn, isEditorial]);
 
   const scrollToMasters = () => {
     document.getElementById("наставники")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const scrollToSession = () => {
+    document.getElementById("как-проходит-сеанс")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleTopic = (intentSlug: string) => {
+    const intent = getSpreadIntentBySlug(intentSlug);
+    if (!intent) return;
+    trackQuickQuestionClick(intentSlug);
+    if (onQuickQuestionSelect) {
+      onQuickQuestionSelect(intent.questionTemplate, intentSlug);
+      return;
+    }
+    startGuestSpread(intent.questionTemplate, intent.recommendedMasterId);
   };
 
   const startGuestSpread = (question?: string, masterId?: string) => {
@@ -301,13 +338,24 @@ export default function AuraSellingLanding({
   };
 
   return (
-    <div className="aura-landing">
+    <div className={isEditorial ? "editorial-landing" : "aura-landing"}>
       {!showHero ? (
         <h1 className="sr-only">
           Zovus — персональные эзотерические консультации, расклады на таро и рунах
         </h1>
       ) : null}
-      {showHero ? (
+      {showHero && isEditorial ? (
+        <EditorialHeroSection
+          isLoggedIn={isLoggedIn}
+          pricingLine={ready ? offer.pricingLine : undefined}
+          onPrimaryCta={() => handlePrimaryCta("hero")}
+          onSecondaryCta={scrollToSession}
+          onQuestionSubmit={(question) =>
+            onCustomQuestionSubmit ? onCustomQuestionSubmit(question) : startGuestSpread(question)
+          }
+        />
+      ) : null}
+      {showHero && !isEditorial ? (
         <section className="aura-landing-hero">
           <div className="aura-landing-hero__grid mx-auto max-w-6xl">
             <motion.div
@@ -350,22 +398,41 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {!isLoggedIn ? <GuestTripletDraw /> : null}
+      {showSellingSections && isEditorial && !isLoggedIn ? (
+        <EditorialTopicsSection onTopic={handleTopic} />
+      ) : null}
 
-      {showHero || afterQuickQuestions ? (
+      {!isLoggedIn ? (
+        <>
+          <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
+          <GuestTripletDraw />
+        </>
+      ) : null}
+
+      {showLoggedInHome ? (
+        <LoggedInHomeBanner
+          userName={homeUserName}
+          onQuestionSubmit={onCustomQuestionSubmit ?? onQuickQuestionSelect}
+        />
+      ) : null}
+
+      {showQuickQuestionsBlock ? (
         <QuickQuestions
-          showQuestionField={!showHero}
+          showQuestionField={!isLoggedIn && !showHero && !showLoggedInHome}
           onQuestionSelect={
-            !isLoggedIn
-              ? (question) => startGuestSpread(question)
-              : onQuickQuestionSelect
+            onQuickQuestionSelect ??
+            ((question, intentSlug) => {
+              const intent = intentSlug ? getSpreadIntentBySlug(intentSlug) : null;
+              startGuestSpread(question, intent?.recommendedMasterId);
+            })
           }
           onCustomQuestionSubmit={
-            isLoggedIn
-              ? onCustomQuestionSubmit
+            onCustomQuestionSubmit ??
+            (isLoggedIn
+              ? undefined
               : !showHero
                 ? (question) => startGuestSpread(question)
-                : undefined
+                : undefined)
           }
         />
       ) : null}
@@ -420,6 +487,7 @@ export default function AuraSellingLanding({
             onOpenPaywall?.();
           }}
           layout="grid"
+          rowVariant="default"
           title="Выберите своего проводника"
           subtitle="Каждый мастер работает в своей системе — от классического Таро до рун и астрологии."
           showExpertCta={expertRegistrationEnabled}
@@ -428,7 +496,13 @@ export default function AuraSellingLanding({
         />
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && isEditorial ? <EditorialSessionStepsSection /> : null}
+
+      {showSellingSections && isEditorial ? (
+        <EditorialPracticesSection isLoggedIn={isLoggedIn} />
+      ) : null}
+
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
@@ -463,7 +537,7 @@ export default function AuraSellingLanding({
         />
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
@@ -494,7 +568,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section aura-landing-section--compare">
           <div className="mx-auto max-w-4xl">
             <div className="aura-landing-section__head">
@@ -539,7 +613,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section aura-landing-section--trust">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
@@ -566,7 +640,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
@@ -611,9 +685,9 @@ export default function AuraSellingLanding({
         />
       ) : null}
 
-      {showSellingSections ? <AndroidDownloadBlock /> : null}
+      {showSellingSections && !isEditorial ? <AndroidDownloadBlock /> : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section aura-landing-section--final px-4 sm:px-0">
           <motion.div
             className="aura-landing-final__panel mx-auto max-w-3xl text-center"
@@ -656,7 +730,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {!isLoggedIn ? (
+      {!isEditorial && !isLoggedIn ? (
         <LandingStickyCta label={offer.primaryCta} onClick={() => handlePrimaryCta("sticky")} />
       ) : null}
     </div>

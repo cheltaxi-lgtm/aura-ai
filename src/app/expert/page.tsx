@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { performClientLogout } from "@/lib/client-logout";
 import BrandLogo from "@/components/BrandLogo";
+import { BRAND_LOGO_HEADER } from "@/lib/brand";
 import { motion } from "framer-motion";
 import { Sparkles, Upload, Link2, BarChart3, LogOut } from "lucide-react";
 
@@ -88,9 +89,7 @@ export default function ExpertCabinetPage() {
     <div className="min-h-screen px-6 py-12">
       <div className="mx-auto max-w-3xl">
         <div className="mb-8 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-gray-500 hover:text-aura-neon">
-            <BrandLogo showTagline={false} markSize={22} titleClassName="font-display text-lg font-bold text-white" />
-          </Link>
+          <BrandLogo {...BRAND_LOGO_HEADER} />
           <button onClick={logout} className="flex items-center gap-1 text-sm text-gray-500 hover:text-white">
             <LogOut className="h-4 w-4" /> Выйти
           </button>

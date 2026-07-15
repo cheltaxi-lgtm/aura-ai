@@ -340,7 +340,7 @@ async function completeChatInternal(
   const model = modelOverride ?? (await resolveModel(vision));
   const extractOpts: CompletionExtractOptions = {
     allowReasoningFallback,
-    structuredJson: allowReasoningFallback && jsonObject,
+    structuredJson: jsonObject,
   };
   const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
 
@@ -358,7 +358,8 @@ async function completeChatInternal(
         maxAttempts,
         extractOpts,
         pool
-      )
+      ),
+      { structuredJson: jsonObject }
     );
 
   if (!isOpenRouterConfigured()) return null;
@@ -394,7 +395,7 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
   const model = modelOverride ?? (await resolveModel(vision));
   const extractOpts: CompletionExtractOptions = {
     allowReasoningFallback,
-    structuredJson: allowReasoningFallback && jsonObject,
+    structuredJson: jsonObject,
   };
   const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
 

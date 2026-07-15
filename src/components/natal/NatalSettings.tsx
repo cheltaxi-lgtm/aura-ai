@@ -105,11 +105,10 @@ export default function NatalSettings() {
         {!ai || !events ? <p className="flex items-center gap-2 text-sm text-white/45" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Загружаем настройки…</p> : null}
         {ai ? <section aria-labelledby="ai-context-title">
           <h3 id="ai-context-title" className="font-display text-lg text-amber-50">Контекст для Shri Raj</h3>
-          <p className="mt-2 text-xs leading-5 text-white/45">Эти согласия независимы от разового подтверждения платного отчёта и по умолчанию выключены.</p>
+          <p className="mt-2 text-xs leading-5 text-white/45">По умолчанию выключены.</p>
           <div className="mt-4 space-y-3">
             <PreferenceCheckbox checked={ai.aiContextEnabled} disabled={saving === "ai"} onChange={(value) => void saveAi({ aiContextEnabled: value })}
-              label="Разрешить натальный контекст в обычном чате с Shri Raj"
-              description="Передаются только рассчитанные положения и периоды; дата, время, город и координаты рождения не передаются." />
+              label="Разрешить натальный контекст в обычном чате с Shri Raj" />
             <PreferenceCheckbox checked={ai.tarotContextEnabled} disabled={saving === "ai"} onChange={(value) => void saveAi({ tarotContextEnabled: value })}
               label="Отдельно разрешить натальный контекст в раскладах Таро Shri Raj"
               description="Настройка не зависит от обычного чата. Карты Таро остаются главным источником расклада." />

@@ -27,6 +27,9 @@ export function readAppShellFromDocument(): boolean {
 export function markAppShellOnDocument(): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.appShell = "android";
+  if (isNativeCapacitorPlatform()) {
+    document.documentElement.dataset.nativeApp = "1";
+  }
   try {
     sessionStorage.setItem("zovus_app_shell", "1");
   } catch {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { ArrowLeft } from "lucide-react";
 import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
@@ -15,6 +16,8 @@ import { saveGuestTriplet } from "@/lib/guest-triplet";
 import { buildGuestTripletPreview, buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
+  GUEST_SPREAD_DRAFT_KEY,
+  GUEST_SPREAD_RESET_EVENT,
   GUEST_SPREAD_SECTION_ID,
   GUEST_SPREAD_START_EVENT,
   GUEST_TRIPLET_MASTER_ID,
@@ -34,14 +37,12 @@ import {
   trackRegistrationCtaClick,
   trackRegistrationGateView,
 } from "@/lib/seo/metrika";
-import { getCharacterById } from "@/lib/characters";
 import DeckCard from "@/components/DeckCard";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import ShareButton from "@/components/share/ShareButton";
 import { tripletToSharePayload } from "@/lib/share/payload-builders";
 
 const GUEST_ID_KEY = "zovus_guest_id";
-const GUEST_SPREAD_DRAFT_KEY = "zovus_guest_spread_draft";
 const CARD_COUNT = 3;
 
 function getGuestId(): string {
@@ -75,17 +76,8 @@ type GuestTripletDrawProps = {
 
 function GuestSpreadSection({ children }: { children: React.ReactNode }) {
   return (
-    <section id={GUEST_SPREAD_SECTION_ID} className="aura-landing-section aura-landing-section--guest-spread">
-      <div className="mx-auto max-w-6xl">
-        <div className="aura-landing-section__head">
-          <h2 className="font-mystic-display aura-landing-section__title">Ваш бесплатный расклад</h2>
-          <p className="aura-landing-section__subtitle">
-            Откройте три карты — увидите краткий ориентир по символам. Регистрация понадобится для полной
-            расшифровки.
-          </p>
-        </div>
-        {children}
-      </div>
+    <section className="aura-landing-section aura-landing-section--guest-spread">
+      <div className="mx-auto max-w-6xl">{children}</div>
     </section>
   );
 }
@@ -151,7 +143,8 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
 
     const draft = readGuestSpreadDraft();
     if (draft && draft.masterId === GUEST_TRIPLET_MASTER_ID) {
-      setStep(draft.step);
+      const restoredStep = draft.step === "intro" ? "pick" : draft.step;
+      setStep(restoredStep);
       setSessionSeed(draft.sessionSeed);
       setPickedIndices(draft.pickedIndices);
       setDeck(draft.deck);
@@ -185,6 +178,13 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   }, []);
 
+  const exitToLanding = useCallback(() => {
+    resetSpreadState();
+    setAgeGateError("");
+    setStep("idle");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [resetSpreadState]);
+
   const resetPickProgress = useCallback(() => {
     setPickedIndices([]);
     setDeck([]);
@@ -202,6 +202,12 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     setSessionSeed(seed);
     return seed;
   }, [masterId, sessionSeed]);
+
+  const openCardPicker = useCallback(() => {
+    ensureSessionSeed();
+    resetPickProgress();
+    setStep("pick");
+  }, [ensureSessionSeed, resetPickProgress]);
 
   useEffect(() => {
     const onStart = (event: Event) => {
@@ -221,49 +227,40 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       });
       setSessionSeed(seed);
       trackGuestSpreadStarted();
-      setStep("intro");
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-      });
+      openCardPicker();
+      void (async () => {
+        if (isAgeGateConfirmed()) {
+          setAgeConfirmed(true);
+          return;
+        }
+        setAgeConfirming(true);
+        const ok = await confirmAgeGateOnServer();
+        setAgeConfirming(false);
+        if (ok) {
+          setAgeConfirmed(true);
+          return;
+        }
+        setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
+      })();
     };
     window.addEventListener(GUEST_SPREAD_START_EVENT, onStart);
     return () => window.removeEventListener(GUEST_SPREAD_START_EVENT, onStart);
-  }, [resetSpreadState]);
+  }, [resetSpreadState, openCardPicker]);
 
   useEffect(() => {
-    if (step !== "intro" || sessionSeed) return;
-    setSessionSeed(
-      buildGuestSpreadSeed({
-        guestId: getGuestId(),
-        masterId,
-        spreadId: "triplet",
-        topic: "guest_preview",
-      })
-    );
-  }, [step, sessionSeed, masterId]);
+    const onReset = () => exitToLanding();
+    window.addEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
+    return () => window.removeEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
+  }, [exitToLanding]);
 
-  const beginPick = useCallback(() => {
-    ensureSessionSeed();
-    resetPickProgress();
-    setStep("pick");
-  }, [ensureSessionSeed, resetPickProgress]);
-
-  const handleIntroContinue = async () => {
-    setAgeGateError("");
-    if (!ageConfirmed) {
-      setAgeConfirming(true);
-      const ok = await confirmAgeGateOnServer();
-      setAgeConfirming(false);
-      if (!ok) {
-        setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
-        return;
-      }
-      setAgeConfirmed(true);
-    }
-    beginPick();
-  };
+  useEffect(() => {
+    if (step === "idle") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitToLanding();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, exitToLanding]);
 
   const resolveGuestPicks = useCallback(
     (indices: number[], seed: string) => {
@@ -274,14 +271,25 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       setDeck(cards);
       setStep("flip");
       window.requestAnimationFrame(() => {
-        document.getElementById("guest-spread-flip")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     },
     [system, tableSize]
   );
 
   const handleTablePick = useCallback(
-    (index: number) => {
+    async (index: number) => {
+      if (ageConfirming) return;
+      if (!ageConfirmed && !isAgeGateConfirmed()) {
+        setAgeConfirming(true);
+        const ok = await confirmAgeGateOnServer();
+        setAgeConfirming(false);
+        if (!ok) {
+          setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
+          return;
+        }
+        setAgeConfirmed(true);
+      }
       if (pickedIndices.includes(index)) return;
       const next = [...pickedIndices, index];
       setPickedIndices(next);
@@ -290,7 +298,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
         resolveGuestPicks(next, seed);
       }
     },
-    [pickedIndices, resolveGuestPicks, ensureSessionSeed]
+    [pickedIndices, resolveGuestPicks, ensureSessionSeed, ageConfirming, ageConfirmed]
   );
 
   const handleFlip = (index: number) => {
@@ -351,56 +359,23 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     });
   }, [step, deck, system]);
 
-  const pickedMasterName = getCharacterById(masterId)?.name;
+  const backToLandingButton = (
+    <button
+      type="button"
+      onClick={exitToLanding}
+      className="mb-4 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-aura-gold/25 hover:text-white"
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden />
+      На главную
+    </button>
+  );
 
   if (step === "idle") {
     return null;
   }
 
-  if (step === "intro") {
-    return (
-      <GuestSpreadSection>
-      <div className={`mx-auto max-w-md px-4 ${className}`.trim()}>
-        <div className="glass-panel space-y-5 p-8 text-center">
-          <p className="lux-label">Бесплатный расклад · 3 карты · классическое Таро</p>
-          <p className="text-sm text-aura-champagne/85">
-            Мастер {pickedMasterName ?? "Вероника"} проведёт ваш бесплатный расклад — откройте три карты,
-            затем зарегистрируйтесь для полной расшифровки.
-          </p>
-          {landingQuestion ? (
-            <p className="text-sm text-aura-champagne/80">Ваш вопрос: «{landingQuestion}»</p>
-          ) : null}
-          <h2 className="font-display text-xl font-semibold text-[#EDE6DA]">{ritualCopy.title}</h2>
-          <p className="text-sm leading-relaxed text-aura-ivory/75">{ritualCopy.body}</p>
-          <p className="text-xs uppercase tracking-widest text-aura-gold/80">{ritualCopy.personalNote}</p>
-          {!ageConfirmed ? (
-            <p className="text-sm leading-relaxed text-aura-ivory/65">
-              Бесплатный расклад доступен пользователям от 18 лет. Сервис носит развлекательно-ознакомительный
-              характер.
-            </p>
-          ) : null}
-          {ageGateError ? <p className="text-sm text-red-400">{ageGateError}</p> : null}
-          <button
-            type="button"
-            onClick={() => void handleIntroContinue()}
-            disabled={ageConfirming}
-            className="btn-primary w-full px-8 py-3.5 disabled:opacity-50"
-          >
-            {ageConfirming
-              ? "Подтверждаем…"
-              : ageConfirmed
-                ? "К столу карт"
-                : "Мне есть 18 лет — к столу карт"}
-          </button>
-        </div>
-      </div>
-      </GuestSpreadSection>
-    );
-  }
-
   if (step === "pick") {
     return (
-      <GuestSpreadSection>
       <MagicalSpreadTable
         tableSize={tableSize}
         cardCount={CARD_COUNT}
@@ -408,24 +383,25 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
         masterId={masterId}
         pickedIndices={pickedIndices}
         onPick={handleTablePick}
-        pickHint={ritualCopy.pickHint}
+        pickHint={ageGateError || ritualCopy.pickHint}
         personalNote={ritualCopy.personalNote}
         title="Выберите три карты"
         standalone
-        onBack={() => {
-          setPickedIndices([]);
-          setStep("intro");
-        }}
+        underSiteHeader
+        backLabel="На главную"
+        onBack={exitToLanding}
+        disabled={ageConfirming}
       />
-      </GuestSpreadSection>
     );
   }
 
   if (step === "done") {
     return (
       <GuestSpreadSection>
+      <div className={`mx-auto max-w-lg px-4 ${className}`.trim()}>
+        {backToLandingButton}
       <motion.div
-        className={`glass-panel mx-auto max-w-lg space-y-5 p-8 ${className}`.trim()}
+        className="glass-panel space-y-5 p-8"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
@@ -477,6 +453,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
           ) : null}
         </div>
       </motion.div>
+      </div>
       </GuestSpreadSection>
     );
   }
@@ -484,6 +461,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
   return (
     <GuestSpreadSection>
     <div className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
+      {backToLandingButton}
       <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
       <p className="mb-2 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
       <p className="mb-8 text-center text-sm font-medium text-aura-champagne/80">

@@ -107,6 +107,8 @@ export function buildLandingOfferCopy(
 
 export const GUEST_SPREAD_SECTION_ID = "guest-spread";
 export const GUEST_SPREAD_START_EVENT = "zovus:start-guest-spread";
+export const GUEST_SPREAD_RESET_EVENT = "zovus:reset-guest-spread";
+export const GUEST_SPREAD_DRAFT_KEY = "zovus_guest_spread_draft";
 export const LANDING_QUESTION_KEY = "zovus_landing_question";
 
 /** Free 3-card landing spread is always classic Rider-Waite tarot with Veronika. */

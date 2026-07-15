@@ -5,12 +5,14 @@ import AppHeaderMenu from "@/components/AppHeaderMenu";
 import AppTopHeaderAccount from "@/components/AppTopHeaderAccount";
 import AppTopHeaderNav from "@/components/AppTopHeaderNav";
 import BrandLogo from "@/components/BrandLogo";
+import { BRAND_LOGO_HEADER } from "@/lib/brand";
 import NotificationBell, {
   NOTIFICATION_COUNT_EVENT,
   OPEN_NOTIFICATIONS_EVENT,
 } from "@/components/NotificationBell";
 import RuneBalance, { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import TariffsModal from "@/components/TariffsModal";
+import EditorialSiteHeader from "@/components/editorial/EditorialSiteHeader";
 import type { AuthUser } from "@/lib/useAuth";
 
 export interface AppTopHeaderProps {
@@ -26,6 +28,8 @@ export interface AppTopHeaderProps {
   onNavDecks: () => void;
   onNavRitual: () => void;
   onStartReading: () => void;
+  /** Editorial landing header (guest marketing home). */
+  editorial?: boolean;
 }
 
 export default function AppTopHeader({
@@ -40,6 +44,7 @@ export default function AppTopHeader({
   onNavDecks,
   onNavRitual,
   onStartReading,
+  editorial = false,
 }: AppTopHeaderProps) {
   const headerRef = useRef<HTMLElement>(null);
   const [tariffsOpen, setTariffsOpen] = useState(false);
@@ -119,6 +124,35 @@ export default function AppTopHeader({
     };
   }, []);
 
+  if (editorial) {
+    return (
+      <>
+        <EditorialSiteHeader
+          isLoggedIn={isLoggedIn}
+          authUser={authUser}
+          authLoading={authLoading}
+          runeBalance={runeBalance}
+          notificationCount={notificationCount}
+          onOpenPaywall={onOpenPaywall}
+          onOpenNotifications={openNotifications}
+          onNavMasters={onNavMasters}
+          onStartReading={onStartReading}
+          photoNavLabel={photoNavLabel}
+          onNavDecks={onNavDecks}
+          onNavPhoto={onNavPhoto}
+          onNavTariffs={openTariffs}
+          onNavRitual={onNavRitual}
+        />
+        <TariffsModal
+          open={tariffsOpen}
+          onClose={() => setTariffsOpen(false)}
+          onOpenPaywall={onOpenPaywall}
+          isLoggedIn={isLoggedIn}
+        />
+      </>
+    );
+  }
+
   return (
     <header
       ref={headerRef}
@@ -126,17 +160,12 @@ export default function AppTopHeader({
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
         <div className="app-top-header__brand flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-          <BrandLogo
-            linkToHome
-            showTagline={false}
-            markSize={32}
-            titleClassName="font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl"
-          />
+          <BrandLogo {...BRAND_LOGO_HEADER} />
         </div>
 
         {/* Desktop: three premium pills — Меню · CTA · Аккаунт */}
         <div className="app-top-header__actions hidden min-w-0 flex-1 items-center justify-end gap-2 md:flex md:gap-2.5">
-          <AppTopHeaderNav {...navCallbacks} />
+          {isLoggedIn ? <AppTopHeaderNav {...navCallbacks} isLoggedIn={isLoggedIn} /> : null}
           <button
             type="button"
             onClick={onStartReading}
@@ -160,18 +189,20 @@ export default function AppTopHeader({
         {/* Mobile: runes + menu (notifications inside account section of sheet) */}
         <div className="app-top-header__mobile flex shrink-0 items-center gap-1.5 md:hidden">
           {isLoggedIn ? <RuneBalance compact onBuyClick={onOpenPaywall} /> : null}
-          <AppHeaderMenu
-            photoNavLabel={photoNavLabel}
-            isLoggedIn={isLoggedIn}
-            authUser={authUser}
-            authLoading={authLoading}
-            onNavMasters={onNavMasters}
-            onNavDecks={onNavDecks}
-            onNavPhoto={onNavPhoto}
-            onNavTariffs={openTariffs}
-            onNavRitual={onNavRitual}
-            onStartReading={onStartReading}
-          />
+          {isLoggedIn ? (
+            <AppHeaderMenu
+              photoNavLabel={photoNavLabel}
+              isLoggedIn={isLoggedIn}
+              authUser={authUser}
+              authLoading={authLoading}
+              onNavMasters={onNavMasters}
+              onNavDecks={onNavDecks}
+              onNavPhoto={onNavPhoto}
+              onNavTariffs={openTariffs}
+              onNavRitual={onNavRitual}
+              onStartReading={onStartReading}
+            />
+          ) : null}
           {isLoggedIn && authUser?.role === "user" ? (
             <NotificationBell hiddenTrigger />
           ) : null}

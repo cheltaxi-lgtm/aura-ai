@@ -4,6 +4,7 @@ import type { MouseEvent } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight, Layers } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
+import { masterTagline } from "@/data/master-avatars";
 import { MASTER_PUBLIC_BADGE } from "@/lib/master-disclosure";
 import { isRitualMaster, RITUAL_MASTER_SHOWCASE_BADGE } from "@/lib/ritual-config";
 import { formatMasterPriceDisplay, type MasterPriceKind } from "@/lib/master-pricing";
@@ -25,6 +26,7 @@ export interface MasterListRowProps {
   onSelect: (masterId: string) => void;
   onBrowseDeck?: (master: ShowcaseMaster) => void;
   actionBlocked?: boolean;
+  variant?: "default" | "editorial";
 }
 
 export default function MasterListRow({
@@ -41,6 +43,7 @@ export default function MasterListRow({
   onSelect,
   onBrowseDeck,
   actionBlocked = false,
+  variant = "default",
 }: MasterListRowProps) {
   const deckSystem = master.system ?? resolveMasterDeckSystem(master.id);
   const price = formatMasterPriceDisplay({
@@ -56,11 +59,57 @@ export default function MasterListRow({
   const deckCount = getDeckDefinition(deckSystem).symbols.length;
   const deckUnit = DECK_SYSTEM_LABEL[deckSystem];
   const kindLabel = MASTER_PUBLIC_BADGE;
+  const bio = masterTagline(master.id, master.title);
 
   const openDeck = (event: MouseEvent) => {
     event.stopPropagation();
     onBrowseDeck?.(master);
   };
+
+  if (variant === "editorial") {
+    return (
+      <motion.li
+        initial={{ opacity: 0, x: -12 }}
+        whileInView={{ opacity: 1, x: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.4, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className={`editorial-master-row ${recommended ? "editorial-master-row--recommended" : ""}`}>
+          <span className="editorial-master-row__portrait">
+            <MasterAvatar masterId={master.id} masterName={master.name} size="sm" priority={index < 3} />
+          </span>
+          <div className="min-w-0">
+            <p className="editorial-master-row__name">
+              {master.name}
+              {recommended ? (
+                <span className="ml-2 text-[10px] uppercase tracking-wide text-[var(--color-accent-light)]">· Вам</span>
+              ) : null}
+              {canContinue ? (
+                <span className="ml-2 text-[10px] uppercase tracking-wide text-emerald-300/90">· Разбор</span>
+              ) : null}
+              {isRitualMaster(master.id) ? (
+                <span className="ml-2 text-[10px] text-violet-200/90">{RITUAL_MASTER_SHOWCASE_BADGE}</span>
+              ) : null}
+            </p>
+            <p className="editorial-master-row__title">{master.title}</p>
+            <p className="editorial-master-row__bio">{bio}</p>
+          </div>
+          <span className="editorial-master-row__price">
+            {price.amount}
+            {price.unit ? ` ${price.unit}` : ""}
+          </span>
+          <button
+            type="button"
+            className="editorial-master-row__cta editorial-btn editorial-btn--gold editorial-btn--sm"
+            disabled={actionBlocked}
+            onClick={() => onSelect(master.id)}
+          >
+            Выбрать
+          </button>
+        </div>
+      </motion.li>
+    );
+  }
 
   return (
     <motion.li

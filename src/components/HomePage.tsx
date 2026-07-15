@@ -34,7 +34,8 @@ import {
   type RitualType,
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
-import AuraSellingLanding from "@/components/AuraSellingLanding";
+import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
+import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
 import type { PhotoReadingChatPayload, PhotoReadingEntryMode } from "@/components/PhotoReadingFlow";
@@ -117,6 +118,7 @@ import {
   PENDING_MASTER_KEY,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
+import { resetGuestSpreadFlow } from "@/lib/guest-spread-reset";
 import {
   consumePendingGuestQuestion,
   persistPendingIntent,
@@ -593,12 +595,17 @@ export default function HomePage({
   const handleLandingQuickQuestion = useCallback(
     (question: string, intentSlug?: string) => {
       const q = question.trim();
-      if (!q || !isLoggedIn) return;
+      if (!q) return;
       const matched =
         (intentSlug ? getSpreadIntentBySlug(intentSlug) : null) ??
         matchSpreadIntentFromQuestion(q);
       if (matched) {
         openSpreadIntentFlow(matched);
+        return;
+      }
+
+      if (!isLoggedIn) {
+        handleLandingCustomQuestion(q);
         return;
       }
 
@@ -611,7 +618,7 @@ export default function HomePage({
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },
-    [isLoggedIn, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
+    [isLoggedIn, openSpreadIntentFlow, handleLandingCustomQuestion, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
 
   useEffect(() => {
@@ -852,7 +859,14 @@ export default function HomePage({
       window.location.href = `/?app=1#${encodeURIComponent(sectionId)}`;
       return;
     }
-    exitToLandingForNavRef.current?.();
+    const needsFlowExit =
+      Boolean(selectedCharacter) ||
+      photoReadingOpen ||
+      seoFlowOpen ||
+      showRitualFlow;
+    if (needsFlowExit) {
+      exitToLandingForNavRef.current?.();
+    }
     setPendingNav({ type: "section", id: sectionId });
     window.requestAnimationFrame(() => {
       window.setTimeout(() => {
@@ -861,9 +875,9 @@ export default function HomePage({
         el.scrollIntoView({ behavior: "smooth", block: "start" });
         window.history.replaceState(null, "", `#${sectionId}`);
         setPendingNav(null);
-      }, 80);
+      }, needsFlowExit ? 80 : 0);
     });
-  }, []);
+  }, [selectedCharacter, photoReadingOpen, seoFlowOpen, showRitualFlow]);
 
   const openPhotoReading = useCallback(
     (options?: { masterOverride?: string; mode?: PhotoReadingEntryMode }) => {
@@ -2165,6 +2179,14 @@ export default function HomePage({
     setShowSessionFlow(false);
     setShowRitualFlow(false);
     setPhotoReadingOpen(false);
+    setSeoFlowOpen(false);
+    setSeoFlowIntentSlug(null);
+    setDeepLinkSpreadId(null);
+    if (!isLoggedIn) {
+      resetGuestSpreadFlow({ keepCompletedTriplet: true });
+      setStep("intro");
+      return;
+    }
     const nextStep = !authUser?.profileUserId ? "onboarding" : "masters";
     setStep(nextStep);
     localStorage.setItem(FLOW_STEP_KEY, nextStep);
@@ -2177,6 +2199,7 @@ export default function HomePage({
     setStep,
     setSessionListMaster,
     authUser?.profileUserId,
+    isLoggedIn,
   ]);
 
   useEffect(() => {
@@ -2391,6 +2414,14 @@ export default function HomePage({
   /** Guests always get intro landing when step=intro; deep-link ?step= must not hide it. */
   const showSeoLanding = !isLoggedIn && showLanding;
   const showSalonHome = showSeoLanding || (!bootstrapping && step === "masters" && !selectedCharacter);
+  /** Logged-in home: show salon as soon as flow is bootstrapped (don't wait on session spinner). */
+  const showPersonalSalon =
+    isLoggedIn &&
+    !selectedCharacter &&
+    !sessionListMaster &&
+    (step === "masters" || (step === "intro" && flowBootstrapped));
+  const showPersonalSalonContent =
+    showPersonalSalon && (step === "intro" || !bootstrapping || flowBootstrapped);
   const landingMasters = masters.length > 0 ? masters : getAiMasters();
 
   useEffect(() => {
@@ -2467,7 +2498,7 @@ export default function HomePage({
   };
 
   const seoLanding = (
-    <AuraSellingLanding
+    <ZovusEditorialLanding
       isLoggedIn={isLoggedIn}
       masters={landingMasters}
       onStartReading={() => void startPersonalFlow()}
@@ -2486,6 +2517,8 @@ export default function HomePage({
       onOpenPhotoReading={() => openPhotoReading()}
       onOpenMarkCards={openMarkCards}
       photoNavLabel={photoNavLabel}
+      onCustomQuestionSubmit={handleLandingCustomQuestion}
+      onQuickQuestionSelect={handleLandingQuickQuestion}
     />
   );
 
@@ -2506,8 +2539,11 @@ export default function HomePage({
     setHeaderMounted(true);
   }, []);
 
+  const inActiveChat = step === "chat" || Boolean(selectedCharacter);
+
   const topHeader = (
     <AppTopHeader
+      editorial={(showSeoLanding || showSalonHome) && !inActiveChat}
       photoNavLabel={photoNavLabel}
       isLoggedIn={isLoggedIn}
       authUser={authUser}
@@ -2521,8 +2557,6 @@ export default function HomePage({
       onStartReading={handleStartReadingFromHeader}
     />
   );
-
-  const inActiveChat = step === "chat" || Boolean(selectedCharacter);
 
   useEffect(() => {
     const onAppHomeNav = () => {
@@ -2542,7 +2576,9 @@ export default function HomePage({
       className={
         inActiveChat
           ? "home-active-chat relative z-10 flex min-h-0 flex-1 flex-col"
-          : "relative min-h-screen pt-[var(--app-header-h,3.25rem)]"
+          : showSeoLanding
+            ? "relative min-h-screen"
+            : "relative min-h-screen pt-[var(--app-header-h,3.25rem)]"
       }
     >
       {headerMounted ? createPortal(topHeader, document.body) : null}
@@ -2551,7 +2587,9 @@ export default function HomePage({
         className={
           inActiveChat
             ? "relative z-10 mx-auto flex h-full min-h-0 flex-1 max-w-none flex-col overflow-hidden px-0 py-0"
-            : `relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12${showSalonHome ? " home-salon-shell" : ""}`
+            : showSeoLanding || showSalonHome || showPersonalSalon
+              ? "relative z-10 mx-auto max-w-none px-0 py-0 home-salon-shell"
+              : "relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12"
         }
       >
         {paymentNotice && (
@@ -2819,6 +2857,13 @@ export default function HomePage({
           />
           </>
         ) : inPersonalFlow ? (
+          <>
+            {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
+              <LoggedInHomeBanner
+                userName={effectiveProfile.name || authUser?.name}
+                onQuestionSubmit={handleLandingCustomQuestion}
+              />
+            ) : null}
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
             {step === "onboarding" && (
@@ -2955,7 +3000,7 @@ export default function HomePage({
               </section>
             )}
 
-            {step === "masters" && !bootstrapping && (
+            {showPersonalSalonContent ? (
               <>
                 {isLoggedIn && hasActiveSpread && recapContinueMasterId ? (
                   <ReadingRecap
@@ -3068,7 +3113,7 @@ export default function HomePage({
                   />
                 )}
 
-                <AuraSellingLanding
+                <ZovusEditorialLanding
                   isLoggedIn={isLoggedIn}
                   masters={landingMasters}
                   onStartReading={() => void startPersonalFlow()}
@@ -3079,15 +3124,19 @@ export default function HomePage({
                   spreadReadingDone={spreadReadingDone}
                   showHero={!isLoggedIn}
                   showSellingSections={!isLoggedIn}
+                  showLoggedInHomeBanner={false}
+                  showMasters
                   showTariffs
+                  homeUserName={effectiveProfile.name || authUser?.name}
                   onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
-                  onCustomQuestionSubmit={
-                    isLoggedIn ? handleLandingCustomQuestion : undefined
-                  }
+                  onCustomQuestionSubmit={isLoggedIn ? handleLandingCustomQuestion : undefined}
                   onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}
+                  onOpenPhotoReading={() => openPhotoReading()}
+                  onOpenMarkCards={openMarkCards}
+                  photoNavLabel={photoNavLabel}
                   afterQuickQuestions={
                     isLoggedIn ? (
-                      <div className="space-y-6">
+                      <div className="home-feature-banners">
                         <CabinetNatalChart />
                         <PremiumEnergyBlock
                           characterKey={dailyEnergyMasterId}
@@ -3115,8 +3164,9 @@ export default function HomePage({
                   onInsufficientRunes={landingInsufficientRunes}
                 />
               </>
-            )}
+            ) : null}
           </div>
+          </>
         ) : !bootstrapping && showLanding && deckGalleryOpen && browseDeckMaster ? (
           <DeckGallery
             system={

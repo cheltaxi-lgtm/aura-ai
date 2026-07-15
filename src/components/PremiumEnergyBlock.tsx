@@ -278,7 +278,7 @@ export default function PremiumEnergyBlock({
       if (res.status === 403 && data.error === "daily_reading_locked") {
         setLockedToday(true);
         setDrawnToday(true);
-        setOpen(false);
+        setErrorMessage(data.message ?? "Расклад на сегодня уже был — новый будет доступен завтра.");
         return;
       }
       if (data.drawn && data.text && Array.isArray(data.cards) && data.cards.length) {
@@ -325,53 +325,56 @@ export default function PremiumEnergyBlock({
   // ─────────────────────────── TRIGGER CARD ───────────────────────────
   if (!loaded) {
     return (
-      <div className="mb-8 rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md">
-        <div className="h-4 w-32 rounded bg-white/10 max-md:animate-none animate-pulse" />
-        <div className="mt-4 h-12 rounded bg-white/5 max-md:animate-none animate-pulse" />
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <motion.section
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative mb-8 scroll-mt-[calc(var(--app-header-h,3.25rem)+0.75rem)] overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 shadow-2xl max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md sm:p-7"
-      >
-        <div
-          className="pointer-events-none absolute -right-16 -top-16 hidden h-48 w-48 rounded-full bg-amber-500/10 blur-3xl md:block"
-          aria-hidden
-        />
-        <div className="relative flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10">
-            <Moon className="h-6 w-6 text-amber-300" aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1">
+      <section className="ritual-cta-banner" aria-hidden>
+        <div className="ritual-cta-banner__inner">
+          <span className="ritual-cta-banner__icon">
+            <Moon className="h-6 w-6 text-amber-200" aria-hidden />
+          </span>
+          <div className="ritual-cta-banner__copy">
             <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
               Бесплатно · раз в сутки
             </p>
-            <h3 className="font-display text-lg font-semibold text-white">Расклад на сутки</h3>
-            <p className="mt-0.5 text-xs text-gray-400">
-              {lockedToday
-                ? "Расклад на сегодня уже был — новый завтра"
-                : drawnToday
-                ? spreadId === "daily-extended"
-                  ? "Расширенный расклад на сегодня готов"
-                  : "Ваш расклад на сегодня готов"
-                : `Выберите мастера и откройте ${cardsLabelRu(spread.cardCount)}`}
+            <h3 className="ritual-cta-banner__title">Расклад на сутки</h3>
+            <p className="ritual-cta-banner__text">Загружаем статус…</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const statusText = lockedToday
+    ? "Расклад на сегодня уже был — новый завтра"
+    : drawnToday
+      ? spreadId === "daily-extended"
+        ? "Расширенный расклад на сегодня готов"
+        : "Ваш расклад на сегодня готов"
+      : `Выберите мастера и откройте ${cardsLabelRu(spread.cardCount)}`;
+
+  return (
+    <>
+      <section className="ritual-cta-banner" aria-labelledby="daily-energy-banner-title">
+        <div className="ritual-cta-banner__inner">
+          <span className="ritual-cta-banner__icon" aria-hidden>
+            <Moon className="h-6 w-6 text-amber-200" strokeWidth={1.5} />
+          </span>
+          <div className="ritual-cta-banner__copy">
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
+              Бесплатно · раз в сутки
             </p>
+            <h3 id="daily-energy-banner-title" className="ritual-cta-banner__title">
+              Расклад на сутки
+            </h3>
+            <p className="ritual-cta-banner__text">{statusText}</p>
           </div>
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-transform hover:scale-[1.03] active:scale-95"
-            style={{ background: GOLD_GRADIENT, color: "#1a0f00", boxShadow: "0 4px 20px rgba(212,175,55,0.3)" }}
+            className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn"
           >
             {lockedToday ? "Завтра" : drawnToday ? "Смотреть" : "Разложить"}
           </button>
         </div>
-      </motion.section>
+      </section>
       <BodyPortal active={open}>
         <AnimatePresence>
           {open && (
@@ -394,6 +397,8 @@ export default function PremiumEnergyBlock({
                 className={`relative z-10 flex w-full max-h-[min(90dvh,calc(100dvh-2rem))] flex-col overflow-hidden rounded-t-3xl border border-amber-500/15 sm:rounded-3xl ${
                   spreadId === "daily-extended" ? "max-w-xl" : "max-w-md"
                 }`}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   background: "linear-gradient(160deg, #0d0a1a 0%, #120e24 60%, #0a0814 100%)",
                   boxShadow:

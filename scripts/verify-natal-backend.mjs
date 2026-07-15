@@ -10,7 +10,8 @@ const interpretation = read("src/app/api/natal-chart/interpretation/route.ts");
 assert.match(interpretation, /export const maxDuration = 300/);
 assert.match(interpretation, /getCachedPersonalTiming/);
 assert.doesNotMatch(interpretation, /getOrComputePersonalTiming/);
-assert.match(interpretation, /timeoutMs: 170_000[\s\S]*timeoutMs: 90_000/);
+assert.match(interpretation, /generateValidatedNatalReport/);
+assert.match(interpretation, /claimNatalInterpretationResilient/);
 
 const timingRoute = read("src/app/api/natal-chart/timing/route.ts");
 assert.match(timingRoute, /export const maxDuration = 300/);
@@ -40,11 +41,14 @@ for (const route of [
 const forecast = read("src/app/api/natal-chart/forecast/route.ts");
 assert.match(forecast, /action: "FORECAST_REPORT"/);
 assert.match(forecast, /reportType = `forecast:\$\{horizon\}`/);
-assert.match(forecast, /validateNatalReport[\s\S]*"forecast"/);
+assert.match(forecast, /generateValidatedNatalReport/);
+assert.match(forecast, /claimNatalInterpretationResilient/);
 assert.match(forecast, /rollback\(\)/);
 
 const natalService = read("src/lib/services/natal-chart-service.ts");
 assert.match(natalService, /deleteCurrentUserNatalReport/);
+assert.match(natalService, /claimNatalInterpretationResilient/);
+assert.match(natalService, /forceClearNatalInterpretationClaimKey/);
 assert.match(natalService, /UPDATE private_report_shares[\s\S]*revoked_at/);
 assert.match(natalService, /DELETE FROM natal_report_history/);
 assert.match(natalService, /DELETE FROM natal_report_history[\s\S]*interpretationClaims/);

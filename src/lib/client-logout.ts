@@ -1,5 +1,6 @@
 import { clearChatCache } from "@/lib/chat-cache";
 import { clearGuestTriplet } from "@/lib/guest-triplet";
+import { GUEST_SPREAD_DRAFT_KEY } from "@/lib/landing-offer";
 import {
   POST_AUTH_RETURN_TO_KEY,
   PENDING_INTENT_KEY,
@@ -33,6 +34,11 @@ export function clearClientAuthState(): void {
   }
   clearChatCache();
   clearGuestTriplet();
+  try {
+    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+  } catch {
+    /* private mode */
+  }
 }
 
 /** Wipe local chat/spread caches after server-side activity purge (keeps login + triplet cooldown). */
@@ -44,6 +50,11 @@ export function clearClientActivityState(): void {
   localStorage.removeItem("aura_pending_master");
   localStorage.removeItem("aura_pending_reading");
   localStorage.removeItem("aura_flow_step");
+  try {
+    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+  } catch {
+    /* private mode */
+  }
   try {
     const raw = localStorage.getItem("aura_profile");
     if (!raw) return;

@@ -1,0 +1,85 @@
+"use client";
+
+import Link from "next/link";
+import LegalDocLink from "@/components/legal/LegalDocLink";
+import BrandLogo from "@/components/BrandLogo";
+import MasterServiceDisclaimer from "@/components/MasterServiceDisclaimer";
+import { BRAND_LOGO_FOOTER, BRAND_NAME } from "@/lib/brand";
+import {
+  navigateToJointReading,
+  navigateToNatalChart,
+  navigateToSpreadCatalog,
+} from "@/lib/app-shell-nav";
+import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
+import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
+import { EDITORIAL_FOOTER_TAGLINE, EDITORIAL_NAV } from "@/lib/editorial-landing-content";
+import { useAuth } from "@/lib/useAuth";
+
+export default function EditorialSiteFooter() {
+  const year = new Date().getFullYear();
+  const { user, loading } = useAuth();
+  const isLoggedIn = !loading && Boolean(user);
+
+  return (
+    <footer className="editorial-footer site-legal-footer">
+      <div className="editorial-footer__brand">
+        <BrandLogo {...BRAND_LOGO_FOOTER} />
+      </div>
+      <p className="editorial-footer__tagline">{EDITORIAL_FOOTER_TAGLINE}</p>
+
+      <nav className="editorial-footer__nav" aria-label="Навигация в подвале">
+        {EDITORIAL_NAV.map((item) => {
+          if ("hash" in item) {
+            return (
+              <a key={item.label} href={`#${item.hash}`} className="editorial-footer__link">
+                {item.label}
+              </a>
+            );
+          }
+          const href = !isLoggedIn && item.guestHref ? item.guestHref : item.href;
+          return (
+            <Link key={item.label} href={href} className="editorial-footer__link">
+              {item.label}
+            </Link>
+          );
+        })}
+        <button type="button" className="editorial-footer__link" onClick={() => navigateToSpreadCatalog()}>
+          Каталог раскладов
+        </button>
+        {isLoggedIn ? (
+          <button type="button" className="editorial-footer__link" onClick={() => navigateToJointReading()}>
+            Совместный расклад
+          </button>
+        ) : null}
+        <button type="button" className="editorial-footer__link" onClick={() => navigateToNatalChart()}>
+          Натальная карта
+        </button>
+        <Link href="/statyi" className="editorial-footer__link">
+          Журнал
+        </Link>
+      </nav>
+
+      <MasterServiceDisclaimer className="editorial-footer__disclaimer mx-auto mt-6 max-w-2xl text-center" />
+
+      <nav className="editorial-footer__legal site-legal-footer__links" aria-label="Юридические документы">
+        <span className="site-legal-footer__brand">© {year} {BRAND_NAME}</span>
+        <span className="site-legal-footer__operator">{operatorShortLabel()}</span>
+        <LegalDocLink href={`mailto:${LEGAL_OPERATOR.contactEmail}`} className="site-legal-footer__email">
+          {LEGAL_OPERATOR.contactEmail}
+        </LegalDocLink>
+        <LegalDocLink href="/privacy">ПДн</LegalDocLink>
+        <LegalDocLink href="/terms">Соглашение</LegalDocLink>
+        <LegalDocLink href="/offer">Оферта</LegalDocLink>
+        <LegalDocLink href="/disclaimer">Отказ</LegalDocLink>
+        <LegalDocLink href="/app">Приложение</LegalDocLink>
+      </nav>
+
+      <p className="editorial-footer__legal-note site-legal-footer__tagline" role="note">
+        {SITE_FOOTER_LEGAL_LINE}{" "}
+        <LegalDocLink href="/disclaimer" className="text-aura-ivory/55 hover:text-aura-champagne">
+          Подробнее
+        </LegalDocLink>
+      </p>
+    </footer>
+  );
+}

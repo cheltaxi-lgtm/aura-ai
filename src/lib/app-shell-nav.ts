@@ -2,7 +2,7 @@ import { primeHomeFlowStep } from "@/lib/home-flow-storage";
 import { onboardingRedirectUrl } from "@/lib/post-auth-return";
 import { getAppShellHomeNavHandlers } from "@/lib/app-shell-nav-bus";
 import { pushAppShellRoute } from "@/lib/app-shell-router-bus";
-import { isNativeCapacitorPlatform, shouldUseAppShellClient } from "@/lib/app-shell";
+import { isAppShellSearchParam, isNativeCapacitorPlatform, shouldUseAppShellClient } from "@/lib/app-shell";
 
 export const APP_SHELL_SECTIONS = {
   masters: "наставники",
@@ -62,12 +62,33 @@ function persistAppShellFlag(): void {
   }
 }
 
-/** Full page navigation — app-shell web may soft-route; regular web always hard-navigates. */
+function shouldAttachAppQuery(): boolean {
+  if (typeof window === "undefined") return false;
+  return isNativeCapacitorPlatform() || isAppShellSearchParam(window.location.search);
+}
+
+function resolveAppAwarePath(path: string): string {
+  if (!shouldAttachAppQuery()) return path;
+  const absolute = new URL(path, window.location.origin);
+  absolute.searchParams.set("app", "1");
+  return `${absolute.pathname}${absolute.search}${absolute.hash}`;
+}
+
+const HARD_NAV_PREFIXES = ["/cabinet", "/joint-reading", "/rasklady", "/auth", "/diary"] as const;
+
+function requiresHardNavigation(pathname: string): boolean {
+  return HARD_NAV_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+/** Full page navigation — in-app home may soft-route; cabinet and deep links always hard-navigate. */
 function shellNavigate(url: string): void {
   const absoluteUrl = new URL(url, window.location.origin);
   const path = `${absoluteUrl.pathname}${absoluteUrl.search}${absoluteUrl.hash}`;
 
   if (
+    !requiresHardNavigation(absoluteUrl.pathname) &&
     shouldUseAppShellClient() &&
     !isNativeCapacitorPlatform() &&
     pushAppShellRoute(path)
@@ -122,8 +143,14 @@ export function navigateToHomeSpreadFlow(): void {
 
 /** Каталог раскладов. */
 export function navigateToSpreadCatalog(): void {
-  persistAppShellFlag();
-  shellNavigate(APP_SHELL_ROUTES.rasklady);
+  if (isNativeCapacitorPlatform() || isAppShellSearchParam(window.location.search)) {
+    persistAppShellFlag();
+  }
+  shellNavigate(
+    isNativeCapacitorPlatform() || isAppShellSearchParam(window.location.search)
+      ? APP_SHELL_ROUTES.rasklady
+      : "/rasklady"
+  );
 }
 
 /** Фото-расклад с любой страницы. */
@@ -161,10 +188,22 @@ export function navigateToCabinet(): void {
   shellNavigate(APP_SHELL_ROUTES.cabinet);
 }
 
+/** Совместный расклад — только для залогиненных. */
+export function navigateToJointReading(): void {
+  if (shouldAttachAppQuery()) persistAppShellFlag();
+  shellNavigate(resolveAppAwarePath("/joint-reading"));
+}
+
 /** Натальная карта — из меню и промо-блоков. */
 export function navigateToNatalChart(): void {
-  persistAppShellFlag();
-  shellNavigate(APP_SHELL_ROUTES.natalChart);
+  if (shouldAttachAppQuery()) persistAppShellFlag();
+  shellNavigate(resolveAppAwarePath("/cabinet/astrology"));
+}
+
+/** Натальная совместимость — вкладка compatibility в кабинете астрологии. */
+export function navigateToNatalCompatibility(): void {
+  if (shouldAttachAppQuery()) persistAppShellFlag();
+  shellNavigate(resolveAppAwarePath("/cabinet/astrology?tab=compatibility"));
 }
 
 /** Обряд с любой страницы — флаг в sessionStorage, затем главная. */

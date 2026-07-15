@@ -32,6 +32,7 @@ interface MastersShowcaseProps {
   showExpertCta?: boolean;
   showDisclaimer?: boolean;
   layout?: ShowcaseLayout;
+  rowVariant?: "default" | "editorial";
   className?: string;
   onBrowseDeck?: (master: ShowcaseMaster) => void;
 }
@@ -56,6 +57,7 @@ export default function MastersShowcase({
   showExpertCta = false,
   showDisclaimer = true,
   layout = "grid",
+  rowVariant = "default",
   className = "",
 }: MastersShowcaseProps) {
   const continueSet = useMemo(() => new Set(continueMasterIds), [continueMasterIds]);
@@ -105,6 +107,7 @@ export default function MastersShowcase({
           onBrowseDeck={onBrowseDeck}
           onSelect={handleSelect}
           actionBlocked={actionBlocked}
+          variant={rowVariant}
         />
       );
     }
@@ -130,20 +133,22 @@ export default function MastersShowcase({
   });
 
   if (layout === "list") {
-    return (
-      <section id="наставники" className={`master-showcase-section scroll-mt-24 ${className}`.trim()}>
+    const inner = (
+      <>
         {(title || subtitle) && (
-          <div className="master-showcase-section__head mb-4">
+          <div className="master-showcase-section__head mb-6">
             {title ? <h2 className="font-display master-showcase-section__title">{title}</h2> : null}
             {subtitle ? <p className="master-showcase-section__subtitle">{subtitle}</p> : null}
           </div>
         )}
 
-        <div className="master-picker-panel glass-panel mx-auto max-w-xl">
-          <ul className="master-list">{listBody}</ul>
+        <div className={`master-picker-panel ${rowVariant === "editorial" ? "" : "glass-panel mx-auto max-w-xl"}`}>
+          <ul className={`master-list ${rowVariant === "editorial" ? "editorial-master-list" : ""}`}>{listBody}</ul>
 
           {showDisclaimer ? (
-            <MasterServiceDisclaimer className="master-picker-panel__footer px-4 pb-4" />
+            <MasterServiceDisclaimer
+              className={rowVariant === "editorial" ? "mt-6 text-center" : "master-picker-panel__footer px-4 pb-4"}
+            />
           ) : null}
 
           {showExpertCta ? (
@@ -155,6 +160,12 @@ export default function MastersShowcase({
             </p>
           ) : null}
         </div>
+      </>
+    );
+
+    return (
+      <section id="наставники" className={`master-showcase-section scroll-mt-24 ${className}`.trim()}>
+        {rowVariant === "editorial" ? <div className="editorial-landing__inner">{inner}</div> : inner}
       </section>
     );
   }

@@ -430,13 +430,47 @@ async function main() {
   );
   assert(
     !validateNatalReport(
-      { ...validReport, reportType: "forecast", horizonDays: 30 },
+      {
+        ...validForecast,
+        sections: validForecast.sections.map((section) =>
+          section.key === "currentPeriod"
+            ? {
+                ...section,
+                claims: [{
+                  text: section.claims[0]?.text ?? "Период без timing.",
+                  evidenceIds: [evidenceA.find((item) => item.tradition === "western")?.id ?? evidenceA[0].id],
+                }],
+              }
+            : section
+        ),
+      },
       forecastEvidence,
       "western",
       "forecast",
       30
     ).ok,
-    "report schema rejects forecast claims without timing evidence"
+    "report schema rejects forecast currentPeriod claims without timing evidence"
+  );
+  const forecastWithNatalPersonality = {
+    ...validForecast,
+    sections: validForecast.sections.map((section) =>
+      section.key === "personality"
+        ? {
+            ...section,
+            claims: [{ text: "Натальный акцент периода.", evidenceIds: [evidenceA[0].id] }],
+          }
+        : section
+    ),
+  };
+  assert(
+    validateNatalReport(
+      forecastWithNatalPersonality,
+      forecastEvidence,
+      "western",
+      "forecast",
+      30
+    ).ok,
+    "report schema accepts forecast personality claims grounded in natal evidence"
   );
   assert(
     !validateNatalReport(
@@ -825,7 +859,10 @@ async function main() {
   const runeCosts = readFileSync(
     new URL("../src/lib/rune-costs.ts", import.meta.url), "utf8"
   );
-  const claimCall = interpretationRoute.indexOf("claimNatalInterpretation(");
+  const claimCall = Math.max(
+    interpretationRoute.indexOf("claimNatalInterpretation("),
+    interpretationRoute.indexOf("claimNatalInterpretationResilient(")
+  );
   const chargeCall = interpretationRoute.indexOf("BillingService.chargeRuneAction(");
   assert(claimCall >= 0 && chargeCall > claimCall, "interpretation route claims before charging");
   assert(
@@ -1035,10 +1072,12 @@ async function main() {
     "timing and evidence language remains calibrated and explicit about limits"
   );
   assert(
-    astrologyWorkspace.includes("дата, время, город и координаты рождения исключены") &&
-      astrologyWorkspace.includes("Настройки чата и Таро не используются и не меняются") &&
-      natalSettings.includes("Эти согласия независимы от разового подтверждения платного отчёта"),
-    "paid-report acknowledgement and optional chat or Tarot consent stay distinct"
+    astrologyWorkspace.includes("aiDataUseAcknowledged: true") &&
+      !astrologyWorkspace.includes("Внешней языковой модели") &&
+      !astrologyWorkspace.includes("координаты рождения исключены") &&
+      natalSettings.includes("Контекст для Shri Raj") &&
+      !natalSettings.includes("координаты рождения не передаются"),
+    "paid natal reports no longer show external-model disclosure copy in the UI"
   );
   assert(
     astrologyWorkspace.includes("NATAL_GUIDES.overview") &&
