@@ -249,6 +249,72 @@ export async function listCurrentUserNatalReportHistory(
   return rows.map(mapNatalReportHistoryRow);
 }
 
+export async function deleteCurrentUserNatalReport(
+  userId: string,
+  reportId: string
+): Promise<NatalReportHistoryItem | null> {
+  return withTransaction(async (client) => {
+    const selected = await queryClient<NatalReportHistoryRow>(
+      client,
+      `SELECT id, birth_fingerprint, engine_version, ephemeris, tradition,
+              report_type, content, structured_data, evidence_refs, rune_cost,
+              charge_transaction_id, created_at, updated_at
+       FROM natal_report_history
+       WHERE id = $1 AND user_id = $2
+       FOR UPDATE`,
+      [reportId, userId]
+    );
+    const report = selected.rows[0];
+    if (!report) return null;
+
+    await queryClient(
+      client,
+      `UPDATE private_report_shares
+       SET revoked_at = COALESCE(revoked_at, NOW())
+       WHERE owner_user_id = $1 AND report_kind = 'natal' AND report_id = $2`,
+      [userId, reportId]
+    );
+
+    await queryClient(
+      client,
+      `DELETE FROM natal_report_history WHERE id = $1 AND user_id = $2`,
+      [reportId, userId]
+    );
+
+    if (report.report_type === "interpretation") {
+      await queryClient(
+        client,
+        `UPDATE natal_charts
+         SET chart_data = jsonb_set(
+               jsonb_set(
+                 CASE WHEN $2 = 'western' THEN chart_data - 'interpretation' ELSE chart_data END,
+                 '{interpretations}',
+                 COALESCE(chart_data->'interpretations', '{}'::jsonb) - $2::text,
+                 true
+               ),
+               '{interpretationClaims}',
+               COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $2::text,
+               true
+             ),
+             updated_at = NOW()
+         WHERE user_id = $1
+           AND chart_data->>'birthFingerprint' = $3
+           AND engine_version = $4
+           AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $5`,
+        [
+          userId,
+          report.tradition,
+          report.birth_fingerprint,
+          report.engine_version,
+          report.ephemeris,
+        ]
+      );
+    }
+
+    return mapNatalReportHistoryRow(report);
+  });
+}
+
 export type SaveNatalInterpretationResult =
   | { status: "saved"; report: NatalReportHistoryItem }
   | { status: "already_saved"; report: NatalReportHistoryItem }
@@ -272,8 +338,12 @@ export async function saveCurrentNatalInterpretation(params: {
   chargeTransactionId?: string;
   structuredData?: Record<string, unknown> | null;
   evidenceRefs?: unknown[] | Record<string, unknown> | null;
+  reportType?: string;
+  claimKey?: string;
 }): Promise<SaveNatalInterpretationResult> {
   return withTransaction(async (client) => {
+    const reportType = params.reportType ?? "interpretation";
+    const claimKey = params.claimKey ?? params.tradition;
     const locked = await queryClient<{ user_id: string }>(
       client,
       `SELECT user_id
@@ -286,7 +356,7 @@ export async function saveCurrentNatalInterpretation(params: {
        FOR UPDATE`,
       [
         params.userId,
-        params.tradition,
+        claimKey,
         params.expectedBirthFingerprint,
         params.expectedEngineVersion,
         params.expectedEphemeris,
@@ -295,19 +365,6 @@ export async function saveCurrentNatalInterpretation(params: {
     );
     if (!locked.rows[0]) return { status: "stale" };
 
-    const values = [
-      params.userId,
-      params.expectedBirthFingerprint,
-      params.expectedEngineVersion,
-      params.expectedEphemeris,
-      params.tradition,
-      params.interpretation,
-      params.structuredData ? JSON.stringify(params.structuredData) : null,
-      params.evidenceRefs ? JSON.stringify(params.evidenceRefs) : null,
-      params.runeCost,
-      params.chargeTransactionId ?? null,
-      params.claimToken,
-    ];
     const inserted = await queryClient<NatalReportHistoryRow>(
       client,
       `INSERT INTO natal_report_history (
@@ -315,7 +372,7 @@ export async function saveCurrentNatalInterpretation(params: {
          report_type, content, structured_data, evidence_refs, rune_cost,
          charge_transaction_id, claim_token
        ) VALUES (
-         $1, $2, $3, $4, $5, 'interpretation', $6, $7::jsonb, $8::jsonb, $9, $10, $11
+         $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12
        )
        ON CONFLICT (
          user_id, birth_fingerprint, engine_version, ephemeris, tradition, report_type
@@ -323,7 +380,20 @@ export async function saveCurrentNatalInterpretation(params: {
        RETURNING id, birth_fingerprint, engine_version, ephemeris, tradition,
                  report_type, content, structured_data, evidence_refs, rune_cost,
                  charge_transaction_id, created_at, updated_at`,
-      values
+      [
+        params.userId,
+        params.expectedBirthFingerprint,
+        params.expectedEngineVersion,
+        params.expectedEphemeris,
+        params.tradition,
+        reportType,
+        params.interpretation,
+        params.structuredData ? JSON.stringify(params.structuredData) : null,
+        params.evidenceRefs ? JSON.stringify(params.evidenceRefs) : null,
+        params.runeCost,
+        params.chargeTransactionId ?? null,
+        params.claimToken,
+      ]
     );
 
     const existing =
@@ -340,41 +410,74 @@ export async function saveCurrentNatalInterpretation(params: {
              AND engine_version = $3
              AND ephemeris = $4
              AND tradition = $5
-             AND report_type = 'interpretation'`,
-          values.slice(0, 5)
+             AND report_type = $6`,
+          [
+            params.userId,
+            params.expectedBirthFingerprint,
+            params.expectedEngineVersion,
+            params.expectedEphemeris,
+            params.tradition,
+            reportType,
+          ]
         )
       ).rows[0];
     if (!existing) throw new Error("natal_report_history_missing_after_insert");
 
-    const saved = await queryClient(
-      client,
-      `UPDATE natal_charts
-       SET chart_data = (
-             chart_data || jsonb_build_object(
-               'interpretations',
-               COALESCE(chart_data->'interpretations', '{}'::jsonb) ||
-                 jsonb_build_object($2::text, $3::text)
-             )
-           ) || jsonb_build_object(
-             'interpretationClaims',
-             COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $2::text
-           ),
-           updated_at = NOW()
-       WHERE user_id = $1
-         AND chart_data->>'birthFingerprint' = $4
-         AND engine_version = $5
-         AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $6
-         AND chart_data #>> ARRAY['interpretationClaims', $2::text, 'token'] = $7`,
-      [
-        params.userId,
-        params.tradition,
-        existing.content,
-        params.expectedBirthFingerprint,
-        params.expectedEngineVersion,
-        params.expectedEphemeris,
-        params.claimToken,
-      ]
-    );
+    const saved = reportType === "interpretation"
+      ? await queryClient(
+          client,
+          `UPDATE natal_charts
+           SET chart_data = (
+                 chart_data || jsonb_build_object(
+                   'interpretations',
+                   COALESCE(chart_data->'interpretations', '{}'::jsonb) ||
+                     jsonb_build_object($2::text, $3::text)
+                 )
+               ) || jsonb_build_object(
+                 'interpretationClaims',
+                 COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $4::text
+               ),
+               updated_at = NOW()
+           WHERE user_id = $1
+             AND chart_data->>'birthFingerprint' = $5
+             AND engine_version = $6
+             AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $7
+             AND chart_data #>> ARRAY['interpretationClaims', $4::text, 'token'] = $8`,
+          [
+            params.userId,
+            params.tradition,
+            existing.content,
+            claimKey,
+            params.expectedBirthFingerprint,
+            params.expectedEngineVersion,
+            params.expectedEphemeris,
+            params.claimToken,
+          ]
+        )
+      : await queryClient(
+          client,
+          `UPDATE natal_charts
+           SET chart_data = jsonb_set(
+                 chart_data,
+                 '{interpretationClaims}',
+                 COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $2::text,
+                 true
+               ),
+               updated_at = NOW()
+           WHERE user_id = $1
+             AND chart_data->>'birthFingerprint' = $3
+             AND engine_version = $4
+             AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $5
+             AND chart_data #>> ARRAY['interpretationClaims', $2::text, 'token'] = $6`,
+          [
+            params.userId,
+            claimKey,
+            params.expectedBirthFingerprint,
+            params.expectedEngineVersion,
+            params.expectedEphemeris,
+            params.claimToken,
+          ]
+        );
     if (saved.rowCount !== 1) throw new Error("natal_chart_claim_lost_during_save");
 
     return {
@@ -389,6 +492,7 @@ export type NatalInterpretationClaimResult =
   | {
       status: "cached";
       interpretation: string;
+      reportId?: string;
       structuredData?: Record<string, unknown> | null;
       evidenceRefs?: unknown[] | Record<string, unknown> | null;
     }
@@ -404,8 +508,12 @@ export async function claimNatalInterpretation(
   tradition: NatalTradition,
   expectedBirthFingerprint: string,
   expectedEngineVersion: string,
-  expectedEphemeris: string
+  expectedEphemeris: string,
+  options?: { reportType?: string; claimKey?: string }
 ): Promise<NatalInterpretationClaimResult> {
+  const reportType = options?.reportType ?? "interpretation";
+  const claimKey = options?.claimKey ?? tradition;
+  const useInterpretationCache = reportType === "interpretation";
   const token = randomUUID();
   const claimed = await query<{ chart_data: NatalChartRecord }>(
     `UPDATE natal_charts
@@ -414,9 +522,9 @@ export async function claimNatalInterpretation(
            '{interpretationClaims}',
            COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) ||
              jsonb_build_object(
-               $2::text,
+               $7::text,
                jsonb_build_object(
-                 'token', $6::text,
+                 'token', $9::text,
                  'claimedAtEpoch', EXTRACT(EPOCH FROM NOW())
                )
              ),
@@ -427,8 +535,13 @@ export async function claimNatalInterpretation(
        AND chart_data->>'birthFingerprint' = $3
        AND engine_version = $4
        AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $5
-       AND NULLIF(chart_data->'interpretations'->>$2, '') IS NULL
-       AND ($2 <> 'western' OR NULLIF(chart_data->>'interpretation', '') IS NULL)
+       AND (
+         NOT $8::boolean
+         OR (
+           NULLIF(chart_data->'interpretations'->>$2, '') IS NULL
+           AND ($2 <> 'western' OR NULLIF(chart_data->>'interpretation', '') IS NULL)
+         )
+       )
        AND NOT EXISTS (
          SELECT 1
          FROM natal_report_history history
@@ -437,15 +550,15 @@ export async function claimNatalInterpretation(
            AND history.engine_version = $4
            AND history.ephemeris = $5
            AND history.tradition = $2
-           AND history.report_type = 'interpretation'
+           AND history.report_type = $6
        )
        AND (
-         chart_data #> ARRAY['interpretationClaims', $2::text] IS NULL
+         chart_data #> ARRAY['interpretationClaims', $7::text] IS NULL
          OR CASE
-              WHEN chart_data #>> ARRAY['interpretationClaims', $2::text, 'claimedAtEpoch']
+              WHEN chart_data #>> ARRAY['interpretationClaims', $7::text, 'claimedAtEpoch']
                      ~ '^[0-9]+([.][0-9]+)?$'
               THEN (chart_data #>> ARRAY[
-                'interpretationClaims', $2::text, 'claimedAtEpoch'
+                'interpretationClaims', $7::text, 'claimedAtEpoch'
               ])::numeric
               ELSE 0
             END < EXTRACT(EPOCH FROM NOW() - INTERVAL '10 minutes')
@@ -457,6 +570,9 @@ export async function claimNatalInterpretation(
       expectedBirthFingerprint,
       expectedEngineVersion,
       expectedEphemeris,
+      reportType,
+      claimKey,
+      useInterpretationCache,
       token,
     ]
   );
@@ -464,11 +580,12 @@ export async function claimNatalInterpretation(
 
   const current = await query<{
     chart_data: NatalChartRecord | null;
+    report_id: string | null;
     report_content: string | null;
     report_structured_data: Record<string, unknown> | null;
     report_evidence_refs: unknown[] | Record<string, unknown> | null;
   }>(
-    `SELECT chart.chart_data, history.content AS report_content,
+    `SELECT chart.chart_data, history.id AS report_id, history.content AS report_content,
             history.structured_data AS report_structured_data,
             history.evidence_refs AS report_evidence_refs
      FROM natal_charts chart
@@ -478,9 +595,9 @@ export async function claimNatalInterpretation(
       AND history.engine_version = $4
       AND history.ephemeris = $5
       AND history.tradition = $2
-      AND history.report_type = 'interpretation'
+      AND history.report_type = $6
      WHERE chart.user_id = $1`,
-    [userId, tradition, expectedBirthFingerprint, expectedEngineVersion, expectedEphemeris]
+    [userId, tradition, expectedBirthFingerprint, expectedEngineVersion, expectedEphemeris, reportType]
   );
   const currentRow = current.rows[0];
   const chart = currentRow?.chart_data;
@@ -496,14 +613,16 @@ export async function claimNatalInterpretation(
   ) {
     return { status: "unavailable" };
   }
-  const cached =
-    chart.interpretations?.[tradition] ??
-    (tradition === "western" ? chart.interpretation : undefined) ??
-    currentRow.report_content;
+  const cached = useInterpretationCache
+    ? chart.interpretations?.[tradition] ??
+      (tradition === "western" ? chart.interpretation : undefined) ??
+      currentRow.report_content
+    : currentRow.report_content;
   if (cached?.trim()) {
     return {
       status: "cached",
       interpretation: cached,
+      reportId: currentRow.report_id ?? undefined,
       structuredData: currentRow.report_structured_data,
       evidenceRefs: currentRow.report_evidence_refs,
     };
@@ -514,7 +633,8 @@ export async function claimNatalInterpretation(
 export async function releaseNatalInterpretationClaim(
   userId: string,
   tradition: NatalTradition,
-  claimToken: string
+  claimToken: string,
+  claimKey: string = tradition
 ): Promise<void> {
   await query(
     `UPDATE natal_charts
@@ -527,7 +647,7 @@ export async function releaseNatalInterpretationClaim(
          updated_at = NOW()
      WHERE user_id = $1
        AND chart_data #>> ARRAY['interpretationClaims', $2::text, 'token'] = $3`,
-    [userId, tradition, claimToken]
+    [userId, claimKey, claimToken]
   );
 }
 

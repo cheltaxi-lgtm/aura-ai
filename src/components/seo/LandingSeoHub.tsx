@@ -14,6 +14,7 @@ import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 
 const SERVICES = [
   { href: "/rasklady", label: "Расклады Таро" },
+  { href: "/cabinet/astrology", label: "Натальная карта" },
   { href: "/photo-rasklad", label: "Фото-расклад" },
   { href: "/numerology", label: "Нумерология" },
   { href: "/cards", label: "Значения карт" },
@@ -28,6 +29,12 @@ const SERVICE_DETAILS = [
     title: "Расклады Таро онлайн",
     text: "Любовь, отношения, работа и судьба — готовые схемы от одной карты до Кельтского креста. Мастер расшифрует выпавшие символы в диалоге.",
     icon: Heart,
+  },
+  {
+    href: "/cabinet/astrology",
+    title: "Натальная карта",
+    text: "Западная карта, джйотиш, персональные периоды и платные отчёты — в личном астрологическом пространстве с прозрачной методологией.",
+    icon: Stars,
   },
   {
     href: "/photo-rasklad",

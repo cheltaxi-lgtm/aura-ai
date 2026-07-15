@@ -15,6 +15,7 @@ const REQUIRED_MIGRATIONS = [
   "066_migrate_natal_ai_preferences.sql",
   "067_migrate_private_report_shares.sql",
   "068_harden_natal_backend.sql",
+  "069_migrate_natal_compatibility.sql",
 ];
 const REQUIRED_TABLES = [
   "natal_report_history",
@@ -23,6 +24,7 @@ const REQUIRED_TABLES = [
   "natal_event_delivery_log",
   "natal_ai_preferences",
   "private_report_shares",
+  "natal_compatibility_reports",
 ];
 const REQUIRED_COLUMNS = {
   rune_transactions: ["refund_of_transaction_id"],
@@ -76,6 +78,29 @@ const REQUIRED_COLUMNS = {
     "combined_claim_at",
     "completion_notified_at",
   ],
+  natal_compatibility_reports: [
+    "owner_user_id",
+    "participant_user_id",
+    "canonical_report_id",
+    "mode",
+    "status",
+    "owner_label",
+    "partner_label",
+    "owner_fingerprint",
+    "partner_fingerprint",
+    "pair_fingerprint",
+    "invite_token_hash",
+    "synastry_snapshot",
+    "report_data",
+    "evidence_refs",
+    "rune_cost",
+    "charge_transaction_id",
+    "generation_claim_token",
+    "generation_claim_at",
+    "claimed_at",
+    "expires_at",
+    "completed_at",
+  ],
 };
 const REQUIRED_INDEXES = [
   "idx_rune_transactions_refund_once",
@@ -86,12 +111,20 @@ const REQUIRED_INDEXES = [
   "idx_natal_event_delivery_log_delivered",
   "idx_private_report_shares_owner",
   "idx_private_report_shares_active_token",
+  "idx_natal_compatibility_owner_created",
+  "idx_natal_compatibility_participant_created",
+  "idx_natal_compatibility_expiry",
+  "idx_natal_compatibility_owner_pair",
 ];
 const REQUIRED_CONSTRAINTS = [
   "natal_report_history_version_unique",
   "natal_timing_cache_window_unique",
   "natal_event_preferences_horizons",
   "natal_event_preferences_categories",
+  "natal_compatibility_mode_token",
+  "natal_compatibility_ready_data",
+  "natal_compatibility_completed_data",
+  "natal_compatibility_snapshot_private",
 ];
 const REQUIRED_FUNCTIONS = ["validate_private_report_share_target"];
 const REQUIRED_TRIGGERS = ["trg_validate_private_report_share_target"];
@@ -201,14 +234,16 @@ async function main() {
     const pricingResult = await client.query(
       `SELECT
          value #>> '{costs,NATAL_READING}' AS natal_reading,
-         value #>> '{costs,FORECAST_REPORT}' AS forecast_report
+         value #>> '{costs,FORECAST_REPORT}' AS forecast_report,
+         value #>> '{costs,SYNASTRY_REPORT}' AS synastry_report
        FROM platform_settings
        WHERE key = 'runes'`
     );
     const pricing = pricingResult.rows[0];
     const pricingValid =
       pricing?.natal_reading === "20" &&
-      pricing?.forecast_report === "20";
+      pricing?.forecast_report === "20" &&
+      pricing?.synastry_report === "30";
 
     if (
       missingMigrations.length ||
@@ -242,7 +277,7 @@ async function main() {
         console.error(`[natal-schema] missing triggers: ${missingTriggers.join(", ")}`);
       }
       if (!pricingValid) {
-        console.error("[natal-schema] rune pricing mismatch: NATAL_READING and FORECAST_REPORT must both be 20");
+        console.error("[natal-schema] rune pricing mismatch: natal=20, forecast=20, synastry=30 required");
       }
       process.exitCode = 1;
       return;

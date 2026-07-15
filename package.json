@@ -34,7 +34,8 @@
     "verify:module-a": "node scripts/verify-module-a.mjs",
     "verify:app-shell": "node scripts/verify-app-shell.mjs",
     "verify:oauth": "tsx scripts/verify-oauth-helpers.ts",
-    "verify:natal-chart": "npx tsx scripts/verify-natal-chart.mjs",
+    "verify:natal-chart": "npx tsx scripts/verify-natal-chart.mjs && node scripts/verify-natal-backend.mjs",
+    "verify:natal-backend": "node scripts/verify-natal-backend.mjs",
     "test:e2e:natal": "playwright test",
     "build:geonames": "node scripts/build-geonames-index.mjs"
   },

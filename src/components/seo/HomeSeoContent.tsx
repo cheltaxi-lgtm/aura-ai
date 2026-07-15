@@ -30,7 +30,7 @@ export default function HomeSeoContent() {
       </p>
       <p className="mt-3 leading-relaxed">
         Откройте бесплатный расклад из трёх карт на главной. После регистрации расклад сохраняется в
-        кабинете. Полные расклады, фото-анализ, нумерология и обряды — по тарифу в рунах ᚢ. Это не
+        кабинете. Полные расклады, фото-анализ, нумерология, натальная карта и обряды — по тарифу в рунах ᚢ. Это не
         медицинская и не юридическая услуга:{" "}
         <Link href="/disclaimer" className="text-aura-gold hover:underline">
           подробнее об ограничениях
@@ -79,6 +79,11 @@ export default function HomeSeoContent() {
         <li>
           <Link href="/numerology" className="text-aura-gold hover:underline">
             Нумерология
+          </Link>
+        </li>
+        <li>
+          <Link href="/cabinet/astrology" className="text-aura-gold hover:underline">
+            Натальная карта
           </Link>
         </li>
         <li>

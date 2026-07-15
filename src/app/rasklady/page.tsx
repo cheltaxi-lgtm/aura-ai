@@ -48,6 +48,9 @@ export default function RaskladyCatalogPage() {
         <Link href="/numerology" className="text-sm text-aura-gold hover:underline">
           Нумерология
         </Link>
+        <Link href="/cabinet/astrology" className="text-sm text-aura-gold hover:underline">
+          Натальная карта
+        </Link>
         <Link href="/cards" className="text-sm text-aura-gold hover:underline">
           Значения карт
         </Link>

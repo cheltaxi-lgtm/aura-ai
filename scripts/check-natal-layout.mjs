@@ -113,7 +113,7 @@ const reports = [
   {
     id: "western-layout",
     tradition: "western",
-    reportType: "natal",
+    reportType: "interpretation",
     content: "Первый абзац западного отчёта.\n\nВторой абзац с дополнительным контекстом для проверки вертикальных отступов.",
     runeCost: 20,
     createdAt: "2026-07-14T12:00:00.000Z",
@@ -130,8 +130,9 @@ const tabs = [
   { label: "Западная", url: /tab=western/, heading: "Интерактивное колесо" },
   { label: "Джйотиш", url: /tab=jyotish/, heading: "Джйотиш" },
   { label: "Периоды", url: /tab=timing/, heading: "Персональная шкала" },
-  { label: "Отношения", url: /tab=relationships/, heading: "Стоимость и область покупки" },
-  { label: "Отчёты", url: /tab=reports/, heading: "Западная трактовка" },
+  { label: "Совместимость", url: /tab=compatibility/, heading: "Совместимость по двум натальным картам" },
+  { label: "Отчёты", url: /tab=reports/, heading: "Мои актуальные отчёты" },
+  { label: "Настройки", url: /tab=settings/, heading: "Настройки астрологии" },
 ];
 
 function overlaps(a, b, tolerance = 1) {
@@ -239,6 +240,9 @@ async function installMocks(page) {
     }
     if (path === "/api/joint-reading/mine") {
       return route.fulfill({ json: { items: [] } });
+    }
+    if (path === "/api/natal-chart/compatibility") {
+      return route.fulfill({ json: { compatibility: [] } });
     }
     return route.continue();
   });
@@ -359,6 +363,7 @@ async function main() {
     sameSite: "Lax",
   }]);
   const page = await context.newPage();
+  page.on("pageerror", (error) => console.error("Browser page error:", error.message));
   await installMocks(page);
 
   const allIssues = [];

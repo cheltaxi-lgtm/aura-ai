@@ -66,13 +66,22 @@ $RequiredArtifacts = @(
   "scripts/migrations/066_migrate_natal_ai_preferences.sql",
   "scripts/migrations/067_migrate_private_report_shares.sql",
   "scripts/migrations/068_harden_natal_backend.sql",
+  "scripts/migrations/069_migrate_natal_compatibility.sql",
   "proxmox-setup/vm_local_deploy.sh",
   "proxmox-setup/install-crons.sh",
   "proxmox-setup/cron-natal-transits.sh",
   "src/app/api/cron/natal-transits/route.ts",
   "src/app/api/natal-chart/ai-preferences/route.ts",
+  "src/app/api/natal-chart/compatibility/route.ts",
+  "src/app/api/natal-chart/compatibility/manual/route.ts",
+  "src/app/api/natal-chart/compatibility/invite/route.ts",
+  "src/app/api/natal-chart/compatibility/token/[token]/route.ts",
+  "src/app/api/natal-chart/compatibility/[id]/route.ts",
+  "src/app/api/natal-chart/compatibility/[id]/generate/route.ts",
   "src/app/api/natal-chart/event-preferences/route.ts",
+  "src/app/api/natal-chart/forecast/route.ts",
   "src/app/api/natal-chart/history/route.ts",
+  "src/app/api/natal-chart/history/[id]/route.ts",
   "src/app/api/natal-chart/interpretation/route.ts",
   "src/app/api/natal-chart/route.ts",
   "src/app/api/natal-chart/timing/route.ts",
@@ -100,7 +109,7 @@ try {
 } catch {
   "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
 }
-tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip .
+tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.next-e2e --exclude=.git --exclude=.cursor --exclude=test-results --exclude=.env.local --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip .
 Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ">>> Upload tarball..."

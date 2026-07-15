@@ -16,7 +16,13 @@ export default async function SharedReportPage({ params }: { params: Promise<{ t
     <article className="mx-auto max-w-3xl [overflow-wrap:anywhere] rounded-2xl border border-amber-300/15 bg-white/[0.03] p-4 sm:rounded-3xl sm:p-9 print:max-w-none print:border-0 print:bg-white">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div><p className="text-xs uppercase tracking-widest text-amber-200/50 print:text-black/50">Приватная публикация</p>
-          <h1 className="mt-2 font-display text-2xl sm:text-3xl">{report.kind === "relationship" ? "Отчёт об отношениях" : "Астрологический отчёт"}</h1></div>
+          <h1 className="mt-2 font-display text-2xl sm:text-3xl">{
+            report.kind === "compatibility"
+              ? "Совместимость по натальным картам"
+              : report.kind === "relationship"
+                ? "Отчёт об отношениях"
+                : "Астрологический отчёт"
+          }</h1></div>
         <PrintButton />
       </div>
       {typeof report.summary === "string" ? <p className="mt-6 whitespace-pre-wrap leading-7 text-white/75">{report.summary}</p> : null}

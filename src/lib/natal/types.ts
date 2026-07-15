@@ -35,7 +35,7 @@ export interface NatalChartRecord {
   birthFingerprint?: string;
   interpretation?: string;
   interpretations?: Partial<Record<NatalTradition, string>>;
-  interpretationClaims?: Partial<Record<NatalTradition, NatalInterpretationClaim>>;
+  interpretationClaims?: Record<string, NatalInterpretationClaim>;
   computedAt: string | null;
   engineVersion: string;
   warnings: string[];

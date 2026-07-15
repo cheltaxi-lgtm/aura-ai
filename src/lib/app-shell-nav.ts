@@ -2,7 +2,7 @@ import { primeHomeFlowStep } from "@/lib/home-flow-storage";
 import { onboardingRedirectUrl } from "@/lib/post-auth-return";
 import { getAppShellHomeNavHandlers } from "@/lib/app-shell-nav-bus";
 import { pushAppShellRoute } from "@/lib/app-shell-router-bus";
-import { isNativeCapacitorPlatform } from "@/lib/app-shell";
+import { isNativeCapacitorPlatform, shouldUseAppShellClient } from "@/lib/app-shell";
 
 export const APP_SHELL_SECTIONS = {
   masters: "наставники",
@@ -17,6 +17,7 @@ export const APP_SHELL_HOME_EVENT = "zovus:app-shell-home-nav";
 export const APP_SHELL_ROUTES = {
   home: "/?app=1&step=masters",
   cabinet: "/cabinet?app=1",
+  natalChart: "/cabinet/astrology?app=1",
   rasklady: "/rasklady?app=1",
   photoReading: "/?photo=1&app=1",
 } as const;
@@ -61,12 +62,16 @@ function persistAppShellFlag(): void {
   }
 }
 
-/** Full page navigation — native WebView only; web app shell uses client router when available. */
+/** Full page navigation — app-shell web may soft-route; regular web always hard-navigates. */
 function shellNavigate(url: string): void {
   const absoluteUrl = new URL(url, window.location.origin);
   const path = `${absoluteUrl.pathname}${absoluteUrl.search}${absoluteUrl.hash}`;
 
-  if (!isNativeCapacitorPlatform() && pushAppShellRoute(path)) {
+  if (
+    shouldUseAppShellClient() &&
+    !isNativeCapacitorPlatform() &&
+    pushAppShellRoute(path)
+  ) {
     return;
   }
 
@@ -154,6 +159,12 @@ export function navigateToDecksModal(): void {
 export function navigateToCabinet(): void {
   persistAppShellFlag();
   shellNavigate(APP_SHELL_ROUTES.cabinet);
+}
+
+/** Натальная карта — из меню и промо-блоков. */
+export function navigateToNatalChart(): void {
+  persistAppShellFlag();
+  shellNavigate(APP_SHELL_ROUTES.natalChart);
 }
 
 /** Обряд с любой страницы — флаг в sessionStorage, затем главная. */

@@ -46,7 +46,7 @@ export default defineConfig({
     : {
         command: "npx next dev --hostname 127.0.0.1 --port 3417",
         url: localBaseURL,
-        reuseExistingServer: false,
+        reuseExistingServer: true,
         timeout: 120_000,
         env: {
           ...process.env,

@@ -512,9 +512,10 @@ function checkNatalEvidenceAi() {
   const chatPath = path.join(ROOT, "src/lib/services/chat-orchestrator.ts");
   const preferencesPath = path.join(ROOT, "src/lib/services/natal-ai-preferences-service.ts");
   const workspacePath = path.join(ROOT, "src/components/natal/AstrologyWorkspace.tsx");
+  const settingsPath = path.join(ROOT, "src/components/natal/NatalSettings.tsx");
   const migrationPath = path.join(ROOT, "scripts/migrations/066_migrate_natal_ai_preferences.sql");
   for (const file of [
-    routePath, contextPath, readingPath, chatPath, preferencesPath, workspacePath, migrationPath,
+    routePath, contextPath, readingPath, chatPath, preferencesPath, workspacePath, settingsPath, migrationPath,
   ]) {
     if (!fs.existsSync(file)) fail(`natal evidence guardrail missing ${path.relative(ROOT, file)}`);
   }
@@ -540,6 +541,7 @@ function checkNatalEvidenceAi() {
   const chat = fs.readFileSync(chatPath, "utf8");
   const preferences = fs.readFileSync(preferencesPath, "utf8");
   const workspace = fs.readFileSync(workspacePath, "utf8");
+  const settings = fs.readFileSync(settingsPath, "utf8");
   const migration = fs.readFileSync(migrationPath, "utf8");
   if (!context.includes("scopeNatalEvidence") || !context.includes("params.topic")) {
     fail("natal chat: evidence context must be relevance-scoped");
@@ -567,8 +569,8 @@ function checkNatalEvidenceAi() {
     fail("natal AI context: migration must keep chat and tarot consent default-off");
   }
   if (
-    !workspace.includes("aiContextEnabled") ||
-    !workspace.includes("tarotContextEnabled") ||
+    !settings.includes("aiContextEnabled") ||
+    !settings.includes("tarotContextEnabled") ||
     !workspace.includes("aiDataUseAcknowledged: true") ||
     !route.includes("body.aiDataUseAcknowledged !== true") ||
     route.indexOf("body.aiDataUseAcknowledged !== true") > route.indexOf("BillingService.chargeRuneAction(")

@@ -27,6 +27,7 @@ const PAID_ACTIONS: RuneActionType[] = [
   "FINAL_REPORT",
   "NATAL_READING",
   "FORECAST_REPORT",
+  "SYNASTRY_REPORT",
 ];
 
 export default function TariffsModal({

@@ -14,6 +14,7 @@ import ChatWindow from "@/components/ChatWindow";
 import SessionList, { type SessionListItem } from "@/components/SessionList";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
 import AppTopHeader from "@/components/AppTopHeader";
+import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
 import { usePaywall } from "@/contexts/PaywallContext";
@@ -3086,23 +3087,26 @@ export default function HomePage({
                   onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}
                   afterQuickQuestions={
                     isLoggedIn ? (
-                      <PremiumEnergyBlock
-                        characterKey={dailyEnergyMasterId}
-                        masters={masters}
-                        initialSpreadId={dailyEnergySpreadId}
-                        autoOpen={dailyEnergyAutoOpen}
-                        onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
-                        onInsufficientRunes={landingInsufficientRunes}
-                        onStartRitual={handleDailyStartRitual}
-                        onTalkToMaster={(masterId) => {
-                          setEnergyFlowMasterId(masterId);
-                          setShowSessionFlow(true);
-                        }}
-                        onOpenNumerologForm={() => {
-                          setEnergyFlowMasterId("numerolog");
-                          setShowSessionFlow(true);
-                        }}
-                      />
+                      <div className="space-y-6">
+                        <CabinetNatalChart />
+                        <PremiumEnergyBlock
+                          characterKey={dailyEnergyMasterId}
+                          masters={masters}
+                          initialSpreadId={dailyEnergySpreadId}
+                          autoOpen={dailyEnergyAutoOpen}
+                          onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
+                          onInsufficientRunes={landingInsufficientRunes}
+                          onStartRitual={handleDailyStartRitual}
+                          onTalkToMaster={(masterId) => {
+                            setEnergyFlowMasterId(masterId);
+                            setShowSessionFlow(true);
+                          }}
+                          onOpenNumerologForm={() => {
+                            setEnergyFlowMasterId("numerolog");
+                            setShowSessionFlow(true);
+                          }}
+                        />
+                      </div>
                     ) : undefined
                   }
                   onOpenPaywall={() => handleOpenPaywall()}

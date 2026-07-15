@@ -210,7 +210,7 @@ export function buildNatalEvidence(
       value: timing.solarReturn.exactAtLocal,
       sourcePath: "timing.solarReturn.exactAtLocal",
       confidence: "high",
-      uncertainty: "Место рождения принято как место возвращения; дома не рассчитываются.",
+      uncertainty: "Место рождения принято как место возвращения; дома рассчитаны для этой точки.",
       deepLink: "/cabinet/astrology?tab=timing#solar-return",
     });
     for (const aspect of timing.progressions.aspectsToNatal.slice(0, 12)) {

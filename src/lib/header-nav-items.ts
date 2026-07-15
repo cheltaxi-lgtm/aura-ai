@@ -3,9 +3,11 @@ import {
   Camera,
   Download,
   Flame,
+  HeartHandshake,
   Layers,
   LayoutGrid,
   Sparkles,
+  Star,
   Users,
 } from "lucide-react";
 import { shouldUseAppShellClient } from "@/lib/app-shell";
@@ -95,6 +97,20 @@ export function buildHeaderNavSections(callbacks: HeaderNavCallbacks): HeaderNav
           label: "Обряд",
           icon: Flame,
           onClick: callbacks.onNavRitual,
+        },
+        {
+          id: "natal-chart",
+          label: "Натальная карта",
+          icon: Star,
+          href: inAppShell ? "/cabinet/astrology?app=1" : "/cabinet/astrology",
+        },
+        {
+          id: "natal-compatibility",
+          label: "Натальная совместимость",
+          icon: HeartHandshake,
+          href: inAppShell
+            ? "/cabinet/astrology?tab=compatibility&app=1"
+            : "/cabinet/astrology?tab=compatibility",
         },
       ],
     },

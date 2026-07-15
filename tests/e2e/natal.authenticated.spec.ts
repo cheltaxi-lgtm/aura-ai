@@ -29,7 +29,7 @@ const reports = [
   {
     id: "western-e2e",
     tradition: "western",
-    reportType: "natal",
+    reportType: "interpretation",
     content: "Стабильный западный отчёт из E2E-фикстуры.",
     runeCost: 100,
     createdAt: "2026-07-14T12:00:00.000Z",
@@ -42,7 +42,7 @@ const reports = [
   {
     id: "vedic-e2e",
     tradition: "vedic",
-    reportType: "natal",
+    reportType: "interpretation",
     content: "Стабильный отчёт джйотиш из E2E-фикстуры.",
     runeCost: 100,
     createdAt: "2026-07-14T12:01:00.000Z",
@@ -55,8 +55,10 @@ const reports = [
 ];
 
 async function installNatalMocks(page: Page) {
+  let reportItems = [...reports];
   let aiContextEnabled = false;
   let tarotContextEnabled = false;
+  let eventNotificationsEnabled = false;
   let shares: Array<{
     id: string;
     token: string;
@@ -82,7 +84,7 @@ async function installNatalMocks(page: Page) {
       return route.fulfill({ json: { enabled: true, chart } });
     }
     if (path === "/api/natal-chart/history") {
-      return route.fulfill({ json: { reports } });
+      return route.fulfill({ json: { reports: reportItems } });
     }
     if (path === "/api/natal-chart/ai-preferences") {
       if (request.method() === "PATCH") {
@@ -128,8 +130,12 @@ async function installNatalMocks(page: Page) {
       } } });
     }
     if (path === "/api/natal-chart/event-preferences") {
+      if (request.method() === "PATCH") {
+        const patch = request.postDataJSON() as { enabled?: boolean };
+        if (typeof patch.enabled === "boolean") eventNotificationsEnabled = patch.enabled;
+      }
       return route.fulfill({ json: { preferences: {
-        enabled: false,
+        enabled: eventNotificationsEnabled,
         horizons: [30],
         categories: ["identity"],
         planetImportance: ["sun"],
@@ -144,6 +150,47 @@ async function installNatalMocks(page: Page) {
         status: 503,
         json: { error: "Paid LLM calls are disabled in E2E." },
       });
+    }
+    if (path === "/api/natal-chart/forecast" && request.method() === "POST") {
+      const { horizon } = request.postDataJSON() as { horizon: number };
+      reportItems = [{
+        ...reports[0],
+        id: `forecast-${horizon}`,
+        reportType: `forecast:${horizon}`,
+        content: `Прогноз на ${horizon} дней.`,
+      }, ...reportItems];
+      return route.fulfill({ json: { forecast: `Прогноз на ${horizon} дней.`, horizon, reportId: `forecast-${horizon}` } });
+    }
+    if (path === "/api/natal-chart/compatibility" && request.method() === "GET") {
+      return route.fulfill({ json: { compatibility: [] } });
+    }
+    if (path === "/api/natal-chart/compatibility/manual" && request.method() === "POST") {
+      return route.fulfill({
+        status: 201,
+        json: {
+          reused: false,
+          record: {
+            id: "11111111-1111-4111-8111-111111111111",
+            ownerUserId: "e2e",
+            participantUserId: null,
+            mode: "manual",
+            status: "ready",
+            ownerLabel: "E2E",
+            partnerLabel: "Алексей",
+            synastry: null,
+            report: null,
+            runeCost: null,
+            expiresAt: "2026-08-14T12:00:00.000Z",
+            completedAt: null,
+            createdAt: "2026-07-14T12:00:00.000Z",
+          },
+        },
+      });
+    }
+    if (path.startsWith("/api/natal-chart/history/") && request.method() === "DELETE") {
+      const id = path.split("/").at(-1);
+      reportItems = reportItems.filter((report) => report.id !== id);
+      return route.fulfill({ json: { deleted: true } });
     }
     if (path === "/api/report-shares" && request.method() === "GET") {
       return route.fulfill({ json: { shares } });
@@ -181,7 +228,7 @@ test.beforeEach(async ({ page }) => {
 
 test("tabs, unknown-time guard, and recompute work", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Разделы карты" });
-  for (const tab of ["Обзор", "Западная", "Джйотиш", "Периоды", "Отношения", "Отчёты"]) {
+  for (const tab of ["Обзор", "Западная", "Джйотиш", "Периоды", "Совместимость", "Отчёты", "Настройки"]) {
     await expect(navigation.getByRole("button", { name: tab })).toBeVisible();
   }
   await expect(page.getByText("Ограниченная точность без времени рождения")).toBeVisible();
@@ -191,13 +238,23 @@ test("tabs, unknown-time guard, and recompute work", async ({ page }) => {
   await expect(page).toHaveURL(/tab=western/);
   await expect(page.getByRole("heading", { name: "Интерактивное колесо" })).toBeVisible();
 
-  const recompute = page.getByRole("button", { name: "Пересчитать карту" });
+  const recompute = page.getByRole("button", { name: "Обновить расчёт" });
   const recomputeResponse = page.waitForResponse((response) =>
     response.url().endsWith("/api/natal-chart") && response.request().method() === "POST"
   );
   await recompute.click();
   await recomputeResponse;
   await expect(page.getByRole("status")).toContainText("Расчёт обновлён");
+});
+
+test("compatibility tab is separate from Tarot joint readings", async ({ page }) => {
+  await page.getByRole("button", { name: "Совместимость" }).click();
+  await expect(page).toHaveURL(/tab=compatibility/);
+  await expect(page.getByRole("heading", { name: "Совместимость по двум натальным картам" })).toBeVisible();
+  await expect(page.getByText(/Расчёт колёс бесплатный/)).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Ввести данные" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Пригласить человека" })).toBeVisible();
+  await expect(page.getByText(/совместный расклад/i)).toHaveCount(0);
 });
 
 test("stored tradition reports render without a paid LLM call", async ({ page }) => {
@@ -209,16 +266,17 @@ test("stored tradition reports render without a paid LLM call", async ({ page })
   });
 
   await page.getByRole("button", { name: "Отчёты" }).click();
-  await expect(page.getByRole("heading", { name: "Западная трактовка" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Центр премиальных отчётов" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Западная трактовка/ })).toBeVisible();
   await expect(page.getByText("Стабильный западный отчёт из E2E-фикстуры.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Трактовка джйотиш" })).toBeVisible();
+  await page.getByRole("button", { name: /Трактовка джйотиш/ }).click();
   await expect(page.getByText("Стабильный отчёт джйотиш из E2E-фикстуры.")).toBeVisible();
   expect(interpretationRequests).toBe(0);
 });
 
 test("timing horizon reloads the requested window", async ({ page }) => {
   await page.getByRole("button", { name: "Периоды" }).click();
-  const horizon = page.getByRole("group", { name: "Горизонт прогноза" });
+  const horizon = page.getByRole("group", { name: "Горизонт расчёта" });
   await expect(horizon.getByRole("button", { name: "30 дней" })).toHaveAttribute("aria-pressed", "true");
 
   const response = page.waitForResponse((item) =>
@@ -231,8 +289,38 @@ test("timing horizon reloads the requested window", async ({ page }) => {
   await expect(page.getByText("2026-07-14 — 2026-10-12")).toBeVisible();
 });
 
-test("AI consent toggles save independently", async ({ page }) => {
+test("paid forecast is created for the selected horizon", async ({ page }) => {
+  await page.getByRole("button", { name: "Периоды" }).click();
+  await expect(page.getByText("Текстовый прогноз на 30 дней")).toBeVisible();
+  const response = page.waitForResponse((item) =>
+    new URL(item.url()).pathname === "/api/natal-chart/forecast"
+    && item.request().method() === "POST"
+  );
+  await page.getByRole("button", { name: /Подтвердить и получить прогноз/ }).click();
+  await response;
+  await expect(page.getByRole("status")).toContainText("готов и сохранён");
+  await expect(page).toHaveURL(/tab=reports/);
+  await expect(page).toHaveURL(/report=forecast-30/);
+  await expect(page.getByRole("heading", { name: "Прогноз · 30 дней" })).toBeVisible();
+  await expect(page.getByText("Прогноз на 30 дней.")).toBeVisible();
+});
+
+test("owned report can be deleted without a refund", async ({ page }) => {
   await page.getByRole("button", { name: "Отчёты" }).click();
+  await page.getByRole("button", { name: /Западная трактовка/ }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  const response = page.waitForResponse((item) =>
+    new URL(item.url()).pathname === "/api/natal-chart/history/western-e2e"
+    && item.request().method() === "DELETE"
+  );
+  await page.getByRole("button", { name: "Удалить" }).click();
+  await response;
+  await expect(page.getByRole("status")).toContainText("Отчёт удалён без возврата рун");
+  await expect(page.getByText("Стабильный западный отчёт из E2E-фикстуры.")).toHaveCount(0);
+});
+
+test("AI consent toggles save independently", async ({ page }) => {
+  await page.getByRole("button", { name: "Настройки" }).click();
   const chatConsent = page.getByLabel("Разрешить натальный контекст в обычном чате с Shri Raj");
   const tarotConsent = page.getByLabel("Отдельно разрешить натальный контекст в раскладах Таро Shri Raj");
   await expect(chatConsent).not.toBeChecked();
@@ -244,11 +332,15 @@ test("AI consent toggles save independently", async ({ page }) => {
   await tarotConsent.check();
   await expect(chatConsent).toBeChecked();
   await expect(tarotConsent).toBeChecked();
+
+  const notifications = page.getByLabel("События включены");
+  await expect(notifications).not.toBeChecked();
+  await notifications.check();
+  await expect(notifications).toBeChecked();
 });
 
 test("private report share can be created and revoked", async ({ page }) => {
   await page.getByRole("button", { name: "Отчёты" }).click();
-  await page.getByText("Западная", { exact: true }).last().click();
   await page.getByText("Приватная ссылка (по умолчанию выключена)").click();
   await page.getByLabel("summary", { exact: true }).check();
   await page.getByRole("button", { name: "Создать ссылку" }).click();

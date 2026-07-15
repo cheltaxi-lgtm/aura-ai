@@ -20,6 +20,10 @@ test.describe("natal public and authentication boundaries", () => {
       name: "relationship report",
       path: "/joint-reading/relationship-e2e/print",
     },
+    {
+      name: "natal compatibility report",
+      path: "/cabinet/astrology/compatibility/11111111-1111-4111-8111-111111111111/print",
+    },
   ]) {
     test(`${entry.name} print view requires authentication`, async ({ page }) => {
       await page.goto(entry.path);

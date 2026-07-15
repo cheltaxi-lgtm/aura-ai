@@ -5,6 +5,7 @@ import { requireProfileUserId } from "@/lib/require-auth";
 import { enforcePaidRouteRateLimit, enforceShareCreateRateLimit } from "@/lib/api-guards";
 import {
   allowedShareSections,
+  sanitizeCompatibilityReportShare,
   sanitizeNatalReportShare,
   sanitizeRelationshipReportShare,
   type ShareReportKind,
@@ -38,13 +39,21 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
   const body = await request.json().catch(() => null) as {
     reportKind?: ShareReportKind; reportId?: string; sections?: unknown; expiresInDays?: number;
+    thirdPartyConsentAcknowledged?: boolean;
   } | null;
-  if (!body || (body.reportKind !== "natal" && body.reportKind !== "relationship") ||
+  if (!body || (
+        body.reportKind !== "natal" &&
+        body.reportKind !== "relationship" &&
+        body.reportKind !== "compatibility"
+      ) ||
       typeof body.reportId !== "string") {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
   const sections = allowedShareSections(body.reportKind, body.sections);
   if (!sections.length) return NextResponse.json({ error: "select_sections" }, { status: 400 });
+  if (body.reportKind === "compatibility" && body.thirdPartyConsentAcknowledged !== true) {
+    return NextResponse.json({ error: "third_party_consent_required" }, { status: 400 });
+  }
   const days = Number.isFinite(body.expiresInDays)
     ? Math.min(Math.max(Math.floor(body.expiresInDays ?? 7), 1), 90) : 7;
   let payload: Record<string, unknown>;
@@ -66,7 +75,7 @@ export async function POST(request: NextRequest) {
       meta: { tradition: report.tradition, reportType: report.report_type,
         engineVersion: report.engine_version, ephemeris: report.ephemeris, createdAt: report.created_at },
     });
-  } else {
+  } else if (body.reportKind === "relationship") {
     const { rows } = await query<{
       id: string; synastry_data: unknown; combined_reading: string | null;
       initiator_name: string | null; partner_name: string | null; completed_at: string | null;
@@ -84,6 +93,28 @@ export async function POST(request: NextRequest) {
       labels: { a: report.initiator_name?.trim().slice(0, 40) || "Участник A",
         b: report.partner_name?.trim().slice(0, 40) || "Участник B" },
       sections, meta: { reportType: "relationship", completedAt: report.completed_at },
+    });
+  } else {
+    const { rows } = await query<{
+      id: string; report_data: unknown; evidence_refs: unknown; synastry_snapshot: unknown;
+      owner_label: string; partner_label: string; completed_at: string | null;
+    }>(
+      `SELECT id, report_data, evidence_refs, synastry_snapshot,
+              owner_label, partner_label, completed_at
+       FROM natal_compatibility_reports
+       WHERE id = $1 AND status = 'completed'
+         AND owner_user_id = $2 LIMIT 1`,
+      [body.reportId, auth.profileUserId]
+    );
+    const report = rows[0];
+    if (!report) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    payload = sanitizeCompatibilityReportShare({
+      report: report.report_data,
+      evidence: report.evidence_refs,
+      synastry: report.synastry_snapshot,
+      labels: { a: report.owner_label, b: report.partner_label },
+      sections,
+      meta: { reportType: "compatibility", completedAt: report.completed_at },
     });
   }
   const token = randomBytes(32).toString("base64url");

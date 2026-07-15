@@ -305,7 +305,7 @@ INSERT INTO platform_settings (key, value) VALUES
   ('prompts', '{"globalPrefix":"Ты — мастер эзотерической платформы Zovus. Отвечай на русском."}'),
   ('tts', '{"enabled":false,"model":"google/gemini-3.1-flash-tts-preview","fallbackModel":"hexgrad/kokoro-82m","fallbackEnabled":true,"chunkChars":4000}'),
   ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Zovus mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":true,"destiny_card":true,"scene_illustration":true,"final_report":true}}'),
-  ('runes', '{"enabled":true,"rubPerRune":2,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"INTENTION_SPREAD":20,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":20,"FORECAST_REPORT":20}}')
+  ('runes', '{"enabled":true,"rubPerRune":2,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"INTENTION_SPREAD":20,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":20,"FORECAST_REPORT":20,"SYNASTRY_REPORT":30}}')
 ON CONFLICT (key) DO NOTHING;
 
 -- === Runes (internal currency) ===
@@ -703,11 +703,73 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_natal_report_history_charge
 CREATE INDEX IF NOT EXISTS idx_natal_report_history_user_created
   ON natal_report_history(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS natal_compatibility_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  participant_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  canonical_report_id UUID REFERENCES natal_compatibility_reports(id) ON DELETE SET NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('manual', 'invite')),
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'ready', 'completed', 'expired')),
+  owner_label TEXT NOT NULL CHECK (length(btrim(owner_label)) BETWEEN 1 AND 80),
+  partner_label TEXT NOT NULL CHECK (length(btrim(partner_label)) BETWEEN 1 AND 80),
+  owner_fingerprint TEXT NOT NULL CHECK (owner_fingerprint ~ '^[a-f0-9]{64}$'),
+  partner_fingerprint TEXT CHECK (partner_fingerprint IS NULL OR partner_fingerprint ~ '^[a-f0-9]{64}$'),
+  pair_fingerprint TEXT CHECK (pair_fingerprint IS NULL OR pair_fingerprint ~ '^[a-f0-9]{64}$'),
+  invite_token_hash BYTEA UNIQUE,
+  invite_token_prefix TEXT,
+  synastry_snapshot JSONB,
+  report_data JSONB,
+  evidence_refs JSONB,
+  rune_cost INTEGER CHECK (rune_cost IS NULL OR rune_cost >= 0),
+  charge_transaction_id UUID UNIQUE REFERENCES rune_transactions(id) ON DELETE SET NULL,
+  generation_claim_token UUID,
+  generation_claim_at TIMESTAMPTZ,
+  claimed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT natal_compatibility_mode_token CHECK (
+    (mode = 'manual' AND invite_token_hash IS NULL) OR
+    (mode = 'invite' AND invite_token_hash IS NOT NULL)
+  ),
+  CONSTRAINT natal_compatibility_ready_data CHECK (
+    status IN ('pending', 'expired') OR
+    (partner_fingerprint IS NOT NULL AND pair_fingerprint IS NOT NULL AND synastry_snapshot IS NOT NULL)
+  ),
+  CONSTRAINT natal_compatibility_completed_data CHECK (
+    status <> 'completed' OR
+    (report_data IS NOT NULL AND evidence_refs IS NOT NULL AND completed_at IS NOT NULL)
+  ),
+  CONSTRAINT natal_compatibility_snapshot_private CHECK (
+    synastry_snapshot IS NULL OR NOT (
+      jsonb_path_exists(synastry_snapshot, '$.**.birthDate') OR
+      jsonb_path_exists(synastry_snapshot, '$.**.birthTime') OR
+      jsonb_path_exists(synastry_snapshot, '$.**.birthCity') OR
+      jsonb_path_exists(synastry_snapshot, '$.**.latitude') OR
+      jsonb_path_exists(synastry_snapshot, '$.**.longitude') OR
+      jsonb_path_exists(synastry_snapshot, '$.**.timezone')
+    )
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_natal_compatibility_owner_created
+  ON natal_compatibility_reports(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_natal_compatibility_participant_created
+  ON natal_compatibility_reports(participant_user_id, created_at DESC)
+  WHERE participant_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_natal_compatibility_expiry
+  ON natal_compatibility_reports(expires_at) WHERE status <> 'expired';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_natal_compatibility_owner_pair
+  ON natal_compatibility_reports(owner_user_id, pair_fingerprint)
+  WHERE pair_fingerprint IS NOT NULL AND status <> 'expired';
+
 CREATE TABLE IF NOT EXISTS private_report_shares (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token TEXT NOT NULL UNIQUE CHECK (length(token) >= 43),
-  report_kind TEXT NOT NULL CHECK (report_kind IN ('natal', 'relationship')),
+  report_kind TEXT NOT NULL CHECK (report_kind IN ('natal', 'relationship', 'compatibility')),
   report_id UUID NOT NULL,
   selected_sections TEXT[] NOT NULL CHECK (cardinality(selected_sections) > 0),
   public_payload JSONB NOT NULL,
@@ -740,6 +802,15 @@ BEGIN
         AND (initiator_user_id = NEW.owner_user_id OR partner_user_id = NEW.owner_user_id)
     ) THEN
       RAISE EXCEPTION 'invalid relationship report share target' USING ERRCODE = '23503';
+    END IF;
+  ELSIF NEW.report_kind = 'compatibility' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM natal_compatibility_reports
+      WHERE id = NEW.report_id
+        AND status = 'completed'
+        AND (owner_user_id = NEW.owner_user_id OR participant_user_id = NEW.owner_user_id)
+    ) THEN
+      RAISE EXCEPTION 'invalid compatibility report share target' USING ERRCODE = '23503';
     END IF;
   END IF;
   RETURN NEW;

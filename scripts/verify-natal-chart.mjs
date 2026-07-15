@@ -10,8 +10,13 @@ import { computeSynastry, computeSynastryDimensions, sanitizeSynastryForClient }
 import { compositeMidpointLongitude, computeCompositeChart } from "../src/lib/natal/composite.ts";
 import {
   allowedShareSections, isHighEntropyShareToken,
-  sanitizeNatalReportShare, sanitizeRelationshipReportShare,
+  sanitizeCompatibilityReportShare, sanitizeNatalReportShare, sanitizeRelationshipReportShare,
 } from "../src/lib/natal/report-share.ts";
+import {
+  buildCompatibilityEvidence,
+  COMPATIBILITY_REPORT_SECTION_KEYS,
+  validateCompatibilityReport,
+} from "../src/lib/natal/compatibility-report.ts";
 import { angularSeparation, houseForLongitude } from "../src/lib/natal/math.ts";
 import { computeAspects } from "../src/lib/natal/aspects.ts";
 import { toCelestineBirthData } from "../src/lib/natal/celestine/adapter.ts";
@@ -27,6 +32,7 @@ import {
 import {
   NATAL_REPORT_SECTION_KEYS,
   validateNatalReport,
+  withReportMetadataDefaults,
 } from "../src/lib/natal/report.ts";
 import { navamsaFromSiderealLongitude, validateNormalizedVimshottari } from "../src/lib/natal/vedic.ts";
 import {
@@ -373,6 +379,65 @@ async function main() {
     methodology: "Только рассчитанные evidence.",
   };
   assert(validateNatalReport(validReport, evidenceA, "western").ok, "report schema accepts grounded report");
+  const timingEvidence = {
+    id: "ne.timing.transit.fixture",
+    tradition: "timing",
+    category: "timing",
+    type: "transit",
+    label: "Тестовый транзит",
+    value: "Пик 2026-07-20",
+    sourcePath: "timing.events.fixture",
+    confidence: "high",
+    uncertainty: null,
+    deepLink: "/cabinet/astrology?tab=timing",
+  };
+  const forecastEvidence = [...evidenceA, timingEvidence];
+  const validForecast = {
+    ...validReport,
+    reportType: "forecast",
+    horizonDays: 30,
+    sections: validReport.sections.map((section) => ({
+      ...section,
+      claims: section.claims.map((claim) => ({
+        ...claim,
+        evidenceIds: [timingEvidence.id, ...claim.evidenceIds],
+      })),
+    })),
+  };
+  const forecastWithServerMetadata = withReportMetadataDefaults(
+    { ...validForecast, disclaimer: "", methodology: undefined },
+    { disclaimer: "Серверное ограничение.", methodology: "Серверная методология." }
+  );
+  assert(
+    validateNatalReport(
+      forecastWithServerMetadata,
+      forecastEvidence,
+      "western",
+      "forecast",
+      30
+    ).ok,
+    "report schema accepts grounded forecast with server metadata defaults"
+  );
+  assert(
+    !validateNatalReport(
+      { ...validForecast, horizonDays: 90 },
+      forecastEvidence,
+      "western",
+      "forecast",
+      30
+    ).ok,
+    "report schema rejects a mismatched forecast horizon"
+  );
+  assert(
+    !validateNatalReport(
+      { ...validReport, reportType: "forecast", horizonDays: 30 },
+      forecastEvidence,
+      "western",
+      "forecast",
+      30
+    ).ok,
+    "report schema rejects forecast claims without timing evidence"
+  );
   assert(
     !validateNatalReport(
       {
@@ -569,6 +634,45 @@ async function main() {
       relationshipShare.summary === undefined && relationshipShare.composite === undefined,
     "relationship share returns selected sanitized sections only"
   );
+  const compatibilityEvidence = buildCompatibilityEvidence(sanitizedSynastry);
+  const compatibilityReport = {
+    version: "1.0",
+    sections: COMPATIBILITY_REPORT_SECTION_KEYS.map((key) => ({
+      key,
+      title: key,
+      claims: [{
+        text: `Grounded ${key}`,
+        evidenceIds: [`dimension:${key === "summary" || key === "recommendations" ? "growth" : key}`],
+      }],
+    })),
+    disclaimer: "Не является гарантией развития отношений.",
+  };
+  const compatibilityValidation = validateCompatibilityReport(
+    compatibilityReport,
+    compatibilityEvidence
+  );
+  assert(compatibilityValidation.ok, "compatibility report accepts calculated evidence links");
+  const invalidCompatibility = validateCompatibilityReport({
+    ...compatibilityReport,
+    sections: compatibilityReport.sections.map((section, index) => index === 0
+      ? { ...section, claims: [{ text: "Invented", evidenceIds: ["private-coordinate"] }] }
+      : section),
+  }, compatibilityEvidence);
+  assert(!invalidCompatibility.ok, "compatibility report rejects unknown evidence links");
+  const compatibilityShare = sanitizeCompatibilityReportShare({
+    report: compatibilityReport,
+    evidence: compatibilityEvidence,
+    synastry: { ...syn, birthDate: "1990-01-01", latitude: 55.7 },
+    labels: { a: "A", b: "B" },
+    sections: ["summary", "dimensions"],
+    meta: {},
+  });
+  assert(
+    !JSON.stringify(compatibilityShare).includes("1990-01-01") &&
+      !JSON.stringify(compatibilityShare).includes("55.7") &&
+      compatibilityShare.aspects === undefined,
+    "compatibility share contains selected sanitized evidence only"
+  );
 
   const prompt = buildNatalPromptBlock(ny);
   assert(prompt.includes("Placidus") || prompt.includes("placidus"), "prompt mentions house system");
@@ -642,6 +746,14 @@ async function main() {
   );
   const astrologyWorkspace = readFileSync(
     new URL("../src/components/natal/AstrologyWorkspace.tsx", import.meta.url),
+    "utf8"
+  );
+  const natalSettings = readFileSync(
+    new URL("../src/components/natal/NatalSettings.tsx", import.meta.url),
+    "utf8"
+  );
+  const natalCompatibility = readFileSync(
+    new URL("../src/components/natal/NatalCompatibility.tsx", import.meta.url),
     "utf8"
   );
   const natalContext = readFileSync(
@@ -723,9 +835,9 @@ async function main() {
   assert(
     natalService.includes("INTERVAL '10 minutes'") &&
       natalService.includes("'claimedAtEpoch', EXTRACT(EPOCH FROM NOW())") &&
-      natalService.includes("'token', $6::text") &&
+      natalService.includes("'token', $9::text") &&
       natalService.includes("engine_version = $4") &&
-      natalService.includes("history.report_type = 'interpretation'"),
+      natalService.includes("history.report_type = $6"),
     "service has version-bound expiring atomic interpretation claim"
   );
   assert(
@@ -734,8 +846,8 @@ async function main() {
     "chart upsert merges mutable fields only across matching engine inputs"
   );
   assert(
-    natalService.includes("chart_data->>'birthFingerprint' = $4") &&
-      natalService.includes("ARRAY['interpretationClaims', $2::text, 'token'] = $7") &&
+    natalService.includes("chart_data->>'birthFingerprint' = $5") &&
+      natalService.includes("ARRAY['interpretationClaims', $4::text, 'token'] = $8") &&
       natalService.includes("FROM natal_charts") &&
       natalService.includes("FOR UPDATE"),
     "interpretation save checks fingerprint and claim ownership"
@@ -800,16 +912,21 @@ async function main() {
     "chat and tarot consent migration defaults off without user backfill"
   );
   assert(
-    astrologyWorkspace.includes("aiContextEnabled") &&
-      astrologyWorkspace.includes("tarotContextEnabled") &&
+    natalSettings.includes("aiContextEnabled") &&
+      natalSettings.includes("tarotContextEnabled") &&
+      natalSettings.includes("/api/natal-chart/ai-preferences") &&
+      natalSettings.includes("/api/natal-chart/event-preferences") &&
       astrologyWorkspace.includes("aiDataUseAcknowledged: true") &&
       interpretationRoute.indexOf("body.aiDataUseAcknowledged !== true") < chargeCall,
     "workspace exposes separate consent and acknowledges paid LLM data use before charge"
   );
   assert(
-    cabinetNatalSummary.includes('href="/cabinet/astrology"') &&
+    cabinetNatalSummary.includes("window.location.assign") &&
+      cabinetNatalSummary.includes("APP_SHELL_ROUTES.natalChart") &&
+      cabinetNatalSummary.includes("Натальная карта") &&
+      cabinetNatalSummary.includes("ritual-cta-banner") &&
       !cabinetNatalSummary.includes("<NatalChartWheel"),
-    "cabinet renders compact astrology summary"
+    "cabinet renders compact astrology promo with working CTA"
   );
   assert(
     interactiveWheel.includes('tabIndex={0}') &&
@@ -900,9 +1017,10 @@ async function main() {
   assert(
     ["Текущие транзиты", "Колесо", "Положения", "Аспекты и орб", "D1 и D9",
       "Шкала и фильтры", "Солнечное возвращение", "Вторичные прогрессии",
-      "Текущая даша", "Что меняют настройки", "Индексы и аспекты",
-      "Расчёт, версии и публикация"]
+      "Текущая даша"]
       .every((title) => astrologyWorkspace.includes(`title="${title}"`)) &&
+      natalSettings.includes("Уведомления о событиях") &&
+      natalCompatibility.includes("Совместимость по двум натальным картам") &&
       vedicCharts.includes("D1 — основная карта") &&
       vedicCharts.includes("D9 — вспомогательная карта"),
     "all major natal panels include plain-language introductions"
@@ -911,7 +1029,7 @@ async function main() {
     astrologyWorkspace.includes("Показать расчёт:") &&
       astrologyWorkspace.includes("полноты показывает") &&
       astrologyWorkspace.includes("не подтверждает истинность") &&
-      astrologyWorkspace.includes("не создают прогнозов") &&
+      natalSettings.includes("не создают прогноз") &&
       astrologyWorkspace.includes("асцендент D9 также исключён") &&
       !astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
     "timing and evidence language remains calibrated and explicit about limits"
@@ -919,7 +1037,7 @@ async function main() {
   assert(
     astrologyWorkspace.includes("дата, время, город и координаты рождения исключены") &&
       astrologyWorkspace.includes("Настройки чата и Таро не используются и не меняются") &&
-      astrologyWorkspace.includes("Три независимых решения"),
+      natalSettings.includes("Эти согласия независимы от разового подтверждения платного отчёта"),
     "paid-report acknowledgement and optional chat or Tarot consent stay distinct"
   );
   assert(
@@ -927,8 +1045,8 @@ async function main() {
       astrologyWorkspace.includes("NATAL_GUIDES.western") &&
       astrologyWorkspace.includes("NATAL_GUIDES.jyotish") &&
       astrologyWorkspace.includes("NATAL_GUIDES.timing") &&
-      astrologyWorkspace.includes("NATAL_GUIDES.relationships") &&
       astrologyWorkspace.includes("NATAL_GUIDES.reports") &&
+      astrologyWorkspace.includes("<NatalCompatibility") &&
       astrologyWorkspace.includes("explainPosition") &&
       astrologyWorkspace.includes("explainAspect") &&
       astrologyWorkspace.includes("explainGraha"),

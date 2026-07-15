@@ -47,6 +47,7 @@ export default function AppShellBridge() {
   }, [refreshUpdate]);
 
   useEffect(() => {
+    if (!shouldUseAppShellClient()) return;
     return registerAppShellRouter((path) => {
       router.push(path);
     });

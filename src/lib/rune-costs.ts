@@ -10,6 +10,7 @@ export const DEFAULT_RUNE_COSTS = {
   FINAL_REPORT: 30,
   NATAL_READING: 20,
   FORECAST_REPORT: 20,
+  SYNASTRY_REPORT: 30,
 } as const;
 
 export type RuneActionType = keyof typeof DEFAULT_RUNE_COSTS;
@@ -32,6 +33,7 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
   FINAL_REPORT: "Арт-отчёт сеанса",
   NATAL_READING: "Полная натальная трактовка",
   FORECAST_REPORT: "Персональный прогноз",
+  SYNASTRY_REPORT: "Отчёт о натальной совместимости",
 };
 
 export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
@@ -46,4 +48,5 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   FINAL_REPORT: "Итоговый арт-коллаж сеанса",
   NATAL_READING: "Глубокая интерпретация одной выбранной традиции: западной или ведической",
   FORECAST_REPORT: "Один персональный прогноз выбранного горизонта; списание только после явного подтверждения",
+  SYNASTRY_REPORT: "Проверяемый отчёт по синастрии и композиту двух натальных карт",
 };

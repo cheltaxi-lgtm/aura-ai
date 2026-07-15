@@ -8,7 +8,15 @@ type Share = {
   selectedSections: string[]; expiresAt: string; revokedAt: string | null;
 };
 
-export default function ReportShareControls({ reportKind, reportId }: { reportKind: ShareReportKind; reportId: string }) {
+export default function ReportShareControls({
+  reportKind,
+  reportId,
+  requireThirdPartyConsent = false,
+}: {
+  reportKind: ShareReportKind;
+  reportId: string;
+  requireThirdPartyConsent?: boolean;
+}) {
   const allowed = REPORT_SHARE_SECTION_ALLOWLIST[reportKind];
   const [selected, setSelected] = useState<string[]>([]);
   const [days, setDays] = useState(7);
@@ -17,6 +25,7 @@ export default function ReportShareControls({ reportKind, reportId }: { reportKi
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [thirdPartyConsent, setThirdPartyConsent] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -34,11 +43,21 @@ export default function ReportShareControls({ reportKind, reportId }: { reportKi
   useEffect(() => { void load(); }, [load]);
   const create = async () => {
     if (!selected.length) { setError("Выберите хотя бы один раздел."); return; }
+    if (requireThirdPartyConsent && !thirdPartyConsent) {
+      setError("Подтвердите согласие второго участника на публикацию.");
+      return;
+    }
     setBusy(true); setNotice(""); setError("");
     try {
       const response = await fetch("/api/report-shares", {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportKind, reportId, sections: selected, expiresInDays: days }),
+        body: JSON.stringify({
+          reportKind,
+          reportId,
+          sections: selected,
+          expiresInDays: days,
+          thirdPartyConsentAcknowledged: requireThirdPartyConsent ? thirdPartyConsent : undefined,
+        }),
       });
       const data = await response.json().catch(() => ({})) as { share?: { url: string }; error?: string };
       if (!response.ok || !data.share) throw new Error(data.error || "Не удалось создать ссылку.");
@@ -91,8 +110,13 @@ export default function ReportShareControls({ reportKind, reportId }: { reportKi
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <label className="text-white/45">Срок <select value={days} onChange={(event) => setDays(Number(event.target.value))}
         className="ml-1 min-h-9 rounded bg-[#17131d] px-2 text-white"><option value={1}>1 день</option><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option></select></label>
-      <button type="button" disabled={busy} onClick={() => void create()} className="min-h-9 rounded-lg bg-amber-300/15 px-3 text-amber-100 disabled:opacity-50">Создать ссылку</button>
+      <button type="button" disabled={busy || (requireThirdPartyConsent && !thirdPartyConsent)} onClick={() => void create()} className="min-h-9 rounded-lg bg-amber-300/15 px-3 text-amber-100 disabled:opacity-50">Создать ссылку</button>
     </div>
+    {requireThirdPartyConsent ? <label className="mt-3 flex items-start gap-2 text-white/50">
+      <input type="checkbox" className="mt-0.5" checked={thirdPartyConsent}
+        onChange={(event) => setThirdPartyConsent(event.target.checked)} />
+      Подтверждаю согласие второго участника на публикацию выбранных разделов.
+    </label> : null}
     {loading ? <p className="mt-3 text-white/40" role="status">Загружаем активные ссылки…</p> : null}
     {notice ? <p className="mt-2 text-emerald-200/70" role="status">{notice}</p> : null}
     {error ? <div className="mt-2 text-rose-300" role="alert"><p>{error}</p><button type="button" onClick={() => void load()} className="mt-1 min-h-9 text-amber-200">Повторить</button></div> : null}

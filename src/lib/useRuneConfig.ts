@@ -27,6 +27,7 @@ const FALLBACK: RuneConfig = {
     FINAL_REPORT: 30,
     NATAL_READING: 20,
     FORECAST_REPORT: 20,
+    SYNASTRY_REPORT: 30,
   },
   labels: {
     QUESTION: "Вопрос мастеру",
@@ -40,6 +41,7 @@ const FALLBACK: RuneConfig = {
     FINAL_REPORT: "Арт-отчёт сеанса",
     NATAL_READING: "Полная натальная трактовка",
     FORECAST_REPORT: "Персональный прогноз",
+    SYNASTRY_REPORT: "Отчёт о натальной совместимости",
   },
 };
 

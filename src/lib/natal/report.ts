@@ -22,7 +22,8 @@ export interface NatalReportSection {
 export interface NatalReport {
   version: typeof NATAL_REPORT_VERSION;
   tradition: NatalTradition;
-  reportType: "interpretation";
+  reportType: "interpretation" | "forecast";
+  horizonDays?: 7 | 30 | 90 | 365;
   sections: NatalReportSection[];
   disclaimer: string;
   methodology: string;
@@ -57,17 +58,46 @@ export function extractJsonObject(raw: string): unknown {
   throw new Error("Incomplete JSON object");
 }
 
+export function withReportMetadataDefaults(
+  value: unknown,
+  defaults: { disclaimer: string; methodology: string }
+): unknown {
+  const root = record(value);
+  if (!root) return value;
+  return {
+    ...root,
+    disclaimer:
+      typeof root.disclaimer === "string" && root.disclaimer.trim()
+        ? root.disclaimer
+        : defaults.disclaimer,
+    methodology:
+      typeof root.methodology === "string" && root.methodology.trim()
+        ? root.methodology
+        : defaults.methodology,
+  };
+}
+
 export function validateNatalReport(
   value: unknown,
   evidence: readonly NatalEvidence[],
-  expectedTradition: NatalTradition
+  expectedTradition: NatalTradition,
+  expectedReportType: NatalReport["reportType"] = "interpretation",
+  expectedHorizonDays?: NatalReport["horizonDays"]
 ): NatalReportValidation {
   const errors: string[] = [];
   const root = record(value);
   if (!root) return { ok: false, errors: ["Корень ответа должен быть JSON-объектом."] };
   if (root.version !== NATAL_REPORT_VERSION) errors.push(`version должен быть "${NATAL_REPORT_VERSION}".`);
   if (root.tradition !== expectedTradition) errors.push(`tradition должен быть "${expectedTradition}".`);
-  if (root.reportType !== "interpretation") errors.push('reportType должен быть "interpretation".');
+  if (root.reportType !== expectedReportType) {
+    errors.push(`reportType должен быть "${expectedReportType}".`);
+  }
+  if (
+    expectedReportType === "forecast" &&
+    (root.horizonDays !== expectedHorizonDays || ![7, 30, 90, 365].includes(Number(root.horizonDays)))
+  ) {
+    errors.push(`horizonDays должен быть ${expectedHorizonDays}.`);
+  }
   if (typeof root.disclaimer !== "string" || !root.disclaimer.trim()) errors.push("disclaimer обязателен.");
   if (typeof root.methodology !== "string" || !root.methodology.trim()) errors.push("methodology обязательна.");
 
@@ -108,13 +138,24 @@ export function validateNatalReport(
       if (!evidenceIds.length) errors.push(`${expectedKey}.claims[${claimIndex}]: нужна минимум одна ссылка на evidence.`);
       const unknown = evidenceIds.filter((id) => !ids.has(id));
       if (unknown.length) errors.push(`${expectedKey}.claims[${claimIndex}]: неизвестные evidence ID: ${unknown.join(", ")}.`);
-      const allowed = allowedCategories[expectedKey];
+      const allowed = expectedReportType === "interpretation"
+        ? allowedCategories[expectedKey]
+        : undefined;
       if (
         allowed &&
         !unknown.length &&
         !evidenceIds.some((id) => allowed.has(evidenceById.get(id)?.category ?? ""))
       ) {
         errors.push(`${expectedKey}.claims[${claimIndex}]: citation не относится к тематике раздела.`);
+      }
+      if (
+        expectedReportType === "forecast" &&
+        !unknown.length &&
+        !evidenceIds.some((id) => evidenceById.get(id)?.tradition === "timing")
+      ) {
+        errors.push(
+          `${expectedKey}.claims[${claimIndex}]: прогноз должен ссылаться минимум на один timing evidence ID.`
+        );
       }
       if (text && evidenceIds.length && !unknown.length) claims.push({ text, evidenceIds });
     }
@@ -126,7 +167,8 @@ export function validateNatalReport(
     report: {
       version: NATAL_REPORT_VERSION,
       tradition: expectedTradition,
-      reportType: "interpretation",
+      reportType: expectedReportType,
+      ...(expectedReportType === "forecast" ? { horizonDays: expectedHorizonDays } : {}),
       sections: parsedSections,
       disclaimer: (root.disclaimer as string).trim(),
       methodology: (root.methodology as string).trim(),
@@ -141,14 +183,21 @@ export function natalReportToPlainText(report: NatalReport): string {
     .join("\n\n");
 }
 
-export function buildNatalReportJsonInstructions(tradition: NatalTradition): string {
+export function buildNatalReportJsonInstructions(
+  tradition: NatalTradition,
+  reportType: NatalReport["reportType"] = "interpretation",
+  horizonDays?: NatalReport["horizonDays"]
+): string {
+  const horizonField = reportType === "forecast" ? `,"horizonDays":${horizonDays}` : "";
   return `Верни ТОЛЬКО JSON-объект без markdown.
 Схема:
-{"version":"${NATAL_REPORT_VERSION}","tradition":"${tradition}","reportType":"interpretation","sections":[
+{"version":"${NATAL_REPORT_VERSION}","tradition":"${tradition}","reportType":"${reportType}"${horizonField},"sections":[
 ${NATAL_REPORT_SECTION_KEYS.map((key) => `{"key":"${key}","title":"локализованный заголовок","claims":[{"text":"вывод на русском","evidenceIds":["точный ID из блока evidence"]}]}`).join(",\n")}
 ],"disclaimer":"не научный прогноз и не замена профессиональной консультации","methodology":"как использованы расчёты и ограничения"}
 Правила: все восемь разделов обязательны и идут в указанном порядке; в каждом минимум один непустой claim; у каждого claim один или несколько существующих evidenceIds; не добавляй факты, которые прямо не поддержаны указанными evidence.
-Для personality цитируй identity/emotions; relationships — relationships/emotions; career — career/identity; resources — resources/career; tensions — tensions/emotions; currentPeriod — только evidence категории timing.`;
+${reportType === "forecast"
+  ? `Это прогноз на ${horizonDays} дней: формулируй возможности, напряжения и практические рекомендации как вероятностные темы, а не гарантированные события. Каждый claim обязан содержать минимум один точный evidence ID с префиксом ne.timing.; при необходимости к нему можно добавить натальный evidence ID.`
+  : "Для personality цитируй identity/emotions; relationships — relationships/emotions; career — career/identity; resources — resources/career; tensions — tensions/emotions; currentPeriod — только evidence категории timing."}`;
 }
 
 export function isNatalReport(value: unknown): value is NatalReport {

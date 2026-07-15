@@ -3,6 +3,7 @@ import { sanitizeSynastryForClient } from "./synastry";
 export const REPORT_SHARE_SECTION_ALLOWLIST = {
   natal: ["summary", "personality", "relationships", "career", "resources", "tensions", "currentPeriod", "recommendations", "methodology", "evidence"],
   relationship: ["summary", "dimensions", "aspects", "composite", "methodology"],
+  compatibility: ["summary", "communication", "emotional", "attraction", "stability", "growth", "recommendations", "dimensions", "aspects", "composite", "methodology"],
 } as const;
 
 export type ShareReportKind = keyof typeof REPORT_SHARE_SECTION_ALLOWLIST;
@@ -89,6 +90,84 @@ export function sanitizeRelationshipReportShare(params: {
       description: "Индексы основаны только на показанных межкартных аспектах; композит — круговые мидпойнты.",
       limitation: safe?.composite?.limitation ?? null,
     } : undefined,
+  };
+}
+
+export function sanitizeCompatibilityReportShare(params: {
+  report: unknown;
+  evidence: unknown;
+  synastry: unknown;
+  labels: { a: string; b: string };
+  sections: unknown;
+  meta: Record<string, unknown>;
+}): Record<string, unknown> {
+  const selected = allowedShareSections("compatibility", params.sections);
+  const report = record(params.report);
+  const evidence = record(params.evidence);
+  const safeSynastry = sanitizeSynastryForClient(record(params.synastry));
+  const allowedEvidenceIds = new Set([
+    ...(Array.isArray(evidence?.crossAspects)
+      ? evidence.crossAspects.flatMap((item) => {
+          const aspect = record(item);
+          return typeof aspect?.id === "string" ? [aspect.id] : [];
+        })
+      : []),
+    ...(Array.isArray(evidence?.dimensions)
+      ? evidence.dimensions.flatMap((item) => {
+          const dimension = record(item);
+          return typeof dimension?.key === "string" ? [`dimension:${dimension.key}`] : [];
+        })
+      : []),
+  ]);
+  const sections = Array.isArray(report?.sections)
+    ? report.sections.flatMap((item) => {
+        const section = record(item);
+        if (!section || typeof section.key !== "string" || !selected.includes(section.key)) {
+          return [];
+        }
+        const claims = Array.isArray(section.claims)
+          ? section.claims.flatMap((itemClaim) => {
+              const claim = record(itemClaim);
+              if (typeof claim?.text !== "string") return [];
+              const evidenceIds = Array.isArray(claim.evidenceIds)
+                ? claim.evidenceIds
+                    .filter(
+                      (id): id is string =>
+                        typeof id === "string" && allowedEvidenceIds.has(id)
+                    )
+                    .slice(0, 8)
+                : [];
+              return [{ text: claim.text.slice(0, 3000), evidenceIds }];
+            })
+          : [];
+        return [{
+          key: section.key,
+          title:
+            typeof section.title === "string" ? section.title.slice(0, 160) : section.key,
+          claims,
+        }];
+      })
+    : [];
+  return {
+    kind: "compatibility",
+    meta: params.meta,
+    labels: {
+      a: params.labels.a.trim().slice(0, 80),
+      b: params.labels.b.trim().slice(0, 80),
+    },
+    sections,
+    disclaimer:
+      typeof report?.disclaimer === "string" ? report.disclaimer.slice(0, 2000) : undefined,
+    dimensions: selected.includes("dimensions") ? safeSynastry?.dimensions ?? [] : undefined,
+    aspects: selected.includes("aspects") ? safeSynastry?.crossAspects ?? [] : undefined,
+    composite: selected.includes("composite") ? safeSynastry?.composite ?? null : undefined,
+    methodology: selected.includes("methodology")
+      ? {
+          synastryVersion: safeSynastry?.version ?? null,
+          description:
+            "Отчёт опирается на рассчитанные межкартные аспекты, измерения и круговые мидпойнты композита.",
+        }
+      : undefined,
   };
 }
 

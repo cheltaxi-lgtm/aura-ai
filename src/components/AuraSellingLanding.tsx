@@ -103,7 +103,7 @@ const DIRECTIONS = [
   },
   {
     title: "Астрология",
-    text: "Ведическая астрология и звёздные карты — карма, настоящее и путь души.",
+    text: "Натальная карта, джйотиш и персональные периоды — или диалог с астрологом Shri Raj.",
     icon: Star,
     filter: "astrology" as const,
   },
@@ -279,6 +279,10 @@ export default function AuraSellingLanding({
         return;
       }
       scrollToMasters();
+      return;
+    }
+    if (filter === "astrology" && isLoggedIn) {
+      window.location.assign("/cabinet/astrology");
       return;
     }
     const match =
@@ -587,7 +591,7 @@ export default function AuraSellingLanding({
                   <h3 className="font-display text-base font-semibold text-white">{dir.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-aura-ivory/60">{dir.text}</p>
                   <span className="aura-landing-direction__link">
-                    К мастерам
+                    {isLoggedIn && dir.filter === "astrology" ? "К натальной карте" : "К мастерам"}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </span>
                 </motion.button>
