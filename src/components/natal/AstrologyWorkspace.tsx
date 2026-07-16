@@ -674,7 +674,7 @@ function Western({ chart, western, savedReport, freshReport, fallbackText, busy,
     <div className="grid gap-6 lg:grid-cols-2">
       <Panel title="Аспекты" eyebrow={`${aspects.length} рассчитано`}>
         <SectionIntroduction title="Аспекты и орб">Орб — отклонение от точного угла: это мера геометрии, а не силы характера.</SectionIntroduction>
-        {aspects.length ? <ul className="max-h-[32rem] space-y-2 overflow-auto pr-1">{aspects.map((aspect) => {
+        {aspects.length ? <ul className="lux-scroll max-h-[32rem] space-y-2 overflow-auto pr-1">{aspects.map((aspect) => {
           const stableKey = `${[aspect.firstKey, aspect.secondKey].sort().join(`-${aspect.type}-`)}`.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "-");
           return <li id={evidenceAnchorId("aspect", stableKey)} tabIndex={-1} key={aspect.id} className="rounded-lg bg-white/[0.025] px-3 py-2 text-xs focus:ring-2 focus:ring-amber-300/50"><details><summary className="flex cursor-pointer justify-between gap-3"><span>{aspect.first} — <b className="font-medium text-amber-200/75">{aspect.label}</b> — {aspect.second}</span><span className="shrink-0 text-white/35">{aspect.nature} · {aspect.orb == null ? "орб —" : `${aspect.orb.toFixed(2)}°`}</span></summary><PersonalMeaning>{explainAspect(aspect)}</PersonalMeaning></details></li>;
         })}</ul> : <Empty text="Движок не вернул аспекты." />}
@@ -957,7 +957,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
         {timing?.progressions ? <PanelBlock>
           <Metric label="Символическая дата" value={timing.progressions.progressedAtUtc.slice(0, 10)} />
           <p className="text-xs text-white/45">Возраст: {timing.progressions.exactAgeYears.toFixed(6)} года · аспектов к наталу: {timing.progressions.aspectsToNatal.length}</p>
-          <div className="max-h-48 space-y-1 overflow-auto">
+          <div className="lux-scroll max-h-48 space-y-1 overflow-auto">
             {timing.progressions.aspectsToNatal.slice(0, 12).map((aspect) => <p key={`${aspect.progressedKey}-${aspect.natalKey}-${aspect.aspect}`} className="text-xs text-white/55">
               {russianPlanetLabel(aspect.progressedKey)} {aspectLabels[aspect.aspect ?? ""] ?? "аспект"} {russianPlanetLabel(aspect.natalKey)} · {aspect.orb.toFixed(3)}°
             </p>)}

@@ -549,7 +549,7 @@ export default function NatalCompatibility() {
                   aria-controls="compatibility-city-suggestions"
                   placeholder="Начните вводить город по-русски или латиницей" />
                 {cityLookupOpen ? <div id="compatibility-city-suggestions" role="listbox"
-                  className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-white/15 bg-[#151019] p-1 shadow-2xl">
+                  className="lux-scroll absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-white/15 bg-[#151019] p-1 shadow-2xl">
                   {cityLookupLoading ? <p className="px-3 py-2 text-xs text-white/45">Ищем города…</p> : null}
                   {!cityLookupLoading && citySuggestions.map((city) => <button type="button" role="option"
                     key={`${city.label}-${city.latitude}-${city.longitude}`}

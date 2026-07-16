@@ -16,6 +16,43 @@
     isolation: isolate;
     line-height: 1.6;
   }
+
+  /* Global premium scrollbars (Firefox) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+}
+
+/* Global premium scrollbars (WebKit / Chromium / Edge) */
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @layer components {
@@ -46,6 +83,11 @@
       0 20px 50px -20px rgba(0, 0, 0, 0.7),
       0 0 60px -30px rgba(155, 127, 212, 0.08);
     --shadow-gold-glow: 0 0 28px rgba(201, 162, 74, 0.22), 0 0 60px rgba(232, 199, 126, 0.08);
+    /* Premium scrollbars — keep in globals so they resolve even if tokens load order shifts */
+    --scrollbar-size: 5px;
+    --scrollbar-thumb: rgba(201, 162, 74, 0.28);
+    --scrollbar-thumb-hover: rgba(232, 199, 126, 0.5);
+    --scrollbar-track: transparent;
   }
 
   .ui-card {
@@ -1841,10 +1883,8 @@
   @apply h-3 w-3 cursor-pointer appearance-none rounded-full bg-aura-purple;
 }
 
-/* Chat message list scroll */
+/* Chat message list scroll — inherits global brass scrollbar */
 .chat-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(168, 85, 247, 0.45) transparent;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   overscroll-behavior-y: contain;
@@ -1896,51 +1936,9 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   }
 }
 
-.chat-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-scroll::-webkit-scrollbar-track {
-  margin: 8px 0;
-  background: transparent;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    rgba(168, 85, 247, 0.55),
-    rgba(16, 185, 129, 0.35)
-  );
-}
-
-.chat-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.75);
-}
-
-/* Dark amber scroll — modals, ritual flow, panels */
+/* Panel / modal scroll — same brass thumb as global */
 .lux-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(232, 199, 126, 0.35) transparent;
   overscroll-behavior-y: contain;
-}
-
-.lux-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.lux-scroll::-webkit-scrollbar-track {
-  margin: 8px 0;
-  background: transparent;
-}
-
-.lux-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(232, 199, 126, 0.32);
-}
-
-.lux-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(232, 199, 126, 0.52);
 }
 
 /* Breathing room above pinned modal footers (master session, photo flow, etc.) */
@@ -5677,25 +5675,26 @@ body.chat-session-active .app-main-column {
 @media (hover: hover) and (pointer: fine) {
   .cabinet-achievements__scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(232, 199, 126, 0.35) transparent;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar {
     display: block;
-    height: 6px;
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--scrollbar-track);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: rgba(232, 199, 126, 0.32);
+    background: var(--scrollbar-thumb);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(232, 199, 126, 0.52);
+    background: var(--scrollbar-thumb-hover);
   }
 }
 
@@ -7331,11 +7330,7 @@ body.cookie-banner-visible .auth-page .auth-form {
   padding: 1rem 0.85rem 0.5rem;
 }
 
-.deck-pick__body::-webkit-scrollbar { width: 6px; }
-.deck-pick__body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 9999px;
-}
+/* deck-pick body uses global brass scrollbar */
 
 .deck-pick__grid {
   display: grid;
