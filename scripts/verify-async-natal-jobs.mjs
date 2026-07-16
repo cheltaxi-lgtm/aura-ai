@@ -37,8 +37,9 @@ for (const route of [
   assert.match(source, /enqueueNatalAsyncJob/);
   assert.match(source, /getAsyncJobWorkerUserId/);
   assert.match(source, /requireProfileUserId/);
-  assert.match(source, /trackWorkerJobCharged/);
+  assert.match(source, /chargeRuneActionForWorkerJob/);
   assert.match(source, /trackWorkerJobCompleted/);
+  assert.doesNotMatch(source, /await BillingService\.chargeRuneAction/);
 }
 
 const worker = read("scripts/run-async-jobs.ts");
@@ -64,9 +65,20 @@ assert.match(middleware, /isAuthenticatedNatalWorkerRequest/);
 assert.match(middleware, /async-job-worker-auth-shared/);
 assert.doesNotMatch(middleware, /provided === expected/);
 
+const lifecycle = read("src/lib/natal/async-job-lifecycle.ts");
+assert.match(lifecycle, /chargeRuneActionForWorkerJob/);
+assert.match(lifecycle, /billing_state === "charged"/);
+assert.match(lifecycle, /billingChargeFromExistingTransaction/);
+
 const service = read("hosting/aura-ai-async-jobs.service");
 assert.match(service, /User=aura-ai/);
 assert.match(service, /\.env\.async-jobs/);
+
+const ensureUser = read("hosting/ensure-async-jobs-user.sh");
+assert.match(ensureUser, /chmod 600/);
+assert.match(ensureUser, /\.env\.local/);
+assert.doesNotMatch(ensureUser, /usermod -aG/);
+assert.match(ensureUser, /gpasswd -d aura-ai/);
 
 const refundService = read("src/lib/rune-service.ts");
 assert.match(refundService, /ON CONFLICT \(refund_of_transaction_id\)/);

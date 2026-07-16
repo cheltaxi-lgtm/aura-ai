@@ -13,7 +13,11 @@ import {
   releaseNatalInterpretationClaim,
   saveCurrentNatalInterpretation,
 } from "@/lib/services/natal-chart-service";
-import { BillingService, InsufficientFundsError } from "@/lib/services/billing-service";
+import {
+  BillingService,
+  InsufficientFundsError,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
 import { getUserById } from "@/lib/users";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import type { NatalTradition } from "@/lib/natal/types";
@@ -22,7 +26,7 @@ import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
-  trackWorkerJobCharged,
+  chargeRuneActionForWorkerJob,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobRefunded,
@@ -190,7 +194,7 @@ ${evidenceBlock}
 VALID EVIDENCE ID:
 ${evidenceIds.join("\n")}`);
 
-  let charge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | undefined;
+  let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
@@ -207,11 +211,11 @@ ${evidenceIds.join("\n")}`);
   };
 
   try {
-    charge = await BillingService.chargeRuneAction({
+    charge = await chargeRuneActionForWorkerJob({
+      request,
       userId: ctx.profileUserId,
       action: "NATAL_READING",
     });
-    await trackWorkerJobCharged(request, charge.transactionId);
 
     const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { BillingService, InsufficientFundsError } from "@/lib/services/billing-service";
+import {
+  BillingService,
+  InsufficientFundsError,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
 import { buildNatalEvidence, formatEvidencePrompt } from "@/lib/natal/evidence";
 import {
   buildNatalReportJsonInstructions,
@@ -23,7 +27,7 @@ import { isNatalChartEnabled } from "@/lib/settings";
 import { getUserById } from "@/lib/users";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
-  trackWorkerJobCharged,
+  chargeRuneActionForWorkerJob,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobRefunded,
@@ -163,7 +167,7 @@ ${evidenceBlock}
 TIMING EVIDENCE ID (обязательны в summary, currentPeriod, recommendations):
 ${timingEvidenceIds.join("\n")}`);
 
-  let charge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | undefined;
+  let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
@@ -180,11 +184,11 @@ ${timingEvidenceIds.join("\n")}`);
   };
 
   try {
-    charge = await BillingService.chargeRuneAction({
+    charge = await chargeRuneActionForWorkerJob({
+      request,
       userId: auth.profileUserId,
       action: "FORECAST_REPORT",
     });
-    await trackWorkerJobCharged(request, charge.transactionId);
     const user = await getUserById(auth.profileUserId).catch(() => null);
     const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },

@@ -14,7 +14,11 @@ import { completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
-import { BillingService, InsufficientFundsError } from "@/lib/services/billing-service";
+import {
+  BillingService,
+  InsufficientFundsError,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
 import {
   compatibilityChartsAreCurrent,
   claimCompatibilityGeneration,
@@ -23,7 +27,7 @@ import {
 } from "@/lib/services/natal-compatibility-service";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
-  trackWorkerJobCharged,
+  chargeRuneActionForWorkerJob,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobRefunded,
@@ -120,7 +124,7 @@ ${formatCompatibilityEvidence(evidence)}`);
     },
   ];
 
-  let charge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | undefined;
+  let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
@@ -137,11 +141,11 @@ ${formatCompatibilityEvidence(evidence)}`);
   };
 
   try {
-    charge = await BillingService.chargeRuneAction({
+    charge = await chargeRuneActionForWorkerJob({
+      request,
       userId: auth.profileUserId,
       action: "SYNASTRY_REPORT",
     });
-    await trackWorkerJobCharged(request, charge.transactionId);
     const natalModel = await getNatalModel();
     let raw = await completeChat({
       messages: baseMessages,

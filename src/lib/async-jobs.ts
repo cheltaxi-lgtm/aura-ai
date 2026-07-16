@@ -136,6 +136,8 @@ export async function claimAsyncJobs(input: {
 /**
  * Reset or fail jobs stuck in `running` after a worker crash / hard kill.
  * Fresh stale jobs return to `pending` (up to maxAttempts); older ones fail.
+ * Requeue preserves billing_state=charged — natal routes must reuse the ledger
+ * via chargeRuneActionForWorkerJob (no second spend).
  */
 export async function reapStaleRunningAsyncJobs(input?: {
   staleAfterMs?: number;
