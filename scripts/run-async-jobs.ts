@@ -17,10 +17,13 @@ import {
 
 const POLL_INTERVAL_MS = Math.max(250, Number(process.env.ASYNC_JOB_POLL_MS) || 1_000);
 const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.ASYNC_JOB_CONCURRENCY) || 2));
-/** Keep above Next route maxDuration (300s) so the handler can finish before we reconcile. */
+/**
+ * Stay under Next route maxDuration (300s). After abort we still wait TIMEOUT_GRACE
+ * before refund so a late save_claimed can win.
+ */
 const REQUEST_TIMEOUT_MS = Math.max(
   60_000,
-  Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 330_000
+  Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 280_000
 );
 const STALE_RUNNING_MS = Math.max(
   60_000,

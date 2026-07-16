@@ -72,6 +72,40 @@ export async function findActiveAsyncJob(input: {
   return rows[0]?.id ?? null;
 }
 
+/** Cap in-flight natal jobs per user (pending + running). */
+export async function countActiveAsyncJobsForUser(input: {
+  userId: string;
+  kinds: AsyncJobKind[];
+}): Promise<number> {
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM async_jobs
+     WHERE user_id = $1
+       AND status IN ('pending', 'running')
+       AND expires_at > NOW()
+       AND kind = ANY($2::text[])`,
+    [input.userId, input.kinds]
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+/**
+ * Claim exclusive right to persist a paid report for a worker job.
+ * Blocks timeout-refund from winning after generation finishes.
+ */
+export async function claimAsyncJobForSave(jobId: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE async_jobs
+     SET period_metadata = period_metadata || '{"save_claimed":true}'::jsonb,
+         updated_at = NOW()
+     WHERE id = $1
+       AND status = 'running'
+       AND billing_state IN ('unbilled', 'charged')`,
+    [jobId]
+  );
+  return rowCount === 1;
+}
+
 export async function getAsyncJobForUser(
   jobId: string,
   userId: string
@@ -263,53 +297,55 @@ export async function markAsyncJobRefunded(jobId: string): Promise<void> {
 }
 
 /**
- * Idempotent complete: accepts running, or a false-negative timeout failure
- * so a late route success can still win.
+ * Complete only while still running and not refunded.
+ * Never re-open a failed/refunded job (prevents free report after timeout refund).
  */
 export async function completeAsyncJob(
   jobId: string,
   result: Record<string, unknown>
-): Promise<void> {
-  await query(
+): Promise<boolean> {
+  const { rowCount } = await query(
     `UPDATE async_jobs
      SET status = 'completed',
          result = $2::jsonb,
          error_message = NULL,
          error_code = NULL,
-         billing_state = CASE
-           WHEN billing_state = 'refunded' THEN 'refunded'
-           ELSE 'completed'
-         END,
+         billing_state = 'completed',
          completed_at = NOW(),
          updated_at = NOW()
      WHERE id = $1
-       AND (
-         status = 'running'
-         OR (status = 'failed' AND error_code IN ('worker_timeout', 'stale_running'))
-       )`,
+       AND status = 'running'
+       AND billing_state IN ('unbilled', 'charged')`,
     [jobId, JSON.stringify(result)]
   );
+  return rowCount === 1;
 }
 
 export async function failAsyncJob(
   jobId: string,
   message: string,
-  errorCode = "generation_failed"
-): Promise<void> {
-  await query(
+  errorCode = "generation_failed",
+  options?: { onlyIfSaveNotClaimed?: boolean }
+): Promise<boolean> {
+  const saveGuard = options?.onlyIfSaveNotClaimed
+    ? `AND COALESCE((period_metadata->>'save_claimed')::boolean, false) = false`
+    : "";
+  const { rowCount } = await query(
     `UPDATE async_jobs
      SET status = 'failed',
          error_message = $2,
          error_code = $3,
          completed_at = NOW(),
          updated_at = NOW()
-     WHERE id = $1 AND status = 'running'`,
+     WHERE id = $1 AND status = 'running'
+       ${saveGuard}`,
     [jobId, message.slice(0, 2000), errorCode.slice(0, 100)]
   );
+  return rowCount === 1;
 }
 
 /**
- * Fail a still-running job and refund if it was charged but not yet refunded/completed.
+ * Fail a still-running job and refund if charged — but never after save_claimed.
  * Used by the worker after timeout reconciliation.
  */
 export async function failAsyncJobAndRefundIfCharged(
@@ -322,25 +358,40 @@ export async function failAsyncJobAndRefundIfCharged(
     return { failed: false, refunded: job?.billing_state === "refunded" };
   }
 
-  let refunded = job.billing_state === "refunded";
-  if (job.billing_state === "charged" && job.charge_transaction_id) {
+  // Atomic: lose to save_claimed / complete so we never refund a delivered report.
+  const failed = await failAsyncJob(jobId, message, errorCode, {
+    onlyIfSaveNotClaimed: true,
+  });
+  if (!failed) {
+    return { failed: false, refunded: false };
+  }
+
+  let refunded = false;
+  const latest = await getAsyncJobById(jobId);
+  if (latest?.billing_state === "charged" && latest.charge_transaction_id) {
     try {
-      refunded = (await refundChargedAsyncJobIfNeeded(jobId)) || refunded;
+      refunded = await refundChargedAsyncJobIfNeeded(jobId);
     } catch (error) {
       console.error(`[async-jobs] refund failed for job ${jobId}:`, error);
     }
   }
 
-  const latest = await getAsyncJobById(jobId);
-  const chargedUnresolved = latest?.billing_state === "charged";
-  await failAsyncJob(
-    jobId,
-    chargedUnresolved
-      ? `${message} Проверьте баланс — автоматический возврат мог не пройти.`
-      : message,
-    errorCode
-  );
-  return { failed: true, refunded: latest?.billing_state === "refunded" || refunded };
+  if (latest?.billing_state === "charged" && !refunded) {
+    await query(
+      `UPDATE async_jobs
+       SET error_message = $2, updated_at = NOW()
+       WHERE id = $1 AND status = 'failed'`,
+      [
+        jobId,
+        `${message} Проверьте баланс — автоматический возврат мог не пройти.`.slice(0, 2000),
+      ]
+    );
+  }
+
+  return {
+    failed: true,
+    refunded: (await getAsyncJobById(jobId))?.billing_state === "refunded" || refunded,
+  };
 }
 
 export function scheduleAsyncJob(jobId: string, runner: () => Promise<void>): void {

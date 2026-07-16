@@ -26,6 +26,7 @@ import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
+  beginWorkerJobSave,
   chargeRuneActionForWorkerJob,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
@@ -250,6 +251,17 @@ ${evidenceIds.join("\n")}`);
     }
     const report = generated.report;
     const interpretation = natalReportToPlainText(report);
+
+    if (!(await beginWorkerJobSave(request))) {
+      await rollback();
+      return NextResponse.json(
+        {
+          error: "Генерация была отменена по таймауту. Оплата возвращена.",
+          refunded: true,
+        },
+        { status: 409 }
+      );
+    }
 
     const saved = await saveCurrentNatalInterpretation({
       userId: ctx.profileUserId,

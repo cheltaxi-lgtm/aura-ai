@@ -8,8 +8,11 @@ Type=simple
 User=root
 WorkingDirectory=/opt/aura-ai
 Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
 EnvironmentFile=/opt/aura-ai/.env.local
-ExecStart=/usr/bin/npm start
+# Bind loopback only — Caddy reverse_proxies 127.0.0.1:3000 (no public :3000).
+ExecStart=/usr/bin/npm start -- -H 127.0.0.1 -p 3000
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/log/aura-ai/app.log

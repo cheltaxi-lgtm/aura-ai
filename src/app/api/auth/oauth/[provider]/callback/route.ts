@@ -125,12 +125,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       needsProfile: result.needsProfile ? "1" : "0",
     });
     if (result.profile) completeParams.set("hasProfile", "1");
+    // Keep handoff in the URL fragment (not query) so it is not sent to servers/logs/Referer.
+    let completePath = `/auth/oauth/complete?${completeParams.toString()}`;
     if (pending.appFlow) {
       const handoff = await createOAuthHandoff(result.account.id);
-      completeParams.set("handoff", handoff);
+      completePath = `${completePath}#handoff=${encodeURIComponent(handoff)}`;
     }
 
-    const completePath = `/auth/oauth/complete?${completeParams.toString()}`;
     return redirectNoStore(
       pending.appFlow
         ? buildAppOAuthCompleteUrl(completePath)

@@ -27,6 +27,7 @@ import {
 } from "@/lib/services/natal-compatibility-service";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
+  beginWorkerJobSave,
   chargeRuneActionForWorkerJob,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
@@ -211,6 +212,13 @@ ${formatCompatibilityEvidence(evidence)}`);
       );
     }
 
+    if (!(await beginWorkerJobSave(request))) {
+      await rollback();
+      return NextResponse.json(
+        { error: "generation_timeout", refunded: true },
+        { status: 409 }
+      );
+    }
     const saved = await saveCompatibilityReport({
       id,
       ownerUserId: auth.profileUserId,

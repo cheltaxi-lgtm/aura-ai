@@ -82,12 +82,26 @@ export default function OAuthCompletePage() {
     const mode = params.get("mode") === "register" ? "register" : "login";
     const isNewUser = params.get("new") === "1";
     const needsProfile = params.get("needsProfile") === "1";
-    const handoff = params.get("handoff");
+    const handoffFromQuery = params.get("handoff");
+    const handoffFromHash = (() => {
+      const raw = window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash;
+      return new URLSearchParams(raw).get("handoff");
+    })();
+    let handoffFromStore: string | null = null;
+    try {
+      handoffFromStore = window.sessionStorage.getItem("aura_oauth_handoff");
+      if (handoffFromStore) window.sessionStorage.removeItem("aura_oauth_handoff");
+    } catch {
+      handoffFromStore = null;
+    }
+    const handoff = handoffFromQuery || handoffFromHash || handoffFromStore;
 
     void (async () => {
       try {
         const me = await ensureAuthenticated(handoff);
-        // Drop one-time handoff from URL so chunk-reload / back won't reuse it.
+        // Drop one-time handoff from URL/hash so chunk-reload / back won't reuse it.
         window.history.replaceState(null, "", "/auth/oauth/complete");
 
         await flushWebViewCookies();

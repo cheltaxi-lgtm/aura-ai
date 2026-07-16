@@ -27,6 +27,7 @@ import { isNatalChartEnabled } from "@/lib/settings";
 import { getUserById } from "@/lib/users";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
+  beginWorkerJobSave,
   chargeRuneActionForWorkerJob,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
@@ -231,6 +232,16 @@ ${timingEvidenceIds.join("\n")}`);
     }
 
     const report = generated.report;
+    if (!(await beginWorkerJobSave(request))) {
+      await rollback();
+      return NextResponse.json(
+        {
+          error: "Генерация была отменена по таймауту. Оплата возвращена.",
+          refunded: true,
+        },
+        { status: 409 }
+      );
+    }
     const saved = await saveCurrentNatalInterpretation({
       userId: auth.profileUserId,
       tradition: "western",

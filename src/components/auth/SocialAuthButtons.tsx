@@ -143,7 +143,15 @@ export default function SocialAuthButtons({
         });
         if (result.hasProfile) params.set("hasProfile", "1");
         if (typeof result.handoff === "string" && result.handoff.trim()) {
-          params.set("handoff", result.handoff.trim());
+          try {
+            window.sessionStorage.setItem("aura_oauth_handoff", result.handoff.trim());
+          } catch {
+            // Fall back to fragment (not query) if storage is unavailable.
+            window.location.assign(
+              `/auth/oauth/complete?${params.toString()}#handoff=${encodeURIComponent(result.handoff.trim())}`
+            );
+            return;
+          }
         }
         window.location.assign(`/auth/oauth/complete?${params.toString()}`);
         return;

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import {
+  claimAsyncJobForSave,
   completeAsyncJob,
   failAsyncJob,
   getAsyncJobById,
@@ -80,6 +81,17 @@ async function billingChargeFromExistingTransaction(
     slotReserved: false,
     transactionId,
   };
+}
+
+/**
+ * Must run immediately before persisting a paid report on a worker job.
+ * Wins against timeout-refund (which refuses to fail after save_claimed).
+ */
+export async function beginWorkerJobSave(request: NextRequest): Promise<boolean> {
+  const jobId = getAsyncJobIdFromRequest(request);
+  if (!jobId) return true;
+  if (request.signal.aborted) return false;
+  return claimAsyncJobForSave(jobId);
 }
 
 /**

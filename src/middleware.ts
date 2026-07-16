@@ -206,9 +206,13 @@ export async function middleware(request: NextRequest) {
   if (legacyRedirect) return legacyRedirect;
 
   const secretKey = resolveSecretKey();
+  const natalWorkerRequest = isAuthenticatedNatalWorkerRequest(request, pathname);
 
-  const maintenanceResponse = await enforceMaintenanceMode(request, pathname, secretKey);
-  if (maintenanceResponse) return maintenanceResponse;
+  // Local async worker must finish in-flight paid jobs during maintenance.
+  if (!natalWorkerRequest) {
+    const maintenanceResponse = await enforceMaintenanceMode(request, pathname, secretKey);
+    if (maintenanceResponse) return maintenanceResponse;
+  }
 
   const needsAuthSecret =
     pathname.startsWith("/api/") ||
@@ -224,7 +228,7 @@ export async function middleware(request: NextRequest) {
     if (isPublicApiRoute(pathname)) {
       return NextResponse.next();
     }
-    if (isAuthenticatedNatalWorkerRequest(request, pathname)) {
+    if (natalWorkerRequest) {
       return NextResponse.next();
     }
 

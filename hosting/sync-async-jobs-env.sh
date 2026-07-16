@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build a minimal EnvironmentFile for the natal async worker (no LLM/OAuth secrets).
+# DATABASE_URL is required for claim/reaper — accepted residual blast radius if aura-ai is compromised.
 set -euo pipefail
 
 APP_ROOT="${1:-/opt/aura-ai}"
