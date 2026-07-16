@@ -13,6 +13,7 @@ import {
   type ValidateNatalReportOptions,
 } from "./report";
 import type { NatalTradition } from "./types";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 
 export type GenerateValidatedNatalReportParams = {
   baseMessages: ChatMessage[];
@@ -87,30 +88,14 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 function transliterateLatinName(name: string): string {
-  const known: Record<string, string> = {
-    gennady: "Геннадий",
-    gennadiy: "Геннадий",
-    genadiy: "Геннадий",
-  };
-  const pairs: Array<[RegExp, string]> = [
-    [/shch/g, "щ"], [/sch/g, "щ"], [/yo/g, "ё"], [/zh/g, "ж"],
-    [/kh/g, "х"], [/ts/g, "ц"], [/ch/g, "ч"], [/sh/g, "ш"],
-    [/yu/g, "ю"], [/ya/g, "я"], [/ye/g, "е"],
-  ];
-  const letters: Record<string, string> = {
-    a: "а", b: "б", c: "к", d: "д", e: "е", f: "ф", g: "г",
-    h: "х", i: "и", j: "дж", k: "к", l: "л", m: "м", n: "н",
-    o: "о", p: "п", q: "к", r: "р", s: "с", t: "т", u: "у",
-    v: "в", w: "в", x: "кс", y: "ы", z: "з",
-  };
-  return name.split(/\s+/).map((part) => {
-    const lower = part.toLowerCase();
-    if (known[lower]) return known[lower];
-    let value = lower;
-    for (const [pattern, replacement] of pairs) value = value.replace(pattern, replacement);
-    value = [...value].map((char) => letters[char] ?? char).join("");
-    return value ? `${value[0]!.toUpperCase()}${value.slice(1)}` : value;
-  }).join(" ");
+  // Prefer shared first-name normalizer; fall back to full-string map for report sanitizer.
+  const first = normalizePersonDisplayName(name);
+  if (first && !/\s/.test(name.trim())) return first;
+  return name
+    .split(/\s+/)
+    .map((part) => normalizePersonDisplayName(part) || part)
+    .filter(Boolean)
+    .join(" ");
 }
 
 function sanitizeNatalText(text: string, clientName?: string): string {

@@ -7,6 +7,7 @@ import DestinyMatrixGrid, {
 import { buildMatrixFreeSummary, type MatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
 import { parseBirthDate } from "@/lib/numerology/constants";
 import { readStoredProfile } from "@/lib/home-flow-storage";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { useAuth } from "@/lib/useAuth";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { PRICING } from "@/lib/config/pricing";
@@ -93,6 +94,9 @@ export default function DestinyMatrixPreview() {
       }
 
       if (cancelled) return;
+
+      // OAuth / Latin full names → short Russian given name (e.g. Gennady Kharitonov → Геннадий)
+      nextName = normalizePersonDisplayName(nextName);
 
       if (nextName) setName(nextName);
       if (nextDate) setBirthDate(nextDate);
