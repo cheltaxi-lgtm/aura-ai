@@ -48,6 +48,26 @@ export default function LoggedInHomeBanner({
             onQuestionSubmit={onQuestionSubmit}
           />
         ) : null}
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <a
+            href="/numerology/destiny-matrix"
+            className="rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold"
+          >
+            Матрица судьбы
+          </a>
+          <a
+            href="/?numerolog=1&tool=destiny_matrix"
+            className="rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold"
+          >
+            С Эвелиной
+          </a>
+          <a
+            href="/cabinet/astrology"
+            className="rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold"
+          >
+            Натальная карта
+          </a>
+        </div>
       </div>
     </section>
   );

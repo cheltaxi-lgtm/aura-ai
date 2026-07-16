@@ -106,6 +106,17 @@ export const EDITORIAL_SESSION_STEPS = [
 
 export const EDITORIAL_PRACTICES = [
   {
+    id: "matrix",
+    title: "Матрица судьбы",
+    subtitle: "Бесплатный расчёт по дате рождения — без регистрации и длинных анкет",
+    image: "/landing/practices/numerology.jpg",
+    cta: "Рассчитать бесплатно",
+    /** Free preview — skip registration gate for guests. */
+    guestHref: "/numerology/destiny-matrix",
+    guestReturn: { custom: "/numerology/destiny-matrix" },
+    loggedInHref: "/numerology/destiny-matrix",
+  },
+  {
     id: "tarot",
     title: "Классическое Таро",
     subtitle: "Откройте три карты — увидите ориентир по вопросу ещё до оплаты",
@@ -126,7 +137,7 @@ export const EDITORIAL_PRACTICES = [
   {
     id: "numerology",
     title: "Нумерология",
-    subtitle: "Числа судьбы и циклы — персональный разбор после входа",
+    subtitle: "Числа судьбы, квадрат Пифагора и циклы — с Эвелиной",
     image: "/landing/practices/numerology.jpg",
     cta: "Зарегистрироваться и начать",
     guestReturn: { custom: "/numerology" },
@@ -144,7 +155,7 @@ export const EDITORIAL_PRACTICES = [
 ] as const;
 
 export const EDITORIAL_FOOTER_TAGLINE =
-  "Таро · руны · астрология · нумерология — в одном пространстве";
+  "Таро · матрица судьбы · астрология · нумерология — в одном пространстве";
 
 export type EditorialNavItem =
   | { label: string; href: string; guestHref?: string }
@@ -153,6 +164,7 @@ export type EditorialNavItem =
 export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Практики", hash: EDITORIAL_SECTION_IDS.practices },
   { label: "Мастера", hash: EDITORIAL_SECTION_IDS.masters },
+  { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Таро", href: "/rasklad" },
   { label: "Нумерология", href: "/numerology" },
   { label: "Моё пространство", href: "/cabinet", guestHref: "/auth/user/login" },

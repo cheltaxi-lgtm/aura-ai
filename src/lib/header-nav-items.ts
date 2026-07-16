@@ -4,6 +4,7 @@ import {
   Download,
   Flame,
   HeartHandshake,
+  Hexagon,
   Layers,
   LayoutGrid,
   Sparkles,
@@ -17,6 +18,11 @@ import {
   navigateToNatalCompatibility,
   navigateToSpreadCatalog,
 } from "@/lib/app-shell-nav";
+
+function navigateToDestinyMatrix() {
+  if (typeof window === "undefined") return;
+  window.location.assign("/numerology/destiny-matrix");
+}
 
 const APK_URL =
   process.env.NEXT_PUBLIC_ANDROID_APK_URL?.trim() || "/releases/zovus-latest.apk";
@@ -119,6 +125,12 @@ export function buildHeaderNavSections(
           label: "Обряд",
           icon: Flame,
           onClick: callbacks.onNavRitual,
+        },
+        {
+          id: "destiny-matrix",
+          label: "Матрица судьбы",
+          icon: Hexagon,
+          onClick: navigateToDestinyMatrix,
         },
         {
           id: "natal-chart",

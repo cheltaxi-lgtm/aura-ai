@@ -1074,8 +1074,14 @@ html:has(.editorial-landing) .aura-mystic-bg {
 
 @media (min-width: 1024px) {
   .editorial-practices__grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 1.125rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .editorial-practices__grid {
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 

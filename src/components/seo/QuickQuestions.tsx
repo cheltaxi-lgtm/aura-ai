@@ -26,6 +26,7 @@ const QUICK_INTENT_SLUGS = [
 ] as const;
 
 const ENTRY_LINKS = [
+  { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Все расклады", href: "/rasklady" },
   { label: "Фото-расклад", href: "/?photo=1" },
   { label: "Отметить карты", href: "/?photo=1&mode=mark" },

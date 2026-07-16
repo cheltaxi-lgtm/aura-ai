@@ -15,13 +15,18 @@ export default function EditorialPracticesSection({ isLoggedIn }: EditorialPract
       <div className="editorial-landing__inner">
         <h2 className="editorial-section__title">Наши практики</h2>
         <p className="editorial-section__subtitle">
-          Выберите направление — после регистрации сразу откроется нужный раздел
+          Матрица судьбы открывается сразу. Остальные направления — после входа в нужный раздел.
         </p>
         <div className="editorial-practices__grid">
           {EDITORIAL_PRACTICES.map((practice) => {
+            const guestDirect =
+              "guestHref" in practice && typeof practice.guestHref === "string"
+                ? practice.guestHref
+                : null;
             const href = isLoggedIn
               ? practice.loggedInHref
-              : buildRegisterHref(resolveRegistrationReturnTo(practice.guestReturn));
+              : guestDirect ??
+                buildRegisterHref(resolveRegistrationReturnTo(practice.guestReturn));
 
             return (
               <Link key={practice.id} href={href} className="editorial-practice-card">

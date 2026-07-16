@@ -77,6 +77,11 @@ export default function HomeSeoContent() {
           </Link>
         </li>
         <li>
+          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+            Матрица судьбы
+          </Link>
+        </li>
+        <li>
           <Link href="/numerology" className="text-aura-gold hover:underline">
             Нумерология
           </Link>

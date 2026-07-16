@@ -13,6 +13,7 @@ import {
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 
 const SERVICES = [
+  { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
   { href: "/rasklady", label: "Расклады Таро" },
   { href: "/cabinet/astrology", label: "Натальная карта" },
   { href: "/photo-rasklad", label: "Фото-расклад" },
@@ -24,6 +25,12 @@ const SERVICES = [
 ] as const;
 
 const SERVICE_DETAILS = [
+  {
+    href: "/numerology/destiny-matrix",
+    title: "Матрица судьбы",
+    text: "Быстрый расчёт по дате рождения: предназначение, деньги, отношения и аркан года. Базовый результат бесплатно — полный разбор с Эвелиной.",
+    icon: Sparkles,
+  },
   {
     href: "/rasklady",
     title: "Расклады Таро онлайн",
