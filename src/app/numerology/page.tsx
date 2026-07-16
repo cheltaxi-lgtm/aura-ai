@@ -54,7 +54,7 @@ export default function NumerologyPage() {
       <h1 className="mt-2 font-display text-3xl font-bold">Нумерология по дате рождения онлайн</h1>
       <p className="mt-4 text-white/70">
         {evelina?.name ?? "Эвелина"} считает числа по вашим данным и разбирает их в диалоге — путь,
-        циклы, совместимость и матрица. Не случайный draw: только расчёт и спокойный разбор.
+        циклы, совместимость и матрица. Не случайный выпад карт: только расчёт и спокойный разбор.
       </p>
 
       <p className="mt-4 text-sm text-white/50">Полная сессия · от {sessionCost} ᚢ</p>

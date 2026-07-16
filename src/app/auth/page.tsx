@@ -129,7 +129,7 @@ export default function AuthPortalPage() {
           Добро пожаловать
         </h1>
         <p className="mx-auto max-w-sm text-sm text-aura-ivory/50">
-          Мы помогаем найти ответы — выберите, как вы хотите войти
+          Выберите, как войти в пространство Zovus
         </p>
       </motion.div>
 
@@ -144,8 +144,8 @@ export default function AuthPortalPage() {
       >
         <RoleCard
           icon={Compass}
-          title="Искатель"
-          description="Расклады, мастера и личный кабинет — путь к подсказкам и ясности"
+          title="Гость салона"
+          description="Расклады, наставники и личный кабинет — ваше пространство для практики"
           accent="violet"
           loginHref={userLoginHref}
           registerHref={userRegisterHref}
@@ -155,7 +155,7 @@ export default function AuthPortalPage() {
           <RoleCard
             icon={Sparkles}
             title="Мастер"
-            description="Своя страница, white-label и доход 80% — делитесь знанием с миром"
+            description="Своя витрина, свой бренд и доход 80% — делитесь практикой с аудиторией"
             accent="gold"
             loginHref={expertLoginHref}
             registerHref={expertRegisterHref}

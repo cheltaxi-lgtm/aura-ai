@@ -144,7 +144,7 @@ const COMPARISON_ROWS = [
   {
     title: "Честная цена",
     them: "«Бесплатно» — пока не дойдёте до полной расшифровки или подписки",
-    us: "Стоимость видна заранее в рублях, платите только за то, что открываете",
+    us: "Цена в рунах ᚢ видна до списания — платите только за то, что открываете",
   },
   {
     title: "Доступ без ожидания",
@@ -309,7 +309,7 @@ export default function AuraSellingLanding({
   };
 
   const handleSecondaryCta = () => {
-    scrollToMasters();
+    scrollToSession();
   };
 
   const handleDirection = (filter: (typeof DIRECTIONS)[number]["filter"]) => {
@@ -516,10 +516,10 @@ export default function AuraSellingLanding({
       ) : null}
 
       {showSellingSections && !isEditorial ? (
-        <section className="aura-landing-section">
+        <section id="как-проходит-сеанс" className="aura-landing-section scroll-mt-24">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
-              <h2 className="font-mystic-display aura-landing-section__title">Как это работает</h2>
+              <h2 className="font-mystic-display aura-landing-section__title">Как проходит сеанс</h2>
               <p className="aura-landing-section__subtitle">От вопроса к ясности — в три шага</p>
             </div>
             <div className="aura-landing-steps">

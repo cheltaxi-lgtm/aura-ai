@@ -8,7 +8,7 @@ export default function ExpertLoginPage() {
         ← Выбор аккаунта
       </Link>
       <h1 className="font-display mb-2 text-center text-3xl text-white">Вход мастера</h1>
-      <p className="mb-8 text-center text-sm text-aura-ivory/45">Кабинет партнёра · white-label страница</p>
+      <p className="mb-8 text-center text-sm text-aura-ivory/45">Кабинет партнёра · своя витрина</p>
       <AuthForm mode="login" role="expert" />
     </div>
   );

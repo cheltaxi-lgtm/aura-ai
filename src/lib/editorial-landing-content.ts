@@ -63,7 +63,7 @@ export const EDITORIAL_TOPICS: EditorialTopic[] = [
     "Выбор",
     "Когда путей несколько — и нужен спокойный взгляд",
     "/landing/topics/choice.jpg",
-    "blizhayshee-budushchee"
+    "stoit-li-idti-dalshe"
   ),
   topicFromIntent(
     "self",
