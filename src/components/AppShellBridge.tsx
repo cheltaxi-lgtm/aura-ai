@@ -49,7 +49,7 @@ export default function AppShellBridge() {
   useEffect(() => {
     if (!shouldUseAppShellClient()) return;
     return registerAppShellRouter((path) => {
-      router.push(path);
+      router.push(path, { scroll: true });
     });
   }, [router]);
 

@@ -4,7 +4,8 @@
 
 @layer base {
   html {
-    scroll-behavior: smooth;
+    /* Do not set scroll-behavior: smooth on html — it breaks App Router
+       scroll-to-top on soft navigation (lands mid/end of the next page). */
     background-color: #080604;
   }
 
