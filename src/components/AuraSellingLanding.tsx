@@ -206,6 +206,8 @@ export interface AuraSellingLandingProps {
   photoNavLabel?: string;
   /** Explicit "get a ritual" CTA — shown right under quick questions, no scrolling needed. */
   onOpenRitual?: () => void;
+  /** Logged-in: open Эвелина session with Матрица судьбы preselected. */
+  onOpenDestinyMatrixSession?: () => void;
   /** Logged-in home: open spread flow from the custom question field (hero is hidden). */
   onCustomQuestionSubmit?: (question: string) => void;
   /** Logged-in home: start the selected catalog spread from quick question chips. */
@@ -240,6 +242,7 @@ export default function AuraSellingLanding({
   onOpenMarkCards,
   photoNavLabel,
   onOpenRitual,
+  onOpenDestinyMatrixSession,
   onCustomQuestionSubmit,
   onQuickQuestionSelect,
   homeUserName,
@@ -414,6 +417,8 @@ export default function AuraSellingLanding({
         <LoggedInHomeBanner
           userName={homeUserName}
           onQuestionSubmit={onCustomQuestionSubmit ?? onQuickQuestionSelect}
+          onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
+          onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
         />
       ) : null}
 
@@ -439,7 +444,10 @@ export default function AuraSellingLanding({
       ) : null}
 
       {showQuickQuestionsBlock || (showSellingSections && isEditorial) ? (
-        <HomeDestinyMatrixBanner isLoggedIn={isLoggedIn} />
+        <HomeDestinyMatrixBanner
+          isLoggedIn={isLoggedIn}
+          onOpenWithEvelina={isLoggedIn ? onOpenDestinyMatrixSession : undefined}
+        />
       ) : null}
 
       {onOpenRitual ? (

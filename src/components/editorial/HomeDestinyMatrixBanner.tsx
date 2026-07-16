@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Hexagon } from "lucide-react";
 import { PRICING } from "@/lib/config/pricing";
 
@@ -8,14 +7,29 @@ const MATRIX_HREF = "/numerology/destiny-matrix";
 const FULL_SESSION_HREF = "/?numerolog=1&tool=destiny_matrix";
 
 type HomeDestinyMatrixBannerProps = {
-  /** Logged-in users get a secondary CTA into Эвелина session. */
   isLoggedIn?: boolean;
+  /** Prefer direct session open over URL deep-link when parent can handle it. */
+  onOpenWithEvelina?: () => void;
 };
 
 /** Homepage promo — matrix is the lightest product entry (date → free preview). */
 export default function HomeDestinyMatrixBanner({
   isLoggedIn = false,
+  onOpenWithEvelina,
 }: HomeDestinyMatrixBannerProps) {
+  const openPreview = () => {
+    window.location.assign(MATRIX_HREF);
+  };
+
+  const openWithEvelina = () => {
+    if (onOpenWithEvelina) {
+      onOpenWithEvelina();
+      return;
+    }
+    // Full navigation so HomePage deep-link effect re-runs (soft Link to /?… is a no-op).
+    window.location.assign(FULL_SESSION_HREF);
+  };
+
   return (
     <section className="ritual-cta-banner" aria-labelledby="home-destiny-matrix-title">
       <div className="ritual-cta-banner__inner">
@@ -37,20 +51,22 @@ export default function HomeDestinyMatrixBanner({
             Полный AI-разбор с Эвелиной — от {PRICING.NUMEROLOGY_SESSION} ᚢ
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:items-end">
-          <Link
-            href={MATRIX_HREF}
-            className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn inline-flex justify-center"
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+          <button
+            type="button"
+            onClick={openPreview}
+            className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn"
           >
             Рассчитать бесплатно
-          </Link>
+          </button>
           {isLoggedIn ? (
-            <Link
-              href={FULL_SESSION_HREF}
-              className="btn-luxe btn-luxe--md btn-luxe--ghost ritual-cta-banner__btn inline-flex justify-center"
+            <button
+              type="button"
+              onClick={openWithEvelina}
+              className="btn-luxe btn-luxe--md btn-luxe--ghost ritual-cta-banner__btn"
             >
               С Эвелиной
-            </Link>
+            </button>
           ) : null}
         </div>
       </div>

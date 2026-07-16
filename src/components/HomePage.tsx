@@ -3128,6 +3128,9 @@ export default function HomePage({
                   showTariffs
                   homeUserName={effectiveProfile.name || authUser?.name}
                   onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
+                  onOpenDestinyMatrixSession={
+                    isLoggedIn ? () => openNumerologSessionFlow("destiny_matrix") : undefined
+                  }
                   onCustomQuestionSubmit={isLoggedIn ? handleLandingCustomQuestion : undefined}
                   onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}
                   onOpenPhotoReading={() => openPhotoReading()}

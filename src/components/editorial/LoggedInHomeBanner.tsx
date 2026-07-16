@@ -1,13 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 
 type LoggedInHomeBannerProps = {
   userName?: string | null;
   onQuestionSubmit?: (question: string) => void;
+  onOpenDestinyMatrix?: () => void;
+  onOpenDestinyMatrixSession?: () => void;
 };
+
+const chipClass =
+  "rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold";
 
 /**
  * Same editorial-hero shell as the guest landing (media + dissolve + overlay),
@@ -16,6 +20,8 @@ type LoggedInHomeBannerProps = {
 export default function LoggedInHomeBanner({
   userName,
   onQuestionSubmit,
+  onOpenDestinyMatrix,
+  onOpenDestinyMatrixSession,
 }: LoggedInHomeBannerProps) {
   const greeting = userName?.trim()
     ? `С возвращением, ${userName.trim().split(/\s+/)[0]}`
@@ -50,24 +56,33 @@ export default function LoggedInHomeBanner({
           />
         ) : null}
         <div className="mt-5 flex flex-wrap justify-center gap-2">
-          <Link
-            href="/numerology/destiny-matrix"
-            className="rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold"
+          <button
+            type="button"
+            className={chipClass}
+            onClick={() => {
+              if (onOpenDestinyMatrix) onOpenDestinyMatrix();
+              else window.location.assign("/numerology/destiny-matrix");
+            }}
           >
             Матрица судьбы
-          </Link>
-          <Link
-            href="/?numerolog=1&tool=destiny_matrix"
-            className="rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold"
+          </button>
+          <button
+            type="button"
+            className={chipClass}
+            onClick={() => {
+              if (onOpenDestinyMatrixSession) onOpenDestinyMatrixSession();
+              else window.location.assign("/?numerolog=1&tool=destiny_matrix");
+            }}
           >
             С Эвелиной
-          </Link>
-          <Link
-            href="/cabinet/astrology"
-            className="rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold"
+          </button>
+          <button
+            type="button"
+            className={chipClass}
+            onClick={() => window.location.assign("/cabinet/astrology")}
           >
             Натальная карта
-          </Link>
+          </button>
         </div>
       </div>
     </section>
