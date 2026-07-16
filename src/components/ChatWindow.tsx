@@ -31,6 +31,7 @@ import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
 import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
+import MatrixReportUpsell from "@/components/numerolog/MatrixReportUpsell";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
 import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
 import type { NumerologToolId } from "@/lib/numerology/tools";
@@ -103,6 +104,8 @@ interface ChatWindowProps {
   spreadPythagorasSquare?: PythagorasSquareResult | null;
   spreadDestinyMatrix?: DestinyMatrixResult | null;
   numerologSessionToolId?: NumerologToolId | null;
+  /** Open another numerolog tool (matrix upsell). */
+  onOpenNumerologTool?: (toolId: NumerologToolId) => void;
   spreadInteractiveFlip?: boolean;
   spreadFlipped?: boolean[];
   onSpreadFlip?: (index: number) => void;
@@ -164,6 +167,7 @@ export default function ChatWindow({
   spreadPythagorasSquare = null,
   spreadDestinyMatrix = null,
   numerologSessionToolId = null,
+  onOpenNumerologTool,
   spreadInteractiveFlip = false,
   spreadFlipped = spreadFlippedState(3, true),
   onSpreadFlip,
@@ -935,6 +939,14 @@ export default function ChatWindow({
                           square={pythagorasSquare}
                           className="mt-3"
                         />
+                      ) : null}
+                      {msg.role === "assistant" &&
+                      numerologSessionToolId === "destiny_matrix" &&
+                      msgIndex ===
+                        messages.findIndex(
+                          (m) => m.role === "assistant" && Boolean(m.content?.trim())
+                        ) ? (
+                        <MatrixReportUpsell onOpenTool={onOpenNumerologTool} />
                       ) : null}
                     </>
                   )}

@@ -24,8 +24,36 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { resolveSessionForUser, assertSessionReadAccess } from "@/lib/session-access";
 import { setSessionClaimCookie } from "@/lib/session-claim";
 import { parseNumerologToolParams, decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
+import { resolveMatrixAwareFreeQuestionLimit } from "@/lib/numerology/matrix-chat-allowance";
 import { upsertSessionMemoryFromChat } from "@/lib/session-memory";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
+import { getUserById } from "@/lib/users";
+
+async function resolveSessionFreeLimit(
+  session: {
+    user_id?: string | null;
+    spread_id?: string | null;
+  },
+  profileUserId: string | null | undefined
+): Promise<number> {
+  const baseLimit = await getFreeQuestionLimit();
+  let birthDate: string | null = null;
+  const uid = profileUserId ?? session.user_id ?? null;
+  if (uid) {
+    try {
+      const user = await getUserById(uid);
+      birthDate = user?.birth_date ?? null;
+    } catch {
+      birthDate = null;
+    }
+  }
+  return resolveMatrixAwareFreeQuestionLimit({
+    baseLimit,
+    profileUserId: uid,
+    birthDate,
+    spreadId: session.spread_id,
+  });
+}
 
 function formatSession(
   session: {
@@ -221,7 +249,7 @@ export async function PATCH(request: NextRequest) {
       profileUserId: updated.user_id,
     });
 
-    const freeLimit = await getFreeQuestionLimit();
+    const freeLimit = await resolveSessionFreeLimit(updated, profileUserId);
     return NextResponse.json(formatSession(updated, unlimited, freeLimit));
   } catch (error) {
     console.error("Session patch error:", error);
@@ -276,7 +304,7 @@ export async function GET(request: NextRequest) {
       profileUserId: session.user_id,
     });
 
-    const freeLimit = await getFreeQuestionLimit();
+    const freeLimit = await resolveSessionFreeLimit(session, profileUserId);
     const payload = formatSession(session, unlimited, freeLimit, false);
     if (!session.user_id) {
       return NextResponse.json({

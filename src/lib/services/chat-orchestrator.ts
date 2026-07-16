@@ -56,6 +56,7 @@ import {
   type NumerologyUi,
 } from "@/lib/services/numerology-service";
 import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
+import { resolveMatrixAwareFreeQuestionLimit } from "@/lib/numerology/matrix-chat-allowance";
 import {
   getSession,
   saveMessage,
@@ -278,6 +279,13 @@ export class ChatOrchestrator {
     if (sessionError) {
       return { ok: false, response: sessionError };
     }
+
+    orch.freeLimit = await resolveMatrixAwareFreeQuestionLimit({
+      baseLimit: orch.freeLimit,
+      profileUserId: orch.profileUserId,
+      birthDate: orch.userProfile?.birthDate,
+      spreadId: orch.session?.spread_id,
+    });
 
     return {
       ok: true,

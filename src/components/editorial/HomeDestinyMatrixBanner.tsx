@@ -48,7 +48,7 @@ export default function HomeDestinyMatrixBanner({
             Базовый расчёт бесплатно, без анкеты.
           </p>
           <p className="mt-1 text-xs text-white/40">
-            Полный AI-разбор с Эвелиной — от {PRICING.NUMEROLOGY_SESSION} ᚢ
+            Цифры бесплатно · AI-разбор с Эвелиной — {PRICING.NUMEROLOGY_SESSION} ᚢ один раз
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">

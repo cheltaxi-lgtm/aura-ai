@@ -15,7 +15,6 @@ import {
   insufficientFundsResponse,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
-import { PRICING } from "@/lib/config/pricing";
 import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
 import { generateNumerologSessionReading } from "@/lib/services/numerology-service";
 import { resolveSessionForUser } from "@/lib/session-access";
@@ -53,6 +52,12 @@ import {
   validateNumerologToolParams,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
+import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
+import {
+  findOwnedMatrixReport,
+  MATRIX_REPORT_TOOL_ID,
+  saveMatrixReport,
+} from "@/lib/services/numerology-report-service";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import {
   periodSpreadPositions,
@@ -471,14 +476,52 @@ export async function POST(request: NextRequest) {
           return { kind: "failed" as const };
         }
 
-        const runeSettings = await getRuneSettings();
-        const useRuneBilling =
-          !isDailySpread &&
-          isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
+        const isDestinyMatrix = toolId === MATRIX_REPORT_TOOL_ID;
         let runeBalance: number | undefined;
         let numerologyUi:
           | { pythagorasSquare?: import("@/lib/numerology/pythagoras-square").PythagorasSquareResult }
           | undefined;
+
+        // Buy-once Full Matrix: reopen saved AI report without recharging.
+        if (isDestinyMatrix && (await ensureDb())) {
+          const owned = await findOwnedMatrixReport(authed.profileUserId, birthDate);
+          if (owned?.content?.trim()) {
+            reading = owned.content;
+            isPaid = true;
+            if (await ensureDb()) {
+              try {
+                await persistReadingToSession({
+                  sessionId,
+                  profileUserId: authed.profileUserId,
+                  characterId,
+                  customQuestion: customQuestion || undefined,
+                  reading,
+                  tarotCards,
+                  intention: intention || undefined,
+                  spreadType: isDailySpread ? "daily" : "new",
+                  spreadId: storedSpreadId,
+                });
+              } catch (err) {
+                console.warn("Reading chat save failed:", err);
+              }
+            }
+            return {
+              kind: "new" as const,
+              reading,
+              historyId: owned.id,
+              isPaid: true,
+              runeBalance: undefined,
+              numerologyUi,
+              reused: true,
+              matrixOwned: true,
+            };
+          }
+        }
+
+        const runeSettings = await getRuneSettings();
+        const useRuneBilling =
+          !isDailySpread &&
+          isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
 
         if (useRuneBilling) {
           try {
@@ -486,7 +529,9 @@ export async function POST(request: NextRequest) {
               userId: authed.profileUserId,
               cost: tool.cost,
               actionType: "NUMEROLOGY_SESSION",
-              description: `${tool.label} (Эвелина)`,
+              description: isDestinyMatrix
+                ? `Матрица судьбы — полный AI-разбор (Эвелина)`
+                : `${tool.label} (Эвелина)`,
             });
             billingCharge = charge;
             runeBalance = charge.newBalance;
@@ -502,7 +547,8 @@ export async function POST(request: NextRequest) {
             throw err;
           }
           isPaid = true;
-          if (sessionId) {
+          // Matrix: 3 included chat questions via freeLimit, not unlimited unlock.
+          if (sessionId && !isDestinyMatrix) {
             await unlockSingleSession(sessionId);
           }
         }
@@ -526,11 +572,62 @@ export async function POST(request: NextRequest) {
               cost: billingCharge.spentRunes,
               wasFreeQuestion: false,
               actionType: "NUMEROLOGY_SESSION",
+              transactionId: billingCharge.transactionId,
             });
             billingCharge = null;
             spentRunes = 0;
           }
           return { kind: "failed" as const };
+        }
+
+        if (isDestinyMatrix && (await ensureDb())) {
+          try {
+            const matrix = birthDate ? destinyMatrix(birthDate) : null;
+            const saved = await saveMatrixReport({
+              userId: authed.profileUserId,
+              birthDateRaw: birthDate,
+              content: reading,
+              runeCost: billingCharge?.spentRunes ?? tool.cost,
+              chargeTransactionId: billingCharge?.transactionId,
+              sessionId,
+              structuredData: matrix
+                ? {
+                    version: MATRIX_CALCULATION_VERSION,
+                    matrix,
+                  }
+                : { version: MATRIX_CALCULATION_VERSION },
+            });
+            if (saved.status === "already_saved") {
+              reading = saved.report.content;
+              if (billingCharge) {
+                await BillingService.rollbackCharge({
+                  userId: authed.profileUserId,
+                  cost: billingCharge.spentRunes,
+                  wasFreeQuestion: false,
+                  actionType: "NUMEROLOGY_SESSION",
+                  transactionId: billingCharge.transactionId,
+                });
+                runeBalance = undefined;
+                spentRunes = 0;
+                billingCharge = null;
+              }
+              isPaid = true;
+            }
+          } catch (saveErr) {
+            console.error("Matrix report save failed:", saveErr);
+            if (billingCharge) {
+              await BillingService.rollbackCharge({
+                userId: authed.profileUserId,
+                cost: billingCharge.spentRunes,
+                wasFreeQuestion: false,
+                actionType: "NUMEROLOGY_SESSION",
+                transactionId: billingCharge.transactionId,
+              });
+              billingCharge = null;
+              spentRunes = 0;
+            }
+            return { kind: "failed" as const };
+          }
         }
 
         if (await ensureDb()) {
@@ -806,6 +903,10 @@ export async function POST(request: NextRequest) {
       runeBalance: lockedResult.runeBalance,
       spreadId: storedSpreadId,
       createdAt: new Date().toISOString(),
+      ...("reused" in lockedResult && lockedResult.reused ? { reused: true } : {}),
+      ...("matrixOwned" in lockedResult && lockedResult.matrixOwned
+        ? { matrixOwned: true }
+        : {}),
       ...("numerologyUi" in lockedResult && lockedResult.numerologyUi
         ? { numerologyUi: lockedResult.numerologyUi }
         : {}),

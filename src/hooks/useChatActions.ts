@@ -655,8 +655,28 @@ export function useChatActions(options: UseChatActionsOptions) {
           sessionOffline: session?.offline,
           isUnlimited: session?.isUnlimited,
         });
+        let matrixAlreadyOwned = false;
+        if (
+          billingActive &&
+          isLoggedIn &&
+          metaNumerologToolId === "destiny_matrix" &&
+          activeProfile.birthDate
+        ) {
+          try {
+            const ownedRes = await fetch(
+              `/api/numerology/matrix-report?birthDate=${encodeURIComponent(activeProfile.birthDate)}`,
+              { credentials: "include" }
+            );
+            if (ownedRes.ok) {
+              const ownedData = (await ownedRes.json()) as { owned?: boolean };
+              matrixAlreadyOwned = Boolean(ownedData.owned);
+            }
+          } catch {
+            matrixAlreadyOwned = false;
+          }
+        }
         const affordGate = gateSpreadReadingRunes({
-          billingActive,
+          billingActive: billingActive && !matrixAlreadyOwned,
           balance: runeBalance,
           cost: requiredReadingCost,
         });
@@ -766,9 +786,17 @@ export function useChatActions(options: UseChatActionsOptions) {
           if (typeof data.runeBalance === "number") {
             setRuneBalance(data.runeBalance);
             emitRuneBalanceUpdate(data.runeBalance);
-            if (session?.sessionId && !session.offline) {
-              void refresh(session.sessionId);
-            }
+          }
+          // Refresh free-question allowance after Full Matrix purchase / reopen.
+          if (
+            res.ok &&
+            session?.sessionId &&
+            !session.offline &&
+            (typeof data.runeBalance === "number" ||
+              data.matrixOwned === true ||
+              metaNumerologToolId === "destiny_matrix")
+          ) {
+            void refresh(session.sessionId);
           }
           if (res.ok && data.reading) {
             clearPendingReading();

@@ -734,6 +734,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_natal_report_history_charge
 CREATE INDEX IF NOT EXISTS idx_natal_report_history_user_created
   ON natal_report_history(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS numerology_report_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tool_id TEXT NOT NULL,
+  birth_date DATE NOT NULL,
+  calculation_version TEXT NOT NULL DEFAULT 'matrix-v1',
+  content TEXT NOT NULL CHECK (length(btrim(content)) > 0),
+  structured_data JSONB,
+  rune_cost INTEGER CHECK (rune_cost IS NULL OR rune_cost >= 0),
+  charge_transaction_id UUID REFERENCES rune_transactions(id) ON DELETE SET NULL,
+  session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT numerology_report_history_version_unique UNIQUE (
+    user_id,
+    tool_id,
+    birth_date,
+    calculation_version
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_numerology_report_history_charge
+  ON numerology_report_history(charge_transaction_id)
+  WHERE charge_transaction_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_numerology_report_history_user_created
+  ON numerology_report_history(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_numerology_report_history_user_tool_birth
+  ON numerology_report_history(user_id, tool_id, birth_date);
+
 CREATE TABLE IF NOT EXISTS natal_compatibility_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

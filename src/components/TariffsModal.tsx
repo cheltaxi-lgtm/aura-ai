@@ -131,7 +131,22 @@ export default function TariffsModal({
                   ))}
                   <li className="flex items-start justify-between gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 px-3.5 py-3">
                     <div>
-                      <p className="text-sm font-medium text-white">Сеанс нумеролога</p>
+                      <p className="text-sm font-medium text-white">Матрица судьбы — полный AI-разбор</p>
+                      <p className="mt-0.5 text-xs text-white/45">
+                        Один раз за дату · сохранение · {PRICING.MATRIX_INCLUDED_QUESTIONS} вопроса в
+                        чате (цифры бесплатны)
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <RunePrice value={PRICING.NUMEROLOGY_SESSION} iconClassName="h-3.5 w-3.5" />
+                      <p className="mt-0.5 text-[10px] text-white/40">
+                        ~{Math.round(PRICING.NUMEROLOGY_SESSION * rubPerRune)} ₽
+                      </p>
+                    </div>
+                  </li>
+                  <li className="flex items-start justify-between gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 px-3.5 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-white">Другие сеансы нумеролога</p>
                       <p className="mt-0.5 text-xs text-white/45">Расчёт и расшифровка у Эвелины</p>
                     </div>
                     <div className="shrink-0 text-right">

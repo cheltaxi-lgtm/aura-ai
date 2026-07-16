@@ -2768,6 +2768,7 @@ export default function HomePage({
                 ? (decodeNumerologSpreadId(chatDisplaySpread.spreadId) ?? null)
                 : null
             }
+            onOpenNumerologTool={(toolId) => openNumerologSessionFlow(toolId)}
             spreadInteractiveFlip={
               needsSpreadFlip &&
               !chatHasSpreadReading(messages) &&

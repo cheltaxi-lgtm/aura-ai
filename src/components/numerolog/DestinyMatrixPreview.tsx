@@ -42,6 +42,7 @@ export default function DestinyMatrixPreview() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<MatrixFreeSummary | null>(null);
   const [revealed, setRevealed] = useState(0);
+  const [ownedFull, setOwnedFull] = useState(false);
   const [pending, startTransition] = useTransition();
   const autoRanRef = useRef(false);
 
@@ -131,6 +132,30 @@ export default function DestinyMatrixPreview() {
     return () => window.clearInterval(id);
   }, [summary]);
 
+  useEffect(() => {
+    if (!isLoggedIn || !birthDate || !parseBirthDate(birthDate)) {
+      setOwnedFull(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
+          { credentials: "include" }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { owned?: boolean };
+        if (!cancelled) setOwnedFull(Boolean(data.owned));
+      } catch {
+        if (!cancelled) setOwnedFull(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, birthDate]);
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     runCalculate(birthDate, name);
@@ -142,8 +167,9 @@ export default function DestinyMatrixPreview() {
       <p className="mt-2 text-sm text-white/55">
         {fromProfile
           ? "Подставили данные из вашего профиля — можно сразу смотреть результат или изменить поля."
-          : "Нужна только дата рождения. Базовый результат — сразу на экране, без регистрации."}{" "}
-        Полный AI-разбор с Эвелиной — от {PRICING.NUMEROLOGY_SESSION} ᚢ.
+          : "Нужна только дата рождения. Цифры матрицы — бесплатно и всегда одинаковые."}{" "}
+        {PRICING.NUMEROLOGY_SESSION} ᚢ — за персональный AI-разбор Эвелины с сохранением и{" "}
+        {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате.
       </p>
 
       <form onSubmit={onSubmit} className="mt-5 space-y-3">
@@ -220,30 +246,43 @@ export default function DestinyMatrixPreview() {
           </ul>
 
           <div className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
-            <p className="text-sm font-medium text-aura-gold">Полный разбор закрыт в preview</p>
-            <ul className="mt-3 space-y-1.5 text-sm text-white/55">
-              {LOCKED_SECTIONS.map((label) => (
-                <li key={label} className="flex gap-2">
-                  <span aria-hidden className="text-white/25">
-                    ░
-                  </span>
-                  {label}
-                </li>
-              ))}
-            </ul>
+            <p className="text-sm font-medium text-aura-gold">
+              {ownedFull ? "Полный разбор уже куплен" : "Полный разбор закрыт в preview"}
+            </p>
+            {ownedFull ? (
+              <p className="mt-3 text-sm text-white/65">
+                AI-отчёт сохранён для этой даты рождения. Откройте с Эвелиной бесплатно — без
+                повторной оплаты за те же числа.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-1.5 text-sm text-white/55">
+                {LOCKED_SECTIONS.map((label) => (
+                  <li key={label} className="flex gap-2">
+                    <span aria-hidden className="text-white/25">
+                      ░
+                    </span>
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="mt-5">
               <SeoTrackedCta
                 href={FULL_HREF}
                 trackGoal="matrix_cta_full"
-                trackParams={{ source: "preview" }}
+                trackParams={{ source: "preview", owned: ownedFull ? "1" : "0" }}
               >
-                Открыть полный разбор с Эвелиной
+                {ownedFull
+                  ? "Открыть сохранённый разбор"
+                  : "Открыть полный разбор с Эвелиной"}
               </SeoTrackedCta>
             </div>
             <p className="mt-2 text-xs text-white/40">
-              {isLoggedIn
-                ? `Сессия нумерологии — ${PRICING.NUMEROLOGY_SESSION} ᚢ.`
-                : `Нужен вход в аккаунт. Сессия нумерологии — ${PRICING.NUMEROLOGY_SESSION} ᚢ.`}
+              {ownedFull
+                ? `В комплекте — ${PRICING.MATRIX_INCLUDED_QUESTIONS} вопроса в чате, дальше по тарифу вопроса.`
+                : isLoggedIn
+                  ? `Платите за AI-разбор и сохранение, не за цифры — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз.`
+                  : `Нужен вход. Затем ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз за AI-разбор с сохранением.`}
             </p>
           </div>
         </div>
