@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Hexagon } from "lucide-react";
 import { PRICING } from "@/lib/config/pricing";
 
@@ -37,19 +38,19 @@ export default function HomeDestinyMatrixBanner({
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
-          <a
+          <Link
             href={MATRIX_HREF}
             className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn inline-flex justify-center"
           >
             Рассчитать бесплатно
-          </a>
+          </Link>
           {isLoggedIn ? (
-            <a
+            <Link
               href={FULL_SESSION_HREF}
               className="btn-luxe btn-luxe--md btn-luxe--ghost ritual-cta-banner__btn inline-flex justify-center"
             >
               С Эвелиной
-            </a>
+            </Link>
           ) : null}
         </div>
       </div>
