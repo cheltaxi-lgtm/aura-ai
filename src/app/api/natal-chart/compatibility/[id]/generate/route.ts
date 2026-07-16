@@ -9,16 +9,20 @@ import {
   formatCompatibilityEvidence,
   validateCompatibilityReport,
 } from "@/lib/natal/compatibility-report";
+import { getNatalModel } from "@/lib/ai-model";
 import { completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { BillingService, InsufficientFundsError } from "@/lib/services/billing-service";
 import {
+  compatibilityChartsAreCurrent,
   claimCompatibilityGeneration,
   releaseCompatibilityClaim,
   saveCompatibilityReport,
 } from "@/lib/services/natal-compatibility-service";
+import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
 type RouteParams = { params: Promise<{ id: string }> };
@@ -27,13 +31,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   if (!(await isNatalChartEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
-  const auth = await requireProfileUserId();
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  const auth = workerUserId
+    ? { profileUserId: workerUserId }
+    : await requireProfileUserId();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const limited = await enforcePaidRouteRateLimit(
-    auth.profileUserId,
-    "natal_compatibility_generate"
-  );
-  if (limited) return limited;
+  if (!workerUserId) {
+    const limited = await enforcePaidRouteRateLimit(
+      auth.profileUserId,
+      "natal_compatibility_generate"
+    );
+    if (limited) return limited;
+  }
   const { id } = await params;
   if (!isCompatibilityId(id)) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -43,6 +52,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(
       { error: "ai_data_use_acknowledgement_required" },
       { status: 400 }
+    );
+  }
+  if (body.async === true) {
+    return enqueueNatalAsyncJob({
+      userId: auth.profileUserId,
+      kind: "natal_compatibility",
+      payload: { id, aiDataUseAcknowledged: true },
+    });
+  }
+  if (!(await compatibilityChartsAreCurrent(id, auth.profileUserId))) {
+    return NextResponse.json(
+      {
+        error: "Карты изменились после создания совместимости. Обновите расчёт — это бесплатно.",
+        code: "charts_changed",
+      },
+      { status: 409 }
     );
   }
 
@@ -101,15 +126,17 @@ ${formatCompatibilityEvidence(evidence)}`);
       userId: auth.profileUserId,
       action: "SYNASTRY_REPORT",
     });
+    const natalModel = await getNatalModel();
     let raw = await completeChat({
       messages: baseMessages,
       maxTokens: 5200,
       temperature: 0.3,
       timeoutMs: 170_000,
-      maxAttempts: 1,
+      maxAttempts: 2,
       jsonObject: true,
-      allowReasoningFallback: true,
+      allowReasoningFallback: false,
       skipTemperatureRetry: true,
+      modelOverride: natalModel,
     });
     let validation = (() => {
       try {
@@ -134,10 +161,11 @@ ${formatCompatibilityEvidence(evidence)}`);
         maxTokens: 5200,
         temperature: 0.1,
         timeoutMs: 90_000,
-        maxAttempts: 1,
+        maxAttempts: 2,
         jsonObject: true,
-        allowReasoningFallback: true,
+        allowReasoningFallback: false,
         skipTemperatureRetry: true,
+        modelOverride: natalModel,
       });
       try {
         validation = validateCompatibilityReport(

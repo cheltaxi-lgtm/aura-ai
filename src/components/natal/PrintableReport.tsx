@@ -1,10 +1,11 @@
+import Link from "next/link";
 import PrintButton from "./PrintButton";
 
 type Section = { key: string; title: string; claims: Array<{ text: string; evidenceIds?: string[] }> };
 type Evidence = { id: string; label: string; value?: string; confidence?: string; uncertainty?: string };
 
 export default function PrintableReport({
-  title, meta, sections, legacyContent, methodology, disclaimer, evidence = [],
+  title, meta, sections, legacyContent, methodology, disclaimer, evidence = [], returnHref,
 }: {
   title: string;
   meta: Array<{ label: string; value: string }>;
@@ -13,6 +14,7 @@ export default function PrintableReport({
   methodology?: string | null;
   disclaimer?: string | null;
   evidence?: Evidence[];
+  returnHref?: string;
 }) {
   return <main data-print-report="static" className="mx-auto min-h-screen max-w-4xl [overflow-wrap:anywhere] bg-white px-4 py-6 text-black sm:px-6 sm:py-8 print:max-w-none print:px-0">
     <style>{`@media print {
@@ -22,7 +24,7 @@ export default function PrintableReport({
       a { color: black; text-decoration: none; }
     }`}</style>
     <header className="border-b border-black/20 pb-5">
-      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row"><h1 className="break-words text-2xl font-semibold sm:text-3xl">{title}</h1><PrintButton /></div>
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row"><div><Link href={returnHref ?? "/cabinet/astrology?tab=reports"} className="print:hidden text-sm text-black/65 underline underline-offset-4">← Вернуться к отчёту</Link><h1 className="mt-3 break-words text-2xl font-semibold sm:text-3xl">{title}</h1></div><PrintButton /></div>
       <dl className="mt-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">{meta.map((item) =>
         <div key={item.label}><dt className="font-semibold">{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
     </header>

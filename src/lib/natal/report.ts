@@ -134,11 +134,33 @@ export function prepareNatalReportCandidate(
     : value;
   const root = record(withDefaults);
   if (!root) return withDefaults;
+
+  const sections = Array.isArray(root.sections) ? root.sections : [];
+  const byKey = new Map<NatalReportSectionKey, Record<string, unknown>>();
+  for (const item of sections) {
+    const section = record(item);
+    if (!section) continue;
+    const key = section.key;
+    if (typeof key === "string" && NATAL_REPORT_SECTION_KEYS.includes(key as NatalReportSectionKey)) {
+      byKey.set(key as NatalReportSectionKey, section);
+    }
+  }
+  const normalizedSections = NATAL_REPORT_SECTION_KEYS.map((expectedKey) => {
+    const existing = byKey.get(expectedKey);
+    if (existing) return existing;
+    return {
+      key: expectedKey,
+      title: SECTION_TITLES[expectedKey],
+      claims: [],
+    };
+  });
+
   return {
     ...root,
     version: NATAL_REPORT_VERSION,
     tradition: params.tradition,
     reportType: params.reportType,
+    sections: normalizedSections,
     ...(params.reportType === "forecast" ? { horizonDays: params.horizonDays ?? root.horizonDays } : {}),
   };
 }
@@ -186,7 +208,7 @@ export function salvageNatalReport(
     const text =
       typeof firstClaim?.text === "string" && firstClaim.text.trim()
         ? firstClaim.text.trim()
-        : `Ключевой вывод по разделу «${expectedKey}».`;
+        : `Ключевой вывод по разделу «${SECTION_TITLES[expectedKey]}».`;
     const evidenceIds = coerceClaimEvidenceIds(
       Array.isArray(firstClaim?.evidenceIds)
         ? firstClaim.evidenceIds.filter((id): id is string => typeof id === "string")
@@ -201,7 +223,7 @@ export function salvageNatalReport(
       title:
         typeof rawSection?.title === "string" && rawSection.title.trim()
           ? rawSection.title.trim()
-          : expectedKey,
+          : SECTION_TITLES[expectedKey],
       claims: [{ text, evidenceIds }],
     };
   });
@@ -352,14 +374,22 @@ export function validateNatalReport(
 
   const ids = new Set(evidence.map((item) => item.id));
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
-  const sections = Array.isArray(root.sections) ? root.sections : [];
-  if (sections.length !== NATAL_REPORT_SECTION_KEYS.length) {
-    errors.push(`Нужно ровно ${NATAL_REPORT_SECTION_KEYS.length} разделов.`);
+  const sectionList = Array.isArray(root.sections) ? root.sections : [];
+  const sectionsByKey = new Map<string, Record<string, unknown>>();
+  for (const item of sectionList) {
+    const section = record(item);
+    if (section && typeof section.key === "string") {
+      sectionsByKey.set(section.key, section);
+    }
+  }
+  const missingKeys = NATAL_REPORT_SECTION_KEYS.filter((key) => !sectionsByKey.has(key));
+  if (missingKeys.length) {
+    errors.push(`Отсутствуют разделы: ${missingKeys.join(", ")}.`);
   }
   const parsedSections: NatalReportSection[] = [];
   for (let index = 0; index < NATAL_REPORT_SECTION_KEYS.length; index += 1) {
     const expectedKey = NATAL_REPORT_SECTION_KEYS[index];
-    const rawSection = record(sections[index]);
+    const rawSection = sectionsByKey.get(expectedKey) ?? record(sectionList[index]);
     if (!rawSection || rawSection.key !== expectedKey) {
       errors.push(`Раздел ${index + 1} должен иметь key="${expectedKey}" и правильный порядок.`);
       continue;
@@ -451,7 +481,17 @@ export function buildNatalReportJsonInstructions(
 {"version":"${NATAL_REPORT_VERSION}","tradition":"${tradition}","reportType":"${reportType}"${horizonField},"sections":[
 ${NATAL_REPORT_SECTION_KEYS.map((key) => `{"key":"${key}","title":"локализованный заголовок","claims":[{"text":"вывод на русском","evidenceIds":["точный ID из блока evidence"]}]}`).join(",\n")}
 ],"disclaimer":"не научный прогноз и не замена профессиональной консультации","methodology":"как использованы расчёты и ограничения"}
-Правила: все восемь разделов обязательны и идут в указанном порядке; в каждом минимум один непустой claim; у каждого claim один или несколько существующих evidenceIds; не добавляй факты, которые прямо не поддержаны указанными evidence.
+Правила качества:
+- все восемь разделов обязательны и идут в указанном порядке;
+- каждый раздел — полноценная часть единого персонального текста: 5–8 содержательных предложений и не менее 350 знаков;
+- общий объём текста восьми разделов — не менее 3200 знаков;
+- раскрывай причинно-следственную связь: конкретный рассчитанный фактор → его символическое значение → проявление в жизни → практический вывод;
+- называй конкретные планеты, знаки, дома, аспекты, даты или периоды только из переданных evidence; не заменяй их общими словами;
+- используй имя клиента из пользовательского сообщения естественно, но не в каждом разделе;
+- не пиши универсальные фразы вроде «у вас есть потенциал», «возможны изменения», «сосредоточьтесь на целях» без конкретного объяснения через evidence;
+- разделы не должны повторять друг друга по смыслу или формулировкам;
+- в каждом разделе минимум один непустой claim; у каждого claim один или несколько существующих evidenceIds;
+- не добавляй факты, которые прямо не поддержаны указанными evidence.
 ${reportType === "forecast"
   ? `Это прогноз на ${horizonDays} дней: формулируй возможности, напряжения и практические рекомендации как вероятностные темы, а не гарантированные события. В разделах summary, currentPeriod и recommendations каждый claim обязан содержать минимум один точный timing evidence ID (префикс ne.timing.). В остальных разделах можно ссылаться на натальные или timing evidence из блока ниже.`
   : "Для personality цитируй identity/emotions; relationships — relationships/emotions; career — career/identity; resources — resources/career; tensions — tensions/emotions; currentPeriod — только evidence категории timing."}`;

@@ -89,9 +89,12 @@ set +a
 node scripts/migrate.mjs
 
 cp hosting/aura-ai.service /etc/systemd/system/aura-ai.service
+cp hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 systemctl daemon-reload
 systemctl enable aura-ai
 systemctl restart aura-ai
+systemctl enable aura-ai-async-jobs
+systemctl restart aura-ai-async-jobs
 
 cp hosting/Caddyfile /etc/caddy/Caddyfile
 systemctl enable caddy

@@ -182,7 +182,9 @@ export function buildNatalEvidence(
     }
   }
 
-  const timing = options.timing;
+  // Western transit/progression timing must not leak into a standalone
+  // Jyotish interpretation. Vedic current-period evidence comes from dasha.
+  const timing = options.tradition === "vedic" ? null : options.timing;
   if (timing) {
     for (const event of timing.events.slice(0, 24)) {
       const subject = event.kind === "ingress"

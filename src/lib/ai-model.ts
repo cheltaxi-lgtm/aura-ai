@@ -16,3 +16,11 @@ export async function getVisionModel(): Promise<string> {
   const ai = await getAdminAiSettings();
   return ai.visionModel;
 }
+
+/** Natal reports, forecasts, synastry — fast non-reasoning model with JSON output. */
+export async function getNatalModel(): Promise<string> {
+  const ai = await getAdminAiSettings();
+  const natal = ai.natalModel?.trim();
+  if (natal) return natal;
+  return ai.model;
+}

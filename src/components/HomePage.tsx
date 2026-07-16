@@ -2543,7 +2543,6 @@ export default function HomePage({
 
   const topHeader = (
     <AppTopHeader
-      editorial={(showSeoLanding || showSalonHome) && !inActiveChat}
       photoNavLabel={photoNavLabel}
       isLoggedIn={isLoggedIn}
       authUser={authUser}

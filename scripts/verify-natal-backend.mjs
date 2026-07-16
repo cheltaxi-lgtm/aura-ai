@@ -15,6 +15,7 @@ assert.match(interpretation, /claimNatalInterpretationResilient/);
 
 const timingRoute = read("src/app/api/natal-chart/timing/route.ts");
 assert.match(timingRoute, /export const maxDuration = 300/);
+assert.match(timingRoute, /isNatalChartEnabled/);
 assert.match(timingRoute, /TIMING_GENERATION_BUSY[\s\S]*status: 409/);
 
 const timingService = read("src/lib/services/natal-timing-service.ts");
@@ -40,10 +41,22 @@ for (const route of [
 
 const forecast = read("src/app/api/natal-chart/forecast/route.ts");
 assert.match(forecast, /action: "FORECAST_REPORT"/);
-assert.match(forecast, /reportType = `forecast:\$\{horizon\}`/);
+assert.match(forecast, /reportType = `forecast:\$\{horizon\}:\$\{timing\.windowStart\}`/);
 assert.match(forecast, /generateValidatedNatalReport/);
 assert.match(forecast, /claimNatalInterpretationResilient/);
 assert.match(forecast, /rollback\(\)/);
+
+const natalGenerator = read("src/lib/natal/generate-validated-report.ts");
+assert.match(natalGenerator, /getNatalModel/);
+assert.doesNotMatch(natalGenerator, /fallback: "minimal"/);
+assert.match(natalGenerator, /editorialPass/);
+assert.match(natalGenerator, /sanitizeNatalReport/);
+assert.match(natalGenerator, /EVIDENCE_ID_RE/);
+assert.doesNotMatch(natalGenerator, /skipCategoryRules:\s*true/);
+assert.doesNotMatch(natalGenerator, /coerceEvidence:\s*true/);
+
+const natalEvidence = read("src/lib/natal/evidence.ts");
+assert.match(natalEvidence, /options\.tradition === "vedic" \? null : options\.timing/);
 
 const natalService = read("src/lib/services/natal-chart-service.ts");
 assert.match(natalService, /deleteCurrentUserNatalReport/);
@@ -73,7 +86,9 @@ const compatibilityGenerate = read(
 assert.match(compatibilityGenerate, /aiDataUseAcknowledged !== true/);
 assert.match(compatibilityGenerate, /action: "SYNASTRY_REPORT"/);
 assert.match(compatibilityGenerate, /rollback\(\)/);
-assert.match(compatibilityGenerate, /validateCompatibilityReport/);
+assert.match(compatibilityGenerate, /getNatalModel/);
+assert.match(compatibilityGenerate, /modelOverride: natalModel/);
+assert.match(compatibilityGenerate, /compatibilityChartsAreCurrent/);
 assert.doesNotMatch(compatibilityGenerate, /JOINT_READING|joint_readings/);
 
 const compatibilityManual = read(
@@ -97,6 +112,31 @@ assert.match(compatibilityService, /invite_token_hash/);
 assert.match(compatibilityService, /UPDATE private_report_shares[\s\S]*revoked_at/);
 assert.doesNotMatch(compatibilityService, /birth_date|birth_time|birth_city/);
 assert.doesNotMatch(compatibilityService, /joint_readings/);
+assert.match(compatibilityService, /compatibilityChartsAreCurrent/);
+
+const eventPreferences = read("src/app/api/natal-chart/event-preferences/route.ts");
+assert.match(eventPreferences, /isNatalChartEnabled/);
+
+const asyncJobs = read("src/lib/async-jobs.ts");
+assert.match(asyncJobs, /natal_interpretation/);
+assert.match(asyncJobs, /FOR UPDATE SKIP LOCKED/);
+const asyncMigration = read("scripts/migrations/070_migrate_natal_async_jobs.sql");
+assert.match(asyncMigration, /natal_compatibility/);
+assert.match(asyncMigration, /attempt_count/);
+assert.match(asyncMigration, /period_metadata/);
+assert.match(asyncMigration, /billing_state/);
+const asyncWorker = read("scripts/run-async-jobs.ts");
+assert.match(asyncWorker, /natal_forecast/);
+assert.match(asyncWorker, /x-async-job-worker-secret/);
+
+const astrologyWorkspace = read("src/components/natal/AstrologyWorkspace.tsx");
+assert.match(astrologyWorkspace, /title="Персональный западный отчёт"/);
+assert.match(astrologyWorkspace, /title="Персональный отчёт джйотиш"/);
+assert.match(astrologyWorkspace, /title="Архив отчётов и прогнозов"/);
+assert.match(astrologyWorkspace, /selectTab\("timing"\)/);
+assert.match(astrologyWorkspace, /aura:natal-active-job/);
+assert.match(astrologyWorkspace, /function isCurrentReport/);
+assert.doesNotMatch(astrologyWorkspace, /Центр премиальных отчётов/);
 
 for (const route of [
   "src/app/api/natal-chart/compatibility/route.ts",
@@ -124,5 +164,14 @@ assert.match(compatibilityMigration, /CREATE TABLE IF NOT EXISTS natal_compatibi
 assert.match(compatibilityMigration, /SYNASTRY_REPORT/);
 assert.match(compatibilityMigration, /report_kind IN \('natal', 'relationship', 'compatibility'\)/);
 assert.doesNotMatch(compatibilityMigration, /ALTER TABLE joint_readings/);
+const compatibilityPrivacyFix = read(
+  "scripts/migrations/071_fix_natal_compatibility_snapshot_privacy.sql"
+);
+const compatibilityPrivacyPredicate = compatibilityPrivacyFix.split(
+  "ADD CONSTRAINT natal_compatibility_snapshot_private"
+)[1] ?? "";
+assert.match(compatibilityPrivacyFix, /DROP CONSTRAINT IF EXISTS natal_compatibility_snapshot_private/);
+assert.match(compatibilityPrivacyPredicate, /\$\.\*\*\.latitude/);
+assert.doesNotMatch(compatibilityPrivacyPredicate, /\$\.\*\*\.longitude/);
 
 console.log("Natal backend guardrails passed.");

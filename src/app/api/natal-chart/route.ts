@@ -36,7 +36,11 @@ export async function GET() {
 
   try {
     const chart = await getOrComputeNatalChart(ctx.profileUserId);
-    return NextResponse.json({ enabled: true, chart });
+    // Claims are server-side nonces used to serialize paid generation. They
+    // are not chart data and must not be exposed in a browser payload.
+    if (!chart) return NextResponse.json({ enabled: true, chart: null });
+    const { interpretationClaims: _claims, ...clientChart } = chart;
+    return NextResponse.json({ enabled: true, chart: clientChart });
   } catch (error) {
     return natalCalculationError(error);
   }

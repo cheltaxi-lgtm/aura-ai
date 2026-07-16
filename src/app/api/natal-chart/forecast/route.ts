@@ -21,6 +21,8 @@ import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { needsProfileResponse, requireProfileUserId } from "@/lib/require-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { getUserById } from "@/lib/users";
+import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
 
@@ -35,14 +37,20 @@ export async function POST(request: NextRequest) {
   if (!(await isNatalChartEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
-  const auth = await requireProfileUserId();
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  const auth = workerUserId
+    ? { profileUserId: workerUserId }
+    : await requireProfileUserId();
   if (!auth) return needsProfileResponse();
-  const limited = await enforcePaidRouteRateLimit(auth.profileUserId, "natal_forecast");
-  if (limited) return limited;
+  if (!workerUserId) {
+    const limited = await enforcePaidRouteRateLimit(auth.profileUserId, "natal_forecast");
+    if (limited) return limited;
+  }
 
   const body = await request.json().catch(() => ({})) as {
     horizon?: unknown;
     aiDataUseAcknowledged?: unknown;
+    async?: unknown;
   };
   const horizon = parseTimingHorizon(String(body.horizon ?? ""));
   if (!horizon) {
@@ -53,6 +61,16 @@ export async function POST(request: NextRequest) {
       { error: "Подтвердите передачу рассчитанных астрологических данных внешней языковой модели." },
       { status: 400 }
     );
+  }
+  if (body.async === true) {
+    return enqueueNatalAsyncJob({
+      userId: auth.profileUserId,
+      kind: "natal_forecast",
+      payload: {
+        horizon: body.horizon,
+        aiDataUseAcknowledged: true,
+      },
+    });
   }
 
   let chart;
@@ -73,7 +91,10 @@ export async function POST(request: NextRequest) {
 
   const expectedEphemeris =
     typeof chart.western.ephemeris === "string" ? chart.western.ephemeris : "unknown";
-  const reportType = `forecast:${horizon}`;
+  // A forecast is only valid for its calculated timing window. Including the
+  // start date prevents a past 30-day forecast from being returned forever as
+  // a current result for the same natal chart.
+  const reportType = `forecast:${horizon}:${timing.windowStart}`;
   const claimKey = reportType;
   const evidence = buildNatalEvidence(chart, { tradition: "western", timing });
   const evidenceBlock = formatEvidencePrompt(evidence);
@@ -164,6 +185,7 @@ ${timingEvidenceIds.join("\n")}`);
       evidenceIdsHint: timingEvidenceIds,
       repairHint:
         "В summary, currentPeriod и recommendations каждый claim должен ссылаться минимум на один timing evidence ID.",
+      clientName: user?.name ?? undefined,
     });
     if (!generated.ok) {
       console.warn(

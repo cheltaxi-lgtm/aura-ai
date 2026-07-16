@@ -21,6 +21,7 @@
     "verify:chat-quality": "npx tsx scripts/verify-chat-quality.mjs",
     "migrate": "node scripts/migrate.mjs",
     "migrate:status": "node scripts/migrate.mjs --status",
+    "worker:async-jobs": "tsx scripts/run-async-jobs.ts",
     "test:memory": "tsx scripts/memory-smoke-test.ts",
     "test:recaptcha": "tsx scripts/verify-recaptcha.ts",
     "test:spreads": "tsx scripts/verify-spread-registry.ts && tsx scripts/verify-spread-source-audit.ts",
@@ -37,6 +38,7 @@
     "verify:oauth": "tsx scripts/verify-oauth-helpers.ts",
     "verify:natal-chart": "npx tsx scripts/verify-natal-chart.mjs && node scripts/verify-natal-backend.mjs",
     "verify:natal-backend": "node scripts/verify-natal-backend.mjs",
+    "verify:async-natal-jobs": "node scripts/verify-async-natal-jobs.mjs",
     "test:e2e:natal": "playwright test",
     "build:geonames": "node scripts/build-geonames-index.mjs"
   },

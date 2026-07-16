@@ -20,6 +20,8 @@ import type { NatalTradition } from "@/lib/natal/types";
 import { getCachedPersonalTiming } from "@/lib/services/natal-timing-service";
 import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
 
@@ -39,26 +41,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
 
-  const ctx = await requireProfileUserId();
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  const ctx = workerUserId
+    ? { profileUserId: workerUserId }
+    : await requireProfileUserId();
   if (!ctx) {
     return needsProfileResponse();
   }
 
-  const rateLimited = await enforcePaidRouteRateLimit(
-    ctx.profileUserId,
-    "natal_chart_interpretation"
-  );
-  if (rateLimited) return rateLimited;
+  if (!workerUserId) {
+    const rateLimited = await enforcePaidRouteRateLimit(
+      ctx.profileUserId,
+      "natal_chart_interpretation"
+    );
+    if (rateLimited) return rateLimited;
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     tradition?: unknown;
     aiDataUseAcknowledged?: unknown;
+    async?: unknown;
   };
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных натальных evidence внешней языковой модели." },
       { status: 400 }
     );
+  }
+  if (body.async === true) {
+    return enqueueNatalAsyncJob({
+      userId: ctx.profileUserId,
+      kind: "natal_interpretation",
+      payload: { tradition: body.tradition, aiDataUseAcknowledged: true },
+    });
   }
   const tradition: NatalTradition =
     body.tradition === "vedic" ? "vedic" : body.tradition === "western" ? "western" : "western";
@@ -190,6 +205,7 @@ ${evidenceIds.join("\n")}`);
       metadataDefaults: INTERPRETATION_METADATA_DEFAULTS,
       evidenceIdsHint: evidenceIds,
       repairHint: "Используй только ID из списка VALID EVIDENCE ID.",
+      clientName: user?.name ?? undefined,
     });
     if (!generated.ok) {
       console.warn(

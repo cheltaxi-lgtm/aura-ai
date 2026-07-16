@@ -391,6 +391,35 @@ export async function claimCompatibilityGeneration(
   return { status: "busy" };
 }
 
+/**
+ * A paid report must describe the cards the user sees now, not an older
+ * synastry snapshot. Manual partner data is deliberately not retained, so an
+ * owner-chart change is still detected; invite records additionally verify
+ * the participant's current chart.
+ */
+export async function compatibilityChartsAreCurrent(
+  id: string,
+  ownerUserId: string
+): Promise<boolean> {
+  const { rows } = await query<{
+    owner_fingerprint: string;
+    partner_fingerprint: string | null;
+    participant_user_id: string | null;
+  }>(
+    `SELECT owner_fingerprint, partner_fingerprint, participant_user_id
+     FROM natal_compatibility_reports
+     WHERE id = $1 AND owner_user_id = $2`,
+    [id, ownerUserId]
+  );
+  const record = rows[0];
+  if (!record) return false;
+  const owner = await requireAccountChart(ownerUserId);
+  if (fingerprint(owner) !== record.owner_fingerprint) return false;
+  if (!record.participant_user_id) return true;
+  const participant = await requireAccountChart(record.participant_user_id);
+  return fingerprint(participant) === record.partner_fingerprint;
+}
+
 export async function saveCompatibilityReport(params: {
   id: string;
   ownerUserId: string;

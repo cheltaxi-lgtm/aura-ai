@@ -13,7 +13,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { usePaywall } from "@/contexts/PaywallContext";
-import type { CompatibilityReport } from "@/lib/natal/compatibility-report";
+import type { CompatibilityEvidence, CompatibilityReport } from "@/lib/natal/compatibility-report";
 import type { ClientSynastryPayload } from "@/lib/natal/synastry";
 import { useAuth } from "@/lib/useAuth";
 import { useRuneConfig } from "@/lib/useRuneConfig";
@@ -32,6 +32,7 @@ type CompatibilityRecord = {
   partnerLabel: string;
   synastry: ClientSynastryPayload | null;
   report: CompatibilityReport | null;
+  evidence: CompatibilityEvidence | null;
   runeCost: number | null;
   expiresAt: string;
   completedAt: string | null;
@@ -44,6 +45,12 @@ type ManualForm = {
   birthTime: string;
   timeKnown: boolean;
   birthCity: string;
+};
+type CitySuggestion = {
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
 };
 
 const EMPTY_MANUAL: ManualForm = {
@@ -63,6 +70,34 @@ const STATUS_LABELS: Record<CompatibilityStatus, string> = {
 
 async function responseJson<T>(response: Response): Promise<T> {
   return (await response.json().catch(() => ({}))) as T;
+}
+
+async function waitForCompatibilityJob(jobId: string): Promise<Record<string, unknown>> {
+  const storageKey = "aura:compatibility-active-job";
+  let terminal = false;
+  window.localStorage.setItem(storageKey, jobId);
+  try {
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const job = await responseJson<{ status?: string; result?: Record<string, unknown>; error?: string }>(response);
+      if (!response.ok) throw new Error(job.error || "Не удалось проверить статус очереди.");
+      if (job.status === "completed") {
+        terminal = true;
+        return job.result ?? {};
+      }
+      if (job.status === "failed") {
+        terminal = true;
+        throw new Error(job.error || "Отчёт не был создан. Оплата возвращена.");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+    }
+    throw new Error("Отчёт ещё создаётся. Его статус сохранён, вернитесь к нему немного позже.");
+  } finally {
+    if (terminal) window.localStorage.removeItem(storageKey);
+  }
 }
 
 function errorMessage(code?: string): string {
@@ -97,11 +132,15 @@ export default function NatalCompatibility() {
   const [inviteUrl, setInviteUrl] = useState("");
   const [inviteRecord, setInviteRecord] = useState<CompatibilityRecord | null>(null);
   const [participantLabel, setParticipantLabel] = useState("");
+  const [participantConsent, setParticipantConsent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"create" | "invite" | "accept" | "generate" | "delete" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
+  const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
+  const [citySelected, setCitySelected] = useState(false);
+  const [cityLookupOpen, setCityLookupOpen] = useState(false);
+  const [cityLookupLoading, setCityLookupLoading] = useState(false);
 
   const inviteToken = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -145,27 +184,48 @@ export default function NatalCompatibility() {
 
   useEffect(() => {
     const query = manual.birthCity.trim();
-    if (query.length < 2) {
+    if (citySelected || query.length < 2) {
       setCitySuggestions([]);
+      setCityLookupOpen(false);
+      setCityLookupLoading(false);
       return;
     }
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
+      setCityLookupLoading(true);
       void fetch(`/api/natal-chart/places?q=${encodeURIComponent(query)}`, {
         credentials: "include",
         signal: controller.signal,
       })
         .then((response) => responseJson<{
-          places?: Array<{ label: string }>;
-        }>(response))
-        .then((data) => setCitySuggestions((data.places ?? []).map((item) => item.label).slice(0, 8)))
-        .catch(() => setCitySuggestions([]));
+          places?: CitySuggestion[];
+          error?: string;
+        }>(response).then((data) => {
+          if (!response.ok) throw new Error(data.error || "Не удалось найти города");
+          return data;
+        }))
+        .then((data) => {
+          setCitySuggestions((data.places ?? []).slice(0, 8));
+          setCityLookupOpen(true);
+        })
+        .catch(() => {
+          setCitySuggestions([]);
+          setCityLookupOpen(true);
+        })
+        .finally(() => setCityLookupLoading(false));
     }, 300);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [manual.birthCity]);
+  }, [manual.birthCity, citySelected]);
+
+  const selectCity = (city: CitySuggestion) => {
+    setManual((value) => ({ ...value, birthCity: city.label }));
+    setCitySelected(true);
+    setCitySuggestions([]);
+    setCityLookupOpen(false);
+  };
 
   const selected = records.find((item) => item.id === selectedId) ?? null;
   const isOwner = selected?.ownerUserId === user?.profileUserId;
@@ -173,6 +233,10 @@ export default function NatalCompatibility() {
   const createManual = async () => {
     if (!manual.partnerLabel.trim() || !manual.birthDate || !manual.birthCity.trim()) {
       setError("Укажите имя, дату и город рождения второго человека.");
+      return;
+    }
+    if (!citySelected) {
+      setError("Выберите город из списка подсказок, чтобы проверить часовой пояс и координаты.");
       return;
     }
     if (manual.timeKnown && !manual.birthTime) {
@@ -210,6 +274,7 @@ export default function NatalCompatibility() {
       if (!response.ok || !data.record) throw new Error(data.error);
       setManual(EMPTY_MANUAL);
       setManualConsent(false);
+      setCitySelected(false);
       setSelectedId(data.record.id);
       setNotice(data.reused ? "Открыт ранее созданный расчёт этой пары." : "Синастрия рассчитана. Теперь можно заказать полный отчёт.");
       await loadRecords();
@@ -259,6 +324,10 @@ export default function NatalCompatibility() {
 
   const acceptInvite = async () => {
     if (!inviteToken) return;
+    if (!participantConsent) {
+      setError("Подтвердите согласие на использование данных рождения из профиля.");
+      return;
+    }
     setBusy("accept");
     setError("");
     try {
@@ -278,7 +347,12 @@ export default function NatalCompatibility() {
       if (!response.ok || !data.record) throw new Error(data.error);
       setInviteRecord(data.record);
       setSelectedId(data.record.id);
+      setParticipantConsent(false);
       setNotice("Ваши натальные карты сопоставлены. Инициатор может заказать полный отчёт.");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("invite");
+      url.searchParams.set("tab", "compatibility");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
       await loadRecords();
     } catch (reason) {
       setError(errorMessage(reason instanceof Error ? reason.message : undefined));
@@ -298,15 +372,20 @@ export default function NatalCompatibility() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ aiDataUseAcknowledged: true }),
+          body: JSON.stringify({ aiDataUseAcknowledged: true, async: true }),
         }
       );
-      const data = await responseJson<{
+      let data = await responseJson<{
         record?: CompatibilityRecord;
         error?: string;
         balance?: number;
         cost?: number;
+        jobId?: string;
       }>(response);
+      if (response.status === 202 && data.jobId) {
+        setNotice("Отчёт поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
+        data = await waitForCompatibilityJob(data.jobId) as typeof data;
+      }
       if (response.status === 402) {
         openPaywall({
           currentBalance: data.balance ?? 0,
@@ -388,8 +467,13 @@ export default function NatalCompatibility() {
                 placeholder="Ваше имя в отчёте"
                 className="ui-input mt-4 w-full max-w-sm"
               />
+              <label className="mt-4 flex max-w-2xl items-start gap-3 rounded-xl border border-rose-300/15 bg-rose-300/[0.04] p-3 text-xs leading-5 text-white/55">
+                <input type="checkbox" className="mt-0.5 accent-rose-300" checked={participantConsent}
+                  onChange={(event) => setParticipantConsent(event.target.checked)} />
+                Подтверждаю использование данных рождения из моего профиля для этого расчёта. Инициатор увидит только результат совместимости, а не исходные данные профиля.
+              </label>
               <div className="mt-4 flex flex-wrap gap-3">
-                <button type="button" disabled={busy !== null} onClick={() => void acceptInvite()}
+                <button type="button" disabled={busy !== null || !participantConsent} onClick={() => void acceptInvite()}
                   className="btn-luxe btn-luxe--md btn-luxe--gold">
                   {busy === "accept" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Принять приглашение
@@ -447,12 +531,40 @@ export default function NatalCompatibility() {
                 </label>
               </Field>
               <Field label="Город рождения">
-                <input className="ui-input w-full" value={manual.birthCity} list="compatibility-cities"
-                  onChange={(event) => setManual((value) => ({ ...value, birthCity: event.target.value }))}
-                  placeholder="Начните вводить город" />
-                <datalist id="compatibility-cities">
-                  {citySuggestions.map((city) => <option value={city} key={city} />)}
-                </datalist>
+                <div className="relative">
+                <input className="ui-input w-full" value={manual.birthCity}
+                  onChange={(event) => {
+                    const birthCity = event.target.value;
+                    setManual((value) => ({ ...value, birthCity }));
+                    setCitySelected(false);
+                    setCityLookupOpen(birthCity.trim().length >= 2);
+                  }}
+                  onFocus={() => {
+                    if (manual.birthCity.trim().length >= 2) setCityLookupOpen(true);
+                  }}
+                  autoComplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={cityLookupOpen}
+                  aria-controls="compatibility-city-suggestions"
+                  placeholder="Начните вводить город по-русски или латиницей" />
+                {cityLookupOpen ? <div id="compatibility-city-suggestions" role="listbox"
+                  className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-white/15 bg-[#151019] p-1 shadow-2xl">
+                  {cityLookupLoading ? <p className="px-3 py-2 text-xs text-white/45">Ищем города…</p> : null}
+                  {!cityLookupLoading && citySuggestions.map((city) => <button type="button" role="option"
+                    key={`${city.label}-${city.latitude}-${city.longitude}`}
+                    aria-selected={manual.birthCity === city.label}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => selectCity(city)}
+                    className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-white/75 transition hover:bg-rose-300/10 hover:text-rose-100">
+                    {city.label}
+                  </button>)}
+                  {!cityLookupLoading && !citySuggestions.length ? <p className="px-3 py-2 text-xs leading-5 text-white/45">Город не найден. Попробуйте другое написание, например «Москва» или «Санкт-Петербург».</p> : null}
+                </div> : null}
+                </div>
+                <p className={`mt-2 text-xs ${citySelected ? "text-emerald-200/65" : "text-white/40"}`}>
+                  {citySelected ? "Город выбран: часовой пояс и координаты будут проверены." : "Выберите вариант из подсказок — свободный текст не используется для расчёта."}
+                </p>
               </Field>
               <label className="sm:col-span-2 flex items-start gap-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-4 text-xs leading-5 text-white/50">
                 <input type="checkbox" required className="mt-1" checked={manualConsent}
@@ -545,6 +657,28 @@ function CompatibilityViewer({
   onDelete: () => void;
 }) {
   const synastry = record.synastry;
+  const [aiDataConsent, setAiDataConsent] = useState(false);
+  const evidenceById = new Map([
+    ...(record.evidence?.dimensions ?? []).map((item) => [`dimension:${item.key}`, item.label] as const),
+    ...(record.evidence?.crossAspects ?? []).map((item) => [item.id, item.label] as const),
+  ]);
+  const focusEvidence = (id: string) => {
+    const element = document.getElementById(`compatibility-evidence-${id}`);
+    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    element?.focus({ preventScroll: true });
+  };
+  if (record.status === "expired") {
+    return <section className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.05] p-5 sm:p-7">
+      <p className="text-[10px] uppercase tracking-[.18em] text-amber-200/60">Срок истёк</p>
+      <h3 className="mt-2 font-display text-2xl text-white">{record.ownerLabel} и {record.partnerLabel}</h3>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55">Это незавершённое приглашение больше нельзя принять или использовать. Создайте новое приглашение, чтобы оба участника подтвердили актуальные данные.</p>
+      <p className="mt-3 text-xs text-white/40">Истёк: {new Date(record.expiresAt).toLocaleString("ru-RU")}</p>
+      {isOwner ? <button type="button" disabled={busy !== null} onClick={onDelete}
+        className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg border border-rose-300/15 px-3 text-xs text-rose-200/70 disabled:opacity-50">
+        <Trash2 className="h-4 w-4" /> Удалить запись
+      </button> : null}
+    </section>;
+  }
   return <section className="rounded-2xl border border-rose-300/15 bg-black/25 p-5 sm:p-7">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
       <div>
@@ -559,13 +693,18 @@ function CompatibilityViewer({
 
     {record.status === "pending" ? <p className="mt-5 text-sm text-white/45">Ожидаем подтверждения второго участника.</p> : null}
     {synastry ? <>
+      <p className="mt-4 max-w-3xl text-xs leading-5 text-white/45">Индекс — ориентир по рассчитанным аспектам, а не оценка людей или прогноз отношений. Баллы по сферам показывают, где в этой методике больше согласующихся или напряжённых факторов.</p>
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {synastry.dimensions.map((dimension) => <article key={dimension.key} className="rounded-xl border border-white/8 bg-white/[0.025] p-3">
+        {synastry.dimensions.map((dimension) => <article id={`compatibility-evidence-dimension:${dimension.key}`} tabIndex={-1} key={dimension.key} className="rounded-xl border border-white/8 bg-white/[0.025] p-3 focus:ring-2 focus:ring-rose-300/50">
           <p className="text-xs text-white/55">{dimension.label}</p>
           <p className="mt-2 text-lg font-medium text-rose-100">{dimension.index}/100</p>
           <p className="text-[10px] text-white/35">{dimension.band}</p>
         </article>)}
       </div>
+      {record.evidence?.crossAspects.length ? <details className="mt-4 rounded-xl border border-white/8 bg-white/[0.025] p-3">
+        <summary className="cursor-pointer text-xs text-white/60">Рассчитанные межкартные аспекты ({record.evidence.crossAspects.length})</summary>
+        <div className="mt-3 space-y-2">{record.evidence.crossAspects.map((aspect) => <p id={`compatibility-evidence-${aspect.id}`} tabIndex={-1} key={aspect.id} className="text-xs leading-5 text-white/50 focus:ring-2 focus:ring-rose-300/50">{aspect.label} · орб {aspect.orb.toFixed(2)}°</p>)}</div>
+      </details> : null}
       {synastry.chartA?.western && synastry.chartB?.western ? <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NatalSynastryWheel chartA={synastry.chartA.western} chartB={synastry.chartB.western}
           crossAspects={synastry.crossAspects} labelA={record.ownerLabel} labelB={record.partnerLabel} />
@@ -578,7 +717,8 @@ function CompatibilityViewer({
       {record.report.sections.map((section) => <article key={section.key} className="rounded-xl border border-white/8 bg-white/[0.025] p-4">
         <h5 className="font-display text-lg text-rose-50">{section.title}</h5>
         <div className="mt-3 space-y-3">{section.claims.map((claim, index) =>
-          <p key={`${section.key}-${index}`} className="text-sm leading-7 text-white/65">{claim.text}</p>
+          <div key={`${section.key}-${index}`}><p className="text-sm leading-7 text-white/65">{claim.text}</p>
+          {claim.evidenceIds?.length ? <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className="text-[10px] uppercase tracking-wide text-white/30">Основано на</span>{claim.evidenceIds.map((id) => <button type="button" key={id} onClick={() => focusEvidence(id)} className="rounded-full border border-rose-300/20 bg-rose-300/[0.07] px-2 py-1 text-[11px] text-rose-100/75 hover:bg-rose-300/[0.13]">{evidenceById.get(id) ?? id}</button>)}</div> : null}</div>
         )}</div>
       </article>)}
       <p className="text-xs leading-5 text-white/35">{record.report.disclaimer}</p>
@@ -593,7 +733,11 @@ function CompatibilityViewer({
     </div> : record.status === "ready" && isOwner ? <div className="mt-7 rounded-2xl border border-amber-300/15 bg-amber-300/[0.04] p-5">
       <h4 className="font-display text-xl text-amber-50">Получить полный разбор</h4>
       <p className="mt-2 text-sm leading-6 text-white/50">Свяжем рассчитанные аспекты в понятный отчёт по семи сферам. Каждое утверждение опирается на показанные данные.</p>
-      <button type="button" disabled={busy !== null} onClick={onGenerate}
+      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">
+        <input type="checkbox" className="mt-0.5 accent-amber-300" checked={aiDataConsent} onChange={(event) => setAiDataConsent(event.target.checked)} />
+        Подтверждаю передачу только рассчитанных аспектов внешней языковой модели для создания отчёта. Исходные данные рождения обоих участников не передаются.
+      </label>
+      <button type="button" disabled={busy !== null || !aiDataConsent} onClick={onGenerate}
         className="btn-luxe btn-luxe--md btn-luxe--gold mt-4 disabled:opacity-50">
         {busy === "generate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
         Получить полный отчёт · {cost} ᚢ

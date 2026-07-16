@@ -621,21 +621,10 @@ export async function claimNatalInterpretationResilient(
   ).catch(() => ({ status: "busy" } as const));
   if (second.status !== "busy") return second;
 
-  await forceClearNatalInterpretationClaimKey(
-    userId,
-    expectedBirthFingerprint,
-    expectedEngineVersion,
-    expectedEphemeris,
-    claimKey
-  );
-  return claimNatalInterpretation(
-    userId,
-    tradition,
-    expectedBirthFingerprint,
-    expectedEngineVersion,
-    expectedEphemeris,
-    options
-  ).catch(() => ({ status: "busy" } as const));
+  // An active claim must never be stolen: the original request may already
+  // have charged runes and be about to persist its report. Stale claims are
+  // reclaimed by clearStaleNatalInterpretationBlocks above (10 minute TTL).
+  return second;
 }
 
 /**

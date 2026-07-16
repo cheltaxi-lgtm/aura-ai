@@ -20,6 +20,8 @@ export interface AiSettings {
   /** Free-tier chat model (e.g. venice/uncensored) */
   freeModel?: string;
   visionModel: string;
+  /** Fast structured JSON model for natal reports and synastry (not reasoning). */
+  natalModel?: string;
   temperature: number;
   maxTokens: number;
   maxReadingTokens: number;
@@ -135,6 +137,7 @@ const DEFAULTS = {
     paidModel: "moonshotai/kimi-k2.5",
     freeModel: "openai/gpt-4o-mini",
     visionModel: "google/gemini-2.0-flash-001",
+    natalModel: "openai/gpt-4o-mini",
     temperature: 0.85,
     maxTokens: 800,
     maxReadingTokens: 900,

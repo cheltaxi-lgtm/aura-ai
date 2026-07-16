@@ -675,7 +675,7 @@ async function main() {
       key,
       title: key,
       claims: [{
-        text: `Grounded ${key}`,
+        text: `Раздел ${key} опирается на рассчитанный показатель совместимости и описывает его как символическую тенденцию, а не как гарантию. Этот фактор помогает заметить характер взаимодействия пары в соответствующей сфере, обсудить различия спокойно и выбрать практичный способ поддержки друг друга. Вывод относится только к указанному расчёту и требует личного контекста.`,
         evidenceIds: [`dimension:${key === "summary" || key === "recommendations" ? "growth" : key}`],
       }],
     })),
@@ -1068,7 +1068,7 @@ async function main() {
       astrologyWorkspace.includes("не подтверждает истинность") &&
       natalSettings.includes("не создают прогноз") &&
       astrologyWorkspace.includes("асцендент D9 также исключён") &&
-      !astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
+      astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
     "timing and evidence language remains calibrated and explicit about limits"
   );
   assert(

@@ -60,6 +60,12 @@ function isReasoningCapableModel(model: string): boolean {
   );
 }
 
+/** Models that reject reasoning: { effort: "none" } — OpenRouter returns 400. */
+function isMandatoryReasoningModel(model: string): boolean {
+  const id = model.toLowerCase();
+  return id.includes("deepseek-v4") || id.includes("deepseek-r1");
+}
+
 function extractReasoningText(message: Record<string, unknown> | undefined): string | null {
   const reasoning = message?.reasoning;
   if (typeof reasoning === "string" && reasoning.trim()) return reasoning.trim();
@@ -166,6 +172,7 @@ function openRouterRequestBody(
   model: string
 ): Record<string, unknown> {
   if (base.reasoning !== undefined) return base;
+  if (isMandatoryReasoningModel(String(model))) return base;
   if (!isReasoningCapableModel(String(model))) return base;
   return { ...base, reasoning: { effort: "none" } };
 }

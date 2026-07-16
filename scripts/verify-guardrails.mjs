@@ -535,10 +535,12 @@ function checkNatalEvidenceAi() {
   }
   if (
     (!generator.includes("jsonObject: true") && !generator.includes("completeChatDetailed")) ||
-    !generator.includes("buildMinimalNatalReport") ||
+    !generator.includes("getNatalModel") ||
+    generator.includes('fallback: "minimal"') ||
+    generator.includes('fallback: "salvage"') ||
     !route.includes("evidenceRefs: evidence")
   ) {
-    fail("natal report: strict JSON and evidence snapshot persistence required");
+    fail("natal report: natal model, strict JSON, no salvage/minimal success path required");
   }
 
   const context = fs.readFileSync(contextPath, "utf8");

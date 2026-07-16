@@ -135,6 +135,28 @@ function requiredApiRole(pathname: string): AuthRole | null {
   return null;
 }
 
+function isAuthenticatedNatalWorkerRequest(
+  request: NextRequest,
+  pathname: string
+): boolean {
+  const isWorkerEndpoint =
+    pathname === "/api/natal-chart/interpretation" ||
+    pathname === "/api/natal-chart/forecast" ||
+    /^\/api\/natal-chart\/compatibility\/[^/]+\/generate$/.test(pathname);
+  if (!isWorkerEndpoint) return false;
+
+  const expected = process.env.ASYNC_JOB_WORKER_SECRET;
+  const provided = request.headers.get("x-async-job-worker-secret");
+  const userId = request.headers.get("x-async-job-user-id");
+  return Boolean(
+    expected &&
+      provided &&
+      provided === expected &&
+      userId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)
+  );
+}
+
 function isAdminAreaPath(pathname: string): boolean {
   return pathname.startsWith("/admin") || pathname.startsWith("/api/admin/");
 }
@@ -221,6 +243,9 @@ export async function middleware(request: NextRequest) {
 
   if (pathname.startsWith("/api/")) {
     if (isPublicApiRoute(pathname)) {
+      return NextResponse.next();
+    }
+    if (isAuthenticatedNatalWorkerRequest(request, pathname)) {
       return NextResponse.next();
     }
 

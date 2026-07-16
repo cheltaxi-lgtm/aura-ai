@@ -145,6 +145,22 @@ export default function AdminAiPage() {
           visionOnly
         />
 
+        <div className="rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-amber-100">Натальные отчёты и прогнозы</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              Отдельная быстрая модель для JSON-отчётов (натал, прогноз, совместимость).
+              Не используйте reasoning-модели (deepseek-v4, kimi thinking) — они медленные и ломают structured output.
+              Рекомендуется: openai/gpt-4o-mini или google/gemini-2.5-flash.
+            </p>
+          </div>
+          <ModelPicker
+            label="Модель для натала"
+            value={String(ai.natalModel ?? ai.model ?? "openai/gpt-4o-mini")}
+            onChange={(modelId) => setAi({ ...ai, natalModel: modelId })}
+          />
+        </div>
+
         {numField("Temperature", "temperature", ai, setAi)}
         {numField("Max tokens (чат)", "maxTokens", ai, setAi)}
         {numField("Max tokens (расклад)", "maxReadingTokens", ai, setAi)}

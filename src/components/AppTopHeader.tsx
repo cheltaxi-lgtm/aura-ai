@@ -12,7 +12,6 @@ import NotificationBell, {
 } from "@/components/NotificationBell";
 import RuneBalance, { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import TariffsModal from "@/components/TariffsModal";
-import EditorialSiteHeader from "@/components/editorial/EditorialSiteHeader";
 import type { AuthUser } from "@/lib/useAuth";
 
 export interface AppTopHeaderProps {
@@ -28,8 +27,6 @@ export interface AppTopHeaderProps {
   onNavDecks: () => void;
   onNavRitual: () => void;
   onStartReading: () => void;
-  /** Editorial landing header (guest marketing home). */
-  editorial?: boolean;
 }
 
 export default function AppTopHeader({
@@ -44,7 +41,6 @@ export default function AppTopHeader({
   onNavDecks,
   onNavRitual,
   onStartReading,
-  editorial = false,
 }: AppTopHeaderProps) {
   const headerRef = useRef<HTMLElement>(null);
   const [tariffsOpen, setTariffsOpen] = useState(false);
@@ -123,35 +119,6 @@ export default function AppTopHeader({
       window.removeEventListener("resize", syncHeaderHeight);
     };
   }, []);
-
-  if (editorial) {
-    return (
-      <>
-        <EditorialSiteHeader
-          isLoggedIn={isLoggedIn}
-          authUser={authUser}
-          authLoading={authLoading}
-          runeBalance={runeBalance}
-          notificationCount={notificationCount}
-          onOpenPaywall={onOpenPaywall}
-          onOpenNotifications={openNotifications}
-          onNavMasters={onNavMasters}
-          onStartReading={onStartReading}
-          photoNavLabel={photoNavLabel}
-          onNavDecks={onNavDecks}
-          onNavPhoto={onNavPhoto}
-          onNavTariffs={openTariffs}
-          onNavRitual={onNavRitual}
-        />
-        <TariffsModal
-          open={tariffsOpen}
-          onClose={() => setTariffsOpen(false)}
-          onOpenPaywall={onOpenPaywall}
-          isLoggedIn={isLoggedIn}
-        />
-      </>
-    );
-  }
 
   return (
     <header
