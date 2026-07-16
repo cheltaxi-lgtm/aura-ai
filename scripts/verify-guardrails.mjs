@@ -575,12 +575,19 @@ function checkNatalEvidenceAi() {
   ) {
     fail("natal AI context: migration must keep chat and tarot consent default-off");
   }
+  const ackIdx = route.indexOf("body.aiDataUseAcknowledged !== true");
+  // Prefer call-site markers so import lines do not precede the acknowledgment guard.
+  const chargeIdx = Math.max(
+    route.indexOf("await BillingService.chargeRuneAction("),
+    route.indexOf("await chargeRuneActionForWorkerJob(")
+  );
   if (
     !settings.includes("aiContextEnabled") ||
     !settings.includes("tarotContextEnabled") ||
     !workspace.includes("aiDataUseAcknowledged: true") ||
-    !route.includes("body.aiDataUseAcknowledged !== true") ||
-    route.indexOf("body.aiDataUseAcknowledged !== true") > route.indexOf("BillingService.chargeRuneAction(")
+    ackIdx < 0 ||
+    chargeIdx < 0 ||
+    ackIdx > chargeIdx
   ) {
     fail("natal AI context: separate controls and paid-report disclosure acknowledgment required");
   }

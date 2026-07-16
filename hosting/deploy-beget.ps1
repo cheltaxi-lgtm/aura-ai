@@ -170,6 +170,9 @@ $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
 if ($SshKey) {
   $sshArgs = @(Get-SshBaseArgs) + @("${User}@${DeployHost}", "bash", "-s")
   $DeployCmd | & ssh.exe @sshArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Remote deploy failed with exit code $LASTEXITCODE (active .next was not activated if candidate gates failed)"
+  }
 } else {
   Invoke-Remote $DeployCmd
 }
