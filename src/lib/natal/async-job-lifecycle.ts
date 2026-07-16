@@ -97,7 +97,8 @@ export async function chargeRuneActionForWorkerJob(input: {
     if (
       job &&
       job.user_id === input.userId &&
-      (job.billing_state === "charged" || job.billing_state === "completed") &&
+      job.status === "running" &&
+      job.billing_state === "charged" &&
       job.charge_transaction_id
     ) {
       const reused = await billingChargeFromExistingTransaction(

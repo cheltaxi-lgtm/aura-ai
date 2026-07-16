@@ -51,7 +51,12 @@ export function getAsyncJobWorkerUserId(request: NextRequest): string | null {
   return userId;
 }
 
+/**
+ * Job id is only trusted on authenticated loopback worker calls.
+ * Browser JWT requests must not drive billing reuse / job finalization via this header.
+ */
 export function getAsyncJobIdFromRequest(request: NextRequest): string | null {
+  if (!getAsyncJobWorkerUserId(request)) return null;
   const jobId = request.headers.get(WORKER_JOB_HEADER);
   return isWorkerUserId(jobId) ? jobId : null;
 }

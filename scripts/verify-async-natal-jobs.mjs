@@ -70,9 +70,17 @@ assert.doesNotMatch(middleware, /provided === expected/);
 const lifecycle = read("src/lib/natal/async-job-lifecycle.ts");
 assert.match(lifecycle, /chargeRuneActionForWorkerJob/);
 assert.match(lifecycle, /billing_state === "charged"/);
+assert.match(lifecycle, /job\.status === "running"/);
 assert.match(lifecycle, /billingChargeFromExistingTransaction/);
 assert.match(lifecycle, /ABS\(amount\) AS amount/);
 assert.doesNotMatch(lifecycle, /ABS\(amount\)::amount/);
+
+const workerAuth = read("src/lib/async-job-worker-auth.ts");
+assert.match(workerAuth, /getAsyncJobWorkerUserId\(request\)/);
+assert.match(
+  workerAuth,
+  /Browser JWT requests must not drive billing reuse/
+);
 
 const service = read("hosting/aura-ai-async-jobs.service");
 assert.match(service, /User=aura-ai/);
