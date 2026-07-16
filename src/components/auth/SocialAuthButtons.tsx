@@ -38,7 +38,8 @@ interface SocialAuthButtonsProps {
 }
 
 async function openNativeOAuth(startUrl: string) {
-  const absoluteUrl = new URL(startUrl, window.location.origin).toString();
+  const { appShellNavigationOrigin } = await import("@/lib/app-shell");
+  const absoluteUrl = new URL(startUrl, appShellNavigationOrigin()).toString();
   const { Browser } = await import("@capacitor/browser");
   await Browser.open({ url: absoluteUrl });
 }

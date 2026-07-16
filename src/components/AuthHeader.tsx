@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LogIn, LogOut, User, Sparkles } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
 import NotificationBell from "@/components/NotificationBell";
+import { navigateToCabinet } from "@/lib/app-shell-nav";
 import type { AuthUser } from "@/lib/useAuth";
 
 export const NAVIGATE_CABINET_EVENT = "aura:navigate-cabinet";
@@ -26,12 +27,7 @@ export default function AuthHeader({
 
   const openCabinet = () => {
     window.dispatchEvent(new CustomEvent(NAVIGATE_CABINET_EVENT));
-    const inAppShell =
-      typeof window !== "undefined" &&
-      (document.documentElement.dataset.appShell === "android" ||
-        sessionStorage.getItem("zovus_app_shell") === "1" ||
-        /(?:^|[?&])app=1(?:&|$)/.test(window.location.search));
-    window.location.assign(inAppShell ? "/cabinet?app=1" : "/cabinet");
+    navigateToCabinet();
   };
 
   const btnClass = compact

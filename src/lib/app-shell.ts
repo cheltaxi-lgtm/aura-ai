@@ -73,3 +73,38 @@ export function appShellStartUrl(baseUrl?: string): string {
   const base = (baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://zovus.ru").replace(/\/$/, "");
   return `${base}/?${APP_SHELL_QUERY}=${APP_SHELL_VALUE}`;
 }
+
+/** Production canonical origin — never localhost. */
+export function appShellCanonicalOrigin(): string {
+  const raw = (process.env.NEXT_PUBLIC_APP_URL ?? "https://zovus.ru").trim().replace(/\/$/, "");
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      return "https://zovus.ru";
+    }
+    return url.origin;
+  } catch {
+    return "https://zovus.ru";
+  }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+/**
+ * Base origin for in-app navigation / OAuth.
+ * Native shell must never resolve relative URLs against a baked localhost origin.
+ */
+export function appShellNavigationOrigin(): string {
+  if (typeof window === "undefined") return appShellCanonicalOrigin();
+  try {
+    const { hostname, origin } = window.location;
+    if (isNativeCapacitorPlatform() && isLoopbackHostname(hostname)) {
+      return appShellCanonicalOrigin();
+    }
+    return origin;
+  } catch {
+    return appShellCanonicalOrigin();
+  }
+}

@@ -2,7 +2,12 @@ import { primeHomeFlowStep } from "@/lib/home-flow-storage";
 import { onboardingRedirectUrl } from "@/lib/post-auth-return";
 import { getAppShellHomeNavHandlers } from "@/lib/app-shell-nav-bus";
 import { pushAppShellRoute } from "@/lib/app-shell-router-bus";
-import { isAppShellSearchParam, isNativeCapacitorPlatform, shouldUseAppShellClient } from "@/lib/app-shell";
+import {
+  appShellNavigationOrigin,
+  isAppShellSearchParam,
+  isNativeCapacitorPlatform,
+  shouldUseAppShellClient,
+} from "@/lib/app-shell";
 
 export const APP_SHELL_SECTIONS = {
   masters: "наставники",
@@ -69,7 +74,7 @@ function shouldAttachAppQuery(): boolean {
 
 function resolveAppAwarePath(path: string): string {
   if (!shouldAttachAppQuery()) return path;
-  const absolute = new URL(path, window.location.origin);
+  const absolute = new URL(path, appShellNavigationOrigin());
   absolute.searchParams.set("app", "1");
   return `${absolute.pathname}${absolute.search}${absolute.hash}`;
 }
@@ -84,7 +89,7 @@ function requiresHardNavigation(pathname: string): boolean {
 
 /** Full page navigation — in-app home may soft-route; cabinet and deep links always hard-navigate. */
 function shellNavigate(url: string): void {
-  const absoluteUrl = new URL(url, window.location.origin);
+  const absoluteUrl = new URL(url, appShellNavigationOrigin());
   const path = `${absoluteUrl.pathname}${absoluteUrl.search}${absoluteUrl.hash}`;
 
   if (

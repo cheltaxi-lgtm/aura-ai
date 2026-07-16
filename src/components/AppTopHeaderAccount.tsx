@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Bell, ChevronDown, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
+import { navigateToCabinet } from "@/lib/app-shell-nav";
 import type { AuthUser } from "@/lib/useAuth";
 
 type Anchor = { top: number; right: number; minWidth: number };
@@ -92,12 +93,7 @@ export default function AppTopHeaderAccount({
   const openCabinet = () => {
     close();
     window.dispatchEvent(new CustomEvent(NAVIGATE_CABINET_EVENT));
-    const inAppShell =
-      typeof window !== "undefined" &&
-      (document.documentElement.dataset.appShell === "android" ||
-        sessionStorage.getItem("zovus_app_shell") === "1" ||
-        /(?:^|[?&])app=1(?:&|$)/.test(window.location.search));
-    window.location.assign(inAppShell ? "/cabinet?app=1" : "/cabinet");
+    navigateToCabinet();
   };
 
   if (loading) {
