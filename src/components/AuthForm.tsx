@@ -16,6 +16,7 @@ import { APP_SHELL_HEADER, shouldUseAppShellClient } from "@/lib/app-shell";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import { preloadRecaptchaScript } from "@/lib/useRecaptcha";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
+import { fetchAuthMeWithRetry } from "@/lib/client-auth-session";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
@@ -361,16 +362,19 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       }
 
       if (typeof window !== "undefined" && mode === "login" && role === "user") {
-        const meRes = await fetch("/api/auth/me", { credentials: "include" });
-        const me = meRes.ok ? await meRes.json() : null;
-        const needsProfile = Boolean(me?.needsProfile || !me?.user?.profileUserId);
+        const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
+        if (!me?.authenticated) {
+          setError("Сессия не успела сохраниться. Нажмите «Войти» ещё раз.");
+          return;
+        }
+        const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
         if (needsProfile) {
           markNeedsServerProfile();
           persistPostAuthReturnTo(destination);
           localStorage.setItem(
             "aura_profile",
             JSON.stringify({
-              name: me?.user?.name ?? "",
+              name: me.user?.name ?? "",
               gender: "female",
               birthDate: "",
               zodiac: "",

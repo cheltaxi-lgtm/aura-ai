@@ -6,6 +6,8 @@ import {
   PENDING_INTENT_KEY,
 } from "@/lib/post-auth-return";
 import { RUNE_PENDING_PAYMENT_KEY } from "@/lib/rune-purchase-client";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { waitUntilLoggedOut } from "@/lib/client-auth-session";
 
 export const AUTH_LOGOUT_EVENT = "aura:logout";
 
@@ -76,15 +78,31 @@ export interface ClientLogoutOptions {
   hardRedirect?: boolean;
 }
 
+async function requestServerLogout(): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await fetchWithTimeout("/api/auth/me", {
+        method: "DELETE",
+        credentials: "include",
+        cache: "no-store",
+        timeoutMs: 10_000,
+      });
+      if (res.ok) return true;
+    } catch {
+      /* retry — WebView sometimes drops the first DELETE */
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 200 * (attempt + 1)));
+  }
+  return false;
+}
+
 /** Sign out on the server and wipe local client state. */
 export async function performClientLogout(options: ClientLogoutOptions = {}): Promise<void> {
   const { redirectTo = "/", hardRedirect = true } = options;
 
-  try {
-    await fetch("/api/auth/me", { method: "DELETE" });
-  } catch {
-    /* network errors — still clear local state */
-  }
+  await requestServerLogout();
+  // Confirm cookie is actually gone before navigating (critical on Android WebView).
+  await waitUntilLoggedOut({ attempts: 5, delayMs: 200 });
 
   clearClientAuthState();
   window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_EVENT));

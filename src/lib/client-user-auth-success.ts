@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchAuthMeWithRetry } from "@/lib/client-auth-session";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
@@ -138,16 +139,19 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
   }
 
   if (!isRegisterFlow) {
-    const meRes = await fetch("/api/auth/me", { credentials: "include" });
-    const me = meRes.ok ? await meRes.json() : null;
-    const needsProfile = Boolean(me?.needsProfile || !me?.user?.profileUserId);
+    const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
+    if (!me?.authenticated) {
+      // Cookie not visible yet / login failed — don't send to onboarding.
+      return destination;
+    }
+    const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
     if (needsProfile) {
       markNeedsServerProfile();
       persistPostAuthReturnTo(destination);
       localStorage.setItem(
         "aura_profile",
         JSON.stringify({
-          name: me?.user?.name ?? "",
+          name: me.user?.name ?? "",
           gender: defaultGender,
           birthDate: "",
           zodiac: "",

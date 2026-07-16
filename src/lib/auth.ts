@@ -83,9 +83,24 @@ export async function setAuthCookie(payload: AuthPayload, request?: CookieReques
   });
 }
 
-export async function clearAuthCookie() {
+/**
+ * Clear auth cookie with the same path/secure/sameSite attributes used on set.
+ * Bare `cookies().delete(name)` often fails to remove Secure cookies in Android WebView.
+ */
+export async function clearAuthCookie(request?: CookieRequestContext) {
   const jar = await cookies();
-  jar.delete(COOKIE);
+  jar.set(COOKIE, "", {
+    httpOnly: true,
+    secure: resolveCookieSecure(request),
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  try {
+    jar.delete(COOKIE);
+  } catch {
+    /* set(maxAge:0) is enough for most browsers */
+  }
 }
 
 export async function getAuth(): Promise<AuthPayload | null> {

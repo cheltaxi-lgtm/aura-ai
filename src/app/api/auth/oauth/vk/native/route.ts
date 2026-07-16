@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { finishOAuthLogin } from "@/lib/oauth/finish";
 import { fetchVkUserInfo } from "@/lib/oauth/providers/vk";
+import { createOAuthHandoff } from "@/lib/oauth/handoff";
 import { createPendingOAuthRegistration } from "@/lib/oauth/storage";
 import {
   checkOAuthRequestRateLimit,
@@ -62,6 +63,8 @@ export async function POST(request: NextRequest) {
         pending,
         request,
       });
+      // Handoff fallback when WebView cookie from Set-Cookie is not visible yet.
+      const handoff = await createOAuthHandoff(result.account.id);
       return NextResponse.json(
         {
           ok: true,
@@ -70,6 +73,7 @@ export async function POST(request: NextRequest) {
           isNewUser: result.isNewUser,
           needsProfile: result.needsProfile,
           hasProfile: Boolean(result.profile),
+          handoff,
         },
         { headers: OAUTH_NO_STORE_HEADERS }
       );

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { clearAuthCookie, getAuth } from "@/lib/auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getLatestOAuthGenderForAccount } from "@/lib/oauth/accounts";
+import { clearSessionClaimCookie } from "@/lib/session-claim";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,15 @@ export async function GET() {
   });
 }
 
-export async function DELETE() {
-  await clearAuthCookie();
-  return NextResponse.json({ ok: true });
+export async function DELETE(request: NextRequest) {
+  await clearAuthCookie(request);
+  await clearSessionClaimCookie(request);
+  return NextResponse.json(
+    { ok: true },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  );
 }

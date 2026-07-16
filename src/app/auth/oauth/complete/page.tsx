@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { finishUserAuthSuccess } from "@/lib/client-user-auth-success";
+import { fetchAuthMeWithRetry, type AuthMeResponse } from "@/lib/client-auth-session";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 
@@ -12,23 +14,37 @@ type RegistrationPreview = {
   gender: "male" | "female" | null;
 };
 
-async function ensureAuthenticated(handoff: string | null) {
-  let meRes = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
-  let me = meRes.ok ? await meRes.json() : null;
+async function ensureAuthenticated(handoff: string | null): Promise<AuthMeResponse | null> {
+  // Cookie from login/VK native may lag in Android WebView — retry first.
+  let me = await fetchAuthMeWithRetry({ attempts: 4, delayMs: 250 });
   if (me?.authenticated) return me;
   if (!handoff) return null;
 
-  const handoffRes = await fetch("/api/auth/oauth/handoff", {
-    method: "POST",
-    credentials: "include",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: handoff }),
-  });
-  if (!handoffRes.ok) return null;
-  meRes = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
-  me = meRes.ok ? await meRes.json() : null;
-  return me?.authenticated ? me : null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const handoffRes = await fetchWithTimeout("/api/auth/oauth/handoff", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        timeoutMs: 12_000,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: handoff }),
+      });
+      if (handoffRes.ok) {
+        // Token is single-use; only poll /me after a successful consume.
+        return fetchAuthMeWithRetry({ attempts: 6, delayMs: 300 });
+      }
+      if (handoffRes.status === 400 || handoffRes.status === 404) {
+        // Already consumed or invalid — cookie may already be set.
+        break;
+      }
+    } catch {
+      /* retry handoff POST on network errors */
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 300 * (attempt + 1)));
+  }
+
+  return fetchAuthMeWithRetry({ attempts: 4, delayMs: 400 });
 }
 
 export default function OAuthCompletePage() {
@@ -68,10 +84,11 @@ export default function OAuthCompletePage() {
     void (async () => {
       try {
         const me = await ensureAuthenticated(handoff);
-        if (!me) {
+        if (!me?.authenticated) {
           setError("Сессия не создана. Попробуйте войти снова.");
           return;
         }
+        // Drop one-time handoff from URL so chunk-reload / back won't reuse it.
         window.history.replaceState(null, "", "/auth/oauth/complete");
 
         let profile: Record<string, unknown> | null = null;

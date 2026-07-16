@@ -19,18 +19,19 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const res = await fetchWithTimeout("/api/auth/me", {
           timeoutMs: 10_000,
           credentials: "include",
+          cache: "no-store",
         });
         const data = await res.json();
         setUser(data.authenticated ? data.user : null);
         return;
       } catch {
-        if (attempt === 0) {
-          await new Promise((resolve) => window.setTimeout(resolve, 500));
+        if (attempt < 2) {
+          await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
           continue;
         }
         setUser(null);

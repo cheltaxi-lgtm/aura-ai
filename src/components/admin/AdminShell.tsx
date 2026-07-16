@@ -101,8 +101,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }, [pathname]);
 
   const logout = async () => {
-    await fetch("/api/auth/me", { method: "DELETE" });
-    router.replace("/admin/login");
+    const { performClientLogout } = await import("@/lib/client-logout");
+    await performClientLogout({ redirectTo: "/admin/login", hardRedirect: true });
   };
 
   if (loading) {

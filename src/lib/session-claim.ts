@@ -55,6 +55,25 @@ export async function readSessionClaimCookie(): Promise<string | null> {
   return jar.get(SESSION_CLAIM_COOKIE)?.value ?? null;
 }
 
+/** Clear guest session claim with matching cookie attributes (WebView-safe). */
+export async function clearSessionClaimCookie(
+  request?: CookieRequestContext
+): Promise<void> {
+  const jar = await cookies();
+  jar.set(SESSION_CLAIM_COOKIE, "", {
+    httpOnly: true,
+    secure: resolveCookieSecure(request),
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  try {
+    jar.delete(SESSION_CLAIM_COOKIE);
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function verifySessionClaimForId(
   sessionId: string,
   claimToken: string | null | undefined

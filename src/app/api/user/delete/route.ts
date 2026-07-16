@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { ensureDb } from "@/lib/db";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { clearAuthCookie } from "@/lib/auth";
 import { requireUserAuth } from "@/lib/require-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
+import { clearSessionClaimCookie } from "@/lib/session-claim";
 import { deleteUserAccountCompletely, deleteUserAccountOnly } from "@/lib/user-deletion";
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   const auth = await requireUserAuth();
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,7 +36,8 @@ export async function DELETE() {
       );
     }
     const result = await deleteUserAccountOnly(auth.sub);
-    await clearAuthCookie();
+    await clearAuthCookie(request);
+    await clearSessionClaimCookie(request);
     return NextResponse.json({ ok: true, ...result });
   }
 
@@ -56,7 +58,8 @@ export async function DELETE() {
   }
 
   const result = await deleteUserAccountCompletely(auth.sub, profileUserId);
-  await clearAuthCookie();
+  await clearAuthCookie(request);
+  await clearSessionClaimCookie(request);
 
   return NextResponse.json({ ok: true, ...result });
 }

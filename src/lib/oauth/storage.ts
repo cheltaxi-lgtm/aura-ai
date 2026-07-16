@@ -8,7 +8,8 @@ import type {
 
 const TRANSACTION_TTL_MINUTES = 10;
 const REGISTRATION_TTL_MINUTES = 15;
-const HANDOFF_TTL_MINUTES = 2;
+/** App deep-link + Custom Tab handoff; keep long enough for slow mobile returns. */
+const HANDOFF_TTL_MINUTES = 15;
 
 type TransactionRow = {
   provider: OAuthProvider;

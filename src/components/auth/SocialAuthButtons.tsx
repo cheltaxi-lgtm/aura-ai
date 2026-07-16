@@ -142,6 +142,9 @@ export default function SocialAuthButtons({
           needsProfile: result.needsProfile ? "1" : "0",
         });
         if (result.hasProfile) params.set("hasProfile", "1");
+        if (typeof result.handoff === "string" && result.handoff.trim()) {
+          params.set("handoff", result.handoff.trim());
+        }
         window.location.assign(`/auth/oauth/complete?${params.toString()}`);
         return;
       }
