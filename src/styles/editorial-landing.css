@@ -1,4 +1,4 @@
-/* ── Salon background — continues the hero candle scene into charcoal ── */
+/* ── Salon night sky — stars + brass constellation lines ── */
 .salon-bg {
   position: fixed;
   inset: 0;
@@ -7,49 +7,100 @@
   overflow: hidden;
 }
 
-/* Same black family as .editorial-hero__overlay (8,6,4) */
 .salon-bg__base {
   position: absolute;
   inset: 0;
-  background: #080604;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 0%, #14101a 0%, #0a080f 45%, #060508 100%);
 }
 
-/* Soft candle glow — same gold as banner, quiet enough not to fight the photo */
-.salon-bg__candle {
+.salon-bg__glow {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(232, 199, 126, 0.07), transparent 55%),
-    radial-gradient(ellipse 50% 35% at 50% 100%, rgba(201, 162, 74, 0.035), transparent 60%);
+    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(232, 199, 126, 0.1), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 20% 30%, rgba(120, 90, 160, 0.06), transparent 70%),
+    radial-gradient(ellipse 35% 28% at 80% 25%, rgba(90, 110, 160, 0.05), transparent 70%);
 }
 
-/* Side + bottom depth so content column feels seated, not floating */
-.salon-bg__depth {
+/* Far / near starfields via layered radial dots */
+.salon-bg__stars {
+  position: absolute;
+  inset: -10%;
+  background-repeat: repeat;
+}
+
+.salon-bg__stars--far {
+  opacity: 0.7;
+  background-image:
+    radial-gradient(1px 1px at 8% 12%, rgba(255, 248, 230, 0.85), transparent),
+    radial-gradient(1px 1px at 22% 38%, rgba(255, 248, 230, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 35% 18%, rgba(232, 199, 126, 0.9), transparent),
+    radial-gradient(1px 1px at 48% 55%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 62% 22%, rgba(255, 248, 230, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 74% 48%, rgba(232, 199, 126, 0.75), transparent),
+    radial-gradient(1px 1px at 88% 15%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1px 1px at 12% 72%, rgba(255, 248, 230, 0.45), transparent),
+    radial-gradient(1px 1px at 28% 88%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 55% 78%, rgba(232, 199, 126, 0.8), transparent),
+    radial-gradient(1px 1px at 70% 92%, rgba(255, 248, 230, 0.5), transparent),
+    radial-gradient(1px 1px at 92% 68%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 42% 8%, rgba(255, 248, 230, 0.4), transparent),
+    radial-gradient(1px 1px at 18% 52%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1px 1px at 80% 82%, rgba(232, 199, 126, 0.45), transparent);
+  background-size: 420px 420px;
+}
+
+.salon-bg__stars--near {
+  opacity: 0.9;
+  background-image:
+    radial-gradient(1.5px 1.5px at 15% 25%, rgba(255, 250, 235, 0.95), transparent),
+    radial-gradient(2px 2px at 40% 40%, rgba(232, 199, 126, 1), transparent),
+    radial-gradient(1.5px 1.5px at 65% 18%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(2px 2px at 85% 55%, rgba(232, 199, 126, 0.95), transparent),
+    radial-gradient(1.5px 1.5px at 30% 70%, rgba(255, 250, 235, 0.85), transparent),
+    radial-gradient(2px 2px at 58% 85%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 78% 35%, rgba(232, 199, 126, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 10% 90%, rgba(255, 250, 235, 0.7), transparent);
+  background-size: 560px 560px;
+  animation: salon-stars-drift 80s linear infinite;
+}
+
+.salon-bg__lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.85;
+}
+
+.salon-bg__vignette {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(4, 3, 2, 0.55) 0%, transparent 16%, transparent 84%, rgba(4, 3, 2, 0.55) 100%),
-    linear-gradient(to top, rgba(4, 3, 2, 0.5) 0%, transparent 40%);
+    linear-gradient(90deg, rgba(4, 3, 6, 0.55) 0%, transparent 18%, transparent 82%, rgba(4, 3, 6, 0.55) 100%),
+    linear-gradient(to top, rgba(4, 3, 6, 0.65) 0%, transparent 35%),
+    linear-gradient(to bottom, rgba(4, 3, 6, 0.35) 0%, transparent 22%);
 }
 
-/* Fine velvet grain — dark flecks, not sandy olive */
-.salon-bg__grain {
-  position: absolute;
-  inset: 0;
-  opacity: 0.22;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.5'/%3E%3C/svg%3E");
-  background-size: 160px 160px;
+@keyframes salon-stars-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-40px, 20px, 0); }
 }
 
-html[data-motion-lite="1"] .salon-bg__grain {
-  opacity: 0.12;
+@media (prefers-reduced-motion: reduce) {
+  .salon-bg__stars--near {
+    animation: none;
+  }
 }
 
-html[data-app-shell] .salon-bg__depth {
-  background:
-    linear-gradient(90deg, rgba(4, 3, 2, 0.35) 0%, transparent 12%, transparent 88%, rgba(4, 3, 2, 0.35) 100%),
-    linear-gradient(to top, rgba(4, 3, 2, 0.35) 0%, transparent 35%);
+html[data-motion-lite="1"] .salon-bg__stars--near {
+  animation: none;
+  opacity: 0.75;
+}
+
+html[data-motion-lite="1"] .salon-bg__lines {
+  opacity: 0.7;
 }
 
 html:has(.editorial-landing) .aura-mystic-bg {
