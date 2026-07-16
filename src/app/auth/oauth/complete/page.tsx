@@ -84,12 +84,21 @@ export default function OAuthCompletePage() {
     void (async () => {
       try {
         const me = await ensureAuthenticated(handoff);
+        // Drop one-time handoff from URL so chunk-reload / back won't reuse it.
+        window.history.replaceState(null, "", "/auth/oauth/complete");
+
         if (!me?.authenticated) {
+          // Last resort: hard navigate home — cookie from handoff/login may commit on document load.
+          if (handoff) {
+            await new Promise((resolve) => window.setTimeout(resolve, 450));
+            const home = new URL(returnTo, window.location.origin);
+            home.searchParams.set("_auth", String(Date.now()));
+            window.location.replace(`${home.pathname}${home.search}${home.hash}`);
+            return;
+          }
           setError("Сессия не создана. Попробуйте войти снова.");
           return;
         }
-        // Drop one-time handoff from URL so chunk-reload / back won't reuse it.
-        window.history.replaceState(null, "", "/auth/oauth/complete");
 
         let profile: Record<string, unknown> | null = null;
         if (params.get("hasProfile") === "1" && me.user?.profileUserId) {

@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { findUserByEmail } from "@/lib/accounts";
 import { setAuthCookie, verifyPassword, normalizeAuthEmail } from "@/lib/auth";
-import { resolveLoginHint, getLoginFormHints, LOGIN_FAILURE_MESSAGE } from "@/lib/login-hints";
+import { resolveLoginHint, LOGIN_FAILURE_MESSAGE } from "@/lib/login-hints";
 import { clientIp, enforceLoginRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
+import { isAppShellRequest } from "@/lib/app-shell-request";
+import { createOAuthHandoff } from "@/lib/oauth/handoff";
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,7 +58,24 @@ export async function POST(request: NextRequest) {
       request
     );
 
-    return NextResponse.json({ ok: true, user: { id: user.id, email: user.email, name: user.name } });
+    // App WebView often lags applying Set-Cookie from fetch — handoff re-sets it.
+    let handoff: string | undefined;
+    if (isAppShellRequest(request)) {
+      try {
+        handoff = await createOAuthHandoff(user.id);
+      } catch (err) {
+        console.warn("Login handoff create failed:", err);
+      }
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        user: { id: user.id, email: user.email, name: user.name },
+        ...(handoff ? { handoff } : {}),
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("User login error:", error);
     return NextResponse.json({ error: "Ошибка входа" }, { status: 500 });

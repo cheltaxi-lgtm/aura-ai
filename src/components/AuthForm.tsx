@@ -16,7 +16,7 @@ import { APP_SHELL_HEADER, shouldUseAppShellClient } from "@/lib/app-shell";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import { preloadRecaptchaScript } from "@/lib/useRecaptcha";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
-import { fetchAuthMeWithRetry } from "@/lib/client-auth-session";
+import { commitAuthSession } from "@/lib/client-auth-commit";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
@@ -215,6 +215,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         method: "POST",
         headers,
         credentials: "include",
+        cache: "no-store",
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -362,34 +363,42 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       }
 
       if (typeof window !== "undefined" && mode === "login" && role === "user") {
-        const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
-        if (!me?.authenticated) {
-          setError("Сессия не успела сохраниться. Нажмите «Войти» ещё раз.");
-          return;
-        }
-        const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
-        if (needsProfile) {
-          markNeedsServerProfile();
-          persistPostAuthReturnTo(destination);
-          localStorage.setItem(
-            "aura_profile",
-            JSON.stringify({
-              name: me.user?.name ?? "",
-              gender: "female",
-              birthDate: "",
-              zodiac: "",
-              tarotCards: [],
-            })
-          );
-          localStorage.setItem("aura_flow_step", "onboarding");
-          window.location.assign(onboardingRedirectUrl());
-          return;
+        const handoff =
+          typeof data.handoff === "string" ? data.handoff : null;
+        const me = await commitAuthSession({ handoff });
+        // Only trust needsProfile when cookie is confirmed. If WebView lags,
+        // still hard-navigate — document load commits Set-Cookie from login.
+        if (me?.authenticated) {
+          const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
+          if (needsProfile) {
+            markNeedsServerProfile();
+            persistPostAuthReturnTo(destination);
+            localStorage.setItem(
+              "aura_profile",
+              JSON.stringify({
+                name: me.user?.name ?? "",
+                gender: "female",
+                birthDate: "",
+                zodiac: "",
+                tarotCards: [],
+              })
+            );
+            localStorage.setItem("aura_flow_step", "onboarding");
+            window.location.assign(onboardingRedirectUrl());
+            return;
+          }
         }
         clearClientAuthState();
         clearNeedsServerProfile();
         const landing = new URL(destination, window.location.origin);
         landing.searchParams.delete("step");
+        // Cache-bust helps some WebViews re-fetch with the new cookie.
+        landing.searchParams.set("_auth", String(Date.now()));
         destination = `${landing.pathname}${landing.search}${landing.hash}`;
+        // Brief pause so WebView can flush Set-Cookie before document navigation.
+        if (!me?.authenticated) {
+          await new Promise((resolve) => window.setTimeout(resolve, 450));
+        }
         window.location.assign(destination);
         return;
       }
