@@ -51,7 +51,6 @@ export function hasAuthPendingQuery(): boolean {
 
 /** Keep ?app=1 when landing after auth inside the native shell. */
 export function withAppShellAuthParams(destination: string): string {
-  const { appShellNavigationOrigin } = require("@/lib/app-shell") as typeof import("@/lib/app-shell");
   const url = new URL(destination, appShellNavigationOrigin());
   try {
     if (sessionStorage.getItem("zovus_app_shell") === "1") {
