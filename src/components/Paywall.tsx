@@ -128,7 +128,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
               </div>
               <div className="flex-1">
                 <p className="font-medium text-[#ede6da]">Подписка Zovus+</p>
-                <p className="text-xs text-white/40">Безлимит на месяц · все проводники</p>
+                <p className="text-xs text-white/40">Безлимит на месяц · все наставники</p>
               </div>
               <span className="font-display text-xl font-semibold text-aura-gold">Zovus+</span>
             </button>

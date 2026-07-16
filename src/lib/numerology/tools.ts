@@ -95,7 +95,7 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     positions: ["Число пути", "Энергия периода", "Совет чисел"],
     tagline: "Путь, энергия периода и совет — акцент на ближайшее время",
     description: "Открывающий расчёт: три числа связывают ваш код с текущим моментом.",
-    buildMessage: () => "draw_three_numbers",
+    buildMessage: () => "Разбери мой расклад «Три числа»",
   },
   {
     id: "pythagoras",

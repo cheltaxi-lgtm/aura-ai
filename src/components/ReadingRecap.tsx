@@ -125,11 +125,11 @@ export default function ReadingRecap({
       });
     }
     if (!newReadingAllowed && countdown.hintRu) {
-      return `${userName}, суточный лимит активен — ${countdown.hintRu.toLowerCase()}. Выберите мастера ниже, затем выпустите новый расклад.`;
+      return `${userName}, суточный лимит активен — ${countdown.hintRu.toLowerCase()}. Выберите мастера ниже, затем откройте новый расклад.`;
     }
     return (
       teaser ??
-      `${userName}, выберите мастера и выпустите расклад из ${spreadDef.cardCount} карт.`
+      `${userName}, выберите мастера и откройте расклад из ${spreadDef.cardCount} карт.`
     );
   }, [hasSpread, spreadCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu, spreadDef.cardCount]);
 
@@ -173,7 +173,7 @@ export default function ReadingRecap({
           type="button"
           onClick={handleNewReading}
           disabled={!newReadingAllowed}
-          title={countdown.tooltip || "Выпустить новый расклад из 3 карт"}
+          title={countdown.tooltip || "Открыть новый расклад из 3 карт"}
           className={`btn-new-spread shrink-0 ${newReadingAllowed ? "btn-new-spread--active" : "btn-new-spread--cooldown reading-recap__cooldown"}`}
         >
           {newReadingAllowed ? (

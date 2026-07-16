@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   if (rateLimited) return rateLimited;
 
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   if (!isYukassaConfigured()) {

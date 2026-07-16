@@ -20,6 +20,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { toParagraphs } from "@/lib/format-paragraphs";
+import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   aspectRows, bigThree, methodology, midpointRows, patternRows,
   positionRows, matchesCurrentChart, type NatalChartPayload,
@@ -208,7 +209,9 @@ export default function AstrologyWorkspace() {
     try {
       const response = await fetchRobust("/api/natal-chart/history?limit=100", { credentials: "include" });
       const data = await responseJson<{ reports?: Report[]; error?: string }>(response);
-      if (!response.ok) throw new Error(data.error || "Не удалось загрузить историю");
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось загрузить историю"));
+      }
       const nextReports = data.reports ?? [];
       setReports(nextReports);
       return nextReports;
@@ -231,7 +234,9 @@ export default function AstrologyWorkspace() {
         recompute ? 0 : 2
       );
       const data = await responseJson<{ enabled?: boolean; chart?: NatalChartPayload | null; error?: string }>(response);
-      if (!response.ok) throw new Error(data.error || "Не удалось загрузить карту рождения");
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось загрузить карту рождения"));
+      }
       setEnabled(data.enabled !== false);
       setChart(data.chart ?? null);
       if (recompute) {
@@ -239,7 +244,12 @@ export default function AstrologyWorkspace() {
         void loadHistory();
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
     } finally {
       setLoading(false);
       setBusy(null);
@@ -350,7 +360,9 @@ export default function AstrologyWorkspace() {
         }
         return;
       }
-      if (!response.ok) throw new Error(data.error || "Не удалось получить трактовку");
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось получить трактовку"));
+      }
       if (!data.interpretation?.trim()) {
         throw new Error("Сервер не вернул текст отчёта. Оставайтесь в этой вкладке и повторите попытку.");
       }
@@ -397,7 +409,12 @@ export default function AstrologyWorkspace() {
         }
         setError("Генерация заняла слишком много времени. Оставайтесь в этой вкладке или повторите попытку позже.");
       } else {
-        setError(reason instanceof Error ? reason.message : "Ошибка сети");
+        setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
       }
     } finally {
       setBusy(null);
@@ -456,7 +473,9 @@ export default function AstrologyWorkspace() {
         }
         return;
       }
-      if (!response.ok) throw new Error(data.error || "Не удалось получить прогноз");
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось получить прогноз"));
+      }
       if (!data.forecast?.trim() && !data.reportId) {
         throw new Error("Сервер не вернул прогноз. Оставайтесь во вкладке «Периоды» и повторите попытку.");
       }
@@ -484,7 +503,12 @@ export default function AstrologyWorkspace() {
         }
         setError("Генерация заняла слишком много времени. Оставайтесь в этой вкладке или повторите попытку позже.");
       } else {
-        setError(reason instanceof Error ? reason.message : "Ошибка сети");
+        setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
       }
     } finally {
       setBusy(null);
@@ -511,7 +535,9 @@ export default function AstrologyWorkspace() {
         showRateLimit("natal_report_delete", Number(response.headers.get("retry-after")) || undefined);
         return;
       }
-      if (!response.ok || !data.deleted) throw new Error(data.error || "Не удалось удалить отчёт");
+      if (!response.ok || !data.deleted) {
+        throw new Error(toUserFacingError(data.error, "Не удалось удалить отчёт"));
+      }
       if (report.reportType === "interpretation") {
         setFreshReports((previous) => {
           const next = { ...previous };
@@ -529,7 +555,12 @@ export default function AstrologyWorkspace() {
       }
       setNotice("Отчёт удалён без возврата рун. Теперь можно заказать новую версию.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
     } finally {
       setDeletingReportId(null);
     }
@@ -805,11 +836,18 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
       credentials: "include", signal: controller.signal,
     }).then(async (response) => {
       const data = await responseJson<{ timing?: PersonalTimingResult; error?: string }>(response);
-      if (!response.ok) throw new Error(data.error || "Не удалось загрузить периоды");
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось загрузить периоды"));
+      }
       setTiming(data.timing ?? null);
     }).catch((reason) => {
       if ((reason as Error).name !== "AbortError") {
-        setError(reason instanceof Error ? reason.message : "Ошибка сети");
+        setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
       }
     }).finally(() => {
       if (!controller.signal.aborted) setLoading(false);

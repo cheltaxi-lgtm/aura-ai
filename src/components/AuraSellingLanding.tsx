@@ -159,13 +159,13 @@ const COMPARISON_ROWS = [
   {
     title: "Честно о формате",
     them: "Скрывают, кто отвечает, или дают безликий шаблон",
-    us: "Проводники в образах — с характером, традицией и прозрачными правилами",
+    us: "Наставники в образах — с характером, традицией и прозрачными правилами",
   },
 ] as const;
 
 const TRUST_POINTS = [
   {
-    title: "Проводники в образах",
+    title: "Наставники в образах",
     text: "Каждый мастер ведёт в своей традиции — Таро, руны, астрология, нумерология.",
     icon: Sparkles,
   },
@@ -501,7 +501,7 @@ export default function AuraSellingLanding({
           }}
           layout="grid"
           rowVariant="default"
-          title="Выберите проводника"
+          title="Выберите наставника"
           subtitle="Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
           showExpertCta={expertRegistrationEnabled}
           showDisclaimer={false}

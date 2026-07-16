@@ -13,7 +13,7 @@ export async function GET() {
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const [settings, stats, recent] = await Promise.all([
@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const body = await request.json();

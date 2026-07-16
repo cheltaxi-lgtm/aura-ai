@@ -8,7 +8,7 @@ import {
 
 export async function GET(request: NextRequest) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const cronSecret = process.env.CRON_SECRET;

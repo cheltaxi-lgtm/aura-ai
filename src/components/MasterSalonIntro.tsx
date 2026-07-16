@@ -24,7 +24,7 @@ export default function MasterSalonIntro({ slug }: { slug: string }) {
         />
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-aura-gold/70">
-            Проводник · {MASTER_PUBLIC_BADGE}
+            Наставник · {MASTER_PUBLIC_BADGE}
           </p>
           <h1 id="master-salon-title" className="mt-2 font-display text-3xl font-medium text-[#ede6da] sm:text-4xl">
             {character.name}
@@ -35,7 +35,7 @@ export default function MasterSalonIntro({ slug }: { slug: string }) {
             {character.style}.
           </p>
           <p className="mt-4 text-xs text-white/40">
-            Сеанс откроется ниже. Можно также выбрать другого проводника на{" "}
+            Сеанс откроется ниже. Можно также выбрать другого наставника на{" "}
             <Link href="/#наставники" className="text-aura-gold hover:underline">
               главной
             </Link>

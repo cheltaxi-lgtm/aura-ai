@@ -35,7 +35,7 @@ import type { LifeFocus, AstroMeta } from "@/lib/astro-profile";
 
 export async function GET() {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const auth = await requireUserAuth();
@@ -107,7 +107,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const auth = await requireUserAuth();

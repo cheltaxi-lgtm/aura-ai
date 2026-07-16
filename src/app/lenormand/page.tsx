@@ -24,11 +24,11 @@ export default function LenormandHubPage() {
     <SeoPageShell backHref="/rasklady" backLabel="Каталог раскладов">
       <SeoPageTracker goal="lenormand_hub_view" />
       <SeoBreadcrumbs items={breadcrumbs} />
-      <p className="text-sm text-aura-gold/80">Оракул Ленорман</p>
+      <p className="text-sm text-aura-gold/80">Колода Ленорман</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Расклады Ленорман онлайн</h1>
       <p className="mt-4 text-white/70">
-        Ленорман — прямой оракул: меньше символизма, больше конкретики. Линия из пяти карт показывает
-        основу, развитие, ядро ситуации, исход и ключ — мастер Zovus свяжет позиции в связный ответ
+        Ленорман — прямая колода: меньше символизма, больше конкретики. Линия из пяти карт показывает
+        основу, развитие, ядро ситуации, исход и ключ — наставник Zovus свяжет позиции в связный ответ
         и продолжит диалог в чате.
       </p>
 

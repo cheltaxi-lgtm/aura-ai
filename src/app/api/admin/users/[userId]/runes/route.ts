@@ -12,7 +12,7 @@ export async function POST(
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const { userId } = await params;

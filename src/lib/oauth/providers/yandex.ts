@@ -80,7 +80,7 @@ export async function exchangeYandexCode(
     user.display_name?.trim() ||
     [user.first_name, user.last_name].filter(Boolean).join(" ").trim() ||
     user.login?.trim() ||
-    "Искатель";
+    "Гость";
 
   const gender = user.sex === "male" || user.sex === "female" ? user.sex : undefined;
 

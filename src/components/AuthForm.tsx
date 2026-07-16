@@ -20,6 +20,7 @@ import { commitAuthSession } from "@/lib/client-auth-commit";
 import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
+import { pickUserFacingError } from "@/lib/user-facing-error";
 import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
   clearNeedsServerProfile,
@@ -228,16 +229,20 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           return;
         }
         if (data.error === "rate_limit") {
-          setError(data.message ?? "Слишком много попыток. Подождите и попробуйте снова.");
+          setError(
+            pickUserFacingError(data, "Слишком много попыток. Подождите и попробуйте снова.")
+          );
         } else if (data.code === "recaptcha_failed") {
           setRecaptchaFailed(true);
           setError(
-            data.error ??
+            pickUserFacingError(
+              data,
               "Проверка безопасности не прошла. Нажмите «Повторить» или обновите страницу."
+            )
           );
           if (isUserRegister) trackRegistrationError("recaptcha_failed");
         } else {
-          setError(data.message ?? data.error ?? "Ошибка");
+          setError(pickUserFacingError(data, "Не удалось войти. Попробуйте снова."));
         }
         if (isUserRegister && data.code !== "recaptcha_failed") {
           trackRegistrationError(String(data.error ?? "unknown"));

@@ -19,7 +19,7 @@ const GENERATION_CONCURRENCY = 4;
  */
 export async function GET(request: NextRequest) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   if (!(await isNatalChartEnabled())) {

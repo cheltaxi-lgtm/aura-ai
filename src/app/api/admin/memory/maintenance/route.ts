@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const limitParam = Number(request.nextUrl.searchParams.get("limit"));

@@ -296,7 +296,7 @@ export function onboardingErrorMessage(data: {
     const fields = data.missing?.length ? ` (${data.missing.join(", ")})` : "";
     return `Заполните профиль${fields}. Вернитесь к анкете.`;
   }
-  if (data.error === "Database unavailable") {
+  if (data.error === "Сервис временно недоступен. Попробуйте позже.") {
     return "Сервер временно недоступен. Попробуйте через минуту.";
   }
   if (data.detail) {

@@ -10,6 +10,7 @@ import {
 } from "@/lib/tts-audio-cache";
 import { useTtsEnabled } from "@/hooks/useTtsEnabled";
 import { isCharacterTtsEnabled } from "@/lib/voice-config";
+import { pickUserFacingError } from "@/lib/user-facing-error";
 
 interface MessageAudioPlayerProps {
   text: string;
@@ -176,7 +177,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
           setError("Озвучка отключена");
           return;
         }
-        setError(data.error ?? "Озвучка недоступна");
+        setError(pickUserFacingError(data, "Озвучка временно недоступна"));
         return;
       }
 

@@ -361,5 +361,5 @@ export const DECK_SYSTEM_DISPLAY: Record<DeckSystem, string> = {
   slavic: "Славянское ведовство",
   astrology: "Джйотиш / Астрология",
   numerology: "Нумерология",
-  lenormand: "Оракул Ленорман",
+  lenormand: "Ленорман",
 };

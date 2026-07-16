@@ -17,7 +17,7 @@ type RouteParams = { params: Promise<{ token: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const rateLimited = await enforcePaidRouteRateLimit(clientIp(request), "joint_reading_view");

@@ -11,7 +11,7 @@ import { createOAuthHandoff } from "@/lib/oauth/handoff";
 export async function POST(request: NextRequest) {
   try {
     if (!(await ensureDb())) {
-      return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+      return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
     }
 
     const { email: rawEmail, password, recaptchaToken } = await request.json();

@@ -2845,7 +2845,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Быстрый ответ",
     "category": "future" as SpreadIntentCategory,
     "question": "Какой быстрый ответ?",
-    "intro": "Линия из пяти карт.",
+    "intro": "Пять карт Ленорман: короткий прямой ответ по вопросу.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2861,7 +2861,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Срок события",
     "category": "future" as SpreadIntentCategory,
     "question": "Когда событие?",
-    "intro": "Время по линии.",
+    "intro": "Когда событие ближе — по линии из пяти карт.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2877,7 +2877,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Суть ситуации",
     "category": "future" as SpreadIntentCategory,
     "question": "В чём суть?",
-    "intro": "Ядро вопроса.",
+    "intro": "В чём суть ситуации — без лишней символики.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2893,7 +2893,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Скрытый фактор",
     "category": "future" as SpreadIntentCategory,
     "question": "Что скрыто?",
-    "intro": "Невидимое влияние.",
+    "intro": "Что остаётся в тени и влияет на исход.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2905,11 +2905,11 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "master": "gadalka_marina"
   },
   {
-    "slug": "lenormand-sovet-orakula",
-    "title": "Ленорман: Совет оракула",
+    "slug": "lenormand-sovet-linii",
+    "title": "Ленорман: Совет линии",
     "category": "future" as SpreadIntentCategory,
     "question": "Какой совет?",
-    "intro": "Направление действия.",
+    "intro": "Практичный совет: куда сделать следующий шаг.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2925,7 +2925,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Исход дела",
     "category": "future" as SpreadIntentCategory,
     "question": "Каков исход?",
-    "intro": "Финал ситуации.",
+    "intro": "Чем может закончиться ситуация в ближайшем повороте.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2941,7 +2941,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Путь вперёд",
     "category": "future" as SpreadIntentCategory,
     "question": "Куда ведёт путь?",
-    "intro": "Направление.",
+    "intro": "Куда ведёт путь и какой шаг сейчас честнее.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2957,7 +2957,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Препятствие",
     "category": "future" as SpreadIntentCategory,
     "question": "Что мешает?",
-    "intro": "Блок на пути.",
+    "intro": "Что блокирует путь и как обойти препятствие.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2973,7 +2973,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Помощь",
     "category": "future" as SpreadIntentCategory,
     "question": "Откуда помощь?",
-    "intro": "Поддержка.",
+    "intro": "Откуда придёт поддержка и на кого опереться.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -2989,7 +2989,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Предупреждение",
     "category": "future" as SpreadIntentCategory,
     "question": "О чём предупреждение?",
-    "intro": "Знак осторожности.",
+    "intro": "О чём стоит быть осторожнее прямо сейчас.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3005,7 +3005,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Удача",
     "category": "future" as SpreadIntentCategory,
     "question": "Будет ли удача?",
-    "intro": "Фортуна.",
+    "intro": "Есть ли удача в ближайшем повороте.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3021,7 +3021,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Любовный знак",
     "category": "love" as SpreadIntentCategory,
     "question": "Какой любовный знак?",
-    "intro": "Послание сердцу.",
+    "intro": "Какой знак по чувствам и куда ведёт связь.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3037,7 +3037,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Денежный знак",
     "category": "money" as SpreadIntentCategory,
     "question": "Какой денежный знак?",
-    "intro": "Денежный вопрос — короткий ответ линией карт.",
+    "intro": "Знак по деньгам и сделкам — без лишней мистики.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3053,7 +3053,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Здоровье",
     "category": "self" as SpreadIntentCategory,
     "question": "Что с энергией?",
-    "intro": "Состояние сил.",
+    "intro": "Как обстоят дела с силами и восстановлением.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3069,7 +3069,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Путешествие",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт поездка?",
-    "intro": "Дорога и итог.",
+    "intro": "Как пройдёт дорога и чем обернётся поездка.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3085,7 +3085,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Переезд",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт переезд?",
-    "intro": "Смена места.",
+    "intro": "Как пройдёт смена места и к чему готовиться.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3101,7 +3101,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Сделка",
     "category": "money" as SpreadIntentCategory,
     "question": "Как пройдёт сделка?",
-    "intro": "Договор и итог.",
+    "intro": "Как пройдёт договор и какой будет итог.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3117,7 +3117,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Суд",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт суд?",
-    "intro": "Спор и решение.",
+    "intro": "Как развернётся спор и к какому решению ведёт.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3133,7 +3133,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Экзамен",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт экзамен?",
-    "intro": "Испытание.",
+    "intro": "Как пройдёт испытание и на что опереться.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3149,7 +3149,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Свидание",
     "category": "love" as SpreadIntentCategory,
     "question": "Как пройдёт свидание?",
-    "intro": "Встреча.",
+    "intro": "Как пройдёт встреча и что задаст тон.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3165,7 +3165,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Разговор",
     "category": "future" as SpreadIntentCategory,
     "question": "Как пройдёт разговор?",
-    "intro": "Диалог.",
+    "intro": "Как пройдёт важный разговор и чем закончится.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3181,7 +3181,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Конфликт",
     "category": "future" as SpreadIntentCategory,
     "question": "Как разрешится конфликт?",
-    "intro": "Ссора.",
+    "intro": "Где застрял конфликт и какой выход ближе.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3197,7 +3197,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Новость",
     "category": "future" as SpreadIntentCategory,
     "question": "Какая новость?",
-    "intro": "Сообщение судьбы.",
+    "intro": "Какая новость на подходе и что она меняет.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3213,7 +3213,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Сюрприз",
     "category": "future" as SpreadIntentCategory,
     "question": "Какой сюрприз?",
-    "intro": "Неожиданность.",
+    "intro": "Какая неожиданность может войти в жизнь.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",
@@ -3229,7 +3229,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Ключ",
     "category": "future" as SpreadIntentCategory,
     "question": "Где ключ?",
-    "intro": "Главная подсказка.",
+    "intro": "Где главный ключ к ситуации и следующий шаг.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",

@@ -14,7 +14,7 @@ type RouteParams = { params: Promise<{ token: string }> };
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const authed = await requireProfileUserId();

@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   if (!isTtsConfigured()) {
     return NextResponse.json(
-      { error: "TTS not configured", code: "browser_fallback" },
+      { error: "Озвучка временно недоступна", code: "browser_fallback" },
       { status: 503 }
     );
   }
@@ -49,29 +49,29 @@ export async function POST(request: NextRequest) {
     text = String(body.text ?? "").trim();
     characterId = await resolveApiCharacterId(body.characterId ?? characterId);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Не удалось обработать запрос" }, { status: 400 });
   }
 
   if (!isCharacterTtsEnabled(characterId)) {
     return NextResponse.json(
-      { error: "TTS disabled for this master", code: "browser_fallback" },
+      { error: "Озвучка для этого наставника недоступна", code: "browser_fallback" },
       { status: 403 }
     );
   }
 
   if (!text) {
-    return NextResponse.json({ error: "text required" }, { status: 400 });
+    return NextResponse.json({ error: "Нет текста для озвучки" }, { status: 400 });
   }
 
   if (text.length > MAX_REQUEST_CHARS) {
-    return NextResponse.json({ error: "text too long" }, { status: 400 });
+    return NextResponse.json({ error: "Текст слишком длинный для озвучки" }, { status: 400 });
   }
 
   try {
     const result = await synthesizeSpeech(text, characterId);
     if (!result) {
       return NextResponse.json(
-        { error: "Synthesis failed", code: "browser_fallback" },
+        { error: "Не удалось озвучить ответ", code: "browser_fallback" },
         { status: 502 }
       );
     }
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("TTS error:", error);
     return NextResponse.json(
-      { error: "TTS error", code: "browser_fallback" },
+      { error: "Озвучка временно недоступна", code: "browser_fallback" },
       { status: 500 }
     );
   }

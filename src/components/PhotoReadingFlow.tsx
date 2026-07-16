@@ -17,6 +17,7 @@ import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { findShowcaseMaster } from "@/lib/showcase-masters";
 import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
+import { pickUserFacingError } from "@/lib/user-facing-error";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import {
   PHOTO_MIN_CARD_COUNT,
@@ -934,9 +935,7 @@ export default function PhotoReadingFlow({
 
       if (response.status < 200 || response.status >= 300) {
         setError(
-          (typeof data.message === "string" && data.message) ||
-            (typeof data.error === "string" && data.error) ||
-            "Не удалось распознать расклад"
+          pickUserFacingError(data, "Не удалось распознать расклад. Проверьте фото и попробуйте снова.")
         );
         return;
       }
@@ -1077,13 +1076,15 @@ export default function PhotoReadingFlow({
 
         if (res.status === 422 && data.error === "INCOMPLETE_SPREAD") {
           setStep("confirm");
-          setError(data.message ?? "Добавьте хотя бы один символ в расклад.");
+          setError(
+            pickUserFacingError(data, "Добавьте хотя бы один символ в расклад.")
+          );
           return;
         }
 
         if (!res.ok) {
           setStep("confirm");
-          setError(data.message ?? data.error ?? "Не удалось расшифровать расклад");
+          setError(pickUserFacingError(data, "Не удалось расшифровать расклад"));
           return;
         }
 

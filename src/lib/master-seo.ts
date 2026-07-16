@@ -61,7 +61,7 @@ export function getMasterShareDescription(slug: string): string {
 export function buildMasterMetadata(slug: string): Metadata {
   const character = getCharacterById(slug);
   const name = character?.name ?? slug;
-  const ogTitle = `${name} — проводник | ${BRAND_NAME}`;
+  const ogTitle = `${name} — наставник | ${BRAND_NAME}`;
   const ogDescription = getMasterShareDescription(slug);
   const pageTitle = character ? `${name} — ${character.title}` : `${slug} — мастер`;
   const pageUrl = `${BRAND_URL}/master/${slug}`;

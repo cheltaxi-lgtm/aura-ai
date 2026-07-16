@@ -158,7 +158,7 @@ export async function upsertOAuthAccountWithClient(
     throw new Error("CONSENT_REQUIRED");
   }
 
-  const trimmedName = opts.info.name.trim().slice(0, 80) || "Искатель";
+  const trimmedName = opts.info.name.trim().slice(0, 80) || "Гость";
 
   const accountResult = await queryClient<{ id: string; email: string; name: string }>(
     client,
