@@ -17,6 +17,7 @@ import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import { preloadRecaptchaScript } from "@/lib/useRecaptcha";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { commitAuthSession } from "@/lib/client-auth-commit";
+import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
@@ -390,15 +391,17 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         }
         clearClientAuthState();
         clearNeedsServerProfile();
+        markAuthPending();
         const landing = new URL(destination, window.location.origin);
         landing.searchParams.delete("step");
-        // Cache-bust helps some WebViews re-fetch with the new cookie.
-        landing.searchParams.set("_auth", String(Date.now()));
-        destination = `${landing.pathname}${landing.search}${landing.hash}`;
+        destination = withAppShellAuthParams(
+          `${landing.pathname}${landing.search}${landing.hash}`
+        );
         // Brief pause so WebView can flush Set-Cookie before document navigation.
         if (!me?.authenticated) {
           await new Promise((resolve) => window.setTimeout(resolve, 450));
         }
+        window.dispatchEvent(new CustomEvent("aura:login"));
         window.location.assign(destination);
         return;
       }

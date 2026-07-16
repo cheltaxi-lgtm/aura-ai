@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(AppUpdatePlugin.class);
     registerPlugin(VkAuthPlugin.class);
+    registerPlugin(WebViewCookiesPlugin.class);
     super.onCreate(savedInstanceState);
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
   }

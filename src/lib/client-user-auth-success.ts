@@ -1,7 +1,9 @@
 "use client";
 
 import { fetchAuthMeWithRetry } from "@/lib/client-auth-session";
+import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
+import { flushWebViewCookies } from "@/lib/webview-cookies";
 import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
   clearNeedsServerProfile,
@@ -139,10 +141,12 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
   }
 
   if (!isRegisterFlow) {
+    markAuthPending();
+    await flushWebViewCookies();
     const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
     if (!me?.authenticated) {
-      // Cookie not visible yet / login failed — don't send to onboarding.
-      return destination;
+      // Cookie not visible yet — hard-nav with pending flag; useAuth will keep polling.
+      return withAppShellAuthParams(destination);
     }
     const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
     if (needsProfile) {
@@ -159,13 +163,15 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
         })
       );
       localStorage.setItem("aura_flow_step", "onboarding");
-      return onboardingRedirectUrl();
+      return withAppShellAuthParams(onboardingRedirectUrl());
     }
     clearClientAuthState();
     clearNeedsServerProfile();
     const landing = new URL(destination, window.location.origin);
     landing.searchParams.delete("step");
-    return `${landing.pathname}${landing.search}${landing.hash}`;
+    return withAppShellAuthParams(
+      `${landing.pathname}${landing.search}${landing.hash}`
+    );
   }
 
   return destination;

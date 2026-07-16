@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { finishUserAuthSuccess } from "@/lib/client-user-auth-success";
 import { fetchAuthMeWithRetry, type AuthMeResponse } from "@/lib/client-auth-session";
+import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
+import { flushWebViewCookies } from "@/lib/webview-cookies";
 
 type RegistrationPreview = {
   providerLabel: string;
@@ -32,6 +34,7 @@ async function ensureAuthenticated(handoff: string | null): Promise<AuthMeRespon
       });
       if (handoffRes.ok) {
         // Token is single-use; only poll /me after a successful consume.
+        await flushWebViewCookies();
         return fetchAuthMeWithRetry({ attempts: 6, delayMs: 300 });
       }
       if (handoffRes.status === 400 || handoffRes.status === 404) {
@@ -87,13 +90,14 @@ export default function OAuthCompletePage() {
         // Drop one-time handoff from URL so chunk-reload / back won't reuse it.
         window.history.replaceState(null, "", "/auth/oauth/complete");
 
+        await flushWebViewCookies();
+        markAuthPending();
+
         if (!me?.authenticated) {
           // Last resort: hard navigate home — cookie from handoff/login may commit on document load.
           if (handoff) {
             await new Promise((resolve) => window.setTimeout(resolve, 450));
-            const home = new URL(returnTo, window.location.origin);
-            home.searchParams.set("_auth", String(Date.now()));
-            window.location.replace(`${home.pathname}${home.search}${home.hash}`);
+            window.location.replace(withAppShellAuthParams(returnTo));
             return;
           }
           setError("Сессия не создана. Попробуйте войти снова.");
@@ -121,7 +125,7 @@ export default function OAuthCompletePage() {
           profile,
           oauthGender,
         });
-        window.location.replace(destination);
+        window.location.replace(withAppShellAuthParams(destination));
       } catch {
         setError("Не удалось завершить вход. Попробуйте снова.");
       }

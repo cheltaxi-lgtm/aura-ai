@@ -8,6 +8,8 @@ import {
 import { RUNE_PENDING_PAYMENT_KEY } from "@/lib/rune-purchase-client";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { waitUntilLoggedOut } from "@/lib/client-auth-session";
+import { clearAuthPending } from "@/lib/auth-pending";
+import { flushWebViewCookies } from "@/lib/webview-cookies";
 
 export const AUTH_LOGOUT_EVENT = "aura:logout";
 
@@ -87,12 +89,16 @@ async function requestServerLogout(): Promise<boolean> {
         cache: "no-store",
         timeoutMs: 10_000,
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        await flushWebViewCookies();
+        return true;
+      }
     } catch {
       /* retry — WebView sometimes drops the first DELETE */
     }
     await new Promise((resolve) => window.setTimeout(resolve, 200 * (attempt + 1)));
   }
+  await flushWebViewCookies();
   return false;
 }
 
@@ -100,18 +106,31 @@ async function requestServerLogout(): Promise<boolean> {
 export async function performClientLogout(options: ClientLogoutOptions = {}): Promise<void> {
   const { redirectTo = "/", hardRedirect = true } = options;
 
+  clearAuthPending();
   await requestServerLogout();
   // Confirm cookie is actually gone before navigating (critical on Android WebView).
   await waitUntilLoggedOut({ attempts: 5, delayMs: 200 });
+  await flushWebViewCookies();
 
   clearClientAuthState();
   window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_EVENT));
 
   if (!hardRedirect) return;
 
-  if (window.location.pathname + window.location.search === redirectTo) {
+  let target = redirectTo;
+  try {
+    if (sessionStorage.getItem("zovus_app_shell") === "1") {
+      const url = new URL(redirectTo, window.location.origin);
+      url.searchParams.set("app", "1");
+      target = `${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  if (window.location.pathname + window.location.search === target) {
     window.location.reload();
   } else {
-    window.location.assign(redirectTo);
+    window.location.assign(target);
   }
 }
