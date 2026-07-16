@@ -81,7 +81,7 @@ export default function ReadingRecap({
   cooldownAllowed = true,
   nextAvailableAt,
   onUnlock,
-  unlockLabel = "199 ₽",
+  unlockLabel = "открыть за руны ᚢ",
   readingHint,
   onOpenGallery,
   spreadId: spreadIdProp,

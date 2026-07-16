@@ -158,7 +158,7 @@ export const HIGH_VOLUME_INTENT_SEEDS: HvSeed[] = [
     category: "future",
     spreadId: "lenormand-line",
     question: "Что говорит линия из пяти карт?",
-    intro: "Быстрый оракульный ответ: основа, развитие, ядро, исход и ключ.",
+    intro: "Быстрый ответ линией Ленорман: основа, развитие, ядро, исход и ключ.",
     positions: ["Основа", "Развитие", "Ядро", "Исход", "Ключ"],
     master: "veronika",
     related: ["na-segodnya", "blizhayshee-budushchee", "chto-menya-zhdet"],

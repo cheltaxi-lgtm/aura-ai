@@ -45,7 +45,7 @@ export interface DailyReadingResult {
 const DAILY_POSITIONS = ["Утро", "День", "Вечер"] as const;
 
 export const DAILY_READING_GENERIC_FALLBACK =
-  "Сегодня — день тихой силы. Прислушайся к знакам вокруг.";
+  "Сегодня — день тихой силы. Прислушайтесь к знакам вокруг.";
 
 function sanitizeDailyReadingText(raw: string | null | undefined): string {
   return trimIncompleteTrailingSentence(stripStageDirections(raw?.trim() ?? ""));
@@ -67,8 +67,8 @@ function buildDailyFallbackReading(
     params.spreadId === DEFAULT_SPREAD_ID ? "энергия дня" : spread.label.toLowerCase();
   const persona = MASTER_PERSONA[charKey]?.split("\n")[0]?.trim();
   const opener = persona
-    ? `${params.name}, ${persona.charAt(0).toLowerCase()}${persona.slice(1)} — твой прогноз «${title}».`
-    : `${params.name}, твой прогноз «${title}».`;
+    ? `${params.name}, ${persona.charAt(0).toLowerCase()}${persona.slice(1)} — ваш прогноз «${title}».`
+    : `${params.name}, ваш прогноз «${title}».`;
 
   const parts = params.cards.map((c) => {
     const meaning = c.meaning?.replace(/^[^:]+:\s*/, "").trim() || c.name;

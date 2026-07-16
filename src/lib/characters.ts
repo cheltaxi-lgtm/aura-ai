@@ -11,7 +11,7 @@ export const CHARACTERS: Character[] = [
     gradient: "from-slate-800 via-gray-900 to-zinc-950",
     glowColor: "rgba(148, 163, 184, 0.5)",
     borderColor: "border-slate-500/40",
-    priceFrom: "1 490 ₽",
+    priceFrom: "по тарифу ᚢ",
     system: "runes",
   },
   {
@@ -24,7 +24,7 @@ export const CHARACTERS: Character[] = [
     gradient: "from-stone-900 via-[#1a1410] to-[#0a0908]",
     glowColor: "rgba(201, 162, 74, 0.35)",
     borderColor: "border-amber-500/30",
-    priceFrom: "990 ₽",
+    priceFrom: "по тарифу ᚢ",
     system: "tarot-veronika",
   },
   {
@@ -37,7 +37,7 @@ export const CHARACTERS: Character[] = [
     gradient: "from-emerald-950 via-teal-950 to-green-950",
     glowColor: "rgba(16, 185, 129, 0.35)",
     borderColor: "border-emerald-500/40",
-    priceFrom: "1 290 ₽",
+    priceFrom: "по тарифу ᚢ",
     system: "slavic",
   },
   {
@@ -50,7 +50,7 @@ export const CHARACTERS: Character[] = [
     gradient: "from-amber-950 via-orange-950 to-yellow-950",
     glowColor: "rgba(245, 158, 11, 0.4)",
     borderColor: "border-amber-500/40",
-    priceFrom: "1 790 ₽",
+    priceFrom: "по тарифу ᚢ",
     system: "astrology",
   },
   {
@@ -63,7 +63,7 @@ export const CHARACTERS: Character[] = [
     gradient: "from-[#1a1816] via-[#141210] to-[#0a0908]",
     glowColor: "rgba(232, 199, 126, 0.4)",
     borderColor: "border-amber-500/35",
-    priceFrom: "1 290 ₽",
+    priceFrom: "по тарифу ᚢ",
     system: "numerology",
   },
 ];

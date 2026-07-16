@@ -32,8 +32,8 @@ export default function EditorialStarterPackSection({ onOpenFreeSpread }: Editor
                 Стартовые руны на баланс
               </h2>
               <p className="editorial-starter-pack__subtitle">
-                После входа на счёт сразу попадают руны — хватит на полную расшифровку и первые
-                уточнения в чате. Эквивалент 1 500 ₽.
+                После входа на счёт сразу попадают стартовые руны ᚢ — хватит на полную расшифровку и
+                первые уточнения в чате.
               </p>
               <ul className="editorial-starter-pack__perks">
                 <li>Полный разбор расклада у выбранного мастера</li>

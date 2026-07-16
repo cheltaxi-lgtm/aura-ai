@@ -7,7 +7,7 @@ import AboutPageShell, { AboutSection } from "@/components/seo/AboutPageShell";
 export const metadata: Metadata = buildSeoMetadata({
   title: "Мастера Zovus — ИИ-наставники в художественных образах",
   description:
-    "Вероника, Эвелина, Астра и другие — персональные ИИ-наставники Zovus по Таро, нумерологии, астрологии и рунам.",
+    "Вероника, Эвелина, Рагнар, Агафья и Шри Радж — персональные ИИ-наставники Zovus по Таро, нумерологии, астрологии и рунам.",
   path: "/about/masters",
 });
 

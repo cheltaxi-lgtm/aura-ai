@@ -111,7 +111,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
                 <p className="font-medium text-[#ede6da]">Детальный разбор</p>
                 <p className="text-xs text-white/40">СБП · карты · ЮMoney</p>
               </div>
-              <span className="font-display text-xl font-semibold text-aura-gold">199 ₽</span>
+              <span className="font-display text-xl font-semibold text-aura-gold">за руны ᚢ</span>
             </button>
 
             <button
@@ -130,7 +130,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
                 <p className="font-medium text-[#ede6da]">Подписка Zovus+</p>
                 <p className="text-xs text-white/40">Безлимит на месяц · все проводники</p>
               </div>
-              <span className="font-display text-xl font-semibold text-aura-gold">590 ₽</span>
+              <span className="font-display text-xl font-semibold text-aura-gold">Zovus+</span>
             </button>
           </div>
 

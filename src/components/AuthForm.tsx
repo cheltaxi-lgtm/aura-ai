@@ -547,7 +547,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           {isExpert && (
             <>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Slug страницы</label>
+                <label className="mb-1 block text-xs text-gray-500">Адрес страницы</label>
                 <input
                   type="text"
                   value={slug}

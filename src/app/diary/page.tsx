@@ -88,7 +88,7 @@ export default function DiaryPage() {
             animate={{ opacity: 1 }}
             className="mt-16 text-center text-gray-500 leading-relaxed"
           >
-            Твой дневник судьбы пуст.
+            Ваш дневник судьбы пуст.
             <br />
             Первая запись появится после сеанса с мастером.
           </motion.p>

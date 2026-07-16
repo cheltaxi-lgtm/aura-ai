@@ -4,9 +4,9 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import AboutPageShell, { AboutSection } from "@/components/seo/AboutPageShell";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: "О сервисе Zovus — персональные расклады с ИИ-мастерами",
+  title: "О сервисе Zovus — персональные расклады с ИИ-наставниками",
   description:
-    "Zovus — онлайн-сервис эзотерических консультаций: Таро, руны, астрология, нумерология. ИИ-мастера в художественных образах, чат после расклада.",
+    "Zovus — онлайн-сервис эзотерических консультаций: Таро, руны, астрология, нумерология. ИИ-наставники в художественных образах, чат после расклада.",
   path: "/about",
 });
 

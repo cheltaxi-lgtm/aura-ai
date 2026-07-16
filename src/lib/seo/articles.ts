@@ -111,7 +111,7 @@ export const SEO_ARTICLES: SeoArticle[] = [
   },
   {
     slug: "lenormand-bystryj-otvet",
-    title: "Линия Ленорман: быстрый оракул",
+    title: "Линия Ленорман: быстрый ответ",
     description: "Пять карт в линию — основа, развитие, ядро, исход и ключ.",
     intro: "Ленорман-линия — для конкретного вопроса с чётким сроком и действием.",
     sections: [

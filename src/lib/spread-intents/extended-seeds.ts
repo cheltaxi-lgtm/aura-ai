@@ -3037,7 +3037,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Ленорман: Денежный знак",
     "category": "money" as SpreadIntentCategory,
     "question": "Какой денежный знак?",
-    "intro": "Финансовый оракул.",
+    "intro": "Денежный вопрос — короткий ответ линией карт.",
     "spreadId": "lenormand-line" as SpreadId,
     "positions": [
       "Основа",

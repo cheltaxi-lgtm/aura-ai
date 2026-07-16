@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   ...buildSeoMetadata({
     title: "Матрица судьбы по дате рождения",
     description:
-      "Быстрый AI-разбор личности, денег, отношений и предназначения по дате рождения — авторская матрица судьбы Zovus.",
+      "Быстрый разбор личности, денег, отношений и предназначения по дате рождения — авторская матрица судьбы Zovus.",
     path: CANONICAL,
   }),
   alternates: { canonical: CANONICAL },

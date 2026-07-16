@@ -530,7 +530,7 @@ export async function POST(request: NextRequest) {
               cost: tool.cost,
               actionType: "NUMEROLOGY_SESSION",
               description: isDestinyMatrix
-                ? `Матрица судьбы — полный AI-разбор (Эвелина)`
+                ? `Матрица судьбы — полный разбор Эвелины`
                 : `${tool.label} (Эвелина)`,
             });
             billingCharge = charge;

@@ -74,5 +74,9 @@ export function formatMasterPriceDisplay(params: {
   }
 
   const unit = masterReadingUnit(params.system);
+  // Fallback when runes shop is off — avoid "от по тарифу".
+  if (/тариф|ᚢ|рун/i.test(priceFrom)) {
+    return { amount: priceFrom, unit };
+  }
   return { amount: `от ${priceFrom}`, unit };
 }

@@ -11,12 +11,12 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   email_exists: "Email уже зарегистрирован. Войдите через email или используйте другой аккаунт.",
   provider_denied: "Вход через соцсеть отменён.",
   state_mismatch:
-    "Сессия OAuth устарела. Если вы входили из приложения — попробуйте снова, не закрывая окно авторизации.",
+    "Сессия входа через соцсеть устарела. Если вы входили из приложения — попробуйте снова, не закрывая окно авторизации.",
   start_failed: "Не удалось начать вход через соцсеть.",
   oauth_failed: "Ошибка входа через соцсеть. Попробуйте позже.",
   provider_unavailable: "Этот способ входа временно недоступен.",
   vk_redirect_invalid:
-    "VK: не настроен redirect URL. В кабинете VK ID добавьте https://zovus.ru/api/auth/oauth/vk/callback",
+    "Вход через VK временно недоступен. Попробуйте Яндекс или email — либо напишите в поддержку.",
 };
 
 export function resolveOAuthErrorMessage(code: string | null | undefined): string | null {

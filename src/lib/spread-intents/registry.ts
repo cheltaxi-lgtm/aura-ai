@@ -61,7 +61,7 @@ function buildIntent(seed: IntentSeed): SpreadIntentDefinition {
     seoTitle: meta?.seoTitle ?? `${seed.title} — расклад Таро онлайн | Zovus`,
     seoDescription:
       meta?.seoDescription ??
-      `${seed.intro} Персональный расклад с ИИ-мастером Zovus: память сессии, чат и расшифровка.`,
+      `${seed.intro} Персональный расклад с ИИ-наставником Zovus: память сессии, чат и расшифровка.`,
     h1: meta?.h1 ?? seed.title,
     intro: seed.intro,
     positionsPreview: [...seed.positions],

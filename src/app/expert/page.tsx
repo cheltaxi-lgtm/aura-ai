@@ -106,7 +106,7 @@ export default function ExpertCabinetPage() {
             <div className="glass-panel p-6">
               <div className="mb-3 flex items-center gap-2 text-aura-neon">
                 <Link2 className="h-5 w-5" />
-                <h2 className="font-medium">White-Label страница</h2>
+                <h2 className="font-medium">Ваша страница мастера</h2>
               </div>
               <p className="break-all rounded-xl bg-black/40 px-4 py-3 text-sm text-aura-emerald">
                 {whiteLabelUrl}

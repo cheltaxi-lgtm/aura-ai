@@ -20,7 +20,7 @@ const LOCKED_SECTIONS = [
   "Отношения и сценарии близости",
   "Кармический хвост",
   "Родовые программы отца и матери",
-  "Практика на 30 дней и AI-вопросы",
+  "Практика на 30 дней и вопросы Эвелине",
 ] as const;
 
 /** Normalize profile birth dates (ISO / dotted) for `<input type="date">`. */
@@ -168,7 +168,7 @@ export default function DestinyMatrixPreview() {
         {fromProfile
           ? "Подставили данные из вашего профиля — можно сразу смотреть результат или изменить поля."
           : "Нужна только дата рождения. Цифры матрицы — бесплатно и всегда одинаковые."}{" "}
-        {PRICING.NUMEROLOGY_SESSION} ᚢ — за персональный AI-разбор Эвелины с сохранением и{" "}
+        {PRICING.NUMEROLOGY_SESSION} ᚢ — за персональный разбор Эвелины с сохранением и{" "}
         {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате.
       </p>
 
@@ -216,7 +216,7 @@ export default function DestinyMatrixPreview() {
           <DestinyMatrixGrid
             matrix={summary.matrix}
             revealed={revealed}
-            hint="Авторский расчёт Zovus (matrix-v1). Цифры фиксированы движком — ИИ их не пересчитывает."
+            hint="Авторский расчёт Zovus. Цифры фиксированы движком — наставник их не пересчитывает."
           />
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -247,11 +247,13 @@ export default function DestinyMatrixPreview() {
 
           <div className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
             <p className="text-sm font-medium text-aura-gold">
-              {ownedFull ? "Полный разбор уже куплен" : "Полный разбор закрыт в preview"}
+              {ownedFull
+                ? "Полный разбор уже куплен"
+                : "Полный разбор пока скрыт в бесплатном расчёте"}
             </p>
             {ownedFull ? (
               <p className="mt-3 text-sm text-white/65">
-                AI-отчёт сохранён для этой даты рождения. Откройте с Эвелиной бесплатно — без
+                Разбор сохранён для этой даты рождения. Откройте с Эвелиной бесплатно — без
                 повторной оплаты за те же числа.
               </p>
             ) : (
@@ -281,8 +283,8 @@ export default function DestinyMatrixPreview() {
               {ownedFull
                 ? `В комплекте — ${PRICING.MATRIX_INCLUDED_QUESTIONS} вопроса в чате, дальше по тарифу вопроса.`
                 : isLoggedIn
-                  ? `Платите за AI-разбор и сохранение, не за цифры — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз.`
-                  : `Нужен вход. Затем ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз за AI-разбор с сохранением.`}
+                  ? `Платите за разбор Эвелины и сохранение, не за цифры — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз.`
+                  : `Нужен вход. Затем ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз за разбор с сохранением.`}
             </p>
           </div>
         </div>

@@ -78,7 +78,7 @@ export default function LenormandCatalog() {
       <section className="mt-8">
         <h2 className="font-display text-lg text-aura-gold">Флагман: линия из 5 карт</h2>
         <p className="mt-1 text-sm text-white/55">
-          Основа → развитие → ядро → исход → ключ. Прямой оракул для конкретного вопроса.
+          Основа → развитие → ядро → исход → ключ. Прямая линия Ленорман для конкретного вопроса.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {featured.map((intent) => (

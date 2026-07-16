@@ -8,16 +8,13 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Приложение ${BRAND_NAME} для Android`,
-  description: `Скачайте официальное приложение ${BRAND_NAME} — оракул в кармане: расклады, мастера, фото-расклад и напоминания.`,
+  description: `Скачайте официальное приложение ${BRAND_NAME} — салон в кармане: расклады, наставники, фото-расклад и напоминания.`,
   path: "/app",
 });
-
-const GITHUB_REPO = process.env.NEXT_PUBLIC_GITHUB_REPO?.trim() || "cheltaxi-lgtm/aura-ai";
 
 export default function AppDownloadPage() {
   const release = readAndroidReleaseConfig();
   const webAppHref = appShellStartUrl(getAppUrl());
-  const ciApkHint = `https://github.com/${GITHUB_REPO}/actions/workflows/android-debug.yml`;
 
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center px-6 py-16">
@@ -53,12 +50,8 @@ export default function AppDownloadPage() {
           <li>Запустите {BRAND_NAME} с домашнего экрана.</li>
         </ol>
         <p className="mt-4 text-sm text-gray-500">
-          Интерфейс подтягивается с сайта автоматически; APK нужен только для обновления нативной оболочки.
-          Debug-сборку можно скачать из{" "}
-          <a href={ciApkHint} className="text-aura-champagne/80 underline-offset-2 hover:underline">
-            GitHub Actions
-          </a>
-          .
+          Интерфейс подтягивается с сайта автоматически; APK нужен только для обновления нативной
+          оболочки.
         </p>
       </section>
     </main>
