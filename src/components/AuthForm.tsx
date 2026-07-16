@@ -19,6 +19,7 @@ import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { commitAuthSession } from "@/lib/client-auth-commit";
 import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
+import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
 import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
 import {
   clearNeedsServerProfile,
@@ -366,7 +367,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       if (typeof window !== "undefined" && mode === "login" && role === "user") {
         const handoff =
           typeof data.handoff === "string" ? data.handoff : null;
-        const me = await commitAuthSession({ handoff });
+        // Keep handoff for document bridge — do not consume it in XHR commit.
+        const me = await commitAuthSession(
+          shouldUseSessionBridge() ? undefined : { handoff }
+        );
         // Only trust needsProfile when cookie is confirmed. If WebView lags,
         // still hard-navigate — document load commits Set-Cookie from login.
         if (me?.authenticated) {
@@ -385,7 +389,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               })
             );
             localStorage.setItem("aura_flow_step", "onboarding");
-            window.location.assign(onboardingRedirectUrl());
+            const onboarding = onboardingRedirectUrl();
+            if (
+              shouldUseSessionBridge() &&
+              (await navigateViaSessionBridge(onboarding, handoff))
+            ) {
+              return;
+            }
+            window.location.assign(onboarding);
             return;
           }
         }
@@ -397,11 +408,17 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         destination = withAppShellAuthParams(
           `${landing.pathname}${landing.search}${landing.hash}`
         );
+        window.dispatchEvent(new CustomEvent("aura:login"));
+        if (
+          shouldUseSessionBridge() &&
+          (await navigateViaSessionBridge(destination, handoff))
+        ) {
+          return;
+        }
         // Brief pause so WebView can flush Set-Cookie before document navigation.
         if (!me?.authenticated) {
           await new Promise((resolve) => window.setTimeout(resolve, 450));
         }
-        window.dispatchEvent(new CustomEvent("aura:login"));
         window.location.assign(destination);
         return;
       }

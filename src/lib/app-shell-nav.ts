@@ -8,6 +8,7 @@ import {
   isNativeCapacitorPlatform,
   shouldUseAppShellClient,
 } from "@/lib/app-shell";
+import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
 
 export const APP_SHELL_SECTIONS = {
   masters: "наставники",
@@ -87,11 +88,7 @@ function requiresHardNavigation(pathname: string): boolean {
   );
 }
 
-/** Full page navigation — in-app home may soft-route; cabinet and deep links always hard-navigate. */
-function shellNavigate(url: string): void {
-  const absoluteUrl = new URL(url, appShellNavigationOrigin());
-  const path = `${absoluteUrl.pathname}${absoluteUrl.search}${absoluteUrl.hash}`;
-
+function finishHardNavigate(absoluteUrl: URL, path: string): void {
   if (
     !requiresHardNavigation(absoluteUrl.pathname) &&
     shouldUseAppShellClient() &&
@@ -102,6 +99,26 @@ function shellNavigate(url: string): void {
   }
 
   window.location.assign(absoluteUrl.toString());
+}
+
+/** Full page navigation — in-app home may soft-route; cabinet and deep links always hard-navigate. */
+function shellNavigate(url: string): void {
+  const absoluteUrl = new URL(url, appShellNavigationOrigin());
+  const path = `${absoluteUrl.pathname}${absoluteUrl.search}${absoluteUrl.hash}`;
+
+  // WebView: re-stamp aura_auth on the document response before protected hard-nav.
+  if (
+    shouldUseSessionBridge() &&
+    requiresHardNavigation(absoluteUrl.pathname) &&
+    !absoluteUrl.pathname.startsWith("/auth")
+  ) {
+    void navigateViaSessionBridge(path).then((bridged) => {
+      if (!bridged) finishHardNavigate(absoluteUrl, path);
+    });
+    return;
+  }
+
+  finishHardNavigate(absoluteUrl, path);
 }
 
 /** Birth-date onboarding after minimal registration (no server profile yet). */

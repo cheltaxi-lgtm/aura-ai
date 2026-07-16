@@ -125,11 +125,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       needsProfile: result.needsProfile ? "1" : "0",
     });
     if (result.profile) completeParams.set("hasProfile", "1");
-    // Keep handoff in the URL fragment (not query) so it is not sent to servers/logs/Referer.
+    // App deep links: put handoff in query. Android often strips URL fragments from
+    // custom-scheme intents (zovus://...) before the WebView receives them.
+    // Browser OAuth keeps the fragment-only form to avoid Referer leakage.
     let completePath = `/auth/oauth/complete?${completeParams.toString()}`;
     if (pending.appFlow) {
       const handoff = await createOAuthHandoff(result.account.id);
-      completePath = `${completePath}#handoff=${encodeURIComponent(handoff)}`;
+      completeParams.set("handoff", handoff);
+      completePath = `/auth/oauth/complete?${completeParams.toString()}`;
     }
 
     return redirectNoStore(

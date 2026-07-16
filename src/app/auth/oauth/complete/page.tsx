@@ -9,6 +9,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
+import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
 
 type RegistrationPreview = {
   providerLabel: string;
@@ -97,10 +98,26 @@ export default function OAuthCompletePage() {
       handoffFromStore = null;
     }
     const handoff = handoffFromQuery || handoffFromHash || handoffFromStore;
+    const alreadyBridged = params.get("_bridged") === "1";
 
     void (async () => {
       try {
-        const me = await ensureAuthenticated(handoff);
+        // App WebView: stamp aura_auth on a document response first, then resume
+        // this page with a real cookie (XHR Set-Cookie alone is not enough).
+        if (handoff && shouldUseSessionBridge() && !alreadyBridged) {
+          const resume = new URL(window.location.href);
+          resume.searchParams.delete("handoff");
+          resume.hash = "";
+          resume.searchParams.set("app", "1");
+          resume.searchParams.set("_bridged", "1");
+          const bridged = await navigateViaSessionBridge(
+            `${resume.pathname}${resume.search}`,
+            handoff
+          );
+          if (bridged) return;
+        }
+
+        const me = await ensureAuthenticated(alreadyBridged ? null : handoff);
         // Drop one-time handoff from URL/hash so chunk-reload / back won't reuse it.
         window.history.replaceState(null, "", "/auth/oauth/complete");
 
@@ -108,8 +125,7 @@ export default function OAuthCompletePage() {
         markAuthPending();
 
         if (!me?.authenticated) {
-          // Last resort: hard navigate home — cookie from handoff/login may commit on document load.
-          if (handoff) {
+          if (handoff && !alreadyBridged) {
             await new Promise((resolve) => window.setTimeout(resolve, 450));
             window.location.replace(withAppShellAuthParams(returnTo));
             return;
@@ -139,7 +155,12 @@ export default function OAuthCompletePage() {
           profile,
           oauthGender,
         });
-        window.location.replace(withAppShellAuthParams(destination));
+        const landing = withAppShellAuthParams(destination);
+        if (shouldUseSessionBridge()) {
+          const bridged = await navigateViaSessionBridge(landing);
+          if (bridged) return;
+        }
+        window.location.replace(landing);
       } catch {
         setError("Не удалось завершить вход. Попробуйте снова.");
       }

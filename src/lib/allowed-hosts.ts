@@ -25,6 +25,8 @@ export function resolveAppShellDeepLink(raw: string): string | null {
       const path = url.pathname && url.pathname !== "/" ? url.pathname : "/";
       const target = new URL(`https://zovus.ru${path}`);
       target.search = url.search;
+      // OAuth handoff may live in the fragment — must survive into the WebView URL.
+      target.hash = url.hash;
       target.searchParams.set("app", "1");
       return target.toString();
     }

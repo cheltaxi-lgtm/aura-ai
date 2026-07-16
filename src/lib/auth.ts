@@ -71,16 +71,30 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
   }
 }
 
+export function authCookieOptions(request?: CookieRequestContext) {
+  return {
+    httpOnly: true,
+    secure: resolveCookieSecure(request),
+    sameSite: "lax" as const,
+    maxAge: MAX_AGE,
+    path: "/",
+  };
+}
+
 export async function setAuthCookie(payload: AuthPayload, request?: CookieRequestContext) {
   const token = await signToken(payload);
   const jar = await cookies();
-  jar.set(COOKIE, token, {
-    httpOnly: true,
-    secure: resolveCookieSecure(request),
-    sameSite: "lax",
-    maxAge: MAX_AGE,
-    path: "/",
-  });
+  jar.set(COOKIE, token, authCookieOptions(request));
+}
+
+/** Attach aura_auth on a redirect/JSON response (needed for WebView document navigations). */
+export async function applyAuthCookie(
+  response: { cookies: { set: (name: string, value: string, options: ReturnType<typeof authCookieOptions>) => void } },
+  payload: AuthPayload,
+  request?: CookieRequestContext
+) {
+  const token = await signToken(payload);
+  response.cookies.set(COOKIE, token, authCookieOptions(request));
 }
 
 /**
