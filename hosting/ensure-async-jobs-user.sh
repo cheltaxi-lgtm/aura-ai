@@ -45,5 +45,8 @@ do
   fi
 done
 
+# Ensure app root is traversable by the unprivileged worker.
+chmod a+rx "$APP_ROOT" 2>/dev/null || true
+
 sed -i 's/\r$//' "${APP_ROOT}/hosting/sync-async-jobs-env.sh" 2>/dev/null || true
 bash "${APP_ROOT}/hosting/sync-async-jobs-env.sh" "$APP_ROOT"

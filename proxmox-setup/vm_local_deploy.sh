@@ -323,15 +323,25 @@ systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
 
 echo ">>> Activating natal async worker..."
-sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh 2>/dev/null || true
+sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai.service hosting/aura-ai-async-jobs.service 2>/dev/null || true
 sudo bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
+sudo install -D -m 0644 hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 sudo install -D -m 0644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 sudo mkdir -p /var/log/aura-ai
 sudo chown aura-ai:aura-ai /var/log/aura-ai
 sudo systemctl daemon-reload
+# Restart app first so loopback bind is active before worker polls 127.0.0.1:3000.
+sudo systemctl restart aura-ai
+for _ in $(seq 1 20); do
+  if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+curl -fsS http://127.0.0.1:3000/api/health >/dev/null
 sudo systemctl enable aura-ai-async-jobs
 sudo systemctl restart aura-ai-async-jobs
-systemctl is-active aura-ai-async-jobs
+systemctl is-active aura-ai aura-ai-async-jobs
 
 echo ">>> Installing background crons (memory maintenance + proactive reminders)..."
 # Normalize line endings: these scripts may carry CRLF from a Windows checkout,
