@@ -451,6 +451,15 @@ html:has(.editorial-landing) .aura-mystic-bg {
   color: var(--color-accent-light);
 }
 
+.editorial-hero__eyebrow {
+  margin-bottom: 0.85rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-accent-light);
+  opacity: 0.9;
+}
+
 .editorial-hero__title {
   font-family: var(--font-mystic-display), Georgia, serif;
   font-size: clamp(1.65rem, 3.6vw, 2.35rem);
@@ -547,209 +556,13 @@ html:has(.editorial-landing) .aura-mystic-bg {
   padding-top: 0.25rem;
 }
 
-.editorial-landing:not(:has(.editorial-hero)) .logged-in-home-banner {
-  margin-top: 0.75rem;
-}
-
 .editorial-landing:not(:has(.editorial-hero)) .ritual-cta-banner {
-  margin-top: -0.25rem;
+  margin-top: 0.5rem;
 }
 
 .editorial-landing:not(:has(.editorial-hero)) .quick-questions {
-  position: relative;
-  z-index: 3;
-  margin-top: -1.25rem;
-  margin-bottom: 1.5rem;
-}
-
-.logged-in-home-banner {
-  position: relative;
-  width: 100%;
-  max-width: none;
-  /* Overlap next blocks into the fade so photo + sky read as one canvas */
-  margin: 0 0 -2.5rem;
-  padding-top: max(
-    calc(var(--app-header-h, 3.75rem) + 1.75rem),
-    6rem
-  );
-  /* Extra bottom room = longer absolute dissolve (short banners otherwise look cut) */
-  padding-bottom: clamp(5.5rem, 16vh, 10rem);
-  padding-left: 0;
-  padding-right: 0;
-  min-height: clamp(24rem, 56vh, 34rem);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  overflow: visible;
-  border-radius: 0;
-}
-
-@media (min-width: 640px) {
-  .logged-in-home-banner {
-    min-height: clamp(24rem, 56vh, 34rem);
-  }
-}
-
-.logged-in-home-banner__media {
-  position: absolute;
-  inset: 0;
-  /* Long overhang so the fade has real pixel length, not a compressed % band */
-  bottom: -10rem;
-  z-index: 0;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 30%,
-    rgba(0, 0, 0, 0.96) 42%,
-    rgba(0, 0, 0, 0.78) 54%,
-    rgba(0, 0, 0, 0.48) 66%,
-    rgba(0, 0, 0, 0.22) 78%,
-    rgba(0, 0, 0, 0.06) 90%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 30%,
-    rgba(0, 0, 0, 0.96) 42%,
-    rgba(0, 0, 0, 0.78) 54%,
-    rgba(0, 0, 0, 0.48) 66%,
-    rgba(0, 0, 0, 0.22) 78%,
-    rgba(0, 0, 0, 0.06) 90%,
-    transparent 100%
-  );
-}
-
-.logged-in-home-banner__img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 38%;
-  display: block;
-}
-
-.logged-in-home-banner__overlay {
-  position: absolute;
-  inset: 0;
-  bottom: -10rem;
-  z-index: 1;
-  /* Top dim only — bottom stays open so stars show through the dissolve */
-  background: linear-gradient(to bottom, rgba(6, 5, 10, 0.4) 0%, transparent 32%);
-  pointer-events: none;
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 35%,
-    rgba(0, 0, 0, 0.7) 58%,
-    rgba(0, 0, 0, 0.2) 82%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 35%,
-    rgba(0, 0, 0, 0.7) 58%,
-    rgba(0, 0, 0, 0.2) 82%,
-    transparent 100%
-  );
-}
-
-/* Soft charcoal wash — never opaque, so sky + photo stay one surface */
-.logged-in-home-banner::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: clamp(11rem, 28vh, 18rem);
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgba(8, 6, 4, 0.1) 35%,
-    rgba(8, 6, 4, 0.22) 65%,
-    rgba(8, 6, 4, 0.32) 100%
-  );
-}
-
-.logged-in-home-banner__glow {
-  display: none;
-}
-
-.logged-in-home-banner__panel {
-  position: relative;
-  z-index: 2;
-  flex-shrink: 0;
-  width: calc(100% - 2rem);
-  max-width: 40rem;
-  margin-top: 0;
-  margin-bottom: auto;
-  margin-inline: 1rem;
-  overflow: hidden;
-  border-radius: 1rem;
-  border: 1px solid rgba(232, 199, 126, 0.22);
-  background: rgba(8, 6, 4, 0.42);
-  backdrop-filter: blur(8px);
-  padding: 1.5rem 1.25rem 1.75rem;
-  text-align: center;
-}
-
-@media (min-width: 640px) {
-  .logged-in-home-banner__panel {
-    padding: 1.75rem 2rem 2rem;
-  }
-}
-
-.logged-in-home-banner__eyebrow {
-  font-size: 0.6875rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--color-accent-light);
-  opacity: 0.85;
-}
-
-.logged-in-home-banner__title {
-  margin-top: 0.625rem;
-  font-family: var(--font-mystic-display), Georgia, serif;
-  font-size: clamp(1.5rem, 3.5vw, 2rem);
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.logged-in-home-banner__subtitle {
   margin-top: 0.75rem;
-  max-width: 36rem;
-  margin-inline: auto;
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  color: var(--color-text-muted);
-}
-
-.logged-in-home-banner__search {
-  margin-top: 1.25rem;
-}
-
-.logged-in-home-banner__actions {
-  margin-top: 1rem;
-  display: flex;
-  justify-content: center;
-}
-
-.aura-landing .logged-in-home-banner {
-  max-width: none;
-  margin-inline: 0;
-  padding-inline: 0;
-}
-
-@media (min-width: 640px) {
-  .aura-landing .logged-in-home-banner {
-    padding-inline: 0;
-  }
+  margin-bottom: 1.5rem;
 }
 
 .editorial-landing .ritual-cta-banner {
