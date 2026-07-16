@@ -5272,6 +5272,12 @@ body.chat-session-active .site-legal-footer {
   display: none;
 }
 
+/* Visible home SEO must leave the flex flow during chat — otherwise it
+ * steals height and collapses .chat-stage__body to 0. */
+body.chat-session-active .home-seo-panel {
+  display: none !important;
+}
+
 body.chat-session-active {
   height: 100dvh;
   max-height: 100dvh;
