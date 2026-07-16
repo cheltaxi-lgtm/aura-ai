@@ -2138,7 +2138,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             role: "assistant",
             content: aborted
               ? "Мастер думал слишком долго — повторите вопрос."
-              : "Связь с астральным планом прервана. Нажмите «Отправить снова».",
+              : "Связь прервалась. Нажмите «Отправить снова».",
             timestamp: new Date(),
           },
         ]);

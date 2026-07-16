@@ -119,7 +119,7 @@ export default function ProfileAstroFields({
       {!compact && (
         <div>
           <p className="font-display text-center text-lg font-semibold text-white">
-            Ваш астральный профиль
+            Ваш профиль для расчётов
           </p>
           <p className="mt-1 text-center text-xs text-gray-500">
             Данные нужны для точной расшифровки карт и персональных прогнозов

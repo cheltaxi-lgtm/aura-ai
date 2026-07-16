@@ -306,7 +306,7 @@ export default function CabinetRitualsPanel({
               🕯
             </span>
           </div>
-          <p className="cabinet-rituals-empty__title">У тебя пока нет обрядов</p>
+          <p className="cabinet-rituals-empty__title">У вас пока нет обрядов</p>
           <p className="cabinet-rituals-empty__text">
             Обряд — это персональный ритуал, составленный мастером под твою ситуацию
           </p>

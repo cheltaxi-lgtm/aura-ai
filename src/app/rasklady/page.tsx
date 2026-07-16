@@ -9,7 +9,7 @@ import RaskladyCatalog from "@/components/seo/RaskladyCatalog";
 export const metadata: Metadata = buildSeoMetadata({
   title: `Расклады Таро онлайн — каталог вопросов | ${BRAND_NAME}`,
   description:
-    "Выберите готовый вопрос — Zovus подберёт мастера, схему расклада и персональную расшифровку с памятью сессии.",
+    "Каталог готовых вопросов: Zovus подберёт схему расклада и разбор с ИИ-наставником — с памятью сессии.",
   path: "/rasklady",
 });
 
@@ -20,8 +20,8 @@ export default function RaskladyCatalogPage() {
       <p className="text-sm text-aura-gold/80">Каталог раскладов</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Расклады Zovus</h1>
       <p className="mt-4 text-white/70">
-        Выберите вопрос — мы подберём мастера и схему. Любовные формулировки подстраиваются под
-        пол из анкеты: для мужчин «она», для женщин «он».
+        Выберите вопрос — откроем подходящую схему. Формулировки про партнёра подстраиваются под пол
+        из анкеты: для мужчин «она», для женщин «он».
       </p>
 
       <RaskladyCatalog />

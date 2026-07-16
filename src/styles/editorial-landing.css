@@ -1162,8 +1162,15 @@ html:has(.editorial-landing) .aura-mystic-bg {
 .editorial-footer {
   margin-top: auto;
   border-top: 1px solid rgba(201, 162, 74, 0.12);
-  padding: 3rem 1rem 2rem;
+  padding: 0.875rem 1rem 0.5rem;
   text-align: center;
+}
+
+.editorial-footer__top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
 }
 
 .editorial-footer__brand {
@@ -1173,8 +1180,9 @@ html:has(.editorial-landing) .aura-mystic-bg {
 }
 
 .editorial-footer__tagline {
-  margin-top: 0.5rem;
-  font-size: 0.875rem;
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
   color: var(--color-text-muted);
 }
 
@@ -1182,12 +1190,12 @@ html:has(.editorial-landing) .aura-mystic-bg {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.5rem 1.25rem;
-  margin-top: 1.75rem;
+  gap: 0.25rem 0.875rem;
+  margin-top: 0.625rem;
 }
 
 .editorial-footer__link {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: rgba(237, 230, 218, 0.65);
   text-decoration: none;
   transition: color 0.2s ease;
@@ -1206,7 +1214,7 @@ button.editorial-footer__link {
 }
 
 .editorial-footer__copy {
-  margin-top: 2rem;
+  margin-top: 0.75rem;
   font-size: 0.75rem;
   color: var(--color-text-faint);
 }
@@ -1215,9 +1223,14 @@ button.editorial-footer__link {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.5rem 1rem;
-  margin-top: 1rem;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.75rem;
   font-size: 0.6875rem;
+}
+
+.editorial-footer.site-legal-footer .site-legal-footer__links {
+  padding-top: 0.5rem;
+  padding-bottom: 0;
 }
 
 .editorial-footer__legal a {
@@ -1226,13 +1239,18 @@ button.editorial-footer__link {
 }
 
 .editorial-footer__legal-note {
-  margin-top: 1rem;
-  max-width: 42rem;
+  margin-top: 0.35rem;
+  max-width: 40rem;
   margin-inline: auto;
-  padding-inline: 1rem;
-  font-size: 0.6875rem;
-  line-height: 1.55;
+  padding: 0.25rem 0.75rem 0.35rem;
+  font-size: 0.625rem;
+  line-height: 1.4;
   color: var(--color-text-faint);
+}
+
+.editorial-footer.site-legal-footer .site-legal-footer__tagline {
+  padding: 0.25rem 0.75rem 0.35rem;
+  font-size: 0.625rem;
 }
 
 .editorial-footer__disclaimer {

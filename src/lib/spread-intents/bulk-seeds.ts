@@ -142,7 +142,7 @@ function ritual(slug: string, title: string, question: string, intro: string, ex
 /** Extended catalog (~95 intents) merged into SPREAD_INTENT_REGISTRY. */
 export const BULK_INTENT_SEEDS: BulkSeed[] = [
   // Love (25)
-  love("est-li-izmena", "Есть ли измена", "Есть ли у партнёра другой человек?", "Скрытые связи, эмоции и правда о верности."),
+  love("est-li-izmena", "Есть ли измена", "Есть ли у партнёра другой человек?", "Срез доверия и верности — спокойно, без роли детектива."),
   love("pochemu-on-ohlade", "Почему он остыл", "Почему он стал холодным ко мне?", "Что изменилось в чувствах и что можно вернуть."),
   love("kto-moya-sudba", "Кто моя судьба", "Кто мой человек по судьбе?", "Образ партнёра, встреча и знаки на пути."),
   love("kak-vernut-lyubov", "Как вернуть любовь", "Как вернуть чувства в отношениях?", "Что ослабило связь и что поможет снова сблизиться."),

@@ -26,23 +26,23 @@ export default function EditorialStarterPackSection({ onOpenFreeSpread }: Editor
             <div className="editorial-starter-pack__copy">
               <p className="editorial-starter-pack__eyebrow">
                 <Gift className="h-3.5 w-3.5" aria-hidden />
-                Стартовый пакет
+                После регистрации
               </p>
               <h2 id="editorial-starter-pack-title" className="editorial-starter-pack__title">
-                Стартовый подарок 1 500 ₽ на ваши расклады
+                Стартовые руны на баланс
               </h2>
               <p className="editorial-starter-pack__subtitle">
-                Зарегистрируйтесь — бонус сразу на балансе. Хватит на полные расшифровки, расклады с мастером
-                и первые вопросы в чате.
+                После входа на счёт сразу попадают руны — хватит на полную расшифровку и первые
+                уточнения в чате. Эквивалент 1 500 ₽.
               </p>
               <ul className="editorial-starter-pack__perks">
-                <li>Полная расшифровка расклада у выбранного мастера</li>
-                <li>Сохранение истории и продолжение диалога в кабинете</li>
-                <li>Доступ к платным практикам без срочной оплаты картой</li>
+                <li>Полный разбор расклада у выбранного мастера</li>
+                <li>История сеансов сохраняется в кабинете</li>
+                <li>Можно продолжить практику без срочной оплаты картой</li>
               </ul>
               <div className="editorial-starter-pack__actions">
                 <a href={registerHref} className="editorial-btn editorial-btn--gold editorial-starter-pack__cta-primary">
-                  Зарегистрироваться и получить
+                  Создать пространство
                 </a>
                 {onOpenFreeSpread ? (
                   <button type="button" className="editorial-btn editorial-btn--ghost" onClick={onOpenFreeSpread}>

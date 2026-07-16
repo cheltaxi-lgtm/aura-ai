@@ -3,13 +3,8 @@
 import Link from "next/link";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import BrandLogo from "@/components/BrandLogo";
-import MasterServiceDisclaimer from "@/components/MasterServiceDisclaimer";
 import { BRAND_LOGO_FOOTER, BRAND_NAME } from "@/lib/brand";
-import {
-  navigateToJointReading,
-  navigateToNatalChart,
-  navigateToSpreadCatalog,
-} from "@/lib/app-shell-nav";
+import { navigateToNatalChart, navigateToSpreadCatalog } from "@/lib/app-shell-nav";
 import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
 import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
 import { EDITORIAL_FOOTER_TAGLINE, EDITORIAL_NAV } from "@/lib/editorial-landing-content";
@@ -22,10 +17,10 @@ export default function EditorialSiteFooter() {
 
   return (
     <footer className="editorial-footer site-legal-footer">
-      <div className="editorial-footer__brand">
+      <div className="editorial-footer__top">
         <BrandLogo {...BRAND_LOGO_FOOTER} />
+        <p className="editorial-footer__tagline">{EDITORIAL_FOOTER_TAGLINE}</p>
       </div>
-      <p className="editorial-footer__tagline">{EDITORIAL_FOOTER_TAGLINE}</p>
 
       <nav className="editorial-footer__nav" aria-label="Навигация в подвале">
         {EDITORIAL_NAV.map((item) => {
@@ -44,25 +39,20 @@ export default function EditorialSiteFooter() {
           );
         })}
         <button type="button" className="editorial-footer__link" onClick={() => navigateToSpreadCatalog()}>
-          Каталог раскладов
+          Расклады
         </button>
-        {isLoggedIn ? (
-          <button type="button" className="editorial-footer__link" onClick={() => navigateToJointReading()}>
-            Совместный расклад
-          </button>
-        ) : null}
         <button type="button" className="editorial-footer__link" onClick={() => navigateToNatalChart()}>
-          Натальная карта
+          Натал
         </button>
         <Link href="/statyi" className="editorial-footer__link">
           Журнал
         </Link>
       </nav>
 
-      <MasterServiceDisclaimer className="editorial-footer__disclaimer mx-auto mt-6 max-w-2xl text-center" />
-
       <nav className="editorial-footer__legal site-legal-footer__links" aria-label="Юридические документы">
-        <span className="site-legal-footer__brand">© {year} {BRAND_NAME}</span>
+        <span className="site-legal-footer__brand">
+          © {year} {BRAND_NAME}
+        </span>
         <span className="site-legal-footer__operator">{operatorShortLabel()}</span>
         <LegalDocLink href={`mailto:${LEGAL_OPERATOR.contactEmail}`} className="site-legal-footer__email">
           {LEGAL_OPERATOR.contactEmail}

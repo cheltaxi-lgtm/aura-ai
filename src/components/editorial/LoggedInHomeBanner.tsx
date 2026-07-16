@@ -91,7 +91,7 @@ export default function LoggedInHomeBanner({
           {greeting}
         </h2>
         <p className="editorial-hero__subtitle">
-          Сформулируйте вопрос — подберём мастера и расклад, или продолжите с выбранным проводником.
+          Задайте вопрос или продолжите с мастером, с которым уже говорили.
         </p>
         {onQuestionSubmit ? (
           <HeroQuestionField

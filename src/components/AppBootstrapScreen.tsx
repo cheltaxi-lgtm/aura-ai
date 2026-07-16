@@ -15,8 +15,8 @@ interface AppBootstrapScreenProps {
 }
 
 export default function AppBootstrapScreen({
-  title = "Настраиваем канал",
-  subtitle = "Подключаем мастеров, колоды и ваш астральный профиль",
+  title = "Открываем пространство",
+  subtitle = "Подключаем мастеров, колоды и ваш профиль",
   hint = "Это займёт несколько секунд",
   showRetryAfterMs = 12_000,
   embedded = false,

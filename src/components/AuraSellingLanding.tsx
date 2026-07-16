@@ -73,8 +73,8 @@ const BENEFITS = [
     icon: Zap,
   },
   {
-    title: "Премиальный опыт",
-    text: "Тёмная эстетика, золотые акценты и глубокая расшифровка — как закрытый эзотерический клуб.",
+    title: "Приватный темп",
+    text: "Без очереди и без спешки: вопрос, символы и разбор — в своём ритме, с сохранением в кабинете.",
     icon: Moon,
   },
 ] as const;
@@ -149,7 +149,7 @@ const COMPARISON_ROWS = [
   {
     title: "Доступ без ожидания",
     them: "Живой таролог — запись, очередь, оплата по минутам",
-    us: "Мастер на связи 24/7, ответ за секунды",
+    us: "Наставник доступен сразу — без записи и ожидания",
   },
   {
     title: "Все традиции в одном месте",
@@ -345,7 +345,7 @@ export default function AuraSellingLanding({
     <div className={isEditorial ? "editorial-landing" : "aura-landing"}>
       {!showHero ? (
         <h1 className="sr-only">
-          Zovus — персональные эзотерические консультации, расклады на таро и рунах
+          Zovus — приватный цифровой салон: расклады Таро, числа и астрология
         </h1>
       ) : null}
       {showHero && isEditorial ? (
@@ -501,8 +501,8 @@ export default function AuraSellingLanding({
           }}
           layout="grid"
           rowVariant="default"
-          title="Выберите своего проводника"
-          subtitle="Каждый мастер работает в своей системе — от классического Таро до рун и астрологии."
+          title="Выберите проводника"
+          subtitle="Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
           showExpertCta={expertRegistrationEnabled}
           showDisclaimer={false}
           className="aura-landing-masters"
@@ -510,14 +510,6 @@ export default function AuraSellingLanding({
       ) : null}
 
       {showSellingSections && isEditorial ? <EditorialSessionStepsSection /> : null}
-
-      {showSellingSections && isEditorial && !isLoggedIn ? (
-        <section className="editorial-section" aria-label="Доверие">
-          <div className="editorial-landing__inner flex justify-center">
-            <LandingSocialProofStats variant="trust" />
-          </div>
-        </section>
-      ) : null}
 
       {showSellingSections && isEditorial ? (
         <EditorialPracticesSection isLoggedIn={isLoggedIn} />
@@ -528,7 +520,7 @@ export default function AuraSellingLanding({
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Как это работает</h2>
-              <p className="aura-landing-section__subtitle">Три шага от вопроса до ясности</p>
+              <p className="aura-landing-section__subtitle">От вопроса к ясности — в три шага</p>
             </div>
             <div className="aura-landing-steps">
               {STEPS.map((step, i) => (
@@ -564,7 +556,7 @@ export default function AuraSellingLanding({
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Почему Zovus</h2>
               <p className="aura-landing-section__subtitle">
-                Меньше шаблонов, больше внимания к вашему вопросу, картам и продолжению диалога.
+                Внимание к вашему вопросу, картам и продолжению диалога — без общего шаблона.
               </p>
             </div>
             <div className="aura-landing-benefits">
@@ -594,10 +586,10 @@ export default function AuraSellingLanding({
           <div className="mx-auto max-w-4xl">
             <div className="aura-landing-section__head">
               <span className="aura-landing-compare__eyebrow">Сравнение</span>
-              <h2 className="font-mystic-display aura-landing-section__title">Zovus устроен иначе</h2>
+              <h2 className="font-mystic-display aura-landing-section__title">Чем отличается Zovus</h2>
               <p className="aura-landing-section__subtitle">
-                Мы изучили, как обычно работают боты-гадалки, шаблонные сайты и платные консультации —
-                и сделали по-другому.
+                Не шаблонный бот и не запись к тарологу на неделю — вопрос, символы и разбор в одном
+                спокойном сеансе.
               </p>
             </div>
             <div className="aura-landing-compare glass-panel">
@@ -640,7 +632,7 @@ export default function AuraSellingLanding({
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Доверие и прозрачность</h2>
               <p className="aura-landing-section__subtitle">
-                Тысячи людей уже открыли карты сегодня — присоединяйтесь, пока мастера онлайн.
+                Честно о формате, приватности и оплате — без срочности и фальшивых счётчиков.
               </p>
             </div>
             <div className="aura-landing-trust">

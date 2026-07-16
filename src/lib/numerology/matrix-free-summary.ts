@@ -43,8 +43,8 @@ export function buildMatrixFreeSummary(
   const who = name ? `${name}, ` : "";
 
   const portrait = [
-    `${who}в центре вашей матрицы — ${purpose?.title ?? matrix.purpose.arcanaName} (${matrix.purpose.number}): ${purpose?.shortMeaning ?? matrix.purpose.arcanaMeaning}.`,
-    `Характер опирается на ${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}): ${body?.light ?? body?.shortMeaning ?? matrix.body.arcanaMeaning}.`,
+    `${who}в центре вашей матрицы — ${purpose?.title ?? matrix.purpose.arcanaName}: ${purpose?.shortMeaning ?? matrix.purpose.arcanaMeaning}. Это каркас, не приговор.`,
+    `Опора характера — ${body?.title ?? matrix.body.arcanaName}: ${body?.light ?? body?.shortMeaning ?? matrix.body.arcanaMeaning}.`,
   ].join(" ");
 
   return {

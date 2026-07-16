@@ -2620,7 +2620,7 @@ export default function HomePage({
 
         {!bootstrapping && !showLanding && !(inPersonalFlow && step === "masters") ? (
           <h1 className="sr-only">
-            Zovus — персональные эзотерические консультации, расклады на таро и рунах
+            Zovus — приватный цифровой салон: расклады Таро, числа и астрология
           </h1>
         ) : null}
 

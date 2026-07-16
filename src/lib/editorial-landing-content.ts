@@ -10,7 +10,7 @@ export const EDITORIAL_SECTION_IDS = {
 export const EDITORIAL_HERO = {
   title: "Когда нужен разговор с собой",
   subtitle:
-    "Приватное пространство для рефлексии: расклад, расшифровка и диалог с проводником — в своём темпе, без очереди.",
+    "Тихое место для ясного вопроса: три карты, расшифровка и диалог — без спешки и без чужих глаз.",
   primaryCta: "Открыть 3 карты",
   secondaryCta: "Как проходит сеанс",
   microcopy: "3 карты бесплатно · 18+ · конфиденциально",
@@ -54,28 +54,28 @@ export const EDITORIAL_TOPICS: EditorialTopic[] = [
   topicFromIntent(
     "relations",
     "Отношения",
-    "Что он чувствует и что скрывает",
+    "Связь, дистанция и то, что сложно сказать вслух",
     "/landing/topics/relations.jpg",
-    "chto-on-chuvstvuet"
+    "chto-mezhdu-nami"
   ),
   topicFromIntent(
     "choice",
     "Выбор",
-    "Развилка, риск и совет карт",
+    "Когда путей несколько — и нужен спокойный взгляд",
     "/landing/topics/choice.jpg",
     "blizhayshee-budushchee"
   ),
   topicFromIntent(
     "self",
     "Самопознание",
-    "Скрытые стороны и внутренний ресурс",
+    "Что происходит внутри и на что опереться",
     "/landing/topics/self-knowledge.jpg",
     "chto-so-mnoy-proiskhodit"
   ),
   topicFromIntent(
     "work",
     "Работа",
-    "Карьера, деньги и смена пути",
+    "Решение о месте, риске и следующем шаге",
     "/landing/topics/work.jpg",
     "stoit-li-menyat-rabotu"
   ),
@@ -85,22 +85,22 @@ export const EDITORIAL_SESSION_STEPS = [
   {
     icon: "question" as const,
     title: "Сформулируйте вопрос",
-    text: "Принесите то, что важно сейчас — о решении, отношениях или внутреннем состоянии.",
+    text: "Достаточно одной честной формулировки — о связи, решении или внутреннем состоянии.",
   },
   {
     icon: "cards" as const,
     title: "Откройте символы",
-    text: "Карты раскрываются под ваш запрос — ещё до регистрации.",
+    text: "Три карты открываются под ваш запрос — ещё до регистрации.",
   },
   {
     icon: "book" as const,
     title: "Получите трактовку",
-    text: "Краткий ориентир по символам, затем полная расшифровка у выбранного мастера.",
+    text: "Сначала короткий смысл символов, затем полный разбор у выбранного мастера.",
   },
   {
     icon: "chat" as const,
     title: "Продолжите диалог",
-    text: "Уточняйте детали в чате — контекст сохраняется в рамках сеанса.",
+    text: "Уточняйте детали в чате — мастер удерживает нить разговора в рамках сеанса.",
   },
 ] as const;
 
@@ -108,7 +108,7 @@ export const EDITORIAL_PRACTICES = [
   {
     id: "matrix",
     title: "Матрица судьбы",
-    subtitle: "Бесплатный расчёт по дате рождения — без регистрации и длинных анкет",
+    subtitle: "Дата рождения — и схема на экране. Без анкеты и без оплаты за расчёт.",
     image: "/landing/practices/numerology.jpg",
     cta: "Рассчитать бесплатно",
     /** Free preview — skip registration gate for guests. */
@@ -119,43 +119,43 @@ export const EDITORIAL_PRACTICES = [
   {
     id: "tarot",
     title: "Классическое Таро",
-    subtitle: "Откройте три карты — увидите ориентир по вопросу ещё до оплаты",
+    subtitle: "Три карты по вашему вопросу — ясный ориентир ещё до оплаты.",
     image: "/landing/practices/classic-tarot.jpg",
-    cta: "Зарегистрироваться и начать",
+    cta: "Открыть три карты",
     guestReturn: { guestSpread: true },
     loggedInHref: "/rasklad",
   },
   {
     id: "photo",
     title: "ФотоТаро",
-    subtitle: "Сфотографируйте свой расклад — мастер расшифрует каждый символ",
+    subtitle: "Сфотографируйте свой расклад — мастер разберёт каждую позицию.",
     image: "/landing/practices/photo-tarot.jpg",
-    cta: "Зарегистрироваться и начать",
+    cta: "Загрузить фото расклада",
     guestReturn: { photo: true },
     loggedInHref: "/?photo=1",
   },
   {
     id: "numerology",
     title: "Нумерология",
-    subtitle: "Числа судьбы, квадрат Пифагора и циклы — с Эвелиной",
+    subtitle: "Числа пути, квадрат Пифагора и циклы — с Эвелиной.",
     image: "/landing/practices/numerology.jpg",
-    cta: "Зарегистрироваться и начать",
+    cta: "Перейти к числам",
     guestReturn: { custom: "/numerology" },
     loggedInHref: "/numerology",
   },
   {
     id: "natal",
     title: "Натальная карта",
-    subtitle: "Карта рождения, знаки и периоды — расчёт и трактовка в кабинете",
+    subtitle: "Карта рождения и личные периоды — расчёт и трактовка в кабинете.",
     image: "/landing/practices/natal-chart.jpg",
-    cta: "Зарегистрироваться и получить",
+    cta: "Открыть астрологию",
     guestReturn: { custom: "/cabinet/astrology" },
     loggedInHref: "/cabinet/astrology",
   },
 ] as const;
 
 export const EDITORIAL_FOOTER_TAGLINE =
-  "Таро · матрица судьбы · астрология · нумерология — в одном пространстве";
+  "Таро · матрица · астрология · нумерология";
 
 export type EditorialNavItem =
   | { label: string; href: string; guestHref?: string }

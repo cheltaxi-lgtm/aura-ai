@@ -10,16 +10,16 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   ...buildSeoMetadata({
-    title: "Расклад Таро онлайн — чувства, отношения, будущее | Zovus",
+    title: "Расклад Таро онлайн — приватный салон | Zovus",
     description:
-      "Персональные расклады Таро с ИИ-мастерами: чувства, верность, карьера. Расшифровка в чате, уточняющие вопросы, история в кабинете.",
+      "Приватные расклады Таро с ИИ-наставниками: связь, решение, работа, будущее. Разбор в чате, уточнения и история в кабинете.",
     path: "/",
   }),
   // `force-dynamic` on this route means the root layout's `title.template`
   // isn't reliably applied to a plain string title, so pin the fully
   // resolved string here to guarantee the brand suffix renders exactly once.
   title: {
-    absolute: "Расклад Таро онлайн — чувства, отношения, будущее | Zovus",
+    absolute: "Расклад Таро онлайн — приватный салон | Zovus",
   },
   alternates: {
     canonical: BRAND_URL,

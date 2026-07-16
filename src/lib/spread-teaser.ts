@@ -38,5 +38,5 @@ export function buildSpreadTeaser(params: {
     : `Выберите наставника, чтобы услышать полную расшифровку.`;
   const verb = shown.length === 1 ? "лёг" : "легли";
 
-  return `${userName}, ${symbolCountPhrase(shown.length)} ${verb} на ваш астральный стол: ${parts}. Энергия ${dominant} сейчас доминирует — ${cta}`;
+  return `${userName}, ${symbolCountPhrase(shown.length)} ${verb} на ваш стол: ${parts}. Сейчас сильнее всего звучит ${dominant} — ${cta}`;
 }

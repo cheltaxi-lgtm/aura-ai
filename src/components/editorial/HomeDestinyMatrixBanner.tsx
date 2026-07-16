@@ -87,19 +87,19 @@ export default function HomeDestinyMatrixBanner({
         </span>
         <div className="ritual-cta-banner__copy">
           <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
-            Быстрый вход
+            По дате рождения
           </p>
           <h2 id="home-destiny-matrix-title" className="ritual-cta-banner__title">
             Матрица судьбы
           </h2>
           <p className="ritual-cta-banner__text">
-            Только дата рождения — схема, предназначение, деньги, отношения и аркан года за минуту.
-            Базовый расчёт бесплатно, без анкеты.
+            Одна дата — и на экране схема с ключевыми энергиями. Расчёт бесплатный, без анкеты и
+            регистрации.
           </p>
           <p className="mt-1 text-xs text-white/40">
             {owned
-              ? "Полный AI-разбор уже куплен — открывается без повторной оплаты"
-              : `Цифры бесплатно · AI-разбор с Эвелиной — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз`}
+              ? "Полный разбор уже открыт — повторно платить не нужно"
+              : `Схема бесплатно · разбор с Эвелиной — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз`}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">

@@ -13,9 +13,9 @@ export default function EditorialPracticesSection({ isLoggedIn }: EditorialPract
   return (
     <section id={EDITORIAL_SECTION_IDS.practices} className="editorial-section scroll-mt-24">
       <div className="editorial-landing__inner">
-        <h2 className="editorial-section__title">Наши практики</h2>
+        <h2 className="editorial-section__title">Практики</h2>
         <p className="editorial-section__subtitle">
-          Матрица судьбы открывается сразу. Остальные направления — после входа в нужный раздел.
+          Выберите формат под задачу — карты, числа или карта рождения.
         </p>
         <div className="editorial-practices__grid">
           {EDITORIAL_PRACTICES.map((practice) => {

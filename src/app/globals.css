@@ -3981,13 +3981,13 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   @apply border-aura-gold/35 bg-aura-gold/10 text-aura-gold;
 }
 
-/* SSR SEO block: visible editorial footer (was clip-hidden crawl-only) */
-.home-seo-panel {
+/* SSR SEO block on home — crawlable; keep visually hidden so it doesn't inflate the page end */
+.home-seo-panel:not(.seo-crawl-only) {
   @apply mx-auto max-w-3xl px-4 py-12 text-[rgba(237,230,218,0.72)];
   border-top: 1px solid rgba(201, 162, 74, 0.14);
 }
 
-.home-seo-panel a {
+.home-seo-panel:not(.seo-crawl-only) a {
   @apply text-aura-gold;
 }
 

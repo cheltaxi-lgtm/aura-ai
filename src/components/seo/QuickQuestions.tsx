@@ -12,17 +12,17 @@ import { trackQuickQuestionClick } from "@/lib/seo/metrika";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 
 const QUICK_INTENT_SLUGS = [
-  "chto-on-chuvstvuet",
-  "vernyotsya-li-on",
-  "est-li-izmena",
+  "chto-mezhdu-nami",
   "chto-so-mnoy-proiskhodit",
+  "zhdat-ili-zabyt",
   "stoit-li-menyat-rabotu",
   "kuda-ukhodyat-dengi",
+  "blizhayshee-budushchee",
   "god-vpered",
   "kak-otpustit-cheloveka",
-  "sovmestimost-12",
+  "sovmestimost-pary",
   "lenormand-liniya",
-  "blizhayshee-budushchee",
+  "chto-on-chuvstvuet",
 ] as const;
 
 const ENTRY_LINKS = [
@@ -92,11 +92,11 @@ export default function QuickQuestions({
         <div className="quick-questions__head">
           <p className="quick-questions__eyebrow">Быстрый старт</p>
           <h2 id="quick-questions-title" className="quick-questions__title">
-            С чего начнём?
+            О чём хотите ясности?
           </h2>
         </div>
         <p className="quick-questions__subtitle">
-          Выберите вопрос — мы подберём мастера и расклад.
+          Выберите готовый вопрос — откроем подходящий расклад.
           {userGender === "male"
             ? " Формулировки про партнёршу."
             : userGender === "female"

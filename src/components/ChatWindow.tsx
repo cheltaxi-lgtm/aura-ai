@@ -354,10 +354,10 @@ export default function ChatWindow({
     if (isLoading) {
       const name = character?.name ?? "Мастер";
       const statuses = [
-        `${name} вглядывается…`,
-        "Считывает энергетику…",
-        "Соединяется с астральным планом…",
-        "Расшифровывает знаки…",
+        `${name} смотрит в карты…`,
+        "Собирает смысл символов…",
+        "Соединяемся с наставником…",
+        "Готовит ответ…",
       ];
       setStatusText(statuses[0]!);
 

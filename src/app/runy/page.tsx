@@ -52,9 +52,8 @@ export default function RunesHubPage() {
       <p className="text-sm text-aura-gold/80">Руны</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Гадание на рунах онлайн</h1>
       <p className="mt-4 text-white/70">
-        {ragnar?.name ?? "Рагнар"} читает скандинавские руны старшего Футарка — древний способ
-        получить прямой, лаконичный ответ на вопрос о деньгах, отношениях или решении, которое
-        нужно принять.
+        {ragnar?.name ?? "Рагнар"} читает руны старшего Футарка — прямой, лаконичный ответ на вопрос
+        о деньгах, связи или решении, которое нужно принять сейчас.
       </p>
 
       <div className="mt-8 flex flex-wrap gap-3">

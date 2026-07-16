@@ -26,13 +26,13 @@ export const BRAND_LOGO_BREADCRUMB = {
     "font-display text-sm font-semibold tracking-[0.12em] text-[#ede6da] sm:text-base",
 } as const;
 
-/** Footer lockup — same identity, no home link. */
+/** Footer lockup — same identity, no home link. Compact for short footer height. */
 export const BRAND_LOGO_FOOTER = {
   showTagline: false,
   showBeta: true,
-  markSize: 32,
+  markSize: 24,
   titleClassName:
-    "font-display text-lg font-semibold tracking-[0.14em] text-[#ede6da] sm:text-xl",
+    "font-display text-base font-semibold tracking-[0.14em] text-[#ede6da] sm:text-lg",
 } as const;
 
 /** Canonical public site URL (payments, sitemap, OpenRouter referer). */

@@ -2,36 +2,39 @@ import Link from "next/link";
 import { getFeaturedSpreadIntents, getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 const HOME_INTENT_SLUGS = [
-  "chto-on-chuvstvuet",
-  "vernyotsya-li-on",
-  "lyubit-li-on-menya",
-  "pozvonit-li-on",
-  "est-li-izmena",
+  "chto-mezhdu-nami",
+  "chto-so-mnoy-proiskhodit",
+  "zhdat-ili-zabyt",
   "budem-li-my-vmeste",
   "stoit-li-menyat-rabotu",
+  "kuda-ukhodyat-dengi",
+  "blizhayshee-budushchee",
   "god-vpered",
 ] as const;
 
-/** Server-rendered SEO content for home — crawlable without JS. */
+/**
+ * Server-rendered SEO content for home — crawlable without JS.
+ * Visually hidden: a visible SEO wall above the footer looked like a second tall footer.
+ */
 export default function HomeSeoContent() {
   const intents = HOME_INTENT_SLUGS.map((slug) => getSpreadIntentBySlug(slug)).filter(Boolean);
   const featured = getFeaturedSpreadIntents(4);
 
   return (
-    <section className="home-seo-panel" aria-label="О сервисе Zovus">
+    <section className="home-seo-panel seo-crawl-only" aria-label="О сервисе Zovus">
       <p className="font-display text-2xl font-medium text-[#ede6da]">
-        Расклады Таро онлайн с персональной расшифровкой
+        Приватный салон для расклада и разговора с собой
       </p>
       <p className="mt-4 leading-relaxed">
-        Zovus — приватный цифровой салон для личной практики: расклад, символы и диалог с
-        проводником в художественном образе. Вы выбираете вопрос — о чувствах, отношениях,
-        верности, карьере или будущем — и получаете связную трактовку в спокойном темпе. После
-        расшифровки можно уточнять детали, сохранять историю в кабинете и продолжать диалог.
+        Zovus — тихое пространство для личной практики: карты, числа и диалог с ИИ-наставником в
+        художественном образе. Вы формулируете вопрос — о связи, решении, работе или будущем — и
+        получаете связный разбор в спокойном темпе. После трактовки можно уточнять детали и
+        сохранять историю в кабинете.
       </p>
       <p className="mt-3 leading-relaxed">
-        Откройте бесплатный расклад из трёх карт на главной. После регистрации расклад сохраняется в
-        кабинете. Полные расклады, фото-анализ, нумерология, натальная карта и обряды — по тарифу в рунах ᚢ. Это не
-        медицинская и не юридическая услуга:{" "}
+        На главной доступны три карты бесплатно. После регистрации расклад сохраняется в кабинете.
+        Полные расклады, фото-анализ, нумерология, натальная карта и обряды — по тарифу в рунах ᚢ.
+        Это не медицинская и не юридическая услуга:{" "}
         <Link href="/disclaimer" className="text-aura-gold hover:underline">
           подробнее об ограничениях
         </Link>
