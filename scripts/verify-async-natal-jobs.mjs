@@ -17,6 +17,8 @@ assert.match(jobs, /failAsyncJobAndRefundIfCharged/);
 assert.match(jobs, /markAsyncJobCharged/);
 assert.match(jobs, /findActiveAsyncJob/);
 assert.match(jobs, /charge_transaction_id/);
+assert.match(jobs, /ABS\(amount\) AS amount/);
+assert.doesNotMatch(jobs, /ABS\(amount\)::amount/);
 
 const migration = read("scripts/migrations/070_migrate_natal_async_jobs.sql");
 assert.match(migration, /natal_interpretation/);
@@ -69,6 +71,8 @@ const lifecycle = read("src/lib/natal/async-job-lifecycle.ts");
 assert.match(lifecycle, /chargeRuneActionForWorkerJob/);
 assert.match(lifecycle, /billing_state === "charged"/);
 assert.match(lifecycle, /billingChargeFromExistingTransaction/);
+assert.match(lifecycle, /ABS\(amount\) AS amount/);
+assert.doesNotMatch(lifecycle, /ABS\(amount\)::amount/);
 
 const service = read("hosting/aura-ai-async-jobs.service");
 assert.match(service, /User=aura-ai/);

@@ -204,7 +204,7 @@ export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<bool
     return false;
   }
   const { rows } = await query<{ amount: number; action_type: string | null }>(
-    `SELECT ABS(amount)::amount, action_type
+    `SELECT ABS(amount) AS amount, action_type
      FROM rune_transactions
      WHERE id = $1 AND user_id = $2 AND amount < 0
      LIMIT 1`,
