@@ -347,7 +347,7 @@ html:has(.editorial-landing) .aura-mystic-bg {
 .editorial-hero__media {
   position: absolute;
   inset: 0;
-  bottom: -3rem;
+  bottom: -8rem;
   z-index: 0;
   overflow: hidden;
   border-radius: 0;
@@ -355,21 +355,21 @@ html:has(.editorial-landing) .aura-mystic-bg {
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 35%,
-    rgba(0, 0, 0, 0.92) 48%,
-    rgba(0, 0, 0, 0.65) 62%,
-    rgba(0, 0, 0, 0.28) 78%,
-    rgba(0, 0, 0, 0.08) 90%,
+    #000 32%,
+    rgba(0, 0, 0, 0.95) 46%,
+    rgba(0, 0, 0, 0.72) 60%,
+    rgba(0, 0, 0, 0.4) 74%,
+    rgba(0, 0, 0, 0.14) 88%,
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 35%,
-    rgba(0, 0, 0, 0.92) 48%,
-    rgba(0, 0, 0, 0.65) 62%,
-    rgba(0, 0, 0, 0.28) 78%,
-    rgba(0, 0, 0, 0.08) 90%,
+    #000 32%,
+    rgba(0, 0, 0, 0.95) 46%,
+    rgba(0, 0, 0, 0.72) 60%,
+    rgba(0, 0, 0, 0.4) 74%,
+    rgba(0, 0, 0, 0.14) 88%,
     transparent 100%
   );
 }
@@ -387,53 +387,45 @@ html:has(.editorial-landing) .aura-mystic-bg {
 .editorial-hero__overlay {
   position: absolute;
   inset: 0;
-  bottom: -3rem;
+  bottom: -8rem;
   z-index: 1;
-  background:
-    linear-gradient(
-      to top,
-      rgba(6, 5, 10, 0) 0%,
-      rgba(6, 5, 10, 0.15) 18%,
-      rgba(6, 5, 10, 0.45) 40%,
-      rgba(8, 6, 12, 0.25) 58%,
-      transparent 78%
-    ),
-    linear-gradient(to bottom, rgba(6, 5, 10, 0.42) 0%, transparent 30%);
+  /* Top dim only — leave bottom open so sky shows through the dissolve */
+  background: linear-gradient(to bottom, rgba(6, 5, 10, 0.42) 0%, transparent 34%);
   pointer-events: none;
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.75) 65%,
-    rgba(0, 0, 0, 0.25) 85%,
+    #000 38%,
+    rgba(0, 0, 0, 0.7) 62%,
+    rgba(0, 0, 0, 0.2) 84%,
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.75) 65%,
-    rgba(0, 0, 0, 0.25) 85%,
+    #000 38%,
+    rgba(0, 0, 0, 0.7) 62%,
+    rgba(0, 0, 0, 0.2) 84%,
     transparent 100%
   );
 }
 
-/* Extra blend veil sitting on the hero/page seam */
+/* Extra blend veil — soft charcoal wash only (no opaque band that splits the canvas) */
 .editorial-hero::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
   bottom: -1px;
-  height: clamp(7rem, 22vh, 14rem);
+  height: clamp(10rem, 26vh, 16rem);
   z-index: 1;
   pointer-events: none;
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(6, 5, 10, 0.35) 35%,
-    rgba(6, 5, 10, 0.75) 70%,
-    rgba(6, 5, 10, 0.95) 100%
+    rgba(8, 6, 4, 0.12) 40%,
+    rgba(8, 6, 4, 0.28) 70%,
+    rgba(8, 6, 4, 0.4) 100%
   );
 }
 
@@ -560,11 +552,13 @@ html:has(.editorial-landing) .aura-mystic-bg {
 }
 
 .editorial-landing:not(:has(.editorial-hero)) .ritual-cta-banner {
-  margin-top: 0.5rem;
+  margin-top: -0.25rem;
 }
 
 .editorial-landing:not(:has(.editorial-hero)) .quick-questions {
-  margin-top: 0.75rem;
+  position: relative;
+  z-index: 3;
+  margin-top: -1.25rem;
   margin-bottom: 1.5rem;
 }
 
@@ -572,15 +566,17 @@ html:has(.editorial-landing) .aura-mystic-bg {
   position: relative;
   width: 100%;
   max-width: none;
-  margin: 0 0 0.5rem;
+  /* Overlap next blocks into the fade so photo + sky read as one canvas */
+  margin: 0 0 -2.5rem;
   padding-top: max(
     calc(var(--app-header-h, 3.75rem) + 1.75rem),
     6rem
   );
-  padding-bottom: clamp(2rem, 5vh, 3rem);
+  /* Extra bottom room = longer absolute dissolve (short banners otherwise look cut) */
+  padding-bottom: clamp(5.5rem, 16vh, 10rem);
   padding-left: 0;
   padding-right: 0;
-  min-height: clamp(20rem, 48vh, 28rem);
+  min-height: clamp(24rem, 56vh, 34rem);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -591,35 +587,37 @@ html:has(.editorial-landing) .aura-mystic-bg {
 
 @media (min-width: 640px) {
   .logged-in-home-banner {
-    min-height: clamp(20rem, 48vh, 28rem);
+    min-height: clamp(24rem, 56vh, 34rem);
   }
 }
 
 .logged-in-home-banner__media {
   position: absolute;
   inset: 0;
-  bottom: -3rem;
+  /* Long overhang so the fade has real pixel length, not a compressed % band */
+  bottom: -10rem;
   z-index: 0;
   overflow: hidden;
-  /* Same soft dissolve into starry page background as guest editorial-hero */
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 35%,
-    rgba(0, 0, 0, 0.92) 48%,
-    rgba(0, 0, 0, 0.65) 62%,
-    rgba(0, 0, 0, 0.28) 78%,
-    rgba(0, 0, 0, 0.08) 90%,
+    #000 30%,
+    rgba(0, 0, 0, 0.96) 42%,
+    rgba(0, 0, 0, 0.78) 54%,
+    rgba(0, 0, 0, 0.48) 66%,
+    rgba(0, 0, 0, 0.22) 78%,
+    rgba(0, 0, 0, 0.06) 90%,
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 35%,
-    rgba(0, 0, 0, 0.92) 48%,
-    rgba(0, 0, 0, 0.65) 62%,
-    rgba(0, 0, 0, 0.28) 78%,
-    rgba(0, 0, 0, 0.08) 90%,
+    #000 30%,
+    rgba(0, 0, 0, 0.96) 42%,
+    rgba(0, 0, 0, 0.78) 54%,
+    rgba(0, 0, 0, 0.48) 66%,
+    rgba(0, 0, 0, 0.22) 78%,
+    rgba(0, 0, 0, 0.06) 90%,
     transparent 100%
   );
 }
@@ -637,53 +635,45 @@ html:has(.editorial-landing) .aura-mystic-bg {
 .logged-in-home-banner__overlay {
   position: absolute;
   inset: 0;
-  bottom: -3rem;
+  bottom: -10rem;
   z-index: 1;
-  background:
-    linear-gradient(
-      to top,
-      rgba(6, 5, 10, 0) 0%,
-      rgba(6, 5, 10, 0.15) 18%,
-      rgba(6, 5, 10, 0.45) 40%,
-      rgba(8, 6, 12, 0.25) 58%,
-      transparent 78%
-    ),
-    linear-gradient(to bottom, rgba(6, 5, 10, 0.42) 0%, transparent 30%);
+  /* Top dim only — bottom stays open so stars show through the dissolve */
+  background: linear-gradient(to bottom, rgba(6, 5, 10, 0.4) 0%, transparent 32%);
   pointer-events: none;
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.75) 65%,
-    rgba(0, 0, 0, 0.25) 85%,
+    #000 35%,
+    rgba(0, 0, 0, 0.7) 58%,
+    rgba(0, 0, 0, 0.2) 82%,
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.75) 65%,
-    rgba(0, 0, 0, 0.25) 85%,
+    #000 35%,
+    rgba(0, 0, 0, 0.7) 58%,
+    rgba(0, 0, 0, 0.2) 82%,
     transparent 100%
   );
 }
 
-/* Blend veil on the banner / starry-sky seam (mirrors .editorial-hero::after) */
+/* Soft charcoal wash — never opaque, so sky + photo stay one surface */
 .logged-in-home-banner::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
   bottom: -1px;
-  height: clamp(7rem, 22vh, 14rem);
+  height: clamp(11rem, 28vh, 18rem);
   z-index: 1;
   pointer-events: none;
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(6, 5, 10, 0.35) 35%,
-    rgba(6, 5, 10, 0.75) 70%,
-    rgba(6, 5, 10, 0.95) 100%
+    rgba(8, 6, 4, 0.1) 35%,
+    rgba(8, 6, 4, 0.22) 65%,
+    rgba(8, 6, 4, 0.32) 100%
   );
 }
 
