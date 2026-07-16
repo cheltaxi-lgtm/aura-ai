@@ -1,26 +1,61 @@
 #!/usr/bin/env node
-/** Sync public/releases/android-version.json from mobile/android/app/build.gradle */
-import fs from "node:fs";
+/**
+ * Publish-time: write android-version.json from the built APK (integrity first).
+ * Prefer aapt probe of zovus-latest.apk; fall back to build.gradle only if aapt missing.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  apkPath,
+  probeApkVersion,
+  readGradleVersion,
+  resolveDownloadableRelease,
+  sha256File,
+  writeManifest,
+} from "./lib/android-release-files.mjs";
+import fs from "node:fs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const gradlePath = path.join(root, "mobile/android/app/build.gradle");
-const outDir = path.join(root, "public/releases");
-const outFile = path.join(outDir, "android-version.json");
+const apk = apkPath(root);
 
-const gradle = fs.readFileSync(gradlePath, "utf8");
-const versionCode = Number.parseInt(gradle.match(/versionCode\s+(\d+)/)?.[1] ?? "", 10);
-const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1] ?? "";
-
-if (!Number.isFinite(versionCode) || versionCode < 1 || !versionName) {
-  console.error("write-android-release-manifest: could not parse build.gradle");
+if (!fs.existsSync(apk)) {
+  console.error(`write-android-release-manifest: APK missing at ${apk}`);
   process.exit(1);
 }
 
-fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(
-  outFile,
-  `${JSON.stringify({ versionCode, versionName, builtAt: new Date().toISOString() }, null, 2)}\n`
+const probed = probeApkVersion(apk);
+const gradle = readGradleVersion(root);
+const versionCode = probed?.versionCode ?? gradle?.versionCode;
+const versionName = probed?.versionName ?? gradle?.versionName;
+
+if (!versionCode || !versionName) {
+  console.error("write-android-release-manifest: could not resolve version from APK/gradle");
+  process.exit(1);
+}
+
+if (probed && gradle && probed.versionCode !== gradle.versionCode) {
+  console.error(
+    `write-android-release-manifest: APK versionCode ${probed.versionCode} != gradle ${gradle.versionCode}`
+  );
+  process.exit(1);
+}
+
+const st = fs.statSync(apk);
+const apkSha256 = sha256File(apk);
+const written = writeManifest(root, {
+  versionCode,
+  versionName,
+  builtAt: new Date().toISOString(),
+  apkSha256,
+  apkBytes: st.size,
+});
+
+const check = resolveDownloadableRelease(root);
+if (!check.ok || check.versionCode !== versionCode) {
+  console.error("write-android-release-manifest: post-write integrity check failed", check.reason);
+  process.exit(1);
+}
+
+console.log(
+  `android-version.json -> ${written.versionName} (${written.versionCode}) sha256=${written.apkSha256.slice(0, 12)}… bytes=${written.apkBytes}`
 );
-console.log(`android-version.json -> ${versionName} (${versionCode})`);

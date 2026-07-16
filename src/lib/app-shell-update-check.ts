@@ -57,6 +57,8 @@ export async function checkAndroidAppUpdate(options?: {
     const remote = await fetchAndroidReleaseInfo();
     const buildCode = Number.parseInt(String(info.build), 10);
     if (!remote || !Number.isFinite(buildCode)) return null;
+    // Server APK must match advertised metadata — never prompt for a phantom build.
+    if (remote.releaseConsistent === false) return null;
 
     const legacyReinstall = isLegacyReinstallBuild(buildCode, remote);
     const certMatch = legacyReinstall ? false : await installedCertMatchesRelease(remote.releaseCertSha256);

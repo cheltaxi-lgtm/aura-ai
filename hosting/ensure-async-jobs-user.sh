@@ -14,11 +14,14 @@ mkdir -p /var/log/aura-ai
 chown aura-ai:aura-ai /var/log/aura-ai
 
 # Drop accidental supplementary membership from earlier deploys (group-readable secrets).
+# gpasswd returns non-zero when the user is not in the group — never fail the script.
+set +e
 for grp in ubuntu root deploy; do
   if getent group "$grp" >/dev/null 2>&1; then
-    gpasswd -d aura-ai "$grp" 2>/dev/null || true
+    gpasswd -d aura-ai "$grp" >/dev/null 2>&1
   fi
 done
+set -e
 
 # Full secrets stay root-only. systemd worker env is a separate minimal file.
 if [ -f "${APP_ROOT}/.env.local" ]; then

@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 /**
- * After a code deploy, build.gradle can regress to an older versionCode from the
- * dev machine tarball. Re-sync gradle + android-version.json to the monotonic
- * max of .env.local, manifest, and gradle (mirrors hosting/build-android-apk.sh).
+ * After a code deploy, build.gradle can regress from the tarball.
+ * Re-sync gradle UP to the downloadable APK / env — never invent a higher
+ * android-version.json than the APK on disk (that was the 15-vs-19 bug).
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  readGradleVersion,
+  readManifest,
+  resolveDownloadableRelease,
+  writeGradleVersion,
+} from "./lib/android-release-files.mjs";
 
-const root = process.cwd();
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const envFile = path.join(root, ".env.local");
-const gradlePath = path.join(root, "mobile/android/app/build.gradle");
-const manifestPath = path.join(root, "public/releases/android-version.json");
 
 function readEnvVersion() {
   try {
@@ -27,87 +32,61 @@ function readEnvVersion() {
   }
 }
 
-function readGradleVersion() {
-  try {
-    const text = fs.readFileSync(gradlePath, "utf8");
-    const versionCode = Number.parseInt(text.match(/versionCode\s+(\d+)/)?.[1] ?? "", 10);
-    const versionName = text.match(/versionName\s+"([^"]+)"/)?.[1]?.trim() ?? "";
-    if (!Number.isFinite(versionCode) || versionCode < 1 || !versionName) return null;
-    return { versionCode, versionName };
-  } catch {
-    return null;
-  }
-}
-
-function readManifestVersion() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    const versionCode = Number.parseInt(String(raw.versionCode ?? ""), 10);
-    const versionName = typeof raw.versionName === "string" ? raw.versionName.trim() : "";
-    if (!Number.isFinite(versionCode) || versionCode < 1 || !versionName) return null;
-    return { versionCode, versionName };
-  } catch {
-    return null;
-  }
-}
-
-function pickWinner(candidates) {
-  return candidates.reduce(
-    (max, candidate) =>
-      candidate && (!max || candidate.versionCode > max.versionCode) ? candidate : max,
-    null
-  );
-}
-
-function writeGradleVersion(versionCode, versionName) {
-  const text = fs.readFileSync(gradlePath, "utf8");
-  const next = text
-    .replace(/versionCode\s+\d+/, `versionCode ${versionCode}`)
-    .replace(/versionName\s+"[^"]+"/, `versionName "${versionName}"`);
-  fs.writeFileSync(gradlePath, next);
-}
-
-function writeManifestVersion(versionCode, versionName) {
-  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  fs.writeFileSync(
-    manifestPath,
-    `${JSON.stringify({ versionCode, versionName, builtAt: new Date().toISOString() }, null, 2)}\n`
-  );
-}
-
-const gradle = readGradleVersion();
+const gradle = readGradleVersion(root);
 if (!gradle) {
   console.log("sync-android-version-monotonic: skip (no build.gradle)");
   process.exit(0);
 }
 
-const winner = pickWinner([readManifestVersion(), gradle, readEnvVersion()]);
-if (!winner) {
+const downloadable = resolveDownloadableRelease(root);
+const env = readEnvVersion();
+const manifest = readManifest(root);
+
+// Target for gradle: max of (honest APK version, env, current gradle).
+// Manifest alone must NOT raise gradle above APK when integrity is broken.
+const candidates = [];
+if (downloadable.versionCode) {
+  candidates.push({
+    versionCode: downloadable.versionCode,
+    versionName: downloadable.versionName,
+    source: "apk",
+  });
+}
+if (env) candidates.push({ ...env, source: "env" });
+candidates.push({ ...gradle, source: "gradle" });
+if (downloadable.ok && manifest) {
+  candidates.push({ ...manifest, source: "manifest" });
+}
+
+const target = candidates.reduce((max, c) =>
+  !max || c.versionCode > max.versionCode ? c : max
+);
+
+if (!target) {
   console.log("sync-android-version-monotonic: skip (no version sources)");
   process.exit(0);
 }
 
-let changed = false;
-
-if (gradle.versionCode < winner.versionCode) {
-  writeGradleVersion(winner.versionCode, winner.versionName);
+if (gradle.versionCode < target.versionCode) {
+  writeGradleVersion(root, target.versionCode, target.versionName);
   console.log(
-    `sync-android-version-monotonic: build.gradle ${gradle.versionCode} -> ${winner.versionCode} (${winner.versionName})`
+    `sync-android-version-monotonic: build.gradle ${gradle.versionCode} -> ${target.versionCode} (${target.versionName}) via ${target.source}`
   );
-  changed = true;
-}
-
-const manifest = readManifestVersion();
-if (!manifest || manifest.versionCode < winner.versionCode) {
-  writeManifestVersion(winner.versionCode, winner.versionName);
+} else {
   console.log(
-    `sync-android-version-monotonic: android-version.json -> ${winner.versionCode} (${winner.versionName})`
-  );
-  changed = true;
-}
-
-if (!changed) {
-  console.log(
-    `sync-android-version-monotonic: ok at ${gradle.versionCode} (${gradle.versionName})`
+    `sync-android-version-monotonic: gradle ok at ${gradle.versionCode} (${gradle.versionName})`
   );
 }
+
+if (!downloadable.ok) {
+  console.warn(
+    `sync-android-version-monotonic: WARN release integrity ${downloadable.reason} — run: node scripts/verify-android-release.mjs --repair`
+  );
+} else {
+  console.log(
+    `sync-android-version-monotonic: APK integrity ok at ${downloadable.versionCode} (${downloadable.versionName})`
+  );
+}
+
+// Never rewrite android-version.json here — only hosting/build-android-apk.sh
+// (via write-android-release-manifest.mjs) or verify --repair may publish it.

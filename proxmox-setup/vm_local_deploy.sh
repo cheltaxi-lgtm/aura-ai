@@ -200,6 +200,11 @@ cd /opt/aura-ai
 
 echo ">>> Sync Android version (monotonic)..."
 node /opt/aura-ai/scripts/sync-android-version-monotonic.mjs || echo "WARN: android version sync skipped"
+echo ">>> Verify Android APK ↔ manifest integrity..."
+if ! node /opt/aura-ai/scripts/verify-android-release.mjs; then
+  echo "WARN: Android release integrity failed — repairing sidecar from APK on disk"
+  node /opt/aura-ai/scripts/verify-android-release.mjs --repair || echo "WARN: android release repair skipped"
+fi
 
 # rsync --delete above removes stale files; keep only legacy one-offs if needed.
 rm -f \
@@ -323,8 +328,12 @@ systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
 
 echo ">>> Activating natal async worker..."
+# App candidate is already live — worker/cron failures must not roll back .next
+# or abort the deploy (historically gpasswd/env sync exited 1 after activation).
+set +e
 sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai.service hosting/aura-ai-async-jobs.service 2>/dev/null || true
 sudo bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
+_WORKER_ENSURE=$?
 sudo install -D -m 0644 hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 sudo install -D -m 0644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 sudo mkdir -p /var/log/aura-ai
@@ -342,6 +351,11 @@ curl -fsS http://127.0.0.1:3000/api/health >/dev/null
 sudo systemctl enable aura-ai-async-jobs
 sudo systemctl restart aura-ai-async-jobs
 systemctl is-active aura-ai aura-ai-async-jobs
+if [ "${_WORKER_ENSURE}" -ne 0 ]; then
+  echo "WARN: ensure-async-jobs-user exited ${_WORKER_ENSURE} — app remains active"
+fi
+unset _WORKER_ENSURE
+set -e
 
 echo ">>> Installing background crons (memory maintenance + proactive reminders)..."
 # Normalize line endings: these scripts may carry CRLF from a Windows checkout,

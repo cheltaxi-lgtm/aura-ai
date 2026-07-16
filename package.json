@@ -35,6 +35,8 @@
     "mobile:cert-sha": "node scripts/print-android-cert-sha.mjs",
     "verify:module-a": "node scripts/verify-module-a.mjs",
     "verify:app-shell": "node scripts/verify-app-shell.mjs",
+    "verify:android-release": "node scripts/verify-android-release.mjs",
+    "repair:android-release": "node scripts/verify-android-release.mjs --repair",
     "verify:oauth": "tsx scripts/verify-oauth-helpers.ts",
     "verify:destiny-matrix": "npx tsx scripts/verify-destiny-matrix.mjs",
     "verify:natal-chart": "npx tsx scripts/verify-natal-chart.mjs && node scripts/verify-natal-backend.mjs",
