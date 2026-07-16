@@ -323,8 +323,11 @@ systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
 
 echo ">>> Activating natal async worker..."
+sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh 2>/dev/null || true
+sudo bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
 sudo install -D -m 0644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 sudo mkdir -p /var/log/aura-ai
+sudo chown aura-ai:aura-ai /var/log/aura-ai
 sudo systemctl daemon-reload
 sudo systemctl enable aura-ai-async-jobs
 sudo systemctl restart aura-ai-async-jobs

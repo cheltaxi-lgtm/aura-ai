@@ -22,6 +22,12 @@ import {
   saveCompatibilityReport,
 } from "@/lib/services/natal-compatibility-service";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import {
+  trackWorkerJobCharged,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/natal/async-job-lifecycle";
 import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
@@ -73,19 +79,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const claim = await claimCompatibilityGeneration(id, auth.profileUserId);
   if (claim.status === "not_found") {
+    await trackWorkerJobFailed(request, "not_found", { errorCode: "not_found" });
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
   if (claim.status === "cached") {
-    return NextResponse.json({ record: claim.record, cached: true });
+    const payload = { record: claim.record, cached: true };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   }
   if (claim.status === "not_ready") {
+    await trackWorkerJobFailed(request, "charts_not_ready", { errorCode: "charts_not_ready" });
     return NextResponse.json({ error: "charts_not_ready" }, { status: 409 });
   }
   if (claim.status === "busy") {
+    await trackWorkerJobFailed(request, "generation_in_progress", {
+      errorCode: "generation_in_progress",
+    });
     return NextResponse.json({ error: "generation_in_progress" }, { status: 409 });
   }
   if (!claim.record.synastry) {
     await releaseCompatibilityClaim(id, auth.profileUserId, claim.token);
+    await trackWorkerJobFailed(request, "synastry_missing", { errorCode: "synastry_missing" });
     return NextResponse.json({ error: "synastry_missing" }, { status: 409 });
   }
 
@@ -119,6 +133,7 @@ ${formatCompatibilityEvidence(evidence)}`);
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
+    await trackWorkerJobRefunded(request);
   };
 
   try {
@@ -126,6 +141,7 @@ ${formatCompatibilityEvidence(evidence)}`);
       userId: auth.profileUserId,
       action: "SYNASTRY_REPORT",
     });
+    await trackWorkerJobCharged(request, charge.transactionId);
     const natalModel = await getNatalModel();
     let raw = await completeChat({
       messages: baseMessages,
@@ -181,6 +197,10 @@ ${formatCompatibilityEvidence(evidence)}`);
     }
     if (!validation.ok) {
       await rollback();
+      await trackWorkerJobFailed(request, "invalid_model_report", {
+        refunded: true,
+        errorCode: "invalid_model_report",
+      });
       return NextResponse.json(
         { error: "invalid_model_report", refunded: true },
         { status: 502 }
@@ -198,24 +218,38 @@ ${formatCompatibilityEvidence(evidence)}`);
     });
     if (!saved) {
       await rollback();
+      await trackWorkerJobFailed(request, "generation_claim_lost", {
+        refunded: true,
+        errorCode: "generation_claim_lost",
+      });
       return NextResponse.json(
         { error: "generation_claim_lost", refunded: true },
         { status: 409 }
       );
     }
-    return NextResponse.json({ record: saved, runeBalance: charge.newBalance });
+    const payload = { record: saved, runeBalance: charge.newBalance };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[natal-compatibility] billing rollback failed");
     });
     if (error instanceof InsufficientFundsError) {
+      await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
       return NextResponse.json(
         { error: "insufficient", balance: error.balance, cost: error.required },
         { status: 402 }
       );
     }
     console.warn("[natal-compatibility] generation failed");
-    return NextResponse.json({ error: "generation_failed" }, { status: 502 });
+    await trackWorkerJobFailed(request, "generation_failed", {
+      refunded: rollbackAttempted,
+      errorCode: "generation_failed",
+    });
+    return NextResponse.json(
+      { error: "generation_failed", refunded: rollbackAttempted },
+      { status: 502 }
+    );
   } finally {
     await releaseCompatibilityClaim(id, auth.profileUserId, claim.token).catch(() => {
       console.warn("[natal-compatibility] claim release failed");

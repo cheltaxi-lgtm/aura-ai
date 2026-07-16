@@ -22,6 +22,12 @@ import { needsProfileResponse, requireProfileUserId } from "@/lib/require-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { getUserById } from "@/lib/users";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import {
+  trackWorkerJobCharged,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/natal/async-job-lifecycle";
 import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
@@ -116,22 +122,32 @@ export async function POST(request: NextRequest) {
     { reportType, claimKey }
   );
   if (claim.status === "cached") {
-    return NextResponse.json({
+    const payload = {
       forecast: claim.interpretation,
       reportId: claim.reportId,
       report: claim.structuredData,
       evidence: claim.evidenceRefs,
       horizon,
       cached: true,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   }
   if (claim.status === "busy") {
+    await trackWorkerJobFailed(
+      request,
+      "Не удалось начать прогноз. Обновите страницу и попробуйте снова.",
+      { errorCode: "CLAIM_BUSY" }
+    );
     return NextResponse.json(
       { error: "Не удалось начать прогноз. Обновите страницу и попробуйте снова.", code: "CLAIM_BUSY" },
       { status: 409 }
     );
   }
   if (claim.status === "unavailable") {
+    await trackWorkerJobFailed(request, "Карта изменилась. Обновите страницу.", {
+      errorCode: "chart_changed",
+    });
     return NextResponse.json({ error: "Карта изменилась. Обновите страницу." }, { status: 409 });
   }
 
@@ -160,6 +176,7 @@ ${timingEvidenceIds.join("\n")}`);
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
+    await trackWorkerJobRefunded(request);
   };
 
   try {
@@ -167,6 +184,7 @@ ${timingEvidenceIds.join("\n")}`);
       userId: auth.profileUserId,
       action: "FORECAST_REPORT",
     });
+    await trackWorkerJobCharged(request, charge.transactionId);
     const user = await getUserById(auth.profileUserId).catch(() => null);
     const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
@@ -194,8 +212,16 @@ ${timingEvidenceIds.join("\n")}`);
         `evidence=${evidence.length}`
       );
       await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Модель не смогла создать проверяемый прогноз. Оплата возвращена.",
+        { refunded: true, errorCode: "invalid_model_report" }
+      );
       return NextResponse.json(
-        { error: "Модель не смогла создать проверяемый прогноз. Оплата возвращена." },
+        {
+          error: "Модель не смогла создать проверяемый прогноз. Оплата возвращена.",
+          refunded: true,
+        },
         { status: 502 }
       );
     }
@@ -218,13 +244,18 @@ ${timingEvidenceIds.join("\n")}`);
     });
     if (saved.status === "stale") {
       await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Карта изменилась. Оплата возвращена, попробуйте снова.",
+        { refunded: true, errorCode: "chart_stale" }
+      );
       return NextResponse.json(
-        { error: "Карта изменилась. Оплата возвращена, попробуйте снова." },
+        { error: "Карта изменилась. Оплата возвращена, попробуйте снова.", refunded: true },
         { status: 409 }
       );
     }
     if (saved.status === "already_saved") await rollback();
-    return NextResponse.json({
+    const payload = {
       forecast: saved.report.content,
       reportId: saved.report.id,
       report: saved.report.structuredData,
@@ -232,17 +263,28 @@ ${timingEvidenceIds.join("\n")}`);
       horizon,
       cached: saved.status === "already_saved",
       runeBalance: saved.status === "saved" ? charge.newBalance : undefined,
-    });
+      refunded: saved.status === "already_saved",
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     await rollback().catch(() => console.warn("[natal-chart] forecast rollback failed"));
     if (error instanceof InsufficientFundsError) {
+      await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
       return NextResponse.json(
         { error: "insufficient", balance: error.balance, cost: error.required },
         { status: 402 }
       );
     }
     console.warn("[natal-chart] forecast generation failed");
-    return NextResponse.json({ error: "Ошибка генерации прогноза." }, { status: 502 });
+    await trackWorkerJobFailed(request, "Ошибка генерации прогноза.", {
+      refunded: rollbackAttempted,
+      errorCode: "generation_failed",
+    });
+    return NextResponse.json(
+      { error: "Ошибка генерации прогноза.", refunded: rollbackAttempted },
+      { status: 502 }
+    );
   } finally {
     await releaseNatalInterpretationClaim(
       auth.profileUserId,

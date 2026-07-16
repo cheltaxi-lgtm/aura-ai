@@ -127,8 +127,40 @@ function extractImageUrl(message) {
   return null;
 }
 
+const IMAGE_HOST_ALLOWLIST = new Set([
+  "openrouter.ai",
+  "oaidalleapiprodscus.blob.core.windows.net",
+  "filesystem.site",
+  "delivered-by-ssdndata.com",
+  "lh3.googleusercontent.com",
+  "storage.googleapis.com",
+  "cdn.openai.com",
+]);
+
+function assertAllowedImageUrl(urlString) {
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    throw new Error(`Invalid image URL: ${urlString}`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error(`Refusing non-HTTPS image URL: ${parsed.protocol}`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  const allowed =
+    IMAGE_HOST_ALLOWLIST.has(host) ||
+    host.endsWith(".blob.core.windows.net") ||
+    host.endsWith(".openrouter.ai");
+  if (!allowed) {
+    throw new Error(`Image host not allowlisted: ${host}`);
+  }
+  return parsed.toString();
+}
+
 async function downloadBuffer(url) {
-  const res = await fetch(url, { redirect: "follow" });
+  const safeUrl = assertAllowedImageUrl(url);
+  const res = await fetch(safeUrl, { redirect: "error" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }

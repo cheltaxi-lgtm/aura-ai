@@ -8,8 +8,11 @@ import type {
 
 const TRANSACTION_TTL_MINUTES = 10;
 const REGISTRATION_TTL_MINUTES = 15;
-/** App deep-link + Custom Tab handoff; keep long enough for slow mobile returns. */
-const HANDOFF_TTL_MINUTES = 15;
+/**
+ * App deep-link + Custom Tab handoff. Single-use hashed bearer — keep TTL short.
+ * Never log the plaintext code; only the hash is stored.
+ */
+const HANDOFF_TTL_MINUTES = 10;
 
 type TransactionRow = {
   provider: OAuthProvider;

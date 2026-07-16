@@ -2,8 +2,25 @@ import { timingSafeEqual } from "node:crypto";
 
 import type { NextRequest } from "next/server";
 
-const WORKER_SECRET_HEADER = "x-async-job-worker-secret";
-const WORKER_USER_HEADER = "x-async-job-user-id";
+import {
+  isDirectLoopbackWorkerCall,
+  isWorkerUserId,
+  WORKER_JOB_HEADER,
+  WORKER_SECRET_HEADER,
+  WORKER_USER_HEADER,
+} from "@/lib/async-job-worker-auth-shared";
+
+export {
+  assertLoopbackAppUrl,
+  isAuthenticatedNatalWorkerRequest,
+  isDirectLoopbackWorkerCall,
+  isNatalWorkerEndpoint,
+  isWorkerUserId,
+  secretsMatchEdge,
+  WORKER_JOB_HEADER,
+  WORKER_SECRET_HEADER,
+  WORKER_USER_HEADER,
+} from "@/lib/async-job-worker-auth-shared";
 
 function secretsMatch(provided: string, expected: string): boolean {
   const providedBuffer = Buffer.from(provided);
@@ -19,13 +36,24 @@ function secretsMatch(provided: string, expected: string): boolean {
  * Regular browser requests must continue through requireProfileUserId().
  */
 export function getAsyncJobWorkerUserId(request: NextRequest): string | null {
+  if (!isDirectLoopbackWorkerCall(request)) return null;
   const expectedSecret = process.env.ASYNC_JOB_WORKER_SECRET;
   const providedSecret = request.headers.get(WORKER_SECRET_HEADER);
   const userId = request.headers.get(WORKER_USER_HEADER);
-  if (!expectedSecret || !providedSecret || !userId || !secretsMatch(providedSecret, expectedSecret)) {
+  if (
+    !expectedSecret ||
+    !providedSecret ||
+    !isWorkerUserId(userId) ||
+    !secretsMatch(providedSecret, expectedSecret)
+  ) {
     return null;
   }
   return userId;
+}
+
+export function getAsyncJobIdFromRequest(request: NextRequest): string | null {
+  const jobId = request.headers.get(WORKER_JOB_HEADER);
+  return isWorkerUserId(jobId) ? jobId : null;
 }
 
 export function isAsyncJobWorkerConfigured(): boolean {

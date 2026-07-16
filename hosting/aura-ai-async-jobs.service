@@ -5,13 +5,17 @@ Requires=aura-ai.service
 
 [Service]
 Type=simple
-User=root
+User=aura-ai
+Group=aura-ai
 WorkingDirectory=/opt/aura-ai
 Environment=NODE_ENV=production
-EnvironmentFile=/opt/aura-ai/.env.local
+# Minimal secrets only (see hosting/sync-async-jobs-env.sh)
+EnvironmentFile=/opt/aura-ai/.env.async-jobs
 ExecStart=/usr/bin/npm run worker:async-jobs
 Restart=always
 RestartSec=5
+KillMode=mixed
+TimeoutStopSec=360
 StandardOutput=append:/var/log/aura-ai/async-jobs.log
 StandardError=append:/var/log/aura-ai/async-jobs.log
 

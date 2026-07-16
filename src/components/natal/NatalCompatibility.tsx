@@ -74,15 +74,33 @@ async function responseJson<T>(response: Response): Promise<T> {
 
 async function waitForCompatibilityJob(jobId: string): Promise<Record<string, unknown>> {
   const storageKey = "aura:compatibility-active-job";
+  const startedAtKey = "aura:compatibility-active-job-started";
   let terminal = false;
   window.localStorage.setItem(storageKey, jobId);
+  if (!window.localStorage.getItem(startedAtKey)) {
+    window.localStorage.setItem(startedAtKey, String(Date.now()));
+  }
   try {
+    const startedAt = Number(window.localStorage.getItem(startedAtKey) || Date.now());
+    if (Number.isFinite(startedAt) && Date.now() - startedAt > 45 * 60_000) {
+      terminal = true;
+      throw new Error("Сохранённая генерация устарела. Запустите отчёт снова при необходимости.");
+    }
     for (let attempt = 0; attempt < 180; attempt += 1) {
       const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
         credentials: "include",
         cache: "no-store",
       });
-      const job = await responseJson<{ status?: string; result?: Record<string, unknown>; error?: string }>(response);
+      const job = await responseJson<{
+        status?: string;
+        result?: Record<string, unknown>;
+        error?: string;
+        refunded?: boolean;
+      }>(response);
+      if (response.status === 404) {
+        terminal = true;
+        throw new Error("Задача генерации не найдена. Запустите отчёт снова.");
+      }
       if (!response.ok) throw new Error(job.error || "Не удалось проверить статус очереди.");
       if (job.status === "completed") {
         terminal = true;
@@ -90,13 +108,19 @@ async function waitForCompatibilityJob(jobId: string): Promise<Record<string, un
       }
       if (job.status === "failed") {
         terminal = true;
-        throw new Error(job.error || "Отчёт не был создан. Оплата возвращена.");
+        const fallback = job.refunded
+          ? "Отчёт не был создан. Оплата возвращена."
+          : "Отчёт не был создан. Если руны списались — проверьте баланс или поддержку.";
+        throw new Error(job.error || fallback);
       }
       await new Promise((resolve) => window.setTimeout(resolve, 2_000));
     }
     throw new Error("Отчёт ещё создаётся. Его статус сохранён, вернитесь к нему немного позже.");
   } finally {
-    if (terminal) window.localStorage.removeItem(storageKey);
+    if (terminal) {
+      window.localStorage.removeItem(storageKey);
+      window.localStorage.removeItem(startedAtKey);
+    }
   }
 }
 

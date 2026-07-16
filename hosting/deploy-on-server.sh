@@ -88,6 +88,8 @@ source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|MEMORY_EMBED_MODEL)=' .env.l
 set +a
 node scripts/migrate.mjs
 
+sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh 2>/dev/null || true
+bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
 cp hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 cp hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 systemctl daemon-reload

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   createAsyncJob,
+  findActiveAsyncJob,
   type AsyncJobKind,
 } from "@/lib/async-jobs";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
@@ -23,6 +24,19 @@ export async function enqueueNatalAsyncJob(input: {
   }
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+  }
+
+  const existingId = await findActiveAsyncJob(input);
+  if (existingId) {
+    return NextResponse.json(
+      {
+        jobId: existingId,
+        status: "pending",
+        pollUrl: `/api/jobs/${existingId}`,
+        deduped: true,
+      },
+      { status: 202 }
+    );
   }
 
   const jobId = await createAsyncJob(input);

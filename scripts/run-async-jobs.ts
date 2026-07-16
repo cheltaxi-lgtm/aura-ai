@@ -1,26 +1,49 @@
 import { hostname } from "node:os";
 
 import {
+  assertLoopbackAppUrl,
+  WORKER_JOB_HEADER,
+  WORKER_SECRET_HEADER,
+  WORKER_USER_HEADER,
+} from "../src/lib/async-job-worker-auth-shared";
+import {
   claimAsyncJobs,
   completeAsyncJob,
-  failAsyncJob,
+  failAsyncJobAndRefundIfCharged,
+  getAsyncJobById,
+  reapStaleRunningAsyncJobs,
   type AsyncJobRow,
 } from "../src/lib/async-jobs";
 
 const POLL_INTERVAL_MS = Math.max(250, Number(process.env.ASYNC_JOB_POLL_MS) || 1_000);
 const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.ASYNC_JOB_CONCURRENCY) || 2));
+/** Keep above Next route maxDuration (300s) so the handler can finish before we reconcile. */
 const REQUEST_TIMEOUT_MS = Math.max(
-  30_000,
-  Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 360_000
+  60_000,
+  Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 330_000
 );
+const STALE_RUNNING_MS = Math.max(
+  60_000,
+  Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || 12 * 60_000
+);
+const TIMEOUT_GRACE_MS = Math.max(
+  5_000,
+  Number(process.env.ASYNC_JOB_TIMEOUT_GRACE_MS) || 20_000
+);
+const NATAL_KINDS = [
+  "natal_interpretation",
+  "natal_forecast",
+  "natal_compatibility",
+] as const;
+
 const workerId = `${hostname()}:${process.pid}`;
-const baseUrl = (
-  process.env.ASYNC_JOB_APP_URL ??
-  process.env.NEXT_PUBLIC_APP_URL ??
-  "http://127.0.0.1:3000"
-).replace(/\/+$/, "");
+// Never fall back to NEXT_PUBLIC_APP_URL (public origin) — worker must stay on loopback.
+const baseUrl = assertLoopbackAppUrl(
+  process.env.ASYNC_JOB_APP_URL ?? "http://127.0.0.1:3000"
+);
 
 let stopping = false;
+const inFlight = new Set<Promise<void>>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,6 +68,18 @@ function endpointFor(job: AsyncJobRow): { path: string; body: Record<string, unk
   throw new Error(`unsupported async job kind: ${job.kind}`);
 }
 
+async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
+  await sleep(TIMEOUT_GRACE_MS);
+  const latest = await getAsyncJobById(job.id);
+  if (!latest || latest.status === "completed") return;
+  if (latest.status === "failed") return;
+  await failAsyncJobAndRefundIfCharged(
+    job.id,
+    "Генерация превысила лимит ожидания worker.",
+    "worker_timeout"
+  );
+}
+
 async function runJob(job: AsyncJobRow): Promise<void> {
   const secret = process.env.ASYNC_JOB_WORKER_SECRET;
   if (!secret) throw new Error("ASYNC_JOB_WORKER_SECRET is not configured");
@@ -56,24 +91,56 @@ async function runJob(job: AsyncJobRow): Promise<void> {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-async-job-worker-secret": secret,
-        "x-async-job-user-id": job.user_id,
+        [WORKER_SECRET_HEADER]: secret,
+        [WORKER_USER_HEADER]: job.user_id,
+        [WORKER_JOB_HEADER]: job.id,
       },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
     const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
-      throw new Error(
-        typeof data.error === "string" ? data.error : `HTTP ${response.status}`
+      const latest = await getAsyncJobById(job.id);
+      if (latest?.status === "completed" || latest?.status === "failed") return;
+      const message =
+        typeof data.error === "string" ? data.error : `HTTP ${response.status}`;
+      const refunded = data.refunded === true || latest?.billing_state === "refunded";
+      await failAsyncJobAndRefundIfCharged(
+        job.id,
+        refunded ? message : message,
+        typeof data.code === "string" ? data.code : "generation_failed"
       );
+      return;
     }
     await completeAsyncJob(job.id, data);
   } catch (error) {
-    await failAsyncJob(job.id, error instanceof Error ? error.message : "natal job failed");
+    const aborted =
+      (error instanceof Error && error.name === "AbortError") ||
+      (typeof error === "object" &&
+        error !== null &&
+        "name" in error &&
+        (error as { name?: string }).name === "AbortError");
+    if (aborted) {
+      await reconcileAfterTimeout(job);
+      return;
+    }
+    const latest = await getAsyncJobById(job.id);
+    if (latest?.status === "completed" || latest?.status === "failed") return;
+    await failAsyncJobAndRefundIfCharged(
+      job.id,
+      error instanceof Error ? error.message : "natal job failed",
+      "generation_failed"
+    );
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function track(promise: Promise<void>): Promise<void> {
+  inFlight.add(promise);
+  return promise.finally(() => {
+    inFlight.delete(promise);
+  });
 }
 
 async function main(): Promise<void> {
@@ -82,20 +149,41 @@ async function main(): Promise<void> {
   }
   console.log(`[async-jobs] worker ${workerId} polling ${baseUrl}`);
   while (!stopping) {
+    try {
+      const reaped = await reapStaleRunningAsyncJobs({
+        staleAfterMs: STALE_RUNNING_MS,
+        kinds: [...NATAL_KINDS],
+      });
+      if (reaped.requeued || reaped.failed) {
+        console.warn(
+          `[async-jobs] reaper requeued=${reaped.requeued} failed=${reaped.failed}`
+        );
+      }
+    } catch (error) {
+      console.error("[async-jobs] reaper failed:", error);
+    }
+
     const jobs = await claimAsyncJobs({
       workerId,
       limit: CONCURRENCY,
-      kinds: ["natal_interpretation", "natal_forecast", "natal_compatibility"],
+      kinds: [...NATAL_KINDS],
     });
     if (!jobs.length) {
       await sleep(POLL_INTERVAL_MS);
       continue;
     }
-    await Promise.all(jobs.map(runJob));
+    await Promise.all(jobs.map((job) => track(runJob(job))));
   }
+
+  if (inFlight.size) {
+    console.log(`[async-jobs] draining ${inFlight.size} in-flight job(s)`);
+    await Promise.allSettled([...inFlight]);
+  }
+  console.log("[async-jobs] stopped cleanly");
 }
 
 function stop(signal: string): void {
+  if (stopping) return;
   stopping = true;
   console.log(`[async-jobs] received ${signal}; finishing active jobs`);
 }

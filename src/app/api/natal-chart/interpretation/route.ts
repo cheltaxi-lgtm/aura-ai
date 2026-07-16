@@ -21,6 +21,12 @@ import { getCachedPersonalTiming } from "@/lib/services/natal-timing-service";
 import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import {
+  trackWorkerJobCharged,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/natal/async-job-lifecycle";
 import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
@@ -138,21 +144,33 @@ export async function POST(request: NextRequest) {
     expectedEphemeris
   );
   if (claim.status === "cached") {
-    return NextResponse.json({
+    const payload = {
       interpretation: claim.interpretation,
       report: claim.structuredData,
       evidence: claim.evidenceRefs,
       tradition,
       cached: true,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   }
   if (claim.status === "busy") {
+    await trackWorkerJobFailed(
+      request,
+      "Не удалось начать трактовку. Обновите страницу и попробуйте снова.",
+      { errorCode: "CLAIM_BUSY" }
+    );
     return NextResponse.json(
       { error: "Не удалось начать трактовку. Обновите страницу и попробуйте снова.", code: "CLAIM_BUSY" },
       { status: 409 }
     );
   }
   if (claim.status === "unavailable") {
+    await trackWorkerJobFailed(
+      request,
+      "Натальная карта изменилась. Обновите страницу и попробуйте снова.",
+      { errorCode: "chart_changed" }
+    );
     return NextResponse.json(
       { error: "Натальная карта изменилась. Обновите страницу и попробуйте снова." },
       { status: 409 }
@@ -185,6 +203,7 @@ ${evidenceIds.join("\n")}`);
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
+    await trackWorkerJobRefunded(request);
   };
 
   try {
@@ -192,6 +211,7 @@ ${evidenceIds.join("\n")}`);
       userId: ctx.profileUserId,
       action: "NATAL_READING",
     });
+    await trackWorkerJobCharged(request, charge.transactionId);
 
     const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
@@ -214,8 +234,13 @@ ${evidenceIds.join("\n")}`);
         `evidence=${evidence.length}`
       );
       await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Модель не смогла создать проверяемый отчёт. Оплата возвращена.",
+        { refunded: true, errorCode: "invalid_model_report" }
+      );
       return NextResponse.json(
-        { error: "Модель не смогла создать проверяемый отчёт. Оплата возвращена." },
+        { error: "Модель не смогла создать проверяемый отчёт. Оплата возвращена.", refunded: true },
         { status: 502 }
       );
     }
@@ -237,41 +262,64 @@ ${evidenceIds.join("\n")}`);
     });
     if (saved.status === "stale") {
       await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Натальная карта изменилась. Оплата возвращена, попробуйте снова.",
+        { refunded: true, errorCode: "chart_stale" }
+      );
       return NextResponse.json(
-        { error: "Натальная карта изменилась. Оплата возвращена, попробуйте снова." },
+        {
+          error: "Натальная карта изменилась. Оплата возвращена, попробуйте снова.",
+          refunded: true,
+        },
         { status: 409 }
       );
     }
     if (saved.status === "already_saved") {
       await rollback();
-      return NextResponse.json({
+      const payload = {
         interpretation: saved.report.content,
         report: saved.report.structuredData,
         evidence: saved.report.evidenceRefs,
         tradition,
         cached: true,
-      });
+        refunded: true,
+      };
+      await trackWorkerJobCompleted(request, payload);
+      return NextResponse.json(payload);
     }
 
-    return NextResponse.json({
+    const payload = {
       interpretation: saved.report.content,
       report: saved.report.structuredData,
       evidence: saved.report.evidenceRefs,
       tradition,
       runeBalance: charge.newBalance,
-    });
+      reportId: saved.report.id,
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[natal-chart] billing rollback failed");
     });
     if (error instanceof InsufficientFundsError) {
+      await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
       return NextResponse.json(
         { error: "insufficient", balance: error.balance, cost: error.required },
         { status: 402 }
       );
     }
     console.warn("[natal-chart] interpretation failed");
-    return NextResponse.json({ error: "Ошибка генерации трактовки." }, { status: 502 });
+    await trackWorkerJobFailed(
+      request,
+      "Ошибка генерации трактовки.",
+      { refunded: rollbackAttempted, errorCode: "generation_failed" }
+    );
+    return NextResponse.json(
+      { error: "Ошибка генерации трактовки.", refunded: rollbackAttempted },
+      { status: 502 }
+    );
   } finally {
     await releaseNatalInterpretationClaim(
       ctx.profileUserId,

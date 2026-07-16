@@ -6,6 +6,7 @@ import {
   isMaintenanceBypassPath,
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
+import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
 
 const COOKIE = "aura_auth";
@@ -133,28 +134,6 @@ function requiredApiRole(pathname: string): AuthRole | null {
   if (pathname.startsWith("/api/admin/")) return "admin";
   if (pathname.startsWith("/api/expert/")) return "expert";
   return null;
-}
-
-function isAuthenticatedNatalWorkerRequest(
-  request: NextRequest,
-  pathname: string
-): boolean {
-  const isWorkerEndpoint =
-    pathname === "/api/natal-chart/interpretation" ||
-    pathname === "/api/natal-chart/forecast" ||
-    /^\/api\/natal-chart\/compatibility\/[^/]+\/generate$/.test(pathname);
-  if (!isWorkerEndpoint) return false;
-
-  const expected = process.env.ASYNC_JOB_WORKER_SECRET;
-  const provided = request.headers.get("x-async-job-worker-secret");
-  const userId = request.headers.get("x-async-job-user-id");
-  return Boolean(
-    expected &&
-      provided &&
-      provided === expected &&
-      userId &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)
-  );
 }
 
 function isAdminAreaPath(pathname: string): boolean {

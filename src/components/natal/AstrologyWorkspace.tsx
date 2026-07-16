@@ -92,9 +92,18 @@ async function responseJson<T>(response: Response): Promise<T> {
 
 async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> {
   const storageKey = "aura:natal-active-job";
+  const startedAtKey = "aura:natal-active-job-started";
   let terminal = false;
   window.localStorage.setItem(storageKey, jobId);
+  if (!window.localStorage.getItem(startedAtKey)) {
+    window.localStorage.setItem(startedAtKey, String(Date.now()));
+  }
   try {
+    const startedAt = Number(window.localStorage.getItem(startedAtKey) || Date.now());
+    if (Number.isFinite(startedAt) && Date.now() - startedAt > 45 * 60_000) {
+      terminal = true;
+      throw new Error("Сохранённая генерация устарела. Запустите отчёт снова при необходимости.");
+    }
     for (let attempt = 0; attempt < 180; attempt += 1) {
       const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
         credentials: "include",
@@ -104,7 +113,12 @@ async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> 
         status?: string;
         result?: Record<string, unknown>;
         error?: string;
+        refunded?: boolean;
       }>(response);
+      if (response.status === 404) {
+        terminal = true;
+        throw new Error("Задача генерации не найдена. Запустите отчёт снова.");
+      }
       if (!response.ok) throw new Error(job.error || "Не удалось проверить статус генерации.");
       if (job.status === "completed") {
         terminal = true;
@@ -112,13 +126,19 @@ async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> 
       }
       if (job.status === "failed") {
         terminal = true;
-        throw new Error(job.error || "Генерация не завершилась. Оплата возвращена.");
+        const fallback = job.refunded
+          ? "Генерация не завершилась. Оплата возвращена."
+          : "Генерация не завершилась. Если руны списались — проверьте баланс или поддержку.";
+        throw new Error(job.error || fallback);
       }
       await new Promise((resolve) => window.setTimeout(resolve, 2_000));
     }
     throw new Error("Генерация ещё выполняется. Её статус сохранён, обновите страницу позже.");
   } finally {
-    if (terminal) window.localStorage.removeItem(storageKey);
+    if (terminal) {
+      window.localStorage.removeItem(storageKey);
+      window.localStorage.removeItem(startedAtKey);
+    }
   }
 }
 
