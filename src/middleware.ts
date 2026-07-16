@@ -78,6 +78,55 @@ function loginPathForRole(role: AuthRole): string {
   return "/auth/user/login";
 }
 
+function isLoopbackHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h === "localhost" ||
+    h.startsWith("localhost:") ||
+    h === "127.0.0.1" ||
+    h.startsWith("127.0.0.1:") ||
+    h === "[::1]" ||
+    h.startsWith("[::1]:")
+  );
+}
+
+/**
+ * Public site origin for redirects. Next binds to 127.0.0.1:3000 behind Caddy,
+ * so request.nextUrl / request.url are often http(s)://localhost:3000 — that
+ * must never leak into Location headers (Capacitor then opens the system browser).
+ */
+function resolvePublicOrigin(request: NextRequest): string {
+  const env = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim().replace(/\/$/, "");
+  if (env) {
+    try {
+      const u = new URL(env.includes("://") ? env : `https://${env}`);
+      if (!isLoopbackHost(u.host)) return u.origin;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || request.headers.get("host")?.trim() || "";
+  if (host && !isLoopbackHost(host)) {
+    const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const proto =
+      forwardedProto === "http" || forwardedProto === "https"
+        ? forwardedProto
+        : host.includes("zovus.ru")
+          ? "https"
+          : request.nextUrl.protocol.replace(":", "") || "https";
+    return `${proto}://${host}`;
+  }
+
+  return "https://zovus.ru";
+}
+
+function publicUrl(request: NextRequest, pathname: string): URL {
+  const url = new URL(pathname, `${resolvePublicOrigin(request)}/`);
+  return url;
+}
+
 async function verifyRole(token: string, secretKey: Uint8Array): Promise<AuthRole | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey);
@@ -98,8 +147,9 @@ async function isAdminSession(request: NextRequest, secretKey: Uint8Array | null
 }
 
 function redirectToLogin(request: NextRequest, role: AuthRole) {
-  const url = request.nextUrl.clone();
-  url.pathname = loginPathForRole(role);
+  const url = publicUrl(request, loginPathForRole(role));
+  const app = request.nextUrl.searchParams.get("app");
+  if (app) url.searchParams.set("app", app);
   url.searchParams.set("returnTo", request.nextUrl.pathname + request.nextUrl.search);
   return NextResponse.redirect(url);
 }
@@ -158,7 +208,7 @@ async function enforceMaintenanceMode(
 
   if (!active) {
     if (pathname === MAINTENANCE_PAGE_PATH) {
-      return withNoStore(NextResponse.redirect(new URL("/", request.url)));
+      return withNoStore(NextResponse.redirect(publicUrl(request, "/")));
     }
     return null;
   }
@@ -170,10 +220,7 @@ async function enforceMaintenanceMode(
   }
 
   if (pathname !== MAINTENANCE_PAGE_PATH) {
-    const url = request.nextUrl.clone();
-    url.pathname = MAINTENANCE_PAGE_PATH;
-    url.search = "";
-    return withNoStore(NextResponse.redirect(url));
+    return withNoStore(NextResponse.redirect(publicUrl(request, MAINTENANCE_PAGE_PATH)));
   }
 
   return null;
@@ -190,8 +237,8 @@ function legacyCyrillicRedirect(request: NextRequest, pathname: string): NextRes
   }
   const target = LEGACY_CYRILLIC_REDIRECTS[decoded] ?? LEGACY_CYRILLIC_REDIRECTS[pathname];
   if (!target) return null;
-  const url = request.nextUrl.clone();
-  url.pathname = target;
+  const url = publicUrl(request, target);
+  url.search = request.nextUrl.search;
   return NextResponse.redirect(url, 308);
 }
 

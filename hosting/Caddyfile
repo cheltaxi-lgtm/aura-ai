@@ -4,5 +4,12 @@ www.zovus.ru {
 
 zovus.ru {
 	encode gzip
-	reverse_proxy 127.0.0.1:3000
+	# Preserve public host for Next redirects (otherwise Location becomes localhost:3000
+	# and the Android WebView opens the system browser).
+	reverse_proxy 127.0.0.1:3000 {
+		header_up Host {host}
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+	}
 }
