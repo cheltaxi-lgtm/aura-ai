@@ -1,4 +1,4 @@
-import { Cormorant_Garamond, Inter, Cinzel } from "next/font/google";
+import { Cormorant_Garamond, Inter } from "next/font/google";
 import Script from "next/script";
 import SalonBackground from "@/components/SalonBackground";
 import Providers from "@/components/Providers";
@@ -16,6 +16,7 @@ const inter = Inter({
   variable: "--font-body",
 });
 
+/** Single display face with Cyrillic — used for both font-display and font-mystic-display. */
 const cormorant = Cormorant_Garamond({
   subsets: ["latin", "cyrillic"],
   variable: "--font-mystic-display",
@@ -23,18 +24,12 @@ const cormorant = Cormorant_Garamond({
   style: ["normal", "italic"],
 });
 
-const cinzel = Cinzel({
-  subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["400", "600", "700"],
-});
-
 export const metadata = getRootMetadata();
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ru" className={`${inter.variable} ${cormorant.variable} ${cinzel.variable}`}>
+    <html lang="ru" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="font-body relative flex min-h-screen flex-col">
         <Script id="app-shell-detect" strategy="beforeInteractive">
           {`(function(){try{var cap=window.Capacitor;if(cap&&cap.isNativePlatform&&cap.isNativePlatform()){document.documentElement.dataset.appShell="android";document.documentElement.dataset.nativeApp="1";document.documentElement.dataset.motionLite="1";return}var q=window.location.search;if(/(?:^|[?&])app=1(?:&|$)/.test(q)){document.documentElement.dataset.appShell="android";document.documentElement.dataset.motionLite="1";try{sessionStorage.setItem("zovus_app_shell","1")}catch(e){}}if("serviceWorker"in navigator&&!cap?.isNativePlatform?.()){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){r.unregister()})});if(window.caches&&caches.keys){caches.keys().then(function(keys){keys.forEach(function(k){if(k.indexOf("zovus-shell")===0)caches.delete(k)})})}}}catch(e){}})();`}

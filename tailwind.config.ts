@@ -30,7 +30,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ["var(--font-display)", "Georgia", "serif"],
+        /* Cormorant (Cyrillic) — Cinzel dropped: latin-only broke Russian display */
+        display: ["var(--font-mystic-display)", "Georgia", "serif"],
         body: ["var(--font-body)", "system-ui", "sans-serif"],
         "mystic-display": ["var(--font-mystic-display)", "Georgia", "serif"],
       },
@@ -64,9 +65,10 @@ const config: Config = {
         },
       },
       boxShadow: {
-        neon: "0 0 24px rgba(155, 127, 212, 0.25), 0 0 48px rgba(155, 127, 212, 0.08)",
-        "neon-emerald": "0 0 24px rgba(91, 168, 138, 0.25)",
-        "neon-gold": "0 0 24px rgba(201, 162, 74, 0.3), 0 0 48px rgba(232, 199, 126, 0.12)",
+        /* Soft brass glow — keep token names for compatibility, drop purple neon */
+        neon: "0 0 20px rgba(201, 162, 74, 0.18), 0 0 40px rgba(201, 162, 74, 0.06)",
+        "neon-emerald": "0 0 20px rgba(91, 168, 138, 0.2)",
+        "neon-gold": "0 0 20px rgba(201, 162, 74, 0.22), 0 0 40px rgba(232, 199, 126, 0.08)",
         lux: "0 16px 48px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(232, 199, 126, 0.08)",
       },
       letterSpacing: {

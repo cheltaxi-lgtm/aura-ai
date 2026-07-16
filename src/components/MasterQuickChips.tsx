@@ -36,7 +36,7 @@ function ChipButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`group flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-2 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple/60 disabled:pointer-events-none disabled:opacity-40 sm:min-h-[2.5rem] sm:w-full sm:px-2 border-white/[0.08] bg-gradient-to-b from-indigo-950/70 to-[#0a0814]/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-aura-gold/35 hover:from-indigo-900/80 hover:shadow-[0_0_14px_rgba(212,175,55,0.08)] ${className}`}
+      className={`group flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-2 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/50 disabled:pointer-events-none disabled:opacity-40 sm:min-h-[2.5rem] sm:w-full sm:px-2 border-white/[0.08] bg-[rgba(20,18,16,0.9)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-aura-gold/35 hover:bg-[rgba(26,22,18,0.95)] ${className}`}
     >
       <span className="text-sm leading-none opacity-90" aria-hidden>
         {emoji}
@@ -62,7 +62,7 @@ export default function MasterQuickChips({
 
   return (
     <div
-      className="mb-2 rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-[#141028]/90 to-[#0a0812]/95 p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(212,175,55,0.06)] sm:p-3"
+      className="mb-2 rounded-2xl border border-aura-gold/15 bg-[#141210]/95 p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(212,175,55,0.06)] sm:p-3"
       role="region"
       aria-label={`Быстрые расклады — ${masterName}`}
     >
@@ -82,7 +82,6 @@ export default function MasterQuickChips({
             label={chip.label}
             disabled={disabled}
             onClick={() => send(chip.message)}
-            className="border-aura-purple/25 bg-gradient-to-b from-violet-950/50 to-indigo-950/80"
           />
         ))}
       </div>

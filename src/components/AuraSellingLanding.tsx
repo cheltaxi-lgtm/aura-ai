@@ -498,6 +498,14 @@ export default function AuraSellingLanding({
 
       {showSellingSections && isEditorial ? <EditorialSessionStepsSection /> : null}
 
+      {showSellingSections && isEditorial && !isLoggedIn ? (
+        <section className="editorial-section" aria-label="Доверие">
+          <div className="editorial-landing__inner flex justify-center">
+            <LandingSocialProofStats variant="trust" />
+          </div>
+        </section>
+      ) : null}
+
       {showSellingSections && isEditorial ? (
         <EditorialPracticesSection isLoggedIn={isLoggedIn} />
       ) : null}

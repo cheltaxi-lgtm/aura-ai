@@ -1,5 +1,6 @@
 import { buildMasterMetadata } from "@/lib/master-seo";
 import HomePage from "@/components/HomePage";
+import MasterSalonIntro from "@/components/MasterSalonIntro";
 import MasterStructuredData from "@/components/MasterStructuredData";
 import { isRitualType } from "@/lib/ritual-config";
 
@@ -20,6 +21,7 @@ export default async function MasterPage({ params, searchParams }: MasterPagePro
   return (
     <>
       <MasterStructuredData slug={slug} />
+      <MasterSalonIntro slug={slug} />
       <HomePage
         referrerSlug={slug}
         autoOpenMasterId={slug}

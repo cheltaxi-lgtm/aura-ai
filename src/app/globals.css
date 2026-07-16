@@ -5,7 +5,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    background-color: #05010d;
+    background-color: #0a0908;
   }
 
   body {
@@ -109,19 +109,19 @@
   /* ── Glass panels ── */
   .glass-panel {
     @apply rounded-2xl backdrop-blur-xl;
-    border: 1px solid rgba(232, 199, 126, 0.1);
+    border: 1px solid rgba(201, 162, 74, 0.14);
     background: linear-gradient(
       145deg,
-      rgba(18, 16, 42, 0.72) 0%,
-      rgba(12, 10, 26, 0.55) 100%
+      rgba(26, 24, 22, 0.88) 0%,
+      rgba(14, 12, 10, 0.78) 100%
     );
     box-shadow: var(--shadow-lux);
   }
 
   .flow-panel {
     @apply rounded-3xl p-8 backdrop-blur-2xl md:p-12;
-    border: 1px solid rgba(232, 199, 126, 0.08);
-    background: linear-gradient(160deg, rgba(18, 14, 36, 0.65), rgba(8, 6, 18, 0.5));
+    border: 1px solid rgba(201, 162, 74, 0.12);
+    background: linear-gradient(160deg, rgba(26, 22, 18, 0.72), rgba(10, 9, 8, 0.62));
     box-shadow: var(--shadow-lux);
   }
 
@@ -3965,7 +3965,17 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   @apply border-aura-gold/35 bg-aura-gold/10 text-aura-gold;
 }
 
-/* SSR SEO block: in DOM for crawlers, never intercepts clicks */
+/* SSR SEO block: visible editorial footer (was clip-hidden crawl-only) */
+.home-seo-panel {
+  @apply mx-auto max-w-3xl px-4 py-12 text-[rgba(237,230,218,0.72)];
+  border-top: 1px solid rgba(201, 162, 74, 0.14);
+}
+
+.home-seo-panel a {
+  @apply text-aura-gold;
+}
+
+/* Keep legacy class for any remaining crawl-only usages */
 .seo-crawl-only {
   position: absolute;
   width: 1px;
@@ -5514,20 +5524,20 @@ body.chat-session-active .app-main-column {
   align-items: center;
   justify-content: center;
   min-height: 12rem;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(201, 162, 74, 0.14);
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(20, 18, 16, 0.55);
   padding: 2rem 1.5rem;
   text-align: center;
-  color: rgba(209, 213, 219, 0.65);
+  color: rgba(237, 230, 218, 0.55);
 }
 
 .cabinet-profile-header {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.15);
+  border: 1px solid rgba(201, 162, 74, 0.18);
   border-radius: 1rem;
-  background: linear-gradient(165deg, rgba(28, 22, 48, 0.92), rgba(12, 10, 26, 0.88));
+  background: linear-gradient(165deg, rgba(26, 22, 18, 0.94), rgba(12, 10, 8, 0.9));
   padding: 1.5rem;
 }
 

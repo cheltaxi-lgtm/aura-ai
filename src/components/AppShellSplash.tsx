@@ -192,7 +192,7 @@ export default function AppShellSplash() {
           </div>
 
           <p className="app-shell-splash__wordmark">ZOVUS</p>
-          <p className="app-shell-splash__tagline">эзотерический оракул</p>
+          <p className="app-shell-splash__tagline">приватный цифровой салон</p>
           <p className="app-shell-splash__status">{statusLine}</p>
 
           <div className="app-shell-splash__progress" aria-hidden>

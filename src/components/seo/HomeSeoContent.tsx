@@ -18,14 +18,14 @@ export default function HomeSeoContent() {
   const featured = getFeaturedSpreadIntents(4);
 
   return (
-    <section className="seo-crawl-only" aria-label="О сервисе Zovus">
-      <p className="font-display text-2xl font-bold">
+    <section className="home-seo-panel" aria-label="О сервисе Zovus">
+      <p className="font-display text-2xl font-medium text-[#ede6da]">
         Расклады Таро онлайн с персональной расшифровкой
       </p>
       <p className="mt-4 leading-relaxed">
-        Zovus — сервис персональных эзотерических консультаций с ИИ-мастерами в художественных
-        образах. Вы выбираете вопрос — о чувствах, отношениях, верности, карьере или будущем —
-        мастер раскладывает карты по проверенной схеме и даёт связную трактовку в чате. После
+        Zovus — приватный цифровой салон для личной практики: расклад, символы и диалог с
+        проводником в художественном образе. Вы выбираете вопрос — о чувствах, отношениях,
+        верности, карьере или будущем — и получаете связную трактовку в спокойном темпе. После
         расшифровки можно уточнять детали, сохранять историю в кабинете и продолжать диалог.
       </p>
       <p className="mt-3 leading-relaxed">

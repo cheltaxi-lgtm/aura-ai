@@ -23,7 +23,7 @@ export default function BrandLogo({
   showBeta = true,
   className = "",
   markSize = 28,
-  titleClassName = "font-display text-xl font-bold tracking-wider text-white neon-text sm:text-2xl",
+  titleClassName = "font-display text-xl font-semibold tracking-[0.14em] text-[#ede6da] sm:text-2xl",
   taglineClassName = "ml-2 hidden text-xs text-gray-600 sm:inline",
   iconOnlyOnMobile = false,
   linkToHome = false,

@@ -191,7 +191,7 @@ export default function RuneShopModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="rune-shop-title"
-            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90dvh] max-w-lg overflow-y-auto rounded-t-3xl border-t border-white/10 bg-[#12101a] p-6"
+            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90dvh] max-w-lg overflow-y-auto rounded-t-3xl border-t border-[rgba(201,162,74,0.2)] bg-[#141210] p-6"
           >
             <div className="mb-4 flex items-center justify-between">
               <div className="flex-1" />

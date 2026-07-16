@@ -22,9 +22,9 @@ export default function BrandMark({ size = 28, className }: BrandMarkProps) {
           <stop offset="1" stopColor="#A8843A" />
         </linearGradient>
         <radialGradient id="zovus-bg" cx="16" cy="14" r="18" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3D2858" />
-          <stop offset="0.55" stopColor="#1A0F2E" />
-          <stop offset="1" stopColor="#07050F" />
+          <stop stopColor="#2a2218" />
+          <stop offset="0.55" stopColor="#141210" />
+          <stop offset="1" stopColor="#0a0908" />
         </radialGradient>
         <radialGradient id="zovus-glow" cx="16" cy="12" r="10" gradientUnits="userSpaceOnUse">
           <stop stopColor="#C9A24A" stopOpacity="0.35" />

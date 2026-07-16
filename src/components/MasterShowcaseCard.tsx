@@ -133,8 +133,11 @@ export default function MasterShowcaseCard({
 
         <h3 className="master-showcase-card__name">{displayName}</h3>
         <p className="master-showcase-card__system">{master.title}</p>
-
-        {master.sessions ? (
+        {master.specialty ? (
+          <p className="master-showcase-card__meta">
+            <span className="master-showcase-card__meta-item">{master.specialty}</span>
+          </p>
+        ) : master.sessions ? (
           <p className="master-showcase-card__meta">
             <span className="master-showcase-card__meta-item">{master.sessions}</span>
           </p>
@@ -151,10 +154,10 @@ export default function MasterShowcaseCard({
           type="button"
           onClick={() => onSelect(master.id)}
           disabled={actionBlocked}
-          aria-label={`${actionBlocked ? "Нужны руны" : ctaLabel} с мастером ${displayName}`}
+          aria-label={`${actionBlocked ? "Нужны руны" : ctaLabel} сеанс с ${displayName}`}
           className="master-showcase-card__cta disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {actionBlocked ? "Нужны руны" : ctaLabel}
+          {actionBlocked ? "Нужны руны" : canContinue ? "Продолжить сеанс" : "Начать сеанс"}
           <ArrowRight className="master-showcase-card__cta-arrow" aria-hidden />
         </button>
       </div>

@@ -42,7 +42,7 @@ function ChipButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="group flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-aura-purple/25 bg-gradient-to-b from-violet-950/50 to-indigo-950/80 px-3 py-2 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple/60 disabled:pointer-events-none disabled:opacity-40 sm:min-h-[2.5rem] sm:w-full sm:px-2"
+      className="group flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/[0.08] bg-[rgba(20,18,16,0.9)] px-3 py-2 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/50 hover:border-aura-gold/35 disabled:pointer-events-none disabled:opacity-40 sm:min-h-[2.5rem] sm:w-full sm:px-2"
     >
       <span className="text-sm leading-none opacity-90" aria-hidden>
         {emoji}
@@ -65,7 +65,7 @@ export default function NumerologQuickChips({
 
   return (
     <div
-      className="mb-2 rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-[#141028]/90 to-[#0a0812]/95 p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(212,175,55,0.06)] sm:p-3"
+      className="mb-2 rounded-2xl border border-aura-gold/15 bg-[#141210]/95 p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(212,175,55,0.06)] sm:p-3"
       role="region"
       aria-label="Расклад по периоду"
     >

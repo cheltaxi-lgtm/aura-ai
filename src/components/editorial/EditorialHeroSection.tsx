@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
-import LandingSocialProofStats from "@/components/seo/LandingSocialProofStats";
+import { BRAND_NAME } from "@/lib/brand";
 import { EDITORIAL_HERO } from "@/lib/editorial-landing-content";
 
 const motionEase = [0.22, 1, 0.36, 1] as const;
@@ -35,6 +35,7 @@ export default function EditorialHeroSection({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, ease: motionEase }}
       >
+        <p className="editorial-hero__brand">{BRAND_NAME}</p>
         <h1 id="editorial-hero-title" className="editorial-hero__title">
           {EDITORIAL_HERO.title}
         </h1>
@@ -42,7 +43,7 @@ export default function EditorialHeroSection({
         <HeroQuestionField className="mt-6 max-w-md mx-auto" onQuestionSubmit={onQuestionSubmit} />
         <div className="editorial-hero__actions">
           <button type="button" className="editorial-btn editorial-btn--gold" onClick={onPrimaryCta}>
-            {EDITORIAL_HERO.primaryCta}
+            {isLoggedIn ? "Продолжить практику" : EDITORIAL_HERO.primaryCta}
           </button>
           <button type="button" className="editorial-btn editorial-btn--ghost" onClick={onSecondaryCta}>
             {EDITORIAL_HERO.secondaryCta}
@@ -50,7 +51,6 @@ export default function EditorialHeroSection({
         </div>
         <p className="editorial-hero__micro">{EDITORIAL_HERO.microcopy}</p>
         {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}
-        {!isLoggedIn ? <LandingSocialProofStats variant="hero" className="mt-5" /> : null}
       </motion.div>
     </section>
   );

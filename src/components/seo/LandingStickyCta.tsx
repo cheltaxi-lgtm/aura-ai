@@ -14,6 +14,7 @@ const VISIBILITY_DEBOUNCE_MS = 140;
 const INLINE_CTA_SELECTORS = [
   `#${GUEST_SPREAD_SECTION_ID}`,
   ".aura-landing-hero__actions",
+  ".editorial-hero__actions",
   ".aura-landing-section--final",
 ] as const;
 

@@ -3,7 +3,7 @@ export const BRAND_NAME = "Zovus";
 export const BRAND_WORDMARK = "OVUS";
 export const BRAND_DOMAIN = "zovus.ru";
 export const BRAND_URL = `https://${BRAND_DOMAIN}`;
-export const BRAND_TAGLINE = "эзотерический оракул";
+export const BRAND_TAGLINE = "приватный цифровой салон";
 export const BRAND_PLUS = "Zovus+";
 
 /** Shared header lockup — mark + OVUS + beta. */
@@ -13,7 +13,7 @@ export const BRAND_LOGO_HEADER = {
   showBeta: true,
   markSize: 32,
   titleClassName:
-    "font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl",
+    "font-display text-lg font-semibold tracking-[0.14em] text-[#ede6da] sm:text-2xl",
 } as const;
 
 /** Inline breadcrumb / sub-nav — same lockup, smaller scale. */
@@ -23,7 +23,7 @@ export const BRAND_LOGO_BREADCRUMB = {
   showBeta: true,
   markSize: 24,
   titleClassName:
-    "font-display text-sm font-bold tracking-wider text-white neon-text sm:text-base",
+    "font-display text-sm font-semibold tracking-[0.12em] text-[#ede6da] sm:text-base",
 } as const;
 
 /** Footer lockup — same identity, no home link. */
@@ -32,7 +32,7 @@ export const BRAND_LOGO_FOOTER = {
   showBeta: true,
   markSize: 32,
   titleClassName:
-    "font-display text-lg font-bold tracking-wider text-white neon-text sm:text-xl",
+    "font-display text-lg font-semibold tracking-[0.14em] text-[#ede6da] sm:text-xl",
 } as const;
 
 /** Canonical public site URL (payments, sitemap, OpenRouter referer). */
