@@ -16,11 +16,11 @@
   --color-overlay: rgba(8, 6, 4, 0.72);
   --color-focus: rgba(201, 162, 74, 0.55);
   --color-danger: #f0a8a8;
-  /* Premium scrollbars — thin brass on dark surfaces */
+  /* Premium scrollbars — thin brass on dark surfaces (mirrors globals.css :root) */
   --scrollbar-size: 5px;
   --scrollbar-thumb: rgba(201, 162, 74, 0.28);
   --scrollbar-thumb-hover: rgba(232, 199, 126, 0.5);
-  --scrollbar-track: transparent;
+  --scrollbar-track: rgba(8, 6, 4, 0.35);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

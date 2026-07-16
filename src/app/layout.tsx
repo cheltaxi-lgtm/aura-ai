@@ -6,9 +6,9 @@ import AppAwareCookieBanner from "@/components/AppAwareCookieBanner";
 import AppAwareSiteFooter from "@/components/AppAwareSiteFooter";
 import YandexMetrika from "@/components/YandexMetrika";
 import { getRootMetadata } from "@/lib/seo";
+import "../styles/tokens.css";
 import "./globals.css";
 import "./app-shell.css";
-import "../styles/tokens.css";
 import "../styles/editorial-landing.css";
 
 const inter = Inter({

@@ -2,6 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Premium scrollbars (site-wide: web, SEO, cabinet, app shell) ──
+   Unlayered + defined before use so html/body viewport and every overflow
+   panel share one thin brass thumb. */
+:root {
+  --scrollbar-size: 5px;
+  --scrollbar-thumb: rgba(201, 162, 74, 0.28);
+  --scrollbar-thumb-hover: rgba(232, 199, 126, 0.5);
+  --scrollbar-track: rgba(8, 6, 4, 0.35);
+  color-scheme: dark;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @layer base {
   html {
     /* Do not set scroll-behavior: smooth on html — it breaks App Router
@@ -16,43 +75,6 @@
     isolation: isolate;
     line-height: 1.6;
   }
-
-  /* Global premium scrollbars (Firefox) */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-  }
-}
-
-/* Global premium scrollbars (WebKit / Chromium / Edge) */
-*::-webkit-scrollbar {
-  width: var(--scrollbar-size);
-  height: var(--scrollbar-size);
-}
-
-*::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
-*::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
-
-*::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: var(--scrollbar-thumb);
-  border: 1px solid transparent;
-  background-clip: padding-box;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
-*::-webkit-scrollbar-corner {
-  background: transparent;
 }
 
 @layer components {
@@ -83,11 +105,6 @@
       0 20px 50px -20px rgba(0, 0, 0, 0.7),
       0 0 60px -30px rgba(155, 127, 212, 0.08);
     --shadow-gold-glow: 0 0 28px rgba(201, 162, 74, 0.22), 0 0 60px rgba(232, 199, 126, 0.08);
-    /* Premium scrollbars — keep in globals so they resolve even if tokens load order shifts */
-    --scrollbar-size: 5px;
-    --scrollbar-thumb: rgba(201, 162, 74, 0.28);
-    --scrollbar-thumb-hover: rgba(232, 199, 126, 0.5);
-    --scrollbar-track: transparent;
   }
 
   .ui-card {
