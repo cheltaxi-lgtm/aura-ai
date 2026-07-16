@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Hexagon } from "lucide-react";
 import { PRICING } from "@/lib/config/pricing";
+import { readStoredProfile } from "@/lib/home-flow-storage";
+import { parseBirthDate } from "@/lib/numerology/constants";
 
 const MATRIX_HREF = "/numerology/destiny-matrix";
 const FULL_SESSION_HREF = "/?numerolog=1&tool=destiny_matrix";
@@ -12,11 +15,57 @@ type HomeDestinyMatrixBannerProps = {
   onOpenWithEvelina?: () => void;
 };
 
+function toIsoDate(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const parsed = parseBirthDate(raw.trim());
+  if (!parsed) return null;
+  return `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
+}
+
 /** Homepage promo — matrix is the lightest product entry (date → free preview). */
 export default function HomeDestinyMatrixBanner({
   isLoggedIn = false,
   onOpenWithEvelina,
 }: HomeDestinyMatrixBannerProps) {
+  const [owned, setOwned] = useState(false);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setOwned(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      let birthDate = toIsoDate(readStoredProfile()?.birthDate);
+      try {
+        const profileRes = await fetch("/api/profile", { credentials: "include" });
+        if (profileRes.ok) {
+          const data = (await profileRes.json()) as {
+            profile?: { birthDate?: string } | null;
+          };
+          birthDate = toIsoDate(data.profile?.birthDate) ?? birthDate;
+        }
+      } catch {
+        /* keep local */
+      }
+      if (!birthDate || cancelled) return;
+      try {
+        const res = await fetch(
+          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
+          { credentials: "include" }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { owned?: boolean };
+        if (!cancelled) setOwned(Boolean(data.owned));
+      } catch {
+        if (!cancelled) setOwned(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn]);
+
   const openPreview = () => {
     window.location.assign(MATRIX_HREF);
   };
@@ -48,7 +97,9 @@ export default function HomeDestinyMatrixBanner({
             Базовый расчёт бесплатно, без анкеты.
           </p>
           <p className="mt-1 text-xs text-white/40">
-            Цифры бесплатно · AI-разбор с Эвелиной — {PRICING.NUMEROLOGY_SESSION} ᚢ один раз
+            {owned
+              ? "Полный AI-разбор уже куплен — открывается без повторной оплаты"
+              : `Цифры бесплатно · AI-разбор с Эвелиной — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз`}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
@@ -65,7 +116,7 @@ export default function HomeDestinyMatrixBanner({
               onClick={openWithEvelina}
               className="btn-luxe btn-luxe--md btn-luxe--ghost ritual-cta-banner__btn"
             >
-              С Эвелиной
+              {owned ? "Открыть разбор" : "С Эвелиной"}
             </button>
           ) : null}
         </div>

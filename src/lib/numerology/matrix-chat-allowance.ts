@@ -13,10 +13,16 @@ export async function resolveMatrixAwareFreeQuestionLimit(input: {
   baseLimit: number;
   profileUserId: string | null | undefined;
   birthDate: string | null | undefined;
-  spreadId: string | null | undefined;
+  spreadId?: string | null | undefined;
+  /** Fallback when session.spread_id is not patched yet (request body). */
+  requestSpreadId?: string | null | undefined;
+  toolId?: string | null | undefined;
 }): Promise<number> {
   const base = Math.max(0, input.baseLimit);
-  const toolId = decodeNumerologSpreadId(input.spreadId);
+  const toolId =
+    (input.toolId === MATRIX_REPORT_TOOL_ID ? MATRIX_REPORT_TOOL_ID : null) ??
+    decodeNumerologSpreadId(input.spreadId) ??
+    decodeNumerologSpreadId(input.requestSpreadId);
   if (toolId !== MATRIX_REPORT_TOOL_ID) return base;
   if (!input.profileUserId || !input.birthDate) return base;
 

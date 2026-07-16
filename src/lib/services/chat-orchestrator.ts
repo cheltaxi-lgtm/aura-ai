@@ -285,6 +285,7 @@ export class ChatOrchestrator {
       profileUserId: orch.profileUserId,
       birthDate: orch.userProfile?.birthDate,
       spreadId: orch.session?.spread_id,
+      requestSpreadId: orch.spreadId,
     });
 
     return {

@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
+import { readStoredProfile } from "@/lib/home-flow-storage";
+import { parseBirthDate } from "@/lib/numerology/constants";
 
 type LoggedInHomeBannerProps = {
   userName?: string | null;
@@ -13,6 +16,13 @@ type LoggedInHomeBannerProps = {
 const chipClass =
   "rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold";
 
+function toIsoDate(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const parsed = parseBirthDate(raw.trim());
+  if (!parsed) return null;
+  return `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
+}
+
 /**
  * Same editorial-hero shell as the guest landing (media + dissolve + overlay),
  * so the candle photo and starfield read as one canvas. Only the copy differs.
@@ -23,9 +33,43 @@ export default function LoggedInHomeBanner({
   onOpenDestinyMatrix,
   onOpenDestinyMatrixSession,
 }: LoggedInHomeBannerProps) {
+  const [matrixOwned, setMatrixOwned] = useState(false);
   const greeting = userName?.trim()
     ? `С возвращением, ${userName.trim().split(/\s+/)[0]}`
     : "С возвращением";
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let birthDate = toIsoDate(readStoredProfile()?.birthDate);
+      try {
+        const profileRes = await fetch("/api/profile", { credentials: "include" });
+        if (profileRes.ok) {
+          const data = (await profileRes.json()) as {
+            profile?: { birthDate?: string } | null;
+          };
+          birthDate = toIsoDate(data.profile?.birthDate) ?? birthDate;
+        }
+      } catch {
+        /* keep local */
+      }
+      if (!birthDate || cancelled) return;
+      try {
+        const res = await fetch(
+          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
+          { credentials: "include" }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { owned?: boolean };
+        if (!cancelled) setMatrixOwned(Boolean(data.owned));
+      } catch {
+        if (!cancelled) setMatrixOwned(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <section
@@ -74,7 +118,7 @@ export default function LoggedInHomeBanner({
               else window.location.assign("/?numerolog=1&tool=destiny_matrix");
             }}
           >
-            С Эвелиной
+            {matrixOwned ? "Мой разбор с Эвелиной" : "С Эвелиной"}
           </button>
           <button
             type="button"

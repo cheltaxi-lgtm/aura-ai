@@ -206,14 +206,48 @@ export default function MasterSessionFlow({
   }, [isOpen, initialPartnerInfo?.partnerName, initialPartnerInfo?.partnerDate]);
   const [numerologResult, setNumerologResult] = useState<NumerologSessionResult | null>(null);
   const [numerologRevealReady, setNumerologRevealReady] = useState(false);
+  const [matrixOwned, setMatrixOwned] = useState(false);
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
   const numerologFlow = isNumerologMaster(master);
   const spreadDef = getSpread(selectedSpreadId);
   const numerologTool = numerologFlow ? getNumerologTool(selectedNumerologTool) : null;
   const cardCount = numerologFlow ? (numerologTool?.drawCount ?? 3) : spreadDef.cardCount;
-  const spreadCost = numerologFlow
-    ? (numerologTool?.cost ?? PRICING.NUMEROLOGY_SESSION)
-    : Math.max(1, Math.round(runeCost("INTENTION_SPREAD") * spreadDef.costMultiplier));
+  const matrixBuyOnceOwned =
+    numerologFlow && selectedNumerologTool === "destiny_matrix" && matrixOwned;
+  const spreadCost = matrixBuyOnceOwned
+    ? 0
+    : numerologFlow
+      ? (numerologTool?.cost ?? PRICING.NUMEROLOGY_SESSION)
+      : Math.max(1, Math.round(runeCost("INTENTION_SPREAD") * spreadDef.costMultiplier));
+
+  useEffect(() => {
+    if (!isOpen || !numerologFlow || selectedNumerologTool !== "destiny_matrix") {
+      setMatrixOwned(false);
+      return;
+    }
+    const birthDate = userBirthDate?.trim();
+    if (!birthDate) {
+      setMatrixOwned(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
+          { credentials: "include" }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { owned?: boolean };
+        if (!cancelled) setMatrixOwned(Boolean(data.owned));
+      } catch {
+        if (!cancelled) setMatrixOwned(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, numerologFlow, selectedNumerologTool, userBirthDate]);
   const numerologPreselected = isNumerologMaster(preselectedMaster);
   const presetSpreadLocked = hasPresetSpread(initialSpreadId);
   const customQuestionReady = customQuestion.trim().length >= 8;
@@ -901,9 +935,11 @@ export default function MasterSessionFlow({
           }}
           className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
         >
-          <span>Посчитать</span>
-          {runeConfig.enabled ? (
+          <span>{matrixBuyOnceOwned ? "Открыть расчёт" : "Посчитать"}</span>
+          {runeConfig.enabled && spreadCost > 0 ? (
             <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+          ) : matrixBuyOnceOwned ? (
+            <span className="text-xs text-black/70">уже куплено · без оплаты</span>
           ) : null}
         </button>
       </div>
@@ -913,9 +949,13 @@ export default function MasterSessionFlow({
         onClick={() => void handleStartNew()}
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 animate-pulse"
       >
-        <span>Начать сеанс</span>
-        {runeConfig.enabled ? (
+        <span>
+          {matrixBuyOnceOwned ? "Открыть сохранённый разбор" : "Начать сеанс"}
+        </span>
+        {runeConfig.enabled && spreadCost > 0 ? (
           <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+        ) : matrixBuyOnceOwned ? (
+          <span className="text-xs text-black/70">0 ᚢ · отчёт сохранён</span>
         ) : null}
       </button>
     ) : step === "ritual" && sessionSeed && !drawLoading && !numerologFlow ? (
