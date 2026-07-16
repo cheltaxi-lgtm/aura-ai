@@ -572,12 +572,12 @@ html:has(.editorial-landing) .aura-mystic-bg {
   position: relative;
   width: 100%;
   max-width: none;
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.5rem;
   padding-top: max(
     calc(var(--app-header-h, 3.75rem) + 1.75rem),
     6rem
   );
-  padding-bottom: clamp(1.5rem, 4vh, 2.5rem);
+  padding-bottom: clamp(2rem, 5vh, 3rem);
   padding-left: 0;
   padding-right: 0;
   min-height: clamp(20rem, 48vh, 28rem);
@@ -598,8 +598,30 @@ html:has(.editorial-landing) .aura-mystic-bg {
 .logged-in-home-banner__media {
   position: absolute;
   inset: 0;
+  bottom: -3rem;
   z-index: 0;
   overflow: hidden;
+  /* Same soft dissolve into starry page background as guest editorial-hero */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 35%,
+    rgba(0, 0, 0, 0.92) 48%,
+    rgba(0, 0, 0, 0.65) 62%,
+    rgba(0, 0, 0, 0.28) 78%,
+    rgba(0, 0, 0, 0.08) 90%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 35%,
+    rgba(0, 0, 0, 0.92) 48%,
+    rgba(0, 0, 0, 0.65) 62%,
+    rgba(0, 0, 0, 0.28) 78%,
+    rgba(0, 0, 0, 0.08) 90%,
+    transparent 100%
+  );
 }
 
 .logged-in-home-banner__img {
@@ -615,11 +637,54 @@ html:has(.editorial-landing) .aura-mystic-bg {
 .logged-in-home-banner__overlay {
   position: absolute;
   inset: 0;
+  bottom: -3rem;
   z-index: 1;
   background:
-    linear-gradient(to top, rgba(8, 6, 4, 0.94) 0%, rgba(8, 6, 4, 0.55) 48%, rgba(8, 6, 4, 0.35) 100%),
-    linear-gradient(to bottom, rgba(8, 6, 4, 0.4) 0%, transparent 30%);
+    linear-gradient(
+      to top,
+      rgba(6, 5, 10, 0) 0%,
+      rgba(6, 5, 10, 0.15) 18%,
+      rgba(6, 5, 10, 0.45) 40%,
+      rgba(8, 6, 12, 0.25) 58%,
+      transparent 78%
+    ),
+    linear-gradient(to bottom, rgba(6, 5, 10, 0.42) 0%, transparent 30%);
   pointer-events: none;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 40%,
+    rgba(0, 0, 0, 0.75) 65%,
+    rgba(0, 0, 0, 0.25) 85%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 40%,
+    rgba(0, 0, 0, 0.75) 65%,
+    rgba(0, 0, 0, 0.25) 85%,
+    transparent 100%
+  );
+}
+
+/* Blend veil on the banner / starry-sky seam (mirrors .editorial-hero::after) */
+.logged-in-home-banner::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: clamp(7rem, 22vh, 14rem);
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(6, 5, 10, 0.35) 35%,
+    rgba(6, 5, 10, 0.75) 70%,
+    rgba(6, 5, 10, 0.95) 100%
+  );
 }
 
 .logged-in-home-banner__glow {
