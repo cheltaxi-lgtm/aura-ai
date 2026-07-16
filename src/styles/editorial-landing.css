@@ -1,4 +1,4 @@
-/* ── Salon background — clearly readable private-cabinet atmosphere ── */
+/* ── Salon background — continues the hero candle scene into charcoal ── */
 .salon-bg {
   position: fixed;
   inset: 0;
@@ -7,83 +7,49 @@
   overflow: hidden;
 }
 
+/* Same black family as .editorial-hero__overlay (8,6,4) */
 .salon-bg__base {
   position: absolute;
   inset: 0;
-  background: #0c0a08;
+  background: #080604;
 }
 
-/* Lit desk / table wash in the center — the main “interesting” read */
-.salon-bg__desk {
+/* Soft candle glow — same gold as banner, quiet enough not to fight the photo */
+.salon-bg__candle {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 85% 55% at 50% 42%, rgba(58, 42, 26, 0.55) 0%, rgba(28, 20, 14, 0.28) 42%, transparent 72%),
-    radial-gradient(ellipse 60% 40% at 50% 70%, rgba(90, 60, 28, 0.18), transparent 65%);
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(232, 199, 126, 0.07), transparent 55%),
+    radial-gradient(ellipse 50% 35% at 50% 100%, rgba(201, 162, 74, 0.035), transparent 60%);
 }
 
-/* Brass reading lamp from above */
-.salon-bg__lamp {
+/* Side + bottom depth so content column feels seated, not floating */
+.salon-bg__depth {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 100% 70% at 50% -18%, rgba(232, 199, 126, 0.28), transparent 58%),
-    radial-gradient(ellipse 55% 45% at 15% 10%, rgba(201, 162, 74, 0.14), transparent 70%),
-    radial-gradient(ellipse 50% 40% at 85% 14%, rgba(168, 120, 55, 0.12), transparent 72%);
+    linear-gradient(90deg, rgba(4, 3, 2, 0.55) 0%, transparent 16%, transparent 84%, rgba(4, 3, 2, 0.55) 100%),
+    linear-gradient(to top, rgba(4, 3, 2, 0.5) 0%, transparent 40%);
 }
 
-.salon-bg__floor {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to top, rgba(2, 1, 0, 0.88) 0%, rgba(2, 1, 0, 0.35) 28%, transparent 55%);
-}
-
-.salon-bg__edges {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(90deg, rgba(2, 1, 0, 0.72) 0%, transparent 20%, transparent 80%, rgba(2, 1, 0, 0.72) 100%),
-    radial-gradient(ellipse 70% 80% at 50% 45%, transparent 30%, rgba(4, 3, 2, 0.55) 100%);
-}
-
-/*
- * Visible paper grain: light speckles on dark (not soft-light — that vanishes).
- * Two layers at different scales read as suede/paper.
- */
+/* Fine velvet grain — dark flecks, not sandy olive */
 .salon-bg__grain {
   position: absolute;
   inset: 0;
-  opacity: 0.45;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='a'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.92 0 0 0 0 0.82 0 0 0 0 0.55 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23a)'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.35' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.75 0 0 0 0 0.55 0 0 0 0 0.28 0 0 0 0.35 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23b)'/%3E%3C/svg%3E");
-  background-size: 140px 140px, 280px 280px;
-}
-
-/* Thin warm sheen — archival paper highlight */
-.salon-bg__sheen {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(
-      115deg,
-      transparent 0%,
-      rgba(232, 199, 126, 0.035) 38%,
-      transparent 52%,
-      rgba(201, 162, 74, 0.03) 68%,
-      transparent 100%
-    );
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
 }
 
 html[data-motion-lite="1"] .salon-bg__grain {
-  opacity: 0.28;
+  opacity: 0.12;
 }
 
-html[data-app-shell] .salon-bg__edges {
+html[data-app-shell] .salon-bg__depth {
   background:
-    linear-gradient(90deg, rgba(2, 1, 0, 0.5) 0%, transparent 14%, transparent 86%, rgba(2, 1, 0, 0.5) 100%),
-    radial-gradient(ellipse 80% 85% at 50% 45%, transparent 42%, rgba(4, 3, 2, 0.4) 100%);
+    linear-gradient(90deg, rgba(4, 3, 2, 0.35) 0%, transparent 12%, transparent 88%, rgba(4, 3, 2, 0.35) 100%),
+    linear-gradient(to top, rgba(4, 3, 2, 0.35) 0%, transparent 35%);
 }
 
 html:has(.editorial-landing) .aura-mystic-bg {
