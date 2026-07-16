@@ -7,6 +7,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import DestinyMatrixPreview from "@/components/numerolog/DestinyMatrixPreview";
 import type { NumerologToolId } from "@/lib/numerology/tools";
 
 const TOPICS = {
@@ -29,10 +30,11 @@ const TOPICS = {
       "Совместимость имён учитывает не только буквы имени, но и дату рождения обоих партнёров — Эвелина считает числовые коды по именам и датам и показывает точки притяжения и трения в паре.",
   },
   "destiny-matrix": {
-    title: "Матрица судьбы",
-    description: "Таро-нумерологическая матрица судьбы по дате рождения — 22 аркана Таро.",
+    title: "Матрица судьбы по дате рождения",
+    description:
+      "Быстрый расчёт матрицы судьбы: предназначение, деньги, отношения и аркан года. Бесплатный preview — полный AI-разбор с Эвелиной.",
     intro:
-      "Матрица судьбы — авторский расчёт Zovus по дате рождения на основе 22 арканов Таро: Эвелина строит вашу матрицу и показывает точки предназначения, денег, отношений и кармы.",
+      "Авторский расчёт Zovus на 22 арканах: введите дату рождения и за минуту получите схему матрицы, ключевые энергии и короткие инсайты. Полный профессиональный разбор и диалог — с нумерологом Эвелиной.",
   },
   "favorable-dates": {
     title: "Благоприятные даты",
@@ -84,32 +86,90 @@ export default async function NumerologyTopicPage({
   const sessionCost = PRICING.NUMEROLOGY_SESSION;
   const numerologTool = NUMEROLOGY_TOPIC_TOOLS[slug as TopicSlug];
   const startHref = `/?numerolog=1&tool=${encodeURIComponent(numerologTool)}`;
+  const isDestinyMatrix = slug === "destiny-matrix";
 
   return (
     <SeoPageShell backHref="/numerology" backLabel="Нумерология">
-      <SeoPageTracker goal="numerology_topic_view" params={{ topic: slug }} />
+      <SeoPageTracker
+        goal={isDestinyMatrix ? "matrix_landing_view" : "numerology_topic_view"}
+        params={{ topic: slug }}
+      />
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
       <h1 className="mt-2 font-display text-3xl font-bold">{topic.title}</h1>
       <p className="mt-4 text-white/70">{topic.intro}</p>
-      <p className="mt-3 text-sm text-white/50">
-        С {evelina?.name ?? "Эвелиной"} · от {sessionCost} ᚢ
-      </p>
+      {isDestinyMatrix ? (
+        <ul className="mt-4 space-y-1.5 text-sm text-white/55">
+          <li>нужна только дата рождения;</li>
+          <li>расчёт за минуту;</li>
+          <li>без сложных анкет;</li>
+          <li>базовый результат сразу на экране — без регистрации.</li>
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-white/50">
+          С {evelina?.name ?? "Эвелиной"} · от {sessionCost} ᚢ
+        </p>
+      )}
 
-      <div className="mt-8">
-        <SeoTrackedCta
-          href={startHref}
-          trackGoal="numerology_cta_click"
-          trackParams={{ topic: slug }}
-        >
-          Начать с Эвелиной
-        </SeoTrackedCta>
-      </div>
+      {isDestinyMatrix ? (
+        <>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <SeoTrackedCta
+              href="#calculate"
+              trackGoal="matrix_preview_start"
+              trackParams={{ topic: slug }}
+            >
+              Рассчитать бесплатно
+            </SeoTrackedCta>
+            <SeoTrackedCta
+              href={startHref}
+              variant="ghost"
+              trackGoal="numerology_cta_click"
+              trackParams={{ topic: slug }}
+            >
+              Полный разбор с Эвелиной
+            </SeoTrackedCta>
+          </div>
 
-      <SeoSection title="Как проходит">
-        <p>Вы выбираете расчёт и вводите дату рождения (и при необходимости имя).</p>
-        <p>Эвелина даёт персональную расшифровку с возможностью продолжить в чате.</p>
-        <p>Результат сохраняется в истории сеансов.</p>
-      </SeoSection>
+          <SeoSection title="Что вы узнаете">
+            <p>Предназначение и ядро личности по центральной энергии.</p>
+            <p>Денежный канал и сценарии отношений.</p>
+            <p>Родовые линии, кармический хвост и аркан текущего года.</p>
+            <p>После preview — глубокий AI-разбор и вопросы Эвелине по вашей матрице.</p>
+          </SeoSection>
+
+          <DestinyMatrixPreview />
+
+          <SeoSection title="Как устроен полный разбор">
+            <p>Движок считает арканы по методологии matrix-v1 — ИИ числа не выдумывает.</p>
+            <p>
+              Эвелина интерпретирует позиции: личность, таланты, деньги, отношения, род, карму и
+              практику на 30 дней.
+            </p>
+            <p>
+              Далее можно перейти к личному году, совместимости или натальной карте в экосистеме
+              Zovus.
+            </p>
+          </SeoSection>
+        </>
+      ) : (
+        <>
+          <div className="mt-8">
+            <SeoTrackedCta
+              href={startHref}
+              trackGoal="numerology_cta_click"
+              trackParams={{ topic: slug }}
+            >
+              Начать с Эвелиной
+            </SeoTrackedCta>
+          </div>
+
+          <SeoSection title="Как проходит">
+            <p>Вы выбираете расчёт и вводите дату рождения (и при необходимости имя).</p>
+            <p>Эвелина даёт персональную расшифровку с возможностью продолжить в чате.</p>
+            <p>Результат сохраняется в истории сеансов.</p>
+          </SeoSection>
+        </>
+      )}
 
       <p className="mt-10">
         <Link href="/numerology" className="text-sm text-aura-gold hover:underline">

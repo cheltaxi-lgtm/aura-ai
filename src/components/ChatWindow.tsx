@@ -28,7 +28,9 @@ import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
-import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
+import DestinyMatrixGrid, {
+  DESTINY_MATRIX_UI_SLOT_COUNT,
+} from "@/components/numerolog/DestinyMatrixGrid";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
 import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
 import type { NumerologToolId } from "@/lib/numerology/tools";
@@ -731,7 +733,10 @@ export default function ChatWindow({
           {spreadComputedOnly && spreadPythagorasSquare ? (
             <PythagorasSquareGrid square={spreadPythagorasSquare} />
           ) : spreadComputedOnly && spreadDestinyMatrix ? (
-            <DestinyMatrixGrid matrix={spreadDestinyMatrix} revealed={7} />
+            <DestinyMatrixGrid
+              matrix={spreadDestinyMatrix}
+              revealed={DESTINY_MATRIX_UI_SLOT_COUNT}
+            />
           ) : spreadInteractiveFlip &&
           (spreadVariant === "triplet" || spreadVariant === "intention") ? (
             spreadVariant === "intention" && spreadId ? (

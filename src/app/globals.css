@@ -7619,7 +7619,7 @@ body.cookie-banner-visible .auth-page .auth-form {
   overflow: hidden;
 }
 
-/* ── Destiny matrix (22-arcana) reveal ── */
+/* ── Destiny matrix (22-arcana) reveal — matrix-v1 ── */
 .destiny-matrix {
   display: grid;
   margin-top: 1rem;
@@ -7636,7 +7636,9 @@ body.cookie-banner-visible .auth-page .auth-form {
     grid-template-areas:
       ". energy ."
       "body purpose roots"
-      "rel money karma";
+      "talents money rel"
+      "paternal maternal karma"
+      ". year .";
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
     gap: 0.55rem;
   }

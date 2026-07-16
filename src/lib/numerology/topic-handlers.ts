@@ -10,7 +10,8 @@ import {
   personalityNumber,
 } from "./calculator";
 import { compatibility } from "./compatibility";
-import { destinyMatrix } from "./destiny-matrix";
+import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
+import { getArcanaEntry } from "./arcana-dictionary";
 import { favorableDates } from "./favorable-dates";
 import { personalYearForecast } from "./forecast";
 import { fullProfile, type FullNumerologyProfile } from "./profile";
@@ -398,17 +399,29 @@ function buildTopicBlock(
       }
       const matrix = destinyMatrix(birthDate);
       if (!matrix) return { text: "МАТРИЦА СУДЬБЫ: не удалось построить по дате." };
+      const dictLine = (label: string, n: number) => {
+        const entry = getArcanaEntry(n);
+        if (!entry) return `${label}: ${n}.`;
+        return `${label}: ${n} — ${entry.title}. Свет: ${entry.light} Тень: ${entry.shadow} Ресурс: ${entry.resource}. Деньги: ${entry.money} Отношения: ${entry.love} Предназначение: ${entry.purpose}`;
+      };
       return {
         text: [
-          "МАТРИЦА СУДЬБЫ / 22 АРКАНА (реальный расчёт, авторская адаптация Zovus):",
-          `Точка тела и характера: ${matrix.body.number} — ${matrix.body.arcanaName} (${matrix.body.arcanaMeaning}).`,
-          `Точка энергии: ${matrix.energy.number} — ${matrix.energy.arcanaName} (${matrix.energy.arcanaMeaning}).`,
-          `Точка рода и корней: ${matrix.roots.number} — ${matrix.roots.arcanaName} (${matrix.roots.arcanaMeaning}).`,
-          `Ось предназначения (главное число матрицы): ${matrix.purpose.number} — ${matrix.purpose.arcanaName} (${matrix.purpose.arcanaMeaning}).`,
-          `Точка отношений: ${matrix.relationships.number} — ${matrix.relationships.arcanaName} (${matrix.relationships.arcanaMeaning}).`,
-          `Точка денег и ресурса: ${matrix.money.number} — ${matrix.money.arcanaName} (${matrix.money.arcanaMeaning}).`,
-          `Точка кармы и задачи: ${matrix.karma.number} — ${matrix.karma.arcanaName} (${matrix.karma.arcanaMeaning}).`,
-          "Подчеркни, что это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы» (таро-нумерология на основе 22 арканов), а не научный факт — используй его как психологический инструмент для рефлексии.",
+          `МАТРИЦА СУДЬБЫ / 22 АРКАНА (${MATRIX_CALCULATION_VERSION}, реальный расчёт, авторская адаптация Zovus):`,
+          dictLine("Точка тела и характера", matrix.body.number),
+          dictLine("Точка энергии", matrix.energy.number),
+          dictLine("Точка рода и корней", matrix.roots.number),
+          dictLine("Ось предназначения (центр)", matrix.purpose.number),
+          dictLine("Точка талантов", matrix.talents.number),
+          dictLine("Точка отношений", matrix.relationships.number),
+          dictLine("Точка денег и ресурса", matrix.money.number),
+          dictLine("Род по отцу", matrix.paternal.number),
+          dictLine("Род по матери", matrix.maternal.number),
+          dictLine("Точка кармы и задачи", matrix.karma.number),
+          dictLine("Аркан текущего года (1–22, не путать с личным годом 1–9)", matrix.yearArcana.number),
+          "Структура ответа: ядро личности → предназначение → таланты → деньги → отношения → род отца/матери → кармический хвост → аркан года → 3–5 практических шагов на 30 дней.",
+          "Запрещено: обещать результат, ставить диагнозы, говорить о смерти/болезнях, формулировки «вам суждено», манипулятивный тон. Язык — зрелый, конкретный, без эзотерической инфантильности.",
+          "Числа и названия арканов бери ТОЛЬКО из этого блока. Не пересчитывай матрицу.",
+          "Подчеркни, что это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы», инструмент рефлексии, не научный факт.",
         ].join("\n"),
       };
     }

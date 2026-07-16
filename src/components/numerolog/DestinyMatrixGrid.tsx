@@ -6,6 +6,8 @@ import type { DestinyMatrixPoint, DestinyMatrixResult } from "@/lib/numerology/d
 interface DestinyMatrixGridProps {
   matrix: DestinyMatrixResult;
   revealed: number;
+  /** Quieter hint for SEO free preview */
+  hint?: string;
 }
 
 type MatrixSlot = {
@@ -20,10 +22,16 @@ const MATRIX_SLOTS: MatrixSlot[] = [
   { key: "body", label: "Тело и характер", area: "body" },
   { key: "purpose", label: "Предназначение", area: "purpose", featured: true },
   { key: "roots", label: "Род и корни", area: "roots" },
+  { key: "talents", label: "Таланты", area: "talents" },
   { key: "relationships", label: "Отношения", area: "rel" },
   { key: "money", label: "Деньги", area: "money" },
+  { key: "paternal", label: "Род отца", area: "paternal" },
+  { key: "maternal", label: "Род матери", area: "maternal" },
   { key: "karma", label: "Карма", area: "karma" },
+  { key: "yearArcana", label: "Аркан года", area: "year" },
 ];
+
+export const DESTINY_MATRIX_UI_SLOT_COUNT = MATRIX_SLOTS.length;
 
 function MatrixCell({
   point,
@@ -51,7 +59,11 @@ function MatrixCell({
   );
 }
 
-export default function DestinyMatrixGrid({ matrix, revealed }: DestinyMatrixGridProps) {
+export default function DestinyMatrixGrid({
+  matrix,
+  revealed,
+  hint = "Каждая позиция — аркан 1–22, рассчитанный по дате рождения. Эвелина расшифрует матрицу в сеансе.",
+}: DestinyMatrixGridProps) {
   return (
     <>
       <div className="destiny-matrix">
@@ -69,9 +81,7 @@ export default function DestinyMatrixGrid({ matrix, revealed }: DestinyMatrixGri
           );
         })}
       </div>
-      <p className="destiny-matrix__hint">
-        Каждая позиция — аркан 1–22, рассчитанный по дате рождения. Эвелина расшифрует матрицу в сеансе.
-      </p>
+      {hint ? <p className="destiny-matrix__hint">{hint}</p> : null}
     </>
   );
 }

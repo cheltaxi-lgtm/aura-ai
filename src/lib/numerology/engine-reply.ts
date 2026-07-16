@@ -723,7 +723,12 @@ function formatFromContextBlock(
   if (topics.includes("destiny_matrix")) {
     const block = prompt.split("\n\n").find((p) => p.startsWith("МАТРИЦА СУДЬБЫ"));
     if (block) {
-      return `${name}, твоя матрица судьбы:\n\n${block.replace("МАТРИЦА СУДЬБЫ / 22 АРКАНА (реальный расчёт, авторская адаптация Zovus):", "").trim()}`;
+      return `${name}, твоя матрица судьбы:\n\n${block
+        .replace(
+          /^МАТРИЦА СУДЬБЫ \/ 22 АРКАНА \([^)]+\):\s*/m,
+          ""
+        )
+        .trim()}`;
     }
   }
   return null;

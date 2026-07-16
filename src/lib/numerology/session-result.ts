@@ -135,6 +135,12 @@ export function buildNumerologSessionResult(input: {
           number: matrix.purpose.number,
         },
         {
+          label: "Таланты",
+          value: matrix.talents.arcanaName,
+          detail: matrix.talents.arcanaMeaning,
+          number: matrix.talents.number,
+        },
+        {
           label: "Отношения",
           value: matrix.relationships.arcanaName,
           detail: matrix.relationships.arcanaMeaning,
@@ -147,10 +153,28 @@ export function buildNumerologSessionResult(input: {
           number: matrix.money.number,
         },
         {
+          label: "Род отца",
+          value: matrix.paternal.arcanaName,
+          detail: matrix.paternal.arcanaMeaning,
+          number: matrix.paternal.number,
+        },
+        {
+          label: "Род матери",
+          value: matrix.maternal.arcanaName,
+          detail: matrix.maternal.arcanaMeaning,
+          number: matrix.maternal.number,
+        },
+        {
           label: "Карма",
           value: matrix.karma.arcanaName,
           detail: matrix.karma.arcanaMeaning,
           number: matrix.karma.number,
+        },
+        {
+          label: "Аркан года",
+          value: matrix.yearArcana.arcanaName,
+          detail: matrix.yearArcana.arcanaMeaning,
+          number: matrix.yearArcana.number,
         },
       ];
       return {
