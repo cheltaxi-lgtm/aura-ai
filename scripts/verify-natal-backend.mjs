@@ -127,7 +127,11 @@ assert.match(asyncMigration, /period_metadata/);
 assert.match(asyncMigration, /billing_state/);
 const asyncWorker = read("scripts/run-async-jobs.ts");
 assert.match(asyncWorker, /natal_forecast/);
-assert.match(asyncWorker, /x-async-job-worker-secret/);
+assert.match(asyncWorker, /WORKER_SECRET_HEADER/);
+assert.match(asyncWorker, /ASYNC_JOB_WORKER_SECRET/);
+const workerAuthShared = read("src/lib/async-job-worker-auth-shared.ts");
+assert.match(workerAuthShared, /x-async-job-worker-secret/);
+assert.match(workerAuthShared, /isDirectLoopbackWorkerCall/);
 
 const astrologyWorkspace = read("src/components/natal/AstrologyWorkspace.tsx");
 assert.match(astrologyWorkspace, /title="Персональный западный отчёт"/);

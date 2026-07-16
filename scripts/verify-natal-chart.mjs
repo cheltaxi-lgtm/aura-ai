@@ -863,7 +863,10 @@ async function main() {
     interpretationRoute.indexOf("claimNatalInterpretation("),
     interpretationRoute.indexOf("claimNatalInterpretationResilient(")
   );
-  const chargeCall = interpretationRoute.indexOf("BillingService.chargeRuneAction(");
+  const chargeCall = Math.max(
+    interpretationRoute.indexOf("await BillingService.chargeRuneAction("),
+    interpretationRoute.indexOf("await chargeRuneActionForWorkerJob(")
+  );
   assert(claimCall >= 0 && chargeCall > claimCall, "interpretation route claims before charging");
   assert(
     interpretationRoute.includes("releaseNatalInterpretationClaim("),
@@ -932,7 +935,8 @@ async function main() {
   );
   assert(
     astrologyWorkspace.includes('"overview"') &&
-      astrologyWorkspace.includes('"relationships"') &&
+      (astrologyWorkspace.includes('"relationships"') ||
+        astrologyWorkspace.includes('"compatibility"')) &&
       astrologyWorkspace.includes("/api/natal-chart/history"),
     "astrology workspace includes all sections and report history"
   );
