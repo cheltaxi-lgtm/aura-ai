@@ -576,8 +576,11 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
         }
 
+        // Full Matrix reuse is server-side (numerology_report_history) only.
+        // Client savedReadings cache kept serving stale watery reports after DB purge.
+        const skipClientReadingCache = metaNumerologToolId === "destiny_matrix";
         const cachedReading =
-          loadOptions?.force
+          loadOptions?.force || skipClientReadingCache
             ? undefined
             : findSavedSpreadReading(savedReadings, characterId, cardsKey);
 
@@ -1431,6 +1434,12 @@ export function useChatActions(options: UseChatActionsOptions) {
     const activeProfile = getActiveProfile();
     if (!activeProfile) return;
 
+    const meta = sessionSpreadMetaRef.current;
+    const numerologToolId = isNumerologMaster(selectedCharacter)
+      ? resolveNumerologToolId(meta?.spreadId, meta?.numerologToolId)
+      : null;
+    if (numerologToolId === "destiny_matrix") return;
+
     const cardsForMaster = resolveSpreadCardsForReading({
       profile: activeProfile,
       characterId: selectedCharacter,
@@ -1440,7 +1449,6 @@ export function useChatActions(options: UseChatActionsOptions) {
       chatSessionSpread,
       chatDisplaySpread,
     });
-    const meta = sessionSpreadMetaRef.current;
     const spreadId = meta?.spreadId ?? DEFAULT_SPREAD_ID;
     const spreadType = meta?.spreadType ?? "new";
     if (
