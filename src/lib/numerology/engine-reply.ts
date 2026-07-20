@@ -194,6 +194,7 @@ function extractEngineFacts(prompt: string, topic: NumerologyTopic): string {
     chaldean: "ХАЛДЕЙСКАЯ СИСТЕМА",
     object_number: "ЧИСЛО ОБЪЕКТА",
     compatibility: "СОВМЕСТИМОСТЬ",
+    destiny_matrix: "МАТРИЦА СУДЬБЫ",
   };
   const marker = markers[topic];
   if (marker) {
@@ -226,6 +227,17 @@ export function buildRichEngineFacts(params: {
   const question = params.userMessage.trim();
   if (question) {
     chunks.push(`ВОПРОС КЛИЕНТА:\n«${question.slice(0, 600)}»`);
+  }
+
+  // Destiny matrix is a closed 22-arcana system — do not attach LP / Pythagoras.
+  if (params.primaryTopic === "destiny_matrix") {
+    const matrixBlock = extractEngineFacts(params.prompt, "destiny_matrix");
+    if (matrixBlock) chunks.push(matrixBlock);
+    const clientBlock = params.prompt
+      .split("\n\n")
+      .find((p) => p.startsWith("КЛИЕНТ ДЛЯ МАТРИЦЫ СУДЬБЫ:"));
+    if (clientBlock) chunks.unshift(clientBlock.trim());
+    return chunks.join("\n\n").slice(0, 4500);
   }
 
   const topicsForFacts = new Set<NumerologyTopic>([params.primaryTopic]);

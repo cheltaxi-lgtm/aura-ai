@@ -1,6 +1,10 @@
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import { getSetting } from "@/lib/settings";
-import { NUMEROLOG_MAIN_READING_SYSTEM_PROMPT, NUMEROLOG_SPREAD_THREE_SYSTEM_PROMPT } from "@/lib/prompts/masters/numerolog";
+import {
+  NUMEROLOG_MAIN_READING_SYSTEM_PROMPT,
+  NUMEROLOG_MATRIX_SYSTEM_PROMPT,
+  NUMEROLOG_SPREAD_THREE_SYSTEM_PROMPT,
+} from "@/lib/prompts/masters/numerolog";
 import { buildDateAnchorBlock, todayLabelRu } from "@/lib/prompt-date";
 
 import {
@@ -21,6 +25,7 @@ const TOPIC_LABELS: Partial<Record<NumerologFinaleTopic, string>> = {
   spread_opening: "расклад из трёх чисел",
   life_path: "число жизненного пути",
   pythagoras_square: "квадрат Пифагора",
+  destiny_matrix: "матрица судьбы (22 аркана)",
   sphere_health: "здоровье",
   sphere_finance: "финансы",
   sphere_relations: "отношения",
@@ -44,6 +49,8 @@ const MAIN_READING_INSTRUCTIONS: Partial<Record<NumerologFinaleTopic, string>> =
     "Клиент спрашивает об отношениях, семье, партнёре. Свяжи ячейки 1, 2, 6 с его вопросом.",
   pythagoras_square:
     "Дай цельный портрет по квадрату Пифагора в контексте вопроса клиента.",
+  destiny_matrix:
+    "Полный разбор матрицы судьбы. Разбери все 11 точек по отдельности в заданном порядке. Не схлопывай точки с одинаковым арканом. Не подмешивай пифагорейские числа. Закончить 3–5 конкретными шагами на 30 дней.",
   spread_opening:
     "Клиент вытянул три числа на период. Свяжи каждую позицию с числом пути и личным годом. Не перечисляй ячейки матрицы.",
 };
@@ -107,6 +114,7 @@ function mergeProseContinuation(prev: string, next: string): string {
 
 const MAIN_READING_MAX_TOKENS: Partial<Record<NumerologFinaleTopic, number>> = {
   spread_opening: 1800,
+  destiny_matrix: 2200,
   forecast_timeline: 1400,
   pythagoras_square: 1200,
   life_path: 1100,
@@ -114,6 +122,7 @@ const MAIN_READING_MAX_TOKENS: Partial<Record<NumerologFinaleTopic, number>> = {
 
 const FINALE_MAX_TOKENS: Partial<Record<NumerologFinaleTopic, number>> = {
   spread_opening: 960,
+  destiny_matrix: 420,
   forecast_timeline: 420,
   pythagoras_square: 360,
 };
@@ -184,6 +193,9 @@ function deterministicFinale(name: string, topic: NumerologFinaleTopic): string 
   if (topic === "life_path") {
     return `${name}, если коротко: твоё число пути — это твой способ идти по жизни. Опирайся на сильные качества, а слабые зоны подкрепляй простыми привычками, а не рывками.`;
   }
+  if (topic === "destiny_matrix") {
+    return `${name}, если коротко: твоя матрица — карта склонностей, не приговор. Опирайся на ось предназначения и аркан года, а слабые зоны закрывай простыми шагами, а не рывками.`;
+  }
   return `${name}, если коротко: это твой ${label}. Опирайся на сильные показатели, слабые зоны подкрепляй простыми привычками, а не рывками.`;
 }
 
@@ -197,6 +209,8 @@ const FINALE_INSTRUCTIONS: Partial<Record<NumerologFinaleTopic, string>> = {
     "Собери образ человека: опора, урок, один совет. Без перечисления всех ячеек.",
   life_path:
     "Один практический совет на ближайшее время, опираясь на число пути и личный год. Не повторяй весь разбор.",
+  destiny_matrix:
+    "3–4 предложения: опора характера, ось предназначения, денежный/отношенческий акцент и аркан года — строго по числам из блока МАТРИЦА СУДЬБЫ. Не подменяй предназначение другим арканом. Без числа пути/души/личности и без квадрата Пифагора.",
 };
 
 /** Warm main reading from engine facts — LLM prose adapted to the user's question. */
@@ -207,7 +221,8 @@ export async function generateNumerologMainReading(params: {
   engineFacts: string;
   fallback: string;
 }): Promise<string> {
-  const facts = params.engineFacts.trim().slice(0, 4000);
+  const factsCap = params.topic === "destiny_matrix" ? 5000 : 4000;
+  const facts = params.engineFacts.trim().slice(0, factsCap);
   if (!facts) return params.fallback;
 
   const topicLabel = TOPIC_LABELS[params.topic] ?? params.topic;
@@ -220,7 +235,9 @@ export async function generateNumerologMainReading(params: {
   const systemBase =
     params.topic === "spread_opening"
       ? NUMEROLOG_SPREAD_THREE_SYSTEM_PROMPT
-      : NUMEROLOG_MAIN_READING_SYSTEM_PROMPT;
+      : params.topic === "destiny_matrix"
+        ? NUMEROLOG_MATRIX_SYSTEM_PROMPT
+        : NUMEROLOG_MAIN_READING_SYSTEM_PROMPT;
 
   const text = await completeNumerologProse(
     [
@@ -237,7 +254,9 @@ export async function generateNumerologMainReading(params: {
           `Сегодня: ${todayLabelRu()}.`,
           question ? `Вопрос клиента: «${question}»` : "",
           `\nДАННЫЕ ДВИЖКА:\n${facts}`,
-          "\nДай связный ответ на вопрос клиента, опираясь только на эти факты.",
+          params.topic === "destiny_matrix"
+            ? "\nНапиши полный разбор матрицы по структуре из данных. Каждая точка — отдельный абзац. Не объединяй точки и не добавляй пифагорейские числа."
+            : "\nДай связный ответ на вопрос клиента, опираясь только на эти факты.",
           "События с датой раньше «Сегодня» не выделяй как актуальный фокус недели — говори о текущем периоде.",
           "Завершай каждое предложение полностью — не обрывай текст на полуслове.",
           "Без markdown: не используй *, **, # и заголовки.",
@@ -248,7 +267,7 @@ export async function generateNumerologMainReading(params: {
     ],
     {
       maxTokens: await readingTokenBudget("main", params.topic),
-      temperature: 0.58,
+      temperature: params.topic === "destiny_matrix" ? 0.45 : 0.58,
     }
   );
 

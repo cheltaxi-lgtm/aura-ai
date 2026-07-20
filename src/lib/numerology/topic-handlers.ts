@@ -399,29 +399,46 @@ function buildTopicBlock(
       }
       const matrix = destinyMatrix(birthDate);
       if (!matrix) return { text: "МАТРИЦА СУДЬБЫ: не удалось построить по дате." };
-      const dictLine = (label: string, n: number) => {
+      type MatrixSphere = "core" | "purpose" | "money" | "love" | "short";
+      const dictLine = (label: string, n: number, sphere: MatrixSphere) => {
         const entry = getArcanaEntry(n);
         if (!entry) return `${label}: ${n}.`;
-        return `${label}: ${n} — ${entry.title}. Свет: ${entry.light} Тень: ${entry.shadow} Ресурс: ${entry.resource}. Деньги: ${entry.money} Отношения: ${entry.love} Предназначение: ${entry.purpose}`;
+        const focus =
+          sphere === "money"
+            ? `Денежный канал: ${entry.money}`
+            : sphere === "love"
+              ? `В близости: ${entry.love}`
+              : sphere === "purpose"
+                ? `Вектор: ${entry.purpose}`
+                : sphere === "short"
+                  ? `Фон периода: ${entry.shortMeaning}`
+                  : `Ресурс: ${entry.resource}. Риск: ${entry.risk}`;
+        return `${label}: ${n} — ${entry.title}. Свет: ${entry.light} Тень: ${entry.shadow}. ${focus} Совет: ${entry.advice}`;
       };
       return {
         text: [
           `МАТРИЦА СУДЬБЫ / 22 АРКАНА (${MATRIX_CALCULATION_VERSION}, реальный расчёт, авторская адаптация Zovus):`,
-          dictLine("Точка тела и характера", matrix.body.number),
-          dictLine("Точка энергии", matrix.energy.number),
-          dictLine("Точка рода и корней", matrix.roots.number),
-          dictLine("Ось предназначения (центр)", matrix.purpose.number),
-          dictLine("Точка талантов", matrix.talents.number),
-          dictLine("Точка отношений", matrix.relationships.number),
-          dictLine("Точка денег и ресурса", matrix.money.number),
-          dictLine("Род по отцу", matrix.paternal.number),
-          dictLine("Род по матери", matrix.maternal.number),
-          dictLine("Точка кармы и задачи", matrix.karma.number),
-          dictLine("Аркан текущего года (1–22, не путать с личным годом 1–9)", matrix.yearArcana.number),
-          "Структура ответа: ядро личности → предназначение → таланты → деньги → отношения → род отца/матери → кармический хвост → аркан года → 3–5 практических шагов на 30 дней.",
-          "Запрещено: обещать результат, ставить диагнозы, говорить о смерти/болезнях, формулировки «вам суждено», манипулятивный тон. Язык — зрелый, конкретный, без эзотерической инфантильности.",
+          dictLine("1. Точка тела и характера", matrix.body.number, "core"),
+          dictLine("2. Точка энергии", matrix.energy.number, "core"),
+          dictLine("3. Точка рода и корней", matrix.roots.number, "core"),
+          dictLine("4. Ось предназначения (центр)", matrix.purpose.number, "purpose"),
+          dictLine("5. Точка талантов", matrix.talents.number, "core"),
+          dictLine("6. Точка денег и ресурса", matrix.money.number, "money"),
+          dictLine("7. Точка отношений", matrix.relationships.number, "love"),
+          dictLine("8. Род по отцу", matrix.paternal.number, "core"),
+          dictLine("9. Род по матери", matrix.maternal.number, "core"),
+          dictLine("10. Точка кармы и задачи", matrix.karma.number, "core"),
+          dictLine(
+            "11. Аркан текущего года (1–22, не путать с личным годом 1–9)",
+            matrix.yearArcana.number,
+            "short"
+          ),
+          "Структура ответа (по абзацу на пункт, без схлопывания точек): тело → энергия → род/корни → предназначение → таланты → деньги → отношения → род отца → род матери → карма → аркан года → 3–5 шагов на 30 дней.",
+          "КРИТИЧНО: даже при одинаковом аркане у разных точек пиши РАЗНЫЕ смыслы по роли точки. Нельзя объединять «энергия и таланты» или «род + отношения + предназначение».",
+          "ЗАПРЕЩЕНО в этом разборе: пифагорейский портрет (путь/душа/личность/зрелость), психоматрица, личный цикл 1–9.",
+          "Запрещено: обещать результат, ставить диагнозы, говорить о смерти/болезнях, формулировки «вам суждено», манипулятивный тон, пустые метафоры без действия.",
           "Числа и названия арканов бери ТОЛЬКО из этого блока. Не пересчитывай матрицу.",
-          "Подчеркни, что это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы», инструмент рефлексии, не научный факт.",
+          "Это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы» — инструмент рефлексии, не научный факт.",
         ].join("\n"),
       };
     }
@@ -580,13 +597,34 @@ export function buildNumerologyChatContext(
   }
 
   const profile = fullProfile(birthDate, resolvedName.fullName, system);
-  parts.push(formatBaseProfile(profile));
+  // Full Matrix sessions must not receive Pythagorean LP/soul/destiny — models mash systems.
+  const matrixIsolated =
+    topics.includes("destiny_matrix") &&
+    topics.every((t) => t === "destiny_matrix");
 
-  if (resolvedName.needsFullFio && nameTopicsNeedFullFio(topics)) {
+  if (matrixIsolated) {
+    // Prefer profile name: free-form matrix CTA text must not become "ФИО".
+    const who =
+      (input.profileName?.trim().split(/\s+/)[0] ||
+        (resolvedName.fromMessage ? "" : resolvedName.fullName.trim()) ||
+        "друг").trim() || "друг";
+    parts.push(
+      [
+        "КЛИЕНТ ДЛЯ МАТРИЦЫ СУДЬБЫ:",
+        `Имя для обращения: ${who}.`,
+        hasBirth ? `Дата рождения: ${birthDate}.` : "Дата рождения не передана.",
+        "ЗАПРЕТ СМЕШЕНИЯ: не подмешивай пифагорейский портрет (путь/душа/личность/зрелость), личный цикл 1–9 и психоматрицу. Только блок МАТРИЦА СУДЬБЫ ниже.",
+      ].join("\n")
+    );
+  } else {
+    parts.push(formatBaseProfile(profile));
+  }
+
+  if (!matrixIsolated && resolvedName.needsFullFio && nameTopicsNeedFullFio(topics)) {
     parts.push(
       "ПОЛНОТА ФИО: для точного расчёта по имени нужно полное ФИО (минимум имя и фамилия). Попроси мягко; если клиент назвал ФИО в сообщении — используй его."
     );
-  } else if (resolvedName.fromMessage) {
+  } else if (!matrixIsolated && resolvedName.fromMessage) {
     parts.push(`ФИО из сообщения клиента: ${resolvedName.fullName}.`);
   }
 

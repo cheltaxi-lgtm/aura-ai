@@ -14,6 +14,8 @@ import {
   reduceToArcanaNumber,
 } from "../src/lib/numerology/destiny-matrix.ts";
 import { buildMatrixFreeSummary } from "../src/lib/numerology/matrix-free-summary.ts";
+import { buildRichEngineFacts } from "../src/lib/numerology/engine-reply.ts";
+import { buildNumerologyChatContext } from "../src/lib/numerology/topic-handlers.ts";
 
 const failures = [];
 
@@ -209,10 +211,47 @@ for (const fixture of FIXTURES) {
   assert(summary?.portrait?.includes("Тест"), `${fixture.date}: portrait uses name`);
 }
 
+// Prompt isolation: full matrix session must not leak Pythagorean LP/soul into engine facts.
+{
+  const ctx = buildNumerologyChatContext({
+    birthDate: "1995-03-14",
+    profileName: "Геннадий Тестов",
+    lastUserMessage: "Построй мою матрицу судьбы",
+  });
+  assert(ctx.topics.includes("destiny_matrix"), "matrix topic detected");
+  assert(
+    !/НУМЕРОЛОГИЧЕСКИЙ БАЗОВЫЙ ПОРТРЕТ/i.test(ctx.prompt),
+    "matrix-only context must not include base Pythagorean portrait"
+  );
+  assert(
+    !/ЧИСЛО ЖИЗНЕННОГО ПУТИ \(реальный/i.test(ctx.prompt),
+    "matrix-only context must not include life path block"
+  );
+  assert(/МАТРИЦА СУДЬБЫ/i.test(ctx.prompt), "matrix block present");
+  assert(/ЗАПРЕТ СМЕШЕНИЯ/i.test(ctx.prompt), "mix ban present");
+  assert(
+    !/Имя для обращения: Построй/i.test(ctx.prompt),
+    "matrix CTA text must not become client name"
+  );
+
+  const facts = buildRichEngineFacts({
+    prompt: ctx.prompt,
+    primaryTopic: "destiny_matrix",
+    userMessage: "Построй мою матрицу судьбы",
+  });
+  assert(/МАТРИЦА СУДЬБЫ/i.test(facts), "rich facts include matrix");
+  assert(
+    !/НУМЕРОЛОГИЧЕСКИЙ БАЗОВЫЙ ПОРТРЕТ/i.test(facts),
+    "rich facts exclude base portrait"
+  );
+  assert(!/КВАДРАТ ПИФАГОРА/i.test(facts), "rich facts exclude Pythagoras");
+  assert(/нельзя объединять/i.test(facts), "anti-collapse rule in facts");
+}
+
 if (failures.length) {
   console.error("verify-destiny-matrix FAILED:");
   for (const f of failures) console.error(" -", f);
   process.exit(1);
 }
 
-console.log(`verify-destiny-matrix OK (${FIXTURES.length} fixtures, dictionary 22)`);
+console.log(`verify-destiny-matrix OK (${FIXTURES.length} fixtures, dictionary 22, isolation)`);
