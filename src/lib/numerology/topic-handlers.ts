@@ -12,6 +12,11 @@ import {
 import { compatibility } from "./compatibility";
 import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
 import { getArcanaEntry } from "./arcana-dictionary";
+import {
+  formatMatrixPointDictLine,
+  formatMatrixRepeatArcanaNote,
+  type MatrixPointPromptLine,
+} from "./matrix-point-prompt";
 import { favorableDates } from "./favorable-dates";
 import { personalYearForecast } from "./forecast";
 import { fullProfile, type FullNumerologyProfile } from "./profile";
@@ -399,44 +404,34 @@ function buildTopicBlock(
       }
       const matrix = destinyMatrix(birthDate);
       if (!matrix) return { text: "МАТРИЦА СУДЬБЫ: не удалось построить по дате." };
-      type MatrixSphere = "core" | "purpose" | "money" | "love" | "short";
-      const dictLine = (label: string, n: number, sphere: MatrixSphere) => {
-        const entry = getArcanaEntry(n);
-        if (!entry) return `${label}: ${n}.`;
-        const focus =
-          sphere === "money"
-            ? `Денежный канал: ${entry.money}`
-            : sphere === "love"
-              ? `В близости: ${entry.love}`
-              : sphere === "purpose"
-                ? `Вектор: ${entry.purpose}`
-                : sphere === "short"
-                  ? `Фон периода: ${entry.shortMeaning}`
-                  : `Ресурс: ${entry.resource}. Риск: ${entry.risk}`;
-        return `${label}: ${n} — ${entry.title}. Свет: ${entry.light} Тень: ${entry.shadow}. ${focus} Совет: ${entry.advice}`;
-      };
+      const points: MatrixPointPromptLine[] = [
+        { role: "body", label: "1. Точка тела и характера", number: matrix.body.number },
+        { role: "energy", label: "2. Точка энергии", number: matrix.energy.number },
+        { role: "roots", label: "3. Точка рода и корней", number: matrix.roots.number },
+        { role: "purpose", label: "4. Ось предназначения (центр)", number: matrix.purpose.number },
+        { role: "talents", label: "5. Точка талантов", number: matrix.talents.number },
+        { role: "money", label: "6. Точка денег и ресурса", number: matrix.money.number },
+        { role: "love", label: "7. Точка отношений", number: matrix.relationships.number },
+        { role: "paternal", label: "8. Род по отцу", number: matrix.paternal.number },
+        { role: "maternal", label: "9. Род по матери", number: matrix.maternal.number },
+        { role: "karma", label: "10. Точка кармы и задачи", number: matrix.karma.number },
+        {
+          role: "year",
+          label: "11. Аркан текущего года (1–22, не путать с личным годом 1–9)",
+          number: matrix.yearArcana.number,
+        },
+      ];
+      const repeatNote = formatMatrixRepeatArcanaNote(points);
       return {
         text: [
           `МАТРИЦА СУДЬБЫ / 22 АРКАНА (${MATRIX_CALCULATION_VERSION}, реальный расчёт, авторская адаптация Zovus):`,
-          dictLine("1. Точка тела и характера", matrix.body.number, "core"),
-          dictLine("2. Точка энергии", matrix.energy.number, "core"),
-          dictLine("3. Точка рода и корней", matrix.roots.number, "core"),
-          dictLine("4. Ось предназначения (центр)", matrix.purpose.number, "purpose"),
-          dictLine("5. Точка талантов", matrix.talents.number, "core"),
-          dictLine("6. Точка денег и ресурса", matrix.money.number, "money"),
-          dictLine("7. Точка отношений", matrix.relationships.number, "love"),
-          dictLine("8. Род по отцу", matrix.paternal.number, "core"),
-          dictLine("9. Род по матери", matrix.maternal.number, "core"),
-          dictLine("10. Точка кармы и задачи", matrix.karma.number, "core"),
-          dictLine(
-            "11. Аркан текущего года (1–22, не путать с личным годом 1–9)",
-            matrix.yearArcana.number,
-            "short"
-          ),
+          ...points.map((p) => formatMatrixPointDictLine(p, getArcanaEntry(p.number))),
+          ...(repeatNote ? [repeatNote] : []),
           "Структура ответа (по абзацу на пункт, без схлопывания точек): тело → энергия → род/корни → предназначение → таланты → деньги → отношения → род отца → род матери → карма → аркан года → 3–5 шагов на 30 дней.",
           "КРИТИЧНО: даже при одинаковом аркане у разных точек пиши РАЗНЫЕ смыслы по роли точки. Нельзя объединять «энергия и таланты» или «род + отношения + предназначение».",
+          "КРИТИЧНО: не копируй одну практику/фразу на несколько точек. У каждой точки свой угол из поля «Угол …» выше.",
           "ЗАПРЕЩЕНО в этом разборе: пифагорейский портрет (путь/душа/личность/зрелость), психоматрица, личный цикл 1–9.",
-          "Запрещено: обещать результат, ставить диагнозы, говорить о смерти/болезнях, формулировки «вам суждено», манипулятивный тон, пустые метафоры без действия.",
+          "Запрещено: обещать результат, ставить диагнозы, говорить о смерти/болезнях, формулировки «вам суждено», манипулятивный тон, пустые метафоры без действия, markdown-маркеры вроде ✦.",
           "Числа и названия арканов бери ТОЛЬКО из этого блока. Не пересчитывай матрицу.",
           "Это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы» — инструмент рефлексии, не научный факт.",
         ].join("\n"),

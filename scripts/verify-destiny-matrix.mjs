@@ -16,6 +16,11 @@ import {
 import { buildMatrixFreeSummary } from "../src/lib/numerology/matrix-free-summary.ts";
 import { buildRichEngineFacts } from "../src/lib/numerology/engine-reply.ts";
 import { buildNumerologyChatContext } from "../src/lib/numerology/topic-handlers.ts";
+import {
+  formatMatrixPointDictLine,
+  formatMatrixRepeatArcanaNote,
+  matrixRoleLens,
+} from "../src/lib/numerology/matrix-point-prompt.ts";
 
 const failures = [];
 
@@ -260,6 +265,44 @@ for (const fixture of FIXTURES) {
   );
   assert(gennady?.money.number === 17, "1979-09-18 money=17 Star");
   assert(gennady?.yearArcana.number === 10, "1979-09-18 year=10 Wheel");
+
+  const strength = getArcanaEntry(8);
+  assert(!!strength, "arcana 8 entry");
+  const rootsLens = matrixRoleLens("roots", strength);
+  const purposeLens = matrixRoleLens("purpose", strength);
+  const loveLens = matrixRoleLens("love", strength);
+  const paternalLens = matrixRoleLens("paternal", strength);
+  assert(rootsLens !== purposeLens, "role lenses differ roots vs purpose");
+  assert(purposeLens !== loveLens, "role lenses differ purpose vs love");
+  assert(loveLens !== paternalLens, "role lenses differ love vs paternal");
+  assert(!/Совет: Назовите чувство/i.test(rootsLens), "roots lens must not paste generic advice");
+
+  const gCtx = buildNumerologyChatContext({
+    birthDate: "1979-09-18",
+    profileName: "Геннадий",
+    lastUserMessage: "Построй мою матрицу судьбы",
+  });
+  assert(/ПОВТОРЫ АРКАНОВ/i.test(gCtx.prompt), "repeat-arcana note for Gennady");
+  assert(/Угол рода\/корней/i.test(gCtx.prompt), "role lens in prompt");
+  assert(
+    (gCtx.prompt.match(/Назовите чувство вслух/g) || []).length <= 1,
+    "generic Strength advice must not spam every Strength point"
+  );
+
+  const lineA = formatMatrixPointDictLine(
+    { role: "roots", label: "3. Точка рода", number: 8 },
+    strength
+  );
+  const lineB = formatMatrixPointDictLine(
+    { role: "purpose", label: "4. Ось", number: 8 },
+    strength
+  );
+  assert(lineA !== lineB, "formatted point lines differ by role");
+  const note = formatMatrixRepeatArcanaNote([
+    { role: "roots", label: "3. Род", number: 8 },
+    { role: "purpose", label: "4. Центр", number: 8 },
+  ]);
+  assert(!!note && /8 →/i.test(note), "repeat note lists arcana 8");
 }
 
 if (failures.length) {
