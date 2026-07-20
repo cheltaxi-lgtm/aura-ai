@@ -246,6 +246,20 @@ for (const fixture of FIXTURES) {
   );
   assert(!/КВАДРАТ ПИФАГОРА/i.test(facts), "rich facts exclude Pythagoras");
   assert(/нельзя объединять/i.test(facts), "anti-collapse rule in facts");
+
+  // Same birth as the watery sample (energy=talents=9, roots=purpose=relationships=8).
+  const gennady = destinyMatrix("1979-09-18", { asOfYear: 2026 });
+  assert(!!gennady, "1979-09-18 matrix");
+  assert(gennady?.body.number === 18, "1979-09-18 body=18 Moon");
+  assert(gennady?.energy.number === 9 && gennady?.talents.number === 9, "energy/talents both 9");
+  assert(
+    gennady?.roots.number === 8 &&
+      gennady?.purpose.number === 8 &&
+      gennady?.relationships.number === 8,
+    "roots/purpose/relationships all 8 — must stay separate in prose"
+  );
+  assert(gennady?.money.number === 17, "1979-09-18 money=17 Star");
+  assert(gennady?.yearArcana.number === 10, "1979-09-18 year=10 Wheel");
 }
 
 if (failures.length) {

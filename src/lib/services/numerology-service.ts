@@ -132,9 +132,12 @@ export async function generateNumerologStreamReply(
       userMessage: params.lastUserMessage,
       fallbackFacts: engineResult.engineFacts || engineResult.reply.slice(0, 2000),
     }) || engineResult.reply.slice(0, 2000);
-  const engineFacts = params.memoryBlock?.trim()
-    ? `${params.memoryBlock.trim()}\n\n${engineFactsRaw}`
-    : engineFactsRaw;
+  // Past-session memory often contains Pythagorean LP/soul — keep Full Matrix closed.
+  const allowMemory = engineResult.primaryTopic !== "destiny_matrix";
+  const engineFacts =
+    allowMemory && params.memoryBlock?.trim()
+      ? `${params.memoryBlock.trim()}\n\n${engineFactsRaw}`
+      : engineFactsRaw;
   const fallback = engineResult.reply;
 
   const [engineBody, finale] = await Promise.all([
