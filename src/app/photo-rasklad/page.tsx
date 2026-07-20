@@ -17,6 +17,7 @@ import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 
 
 
@@ -223,6 +224,15 @@ export default function PhotoRaskladPage() {
       </SeoSection>
 
 
+
+      <SeoRelatedTools
+        links={[
+          { href: "/natalnaya-karta", label: "Натальная карта" },
+          { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
+          { href: "/taro", label: "Таро онлайн" },
+          { href: "/rasklady", label: "Каталог раскладов" },
+        ]}
+      />
 
       <div className="mt-10">
 

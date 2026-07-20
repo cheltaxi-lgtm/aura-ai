@@ -15,7 +15,7 @@ import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 const SERVICES = [
   { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
   { href: "/rasklady", label: "Расклады Таро" },
-  { href: "/cabinet/astrology", label: "Натальная карта" },
+  { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/photo-rasklad", label: "Фото-расклад" },
   { href: "/numerology", label: "Нумерология" },
   { href: "/cards", label: "Значения карт" },
@@ -38,9 +38,9 @@ const SERVICE_DETAILS = [
     icon: Heart,
   },
   {
-    href: "/cabinet/astrology",
+    href: "/natalnaya-karta",
     title: "Натальная карта",
-    text: "Западная карта, джйотиш и личные периоды — в кабинете, с опорой на ваши данные.",
+    text: "Западная карта, джйотиш и личные периоды — расчёт по дате рождения с опорой на ваши данные.",
     icon: Stars,
   },
   {

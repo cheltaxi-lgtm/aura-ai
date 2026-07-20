@@ -325,8 +325,8 @@ export default function AuraSellingLanding({
       scrollToMasters();
       return;
     }
-    if (filter === "astrology" && isLoggedIn) {
-      window.location.assign("/cabinet/astrology");
+    if (filter === "astrology") {
+      window.location.assign(isLoggedIn ? "/cabinet/astrology" : "/natalnaya-karta");
       return;
     }
     const match =
@@ -334,9 +334,7 @@ export default function AuraSellingLanding({
         ? masters.find((m) => m.system?.includes("tarot") || /таро/i.test(m.title))
         : filter === "runes"
           ? masters.find((m) => m.system === "runes")
-          : filter === "astrology"
-            ? masters.find((m) => m.system === "astrology")
-            : masters.find((m) => m.system === "slavic");
+          : masters.find((m) => m.system === "slavic");
     if (match) {
       onSelectMaster(match.id);
     } else {

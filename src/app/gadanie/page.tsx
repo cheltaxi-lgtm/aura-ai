@@ -4,7 +4,8 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import { buildArticleStructuredData } from "@/lib/seo/structured-data";
+import { buildForecastStructuredData } from "@/lib/seo/structured-data";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Гадание онлайн бесплатно: Таро, руны, нумерология | Zovus",
@@ -54,32 +55,26 @@ const METHODS = [
 
 const faq = [
   {
-    question: "Какое гадание онлайн самое точное?",
-    answer:
-      "Точность зависит от ясности вопроса, а не от «магичности» метода. Таро — для многослойных ситуаций, руны и Ленорман — для короткого ответа, нумерология — для расчёта по дате и имени.",
+    q: "Какое гадание онлайн самое точное?",
+    a: "Точность зависит от ясности вопроса, а не от «магичности» метода. Таро — для многослойных ситуаций, руны и Ленорман — для короткого ответа, нумерология — для расчёта по дате и имени.",
   },
   {
-    question: "Можно ли гадать онлайн бесплатно?",
-    answer:
-      "На главной три карты открываются бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки. Полные сессии с развёрнутым разбором и продолжением в чате — за руны по тарифу сервиса.",
+    q: "Можно ли гадать онлайн бесплатно?",
+    a: "На главной три карты открываются бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки. Полные сессии с развёрнутым разбором и продолжением в чате — за руны по тарифу сервиса.",
   },
   {
-    question: "Гадание да или нет — какой метод выбрать?",
-    answer:
-      "Быстрее всего — одна карта Таро или одна руна: см. страницу «Гадание да или нет». Ответ «да», «нет» или «не сейчас» с коротким пояснением.",
+    q: "Гадание да или нет — какой метод выбрать?",
+    a: "Быстрее всего — одна карта Таро или одна руна: см. страницу «Гадание да или нет». Ответ «да», «нет» или «не сейчас» с коротким пояснением.",
   },
 ];
 
 export default function GadaniePage() {
-  const structuredData = buildArticleStructuredData({
+  const structuredData = buildForecastStructuredData({
     title: "Гадание онлайн",
     description:
       "Гадание онлайн: Таро, руны, нумерология и Ленорман — выбор метода и разбор с ИИ-наставником в чате.",
     path: "/gadanie",
-    bodyText: [
-      ...METHODS.map((m) => `${m.title}: ${m.text}`),
-      ...faq.map((f) => `${f.question} ${f.answer}`),
-    ].join(" "),
+    faq,
   });
 
   return (
@@ -120,12 +115,14 @@ export default function GadaniePage() {
 
       <SeoSection title="Частые вопросы">
         {faq.map((item) => (
-          <div key={item.question}>
-            <h3 className="font-medium text-white">{item.question}</h3>
-            <p className="mt-1">{item.answer}</p>
+          <div key={item.q}>
+            <h3 className="font-medium text-white">{item.q}</h3>
+            <p className="mt-1">{item.a}</p>
           </div>
         ))}
       </SeoSection>
+
+      <SeoRelatedTools excludeHrefs={["/taro"]} />
 
       <script
         type="application/ld+json"

@@ -6,11 +6,14 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { WEB_DOWNLOAD_BTN } from "@/lib/web-download-ui";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = buildSeoMetadata({
-  title: `Приложение ${BRAND_NAME} для Android`,
-  description: `Скачайте официальное приложение ${BRAND_NAME} — салон в кармане: расклады, наставники, фото-расклад и напоминания.`,
-  path: "/app",
-});
+export const metadata: Metadata = {
+  ...buildSeoMetadata({
+    title: `Приложение ${BRAND_NAME} для Android`,
+    description: `Скачайте официальное приложение ${BRAND_NAME} — салон в кармане: расклады, наставники, фото-расклад и напоминания.`,
+    path: "/app",
+  }),
+  robots: { index: false, follow: true },
+};
 
 export default function AppDownloadPage() {
   const release = readAndroidReleaseConfig();

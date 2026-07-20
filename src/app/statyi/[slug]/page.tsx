@@ -64,24 +64,40 @@ export default async function StatyiArticlePage({
           </SeoSection>
         ))}
 
-        <SeoSection title="Расклады по теме">
-          <ul className="space-y-2">
-            {article.intentSlugs.map((intentSlug) => {
-              const intent = getSpreadIntentBySlug(intentSlug);
-              if (!intent) return null;
-              return (
-                <li key={intentSlug}>
-                  <Link
-                    href={`/rasklady/${intentSlug}`}
-                    className="text-aura-gold hover:underline"
-                  >
-                    {intent.title}
+        {article.intentSlugs.length > 0 ? (
+          <SeoSection title="Расклады по теме">
+            <ul className="space-y-2">
+              {article.intentSlugs.map((intentSlug) => {
+                const intent = getSpreadIntentBySlug(intentSlug);
+                if (!intent) return null;
+                return (
+                  <li key={intentSlug}>
+                    <Link
+                      href={`/rasklady/${intentSlug}`}
+                      className="text-aura-gold hover:underline"
+                    >
+                      {intent.title}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </SeoSection>
+        ) : null}
+
+        {article.relatedHrefs && article.relatedHrefs.length > 0 ? (
+          <SeoSection title="Смотрите также">
+            <ul className="space-y-2">
+              {article.relatedHrefs.map((item) => (
+                <li key={item.href}>
+                  <Link href={item.href} className="text-aura-gold hover:underline">
+                    {item.title}
                   </Link>
                 </li>
-              );
-            })}
-          </ul>
-        </SeoSection>
+              ))}
+            </ul>
+          </SeoSection>
+        ) : null}
 
         {primaryIntent ? (
           <div className="mt-8 flex flex-wrap gap-3">
@@ -91,6 +107,17 @@ export default async function StatyiArticlePage({
             <SeoTrackedCta href={`/rasklady/${primaryIntent.slug}`} variant="ghost">
               Подробнее о раскладе
             </SeoTrackedCta>
+          </div>
+        ) : article.relatedHrefs?.[0] ? (
+          <div className="mt-8 flex flex-wrap gap-3">
+            <SeoTrackedCta href={article.relatedHrefs[0].href}>
+              {article.relatedHrefs[0].title}
+            </SeoTrackedCta>
+            {article.relatedHrefs[1] ? (
+              <SeoTrackedCta href={article.relatedHrefs[1].href} variant="ghost">
+                {article.relatedHrefs[1].title}
+              </SeoTrackedCta>
+            ) : null}
           </div>
         ) : null}
       </article>

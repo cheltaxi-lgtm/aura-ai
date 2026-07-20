@@ -16,6 +16,7 @@ import {
   isAgeGateConfirmed,
 } from "@/lib/age-gate";
 import LegalDocLink from "@/components/legal/LegalDocLink";
+import { trackSeoEvent } from "@/lib/seo/metrika";
 
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
 
@@ -64,6 +65,7 @@ export default function DestinyMatrixPreview() {
         return;
       }
       setSummary(result);
+      trackSeoEvent("matrix_preview_complete");
     });
   };
 

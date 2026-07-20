@@ -146,10 +146,11 @@ export const EDITORIAL_PRACTICES = [
   {
     id: "natal",
     title: "Натальная карта",
-    subtitle: "Карта рождения и личные периоды — расчёт и трактовка в кабинете.",
+    subtitle: "Карта рождения и личные периоды — сначала публичный разбор, затем кабинет.",
     image: "/landing/practices/natal-chart.jpg",
     cta: "Открыть астрологию",
-    guestReturn: { custom: "/cabinet/astrology" },
+    guestHref: "/natalnaya-karta",
+    guestReturn: { custom: "/natalnaya-karta" },
     loggedInHref: "/cabinet/astrology",
   },
 ] as const;
@@ -165,6 +166,7 @@ export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Практики", hash: EDITORIAL_SECTION_IDS.practices },
   { label: "Мастера", hash: EDITORIAL_SECTION_IDS.masters },
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
+  { label: "Натальная карта", href: "/natalnaya-karta" },
   { label: "Таро", href: "/rasklad" },
   { label: "Нумерология", href: "/numerology" },
   { label: "Моё пространство", href: "/cabinet", guestHref: "/auth/user/login" },

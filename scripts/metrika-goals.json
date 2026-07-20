@@ -341,6 +341,16 @@
       "id": "natal_landing_login_click",
       "group": "astrology",
       "metrikaGoalId": 586818642
+    },
+    {
+      "id": "matrix_preview_complete",
+      "group": "numerology",
+      "metrikaGoalId": 586829323
+    },
+    {
+      "id": "prognoz_hub_view",
+      "group": "seo",
+      "metrikaGoalId": 586829324
     }
   ]
 }

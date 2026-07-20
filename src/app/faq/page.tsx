@@ -31,10 +31,18 @@ export default function FaqPage() {
           </div>
         ))}
       </AboutSection>
-      <AboutSection title="Расклады">
+      <AboutSection title="Расклады и другие практики">
         <p>
           <Link href="/rasklady" className="text-aura-gold hover:underline">
             Каталог раскладов
+          </Link>
+          {" · "}
+          <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+            Натальная карта
+          </Link>
+          {" · "}
+          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+            Матрица судьбы
           </Link>
           {" · "}
           <Link href="/about/how-readings-work" className="text-aura-gold hover:underline">

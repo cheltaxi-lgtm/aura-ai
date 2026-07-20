@@ -13,6 +13,7 @@ import {
 } from "@/lib/seo/seasonal";
 import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
 import { SUIT_HUBS } from "@/lib/seo/suit-hubs";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Таро онлайн — расклады и гадание на картах | Zovus",
@@ -178,6 +179,8 @@ export default function TaroPillarPage() {
           </div>
         ))}
       </SeoSection>
+
+      <SeoRelatedTools excludeHrefs={["/taro"]} />
 
       <script
         type="application/ld+json"

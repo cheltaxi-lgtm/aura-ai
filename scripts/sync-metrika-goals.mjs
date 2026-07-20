@@ -93,9 +93,11 @@ const DISPLAY_NAMES = {
   lenormand_combo_view: "Ленорман сочетание — view",
   matrix_landing_view: "Матрица судьбы — просмотр лендинга",
   matrix_preview_start: "Матрица судьбы — старт расчёта",
+  matrix_preview_complete: "Матрица судьбы — расчёт готов",
   natal_landing_view: "Натальная карта — просмотр лендинга",
   natal_landing_cta_click: "Натальная карта — CTA",
   natal_landing_login_click: "Натальная карта — вход",
+  prognoz_hub_view: "Прогноз hub — view",
 };
 
 function displayName(id) {

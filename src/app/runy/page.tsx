@@ -5,8 +5,9 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import { buildArticleStructuredData } from "@/lib/seo/structured-data";
+import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import { RUNE_MEANINGS } from "@/lib/seo/rune-meanings";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Гадание на рунах онлайн: значение всех 24 рун | Zovus",
@@ -17,33 +18,27 @@ export const metadata: Metadata = buildSeoMetadata({
 
 const faq = [
   {
-    question: "Как работает гадание на рунах онлайн?",
-    answer:
-      "Вы формулируете вопрос, вытягиваете одну или несколько рун старшего Футарка, а Рагнар трактует их сочетание применительно к вашей ситуации — как это делали скандинавские провидцы.",
+    q: "Как работает гадание на рунах онлайн?",
+    a: "Вы формулируете вопрос, вытягиваете одну или несколько рун старшего Футарка, а Рагнар трактует их сочетание применительно к вашей ситуации — как это делали скандинавские провидцы.",
   },
   {
-    question: "Сколько рун в гадании?",
-    answer:
-      "Классический набор — 24 руны старшего Футарка. Для быстрого ответа хватает одной руны («да/нет»), для более полной картины берут три и больше.",
+    q: "Сколько рун в гадании?",
+    a: "Классический набор — 24 руны старшего Футарка. Для быстрого ответа хватает одной руны («да/нет»), для более полной картины берут три и больше.",
   },
   {
-    question: "Руны точнее Таро?",
-    answer:
-      "Не точнее — они просто другой инструмент. Руны дают более лаконичный, прямой ответ (24 символа против 78 карт Таро), поэтому хорошо подходят для конкретных вопросов и «да/нет».",
+    q: "Руны точнее Таро?",
+    a: "Не точнее — они просто другой инструмент. Руны дают более лаконичный, прямой ответ (24 символа против 78 карт Таро), поэтому хорошо подходят для конкретных вопросов и «да/нет».",
   },
 ];
 
 export default function RunesHubPage() {
   const ragnar = getCharacterById("ragnar");
-  const structuredData = buildArticleStructuredData({
+  const structuredData = buildForecastStructuredData({
     title: "Гадание на рунах онлайн",
     description:
       "Гадание на рунах онлайн: значение всех 24 рун старшего Футарка и расклад «да или нет».",
     path: "/runy",
-    bodyText: [
-      ...RUNE_MEANINGS.map((r) => `${r.name}: ${r.general}`),
-      ...faq.map((f) => `${f.question} ${f.answer}`),
-    ].join(" "),
+    faq,
   });
 
   return (
@@ -57,7 +52,7 @@ export default function RunesHubPage() {
       </p>
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href="/master/ragnar" trackGoal="runes_hub_cta_click">
+        <SeoTrackedCta href="/rasklad/runy-da-net" trackGoal="runes_hub_cta_click">
           Начать с Рагнаром
         </SeoTrackedCta>
         <SeoTrackedCta
@@ -98,12 +93,14 @@ export default function RunesHubPage() {
 
       <SeoSection title="Частые вопросы">
         {faq.map((item) => (
-          <div key={item.question}>
-            <h3 className="font-medium text-white">{item.question}</h3>
-            <p className="mt-1">{item.answer}</p>
+          <div key={item.q}>
+            <h3 className="font-medium text-white">{item.q}</h3>
+            <p className="mt-1">{item.a}</p>
           </div>
         ))}
       </SeoSection>
+
+      <SeoRelatedTools />
 
       <script
         type="application/ld+json"

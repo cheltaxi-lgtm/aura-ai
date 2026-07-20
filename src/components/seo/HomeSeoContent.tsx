@@ -91,7 +91,7 @@ export default function HomeSeoContent() {
           </Link>
         </li>
         <li>
-          <Link href="/cabinet/astrology" className="text-aura-gold hover:underline">
+          <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
             Натальная карта
           </Link>
         </li>
