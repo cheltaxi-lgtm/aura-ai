@@ -462,16 +462,8 @@ export default function CabinetPage() {
   const photoSpreads = data?.photoSpreads ?? [];
   const dailyReadings = data?.dailyReadings ?? [];
   const runesEnabled = Boolean(runes?.enabled);
-  const showRitualsSection =
-    runesEnabled || (ritualStats?.total ?? 0) > 0;
   const ritualAttentionCount =
     (ritualStats?.inProgress ?? 0) + (ritualStats?.pendingReview ?? 0);
-
-  useEffect(() => {
-    if (activeTab === "rituals" && !loading && data && !showRitualsSection) {
-      setActiveTab("profile");
-    }
-  }, [activeTab, loading, data, showRitualsSection]);
 
   const openRitual = (id: string, characterKey: RitualMasterKey) => {
     setRitualFlowMaster(characterKey);
@@ -588,7 +580,7 @@ export default function CabinetPage() {
         );
 
       case "rituals":
-        return showRitualsSection ? (
+        return (
           <div className="space-y-6">
             <CabinetTabHero
               kicker="Ритуалы"
@@ -612,7 +604,7 @@ export default function CabinetPage() {
               onStatsLoaded={setRitualStats}
             />
           </div>
-        ) : null;
+        );
 
       case "diary":
         return (
@@ -735,7 +727,7 @@ export default function CabinetPage() {
       <CabinetBottomNav
         active={activeTab}
         onTab={scrollToSection}
-        showRituals={showRitualsSection}
+        showRituals
         ritualPendingReview={ritualStats?.pendingReview ?? 0}
         ritualAttentionCount={ritualAttentionCount}
       />

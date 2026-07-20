@@ -38,10 +38,15 @@ export interface RitualAchievementPayload {
   phrase: string;
 }
 
+export type RitualReadyPayload = {
+  achievement?: RitualAchievementPayload | null;
+  ritual?: Record<string, unknown> | null;
+};
+
 interface Props {
   characterKey: string;
   ritualId: string;
-  onReady: (achievement?: RitualAchievementPayload | null) => void;
+  onReady: (payload?: RitualReadyPayload | null) => void;
   onFailed: (opts?: { refunded?: boolean }) => void;
 }
 
@@ -93,13 +98,16 @@ export default function RitualGenerating({
       data: {
         status?: string;
         error?: string;
-        ritual?: { status?: string };
+        ritual?: { status?: string } & Record<string, unknown>;
         achievement?: RitualAchievementPayload | null;
       },
       resOk: boolean
     ) => {
       if ((resOk && data.status === "completed") || data.ritual?.status === "completed") {
-        onReadyRef.current(data.achievement ?? null);
+        onReadyRef.current({
+          achievement: data.achievement ?? null,
+          ritual: data.ritual ?? null,
+        });
         return true;
       }
       if (
@@ -108,11 +116,16 @@ export default function RitualGenerating({
         data.error === "generation_error" ||
         data.error === "needs_payment"
       ) {
-        setRefunded(true);
+        const wasPaidRefund = Boolean(
+          (data as { refunded?: boolean }).refunded
+        );
+        setRefunded(wasPaidRefund || data.error === "needs_payment");
         setError(
           data.error === "needs_payment"
             ? "Оплата не завершена. Вернитесь к оплате и получите обряд снова."
-            : "Не удалось составить обряд. Руны возвращены на баланс — попробуйте ещё раз."
+            : wasPaidRefund
+              ? "Не удалось составить обряд. Руны возвращены на баланс — попробуйте ещё раз."
+              : "Не удалось составить обряд. Попробуйте ещё раз."
         );
         return true;
       }

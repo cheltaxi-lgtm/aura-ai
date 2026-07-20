@@ -303,6 +303,10 @@
       "metrikaGoalId": 582035042
     },
     {
+      "id": "ritual_step",
+      "group": "ritual"
+    },
+    {
       "id": "numerology_hub_view",
       "group": "numerology",
       "metrikaGoalId": 582035043

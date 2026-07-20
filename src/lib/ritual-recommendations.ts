@@ -30,13 +30,34 @@ const LOVE_SLUGS = new Set([
   "budem-li-my-vmeste",
 ]);
 
+const HEALTH_SLUGS = new Set([
+  "lenormand-zdorove",
+  "situatsiya-so-zdorovem",
+  "kak-vosstanovit-sily",
+  "chto-s-moim-zdorovem",
+]);
+
+const CAREER_SLUGS = new Set([
+  "novyy-proekt-uspeh",
+  "budet-li-proekt-uspehen",
+  "stoit-li-menyat-rabotu",
+  "kak-proyti-sobesedovanie",
+  "karera-i-prizvanie",
+  "povyshenie-na-rabote",
+]);
+
 /** Map spread intent slug to a follow-up ritual type, if any. */
 export function recommendRitualForIntentSlug(slug: string): RitualType | null {
   if (RELEASE_SLUGS.has(slug)) return "release";
+  if (HEALTH_SLUGS.has(slug)) return "health";
+  if (CAREER_SLUGS.has(slug)) return "career";
   if (MONEY_SLUGS.has(slug)) return "money";
   if (PROTECTION_SLUGS.has(slug)) return "protection";
   if (LUCK_SLUGS.has(slug)) return "luck";
   if (LOVE_SLUGS.has(slug)) return "love";
+  // Heuristic fallback for catalog growth without hardcoding every slug.
+  if (/zdorov|iscel|sily|son-i-zdorov/i.test(slug)) return "health";
+  if (/rabot|karer|proekt|sobesed|uspeh-v-del|povyshen/i.test(slug)) return "career";
   return null;
 }
 

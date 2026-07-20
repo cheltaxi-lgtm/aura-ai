@@ -1,8 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
+import {
+  RITUAL_MASTERS,
+  RITUAL_TYPES,
+  isRitualAllowedForMaster,
+  type RitualMasterKey,
+  type RitualType,
+} from "@/lib/ritual-config";
 import { RITUAL_PAGE_SLUGS } from "@/lib/ritual-recommendations";
+import { RITUAL_SEO_CONTENT } from "@/lib/ritual-seo-content";
+import { getCharacterById } from "@/lib/characters";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
@@ -31,14 +39,16 @@ export async function generateMetadata({
   const type = SLUG_TO_TYPE[slug];
   if (!type) return { title: "Обряд" };
   const ritual = RITUAL_TYPES[type];
+  const seo = RITUAL_SEO_CONTENT[type];
   return buildSeoMetadata({
     title: `Обряд «${ritual.label}» — Zovus`,
-    description: ritual.desc,
+    description: seo.whenNeeded.slice(0, 160),
     path: `/obryady/${slug}`,
   });
 }
 
-const MASTER_FOR_RITUAL: Record<RitualType, string> = {
+/** Preferred default master for primary CTA; others listed as alternatives. */
+const MASTER_FOR_RITUAL: Record<RitualType, RitualMasterKey> = {
   love: "agafya",
   money: "ragnar",
   protection: "agafya",
@@ -47,6 +57,22 @@ const MASTER_FOR_RITUAL: Record<RitualType, string> = {
   health: "agafya",
   career: "ragnar",
 };
+
+const MASTER_LABELS: Record<RitualMasterKey, string> = {
+  ragnar: "Рагнар",
+  agafya: "Агафья",
+  veronika: "Вероника",
+  "shri-raj": "Шри Радж",
+  numerolog: "Эвелина",
+};
+
+function mastersForRitual(type: RitualType): RitualMasterKey[] {
+  const preferred = MASTER_FOR_RITUAL[type];
+  const rest = RITUAL_MASTERS.filter(
+    (key) => key !== preferred && isRitualAllowedForMaster(key, type)
+  );
+  return [preferred, ...rest].filter((key) => Boolean(getCharacterById(key)));
+}
 
 const FAQ = [
   {
@@ -59,7 +85,11 @@ const FAQ = [
   },
   {
     q: "Сохраняется ли история?",
-    a: "Да, обряд сохраняется в личном кабинете вместе с перепиской.",
+    a: "Да, готовый обряд сохраняется в разделе «Обряды» личного кабинета. Это отдельная история от чата с мастером — карточку можно открыть в любой момент.",
+  },
+  {
+    q: "Это только славянские обряды?",
+    a: "Нет. У каждого мастера своя традиция: славянская, северная, ведическая, нумерологическая или психологическая. Формат один — персональная инструкция под ваш запрос.",
   },
 ];
 
@@ -73,7 +103,9 @@ export default async function ObryadyDetailPage({
   if (!type) notFound();
 
   const ritual = RITUAL_TYPES[type];
-  const masterId = MASTER_FOR_RITUAL[type];
+  const seo = RITUAL_SEO_CONTENT[type];
+  const masters = mastersForRitual(type);
+  const primaryMaster = masters[0] ?? MASTER_FOR_RITUAL[type];
   const outcomes = (await ensureDb())
     ? await listPublicRitualOutcomes(4, type).catch(() => [])
     : [];
@@ -86,24 +118,54 @@ export default async function ObryadyDetailPage({
       <p className="mt-4 text-white/70">{ritual.desc}</p>
       <p className="mt-3 text-sm text-white/50">от {ritual.cost} ᚢ</p>
 
-      <div className="mt-8">
+      <div className="mt-8 space-y-4">
         <SeoTrackedCta
-          href={`/master/${masterId}?ritual=${type}`}
+          href={`/master/${primaryMaster}?ritual=${type}`}
           trackGoal="ritual_landing_cta_click"
-          trackParams={{ slug }}
+          trackParams={{ slug, master: primaryMaster }}
         >
-          Начать с мастером
+          Начать с {MASTER_LABELS[primaryMaster]}
         </SeoTrackedCta>
+
+        {masters.length > 1 ? (
+          <div>
+            <p className="mb-2 text-sm text-white/50">Или выбрать другого мастера:</p>
+            <div className="flex flex-wrap gap-2">
+              {masters.slice(1).map((masterId) => (
+                <Link
+                  key={masterId}
+                  href={`/master/${masterId}?ritual=${type}`}
+                  className="rounded-full border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-aura-gold/50 hover:text-aura-gold"
+                >
+                  {MASTER_LABELS[masterId]}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <SeoSection title="Когда нужен этот обряд">
-        <p>{ritual.desc}</p>
+        <p>{seo.whenNeeded}</p>
       </SeoSection>
 
       <SeoSection title="Как проходит">
-        <p>Мастер задаёт уточняющие вопросы о вашей ситуации.</p>
-        <p>Формируется персональный обряд с учётом вашего запроса.</p>
-        <p>Вы получаете карточку обряда: время, атрибуты, шаги и слово силы.</p>
+        <p>{seo.howItHelps}</p>
+      </SeoSection>
+
+      <SeoSection title="Лунное время">
+        <p>
+          Дата и час обряда подбираются системой по фазе луны и типу запроса — мастер объясняет,
+          почему именно это окно. Перед стартом можно свериться с лунным календарём практик.
+        </p>
+        <p className="mt-3">
+          <Link
+            href="/statyi/lunnyy-kalendar-i-praktiki"
+            className="text-sm text-aura-gold hover:underline"
+          >
+            Лунный календарь и практики →
+          </Link>
+        </p>
       </SeoSection>
 
       <SeoSection title="Какие вопросы задаст мастер">
@@ -115,9 +177,7 @@ export default async function ObryadyDetailPage({
       </SeoSection>
 
       <SeoSection title="Что вы получите">
-        <p>
-          Персональный обряд под ваш запрос, сохранённый в истории и возможность отзыва о результате.
-        </p>
+        <p>{seo.whatYouGet}</p>
       </SeoSection>
 
       <SeoSection title="Частые вопросы">

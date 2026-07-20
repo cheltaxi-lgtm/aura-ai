@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -17,6 +18,7 @@ import {
   markRitualPaidAndGenerating,
   ritualToClient,
 } from "@/lib/ritual-service";
+import { getUserById } from "@/lib/users";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -27,6 +29,11 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   const authed = await requireProfileUserId();
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const profileRow = await getUserById(authed.profileUserId);
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
   }
 
   const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "ritual_pay");
@@ -79,15 +86,17 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     transactionId: billingCharge?.transactionId ?? null,
   });
   if (!generating) {
+    // Race: another pay already claimed this ritual — refund our charge.
     if (billingCharge) {
       await BillingService.rollbackCharge({
         userId: authed.profileUserId,
         cost: billingCharge.spentRunes,
         wasFreeQuestion: false,
         actionType: "ritual",
+        transactionId: billingCharge.transactionId,
       });
     }
-    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+    return NextResponse.json({ error: "Already paid or invalid status" }, { status: 409 });
   }
 
   const balance = await getRuneBalance(authed.profileUserId);

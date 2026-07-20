@@ -7,10 +7,13 @@ export interface RitualTypeSetting {
 }
 
 export interface RitualSettings {
+  /** Global kill-switch for the whole rituals catalog. */
+  enabled: boolean;
   types: Record<RitualType, RitualTypeSetting>;
 }
 
 export const DEFAULT_RITUAL_SETTINGS: RitualSettings = {
+  enabled: true,
   types: Object.fromEntries(
     RITUAL_TYPE_KEYS.map((key) => [key, { enabled: true, cost: RITUAL_TYPES[key].cost }])
   ) as Record<RitualType, RitualTypeSetting>,
@@ -41,7 +44,10 @@ export async function getRitualSettings(): Promise<RitualSettings> {
     }
   }
 
-  return { types };
+  return {
+    enabled: raw.enabled !== false,
+    types,
+  };
 }
 
 export async function setRitualSettings(
@@ -50,10 +56,15 @@ export async function setRitualSettings(
 ): Promise<RitualSettings> {
   const current = await getRitualSettings();
   const merged: RitualSettings = {
+    enabled: patch.enabled !== undefined ? patch.enabled !== false : current.enabled,
     types: { ...current.types, ...(patch.types ?? {}) },
   };
   await setSetting("rituals", merged, adminId);
   return merged;
+}
+
+export function isRitualCatalogEnabled(settings: RitualSettings): boolean {
+  return settings.enabled !== false;
 }
 
 export function isRitualTypeEnabled(settings: RitualSettings, type: RitualType): boolean {

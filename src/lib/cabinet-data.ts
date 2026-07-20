@@ -511,8 +511,8 @@ export async function getCabinetAchievements(
         break;
       case "ritual_elements":
         progress = ritualStats.distinctTypesCompleted;
-        progressMax = 5;
-        progressLabel = `${Math.min(ritualStats.distinctTypesCompleted, 5)}/5 видов`;
+        progressMax = 7;
+        progressLabel = `${Math.min(ritualStats.distinctTypesCompleted, 7)}/7 видов`;
         break;
       case "ritual_full_moon":
         progress = ritualStats.hasFullMoonRitual ? 1 : 0;

@@ -88,6 +88,7 @@ const DISPLAY_NAMES = {
   cards_hub_view: "Карты hub — view",
   photo_landing_view: "Фото-лендинг — view",
   ritual_catalog_view: "Каталог обрядов — view",
+  ritual_step: "Обряд — шаг воронки",
   numerology_hub_view: "Нумерология hub — view",
   numerology_topic_view: "Нумерология тема — view",
   lenormand_combo_view: "Ленорман сочетание — view",

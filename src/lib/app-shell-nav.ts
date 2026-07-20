@@ -17,6 +17,8 @@ export const APP_SHELL_SECTIONS = {
 
 export const OPEN_DECKS_MODAL_KEY = "zovus:openDecksModal";
 export const OPEN_RITUAL_FLOW_KEY = "zovus:openRitualFlow";
+/** Optional ritual type to auto-start after auth (SEO deep link / guest create 401). */
+export const OPEN_RITUAL_TYPE_KEY = "zovus:openRitualType";
 
 export const APP_SHELL_HOME_EVENT = "zovus:app-shell-home-nav";
 
@@ -45,6 +47,29 @@ export function consumeOpenRitualFlowFlag(): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+export function persistOpenRitualIntent(ritualType?: string | null): void {
+  try {
+    sessionStorage.setItem(OPEN_RITUAL_FLOW_KEY, "1");
+    if (ritualType) {
+      sessionStorage.setItem(OPEN_RITUAL_TYPE_KEY, ritualType);
+    } else {
+      sessionStorage.removeItem(OPEN_RITUAL_TYPE_KEY);
+    }
+  } catch {
+    /* private mode */
+  }
+}
+
+export function consumeOpenRitualTypeFlag(): string | null {
+  try {
+    const value = sessionStorage.getItem(OPEN_RITUAL_TYPE_KEY);
+    sessionStorage.removeItem(OPEN_RITUAL_TYPE_KEY);
+    return value?.trim() || null;
+  } catch {
+    return null;
   }
 }
 

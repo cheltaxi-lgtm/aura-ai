@@ -30,6 +30,7 @@ import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
 import {
   resolveRitualMasterKey,
   resolveRitualMasterForType,
+  isRitualType,
   type RitualType,
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
@@ -56,8 +57,10 @@ import {
   APP_SHELL_HOME_EVENT,
   consumeOpenDecksModalFlag,
   consumeOpenRitualFlowFlag,
+  consumeOpenRitualTypeFlag,
   navigateToDecksModal,
   navigateToPhotoReading as navigateToPhotoReadingHard,
+  persistOpenRitualIntent,
 } from "@/lib/app-shell-nav";
 import { registerAppShellHomeNavHandlers } from "@/lib/app-shell-nav-bus";
 import RegisterGate from "@/components/RegisterGate";
@@ -124,7 +127,6 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
-import { OPEN_RITUAL_FLOW_KEY } from "@/lib/app-shell-nav";
 import { trackFirstChatOpened } from "@/lib/seo/metrika";
 import {
   decodeNumerologSpreadId,
@@ -795,6 +797,7 @@ export default function HomePage({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (authLoading) return;
 
     if (autoOpenMasterId && !masterAutoOpenParsedRef.current) {
       const character = getCharacterById(autoOpenMasterId);
@@ -802,6 +805,11 @@ export default function HomePage({
       masterAutoOpenParsedRef.current = true;
 
       if (autoOpenRitualType) {
+        if (!isLoggedIn) {
+          persistOpenRitualIntent(autoOpenRitualType);
+          window.location.href = buildRegisterHref(resolveRegistrationReturnTo());
+          return;
+        }
         setRitualFlowMaster(resolveRitualMasterForType(autoOpenRitualType, autoOpenMasterId));
         setPendingRitualType(autoOpenRitualType);
         setShowRitualFlow(true);
@@ -838,6 +846,8 @@ export default function HomePage({
   }, [
     autoOpenMasterId,
     autoOpenRitualType,
+    authLoading,
+    isLoggedIn,
     openNumerologSessionFlow,
     setSessionFlowPreselectedMaster,
     setShowSessionFlow,
@@ -2359,7 +2369,9 @@ export default function HomePage({
   };
 
   const handleDailyStartRitual = (ritualType: RitualType) => {
-    setRitualFlowMaster(resolveRitualMasterKey(dailyEnergyMasterId));
+    setRitualFlowMaster(
+      resolveRitualMasterForType(ritualType, dailyEnergyMasterId)
+    );
     setOpenRitualId(null);
     setPendingRitualType(ritualType);
     setShowRitualFlow(true);
@@ -2456,11 +2468,7 @@ export default function HomePage({
 
   const handleNavRitual = useCallback(() => {
     if (!isLoggedIn) {
-      try {
-        sessionStorage.setItem(OPEN_RITUAL_FLOW_KEY, "1");
-      } catch {
-        /* private mode */
-      }
+      persistOpenRitualIntent(null);
       window.location.href = buildRegisterHref(resolveRegistrationReturnTo());
       return;
     }
@@ -2474,8 +2482,14 @@ export default function HomePage({
   useEffect(() => {
     if (bootstrapping || !isLoggedIn) return;
     if (!consumeOpenRitualFlowFlag()) return;
-    handleNavRitual();
-  }, [bootstrapping, isLoggedIn, handleNavRitual]);
+    const typeRaw = consumeOpenRitualTypeFlag();
+    const type = typeRaw && isRitualType(typeRaw) ? typeRaw : null;
+    exitToLandingForNav();
+    setRitualFlowMaster(type ? resolveRitualMasterForType(type, null) : null);
+    setOpenRitualId(null);
+    setPendingRitualType(type);
+    setShowRitualFlow(true);
+  }, [bootstrapping, isLoggedIn, exitToLandingForNav]);
 
   // In-app nav bus: bottom bar calls plain functions; when already on "/" they invoke
   // these handlers directly (no reload). Cross-route still uses location.assign.

@@ -85,14 +85,14 @@ export const ACHIEVEMENTS = {
   },
   ritual_elements: {
     label: "Все стихии",
-    description: "Провёл обряды всех 5 видов",
+    description: "Провёл обряды всех 7 видов",
     bonus: 50,
     phrase: {
-      ragnar: "Все пять стихий пройдены. Ты знаешь силу каждой.",
-      agafya: "Прошла все пять обрядов. Редкий путь, дитя.",
-      veronika: "Все пять обрядов испытаны — ты знаешь всю палитру.",
-      "shri-raj": "Пять стихий пройдены — колесо сделало полный круг.",
-      numerolog: "Все пять чисел обряда сошлись в одном пути.",
+      ragnar: "Все семь стихий пройдены. Ты знаешь силу каждой.",
+      agafya: "Прошла все семь обрядов. Редкий путь, дитя.",
+      veronika: "Все семь обрядов испытаны — ты знаешь всю палитру.",
+      "shri-raj": "Семь стихий пройдены — колесо сделало полный круг.",
+      numerolog: "Все семь чисел обряда сошлись в одном пути.",
     },
   },
   ritual_full_moon: {
@@ -262,7 +262,7 @@ function checkRitualAchievement(
     case "ritual_first":
       return stats.totalCompleted >= 1;
     case "ritual_elements":
-      return stats.distinctTypesCompleted >= 5;
+      return stats.distinctTypesCompleted >= 7;
     case "ritual_full_moon":
       return stats.hasFullMoonRitual;
     case "ritual_loyal":

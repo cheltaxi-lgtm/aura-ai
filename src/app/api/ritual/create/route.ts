@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -10,8 +11,14 @@ import {
   isRitualAllowedForMaster,
   type RitualMasterKey,
 } from "@/lib/ritual-config";
-import { getRitualSettings, isRitualTypeEnabled, ritualCostFromSettings } from "@/lib/ritual-settings";
+import {
+  getRitualSettings,
+  isRitualCatalogEnabled,
+  isRitualTypeEnabled,
+  ritualCostFromSettings,
+} from "@/lib/ritual-settings";
 import { createRitual, ritualToClient } from "@/lib/ritual-service";
+import { getUserById } from "@/lib/users";
 
 export async function POST(request: NextRequest) {
   await ensureDb();
@@ -19,6 +26,11 @@ export async function POST(request: NextRequest) {
   const authed = await requireProfileUserId();
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const profileRow = await getUserById(authed.profileUserId);
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
   }
 
   const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "ritual_create");
@@ -45,6 +57,9 @@ export async function POST(request: NextRequest) {
   }
 
   const ritualSettings = await getRitualSettings();
+  if (!isRitualCatalogEnabled(ritualSettings)) {
+    return NextResponse.json({ error: "Rituals disabled" }, { status: 400 });
+  }
   if (!isRitualTypeEnabled(ritualSettings, ritualType)) {
     return NextResponse.json({ error: "Ritual type disabled" }, { status: 400 });
   }

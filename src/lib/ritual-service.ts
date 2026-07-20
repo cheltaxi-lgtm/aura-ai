@@ -3,6 +3,7 @@ import { completeChat } from "@/lib/llm";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
   buildRitualPrompt,
+  buildRitualSchemaRetryHint,
   parseRitualJson,
   type RitualGeneratedContent,
 } from "@/lib/ritual-prompt";
@@ -265,10 +266,11 @@ export async function markRitualPaidAndGenerating(
   opts?: { paymentStatus?: "paid" | "free"; transactionId?: string | null }
 ): Promise<RitualRow | null> {
   const paymentStatus = opts?.paymentStatus ?? "paid";
+  // Atomic claim: only transition from payment → generating (prevents double-pay races).
   const { rows } = await query<Record<string, unknown>>(
     `UPDATE rituals
      SET payment_status = $2, transaction_id = $3, status = 'generating', updated_at = NOW()
-     WHERE id = $1
+     WHERE id = $1 AND status = 'payment'
      RETURNING *`,
     [id, paymentStatus, opts?.transactionId ?? null]
   );
@@ -291,7 +293,7 @@ export async function listStuckGeneratingRituals(
   const { rows } = await query<Record<string, unknown>>(
     `SELECT * FROM rituals
      WHERE status = 'generating'
-       AND payment_status = 'paid'
+       AND payment_status IN ('paid', 'free')
        AND updated_at < NOW() - ($1 || ' minutes')::interval
      ORDER BY updated_at ASC
      LIMIT 50`,
@@ -308,7 +310,14 @@ export async function attemptRitualGeneration(
   if (!ritual) return null;
   if (ritual.status === "completed" || ritual.status === "reviewed") return ritual;
   if (ritual.status !== "generating") return null;
-  return generateRitualContent(ritual, userProfile);
+  const generated = await generateRitualContent(ritual, userProfile);
+  if (generated) return generated;
+  // Concurrent generator may have completed first — treat as success if done.
+  const latest = await getRitualById(ritualId);
+  if (latest && (latest.status === "completed" || latest.status === "reviewed")) {
+    return latest;
+  }
+  return null;
 }
 
 export async function saveGeneratedRitual(
@@ -330,7 +339,7 @@ export async function saveGeneratedRitual(
        ritual_signs = $10::jsonb,
        remind_at = $11,
        updated_at = NOW()
-     WHERE id = $1
+     WHERE id = $1 AND status = 'generating'
      RETURNING *`,
     [
       id,
@@ -455,6 +464,12 @@ export async function submitRitualReview(
 ): Promise<boolean> {
   const ritual = await getRitualById(id);
   if (!ritual) return false;
+  if (ritual.status !== "completed" && ritual.status !== "reviewed") {
+    return false;
+  }
+
+  const outcomeText = params.outcomeText?.trim().slice(0, 500) || null;
+  const sharePublicly = Boolean(params.sharePublicly && outcomeText);
 
   await query(
     `UPDATE rituals SET
@@ -463,16 +478,16 @@ export async function submitRitualReview(
        outcome_shared = $4,
        status = 'reviewed',
        updated_at = NOW()
-     WHERE id = $1`,
-    [
-      id,
-      params.outcomeText ?? null,
-      params.outcomeRating,
-      Boolean(params.sharePublicly),
-    ]
+     WHERE id = $1 AND status IN ('completed', 'reviewed')`,
+    [id, outcomeText, params.outcomeRating, sharePublicly || ritual.outcome_shared]
   );
 
-  if (params.sharePublicly && params.outcomeText) {
+  if (
+    sharePublicly &&
+    outcomeText &&
+    outcomeText.length >= 12 &&
+    !ritual.outcome_shared
+  ) {
     await query(
       `INSERT INTO ritual_outcomes_public
          (ritual_type, character_key, outcome_text, outcome_rating)
@@ -480,7 +495,7 @@ export async function submitRitualReview(
       [
         ritual.ritual_type,
         ritual.character_key,
-        params.outcomeText,
+        outcomeText,
         params.outcomeRating,
       ]
     );
@@ -542,7 +557,25 @@ export async function generateRitualContent(
 
   if (!response) return null;
 
-  const parsed = parseRitualJson(response, schedule);
+  let parsed = parseRitualJson(response, schedule);
+  if (!parsed) {
+    console.warn("Ritual JSON schema soft-fail, retrying once");
+    const retryResponse = await completeChat({
+      ...llmBase,
+      temperature: 0.35,
+      maxAttempts: 1,
+      messages: [
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content: prompt },
+        { role: "assistant" as const, content: response },
+        { role: "user" as const, content: buildRitualSchemaRetryHint(response) },
+      ],
+    });
+    if (retryResponse) {
+      parsed = parseRitualJson(retryResponse, schedule);
+    }
+  }
+
   if (!parsed) return null;
 
   return saveGeneratedRitual(ritual.id, parsed);
@@ -626,6 +659,111 @@ export async function markNotificationsRead(userId: string): Promise<void> {
     `UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE`,
     [userId]
   );
+}
+
+export type RitualAdminStatus = RitualStatus;
+
+export interface RitualAdminStats {
+  total: number;
+  byStatus: Record<RitualAdminStatus, number>;
+  stuckGenerating: number;
+  completionRate: number;
+  reviewRate: number;
+  freeShare: number;
+}
+
+export async function getRitualAdminStats(): Promise<RitualAdminStats> {
+  const { rows } = await query<{ status: RitualStatus; count: string }>(
+    `SELECT status, COUNT(*)::text AS count FROM rituals GROUP BY status`
+  );
+  const byStatus: Record<RitualAdminStatus, number> = {
+    questions: 0,
+    spread: 0,
+    payment: 0,
+    generating: 0,
+    completed: 0,
+    reviewed: 0,
+  };
+  let total = 0;
+  for (const row of rows) {
+    const count = Number(row.count) || 0;
+    if (row.status in byStatus) byStatus[row.status] = count;
+    total += count;
+  }
+
+  const { rows: stuckRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM rituals
+     WHERE status = 'generating'
+       AND payment_status IN ('paid', 'free')
+       AND updated_at < NOW() - INTERVAL '15 minutes'`
+  );
+  const stuckGenerating = Number(stuckRows[0]?.count ?? 0);
+
+  const { rows: freeRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM rituals
+     WHERE payment_status = 'free'
+       AND status IN ('completed', 'reviewed', 'generating')`
+  );
+  const freeShare = Number(freeRows[0]?.count ?? 0);
+
+  const finished = byStatus.completed + byStatus.reviewed;
+  const completionRate =
+    total > 0 ? Math.round((finished / total) * 1000) / 10 : 0;
+  const reviewRate =
+    finished > 0 ? Math.round((byStatus.reviewed / finished) * 1000) / 10 : 0;
+
+  return {
+    total,
+    byStatus,
+    stuckGenerating,
+    completionRate,
+    reviewRate,
+    freeShare,
+  };
+}
+
+export interface RitualAdminListItem {
+  id: string;
+  ritualType: RitualType;
+  characterKey: string;
+  status: RitualStatus;
+  paymentStatus: string;
+  runeCost: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listRecentRitualsForAdmin(
+  limit = 30
+): Promise<RitualAdminListItem[]> {
+  const { rows } = await query<{
+    id: string;
+    ritual_type: RitualType;
+    character_key: string;
+    status: RitualStatus;
+    payment_status: string;
+    rune_cost: number;
+    created_at: Date;
+    updated_at: Date;
+  }>(
+    `SELECT id, ritual_type, character_key, status, payment_status, rune_cost, created_at, updated_at
+     FROM rituals
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [Math.max(1, Math.min(100, limit))]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    ritualType: r.ritual_type,
+    characterKey: r.character_key,
+    status: r.status,
+    paymentStatus: r.payment_status,
+    runeCost: Number(r.rune_cost) || 0,
+    createdAt:
+      r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    updatedAt:
+      r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at),
+  }));
 }
 
 export function ritualToClient(ritual: RitualRow) {

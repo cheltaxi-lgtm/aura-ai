@@ -97,6 +97,7 @@ export interface RitualTypePlatformSetting {
 }
 
 export interface RitualPlatformSettings {
+  enabled: boolean;
   types: Record<RitualType, RitualTypePlatformSetting>;
 }
 
@@ -202,6 +203,7 @@ const DEFAULTS = {
     },
   },
   rituals: {
+    enabled: true,
     types: Object.fromEntries(
       RITUAL_TYPE_KEYS.map((key) => [key, { enabled: true, cost: RITUAL_TYPES[key].cost }])
     ) as Record<RitualType, RitualTypePlatformSetting>,

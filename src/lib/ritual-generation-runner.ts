@@ -11,16 +11,26 @@ import { checkRitualAchievements } from "@/lib/achievements";
 
 export type RitualGenerationOutcome =
   | { ok: true; status: "completed"; ritual: RitualRow; freshlyCompleted: boolean }
-  | { ok: false; status: "failed"; error: string; ritual: RitualRow | null };
+  | {
+      ok: false;
+      status: "failed";
+      error: string;
+      ritual: RitualRow | null;
+      /** True only when a real paid charge was refunded. */
+      refunded?: boolean;
+    };
 
-async function rollbackPaidRitual(userId: string, cost: number): Promise<void> {
-  if (cost <= 0) return;
+/** Refund only real paid spends; skip free/unlimited and pass txn id for idempotency. */
+async function rollbackPaidRitual(ritual: RitualRow): Promise<void> {
+  if (ritual.payment_status !== "paid") return;
+  if (ritual.rune_cost <= 0) return;
   try {
     await BillingService.rollbackCharge({
-      userId,
-      cost,
+      userId: ritual.user_id,
+      cost: ritual.rune_cost,
       wasFreeQuestion: false,
       actionType: "ritual",
+      transactionId: ritual.transaction_id ?? undefined,
     });
   } catch (err) {
     console.error("Ritual rune rollback failed:", err);
@@ -46,7 +56,10 @@ export async function runRitualGenerationForUser(params: {
     return { ok: false, status: "failed", error: "needs_payment", ritual };
   }
 
-  if (ritual.status !== "generating" || ritual.payment_status !== "paid") {
+  // Unlimited / billing-off paths set payment_status to "free" after pay.
+  const paidOrFree =
+    ritual.payment_status === "paid" || ritual.payment_status === "free";
+  if (ritual.status !== "generating" || !paidOrFree) {
     return { ok: false, status: "failed", error: "invalid_status", ritual };
   }
 
@@ -62,9 +75,11 @@ export async function runRitualGenerationForUser(params: {
       return { ok: true, status: "completed", ritual: result, freshlyCompleted: true };
     }
 
+    const shouldRefund =
+      params.rollbackOnFailure !== false && ritual.payment_status === "paid";
     await markRitualGenerationFailed(params.ritualId);
-    if (params.rollbackOnFailure !== false) {
-      await rollbackPaidRitual(params.userId, ritual.rune_cost);
+    if (shouldRefund) {
+      await rollbackPaidRitual(ritual);
     }
     const failed = await getRitualById(params.ritualId);
     console.error("Ritual generation failed for", params.ritualId);
@@ -73,11 +88,14 @@ export async function runRitualGenerationForUser(params: {
       status: "failed",
       error: "generation_failed",
       ritual: failed,
+      refunded: shouldRefund,
     };
   } catch (err) {
+    const shouldRefund =
+      params.rollbackOnFailure !== false && ritual.payment_status === "paid";
     await markRitualGenerationFailed(params.ritualId);
-    if (params.rollbackOnFailure !== false) {
-      await rollbackPaidRitual(params.userId, ritual.rune_cost);
+    if (shouldRefund) {
+      await rollbackPaidRitual(ritual);
     }
     console.error("Ritual generation error:", err);
     const failed = await getRitualById(params.ritualId);
@@ -86,6 +104,7 @@ export async function runRitualGenerationForUser(params: {
       status: "failed",
       error: "generation_error",
       ritual: failed,
+      refunded: shouldRefund,
     };
   }
 }
@@ -100,5 +119,6 @@ export function ritualGenerationResponse(
     error: outcome.ok ? undefined : outcome.error,
     ritual: outcome.ritual ? ritualToClient(outcome.ritual) : null,
     achievement: achievement ?? undefined,
+    refunded: outcome.ok ? undefined : Boolean(outcome.refunded),
   };
 }

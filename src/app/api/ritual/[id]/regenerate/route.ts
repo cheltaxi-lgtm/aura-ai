@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { getRuneBalance } from "@/lib/rune-service";
 import {
   ritualGenerationResponse,
   runRitualGenerationForUser,
 } from "@/lib/ritual-generation-runner";
 import { checkRitualAchievements } from "@/lib/achievements";
+import { getUserById } from "@/lib/users";
 
 export const maxDuration = 120;
 
@@ -20,6 +23,17 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const profileRow = await getUserById(authed.profileUserId);
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(
+    authed.auth.sub,
+    "ritual_regenerate"
+  );
+  if (rateLimited) return rateLimited;
 
   const { id } = await context.params;
   const outcome = await runRitualGenerationForUser({
