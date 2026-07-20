@@ -1,14 +1,9 @@
-export type SeoArticle = {
-  slug: string;
-  title: string;
-  description: string;
-  intro: string;
-  sections: { heading: string; body: string }[];
-  intentSlugs: string[];
-  relatedHrefs?: { href: string; title: string }[];
-};
+import type { SeoArticle } from "./articles-types";
+import { SEO_ARTICLES_EXTRA } from "./articles-extra";
 
-export const SEO_ARTICLES: SeoArticle[] = [
+export type { SeoArticle } from "./articles-types";
+
+const SEO_ARTICLES_CORE: SeoArticle[] = [
   {
     slug: "vernetsya-li-on",
     title: "Вернётся ли он: как читать расклад на возвращение",
@@ -457,6 +452,8 @@ export const SEO_ARTICLES: SeoArticle[] = [
     ],
   },
 ];
+
+export const SEO_ARTICLES: SeoArticle[] = [...SEO_ARTICLES_CORE, ...SEO_ARTICLES_EXTRA];
 
 export function getSeoArticleBySlug(slug: string): SeoArticle | undefined {
   return SEO_ARTICLES.find((a) => a.slug === slug);

@@ -5,8 +5,9 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: "Статьи о раскладах Таро | Zovus",
-  description: "Гайды по любовным, карьерным и ежедневным раскладам — с ссылками на онлайн-расклады Zovus.",
+  title: "Статьи: Таро, матрица судьбы, натал, Ленорман | Zovus",
+  description:
+    "База знаний Zovus: гайды по Таро, фото-раскладу, матрице судьбы, натальной карте, Ленорман, рунам и нумерологии.",
   path: "/statyi",
 });
 
@@ -14,9 +15,10 @@ export default function StatyiIndexPage() {
   return (
     <SeoPageShell backHref="/rasklady" backLabel="Каталог раскладов">
       <p className="text-sm text-aura-gold/80">База знаний</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Статьи о раскладах</h1>
+      <h1 className="mt-2 font-display text-3xl font-bold">Статьи о практиках Zovus</h1>
       <p className="mt-4 text-white/70">
-        Короткие гайды по темам — с переходом к готовым раскладам в Zovus.
+        Гайды по Таро, фото-раскладу, матрице судьбы, натальной карте, Ленорман, рунам и числам — с
+        переходом к расчётам и раскладам в сервисе.
       </p>
       <ul className="mt-8 space-y-4">
         {SEO_ARTICLES.map((article) => (

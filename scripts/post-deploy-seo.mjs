@@ -30,7 +30,7 @@ loadEnvFile(join(__dir, "..", ".env.local"));
 
 const goalsDoc = JSON.parse(readFileSync(join(__dir, "metrika-goals.json"), "utf8"));
 
-const PRIORITY_URLS = [
+const CORE_PRIORITY = [
   `${base}/`,
   `${base}/sitemap.xml`,
   `${base}/robots.txt`,
@@ -47,13 +47,42 @@ const PRIORITY_URLS = [
   `${base}/rasklady`,
   `${base}/prognoz`,
   `${base}/statyi`,
-  `${base}/statyi/natalnaya-karta-po-date-rozhdeniya`,
-  `${base}/statyi/chto-takoe-matrica-sudby`,
-  `${base}/statyi/matrica-sudby-po-date-rozhdeniya`,
-  `${base}/statyi/natal-ili-matrica-chto-vybrat`,
   `${base}/terms`,
   `${base}/privacy`,
 ];
+
+/** Wave-1 organic + natal/matrix pillars for IndexNow / checks. */
+const ARTICLE_PRIORITY_SLUGS = [
+  "rasshifrovka-taro-po-foto",
+  "zhdat-ili-otpustit-taro",
+  "svoboden-li-on-gadanie",
+  "znachenie-kart-lenormand",
+  "sochetaniya-lenormand",
+  "foto-rasklad-ili-klassicheskoe-taro",
+  "ascendent-v-natalnoy-karte",
+  "matrica-sudby-dengi",
+  "matrica-sudby-otnosheniya",
+  "numerologiya-i-natalnaya-karta",
+  "natalnaya-karta-po-date-rozhdeniya",
+  "chto-takoe-matrica-sudby",
+  "matrica-sudby-po-date-rozhdeniya",
+  "natal-ili-matrica-chto-vybrat",
+];
+
+function loadAllArticleUrls() {
+  const urls = ARTICLE_PRIORITY_SLUGS.map((slug) => `${base}/statyi/${slug}`);
+  try {
+    const extra = JSON.parse(readFileSync(join(__dir, "seo-article-extra-slugs.json"), "utf8"));
+    if (Array.isArray(extra)) {
+      for (const slug of extra) urls.push(`${base}/statyi/${slug}`);
+    }
+  } catch {
+    /* optional */
+  }
+  return [...new Set(urls)];
+}
+
+const PRIORITY_URLS = [...CORE_PRIORITY, ...loadAllArticleUrls()];
 
 let failed = 0;
 
@@ -80,18 +109,28 @@ async function pingYandexSitemap() {
 }
 
 async function submitIndexNow() {
-  const payload = {
-    host: new URL(base).host,
-    key: INDEXNOW_KEY,
-    keyLocation: `${base}/${INDEXNOW_KEY}.txt`,
-    urlList: PRIORITY_URLS.filter((u) => !u.endsWith(".xml") && !u.endsWith(".txt")),
-  };
-  const res = await fetch("https://yandex.com/indexnow", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify(payload),
-  });
-  ok("Yandex IndexNow submit", res.ok || res.status === 202, `status=${res.status}`);
+  const all = PRIORITY_URLS.filter((u) => !u.endsWith(".xml") && !u.endsWith(".txt"));
+  const chunkSize = 100;
+  let submitted = 0;
+  for (let i = 0; i < all.length; i += chunkSize) {
+    const urlList = all.slice(i, i + chunkSize);
+    const payload = {
+      host: new URL(base).host,
+      key: INDEXNOW_KEY,
+      keyLocation: `${base}/${INDEXNOW_KEY}.txt`,
+      urlList,
+    };
+    const res = await fetch("https://yandex.com/indexnow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+    const pass = res.ok || res.status === 202;
+    ok(`Yandex IndexNow batch ${i / chunkSize + 1}`, pass, `status=${res.status} urls=${urlList.length}`);
+    if (pass) submitted += urlList.length;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  console.log(`IndexNow total submitted URLs: ${submitted}`);
 }
 
 console.log(`=== Post-deploy SEO: ${base} ===\n`);
