@@ -21,6 +21,7 @@ import {
 } from "@/lib/spreads";
 import { getZodiacFromDate } from "@/utils/zodiac";
 import { useTripletCountdown } from "@/hooks/useTripletCountdown";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import ZodiacGlyph from "@/components/ZodiacGlyph";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
@@ -56,14 +57,7 @@ function zodiacFromBirthDate(birthDate?: string) {
 }
 
 function formatDisplayName(name: string) {
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((part) => {
-      if (!part) return part;
-      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-    })
-    .join(" ");
+  return normalizePersonDisplayNameOr(name, name.trim()) || name.trim();
 }
 
 export default function ReadingRecap({

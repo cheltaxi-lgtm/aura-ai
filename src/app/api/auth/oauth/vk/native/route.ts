@@ -44,6 +44,12 @@ export async function POST(request: NextRequest) {
 
     const mode: OAuthMode = body.mode === "register" ? "register" : "login";
     const returnTo = sanitizeReturnTo(body.returnTo, "/");
+    if (body.acceptedTerms !== true || body.ageConfirmed !== true) {
+      return NextResponse.json(
+        { error: "consent_required", code: "consent_required" },
+        { status: 400, headers: OAUTH_NO_STORE_HEADERS }
+      );
+    }
     const info = await fetchVkUserInfo(accessToken, clientId);
     const registrationAttribution = sanitizeRegistrationAttribution(body.attribution);
     const pending: OAuthTransaction = {
@@ -52,8 +58,8 @@ export async function POST(request: NextRequest) {
       redirectUri: "",
       returnTo,
       sessionId: body.sessionId?.trim() || null,
-      acceptedTerms: body.acceptedTerms === true,
-      ageConfirmed: body.ageConfirmed === true,
+      acceptedTerms: true,
+      ageConfirmed: true,
       marketingConsent: body.marketingConsent === true,
       mode,
       appFlow: true,

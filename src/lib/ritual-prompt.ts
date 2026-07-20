@@ -11,6 +11,7 @@ import {
   type RitualSchedule,
 } from "@/lib/ritual-timing";
 import { buildDateAnchorBlock } from "@/lib/prompt-date";
+import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
 
 export { formatRitualCalendarDate } from "@/lib/ritual-timing";
 
@@ -20,7 +21,7 @@ export function buildRitualPrompt(params: {
   userName: string;
   userZodiac: string;
   answers: string[];
-  cards: Array<{ name: string; position: string }>;
+  cards: Array<{ name: string; position: string; meaning?: string }>;
   moonPhase: string;
   moonSign: string;
   referenceDate?: Date;
@@ -69,7 +70,18 @@ ${params.answers
   .join("\n")}
 
 РАСКЛАД (5 карт):
-${params.cards.map((c) => `— ${c.position}: ${c.name}`).join("\n")}
+${(() => {
+  const system = resolveDeckSystem(undefined, params.characterKey);
+  return params.cards
+    .map((c) => {
+      const resolved = resolveDeckCard(system, { name: c.name, meaning: c.meaning });
+      const meaning = c.meaning?.trim() || resolved.shortMeaning || "";
+      return meaning
+        ? `— ${c.position}: «${resolved.name || c.name}» — ${meaning}`
+        : `— ${c.position}: «${c.name}»`;
+    })
+    .join("\n");
+})()}
 
 СОСТАВЬ РИТУАЛ. Отвечай СТРОГО в этом JSON формате:
 

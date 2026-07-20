@@ -31,6 +31,29 @@ assert(
   "photo-reading uses the shared memory-context helper (not hand-rolled blocks)",
   photoRoute.includes("buildMemoryContext") && photoRoute.includes("appendMemoryContextToPrompt")
 );
+assert(
+  "photo-reading injects memory without requiring sessionId",
+  photoRoute.includes("if (profileUserId)") &&
+    !photoRoute.includes("if (profileUserId && resolvedSessionId)")
+);
+
+const dailyEnergy = read("src/lib/daily-energy.ts");
+assert(
+  "daily-energy uses shared memory-context helper",
+  dailyEnergy.includes("buildMemoryContext") && dailyEnergy.includes("appendMemoryContextToPrompt")
+);
+
+const natalLens = read("src/lib/natal/personalization-lens.ts");
+assert(
+  "natal personalization lens uses buildMemoryContext",
+  natalLens.includes("buildMemoryContext") && natalLens.includes("appendMemoryContextToPrompt")
+);
+
+assert(
+  "past sessions load even without current sessionId",
+  buildMemoryContextSrc.includes("userId && includePastSessions") &&
+    !buildMemoryContextSrc.includes("userId && params.sessionId && includePastSessions")
+);
 
 const intentionSpreadRoute = read("src/app/api/intention-spread/route.ts");
 assert(
@@ -178,6 +201,13 @@ assert(
 assert(
   "chat-orchestrator uses the shared memory-context helper",
   orchestrator.includes("buildMemoryContext")
+);
+assert(
+  "chat-orchestrator paid full spreads use reading-mode builders",
+  orchestrator.includes("shouldUsePremiumReadingPrompt") &&
+    orchestrator.includes("buildCharacterPrompt") &&
+    orchestrator.includes("buildHumanReadingPrompt") &&
+    orchestrator.includes("buildPaidSpreadReadingExtras")
 );
 
 assert(

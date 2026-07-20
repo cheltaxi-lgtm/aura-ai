@@ -77,7 +77,14 @@ async function loadImageElementWithRetry(file: File, attempts = 2): Promise<HTML
 }
 
 async function loadImageElementViaBitmap(file: File): Promise<HTMLImageElement> {
-  const bitmap = await createImageBitmap(file);
+  // Respect EXIF Orientation — without this, landscape phone shots stay sideways
+  // and the vision model falsely marks every other card as reversed.
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    bitmap = await createImageBitmap(file);
+  }
   try {
     const canvas = document.createElement("canvas");
     canvas.width = bitmap.width;

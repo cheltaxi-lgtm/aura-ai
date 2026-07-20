@@ -7,6 +7,7 @@ import { isAiMasterId } from "@/lib/showcase-masters";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import {
@@ -253,7 +254,7 @@ export async function POST(request: NextRequest) {
 
   const serverProfile = await getUserById(authed.profileUserId);
   if (serverProfile) {
-    userName = serverProfile.name;
+    userName = normalizePersonDisplayNameOr(serverProfile.name, "друг");
     gender = serverProfile.gender;
     zodiac = serverProfile.zodiac;
     // Normalize DATE::text / dotted client formats to a stable birth-date string.
@@ -572,6 +573,21 @@ export async function POST(request: NextRequest) {
         }
 
         try {
+          const numerologMemoryCtx = await buildMemoryContext({
+            userId: authed.profileUserId,
+            characterId: "numerolog",
+            sessionId: sessionId ?? undefined,
+            profile: {
+              name: userName,
+              birthDate,
+              mainQuestion: customQuestion || undefined,
+            },
+            lastUserMessage: customQuestion || tool.label,
+            mainQuestion: customQuestion || undefined,
+          });
+          const numerologMemoryBlock =
+            `${numerologMemoryCtx.clientBlock}${numerologMemoryCtx.pastSessionsBlock}${numerologMemoryCtx.factsBlock}`.trim() ||
+            undefined;
           const sessionResult = await generateNumerologSessionReading({
             toolId,
             toolParams: numerologToolParams,
@@ -579,6 +595,7 @@ export async function POST(request: NextRequest) {
             birthDate,
             fullName: userName,
             spreadNumbers,
+            memoryBlock: numerologMemoryBlock,
           });
           reading = sessionResult.reply;
           numerologyUi = sessionResult.numerologyUi;

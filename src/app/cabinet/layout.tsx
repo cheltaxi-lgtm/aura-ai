@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import CabinetAgeGate from "@/components/cabinet/CabinetAgeGate";
 import CabinetAppShellMarker from "./CabinetAppShellMarker";
 
 export const metadata: Metadata = {
@@ -9,7 +10,7 @@ export default function CabinetLayout({ children }: { children: React.ReactNode 
   return (
     <>
       <CabinetAppShellMarker />
-      {children}
+      <CabinetAgeGate>{children}</CabinetAgeGate>
     </>
   );
 }

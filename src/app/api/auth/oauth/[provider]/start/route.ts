@@ -8,6 +8,7 @@ import {
   checkOAuthRequestRateLimit,
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
+import { oauthErrorRedirect } from "@/lib/oauth/finish";
 import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { parseAttributionQueryParam } from "@/lib/registration-attribution";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
@@ -53,6 +54,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const registrationAttribution = parseAttributionQueryParam(
       url.searchParams.get("attribution")
     );
+
+    if (!acceptedTerms || !ageConfirmed) {
+      return NextResponse.redirect(
+        oauthAbsoluteUrl(request, oauthErrorRedirect("consent_required", mode, returnTo)),
+        { headers: OAUTH_NO_STORE_HEADERS }
+      );
+    }
 
     const codeVerifier = createCodeVerifier();
     const codeChallenge = createCodeChallenge(codeVerifier);

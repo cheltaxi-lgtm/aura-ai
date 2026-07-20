@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { completeChat } from "@/lib/llm";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
   buildRitualPrompt,
   parseRitualJson,
@@ -497,7 +498,7 @@ export async function generateRitualContent(
   const prompt = buildRitualPrompt({
     characterKey: ritual.character_key,
     ritualType: ritual.ritual_type,
-    userName: userProfile.name,
+    userName: normalizePersonDisplayNameOr(userProfile.name, "друг"),
     userZodiac: userProfile.zodiac,
     answers: ritual.answers,
     cards: ritual.cards,
@@ -507,8 +508,16 @@ export async function generateRitualContent(
     schedule,
   });
 
+  const { wrapSystemPrompt } = await import("@/lib/prompt-policy");
+  const systemPrompt = await wrapSystemPrompt(
+    "Ты составляешь персональный ритуал Zovus по раскладу. Честность по символам обязательна; не смягчай тень карт. Ответ — строго JSON по инструкции пользователя."
+  );
+
   const llmBase = {
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: prompt },
+    ],
     maxTokens: 4096,
     temperature: 0.55,
     allowReasoningFallback: true,

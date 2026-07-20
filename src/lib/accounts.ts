@@ -1,5 +1,6 @@
 import { query, queryClient, withTransaction } from "./db";
 import { deleteUserTripletForMaster } from "./triplet-cleanup";
+import { normalizeStoredDisplayName } from "./normalize-person-name";
 import { getUserById } from "./users";
 import { tarotCardsKey } from "./tarot";
 
@@ -93,7 +94,8 @@ export async function getProfileUserIdForAccount(accountId: string): Promise<str
 }
 
 export async function updateUserAccountName(accountId: string, name: string) {
-  await query("UPDATE user_accounts SET name = $2 WHERE id = $1", [accountId, name.trim()]);
+  const normalized = normalizeStoredDisplayName(name, name.trim() || "Гость");
+  await query("UPDATE user_accounts SET name = $2 WHERE id = $1", [accountId, normalized]);
 }
 
 export interface AccountConsentSnapshot {
@@ -124,6 +126,62 @@ export async function getAccountConsentSnapshot(
     marketingConsent: Boolean(row.marketing_consent),
     marketingConsentAt: row.marketing_consent_at?.toISOString() ?? null,
   };
+}
+
+export async function hasAccountAgeConfirmed(accountId: string): Promise<boolean> {
+  const snap = await getAccountConsentSnapshot(accountId);
+  return Boolean(snap?.ageConfirmedAt);
+}
+
+/** Persist explicit 18+ / terms consent on the account (and linked profile meta). */
+export async function recordAccountLegalConsent(
+  accountId: string,
+  opts: {
+    ageConfirmed?: boolean;
+    acceptedTerms?: boolean;
+    marketingConsent?: boolean;
+  }
+): Promise<AccountConsentSnapshot | null> {
+  const now = new Date().toISOString();
+  const ageAt = opts.ageConfirmed === true ? now : null;
+  const termsAt = opts.acceptedTerms === true ? now : null;
+  const marketingOn = opts.marketingConsent === true;
+
+  await query(
+    `UPDATE user_accounts SET
+       age_confirmed_at = CASE
+         WHEN $2::timestamptz IS NOT NULL THEN COALESCE(age_confirmed_at, $2::timestamptz)
+         ELSE age_confirmed_at
+       END,
+       terms_accepted_at = CASE
+         WHEN $3::timestamptz IS NOT NULL THEN COALESCE(terms_accepted_at, $3::timestamptz)
+         ELSE terms_accepted_at
+       END,
+       marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
+       marketing_consent_at = CASE
+         WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
+         ELSE marketing_consent_at
+       END
+     WHERE id = $1`,
+    [accountId, ageAt, termsAt, marketingOn, marketingOn ? now : null]
+  );
+
+  if (opts.ageConfirmed === true) {
+    const profileUserId = await getProfileUserIdForAccount(accountId);
+    if (profileUserId) {
+      await query(
+        `UPDATE users
+         SET astro_meta = COALESCE(astro_meta, '{}'::jsonb) || $2::jsonb
+         WHERE id = $1`,
+        [
+          profileUserId,
+          JSON.stringify({ ageConfirmed: true, ageConfirmedAt: now }),
+        ]
+      );
+    }
+  }
+
+  return getAccountConsentSnapshot(accountId);
 }
 
 export async function linkAccountToProfile(

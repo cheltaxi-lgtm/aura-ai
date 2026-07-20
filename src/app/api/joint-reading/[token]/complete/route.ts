@@ -6,6 +6,7 @@ import {
   resolveJointParticipantRole,
   submitJointReadingSide,
 } from "@/lib/joint-reading-service";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { getSpread } from "@/lib/spreads";
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     cards,
     sessionId,
     characterKey,
-    profileName: profile?.name ?? null,
+    profileName: normalizePersonDisplayName(profile?.name) || profile?.name || null,
   });
 
   if (!updated.ok) {

@@ -1,6 +1,25 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { normalizeAuthEmail } from "@/lib/auth";
+import {
+  displayNameNeedsNormalization,
+  normalizeStoredDisplayName,
+} from "@/lib/normalize-person-name";
 import type { OAuthProvider, OAuthUserInfo } from "./types";
+
+async function maybeNormalizeAccountName(
+  client: PoolClient,
+  accountId: string,
+  currentName: string
+): Promise<string> {
+  if (!displayNameNeedsNormalization(currentName)) return currentName;
+  const cleaned = normalizeStoredDisplayName(currentName);
+  if (cleaned === currentName) return currentName;
+  await queryClient(client, "UPDATE user_accounts SET name = $2 WHERE id = $1", [
+    accountId,
+    cleaned,
+  ]);
+  return cleaned;
+}
 
 export interface OAuthIdentityRow {
   id: string;
@@ -113,10 +132,36 @@ export async function upsertOAuthAccountWithClient(
         opts.info.gender ?? null,
       ]
     );
+    if (opts.consent) {
+      await queryClient(
+        client,
+        `UPDATE user_accounts SET
+           terms_accepted_at = COALESCE(terms_accepted_at, $2::timestamptz),
+           age_confirmed_at = COALESCE(age_confirmed_at, $3::timestamptz),
+           marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
+           marketing_consent_at = CASE
+             WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
+             ELSE marketing_consent_at
+           END
+         WHERE id = $1`,
+        [
+          existingIdentity.user_account_id,
+          opts.consent.termsAcceptedAt,
+          opts.consent.ageConfirmedAt,
+          opts.consent.marketingConsent,
+          opts.consent.marketingConsentAt,
+        ]
+      );
+    }
+    const accountName = await maybeNormalizeAccountName(
+      client,
+      existingIdentity.user_account_id,
+      existingIdentity.account_name
+    );
     return {
       accountId: existingIdentity.user_account_id,
       email: existingIdentity.account_email,
-      name: existingIdentity.account_name,
+      name: accountName,
       isNewUser: false,
     };
   }
@@ -147,10 +192,32 @@ export async function upsertOAuthAccountWithClient(
           opts.info.gender ?? null,
         ]
       );
+      if (opts.consent) {
+        await queryClient(
+          client,
+          `UPDATE user_accounts SET
+             terms_accepted_at = COALESCE(terms_accepted_at, $2::timestamptz),
+             age_confirmed_at = COALESCE(age_confirmed_at, $3::timestamptz),
+             marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
+             marketing_consent_at = CASE
+               WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
+               ELSE marketing_consent_at
+             END
+           WHERE id = $1`,
+          [
+            account.id,
+            opts.consent.termsAcceptedAt,
+            opts.consent.ageConfirmedAt,
+            opts.consent.marketingConsent,
+            opts.consent.marketingConsentAt,
+          ]
+        );
+      }
+      const accountName = await maybeNormalizeAccountName(client, account.id, account.name);
       return {
         accountId: account.id,
         email: account.email,
-        name: account.name,
+        name: accountName,
         isNewUser: false,
       };
     }
@@ -160,7 +227,7 @@ export async function upsertOAuthAccountWithClient(
     throw new Error("CONSENT_REQUIRED");
   }
 
-  const trimmedName = opts.info.name.trim().slice(0, 80) || "Гость";
+  const trimmedName = normalizeStoredDisplayName(opts.info.name, "Гость");
 
   const attributionJson = opts.registrationAttribution
     ? JSON.stringify(opts.registrationAttribution)

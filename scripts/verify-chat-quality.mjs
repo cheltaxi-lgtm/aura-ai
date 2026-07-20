@@ -23,6 +23,8 @@ import {
   formatMemoryFactForDisplay,
   normalizeUserFactPhrase,
 } from "../src/lib/memory/user-fact-display.ts";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 let failed = 0;
 
@@ -162,6 +164,28 @@ assert(
 assert(
   "user submitted fact rejects tarot meta",
   validateUserSubmittedFact("карта таро говорит о любви") === null
+);
+
+const root = resolve(import.meta.dirname, "..");
+const humanChat = readFileSync(resolve(root, "src/lib/chat-prompts.ts"), "utf8");
+assert(
+  "human chat prompt includes card meanings and CARD_GROUNDED",
+  humanChat.includes("Выпавшие карты (единственный источник выводов)") &&
+    humanChat.includes("CARD_GROUNDED_READING_RULES")
+);
+
+const premiumReading = readFileSync(resolve(root, "src/lib/prompts/premium-reading.ts"), "utf8");
+assert(
+  "shared premium reading helper exists",
+  premiumReading.includes("buildPaidSpreadReadingExtras") &&
+    premiumReading.includes("paidSpreadMaxTokens") &&
+    premiumReading.includes("ЧЕСТНОСТЬ ОПЛАЧЕННОГО РАСКЛАДА")
+);
+
+const honesty = readFileSync(resolve(root, "src/lib/prompt-policy.ts"), "utf8");
+assert(
+  "honesty policy names darkness without soft watering-down",
+  honesty.includes("без смягчения") && honesty.includes("одна короткая фраза про выбор")
 );
 
 console.log(`\n--- ${failed} failed ---`);

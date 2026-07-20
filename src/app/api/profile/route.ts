@@ -210,7 +210,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (name?.trim()) {
-      await updateUserAccountName(auth.sub, name.trim());
+      await updateUserAccountName(auth.sub, payload.name);
     }
 
     const serialized = profile ? serializeUserProfile(profile) : null;

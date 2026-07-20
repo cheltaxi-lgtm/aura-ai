@@ -20,7 +20,7 @@ import {
   TAROT_RUNE_THEATER_BAN,
   TAROT_RUNE_MARKDOWN_FORMAT,
   TAROT_RUNE_CHAT_FORMAT,
-  TAROT_RUNE_THEMATIC_READING_RULES,
+  tarotRuneThematicReadingRules,
 } from "@/lib/prompts/tarot-rune-format";
 import { MARINA_PERSONA } from "@/lib/prompts/masters/marina";
 import { getSessionTopic } from "@/lib/session-topics";
@@ -89,7 +89,11 @@ export function buildHumanReadingPrompt(
   ctx: UserContext,
   knowledge?: string,
   intention?: string | null,
-  options?: { spreadId?: string | null; positionLabels?: string[] }
+  options?: {
+    spreadId?: string | null;
+    positionLabels?: string[];
+    forceThematicReading?: boolean;
+  }
 ): string {
   const persona = buildHumanMasterPersona(blogger, knowledge);
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
@@ -100,31 +104,41 @@ export function buildHumanReadingPrompt(
     resolveSpreadPositions(spreadId, intention as SessionTopicId | null | undefined).map(
       (p) => p.label
     );
-  const cardsSlice = ctx.tarotCards.slice(0, spread.cardCount);
+  const cardCount = options?.positionLabels?.length
+    ? Math.min(ctx.tarotCards.length, options.positionLabels.length)
+    : Math.min(ctx.tarotCards.length, spread.cardCount);
+  const cardsSlice = ctx.tarotCards.slice(0, Math.max(1, cardCount));
   const cards = cardsSlice
     .map((c, i) => `${positions[i] ?? `Позиция ${i + 1}`}: «${c.name}» — ${c.meaning}`)
     .join("\n");
 
-  const thematic = Boolean(intention?.trim() && intention !== "life_death");
-  const topicLabel = thematic ? (getSessionTopic(intention!)?.label ?? intention) : null;
-  const cardWord = spread.cardCount === 1 ? "карту" : `${spread.cardCount} символов`;
+  const thematic =
+    Boolean(options?.forceThematicReading) ||
+    Boolean(intention?.trim() && intention !== "life_death");
+  const topicLabel = thematic
+    ? intention && intention !== "life_death"
+      ? (getSessionTopic(intention)?.label ?? intention)
+      : "фото-расклад"
+    : null;
+  const n = cardsSlice.length || 1;
+  const cardWord = n === 1 ? "карту" : `${n} символов`;
 
   const paywallRule = ctx.isPaid
     ? thematic
       ? `Клиент оплатил тематический расклад «${topicLabel}» — дай полную глубину по всем ${cardWord} строго через эту тему.`
       : `Пользователь оплатил доступ — дай полную расшифровку всех ${cardWord} подробно.`
-    : spread.cardCount <= 1
+    : n <= 1
       ? "Пользователь НЕ оплатил: дай интригующий крючок без полной расшифровки."
-      : `Пользователь НЕ оплатил: подробно распиши ТОЛЬКО первый символ. По остальным ${spread.cardCount - 1} — интригующий крючок без полной расшифровки.`;
+      : `Пользователь НЕ оплатил: подробно распиши ТОЛЬКО первый символ. По остальным ${n - 1} — интригующий крючок без полной расшифровки.`;
 
   const lengthRule = tarotRune
     ? thematic && ctx.isPaid
-      ? TAROT_RUNE_THEMATIC_READING_RULES
+      ? tarotRuneThematicReadingRules(n)
       : TAROT_RUNE_MARKDOWN_FORMAT
     : thematic && ctx.isPaid
-      ? `${thematicSpreadReadingRules(spread.cardCount)}\n\n${spreadFinalConclusionRules(spread.cardCount)}`
+      ? `${thematicSpreadReadingRules(n)}\n\n${spreadFinalConclusionRules(n)}`
       : ctx.isPaid
-        ? `${responseFormatForSpread(spread.cardCount)}\n\n${spreadFinalConclusionRules(spread.cardCount)}`
+        ? `${responseFormatForSpread(n)}\n\n${spreadFinalConclusionRules(n)}`
         : "7. От пяти до двенадцати предложений. Каждый вывод — только по символам ниже, с названием карты.";
 
   const formatTail = tarotRune
@@ -162,7 +176,7 @@ export function buildHumanChatPrompt(
   ctx: Partial<UserContext>,
   knowledge?: string
 ): string {
-  const parts = [buildHumanMasterPersona(blogger, knowledge)];
+  const parts = [buildHumanMasterPersona(blogger, knowledge), CARD_GROUNDED_READING_RULES];
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
 
   if (ctx.userName) {
@@ -173,15 +187,19 @@ export function buildHumanChatPrompt(
   if (ctx.birthDate) parts.push(`Дата рождения: ${ctx.birthDate}.`);
   if (ctx.today) parts.push(`Сегодня: ${ctx.today}.`);
   if (ctx.tarotCards?.length) {
-    parts.push(
-      `Карты расклада: ${ctx.tarotCards.map((c) => c.name).join(", ")}. Учитывай их в ответах.`
-    );
+    const cardLines = ctx.tarotCards
+      .map((c, i) => {
+        const meaning = c.meaning?.trim() ? ` — ${c.meaning.trim()}` : "";
+        return `${i + 1}. «${c.name}»${meaning}`;
+      })
+      .join("\n");
+    parts.push(`Выпавшие карты (единственный источник выводов):\n${cardLines}`);
   }
   if (ctx.mainQuestion) parts.push(`Главный вопрос: «${ctx.mainQuestion}».`);
   parts.push(
     tarotRune
-      ? `Отвечай на русском. ${TAROT_RUNE_CHAT_FORMAT} Каждый вывод — только по символам расклада с названием карты и её значением.`
-      : "Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов."
+      ? `Отвечай на русском. ${TAROT_RUNE_CHAT_FORMAT} Каждый вывод — только по символам расклада с названием карты и её значением из блока выше.`
+      : "Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов. Если символы показывают тень — называй прямо."
   );
   return parts.join("\n");
 }
@@ -194,6 +212,9 @@ export function buildCharacterPrompt(
     memory?: SessionMemory[];
     intention?: string | null;
     spreadId?: string | null;
+    spreadType?: string | null;
+    positionLabels?: string[];
+    forceThematicReading?: boolean;
     lastUserMessage?: string;
     customQuestion?: string | null;
     numerologyBlock?: string;
@@ -205,6 +226,9 @@ export function buildCharacterPrompt(
     mode: "reading",
     intention: extras?.intention ?? null,
     spreadId: extras?.spreadId ?? null,
+    spreadType: extras?.spreadType ?? null,
+    positionLabels: extras?.positionLabels,
+    forceThematicReading: extras?.forceThematicReading,
     lastUserMessage: extras?.lastUserMessage ?? ctx.mainQuestion,
     customQuestion: extras?.customQuestion ?? null,
     numerologyBlock: extras?.numerologyBlock,

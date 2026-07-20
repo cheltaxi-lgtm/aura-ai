@@ -1,9 +1,15 @@
 #!/usr/bin/env node
-import { normalizePersonDisplayName } from "../src/lib/normalize-person-name.ts";
+import {
+  displayNameNeedsNormalization,
+  normalizePersonDisplayName,
+  normalizeStoredDisplayName,
+} from "../src/lib/normalize-person-name.ts";
 
 const cases = [
   ["Gennady Kharitonov", "Геннадий"],
   ["gennadiy", "Геннадий"],
+  ["Гennadiy", "Геннадий"],
+  ["Гennady", "Геннадий"],
   ["Alexander Pushkin", "Александр"],
   ["maria", "Мария"],
   ["Анна Иванова", "Анна"],
@@ -22,7 +28,32 @@ for (const [input, expected] of cases) {
   }
 }
 
+const storedCases = [
+  ["Gennadiy Kharitonov", "Геннадий"],
+  ["Гennadiy", "Геннадий"],
+  ["", "Гость"],
+  ["Олег", "Олег"],
+];
+for (const [input, expected] of storedCases) {
+  const actual = normalizeStoredDisplayName(input);
+  if (actual !== expected) {
+    console.error(
+      `FAIL stored: ${JSON.stringify(input)} => ${JSON.stringify(actual)} (expected ${JSON.stringify(expected)})`
+    );
+    failed += 1;
+  }
+}
+
+if (!displayNameNeedsNormalization("Gennadiy")) {
+  console.error("FAIL: Gennadiy should need normalization");
+  failed += 1;
+}
+if (displayNameNeedsNormalization("Геннадий")) {
+  console.error("FAIL: Геннадий should not need normalization");
+  failed += 1;
+}
+
 if (failed) {
   process.exit(1);
 }
-console.log(`verify-normalize-person-name OK (${cases.length} cases)`);
+console.log(`verify-normalize-person-name OK (${cases.length + storedCases.length} cases)`);

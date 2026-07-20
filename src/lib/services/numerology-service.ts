@@ -167,6 +167,7 @@ export async function generateNumerologSpreadOpeningReading(input: {
   birthDate?: string;
   fullName?: string;
   spreadNumbers: string[];
+  memoryBlock?: string;
 }): Promise<string> {
   const spreadNumbers = input.spreadNumbers.slice(0, 3);
   const mathSummary = buildNumerologSpreadReading({
@@ -181,7 +182,9 @@ export async function generateNumerologSpreadOpeningReading(input: {
 
   // Authoritative facts: drawn spread + path/year context. Profile-only blocks (destiny/soul)
   // must not replace this — the model then asks for numbers or invents wrong ones in «Простыми словами».
-  const engineFacts = mathSummary;
+  const engineFacts = input.memoryBlock?.trim()
+    ? `${input.memoryBlock.trim()}\n\n${mathSummary}`
+    : mathSummary;
 
   const [analysisRaw, finaleRaw] = await Promise.all([
     generateNumerologMainReading({
@@ -220,6 +223,7 @@ export async function generateNumerologSessionReading(input: {
   birthDate?: string;
   fullName?: string;
   spreadNumbers: string[];
+  memoryBlock?: string;
 }): Promise<{ reply: string; numerologyUi?: NumerologyUi }> {
   const tool = getNumerologTool(input.toolId);
   const spreadNumbers = input.spreadNumbers.slice(0, tool.drawCount);
@@ -231,6 +235,7 @@ export async function generateNumerologSessionReading(input: {
         birthDate: input.birthDate,
         fullName: input.fullName,
         spreadNumbers,
+        memoryBlock: input.memoryBlock,
       }),
     };
   }
@@ -244,6 +249,7 @@ export async function generateNumerologSessionReading(input: {
     lastUserMessage: message,
     recentUserMessages: [],
     spreadNumbers,
+    memoryBlock: input.memoryBlock,
   });
 
   if (streamed) {
@@ -258,6 +264,7 @@ export async function generateNumerologSessionReading(input: {
     lastUserMessage: message,
     recentUserMessages: [],
     spreadNumbers,
+    memoryBlock: input.memoryBlock,
   });
 
   if (!fallback) {

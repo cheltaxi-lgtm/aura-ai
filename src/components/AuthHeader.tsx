@@ -5,6 +5,7 @@ import { LogIn, LogOut, User, Sparkles } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
 import NotificationBell from "@/components/NotificationBell";
 import { navigateToCabinet } from "@/lib/app-shell-nav";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import type { AuthUser } from "@/lib/useAuth";
 
 export const NAVIGATE_CABINET_EVENT = "aura:navigate-cabinet";
@@ -45,7 +46,7 @@ export default function AuthHeader({
         <button type="button" onClick={openCabinet} className={btnClass} title="Личный кабинет">
           <User className="h-4 w-4 shrink-0" aria-hidden />
           <span className={compact ? "hidden sm:inline" : undefined}>
-            {user.name.split(" ")[0]}
+            {normalizePersonDisplayNameOr(user.name, user.name.split(" ")[0])}
           </span>
         </button>
         <button

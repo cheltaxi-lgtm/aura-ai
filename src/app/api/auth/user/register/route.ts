@@ -3,6 +3,7 @@ import { ensureDb, queryClient, withTransaction } from "@/lib/db";
 import { findUserByEmail } from "@/lib/accounts";
 import { validateDisplayName, validatePasswordLength } from "@/lib/auth-policy";
 import { hashPassword, setAuthCookie, normalizeAuthEmail } from "@/lib/auth";
+import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (nameError) {
       return NextResponse.json({ error: nameError }, { status: 400 });
     }
-    const trimmedName = String(name).trim();
+    const trimmedName = normalizeStoredDisplayName(String(name), String(name).trim());
 
     const email = normalizeAuthEmail(String(rawEmail));
 

@@ -6,8 +6,13 @@ import {
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
-import { buildNatalEvidence, formatEvidencePrompt } from "@/lib/natal/evidence";
 import {
+  buildNatalEvidence,
+  formatEvidencePromptCompact,
+  selectEvidenceForForecastPrompt,
+} from "@/lib/natal/evidence";
+import {
+  buildMinimalNatalReport,
   buildNatalReportJsonInstructions,
   natalReportToPlainText,
 } from "@/lib/natal/report";
@@ -22,6 +27,7 @@ import {
 import { getOrComputePersonalTiming } from "@/lib/services/natal-timing-service";
 import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
 import {
   profileAuthFailureResponse,
   resolveProfileUserContext,
@@ -29,6 +35,7 @@ import {
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { getUserById } from "@/lib/users";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
   beginWorkerJobSave,
@@ -116,8 +123,10 @@ export async function POST(request: NextRequest) {
   const reportType = `forecast:${horizon}:${timing.windowStart}`;
   const claimKey = reportType;
   const evidence = buildNatalEvidence(chart, { tradition: "western", timing });
-  const evidenceBlock = formatEvidencePrompt(evidence);
-  const timingEvidenceIds = evidence
+  // Cap prompt evidence so long-horizon forecasts fit LLM context/output reliably.
+  const promptEvidence = selectEvidenceForForecastPrompt(evidence, horizon);
+  const evidenceBlock = formatEvidencePromptCompact(promptEvidence);
+  const timingEvidenceIds = promptEvidence
     .filter((item) => item.tradition === "timing")
     .map((item) => item.id);
   if (!timingEvidenceIds.length) {
@@ -164,17 +173,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Карта изменилась. Обновите страницу." }, { status: 409 });
   }
 
-  const systemPrompt = await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Создай персональный вероятностный прогноз на русском языке на период ${timing.windowStart} — ${timing.windowEnd}.
+  const forecastUser = await getUserById(auth.profileUserId).catch(() => null);
+  const clientDisplayName = normalizePersonDisplayName(forecastUser?.name) || null;
+  const systemPrompt = await appendNatalPersonalizationLens(
+    await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Создай персональный вероятностный прогноз на русском языке на период ${timing.windowStart} — ${timing.windowEnd}.
 Опирайся ТОЛЬКО на evidence ниже. Не придумывай события, даты, положения или evidence ID. Конкретные даты называй только при наличии соответствующего evidence.
 ${buildNatalReportJsonInstructions("western", "forecast", horizon)}
 Не используй фатальные формулировки. Отделяй рассчитанные астрологические факторы от символической интерпретации.
 Координаты, дата, время и город рождения не переданы.
+${clientDisplayName ? `Имя клиента в тексте: «${clientDisplayName}» — только кириллица, без латиницы и смешанных написаний.` : ""}
 
 EVIDENCE:
 ${evidenceBlock}
 
 TIMING EVIDENCE ID (обязательны в summary, currentPeriod, recommendations):
-${timingEvidenceIds.join("\n")}`);
+${timingEvidenceIds.join("\n")}`),
+    { profileUserId: auth.profileUserId, user: forecastUser }
+  );
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
@@ -198,17 +213,16 @@ ${timingEvidenceIds.join("\n")}`);
       userId: auth.profileUserId,
       action: "FORECAST_REPORT",
     });
-    const user = await getUserById(auth.profileUserId).catch(() => null);
     const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
       {
         role: "user",
-        content: `Создай прогноз для ${user?.name ?? "клиента"} на ${horizon} дней. horizonDays в JSON должен быть ${horizon}. Верни только JSON.`,
+        content: `Создай прогноз для ${clientDisplayName ?? "клиента"} на ${horizon} дней. horizonDays в JSON должен быть ${horizon}. Верни только JSON.`,
       },
     ];
-    const generated = await generateValidatedNatalReport({
+    let generated = await generateValidatedNatalReport({
       baseMessages,
-      evidence,
+      evidence: promptEvidence,
       tradition: "western",
       reportType: "forecast",
       horizonDays: horizon,
@@ -216,27 +230,37 @@ ${timingEvidenceIds.join("\n")}`);
       evidenceIdsHint: timingEvidenceIds,
       repairHint:
         "В summary, currentPeriod и recommendations каждый claim должен ссылаться минимум на один timing evidence ID.",
-      clientName: user?.name ?? undefined,
+      clientName: clientDisplayName ?? undefined,
     });
     if (!generated.ok) {
       console.warn(
-        "[natal-chart] forecast validation failed:",
+        "[natal-chart] forecast validation failed, using evidence fallback:",
         generated.errors.slice(0, 12),
-        `evidence=${evidence.length}`
+        `evidence=${promptEvidence.length}/${evidence.length}`
       );
-      await rollback();
-      await trackWorkerJobFailed(
-        request,
-        "Модель не смогла создать проверяемый прогноз. Оплата возвращена.",
-        { refunded: true, errorCode: "invalid_model_report" }
+      const fallback = buildMinimalNatalReport(
+        evidence,
+        "western",
+        "forecast",
+        horizon,
+        FORECAST_METADATA_DEFAULTS
       );
-      return NextResponse.json(
-        {
-          error: "Модель не смогла создать проверяемый прогноз. Оплата возвращена.",
-          refunded: true,
-        },
-        { status: 502 }
-      );
+      if (!fallback.ok) {
+        await rollback();
+        await trackWorkerJobFailed(
+          request,
+          "Не удалось подготовить прогноз по расчётным данным. Оплата возвращена.",
+          { refunded: true, errorCode: "invalid_model_report" }
+        );
+        return NextResponse.json(
+          {
+            error: "Не удалось подготовить прогноз по расчётным данным. Оплата возвращена.",
+            refunded: true,
+          },
+          { status: 502 }
+        );
+      }
+      generated = { ok: true, report: fallback.report, raw: null };
     }
 
     const report = generated.report;

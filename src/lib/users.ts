@@ -2,8 +2,13 @@
 import { deleteUserChatForCharacter } from "./accounts";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
 import { buildAstroMeta } from "./astro-profile";
+import { normalizeStoredDisplayName } from "./normalize-person-name";
 import { clearDailyReadingAnchors } from "./rate-limit-anchors";
 import { tarotCardsKey } from "./tarot";
+
+function storedProfileName(name: string): string {
+  return normalizeStoredDisplayName(name, name.trim() || "Гость");
+}
 
 export interface UserRow {
   id: string;
@@ -49,7 +54,7 @@ export async function createUserProfileForAccount(
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING ${USER_COLUMNS}`,
       [
-        data.name.trim(),
+        storedProfileName(data.name),
         data.gender,
         data.birthDate,
         data.zodiac,
@@ -87,8 +92,8 @@ export async function createUserProfileForAccount(
 
     await queryClient(
       client,
-      "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
-      [accountId, created.id]
+      "UPDATE user_accounts SET profile_user_id = $2, name = $3 WHERE id = $1",
+      [accountId, created.id, created.name]
     );
     return created;
   });
@@ -103,7 +108,7 @@ export async function createUserProfile(data: CreateUserProfileInput): Promise<U
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${USER_COLUMNS}`,
     [
-      data.name.trim(),
+      storedProfileName(data.name),
       data.gender,
       data.birthDate,
       data.zodiac,
@@ -149,7 +154,7 @@ export async function updateUserProfile(
      RETURNING ${USER_COLUMNS}`,
     [
       id,
-      data.name.trim(),
+      storedProfileName(data.name),
       data.gender,
       data.birthDate,
       data.zodiac,

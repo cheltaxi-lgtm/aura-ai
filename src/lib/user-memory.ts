@@ -1,5 +1,6 @@
 import { query, ensureDb } from "@/lib/db";
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { tarotCardsKey } from "@/lib/tarot";
 import {
   periodSpreadTaskLabel,
@@ -164,7 +165,9 @@ export function buildClientBlock(
   if (!profile) return "";
   const query = queryText?.trim() ?? "";
   const lines: string[] = [];
-  if (profile.name) lines.push(`Имя: ${profile.name}.`);
+  if (profile.name) {
+    lines.push(`Имя: ${normalizePersonDisplayNameOr(profile.name, profile.name)}.`);
+  }
   if (profile.gender) lines.push(`Пол: ${profile.gender}.`);
   if (profile.zodiac) lines.push(`Знак: ${profile.zodiac}.`);
   if (profile.birthDate) lines.push(`Дата рождения: ${profile.birthDate}.`);
@@ -185,11 +188,12 @@ export function buildClientBlock(
 export async function buildMemoryBlock(
   userId: string,
   characterKey: string,
-  currentSessionId: string,
+  currentSessionId?: string | null,
   queryText?: string
 ): Promise<string> {
   if (!(await ensureDb())) return "";
 
+  const excludeSession = Boolean(currentSessionId?.trim());
   const { rows } = await query<{
     topic_summary: string;
     key_cards: string[] | null;
@@ -197,15 +201,23 @@ export async function buildMemoryBlock(
     mood: string | null;
     session_date: Date;
   }>(
-    `SELECT topic_summary, key_cards, prediction, mood, session_date
-     FROM session_memories
-     WHERE user_id = $1
-       AND character_key = $2
-       AND session_id IS NOT NULL
-       AND session_id <> $3
-     ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
-     LIMIT 3`,
-    [userId, characterKey, currentSessionId]
+    excludeSession
+      ? `SELECT topic_summary, key_cards, prediction, mood, session_date
+         FROM session_memories
+         WHERE user_id = $1
+           AND character_key = $2
+           AND session_id IS NOT NULL
+           AND session_id <> $3
+         ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
+         LIMIT 3`
+      : `SELECT topic_summary, key_cards, prediction, mood, session_date
+         FROM session_memories
+         WHERE user_id = $1
+           AND character_key = $2
+           AND session_id IS NOT NULL
+         ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
+         LIMIT 3`,
+    excludeSession ? [userId, characterKey, currentSessionId] : [userId, characterKey]
   );
 
   if (!rows.length) return "";

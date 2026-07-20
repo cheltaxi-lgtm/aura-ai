@@ -7,7 +7,7 @@ import {
   TAROT_RUNE_THEATER_BAN,
   TAROT_RUNE_MARKDOWN_FORMAT,
   TAROT_RUNE_CHAT_FORMAT,
-  TAROT_RUNE_THEMATIC_READING_RULES,
+  tarotRuneThematicReadingRules,
 } from "./tarot-rune-format";
 import { buildGenderPronounBlock, SPREAD_TRUTH_RULES } from "./gender-context";
 import { AGAFYA_PERSONA } from "./masters/agafya";
@@ -68,14 +68,21 @@ function astroLines(user: PromptUserContext): string[] {
 function spreadLabelsForPrompt(
   character: CharacterKey,
   spreadId?: string | null,
-  intention?: string | null
+  intention?: string | null,
+  positionLabels?: string[],
+  cardCount = 3
 ): string[] {
+  if (positionLabels?.length) {
+    return positionLabels.slice(0, Math.max(cardCount, positionLabels.length));
+  }
   if (spreadId) {
     return resolveSpreadPositions(spreadId, intention as SessionTopicId | null | undefined).map(
       (p) => p.label
     );
   }
-  return [...getDeckPositions(resolveMasterDeckSystem(character))].slice(0, 3);
+  const deckLabels = [...getDeckPositions(resolveMasterDeckSystem(character))];
+  if (cardCount <= deckLabels.length) return deckLabels.slice(0, cardCount);
+  return Array.from({ length: cardCount }, (_, i) => deckLabels[i] ?? `Позиция ${i + 1}`);
 }
 
 function cardsBlock(
@@ -97,7 +104,8 @@ function clientBlock(
   character: CharacterKey,
   lastUserMessage?: string,
   spreadId?: string | null,
-  intention?: string | null
+  intention?: string | null,
+  positionLabels?: string[]
 ): string {
   const sessionLabel = user.sessionNumber && user.sessionNumber > 1
     ? `Это ${user.sessionNumber}-й сеанс с этим клиентом.`
@@ -106,6 +114,8 @@ function clientBlock(
   const questionLine = lastUserMessage?.trim()
     ? `- Последний вопрос клиента: «${lastUserMessage.trim()}» — ответь именно на него, опираясь на символы.`
     : "";
+
+  const cardCount = user.cards.length;
 
   return `
 ДАННЫЕ КЛИЕНТА:
@@ -118,7 +128,7 @@ function clientBlock(
 ${questionLine}
 
 ВЫПАВШИЕ СИМВОЛЫ (единственный источник выводов — читай значения каждой карты):
-${cardsBlock(user.cards, spreadLabelsForPrompt(character, spreadId, intention))}
+${cardsBlock(user.cards, spreadLabelsForPrompt(character, spreadId, intention, positionLabels, cardCount))}
 ${astroLines(user).map((l) => `- ${l}`).join("\n")}`;
 }
 
@@ -143,11 +153,17 @@ export interface BuildPromptOptions {
   lastUserMessage?: string;
   intention?: string | null;
   spreadId?: string | null;
+  /** e.g. "photo" — relaxes required card count for hasCompleteSpread */
+  spreadType?: string | null;
+  /** Override position labels (photo redraw / custom layouts) */
+  positionLabels?: string[];
   customQuestion?: string | null;
   /** Pre-built numerology block (avoids double computation in chat API). */
   numerologyBlock?: string;
   /** Pre-built natal chart block for Shri Raj (server-computed). */
   natalChartBlock?: string;
+  /** Force thematic depth rules even without a catalog intention (photo / custom) */
+  forceThematicReading?: boolean;
 }
 
 export function buildSystemPrompt(
@@ -160,8 +176,9 @@ export function buildSystemPrompt(
   const displayName = MASTER_DISPLAY[character];
   const thematicReading =
     mode === "reading" &&
-    Boolean(options.intention?.trim() && options.intention !== "life_death") &&
-    user.isPaid;
+    user.isPaid &&
+    (Boolean(options.forceThematicReading) ||
+      Boolean(options.intention?.trim() && options.intention !== "life_death"));
 
   const topics =
     options.topics ??
@@ -171,7 +188,8 @@ export function buildSystemPrompt(
 
   const hasSpread = hasCompleteSpread(
     user.cards.map((c) => (typeof c === "string" ? c : c.name)),
-    options.spreadId
+    options.spreadId,
+    options.spreadType
   );
 
   const numerologyBlock =
@@ -197,7 +215,9 @@ export function buildSystemPrompt(
     if (tarotRune) {
       const theater = TAROT_RUNE_THEATER_BAN;
       if (mode === "chat") return `${theater}\n${TAROT_RUNE_CHAT_FORMAT}`;
-      if (thematicReading) return `${theater}\n${TAROT_RUNE_THEMATIC_READING_RULES}`;
+      if (thematicReading) {
+        return `${theater}\n${tarotRuneThematicReadingRules(spreadCardCount)}`;
+      }
       return `${theater}\n${TAROT_RUNE_MARKDOWN_FORMAT}`;
     }
     if (thematicReading) return thematicSpreadReadingRules(spreadCardCount);
@@ -231,7 +251,14 @@ export function buildSystemPrompt(
     CONTEXT_RULES,
     SPREAD_TRUTH_RULES,
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
-    clientBlock(user, character, options.lastUserMessage, options.spreadId, options.intention),
+    clientBlock(
+      user,
+      character,
+      options.lastUserMessage,
+      options.spreadId,
+      options.intention,
+      options.positionLabels
+    ),
     buildGenderPronounBlock(user, options.lastUserMessage),
     formatLegacySessionMemories(user.memory ?? [], displayName, legacyMemoryQuery),
     buildTopicBlock(character, topics),
@@ -245,7 +272,7 @@ export function buildSystemPrompt(
           : `РЕЖИМ: полный расклад — дай развёрнутую расшифровку всех ${spreadCardCount} символов.`,
     formatBlock,
     spreadFinalBlock,
-    mode === "reading" && hasSpread
+    mode === "reading" && hasSpread && options.spreadType !== "photo"
       ? getSpreadInstructions(
           character,
           options.spreadId,

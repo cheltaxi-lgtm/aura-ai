@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clearAuthCookie, getAuth } from "@/lib/auth";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getProfileUserIdForAccount, hasAccountAgeConfirmed } from "@/lib/accounts";
 import { getLatestOAuthGenderForAccount } from "@/lib/oauth/accounts";
 import { clearSessionClaimCookie } from "@/lib/session-claim";
 
@@ -14,10 +14,12 @@ export async function GET() {
 
   let profileUserId: string | null = null;
   let oauthGender: "male" | "female" | null = null;
+  let ageConfirmed = true;
   if (auth.role === "user") {
-    [profileUserId, oauthGender] = await Promise.all([
+    [profileUserId, oauthGender, ageConfirmed] = await Promise.all([
       getProfileUserIdForAccount(auth.sub),
       getLatestOAuthGenderForAccount(auth.sub),
+      hasAccountAgeConfirmed(auth.sub),
     ]);
   }
 
@@ -25,7 +27,7 @@ export async function GET() {
   return NextResponse.json({
     authenticated: true,
     needsProfile,
-    user: { ...auth, profileUserId, oauthGender },
+    user: { ...auth, profileUserId, oauthGender, ageConfirmed },
   });
 }
 

@@ -2,13 +2,20 @@ import { NextResponse } from "next/server";
 
 import { checkAchievements } from "@/lib/achievements";
 import {
+  buildCharacterPrompt,
   buildChatPrompt,
   buildHumanChatPrompt,
+  buildHumanReadingPrompt,
   generateChatReply,
   regenerateChatReply,
   buildChatFallbackReply,
   llmUnavailableReply,
+  type UserContext,
 } from "@/lib/chat-prompts";
+import {
+  buildPaidSpreadReadingExtras,
+  paidSpreadMaxTokens,
+} from "@/lib/prompts/premium-reading";
 import {
   resolveApiCharacterId,
   sanitizeChatHistory,
@@ -17,6 +24,10 @@ import {
   type ChatHistoryMessage,
   type SanitizedUserProfile,
 } from "@/lib/chat-sanitize";
+import {
+  normalizePersonDisplayName,
+  normalizePersonDisplayNameOr,
+} from "@/lib/normalize-person-name";
 import { createChatResponseStream, createDeterministicTextStream } from "@/lib/chat-stream";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { completeProseWithContinuation } from "@/lib/prose-completion";
@@ -640,12 +651,13 @@ export class ChatOrchestrator {
       .slice(-12)
       .map((m) => m.content);
 
+    const addressName = normalizePersonDisplayNameOr(this.userProfile?.name, "друг");
     return {
       characterId: this.characterId,
       imageBase64: this.imageBase64,
-      userName: this.userProfile?.name,
+      userName: addressName,
       birthDate: this.userProfile?.birthDate,
-      profileName: this.userProfile?.name,
+      profileName: addressName,
       lastUserMessage: this.lastUserMsg,
       recentUserMessages,
       spreadNumbers,
@@ -659,9 +671,10 @@ export class ChatOrchestrator {
       month: "long",
       year: "numeric",
     });
+    const addressName = normalizePersonDisplayNameOr(this.userProfile?.name, "друг");
 
     return {
-      userName: this.userProfile?.name,
+      userName: addressName,
       gender: this.userProfile?.gender,
       zodiac: this.userProfile?.zodiac,
       birthDate: this.userProfile?.birthDate,
@@ -676,13 +689,51 @@ export class ChatOrchestrator {
     };
   }
 
+  /** Paid opening of a full spread — use reading-mode depth, not chat 5–12 sentences. */
+  private shouldUsePremiumReadingPrompt(): boolean {
+    const paid = this.billingHandle?.sessionHasFullAccess ?? false;
+    if (!paid || !this.isLongFormSpreadReply()) return false;
+    if (this.periodSpreadScope) return true;
+    const userTurns = this.messages.filter((m) => m.role === "user").length;
+    if (userTurns <= 1) return true;
+    if (
+      this.resolvedIntention === "life_death" &&
+      this.lifeDeathReadyToRead &&
+      userTurns <= 2
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private toReadingUserContext(chatCtx: ReturnType<ChatOrchestrator["buildChatContext"]>): UserContext {
+    return {
+      userName: chatCtx.userName ?? "друг",
+      gender: chatCtx.gender ?? "",
+      zodiac: chatCtx.zodiac ?? "",
+      birthDate: chatCtx.birthDate ?? "",
+      today: chatCtx.today ?? "",
+      tarotCards: (chatCtx.tarotCards ?? []).map((c) => ({
+        name: c.name,
+        meaning: c.meaning ?? "",
+        position: (c as { position?: string }).position,
+      })),
+      isPaid: Boolean(chatCtx.isPaid),
+      birthTime: chatCtx.birthTime,
+      birthCity: chatCtx.birthCity,
+      lifeFocus: chatCtx.lifeFocus,
+      mainQuestion: chatCtx.mainQuestion,
+      astroMeta: chatCtx.astroMeta,
+    };
+  }
+
   /** Assembles system prompt: character, blogger knowledge, user memory, intention/spread blocks. */
   async buildSystemPrompt(): Promise<string> {
     const chatCtx = this.buildChatContext();
     const { numerologyBlock } = buildNumerologyPromptContext({
       characterId: this.characterId,
       birthDate: this.userProfile?.birthDate,
-      profileName: this.userProfile?.name,
+      profileName: normalizePersonDisplayName(this.userProfile?.name) || undefined,
       lastUserMessage: this.lastUserMsg,
     });
     const natalChartBlock = await buildNatalPromptContext({
@@ -709,14 +760,16 @@ export class ChatOrchestrator {
       }
     }
 
-    let systemPrompt = buildChatPrompt(this.characterId, chatCtx, {
-      sessionNumber,
-      memory: [],
-      lastUserMessage: this.lastUserMsg,
-      intention: this.periodSpreadScope ? null : this.resolvedIntention,
-      numerologyBlock,
-      natalChartBlock,
+    const sessionHasFullAccess = this.billingHandle?.sessionHasFullAccess ?? false;
+    const usePremiumReading = this.shouldUsePremiumReadingPrompt();
+    const readingCtx = this.toReadingUserContext(chatCtx);
+    const positionLabels = (chatCtx.tarotCards ?? []).map((c, i) => {
+      const pos = (c as { position?: string }).position?.trim();
+      return pos || `Позиция ${i + 1}`;
     });
+    const cardCount = Math.max(1, readingCtx.tarotCards.length);
+
+    let systemPrompt: string;
 
     if (this.dbOk) {
       const humanSlug = !isAiMasterId(this.characterId)
@@ -728,15 +781,92 @@ export class ChatOrchestrator {
         if (blogger) {
           const knowledge = await getBloggerKnowledge(blogger.id);
           if (!isAiMasterId(this.characterId)) {
-            systemPrompt = buildHumanChatPrompt(blogger, chatCtx, knowledge);
+            systemPrompt = usePremiumReading
+              ? buildHumanReadingPrompt(
+                  blogger,
+                  readingCtx,
+                  knowledge,
+                  this.periodSpreadScope ? null : this.resolvedIntention,
+                  {
+                    spreadId: this.resolvedSpreadId ?? this.spreadId,
+                    positionLabels,
+                    forceThematicReading: true,
+                  }
+                )
+              : buildHumanChatPrompt(blogger, chatCtx, knowledge);
+            if (usePremiumReading) {
+              systemPrompt += `\n\n${buildPaidSpreadReadingExtras({
+                cardCount,
+                masterId: this.characterId,
+              })}`;
+            }
+          } else if (usePremiumReading) {
+            systemPrompt = buildCharacterPrompt(this.characterId, readingCtx, {
+              sessionNumber,
+              memory: [],
+              lastUserMessage: this.lastUserMsg,
+              intention: this.periodSpreadScope ? null : this.resolvedIntention,
+              spreadId: this.resolvedSpreadId ?? this.spreadId,
+              forceThematicReading: true,
+              positionLabels,
+              numerologyBlock,
+              natalChartBlock,
+            });
+            systemPrompt += `\n\nСтиль мастера ${blogger.display_name}: ${blogger.style_notes ?? ""}\nБаза знаний:\n${knowledge}`;
+            systemPrompt += `\n\n${buildPaidSpreadReadingExtras({
+              cardCount,
+              masterId: this.characterId,
+            })}`;
           } else {
+            systemPrompt = buildChatPrompt(this.characterId, chatCtx, {
+              sessionNumber,
+              memory: [],
+              lastUserMessage: this.lastUserMsg,
+              intention: this.periodSpreadScope ? null : this.resolvedIntention,
+              numerologyBlock,
+              natalChartBlock,
+            });
             systemPrompt += `\n\nСтиль мастера ${blogger.display_name}: ${blogger.style_notes ?? ""}\nБаза знаний:\n${knowledge}`;
           }
+        } else {
+          systemPrompt = "";
         }
+      } else {
+        systemPrompt = "";
+      }
+    } else {
+      systemPrompt = "";
+    }
+
+    if (!systemPrompt) {
+      systemPrompt = usePremiumReading
+        ? buildCharacterPrompt(this.characterId, readingCtx, {
+            sessionNumber,
+            memory: [],
+            lastUserMessage: this.lastUserMsg,
+            intention: this.periodSpreadScope ? null : this.resolvedIntention,
+            spreadId: this.resolvedSpreadId ?? this.spreadId,
+            forceThematicReading: true,
+            positionLabels,
+            numerologyBlock,
+            natalChartBlock,
+          })
+        : buildChatPrompt(this.characterId, chatCtx, {
+            sessionNumber,
+            memory: [],
+            lastUserMessage: this.lastUserMsg,
+            intention: this.periodSpreadScope ? null : this.resolvedIntention,
+            numerologyBlock,
+            natalChartBlock,
+          });
+      if (usePremiumReading) {
+        systemPrompt += `\n\n${buildPaidSpreadReadingExtras({
+          cardCount,
+          masterId: this.characterId,
+        })}`;
       }
     }
 
-    const sessionHasFullAccess = this.billingHandle?.sessionHasFullAccess ?? false;
     if (!sessionHasFullAccess && this.userProfile && this.tarotCards?.length) {
       const spread = getSpread(this.resolvedSpreadId ?? this.spreadId);
       if (spread.cardCount <= 1) {
@@ -764,9 +894,16 @@ export class ChatOrchestrator {
     const cardNamesForBlock = this.resolvedCardNames.length
       ? this.resolvedCardNames
       : this.tarotCards?.map((c) => c.name) ?? [];
+    const cardsWithMeanings = (this.tarotCards ?? []).map((c) => ({
+      name: c.name,
+      meaning: c.meaning ?? "",
+      position: (c as { position?: string }).position,
+    }));
 
-    if (this.periodSpreadScope && cardNamesForBlock.length >= 3) {
-      systemPrompt += `\n\n${buildPeriodSpreadBlock(this.periodSpreadScope, cardNamesForBlock)}`;
+    if (this.periodSpreadScope && cardNamesForBlock.length >= 1) {
+      systemPrompt += `\n\n${buildPeriodSpreadBlock(this.periodSpreadScope, cardNamesForBlock, {
+        cardsWithMeanings,
+      })}`;
     } else {
       systemPrompt += buildSpreadBlock(
         this.resolvedSpreadType,
@@ -775,6 +912,7 @@ export class ChatOrchestrator {
         {
           readyToRead: this.lifeDeathReadyToRead,
           spreadId: this.resolvedSpreadId ?? this.spreadId,
+          cardsWithMeanings,
         }
       );
     }
@@ -788,7 +926,15 @@ export class ChatOrchestrator {
     }
 
     if (this.lastUserMsg.trim()) {
-      systemPrompt += `
+      if (usePremiumReading) {
+        systemPrompt += `
+
+ОПЛАЧЕННЫЙ ПОЛНЫЙ РАСКЛАД — запрос клиента:
+«${this.lastUserMsg.trim().slice(0, 400)}»
+
+Дай развёрнутую расшифровку всех символов по правилам выше. Память — только если про ту же тему. Без чат-тизера и без удержания глубины.`;
+      } else {
+        systemPrompt += `
 
 ЧАТ — ПОСЛЕДНЯЯ РЕПЛИКА КЛИЕНТА (ответь на неё):
 «${this.lastUserMsg.trim().slice(0, 400)}»
@@ -798,6 +944,7 @@ export class ChatOrchestrator {
 - каждая руна/карта расклада — отдельная мысль, без повторения одной формулировки;
 - не пересказывай слова клиента дословно;
 - если вопрос уже уточнён (например «переезд») — не спрашивай снова «какой выбор», отвечай по сути.`;
+      }
     }
 
     if (this.llmMessages.length > 2 && this.memoryBlock) {
@@ -820,16 +967,16 @@ export class ChatOrchestrator {
 
   /** Long-form spread replies (period chips, new/daily spread) need more output budget. */
   private streamMaxTokens(): number {
-    if (this.periodSpreadScope) return 4200;
+    const cards = this.activeSpreadCardNames();
+    if (this.shouldUsePremiumReadingPrompt() || this.periodSpreadScope) {
+      return paidSpreadMaxTokens(cards.length || 3);
+    }
     const spreadId = this.resolvedSpreadId ?? this.spreadId;
-    const cards = this.resolvedCardNames.length
-      ? this.resolvedCardNames
-      : this.tarotCards?.map((c) => c.name) ?? [];
     if (
       cards.length >= 3 &&
       hasCompleteSpread(cards, spreadId, this.resolvedSpreadType ?? this.spreadType)
     ) {
-      return 3600;
+      return paidSpreadMaxTokens(cards.length);
     }
     return 1800;
   }
@@ -914,7 +1061,7 @@ export class ChatOrchestrator {
     console.warn("[chat] paid spread incomplete after continuation — using fallback");
     const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
     const fallback = buildChatFallbackReply(this.characterId, {
-      userName: this.userProfile?.name ?? "друг",
+      userName: normalizePersonDisplayNameOr(this.userProfile?.name, "друг"),
       lastUserMessage: this.lastUserMsg,
       cardNames,
       intention: this.periodSpreadScope ? null : this.resolvedIntention,
@@ -996,7 +1143,7 @@ export class ChatOrchestrator {
           ? qualityOpts.cardNames!
           : this.resolvedCardNames;
       const fallback = buildChatFallbackReply(this.characterId, {
-        userName: this.userProfile?.name ?? "друг",
+        userName: normalizePersonDisplayNameOr(this.userProfile?.name, "друг"),
         lastUserMessage: this.lastUserMsg,
         cardNames: cardNames ?? [],
         intention: this.periodSpreadScope ? null : this.resolvedIntention,

@@ -18,6 +18,8 @@ export interface AuthUser {
   slug?: string;
   profileUserId?: string | null;
   oauthGender?: "male" | "female" | null;
+  /** Explicit account 18+ consent (`user_accounts.age_confirmed_at`). */
+  ageConfirmed?: boolean;
 }
 
 function sleep(ms: number): Promise<void> {

@@ -300,7 +300,8 @@ export function buildSpreadSummaryForLlm(spread: RedrawSpread): string {
       c.originalName !== c.name
         ? `«${c.originalName}» (на фото) → Zovus: «${c.name}»`
         : `«${c.name}»`;
-    return `${i + 1}. ${c.position}: ${label}${c.reversed ? " (перевёрнутая)" : ""}${
+    const meaning = c.shortMeaning?.trim() ? ` — ${c.shortMeaning.trim()}` : "";
+    return `${i + 1}. ${c.position}: ${label}${c.reversed ? " (перевёрнутая)" : ""}${meaning}${
       c.placeholder ? " [нет арта Zovus — трактуй по названию с фото]" : ""
     }`;
   });
@@ -308,7 +309,7 @@ export function buildSpreadSummaryForLlm(spread: RedrawSpread): string {
     `Система Zovus: ${spread.system}`,
     spread.deckType ? `Колода на фото: ${spread.deckType}` : "",
     spread.spreadType ? `Схема: ${spread.spreadType}` : "",
-    `Подтверждённые символы (${spread.cards.length}):`,
+    `Подтверждённые символы (${spread.cards.length}) — читай каждое значение ниже как источник фактов:`,
     ...lines,
   ]
     .filter(Boolean)

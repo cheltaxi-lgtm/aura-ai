@@ -2,9 +2,12 @@ import { getNatalModel } from "@/lib/ai-model";
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import type { NatalEvidence } from "./evidence";
 import {
+  buildMinimalNatalReport,
   extractJsonObject,
   NATAL_REPORT_SECTION_KEYS,
+  NATAL_REPORT_VERSION,
   prepareNatalReportCandidate,
+  salvageNatalReport,
   validateNatalReport,
   type NatalReport,
   type NatalReportSection,
@@ -32,8 +35,11 @@ export type GenerateValidatedNatalReportResult =
   | { ok: false; errors: string[]; raw: string | null; reason?: "llm_empty" | "validation" };
 
 const INITIAL_TIMEOUT_MS = 90_000;
+const INITIAL_TIMEOUT_FORECAST_LONG_MS = 120_000;
 const REPAIR_TIMEOUT_MS = 60_000;
-const MAX_REPAIR_PASSES = 1;
+const SECTION_TIMEOUT_MS = 55_000;
+const MAX_REPAIR_PASSES_DEFAULT = 1;
+const MAX_REPAIR_PASSES_FORECAST = 2;
 
 const PLACEHOLDER_CLAIM_RE = /Ключевой вывод по разделу/i;
 const GENERIC_TEXT_RE =
@@ -44,13 +50,44 @@ const EVIDENCE_ID_PAREN_RE =
   /\s*\((?:ne|не)\.(?:timing|western|vedic)\.[a-z0-9._-]+\)/giu;
 const EVIDENCE_ID_RE = /(?:ne|не)\.(?:timing|western|vedic)\.[a-z0-9._-]+/giu;
 
-const CHAT_OPTS = {
-  maxTokens: 8000,
-  jsonObject: true as const,
-  allowReasoningFallback: false,
-  skipTemperatureRetry: true,
-  maxAttempts: 2,
-};
+function substantiveThresholds(params: GenerateValidatedNatalReportParams): {
+  minSection: number;
+  minReport: number;
+} {
+  if (params.reportType !== "forecast") {
+    return { minSection: MIN_SECTION_TEXT_LENGTH, minReport: MIN_REPORT_TEXT_LENGTH };
+  }
+  const horizon = params.horizonDays ?? 30;
+  if (horizon <= 7) return { minSection: 160, minReport: 1_400 };
+  if (horizon <= 30) return { minSection: 200, minReport: 1_800 };
+  // Long horizons: prefer complete JSON over very long prose.
+  return { minSection: 180, minReport: 1_600 };
+}
+
+function chatOptsFor(
+  params: GenerateValidatedNatalReportParams,
+  mode: "full" | "section" = "full"
+) {
+  const forecast = params.reportType === "forecast";
+  const longForecast = forecast && (params.horizonDays ?? 30) >= 90;
+  if (mode === "section") {
+    return {
+      maxTokens: 2_800,
+      jsonObject: true as const,
+      allowReasoningFallback: true,
+      skipTemperatureRetry: true,
+      maxAttempts: 3,
+    };
+  }
+  return {
+    maxTokens: longForecast ? 10_000 : forecast ? 8_000 : 8_000,
+    jsonObject: true as const,
+    // Natal forecasts frequently hit empty/truncated completions; allow alternate model path.
+    allowReasoningFallback: forecast,
+    skipTemperatureRetry: true,
+    maxAttempts: forecast ? 3 : 2,
+  };
+}
 
 const JSON_CONTINUE_USER_PROMPT =
   "JSON обрезан на лимите токенов. Верни ПОЛНЫЙ JSON-объект целиком: все 8 разделов sections в правильном порядке, disclaimer и methodology. Без markdown.";
@@ -64,16 +101,20 @@ function appendJsonChunk(combined: string, chunk: string): string {
   return `${prior}${next}`;
 }
 
-function isSubstantiveReport(report: NatalReport): boolean {
+function isSubstantiveReport(
+  report: NatalReport,
+  params: GenerateValidatedNatalReportParams
+): boolean {
+  const { minSection, minReport } = substantiveThresholds(params);
   const totalLength = report.sections.reduce(
     (sum, section) =>
       sum + section.claims.reduce((sectionSum, claim) => sectionSum + claim.text.trim().length, 0),
     0
   );
-  return totalLength >= MIN_REPORT_TEXT_LENGTH && report.sections.every((section) =>
+  return totalLength >= minReport && report.sections.every((section) =>
     section.claims.some(
       (claim) =>
-        claim.text.trim().length >= MIN_SECTION_TEXT_LENGTH &&
+        claim.text.trim().length >= minSection &&
         !PLACEHOLDER_CLAIM_RE.test(claim.text) &&
         !GENERIC_TEXT_RE.test(claim.text) &&
         claim.evidenceIds.length > 0
@@ -87,15 +128,50 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function transliterateLatinName(name: string): string {
-  // Prefer shared first-name normalizer; fall back to full-string map for report sanitizer.
-  const first = normalizePersonDisplayName(name);
-  if (first && !/\s/.test(name.trim())) return first;
-  return name
-    .split(/\s+/)
-    .map((part) => normalizePersonDisplayName(part) || part)
-    .filter(Boolean)
-    .join(" ");
+function displayClientName(name: string): string {
+  return normalizePersonDisplayName(name) || name.trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Replace Latin / mixed-script spellings of the client name with clean Russian. */
+function replaceClientNameForms(text: string, clientName: string): string {
+  const russianName = displayClientName(clientName);
+  if (!russianName) return text;
+
+  const variants = new Set<string>();
+  const raw = clientName.trim();
+  if (raw) variants.add(raw);
+  for (const part of raw.split(/\s+/)) {
+    if (part.length >= 2) variants.add(part);
+  }
+  // Common LLM mangling: Cyrillic first letter + Latin tail ("Гennadiy").
+  if (/^[A-Za-z]/.test(raw)) {
+    const rest = raw.slice(1);
+    const firstUpper = raw.charAt(0).toUpperCase();
+    const cyrMap: Record<string, string> = { G: "Г", g: "г", A: "А", a: "а", E: "Е", e: "е", O: "О", o: "о", P: "Р", p: "р", C: "С", c: "с", T: "Т", t: "т", H: "Н", K: "К", k: "к", M: "М", m: "м", B: "В", X: "Х", x: "х" };
+    if (cyrMap[firstUpper]) variants.add(`${cyrMap[firstUpper]}${rest}`);
+    if (cyrMap[raw.charAt(0)]) variants.add(`${cyrMap[raw.charAt(0)]}${rest}`);
+  }
+
+  let output = text;
+  for (const variant of variants) {
+    if (!variant || variant === russianName) continue;
+    output = output.replace(new RegExp(escapeRegExp(variant), "giu"), russianName);
+  }
+
+  // Any remaining mixed/Latin token that normalizes to the same given name.
+  output = output.replace(/[A-Za-z\u0400-\u04FFёЁ-]{2,}/gu, (token) => {
+    const normalized = normalizePersonDisplayName(token);
+    if (normalized && normalized.toLowerCase() === russianName.toLowerCase()) {
+      return russianName;
+    }
+    return token;
+  });
+
+  return output;
 }
 
 function sanitizeNatalText(text: string, clientName?: string): string {
@@ -105,18 +181,8 @@ function sanitizeNatalText(text: string, clientName?: string): string {
     .replace(/\b(?:в|по)\s+(?:вашем\s+)?натальном раскладе\b/giu, "в вашей натальной карте")
     .replace(/\bв вашем раскладе\b/giu, "в вашей натальной карте");
   const rawName = clientName?.trim();
-  if (rawName && /[a-z]/i.test(rawName)) {
-    const russianName = transliterateLatinName(rawName);
-    output = output.replace(new RegExp(rawName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu"), russianName);
-    const sourceParts = rawName.split(/\s+/);
-    const targetParts = russianName.split(/\s+/);
-    sourceParts.forEach((part, index) => {
-      if (!part || !targetParts[index]) return;
-      output = output.replace(
-        new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "giu"),
-        targetParts[index]!
-      );
-    });
+  if (rawName) {
+    output = replaceClientNameForms(output, rawName);
   }
   return output
     .replace(/\(\s*\)/g, "")
@@ -146,18 +212,20 @@ function sanitizeNatalReport(
 
 function isSubstantiveSection(
   value: unknown,
-  expectedKey: NatalReportSectionKey
+  expectedKey: NatalReportSectionKey,
+  params: GenerateValidatedNatalReportParams
 ): value is NatalReportSection {
   const section = record(value);
   if (!section || section.key !== expectedKey) return false;
   const title = typeof section.title === "string" ? section.title.trim() : "";
   if (!title) return false;
+  const { minSection } = substantiveThresholds(params);
   const claims = Array.isArray(section.claims) ? section.claims : [];
   return claims.some((value) => {
     const claim = record(value);
     const text = typeof claim?.text === "string" ? claim.text.trim() : "";
     return (
-      text.length >= MIN_SECTION_TEXT_LENGTH &&
+      text.length >= minSection &&
       !PLACEHOLDER_CLAIM_RE.test(text) &&
       !GENERIC_TEXT_RE.test(text)
     );
@@ -168,15 +236,27 @@ async function requestNatalReportJson(
   messages: ChatMessage[],
   timeoutMs: number,
   temperature: number,
-  model: string
+  model: string,
+  params?: GenerateValidatedNatalReportParams,
+  mode: "full" | "section" = "full"
 ): Promise<string | null> {
   const thread: ChatMessage[] = [...messages];
   let combined = "";
+  const opts = params
+    ? chatOptsFor(params, mode)
+    : {
+        maxTokens: 8_000,
+        jsonObject: true as const,
+        allowReasoningFallback: false,
+        skipTemperatureRetry: true,
+        maxAttempts: 2,
+      };
+  const maxContinuationPasses = mode === "section" ? 2 : 4;
 
-  for (let pass = 0; pass < 3; pass++) {
+  for (let pass = 0; pass < maxContinuationPasses; pass++) {
     const result = await completeChatDetailed({
       messages: thread,
-      ...CHAT_OPTS,
+      ...opts,
       modelOverride: model,
       temperature,
       timeoutMs,
@@ -198,10 +278,16 @@ async function requestNatalReportJson(
 
     if (parseable && !truncated) return combined;
     if (!truncated) return combined;
-    if (pass >= 2) return combined || null;
+    if (pass >= maxContinuationPasses - 1) return combined || null;
 
     thread.push({ role: "assistant", content: combined });
-    thread.push({ role: "user", content: JSON_CONTINUE_USER_PROMPT });
+    thread.push({
+      role: "user",
+      content:
+        mode === "section"
+          ? "JSON обрезан. Верни ПОЛНЫЙ JSON одного раздела целиком: key, title, claims. Без markdown."
+          : JSON_CONTINUE_USER_PROMPT,
+    });
   }
 
   return combined || null;
@@ -242,7 +328,9 @@ function buildRepairMessage(errors: string[], params: GenerateValidatedNatalRepo
   const lines = [
     "Исправь JSON и верни его полностью, без сокращений и markdown.",
     "В массиве sections должно быть ровно 8 объектов в порядке: summary, personality, relationships, career, resources, tensions, currentPeriod, recommendations.",
-    "Каждый раздел должен содержать глубокий персональный текст: 5–8 предложений, минимум 350 знаков, конкретные факторы из evidence и практический вывод.",
+    params.reportType === "forecast" && (params.horizonDays ?? 30) <= 7
+      ? "Каждый раздел: 3–6 предложений, минимум 180 знаков, конкретные факторы из evidence и практический вывод."
+      : "Каждый раздел должен содержать глубокий персональный текст: 5–8 предложений, минимум 300 знаков, конкретные факторы из evidence и практический вывод.",
     "Каждый claim должен содержать непустой text и хотя бы один точный evidence ID из списка ниже.",
     "Удали универсальные фразы и смысловые повторы между разделами.",
     params.reportType === "forecast" && params.horizonDays
@@ -285,10 +373,17 @@ function sectionRepairPrompt(
     (key === "summary" || key === "currentPeriod" || key === "recommendations")
       ? "Каждый claim обязан ссылаться минимум на один timing evidence ID с префиксом ne.timing."
       : "";
+  const { minSection } = substantiveThresholds(params);
+  const depthHint =
+    params.reportType === "forecast" && (params.horizonDays ?? 30) <= 7
+      ? `персональный разбор объёмом 3–5 предложений и не менее ${minSection} знаков`
+      : params.reportType === "forecast"
+        ? `персональный разбор объёмом 3–6 предложений и не менее ${minSection} знаков`
+        : `глубокий персональный разбор объёмом 5–8 предложений и не менее ${minSection} знаков`;
   return [
     `Предыдущий JSON не содержал полноценный раздел "${key}".`,
     "Создай ТОЛЬКО этот раздел как JSON-объект без markdown:",
-    `{"key":"${key}","title":"выразительный русский заголовок","claims":[{"text":"глубокий персональный разбор объёмом 5–8 предложений и не менее 350 знаков","evidenceIds":["точный ID из EVIDENCE"]}]}`,
+    `{"key":"${key}","title":"выразительный русский заголовок","claims":[{"text":"${depthHint}","evidenceIds":["точный ID из EVIDENCE"]}]}`,
     "Свяжи конкретные evidence, их символическое значение, проявление в жизни и практический вывод.",
     "Не используй универсальные, шаблонные или технические фразы.",
     "Не повторяй содержание других разделов.",
@@ -301,6 +396,116 @@ function sectionRepairPrompt(
       : "",
     timingRule,
   ].filter(Boolean).join("\n");
+}
+
+function sectionGeneratePrompt(
+  key: NatalReportSectionKey,
+  params: GenerateValidatedNatalReportParams
+): string {
+  return [
+    `Собери раздел "${key}" прогноза как самостоятельный JSON-объект.`,
+    sectionRepairPrompt(key, params).replace(
+      `Предыдущий JSON не содержал полноценный раздел "${key}".\n`,
+      ""
+    ),
+  ].join("\n");
+}
+
+/**
+ * Generate all 8 sections in parallel — more reliable than one giant JSON for long forecasts.
+ */
+async function generateReportBySections(
+  params: GenerateValidatedNatalReportParams,
+  model: string
+): Promise<{ validation: NatalReportValidation; raw: string } | null> {
+  console.warn(
+    `[natal-chart] ${params.reportType} generating section-by-section (model=${model}, horizon=${params.horizonDays ?? "-"})`
+  );
+
+  const replacements = await Promise.all(
+    NATAL_REPORT_SECTION_KEYS.map(async (key) => {
+      const replacementRaw = await requestNatalReportJson(
+        [
+          ...params.baseMessages,
+          { role: "user", content: sectionGeneratePrompt(key, params) },
+        ],
+        SECTION_TIMEOUT_MS,
+        0.28,
+        model,
+        params,
+        "section"
+      );
+      if (!replacementRaw) return [key, null] as const;
+      try {
+        const replacement = extractJsonObject(replacementRaw);
+        return [
+          key,
+          isSubstantiveSection(replacement, key, params) ? replacement : null,
+        ] as const;
+      } catch {
+        return [key, null] as const;
+      }
+    })
+  );
+
+  const byKey = new Map<NatalReportSectionKey, unknown>();
+  let filled = 0;
+  for (const [key, replacement] of replacements) {
+    if (replacement) {
+      byKey.set(key, replacement);
+      filled += 1;
+    }
+  }
+  if (filled < 4) {
+    console.warn(
+      `[natal-chart] ${params.reportType} section-wise produced too few sections (${filled}/8)`
+    );
+    return null;
+  }
+
+  const candidate = prepareNatalReportCandidate(
+    {
+      version: NATAL_REPORT_VERSION,
+      tradition: params.tradition,
+      reportType: params.reportType,
+      horizonDays: params.horizonDays,
+      sections: NATAL_REPORT_SECTION_KEYS.map((key) => byKey.get(key)),
+      disclaimer: params.metadataDefaults?.disclaimer,
+      methodology: params.metadataDefaults?.methodology,
+    },
+    {
+      tradition: params.tradition,
+      reportType: params.reportType,
+      horizonDays: params.horizonDays,
+      metadataDefaults: params.metadataDefaults,
+    }
+  );
+
+  let validation = validateCandidate(candidate, params);
+  if (!validation.ok || !isSubstantiveReport(validation.report, params)) {
+    const salvaged = salvageNatalReport(
+      candidate,
+      params.evidence,
+      params.tradition,
+      params.reportType,
+      params.horizonDays
+    );
+    if (salvaged.ok) validation = salvaged;
+  }
+
+  const raw = JSON.stringify(candidate);
+  if (!validation.ok) {
+    console.warn(
+      `[natal-chart] ${params.reportType} section-wise validation failed:`,
+      validation.errors.slice(0, 6).join("; ")
+    );
+    return null;
+  }
+
+  console.warn(
+    `[natal-chart] ${params.reportType} section-wise ok (${filled}/8 LLM sections, model=${model})`
+  );
+  return { validation, raw };
 }
 
 function invalidSectionKeys(errors: readonly string[]): Set<NatalReportSectionKey> {
@@ -348,7 +553,7 @@ async function repairMissingSections(
 
   const invalidKeys = invalidSectionKeys(validationErrors);
   const missing = NATAL_REPORT_SECTION_KEYS.filter(
-    (key) => invalidKeys.has(key) || !isSubstantiveSection(byKey.get(key), key)
+    (key) => invalidKeys.has(key) || !isSubstantiveSection(byKey.get(key), key, params)
   );
   if (!missing.length) return candidate;
 
@@ -365,14 +570,15 @@ async function repairMissingSections(
         ],
         REPAIR_TIMEOUT_MS,
         0.15,
-        model
+        model,
+        params
       );
       if (!replacementRaw) return [key, null] as const;
       try {
         const replacement = extractJsonObject(replacementRaw);
         return [
           key,
-          isSubstantiveSection(replacement, key) ? replacement : null,
+          isSubstantiveSection(replacement, key, params) ? replacement : null,
         ] as const;
       } catch {
         return [key, null] as const;
@@ -395,15 +601,14 @@ async function editorialPass(
   const traditionRule = params.tradition === "vedic"
     ? "Это отчёт джйотиш: используй только ведические положения, накшатры и даши из evidence. Не добавляй западные транзиты и западные дома."
     : "Это западная тропическая интерпретация: не добавляй накшатры, даши или другие термины джйотиш.";
-  const nameRule =
-    params.clientName && /[a-z]/i.test(params.clientName)
-      ? `Имя клиента записано латиницей как "${params.clientName}". В тексте пиши его кириллицей; если не уверен — обращайся без имени.`
-      : "";
+  const nameRule = params.clientName
+    ? `Имя клиента в тексте пиши только так: «${displayClientName(params.clientName)}». Не используй латиницу и смешанные написания вроде «Гennadiy».`
+    : "";
   const prompt = [
     "Отредактируй готовый JSON-отчёт и верни весь JSON целиком без markdown.",
     "Сохрани ровно 8 разделов, их key и массивы evidenceIds.",
     "Удали смысловые повторы: у каждого раздела должен быть свой набор тем и конкретных факторов.",
-    "Не сокращай текст: общий объём claims должен остаться не менее 2800 знаков.",
+    `Не сокращай текст: общий объём claims должен остаться не менее ${substantiveThresholds(params).minReport} знаков.`,
     "Не показывай технические evidence ID внутри поля text — они допустимы только в evidenceIds.",
     "Не используй слово «расклад»: это натальный отчёт или прогноз.",
     "Сделай русский язык естественным, редакторским, без канцелярита и универсальных советов.",
@@ -421,7 +626,8 @@ async function editorialPass(
     ],
     REPAIR_TIMEOUT_MS,
     0.12,
-    model
+    model,
+    params
   );
   if (!editedRaw) return null;
 
@@ -430,7 +636,7 @@ async function editorialPass(
     const validation = validateCandidate(candidate, params);
     if (!validation.ok) return null;
     const sanitized = sanitizeNatalReport(validation.report, params);
-    return isSubstantiveReport(sanitized) ? sanitized : null;
+    return isSubstantiveReport(sanitized, params) ? sanitized : null;
   } catch {
     return null;
   }
@@ -440,71 +646,174 @@ export async function generateValidatedNatalReport(
   params: GenerateValidatedNatalReportParams
 ): Promise<GenerateValidatedNatalReportResult> {
   const model = await getNatalModel();
-  let raw: string | null = await requestNatalReportJson(
-    params.baseMessages,
-    INITIAL_TIMEOUT_MS,
-    0.3,
-    model
-  );
+  const maxRepairPasses =
+    params.reportType === "forecast" ? MAX_REPAIR_PASSES_FORECAST : MAX_REPAIR_PASSES_DEFAULT;
+  const initialTimeout =
+    params.reportType === "forecast" && (params.horizonDays ?? 30) >= 90
+      ? INITIAL_TIMEOUT_FORECAST_LONG_MS
+      : INITIAL_TIMEOUT_MS;
+  // Long forecasts truncate as one giant JSON; build by sections first.
+  const preferSectionWise =
+    params.reportType === "forecast" && (params.horizonDays ?? 30) >= 30;
 
-  if (!raw) {
-    console.warn(`[natal-chart] ${params.reportType} LLM empty (model=${model})`);
-    return { ok: false, errors: ["LLM не вернула JSON."], raw, reason: "llm_empty" };
+  let raw: string | null = null;
+  let validation: NatalReportValidation = { ok: false, errors: ["LLM не вернула JSON."] };
+  let usedSectionWise = false;
+
+  if (preferSectionWise) {
+    const sectioned = await generateReportBySections(params, model);
+    if (sectioned) {
+      raw = sectioned.raw;
+      validation = sectioned.validation;
+      usedSectionWise = true;
+    }
   }
 
-  let validation: NatalReportValidation;
-  try {
-    validation = validateCandidate(parseCandidate(raw, params), params);
-  } catch (error) {
-    validation = {
-      ok: false,
-      errors: [error instanceof Error ? error.message : "Некорректный JSON."],
-    };
-  }
-
-  for (let repairPass = 0; !validation.ok && repairPass < MAX_REPAIR_PASSES; repairPass += 1) {
+  if (!validation.ok) {
     raw = await requestNatalReportJson(
-      [
-        ...params.baseMessages,
-        { role: "assistant", content: raw },
-        { role: "user", content: buildRepairMessage(validation.errors, params) },
-      ],
-      REPAIR_TIMEOUT_MS,
-      repairPass === 0 ? 0.12 : 0.08,
-      model
+      params.baseMessages,
+      initialTimeout,
+      0.3,
+      model,
+      params
     );
-    if (!raw) break;
-    try {
-      validation = validateCandidate(parseCandidate(raw, params), params);
-    } catch (error) {
-      validation = {
-        ok: false,
-        errors: [error instanceof Error ? error.message : "Некорректный JSON."],
+
+    if (!raw) {
+      console.warn(`[natal-chart] ${params.reportType} LLM empty (model=${model})`);
+    } else {
+      try {
+        validation = validateCandidate(parseCandidate(raw, params), params);
+      } catch (error) {
+        validation = {
+          ok: false,
+          errors: [error instanceof Error ? error.message : "Некорректный JSON."],
+        };
+      }
+
+      for (let repairPass = 0; !validation.ok && repairPass < maxRepairPasses; repairPass += 1) {
+        raw = await requestNatalReportJson(
+          [
+            ...params.baseMessages,
+            { role: "assistant", content: raw },
+            { role: "user", content: buildRepairMessage(validation.errors, params) },
+          ],
+          REPAIR_TIMEOUT_MS,
+          repairPass === 0 ? 0.12 : 0.08,
+          model,
+          params
+        );
+        if (!raw) break;
+        try {
+          validation = validateCandidate(parseCandidate(raw, params), params);
+        } catch (error) {
+          validation = {
+            ok: false,
+            errors: [error instanceof Error ? error.message : "Некорректный JSON."],
+          };
+        }
+      }
+
+      if (
+        (!validation.ok || (validation.ok && !isSubstantiveReport(validation.report, params))) &&
+        raw
+      ) {
+        try {
+          const repairedCandidate = await repairMissingSections(
+            raw,
+            params,
+            model,
+            validation.ok ? [] : validation.errors
+          );
+          const strict = validateCandidate(
+            repairedCandidate ?? parseCandidate(raw, params),
+            params
+          );
+          if (strict.ok && isSubstantiveReport(strict.report, params)) {
+            validation = strict;
+          }
+        } catch {
+          /* keep prior validation errors */
+        }
+      }
+
+      // Last salvage: keep model prose, coerce broken/missing evidence IDs.
+      if (
+        (!validation.ok || (validation.ok && !isSubstantiveReport(validation.report, params))) &&
+        raw
+      ) {
+        try {
+          const salvaged = salvageNatalReport(
+            parseCandidate(raw, params),
+            params.evidence,
+            params.tradition,
+            params.reportType,
+            params.horizonDays
+          );
+          if (salvaged.ok && isSubstantiveReport(salvaged.report, params)) {
+            console.warn(
+              `[natal-chart] ${params.reportType} accepted via evidence salvage (model=${model})`
+            );
+            validation = salvaged;
+          } else if (salvaged.ok && params.reportType === "forecast") {
+            console.warn(
+              `[natal-chart] forecast accepted via soft salvage (model=${model})`
+            );
+            validation = salvaged;
+          }
+        } catch {
+          /* keep prior validation errors */
+        }
+      }
+    }
+  }
+
+  // Rescue path: short forecasts that failed single-shot, or long forecasts that
+  // somehow still lack a valid report after the preferred section-wise attempt.
+  if (
+    params.reportType === "forecast" &&
+    !usedSectionWise &&
+    (!validation.ok || !isSubstantiveReport(validation.report, params))
+  ) {
+    const sectioned = await generateReportBySections(params, model);
+    if (sectioned) {
+      raw = sectioned.raw;
+      validation = sectioned.validation;
+      usedSectionWise = true;
+    }
+  }
+
+  if (
+    validation.ok &&
+    (isSubstantiveReport(validation.report, params) || params.reportType === "forecast")
+  ) {
+    const sanitized = sanitizeNatalReport(validation.report, params);
+    // Skip editorial for section-wise forecasts: rewriting the full JSON often truncates again.
+    const edited =
+      !usedSectionWise && isSubstantiveReport(sanitized, params)
+        ? await editorialPass(sanitized, params, model)
+        : null;
+    return { ok: true, report: edited ?? sanitized, raw };
+  }
+
+  // Hard fallback for paid forecasts: deterministic evidence-grounded report.
+  if (params.reportType === "forecast" && params.evidence.length) {
+    const minimal = buildMinimalNatalReport(
+      params.evidence,
+      params.tradition,
+      params.reportType,
+      params.horizonDays,
+      params.metadataDefaults
+    );
+    if (minimal.ok) {
+      console.warn(
+        `[natal-chart] forecast falling back to evidence-grounded minimal report (model=${model})`
+      );
+      return {
+        ok: true,
+        report: sanitizeNatalReport(minimal.report, params),
+        raw,
       };
     }
-  }
-
-  if ((!validation.ok || (validation.ok && !isSubstantiveReport(validation.report))) && raw) {
-    try {
-      const repairedCandidate = await repairMissingSections(
-        raw,
-        params,
-        model,
-        validation.ok ? [] : validation.errors
-      );
-      const strict = validateCandidate(repairedCandidate ?? parseCandidate(raw, params), params);
-      if (strict.ok && isSubstantiveReport(strict.report)) {
-        validation = strict;
-      }
-    } catch {
-      /* keep prior validation errors */
-    }
-  }
-
-  if (validation.ok && isSubstantiveReport(validation.report)) {
-    const sanitized = sanitizeNatalReport(validation.report, params);
-    const edited = await editorialPass(sanitized, params, model);
-    return { ok: true, report: edited ?? sanitized, raw };
   }
 
   if (validation.ok) {
@@ -522,6 +831,6 @@ export async function generateValidatedNatalReport(
     ok: false,
     errors: validation.errors,
     raw,
-    reason: "validation",
+    reason: raw ? "validation" : "llm_empty",
   };
 }

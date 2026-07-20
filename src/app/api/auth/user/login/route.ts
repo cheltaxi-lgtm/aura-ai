@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { findUserByEmail } from "@/lib/accounts";
+import { findUserByEmail, recordAccountLegalConsent } from "@/lib/accounts";
 import { setAuthCookie, verifyPassword, normalizeAuthEmail } from "@/lib/auth";
 import { resolveLoginHint, LOGIN_FAILURE_MESSAGE } from "@/lib/login-hints";
 import { clientIp, enforceLoginRateLimit } from "@/lib/api-guards";
@@ -14,10 +14,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
     }
 
-    const { email: rawEmail, password, recaptchaToken } = await request.json();
+    const {
+      email: rawEmail,
+      password,
+      recaptchaToken,
+      ageConfirmed,
+      acceptedTerms,
+    } = await request.json();
     const email = normalizeAuthEmail(String(rawEmail ?? ""));
     if (!email || !password) {
       return NextResponse.json({ error: "Email и пароль обязательны" }, { status: 400 });
+    }
+    if (ageConfirmed !== true || acceptedTerms !== true) {
+      return NextResponse.json(
+        {
+          error: "Подтвердите согласие с условиями и возраст 18+",
+          code: "consent_required",
+        },
+        { status: 400 }
+      );
     }
 
     const captchaBlock = await enforceRecaptchaScope("login", recaptchaToken, request);
@@ -47,6 +62,11 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    await recordAccountLegalConsent(user.id, {
+      ageConfirmed: true,
+      acceptedTerms: true,
+    });
 
     await setAuthCookie(
       {

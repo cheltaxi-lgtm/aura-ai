@@ -6,6 +6,7 @@ import { getSession } from "@/lib/session";
 import { getUserById } from "@/lib/users";
 import { findStoredSpreadReading } from "@/lib/session-spread-reading";
 import { attachSpreadToJointReading } from "@/lib/joint-reading-service";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { normalizeSpreadId, spreadPositionLabels } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
 
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const result = await attachSpreadToJointReading({
     jointToken: token,
     userId: authed.profileUserId,
-    profileName: profile?.name ?? null,
+    profileName: normalizePersonDisplayName(profile?.name) || profile?.name || null,
     spreadId: normalizeSpreadId(session.spread_id),
     reading,
     cards,

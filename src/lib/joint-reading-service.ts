@@ -3,6 +3,9 @@ import { query } from "@/lib/db";
 import { generateReading } from "@/lib/chat-prompts";
 import { dispatchNotification } from "@/lib/notify";
 import { normalizeSpreadId, type SpreadId } from "@/lib/spreads";
+import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
+import { buildPaidSpreadReadingExtras } from "@/lib/prompts/premium-reading";
+import { CARD_GROUNDED_READING_RULES } from "@/lib/prompts/format";
 import {
   sendEmail,
   jointReadingCompletedEmailHtml,
@@ -614,12 +617,37 @@ function jointReadingRelationLabel(intentSlug: string): string {
 }
 
 function formatJointCardsForPrompt(
-  cards: JointReadingRow["initiator_cards"] | JointReadingRow["partner_cards"]
+  cards: JointReadingRow["initiator_cards"] | JointReadingRow["partner_cards"],
+  masterId?: string
 ): string {
   if (!cards?.length) return "—";
+  const system = resolveDeckSystem(undefined, masterId ?? "veronika");
   return cards
-    .map((card) => (card.position?.trim() ? `${card.position}: ${card.name}` : card.name))
+    .map((card) => {
+      const resolved = resolveDeckCard(system, { name: card.name });
+      const pos = card.position?.trim() || "позиция";
+      const meaning = resolved.shortMeaning || "";
+      return meaning
+        ? `${pos}: «${resolved.name}» — ${meaning}`
+        : `${pos}: «${card.name}»`;
+    })
     .join("; ");
+}
+
+function jointCardsToTarotCards(
+  cards: JointReadingRow["initiator_cards"] | JointReadingRow["partner_cards"],
+  masterId?: string
+): { name: string; meaning: string; position?: string }[] {
+  if (!cards?.length) return [];
+  const system = resolveDeckSystem(undefined, masterId ?? "veronika");
+  return cards.map((card) => {
+    const resolved = resolveDeckCard(system, { name: card.name });
+    return {
+      name: resolved.name,
+      meaning: resolved.shortMeaning || "",
+      position: card.position,
+    };
+  });
 }
 
 function stripMarkdownForSynthesis(text: string): string {
@@ -683,25 +711,36 @@ async function generateCombinedReading(
         ? `\n\nДанные синастрии (расчёт движка, не выдумывай):\n- Балл: ${synastry.overallScore}\n${synastry.highlights.map((h) => `- ${h}`).join("\n")}`
         : "";
 
-    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
+    const masterId = row.initiator_character ?? "veronika";
+    const initiatorCards = jointCardsToTarotCards(row.initiator_cards, masterId);
+    const partnerCards = jointCardsToTarotCards(row.partner_cards, masterId);
+    const allCards = [...initiatorCards, ...partnerCards];
+    const cardCount = Math.max(3, allCards.length || 3);
 
-Правила:
-- Пиши по-русски, тепло, связным прозой (4–6 абзацев).
+    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов и карт обоих.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
+
+${CARD_GROUNDED_READING_RULES}
+
+${buildPaidSpreadReadingExtras({ cardCount, masterId, includeFinalConclusion: true })}
+
+Правила синтеза:
+- Пиши по-русски, тепло, связной прозой — премиальная глубина, не краткий пересказ.
 - Без markdown, без заголовков, без списков и без «**».
 - Не оставляй пустых скобок, обрывков вроде «твои .» или «()» — каждое предложение должно быть законченным.
 - Не повторяй один и тот же абзац или мысль дважды.
-- Не цитируй тексты дословно — синтезируй смысл обоих раскладов.
+- Не цитируй тексты дословно — синтезируй смысл обоих раскладов через карты.
 - Не используй романтические формулировки, если это не пара — перед тобой ${relation}.
-- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива.`;
+- Если символы показывают тень в союзе — называй прямо, без смягчения.
+- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива, финальный вывод.`;
 
     const userMessage = [
-      `${initiatorLabel} (инициатор), карты: ${formatJointCardsForPrompt(row.initiator_cards)}`,
+      `${initiatorLabel} (инициатор), карты: ${formatJointCardsForPrompt(row.initiator_cards, masterId)}`,
       initiatorText,
       "",
-      `${partnerLabel} (партнёр), карты: ${formatJointCardsForPrompt(row.partner_cards)}`,
+      `${partnerLabel} (партнёр), карты: ${formatJointCardsForPrompt(row.partner_cards, masterId)}`,
       partnerText,
       "",
-      `Синтезируй общую интерпретацию для ${initiatorLabel} и ${partnerLabel} как ${relation}.`,
+      `Синтезируй общую интерпретацию для ${initiatorLabel} и ${partnerLabel} как ${relation}. Опирайся на значения карт выше.`,
       synastryBlock,
     ]
       .filter(Boolean)
@@ -709,10 +748,11 @@ async function generateCombinedReading(
 
     const generated = await generateReading(systemPrompt, {
       userName: initiatorLabel,
-      tarotCards: [],
+      tarotCards: allCards.length ? allCards : [{ name: "Союз", meaning: "связь двух раскладов" }],
       isPaid: true,
-      characterId: row.initiator_character ?? "veronika",
+      characterId: masterId,
       userMessage,
+      intention: "love",
     });
     if (generated.text?.trim()) return polishCombinedReading(generated.text);
   } catch (err) {

@@ -25,7 +25,10 @@ import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 export interface MemoryContextParams {
   userId?: string | null;
   characterId: string;
-  /** Needed for past-session lookups and the current-session anchor. */
+  /**
+   * Current session id — used to exclude the active session from past memories
+   * and to build the live session anchor. Past sessions load even when this is missing.
+   */
   sessionId?: string | null;
   profile?: ClientProfile | null;
   lastUserMessage?: string | null;
@@ -35,7 +38,7 @@ export interface MemoryContextParams {
   /** Live "what we've already covered this session" anchor — chat flow only. */
   sessionAnchorFallback?: SessionAnchorFallback;
   includeSessionAnchor?: boolean;
-  /** Default true (when sessionId is set) — chat's period-spread mode turns this off. */
+  /** Default true — chat's period-spread mode turns this off. */
   includePastSessions?: boolean;
 }
 
@@ -64,8 +67,8 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
   const includePastSessions = params.includePastSessions ?? true;
   const [factsBlock, pastSessionsBlock, sessionAnchorBlock] = await Promise.all([
     userId ? loadClientMemoryBlock({ userId, queryText }) : Promise.resolve(""),
-    userId && params.sessionId && includePastSessions
-      ? buildMemoryBlock(userId, params.characterId, params.sessionId, queryText)
+    userId && includePastSessions
+      ? buildMemoryBlock(userId, params.characterId, params.sessionId ?? null, queryText)
       : Promise.resolve(""),
     userId && params.sessionId && params.includeSessionAnchor
       ? buildCurrentSessionAnchorBlock(

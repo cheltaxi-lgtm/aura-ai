@@ -1,5 +1,9 @@
 import { setAuthCookie, type CookieRequestContext } from "@/lib/auth";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import {
+  getAccountConsentSnapshot,
+  getProfileUserIdForAccount,
+  recordAccountLegalConsent,
+} from "@/lib/accounts";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { getUserById, linkSessionToUser, serializeUserProfile } from "@/lib/users";
 import { sendWelcomeEmail } from "@/lib/email/send";
@@ -36,6 +40,24 @@ export async function finishOAuthLogin(opts: {
     consent,
     registrationAttribution: opts.pending.registrationAttribution ?? null,
   });
+
+  const existingConsent = await getAccountConsentSnapshot(accountResult.accountId);
+  if (!existingConsent?.ageConfirmedAt) {
+    if (!consent) {
+      throw new Error("CONSENT_REQUIRED");
+    }
+    await recordAccountLegalConsent(accountResult.accountId, {
+      ageConfirmed: true,
+      acceptedTerms: true,
+      marketingConsent: consent.marketingConsent,
+    });
+  } else if (consent) {
+    await recordAccountLegalConsent(accountResult.accountId, {
+      ageConfirmed: true,
+      acceptedTerms: true,
+      marketingConsent: consent.marketingConsent,
+    });
+  }
 
   let profile = null;
   const profileUserId = await getProfileUserIdForAccount(accountResult.accountId);
@@ -97,11 +119,15 @@ export function oauthErrorRedirect(
   returnTo: string
 ): string {
   const base =
-    code === "consent_required" || code === "email_exists"
+    code === "email_exists"
       ? "/auth/user/register"
-      : mode === "register"
-        ? "/auth/user/register"
-        : "/auth/user/login";
+      : code === "consent_required"
+        ? mode === "register"
+          ? "/auth/user/register"
+          : "/auth/user/login"
+        : mode === "register"
+          ? "/auth/user/register"
+          : "/auth/user/login";
   const params = new URLSearchParams({ oauthError: code, returnTo });
   return `${base}?${params.toString()}`;
 }

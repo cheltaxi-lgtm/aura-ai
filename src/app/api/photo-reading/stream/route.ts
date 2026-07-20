@@ -22,6 +22,7 @@ import { getRuneSettings } from "@/lib/rune-settings";
 import { ensureChatSession } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
   buildSpreadSummaryForLlm,
   isRecognizedSpread,
@@ -216,8 +217,16 @@ export async function POST(request: NextRequest) {
       year: "numeric",
     });
 
+    const detectedCards = confirmedSpread!.cards.map((c) =>
+      c.reversed ? `${c.name} (перев.)` : c.name
+    );
+    const tarotCards = redrawSpreadToTarotCards(confirmedSpread!);
+    const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread!);
+    /** Rune charge / unlimited / session access — treat as paid for full reading depth. */
+    const paidForPrompt = isPaid || spentRunes > 0 || Boolean(billingCharge) || unlimited;
+
     const ctx = {
-      userName: profile?.name ?? auth.name,
+      userName: normalizePersonDisplayNameOr(profile?.name ?? auth.name, "друг"),
       gender:
         profile?.gender === "male"
           ? "Мужской"
@@ -229,22 +238,21 @@ export async function POST(request: NextRequest) {
       birthTime: profile?.birthTime ?? undefined,
       birthCity: profile?.birthCity ?? undefined,
       lifeFocus: profile?.lifeFocus ?? undefined,
-      mainQuestion: profile?.mainQuestion ?? undefined,
+      mainQuestion: question.trim() || profile?.mainQuestion || undefined,
       astroMeta: profile?.astroMeta as import("@/lib/astro-profile").AstroMeta | undefined,
       today,
-      isPaid,
+      isPaid: paidForPrompt,
       question,
+      tarotCards: tarotCards.map((c) => ({
+        name: c.name,
+        meaning: c.meaning || "",
+        position: c.position,
+      })),
     };
-
-    const detectedCards = confirmedSpread!.cards.map((c) =>
-      c.reversed ? `${c.name} (перев.)` : c.name
-    );
-    const tarotCards = redrawSpreadToTarotCards(confirmedSpread!);
-    const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread!);
 
     let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
 
-    if (profileUserId && resolvedSessionId) {
+    if (profileUserId) {
       const memoryCtx = await buildMemoryContext({
         userId: profileUserId,
         characterId,
@@ -268,6 +276,7 @@ export async function POST(request: NextRequest) {
       spreadSummary,
       question: question.trim() || undefined,
       userName: ctx.userName ?? "друг",
+      cardCount: confirmedSpread!.cards.length,
       onComplete: async ({ reply, llmFailed }) => {
         if (llmFailed && profileUserId && billingCharge) {
           try {

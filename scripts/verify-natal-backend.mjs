@@ -43,8 +43,15 @@ const forecast = read("src/app/api/natal-chart/forecast/route.ts");
 assert.match(forecast, /action: "FORECAST_REPORT"/);
 assert.match(forecast, /reportType = `forecast:\$\{horizon\}:\$\{timing\.windowStart\}`/);
 assert.match(forecast, /generateValidatedNatalReport/);
+assert.match(forecast, /buildMinimalNatalReport/);
+assert.match(forecast, /using evidence fallback/);
 assert.match(forecast, /claimNatalInterpretationResilient/);
 assert.match(forecast, /rollback\(\)/);
+const generateValidated = read("src/lib/natal/generate-validated-report.ts");
+assert.match(generateValidated, /falling back to evidence-grounded minimal report/);
+assert.match(generateValidated, /buildMinimalNatalReport/);
+assert.match(generateValidated, /generating section-by-section/);
+assert.match(generateValidated, /allowReasoningFallback: forecast/);
 
 const natalGenerator = read("src/lib/natal/generate-validated-report.ts");
 assert.match(natalGenerator, /getNatalModel/);
@@ -54,6 +61,12 @@ assert.match(natalGenerator, /sanitizeNatalReport/);
 assert.match(natalGenerator, /EVIDENCE_ID_RE/);
 assert.doesNotMatch(natalGenerator, /skipCategoryRules:\s*true/);
 assert.doesNotMatch(natalGenerator, /coerceEvidence:\s*true/);
+
+const forecastEvidence = read("src/lib/natal/evidence.ts");
+assert.match(forecastEvidence, /selectEvidenceForForecastPrompt/);
+assert.match(forecastEvidence, /formatEvidencePromptCompact/);
+assert.match(forecast, /selectEvidenceForForecastPrompt/);
+assert.match(forecast, /formatEvidencePromptCompact/);
 
 const natalEvidence = read("src/lib/natal/evidence.ts");
 assert.match(natalEvidence, /options\.tradition === "vedic" \? null : options\.timing/);
@@ -140,6 +153,13 @@ assert.match(astrologyWorkspace, /title="Архив отчётов и прогн
 assert.match(astrologyWorkspace, /selectTab\("timing"\)/);
 assert.match(astrologyWorkspace, /aura:natal-active-job/);
 assert.match(astrologyWorkspace, /function isCurrentReport/);
+assert.match(
+  astrologyWorkspace,
+  /report\.reportType === currentForecastType && matchesCurrentChart/
+);
+assert.match(astrologyWorkspace, /Новый прогноз на \$\{formatRuDateRange/);
+assert.match(astrologyWorkspace, /onOpenArchive=\{openReportArchive\}/);
+assert.doesNotMatch(astrologyWorkspace, /FORECAST_REPORT ·/);
 assert.doesNotMatch(astrologyWorkspace, /Центр премиальных отчётов/);
 
 for (const route of [

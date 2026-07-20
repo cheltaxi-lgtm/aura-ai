@@ -23,11 +23,13 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { getUserById } from "@/lib/users";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import type { NatalTradition } from "@/lib/natal/types";
 import { getCachedPersonalTiming } from "@/lib/services/natal-timing-service";
 import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
   beginWorkerJobSave,
@@ -190,17 +192,22 @@ export async function POST(request: NextRequest) {
   }
 
   const traditionLabel = tradition === "western" ? "западную тропическую" : "ведическую сидерическую";
-  const systemPrompt = await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Составь доказуемую ${traditionLabel} натальную трактовку на русском языке.
+  const clientDisplayName = normalizePersonDisplayName(user?.name) || null;
+  const systemPrompt = await appendNatalPersonalizationLens(
+    await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Составь доказуемую ${traditionLabel} натальную трактовку на русском языке.
 Опирайся ТОЛЬКО на evidence ниже. Нельзя выдумывать положения, дома, даты или evidence ID.
 ${buildNatalReportJsonInstructions(tradition)}
 ${chart.timeKnown ? "" : "Время рождения неизвестно: не заявляй дома, ASC, MC или лагну; явно отрази неопределённость."}
 Координаты рождения не переданы и не нужны.
+${clientDisplayName ? `Имя клиента в тексте: «${clientDisplayName}» — только кириллица, без латиницы и смешанных написаний.` : ""}
 
 EVIDENCE:
 ${evidenceBlock}
 
 VALID EVIDENCE ID:
-${evidenceIds.join("\n")}`);
+${evidenceIds.join("\n")}`),
+    { profileUserId: ctx.profileUserId, user }
+  );
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
@@ -227,7 +234,7 @@ ${evidenceIds.join("\n")}`);
 
     const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Создай отчёт для ${user?.name ?? "клиента"}. Верни только JSON.` },
+      { role: "user", content: `Создай отчёт для ${clientDisplayName ?? "клиента"}. Верни только JSON.` },
     ];
     const generated = await generateValidatedNatalReport({
       baseMessages,
@@ -237,7 +244,7 @@ ${evidenceIds.join("\n")}`);
       metadataDefaults: INTERPRETATION_METADATA_DEFAULTS,
       evidenceIdsHint: evidenceIds,
       repairHint: "Используй только ID из списка VALID EVIDENCE ID.",
-      clientName: user?.name ?? undefined,
+      clientName: clientDisplayName ?? undefined,
     });
     if (!generated.ok) {
       console.warn(

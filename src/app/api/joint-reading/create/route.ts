@@ -16,6 +16,7 @@ import {
   reconcileActiveJointInviteForCreation,
 } from "@/lib/joint-reading-service";
 import { getUserById } from "@/lib/users";
+import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import type { SpreadId } from "@/lib/spreads";
 import { normalizeSpreadId } from "@/lib/spreads";
 
@@ -54,9 +55,13 @@ export async function POST(request: NextRequest) {
   }
 
   const profile = await getUserById(authed.profileUserId);
-  const resolvedInitiatorName =
-    initiatorName?.trim().slice(0, 40) || profile?.name?.trim().slice(0, 40) || undefined;
-  const resolvedPartnerName = partnerName?.trim().slice(0, 40) || undefined;
+  const resolvedInitiatorName = normalizeStoredDisplayName(
+    initiatorName?.trim() || profile?.name,
+    ""
+  ).slice(0, 40) || undefined;
+  const resolvedPartnerName = partnerName?.trim()
+    ? normalizeStoredDisplayName(partnerName, partnerName.trim()).slice(0, 40)
+    : undefined;
 
   if (!forceNew) {
     const reconciled = await reconcileActiveJointInviteForCreation({

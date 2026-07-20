@@ -15,6 +15,13 @@ import { buildSpreadSeed, createSeededRng } from "@/lib/spread-seed";
 import { DEFAULT_SPREAD_ID, getSpread, isSpreadEnabled, normalizeSpreadId, type SpreadId } from "@/lib/spreads";
 import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
 import { isDailyReadingUsedToday, recordDailyReadingAnchor } from "@/lib/rate-limit-anchors";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
+import { buildPaidSpreadReadingExtras, paidSpreadMaxTokens } from "@/lib/prompts/premium-reading";
+import {
+  appendMemoryContextToPrompt,
+  buildMemoryContext,
+} from "@/lib/memory/build-memory-context";
+import type { ClientProfile } from "@/lib/user-memory";
 
 export class DailyReadingLockedError extends Error {
   spreadId: string | null;
@@ -97,6 +104,10 @@ async function resolveDailyReadingText(
     dateRu: string;
     cards: DailyReadingCard[];
     spreadId: SpreadId;
+    gender?: string;
+    lifeFocus?: string;
+    mainQuestion?: string;
+    userId?: string;
   }
 ): Promise<string> {
   let text = sanitizeDailyReadingText(raw);
@@ -184,23 +195,27 @@ function drawDailyCards(
 function buildDailySystem(charKey: CharacterKey, spreadId: SpreadId = DEFAULT_SPREAD_ID): string {
   const persona = MASTER_PERSONA[charKey];
   const spread = getSpread(spreadId);
+  const n = spread.cardCount;
   const taskHint =
     spreadId === DEFAULT_SPREAD_ID
-      ? "краткий прогноз «Энергия дня» на ближайшие 24 часа по трём выпавшим символам — Утро, День, Вечер — с учётом профиля клиента."
-      : `краткий прогноз «${spread.label}» на ближайшие 24 часа по ${spread.cardCount} выпавшим символам (каждая позиция расклада отдельно) с учётом профиля клиента.`;
+      ? "премиальный прогноз «Энергия дня» на ближайшие 24 часа по трём выпавшим символам — Утро, День, Вечер — с учётом профиля и памяти клиента."
+      : `премиальный прогноз «${spread.label}» на ближайшие 24 часа по ${n} выпавшим символам (каждая позиция расклада отдельно) с учётом профиля и памяти клиента.`;
   const formatHint =
     spreadId === DEFAULT_SPREAD_ID
       ? "- Свяжи каждую часть суток (утро, день, вечер) с её символом из расклада; используй именно слова «утро», «день», «вечер»."
-      : `- Пройди по всем ${spread.cardCount} позициям расклада; назови каждую позицию и её символ.`;
+      : `- Пройди по всем ${n} позициям расклада; назови каждую позицию и её символ.`;
 
   return `${persona}
 
 ЗАДАЧА: ${taskHint}
 
+${buildPaidSpreadReadingExtras({ cardCount: n, masterId: charKey })}
+
 СТРОГИЕ ПРАВИЛА ФОРМАТА:
-- Цельный связный текст от первого лица, голосом мастера. ${spread.cardCount <= 3 ? "4–6" : "8–12"} предложений.
+- Цельный связный текст от первого лица, голосом мастера. Полная глубина по всем символам — не краткий тизер.
 ${formatHint}
-- Опирайся ТОЛЬКО на выпавшие символы и профиль клиента — не выдумывай другие карты.
+- Опирайся ТОЛЬКО на выпавшие символы, профиль и служебную память клиента — не выдумывай другие карты.
+- Если символы показывают тень — называй прямо, без смягчения.
 - В конце — одно конкретное действие на сегодня.
 - Заверши текст полным последним предложением с точкой — не обрывай на полуслове.
 - БЕЗ markdown (никаких #, *, -, нумерованных списков), без заголовков, без подзаголовков, без ремарок в скобках, без описания голоса и жестов.
@@ -214,6 +229,9 @@ function buildDailyPrompt(params: {
   dateRu: string;
   cards: DailyReadingCard[];
   spreadId?: SpreadId;
+  gender?: string;
+  lifeFocus?: string;
+  mainQuestion?: string;
 }): string {
   const cardLines = params.cards
     .map(
@@ -228,13 +246,45 @@ function buildDailyPrompt(params: {
       ? "прогноз «Энергия дня»"
       : `прогноз «${spread.label}»`;
 
+  const profileBits = [
+    params.name,
+    params.gender,
+    params.zodiac,
+    params.birthDate ? `рождён ${params.birthDate}` : "",
+    params.lifeFocus ? `фокус: ${params.lifeFocus}` : "",
+    params.mainQuestion ? `вопрос: «${params.mainQuestion}»` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return `Сегодня ${params.dateRu}.
-Клиент: ${params.name}, ${params.zodiac}, рождён ${params.birthDate}.
+Клиент: ${profileBits}.
 
 Расклад из ${params.cards.length} карт:
 ${cardLines}
 
-Дай ${title} на ближайшие 24 часа.`;
+Дай полный ${title} на ближайшие 24 часа.`;
+}
+
+async function loadDailyMemoryPrompt(
+  userId: string,
+  charKey: CharacterKey,
+  profile: ClientProfile,
+  baseSystem: string
+): Promise<string> {
+  try {
+    const memoryCtx = await buildMemoryContext({
+      userId,
+      characterId: charKey,
+      profile,
+      lastUserMessage: "энергия дня прогноз на сегодня",
+      mainQuestion: profile.mainQuestion,
+    });
+    return appendMemoryContextToPrompt(baseSystem, memoryCtx);
+  } catch (err) {
+    console.warn("Daily reading memory load failed:", err);
+    return baseSystem;
+  }
 }
 
 async function generateDailyReadingText(
@@ -246,18 +296,38 @@ async function generateDailyReadingText(
     dateRu: string;
     cards: DailyReadingCard[];
     spreadId?: SpreadId;
+    gender?: string;
+    lifeFocus?: string;
+    mainQuestion?: string;
+    userId?: string;
   }
 ): Promise<string | null> {
   const spreadId = promptParams.spreadId ?? DEFAULT_SPREAD_ID;
+  let system = buildDailySystem(charKey, spreadId);
+  if (promptParams.userId) {
+    system = await loadDailyMemoryPrompt(
+      promptParams.userId,
+      charKey,
+      {
+        name: promptParams.name,
+        gender: promptParams.gender,
+        zodiac: promptParams.zodiac,
+        birthDate: promptParams.birthDate,
+        lifeFocus: promptParams.lifeFocus,
+        mainQuestion: promptParams.mainQuestion,
+      },
+      system
+    );
+  }
   const messages: ChatMessage[] = [
-    { role: "system", content: await wrapSystemPrompt(buildDailySystem(charKey, spreadId)) },
+    { role: "system", content: await wrapSystemPrompt(system) },
     { role: "user", content: buildDailyPrompt({ ...promptParams, spreadId }) },
   ];
 
   return completeProseWithContinuation(messages, {
-    maxTokens: spreadId === "daily-extended" ? 1600 : 900,
+    maxTokens: paidSpreadMaxTokens(promptParams.cards.length || getSpread(spreadId).cardCount),
     temperature: 0.75,
-    maxPasses: spreadId === "daily-extended" ? 3 : 2,
+    maxPasses: 3,
   });
 }
 
@@ -332,12 +402,16 @@ export async function getExistingDailyReading(
         year: "numeric",
       });
       reading = await resolveDailyReadingText(charKey, reading, {
-        name: user.name,
+        name: normalizePersonDisplayNameOr(user.name, "друг"),
         zodiac: user.zodiac,
         birthDate: user.birth_date,
         dateRu,
         cards,
         spreadId: storedSpreadId,
+        gender: user.gender === "male" ? "Мужской" : user.gender === "female" ? "Женский" : undefined,
+        lifeFocus: user.life_focus ?? undefined,
+        mainQuestion: user.main_question ?? undefined,
+        userId,
       });
     } else if (!reading) {
       reading = DAILY_READING_GENERIC_FALLBACK;
@@ -431,23 +505,28 @@ export async function getOrCreateDailyReading(params: {
     localDate: today,
   });
 
-  const text = await generateDailyReadingText(charKey, {
+  const dbUser = await getUserById(params.userId).catch(() => null);
+  const promptProfile = {
     name: params.name,
     zodiac: params.zodiac,
     birthDate: params.birthDate,
     dateRu,
     cards,
     spreadId: drawSpreadId,
-  });
+    gender:
+      dbUser?.gender === "male"
+        ? "Мужской"
+        : dbUser?.gender === "female"
+          ? "Женский"
+          : undefined,
+    lifeFocus: dbUser?.life_focus ?? undefined,
+    mainQuestion: dbUser?.main_question ?? undefined,
+    userId: params.userId,
+  };
 
-  const reading = await resolveDailyReadingText(charKey, text, {
-    name: params.name,
-    zodiac: params.zodiac,
-    birthDate: params.birthDate,
-    dateRu,
-    cards,
-    spreadId: drawSpreadId,
-  });
+  const text = await generateDailyReadingText(charKey, promptProfile);
+
+  const reading = await resolveDailyReadingText(charKey, text, promptProfile);
 
   await query(
     `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date, spread_id)

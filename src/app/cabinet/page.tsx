@@ -150,6 +150,13 @@ export default function CabinetPage() {
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       return null;
     }
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => null)) as { code?: string } | null;
+      if (body?.code === "age_required") {
+        await refreshAuth();
+        return null;
+      }
+    }
     if (!res.ok) {
       throw new Error("Не удалось загрузить кабинет");
     }
@@ -167,7 +174,7 @@ export default function CabinetPage() {
     setSessionsHasMore(json.sessionsHasMore);
     sessionsOffset.current = offset + json.sessions.length;
     return json;
-  }, [router]);
+  }, [refreshAuth, router]);
 
   useEffect(() => {
     if (authLoading) return;

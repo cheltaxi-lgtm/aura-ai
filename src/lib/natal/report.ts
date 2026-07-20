@@ -205,10 +205,6 @@ export function salvageNatalReport(
     const rawSection = sectionsByKey.get(expectedKey) ?? record(sections[NATAL_REPORT_SECTION_KEYS.indexOf(expectedKey)]);
     const rawClaims = Array.isArray(rawSection?.claims) ? rawSection.claims : [];
     const firstClaim = record(rawClaims[0]);
-    const text =
-      typeof firstClaim?.text === "string" && firstClaim.text.trim()
-        ? firstClaim.text.trim()
-        : `Ключевой вывод по разделу «${SECTION_TITLES[expectedKey]}».`;
     const evidenceIds = coerceClaimEvidenceIds(
       Array.isArray(firstClaim?.evidenceIds)
         ? firstClaim.evidenceIds.filter((id): id is string => typeof id === "string")
@@ -218,13 +214,31 @@ export function salvageNatalReport(
       expectedReportType,
       validIds
     );
+    const primaryId = evidenceIds[0] ?? evidence[0]?.id;
+    const item =
+      (primaryId ? evidence.find((entry) => entry.id === primaryId) : null) ?? evidence[0];
+    const rawText =
+      typeof firstClaim?.text === "string" && firstClaim.text.trim()
+        ? firstClaim.text.trim()
+        : "";
+    const text =
+      rawText && !/Ключевой вывод по разделу/i.test(rawText) && rawText.length >= 120
+        ? rawText
+        : item
+          ? buildEvidenceGroundedClaimText(
+              item,
+              SECTION_TITLES[expectedKey],
+              expectedReportType,
+              expectedHorizonDays
+            )
+          : `Раздел «${SECTION_TITLES[expectedKey]}» опирается на рассчитанные астрологические факторы периода. Интерпретация символическая и вероятностная: сверяйте выводы с датами и положениями в шкале транзитов, а не воспринимайте их как гарантию событий. Практический акцент — наблюдать проявления темы и фиксировать, что подтверждается опытом.`;
     return {
       key: expectedKey,
       title:
         typeof rawSection?.title === "string" && rawSection.title.trim()
           ? rawSection.title.trim()
           : SECTION_TITLES[expectedKey],
-      claims: [{ text, evidenceIds }],
+      claims: [{ text, evidenceIds: evidenceIds.length ? evidenceIds : primaryId ? [primaryId] : [] }],
     };
   });
 
@@ -236,6 +250,33 @@ export function salvageNatalReport(
     expectedHorizonDays,
     { coerceEvidence: true, skipCategoryRules: true }
   );
+}
+
+function buildEvidenceGroundedClaimText(
+  item: NatalEvidence,
+  sectionTitle: string,
+  reportType: NatalReport["reportType"],
+  horizonDays?: NatalReport["horizonDays"]
+): string {
+  const horizonBit =
+    reportType === "forecast" && horizonDays
+      ? ` на выбранном горизонте ${horizonDays} дней`
+      : "";
+  const uncertainty = item.uncertainty?.trim()
+    ? ` ${item.uncertainty.trim().replace(/\.*$/, ".")}`
+    : "";
+  return [
+    `${item.label}: ${item.value}.`,
+    uncertainty,
+    `В разделе «${sectionTitle}» этот рассчитанный фактор задаёт основную тему${horizonBit}.`,
+    "Интерпретация символическая и вероятностная: опирайтесь на конкретные даты и положения из расчёта, а не на абсолютные обещания событий.",
+    `Практический акцент: отслеживайте проявления темы «${item.label.toLowerCase()}» и сверяйте ощущения с пиковыми датами и положениями в шкале транзитов и натальном контексте.`,
+    "Если тема усиливается, зафиксируйте наблюдение и вернитесь к этому фактору в конце периода, чтобы оценить, что подтвердилось, а что осталось фоном.",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Deterministic last-resort report that always validates when evidence is non-empty. */
@@ -264,7 +305,12 @@ export function buildMinimalNatalReport(
       key,
       title: SECTION_TITLES[key],
       claims: [{
-        text: `${item.label}: ${item.value}. Этот рассчитанный фактор задаёт основную тему раздела «${SECTION_TITLES[key]}».`,
+        text: buildEvidenceGroundedClaimText(
+          item,
+          SECTION_TITLES[key],
+          reportType,
+          horizonDays
+        ),
         evidenceIds: [primaryId],
       }],
     };
@@ -476,6 +522,18 @@ export function buildNatalReportJsonInstructions(
   horizonDays?: NatalReport["horizonDays"]
 ): string {
   const horizonField = reportType === "forecast" ? `,"horizonDays":${horizonDays}` : "";
+  const shortForecast = reportType === "forecast" && (horizonDays ?? 30) <= 7;
+  const longForecast = reportType === "forecast" && (horizonDays ?? 30) >= 90;
+  const sectionDepth = shortForecast
+    ? "каждый раздел — 3–6 содержательных предложений и не менее 180 знаков"
+    : longForecast
+      ? "каждый раздел — 3–6 содержательных предложений и не менее 220 знаков (не раздувай текст)"
+      : "каждый раздел — полноценная часть единого персонального текста: 5–8 содержательных предложений и не менее 300 знаков";
+  const totalDepth = shortForecast
+    ? "общий объём текста восьми разделов — не менее 1400 знаков"
+    : longForecast
+      ? "общий объём текста восьми разделов — не менее 1800 знаков; приоритет — полный валидный JSON, а не длина абзацев"
+      : "общий объём текста восьми разделов — не менее 2400 знаков";
   return `Верни ТОЛЬКО JSON-объект без markdown.
 Схема:
 {"version":"${NATAL_REPORT_VERSION}","tradition":"${tradition}","reportType":"${reportType}"${horizonField},"sections":[
@@ -483,17 +541,19 @@ ${NATAL_REPORT_SECTION_KEYS.map((key) => `{"key":"${key}","title":"локали�
 ],"disclaimer":"не научный прогноз и не замена профессиональной консультации","methodology":"как использованы расчёты и ограничения"}
 Правила качества:
 - все восемь разделов обязательны и идут в указанном порядке;
-- каждый раздел — полноценная часть единого персонального текста: 5–8 содержательных предложений и не менее 350 знаков;
-- общий объём текста восьми разделов — не менее 3200 знаков;
+- ${sectionDepth};
+- ${totalDepth};
 - раскрывай причинно-следственную связь: конкретный рассчитанный фактор → его символическое значение → проявление в жизни → практический вывод;
 - называй конкретные планеты, знаки, дома, аспекты, даты или периоды только из переданных evidence; не заменяй их общими словами;
 - используй имя клиента из пользовательского сообщения естественно, но не в каждом разделе;
 - не пиши универсальные фразы вроде «у вас есть потенциал», «возможны изменения», «сосредоточьтесь на целях» без конкретного объяснения через evidence;
 - разделы не должны повторять друг друга по смыслу или формулировкам;
 - в каждом разделе минимум один непустой claim; у каждого claim один или несколько существующих evidenceIds;
-- не добавляй факты, которые прямо не поддержаны указанными evidence.
+- не добавляй факты, которые прямо не поддержаны указанными evidence;
+- копируй evidenceIds ТОЧНО из блока EVIDENCE, без сокращений и выдуманных ID;
+- JSON должен быть синтаксически полным: закрой все массивы и объекты, не обрывай ответ на середине claim.
 ${reportType === "forecast"
-  ? `Это прогноз на ${horizonDays} дней: формулируй возможности, напряжения и практические рекомендации как вероятностные темы, а не гарантированные события. В разделах summary, currentPeriod и recommendations каждый claim обязан содержать минимум один точный timing evidence ID (префикс ne.timing.). В остальных разделах можно ссылаться на натальные или timing evidence из блока ниже.`
+  ? `Это прогноз на ${horizonDays} дней: формулируй возможности, напряжения и практические рекомендации как вероятностные темы, а не гарантированные события. Опирайся на события выбранного окна; если транзитов мало — углубляй натальный контекст в personality/relationships/career/resources/tensions, а summary/currentPeriod/recommendations держи на timing evidence. В разделах summary, currentPeriod и recommendations каждый claim обязан содержать минимум один точный timing evidence ID (префикс ne.timing.). В остальных разделах можно ссылаться на натальные или timing evidence из блока ниже.`
   : "Для personality цитируй identity/emotions; relationships — relationships/emotions; career — career/identity; resources — resources/career; tensions — tensions/emotions; currentPeriod — только evidence категории timing."}`;
 }
 

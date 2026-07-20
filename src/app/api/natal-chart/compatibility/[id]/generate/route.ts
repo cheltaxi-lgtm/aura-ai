@@ -12,7 +12,9 @@ import {
 import { getNatalModel } from "@/lib/ai-model";
 import { completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { getUserById } from "@/lib/users";
 import { isNatalChartEnabled } from "@/lib/settings";
 import {
   BillingService,
@@ -109,14 +111,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   const evidence = buildCompatibilityEvidence(claim.record.synastry);
-  const systemPrompt = await wrapSystemPrompt(`Ты — астрологический аналитик Zovus.
+  const compatUser = await getUserById(auth.profileUserId).catch(() => null);
+  const systemPrompt = await appendNatalPersonalizationLens(
+    await wrapSystemPrompt(`Ты — астрологический аналитик Zovus.
 Создай проверяемый отчёт о совместимости на русском языке.
 Используй ТОЛЬКО рассчитанный evidence ниже. Не выдумывай положения, аспекты,
 биографические факты или даты. Не делай предсказаний и не упоминай координаты.
 ${compatibilityReportJsonInstructions()}
 
 EVIDENCE:
-${formatCompatibilityEvidence(evidence)}`);
+${formatCompatibilityEvidence(evidence)}`),
+    { profileUserId: auth.profileUserId, user: compatUser }
+  );
   const baseMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     {

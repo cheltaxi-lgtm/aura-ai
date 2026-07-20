@@ -1056,7 +1056,7 @@ async function main() {
     "report and print views hide English implementation labels and identifiers"
   );
   assert(
-    ["Текущие транзиты", "Колесо", "Положения", "Аспекты и орб", "D1 и D9",
+    ["Текущие транзиты", "Колесо", "Положения", "Аспекты и орб", "Раши и навамша",
       "Шкала и фильтры", "Солнечное возвращение", "Вторичные прогрессии",
       "Текущая даша"]
       .every((title) => astrologyWorkspace.includes(`title="${title}"`)) &&
@@ -1071,7 +1071,7 @@ async function main() {
       astrologyWorkspace.includes("полноты показывает") &&
       astrologyWorkspace.includes("не подтверждает истинность") &&
       natalSettings.includes("не создают прогноз") &&
-      astrologyWorkspace.includes("асцендент D9 также исключён") &&
+      astrologyWorkspace.includes("асцендент девятой карты (навамша) также исключён") &&
       astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
     "timing and evidence language remains calibrated and explicit about limits"
   );

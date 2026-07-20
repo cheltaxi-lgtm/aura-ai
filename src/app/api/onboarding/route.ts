@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb, query } from "@/lib/db";
-import { getAccountConsentSnapshot, getProfileUserIdForAccount } from "@/lib/accounts";
+import {
+  getAccountConsentSnapshot,
+  getProfileUserIdForAccount,
+  updateUserAccountName,
+} from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { validateDisplayName } from "@/lib/auth-policy";
+import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import {
   createUserProfileForAccount,
   createHistoryEntry,
@@ -111,11 +116,13 @@ export async function POST(request: NextRequest) {
     }
     let user = profileUserId ? await getUserById(profileUserId) : null;
 
+    const displayName = normalizeStoredDisplayName(String(name), String(name).trim());
+
     if (!user) {
       step = "create_user";
       try {
         user = await createUserProfileForAccount(auth.sub, {
-          name: String(name).trim(),
+          name: displayName,
           gender,
           birthDate,
           zodiac,
@@ -140,7 +147,7 @@ export async function POST(request: NextRequest) {
     } else {
       step = "update_user";
       const updated = await updateUserProfile(user.id, {
-        name: String(name).trim(),
+        name: displayName,
         gender,
         birthDate,
         zodiac,
@@ -153,6 +160,8 @@ export async function POST(request: NextRequest) {
       if (updated) user = updated;
       await grantStarterRunesIfNeeded(user.id);
     }
+
+    await updateUserAccountName(auth.sub, displayName);
 
     const verifiedUser = await getUserById(user.id);
     if (!verifiedUser) {

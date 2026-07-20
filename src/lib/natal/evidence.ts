@@ -270,3 +270,68 @@ export function formatEvidencePrompt(evidence: NatalEvidence[]): string {
     `[${item.id}] ${item.label}: ${item.value}; уверенность=${item.confidence}${item.uncertainty ? `; ограничение=${item.uncertainty}` : ""}`
   ).join("\n");
 }
+
+/** Compact lines for LLM prompts — shorter payload, lower truncation risk. */
+export function formatEvidencePromptCompact(evidence: readonly NatalEvidence[]): string {
+  if (!evidence.length) return "";
+  return evidence
+    .map(
+      (item) =>
+        `[${item.id}] ${item.category}/${item.tradition}: ${item.label} — ${item.value}`
+    )
+    .join("\n");
+}
+
+const FORECAST_NATAL_CATEGORY_PRIORITY: Record<string, number> = {
+  identity: 0,
+  emotions: 1,
+  relationships: 2,
+  career: 3,
+  resources: 4,
+  tensions: 5,
+  timing: 9,
+};
+
+const CONFIDENCE_RANK: Record<NatalEvidence["confidence"], number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+/**
+ * Cap forecast evidence so the system prompt stays within reliable completion size.
+ * Keeps the most useful natal factors plus a horizon-scaled timing window.
+ */
+export function selectEvidenceForForecastPrompt(
+  evidence: readonly NatalEvidence[],
+  horizonDays: number
+): NatalEvidence[] {
+  const timingCap = horizonDays >= 365 ? 26 : horizonDays >= 90 ? 20 : horizonDays >= 30 ? 16 : 12;
+  const natalCap = horizonDays >= 365 ? 14 : horizonDays >= 90 ? 16 : 18;
+
+  const timing = evidence
+    .filter((item) => item.tradition === "timing")
+    .slice()
+    .sort(
+      (a, b) =>
+        CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence] ||
+        a.id.localeCompare(b.id)
+    )
+    .slice(0, timingCap);
+
+  const natal = evidence
+    .filter((item) => item.tradition !== "timing")
+    .slice()
+    .sort((a, b) => {
+      const pa = FORECAST_NATAL_CATEGORY_PRIORITY[a.category] ?? 8;
+      const pb = FORECAST_NATAL_CATEGORY_PRIORITY[b.category] ?? 8;
+      if (pa !== pb) return pa - pb;
+      return (
+        CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence] ||
+        a.id.localeCompare(b.id)
+      );
+    })
+    .slice(0, natalCap);
+
+  return [...natal, ...timing];
+}

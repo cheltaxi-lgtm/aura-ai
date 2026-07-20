@@ -99,7 +99,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     const safe = sanitizeReturnTo(raw, fallback);
     setReturnTo(safe);
     captureReturnToFromUrl(window.location.search, fallback);
-    if (isUserRegister && isAgeGateConfirmed()) {
+    if (role === "user" && isAgeGateConfirmed()) {
       setAgeConfirmed(true);
     }
     const oauthErr = params.get("oauthError");
@@ -121,7 +121,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     if (params.get("method") === "email") {
       setShowEmailRegister(true);
     }
-  }, [isExpert, isUserRegister]);
+  }, [isExpert, isUserRegister, role]);
 
   useEffect(() => {
     document.body.classList.add("auth-recaptcha-hidden");
@@ -143,8 +143,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const canSubmit =
     featuresLoaded &&
     !loading &&
-    (!requiresLegalConsent || acceptedTerms) &&
-    (!isUserRegister && !isExpertRegister || ageConfirmed);
+    (!requiresLegalConsent || (acceptedTerms && ageConfirmed)) &&
+    (!isExpertRegister || ageConfirmed);
   const showRegisterLink =
     mode === "login" && (role !== "expert" || expertRegistrationEnabled);
   const endpoint = `/api/auth/${role}/${mode === "login" ? "login" : "register"}`;
@@ -164,6 +164,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
     const body: Record<string, unknown> = { email: email.trim(), password };
 
+    if (role === "user") {
+      body.ageConfirmed = ageConfirmed;
+      body.acceptedTerms = acceptedTerms;
+    }
+
     if (mode === "register") {
       body.name = name;
       if (isExpert) {
@@ -177,8 +182,6 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       if (isUserRegister) {
         body.sessionId = localStorage.getItem("aura_session_id") ?? undefined;
         body.marketingConsent = marketingConsent;
-        body.ageConfirmed = ageConfirmed;
-        body.acceptedTerms = acceptedTerms;
         const attribution = readUtmAttribution();
         if (attribution) body.attribution = attribution;
         if (optionalBirthDate.trim()) {
@@ -468,7 +471,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           termsId="legal-terms-consent"
           ageId="legal-age-consent"
         />
-        {mode === "register" && (!acceptedTerms || !ageConfirmed) ? (
+        {!acceptedTerms || !ageConfirmed ? (
           <p className="mt-3 text-center text-xs text-amber-200/80">
             Отметьте согласие с условиями и подтвердите возраст 18+.
           </p>
@@ -523,10 +526,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       {role === "user" && !isUserRegister ? (
         <>
           <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
+          {legalConsentFields}
           <SocialAuthButtons
             mode={mode as OAuthMode}
             returnTo={returnTo}
-            requireConsent={false}
+            requireConsent
             acceptedTerms={acceptedTerms}
             ageConfirmed={ageConfirmed}
             marketingConsent={marketingConsent}
@@ -707,7 +711,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </div>
       ) : null}
 
-      {mode === "login" ? legalConsentFields : null}
+      {mode === "login" && role !== "user" ? legalConsentFields : null}
 
       {mode === "login" ? (
         <ul className="space-y-1 text-xs leading-relaxed text-gray-500">

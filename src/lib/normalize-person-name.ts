@@ -188,9 +188,74 @@ const LATIN_LETTERS: Record<string, string> = {
 const CYRILLIC_RE = /[\u0400-\u04FF]/;
 const LATIN_RE = /[a-zA-Z]/;
 
+/** Cyrillic letters LLMs/OAuth often mix into Latin spellings (Гennadiy → Gennadiy). */
+const CYRILLIC_LOOKALIKE_TO_LATIN: Record<string, string> = {
+  А: "A",
+  а: "a",
+  В: "B",
+  Е: "E",
+  е: "e",
+  К: "K",
+  к: "k",
+  М: "M",
+  м: "m",
+  Н: "H",
+  н: "h",
+  О: "O",
+  о: "o",
+  Р: "P",
+  р: "p",
+  С: "C",
+  с: "c",
+  Т: "T",
+  т: "t",
+  У: "Y",
+  у: "y",
+  Х: "X",
+  х: "x",
+  Г: "G",
+  г: "g",
+  Д: "D",
+  д: "d",
+  З: "Z",
+  з: "z",
+  И: "I",
+  и: "i",
+  Й: "Y",
+  й: "y",
+  Л: "L",
+  л: "l",
+  П: "P",
+  п: "p",
+  Ф: "F",
+  ф: "f",
+  Ь: "",
+  ь: "",
+  Ъ: "",
+  ъ: "",
+  Ы: "Y",
+  ы: "y",
+  Э: "E",
+  э: "e",
+  Ю: "Yu",
+  ю: "yu",
+  Я: "Ya",
+  я: "ya",
+  Ё: "Yo",
+  ё: "yo",
+};
+
 function titleCaseRu(value: string): string {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function latinLookupForm(token: string): string {
+  return [...token]
+    .map((ch) => CYRILLIC_LOOKALIKE_TO_LATIN[ch] ?? ch)
+    .join("")
+    .replace(/[^a-zA-Z]/g, "")
+    .toLowerCase();
 }
 
 function stripNoise(raw: string): string {
@@ -239,7 +304,16 @@ export function normalizePersonDisplayName(raw: string | null | undefined): stri
     return titleCaseRu(token);
   }
 
-  // Mixed or Latin → known map / transliteration
+  // Mixed script (e.g. "Гennadiy") → Latin lookup form → known map / transliteration
+  if (CYRILLIC_RE.test(token) && LATIN_RE.test(token)) {
+    const latinized = latinLookupForm(token);
+    if (latinized) {
+      const mapped = transliterateLatinToken(latinized);
+      if (mapped) return mapped;
+    }
+  }
+
+  // Latin → known map / transliteration
   if (LATIN_RE.test(token)) {
     return transliterateLatinToken(token);
   }
@@ -253,4 +327,28 @@ export function normalizePersonDisplayNameOr(
   fallback = ""
 ): string {
   return normalizePersonDisplayName(raw) || fallback;
+}
+
+const MAX_STORED_NAME_LENGTH = 80;
+
+/**
+ * Canonical name for DB / cookie / UI storage.
+ * Prefers Russian given name; falls back to trimmed raw, then fallback.
+ */
+export function normalizeStoredDisplayName(
+  raw: string | null | undefined,
+  fallback = "Гость"
+): string {
+  const normalized = normalizePersonDisplayName(raw);
+  if (normalized) return normalized.slice(0, MAX_STORED_NAME_LENGTH);
+  const trimmed = raw?.trim().replace(/\s+/g, " ").slice(0, MAX_STORED_NAME_LENGTH) ?? "";
+  return trimmed || fallback;
+}
+
+/** True when the string still has Latin letters (needs cleanup for RU UX). */
+export function displayNameNeedsNormalization(raw: string | null | undefined): boolean {
+  if (!raw?.trim()) return false;
+  if (!LATIN_RE.test(raw)) return false;
+  const normalized = normalizePersonDisplayName(raw);
+  return Boolean(normalized && normalized !== raw.trim());
 }
