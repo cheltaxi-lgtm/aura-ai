@@ -90,10 +90,11 @@ console.log(`=== Post-deploy SEO: ${base} ===\n`);
 
 await checkUrl(`/${INDEXNOW_KEY}.txt`, 200, INDEXNOW_KEY);
 const homeHtml = await checkUrl("/", 200);
+// Consent-gated: tag.js must NOT be in SSR HTML; loads only after «Принять аналитику».
 ok(
-  "Metrika counter in HTML",
-  homeHtml.includes(`mc.yandex.ru/metrika/tag.js`) && homeHtml.includes(String(METRIKA_ID)),
-  `id=${METRIKA_ID}`
+  "Metrika not in SSR HTML (consent-gated)",
+  !homeHtml.includes(`mc.yandex.ru/metrika/tag.js`),
+  `id=${METRIKA_ID} loads client-side after consent`
 );
 ok(
   "Yandex Webmaster verification meta",

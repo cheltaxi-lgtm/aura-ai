@@ -43,16 +43,17 @@ export async function GET(request: NextRequest) {
     }
 
     const report = await findOwnedMatrixReport(auth.profileUserId, birthDate);
+    const hasContent = Boolean(report?.content?.trim());
     return NextResponse.json({
-      owned: Boolean(report),
-      report: report
+      owned: hasContent,
+      report: hasContent && report
         ? {
             id: report.id,
             birthDate: report.birthDate,
             calculationVersion: report.calculationVersion,
             createdAt: report.createdAt,
             // Content is loaded via /api/reading reuse; preview only needs ownership.
-            hasContent: Boolean(report.content?.trim()),
+            hasContent: true,
           }
         : null,
       includedQuestions: PRICING.MATRIX_INCLUDED_QUESTIONS,

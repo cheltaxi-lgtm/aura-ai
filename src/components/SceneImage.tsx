@@ -30,7 +30,12 @@ export default function SceneImage({
   expandable = false,
 }: SceneImageProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const displayUrl = resolveSceneArtDisplayUrl(imageUrl);
+
+  useEffect(() => {
+    setLoadFailed(false);
+  }, [displayUrl]);
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -46,10 +51,10 @@ export default function SceneImage({
     };
   }, [lightboxOpen]);
 
-  if (!loading && !displayUrl) return null;
+  if (!loading && (!displayUrl || loadFailed)) return null;
 
   const isCard = variant === "card";
-  const canExpand = expandable && !!displayUrl && !loading;
+  const canExpand = expandable && !!displayUrl && !loading && !loadFailed;
 
   const lightbox =
     lightboxOpen && displayUrl ? (
@@ -93,6 +98,7 @@ export default function SceneImage({
             width={520}
             height={780}
             unoptimized
+            onError={() => setLoadFailed(true)}
             className="max-h-[92vh] w-full object-contain drop-shadow-[0_0_40px_rgba(168,85,247,0.25)]"
           />
         </motion.div>
@@ -107,6 +113,7 @@ export default function SceneImage({
         width={isCard ? 240 : 640}
         height={isCard ? 360 : 360}
         unoptimized
+        onError={() => setLoadFailed(true)}
         className={
           isCard
             ? "block h-auto w-full"

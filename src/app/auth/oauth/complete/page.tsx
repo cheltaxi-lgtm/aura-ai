@@ -10,6 +10,7 @@ import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
 import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
+import { readUtmAttribution } from "@/lib/utm/attribution";
 
 type RegistrationPreview = {
   providerLabel: string;
@@ -182,6 +183,7 @@ export default function OAuthCompletePage() {
           acceptedTerms: true,
           ageConfirmed: true,
           marketingConsent: marketing,
+          attribution: readUtmAttribution() ?? undefined,
         }),
       });
       const data = await response.json();

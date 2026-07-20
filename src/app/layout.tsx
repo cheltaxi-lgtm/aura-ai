@@ -4,6 +4,8 @@ import SalonBackground from "@/components/SalonBackground";
 import Providers from "@/components/Providers";
 import AppAwareCookieBanner from "@/components/AppAwareCookieBanner";
 import AppAwareSiteFooter from "@/components/AppAwareSiteFooter";
+import GlobalAppTopHeader from "@/components/GlobalAppTopHeader";
+import UtmCapture from "@/components/UtmCapture";
 import YandexMetrika from "@/components/YandexMetrika";
 import { getRootMetadata } from "@/lib/seo";
 import "../styles/tokens.css";
@@ -44,9 +46,11 @@ export default function RootLayout({
         </svg>
         <SalonBackground />
         <Providers>
+          <GlobalAppTopHeader />
           <div className="app-main-column relative z-10 flex min-h-0 flex-1 flex-col">{children}</div>
           <AppAwareSiteFooter />
         </Providers>
+        <UtmCapture />
         <AppAwareCookieBanner />
         <YandexMetrika />
       </body>

@@ -128,7 +128,16 @@ export function navigateToBirthProfileOnboarding(): void {
   } catch {
     /* private mode */
   }
-  shellNavigate(onboardingRedirectUrl());
+  const target = onboardingRedirectUrl();
+  // Leaving /cabinet/* via bare location.assign drops aura_auth in WebView;
+  // re-stamp the cookie through the session bridge first.
+  if (shouldUseSessionBridge()) {
+    void navigateViaSessionBridge(target).then((bridged) => {
+      if (!bridged) shellNavigate(target);
+    });
+    return;
+  }
+  shellNavigate(target);
 }
 
 /** Переход к секции главной с любой страницы. */
@@ -158,9 +167,20 @@ export function navigateToAppHome(): void {
   shellNavigate(APP_SHELL_ROUTES.home);
 }
 
-/** @deprecated alias */
-export function navigateToHomeSpreadFlow(): void {
+/** Header CTA «Получить расклад» — on home starts the flow; otherwise opens home. */
+export function navigateToStartReading(): void {
+  primeHomeFlowState();
+  const homeHandlers = getAppShellHomeNavHandlers();
+  if (isOnHomePage() && homeHandlers.startReading) {
+    homeHandlers.startReading();
+    return;
+  }
   navigateToAppHome();
+}
+
+/** @deprecated alias — prefer navigateToStartReading for the header CTA */
+export function navigateToHomeSpreadFlow(): void {
+  navigateToStartReading();
 }
 
 /** Каталог раскладов. */

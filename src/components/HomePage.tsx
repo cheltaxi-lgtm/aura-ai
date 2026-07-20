@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { flushSync } from "react-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -13,7 +13,6 @@ import MasterSelect from "@/components/MasterSelect";
 import ChatWindow from "@/components/ChatWindow";
 import SessionList, { type SessionListItem } from "@/components/SessionList";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
-import AppTopHeader from "@/components/AppTopHeader";
 import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
@@ -55,7 +54,6 @@ import {
 import { getCharacterById } from "@/lib/characters";
 import {
   APP_SHELL_HOME_EVENT,
-  APP_SHELL_SECTIONS,
   consumeOpenDecksModalFlag,
   consumeOpenRitualFlowFlag,
   navigateToDecksModal,
@@ -1355,6 +1353,11 @@ export default function HomePage({
 
   useEffect(() => {
     if (!selectedCharacter || !activeSpreadCardsKey) return;
+    // Numerolog Full Matrix uses DestinyMatrixGrid — never restore AI «карта судьбы» art.
+    if (selectedCharacter === "numerolog") {
+      setChatHeaderImage(null);
+      return;
+    }
 
     const firstAssistant = messages.find((m) => m.role === "assistant");
     if (firstAssistant?.sceneImageUrl) {
@@ -1458,6 +1461,14 @@ export default function HomePage({
   useEffect(() => {
     if (sessionOnlyChat) return;
     if (!selectedCharacter || !activeSpreadCardsKey) return;
+    // Full Matrix / Pythagoras show computed grids — do not generate AI destiny-card art.
+    if (
+      selectedCharacter === "numerolog" ||
+      chatDisplaySpread?.source === "numerolog" ||
+      chatDisplaySpread?.computedOnly
+    ) {
+      return;
+    }
     if (
       hasCompleteSpread(
         chatDisplaySpread?.cards?.map((c) => c.name),
@@ -2473,6 +2484,9 @@ export default function HomePage({
       goHome: () => {
         exitToLandingForNav();
       },
+      startReading: () => {
+        handleStartReadingFromHeader();
+      },
       openPhotoReading: () => {
         openPhotoReading();
       },
@@ -2486,7 +2500,14 @@ export default function HomePage({
         scrollToSection(sectionId);
       },
     });
-  }, [exitToLandingForNav, openPhotoReading, openDecksModal, handleNavRitual, scrollToSection]);
+  }, [
+    exitToLandingForNav,
+    handleStartReadingFromHeader,
+    openPhotoReading,
+    openDecksModal,
+    handleNavRitual,
+    scrollToSection,
+  ]);
 
   const landingInsufficientRunes = (payload: { balance: number; required: number }) => {
     setInsufficientRunes(payload);
@@ -2534,28 +2555,7 @@ export default function HomePage({
     return () => window.clearTimeout(timer);
   }, [spreadRitual.active, setSpreadRitual]);
 
-  const [headerMounted, setHeaderMounted] = useState(false);
-  useEffect(() => {
-    setHeaderMounted(true);
-  }, []);
-
   const inActiveChat = step === "chat" || Boolean(selectedCharacter);
-
-  const topHeader = (
-    <AppTopHeader
-      photoNavLabel={photoNavLabel}
-      isLoggedIn={isLoggedIn}
-      authUser={authUser}
-      authLoading={authLoading}
-      onOpenPaywall={() => handleOpenPaywall()}
-      onNavMasters={() => scrollToSection(APP_SHELL_SECTIONS.masters)}
-      onNavTariffs={() => scrollToSection(APP_SHELL_SECTIONS.tariffs)}
-      onNavPhoto={() => openPhotoReading()}
-      onNavDecks={openDecksModal}
-      onNavRitual={handleNavRitual}
-      onStartReading={handleStartReadingFromHeader}
-    />
-  );
 
   useEffect(() => {
     const onAppHomeNav = () => {
@@ -2580,8 +2580,6 @@ export default function HomePage({
             : "relative min-h-screen pt-[var(--app-header-h,3.25rem)]"
       }
     >
-      {headerMounted ? createPortal(topHeader, document.body) : null}
-
       <main
         className={
           inActiveChat
@@ -3131,6 +3129,20 @@ export default function HomePage({
                   onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
                   onOpenDestinyMatrixSession={
                     isLoggedIn ? () => openNumerologSessionFlow("destiny_matrix") : undefined
+                  }
+                  onOpenOwnedDestinyMatrixReport={
+                    isLoggedIn
+                      ? () => {
+                          void openChatWithSessionParams({
+                            characterKey: "numerolog",
+                            intention: null,
+                            spreadType: "new",
+                            cards: [],
+                            cardsRevealed: true,
+                            numerologToolId: "destiny_matrix",
+                          });
+                        }
+                      : undefined
                   }
                   onCustomQuestionSubmit={isLoggedIn ? handleLandingCustomQuestion : undefined}
                   onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}

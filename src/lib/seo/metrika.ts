@@ -1,22 +1,25 @@
 "use client";
 
+import { utmParamsForMetrika } from "@/lib/utm/attribution";
+
 const YANDEX_METRIKA_ID = 110138367;
 
 declare global {
   interface Window {
-    ym?: (
-      id: number,
-      method: string,
-      goal: string,
-      params?: Record<string, string | number>
-    ) => void;
+    ym?: (id: number, method: string, ...args: unknown[]) => void;
   }
 }
 
 export function trackSeoEvent(goal: string, params?: Record<string, string | number>): void {
   if (typeof window === "undefined" || !window.ym) return;
   try {
-    window.ym(YANDEX_METRIKA_ID, "reachGoal", goal, params);
+    const withUtm = { ...utmParamsForMetrika(), ...params };
+    window.ym(
+      YANDEX_METRIKA_ID,
+      "reachGoal",
+      goal,
+      Object.keys(withUtm).length ? withUtm : undefined
+    );
   } catch {
     /* analytics optional */
   }
@@ -133,6 +136,14 @@ export function trackRegistrationStarted(source: string): void {
   trackLandingEvent("registration_started", { source });
 }
 
+export function trackPaywallOpen(source: string): void {
+  trackLandingEvent("paywall_open", { source });
+}
+
+export function trackPaymentCancelled(source: string): void {
+  trackLandingEvent("payment_cancelled", { source });
+}
+
 /** Account row created (before birth-date profile). */
 export function trackRegistrationAccountCreated(source: string): void {
   trackLandingEvent("registration_account_created", { source });
@@ -153,6 +164,7 @@ export function trackRunePurchase(amountRub: number, packageId?: string): void {
       order_price: amountRub,
       currency: "RUB",
       ...(packageId ? { packageId } : {}),
+      ...utmParamsForMetrika(),
     });
   } catch {
     /* analytics optional */

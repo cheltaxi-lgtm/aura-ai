@@ -51,8 +51,8 @@ export default function BrandLogo({
 
   const content = (
     <>
-      <span className="brand-logo__lockup inline-flex min-w-0 items-center">
-        <BrandMark size={markSize} className="shrink-0 pointer-events-none" />
+      <span className="brand-logo__lockup inline-flex shrink-0 items-center">
+        <BrandMark size={markSize} className="brand-logo__mark shrink-0 pointer-events-none" />
         {mobileBeta}
         <span className={`${wordmarkClass} inline-flex items-center`}>
           <span className={`brand-logo__wordmark ${titleClassName}`}>{BRAND_WORDMARK}</span>
@@ -65,7 +65,7 @@ export default function BrandLogo({
     </>
   );
 
-  const wrapperClass = `flex min-w-0 shrink items-center gap-0 ${className}`;
+  const wrapperClass = `flex shrink-0 items-center gap-0 ${className}`;
 
   if (linkToHome) {
     return (
@@ -77,7 +77,7 @@ export default function BrandLogo({
           e.preventDefault();
           navigateHomeHard();
         }}
-        className={`brand-logo-home relative z-[5010] inline-flex min-h-11 min-w-[44px] touch-manipulation cursor-pointer select-none ${wrapperClass}`}
+        className={`brand-logo-home relative z-[5010] inline-flex min-h-11 touch-manipulation cursor-pointer select-none ${wrapperClass}`}
         aria-label={`${BRAND_NAME} — на главную`}
       >
         {content}

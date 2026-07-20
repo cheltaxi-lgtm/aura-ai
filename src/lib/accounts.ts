@@ -74,67 +74,22 @@ export async function setUserAccountUnlimited(accountId: string, unlimited: bool
 }
 
 /** Returns profile id only when this account exclusively owns the linked profile (UUID link only). */
+/**
+ * Resolve onboarding profile id for an account.
+ * Read-only: must not lock rows or unlink sibling accounts on hot paths
+ * (job polling, /api/auth/me, natal GET) — that caused intermittent 401s
+ * right after a paid natal job was successfully enqueued.
+ */
 export async function getProfileUserIdForAccount(accountId: string): Promise<string | null> {
-  return withTransaction(async (client) => {
-    const accountResult = await queryClient<{
-      id: string;
-      profile_user_id: string | null;
-    }>(client, "SELECT id, profile_user_id FROM user_accounts WHERE id = $1 FOR UPDATE", [
-      accountId,
-    ]);
-    const account = accountResult.rows[0];
-    if (!account) return null;
-
-    const profileId = account.profile_user_id ?? null;
-    if (!profileId) {
-      return null;
-    }
-
-    const profileRows = await queryClient<{ id: string }>(
-      client,
-      "SELECT id FROM users WHERE id = $1",
-      [profileId]
-    );
-    if (!profileRows.rows[0]) {
-      await queryClient(client, "UPDATE user_accounts SET profile_user_id = NULL WHERE id = $1", [
-        accountId,
-      ]);
-      return null;
-    }
-
-    const linkedAccounts = await queryClient<{ id: string; created_at: Date }>(
-      client,
-      `SELECT id, created_at FROM user_accounts
-       WHERE profile_user_id = $1
-       ORDER BY created_at ASC
-       FOR UPDATE`,
-      [profileId]
-    );
-
-    if (linkedAccounts.rows.length === 0) {
-      await queryClient(client, "UPDATE user_accounts SET profile_user_id = NULL WHERE id = $1", [
-        accountId,
-      ]);
-      return null;
-    }
-
-    if (linkedAccounts.rows.length === 1) {
-      return linkedAccounts.rows[0].id === accountId ? profileId : null;
-    }
-
-    const staleAccountIds = linkedAccounts.rows
-      .filter((row) => row.id !== accountId)
-      .map((row) => row.id);
-    if (staleAccountIds.length > 0) {
-      await queryClient(
-        client,
-        "UPDATE user_accounts SET profile_user_id = NULL WHERE id = ANY($1::uuid[])",
-        [staleAccountIds]
-      );
-    }
-
-    return linkedAccounts.rows.some((row) => row.id === accountId) ? profileId : null;
-  });
+  const { rows } = await query<{ profile_user_id: string | null }>(
+    `SELECT ua.profile_user_id
+     FROM user_accounts ua
+     WHERE ua.id = $1
+       AND ua.profile_user_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM users u WHERE u.id = ua.profile_user_id)`,
+    [accountId]
+  );
+  return rows[0]?.profile_user_id ?? null;
 }
 
 export async function updateUserAccountName(accountId: string, name: string) {
@@ -219,6 +174,21 @@ export async function createUser(email: string, passwordHash: string, name: stri
     [email.toLowerCase(), passwordHash, name]
   );
   return rows[0];
+}
+
+/** First-touch only — never overwrites an existing attribution snapshot. */
+export async function saveRegistrationAttributionIfEmpty(
+  accountId: string,
+  attribution: Record<string, string>
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE user_accounts
+     SET registration_attribution = $2::jsonb
+     WHERE id = $1
+       AND registration_attribution IS NULL`,
+    [accountId, JSON.stringify(attribution)]
+  );
+  return (rowCount ?? 0) > 0;
 }
 
 export async function findExpertByEmail(email: string) {
@@ -417,19 +387,6 @@ export async function getExpertStats(slug: string) {
     payments: parseInt(rows[0]?.payments ?? "0", 10),
     revenue: parseFloat(rows[0]?.revenue ?? "0"),
   };
-}
-
-export async function linkSessionToUser(sessionId: string, userId: string): Promise<boolean> {
-  const { rows } = await query<{ id: string }>(
-    `UPDATE sessions AS s
-     SET user_id = $2, updated_at = NOW()
-     WHERE s.id = $1
-       AND EXISTS (SELECT 1 FROM users u WHERE u.id = $2)
-       AND (s.user_id IS NULL OR s.user_id = $2)
-     RETURNING s.id`,
-    [sessionId, userId]
-  );
-  return Boolean(rows[0]);
 }
 
 export async function deleteUserChatForCharacter(

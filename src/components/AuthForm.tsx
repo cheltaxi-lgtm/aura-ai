@@ -43,6 +43,7 @@ import {
   clearShareRegistrationAttribution,
   resolveRegistrationSource,
 } from "@/lib/share/registration-attribution";
+import { readUtmAttribution } from "@/lib/utm/attribution";
 import {
   trackRegistrationAccountCreated,
   trackRegistrationCompleted,
@@ -178,6 +179,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         body.marketingConsent = marketingConsent;
         body.ageConfirmed = ageConfirmed;
         body.acceptedTerms = acceptedTerms;
+        const attribution = readUtmAttribution();
+        if (attribution) body.attribution = attribution;
         if (optionalBirthDate.trim()) {
           body.gender = optionalGender;
           body.birthDate = optionalBirthDate.trim();

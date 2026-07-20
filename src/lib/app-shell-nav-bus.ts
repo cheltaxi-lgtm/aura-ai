@@ -1,5 +1,7 @@
 export type AppShellHomeNavHandlers = {
   goHome: () => void;
+  /** Header CTA «Получить расклад» when already on `/`. */
+  startReading: () => void;
   openPhotoReading: () => void;
   openDecksModal: () => void;
   openRitualFlow: () => void;

@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { confirmOrReconcileRunePurchase } from "@/lib/rune-payment-confirm";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 
 export async function POST(request: NextRequest) {
   const authed = await requireProfileUserId();
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = await enforcePaidRouteRateLimit(authed.profileUserId, "rune_confirm");
+  if (limited) return limited;
 
   let paymentId: string | undefined;
   try {
@@ -33,6 +37,7 @@ export async function POST(request: NextRequest) {
     paymentId: result.paymentId,
     credited: result.status === "credited",
     pending: result.status === "pending",
+    cancelled: result.status === "cancelled",
     alreadyCredited: result.status === "already_credited",
     amountRub: result.amountRub,
     packageId: result.packageId,

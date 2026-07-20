@@ -51,6 +51,9 @@ export const PAID_ROUTE_LIMITS = {
   image_generate: { max: IMAGE_GEN_LIMIT, windowMs: IMAGE_GEN_WINDOW_MS },
   daily_bonus: { max: 1, windowMs: 86_400_000 },
   rune_purchase: { max: 10, windowMs: 3_600_000 },
+  /** Confirm/reconcile after YooKassa return — tighter than purchase create. */
+  rune_confirm: { max: 30, windowMs: 60_000 },
+  registration_attribution: { max: 10, windowMs: 60_000 },
   spread_metrics: { max: 120, windowMs: 60_000 },
   cabinet_notes: { max: 20, windowMs: 60_000 },
   ritual_create: { max: 10, windowMs: 60_000 },
@@ -77,6 +80,8 @@ export const PAID_ROUTE_LIMITS = {
   natal_compatibility_generate: { max: 3, windowMs: 60_000 },
   natal_compatibility_delete: { max: 10, windowMs: 60_000 },
   report_share_public: { max: 60, windowMs: 60_000 },
+  /** Unauthenticated share-landing API (reading excerpts). */
+  share_public: { max: 60, windowMs: 60_000 },
   report_share_manage: { max: 20, windowMs: 60_000 },
 } as const;
 
@@ -295,6 +300,24 @@ export async function enforceLoginRateLimit(ip: string): Promise<NextResponse | 
     return NextResponse.json(
       { error: "rate_limit", message: "Слишком много попыток входа. Попробуйте позже." },
       { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 900) } }
+    );
+  }
+  return null;
+}
+
+const SESSION_CREATE_LIMIT = 20;
+const SESSION_CREATE_WINDOW_MS = 60 * 60 * 1000;
+
+export async function enforceSessionCreateRateLimit(ip: string): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("session_create", ip),
+    SESSION_CREATE_LIMIT,
+    SESSION_CREATE_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много сессий. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
     );
   }
   return null;

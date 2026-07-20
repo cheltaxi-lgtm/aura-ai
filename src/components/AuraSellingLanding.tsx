@@ -92,7 +92,7 @@ const STEPS = [
   },
   {
     num: "03",
-    title: "Получите расшифровку",
+    title: "Получите трактовку",
     text: "Увидите краткий ориентир по символам, затем зарегистрируйтесь для полной трактовки и чата с мастером.",
   },
 ] as const;
@@ -208,6 +208,8 @@ export interface AuraSellingLandingProps {
   onOpenRitual?: () => void;
   /** Logged-in: open Эвелина session with Матрица судьбы preselected. */
   onOpenDestinyMatrixSession?: () => void;
+  /** Logged-in: open already-purchased Full Matrix report (skip tool picker). */
+  onOpenOwnedDestinyMatrixReport?: () => void;
   /** Logged-in home: open spread flow from the custom question field (hero is hidden). */
   onCustomQuestionSubmit?: (question: string) => void;
   /** Logged-in home: start the selected catalog spread from quick question chips. */
@@ -243,6 +245,7 @@ export default function AuraSellingLanding({
   photoNavLabel,
   onOpenRitual,
   onOpenDestinyMatrixSession,
+  onOpenOwnedDestinyMatrixReport,
   onCustomQuestionSubmit,
   onQuickQuestionSelect,
   homeUserName,
@@ -447,6 +450,7 @@ export default function AuraSellingLanding({
         <HomeDestinyMatrixBanner
           isLoggedIn={isLoggedIn}
           onOpenWithEvelina={isLoggedIn ? onOpenDestinyMatrixSession : undefined}
+          onOpenOwnedReport={isLoggedIn ? onOpenOwnedDestinyMatrixReport : undefined}
         />
       ) : null}
 
@@ -743,8 +747,11 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {!isEditorial && !isLoggedIn ? (
-        <LandingStickyCta label={offer.primaryCta} onClick={() => handlePrimaryCta("sticky")} />
+      {!isLoggedIn ? (
+        <LandingStickyCta
+          label={isEditorial ? "Открыть 3 карты" : offer.primaryCta}
+          onClick={() => handlePrimaryCta("sticky")}
+        />
       ) : null}
     </div>
   );

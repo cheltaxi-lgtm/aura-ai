@@ -86,17 +86,32 @@ export async function findOwnedMatrixReport(
   const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
   const calculationVersion = options?.calculationVersion ?? MATRIX_CALCULATION_VERSION;
 
-  const { rows } = await query<NumerologyReportHistoryRow>(
+  const exact = await query<NumerologyReportHistoryRow>(
     `SELECT ${SELECT_COLS}
      FROM numerology_report_history
      WHERE user_id = $1
        AND tool_id = $2
        AND birth_date = $3::date
        AND calculation_version = $4
+       AND length(trim(content)) > 0
      LIMIT 1`,
     [userId, toolId, birthDate, calculationVersion]
   );
-  return rows[0] ? mapRow(rows[0]) : null;
+  if (exact.rows[0]) return mapRow(exact.rows[0]);
+
+  // Buy-once unlock survives calculation-version bumps: any non-empty saved row for this date.
+  const anyVersion = await query<NumerologyReportHistoryRow>(
+    `SELECT ${SELECT_COLS}
+     FROM numerology_report_history
+     WHERE user_id = $1
+       AND tool_id = $2
+       AND birth_date = $3::date
+       AND length(trim(content)) > 0
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, toolId, birthDate]
+  );
+  return anyVersion.rows[0] ? mapRow(anyVersion.rows[0]) : null;
 }
 
 export async function userOwnsMatrixReport(
@@ -104,7 +119,7 @@ export async function userOwnsMatrixReport(
   birthDateRaw: string | null | undefined
 ): Promise<boolean> {
   const owned = await findOwnedMatrixReport(userId, birthDateRaw);
-  return Boolean(owned);
+  return Boolean(owned?.content?.trim());
 }
 
 export type SaveMatrixReportResult =

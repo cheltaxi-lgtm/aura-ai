@@ -256,7 +256,12 @@ export async function POST(request: NextRequest) {
     userName = serverProfile.name;
     gender = serverProfile.gender;
     zodiac = serverProfile.zodiac;
-    birthDate = serverProfile.birth_date;
+    // Normalize DATE::text / dotted client formats to a stable birth-date string.
+    const { toIsoBirthDate } = await import("@/lib/services/numerology-report-service");
+    birthDate =
+      toIsoBirthDate(serverProfile.birth_date) ??
+      toIsoBirthDate(String(serverProfile.birth_date).slice(0, 10)) ??
+      String(serverProfile.birth_date ?? "").slice(0, 10);
     birthTime = serverProfile.birth_time ?? undefined;
     birthCity = serverProfile.birth_city ?? undefined;
     lifeFocus = serverProfile.life_focus ?? undefined;
@@ -482,9 +487,15 @@ export async function POST(request: NextRequest) {
           | { pythagorasSquare?: import("@/lib/numerology/pythagoras-square").PythagorasSquareResult }
           | undefined;
 
-        // Buy-once Full Matrix: reopen saved AI report without recharging.
+        // Buy-once Full Matrix: reopen saved AI report for THIS birth date only.
         if (isDestinyMatrix && (await ensureDb())) {
-          const owned = await findOwnedMatrixReport(authed.profileUserId, birthDate);
+          const { toIsoBirthDate } = await import("@/lib/services/numerology-report-service");
+          const isoBirth =
+            toIsoBirthDate(birthDate) ?? toIsoBirthDate(String(birthDate).slice(0, 10));
+          const owned = await findOwnedMatrixReport(
+            authed.profileUserId,
+            isoBirth ?? birthDate
+          );
           if (owned?.content?.trim()) {
             reading = owned.content;
             isPaid = true;
@@ -519,8 +530,15 @@ export async function POST(request: NextRequest) {
         }
 
         const runeSettings = await getRuneSettings();
+        // Skip charge only when this birth date already has a saved full report.
+        let matrixOwnedSkipCharge = false;
+        if (isDestinyMatrix && (await ensureDb())) {
+          const ownedRow = await findOwnedMatrixReport(authed.profileUserId, birthDate);
+          matrixOwnedSkipCharge = Boolean(ownedRow?.content?.trim());
+        }
         const useRuneBilling =
           !isDailySpread &&
+          !matrixOwnedSkipCharge &&
           isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
 
         if (useRuneBilling) {

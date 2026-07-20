@@ -13,6 +13,8 @@ type HomeDestinyMatrixBannerProps = {
   isLoggedIn?: boolean;
   /** Prefer direct session open over URL deep-link when parent can handle it. */
   onOpenWithEvelina?: () => void;
+  /** When Full Matrix is already purchased — open saved report, skip tool picker. */
+  onOpenOwnedReport?: () => void;
 };
 
 function toIsoDate(raw: string | null | undefined): string | null {
@@ -26,6 +28,7 @@ function toIsoDate(raw: string | null | undefined): string | null {
 export default function HomeDestinyMatrixBanner({
   isLoggedIn = false,
   onOpenWithEvelina,
+  onOpenOwnedReport,
 }: HomeDestinyMatrixBannerProps) {
   const [owned, setOwned] = useState(false);
 
@@ -48,15 +51,46 @@ export default function HomeDestinyMatrixBanner({
       } catch {
         /* keep local */
       }
-      if (!birthDate || cancelled) return;
       try {
-        const res = await fetch(
-          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
-          { credentials: "include" }
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { owned?: boolean };
-        if (!cancelled) setOwned(Boolean(data.owned));
+        if (birthDate) {
+          const res = await fetch(
+            `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
+            { credentials: "include" }
+          );
+          if (res.ok) {
+            const data = (await res.json()) as { owned?: boolean };
+            if (!cancelled && data.owned) {
+              setOwned(true);
+              return;
+            }
+          }
+        }
+        if (!birthDate) {
+          if (!cancelled) setOwned(false);
+          return;
+        }
+        const listRes = await fetch(`/api/numerology/matrix-report?list=1`, {
+          credentials: "include",
+        });
+        if (!listRes.ok || cancelled) {
+          if (!cancelled) setOwned(false);
+          return;
+        }
+        const listData = (await listRes.json()) as {
+          reports?: Array<{ content?: string; birthDate?: string }>;
+        };
+        const birthKey = birthDate.slice(0, 10);
+        if (!cancelled) {
+          setOwned(
+            Boolean(
+              listData.reports?.some(
+                (r) =>
+                  Boolean(String(r.content ?? "").trim()) &&
+                  (r.birthDate === birthKey || r.birthDate === birthDate)
+              )
+            )
+          );
+        }
       } catch {
         if (!cancelled) setOwned(false);
       }
@@ -68,6 +102,18 @@ export default function HomeDestinyMatrixBanner({
 
   const openPreview = () => {
     window.location.assign(MATRIX_HREF);
+  };
+
+  const openOwned = () => {
+    if (onOpenOwnedReport) {
+      onOpenOwnedReport();
+      return;
+    }
+    if (onOpenWithEvelina) {
+      onOpenWithEvelina();
+      return;
+    }
+    window.location.assign(FULL_SESSION_HREF);
   };
 
   const openWithEvelina = () => {
@@ -93,32 +139,45 @@ export default function HomeDestinyMatrixBanner({
             Матрица судьбы
           </h2>
           <p className="ritual-cta-banner__text">
-            Одна дата — и на экране схема с ключевыми энергиями. Расчёт бесплатный, без анкеты и
-            регистрации.
-          </p>
-          <p className="mt-1 text-xs text-white/40">
             {owned
-              ? "Полный разбор уже открыт — повторно платить не нужно"
-              : `Схема бесплатно · разбор с Эвелиной — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз`}
+              ? "Полный разбор с Эвелиной уже открыт — повторно платить не нужно."
+              : "Одна дата — и на экране схема с ключевыми энергиями. Расчёт бесплатный, без анкеты и регистрации."}
           </p>
+          {!owned ? (
+            <p className="mt-1 text-xs text-white/40">
+              Схема бесплатно · разбор с Эвелиной — {PRICING.NUMEROLOGY_SESSION} ᚢ один раз
+            </p>
+          ) : null}
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
-          <button
-            type="button"
-            onClick={openPreview}
-            className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn"
-          >
-            Рассчитать бесплатно
-          </button>
-          {isLoggedIn ? (
+          {owned ? (
             <button
               type="button"
-              onClick={openWithEvelina}
-              className="btn-luxe btn-luxe--md btn-luxe--ghost ritual-cta-banner__btn"
+              onClick={openOwned}
+              className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn"
             >
-              {owned ? "Открыть разбор" : "С Эвелиной"}
+              Открыть разбор
             </button>
-          ) : null}
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={openPreview}
+                className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn"
+              >
+                Рассчитать бесплатно
+              </button>
+              {isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={openWithEvelina}
+                  className="btn-luxe btn-luxe--md btn-luxe--ghost ritual-cta-banner__btn"
+                >
+                  С Эвелиной
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     </section>

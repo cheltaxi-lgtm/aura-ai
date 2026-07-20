@@ -26,14 +26,33 @@ export function isWorkerUserId(value: string | null | undefined): value is strin
  * Public traffic via Caddy carries Host=zovus.ru and X-Forwarded-For — reject those.
  */
 export function isDirectLoopbackWorkerCall(request: NextRequest): boolean {
-  if (request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip")) {
-    return false;
-  }
   const host = (request.headers.get("host") ?? "").trim().toLowerCase();
-  return (
+  const loopbackHost =
     /^127\.0\.0\.1(?::\d+)?$/.test(host) ||
     /^localhost(?::\d+)?$/.test(host) ||
-    /^\[::1\](?::\d+)?$/.test(host)
+    /^\[::1\](?::\d+)?$/.test(host);
+  if (!loopbackHost) return false;
+
+  // Next's Node server may synthesize x-forwarded-for from req.socket even on
+  // a direct 127.0.0.1 request. Reject only non-loopback hops; public Caddy
+  // requests are already excluded by Host=zovus.ru and carry a public address.
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const hops = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
+    if (hops.some((value) => !isLoopbackAddress(value))) return false;
+  }
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp && !isLoopbackAddress(realIp)) return false;
+
+  return true;
+}
+
+function isLoopbackAddress(value: string): boolean {
+  const normalized = value.replace(/^\[|\]$/g, "").toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "::ffff:127.0.0.1"
   );
 }
 

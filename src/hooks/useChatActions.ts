@@ -656,20 +656,43 @@ export function useChatActions(options: UseChatActionsOptions) {
           isUnlimited: session?.isUnlimited,
         });
         let matrixAlreadyOwned = false;
-        if (
-          billingActive &&
-          isLoggedIn &&
-          metaNumerologToolId === "destiny_matrix" &&
-          activeProfile.birthDate
-        ) {
+        if (billingActive && isLoggedIn && metaNumerologToolId === "destiny_matrix") {
           try {
-            const ownedRes = await fetch(
-              `/api/numerology/matrix-report?birthDate=${encodeURIComponent(activeProfile.birthDate)}`,
-              { credentials: "include" }
-            );
-            if (ownedRes.ok) {
-              const ownedData = (await ownedRes.json()) as { owned?: boolean };
-              matrixAlreadyOwned = Boolean(ownedData.owned);
+            const birthRaw = activeProfile.birthDate?.trim();
+            if (birthRaw) {
+              const ownedRes = await fetch(
+                `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthRaw)}`,
+                { credentials: "include" }
+              );
+              if (ownedRes.ok) {
+                const ownedData = (await ownedRes.json()) as {
+                  owned?: boolean;
+                  report?: { hasContent?: boolean } | null;
+                };
+                matrixAlreadyOwned = Boolean(
+                  ownedData.owned && (ownedData.report?.hasContent !== false)
+                );
+              }
+            }
+            // Fallback: same birth date only — never treat another date as owned.
+            if (!matrixAlreadyOwned && birthRaw) {
+              const listRes = await fetch(
+                `/api/numerology/matrix-report?list=1`,
+                { credentials: "include" }
+              );
+              if (listRes.ok) {
+                const listData = (await listRes.json()) as {
+                  reports?: Array<{ birthDate?: string; content?: string }>;
+                };
+                const birthKey = birthRaw.slice(0, 10);
+                matrixAlreadyOwned = Boolean(
+                  listData.reports?.some(
+                    (r) =>
+                      Boolean(String(r.content ?? "").trim()) &&
+                      (r.birthDate === birthKey || r.birthDate === birthRaw)
+                  )
+                );
+              }
             }
           } catch {
             matrixAlreadyOwned = false;
@@ -678,7 +701,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         const affordGate = gateSpreadReadingRunes({
           billingActive: billingActive && !matrixAlreadyOwned,
           balance: runeBalance,
-          cost: requiredReadingCost,
+          cost: matrixAlreadyOwned ? 0 : requiredReadingCost,
         });
         if (affordGate.blocked) {
           loadReadingAttemptKeyRef.current = loadAttemptKey;

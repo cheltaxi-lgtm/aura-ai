@@ -173,6 +173,13 @@ export async function listExperts(limit = 50, offset = 0) {
   return rows;
 }
 
+const EXPERT_UPDATE_COLUMNS = new Set([
+  "is_active",
+  "split_percent",
+  "title",
+  "style_notes",
+]);
+
 export async function updateExpert(
   id: string,
   data: Partial<{ is_active: boolean; split_percent: number; title: string; style_notes: string }>
@@ -181,7 +188,7 @@ export async function updateExpert(
   const values: unknown[] = [];
   let i = 1;
   for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined) {
+    if (v !== undefined && EXPERT_UPDATE_COLUMNS.has(k)) {
       fields.push(`${k} = $${i++}`);
       values.push(v);
     }
@@ -238,6 +245,14 @@ export async function listBloggers(limit = 50, offset = 0) {
   return rows;
 }
 
+const BLOGGER_UPDATE_COLUMNS = new Set([
+  "is_active",
+  "split_percent",
+  "display_name",
+  "title",
+  "style_notes",
+]);
+
 export async function updateBlogger(
   id: string,
   data: Partial<{ is_active: boolean; split_percent: number; display_name: string; title: string; style_notes: string }>
@@ -246,7 +261,7 @@ export async function updateBlogger(
   const values: unknown[] = [];
   let i = 1;
   for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined) {
+    if (v !== undefined && BLOGGER_UPDATE_COLUMNS.has(k)) {
       fields.push(`${k} = $${i++}`);
       values.push(v);
     }

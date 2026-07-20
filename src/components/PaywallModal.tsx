@@ -13,6 +13,7 @@ import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
+import { trackPaywallOpen } from "@/lib/seo/metrika";
 
 export interface RunePackage {
   id: string;
@@ -83,6 +84,8 @@ function RuneShopView({
     highlightPackageId ?? pickHighlightPackage(packages, shortage);
 
   useEffect(() => {
+    if (!packages.length) return;
+    trackPaywallOpen("paywall_modal");
     pushEcommerceDetail(
       packages.map((pkg) => ({
         id: pkg.id,

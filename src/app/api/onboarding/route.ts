@@ -13,6 +13,7 @@ import {
   linkSessionToUser,
   recordTripletDrawAnchor,
 } from "@/lib/users";
+import { readSessionClaimCookie } from "@/lib/session-claim";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import type { AstroMeta } from "@/lib/astro-profile";
 import { astroMetaFromBirthDate } from "@/lib/registration-consent";
@@ -165,7 +166,8 @@ export async function POST(request: NextRequest) {
 
     if (sessionId) {
       try {
-        await linkSessionToUser(String(sessionId), user.id);
+        const claimToken = await readSessionClaimCookie();
+        await linkSessionToUser(String(sessionId), user.id, claimToken);
       } catch (linkError) {
         console.warn("Onboarding session link skipped:", linkError);
       }

@@ -218,6 +218,16 @@
       "metrikaGoalId": 580953383
     },
     {
+      "id": "paywall_open",
+      "group": "revenue",
+      "metrikaGoalId": 585784513
+    },
+    {
+      "id": "payment_cancelled",
+      "group": "revenue",
+      "metrikaGoalId": 585784514
+    },
+    {
       "id": "share_open",
       "group": "share",
       "metrikaGoalId": 580954267

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireProfileUserId } from "@/lib/require-auth";
+import {
+  profileAuthFailureResponse,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import {
   computeAndStoreNatalChart,
@@ -26,16 +29,16 @@ export async function GET() {
     return NextResponse.json({ enabled: false, chart: null });
   }
 
-  const ctx = await requireProfileUserId();
-  if (!ctx) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const resolved = await resolveProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
   }
 
-  const rateLimited = await enforcePaidRouteRateLimit(ctx.profileUserId, "natal_chart_read");
+  const rateLimited = await enforcePaidRouteRateLimit(resolved.profileUserId, "natal_chart_read");
   if (rateLimited) return rateLimited;
 
   try {
-    const chart = await getOrComputeNatalChart(ctx.profileUserId);
+    const chart = await getOrComputeNatalChart(resolved.profileUserId);
     // Claims are server-side nonces used to serialize paid generation. They
     // are not chart data and must not be exposed in a browser payload.
     if (!chart) return NextResponse.json({ enabled: true, chart: null });
@@ -51,16 +54,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
 
-  const ctx = await requireProfileUserId();
-  if (!ctx) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const resolved = await resolveProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
   }
 
-  const rateLimited = await enforcePaidRouteRateLimit(ctx.profileUserId, "natal_chart_recompute");
+  const rateLimited = await enforcePaidRouteRateLimit(resolved.profileUserId, "natal_chart_recompute");
   if (rateLimited) return rateLimited;
 
   try {
-    const chart = await computeAndStoreNatalChart(ctx.profileUserId);
+    const chart = await computeAndStoreNatalChart(resolved.profileUserId);
     return NextResponse.json({ ok: true, enabled: true, chart });
   } catch (error) {
     return natalCalculationError(error);

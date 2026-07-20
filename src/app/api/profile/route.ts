@@ -15,6 +15,7 @@ import {
   linkSessionToUser,
 } from "@/lib/users";
 import { getUserReadingHistory } from "@/lib/accounts";
+import { readSessionClaimCookie } from "@/lib/session-claim";
 import { upsertFact } from "@/lib/memory/user-facts";
 import { mastersWithReadingForSpread } from "@/lib/reading-progress";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
@@ -201,7 +202,8 @@ export async function PATCH(request: NextRequest) {
 
     if (sessionId && profileUserId) {
       try {
-        await linkSessionToUser(String(sessionId), profileUserId);
+        const claimToken = await readSessionClaimCookie();
+        await linkSessionToUser(String(sessionId), profileUserId, claimToken);
       } catch (linkError) {
         console.warn("Profile session link skipped:", linkError);
       }

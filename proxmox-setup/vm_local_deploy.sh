@@ -4,6 +4,7 @@ set -euo pipefail
 
 TARBALL="${1:-/tmp/aura-ai-deploy.tgz}"
 RELEASES_BACKUP=""
+SCENE_ART_BACKUP=""
 DEPLOY_LOG="/opt/aura-ai/logs/deploy-journal.txt"
 DEPLOY_STARTED="$(date -Iseconds)"
 GIT_SHA="unknown"
@@ -39,6 +40,11 @@ if [ -f "$TARBALL" ]; then
     RELEASES_BACKUP="$(mktemp -d)"
     cp -a /opt/aura-ai/public/releases/. "$RELEASES_BACKUP/"
   fi
+  # Generated destiny-card / scene art must survive rsync --delete.
+  if [ -d "/opt/aura-ai/public/scene-art" ]; then
+    SCENE_ART_BACKUP="$(mktemp -d)"
+    cp -a /opt/aura-ai/public/scene-art/. "$SCENE_ART_BACKUP/" 2>/dev/null || true
+  fi
   STAGE="$(mktemp -d)"
   tar -xzf "$TARBALL" -C "$STAGE"
   echo ">>> Verifying staged GeoNames index before rsync..."
@@ -49,6 +55,7 @@ if [ -f "$TARBALL" ]; then
   rsync -a --delete --ignore-times \
     --exclude='.env.local' \
     --exclude='public/releases/' \
+    --exclude='public/scene-art/' \
     --exclude='.next/' \
     --exclude='.next-candidate/' \
     --exclude='.next-previous/' \
@@ -64,6 +71,12 @@ if [ -f "$TARBALL" ]; then
     cp -a "$RELEASES_BACKUP/." /opt/aura-ai/public/releases/
     rm -rf "$RELEASES_BACKUP"
   fi
+  if [ -n "$SCENE_ART_BACKUP" ] && [ -d "$SCENE_ART_BACKUP" ]; then
+    mkdir -p /opt/aura-ai/public/scene-art
+    cp -a "$SCENE_ART_BACKUP/." /opt/aura-ai/public/scene-art/
+    rm -rf "$SCENE_ART_BACKUP"
+  fi
+  mkdir -p /opt/aura-ai/public/scene-art
   if id ubuntu >/dev/null 2>&1; then
     if [ "$(id -u)" -eq 0 ]; then
       chown -R ubuntu:ubuntu /opt/aura-ai
@@ -419,4 +432,10 @@ unset _CRON_SECRET _CRON_BODY _CRON_STATUS
 
 rm -rf .next-previous
 DEPLOY_STATUS="success"
+if [ -f /opt/aura-ai/hosting/Caddyfile ]; then
+  echo ">>> Sync Caddyfile..."
+  sudo cp /opt/aura-ai/hosting/Caddyfile /etc/caddy/Caddyfile
+  sudo systemctl reload caddy || sudo systemctl restart caddy
+fi
+
 echo "Deploy complete: https://zovus.ru"

@@ -5,6 +5,9 @@ import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
+import { trackRegistrationStarted } from "@/lib/seo/metrika";
+import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
+import { readUtmAttribution } from "@/lib/utm/attribution";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   consent_required: "Подтвердите согласие с условиями и возраст 18+ перед входом через соцсеть.",
@@ -87,6 +90,8 @@ export default function SocialAuthButtons({
       if (typeof window !== "undefined") {
         const sessionId = localStorage.getItem("aura_session_id");
         if (sessionId) params.set("sessionId", sessionId);
+        const attribution = readUtmAttribution();
+        if (attribution) params.set("attribution", JSON.stringify(attribution));
       }
       if (shouldUseAppShellClient()) {
         params.set("app", "1");
@@ -105,6 +110,9 @@ export default function SocialAuthButtons({
         });
       }
       return;
+    }
+    if (mode === "register") {
+      trackRegistrationStarted(resolveRegistrationSource(`oauth_${provider}`));
     }
     if (!useNativeOAuth) return;
 
@@ -126,6 +134,7 @@ export default function SocialAuthButtons({
             acceptedTerms,
             ageConfirmed,
             marketingConsent,
+            attribution: readUtmAttribution() ?? undefined,
           }),
         });
         const result = await response.json();

@@ -225,21 +225,50 @@ export default function MasterSessionFlow({
       setMatrixOwned(false);
       return;
     }
-    const birthDate = userBirthDate?.trim();
-    if (!birthDate) {
-      setMatrixOwned(false);
-      return;
-    }
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(
-          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
-          { credentials: "include" }
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { owned?: boolean };
-        if (!cancelled) setMatrixOwned(Boolean(data.owned));
+        const birthDate = userBirthDate?.trim();
+        if (birthDate) {
+          const res = await fetch(
+            `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
+            { credentials: "include" }
+          );
+          if (res.ok) {
+            const data = (await res.json()) as { owned?: boolean };
+            if (!cancelled && data.owned) {
+              setMatrixOwned(true);
+              return;
+            }
+          }
+        }
+        // Fallback: only match this birth date (ISO or dotted) — never unlock other dates.
+        if (!birthDate) {
+          if (!cancelled) setMatrixOwned(false);
+          return;
+        }
+        const listRes = await fetch(`/api/numerology/matrix-report?list=1`, {
+          credentials: "include",
+        });
+        if (!listRes.ok || cancelled) {
+          if (!cancelled) setMatrixOwned(false);
+          return;
+        }
+        const listData = (await listRes.json()) as {
+          reports?: Array<{ content?: string; birthDate?: string }>;
+        };
+        const birthKey = birthDate.slice(0, 10);
+        if (!cancelled) {
+          setMatrixOwned(
+            Boolean(
+              listData.reports?.some(
+                (r) =>
+                  Boolean(String(r.content ?? "").trim()) &&
+                  (r.birthDate === birthKey || r.birthDate === birthDate)
+              )
+            )
+          );
+        }
       } catch {
         if (!cancelled) setMatrixOwned(false);
       }
@@ -248,6 +277,28 @@ export default function MasterSessionFlow({
       cancelled = true;
     };
   }, [isOpen, numerologFlow, selectedNumerologTool, userBirthDate]);
+
+  /** If Full Matrix is already bought — skip picker CTA and open the saved report. */
+  const ownedMatrixAutoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      ownedMatrixAutoStartedRef.current = false;
+      return;
+    }
+    if (!matrixBuyOnceOwned || ownedMatrixAutoStartedRef.current || !master) return;
+    ownedMatrixAutoStartedRef.current = true;
+    onStart({
+      characterKey: master,
+      intention: null,
+      spreadType: "new",
+      cards: [],
+      cardsRevealed: true,
+      previewCards: [],
+      deckSystem,
+      numerologToolId: "destiny_matrix",
+      numerologToolParams,
+    });
+  }, [isOpen, matrixBuyOnceOwned, master, deckSystem, numerologToolParams, onStart]);
   const numerologPreselected = isNumerologMaster(preselectedMaster);
   const presetSpreadLocked = hasPresetSpread(initialSpreadId);
   const customQuestionReady = customQuestion.trim().length >= 8;
@@ -743,9 +794,29 @@ export default function MasterSessionFlow({
     });
   };
 
+  /** Open saved Full Matrix without ritual / redraw / second charge. */
+  const startOwnedMatrixSession = () => {
+    if (!master) return;
+    onStart({
+      characterKey: master,
+      intention: null,
+      spreadType: "new",
+      cards: [],
+      cardsRevealed: true,
+      previewCards: [],
+      deckSystem,
+      numerologToolId: "destiny_matrix",
+      numerologToolParams,
+    });
+  };
+
   const handleStartNew = async () => {
     if (!master) return;
     if (numerologFlow) {
+      if (matrixBuyOnceOwned && selectedNumerologTool === "destiny_matrix") {
+        startOwnedMatrixSession();
+        return;
+      }
       if (!numerologRevealReady) return;
       if (!numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)) {
         return;
@@ -927,19 +998,29 @@ export default function MasterSessionFlow({
         })()}
         <button
           type="button"
-          disabled={!numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)}
+          disabled={
+            !matrixBuyOnceOwned &&
+            !numerologCalculationReady(
+              selectedNumerologTool,
+              numerologToolParams,
+              userBirthDate,
+              userFullName
+            )
+          }
           onClick={() => {
+            if (matrixBuyOnceOwned && selectedNumerologTool === "destiny_matrix") {
+              startOwnedMatrixSession();
+              return;
+            }
             setFlipped(emptyFlipped(cardCount));
             setNewCards([]);
             goToRitualStep();
           }}
           className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
         >
-          <span>{matrixBuyOnceOwned ? "Открыть расчёт" : "Посчитать"}</span>
-          {runeConfig.enabled && spreadCost > 0 ? (
+          <span>{matrixBuyOnceOwned ? "Открыть разбор" : "Посчитать"}</span>
+          {!matrixBuyOnceOwned && runeConfig.enabled && spreadCost > 0 ? (
             <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
-          ) : matrixBuyOnceOwned ? (
-            <span className="text-xs text-black/70">уже куплено · без оплаты</span>
           ) : null}
         </button>
       </div>

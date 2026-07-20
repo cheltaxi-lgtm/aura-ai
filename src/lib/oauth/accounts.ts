@@ -65,6 +65,7 @@ export async function upsertOAuthAccount(opts: {
   provider: OAuthProvider;
   info: OAuthUserInfo;
   consent?: OAuthAccountConsent | null;
+  registrationAttribution?: Record<string, string> | null;
 }): Promise<{ accountId: string; email: string; name: string; isNewUser: boolean }> {
   return withTransaction((client) => upsertOAuthAccountWithClient(client, opts));
 }
@@ -75,6 +76,7 @@ export async function upsertOAuthAccountWithClient(
     provider: OAuthProvider;
     info: OAuthUserInfo;
     consent?: OAuthAccountConsent | null;
+    registrationAttribution?: Record<string, string> | null;
   }
 ): Promise<{ accountId: string; email: string; name: string; isNewUser: boolean }> {
   // Serialize all attempts for one provider identity, including first-time inserts.
@@ -160,13 +162,17 @@ export async function upsertOAuthAccountWithClient(
 
   const trimmedName = opts.info.name.trim().slice(0, 80) || "Гость";
 
+  const attributionJson = opts.registrationAttribution
+    ? JSON.stringify(opts.registrationAttribution)
+    : null;
   const accountResult = await queryClient<{ id: string; email: string; name: string }>(
     client,
     `INSERT INTO user_accounts (
        email, password_hash, name,
-       terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at
+       terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at,
+       registration_attribution
      )
-     VALUES ($1, NULL, $2, $3::timestamptz, $4::timestamptz, $5, $6::timestamptz)
+     VALUES ($1, NULL, $2, $3::timestamptz, $4::timestamptz, $5, $6::timestamptz, $7::jsonb)
      RETURNING id, email, name`,
     [
       email,
@@ -175,6 +181,7 @@ export async function upsertOAuthAccountWithClient(
       opts.consent.ageConfirmedAt,
       opts.consent.marketingConsent,
       opts.consent.marketingConsentAt,
+      attributionJson,
     ]
   );
   const account = accountResult.rows[0];

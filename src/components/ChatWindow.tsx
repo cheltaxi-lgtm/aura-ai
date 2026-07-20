@@ -33,7 +33,10 @@ import DestinyMatrixGrid, {
 } from "@/components/numerolog/DestinyMatrixGrid";
 import MatrixReportUpsell from "@/components/numerolog/MatrixReportUpsell";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
-import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
+import {
+  destinyMatrix,
+  type DestinyMatrixResult,
+} from "@/lib/numerology/destiny-matrix";
 import type { NumerologToolId } from "@/lib/numerology/tools";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
 import MasterQuickChips from "@/components/MasterQuickChips";
@@ -218,6 +221,17 @@ export default function ChatWindow({
   }, [input]);
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
   const isNumerologChat = characterId === "numerolog" && !readOnly;
+  /** Matrix diagram from props, or recompute from birth date when reopen skipped UI payload. */
+  const resolvedDestinyMatrix = useMemo((): DestinyMatrixResult | null => {
+    if (spreadDestinyMatrix) return spreadDestinyMatrix;
+    if (numerologSessionToolId !== "destiny_matrix") return null;
+    const birth = userBirthDate?.trim();
+    if (!birth) return null;
+    return destinyMatrix(birth);
+  }, [spreadDestinyMatrix, numerologSessionToolId, userBirthDate]);
+  const hideDestinyCardArt =
+    isNumerologMaster(characterId) &&
+    (numerologSessionToolId === "destiny_matrix" || Boolean(resolvedDestinyMatrix));
   const [statusText, setStatusText] = useState("Считывает энергетику...");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -687,6 +701,7 @@ export default function ChatWindow({
       )}
 
       {headerSceneUrl &&
+        !hideDestinyCardArt &&
         !spreadCards?.length &&
         !messages.some((m) => m.role === "assistant" && m.sceneImageUrl) && (
         <SceneImage
@@ -725,7 +740,7 @@ export default function ChatWindow({
               : spreadVariant === "numerolog"
                 ? spreadComputedOnly && spreadPythagorasSquare
                   ? "Квадрат Пифагора"
-                  : spreadComputedOnly && spreadDestinyMatrix
+                  : spreadComputedOnly && resolvedDestinyMatrix
                     ? "Матрица судьбы"
                     : "Ваши числа"
                 : spreadVariant === "intention"
@@ -736,9 +751,9 @@ export default function ChatWindow({
           </p>
           {spreadComputedOnly && spreadPythagorasSquare ? (
             <PythagorasSquareGrid square={spreadPythagorasSquare} />
-          ) : spreadComputedOnly && spreadDestinyMatrix ? (
+          ) : spreadComputedOnly && resolvedDestinyMatrix ? (
             <DestinyMatrixGrid
-              matrix={spreadDestinyMatrix}
+              matrix={resolvedDestinyMatrix}
               revealed={DESTINY_MATRIX_UI_SLOT_COUNT}
             />
           ) : spreadInteractiveFlip &&
@@ -918,6 +933,7 @@ export default function ChatWindow({
                   ) : (
                     <>
                       {msg.sceneImageUrl &&
+                        !(hideDestinyCardArt && msgIndex === 0) &&
                         !(spreadCards?.length && msgIndex === 0) && (
                         <SceneImage
                           imageUrl={msg.sceneImageUrl}
@@ -929,6 +945,17 @@ export default function ChatWindow({
                           className="mb-3"
                         />
                       )}
+                      {msgIndex ===
+                        messages.findIndex(
+                          (m) => m.role === "assistant" && Boolean(m.content?.trim())
+                        ) &&
+                      resolvedDestinyMatrix &&
+                      !(spreadComputedOnly && resolvedDestinyMatrix) ? (
+                        <DestinyMatrixGrid
+                          matrix={resolvedDestinyMatrix}
+                          revealed={DESTINY_MATRIX_UI_SLOT_COUNT}
+                        />
+                      ) : null}
                       <ChatMessageRenderer
                         content={assistantContent}
                         role="assistant"

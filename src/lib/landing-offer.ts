@@ -80,7 +80,7 @@ export function buildLandingOfferCopy(
   const heroSubtitle = heroCopy.heroSubtitle;
   const finalCtaText =
     "Откройте три карты — увидите короткий смысл символов. Чтобы сохранить расклад и получить полный разбор в чате, понадобится вход.";
-  const heroMicrocopy = "3 карты бесплатно · 18+ · конфиденциально";
+  const heroMicrocopy = "3 карты бесплатно · ИИ-наставник · 18+ · развлекательный сервис";
   const primaryCta = "Открыть 3 карты";
   const secondaryCta = "Как проходит сеанс";
 

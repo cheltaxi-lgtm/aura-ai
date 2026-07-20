@@ -23,6 +23,7 @@ import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accoun
 import { requireUserAuth } from "@/lib/require-auth";
 import { resolveSessionForUser, assertSessionReadAccess } from "@/lib/session-access";
 import { setSessionClaimCookie } from "@/lib/session-claim";
+import { clientIp, enforceSessionCreateRateLimit } from "@/lib/api-guards";
 import { parseNumerologToolParams, decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
 import { resolveMatrixAwareFreeQuestionLimit } from "@/lib/numerology/matrix-chat-allowance";
 import { upsertSessionMemoryFromChat } from "@/lib/session-memory";
@@ -86,6 +87,9 @@ function formatSession(
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimited = await enforceSessionCreateRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
+
     const auth = await getAuth();
     const body = await request.json().catch(() => ({}));
     const referrerSlug = body.referrerSlug as string | undefined;

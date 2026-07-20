@@ -18,9 +18,9 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(232, 199, 126, 0.14), transparent 55%),
-    radial-gradient(ellipse 40% 30% at 20% 30%, rgba(120, 90, 160, 0.08), transparent 70%),
-    radial-gradient(ellipse 35% 28% at 80% 25%, rgba(90, 110, 160, 0.07), transparent 70%);
+    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(232, 199, 126, 0.07), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 20% 30%, rgba(120, 90, 160, 0.04), transparent 70%),
+    radial-gradient(ellipse 35% 28% at 80% 25%, rgba(90, 110, 160, 0.035), transparent 70%);
 }
 
 /* Far / near starfields via layered radial dots */
@@ -31,43 +31,43 @@
 }
 
 .salon-bg__stars--far {
-  opacity: 1;
+  opacity: 0.45;
   background-image:
-    radial-gradient(1.5px 1.5px at 8% 12%, rgba(255, 248, 230, 1), transparent),
-    radial-gradient(1.5px 1.5px at 22% 38%, rgba(255, 248, 230, 0.85), transparent),
-    radial-gradient(2px 2px at 35% 18%, rgba(232, 199, 126, 1), transparent),
-    radial-gradient(1.5px 1.5px at 48% 55%, rgba(255, 255, 255, 0.8), transparent),
-    radial-gradient(1.5px 1.5px at 62% 22%, rgba(255, 248, 230, 0.95), transparent),
-    radial-gradient(2px 2px at 74% 48%, rgba(232, 199, 126, 1), transparent),
-    radial-gradient(1.5px 1.5px at 88% 15%, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1.5px 1.5px at 12% 72%, rgba(255, 248, 230, 0.8), transparent),
-    radial-gradient(1.5px 1.5px at 28% 88%, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(2px 2px at 55% 78%, rgba(232, 199, 126, 1), transparent),
-    radial-gradient(1.5px 1.5px at 70% 92%, rgba(255, 248, 230, 0.8), transparent),
-    radial-gradient(1.5px 1.5px at 92% 68%, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1.5px 1.5px at 42% 8%, rgba(255, 248, 230, 0.75), transparent),
-    radial-gradient(1.5px 1.5px at 18% 52%, rgba(255, 255, 255, 0.7), transparent),
-    radial-gradient(1.5px 1.5px at 80% 82%, rgba(232, 199, 126, 0.85), transparent),
-    radial-gradient(1px 1px at 5% 45%, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(1px 1px at 50% 30%, rgba(255, 248, 230, 0.55), transparent),
-    radial-gradient(1px 1px at 95% 40%, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(1px 1px at 33% 95%, rgba(232, 199, 126, 0.5), transparent);
+    radial-gradient(1.5px 1.5px at 8% 12%, rgba(255, 248, 230, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 22% 38%, rgba(255, 248, 230, 0.65), transparent),
+    radial-gradient(2px 2px at 35% 18%, rgba(232, 199, 126, 0.75), transparent),
+    radial-gradient(1.5px 1.5px at 48% 55%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 62% 22%, rgba(255, 248, 230, 0.7), transparent),
+    radial-gradient(2px 2px at 74% 48%, rgba(232, 199, 126, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 88% 15%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 12% 72%, rgba(255, 248, 230, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 28% 88%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(2px 2px at 55% 78%, rgba(232, 199, 126, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 70% 92%, rgba(255, 248, 230, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 92% 68%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 42% 8%, rgba(255, 248, 230, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 18% 52%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.5px 1.5px at 80% 82%, rgba(232, 199, 126, 0.55), transparent),
+    radial-gradient(1px 1px at 5% 45%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 50% 30%, rgba(255, 248, 230, 0.35), transparent),
+    radial-gradient(1px 1px at 95% 40%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 33% 95%, rgba(232, 199, 126, 0.35), transparent);
   background-size: 380px 380px;
 }
 
 .salon-bg__stars--near {
-  opacity: 1;
+  opacity: 0.4;
   background-image:
-    radial-gradient(2.5px 2.5px at 15% 25%, rgba(255, 250, 235, 1), transparent),
-    radial-gradient(3px 3px at 40% 40%, rgba(232, 199, 126, 1), transparent),
-    radial-gradient(2.5px 2.5px at 65% 18%, rgba(255, 255, 255, 1), transparent),
-    radial-gradient(3px 3px at 85% 55%, rgba(232, 199, 126, 1), transparent),
-    radial-gradient(2.5px 2.5px at 30% 70%, rgba(255, 250, 235, 1), transparent),
-    radial-gradient(3px 3px at 58% 85%, rgba(255, 255, 255, 1), transparent),
-    radial-gradient(2.5px 2.5px at 78% 35%, rgba(232, 199, 126, 1), transparent),
-    radial-gradient(2.5px 2.5px at 10% 90%, rgba(255, 250, 235, 0.95), transparent),
-    radial-gradient(2px 2px at 50% 10%, rgba(255, 255, 255, 0.95), transparent),
-    radial-gradient(2px 2px at 92% 88%, rgba(232, 199, 126, 0.95), transparent);
+    radial-gradient(2.5px 2.5px at 15% 25%, rgba(255, 250, 235, 0.85), transparent),
+    radial-gradient(3px 3px at 40% 40%, rgba(232, 199, 126, 0.8), transparent),
+    radial-gradient(2.5px 2.5px at 65% 18%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(3px 3px at 85% 55%, rgba(232, 199, 126, 0.75), transparent),
+    radial-gradient(2.5px 2.5px at 30% 70%, rgba(255, 250, 235, 0.8), transparent),
+    radial-gradient(3px 3px at 58% 85%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(2.5px 2.5px at 78% 35%, rgba(232, 199, 126, 0.75), transparent),
+    radial-gradient(2.5px 2.5px at 10% 90%, rgba(255, 250, 235, 0.7), transparent),
+    radial-gradient(2px 2px at 50% 10%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(2px 2px at 92% 88%, rgba(232, 199, 126, 0.7), transparent);
   background-size: 520px 520px;
   animation: salon-stars-drift 80s linear infinite;
 }
@@ -77,17 +77,17 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: 1;
-  filter: drop-shadow(0 0 6px rgba(232, 199, 126, 0.25));
+  opacity: 0.45;
+  filter: drop-shadow(0 0 4px rgba(232, 199, 126, 0.12));
 }
 
 .salon-bg__vignette {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(4, 3, 6, 0.35) 0%, transparent 14%, transparent 86%, rgba(4, 3, 6, 0.35) 100%),
-    linear-gradient(to top, rgba(4, 3, 6, 0.4) 0%, transparent 28%),
-    linear-gradient(to bottom, rgba(4, 3, 6, 0.2) 0%, transparent 18%);
+    linear-gradient(90deg, rgba(4, 3, 6, 0.5) 0%, transparent 16%, transparent 84%, rgba(4, 3, 6, 0.5) 100%),
+    linear-gradient(to top, rgba(4, 3, 6, 0.55) 0%, transparent 32%),
+    linear-gradient(to bottom, rgba(4, 3, 6, 0.32) 0%, transparent 22%);
 }
 
 @keyframes salon-stars-drift {
@@ -103,11 +103,11 @@
 
 html[data-motion-lite="1"] .salon-bg__stars--near {
   animation: none;
-  opacity: 0.75;
+  opacity: 0.35;
 }
 
 html[data-motion-lite="1"] .salon-bg__lines {
-  opacity: 0.7;
+  opacity: 0.35;
 }
 
 html:has(.editorial-landing) .aura-mystic-bg {
@@ -294,7 +294,7 @@ html:has(.editorial-landing) .aura-mystic-bg {
   inset: 0;
   z-index: 60;
   background: rgba(5, 4, 3, 0.92);
-  padding: calc(var(--app-header-h, 3.5rem) + 1rem) 1.5rem 2rem;
+  padding: calc(var(--app-header-h, 3.25rem) + 1rem) 1.5rem 2rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -339,8 +339,8 @@ html:has(.editorial-landing) .aura-mystic-bg {
   justify-content: flex-start;
   overflow: visible;
   /* Pull background under header; content needs 2× header height + gap (margin + padding). */
-  margin-top: calc(-1 * var(--app-header-h, 3.75rem));
-  padding-top: calc(2 * var(--app-header-h, 3.75rem) + 1.5rem);
+  margin-top: calc(-1 * var(--app-header-h, 3.25rem));
+  padding-top: calc(2 * var(--app-header-h, 3.25rem) + 1.5rem);
   padding-bottom: clamp(2rem, 5vh, 3rem);
 }
 

@@ -1,43 +1,89 @@
 "use client";
 
-import Script from "next/script";
+import { useEffect, useRef } from "react";
+import {
+  COOKIE_CONSENT_EVENT,
+  hasCookieConsent,
+  type CookieConsentValue,
+} from "@/lib/cookie-consent";
 
 const YANDEX_METRIKA_ID = 110138367;
+const TAG_SRC = `https://mc.yandex.ru/metrika/tag.js?id=${YANDEX_METRIKA_ID}`;
 
-// Analytics cookies are covered by the implied-consent notice in CookieBanner
-// ("continuing to browse the site" = consent) — no explicit opt-in gate here.
-// Gating this behind a click-through previously meant the counter script never
-// rendered (even the no-JS <img> pixel), so Yandex couldn't verify the counter
-// was installed and almost no real traffic was ever measured.
-//
-// strategy="beforeInteractive" (rather than the default afterInteractive) is
-// required here too: afterInteractive scripts are injected client-side after
-// hydration and never appear in the raw server-rendered HTML, so Yandex's
-// crawler (which mostly reads static HTML) kept reporting the counter as
-// "not installed" even though real browsers ran it fine.
+declare global {
+  interface Window {
+    ym?: (id: number, method: string, ...args: unknown[]) => void;
+  }
+}
+
+/**
+ * Load Metrika only after analytics consent («Принять аналитику»).
+ * Necessary-only choice keeps tag.js / clickmap / webvisor off — matches privacy §8.
+ */
+function ensureYmStub(): void {
+  if (typeof window === "undefined") return;
+  if (typeof window.ym === "function") return;
+  const ym = function (...args: unknown[]) {
+    (ym.a = ym.a || []).push(args);
+  } as ((...args: unknown[]) => void) & { a?: unknown[][]; l?: number };
+  ym.l = Date.now();
+  window.ym = ym as Window["ym"];
+}
+
+function injectTagScript(): void {
+  if (typeof document === "undefined") return;
+  if (document.querySelector(`script[src="${TAG_SRC}"]`)) return;
+  const s = document.createElement("script");
+  s.async = true;
+  s.src = TAG_SRC;
+  document.head.appendChild(s);
+}
+
+function initMetrikaFull(): void {
+  if (typeof window === "undefined" || !window.ym) return;
+  try {
+    window.ym(YANDEX_METRIKA_ID, "init", {
+      ssr: true,
+      webvisor: true,
+      clickmap: true,
+      ecommerce: "dataLayer",
+      accurateTrackBounce: true,
+      trackLinks: true,
+      referrer: document.referrer,
+      url: location.href,
+    });
+  } catch {
+    /* optional */
+  }
+}
+
+function enableAnalyticsIfConsented(): void {
+  if (!hasCookieConsent()) return;
+  ensureYmStub();
+  injectTagScript();
+  initMetrikaFull();
+}
+
 export default function YandexMetrika() {
-  return (
-    <>
-      <Script id="yandex-metrika" strategy="beforeInteractive">
-        {`(function(m,e,t,r,i,k,a){
-        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-        m[i].l=1*new Date();
-        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
-        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=${YANDEX_METRIKA_ID}', 'ym');
+  const booted = useRef(false);
 
-    ym(${YANDEX_METRIKA_ID}, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});`}
-      </Script>
-      <noscript>
-        <div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`https://mc.yandex.ru/watch/${YANDEX_METRIKA_ID}`}
-            style={{ position: "absolute", left: "-9999px" }}
-            alt=""
-          />
-        </div>
-      </noscript>
-    </>
-  );
+  useEffect(() => {
+    if (hasCookieConsent()) {
+      enableAnalyticsIfConsented();
+      booted.current = true;
+    }
+
+    const onConsent = (e: Event) => {
+      const value = (e as CustomEvent<{ value?: CookieConsentValue }>).detail?.value;
+      if (value === "1" || hasCookieConsent()) {
+        enableAnalyticsIfConsented();
+        booted.current = true;
+      }
+    };
+    window.addEventListener(COOKIE_CONSENT_EVENT, onConsent);
+    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, onConsent);
+  }, []);
+
+  // No beforeInteractive script / noscript pixel — analytics only after explicit consent.
+  return null;
 }

@@ -52,7 +52,7 @@ export type JointSubmitResult =
   | { ok: false; error: string; row?: JointReadingRow };
 
 function generateToken(): string {
-  return randomBytes(8).toString("base64url").slice(0, 10);
+  return randomBytes(16).toString("base64url");
 }
 
 function mapRow(row: Record<string, unknown>): JointReadingRow {

@@ -4,6 +4,12 @@ www.zovus.ru {
 
 zovus.ru {
 	encode gzip
+	# HSTS only at the TLS edge. XFO / nosniff / Referrer / CSP come from Next
+	# (avoids duplicate response headers).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
 	# Preserve public host for Next redirects (otherwise Location becomes localhost:3000
 	# and the Android WebView opens the system browser).
 	reverse_proxy 127.0.0.1:3000 {

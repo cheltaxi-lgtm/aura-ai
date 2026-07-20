@@ -44,7 +44,7 @@ for (const route of [
   assert.match(source, /body\.async === true/);
   assert.match(source, /enqueueNatalAsyncJob/);
   assert.match(source, /getAsyncJobWorkerUserId/);
-  assert.match(source, /requireProfileUserId/);
+  assert.match(source, /requireProfileUserId|resolveProfileUserContext/);
   assert.match(source, /chargeRuneActionForWorkerJob/);
   assert.match(source, /beginWorkerJobSave/);
   assert.match(source, /trackWorkerJobCompleted/);
@@ -70,6 +70,8 @@ assert.match(worker, /280_000/);
 const sharedAuth = read("src/lib/async-job-worker-auth-shared.ts");
 assert.match(sharedAuth, /isAuthenticatedNatalWorkerRequest/);
 assert.match(sharedAuth, /isDirectLoopbackWorkerCall/);
+assert.match(sharedAuth, /isLoopbackAddress/);
+assert.match(sharedAuth, /::ffff:127\.0\.0\.1/);
 assert.match(sharedAuth, /secretsMatchEdge/);
 
 const middleware = read("src/middleware.ts");

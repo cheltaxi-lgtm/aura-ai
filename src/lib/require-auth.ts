@@ -22,6 +22,33 @@ export async function requireProfileUserId(): Promise<{
   return { auth, profileUserId };
 }
 
+/**
+ * Same as requireProfileUserId, but keeps "not logged in" vs "needs birth profile"
+ * distinct so clients do not send authenticated users to a login wall.
+ */
+export async function resolveProfileUserContext(): Promise<
+  | { ok: true; auth: AuthPayload; profileUserId: string }
+  | { ok: false; reason: "auth_required" | "needs_profile" }
+> {
+  const auth = await requireUserAuth();
+  if (!auth) return { ok: false, reason: "auth_required" };
+
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (!profileUserId) return { ok: false, reason: "needs_profile" };
+
+  return { ok: true, auth, profileUserId };
+}
+
+export function authRequiredResponse() {
+  return NextResponse.json(
+    {
+      error: "Unauthorized",
+      code: "AUTH_REQUIRED",
+    },
+    { status: 401 }
+  );
+}
+
 export function needsProfileResponse() {
   return NextResponse.json(
     {
@@ -30,4 +57,8 @@ export function needsProfileResponse() {
     },
     { status: 401 }
   );
+}
+
+export function profileAuthFailureResponse(reason: "auth_required" | "needs_profile") {
+  return reason === "needs_profile" ? needsProfileResponse() : authRequiredResponse();
 }

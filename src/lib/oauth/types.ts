@@ -13,6 +13,8 @@ export interface OAuthTransaction {
   marketingConsent: boolean;
   mode: OAuthMode;
   appFlow: boolean;
+  /** First-touch UTM captured at OAuth start (null if none). */
+  registrationAttribution?: Record<string, string> | null;
 }
 
 export interface OAuthPendingRegistration {
@@ -21,6 +23,7 @@ export interface OAuthPendingRegistration {
   returnTo: string;
   sessionId: string | null;
   appFlow: boolean;
+  registrationAttribution?: Record<string, string> | null;
 }
 
 export interface OAuthUserInfo {

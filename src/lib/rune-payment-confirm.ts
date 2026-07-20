@@ -5,7 +5,7 @@ export async function confirmRunePurchaseForUser(
   paymentId: string,
   profileUserId: string
 ): Promise<{
-  status: "credited" | "already_credited" | "pending" | "invalid" | "forbidden";
+  status: "credited" | "already_credited" | "pending" | "cancelled" | "invalid" | "forbidden";
   balance: number;
   amountRub?: number;
   packageId?: string;
@@ -24,6 +24,10 @@ export async function confirmRunePurchaseForUser(
   const payment = await fetchYukassaPayment(paymentId.trim());
   if (!payment) {
     return { status: "invalid", balance };
+  }
+
+  if (payment.status === "canceled") {
+    return { status: "cancelled", balance };
   }
 
   if (payment.status !== "succeeded") {
@@ -107,7 +111,14 @@ export async function confirmOrReconcileRunePurchase(
   profileUserId: string,
   paymentId?: string | null
 ): Promise<{
-  status: "credited" | "already_credited" | "pending" | "invalid" | "forbidden" | "none";
+  status:
+    | "credited"
+    | "already_credited"
+    | "pending"
+    | "cancelled"
+    | "invalid"
+    | "forbidden"
+    | "none";
   balance: number;
   paymentId?: string;
   amountRub?: number;

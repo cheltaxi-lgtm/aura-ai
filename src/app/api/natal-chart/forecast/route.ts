@@ -22,7 +22,11 @@ import {
 import { getOrComputePersonalTiming } from "@/lib/services/natal-timing-service";
 import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
-import { needsProfileResponse, requireProfileUserId } from "@/lib/require-auth";
+import {
+  profileAuthFailureResponse,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
+import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { getUserById } from "@/lib/users";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
@@ -49,10 +53,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
   const workerUserId = getAsyncJobWorkerUserId(request);
-  const auth = workerUserId
-    ? { profileUserId: workerUserId }
-    : await requireProfileUserId();
-  if (!auth) return needsProfileResponse();
+  let auth: { profileUserId: string };
+  if (workerUserId) {
+    auth = { profileUserId: workerUserId };
+  } else {
+    const resolved = await resolveProfileUserContext();
+    if (!resolved.ok) return profileAuthFailureResponse(resolved.reason);
+    auth = { profileUserId: resolved.profileUserId };
+  }
   if (!workerUserId) {
     const limited = await enforcePaidRouteRateLimit(auth.profileUserId, "natal_forecast");
     if (limited) return limited;
@@ -73,7 +81,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (body.async === true) {
+  if (body.async === true && isAsyncJobWorkerConfigured()) {
     return enqueueNatalAsyncJob({
       userId: auth.profileUserId,
       kind: "natal_forecast",

@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import LegalDocLink from "@/components/legal/LegalDocLink";
-import { acceptCookieConsent, hasCookieConsent } from "@/lib/cookie-consent";
+import {
+  acceptCookieConsent,
+  declineAnalyticsConsent,
+  hasCookieConsentChoice,
+} from "@/lib/cookie-consent";
 
 const BODY_CLASS = "cookie-banner-visible";
 
@@ -17,7 +21,7 @@ export default function CookieBanner() {
   const bannerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setVisible(!hasCookieConsent());
+    setVisible(!hasCookieConsentChoice());
   }, []);
 
   useEffect(() => {
@@ -51,16 +55,21 @@ export default function CookieBanner() {
     setVisible(false);
   };
 
+  const necessaryOnly = () => {
+    declineAnalyticsConsent();
+    setVisible(false);
+  };
+
   if (!visible) return null;
 
   return (
     <div ref={bannerRef} className="cookie-banner" role="dialog" aria-label="Уведомление о cookie">
       <div className="cookie-banner__inner">
         <div className="cookie-banner__text">
-          Мы используем файлы cookie для работы сайта и аналитики. Оставаясь на сайте, вы
-          соглашаетесь с{" "}
+          Мы используем необходимые cookie для работы сайта. Яндекс Метрика (включая вебвизор и
+          карту кликов) подключается только после «Принять аналитику».{" "}
           <LegalDocLink href="/privacy" className="cookie-banner__link">
-            Политикой конфиденциальности
+            Политика конфиденциальности
           </LegalDocLink>
           .
         </div>
@@ -69,9 +78,22 @@ export default function CookieBanner() {
           <LegalDocLink href="/offer">Оферта</LegalDocLink>
           <LegalDocLink href="/disclaimer">Отказ</LegalDocLink>
         </nav>
-        <button type="button" onClick={accept} className="btn-luxe btn-luxe--sm btn-luxe--gold shrink-0">
-          Понятно
-        </button>
+        <div className="cookie-banner__actions">
+          <button
+            type="button"
+            onClick={necessaryOnly}
+            className="btn-luxe btn-luxe--sm btn-luxe--ghost shrink-0"
+          >
+            Только необходимые
+          </button>
+          <button
+            type="button"
+            onClick={accept}
+            className="btn-luxe btn-luxe--sm btn-luxe--gold shrink-0"
+          >
+            Принять аналитику
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { getUserById, linkSessionToUser, serializeUserProfile } from "@/lib/users";
 import { sendWelcomeEmail } from "@/lib/email/send";
+import { readSessionClaimCookie } from "@/lib/session-claim";
 import type { OAuthFinishResult, OAuthMode, OAuthTransaction } from "./types";
 import { upsertOAuthAccount, type OAuthAccountConsent } from "./accounts";
 import type { OAuthProvider, OAuthUserInfo } from "./types";
@@ -33,6 +34,7 @@ export async function finishOAuthLogin(opts: {
     provider: opts.provider,
     info: opts.info,
     consent,
+    registrationAttribution: opts.pending.registrationAttribution ?? null,
   });
 
   let profile = null;
@@ -45,7 +47,12 @@ export async function finishOAuthLogin(opts: {
   let sessionLinked = false;
   if (opts.pending.sessionId && profileUserId) {
     try {
-      sessionLinked = await linkSessionToUser(opts.pending.sessionId, profileUserId);
+      const claimToken = await readSessionClaimCookie();
+      sessionLinked = await linkSessionToUser(
+        opts.pending.sessionId,
+        profileUserId,
+        claimToken
+      );
     } catch {
       sessionLinked = false;
     }

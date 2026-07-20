@@ -107,6 +107,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           returnTo,
           sessionId: pending.sessionId,
           appFlow: pending.appFlow,
+          registrationAttribution: pending.registrationAttribution ?? null,
         });
         const completePath = `/auth/oauth/complete?registration=${encodeURIComponent(registration)}`;
         return redirectNoStore(

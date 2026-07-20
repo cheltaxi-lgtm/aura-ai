@@ -4858,10 +4858,22 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 .app-top-header__brand {
   overflow: visible;
+  flex: 0 0 auto;
+}
+
+.brand-logo__mark {
+  display: block;
+  flex-shrink: 0;
 }
 
 .app-top-header__mobile {
   flex-shrink: 0;
+  max-width: min(100%, 22rem);
+}
+
+/* Public pages under the fixed site header (set by GlobalAppTopHeader). */
+body.has-site-header .page-with-site-header {
+  padding-top: var(--app-header-h, 3.25rem);
 }
 
 /* Shared premium pill styling for the desktop header action row (download,
@@ -5199,7 +5211,8 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 .brand-logo__lockup {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.35rem;
+  overflow: visible;
 }
 
 .brand-logo__wordmark {
@@ -5209,7 +5222,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 @media (min-width: 640px) {
   .brand-logo__lockup {
-    gap: 0.28rem;
+    gap: 0.45rem;
   }
 
   .brand-logo__wordmark {
@@ -6245,6 +6258,14 @@ body.cookie-banner-visible .auth-page .auth-form {
   color: var(--aura-gold);
 }
 
+.cookie-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 /* === Share system === */
 .share-btn {
   display: inline-flex;
@@ -7227,7 +7248,7 @@ body.cookie-banner-visible .auth-page .auth-form {
 /* Guest landing spread: keep site header (logo / menu) clickable above the table */
 .deck-pick.deck-pick--under-site-header {
   z-index: 40;
-  top: var(--app-header-h, 3.75rem);
+  top: var(--app-header-h, 3.25rem);
   bottom: 0;
   left: 0;
   right: 0;

@@ -11,6 +11,11 @@ import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { useAuth } from "@/lib/useAuth";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { PRICING } from "@/lib/config/pricing";
+import {
+  confirmAgeGateOnServer,
+  isAgeGateConfirmed,
+} from "@/lib/age-gate";
+import LegalDocLink from "@/components/legal/LegalDocLink";
 
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
 
@@ -44,6 +49,9 @@ export default function DestinyMatrixPreview() {
   const [revealed, setRevealed] = useState(0);
   const [ownedFull, setOwnedFull] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [ageReady, setAgeReady] = useState(false);
+  const [ageConfirming, setAgeConfirming] = useState(false);
+  const [ageGateError, setAgeGateError] = useState("");
   const autoRanRef = useRef(false);
 
   const runCalculate = (date: string, personName: string) => {
@@ -60,7 +68,15 @@ export default function DestinyMatrixPreview() {
   };
 
   useEffect(() => {
-    if (authLoading || autoRanRef.current) return;
+    // Registered users already confirmed 18+ at signup; guests need the age gate.
+    if (authLoading) return;
+    if (isLoggedIn || isAgeGateConfirmed()) {
+      setAgeReady(true);
+    }
+  }, [authLoading, isLoggedIn]);
+
+  useEffect(() => {
+    if (authLoading || !ageReady || autoRanRef.current) return;
 
     let cancelled = false;
 
@@ -113,9 +129,9 @@ export default function DestinyMatrixPreview() {
     return () => {
       cancelled = true;
     };
-    // Hydrate once after auth settles.
+    // Hydrate once after auth + age gate settle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, isLoggedIn, user?.name]);
+  }, [authLoading, ageReady, isLoggedIn, user?.name]);
 
   useEffect(() => {
     if (!summary) {
@@ -156,9 +172,58 @@ export default function DestinyMatrixPreview() {
     };
   }, [isLoggedIn, birthDate]);
 
+  async function confirmAge() {
+    setAgeConfirming(true);
+    setAgeGateError("");
+    const ok = await confirmAgeGateOnServer();
+    setAgeConfirming(false);
+    if (!ok) {
+      setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
+      return;
+    }
+    setAgeReady(true);
+  }
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!ageReady) return;
     runCalculate(birthDate, name);
+  }
+
+  if (!authLoading && !ageReady) {
+    return (
+      <div id="calculate" className="destiny-matrix-preview mt-10 scroll-mt-24">
+        <div className="mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
+          <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">
+            Подтверждение возраста
+          </p>
+          <h2 className="font-display mt-3 text-xl font-semibold text-white">
+            Сервис только для взрослых 18+
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed text-white/60">
+            Расчёт матрицы по дате рождения — развлекательно-ознакомительный сервис. Дата рождения
+            обрабатывается как персональные данные. Подтвердите, что вам исполнилось 18 лет.{" "}
+            <LegalDocLink href="/privacy" className="text-aura-champagne/80 underline-offset-2 hover:underline">
+              Политика конфиденциальности
+            </LegalDocLink>
+            .
+          </p>
+          {ageGateError ? (
+            <p className="mt-3 text-sm text-red-300" role="alert">
+              {ageGateError}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            disabled={ageConfirming}
+            onClick={() => void confirmAge()}
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+          >
+            {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — рассчитать матрицу"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -170,6 +235,9 @@ export default function DestinyMatrixPreview() {
           : "Нужна только дата рождения. Цифры матрицы — бесплатно и всегда одинаковые."}{" "}
         {PRICING.NUMEROLOGY_SESSION} ᚢ — за персональный разбор Эвелины с сохранением и{" "}
         {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате.
+      </p>
+      <p className="mt-2 text-xs text-white/40">
+        Сервис 18+. Дата рождения используется только для расчёта и не публикуется.
       </p>
 
       <form onSubmit={onSubmit} className="mt-5 space-y-3">

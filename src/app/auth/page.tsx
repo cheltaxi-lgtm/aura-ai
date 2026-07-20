@@ -1,7 +1,5 @@
 "use client";
 
-import BrandLogo from "@/components/BrandLogo";
-import { BRAND_LOGO_HEADER } from "@/lib/brand";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -121,10 +119,6 @@ export default function AuthPortalPage() {
         transition={{ duration: 0.5 }}
         className="relative mb-10 text-center"
       >
-        <div className="mb-6 flex justify-center">
-          <BrandLogo {...BRAND_LOGO_HEADER} />
-        </div>
-
         <h1 className="font-display lux-heading mb-3 text-3xl font-bold sm:text-4xl">
           Добро пожаловать
         </h1>

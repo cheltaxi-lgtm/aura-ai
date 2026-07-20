@@ -1,10 +1,16 @@
 import { query, queryClient, type PoolClient } from "@/lib/db";
+import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
 import { createOAuthOpaqueCode, hashOAuthOpaqueCode, isOAuthOpaqueCode } from "./state-cookie";
 import type {
   OAuthPendingRegistration,
   OAuthProvider,
   OAuthTransaction,
 } from "./types";
+
+function mapAttribution(raw: unknown): Record<string, string> | null {
+  const sanitized = sanitizeRegistrationAttribution(raw);
+  return sanitized ? (sanitized as Record<string, string>) : null;
+}
 
 const TRANSACTION_TTL_MINUTES = 10;
 const REGISTRATION_TTL_MINUTES = 15;
@@ -25,16 +31,21 @@ type TransactionRow = {
   marketing_consent: boolean;
   mode: "login" | "register";
   app_flow: boolean;
+  registration_attribution: unknown;
 };
 
 export async function createOAuthTransaction(transaction: OAuthTransaction): Promise<string> {
   const code = createOAuthOpaqueCode();
+  const attributionJson = transaction.registrationAttribution
+    ? JSON.stringify(transaction.registrationAttribution)
+    : null;
   await query(
     `INSERT INTO oauth_transactions (
        code_hash, provider, code_verifier, redirect_uri, return_to, session_id, mode,
-       accepted_terms, age_confirmed, marketing_consent, app_flow, expires_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-               NOW() + ($12 * INTERVAL '1 minute'))`,
+       accepted_terms, age_confirmed, marketing_consent, app_flow,
+       registration_attribution, expires_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb,
+               NOW() + ($13 * INTERVAL '1 minute'))`,
     [
       hashOAuthOpaqueCode(code),
       transaction.provider,
@@ -47,6 +58,7 @@ export async function createOAuthTransaction(transaction: OAuthTransaction): Pro
       transaction.ageConfirmed,
       transaction.marketingConsent,
       transaction.appFlow,
+      attributionJson,
       TRANSACTION_TTL_MINUTES,
     ]
   );
@@ -60,7 +72,8 @@ export async function consumeOAuthTransaction(code: string): Promise<OAuthTransa
     `DELETE FROM oauth_transactions
      WHERE code_hash = $1 AND expires_at > NOW()
      RETURNING provider, code_verifier, redirect_uri, return_to, session_id, mode,
-               accepted_terms, age_confirmed, marketing_consent, app_flow`,
+               accepted_terms, age_confirmed, marketing_consent, app_flow,
+               registration_attribution`,
     [hashOAuthOpaqueCode(code)]
   );
   const row = rows[0];
@@ -76,6 +89,7 @@ export async function consumeOAuthTransaction(code: string): Promise<OAuthTransa
         marketingConsent: row.marketing_consent,
         mode: row.mode,
         appFlow: row.app_flow,
+        registrationAttribution: mapAttribution(row.registration_attribution),
       }
     : null;
 }
@@ -84,12 +98,16 @@ export async function createPendingOAuthRegistration(
   pending: OAuthPendingRegistration
 ): Promise<string> {
   const code = createOAuthOpaqueCode();
+  const attributionJson = pending.registrationAttribution
+    ? JSON.stringify(pending.registrationAttribution)
+    : null;
   await query(
     `INSERT INTO oauth_pending_registrations (
        code_hash, provider, provider_user_id, provider_email, provider_email_verified,
-       provider_name, provider_gender, return_to, session_id, app_flow, expires_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-               NOW() + ($11 * INTERVAL '1 minute'))`,
+       provider_name, provider_gender, return_to, session_id, app_flow,
+       registration_attribution, expires_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb,
+               NOW() + ($12 * INTERVAL '1 minute'))`,
     [
       hashOAuthOpaqueCode(code),
       pending.provider,
@@ -101,6 +119,7 @@ export async function createPendingOAuthRegistration(
       pending.returnTo,
       pending.sessionId,
       pending.appFlow,
+      attributionJson,
       REGISTRATION_TTL_MINUTES,
     ]
   );
@@ -117,6 +136,7 @@ type PendingRow = {
   return_to: string;
   session_id: string | null;
   app_flow: boolean;
+  registration_attribution: unknown;
 };
 
 function mapPendingRow(row: PendingRow): OAuthPendingRegistration {
@@ -132,6 +152,7 @@ function mapPendingRow(row: PendingRow): OAuthPendingRegistration {
     returnTo: row.return_to,
     sessionId: row.session_id,
     appFlow: row.app_flow,
+    registrationAttribution: mapAttribution(row.registration_attribution),
   };
 }
 
@@ -141,7 +162,8 @@ export async function getPendingOAuthRegistration(
   if (!isOAuthOpaqueCode(code)) return null;
   const { rows } = await query<PendingRow>(
     `SELECT provider, provider_user_id, provider_email, provider_email_verified,
-            provider_name, provider_gender, return_to, session_id, app_flow
+            provider_name, provider_gender, return_to, session_id, app_flow,
+            registration_attribution
      FROM oauth_pending_registrations
      WHERE code_hash = $1 AND expires_at > NOW()
      LIMIT 1`,
@@ -160,7 +182,8 @@ export async function consumePendingOAuthRegistration(
     `DELETE FROM oauth_pending_registrations
      WHERE code_hash = $1 AND expires_at > NOW()
      RETURNING provider, provider_user_id, provider_email, provider_email_verified,
-               provider_name, provider_gender, return_to, session_id, app_flow`,
+               provider_name, provider_gender, return_to, session_id, app_flow,
+               registration_attribution`,
     [hashOAuthOpaqueCode(code)]
   );
   const row = rows[0];

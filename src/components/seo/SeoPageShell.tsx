@@ -1,6 +1,4 @@
 import Link from "next/link";
-import BrandLogo from "@/components/BrandLogo";
-import { BRAND_LOGO_BREADCRUMB } from "@/lib/brand";
 
 export function SeoPageShell({
   children,
@@ -12,12 +10,10 @@ export function SeoPageShell({
   backLabel?: string;
 }) {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10 pb-16 text-white sm:py-12">
+    <main className="page-with-site-header mx-auto max-w-2xl px-4 py-10 pb-16 text-white sm:py-12">
       <nav className="mb-8 flex flex-wrap items-center gap-2 text-sm text-white/50">
-        <BrandLogo {...BRAND_LOGO_BREADCRUMB} />
-        <span aria-hidden>·</span>
         <Link href={backHref} className="transition hover:text-aura-gold">
-          {backLabel}
+          ← {backLabel}
         </Link>
       </nav>
       {children}

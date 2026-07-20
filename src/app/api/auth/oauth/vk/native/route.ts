@@ -7,6 +7,7 @@ import {
   checkOAuthRequestRateLimit,
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
+import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import type { OAuthMode, OAuthTransaction } from "@/lib/oauth/types";
 
@@ -18,6 +19,7 @@ type NativeVkBody = {
   acceptedTerms?: boolean;
   ageConfirmed?: boolean;
   marketingConsent?: boolean;
+  attribution?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest) {
     const mode: OAuthMode = body.mode === "register" ? "register" : "login";
     const returnTo = sanitizeReturnTo(body.returnTo, "/");
     const info = await fetchVkUserInfo(accessToken, clientId);
+    const registrationAttribution = sanitizeRegistrationAttribution(body.attribution);
     const pending: OAuthTransaction = {
       provider: "vk",
       codeVerifier: "",
@@ -54,6 +57,7 @@ export async function POST(request: NextRequest) {
       marketingConsent: body.marketingConsent === true,
       mode,
       appFlow: true,
+      registrationAttribution: registrationAttribution as Record<string, string> | null,
     };
 
     try {
@@ -85,6 +89,7 @@ export async function POST(request: NextRequest) {
         returnTo,
         sessionId: pending.sessionId,
         appFlow: true,
+        registrationAttribution: pending.registrationAttribution ?? null,
       });
       return NextResponse.json(
         { ok: true, registration },

@@ -58,7 +58,7 @@ function getGuestId(): string {
   return id;
 }
 
-type GuestStep = "idle" | "intro" | "pick" | "flip" | "done";
+type GuestStep = "idle" | "age" | "intro" | "pick" | "flip" | "done";
 
 type GuestSpreadDraft = {
   step: GuestStep;
@@ -143,7 +143,13 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
 
     const draft = readGuestSpreadDraft();
     if (draft && draft.masterId === GUEST_TRIPLET_MASTER_ID) {
-      const restoredStep = draft.step === "intro" ? "pick" : draft.step;
+      let restoredStep = draft.step === "intro" ? "pick" : draft.step;
+      if (
+        (restoredStep === "pick" || restoredStep === "flip") &&
+        !isAgeGateConfirmed()
+      ) {
+        restoredStep = "age";
+      }
       setStep(restoredStep);
       setSessionSeed(draft.sessionSeed);
       setPickedIndices(draft.pickedIndices);
@@ -209,15 +215,13 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     setStep("pick");
   }, [ensureSessionSeed, resetPickProgress]);
 
-  useEffect(() => {
-    const onStart = (event: Event) => {
-      const detail = (event as CustomEvent<GuestSpreadStartDetail>).detail;
-      const nextQuestion = detail?.question?.trim();
+  const beginGuestSpread = useCallback(
+    (question?: string) => {
       resetSpreadState();
       setAgeGateError("");
-      if (nextQuestion) {
-        sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
-        setLandingQuestion(nextQuestion);
+      if (question) {
+        sessionStorage.setItem(LANDING_QUESTION_KEY, question);
+        setLandingQuestion(question);
       }
       const seed = buildGuestSpreadSeed({
         guestId: getGuestId(),
@@ -228,24 +232,47 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       setSessionSeed(seed);
       trackGuestSpreadStarted();
       openCardPicker();
-      void (async () => {
-        if (isAgeGateConfirmed()) {
-          setAgeConfirmed(true);
-          return;
-        }
-        setAgeConfirming(true);
-        const ok = await confirmAgeGateOnServer();
-        setAgeConfirming(false);
-        if (ok) {
-          setAgeConfirmed(true);
-          return;
-        }
-        setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
-      })();
+    },
+    [resetSpreadState, openCardPicker]
+  );
+
+  const confirmAgeAndStart = useCallback(async () => {
+    setAgeConfirming(true);
+    setAgeGateError("");
+    const ok = await confirmAgeGateOnServer();
+    setAgeConfirming(false);
+    if (!ok) {
+      setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
+      return;
+    }
+    setAgeConfirmed(true);
+    setOauthAgeConfirmed(true);
+    const pendingQuestion =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem(LANDING_QUESTION_KEY) || landingQuestion
+        : landingQuestion;
+    beginGuestSpread(pendingQuestion || undefined);
+  }, [beginGuestSpread, landingQuestion]);
+
+  useEffect(() => {
+    const onStart = (event: Event) => {
+      const detail = (event as CustomEvent<GuestSpreadStartDetail>).detail;
+      const nextQuestion = detail?.question?.trim();
+      if (nextQuestion) {
+        sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
+        setLandingQuestion(nextQuestion);
+      }
+      if (isAgeGateConfirmed()) {
+        setAgeConfirmed(true);
+        beginGuestSpread(nextQuestion);
+        return;
+      }
+      setAgeGateError("");
+      setStep("age");
     };
     window.addEventListener(GUEST_SPREAD_START_EVENT, onStart);
     return () => window.removeEventListener(GUEST_SPREAD_START_EVENT, onStart);
-  }, [resetSpreadState, openCardPicker]);
+  }, [beginGuestSpread]);
 
   useEffect(() => {
     const onReset = () => exitToLanding();
@@ -278,17 +305,11 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
   );
 
   const handleTablePick = useCallback(
-    async (index: number) => {
+    (index: number) => {
       if (ageConfirming) return;
       if (!ageConfirmed && !isAgeGateConfirmed()) {
-        setAgeConfirming(true);
-        const ok = await confirmAgeGateOnServer();
-        setAgeConfirming(false);
-        if (!ok) {
-          setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
-          return;
-        }
-        setAgeConfirmed(true);
+        setStep("age");
+        return;
       }
       if (pickedIndices.includes(index)) return;
       const next = [...pickedIndices, index];
@@ -374,6 +395,46 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     return null;
   }
 
+  if (step === "age") {
+    return (
+      <GuestSpreadSection>
+        <div className={`mx-auto max-w-md px-4 py-10 ${className}`.trim()}>
+          {backToLandingButton}
+          <div className="glass-panel space-y-5 p-8 text-center">
+            <p className="lux-label">Подтверждение возраста</p>
+            <h2 className="font-display text-2xl text-white">Сервис только для взрослых 18+</h2>
+            <p className="text-sm leading-relaxed text-aura-ivory/70">
+              Расклады и диалог с ИИ-наставником — развлекательно-ознакомительный сервис. Подтвердите,
+              что вам исполнилось 18 лет.
+            </p>
+            {ageGateError ? (
+              <p className="text-sm text-red-300/90" role="alert">
+                {ageGateError}
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                disabled={ageConfirming}
+                onClick={() => void confirmAgeAndStart()}
+                className="btn-luxe btn-luxe--md btn-luxe--gold disabled:opacity-60"
+              >
+                {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — открыть карты"}
+              </button>
+              <button
+                type="button"
+                onClick={exitToLanding}
+                className="btn-luxe btn-luxe--sm btn-luxe--ghost"
+              >
+                Вернуться
+              </button>
+            </div>
+          </div>
+        </div>
+      </GuestSpreadSection>
+    );
+  }
+
   if (step === "pick") {
     return (
       <MagicalSpreadTable
@@ -423,6 +484,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
             onAcceptedTermsChange={setAcceptedTerms}
             onAgeConfirmedChange={setOauthAgeConfirmed}
             onMarketingConsentChange={setMarketingConsent}
+            showDisclaimer
             termsId="guest-oauth-terms"
             ageId="guest-oauth-age"
           />

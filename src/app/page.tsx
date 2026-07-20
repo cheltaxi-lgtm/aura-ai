@@ -5,8 +5,8 @@ import StructuredData from "@/components/StructuredData";
 import { BRAND_URL } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/** Cached marketing shell; auth/session logic is client-side in HomePage. */
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   ...buildSeoMetadata({
@@ -15,9 +15,6 @@ export const metadata: Metadata = {
       "Приватные расклады Таро с ИИ-наставниками: связь, решение, работа, будущее. Разбор в чате, уточнения и история в кабинете.",
     path: "/",
   }),
-  // `force-dynamic` on this route means the root layout's `title.template`
-  // isn't reliably applied to a plain string title, so pin the fully
-  // resolved string here to guarantee the brand suffix renders exactly once.
   title: {
     absolute: "Расклад Таро онлайн — приватный салон | Zovus",
   },

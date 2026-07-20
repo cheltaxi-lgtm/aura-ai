@@ -1,22 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import AppTopHeader from "@/components/AppTopHeader";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { useAuth } from "@/lib/useAuth";
-import { useRuneConfig } from "@/lib/useRuneConfig";
-import {
-  APP_SHELL_SECTIONS,
-  navigateToAppSection,
-  navigateToBirthProfileOnboarding,
-  navigateToDecksModal,
-  navigateToHomeSpreadFlow,
-  navigateToPhotoReading,
-  navigateToRitualFlow,
-} from "@/lib/app-shell-nav";
+import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
 import {
   persistSessionIntention,
   persistIntentionSpreadState,
@@ -128,8 +117,6 @@ export default function CabinetPage() {
   const router = useRouter();
   const { openPaywall } = usePaywall();
   const { user: authUser, loading: authLoading, refresh: refreshAuth } = useAuth();
-  const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
-  const [headerMounted, setHeaderMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CabinetResponse | null>(null);
@@ -232,10 +219,6 @@ export default function CabinetPage() {
   }, [authLoading, authUser?.profileUserId, data?.needsOnboarding, fetchCabinet]);
 
   useEffect(() => {
-    setHeaderMounted(true);
-  }, []);
-
-  useEffect(() => {
     if (authLoading || !authUser) {
       setProfileLoading(authLoading);
       return;
@@ -278,10 +261,6 @@ export default function CabinetPage() {
     },
     [fetchCabinet, refreshAuth]
   );
-
-  const photoNavLabel = runeConfig.enabled
-    ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`
-    : "Фото расклад";
 
   const handleLoadMore = async () => {
     setLoadingMore(true);
@@ -707,25 +686,6 @@ export default function CabinetPage() {
 
   return (
     <div className="cabinet-page min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-24 pt-[var(--app-header-h,3.25rem)] text-white">
-      {headerMounted
-        ? createPortal(
-            <AppTopHeader
-              photoNavLabel={photoNavLabel}
-              isLoggedIn
-              authUser={authUser}
-              authLoading={authLoading}
-              onOpenPaywall={() => openPaywall()}
-              onNavMasters={() => navigateToAppSection(APP_SHELL_SECTIONS.masters)}
-              onNavTariffs={() => navigateToAppSection(APP_SHELL_SECTIONS.tariffs)}
-              onNavPhoto={() => navigateToPhotoReading()}
-              onNavDecks={() => navigateToDecksModal()}
-              onNavRitual={() => navigateToRitualFlow()}
-              onStartReading={() => navigateToHomeSpreadFlow()}
-            />,
-            document.body
-          )
-        : null}
-
       <div className="border-b border-white/10 bg-black/40 py-2.5 text-center">
         <span className="text-sm font-semibold text-white/90">Личный кабинет</span>
       </div>

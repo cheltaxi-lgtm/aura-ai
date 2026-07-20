@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { needsProfileResponse, requireProfileUserId } from "@/lib/require-auth";
+import {
+  profileAuthFailureResponse,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
+import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { buildNatalEvidence, formatEvidencePrompt } from "@/lib/natal/evidence";
 import {
@@ -53,11 +57,13 @@ export async function POST(request: NextRequest) {
   }
 
   const workerUserId = getAsyncJobWorkerUserId(request);
-  const ctx = workerUserId
-    ? { profileUserId: workerUserId }
-    : await requireProfileUserId();
-  if (!ctx) {
-    return needsProfileResponse();
+  let ctx: { profileUserId: string };
+  if (workerUserId) {
+    ctx = { profileUserId: workerUserId };
+  } else {
+    const resolved = await resolveProfileUserContext();
+    if (!resolved.ok) return profileAuthFailureResponse(resolved.reason);
+    ctx = { profileUserId: resolved.profileUserId };
   }
 
   if (!workerUserId) {
@@ -79,7 +85,8 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (body.async === true) {
+  // Prefer async queue when worker is configured; otherwise generate inline.
+  if (body.async === true && isAsyncJobWorkerConfigured()) {
     return enqueueNatalAsyncJob({
       userId: ctx.profileUserId,
       kind: "natal_interpretation",

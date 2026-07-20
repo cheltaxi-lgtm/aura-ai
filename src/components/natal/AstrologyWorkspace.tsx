@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import BrandLogo from "@/components/BrandLogo";
-import { BRAND_LOGO_BREADCRUMB } from "@/lib/brand";
 import { BRAND_NAME } from "@/lib/brand";
 import {
   AlertTriangle, Archive, CalendarClock, CheckCircle2, Compass,
@@ -18,6 +16,7 @@ import { AstrologyGuide, ExplainTerm, PanelBlock, PersonalMeaning, SectionIntrod
 import { usePaywall } from "@/contexts/PaywallContext";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
+import { buildLoginHref } from "@/lib/post-auth-return";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { toParagraphs } from "@/lib/format-paragraphs";
 import { toUserFacingError } from "@/lib/user-facing-error";
@@ -95,6 +94,8 @@ async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> 
   const storageKey = "aura:natal-active-job";
   const startedAtKey = "aura:natal-active-job-started";
   let terminal = false;
+  let authFailures = 0;
+  let transientFailures = 0;
   window.localStorage.setItem(storageKey, jobId);
   if (!window.localStorage.getItem(startedAtKey)) {
     window.localStorage.setItem(startedAtKey, String(Date.now()));
@@ -106,20 +107,79 @@ async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> 
       throw new Error("Сохранённая генерация устарела. Запустите отчёт снова при необходимости.");
     }
     for (let attempt = 0; attempt < 180; attempt += 1) {
-      const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
+      let response: Response;
+      try {
+        response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+      } catch {
+        transientFailures += 1;
+        if (transientFailures <= 15) {
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, Math.min(10_000, 1_000 * transientFailures))
+          );
+          continue;
+        }
+        terminal = false;
+        throw new Error(
+          "Отчёт продолжает формироваться, но связь с сервером нестабильна. Обновите страницу позже — ожидание восстановится автоматически."
+        );
+      }
+
+      // Caddy/Next can briefly return an HTML 502/503/504 while the worker is
+      // generating. Do not parse that body as JSON or abandon the saved job.
+      if (
+        response.status === 429 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        response.status === 504
+      ) {
+        transientFailures += 1;
+        if (transientFailures <= 15) {
+          const retryAfter = Number(response.headers.get("retry-after"));
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              Number.isFinite(retryAfter) && retryAfter > 0
+                ? Math.min(15_000, retryAfter * 1_000)
+                : Math.min(10_000, 1_000 * transientFailures)
+            )
+          );
+          continue;
+        }
+        terminal = false;
+        throw new Error(
+          "Отчёт продолжает формироваться, но сервер временно занят. Обновите страницу позже — ожидание восстановится автоматически."
+        );
+      }
+
       const job = await responseJson<{
         status?: string;
         result?: Record<string, unknown>;
         error?: string;
+        code?: string;
         refunded?: boolean;
       }>(response);
       if (response.status === 404) {
         terminal = true;
         throw new Error("Задача генерации не найдена. Запустите отчёт снова.");
       }
+      if (response.status === 401) {
+        // Enqueue already proved the session works — transient 401 on poll must
+        // not look like a logout. Retry, then ask the user to refresh history.
+        authFailures += 1;
+        if (authFailures <= 5) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1_000 * authFailures));
+          continue;
+        }
+        terminal = false; // keep job id so refresh can resume
+        throw new Error(
+          "Отчёт ещё обрабатывается, но статус временно недоступен. Обновите страницу через 1–2 минуты — результат появится в архиве."
+        );
+      }
+      authFailures = 0;
+      transientFailures = 0;
       if (!response.ok) throw new Error(job.error || "Не удалось проверить статус генерации.");
       if (job.status === "completed") {
         terminal = true;
@@ -134,6 +194,7 @@ async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> 
       }
       await new Promise((resolve) => window.setTimeout(resolve, 2_000));
     }
+    terminal = false;
     throw new Error("Генерация ещё выполняется. Её статус сохранён, обновите страницу позже.");
   } finally {
     if (terminal) {
@@ -166,6 +227,18 @@ async function fetchRobust(input: RequestInfo | URL, init?: RequestInit, retries
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Сеть недоступна");
+}
+
+function isNatalAuthRequired(status: number, data: { code?: string; error?: string }): boolean {
+  if (status !== 401) return false;
+  if (data.code === "NEEDS_PROFILE") return false;
+  if (data.code === "AUTH_REQUIRED") return true;
+  return /unauthorized|auth_required/i.test(String(data.error ?? ""));
+}
+
+function redirectNatalLogin(): void {
+  const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  window.location.assign(buildLoginHref(returnTo, "/cabinet/astrology"));
 }
 
 export default function AstrologyWorkspace() {
@@ -233,7 +306,21 @@ export default function AstrologyWorkspace() {
         { method: recompute ? "POST" : "GET", credentials: "include" },
         recompute ? 0 : 2
       );
-      const data = await responseJson<{ enabled?: boolean; chart?: NatalChartPayload | null; error?: string }>(response);
+      const data = await responseJson<{
+        enabled?: boolean;
+        chart?: NatalChartPayload | null;
+        error?: string;
+        code?: string;
+      }>(response);
+      if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        setEnabled(true);
+        setChart(null);
+        setError(data.error || "Завершите профиль: укажите дату и город рождения.");
+        return;
+      }
+      if (isNatalAuthRequired(response.status, data)) {
+        throw new Error(toUserFacingError(data.error, "Войдите, чтобы продолжить."));
+      }
       if (!response.ok) {
         throw new Error(toUserFacingError(data.error, "Не удалось загрузить карту рождения"));
       }
@@ -276,7 +363,7 @@ export default function AstrologyWorkspace() {
     void waitForNatalJob(pendingJobId)
       .then(async (result) => {
         if (!active) return;
-        const nextReports = await loadHistory();
+        const nextReports = await loadHistory().catch(() => [] as Report[]);
         if (!active) return;
         const reportId = typeof result.reportId === "string" ? result.reportId : null;
         const saved = reportId
@@ -286,10 +373,18 @@ export default function AstrologyWorkspace() {
         else if (saved?.tradition === "vedic") selectTab("jyotish");
         else if (saved) selectTab("western");
         setSelectedReportId(saved?.id ?? null);
+        setError("");
         setNotice("Генерация завершена. Результат показан в соответствующем разделе.");
       })
       .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : "Не удалось восстановить генерацию.");
+        if (!active) return;
+        setNotice("");
+        setError(
+          toUserFacingError(
+            reason instanceof Error ? reason.message : reason,
+            "Не удалось восстановить генерацию."
+          )
+        );
       });
     return () => {
       active = false;
@@ -316,6 +411,8 @@ export default function AstrologyWorkspace() {
     }
     setBusy(tradition);
     setError("");
+    setNotice("");
+    let enqueuedJob = false;
     try {
       const response = await fetchWithTimeout("/api/natal-chart/interpretation", {
         method: "POST",
@@ -329,11 +426,16 @@ export default function AstrologyWorkspace() {
         jobId?: string;
       }>(response);
       if (response.status === 202 && data.jobId) {
+        enqueuedJob = true;
         setNotice("Отчёт поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForNatalJob(data.jobId) as typeof data;
-      }
-      if (response.status === 401 && data.code === "NEEDS_PROFILE") {
-        navigateToBirthProfileOnboarding();
+      } else if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        // Stay in astrology: hard-nav to home/onboarding looks like a login wall in app shell.
+        setError(data.error || "Завершите профиль: укажите дату и город рождения.");
+        selectTab("settings");
+        return;
+      } else if (isNatalAuthRequired(response.status, data)) {
+        redirectNatalLogin();
         return;
       }
       if (response.status === 402) {
@@ -379,21 +481,26 @@ export default function AstrologyWorkspace() {
         },
       }));
       setNotice(`${tradition === "western" ? "Западный" : "Ведический"} отчёт готов.`);
-      const nextReports = await loadHistory();
-      const saved = chart
-        ? nextReports.find((report) =>
-            report.tradition === tradition &&
-            report.reportType === "interpretation" &&
-            matchesCurrentChart(report, chart)
-          )
-        : undefined;
-      if (saved) {
-        setSelectedReportId(saved.id);
-        selectTab(tradition === "western" ? "western" : "jyotish");
+      setError("");
+      try {
+        const nextReports = await loadHistory();
+        const saved = chart
+          ? nextReports.find((report) =>
+              report.tradition === tradition &&
+              report.reportType === "interpretation" &&
+              matchesCurrentChart(report, chart)
+            )
+          : undefined;
+        if (saved) {
+          setSelectedReportId(saved.id);
+          selectTab(tradition === "western" ? "western" : "jyotish");
+        }
+      } catch {
+        /* report already shown above; history is best-effort */
       }
     } catch (reason) {
       if (isAbortError(reason)) {
-        const nextReports = await loadHistory();
+        const nextReports = await loadHistory().catch(() => [] as Report[]);
         const saved = chart
           ? nextReports.find((report) =>
               report.tradition === tradition &&
@@ -409,12 +516,16 @@ export default function AstrologyWorkspace() {
         }
         setError("Генерация заняла слишком много времени. Оставайтесь в этой вкладке или повторите попытку позже.");
       } else {
+        const raw = reason instanceof Error ? reason.message : reason;
+        // After enqueue the session is known-good; never bounce to login on poll glitches.
+        if (!enqueuedJob && isNatalAuthRequired(401, { error: String(raw ?? "") })) {
+          redirectNatalLogin();
+          return;
+        }
+        setNotice("");
         setError(
-        toUserFacingError(
-          reason instanceof Error ? reason.message : reason,
-          "Сеть недоступна. Проверьте соединение."
-        )
-      );
+          toUserFacingError(raw, "Сеть недоступна. Проверьте соединение.")
+        );
       }
     } finally {
       setBusy(null);
@@ -430,6 +541,7 @@ export default function AstrologyWorkspace() {
     setBusy("forecast");
     setError("");
     setNotice("");
+    let enqueuedJob = false;
     try {
       const response = await fetchWithTimeout("/api/natal-chart/forecast", {
         method: "POST",
@@ -443,11 +555,15 @@ export default function AstrologyWorkspace() {
         jobId?: string;
       }>(response);
       if (response.status === 202 && data.jobId) {
+        enqueuedJob = true;
         setNotice("Прогноз поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForNatalJob(data.jobId) as typeof data;
-      }
-      if (response.status === 401 && data.code === "NEEDS_PROFILE") {
-        navigateToBirthProfileOnboarding();
+      } else if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        setError(data.error || "Завершите профиль: укажите дату и город рождения.");
+        selectTab("settings");
+        return;
+      } else if (isNatalAuthRequired(response.status, data)) {
+        redirectNatalLogin();
         return;
       }
       if (response.status === 402) {
@@ -480,15 +596,20 @@ export default function AstrologyWorkspace() {
         throw new Error("Сервер не вернул прогноз. Оставайтесь во вкладке «Периоды» и повторите попытку.");
       }
       setNotice(`Персональный прогноз на ${horizon === 365 ? "1 год" : `${horizon} дней`} готов и показан ниже.`);
-      const nextReports = await loadHistory();
-      const reportId = data.reportId ?? (chart ? nextReports.find((report) =>
-        report.reportType.startsWith(`forecast:${horizon}:`) && matchesCurrentChart(report, chart)
-      )?.id : undefined);
-      setSelectedReportId(reportId ?? null);
-      selectTab("timing");
+      setError("");
+      try {
+        const nextReports = await loadHistory();
+        const reportId = data.reportId ?? (chart ? nextReports.find((report) =>
+          report.reportType.startsWith(`forecast:${horizon}:`) && matchesCurrentChart(report, chart)
+        )?.id : undefined);
+        setSelectedReportId(reportId ?? null);
+        selectTab("timing");
+      } catch {
+        selectTab("timing");
+      }
     } catch (reason) {
       if (isAbortError(reason)) {
-        const nextReports = await loadHistory();
+        const nextReports = await loadHistory().catch(() => [] as Report[]);
         const saved = chart
           ? nextReports.find((report) =>
               report.reportType.startsWith(`forecast:${horizon}:`) &&
@@ -503,12 +624,15 @@ export default function AstrologyWorkspace() {
         }
         setError("Генерация заняла слишком много времени. Оставайтесь в этой вкладке или повторите попытку позже.");
       } else {
+        const raw = reason instanceof Error ? reason.message : reason;
+        if (!enqueuedJob && isNatalAuthRequired(401, { error: String(raw ?? "") })) {
+          redirectNatalLogin();
+          return;
+        }
+        setNotice("");
         setError(
-        toUserFacingError(
-          reason instanceof Error ? reason.message : reason,
-          "Сеть недоступна. Проверьте соединение."
-        )
-      );
+          toUserFacingError(raw, "Сеть недоступна. Проверьте соединение.")
+        );
       }
     } finally {
       setBusy(null);
@@ -590,10 +714,8 @@ export default function AstrologyWorkspace() {
       <div className="relative mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
         <header className="rounded-3xl border border-amber-300/15 bg-black/35 p-5 backdrop-blur-xl sm:p-7">
           <nav className="flex flex-wrap items-center gap-2 text-xs text-white/50" aria-label="Навигация по сайту">
-            <BrandLogo {...BRAND_LOGO_BREADCRUMB} />
-            <span aria-hidden>·</span>
             <Link href="/cabinet" className="transition hover:text-amber-100">
-              Кабинет
+              ← Кабинет
             </Link>
             <span aria-hidden>·</span>
             <span className="text-amber-100/75">Натальная карта</span>
@@ -826,7 +948,6 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [requestId, setRequestId] = useState(0);
-  const [aiDataConsent, setAiDataConsent] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -901,14 +1022,13 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
         <ReportShareControls reportKind="natal" reportId={currentForecast.id} />
       </PanelBlock> : <PanelBlock>
         <p className="text-xs leading-5 text-amber-100/60">После подтверждения будет списано {forecastCost} ᚢ.</p>
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">
-          <input type="checkbox" className="mt-0.5 accent-amber-300" checked={aiDataConsent} onChange={(event) => setAiDataConsent(event.target.checked)} />
-          Подтверждаю передачу только рассчитанных астрологических данных внешней языковой модели для создания отчёта. Дата, время, город и координаты рождения не передаются.
-        </label>
-        <button type="button" disabled={!timing || busy !== null || !aiDataConsent} onClick={() => onRequestForecast(horizon)}
+        <p className="rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">
+          Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Дата, время, город и координаты рождения не передаются.
+        </p>
+        <button type="button" disabled={!timing || busy !== null} onClick={() => onRequestForecast(horizon)}
           className="btn-neon flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50">
           {busy === "forecast" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          Подтвердить и получить прогноз · {forecastCost} ᚢ
+          {!timing ? "Готовим расчёт периода…" : `Подтвердить и получить прогноз · ${forecastCost} ᚢ`}
         </button>
       </PanelBlock>}
     </Panel>
@@ -1149,10 +1269,9 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
   onEvidence: (target: string) => void;
   onOpenArchive: () => void;
 }) {
-  const [aiDataConsent, setAiDataConsent] = useState(false);
   return <Panel title={title} eyebrow={text ? "Готов · сохранён в архиве" : "Отдельная покупка"}>
     {savedReport ? <p className="text-xs text-emerald-100/60">Создан {new Date(savedReport.createdAt).toLocaleString("ru-RU")} · {savedReport.runeCost ?? "—"} ᚢ</p> : null}
-    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55"><input type="checkbox" className="mt-0.5 accent-amber-300" checked={aiDataConsent} onChange={(event) => setAiDataConsent(event.target.checked)} />Подтверждаю передачу только рассчитанных астрологических данных внешней языковой модели для создания отчёта. Данные рождения и координаты не передаются.</label><button type="button" disabled={busy !== null || !aiDataConsent} onClick={() => onRequest(tradition)} className="btn-neon mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-neon mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
     {text ? <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-4">
       {savedReport ? <Link href={`/cabinet/astrology/reports/${savedReport.id}/print`} className="text-xs text-amber-200">Печать / PDF</Link> : null}
       <button type="button" onClick={onOpenArchive} className="text-xs text-white/50 transition hover:text-white/75">Открыть архив версий →</button>

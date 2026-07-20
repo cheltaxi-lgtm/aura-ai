@@ -71,6 +71,8 @@ const DISPLAY_NAMES = {
   zodiac_compat_cta_click: "Зодиак — совместимость CTA",
   lenormand_combo_cta: "Ленорман — combo CTA",
   rune_purchase: "Покупка рун (доход)",
+  paywall_open: "Paywall / магазин рун — открытие",
+  payment_cancelled: "Оплата рун — отмена",
   share_open: "Открытие шеринга",
   share_create_success: "Шеринг — создание OK",
   share_create_fail: "Шеринг — создание fail",

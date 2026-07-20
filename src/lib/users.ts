@@ -163,7 +163,23 @@ export async function updateUserProfile(
   return rows[0] ?? null;
 }
 
-export async function linkSessionToUser(sessionId: string, profileUserId: string): Promise<boolean> {
+export async function linkSessionToUser(
+  sessionId: string,
+  profileUserId: string,
+  claimToken?: string | null
+): Promise<boolean> {
+  const { verifySessionClaimForId } = await import("@/lib/session-claim");
+  const { getSession } = await import("@/lib/session");
+
+  const session = await getSession(sessionId);
+  if (!session) return false;
+  if (session.user_id === profileUserId) return true;
+  if (session.user_id != null) return false;
+
+  // Orphan guest session — require signed claim cookie (anti-hijack).
+  const claimed = await verifySessionClaimForId(sessionId, claimToken);
+  if (!claimed) return false;
+
   const { rows } = await query<{ id: string }>(
     `UPDATE sessions AS s
      SET user_id = u.id, updated_at = NOW()
@@ -180,10 +196,11 @@ export async function linkSessionToUser(sessionId: string, profileUserId: string
 /** Attach session to profile only when both rows exist in DB. */
 export async function attachSessionToProfile(
   sessionId: string | undefined,
-  profileUserId: string | undefined
+  profileUserId: string | undefined,
+  claimToken?: string | null
 ): Promise<boolean> {
   if (!sessionId || !profileUserId) return false;
-  return linkSessionToUser(sessionId, profileUserId);
+  return linkSessionToUser(sessionId, profileUserId, claimToken);
 }
 
 export async function createHistoryEntry(data: {

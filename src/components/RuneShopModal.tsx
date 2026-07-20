@@ -10,6 +10,8 @@ import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
+import { trackPaywallOpen } from "@/lib/seo/metrika";
+import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 
 interface RunePackage {
   id: string;
@@ -66,6 +68,7 @@ export default function RuneShopModal({
       .then((d) => {
         const loaded: RunePackage[] = d.packages ?? [];
         setPackages(loaded);
+        trackPaywallOpen("rune_shop_modal");
         pushEcommerceDetail(
           loaded.map((pkg) => ({
             id: pkg.id,
@@ -318,7 +321,8 @@ export default function RuneShopModal({
               </p>
             )}
 
-            <p className="mt-4 text-center text-xs text-gray-600">
+            <LegalOfferNotice className="mt-4" />
+            <p className="mt-2 text-center text-xs text-gray-600">
               Руны не имеют срока действия · Безопасная оплата ЮKassa
             </p>
           </motion.div>

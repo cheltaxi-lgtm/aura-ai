@@ -29,6 +29,7 @@ import {
   trackRegistrationAccountCreated,
   trackRegistrationCompleted,
 } from "@/lib/seo/metrika";
+import { persistRegistrationAttribution } from "@/lib/persist-registration-attribution";
 
 export type UserAuthSuccessOptions = {
   mode: "login" | "register";
@@ -51,6 +52,7 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
   if (isRegisterFlow) {
     const regSource = resolveRegistrationSource("oauth");
     trackRegistrationAccountCreated(regSource);
+    void persistRegistrationAttribution();
 
     if (opts.profile) {
       trackRegistrationCompleted(regSource);

@@ -9,6 +9,7 @@ import {
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
 import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
+import { parseAttributionQueryParam } from "@/lib/registration-attribution";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 
 type RouteParams = { params: Promise<{ provider: string }> };
@@ -49,6 +50,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const acceptedTerms = parseBool(url.searchParams.get("acceptedTerms"));
     const ageConfirmed = parseBool(url.searchParams.get("ageConfirmed"));
     const marketingConsent = parseBool(url.searchParams.get("marketingConsent"));
+    const registrationAttribution = parseAttributionQueryParam(
+      url.searchParams.get("attribution")
+    );
 
     const codeVerifier = createCodeVerifier();
     const codeChallenge = createCodeChallenge(codeVerifier);
@@ -65,6 +69,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       marketingConsent,
       mode,
       appFlow,
+      registrationAttribution,
     };
 
     const state = await createOAuthTransaction(pending);

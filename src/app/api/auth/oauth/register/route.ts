@@ -4,6 +4,7 @@ import { withTransaction } from "@/lib/db";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { linkSessionToUser } from "@/lib/users";
+import { readSessionClaimCookie } from "@/lib/session-claim";
 import {
   upsertOAuthAccountWithClient,
   type OAuthAccountConsent,
@@ -19,12 +20,14 @@ import {
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
 import { sendWelcomeEmail } from "@/lib/email/send";
+import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
 
 type RegistrationBody = {
   code?: string;
   acceptedTerms?: boolean;
   ageConfirmed?: boolean;
   marketingConsent?: boolean;
+  attribution?: unknown;
 };
 
 const NO_STORE = OAUTH_NO_STORE_HEADERS;
@@ -75,6 +78,8 @@ export async function POST(request: NextRequest) {
       marketingConsentAt: body.marketingConsent === true ? now : null,
     };
 
+    const bodyAttribution = sanitizeRegistrationAttribution(body.attribution);
+
     const completed = await withTransaction(async (client) => {
       const pending = await consumePendingOAuthRegistration(client, code);
       if (!pending) return null;
@@ -82,6 +87,9 @@ export async function POST(request: NextRequest) {
         provider: pending.provider,
         info: pending.info,
         consent,
+        registrationAttribution:
+          pending.registrationAttribution ??
+          (bodyAttribution as Record<string, string> | null),
       });
       return { pending, account };
     });
@@ -93,9 +101,12 @@ export async function POST(request: NextRequest) {
     const profileUserId = await getProfileUserIdForAccount(completed.account.accountId);
     let sessionLinked = false;
     if (profileUserId && completed.pending.sessionId) {
-      sessionLinked = await linkSessionToUser(completed.pending.sessionId, profileUserId).catch(
-        () => false
-      );
+      const claimToken = await readSessionClaimCookie();
+      sessionLinked = await linkSessionToUser(
+        completed.pending.sessionId,
+        profileUserId,
+        claimToken
+      ).catch(() => false);
     }
     if (completed.account.isNewUser && profileUserId) {
       await grantStarterRunesIfNeeded(profileUserId);
