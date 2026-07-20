@@ -91,6 +91,11 @@ const DISPLAY_NAMES = {
   numerology_hub_view: "Нумерология hub — view",
   numerology_topic_view: "Нумерология тема — view",
   lenormand_combo_view: "Ленорман сочетание — view",
+  matrix_landing_view: "Матрица судьбы — просмотр лендинга",
+  matrix_preview_start: "Матрица судьбы — старт расчёта",
+  natal_landing_view: "Натальная карта — просмотр лендинга",
+  natal_landing_cta_click: "Натальная карта — CTA",
+  natal_landing_login_click: "Натальная карта — вход",
 };
 
 function displayName(id) {

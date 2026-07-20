@@ -316,6 +316,31 @@
       "id": "lenormand_combo_view",
       "group": "seo",
       "metrikaGoalId": 582035077
+    },
+    {
+      "id": "matrix_landing_view",
+      "group": "numerology",
+      "metrikaGoalId": 586818637
+    },
+    {
+      "id": "matrix_preview_start",
+      "group": "numerology",
+      "metrikaGoalId": 586818639
+    },
+    {
+      "id": "natal_landing_view",
+      "group": "astrology",
+      "metrikaGoalId": 586818640
+    },
+    {
+      "id": "natal_landing_cta_click",
+      "group": "astrology",
+      "metrikaGoalId": 586818641
+    },
+    {
+      "id": "natal_landing_login_click",
+      "group": "astrology",
+      "metrikaGoalId": 586818642
     }
   ]
 }

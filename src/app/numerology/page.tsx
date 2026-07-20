@@ -107,6 +107,11 @@ export default function NumerologyPage() {
             </Link>
           </li>
           <li>
+            <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+              Натальная карта
+            </Link>
+          </li>
+          <li>
             <Link href="/numerology/favorable-dates" className="text-aura-gold hover:underline">
               Благоприятные даты
             </Link>

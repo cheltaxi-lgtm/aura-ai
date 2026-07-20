@@ -20,6 +20,12 @@ export const CANONICAL_ALIASES: Record<string, string> = {
   "/znachenie-kart-taro": "/cards",
   "/starshie-arkany": "/cards/starshie-arkany",
   "/arkany-taro": "/cards/starshie-arkany",
+  "/natalnaya-karta-online": "/natalnaya-karta",
+  "/natalnaya-karta-onlayn": "/natalnaya-karta",
+  "/raschet-natalnoy-karty": "/natalnaya-karta",
+  "/matrica-sudby": "/numerology/destiny-matrix",
+  "/matrica-sudby-online": "/numerology/destiny-matrix",
+  "/matrica-sudby-onlayn": "/numerology/destiny-matrix",
 };
 
 export function resolveCanonicalPath(path: string): string {
