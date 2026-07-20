@@ -416,6 +416,10 @@ export async function POST(request: NextRequest) {
             params: numerologToolParams,
           })
         : tarotCardsKey(tarotCards);
+    // Full Matrix buy-once lives in numerology_report_history only.
+    // History cache reused the old watery report even after report rows were deleted.
+    const skipHistoryCacheForMatrix =
+      isNumerologMaster(characterId) && requestNumerologToolId === MATRIX_REPORT_TOOL_ID;
     const isDailySpread = await resolveIsDailyFreeReading({
       profileUserId: authed.profileUserId,
       spreadType,
@@ -431,7 +435,7 @@ export async function POST(request: NextRequest) {
     let historyId: string | undefined;
     let reading: string;
 
-    if (await ensureDb() && cardsKey && !forceRegenerate) {
+    if (await ensureDb() && cardsKey && !forceRegenerate && !skipHistoryCacheForMatrix) {
       const existing = await findSpreadReadingEntry(
         authed.profileUserId,
         characterId,
@@ -457,7 +461,7 @@ export async function POST(request: NextRequest) {
     }
 
     const runLockedGeneration = async () => {
-      if (await ensureDb() && cardsKey && !forceRegenerate) {
+      if (await ensureDb() && cardsKey && !forceRegenerate && !skipHistoryCacheForMatrix) {
         const existing = await findSpreadReadingEntry(
           authed.profileUserId,
           characterId,
