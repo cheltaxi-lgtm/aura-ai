@@ -17,6 +17,8 @@ import { buildMatrixFreeSummary } from "../src/lib/numerology/matrix-free-summar
 import { buildRichEngineFacts } from "../src/lib/numerology/engine-reply.ts";
 import { buildNumerologyChatContext } from "../src/lib/numerology/topic-handlers.ts";
 import {
+  buildMatrixPlainFinale,
+  formatMatrixFinaleKeys,
   formatMatrixPointDictLine,
   formatMatrixRepeatArcanaNote,
   matrixRoleLens,
@@ -303,6 +305,16 @@ for (const fixture of FIXTURES) {
     { role: "purpose", label: "4. Центр", number: 8 },
   ]);
   assert(!!note && /8 →/i.test(note), "repeat note lists arcana 8");
+
+  const keys = formatMatrixFinaleKeys(gennady);
+  assert(/Аркан года: 10 — Колесо/i.test(keys), "keys lock year to Wheel");
+  assert(!/Аркан года: 9/i.test(keys), "keys must not set year to Hermit");
+
+  const plain = buildMatrixPlainFinale("Геннадий", gennady);
+  assert(/Аркан этого года — Колесо Фортуны \(10\)/i.test(plain), "plain finale year=10");
+  assert(!/аркан этого года — Отшельник/i.test(plain), "plain finale must not call year Hermit");
+  assert(/Предназначение — Сила \(8\)/i.test(plain), "plain finale purpose=8");
+  assert(/Деньги — через Звезда/i.test(plain), "plain finale money=Star");
 }
 
 if (failures.length) {

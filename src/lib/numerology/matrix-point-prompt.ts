@@ -1,4 +1,5 @@
-import type { ArcanaDictionaryEntry } from "./arcana-dictionary";
+import { getArcanaEntry, type ArcanaDictionaryEntry } from "./arcana-dictionary";
+import type { DestinyMatrixResult } from "./destiny-matrix";
 
 /** Matrix-v1 point roles — each needs a distinct prose angle even if arcana numbers match. */
 export type MatrixPointRole =
@@ -74,4 +75,45 @@ export function formatMatrixRepeatArcanaNote(points: MatrixPointPromptLine[]): s
     ...repeats.map((line) => `- ${line}`),
     "Запрещено повторять одну и ту же практику/предложение на двух точках.",
   ].join("\n");
+}
+
+/** Compact keys for main reading + deterministic «Простыми словами». */
+export function formatMatrixFinaleKeys(matrix: DestinyMatrixResult): string {
+  const line = (role: string, n: number) => {
+    const entry = getArcanaEntry(n);
+    return `${role}: ${n} — ${entry?.title ?? `Аркан ${n}`}`;
+  };
+  return [
+    "КЛЮЧИ ДЛЯ РЕЗЮМЕ (не путать точки!):",
+    line("Опора характера (тело)", matrix.body.number),
+    line("Предназначение (центр)", matrix.purpose.number),
+    line("Деньги", matrix.money.number),
+    line("Отношения", matrix.relationships.number),
+    line("Аркан года", matrix.yearArcana.number),
+    "В резюме аркан года — ТОЛЬКО строка «Аркан года». Не подменяй его Отшельником, Силой или другим арканом из соседних точек.",
+  ].join("\n");
+}
+
+/** Deterministic plain-language finale — no LLM mix-ups on year/purpose. */
+export function buildMatrixPlainFinale(name: string, matrix: DestinyMatrixResult): string {
+  const body = getArcanaEntry(matrix.body.number);
+  const purpose = getArcanaEntry(matrix.purpose.number);
+  const money = getArcanaEntry(matrix.money.number);
+  const year = getArcanaEntry(matrix.yearArcana.number);
+  const who = name.trim() || "друг";
+
+  return [
+    `${who}, опора характера — ${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}): ${
+      body?.shortMeaning ?? matrix.body.arcanaMeaning
+    }`,
+    `Предназначение — ${purpose?.title ?? matrix.purpose.arcanaName} (${matrix.purpose.number}): ${
+      purpose?.purpose ?? matrix.purpose.arcanaMeaning
+    }`,
+    `Деньги — через ${money?.title ?? matrix.money.arcanaName}: ${
+      money?.money ?? matrix.money.arcanaMeaning
+    }`,
+    `Аркан этого года — ${year?.title ?? matrix.yearArcana.arcanaName} (${matrix.yearArcana.number}): ${
+      year?.shortMeaning ?? matrix.yearArcana.arcanaMeaning
+    } Это фон периода, а не замена другим точкам матрицы.`,
+  ].join(" ");
 }

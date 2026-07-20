@@ -13,6 +13,7 @@ import { compatibility } from "./compatibility";
 import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
 import { getArcanaEntry } from "./arcana-dictionary";
 import {
+  formatMatrixFinaleKeys,
   formatMatrixPointDictLine,
   formatMatrixRepeatArcanaNote,
   type MatrixPointPromptLine,
@@ -425,15 +426,16 @@ function buildTopicBlock(
       return {
         text: [
           `МАТРИЦА СУДЬБЫ / 22 АРКАНА (${MATRIX_CALCULATION_VERSION}, реальный расчёт, авторская адаптация Zovus):`,
-          ...points.map((p) => formatMatrixPointDictLine(p, getArcanaEntry(p.number))),
-          ...(repeatNote ? [repeatNote] : []),
+          formatMatrixFinaleKeys(matrix),
           "Структура ответа (по абзацу на пункт, без схлопывания точек): тело → энергия → род/корни → предназначение → таланты → деньги → отношения → род отца → род матери → карма → аркан года → 3–5 шагов на 30 дней.",
           "КРИТИЧНО: даже при одинаковом аркане у разных точек пиши РАЗНЫЕ смыслы по роли точки. Нельзя объединять «энергия и таланты» или «род + отношения + предназначение».",
-          "КРИТИЧНО: не копируй одну практику/фразу на несколько точек. У каждой точки свой угол из поля «Угол …» выше.",
+          "КРИТИЧНО: не копируй одну практику/фразу на несколько точек. У каждой точки свой угол из поля «Угол …» ниже.",
           "ЗАПРЕЩЕНО в этом разборе: пифагорейский портрет (путь/душа/личность/зрелость), психоматрица, личный цикл 1–9.",
           "Запрещено: обещать результат, ставить диагнозы, говорить о смерти/болезнях, формулировки «вам суждено», манипулятивный тон, пустые метафоры без действия, markdown-маркеры вроде ✦.",
           "Числа и названия арканов бери ТОЛЬКО из этого блока. Не пересчитывай матрицу.",
           "Это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы» — инструмент рефлексии, не научный факт.",
+          ...(repeatNote ? [repeatNote] : []),
+          ...points.map((p) => formatMatrixPointDictLine(p, getArcanaEntry(p.number))),
         ].join("\n"),
       };
     }

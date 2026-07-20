@@ -210,7 +210,7 @@ const FINALE_INSTRUCTIONS: Partial<Record<NumerologFinaleTopic, string>> = {
   life_path:
     "Один практический совет на ближайшее время, опираясь на число пути и личный год. Не повторяй весь разбор.",
   destiny_matrix:
-    "3–4 предложения: опора характера, ось предназначения, денежный/отношенческий акцент и аркан года — строго по числам из блока МАТРИЦА СУДЬБЫ. Не подменяй предназначение другим арканом. Без числа пути/души/личности и без квадрата Пифагора.",
+    "Только блок КЛЮЧИ ДЛЯ РЕЗЮМЕ: опора характера, предназначение, деньги, аркан года — дословно эти четыре аркана. Аркан года нельзя подменять Отшельником/Силой/другой точкой. Без пути/души/личности и без квадрата Пифагора.",
 };
 
 /** Warm main reading from engine facts — LLM prose adapted to the user's question. */
@@ -221,7 +221,7 @@ export async function generateNumerologMainReading(params: {
   engineFacts: string;
   fallback: string;
 }): Promise<string> {
-  const factsCap = params.topic === "destiny_matrix" ? 5000 : 4000;
+  const factsCap = params.topic === "destiny_matrix" ? 6500 : 4000;
   const facts = params.engineFacts.trim().slice(0, factsCap);
   if (!facts) return params.fallback;
 

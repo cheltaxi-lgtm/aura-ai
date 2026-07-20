@@ -1,5 +1,7 @@
 import { buildNumerologSpreadReading, buildSpreadOpeningFinale } from "@/lib/numerolog/welcome";
+import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
 import { buildNumerologEngineReply, buildRichEngineFacts } from "@/lib/numerology/engine-reply";
+import { buildMatrixPlainFinale } from "@/lib/numerology/matrix-point-prompt";
 import {
   appendNumerologFinale,
   generateNumerologFinale,
@@ -140,6 +142,11 @@ export async function generateNumerologStreamReply(
       : engineFactsRaw;
   const fallback = engineResult.reply;
 
+  const matrixForFinale =
+    engineResult.primaryTopic === "destiny_matrix" && params.birthDate
+      ? destinyMatrix(params.birthDate)
+      : null;
+
   const [engineBody, finale] = await Promise.all([
     generateNumerologMainReading({
       name: firstName,
@@ -148,11 +155,13 @@ export async function generateNumerologStreamReply(
       engineFacts,
       fallback,
     }),
-    generateNumerologFinale({
-      name: firstName,
-      topic: engineResult.primaryTopic,
-      engineFacts,
-    }),
+    matrixForFinale
+      ? Promise.resolve(buildMatrixPlainFinale(firstName, matrixForFinale))
+      : generateNumerologFinale({
+          name: firstName,
+          topic: engineResult.primaryTopic,
+          engineFacts,
+        }),
   ]);
 
   return {

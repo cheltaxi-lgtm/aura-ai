@@ -237,7 +237,7 @@ export function buildRichEngineFacts(params: {
       .split("\n\n")
       .find((p) => p.startsWith("КЛИЕНТ ДЛЯ МАТРИЦЫ СУДЬБЫ:"));
     if (clientBlock) chunks.unshift(clientBlock.trim());
-    return chunks.join("\n\n").slice(0, 4500);
+    return chunks.join("\n\n").slice(0, 6500);
   }
 
   const topicsForFacts = new Set<NumerologyTopic>([params.primaryTopic]);
