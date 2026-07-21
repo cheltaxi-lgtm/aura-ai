@@ -7,23 +7,13 @@ import BodyPortal from "@/components/BodyPortal";
 import { clearAuthPending } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
-
-/** Set before hard-nav so cabinet cannot race-redirect to /auth/login. */
-export const ACCOUNT_DELETED_HOME_KEY = "zovus_account_deleted_home";
+import {
+  homeUrlAfterAccountDeletion,
+  markAccountDeletedHome,
+} from "@/lib/account-deleted";
 
 interface Props {
   onDeleted?: () => void | Promise<void>;
-}
-
-function homeUrlAfterAccountDeletion(): string {
-  try {
-    if (sessionStorage.getItem("zovus_app_shell") === "1") {
-      return "/?app=1";
-    }
-  } catch {
-    /* private mode */
-  }
-  return "/";
 }
 
 /**
@@ -34,11 +24,7 @@ function homeUrlAfterAccountDeletion(): string {
  */
 function leaveToHomeAfterAccountDeletion(): void {
   const target = homeUrlAfterAccountDeletion();
-  try {
-    sessionStorage.setItem(ACCOUNT_DELETED_HOME_KEY, "1");
-  } catch {
-    /* ignore */
-  }
+  markAccountDeletedHome();
   clearAuthPending();
   clearClientAuthState();
   // Hard document navigation — do not use Next router / AUTH_LOGOUT_EVENT.
@@ -113,11 +99,7 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
       // Flag + hard-nav MUST run synchronously after success.
       // Cookie is already cleared; any /me 401 can null authUser and cabinet
       // would otherwise router.replace → login before we leave.
-      try {
-        sessionStorage.setItem(ACCOUNT_DELETED_HOME_KEY, "1");
-      } catch {
-        /* private mode */
-      }
+      markAccountDeletedHome();
       leaveToHomeAfterAccountDeletion();
       void flushWebViewCookies().catch(() => undefined);
       void Promise.resolve(onDeleted?.()).catch(() => undefined);

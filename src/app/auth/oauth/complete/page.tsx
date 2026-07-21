@@ -20,14 +20,13 @@ type RegistrationPreview = {
 };
 
 /** Hard ceiling — never leave the user on "Завершаем вход…" forever. */
-const OAUTH_COMPLETE_WATCHDOG_MS = 4_000;
+const OAUTH_COMPLETE_WATCHDOG_MS = 3_500;
 
 async function ensureAuthenticated(handoff: string | null): Promise<AuthMeResponse | null> {
-  // Keep this short: watchdog + hardNavigate own the escape hatch.
-  let me = await fetchAuthMeWithRetry({ attempts: 2, delayMs: 150, timeoutMs: 2_500 });
+  let me = await fetchAuthMeWithRetry({ attempts: 2, delayMs: 120, timeoutMs: 2_000 });
   if (me?.authenticated) return me;
   if (!handoff) {
-    return fetchAuthMeWithRetry({ attempts: 2, delayMs: 200, timeoutMs: 2_500 });
+    return fetchAuthMeWithRetry({ attempts: 2, delayMs: 150, timeoutMs: 2_000 });
   }
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -36,24 +35,24 @@ async function ensureAuthenticated(handoff: string | null): Promise<AuthMeRespon
         method: "POST",
         credentials: "include",
         cache: "no-store",
-        timeoutMs: 4_000,
+        timeoutMs: 3_500,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: handoff }),
       });
       if (handoffRes.ok) {
         await flushWebViewCookies();
-        return fetchAuthMeWithRetry({ attempts: 3, delayMs: 150, timeoutMs: 2_500 });
+        return fetchAuthMeWithRetry({ attempts: 3, delayMs: 120, timeoutMs: 2_000 });
       }
       if (handoffRes.status === 400 || handoffRes.status === 404) {
         break;
       }
     } catch {
-      /* retry handoff POST on network errors */
+      /* retry */
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 150 * (attempt + 1)));
+    await new Promise((resolve) => window.setTimeout(resolve, 120 * (attempt + 1)));
   }
 
-  return fetchAuthMeWithRetry({ attempts: 2, delayMs: 200, timeoutMs: 2_500 });
+  return fetchAuthMeWithRetry({ attempts: 2, delayMs: 150, timeoutMs: 2_000 });
 }
 
 function hardNavigate(destination: string): void {
@@ -67,7 +66,17 @@ function hardNavigate(destination: string): void {
     if (window.location.pathname.startsWith("/auth/oauth/complete")) {
       window.location.href = landing;
     }
-  }, 300);
+  }, 250);
+}
+
+function readHandoffFromLocation(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get("handoff");
+  if (fromQuery) return fromQuery;
+  const raw = window.location.hash.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  return new URLSearchParams(raw).get("handoff");
 }
 
 export default function OAuthCompletePage() {
@@ -79,6 +88,7 @@ export default function OAuthCompletePage() {
   const [accepted, setAccepted] = useState(false);
   const [marketing, setMarketing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [fallbackHref, setFallbackHref] = useState("/");
 
   useEffect(() => {
     if (started.current || typeof window === "undefined") return;
@@ -100,19 +110,13 @@ export default function OAuthCompletePage() {
       return;
     }
 
-    // Capture query BEFORE any async work / history mutation.
     const returnTo = sanitizeReturnTo(params.get("returnTo"), "/");
     const mode = params.get("mode") === "register" ? "register" : "login";
     const isNewUser = params.get("new") === "1";
     const needsProfile = params.get("needsProfile") === "1";
     const hasProfileFlag = params.get("hasProfile") === "1";
-    const handoffFromQuery = params.get("handoff");
-    const handoffFromHash = (() => {
-      const raw = window.location.hash.startsWith("#")
-        ? window.location.hash.slice(1)
-        : window.location.hash;
-      return new URLSearchParams(raw).get("handoff");
-    })();
+    const alreadyBridged = params.get("_bridged") === "1";
+
     let handoffFromStore: string | null = null;
     try {
       handoffFromStore = window.sessionStorage.getItem("aura_oauth_handoff");
@@ -120,16 +124,17 @@ export default function OAuthCompletePage() {
     } catch {
       handoffFromStore = null;
     }
-    const handoff = handoffFromQuery || handoffFromHash || handoffFromStore;
-    const alreadyBridged = params.get("_bridged") === "1";
+    const handoff = readHandoffFromLocation() || handoffFromStore;
+
+    const urgentFallback =
+      needsProfile || isNewUser ? onboardingRedirectUrl() : returnTo;
+    setFallbackHref(withAppShellAuthParams(urgentFallback));
 
     const watchdogFallback = () => {
       if (navigated.current) return;
       navigated.current = true;
       markAuthPending();
-      const fallback =
-        needsProfile || isNewUser ? onboardingRedirectUrl() : returnTo;
-      hardNavigate(fallback);
+      hardNavigate(urgentFallback);
     };
     const watchdog = window.setTimeout(watchdogFallback, OAUTH_COMPLETE_WATCHDOG_MS);
 
@@ -142,7 +147,6 @@ export default function OAuthCompletePage() {
 
     void (async () => {
       try {
-        // Native WebView only: stamp aura_auth on a document response first.
         if (handoff && shouldUseSessionBridge() && !alreadyBridged) {
           const resume = new URL(window.location.href);
           resume.searchParams.delete("handoff");
@@ -153,10 +157,7 @@ export default function OAuthCompletePage() {
             `${resume.pathname}${resume.search}`,
             handoff
           );
-          if (bridged) {
-            // Bridge performs its own navigation — keep watchdog until leave.
-            return;
-          }
+          if (bridged) return;
         }
 
         const me = await ensureAuthenticated(alreadyBridged ? null : handoff);
@@ -164,8 +165,8 @@ export default function OAuthCompletePage() {
         markAuthPending();
 
         if (!me?.authenticated) {
-          // Cookie often already set by provider redirect — leave complete page.
-          go(needsProfile || isNewUser ? onboardingRedirectUrl() : returnTo);
+          // Cookie/handoff lag — still leave this page; home/onboarding will recheck.
+          go(urgentFallback);
           return;
         }
 
@@ -175,14 +176,14 @@ export default function OAuthCompletePage() {
             const profileRes = await fetchWithTimeout("/api/cabinet", {
               credentials: "include",
               cache: "no-store",
-              timeoutMs: 2_000,
+              timeoutMs: 1_500,
             });
             if (profileRes.ok) {
               profile = ((await profileRes.json()) as { profile?: Record<string, unknown> })
                 ?.profile ?? null;
             }
           } catch {
-            /* profile optional — do not block login */
+            /* optional */
           }
         }
 
@@ -203,30 +204,22 @@ export default function OAuthCompletePage() {
           userName: me.user?.name,
           profile,
           oauthGender,
-          // Skip second /me round-trip — we already have live session.
           skipAuthRecheck: true,
         });
 
         if (shouldUseSessionBridge()) {
           const bridged = await navigateViaSessionBridge(destination);
-          if (bridged) {
-            return;
-          }
+          if (bridged) return;
         }
         go(destination);
       } catch {
-        if (!navigated.current) {
-          watchdogFallback();
-        }
+        if (!navigated.current) watchdogFallback();
       }
     })();
 
     return () => {
       window.clearTimeout(watchdog);
-      // React Strict Mode remount: allow effect to run again if we never left.
-      if (!navigated.current) {
-        started.current = false;
-      }
+      if (!navigated.current) started.current = false;
     };
   }, []);
 
@@ -285,7 +278,7 @@ export default function OAuthCompletePage() {
       <main className="auth-page flex min-h-screen items-center justify-center bg-[#07060c] px-5 py-12">
         <section className="glass-panel w-full max-w-md space-y-5 p-6 text-center">
           <h1 className="text-xl font-semibold text-white">Один шаг до входа</h1>
-          <p className="text-sm text-aura-ivory/70">
+          <p className="text-sm text-white/70">
             {preview
               ? `${preview.name}, подтвердите условия для первого входа через ${preview.providerLabel}.`
               : "Загружаем данные профиля…"}
@@ -299,9 +292,18 @@ export default function OAuthCompletePage() {
             />
             <span>
               Мне есть 18 лет. Я принимаю{" "}
-              <a href="/terms" target="_blank" className="underline">соглашение</a>,{" "}
-              <a href="/privacy" target="_blank" className="underline">политику данных</a> и{" "}
-              <a href="/disclaimer" target="_blank" className="underline">отказ от ответственности</a>.
+              <a href="/terms" target="_blank" className="underline">
+                соглашение
+              </a>
+              ,{" "}
+              <a href="/privacy" target="_blank" className="underline">
+                политику данных
+              </a>{" "}
+              и{" "}
+              <a href="/disclaimer" target="_blank" className="underline">
+                отказ от ответственности
+              </a>
+              .
             </span>
           </label>
           <label className="flex cursor-pointer items-center gap-3 text-left text-xs text-gray-500">
@@ -339,7 +341,10 @@ export default function OAuthCompletePage() {
 
   return (
     <div className="auth-page flex min-h-screen flex-col items-center justify-center bg-[#07060c] px-6 py-16 text-center">
-      <p className="text-sm text-white/70">Завершаем вход…</p>
+      <p className="text-sm text-white/80">Завершаем вход…</p>
+      <a href={fallbackHref} className="mt-6 text-sm text-aura-champagne underline">
+        Если экран не меняется — нажмите сюда
+      </a>
     </div>
   );
 }

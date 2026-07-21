@@ -115,6 +115,16 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
   assert.ok(complete.includes("skipAuthRecheck"));
   assert.ok(complete.includes("started.current = false"));
   assert.ok(complete.includes("bg-[#07060c]"));
+  assert.ok(complete.includes("Если экран не меняется"));
+}
+{
+  const callback = fs.readFileSync(
+    path.join(root, "src/app/api/auth/oauth/[provider]/callback/route.ts"),
+    "utf8"
+  );
+  assert.ok(callback.includes("createOAuthHandoff"));
+  assert.ok(callback.includes("#handoff="));
+  assert.ok(callback.includes("Always mint a one-time handoff"));
 }
 
 async function verifyAsyncCases() {

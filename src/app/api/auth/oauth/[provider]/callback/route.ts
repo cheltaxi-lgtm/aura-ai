@@ -126,14 +126,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       needsProfile: result.needsProfile ? "1" : "0",
     });
     if (result.profile) completeParams.set("hasProfile", "1");
-    // App deep links: put handoff in query. Android often strips URL fragments from
-    // custom-scheme intents (zovus://...) before the WebView receives them.
-    // Browser OAuth keeps the fragment-only form to avoid Referer leakage.
-    let completePath = `/auth/oauth/complete?${completeParams.toString()}`;
+
+    // Always mint a one-time handoff. Cookie from the callback hop is sometimes
+    // invisible to the next document in Yandex Browser; handoff recovers /me.
+    const handoff = await createOAuthHandoff(result.account.id);
+
+    // App deep links: handoff in query (Android strips URL fragments from
+    // custom-scheme intents). Browser: fragment avoids Referer leakage.
+    let completePath: string;
     if (pending.appFlow) {
-      const handoff = await createOAuthHandoff(result.account.id);
       completeParams.set("handoff", handoff);
       completePath = `/auth/oauth/complete?${completeParams.toString()}`;
+    } else {
+      completePath = `/auth/oauth/complete?${completeParams.toString()}#handoff=${encodeURIComponent(handoff)}`;
     }
 
     return redirectNoStore(
