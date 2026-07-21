@@ -4,10 +4,29 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
-import { performClientLogout } from "@/lib/client-logout";
+import { clearAuthPending } from "@/lib/auth-pending";
+import { AUTH_LOGOUT_EVENT, clearClientAuthState } from "@/lib/client-logout";
+import { flushWebViewCookies } from "@/lib/webview-cookies";
 
 interface Props {
   onDeleted?: () => void | Promise<void>;
+}
+
+/** After account erasure — always land on the public homepage (guest landing). */
+function redirectToHomeAfterAccountDeletion(): void {
+  clearAuthPending();
+  clearClientAuthState();
+  window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_EVENT));
+
+  let target = "/";
+  try {
+    if (sessionStorage.getItem("zovus_app_shell") === "1") {
+      target = "/?app=1";
+    }
+  } catch {
+    /* private mode */
+  }
+  window.location.replace(target);
 }
 
 export default function CabinetDeleteAccount({ onDeleted }: Props) {
@@ -66,13 +85,15 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
         );
       }
 
+      // Cookie already cleared by DELETE /api/user/delete — do not call
+      // performClientLogout (extra /api/auth/me DELETE is useless and can stall).
+      await flushWebViewCookies();
       resetForm();
       setOpen(false);
       await onDeleted?.();
-      await performClientLogout({ redirectTo: "/", hardRedirect: true });
+      redirectToHomeAfterAccountDeletion();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка удаления");
-    } finally {
       setDeleting(false);
     }
   };
