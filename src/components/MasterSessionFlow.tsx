@@ -387,7 +387,8 @@ export default function MasterSessionFlow({
   const allFlipped = flipped.slice(0, cardCount).every(Boolean);
   const spreadReady =
     newCards.slice(0, cardCount).filter((c) => c.name.trim()).length >= cardCount;
-  const topicLocked = Boolean(initialTopic);
+  // Preselected tool (e.g. destiny_matrix deep-link) skips the Tarot topic picker.
+  const topicLocked = Boolean(initialTopic || initialNumerologTool);
   const masterLocked = Boolean(preselectedMaster);
   const activeSteps = buildActiveSteps({
     numerologFlow,
@@ -428,16 +429,18 @@ export default function MasterSessionFlow({
     setPersonalNote("");
     setComputingHint("");
     setReshuffleSalt("");
-    setSelectedNumerologTool(initialNumerologTool ?? DEFAULT_NUMEROLOG_SESSION_TOOL);
+    const resolvedNumerologTool = initialNumerologTool ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
+    setSelectedNumerologTool(resolvedNumerologTool);
     setNumerologToolParams({});
     setNumerologResult(null);
     setNumerologRevealReady(false);
 
     if (numerologPreselected || (newSpreadOnly && isNumerologMaster(preselectedMaster))) {
       setCardType("new");
-      setFlipped(emptyFlipped(getNumerologTool(DEFAULT_NUMEROLOG_SESSION_TOOL).drawCount));
-      // Collect session topic so numerology calc can seed spheres (love/money/…).
-      setStep(initialTopic ? "calculation" : "topic");
+      setFlipped(emptyFlipped(getNumerologTool(resolvedNumerologTool).drawCount));
+      // Topic seeds spheres when the user picks a general numerology session.
+      // When a concrete tool is already chosen (Матрица судьбы / deep-link), go straight to calc.
+      setStep(initialTopic || initialNumerologTool ? "calculation" : "topic");
       return;
     }
 
@@ -567,8 +570,10 @@ export default function MasterSessionFlow({
     }
     else if (step === "calculation") {
       if (showCardsChoice && cardType === "new") setStep("cards");
-      else if (master) setStep("master");
-      else setStep("topic");
+      else if (masterLocked && topicLocked) onClose();
+      else if (!masterLocked && master) setStep("master");
+      else if (!topicLocked) setStep("topic");
+      else onClose();
     }
     else if (step === "ritual") {
       if (numerologFlow) setStep("calculation");

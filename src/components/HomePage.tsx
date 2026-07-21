@@ -793,6 +793,11 @@ export default function HomePage({
       setSessionFlowPreselectedMaster("numerolog");
       setEnergyFlowMasterId("numerolog");
       setSessionFlowInitialNumerologTool(tool ?? null);
+      // Avoid leftover Tarot topic/question from a previous SEO spread flow.
+      setSessionFlowInitialTopic(null);
+      setSessionFlowInitialQuestion(null);
+      setSessionFlowRequiresPartnerInfo(false);
+      setSessionFlowInitialPartnerInfo(null);
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },

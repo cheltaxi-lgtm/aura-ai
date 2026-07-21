@@ -4,14 +4,25 @@ import { useEffect } from "react";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 
-function isChunkLoadError(error: Error): boolean {
+const RELOAD_KEY = "aura_stale_client_reload_v2";
+
+/** Stale tab after deploy: old chunks / server actions no longer match. */
+function isStaleClientError(error: Error): boolean {
   const msg = error.message ?? "";
   return (
     error.name === "ChunkLoadError" ||
     msg.includes("Loading chunk") ||
     msg.includes("Failed to fetch dynamically imported module") ||
-    msg.includes("Importing a module script failed")
+    msg.includes("Importing a module script failed") ||
+    msg.includes("Failed to find Server Action") ||
+    msg.includes("was not found on the server")
   );
+}
+
+function hardReload(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set("_r", String(Date.now()));
+  window.location.replace(url.toString());
 }
 
 export default function Error({
@@ -22,13 +33,21 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    if (!isChunkLoadError(error) || typeof window === "undefined") return;
-    const key = "aura_chunk_reload_v1";
-    if (!sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, "1");
-      window.location.reload();
+    if (!isStaleClientError(error) || typeof window === "undefined") return;
+    if (!sessionStorage.getItem(RELOAD_KEY)) {
+      sessionStorage.setItem(RELOAD_KEY, "1");
+      hardReload();
     }
   }, [error]);
+
+  const handleRetry = () => {
+    if (typeof window !== "undefined" && isStaleClientError(error)) {
+      sessionStorage.removeItem(RELOAD_KEY);
+      hardReload();
+      return;
+    }
+    reset();
+  };
 
   return (
     <div className="flex min-h-[70dvh] flex-col items-center justify-center px-6 text-center">
@@ -38,7 +57,7 @@ export default function Error({
         Временная ошибка на стороне сервиса. Попробуйте обновить страницу или вернитесь на главную.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <button type="button" onClick={() => reset()} className="btn-neon px-8 py-3 text-sm">
+        <button type="button" onClick={handleRetry} className="btn-neon px-8 py-3 text-sm">
           Повторить
         </button>
         <Link href="/" className="btn-luxe btn-luxe--sm btn-luxe--gold px-8 py-3 text-sm">
