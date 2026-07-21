@@ -95,8 +95,13 @@ import {
 import { pythagorasSquare } from "@/lib/numerology/pythagoras-square";
 import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet, loadGuestTriplet } from "@/lib/guest-triplet";
-import { loadGuestResumeUiCache, patchGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
+  clearGuestResumeUiCache,
+  loadGuestResumeUiCache,
+  patchGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
+import {
+  GUEST_RESUME_ALREADY_USED,
   GUEST_RESUME_CAPACITOR_RECOVERY,
   GUEST_RESUME_RETRY_TITLE,
   GUEST_RESUME_TRANSITION_SUBTITLE,
@@ -1839,6 +1844,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           if (resumeResult.capacitorRecovery || resumeResult.phase === "safe_recovery") {
             setGuestResumeCanRetry(false);
             setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+            void finishProfileOnboarding("masters");
+            return;
+          }
+          if (resumeResult.stage === "already_used") {
+            setGuestResumeCanRetry(false);
+            clearGuestTriplet();
+            clearGuestResumeUiCache();
+            setTripletNotice(GUEST_RESUME_ALREADY_USED);
             void finishProfileOnboarding("masters");
             return;
           }
@@ -4206,6 +4219,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       if (result.capacitorRecovery || result.phase === "safe_recovery") {
         setGuestResumeCanRetry(false);
         setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+        return;
+      }
+      if (result.stage === "already_used") {
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
+        clearGuestResumeUiCache();
+        setTripletNotice(GUEST_RESUME_ALREADY_USED);
         return;
       }
       if (result.stage === "expired" || result.phase === "idle") {

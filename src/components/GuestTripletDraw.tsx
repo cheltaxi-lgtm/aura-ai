@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
-import { getDeckDefinition, getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
+import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
   buildSeededTableDeck,
@@ -13,12 +13,8 @@ import {
 import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import {
-  hasActiveGuestResumeIntent,
-  loadGuestResumeUiCache,
-  saveGuestResumeUiCache,
-} from "@/lib/guest-resume-ui-cache";
-import { buildGuestTripletPreview, buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
+import { saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import { buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
 import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
@@ -31,23 +27,13 @@ import {
   type GuestSpreadStartDetail,
 } from "@/lib/landing-offer";
 import {
-  buildRegisterHref,
-  resolveRegistrationReturnTo,
-} from "@/lib/post-auth-return";
-import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
-import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
-import {
   trackGuestCardRevealed,
   trackGuestSpreadCompleted,
   trackGuestSpreadStarted,
-  trackRegistrationCtaClick,
   trackRegistrationGateView,
 } from "@/lib/seo/metrika";
 import DeckCard from "@/components/DeckCard";
-import PremiumReadingBody from "@/components/PremiumReadingBody";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
-import ShareButton from "@/components/share/ShareButton";
-import { tripletToSharePayload } from "@/lib/share/payload-builders";
 
 const GUEST_ID_KEY = "zovus_guest_id";
 const CARD_COUNT = 3;
@@ -97,19 +83,6 @@ function GuestSpreadSection({ children }: { children: React.ReactNode }) {
   );
 }
 
-function readGuestSpreadDraft(): GuestSpreadDraft | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(GUEST_SPREAD_DRAFT_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as GuestSpreadDraft;
-    if (!parsed?.step || parsed.step === "idle" || parsed.step === "done") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 export default function GuestTripletDraw({
   className = "",
   startRequest = null,
@@ -127,89 +100,23 @@ export default function GuestTripletDraw({
   const [ageGateError, setAgeGateError] = useState("");
   const [landingQuestion, setLandingQuestion] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const handledStartRequestId = useRef<number | null>(null);
-  const [oauthAgeConfirmed, setOauthAgeConfirmed] = useState(false);
-  const [marketingConsent, setMarketingConsent] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
-
-  const oauthReturnTo = useMemo(
-    () =>
-      resolveRegistrationReturnTo({
-        guestSpread: true,
-        guestMasterId: masterId,
-        guestQuestion: landingQuestion || undefined,
-      }),
-    [masterId, landingQuestion]
-  );
 
   const ritualCopy = useMemo(
     () => getSpreadRitualCopy(masterId, { hasBirthDate: false, cardCount: CARD_COUNT }),
     [masterId]
   );
 
-  const previewText = useMemo(() => {
-    if (deck.length < CARD_COUNT) return "";
-    return buildGuestTripletPreview(deck, positions);
-  }, [deck, positions]);
-
   useEffect(() => {
     if (typeof window === "undefined" || draftRestored) return;
     const stored = sessionStorage.getItem(LANDING_QUESTION_KEY);
     if (stored) setLandingQuestion(stored);
     setAgeConfirmed(isAgeGateConfirmed());
-    setOauthAgeConfirmed(isAgeGateConfirmed());
 
-    const draft = readGuestSpreadDraft();
-    if (draft && draft.masterId === GUEST_TRIPLET_MASTER_ID) {
-      let restoredStep = draft.step === "intro" ? "pick" : draft.step;
-      if (
-        (restoredStep === "pick" || restoredStep === "flip") &&
-        !isAgeGateConfirmed()
-      ) {
-        restoredStep = "age";
-      }
-      setStep(restoredStep);
-      setSessionSeed(draft.sessionSeed);
-      setPickedIndices(draft.pickedIndices);
-      setDeck(draft.deck);
-      setRevealed(draft.revealed);
-      setLandingQuestion(draft.landingQuestion);
-    } else {
-      const completed = hasActiveGuestResumeIntent()
-        ? loadGuestResumeUiCache()
-        : null;
-      if (
-        completed?.phase === "receipt_pending_auth" &&
-        !completed.claimedSessionId &&
-        completed.masterId === GUEST_TRIPLET_MASTER_ID &&
-        completed.cards.length === CARD_COUNT
-      ) {
-        const byId = new Map(
-          getDeckDefinition(system).symbols.map((symbol) => [symbol.id, symbol])
-        );
-        const restoredCards = [...completed.cards]
-          .sort((a, b) => a.position - b.position)
-          .map((card) => ({
-            ...(byId.get(card.id) ?? {
-              id: card.id,
-              name: card.name,
-              meaning: "",
-            }),
-            name: card.name,
-            reversed: card.reversed,
-          }));
-        setDeck(restoredCards);
-        setRevealed([true, true, true]);
-        setLandingQuestion(completed.question);
-        setAgeConfirmed(isAgeGateConfirmed());
-        setOauthAgeConfirmed(isAgeGateConfirmed());
-        setStep("done");
-      }
-      if (draft) {
-        sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
-      }
-    }
+    // Never auto-restore an in-progress guest draw on homepage load — a stuck
+    // draft previously hijacked the whole landing (and with a bad deploy, the site).
+    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     setDraftRestored(true);
   }, [draftRestored, system]);
 
@@ -297,7 +204,6 @@ export default function GuestTripletDraw({
       return;
     }
     setAgeConfirmed(true);
-    setOauthAgeConfirmed(true);
     const pendingQuestion =
       typeof window !== "undefined"
         ? sessionStorage.getItem(LANDING_QUESTION_KEY) || landingQuestion
@@ -405,22 +311,6 @@ export default function GuestTripletDraw({
 
   const allRevealed = revealed.every(Boolean);
 
-  const goToRegistration = useCallback(() => {
-    trackRegistrationCtaClick("guest_triplet_register");
-    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
-    window.location.assign(
-      buildRegisterHref(
-        resolveRegistrationReturnTo({
-          guestSpread: true,
-          guestMasterId: masterId,
-          guestQuestion: landingQuestion || undefined,
-        }),
-        "/",
-        { method: "email" }
-      )
-    );
-  }, [masterId, landingQuestion]);
-
   const handleFinish = () => {
     if (deck.length < CARD_COUNT || !allRevealed) return;
     const teaser = buildGuestTripletTeaser(deck);
@@ -480,23 +370,12 @@ export default function GuestTripletDraw({
       });
       trackGuestSpreadCompleted();
       trackRegistrationGateView("guest_triplet_done");
-      setStep("done");
       sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
-      window.requestAnimationFrame(() => {
-        document.getElementById("guest-spread")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      // Back to the normal landing — login via header/Войти, not an inline gate.
+      setStep("idle");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     })();
   };
-
-  const sharePayload = useMemo(() => {
-    if (step !== "done" || deck.length < CARD_COUNT) return null;
-    return tripletToSharePayload({
-      userName: "Гость",
-      cards: deck,
-      deckSystem: system,
-      teaser: buildGuestTripletTeaser(deck),
-    });
-  }, [step, deck, system]);
 
   const backToLandingButton = (
     <button
@@ -571,70 +450,6 @@ export default function GuestTripletDraw({
         onBack={exitToLanding}
         disabled={ageConfirming}
       />
-    );
-  }
-
-  if (step === "done") {
-    return (
-      <GuestSpreadSection>
-      <div className={`mx-auto max-w-lg px-4 ${className}`.trim()}>
-        {backToLandingButton}
-      <motion.div
-        className="glass-panel space-y-5 p-8"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
-      >
-        <p className="text-center text-sm font-medium text-aura-champagne/85">Краткий ориентир по вашему раскладу</p>
-        <div className="guest-spread-preview rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm text-aura-ivory/80">
-          <PremiumReadingBody content={previewText} className="text-aura-ivory/80" />
-        </div>
-        <p className="text-center text-sm leading-relaxed text-aura-ivory/65">
-          Зарегистрируйтесь — мастер даст полную связную расшифровку, и вы сможете задать первые вопросы
-          бесплатно.
-        </p>
-
-        <div id="guest-oauth-consent" className="rounded-xl border border-white/8 bg-black/20 p-4">
-          <OAuthConsentFields
-            acceptedTerms={acceptedTerms}
-            ageConfirmed={oauthAgeConfirmed}
-            marketingConsent={marketingConsent}
-            onAcceptedTermsChange={setAcceptedTerms}
-            onAgeConfirmedChange={setOauthAgeConfirmed}
-            onMarketingConsentChange={setMarketingConsent}
-            showDisclaimer
-            termsId="guest-oauth-terms"
-            ageId="guest-oauth-age"
-          />
-        </div>
-
-        <SocialAuthButtons
-          mode="register"
-          returnTo={oauthReturnTo}
-          requireConsent
-          acceptedTerms={acceptedTerms}
-          ageConfirmed={oauthAgeConfirmed}
-          marketingConsent={marketingConsent}
-          consentScrollTargetId="guest-oauth-consent"
-          showEmailDivider
-          emailDividerLabel="или email"
-        />
-
-        <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={goToRegistration}
-            className="btn-luxe btn-luxe--md btn-luxe--ghost inline-block px-10 py-3.5 text-center"
-          >
-            Регистрация по email
-          </button>
-          {sharePayload ? (
-            <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />
-          ) : null}
-        </div>
-      </motion.div>
-      </div>
-      </GuestSpreadSection>
     );
   }
 

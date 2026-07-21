@@ -131,11 +131,41 @@ export async function expireIssuedGuestResumeIfNeeded(
 
 export type ClaimGuestResumeResult =
   | { ok: true; sessionId: string; alreadyClaimed: boolean; payload: GuestResumeCardsPayload; masterId: string; fingerprint: string }
-  | { ok: false; code: "unavailable" };
+  | { ok: false; code: "unavailable" | "already_used" };
+
+/** True if this profile already claimed/consumed a landing guest free reading. */
+export async function profileHasUsedGuestResume(
+  profileUserId: string,
+  options?: { exceptSessionId?: string; client?: PoolClient }
+): Promise<boolean> {
+  const run = options?.client
+    ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) =>
+        queryClient(options.client!, text, params)
+    : query;
+  const except = options?.exceptSessionId?.trim();
+  const { rows } = except
+    ? await run<{ id: string }>(
+        `SELECT id FROM sessions
+         WHERE user_id = $1
+           AND guest_resume_status IN ('claimed', 'reading_consumed')
+           AND id <> $2
+         LIMIT 1`,
+        [profileUserId, except]
+      )
+    : await run<{ id: string }>(
+        `SELECT id FROM sessions
+         WHERE user_id = $1
+           AND guest_resume_status IN ('claimed', 'reading_consumed')
+         LIMIT 1`,
+        [profileUserId]
+      );
+  return Boolean(rows[0]);
+}
 
 /**
  * Atomic claim: issued → claimed for authenticated profile user.
  * Same user retry returns existing. Other user / missing → unavailable (no leak).
+ * One landing free reading per profile — logout + new guest draw cannot mint another.
  */
 export async function claimGuestResumeSession(input: {
   token: string;
@@ -152,6 +182,10 @@ export async function claimGuestResumeSession(input: {
   const tokenHash = hashGuestResumeToken(input.token);
 
   return withTransaction(async (client) => {
+    // Lock user first so two parallel claims of different receipts cannot both succeed.
+    await queryClient(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `guest-resume-user:${input.profileUserId}`,
+    ]);
     await queryClient(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [
       `guest-resume-claim:${tokenHash}`,
     ]);
@@ -197,6 +231,15 @@ export async function claimGuestResumeSession(input: {
 
     if (row.guest_resume_status !== "issued" || row.user_id) {
       return { ok: false, code: "unavailable" };
+    }
+
+    if (
+      await profileHasUsedGuestResume(input.profileUserId, {
+        exceptSessionId: row.id,
+        client,
+      })
+    ) {
+      return { ok: false, code: "already_used" };
     }
 
     const { rows } = await queryClient<GuestResumeSessionRow>(

@@ -7,7 +7,10 @@ import {
   recoverGuestResumeCardsFromNames,
   type GuestResumeSymbol,
 } from "@/lib/guest-triplet-receipt";
-import { getGuestResumeSessionById } from "@/lib/guest-triplet-receipt-db";
+import {
+  getGuestResumeSessionById,
+  profileHasUsedGuestResume,
+} from "@/lib/guest-triplet-receipt-db";
 import type { DeckSystem } from "@/lib/decks/types";
 
 export type GuestResumeFreeDecision = {
@@ -45,6 +48,17 @@ export async function resolveGuestResumeFreeReading(input: {
   if (
     resume.guest_resume_status !== "claimed" &&
     resume.guest_resume_status !== "reading_consumed"
+  ) {
+    return null;
+  }
+
+  // Defense in depth: a new claimed receipt must not be free if the profile
+  // already used another landing guest reading (logout → redraw abuse).
+  if (
+    resume.guest_resume_status === "claimed" &&
+    (await profileHasUsedGuestResume(input.profileUserId, {
+      exceptSessionId: resume.id,
+    }))
   ) {
     return null;
   }

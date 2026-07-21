@@ -6,7 +6,8 @@ let cachedMaintenance: { active: boolean; expiresAt: number } | null = null;
 export const MAINTENANCE_PAGE_PATH = "/maintenance";
 
 export const MAINTENANCE_BYPASS_PREFIXES = [
-  "/admin/login",
+  // Whole admin UI — otherwise /admin redirects to /maintenance before login can complete.
+  "/admin",
   "/api/platform/status",
   "/api/health",
   "/api/payment/webhook",

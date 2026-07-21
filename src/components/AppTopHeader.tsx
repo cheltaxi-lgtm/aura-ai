@@ -130,9 +130,9 @@ export default function AppTopHeader({
           <BrandLogo {...BRAND_LOGO_HEADER} />
         </div>
 
-        {/* Desktop: Меню · CTA · Аккаунт */}
+        {/* Desktop: Меню (logged-in) · CTA · Аккаунт */}
         <div className="app-top-header__actions hidden min-w-0 flex-1 items-center justify-end gap-2 md:flex md:gap-2.5">
-          <AppTopHeaderNav {...navCallbacks} isLoggedIn={isLoggedIn} />
+          {isLoggedIn ? <AppTopHeaderNav {...navCallbacks} isLoggedIn /> : null}
           <button
             type="button"
             onClick={onStartReading}
@@ -153,7 +153,7 @@ export default function AppTopHeader({
           ) : null}
         </div>
 
-        {/* Mobile: CTA + account/login + menu */}
+        {/* Mobile: CTA + login (guests) / runes + menu (logged-in) */}
         <div className="app-top-header__mobile flex shrink-0 items-center gap-1.5 md:hidden">
           {isLoggedIn ? <RuneBalance compact onBuyClick={onOpenPaywall} /> : null}
           <button
@@ -172,19 +172,20 @@ export default function AppTopHeader({
               onBuyRunes={onOpenPaywall}
               onOpenNotifications={openNotifications}
             />
-          ) : null}
-          <AppHeaderMenu
-            photoNavLabel={photoNavLabel}
-            isLoggedIn={isLoggedIn}
-            authUser={authUser}
-            authLoading={authLoading}
-            onNavMasters={onNavMasters}
-            onNavDecks={onNavDecks}
-            onNavPhoto={onNavPhoto}
-            onNavTariffs={openTariffs}
-            onNavRitual={onNavRitual}
-            onStartReading={onStartReading}
-          />
+          ) : (
+            <AppHeaderMenu
+              photoNavLabel={photoNavLabel}
+              isLoggedIn={isLoggedIn}
+              authUser={authUser}
+              authLoading={authLoading}
+              onNavMasters={onNavMasters}
+              onNavDecks={onNavDecks}
+              onNavPhoto={onNavPhoto}
+              onNavTariffs={openTariffs}
+              onNavRitual={onNavRitual}
+              onStartReading={onStartReading}
+            />
+          )}
           {isLoggedIn && authUser?.role === "user" ? (
             <NotificationBell hiddenTrigger />
           ) : null}

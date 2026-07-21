@@ -214,12 +214,22 @@ section("static: status route exists and never returns token");
   assert.ok(!src.includes("zovus_guest_resume"));
 }
 
-section("static: completed registration gate restores from UI cache");
+section("static: guest draw must not hijack the homepage");
 {
   const src = readSrc("src/components/GuestTripletDraw.tsx");
-  assert.ok(src.includes('completed?.phase === "receipt_pending_auth"'));
-  assert.ok(src.includes('setStep("done")'));
-  assert.ok(src.includes("setRevealed([true, true, true])"));
+  assert.ok(
+    !src.includes("setRevealed([true, true, true])"),
+    "homepage must not remount the guest auth gate from UI cache"
+  );
+  assert.ok(!src.includes("onActiveChange"));
+  assert.ok(!src.includes("window.location.replace"));
+  assert.ok(!src.includes("window.location.assign(guestRegisterHref"));
+  assert.ok(src.includes('sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY)'));
+  const landing = readSrc("src/components/AuraSellingLanding.tsx");
+  assert.ok(
+    !landing.includes("guestSpreadActive"),
+    "landing must not gate marketing sections on guestSpreadActive"
+  );
 }
 
 section("static: guest reading uses authoritative ordered orientation");

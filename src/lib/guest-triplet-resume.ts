@@ -37,7 +37,7 @@ export type GuestResumeOrchestrationResult =
   | { ok: true; claim: GuestResumeClaimResult; readingMode: "full" | "existing" }
   | {
       ok: false;
-      stage: "receipt" | "claim" | "session" | "reading" | "expired";
+      stage: "receipt" | "claim" | "session" | "reading" | "expired" | "already_used";
       capacitorRecovery?: boolean;
       phase?: GuestResumeUiPhase;
     };
@@ -190,6 +190,17 @@ export async function runGuestTripletResume(opts?: {
             phase: "onboarding_required",
           };
         }
+        if (claimRes.status === 409) {
+          // Same account already used the landing free reading (logout → redraw).
+          // Caller clears UI cache; do not clear here before reading_consumed success path.
+          setPhase("idle");
+          trackGuestTripletResumeFailed("claim");
+          return {
+            ok: false,
+            stage: "already_used" as const,
+            phase: "idle",
+          };
+        }
         if (detectCapacitorPlatform()) {
           setPhase("safe_recovery");
           trackGuestTripletResumeFailed("claim");
@@ -333,3 +344,5 @@ export const GUEST_RESUME_RETRY_TITLE =
 export const GUEST_RESUME_RETRY_CTA = "Повторить";
 export const GUEST_RESUME_CAPACITOR_RECOVERY =
   "Не удалось безопасно восстановить расклад после входа. Ваш аккаунт создан, но для нового разбора откройте новый расклад.";
+export const GUEST_RESUME_ALREADY_USED =
+  "Бесплатный расклад с лендинга уже использован для этого аккаунта. Новый разбор — через тариф или ежедневный расклад.";

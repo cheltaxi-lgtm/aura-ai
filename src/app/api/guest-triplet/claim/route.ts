@@ -70,6 +70,22 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
+      if (result.code === "already_used") {
+        // Burn the fresh guest receipt cookie — this account already used the free landing reading.
+        await clearGuestResumeCookie(request);
+        if (bindingOk) {
+          await clearSessionClaimCookie(request);
+        }
+        return NextResponse.json(
+          {
+            error: "already_used",
+            code: "already_used",
+            message:
+              "Бесплатный расклад с лендинга уже использован для этого аккаунта.",
+          },
+          { status: 409 }
+        );
+      }
       return NextResponse.json({ error: "unavailable" }, { status: 404 });
     }
 

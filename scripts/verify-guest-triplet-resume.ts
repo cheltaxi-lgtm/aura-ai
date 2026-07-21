@@ -222,6 +222,22 @@ section("claim requires both cookies (static)");
   assert.ok(db.includes("if (!input.bindingOk)"));
   assert.ok(db.includes("guest_resume_status = 'claimed'"));
   assert.ok(db.includes("user_id IS NULL"));
+  assert.ok(
+    db.includes("profileHasUsedGuestResume") && db.includes("already_used"),
+    "claim must reject a second landing free reading per profile"
+  );
+  assert.ok(
+    db.includes("guest-resume-user:"),
+    "claim must lock per profile to stop parallel double-claim"
+  );
+  const claimRoute = readSrc("src/app/api/guest-triplet/claim/route.ts");
+  assert.ok(claimRoute.includes('code: "already_used"'));
+  assert.ok(claimRoute.includes("status: 409"));
+  const billing = readSrc("src/lib/guest-resume-billing.ts");
+  assert.ok(
+    billing.includes("profileHasUsedGuestResume"),
+    "billing must not free a new claimed receipt after prior use"
+  );
 }
 
 section("claim not blocked by triplet cooldown (static)");
