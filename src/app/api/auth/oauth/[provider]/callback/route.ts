@@ -127,19 +127,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
     if (result.profile) completeParams.set("hasProfile", "1");
 
-    // Always mint a one-time handoff. Cookie from the callback hop is sometimes
-    // invisible to the next document in Yandex Browser; handoff recovers /me.
+    // Always mint a one-time handoff in the query string.
+    // Fragments on 302 Location are dropped by some browsers (incl. Yandex),
+    // which left complete-page without a recovery token when Set-Cookie lagged.
     const handoff = await createOAuthHandoff(result.account.id);
-
-    // App deep links: handoff in query (Android strips URL fragments from
-    // custom-scheme intents). Browser: fragment avoids Referer leakage.
-    let completePath: string;
-    if (pending.appFlow) {
-      completeParams.set("handoff", handoff);
-      completePath = `/auth/oauth/complete?${completeParams.toString()}`;
-    } else {
-      completePath = `/auth/oauth/complete?${completeParams.toString()}#handoff=${encodeURIComponent(handoff)}`;
-    }
+    completeParams.set("handoff", handoff);
+    const completePath = `/auth/oauth/complete?${completeParams.toString()}`;
 
     return redirectNoStore(
       pending.appFlow
@@ -152,6 +145,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     let code = "oauth_failed";
     if (message === "vk_device_id_required") code = "vk_device_id_required";
+    if (/vk_token_failed|invalid_client|invalid_grant|service_token/i.test(message)) {
+      code = "oauth_failed";
+    }
 
     return redirectNoStore(oauthAbsoluteUrl(request, oauthErrorRedirect(code, mode, returnTo)));
   }

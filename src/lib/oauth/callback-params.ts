@@ -12,10 +12,18 @@ function parseVkPayload(url: URL): OAuthCallbackParams | null {
   const payloadRaw = url.searchParams.get("payload");
   if (!payloadRaw) return null;
   try {
-    const payload = JSON.parse(payloadRaw) as {
+    // Some browsers leave payload percent-encoded; try raw then decoded.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payloadRaw);
+    } catch {
+      parsed = JSON.parse(decodeURIComponent(payloadRaw));
+    }
+    const payload = parsed as {
       code?: string;
       state?: string;
       device_id?: string;
+      type?: string;
     };
     return {
       code: payload.code?.trim() || null,

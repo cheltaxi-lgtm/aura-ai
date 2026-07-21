@@ -8,6 +8,7 @@ interface VkTokenResponse {
   user_id?: number;
   error?: string;
   error_description?: string;
+  error_msg?: string;
 }
 
 interface VkUserInfoResponse {
@@ -70,11 +71,17 @@ export function buildVkAuthorizeUrl(
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
+    // Space-separated scopes per VK ID web docs.
     scope: "email",
   });
   return `https://id.vk.ru/authorize?${params.toString()}`;
 }
 
+/**
+ * Exchange authorization code for tokens.
+ * VK ID confidential apps require `service_token` (NOT OAuth2 `client_secret`).
+ * @see https://id.vk.com/about/business/go/docs/ru/vkid/latest/vk-id/connection/api-description
+ */
 export async function exchangeVkCode(
   code: string,
   codeVerifier: string,
@@ -84,17 +91,22 @@ export async function exchangeVkCode(
   if (!options?.deviceId?.trim()) {
     throw new Error("vk_device_id_required");
   }
-  const { clientId, clientSecret } = requireOAuthProviderConfig("vk");
+  const { clientId, clientSecret, serviceToken } = requireOAuthProviderConfig("vk");
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     client_id: clientId,
-    client_secret: clientSecret,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
+    device_id: options.deviceId.trim(),
   });
-  body.set("device_id", options.deviceId);
   if (options?.state) body.set("state", options.state);
+
+  // Prefer dedicated service token; fall back to protected key env for older deploys.
+  const vkServiceToken = serviceToken?.trim() || clientSecret?.trim() || "";
+  if (vkServiceToken) {
+    body.set("service_token", vkServiceToken);
+  }
 
   const tokenRes = await fetch("https://id.vk.ru/oauth2/auth", {
     method: "POST",
@@ -104,7 +116,12 @@ export async function exchangeVkCode(
   });
   const tokenData = (await tokenRes.json()) as VkTokenResponse;
   if (!tokenRes.ok || !tokenData.access_token) {
-    throw new Error(tokenData.error_description ?? tokenData.error ?? "vk_token_failed");
+    throw new Error(
+      tokenData.error_description ??
+        tokenData.error_msg ??
+        tokenData.error ??
+        "vk_token_failed"
+    );
   }
 
   return fetchVkUserInfo(tokenData.access_token, clientId);

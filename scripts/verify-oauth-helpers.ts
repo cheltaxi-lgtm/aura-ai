@@ -123,8 +123,13 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
     "utf8"
   );
   assert.ok(callback.includes("createOAuthHandoff"));
-  assert.ok(callback.includes("#handoff="));
-  assert.ok(callback.includes("Always mint a one-time handoff"));
+  assert.ok(callback.includes('completeParams.set("handoff", handoff)'));
+  assert.ok(!callback.includes("#handoff="));
+}
+{
+  const vk = fs.readFileSync(path.join(root, "src/lib/oauth/providers/vk.ts"), "utf8");
+  assert.ok(vk.includes('body.set("service_token", vkServiceToken)'));
+  assert.ok(!vk.includes("client_secret"));
 }
 
 async function verifyAsyncCases() {
