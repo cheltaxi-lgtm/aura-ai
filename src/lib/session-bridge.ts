@@ -1,4 +1,4 @@
-import { appShellNavigationOrigin, isNativeCapacitorPlatform, shouldUseAppShellClient } from "@/lib/app-shell";
+import { appShellNavigationOrigin, isNativeCapacitorPlatform } from "@/lib/app-shell";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 
@@ -50,8 +50,12 @@ export async function navigateViaSessionBridge(
   return true;
 }
 
-/** True when app-shell should prefer document cookie bridge over bare hard-nav. */
+/** True when native WebView must prefer document cookie bridge over bare hard-nav.
+ * Desktop browser must NOT use the bridge — OAuth callback already Set-Cookie on
+ * the document redirect; bridge mint/nav is a common hang ("Завершаем вход…" forever
+ * until manual refresh, which then sees the cookie).
+ */
 export function shouldUseSessionBridge(): boolean {
   if (typeof window === "undefined") return false;
-  return isNativeCapacitorPlatform() || shouldUseAppShellClient();
+  return isNativeCapacitorPlatform();
 }

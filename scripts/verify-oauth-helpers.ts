@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   createOAuthOpaqueCode,
   hashOAuthOpaqueCode,
@@ -10,6 +13,8 @@ import { hasRequiredOAuthConsent } from "../src/lib/oauth/finish";
 import { exchangeVkCode } from "../src/lib/oauth/providers/vk";
 import type { OAuthTransaction } from "../src/lib/oauth/types";
 import { buildAppOAuthCompleteUrl } from "../src/lib/oauth/app-return";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const first = createOAuthOpaqueCode();
 const second = createOAuthOpaqueCode();
@@ -91,6 +96,24 @@ assert.equal(
   "zovus://open/auth/oauth/complete?handoff=opaque&new=0"
 );
 assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth_complete_path/);
+
+{
+  const bridge = fs.readFileSync(path.join(root, "src/lib/session-bridge.ts"), "utf8");
+  assert.ok(bridge.includes("isNativeCapacitorPlatform()"));
+  assert.ok(
+    !bridge.includes("shouldUseAppShellClient()"),
+    "desktop app-shell must not force session-bridge (OAuth hang)"
+  );
+}
+{
+  const complete = fs.readFileSync(
+    path.join(root, "src/app/auth/oauth/complete/page.tsx"),
+    "utf8"
+  );
+  assert.ok(complete.includes("OAUTH_COMPLETE_WATCHDOG_MS"));
+  assert.ok(complete.includes("hardNavigate"));
+  assert.ok(complete.includes("skipAuthRecheck"));
+}
 
 async function verifyAsyncCases() {
   await assert.rejects(

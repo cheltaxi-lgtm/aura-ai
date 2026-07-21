@@ -47,6 +47,8 @@ export type UserAuthSuccessOptions = {
   userName?: string;
   profile?: Record<string, unknown> | null;
   oauthGender?: "male" | "female";
+  /** When caller already verified /api/auth/me — skip a second poll (OAuth complete). */
+  skipAuthRecheck?: boolean;
 };
 
 /**
@@ -179,6 +181,57 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
   // ——— Login (existing account, OAuth or email) ———
   markAuthPending();
   await flushWebViewCookies();
+
+  if (opts.skipAuthRecheck) {
+    if (opts.needsProfile) {
+      markNeedsServerProfile();
+      persistPostAuthReturnTo(hasGuestCards ? guestHome : returnTo);
+      localStorage.setItem(
+        "aura_profile",
+        JSON.stringify({
+          name: opts.userName?.trim() || "",
+          gender: defaultGender,
+          birthDate: "",
+          zodiac: "",
+          tarotCards: guestTarotCards,
+          deckSystem: guestDeckSystem,
+          teaser: guestTeaser,
+          mainQuestion: guestQuestion,
+          tripletMasterId: hasGuestCards ? guestMasterId : undefined,
+        })
+      );
+      if (hasGuestCards) {
+        localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+      }
+      localStorage.setItem("aura_flow_step", "onboarding");
+      return onboardingRedirectUrl();
+    }
+    if (hasGuestCards) {
+      const resumeCache = loadGuestResumeUiCache();
+      clearClientAuthState();
+      if (resumeCache) {
+        saveGuestResumeUiCache(resumeCache);
+        saveGuestTriplet({
+          tarotCards: guestTarotCards,
+          deckSystem: (guestDeckSystem as DeckSystem) || "tarot-veronika",
+          teaser: guestTeaser || "",
+          completedAt: resumeCache.completedAt,
+          question: guestQuestion,
+          masterId: guestMasterId,
+        });
+        localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+        localStorage.setItem("aura_flow_step", "masters");
+      }
+      clearNeedsServerProfile();
+      return guestHome;
+    }
+    clearClientAuthState();
+    clearNeedsServerProfile();
+    const landing = new URL(returnTo, window.location.origin);
+    landing.searchParams.delete("step");
+    return `${landing.pathname}${landing.search}${landing.hash}`;
+  }
+
   const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
   if (!me?.authenticated) {
     return withAppShellAuthParams(hasGuestCards ? guestHome : returnTo);

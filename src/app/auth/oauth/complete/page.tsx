@@ -11,6 +11,7 @@ import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
 import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
 import { readUtmAttribution } from "@/lib/utm/attribution";
+import { onboardingRedirectUrl } from "@/lib/post-auth-return";
 
 type RegistrationPreview = {
   providerLabel: string;
@@ -18,11 +19,17 @@ type RegistrationPreview = {
   gender: "male" | "female" | null;
 };
 
+/** Hard ceiling — never leave the user on "Завершаем вход…" forever. */
+const OAUTH_COMPLETE_WATCHDOG_MS = 8_000;
+
 async function ensureAuthenticated(handoff: string | null): Promise<AuthMeResponse | null> {
-  // Cookie from login/VK native may lag in Android WebView — retry first.
-  let me = await fetchAuthMeWithRetry({ attempts: 4, delayMs: 250 });
+  // Cookie from OAuth callback document redirect is usually already visible.
+  let me = await fetchAuthMeWithRetry({ attempts: 3, delayMs: 200, timeoutMs: 6_000 });
   if (me?.authenticated) return me;
-  if (!handoff) return null;
+  if (!handoff) {
+    // One more short burst — cookie lag on some browsers.
+    return fetchAuthMeWithRetry({ attempts: 4, delayMs: 250, timeoutMs: 6_000 });
+  }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -30,30 +37,45 @@ async function ensureAuthenticated(handoff: string | null): Promise<AuthMeRespon
         method: "POST",
         credentials: "include",
         cache: "no-store",
-        timeoutMs: 12_000,
+        timeoutMs: 8_000,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: handoff }),
       });
       if (handoffRes.ok) {
-        // Token is single-use; only poll /me after a successful consume.
         await flushWebViewCookies();
-        return fetchAuthMeWithRetry({ attempts: 6, delayMs: 300 });
+        return fetchAuthMeWithRetry({ attempts: 5, delayMs: 250, timeoutMs: 6_000 });
       }
       if (handoffRes.status === 400 || handoffRes.status === 404) {
-        // Already consumed or invalid — cookie may already be set.
         break;
       }
     } catch {
       /* retry handoff POST on network errors */
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 300 * (attempt + 1)));
+    await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
   }
 
-  return fetchAuthMeWithRetry({ attempts: 4, delayMs: 400 });
+  return fetchAuthMeWithRetry({ attempts: 4, delayMs: 300, timeoutMs: 6_000 });
+}
+
+function hardNavigate(destination: string): void {
+  const landing = withAppShellAuthParams(destination);
+  // Prefer assign+replace race: if one is blocked, the other still fires.
+  try {
+    window.location.replace(landing);
+  } catch {
+    window.location.href = landing;
+  }
+  // Absolute fallback if browser swallows replace (extensions / bfcache).
+  window.setTimeout(() => {
+    if (window.location.pathname.startsWith("/auth/oauth/complete")) {
+      window.location.href = landing;
+    }
+  }, 400);
 }
 
 export default function OAuthCompletePage() {
   const started = useRef(false);
+  const navigated = useRef(false);
   const [error, setError] = useState("");
   const [registrationCode, setRegistrationCode] = useState("");
   const [preview, setPreview] = useState<RegistrationPreview | null>(null);
@@ -64,6 +86,7 @@ export default function OAuthCompletePage() {
   useEffect(() => {
     if (started.current || typeof window === "undefined") return;
     started.current = true;
+
     const params = new URLSearchParams(window.location.search);
     const registration = params.get("registration")?.trim();
     if (registration) {
@@ -80,10 +103,12 @@ export default function OAuthCompletePage() {
       return;
     }
 
+    // Capture query BEFORE any async work / history mutation.
     const returnTo = sanitizeReturnTo(params.get("returnTo"), "/");
     const mode = params.get("mode") === "register" ? "register" : "login";
     const isNewUser = params.get("new") === "1";
     const needsProfile = params.get("needsProfile") === "1";
+    const hasProfileFlag = params.get("hasProfile") === "1";
     const handoffFromQuery = params.get("handoff");
     const handoffFromHash = (() => {
       const raw = window.location.hash.startsWith("#")
@@ -101,10 +126,26 @@ export default function OAuthCompletePage() {
     const handoff = handoffFromQuery || handoffFromHash || handoffFromStore;
     const alreadyBridged = params.get("_bridged") === "1";
 
+    const watchdogFallback = () => {
+      if (navigated.current) return;
+      navigated.current = true;
+      markAuthPending();
+      const fallback =
+        needsProfile || isNewUser ? onboardingRedirectUrl() : returnTo;
+      hardNavigate(fallback);
+    };
+    const watchdog = window.setTimeout(watchdogFallback, OAUTH_COMPLETE_WATCHDOG_MS);
+
+    const go = (destination: string) => {
+      if (navigated.current) return;
+      navigated.current = true;
+      window.clearTimeout(watchdog);
+      hardNavigate(destination);
+    };
+
     void (async () => {
       try {
-        // App WebView: stamp aura_auth on a document response first, then resume
-        // this page with a real cookie (XHR Set-Cookie alone is not enough).
+        // Native WebView only: stamp aura_auth on a document response first.
         if (handoff && shouldUseSessionBridge() && !alreadyBridged) {
           const resume = new URL(window.location.href);
           resume.searchParams.delete("handoff");
@@ -115,43 +156,53 @@ export default function OAuthCompletePage() {
             `${resume.pathname}${resume.search}`,
             handoff
           );
-          if (bridged) return;
+          if (bridged) {
+            window.clearTimeout(watchdog);
+            navigated.current = true;
+            return;
+          }
         }
 
         const me = await ensureAuthenticated(alreadyBridged ? null : handoff);
-        // Drop one-time handoff from URL/hash so chunk-reload / back won't reuse it.
-        window.history.replaceState(null, "", "/auth/oauth/complete");
-
         await flushWebViewCookies();
         markAuthPending();
 
         if (!me?.authenticated) {
           if (handoff && !alreadyBridged) {
-            await new Promise((resolve) => window.setTimeout(resolve, 450));
-            window.location.replace(withAppShellAuthParams(returnTo));
+            go(returnTo);
             return;
           }
+          window.clearTimeout(watchdog);
           setError("Сессия не создана. Попробуйте войти снова.");
           return;
         }
 
         let profile: Record<string, unknown> | null = null;
-        if (params.get("hasProfile") === "1" && me.user?.profileUserId) {
-          const profileRes = await fetch("/api/cabinet", {
-            credentials: "include",
-            cache: "no-store",
-          });
-          if (profileRes.ok) profile = (await profileRes.json())?.profile ?? null;
+        if (hasProfileFlag && me.user?.profileUserId) {
+          try {
+            const profileRes = await fetchWithTimeout("/api/cabinet", {
+              credentials: "include",
+              cache: "no-store",
+              timeoutMs: 4_000,
+            });
+            if (profileRes.ok) {
+              profile = ((await profileRes.json()) as { profile?: Record<string, unknown> })
+                ?.profile ?? null;
+            }
+          } catch {
+            /* profile optional — do not block login */
+          }
         }
+
         const oauthGender =
           me.user?.oauthGender === "male" || me.user?.oauthGender === "female"
             ? me.user.oauthGender
             : undefined;
-        // Prefer live /me over URL flags — callback query can lag or be wrong.
         const liveNeedsProfile = Boolean(
           needsProfile || me.needsProfile || !me.user?.profileUserId
         );
         const liveIsNewUser = Boolean(isNewUser || (liveNeedsProfile && mode === "register"));
+
         const destination = await finishUserAuthSuccess({
           mode,
           returnTo,
@@ -160,17 +211,31 @@ export default function OAuthCompletePage() {
           userName: me.user?.name,
           profile,
           oauthGender,
+          // Skip second /me round-trip — we already have live session.
+          skipAuthRecheck: true,
         });
-        const landing = withAppShellAuthParams(destination);
+
         if (shouldUseSessionBridge()) {
-          const bridged = await navigateViaSessionBridge(landing);
-          if (bridged) return;
+          const bridged = await navigateViaSessionBridge(destination);
+          if (bridged) {
+            window.clearTimeout(watchdog);
+            navigated.current = true;
+            return;
+          }
         }
-        window.location.replace(landing);
+        go(destination);
       } catch {
-        setError("Не удалось завершить вход. Попробуйте снова.");
+        window.clearTimeout(watchdog);
+        if (!navigated.current) {
+          // Last resort: cookie is often already set — leave complete page.
+          watchdogFallback();
+        }
       }
     })();
+
+    return () => {
+      window.clearTimeout(watchdog);
+    };
   }, []);
 
   const completeRegistration = async () => {
@@ -206,7 +271,6 @@ export default function OAuthCompletePage() {
         return;
       }
 
-      window.history.replaceState(null, "", "/auth/oauth/complete");
       const destination = await finishUserAuthSuccess({
         mode: "register",
         returnTo: sanitizeReturnTo(data.returnTo, "/"),
@@ -215,8 +279,9 @@ export default function OAuthCompletePage() {
         userName: data.name,
         oauthGender:
           data.gender === "male" || data.gender === "female" ? data.gender : undefined,
+        skipAuthRecheck: true,
       });
-      window.location.replace(destination);
+      hardNavigate(destination);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось завершить регистрацию.");
       setSubmitting(false);
