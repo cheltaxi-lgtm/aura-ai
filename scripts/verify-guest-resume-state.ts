@@ -123,12 +123,23 @@ section("static: logged-in 401 never shows guest register copy");
   const src = readSrc("src/hooks/useChatActions.ts");
   assert.ok(src.includes("isLoggedIn"));
   assert.ok(src.includes("NEEDS_PROFILE"));
-  assert.ok(src.includes("Завершите анкету"));
+  // Incomplete profile must leave chat for anketa — not a chat stub banner.
+  assert.ok(src.includes('setStep("onboarding")'));
+  assert.ok(src.includes("markNeedsServerProfile"));
+  assert.ok(src.includes('phase: "onboarding_required"'));
   // Guest registration copy must stay behind !isLoggedIn branch.
   const idx = src.indexOf("Для расшифровки нужна регистрация");
   assert.ok(idx > 0);
   const window = src.slice(Math.max(0, idx - 400), idx);
   assert.ok(window.includes("isLoggedIn") || window.includes("else"));
+}
+
+section("static: onboarding cooldown must not skip incomplete profile");
+{
+  const src = readSrc("src/hooks/useOnboardingFlow.ts");
+  assert.ok(src.includes("forceProfileOnboarding"));
+  assert.ok(src.includes("Incomplete profile must stay on the anketa"));
+  assert.ok(src.includes("Never auto-open chat before birth profile"));
 }
 
 section("static: reading API distinguishes needs_profile");
