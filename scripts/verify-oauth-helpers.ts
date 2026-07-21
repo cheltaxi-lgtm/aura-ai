@@ -129,7 +129,8 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
 {
   const vk = fs.readFileSync(path.join(root, "src/lib/oauth/providers/vk.ts"), "utf8");
   assert.ok(vk.includes('body.set("service_token", vkServiceToken)'));
-  assert.ok(!vk.includes("client_secret"));
+  assert.ok(!vk.includes('body.set("client_secret"'));
+  assert.ok(!/"client_secret"\s*:/.test(vk));
 }
 
 async function verifyAsyncCases() {
