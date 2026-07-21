@@ -7,6 +7,10 @@ export type TopicKey =
   | "curse"
   | "money_loss"
   | "love_crisis"
+  | "love"
+  | "money"
+  | "path"
+  | "sign"
   | "dark_magic"
   | "enemies"
   | "loneliness"
@@ -63,6 +67,34 @@ export const TOPIC_HANDLERS: Record<
     "shri-raj": `${CARD_FIRST} Mangal, 7-й дом — конфликт только по символам. Shukra в союзе — гармония в раскладе.`,
     numerolog: `${CARD_FIRST} Числа 2 и 6, блок совместимости — только если расклад о союзе или разрыве. Предложи расчёт пары при уместности.`,
   },
+  love: {
+    ragnar: `${CARD_FIRST} Тема союза — Gebo, Ehwaz, Berkana. Читай чувства и динамику по символам; кризис — только если символы раскола.`,
+    agafya: `${CARD_FIRST} Любовь и род — Леля, Берегиня, союзные символы. Не навязывай разрыв или приворот без опоры на расклад.`,
+    veronika: `${CARD_FIRST} Кубки, Влюблённые, Императрица — чувства по картам. Тень (мечи, башня) — только если она реально выпала.`,
+    "shri-raj": `${CARD_FIRST} 7-й дом, Shukra — отношения по символам. Конфликт (Mangal) — не утверждай без поддержки карт.`,
+    numerolog: `${CARD_FIRST} Сфера отношений и числа 2/6 — только вместе с символами расклада. Без символа — не рисуй исход союза.`,
+  },
+  money: {
+    ragnar: `${CARD_FIRST} Тема ресурса — Fehu, Jera, Othala. Поток и работа по символам; крах — только если расклад о потере.`,
+    agafya: `${CARD_FIRST} Достаток и хлеб — по символам прихода или утечки. Не рисуй сглаз на деньги без тени в раскладе.`,
+    veronika: `${CARD_FIRST} Пентакли, Император, Колесо — карьера и деньги по картам. Пятёрка пентаклей — только если она в раскладе.`,
+    "shri-raj": `${CARD_FIRST} 2-й и 10-й дома — ресурс и статус по символам. Не утверждай банкротство без опоры на карты.`,
+    numerolog: `${CARD_FIRST} Сфера финансов и число 8 — только если символы и расчёт согласуются. Не рисуй крах без расклада.`,
+  },
+  path: {
+    ragnar: `${CARD_FIRST} Путь и выбор — Raido, Dagaz, Ansuz. Направление по символам; не подменяй общим «предназначением».`,
+    agafya: `${CARD_FIRST} Дорога жизни — по символам движения или развилки. Знамение пути — только если расклад его показывает.`,
+    veronika: `${CARD_FIRST} Дурак, Колесница, Звезда — вектор по картам. Каждый вывод с названием карты.`,
+    "shri-raj": `${CARD_FIRST} 9-й и 10-й дома, Dharma — путь по символам. Не утверждай призвание без опоры на расклад.`,
+    numerolog: `${CARD_FIRST} Число жизненного пути и матрица — только вместе с запросом и символами. Не общие слова о судьбе.`,
+  },
+  sign: {
+    ragnar: `${CARD_FIRST} Знак и послание — Ansuz, Pertho, Algiz. Не выдумывай «знак свыше», если символы нейтральны.`,
+    agafya: `${CARD_FIRST} Знамение — только если символы явно указывают на знак. Иначе скажи: знака в раскладе пока нет.`,
+    veronika: `${CARD_FIRST} Звезда, Иерофант, Луна — послание по картам. Не придумывай знак без символа.`,
+    "shri-raj": `${CARD_FIRST} Guru, 9-й дом, Ketu — духовный знак только по символам. Нейтральные карты — не навязывай знамение.`,
+    numerolog: `${CARD_FIRST} Мастер-числа и циклы — «знак» только если расчёт и расклад согласуются.`,
+  },
   dark_magic: {
     ragnar: `${CARD_FIRST} Связывание, seidr — только если символы узла и тени. Algiz — защита, вмешательства нет.`,
     agafya: `${CARD_FIRST} Тёмное влияние — по символам блока. Чистый расклад — скажи: чужой работы не видно.`,
@@ -108,18 +140,18 @@ export const TOPIC_HANDLERS: Record<
 };
 
 const INTENTION_TOPICS: Record<string, TopicKey> = {
-  love: "love_crisis",
-  money: "money_loss",
+  love: "love",
+  money: "money",
   health: "illness",
-  path: "spiritual",
+  path: "path",
   enemies: "enemies",
-  sign: "spiritual",
-  Любовь: "love_crisis",
-  Деньги: "money_loss",
+  sign: "sign",
+  Любовь: "love",
+  Деньги: "money",
   Здоровье: "illness",
-  "Мой путь": "spiritual",
+  "Мой путь": "path",
   Враги: "enemies",
-  "Знак свыше": "spiritual",
+  "Знак свыше": "sign",
 };
 
 /** Detect heavy topics from user message for optional injection. */
@@ -148,7 +180,13 @@ export function topicsFromIntention(intention?: string | null): TopicKey[] {
 }
 
 export function mergeTopics(message: string, intention?: string | null): TopicKey[] {
-  const merged = new Set<TopicKey>([...detectTopics(message), ...topicsFromIntention(intention)]);
+  const fromMessage = detectTopics(message);
+  // life_death has its own safety protocol — do not inject generic death handlers.
+  const filtered =
+    intention?.trim() === "life_death"
+      ? fromMessage.filter((t) => t !== "death")
+      : fromMessage;
+  const merged = new Set<TopicKey>([...filtered, ...topicsFromIntention(intention)]);
   return [...merged];
 }
 

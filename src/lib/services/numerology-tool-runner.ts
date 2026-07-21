@@ -56,6 +56,7 @@ export async function runNumerologTool(
     userName: profile?.name,
     birthDate: profile?.birthDate,
     profileName: profile?.name,
+    gender: profile?.gender ?? null,
     lastUserMessage: userMessage,
     recentUserMessages,
     spreadNumbers: input.spreadNumbers?.slice(0, 3) ?? [],

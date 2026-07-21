@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Trash2 } from "lucide-react";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { MASTER_DISPLAY, isCharacterKey } from "@/lib/prompts";
 import type { CharacterKey } from "@/lib/prompts/types";
 
@@ -129,7 +130,7 @@ export default function DiaryPage() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <p className="text-sm leading-relaxed text-gray-300">{entry.entry_text}</p>
+                  <PremiumReadingBody content={entry.entry_text} className="text-sm text-gray-300" />
                 </motion.article>
               );
             })}

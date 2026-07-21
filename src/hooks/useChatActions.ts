@@ -1839,7 +1839,12 @@ export function useChatActions(options: UseChatActionsOptions) {
             userProfile: activeProfile
               ? {
                   name: activeProfile.name,
-                  gender: activeProfile.gender === "male" ? "Мужской" : "Женский",
+                  gender:
+                    activeProfile.gender === "male"
+                      ? "Мужской"
+                      : activeProfile.gender === "female"
+                        ? "Женский"
+                        : undefined,
                   zodiac: activeProfile.zodiac,
                   birthDate: activeProfile.birthDate,
                   birthTime: activeProfile.birthTime,

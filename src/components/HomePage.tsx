@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
@@ -75,6 +75,7 @@ import {
 } from "@/lib/intention";
 import { pollIntentionSpreadReading } from "@/lib/intention-spread-client";
 import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
+import { resetWindowScrollSoon } from "@/lib/reset-window-scroll";
 import { generateId } from "@/lib/id";
 import {
   loadChatCache,
@@ -771,10 +772,13 @@ export default function HomePage({
         return;
       }
     }
-    setDeepLinkSpreadId(normalizeSpreadId(spreadParam));
+    const normalizedSpread = normalizeSpreadId(spreadParam);
+    setDeepLinkSpreadId(normalizedSpread);
     setSeoFlowIntentSlug(null);
     setSessionFlowRequiresPartnerInfo(false);
-    setSessionFlowPreselectedMaster("veronika");
+    setSessionFlowPreselectedMaster(
+      normalizedSpread === "runes-yes-no" ? "ragnar" : "veronika"
+    );
     setSessionFlowInitialTopic("path");
     setSessionFlowInitialQuestion(null);
     setSeoFlowOpen(true);
@@ -2189,6 +2193,12 @@ export default function HomePage({
     }
     refreshSavedReadings();
   };
+
+  // Soft-nav into a master's session list keeps the previous window scroll.
+  useLayoutEffect(() => {
+    if (!sessionListMaster) return;
+    resetWindowScrollSoon();
+  }, [sessionListMaster]);
 
   const exitToLandingForNav = useCallback(() => {
     if (selectedCharacter) {

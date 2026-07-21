@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import PrintButton from "./PrintButton";
 
 type Section = { key: string; title: string; claims: Array<{ text: string; evidenceIds?: string[] }> };
@@ -39,11 +40,15 @@ export default function PrintableReport({
     {sections.map((section) => <section key={section.key} id={section.key} data-print-section="true" className="mb-7">
       <h2 className="text-xl font-semibold">{section.title}</h2>
       {section.claims.map((claim, index) => <article key={index} className="mt-3">
-        <p className="leading-7">{claim.text}</p>
+        <PremiumReadingBody content={claim.text} variant="print" />
         {claim.evidenceIds?.length ? <p className="mt-1 text-xs text-black/55">Основано на рассчитанных данных: {claim.evidenceIds.length}</p> : null}
       </article>)}
     </section>)}
-    {legacyContent ? <section data-legacy-printable="true" className="whitespace-pre-wrap leading-7">{legacyContent}</section> : null}
+    {legacyContent ? (
+      <section data-legacy-printable="true" className="leading-7">
+        <PremiumReadingBody content={legacyContent} variant="print" />
+      </section>
+    ) : null}
     {methodology ? <section id="methodology" data-print-section="true" className="mt-8 border-t border-black/20 pt-5">
       <h2 className="text-xl font-semibold">Методология</h2><p className="mt-3 leading-7">{methodology}</p>
       {disclaimer ? <p className="mt-3 text-sm">{disclaimer}</p> : null}

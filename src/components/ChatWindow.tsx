@@ -870,13 +870,17 @@ export default function ChatWindow({
                 >
                   <MasterAvatar masterId={characterId} masterName={character.name} size="xl" className="mb-4" />
                   {isNumerologMaster(characterId) ? (
-                    <p className="max-w-md whitespace-pre-wrap text-sm leading-relaxed">
-                      {buildNumerologWelcomeMessage({
-                        userName: readStoredProfileForWelcome().name || "друг",
-                        birthDate: userBirthDate || readStoredProfileForWelcome().birthDate,
-                        fullName: readStoredProfileForWelcome().name,
-                      })}
-                    </p>
+                    <div className="max-w-md text-left">
+                      <ChatMessageRenderer
+                        content={buildNumerologWelcomeMessage({
+                          userName: readStoredProfileForWelcome().name || "друг",
+                          birthDate: userBirthDate || readStoredProfileForWelcome().birthDate,
+                          fullName: readStoredProfileForWelcome().name,
+                        })}
+                        role="assistant"
+                        className="text-sm"
+                      />
+                    </div>
                   ) : (
                     <p className="text-sm">
                       {character.name} готов к сеансу.

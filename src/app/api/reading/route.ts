@@ -403,7 +403,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (intention) {
-      systemPrompt += intentionReadingPromptBlock(intention);
+      systemPrompt += intentionReadingPromptBlock(intention, {
+        spreadId,
+        cardCount: tarotCards.length,
+        positionLabels,
+      });
     }
 
     const cardsKey =
@@ -598,6 +602,7 @@ export async function POST(request: NextRequest) {
             userName,
             birthDate,
             fullName: userName,
+            gender,
             spreadNumbers,
             memoryBlock: numerologMemoryBlock,
           });

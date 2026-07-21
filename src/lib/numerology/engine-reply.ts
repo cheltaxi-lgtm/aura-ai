@@ -16,6 +16,7 @@ import {
 import {
   buildNumerologyChatContext,
   detectNumerologyTopics,
+  sessionTopicToNumerologyTopics,
   type NumerologyChatUi,
   type NumerologyTopic,
 } from "./topic-handlers";
@@ -28,6 +29,7 @@ export interface NumerologEngineReplyInput {
   /** Prior user turns (oldest first), excluding the current message. */
   recentUserMessages?: string[];
   spreadNumbers?: string[];
+  intention?: string | null;
 }
 
 export interface NumerologEngineReplyResult {
@@ -338,10 +340,12 @@ function formatContextualFollowUp(
 
 function resolveActiveTopics(
   lastUserMessage: string,
-  recentUserMessages: string[]
+  recentUserMessages: string[],
+  intention?: string | null
 ): NumerologyTopic[] {
   const trimmed = lastUserMessage.trim();
   const explicit = detectNumerologyTopics(trimmed);
+  const fromIntention = sessionTopicToNumerologyTopics(intention);
 
   if (RETRY_CALCULATION_RE.test(trimmed)) {
     const found = new Set<NumerologyTopic>(explicit);
@@ -412,6 +416,10 @@ function resolveActiveTopics(
     inConversation
   ) {
     found.add("sphere_health");
+  }
+
+  if (found.size === 0 && fromIntention.length > 0) {
+    for (const t of fromIntention) found.add(t);
   }
 
   return [...found];
@@ -752,14 +760,20 @@ export function buildNumerologEngineReply(
 ): NumerologEngineReplyResult | null {
   const recent = input.recentUserMessages ?? [];
   const clarify = isNumerologClarificationRequest(input.lastUserMessage);
-  const allTopics = resolveActiveTopics(input.lastUserMessage, recent);
+  const allTopics = resolveActiveTopics(
+    input.lastUserMessage,
+    recent,
+    input.intention
+  );
   const resolvedMessage = resolveNumerologyMessageForTopics(input.lastUserMessage, recent);
 
   if (clarify && allTopics.length === 0) {
     if (isHealthConversationThread(recent, input.lastUserMessage)) {
       allTopics.push("sphere_health");
     } else {
+      const fromIntention = sessionTopicToNumerologyTopics(input.intention);
       const thread =
+        fromIntention[0] ??
         inferThreadTopic(recent, input.lastUserMessage) ??
         inferSessionTopic(recent, input.lastUserMessage) ??
         "life_path";
@@ -808,6 +822,7 @@ export function buildNumerologEngineReply(
     birthDate: input.birthDate,
     profileName: input.profileName ?? input.userName,
     lastUserMessage: resolvedMessage,
+    intention: input.intention,
   });
 
   let ui: NumerologyChatUi | undefined;

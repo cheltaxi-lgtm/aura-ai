@@ -33,6 +33,10 @@ import { astroMetaFromBirthDate } from "@/lib/registration-consent";
 import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
 import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
 import type { LifeFocus, AstroMeta } from "@/lib/astro-profile";
+import {
+  inferGenderFromFirstName,
+  normalizeUserGender,
+} from "@/lib/russian-name-gender";
 
 export async function GET() {
   if (!(await ensureDb())) {
@@ -169,9 +173,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Некорректная дата рождения" }, { status: 400 });
     }
 
+    const resolvedName = (name ?? profile?.name ?? auth.name).trim();
+    const resolvedGender =
+      normalizeUserGender(gender) ??
+      normalizeUserGender(profile?.gender) ??
+      inferGenderFromFirstName(resolvedName) ??
+      "female";
+
     const payload = {
-      name: (name ?? profile?.name ?? auth.name).trim(),
-      gender: gender ?? profile?.gender ?? "female",
+      name: resolvedName,
+      gender: resolvedGender,
       birthDate: effectiveBirthDate,
       zodiac: formatZodiacLabel(sign),
       birthTime: birthTime ?? profile?.birth_time ?? undefined,

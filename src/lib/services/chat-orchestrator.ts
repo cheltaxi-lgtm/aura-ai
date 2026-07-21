@@ -39,7 +39,16 @@ import type { ChatMessage } from "@/lib/llm";
 import { query } from "@/lib/db";
 import { intentionPromptBlock } from "@/lib/intention";
 import { buildSpreadBlock, buildPeriodSpreadBlock } from "@/lib/spread-block";
-import { getSpread, hasCompleteSpread, limitSpreadKeyCards, normalizeSpreadId, requiredCardCount, sliceForSpread } from "@/lib/spreads";
+import {
+  getSpread,
+  hasCompleteSpread,
+  limitSpreadKeyCards,
+  normalizeSpreadId,
+  requiredCardCount,
+  resolveSpreadPositions,
+  sliceForSpread,
+} from "@/lib/spreads";
+import { isSessionTopicId } from "@/lib/session-topics";
 import {
   LIFE_DEATH_TOPIC,
   LIFE_DEATH_LLM_OVERRIDE,
@@ -218,7 +227,8 @@ export class ChatOrchestrator {
   private resolvedSpreadType?: "daily" | "new";
   private resolvedSpreadId?: string;
   private resolvedCardNames: string[] = [];
-  private lifeDeathReadyToRead = true;
+  /** Default false — ask-first for life_death until awaiting_context clears. */
+  private lifeDeathReadyToRead = false;
   private llmMessages: { role: string; content: string }[] = [];
   private lastUserMsg = "";
   private numerologParams: NumerologEngineParams | null = null;
@@ -266,7 +276,12 @@ export class ChatOrchestrator {
       if (serverProfile) {
         orch.userProfile = {
           name: serverProfile.name,
-          gender: serverProfile.gender === "male" ? "Мужской" : "Женский",
+          gender:
+            serverProfile.gender === "male"
+              ? "male"
+              : serverProfile.gender === "female"
+                ? "female"
+                : "",
           zodiac: serverProfile.zodiac,
           birthDate: serverProfile.birth_date,
           birthTime: serverProfile.birth_time ?? undefined,
@@ -535,18 +550,23 @@ export class ChatOrchestrator {
       console.warn("Session meta save failed:", saveMetaErr);
     }
 
-    this.lifeDeathReadyToRead = this.resolvedIntention !== "life_death";
-
     if (this.resolvedIntention === "life_death") {
-      this.lifeDeathReadyToRead = true;
-      if (this.session.awaiting_context) {
+      // Ask-first: stay in awaiting_context until the user answers who/when.
+      // Clear only after at least one user message while awaiting.
+      const userTurns = this.messages.filter((m) => m.role === "user").length;
+      if (this.session.awaiting_context && userTurns >= 1) {
         try {
           await setSessionAwaitingContext(this.session.id, false);
           this.session = { ...this.session, awaiting_context: false };
         } catch (flagErr) {
           console.warn("awaiting_context clear failed:", flagErr);
         }
+        this.lifeDeathReadyToRead = true;
+      } else {
+        this.lifeDeathReadyToRead = !this.session.awaiting_context;
       }
+    } else {
+      this.lifeDeathReadyToRead = true;
     }
   }
 
@@ -658,10 +678,12 @@ export class ChatOrchestrator {
       userName: addressName,
       birthDate: this.userProfile?.birthDate,
       profileName: addressName,
+      gender: this.userProfile?.gender || null,
       lastUserMessage: this.lastUserMsg,
       recentUserMessages,
       spreadNumbers,
       memoryBlock: this.memoryBlock || undefined,
+      intention: this.periodSpreadScope ? null : this.resolvedIntention,
     };
   }
 
@@ -685,13 +707,27 @@ export class ChatOrchestrator {
       astroMeta: this.userProfile?.astroMeta,
       today,
       tarotCards: this.tarotCards,
-      isPaid: this.billingHandle?.sessionHasFullAccess ?? false,
+      isPaid: this.promptHasFullAccess(),
     };
+  }
+
+  /** Full decode access: legacy unlock, spent runes, or paid question beyond free quota. */
+  private promptHasFullAccess(): boolean {
+    if (this.unlimited) return true;
+    if (this.billingHandle?.sessionHasFullAccess) return true;
+    if ((this.billingHandle?.charge?.spentRunes ?? 0) > 0) return true;
+    if (
+      this.billingHandle?.useRuneBilling &&
+      (this.billingHandle?.questionIndex ?? 0) >= this.freeLimit
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /** Paid opening of a full spread — use reading-mode depth, not chat 5–12 sentences. */
   private shouldUsePremiumReadingPrompt(): boolean {
-    const paid = this.billingHandle?.sessionHasFullAccess ?? false;
+    const paid = this.promptHasFullAccess();
     if (!paid || !this.isLongFormSpreadReply()) return false;
     if (this.periodSpreadScope) return true;
     const userTurns = this.messages.filter((m) => m.role === "user").length;
@@ -734,7 +770,9 @@ export class ChatOrchestrator {
       characterId: this.characterId,
       birthDate: this.userProfile?.birthDate,
       profileName: normalizePersonDisplayName(this.userProfile?.name) || undefined,
+      gender: this.userProfile?.gender || null,
       lastUserMessage: this.lastUserMsg,
+      intention: this.periodSpreadScope ? null : this.resolvedIntention,
     });
     const natalChartBlock = await buildNatalPromptContext({
       characterId: this.characterId,
@@ -760,7 +798,7 @@ export class ChatOrchestrator {
       }
     }
 
-    const sessionHasFullAccess = this.billingHandle?.sessionHasFullAccess ?? false;
+    const sessionHasFullAccess = this.promptHasFullAccess();
     const usePremiumReading = this.shouldUsePremiumReadingPrompt();
     const readingCtx = this.toReadingUserContext(chatCtx);
     const positionLabels = (chatCtx.tarotCards ?? []).map((c, i) => {
@@ -888,7 +926,24 @@ export class ChatOrchestrator {
     }
 
     if (!this.periodSpreadScope) {
-      systemPrompt += intentionPromptBlock(this.resolvedIntention, this.customQuestion);
+      const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
+      const labels = this.tarotCards?.length
+        ? resolveSpreadPositions(
+            activeSpreadId,
+            this.resolvedIntention && isSessionTopicId(this.resolvedIntention)
+              ? this.resolvedIntention
+              : null
+          ).map((p) => p.label)
+        : undefined;
+      systemPrompt += intentionPromptBlock(
+        this.resolvedIntention,
+        this.customQuestion,
+        {
+          spreadId: activeSpreadId,
+          cardCount: this.tarotCards?.length,
+          positionLabels: labels,
+        }
+      );
     }
 
     const cardNamesForBlock = this.resolvedCardNames.length
@@ -1048,7 +1103,7 @@ export class ChatOrchestrator {
 
     if (text && !isPaidSpreadTextComplete(text, cardNames)) {
       const ensured = await ensurePaidSpreadTextComplete(contextMessages, text, cardNames, {
-        maxTokens: 1400,
+        maxTokens: Math.max(2200, this.streamMaxTokens()),
         temperature: this.chatTemperature ?? 0.75,
         maxRounds: 4,
       });
@@ -1079,6 +1134,7 @@ export class ChatOrchestrator {
       maxTokens: this.streamMaxTokens(),
       temperature: this.chatTemperature ?? 0.75,
       maxPasses: 3,
+      cardNames: this.activeSpreadCardNames(),
     });
     const reply = await this.finalizeSpreadReply(draft, contextMessages);
     return this.streamDeterministicReply(reply);
@@ -1165,7 +1221,7 @@ export class ChatOrchestrator {
   private baseResponseMeta(extra: Record<string, unknown> = {}) {
     return {
       characterId: this.characterId,
-      isPaid: this.billingHandle?.sessionHasFullAccess ?? false,
+      isPaid: this.promptHasFullAccess(),
       runeBalance: this.billingHandle?.runeBalance,
       freeQuestionsRemaining: this.billingHandle?.freeQuestionsRemaining,
       sessionId: this.session?.id,

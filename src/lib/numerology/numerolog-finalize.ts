@@ -6,6 +6,12 @@ import {
   NUMEROLOG_SPREAD_THREE_SYSTEM_PROMPT,
 } from "@/lib/prompts/masters/numerolog";
 import { buildDateAnchorBlock, todayLabelRu } from "@/lib/prompt-date";
+import {
+  buildClientGenderInstruction,
+  genderLabelRu,
+  resolveClientGender,
+  type BinaryGender,
+} from "@/lib/russian-name-gender";
 
 import {
   appendNumerologFinale,
@@ -220,6 +226,7 @@ export async function generateNumerologMainReading(params: {
   userMessage: string;
   engineFacts: string;
   fallback: string;
+  gender?: string | null;
 }): Promise<string> {
   const factsCap = params.topic === "destiny_matrix" ? 6500 : 4000;
   const facts = params.engineFacts.trim().slice(0, factsCap);
@@ -231,6 +238,11 @@ export async function generateNumerologMainReading(params: {
     params.topic === "spread_opening"
       ? SPREAD_OPENING_USER_HINT
       : params.userMessage.trim().slice(0, 800);
+  const gender: BinaryGender | null = resolveClientGender(params.gender, params.name);
+  const genderBlock = buildClientGenderInstruction({
+    gender,
+    firstName: params.name,
+  });
 
   const systemBase =
     params.topic === "spread_opening"
@@ -243,14 +255,23 @@ export async function generateNumerologMainReading(params: {
     [
       {
         role: "system",
-        content: [systemBase, buildDateAnchorBlock(), extra, `Фокус расчёта: ${topicLabel}.`]
+        content: [
+          systemBase,
+          genderBlock,
+          buildDateAnchorBlock(),
+          extra,
+          `Фокус расчёта: ${topicLabel}.`,
+        ]
           .filter(Boolean)
           .join(" "),
       },
       {
         role: "user",
         content: [
-          `Имя клиента: ${params.name}`,
+          `Имя клиента (именительный падеж): ${params.name}`,
+          gender
+            ? `Пол клиента: ${genderLabelRu(gender)}. Согласуй весь текст с этим полом.`
+            : "Пол клиента не указан — нейтральное «ты».",
           `Сегодня: ${todayLabelRu()}.`,
           question ? `Вопрос клиента: «${question}»` : "",
           `\nДАННЫЕ ДВИЖКА:\n${facts}`,
@@ -289,6 +310,7 @@ export async function generateNumerologFinale(params: {
   name: string;
   topic: NumerologFinaleTopic;
   engineFacts: string;
+  gender?: string | null;
 }): Promise<string> {
   const facts = params.engineFacts.trim().slice(0, 2500);
   if (!facts) return deterministicFinale(params.name, params.topic);
@@ -296,6 +318,11 @@ export async function generateNumerologFinale(params: {
   const topicLabel = TOPIC_LABELS[params.topic] ?? params.topic;
   const extra = FINALE_INSTRUCTIONS[params.topic] ?? "";
   const isSpreadOpening = params.topic === "spread_opening";
+  const gender = resolveClientGender(params.gender, params.name);
+  const genderBlock = buildClientGenderInstruction({
+    gender,
+    firstName: params.name,
+  });
 
   const text = await completeNumerologProse(
     [
@@ -303,6 +330,7 @@ export async function generateNumerologFinale(params: {
         role: "system",
         content: [
           "Ты — нумеролог Эвелина. Пиши тёпло, по-человечески, обращаясь по имени.",
+          genderBlock,
           isSpreadOpening
             ? "5–7 предложений связным текстом: подробно, но простым языком, без канцелярита."
             : "Напиши 3–4 коротких предложения простым русским языком.",
@@ -320,11 +348,17 @@ export async function generateNumerologFinale(params: {
       },
       {
         role: "user",
-        content: `Имя клиента: ${params.name}\nСегодня: ${todayLabelRu()}.\n\nДАННЫЕ ДВИЖКА:\n${facts}\n\n${
+        content: [
+          `Имя клиента (именительный падеж): ${params.name}`,
+          gender
+            ? `Пол клиента: ${genderLabelRu(gender)}. Согласуй род.`
+            : "Пол не указан — нейтральное «ты».",
+          `Сегодня: ${todayLabelRu()}.`,
+          `\nДАННЫЕ ДВИЖКА:\n${facts}`,
           isSpreadOpening
-            ? "Объясни расклад простыми словами: что означает каждое из трёх чисел и как они работают вместе. Не называй прошедшие события «ближайшими»."
-            : "Резюмируй человеку простыми словами."
-        }`,
+            ? "\nОбъясни расклад простыми словами: что означает каждое из трёх чисел и как они работают вместе. Не называй прошедшие события «ближайшими»."
+            : "\nРезюмируй человеку простыми словами.",
+        ].join("\n"),
       },
     ],
     {

@@ -22,6 +22,10 @@ import {
   buildMemoryContext,
 } from "@/lib/memory/build-memory-context";
 import type { ClientProfile } from "@/lib/user-memory";
+import {
+  buildClientGenderInstruction,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
 
 export class DailyReadingLockedError extends Error {
   spreadId: string | null;
@@ -250,7 +254,7 @@ function buildDailyPrompt(params: {
     params.name,
     params.gender,
     params.zodiac,
-    params.birthDate ? `рождён ${params.birthDate}` : "",
+    params.birthDate ? `дата рождения: ${params.birthDate}` : "",
     params.lifeFocus ? `фокус: ${params.lifeFocus}` : "",
     params.mainQuestion ? `вопрос: «${params.mainQuestion}»` : "",
   ]
@@ -304,6 +308,14 @@ async function generateDailyReadingText(
 ): Promise<string | null> {
   const spreadId = promptParams.spreadId ?? DEFAULT_SPREAD_ID;
   let system = buildDailySystem(charKey, spreadId);
+  const firstName =
+    (promptParams.name ?? "").trim().split(/\s+/)[0] || "друг";
+  system = `${system}
+
+${buildClientGenderInstruction({
+  gender: resolveClientGender(promptParams.gender, firstName),
+  firstName,
+})}`;
   if (promptParams.userId) {
     system = await loadDailyMemoryPrompt(
       promptParams.userId,

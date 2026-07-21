@@ -115,5 +115,5 @@ export function buildMatrixPlainFinale(name: string, matrix: DestinyMatrixResult
     `Аркан этого года — ${year?.title ?? matrix.yearArcana.arcanaName} (${matrix.yearArcana.number}): ${
       year?.shortMeaning ?? matrix.yearArcana.arcanaMeaning
     } Это фон периода, а не замена другим точкам матрицы.`,
-  ].join(" ");
+  ].join("\n");
 }

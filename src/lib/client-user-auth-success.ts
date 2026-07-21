@@ -30,6 +30,7 @@ import {
   trackRegistrationCompleted,
 } from "@/lib/seo/metrika";
 import { persistRegistrationAttribution } from "@/lib/persist-registration-attribution";
+import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
 
 export type UserAuthSuccessOptions = {
   mode: "login" | "register";
@@ -47,7 +48,10 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
   const guest = loadGuestTriplet();
   const guestMasterId = resolveGuestSpreadMasterId(guest?.masterId);
   const hasGuestCards = Boolean(guest?.tarotCards?.length);
-  const defaultGender = opts.oauthGender ?? "female";
+  const defaultGender =
+    opts.oauthGender ??
+    inferGenderFromFirstName(opts.userName) ??
+    "female";
 
   if (isRegisterFlow) {
     const regSource = resolveRegistrationSource("oauth");

@@ -5459,6 +5459,60 @@ body.chat-session-active .app-main-column {
   text-shadow: 0 0 24px rgba(232, 199, 126, 0.25);
 }
 
+/* Inline deck shuffle (ritual step — «Перемешать ещё раз») */
+.deck-shuffle {
+  @apply mx-auto mt-6 flex w-full max-w-sm flex-col items-center gap-3;
+}
+
+.deck-shuffle--idle {
+  @apply mt-5;
+}
+
+.deck-shuffle--idle .deck-shuffle__stage {
+  height: 120px;
+}
+
+.deck-shuffle--idle .deck-shuffle__card {
+  width: 56px;
+  height: 84px;
+}
+
+.deck-shuffle__stage {
+  @apply relative flex h-[180px] w-full items-center justify-center;
+  perspective: 1000px;
+}
+
+.deck-shuffle__card {
+  @apply absolute;
+  width: 74px;
+  height: 112px;
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5));
+  will-change: transform;
+}
+
+.deck-shuffle__deck-card {
+  @apply h-full w-full;
+}
+
+.deck-shuffle__deck-card .lux-tarot-card {
+  @apply h-full max-w-none;
+}
+
+.deck-shuffle__phrase {
+  @apply text-center font-display text-base font-medium tracking-wide text-aura-champagne sm:text-lg;
+  text-shadow: 0 0 20px rgba(232, 199, 126, 0.28);
+  min-height: 1.5em;
+}
+
+.deck-shuffle__topic {
+  @apply text-center text-[11px] uppercase tracking-[0.18em] text-amber-400/70;
+}
+
+.deck-shuffle-btn {
+  @apply mx-auto mt-5 flex w-full max-w-xs flex-col items-center;
+}
+
 .spread-reading-ritual {
   @apply mt-4 flex flex-col items-center gap-3 border-t border-white/5 pt-5;
 }
@@ -7176,7 +7230,6 @@ body.cookie-banner-visible .auth-page .auth-form {
   font-size: 0.9375rem;
   line-height: 1.7;
   color: rgba(255, 255, 255, 0.88);
-  white-space: pre-wrap;
   word-break: break-word;
   text-align: left;
   overflow: visible;

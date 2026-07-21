@@ -21,6 +21,12 @@ const tripletLovePositions: SpreadPosition[] = [
   { key: "outlook", label: "Перспектива" },
 ];
 
+const lifeDeathTripletPositions: SpreadPosition[] = [
+  { key: "state", label: "Состояние" },
+  { key: "circumstances", label: "Обстоятельства" },
+  { key: "vector", label: "Вектор" },
+];
+
 const situation5Positions: SpreadPosition[] = [
   { key: "situation", label: "Ситуация" },
   { key: "obstacle", label: "Препятствие" },
@@ -469,6 +475,9 @@ export function resolveSpreadPositions(
   const spread = getSpread(spreadId);
   if (topic === "love" && spread.id === "triplet") {
     return tripletLovePositions;
+  }
+  if (topic === "life_death" && spread.id === "triplet") {
+    return lifeDeathTripletPositions;
   }
   return spread.positions;
 }

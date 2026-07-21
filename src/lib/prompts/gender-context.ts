@@ -1,24 +1,19 @@
 import type { PromptUserContext } from "./types";
+import {
+  buildClientGenderInstruction,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
 
 /** Правила местоимений: клиент vs люди из вопроса. */
 export function buildGenderPronounBlock(
   user: PromptUserContext,
   lastUserMessage?: string
 ): string {
-  const lines: string[] = ["ПОЛ, ОБРАЩЕНИЕ И МЕСТОИМЕНИЯ:"];
-
-  const g = (user.gender ?? "").toLowerCase();
-  if (g.includes("муж")) {
-    lines.push(
-      "- Клиент — мужчина. Обращайся «ты», только мужской род: пришёл, видел, чувствовал, знаешь, боишься."
-    );
-  } else if (g.includes("жен")) {
-    lines.push(
-      "- Клиент — женщина. Обращайся «ты», только женский род: пришла, видела, чувствовала, знаешь, боишься."
-    );
-  } else {
-    lines.push("- Пол клиента не указан — нейтральное «ты», без жёсткого рода.");
-  }
+  const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "друг";
+  const gender = resolveClientGender(user.gender, firstName);
+  const lines: string[] = [
+    buildClientGenderInstruction({ gender, firstName }),
+  ];
 
   const msg = (lastUserMessage ?? user.mainQuestion ?? "").toLowerCase();
 

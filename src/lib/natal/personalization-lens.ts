@@ -7,6 +7,11 @@ import {
   buildMemoryContext,
 } from "@/lib/memory/build-memory-context";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
+import {
+  buildClientGenderInstruction,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
+
 export async function appendNatalPersonalizationLens(
   systemPrompt: string,
   params: {
@@ -22,6 +27,8 @@ export async function appendNatalPersonalizationLens(
 ): Promise<string> {
   try {
     const displayName = normalizePersonDisplayName(params.user?.name) || params.user?.name || undefined;
+    const firstName = (displayName ?? "").trim().split(/\s+/)[0] || "друг";
+    const gender = resolveClientGender(params.user?.gender, firstName);
     const memoryCtx = await buildMemoryContext({
       userId: params.profileUserId,
       characterId: "shri-raj",
@@ -45,6 +52,8 @@ export async function appendNatalPersonalizationLens(
 
     const withMemory = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
     return `${withMemory}
+
+${buildClientGenderInstruction({ gender, firstName })}
 
 ЛИНЗА ПРОФИЛЯ (не источник фактов карты):
 - lifeFocus / mainQuestion / факты памяти — только линза тона и акцентов.

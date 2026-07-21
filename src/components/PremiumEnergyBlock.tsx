@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, X, Moon, Users } from "lucide-react";
-import { getCharacterById } from "@/lib/characters";
 import { isAiMasterId, type ShowcaseMaster } from "@/lib/showcase-masters";
 import { resolveMasterDeckSystem, DECK_REGISTRY } from "@/lib/decks";
 import { DECK_SYSTEM_DISPLAY } from "@/lib/photo-spread-redraw";
@@ -12,7 +11,7 @@ import type { DeckSystem } from "@/lib/decks/types";
 import DeckCard from "@/components/DeckCard";
 import BodyPortal from "@/components/BodyPortal";
 import MasterAvatar from "@/components/MasterAvatar";
-import { toParagraphs } from "@/lib/format-paragraphs";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { DEFAULT_SPREAD_ID, getSpread, type SpreadId } from "@/lib/spreads";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import RuneCost from "@/components/RuneCost";
@@ -77,44 +76,8 @@ function parseDailyEnergyText(text: string): { body: string; quote: string | nul
   return { body, quote };
 }
 
-function renderBodyWithMasterHighlight(body: string, masterLabel: string) {
-  const firstName = masterLabel.trim().split(/\s+/)[0];
-  const paragraphs = toParagraphs(body);
-  const re =
-    firstName && firstName.length >= 2
-      ? new RegExp(`(${firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "i")
-      : null;
-
-  return (
-    <div className="space-y-3.5">
-      {paragraphs.map((para, pIndex) => {
-        if (!re) {
-          return (
-            <p key={`daily-p-${pIndex}`} className="text-[15px] leading-[1.85] text-gray-200">
-              {para}
-            </p>
-          );
-        }
-        const parts = para.split(re);
-        return (
-          <p key={`daily-p-${pIndex}`} className="text-[15px] leading-[1.85] text-gray-200">
-            {parts.map((part, i) =>
-              re.test(part) ? (
-                <span
-                  key={`${pIndex}-${i}`}
-                  className="font-display text-lg text-amber-100 drop-shadow-[0_0_12px_rgba(251,191,36,0.35)]"
-                >
-                  {part}
-                </span>
-              ) : (
-                <span key={`${pIndex}-${i}`}>{part}</span>
-              )
-            )}
-          </p>
-        );
-      })}
-    </div>
-  );
+function renderDailyReadingBody(body: string) {
+  return <PremiumReadingBody content={body} className="text-gray-200" />;
 }
 
 export default function PremiumEnergyBlock({
@@ -161,7 +124,6 @@ export default function PremiumEnergyBlock({
     () => DECK_REGISTRY[pickSystem]?.symbols[0]?.name ?? "",
     [pickSystem]
   );
-  const masterLabel = useMemo(() => getCharacterById(master)?.name ?? master, [master]);
   const selectedMaster = useMemo(
     () => pickMasters.find((m) => m.id === master),
     [pickMasters, master]
@@ -627,7 +589,7 @@ export default function PremiumEnergyBlock({
                         {spreadId === "daily-extended" ? spread.label : "Энергия дня"}
                       </p>
                       <div className="mt-3 space-y-3">
-                        {renderBodyWithMasterHighlight(body, masterLabel)}
+                        {renderDailyReadingBody(body)}
                         {quote ? (
                           <blockquote className="my-2 border-l-2 border-amber-500/40 pl-4 text-sm italic text-amber-200/80">
                             {quote}

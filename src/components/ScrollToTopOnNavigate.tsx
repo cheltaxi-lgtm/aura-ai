@@ -2,16 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef } from "react";
-
-function resetWindowScroll() {
-  const html = document.documentElement;
-  const previous = html.style.scrollBehavior;
-  html.style.scrollBehavior = "auto";
-  window.scrollTo(0, 0);
-  html.scrollTop = 0;
-  document.body.scrollTop = 0;
-  html.style.scrollBehavior = previous;
-}
+import { resetWindowScroll } from "@/lib/reset-window-scroll";
 
 /**
  * Next.js soft navigation can leave the previous window scroll position

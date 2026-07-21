@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { buildMatrixFreeSummary, type MatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
 import { parseBirthDate } from "@/lib/numerology/constants";
 import { readStoredProfile } from "@/lib/home-flow-storage";
@@ -291,7 +292,9 @@ export default function DestinyMatrixPreview() {
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">Короткий портрет</p>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">{summary.portrait}</p>
+            <div className="mt-2">
+              <PremiumReadingBody content={summary.portrait} className="text-sm text-white/80" />
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">

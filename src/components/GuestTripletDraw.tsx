@@ -38,6 +38,7 @@ import {
   trackRegistrationGateView,
 } from "@/lib/seo/metrika";
 import DeckCard from "@/components/DeckCard";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import ShareButton from "@/components/share/ShareButton";
 import { tripletToSharePayload } from "@/lib/share/payload-builders";
@@ -468,8 +469,8 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
         transition={{ duration: 0.45 }}
       >
         <p className="text-center text-sm font-medium text-aura-champagne/85">Краткий ориентир по вашему раскладу</p>
-        <div className="guest-spread-preview rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm leading-relaxed text-aura-ivory/80 whitespace-pre-line">
-          {previewText}
+        <div className="guest-spread-preview rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm text-aura-ivory/80">
+          <PremiumReadingBody content={previewText} className="text-aura-ivory/80" />
         </div>
         <p className="text-center text-sm leading-relaxed text-aura-ivory/65">
           Зарегистрируйтесь — мастер даст полную связную расшифровку, и вы сможете задать первые вопросы

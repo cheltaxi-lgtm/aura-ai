@@ -304,7 +304,7 @@ export async function listStuckGeneratingRituals(
 
 export async function attemptRitualGeneration(
   ritualId: string,
-  userProfile: { name: string; zodiac: string }
+  userProfile: { name: string; zodiac: string; gender?: string | null }
 ): Promise<RitualRow | null> {
   const ritual = await getRitualById(ritualId);
   if (!ritual) return null;
@@ -506,7 +506,7 @@ export async function submitRitualReview(
 
 export async function generateRitualContent(
   ritual: RitualRow,
-  userProfile: { name: string; zodiac: string }
+  userProfile: { name: string; zodiac: string; gender?: string | null }
 ): Promise<RitualRow | null> {
   const referenceDate = ritual.created_at ?? new Date();
   const schedule = computeRitualSchedule(ritual.ritual_type, referenceDate);
@@ -515,6 +515,7 @@ export async function generateRitualContent(
     ritualType: ritual.ritual_type,
     userName: normalizePersonDisplayNameOr(userProfile.name, "друг"),
     userZodiac: userProfile.zodiac,
+    userGender: userProfile.gender,
     answers: ritual.answers,
     cards: ritual.cards,
     moonPhase: ritual.moon_phase ?? "",

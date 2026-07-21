@@ -5,6 +5,13 @@ import {
   type SessionTopicId,
 } from "@/lib/session-topics";
 import { customQuestionSpreadRules, isThirdPartyCustomQuestion } from "@/lib/custom-question-scope";
+import { resolveSpreadPositions, type SpreadId } from "@/lib/spreads";
+
+export type IntentionPromptOptions = {
+  cardCount?: number;
+  positionLabels?: string[];
+  spreadId?: SpreadId | string | null;
+};
 export type SessionIntention =
   | "Любовь"
   | "Деньги"
@@ -119,7 +126,8 @@ const TOPIC_ID_TO_LEGACY: Record<Exclude<SessionTopicId, "custom">, SessionInten
   path: "Мой путь",
   enemies: "Враги",
   sign: "Знак свыше",
-  life_death: "Враги",
+  // life_death has dedicated MASTER_TOPIC_OPENINGS — never fall back to «Враги».
+  life_death: "Любовь",
 };
 
 export function buildIntentionOpening(
@@ -131,9 +139,17 @@ export function buildIntentionOpening(
 
   if (isSessionTopicId(intention)) {
     if (intention === "custom") return "";
-    const topicOpening = MASTER_TOPIC_OPENINGS[masterId]?.[intention];
+    const topicOpening =
+      MASTER_TOPIC_OPENINGS[masterId]?.[intention] ??
+      MASTER_TOPIC_OPENINGS.veronika?.[intention];
     if (topicOpening) {
       return topicOpening.replace(/\{name\}/g, name);
+    }
+    if (intention === "life_death") {
+      return "Прежде чем читать символы — скажи, о ком речь и когда последний раз была весть.".replace(
+        /\{name\}/g,
+        name
+      );
     }
     const legacy = TOPIC_ID_TO_LEGACY[intention];
     if (legacy) intention = legacy;
@@ -146,43 +162,102 @@ export function buildIntentionOpening(
   return template.replace(/\{name\}/g, name);
 }
 
-const THEMATIC_TOPIC_ANGLES: Record<string, string> = {
-  love: `УГЛЫ ТЕМЫ «ЛЮБОВЬ И ОТНОШЕНИЯ» — раскрой в каждой карте:
-- Карта 1: прошлый паттерн в любви — рана, привычка, урок, который тянется в текущий союз.
-- Карта 2: что между людьми СЕЙЧАС — дистанция, правда/скрытность, чувства, инициатива.
-- Карта 3: куда идёт связь в ближайшие 1–3 месяца — усиление, пауза, разрыв или новый этап.
-Запрещено: «энергия любви», «сердце открыто» без названия карты и конкретного вывода.`,
-  money: `УГЛЫ ТЕМЫ «ДЕНЬГИ И КАРЬЕРА»:
-- Карта 1: откуда привычка или блок с деньгами — страх, род, прошлый провал, зависимость.
-- Карта 2: текущий поток — приход, утечка, стагнация, скрытый источник или риск.
-- Карта 3: вектор дохода/работы — рост, смена, задержка, условие для прорыва.
-Называй конкретно: работа, долг, сделка, начальник, свой проект — только если карта это показывает.`,
-  health: `УГЛЫ ТЕМЫ «ЗДОРОВЬЕ И ЭНЕРГИЯ»:
-- Карта 1: корень истощения или силы — накопленное напряжение, привычка, старый удар по телу.
-- Карта 2: состояние СЕЙЧАС — где тело сигналит, что держит, что ослабло.
-- Карта 3: восстановление или риск — что поможет, что усугубит, темп изменений.
-Не ставь диагноз — называй зону (сон, нервы, спина, гормональный фон) только по символу.`,
-  path: `УГЛЫ ТЕМЫ «МОЙ ПУТЬ / ПРЕДНАЗНАЧЕНИЕ»:
-- Карта 1: что из прошлого опыта ведёт к текущему выбору.
-- Карта 2: развилка СЕЙЧАС — честный взгляд на то, куда человек реально идёт, не куда мечтает.
-- Карта 3: направление на 3–6 месяцев — призвание, переезд, смена роли, внутренний поворот.
-Каждый вывод — через символ, не через общие слова о «предназначении».`,
-  enemies: `УГЛЫ ТЕМЫ «ВРАГИ И ЗАЩИТА»:
-- Карта 1: источник конфликта или угрозы — кто/что, скрытое или явное (только по символу).
-- Карта 2: расстановка СЕЙЧАС — сила сторон, ловушка, твоя позиция.
-- Карта 3: исход стратегии — отступ, удар, мир, ожидание; что усилит защиту.
-Если врага в символах нет — скажи: «в раскладе чужой атаки не видно».`,
-  sign: `УГЛЫ ТЕМЫ «ЗНАК СВЫХЕ / ПОСЛАНИЕ»:
-- Карта 1: что уже было знамением — событие, сон, повтор, которое человек мог не заметить.
-- Карта 2: послание СЕЙЧАС — что вселенная/судьба показывает прямо в этот период.
-- Карта 3: как применить знак — одно действие или одно изменение взгляда.
-Не выдумывай «знак», если символы нейтральны — скажи честно.`,
+/** Topic lenses applied per position (past / now / future-or-outcome). */
+const TOPIC_LENS: Record<
+  string,
+  { title: string; past: string; now: string; future: string; ban: string }
+> = {
+  love: {
+    title: "ЛЮБОВЬ И ОТНОШЕНИЯ",
+    past: "прошлый паттерн в любви — рана, привычка, урок, который тянется в текущий союз",
+    now: "что между людьми СЕЙЧАС — дистанция, правда/скрытность, чувства, инициатива",
+    future: "куда идёт связь — усиление, пауза, разрыв или новый этап (только по символу)",
+    ban: "Запрещено: «энергия любви», «сердце открыто» без названия карты и конкретного вывода.",
+  },
+  money: {
+    title: "ДЕНЬГИ И КАРЬЕРА",
+    past: "откуда привычка или блок с деньгами — страх, род, прошлый провал, зависимость",
+    now: "текущий поток — приход, утечка, стагнация, скрытый источник или риск",
+    future: "вектор дохода/работы — рост, смена, задержка, условие для прорыва",
+    ban: "Называй конкретно: работа, долг, сделка, начальник, свой проект — только если карта это показывает.",
+  },
+  health: {
+    title: "ЗДОРОВЬЕ И ЭНЕРГИЯ",
+    past: "корень истощения или силы — накопленное напряжение, привычка, старый удар по телу",
+    now: "состояние СЕЙЧАС — где тело сигналит, что держит, что ослабло",
+    future: "восстановление или риск — что поможет, что усугубит, темп изменений",
+    ban: "Не ставь диагноз — называй зону (сон, нервы, спина) только по символу.",
+  },
+  path: {
+    title: "МОЙ ПУТЬ / ПРЕДНАЗНАЧЕНИЕ",
+    past: "что из прошлого опыта ведёт к текущему выбору",
+    now: "развилка СЕЙЧАС — куда человек реально идёт, не куда мечтает",
+    future: "направление — призвание, переезд, смена роли, внутренний поворот",
+    ban: "Каждый вывод — через символ, не через общие слова о «предназначении».",
+  },
+  enemies: {
+    title: "ВРАГИ И ЗАЩИТА",
+    past: "источник конфликта или угрозы — кто/что, скрытое или явное (только по символу)",
+    now: "расстановка СЕЙЧАС — сила сторон, ловушка, твоя позиция",
+    future: "исход стратегии — отступ, удар, мир, ожидание; что усилит защиту",
+    ban: "Если врага в символах нет — скажи: «в раскладе чужой атаки не видно».",
+  },
+  sign: {
+    title: "ЗНАК СВЫХЕ / ПОСЛАНИЕ",
+    past: "что уже было знамением — событие, сон, повтор, которое человек мог не заметить",
+    now: "послание СЕЙЧАС — что показывает прямо в этот период",
+    future: "как применить знак — одно действие или одно изменение взгляда",
+    ban: "Не выдумывай «знак», если символы нейтральны — скажи честно.",
+  },
 };
 
-function resolveThematicTopicAngles(intention: string): string {
+function topicKeyFromIntention(intention: string): string {
   const topic = getSessionTopic(intention);
-  const key = topic?.id ?? intention;
-  return THEMATIC_TOPIC_ANGLES[key] ?? "";
+  return topic?.id ?? intention;
+}
+
+function lensForSlot(
+  lens: (typeof TOPIC_LENS)[string],
+  index: number,
+  total: number
+): string {
+  if (total <= 1) return lens.now;
+  if (index === 0) return lens.past;
+  if (index === total - 1) return lens.future;
+  const mid = Math.floor((total - 1) / 2);
+  if (index <= mid) return lens.now;
+  return lens.future;
+}
+
+export function resolveThematicTopicAngles(
+  intention: string,
+  options?: IntentionPromptOptions
+): string {
+  const key = topicKeyFromIntention(intention);
+  const lens = TOPIC_LENS[key];
+  if (!lens) return "";
+
+  const sessionTopic = isSessionTopicId(key) ? key : null;
+  const positions =
+    options?.positionLabels?.length
+      ? options.positionLabels
+      : options?.spreadId
+        ? resolveSpreadPositions(options.spreadId, sessionTopic).map((p) => p.label)
+        : [];
+  const n = Math.max(1, options?.cardCount ?? (positions.length || 3));
+  const labels =
+    positions.length >= n
+      ? positions.slice(0, n)
+      : Array.from({ length: n }, (_, i) => positions[i] ?? `Позиция ${i + 1}`);
+
+  const lines = labels.map((label, i) => {
+    const angle = lensForSlot(lens, i, n);
+    return `- «${label}»: ${angle}`;
+  });
+
+  return `УГЛЫ ТЕМЫ «${lens.title}» — раскрой КАЖДУЮ из ${n} позиций через тему (название символа обязательно):
+${lines.join("\n")}
+${lens.ban}`;
 }
 
 function resolveThematicMeta(intention: string) {
@@ -197,21 +272,27 @@ function resolveThematicMeta(intention: string) {
 
 export function intentionPromptBlock(
   intention?: string | null,
-  customQuestion?: string | null
+  customQuestion?: string | null,
+  options?: IntentionPromptOptions
 ): string {
   if (!intention?.trim()) return "";
   if (intention === "life_death") return "";
   if (intention === "custom") {
     const q = customQuestion?.trim();
     if (!q) return "";
+    const n = options?.cardCount ?? options?.positionLabels?.length ?? 0;
+    const nRule =
+      n > 0
+        ? `\nРаскрой все ${n} позиций расклада через этот вопрос — с названием каждого символа.`
+        : "";
     return `\nКлиент пришёл со своим вопросом: «${q}».
 Отвечай только на этот запрос — через выпавшие символы, с названием каждой карты.
-Не подменяй вопрос общей темой и не выдумывай факты вне символов.
+Не подменяй вопрос общей темой и не выдумывай факты вне символов.${nRule}
 ${customQuestionSpreadRules(q)}`;
   }
 
   const { label, focus } = resolveThematicMeta(intention);
-  const angles = resolveThematicTopicAngles(intention);
+  const angles = resolveThematicTopicAngles(intention, options);
 
   return `\nКлиент пришёл с намерением: ${label} (${focus}).
 Это рамка сеанса — не доказательство фактов.
@@ -222,19 +303,25 @@ ${angles ? `${angles}\n` : ""}Любой вывод — только если е
 
 export function intentionSpreadPromptBlock(
   intention: string,
-  customQuestion?: string | null
+  customQuestion?: string | null,
+  options?: IntentionPromptOptions
 ): string {
   if (intention === "life_death") return "";
   if (intention === "custom") {
     const q = customQuestion?.trim();
     if (!q) return "";
+    const n = options?.cardCount ?? options?.positionLabels?.length ?? 0;
+    const nRule =
+      n > 0
+        ? `\nОбязательно раскрой все ${n} позиций — каждую по имени символа как ответ на вопрос.`
+        : "";
     return `\nКлиент ОПЛАТИЛ новый расклад под свой вопрос: «${q}».
-Читай КАЖДЫЙ символ как ответ именно на этот вопрос — выводы только из значений выпавших карт.
+Читай КАЖДЫЙ символ как ответ именно на этот вопрос — выводы только из значений выпавших карт.${nRule}
 ${customQuestionSpreadRules(q)}`;
   }
 
   const { label, focus } = resolveThematicMeta(intention);
-  const angles = resolveThematicTopicAngles(intention);
+  const angles = resolveThematicTopicAngles(intention, options);
 
   return `\nКлиент ОПЛАТИЛ новый расклад под тему «${label}» (${focus}).
 Читай КАЖДЫЙ символ только через эту тему — но выводы только из значений выпавших карт, не из темы.
@@ -242,9 +329,12 @@ ${angles ? `\n${angles}\n` : ""}`;
 }
 
 /** Подробный тематический блок для /api/reading при активной теме сеанса. */
-export function intentionReadingPromptBlock(intention: string): string {
+export function intentionReadingPromptBlock(
+  intention: string,
+  options?: IntentionPromptOptions
+): string {
   if (intention === "life_death") return "";
-  return intentionSpreadPromptBlock(intention);
+  return intentionSpreadPromptBlock(intention, null, options);
 }
 
 /** @deprecated use buildIntentionOpening */

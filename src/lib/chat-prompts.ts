@@ -30,6 +30,10 @@ import { getSpread, normalizeSpreadId, requiredCardCount, resolveSpreadPositions
 import type { SessionTopicId } from "@/lib/session-topics";
 
 import { buildAstroMeta, lifeFocusLabel, type AstroMeta, type LifeFocus } from "@/lib/astro-profile";
+import {
+  buildClientGenderInstruction,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
 
 export interface UserContext {
   userName: string;
@@ -145,9 +149,17 @@ export function buildHumanReadingPrompt(
     ? "Пиши на русском, конкретно и по делу. Только русский — без английских вставок (guarded, hidden, safe и т.п.). Используй Markdown по правилам выше."
     : "Пиши на русском, конкретно и по делу. Только русский — без английских вставок. Без markdown.";
 
+  const firstName = (ctx.userName ?? "").trim().split(/\s+/)[0] || "друг";
+  const genderBlock = buildClientGenderInstruction({
+    gender: resolveClientGender(ctx.gender, firstName),
+    firstName,
+  });
+
   return `${persona}
 
 ${CARD_GROUNDED_READING_RULES}
+
+${genderBlock}
 
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ОТВЕТА:
 1. Открытие — одно-два слова в стиле мастера, без «здравствуйте».
@@ -183,7 +195,15 @@ export function buildHumanChatPrompt(
     parts.push(`Клиента зовут ${ctx.userName}. Всегда обращайся по имени в начале ответа.`);
   }
   if (ctx.zodiac) parts.push(`Знак зодиака клиента: ${ctx.zodiac}.`);
-  if (ctx.gender) parts.push(`Пол клиента: ${ctx.gender}.`);
+  {
+    const firstName = (ctx.userName ?? "").trim().split(/\s+/)[0] || "друг";
+    parts.push(
+      buildClientGenderInstruction({
+        gender: resolveClientGender(ctx.gender, firstName),
+        firstName,
+      })
+    );
+  }
   if (ctx.birthDate) parts.push(`Дата рождения: ${ctx.birthDate}.`);
   if (ctx.today) parts.push(`Сегодня: ${ctx.today}.`);
   if (ctx.tarotCards?.length) {
@@ -325,7 +345,8 @@ export function buildCardAwareFallbackReading(
     resolveSpreadPositions(spreadId, ctx.intention as SessionTopicId | null | undefined).map(
       (p) => p.label
     );
-  const cards = ctx.tarotCards.slice(0, positions.length || ctx.tarotCards.length);
+  // Always decode every drawn card — never truncate to position count.
+  const cards = ctx.tarotCards;
 
   const openers: Record<string, string> = {
     gadalka_marina: `${ctx.userName}, лунный свет лёг на символы — слушаю их для темы «${topicLabel}».`,
@@ -339,10 +360,26 @@ export function buildCardAwareFallbackReading(
     openers[characterId in openers ? characterId : ""] ??
     `${ctx.userName}, символы раскрывают тему «${topicLabel}».`;
 
+  // Varied templates — a single repeated skeleton is flagged as degenerate LLM loop
+  // and sanitizeReadingForClient would wipe the whole reading.
+  const cardFrames = [
+    (pos: string, name: string, meaning: string) =>
+      `Позиция «${pos}»: выпала карта «${name}». Смысл здесь — ${meaning}. Для темы «${topicLabel}» это прямой сигнал, на который стоит опереться.`,
+    (pos: string, name: string, meaning: string) =>
+      `В слое «${pos}» лежит «${name}». Образ говорит о таком: ${meaning}. Свяжите это с ${topicFocus} — без отрыва от самой карты.`,
+    (pos: string, name: string, meaning: string) =>
+      `«${name}» на месте «${pos}» подсвечивает: ${meaning}. В вопросе про «${topicLabel}» держите именно этот акцент, а не общие слова.`,
+    (pos: string, name: string, meaning: string) =>
+      `Дальше — «${pos}» и символ «${name}». Ключ позиции: ${meaning}. Это конкретная подсказка по «${topicLabel}», а не фон.`,
+    (pos: string, name: string, meaning: string) =>
+      `Карта «${name}» в «${pos}» добавляет слой: ${meaning}. Смотрите, как она меняет картину именно в вашей теме «${topicLabel}».`,
+  ];
+
   const cardBlocks = cards.map((card, i) => {
     const pos = positions[i] ?? `Позиция ${i + 1}`;
     const rawMeaning = card.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? card.name;
-    return `${pos} — «${card.name}». В контексте ${topicFocus} этот символ показывает: ${rawMeaning}. Для «${topicLabel}» это слой позиции «${pos}». Опирайтесь на образ «${card.name}» как на конкретный ориентир.`;
+    const frame = cardFrames[i % cardFrames.length]!;
+    return frame(pos, card.name, rawMeaning);
   });
 
   const names = cards.map((c) => c.name).join(" → ");
@@ -356,8 +393,8 @@ export function buildCardAwareFallbackReading(
   const finalBlock = [
     `${ctx.userName}, вывод по всему раскладу на тему «${topicLabel}».`,
     `Линия ${names}: ${recapParts.join("; ")}.`,
-    `Вместе ${cards.length} символов складываются в одну картину — пройди каждую позицию и сведи их в единый совет.`,
-    `По теме «${topicLabel}» опирайся на все выпавшие карты, а не только на первые три.`,
+    `Все ${cards.length} символов нужно читать вместе — каждая позиция усиливает соседние, а не спорит с ними.`,
+    `По «${topicLabel}» держитесь всей линии карт, а не одной самой яркой.`,
   ].join(" ");
 
   return [opener, ...cardBlocks, finalBlock].join("\n\n");
@@ -475,11 +512,12 @@ export async function generateReading(
     let text = await completeProseWithContinuation(plan.messages, {
       maxTokens: plan.maxTokens,
       temperature: plan.temperature ?? 0.85,
-      maxPasses: cardCount > 5 ? 3 : 3,
+      maxPasses: cardCount > 5 ? 4 : 3,
+      cardNames,
     });
     if (text && !isPaidSpreadTextComplete(text, cardNames)) {
       text = await ensurePaidSpreadTextComplete(plan.messages, text, cardNames, {
-        maxTokens: Math.round(plan.maxTokens * 0.35),
+        maxTokens: Math.max(2200, Math.round(plan.maxTokens * 0.5)),
         temperature: plan.temperature ?? 0.85,
         maxRounds: 4,
       });

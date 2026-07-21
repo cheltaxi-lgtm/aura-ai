@@ -8,6 +8,7 @@ import {
 } from "@/lib/master-quick-chips";
 import { isTextRelevantToQuery, MEMORY_USAGE_RULES } from "@/lib/memory/memory-relevance";
 import { isTextRelevantToQueryAsync } from "@/lib/memory/session-memory-semantic";
+import { genderPromptValue } from "@/lib/russian-name-gender";
 
 const MAX_BLOCK_CHARS = 4000;
 const PLACEHOLDER_PREDICTION = "Сеанс в процессе";
@@ -168,7 +169,10 @@ export function buildClientBlock(
   if (profile.name) {
     lines.push(`Имя: ${normalizePersonDisplayNameOr(profile.name, profile.name)}.`);
   }
-  if (profile.gender) lines.push(`Пол: ${profile.gender}.`);
+  {
+    const label = genderPromptValue(profile.gender);
+    if (label) lines.push(`Пол: ${label}.`);
+  }
   if (profile.zodiac) lines.push(`Знак: ${profile.zodiac}.`);
   if (profile.birthDate) lines.push(`Дата рождения: ${profile.birthDate}.`);
   if (profile.mainQuestion && query && isTextRelevantToQuery(query, profile.mainQuestion)) {

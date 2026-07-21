@@ -328,7 +328,7 @@ export default function AdminUsersPage() {
             return [
               String(u.name),
               String(u.account_email ?? "—"),
-              u.gender === "male" ? "М" : "Ж",
+              u.gender === "male" ? "М" : u.gender === "female" ? "Ж" : "—",
               String(u.birth_date),
               String(u.zodiac),
               renderRunesCell(profileUserId, label, u.rune_balance),

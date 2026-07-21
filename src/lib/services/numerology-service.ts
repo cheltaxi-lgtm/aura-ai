@@ -36,10 +36,14 @@ export interface NumerologEngineParams {
   userName?: string;
   birthDate?: string;
   profileName?: string;
+  /** Profile gender male|female — grammar for address. */
+  gender?: string | null;
   lastUserMessage: string;
   recentUserMessages: string[];
   spreadNumbers: string[];
   memoryBlock?: string;
+  /** Session topic (SessionTopicId) for calc seeding. */
+  intention?: string | null;
 }
 
 function buildEngineInput(params: NumerologEngineParams) {
@@ -51,6 +55,7 @@ function buildEngineInput(params: NumerologEngineParams) {
     recentUserMessages: params.recentUserMessages,
     spreadNumbers:
       params.spreadNumbers.length > 0 ? params.spreadNumbers : undefined,
+    intention: params.intention,
   };
 }
 
@@ -59,7 +64,9 @@ export function buildNumerologyPromptContext(params: {
   characterId: string;
   birthDate?: string;
   profileName?: string;
+  gender?: string | null;
   lastUserMessage: string;
+  intention?: string | null;
 }): NumerologyPromptContext {
   if (params.characterId !== "numerolog") {
     return {};
@@ -68,7 +75,9 @@ export function buildNumerologyPromptContext(params: {
   const numerologyCtx = buildNumerologyChatContext({
     birthDate: params.birthDate,
     profileName: params.profileName,
+    gender: params.gender,
     lastUserMessage: params.lastUserMessage,
+    intention: params.intention,
   });
 
   return {
@@ -128,7 +137,9 @@ export async function generateNumerologStreamReply(
       prompt: buildNumerologyChatContext({
         birthDate: params.birthDate,
         profileName: params.profileName ?? params.userName,
+        gender: params.gender,
         lastUserMessage: params.lastUserMessage,
+        intention: params.intention,
       }).prompt,
       primaryTopic: engineResult.primaryTopic,
       userMessage: params.lastUserMessage,
@@ -154,6 +165,7 @@ export async function generateNumerologStreamReply(
       userMessage: params.lastUserMessage,
       engineFacts,
       fallback,
+      gender: params.gender,
     }),
     matrixForFinale
       ? Promise.resolve(buildMatrixPlainFinale(firstName, matrixForFinale))
@@ -161,6 +173,7 @@ export async function generateNumerologStreamReply(
           name: firstName,
           topic: engineResult.primaryTopic,
           engineFacts,
+          gender: params.gender,
         }),
   ]);
 
@@ -178,6 +191,7 @@ export async function generateNumerologSpreadOpeningReading(input: {
   userName: string;
   birthDate?: string;
   fullName?: string;
+  gender?: string | null;
   spreadNumbers: string[];
   memoryBlock?: string;
 }): Promise<string> {
@@ -205,11 +219,13 @@ export async function generateNumerologSpreadOpeningReading(input: {
       userMessage: "Три числа текущего периода",
       engineFacts,
       fallback: mathSummary,
+      gender: input.gender,
     }),
     generateNumerologFinale({
       name: firstName,
       topic: "spread_opening",
       engineFacts,
+      gender: input.gender,
     }),
   ]);
 
@@ -234,6 +250,7 @@ export async function generateNumerologSessionReading(input: {
   userName: string;
   birthDate?: string;
   fullName?: string;
+  gender?: string | null;
   spreadNumbers: string[];
   memoryBlock?: string;
 }): Promise<{ reply: string; numerologyUi?: NumerologyUi }> {
@@ -246,6 +263,7 @@ export async function generateNumerologSessionReading(input: {
         userName: input.userName,
         birthDate: input.birthDate,
         fullName: input.fullName,
+        gender: input.gender,
         spreadNumbers,
         memoryBlock: input.memoryBlock,
       }),
@@ -258,6 +276,7 @@ export async function generateNumerologSessionReading(input: {
     userName: input.userName,
     birthDate: input.birthDate,
     profileName: input.fullName ?? input.userName,
+    gender: input.gender,
     lastUserMessage: message,
     recentUserMessages: [],
     spreadNumbers,
@@ -273,6 +292,7 @@ export async function generateNumerologSessionReading(input: {
     userName: input.userName,
     birthDate: input.birthDate,
     profileName: input.fullName ?? input.userName,
+    gender: input.gender,
     lastUserMessage: message,
     recentUserMessages: [],
     spreadNumbers,

@@ -106,7 +106,8 @@ export function buildSpreadBlock(
   if (!hasCompleteSpread(cards, spreadId, spreadType)) return "";
 
   const theme = topicLabel(intention);
-  const readyToRead = opts?.readyToRead ?? true;
+  // Default false for life_death safety: omit opts → ask-first, not full decode.
+  const readyToRead = opts?.readyToRead ?? intention !== "life_death";
   const positions = resolveSpreadPositions(spreadId, intention as SessionTopicId);
   const cardSlice = cards.slice(0, spread.cardCount);
   const withMeanings = opts?.cardsWithMeanings ?? [];

@@ -11,7 +11,7 @@ import {
 } from "@/lib/joint-reading-storage";
 import { buildJointSpreadStartPath } from "@/lib/joint-reading-nav";
 import { withAppShellIfNeeded } from "@/lib/post-auth-return";
-import { toParagraphs } from "@/lib/format-paragraphs";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { getSpread } from "@/lib/spreads";
 import { estimateJointSpreadCostPerPerson } from "@/lib/joint-reading-pricing";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
@@ -338,10 +338,8 @@ export default function JointReadingTokenPage() {
       {data.initiatorReading && (data.viewerRole === "initiator" || data.status === "completed") ? (
         <article className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
           <h2 className="font-display text-base text-white">Расклад — {labelA}</h2>
-          <div className="mt-3 space-y-3 text-sm leading-relaxed text-white/75">
-            {toParagraphs(data.initiatorReading).map((p, i) => (
-              <p key={`i-${i}`}>{p}</p>
-            ))}
+          <div className="mt-3">
+            <PremiumReadingBody content={data.initiatorReading} className="text-sm text-white/75" />
           </div>
         </article>
       ) : null}
@@ -349,10 +347,8 @@ export default function JointReadingTokenPage() {
       {data.partnerReading && (data.viewerRole === "partner" || data.status === "completed") ? (
         <article className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
           <h2 className="font-display text-base text-white">Расклад — {labelB}</h2>
-          <div className="mt-3 space-y-3 text-sm leading-relaxed text-white/75">
-            {toParagraphs(data.partnerReading).map((p, i) => (
-              <p key={`p-${i}`}>{p}</p>
-            ))}
+          <div className="mt-3">
+            <PremiumReadingBody content={data.partnerReading} className="text-sm text-white/75" />
           </div>
         </article>
       ) : null}
@@ -425,10 +421,8 @@ export default function JointReadingTokenPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/80">
-            {toParagraphs(data.combinedReading).map((p, i) => (
-              <p key={i}>{p}</p>
-            ))}
+          <div className="mt-4">
+            <PremiumReadingBody content={data.combinedReading} className="text-sm text-white/80" />
           </div>
           <Link href={`/joint-reading/${encodeURIComponent(token)}/print`} className="mt-5 inline-flex text-xs text-amber-200">
             Печатная версия / PDF

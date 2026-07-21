@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import PrintButton from "@/components/natal/PrintButton";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { getActivePublicReportShare } from "@/lib/services/public-report-share-service";
 
 export const metadata = { title: "Опубликованный отчёт", robots: { index: false, follow: false } };
@@ -25,12 +26,26 @@ export default async function SharedReportPage({ params }: { params: Promise<{ t
           }</h1></div>
         <PrintButton />
       </div>
-      {typeof report.summary === "string" ? <p className="mt-6 whitespace-pre-wrap leading-7 text-white/75">{report.summary}</p> : null}
-      {typeof report.legacyContent === "string" ? <p className="mt-6 whitespace-pre-wrap leading-7 text-white/75">{report.legacyContent}</p> : null}
+      {typeof report.summary === "string" ? (
+        <div className="mt-6">
+          <PremiumReadingBody content={report.summary} />
+        </div>
+      ) : null}
+      {typeof report.legacyContent === "string" ? (
+        <div className="mt-6">
+          <PremiumReadingBody content={report.legacyContent} />
+        </div>
+      ) : null}
       {sections.map((value, index) => {
         const section = value as { title?: string; claims?: Array<{ text?: string }> };
         return <section key={index} className="mt-7"><h2 className="font-display text-xl text-amber-100">{section.title}</h2>
-          {section.claims?.map((claim, claimIndex) => <p key={claimIndex} className="mt-3 leading-7 text-white/70">{claim.text}</p>)}</section>;
+          {section.claims?.map((claim, claimIndex) =>
+            claim.text ? (
+              <div key={claimIndex} className="mt-3">
+                <PremiumReadingBody content={claim.text} />
+              </div>
+            ) : null
+          )}</section>;
       })}
       {dimensions.length ? <section className="mt-7"><h2 className="font-display text-xl text-amber-100">Измерения</h2>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">{dimensions.map((value, index) => {

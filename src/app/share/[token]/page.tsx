@@ -6,6 +6,7 @@ import { getShareSnapshotByToken, getShareSnapshotPublic } from "@/lib/share";
 import { masterDisplayName } from "@/lib/share-reading";
 import ShareLandingTracker from "@/components/share/ShareLandingTracker";
 import ShareLandingActions from "@/components/share/ShareLandingActions";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -98,7 +99,9 @@ export default async function ShareLandingPage({ params }: PageProps) {
               </p>
             ) : null}
             <div className="share-landing__excerpt-wrap">
-              <div className="share-landing__excerpt">{payload.excerpt}</div>
+              <div className="share-landing__excerpt">
+                <PremiumReadingBody content={payload.excerpt} />
+              </div>
             </div>
           </div>
         ) : null}

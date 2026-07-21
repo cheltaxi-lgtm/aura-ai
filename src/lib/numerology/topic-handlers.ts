@@ -31,6 +31,11 @@ import type { NumerologySystem } from "./constants";
 import { parseBirthDate } from "./constants";
 import { NUMEROLOG_ANTI_HALLUCINATION_RULE } from "./anti-hallucination";
 import {
+  buildClientGenderInstruction,
+  genderLabelRu,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
+import {
   extractFullNameFromMessage,
   nameTopicsNeedFullFio,
   resolveNumerologyName,
@@ -60,6 +65,43 @@ export interface NumerologyChatContextInput {
   birthDate?: string;
   profileName?: string;
   lastUserMessage?: string;
+  /** Profile gender: male|female|мужчина|женщина — used for address grammar. */
+  gender?: string | null;
+  /** Session topic from UX (SessionTopicId) — seeds calc topics when message is vague. */
+  intention?: string | null;
+}
+
+/** Map session UX topic → numerology calc topics (parallel taxonomy, not TopicKey). */
+export function sessionTopicToNumerologyTopics(
+  intention?: string | null
+): NumerologyTopic[] {
+  const id = (intention ?? "").trim();
+  switch (id) {
+    case "love":
+    case "Любовь":
+      return ["sphere_relations"];
+    case "money":
+    case "Деньги":
+      return ["sphere_finance"];
+    case "health":
+    case "Здоровье":
+      return ["sphere_health"];
+    case "path":
+    case "Мой путь":
+      return ["life_path"];
+    case "enemies":
+    case "Враги":
+      return ["karma"];
+    case "sign":
+    case "Знак свыше":
+      return ["life_path", "karma"];
+    case "custom":
+      return [];
+    case "life_death":
+      return [];
+    default:
+      return [];
+  }
 }
 
 export interface NumerologyChatContextResult {
@@ -573,7 +615,14 @@ export function buildNumerologyChatContext(
 ): NumerologyChatContextResult {
   const message = input.lastUserMessage?.trim() ?? "";
   const resolvedName = resolveNumerologyName(input.profileName, message);
-  const topics = detectNumerologyTopics(message);
+  const fromMessage = detectNumerologyTopics(message);
+  const fromIntention = sessionTopicToNumerologyTopics(input.intention);
+  const topics =
+    fromMessage.length > 0
+      ? [...new Set([...fromMessage, ...fromIntention])]
+      : fromIntention.length > 0
+        ? fromIntention
+        : [];
   const system: NumerologySystem = topics.includes("chaldean")
     ? "chaldean"
     : "pythagorean";
@@ -605,10 +654,17 @@ export function buildNumerologyChatContext(
       (input.profileName?.trim().split(/\s+/)[0] ||
         (resolvedName.fromMessage ? "" : resolvedName.fullName.trim()) ||
         "друг").trim() || "друг";
+    const gender = resolveClientGender(input.gender, who);
     parts.push(
       [
         "КЛИЕНТ ДЛЯ МАТРИЦЫ СУДЬБЫ:",
-        `Имя для обращения: ${who}.`,
+        `Имя для обращения (именительный падеж): ${who}.`,
+        gender
+          ? `Пол клиента: ${genderLabelRu(gender)} — весь разбор только в ${
+              gender === "female" ? "женском" : "мужском"
+            } роде.`
+          : "Пол клиента не указан — пиши нейтрально на «ты» без жёсткого рода.",
+        buildClientGenderInstruction({ gender, firstName: who }),
         hasBirth ? `Дата рождения: ${birthDate}.` : "Дата рождения не передана.",
         "ЗАПРЕТ СМЕШЕНИЯ: не подмешивай пифагорейский портрет (путь/душа/личность/зрелость), личный цикл 1–9 и психоматрицу. Только блок МАТРИЦА СУДЬБЫ ниже.",
       ].join("\n")

@@ -291,9 +291,20 @@ export function stripTrailingPromptChecklist(text: string): string {
 
 /** Minimum card name mentions required for a reading to pass validation. */
 export function minCardMentionsRequired(cardCount: number): number {
-  if (cardCount <= 1) return 1;
-  if (cardCount <= 3) return cardCount;
-  return Math.min(cardCount, Math.max(3, Math.ceil(cardCount * 0.5)));
+  if (cardCount <= 0) return 0;
+  return cardCount;
+}
+
+/** Which card names from the spread are missing in the reading text. */
+export function missingCardMentions(text: string, cardNames: string[]): string[] {
+  const out = text.trim();
+  if (!out || !cardNames.length) return [...cardNames];
+  return cardNames.filter((name) => {
+    const n = name.trim();
+    if (!n) return false;
+    const relaxed = n.replace(/ё/g, "е");
+    return !out.includes(n) && !out.includes(relaxed);
+  });
 }
 
 /** Client-safe reading text — strips leaks; returns empty if unusable. */
@@ -319,20 +330,15 @@ export function sanitizeReadingForClient(
   if (cardNames?.length) {
     const numericSpread = cardNames.every((name) => /^\d+$/.test(name.trim()));
     if (!numericSpread) {
-      const mentioned = cardNames.filter((name) => {
-        const relaxed = name.replace(/ё/g, "е");
-        return out.includes(name) || out.includes(relaxed);
-      });
-      const minMentions = minCardMentionsRequired(cardNames.length);
-      const minLength = Math.max(900, cardNames.length * 120);
-      if (mentioned.length < minMentions && out.length < minLength) return "";
+      const missing = missingCardMentions(out, cardNames);
+      if (missing.length > 0) return "";
     }
   }
 
   return out.trim();
 }
 
-/** Prefer sanitized reading; keep server fallback if sanitizer is too strict. */
+/** Prefer sanitized reading; never return incomplete multi-card text when cardNames given. */
 export function resolveClientReadingText(
   raw: string | undefined | null,
   cardNames?: string[]
@@ -341,6 +347,13 @@ export function resolveClientReadingText(
   if (!trimmed) return "";
   const cleaned = sanitizeReadingForClient(trimmed, cardNames);
   if (cleaned) return cleaned;
+  // With known cards, incomplete coverage must not leak to the client.
+  if (cardNames?.length) {
+    const numericSpread = cardNames.every((name) => /^\d+$/.test(name.trim()));
+    if (!numericSpread && missingCardMentions(trimmed, cardNames).length > 0) {
+      return "";
+    }
+  }
   const stripped = stripTrailingPromptChecklist(stripMemoryLeakFromReply(trimmed));
   if (stripped && !isDegenerateLlmOutput(stripped)) return stripped;
   return "";

@@ -18,7 +18,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
 import { buildLoginHref } from "@/lib/post-auth-return";
 import { useRuneConfig } from "@/lib/useRuneConfig";
-import { toParagraphs } from "@/lib/format-paragraphs";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   aspectRows, bigThree, methodology, midpointRows, patternRows,
@@ -1359,7 +1359,7 @@ function StructuredReport({ report, evidence, onEvidence }: { report: NatalRepor
     {report.sections.map((section) => <section key={section.key} className="min-w-0 py-6 first:pt-0">
       <h3 className="font-display text-xl leading-snug text-amber-50">{section.title}</h3>
       <div className="mt-3 space-y-5">{section.claims.map((claim, index) => <div key={`${section.key}-${index}`}>
-        <p className="text-[15px] leading-8 text-white/75">{claim.text}</p>
+        <PremiumReadingBody content={claim.text} className="text-white/75" />
         <div className="mt-3 flex flex-wrap items-center gap-1.5"><span className="text-[10px] uppercase tracking-wide text-white/30">Основано на</span>
           {claim.evidenceIds.map((id) => {
             const item = byId.get(id);
@@ -1383,7 +1383,9 @@ function StructuredReport({ report, evidence, onEvidence }: { report: NatalRepor
   </article>;
 }
 
-function Interpretation({ text }: { text: string }) { return <div className="space-y-3">{toParagraphs(text).map((paragraph, index) => <p key={index} className="text-sm leading-7 text-white/70">{paragraph}</p>)}</div>; }
+function Interpretation({ text }: { text: string }) {
+  return <PremiumReadingBody content={text} className="text-sm text-white/70" />;
+}
 function UnknownTimeWarning({ context }: { context?: string }) { return <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.07] p-4 text-sm text-amber-50"><p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Ограниченная точность без времени рождения</p><p className="mt-1 text-xs leading-5 text-amber-100/60">{context ? `${context}: ` : ""}Асцендент, середина неба, дома и лагна скрыты; асцендент девятой карты (навамша) также исключён. Положения быстрых объектов и привязка периодов могут иметь дополнительную неопределённость.</p></div>; }
 function Panel({ title, eyebrow, className = "", children }: { title: string; eyebrow: string; className?: string; children: React.ReactNode }) {
   return (

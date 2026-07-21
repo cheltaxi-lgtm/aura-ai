@@ -95,12 +95,14 @@ export function resolveMasterDeckSystem(masterId?: string | null): DeckSystem {
   return MASTER_DECK_SYSTEM[masterId] ?? DEFAULT_DECK_SYSTEM;
 }
 
-/** Deck for a spread session — Lenormand line uses the Lenormand oracle, not tarot. */
+/** Deck for a spread session — Lenormand / runes-yes-no force their oracle. */
 export function resolveSpreadDeckSystem(
   spreadId: SpreadId | string | null | undefined,
   masterId?: string | null
 ): DeckSystem {
-  if (normalizeSpreadId(spreadId) === "lenormand-line") return "lenormand";
+  const id = normalizeSpreadId(spreadId);
+  if (id === "lenormand-line") return "lenormand";
+  if (id === "runes-yes-no") return "runes";
   return resolveMasterDeckSystem(masterId);
 }
 

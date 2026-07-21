@@ -34,7 +34,15 @@ import {
   type NumerologToolId,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
-import { DEFAULT_SPREAD_ID, getSpread, isDailyOnlySpread, spreadMatchesTopic, type SpreadId } from "@/lib/spreads";
+import {
+  DEFAULT_SPREAD_ID,
+  getSpread,
+  isDailyOnlySpread,
+  listSpreads,
+  spreadMatchesSystem,
+  spreadMatchesTopic,
+  type SpreadId,
+} from "@/lib/spreads";
 import RuneCost from "@/components/RuneCost";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { RITUAL_MASTERS } from "@/lib/ritual-config";
@@ -42,6 +50,10 @@ import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import { PRICING } from "@/lib/config/pricing";
 import { formatSpreadUnitRu } from "@/lib/spread-ritual-copy";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
+import DeckShuffleAnimation from "@/components/DeckShuffleAnimation";
+
+/** Minimum time for a full riffle shuffle ritual (split → riffle → square). */
+const DECK_SHUFFLE_MIN_MS = 3600;
 
 export interface SessionStartParams {
   characterKey: string;
@@ -106,41 +118,45 @@ function emptyFlipped(count: number): boolean[] {
   return Array.from({ length: count }, () => false);
 }
 
-function stepIndex(step: Step): number {
-  switch (step) {
-    case "topic":
-    case "partner":
-      return 0;
-    case "master":
-      return 1;
-    case "cards":
-      return 2;
-    case "scheme":
-      return 3;
-    case "calculation":
-      return 3;
-    case "ritual":
-      return 4;
-    case "reveal":
-      return 4;
-    case "pick":
-      return 5;
-    case "flip":
-      return 6;
+/** Steps the user will actually visit in this open — drives progress dots. */
+function buildActiveSteps(ctx: {
+  numerologFlow: boolean;
+  requiresPartnerInfo: boolean;
+  topicLocked: boolean;
+  masterLocked: boolean;
+  showCardsChoice: boolean;
+  presetSpreadLocked: boolean;
+}): Step[] {
+  if (ctx.numerologFlow) {
+    const steps: Step[] = [];
+    if (!ctx.topicLocked) steps.push("topic");
+    if (!ctx.masterLocked) steps.push("master");
+    steps.push("calculation", "ritual", "reveal");
+    return steps;
   }
+  const steps: Step[] = [];
+  if (ctx.requiresPartnerInfo) steps.push("partner");
+  if (!ctx.topicLocked) steps.push("topic");
+  if (!ctx.masterLocked) steps.push("master");
+  if (ctx.showCardsChoice) steps.push("cards");
+  if (!ctx.presetSpreadLocked) steps.push("scheme");
+  steps.push("ritual", "pick", "flip");
+  return steps;
 }
 
-function numerologStepIndex(step: Step): number {
-  switch (step) {
-    case "calculation":
-      return 0;
-    case "ritual":
-      return 1;
-    case "reveal":
-      return 2;
-    default:
-      return 0;
+function activeStepIndex(step: Step, active: Step[]): number {
+  const idx = active.indexOf(step);
+  if (idx >= 0) return idx;
+  // Collapsed aliases when a screen was skipped mid-flight
+  if (step === "reveal") {
+    const r = active.indexOf("ritual");
+    return r >= 0 ? r : 0;
   }
+  if (step === "partner") {
+    const t = active.indexOf("topic");
+    return t >= 0 ? t : 0;
+  }
+  return Math.max(0, active.length - 1);
 }
 
 export default function MasterSessionFlow({
@@ -341,6 +357,8 @@ export default function MasterSessionFlow({
     setCardType("new");
     if (isNumerologMaster(master)) {
       setStep("calculation");
+    } else if (!master) {
+      setStep("master");
     } else if (presetSpreadLocked) {
       goToRitualStep();
     } else {
@@ -350,12 +368,36 @@ export default function MasterSessionFlow({
 
   const goToNewSpreadDraw = goToDrawStep;
 
+  // When master changes, drop a scheme that doesn't match their deck.
+  useEffect(() => {
+    if (!master || numerologFlow || presetSpreadLocked) return;
+    const system = resolveMasterDeckSystem(master);
+    const current = getSpread(selectedSpreadId);
+    if (spreadMatchesSystem(current, system)) return;
+    const fallback =
+      listSpreads({
+        topic: topic && topic !== "custom" ? topic : null,
+        system,
+      })[0]?.id ?? DEFAULT_SPREAD_ID;
+    setSelectedSpreadId(fallback);
+  }, [master, numerologFlow, presetSpreadLocked, selectedSpreadId, topic]);
+
   const hasDailyCards = dailyCards.length >= 3 && !newSpreadOnly;
   const showCardsChoice = hasDailyCards && !numerologFlow;
   const allFlipped = flipped.slice(0, cardCount).every(Boolean);
   const spreadReady =
     newCards.slice(0, cardCount).filter((c) => c.name.trim()).length >= cardCount;
-  const currentStepIdx = numerologFlow ? numerologStepIndex(step) : stepIndex(step);
+  const topicLocked = Boolean(initialTopic);
+  const masterLocked = Boolean(preselectedMaster);
+  const activeSteps = buildActiveSteps({
+    numerologFlow,
+    requiresPartnerInfo,
+    topicLocked,
+    masterLocked,
+    showCardsChoice,
+    presetSpreadLocked,
+  });
+  const currentStepIdx = activeStepIndex(step, activeSteps);
 
   const initializeFlow = useCallback(() => {
     setTopic(initialTopic ?? null);
@@ -393,8 +435,9 @@ export default function MasterSessionFlow({
 
     if (numerologPreselected || (newSpreadOnly && isNumerologMaster(preselectedMaster))) {
       setCardType("new");
-      setStep("calculation");
       setFlipped(emptyFlipped(getNumerologTool(DEFAULT_NUMEROLOG_SESSION_TOOL).drawCount));
+      // Collect session topic so numerology calc can seed spheres (love/money/…).
+      setStep(initialTopic ? "calculation" : "topic");
       return;
     }
 
@@ -413,7 +456,12 @@ export default function MasterSessionFlow({
         return;
       }
       if (initialTopic) {
-        setStep("scheme");
+        // Master before scheme so progress dots never jump backward.
+        if (!preselectedMaster) {
+          setStep("master");
+        } else {
+          setStep(presetSpreadLocked ? "ritual" : "scheme");
+        }
         return;
       }
       setStep(numerologPreselected ? "calculation" : "topic");
@@ -426,6 +474,8 @@ export default function MasterSessionFlow({
     } else if (presetSpreadLocked) {
       setCardType("new");
       setStep("ritual");
+    } else if (initialTopic && !preselectedMaster) {
+      setStep("master");
     } else {
       setStep(initialTopic ? "scheme" : "topic");
     }
@@ -504,7 +554,10 @@ export default function MasterSessionFlow({
     if (step === "master") {
       if (!hasDailyCards && !numerologFlow) setStep("topic");
     } else if (step === "cards") setStep("master");
-    else if (step === "topic" && cardType === "new") setStep("scheme");
+    else if (step === "topic" && cardType === "new") {
+      if (numerologFlow) onClose();
+      else setStep("scheme");
+    }
     else if (step === "scheme") {
       if (requiresPartnerInfo) setStep("partner");
       else if (topic) setStep("topic");
@@ -589,94 +642,124 @@ export default function MasterSessionFlow({
     ]
   );
 
-  const initSpreadSession = useCallback(async () => {
-    if (!master) return;
-    if (!numerologFlow && !topic) return;
-    if (topic === "custom" && !customQuestionReady) return;
-    if (requiresPartnerInfo && !partnerReady) return;
-    if (numerologFlow && !numerologCalculationReady(selectedNumerologTool, numerologToolParams, userBirthDate, userFullName)) {
-      return;
-    }
-    setDrawLoading(true);
-    setDrawError(null);
-    try {
-      const qs = buildSpreadQuery({ sessionInit: "1" });
-      const res = await fetch(`/api/intention-spread?${qs}`, { credentials: "include" });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        sessionSeed?: string;
-        ritualTitle?: string;
-        ritualBody?: string;
-        drawHint?: string;
-        computingHint?: string;
-        personalNote?: string;
-        pickHint?: string;
-        tableSize?: number;
-        system?: string;
-        deck?: string;
-        tableCards?: { name: string }[];
-        numerologResult?: NumerologSessionResult;
-      };
-      if (res.status === 401) {
-        setDrawError("Нужна регистрация");
+  const initSpreadSession = useCallback(
+    async (opts?: { reshuffleSaltOverride?: string }) => {
+      if (!master) return;
+      if (!numerologFlow && !topic) return;
+      if (topic === "custom" && !customQuestionReady) return;
+      if (requiresPartnerInfo && !partnerReady) return;
+      if (
+        numerologFlow &&
+        !numerologCalculationReady(
+          selectedNumerologTool,
+          numerologToolParams,
+          userBirthDate,
+          userFullName
+        )
+      ) {
         return;
       }
-      if (!res.ok) {
-        throw new Error(data.error || "init_failed");
-      }
-      setSessionSeed(String(data.sessionSeed ?? ""));
-      setRitualTitle(String(data.ritualTitle ?? ""));
-      setRitualBody(String(data.ritualBody ?? ""));
-      setDrawHint(String(data.drawHint ?? ""));
-      setComputingHint(String(data.computingHint ?? ""));
-      setPersonalNote(String(data.personalNote ?? ""));
-      setDeckSystem(
-        (data.system ?? data.deck ?? resolveSpreadDeckSystem(selectedSpreadId, master)) as DeckSystem
-      );
+      setDrawLoading(true);
+      setDrawError(null);
+      const startedAt = Date.now();
+      try {
+        const qs = buildSpreadQuery({
+          sessionInit: "1",
+          ...(opts?.reshuffleSaltOverride
+            ? { reshuffleSalt: opts.reshuffleSaltOverride }
+            : {}),
+        });
+        const res = await fetch(`/api/intention-spread?${qs}`, {
+          credentials: "include",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          sessionSeed?: string;
+          ritualTitle?: string;
+          ritualBody?: string;
+          drawHint?: string;
+          computingHint?: string;
+          personalNote?: string;
+          pickHint?: string;
+          tableSize?: number;
+          system?: string;
+          deck?: string;
+          tableCards?: { name: string }[];
+          numerologResult?: NumerologSessionResult;
+        };
+        if (res.status === 401) {
+          setDrawError("Нужна регистрация");
+          return;
+        }
+        if (!res.ok) {
+          throw new Error(data.error || "init_failed");
+        }
 
-      if (numerologFlow && data.numerologResult) {
-        const result = data.numerologResult as NumerologSessionResult;
-        setNumerologResult(result);
-        setNewCards(result.cardNames.map((name) => ({ name })));
-        setFlipped(result.cardNames.map(() => true));
-        setNumerologRevealReady(false);
-        setStep("reveal");
-        return;
-      }
+        // Keep the shuffle ritual on screen long enough to feel deliberate.
+        if (!numerologFlow) {
+          const wait = DECK_SHUFFLE_MIN_MS - (Date.now() - startedAt);
+          if (wait > 0) {
+            await new Promise((r) => window.setTimeout(r, wait));
+          }
+        }
 
-      setPickHint(String(data.pickHint ?? ""));
-      setTableSize(Number(data.tableSize) || 9);
-      setTableCards(
-        Array.isArray(data.tableCards)
-          ? (data.tableCards as { name: string }[]).filter((c) => c?.name)
-          : []
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      setDrawError(
-        numerologFlow
-          ? "Не удалось подготовить числа. Попробуйте снова."
-          : msg && msg !== "init_failed"
-            ? msg
-            : "Не удалось подготовить колоду. Попробуйте снова."
-      );
-    } finally {
-      setDrawLoading(false);
-    }
-  }, [
-    master,
-    numerologFlow,
-    topic,
-    customQuestionReady,
-    requiresPartnerInfo,
-    partnerReady,
-    selectedNumerologTool,
-    numerologToolParams,
-    userBirthDate,
-    userFullName,
-    buildSpreadQuery,
-    selectedSpreadId,
-  ]);
+        setSessionSeed(String(data.sessionSeed ?? ""));
+        setRitualTitle(String(data.ritualTitle ?? ""));
+        setRitualBody(String(data.ritualBody ?? ""));
+        setDrawHint(String(data.drawHint ?? ""));
+        setComputingHint(String(data.computingHint ?? ""));
+        setPersonalNote(String(data.personalNote ?? ""));
+        setDeckSystem(
+          (data.system ??
+            data.deck ??
+            resolveSpreadDeckSystem(selectedSpreadId, master)) as DeckSystem
+        );
+
+        if (numerologFlow && data.numerologResult) {
+          const result = data.numerologResult as NumerologSessionResult;
+          setNumerologResult(result);
+          setNewCards(result.cardNames.map((name) => ({ name })));
+          setFlipped(result.cardNames.map(() => true));
+          setNumerologRevealReady(false);
+          setStep("reveal");
+          return;
+        }
+
+        setPickHint(String(data.pickHint ?? ""));
+        setTableSize(Number(data.tableSize) || 9);
+        setTableCards(
+          Array.isArray(data.tableCards)
+            ? (data.tableCards as { name: string }[]).filter((c) => c?.name)
+            : []
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "";
+        setDrawError(
+          numerologFlow
+            ? "Не удалось подготовить числа. Попробуйте снова."
+            : msg && msg !== "init_failed"
+              ? msg
+              : "Не удалось подготовить колоду. Попробуйте снова."
+        );
+      } finally {
+        setDrawLoading(false);
+      }
+    },
+    [
+      master,
+      numerologFlow,
+      topic,
+      customQuestionReady,
+      requiresPartnerInfo,
+      partnerReady,
+      selectedNumerologTool,
+      numerologToolParams,
+      userBirthDate,
+      userFullName,
+      buildSpreadQuery,
+      selectedSpreadId,
+    ]
+  );
 
   const resolveSpreadPicks = useCallback(
     async (indices: number[]) => {
@@ -824,7 +907,7 @@ export default function MasterSessionFlow({
       const cards = numerologResult?.cardNames ?? newCards.map((c) => c.name);
       onStart({
         characterKey: master,
-        intention: null,
+        intention: topic,
         spreadType: "new",
         cards,
         cardsRevealed: true,
@@ -832,6 +915,7 @@ export default function MasterSessionFlow({
         deckSystem,
         numerologToolId: selectedNumerologTool,
         numerologToolParams,
+        customQuestion: resolvedCustomQuestion,
       });
       return;
     }
@@ -868,7 +952,7 @@ export default function MasterSessionFlow({
   const footerPadding = { paddingBottom: "max(1rem, env(safe-area-inset-bottom))" } as const;
 
   const actionFooter =
-    step === "topic" && !numerologFlow && topicPickMode === "custom" ? (
+    step === "topic" && topicPickMode === "custom" ? (
       <button
         type="button"
         disabled={!customQuestionReady || drawLoading}
@@ -884,7 +968,7 @@ export default function MasterSessionFlow({
           <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
         ) : null}
       </button>
-    ) : step === "topic" && !numerologFlow && topic ? (
+    ) : step === "topic" && topic ? (
       <button
         type="button"
         onClick={() => {
@@ -960,7 +1044,7 @@ export default function MasterSessionFlow({
     ) : step === "scheme" ? (
       <button
         type="button"
-        disabled={requiresPartnerInfo && !partnerReady}
+        disabled={requiresPartnerInfo && !partnerReady || !topic || !master}
         onClick={() => {
           if (requiresPartnerInfo && !partnerReady) {
             setStep("partner");
@@ -968,11 +1052,13 @@ export default function MasterSessionFlow({
           }
           if (!topic) {
             setStep("topic");
-          } else if (!master) {
-            setStep("master");
-          } else {
-            goToRitualStep();
+            return;
           }
+          if (!master) {
+            setStep("master");
+            return;
+          }
+          goToRitualStep();
         }}
         className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
       >
@@ -1124,9 +1210,9 @@ export default function MasterSessionFlow({
               <span className="w-12" />
             )}
             <div className="flex items-center gap-1.5">
-              {(numerologFlow ? [0, 1, 2] : [0, 1, 2, 3, 4, 5, 6]).map((i) => (
+              {activeSteps.map((s, i) => (
                 <span
-                  key={i}
+                  key={s}
                   className={`h-2 w-2 rounded-full transition-colors ${
                     i <= currentStepIdx ? "bg-amber-400" : "bg-white/20"
                   }`}
@@ -1153,7 +1239,7 @@ export default function MasterSessionFlow({
             }`}
           >
             {/* Step 1 — Topic */}
-            {step === "topic" && !numerologFlow && (
+            {step === "topic" && (
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1221,7 +1307,11 @@ export default function MasterSessionFlow({
                       Выберите тему сеанса
                     </p>
                     <div className="mt-6 grid grid-cols-2 gap-3">
-                      {SESSION_TOPICS.filter((t) => t.id !== "custom").map((card) => {
+                      {SESSION_TOPICS.filter(
+                        (t) =>
+                          t.id !== "custom" &&
+                          !(numerologFlow && t.id === "life_death")
+                      ).map((card) => {
                     const isSelected = topic === card.id;
                     const isLifeDeath = card.id === "life_death";
                     const topicCompatible = spreadMatchesTopic(spreadDef, card.id);
@@ -1548,14 +1638,20 @@ export default function MasterSessionFlow({
                   {ritualTitle || (numerologFlow ? "Ваши числа" : "Ваша колода")}
                 </h2>
                 {drawLoading ? (
-                  <div className="mt-10 flex flex-col items-center gap-3">
-                    <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
-                    <p className="text-sm text-white/60">
-                      {numerologFlow
-                        ? computingHint || "Считаем ваш нумерологический код…"
-                        : "Перемешиваем колоду под вас…"}
-                    </p>
-                  </div>
+                  numerologFlow ? (
+                    <div className="mt-10 flex flex-col items-center gap-3">
+                      <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
+                      <p className="text-sm text-white/60">
+                        {computingHint || "Считаем ваш нумерологический код…"}
+                      </p>
+                    </div>
+                  ) : (
+                    <DeckShuffleAnimation
+                      active
+                      system={resolveSpreadDeckSystem(selectedSpreadId, master)}
+                      topicLabel={topic && topic !== "custom" ? topicLabel(topic) : null}
+                    />
+                  )
                 ) : drawError ? (
                   <div className="mt-8 text-center">
                     <p className="text-sm text-red-300">{drawError}</p>
@@ -1579,18 +1675,33 @@ export default function MasterSessionFlow({
                       </p>
                     ) : null}
                     {!numerologFlow ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setReshuffleSalt(String(Date.now()));
-                          setSessionSeed("");
-                          setPickedIndices([]);
-                          setTableCards([]);
-                        }}
-                        className="mx-auto mt-6 block text-xs text-white/45 underline-offset-2 hover:text-amber-200 hover:underline"
-                      >
-                        Перемешать ещё раз
-                      </button>
+                      <div className="deck-shuffle-btn">
+                        <DeckShuffleAnimation
+                          active
+                          idle
+                          system={resolveSpreadDeckSystem(selectedSpreadId, master)}
+                        />
+                        <button
+                          type="button"
+                          disabled={drawLoading}
+                          onClick={() => {
+                            if (drawLoading) return;
+                            const salt = String(Date.now());
+                            setDrawLoading(true);
+                            setReshuffleSalt(salt);
+                            setSessionSeed("");
+                            setPickedIndices([]);
+                            setTableCards([]);
+                            void initSpreadSession({ reshuffleSaltOverride: salt });
+                          }}
+                          className="btn-ghost btn-luxe--md mt-1 w-full max-w-xs disabled:opacity-40"
+                        >
+                          Перемешать колоду
+                        </button>
+                        <p className="mt-2 text-center text-[11px] text-white/40">
+                          Новый порядок карт под ту же тему и ваш код
+                        </p>
+                      </div>
                     ) : null}
                   </>
                 )}

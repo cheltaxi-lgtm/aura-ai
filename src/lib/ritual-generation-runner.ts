@@ -67,6 +67,7 @@ export async function runRitualGenerationForUser(params: {
   const userProfile = {
     name: profile?.name ?? "друг",
     zodiac: profile?.zodiac ?? "",
+    gender: profile?.gender ?? null,
   };
 
   try {

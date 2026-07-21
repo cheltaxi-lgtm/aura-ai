@@ -12,6 +12,10 @@ import {
 } from "@/lib/ritual-timing";
 import { buildDateAnchorBlock } from "@/lib/prompt-date";
 import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
+import {
+  buildClientGenderInstruction,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
 
 export { formatRitualCalendarDate } from "@/lib/ritual-timing";
 
@@ -20,6 +24,7 @@ export function buildRitualPrompt(params: {
   ritualType: RitualType;
   userName: string;
   userZodiac: string;
+  userGender?: string | null;
   answers: string[];
   cards: Array<{ name: string; position: string; meaning?: string }>;
   moonPhase: string;
@@ -56,6 +61,11 @@ ${buildDateAnchorBlock(today)}
 — Цель: ${config.label} (${config.desc})
 — Луна при заказе: ${params.moonPhase}, в ${params.moonSign}
 — Сегодня: ${todayLabel}
+
+${buildClientGenderInstruction({
+  gender: resolveClientGender(params.userGender, params.userName),
+  firstName: params.userName,
+})}
 
 РИТУАЛЬНОЕ ВРЕМЯ (рассчитано системой по луне и типу обряда — НЕ МЕНЯТЬ):
 — ${schedule.label}

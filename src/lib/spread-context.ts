@@ -193,7 +193,12 @@ export function profilePayloadForMaster(
   const tarotCards = cards.length >= 1 ? cards : (profile.tarotCards ?? []);
   return {
     userName: profile.name,
-    gender: profile.gender === "male" ? "Мужской" : "Женский",
+    gender:
+      profile.gender === "male"
+        ? "Мужской"
+        : profile.gender === "female"
+          ? "Женский"
+          : undefined,
     zodiac: profile.zodiac,
     birthDate: profile.birthDate,
     birthTime: profile.birthTime,

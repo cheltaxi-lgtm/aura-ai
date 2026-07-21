@@ -23,6 +23,21 @@ import {
   formatMatrixRepeatArcanaNote,
   matrixRoleLens,
 } from "../src/lib/numerology/matrix-point-prompt.ts";
+import {
+  breakNumberedSteps,
+  formatDestinyMatrixReadingForDisplay,
+  looksLikeDestinyMatrixReading,
+} from "../src/lib/numerology/format-matrix-reading-display.ts";
+import { formatPremiumReadingForDisplay } from "../src/lib/format-premium-reading.ts";
+import {
+  genderLabelOrUndefined,
+  inferGenderFromFirstName,
+  normalizeUserGender,
+  resolveClientGender,
+} from "../src/lib/russian-name-gender.ts";
+import { buildGenderPronounBlock } from "../src/lib/prompts/gender-context.ts";
+import { buildRitualPrompt } from "../src/lib/ritual-prompt.ts";
+import { computeRitualSchedule } from "../src/lib/ritual-timing.ts";
 
 const failures = [];
 
@@ -315,6 +330,98 @@ for (const fixture of FIXTURES) {
   assert(!/аркан этого года — Отшельник/i.test(plain), "plain finale must not call year Hermit");
   assert(/Предназначение — Сила \(8\)/i.test(plain), "plain finale purpose=8");
   assert(/Деньги — через Звезда/i.test(plain), "plain finale money=Star");
+  assert(plain.includes("\n"), "plain finale uses line breaks");
+
+  const wall = [
+    "Геннадий, вот твой разбор матрицы судьбы по 22 арканам. Точка тела и характера (18 — Луна)",
+    "Ты чувствителен к настроениям. Практика: записывай сны. Точка энергии (9 — Отшельник)",
+    "Ты восстанавливаешься в тишине.",
+    "Шаги на 30 дней:",
+    "1) Записывай сны 7 дней. 2) День уединения раз в неделю. 3) Честный разговор.",
+    "Простыми словами:",
+    plain.replace(/\n/g, " "),
+  ].join(" ");
+  assert(looksLikeDestinyMatrixReading(wall), "detect matrix wall-of-text");
+  const pretty = formatDestinyMatrixReadingForDisplay(wall);
+  assert(/^### Точка тела и характера/m.test(pretty), "matrix point becomes h3");
+  assert(/^## Шаги на 30 дней/m.test(pretty), "steps section becomes h2");
+  assert(/^## Простыми словами/m.test(pretty), "finale section becomes h2");
+  assert(/^1\.\s/m.test(pretty) && /^2\.\s/m.test(pretty) && /^3\.\s/m.test(pretty), "numbered steps on own lines");
+  assert(
+    breakNumberedSteps("Сделай так. 1) Первый шаг 2) Второй шаг").includes("\n1. "),
+    "breakNumberedSteps splits glued 1) 2)"
+  );
+
+  const tarotWall =
+    "Карты говорят о выборе. **Маг** открывает путь. Простыми словами: действуй мягко. 1) Сделай шаг 2) Не торопись";
+  const tarotPretty = formatPremiumReadingForDisplay(tarotWall);
+  assert(/^## Простыми словами/m.test(tarotPretty), "general formatter promotes Простыми словами");
+  assert(/^1\.\s/m.test(tarotPretty) && /^2\.\s/m.test(tarotPretty), "general formatter splits numbered steps");
+
+  // Must not treat «Деньги» as daily header «День».
+  const moneyLine = formatPremiumReadingForDisplay(
+    "Ввод. Деньги идут через партнёрство. Простыми словами: держи фокус."
+  );
+  assert(!/^### День\b/m.test(moneyLine), "must not split Деньги into ### День");
+  assert(/^## Простыми словами/m.test(moneyLine), "still promotes Простыми словами after Деньги");
+
+  // Already-markdown tarot should keep a single ## Простыми словами.
+  const mdTarot = formatPremiumReadingForDisplay(
+    "Ввод.\n\n**Маг** — путь.\n\n## Простыми словами\n\nДействуй мягко."
+  );
+  assert(
+    (mdTarot.match(/^## Простыми словами/gm) || []).length === 1,
+    "must not double-promote existing ## Простыми словами"
+  );
+
+  assert(normalizeUserGender("female") === "female", "normalize female");
+  assert(normalizeUserGender("male") === "male", "normalize male");
+  assert(normalizeUserGender("Женский") === "female", "normalize Женский");
+  assert(inferGenderFromFirstName("Юлия") === "female", "Юлия → female");
+  assert(inferGenderFromFirstName("Юлий") === "male", "Юлий → male");
+  assert(inferGenderFromFirstName("Никита") === "male", "Никита → male");
+  assert(inferGenderFromFirstName("Саша") === null, "Саша unisex → null");
+  assert(inferGenderFromFirstName("Женя") === null, "Женя unisex → null");
+  assert(resolveClientGender(null, "Юлия") === "female", "resolve Юлия without profile");
+  assert(resolveClientGender("male", "Юлия") === "male", "profile gender wins over name");
+  assert(genderLabelOrUndefined(null) === undefined, "label: missing → undefined (not female)");
+  assert(genderLabelOrUndefined("male") === "Мужской", "label: male");
+  assert(genderLabelOrUndefined("female") === "Женский", "label: female");
+
+  const genderBlock = buildGenderPronounBlock({
+    name: "Юлия",
+    gender: "female",
+    zodiac: "",
+    birthDate: "",
+    cards: [],
+  });
+  assert(/ЖЕНЩИНА/i.test(genderBlock), "gender pronoun block marks woman");
+  assert(/Юлия≠Юлий|именительном/i.test(genderBlock), "gender block locks nominative name");
+
+  const juliaCtx = buildNumerologyChatContext({
+    birthDate: "1990-05-01",
+    profileName: "Юлия",
+    gender: "female",
+    lastUserMessage: "Построй мою матрицу судьбы",
+  });
+  assert(/женщина/i.test(juliaCtx.prompt), "matrix context includes female gender");
+  assert(/Юлия/i.test(juliaCtx.prompt), "matrix context keeps Юлия");
+  assert(!/пол клиента не указан/i.test(juliaCtx.prompt), "matrix context must not drop gender");
+
+  const ritualPrompt = buildRitualPrompt({
+    characterKey: "agafya",
+    ritualType: "love",
+    userName: "Юлия",
+    userZodiac: "Весы",
+    userGender: "female",
+    answers: ["ответ"],
+    cards: [{ name: "Шут", position: "1", meaning: "начало" }],
+    moonPhase: "растущая",
+    moonSign: "Овен",
+    schedule: computeRitualSchedule("love", new Date("2026-07-20T12:00:00Z")),
+  });
+  assert(/ЖЕНЩИНА/i.test(ritualPrompt), "ritual prompt includes female gender lock");
+  assert(/Юлия/i.test(ritualPrompt), "ritual prompt keeps name");
 }
 
 if (failures.length) {

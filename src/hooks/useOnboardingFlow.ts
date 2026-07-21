@@ -29,6 +29,7 @@ import {
 } from "@/lib/chat-cache";
 import { resolveClientReadingText } from "@/lib/chat-reply-sanitize";
 import {
+  buildIntentionOpening,
   persistSessionIntention,
   persistSessionCustomQuestion,
   persistIntentionSpreadState,
@@ -1910,8 +1911,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           const { readingText, cards, system, intentionCardsKey, jointSaved, jointError } = spreadResult;
 
           if (intention !== "life_death" && !readingText) {
+            // Close this ritual first — loadReading may early-return without opening its own,
+            // which previously left the timer stuck forever.
             skipRitualFinally = true;
-            await loadReadingRef.current(masterId);
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            await loadReadingRef.current(masterId, undefined, { force: true });
           } else if (intention !== "life_death" && readingText) {
             readingDelivered = true;
             spreadReadingRecoveryKeyRef.current = `${masterId}:${intention}:${intentionCardsKey}`;
@@ -1926,11 +1931,35 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               return next;
             });
           } else if (intention === "life_death") {
-            saveChatCache(masterId, [], intentionCardsKey, {
-              cards,
-              system,
-              variant: "intention",
-            });
+            const opening = buildIntentionOpening(
+              masterId,
+              "life_death",
+              profile?.name
+            );
+            const openingMsgs = opening
+              ? [
+                  {
+                    id: generateId(),
+                    role: "assistant" as const,
+                    content: opening,
+                    timestamp: new Date(),
+                  },
+                ]
+              : [];
+            if (openingMsgs.length) {
+              deps.setMessages(openingMsgs);
+              saveChatCache(masterId, openingMsgs, intentionCardsKey, {
+                cards,
+                system,
+                variant: "intention",
+              });
+            } else {
+              saveChatCache(masterId, [], intentionCardsKey, {
+                cards,
+                system,
+                variant: "intention",
+              });
+            }
           }
           void refreshSavedReadings();
 
@@ -2006,11 +2035,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 });
               } else {
                 skipRitualFinally = true;
-                await loadReadingRef.current(masterId);
+                closeSpreadReadingRitual();
+                setIntentionSpreadLoading(false);
+                await loadReadingRef.current(masterId, undefined, { force: true });
               }
             } else {
               skipRitualFinally = true;
-              await loadReadingRef.current(masterId);
+              closeSpreadReadingRitual();
+              setIntentionSpreadLoading(false);
+              await loadReadingRef.current(masterId, undefined, { force: true });
             }
           } catch {
             /* loadReading shows its own fallback message */
@@ -2951,7 +2984,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
         if (intention !== "life_death" && !readingText) {
           skipRitualFinally = true;
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
           await loadReadingRef.current(characterKey, undefined, {
+            force: true,
             sessionId: spreadSessionId ?? chatSessionId,
             spreadCardsOverride: spreadCards,
           });
@@ -2969,11 +3005,35 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             return next;
           });
         } else if (intention === "life_death") {
-          saveChatCache(characterKey, [], intentionCardsKey, {
-            cards: spreadCards,
-            system,
-            variant: "intention",
-          });
+          const opening = buildIntentionOpening(
+            characterKey,
+            "life_death",
+            profile?.name
+          );
+          const openingMsgs = opening
+            ? [
+                {
+                  id: generateId(),
+                  role: "assistant" as const,
+                  content: opening,
+                  timestamp: new Date(),
+                },
+              ]
+            : [];
+          if (openingMsgs.length) {
+            deps.setMessages(openingMsgs);
+            saveChatCache(characterKey, openingMsgs, intentionCardsKey, {
+              cards: spreadCards,
+              system,
+              variant: "intention",
+            });
+          } else {
+            saveChatCache(characterKey, [], intentionCardsKey, {
+              cards: spreadCards,
+              system,
+              variant: "intention",
+            });
+          }
         }
         void refreshSavedReadings();
         void deps.refreshSessionsList(characterKey);
@@ -3055,11 +3115,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               });
             } else {
               skipRitualFinally = true;
-              await loadReadingRef.current(characterKey);
+              closeSpreadReadingRitual();
+              setIntentionSpreadLoading(false);
+              await loadReadingRef.current(characterKey, undefined, { force: true });
             }
           } else {
             skipRitualFinally = true;
-            await loadReadingRef.current(characterKey);
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            await loadReadingRef.current(characterKey, undefined, { force: true });
           }
         } catch {
           /* loadReading shows its own fallback message */
@@ -3240,8 +3304,26 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     if (!options?.forceIntention && deps) {
-      deps.setSessionsListData({ active: null, completed: [] });
-      deps.setSessionsListLoading(true);
+      const openSessionListShell = () => {
+        // Leave the scrolled masters salon before the fetch finishes.
+        deps.setSelectedCharacter(null);
+        deps.setConsultationSessionId(null);
+        deps.setConsultationReadOnly(false);
+        deps.archiveSessionIdRef.current = null;
+        deps.setSessionsListData({ active: null, completed: [] });
+        deps.setSessionsListLoading(true);
+        deps.setSessionListMaster(masterId);
+        setStep("masters");
+        localStorage.setItem(FLOW_STEP_KEY, "masters");
+      };
+
+      if (!options?.continueSession) {
+        openSessionListShell();
+      } else {
+        deps.setSessionsListData({ active: null, completed: [] });
+        deps.setSessionsListLoading(true);
+      }
+
       try {
         const sessionsRes = await fetch(
           `/api/sessions?characterKey=${encodeURIComponent(masterId)}`
@@ -3276,15 +3358,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               }
             }
           }
-          deps.setSelectedCharacter(null);
-          deps.setConsultationSessionId(null);
-          deps.setConsultationReadOnly(false);
-          deps.archiveSessionIdRef.current = null;
-          deps.setSessionListMaster(masterId);
           deps.setSessionsListLoading(false);
           deps.setSessionsListData({ active, completed });
-          setStep("masters");
-          localStorage.setItem(FLOW_STEP_KEY, "masters");
           clearPendingMasterResume();
           return;
         }
@@ -3459,8 +3534,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (isNumerologMaster(masterId) && deps) {
       clearPendingMasterResume();
       setTripletNotice(null);
+      deps.setSelectedCharacter(null);
+      deps.setConsultationSessionId(null);
+      deps.setConsultationReadOnly(false);
+      deps.archiveSessionIdRef.current = null;
       deps.setSessionsListData({ active: null, completed: [] });
       deps.setSessionsListLoading(true);
+      deps.setSessionListMaster(masterId);
+      setStep("masters");
+      localStorage.setItem(FLOW_STEP_KEY, "masters");
       try {
         const sessionsRes = await fetch(
           `/api/sessions?characterKey=${encodeURIComponent(masterId)}`
@@ -3471,17 +3553,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               completed: SessionListItem[];
             })
           : { active: null, completed: [] };
-        deps.setSelectedCharacter(null);
-        deps.setConsultationSessionId(null);
-        deps.setConsultationReadOnly(false);
-        deps.archiveSessionIdRef.current = null;
-        deps.setSessionListMaster(masterId);
         deps.setSessionsListData({
           active: sessionsData.active,
           completed: sessionsData.completed ?? [],
         });
-        setStep("masters");
-        localStorage.setItem(FLOW_STEP_KEY, "masters");
         return;
       } catch {
         /* fall through to generic session-only chat */

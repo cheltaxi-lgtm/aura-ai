@@ -180,9 +180,9 @@ export async function GET(request: NextRequest) {
       spreadId
     );
     const reading =
-      cached?.reading?.trim() ?
-        sanitizeReadingForClient(cached.reading, cardNames) || cached.reading.trim()
-      : "";
+      cached?.reading?.trim()
+        ? sanitizeReadingForClient(cached.reading, cardNames)
+        : "";
 
     return NextResponse.json({
       found: Boolean(reading),
@@ -775,7 +775,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  systemPrompt += intentionSpreadPromptBlock(intention, customQuestion);
+  systemPrompt += intentionSpreadPromptBlock(intention, customQuestion, {
+    spreadId,
+    cardCount: drawn.length,
+    positionLabels,
+  });
 
   const memoryCtx = await buildMemoryContext({
     userId: authed.profileUserId,

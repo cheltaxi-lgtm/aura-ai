@@ -10,6 +10,7 @@ import {
   tarotRuneThematicReadingRules,
 } from "./tarot-rune-format";
 import { buildGenderPronounBlock, SPREAD_TRUTH_RULES } from "./gender-context";
+import { resolveClientGender } from "@/lib/russian-name-gender";
 import { AGAFYA_PERSONA } from "./masters/agafya";
 import { RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE } from "./masters/ragnar";
 import { SHRI_RAJ_PERSONA } from "./masters/shri-raj";
@@ -120,7 +121,12 @@ function clientBlock(
   return `
 ДАННЫЕ КЛИЕНТА:
 - Имя: ${user.name} (обращайся по имени минимум дважды)
-- Пол: ${user.gender ?? "не указан"}
+- Пол: ${
+    (() => {
+      const g = resolveClientGender(user.gender, user.name);
+      return g === "male" ? "мужчина" : g === "female" ? "женщина" : "не указан";
+    })()
+  }
 - Знак зодиака: ${user.zodiac}
 - Дата рождения: ${user.birthDate}
 - Сегодня: ${user.today?.trim() || todayLabelRu()}
