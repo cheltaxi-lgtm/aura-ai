@@ -41,7 +41,10 @@ export async function POST(request: NextRequest) {
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
-    return NextResponse.json({ error: "unavailable" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Завершите профиль: укажите дату и город рождения.", code: "NEEDS_PROFILE" },
+      { status: 403 }
+    );
   }
 
   const token = await readGuestResumeCookie(request);

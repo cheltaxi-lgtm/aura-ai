@@ -282,7 +282,7 @@ export interface UseOnboardingFlowOptions {
   referrerSlug?: string;
   isLoggedIn: boolean;
   authLoading: boolean;
-  authUser: { name?: string | null } | null | undefined;
+  authUser: { name?: string | null; profileUserId?: string | null } | null | undefined;
   step: FlowStep;
   setStep: (step: FlowStep) => void;
   setStepState: Dispatch<SetStateAction<FlowStep>>;
@@ -1706,6 +1706,34 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
         if (!resumeResult.ok) {
           guestResumeBootRef.current = false;
+          if (resumeResult.phase === "onboarding_required") {
+            // Profile was just saved — refresh auth and retry once before failing.
+            await refreshAuth?.();
+            const retryResult = await runGuestTripletResume({
+              authMethod: "onboarding_retry",
+              loadReading: (args) =>
+                loadGuestResumeReadingRef.current({
+                  ...args,
+                  profileBase: savedProfile,
+                  questionFallback: data.mainQuestion || profile?.mainQuestion,
+                  teaserFallback: uiCache.teaser || savedProfile.teaser,
+                  deckSystem: uiCache.system as StoredProfile["deckSystem"],
+                }),
+            });
+            if (retryResult.ok) {
+              setGuestResumeCanRetry(false);
+              clearGuestTriplet();
+              setTripletNotice(null);
+              trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
+              clearShareRegistrationAttribution();
+              clearOnboardingUrlParams();
+              return;
+            }
+            setGuestResumeCanRetry(true);
+            setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+            void finishProfileOnboarding("masters");
+            return;
+          }
           if (resumeResult.capacitorRecovery || resumeResult.phase === "safe_recovery") {
             setGuestResumeCanRetry(false);
             setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
@@ -2270,28 +2298,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setIntentionSpread(null);
     persistIntentionSpreadState(masterToBind, null);
     setSpreadFlipped(spreadFlippedState(ordered.length, true));
-    // Open canonical session chat without restoreChat / daily loadReading race.
-    const deps = chat();
-    if (!deps) return "failed";
-    deps.setSessionListMaster(null);
-    deps.setSessionOnlyChat(false);
-    deps.setMessages([]);
-    deps.setConsultationSessionId(sessionId);
-    if (deps.consultationSessionIdRef) {
-      deps.consultationSessionIdRef.current = sessionId;
-    }
-    deps.archiveSessionIdRef.current = null;
-    deps.skipNextReadingRef.current = true;
-    // Mark loaded before selecting character so ChatWindow won't restore blank history.
-    deps.chatLoadedForRef.current = masterToBind;
-    deps.setSelectedCharacter(masterToBind);
-    deps.setIsLoadingHistory(false);
-    await bindSessionToMasterRef.current(masterToBind, sessionId);
-    localStorage.setItem(LAST_MASTER_KEY, masterToBind);
-    localStorage.setItem(FLOW_STEP_KEY, "chat");
-    setLastMasterId(masterToBind);
-    persistStep("chat");
-    setStep("chat");
+
+    // Fetch reading BEFORE opening chat so a 401/NEEDS_PROFILE never lands
+    // the user in chat with the guest "нужна регистрация" stub.
+    let readingText = "";
     try {
       const readingRes = await fetch("/api/reading", {
         method: "POST",
@@ -2302,7 +2312,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           sessionId,
           tarotCards: ordered.map((c) => ({
             id: c.id,
-            name: c.reversed ? `${c.name} (перевёрнутая)` : c.name,
+            name: c.name,
             meaning: "",
             reversed: c.reversed,
           })),
@@ -2311,31 +2321,56 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           spreadId: "triplet",
         }),
       });
+      if (readingRes.status === 401 || readingRes.status === 403) {
+        const errBody = (await readingRes.json().catch(() => ({}))) as {
+          code?: string;
+        };
+        const code = String(errBody.code ?? "").toUpperCase();
+        if (code === "NEEDS_PROFILE") {
+          patchGuestResumeUiCache({ phase: "onboarding_required" });
+        }
+        return "failed";
+      }
       if (!readingRes.ok) return "failed";
       const data = (await readingRes.json().catch(() => ({}))) as {
         reading?: string;
         cached?: boolean;
       };
-      const readingText =
-        typeof data.reading === "string" ? data.reading.trim() : "";
+      readingText = typeof data.reading === "string" ? data.reading.trim() : "";
       if (!readingText) return "failed";
-      const chatDeps = chat();
-      if (chatDeps) {
-        chatDeps.setMessages([
-          {
-            id: generateId(),
-            role: "assistant",
-            content: readingText,
-            timestamp: new Date(),
-          },
-        ]);
-        chatDeps.skipNextReadingRef.current = true;
-        chatDeps.chatLoadedForRef.current = masterToBind;
-      }
-      return "full";
     } catch {
       return "failed";
     }
+
+    const deps = chat();
+    if (!deps) return "failed";
+    deps.setSessionListMaster(null);
+    deps.setSessionOnlyChat(false);
+    deps.setConsultationSessionId(sessionId);
+    if (deps.consultationSessionIdRef) {
+      deps.consultationSessionIdRef.current = sessionId;
+    }
+    deps.archiveSessionIdRef.current = null;
+    deps.skipNextReadingRef.current = true;
+    // Mark loaded before selecting character so ChatWindow won't restore blank history.
+    deps.chatLoadedForRef.current = masterToBind;
+    deps.setSelectedCharacter(masterToBind);
+    deps.setIsLoadingHistory(false);
+    deps.setMessages([
+      {
+        id: generateId(),
+        role: "assistant",
+        content: readingText,
+        timestamp: new Date(),
+      },
+    ]);
+    await bindSessionToMasterRef.current(masterToBind, sessionId);
+    localStorage.setItem(LAST_MASTER_KEY, masterToBind);
+    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    setLastMasterId(masterToBind);
+    persistStep("chat");
+    setStep("chat");
+    return "full";
   };
 
   const handleTripletComplete = async (cards: SpreadSymbol[], teaser: string) => {
@@ -4032,6 +4067,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setTripletNotice(null);
         return;
       }
+      if (result.phase === "onboarding_required") {
+        setGuestResumeCanRetry(false);
+        setTripletNotice(null);
+        patchGuestResumeUiCache({ phase: "onboarding_required" });
+        setStepState("onboarding");
+        persistStep("onboarding");
+        return;
+      }
       if (result.capacitorRecovery || result.phase === "safe_recovery") {
         setGuestResumeCanRetry(false);
         setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
@@ -4045,7 +4088,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setGuestResumeCanRetry(true);
       setTripletNotice(GUEST_RESUME_RETRY_TITLE);
     },
-    []
+    [setStepState]
   );
 
   const retryGuestTripletResume = useCallback(() => {
@@ -4073,6 +4116,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   useEffect(() => {
     if (!isLoggedIn || guestResumeBootRef.current) return;
     if (step === "intro") return;
+    if (authLoading) return;
     const cache = loadGuestResumeUiCache();
     if (!cache) {
       // Stale transition banner must not survive without an active resume cache.
@@ -4088,8 +4132,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     const active = getActiveProfile();
     const hasBirth = Boolean(String(active?.birthDate ?? "").trim());
+    const hasServerProfile = Boolean(authUser?.profileUserId);
 
-    if (!hasBirth) {
+    // Claim/reading need server profileUserId — local birthDate alone is not enough.
+    if (!hasBirth || !hasServerProfile) {
       patchGuestResumeUiCache({ phase: "onboarding_required" });
       // Do not show "готовит трактовку" on homepage while profile is incomplete.
       setTripletNotice(null);
@@ -4122,6 +4168,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     });
   }, [
     isLoggedIn,
+    authLoading,
+    authUser?.profileUserId,
     step,
     getActiveProfile,
     applyGuestResumeResultNotice,

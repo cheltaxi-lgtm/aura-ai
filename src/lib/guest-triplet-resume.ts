@@ -202,6 +202,16 @@ export async function runGuestTripletResume(opts?: {
             cache = loadGuestResumeUiCache();
           }
         } else {
+          if (claimRes.status === 403) {
+            // Authenticated but profile incomplete — claim needs profileUserId.
+            setPhase("onboarding_required");
+            trackGuestTripletResumeFailed("claim");
+            return {
+              ok: false,
+              stage: "claim" as const,
+              phase: "onboarding_required",
+            };
+          }
           if (detectCapacitorPlatform()) {
             setPhase("safe_recovery");
             clearGuestResumeUiCache();
@@ -293,6 +303,15 @@ export async function runGuestTripletResume(opts?: {
         cards: claim.cards,
       });
       if (outcome === "failed") {
+        const phaseAfter = loadGuestResumeUiCache()?.phase;
+        if (phaseAfter === "onboarding_required") {
+          trackGuestTripletResumeFailed("reading");
+          return {
+            ok: false,
+            stage: "reading" as const,
+            phase: "onboarding_required",
+          };
+        }
         setPhase("recoverable_error");
         trackGuestTripletResumeFailed("reading");
         return { ok: false, stage: "reading" as const, phase: "recoverable_error" };

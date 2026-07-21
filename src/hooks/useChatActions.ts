@@ -754,11 +754,31 @@ export function useChatActions(options: UseChatActionsOptions) {
           const data = await res.json();
           if (res.status === 401) {
             closeSpreadReadingRitual();
+            const code =
+              typeof data?.code === "string" ? String(data.code).toUpperCase() : "";
+            const isGuestResume =
+              sessionSpreadMetaRef.current?.spreadType === "guest_resume";
+            let content: string;
+            if (isLoggedIn) {
+              if (code === "NEEDS_PROFILE") {
+                content =
+                  "Завершите анкету, чтобы получить расшифровку расклада. Ваши карты сохранены.";
+              } else if (isGuestResume) {
+                content =
+                  "Не удалось подтвердить сессию для сохранённого расклада. Нажмите «Повторить» или обновите страницу — карты не сгорят.";
+              } else {
+                content =
+                  "Не удалось подтвердить вход. Обновите страницу или войдите снова — ваш расклад сохранён.";
+              }
+            } else {
+              content =
+                "Для расшифровки нужна регистрация. Создайте аккаунт и начните расклад заново.";
+            }
             setMessages([
               {
                 id: generateId(),
                 role: "assistant",
-                content: "Для расшифровки нужна регистрация. Создайте аккаунт и начните расклад заново.",
+                content,
                 timestamp: new Date(),
               },
             ]);
@@ -1239,7 +1259,9 @@ export function useChatActions(options: UseChatActionsOptions) {
     if (readingInFlightRef.current) return;
 
     const skipSpreadLoad = skipNextReadingRef.current;
-    if (skipNextReadingRef.current) {
+    const keepGuestResumeSkip =
+      sessionSpreadMetaRef.current?.spreadType === "guest_resume";
+    if (skipNextReadingRef.current && !keepGuestResumeSkip) {
       skipNextReadingRef.current = false;
     }
 
@@ -1896,7 +1918,9 @@ export function useChatActions(options: UseChatActionsOptions) {
             {
               id: generateId(),
               role: "assistant",
-              content: "Для чата с мастером нужна регистрация. Войдите или создайте аккаунт.",
+              content: isLoggedIn
+                ? "Не удалось подтвердить вход. Обновите страницу или войдите снова."
+                : "Для чата с мастером нужна регистрация. Войдите или создайте аккаунт.",
               timestamp: new Date(),
             },
           ]);

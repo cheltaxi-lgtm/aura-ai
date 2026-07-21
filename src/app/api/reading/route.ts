@@ -5,7 +5,10 @@ import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading, fallbackReading } from "@/lib/chat-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
-import { requireProfileUserId } from "@/lib/require-auth";
+import {
+  profileAuthFailureResponse,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { isRuneBillingActive } from "@/lib/rune-service";
@@ -245,10 +248,14 @@ export async function POST(request: NextRequest) {
     intention = "";
   }
 
-  const authed = await requireProfileUserId();
-  if (!authed) {
-    return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
+  const profileCtx = await resolveProfileUserContext();
+  if (!profileCtx.ok) {
+    return profileAuthFailureResponse(profileCtx.reason);
   }
+  const authed = {
+    auth: profileCtx.auth,
+    profileUserId: profileCtx.profileUserId,
+  };
 
   if (intention === "life_death") {
     return NextResponse.json({ reading: "", skipReading: true });

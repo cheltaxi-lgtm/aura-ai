@@ -113,7 +113,29 @@ section("static: guest reading opens chat without restore race");
   assert.ok(src.includes('spreadType: "guest_resume"'));
   assert.ok(src.includes("chatLoadedForRef.current = masterToBind"));
   assert.ok(src.includes("skipNextReadingRef.current = Boolean(opts?.skipReading)"));
+  assert.ok(src.includes("Fetch reading BEFORE opening chat"));
+  assert.ok(src.includes("hasServerProfile"));
   assert.ok(!/pendingChatOptsRef\.current = \{ masterId: masterToBind, skipReading: true \}/.test(src));
+}
+
+section("static: logged-in 401 never shows guest register copy");
+{
+  const src = readSrc("src/hooks/useChatActions.ts");
+  assert.ok(src.includes("isLoggedIn"));
+  assert.ok(src.includes("NEEDS_PROFILE"));
+  assert.ok(src.includes("Завершите анкету"));
+  // Guest registration copy must stay behind !isLoggedIn branch.
+  const idx = src.indexOf("Для расшифровки нужна регистрация");
+  assert.ok(idx > 0);
+  const window = src.slice(Math.max(0, idx - 400), idx);
+  assert.ok(window.includes("isLoggedIn") || window.includes("else"));
+}
+
+section("static: reading API distinguishes needs_profile");
+{
+  const src = readSrc("src/app/api/reading/route.ts");
+  assert.ok(src.includes("resolveProfileUserContext"));
+  assert.ok(src.includes("profileAuthFailureResponse"));
 }
 
 section("static: claim persists claimedSessionId before reading");
