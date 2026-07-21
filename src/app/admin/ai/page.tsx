@@ -6,7 +6,7 @@ import ModelPicker from "@/components/admin/ModelPicker";
 import OpenRouterDashboard from "@/components/admin/OpenRouterDashboard";
 
 const SCENE_TOGGLES = [
-  { key: "zodiac_avatar", label: "Аватар знака зодиака (онбординг)" },
+  { key: "zodiac_avatar", label: "Аватар знака (статика /decks/astrology, без AI)" },
   { key: "tarot_atmosphere", label: "Фон расклада Таро" },
   { key: "destiny_card", label: "Карта судьбы (первый ответ)" },
   { key: "scene_illustration", label: "Иллюстрация к вопросу и ответу в чате" },

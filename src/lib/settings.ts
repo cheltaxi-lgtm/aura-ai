@@ -176,7 +176,8 @@ const DEFAULTS = {
     stylePrefix:
       `${BRAND_NAME} mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements`,
     scenes: {
-      zodiac_avatar: true,
+      // Static deck art only — never spend image-gen tokens on onboarding avatars.
+      zodiac_avatar: false,
       tarot_atmosphere: true,
       destiny_card: true,
       scene_illustration: true,

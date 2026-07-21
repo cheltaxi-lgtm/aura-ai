@@ -5,6 +5,7 @@ import { enforceImageGenRateLimit } from "@/lib/api-guards";
 import { generateSceneImage, isImageGenConfigured } from "@/lib/image-gen";
 import type { ImageGenerateRequest, ImageSceneType } from "@/lib/image-prompts";
 import { sceneLabel } from "@/lib/image-prompts";
+import { zodiacSignArtUrl } from "@/utils/zodiac";
 import { getSetting } from "@/lib/settings";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { spreadCardsKey } from "@/lib/spreads";
@@ -84,6 +85,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid scene type" }, { status: 400 });
   }
 
+  // Zodiac spirit = static deck art only. Never call the image model (token burn).
+  if (scene === "zodiac_avatar") {
+    if (!body.zodiac?.trim()) {
+      return NextResponse.json({ error: "zodiac required for zodiac_avatar" }, { status: 400 });
+    }
+    const staticUrl = zodiacSignArtUrl(body.zodiac);
+    if (!staticUrl) {
+      return NextResponse.json({ error: "unknown_zodiac" }, { status: 400 });
+    }
+    return NextResponse.json({
+      imageUrl: staticUrl,
+      scene,
+      sceneLabel: sceneLabel(scene),
+      reused: true,
+      static: true,
+    });
+  }
+
   if (!visual.scenes[scene]) {
     return NextResponse.json({ error: "Scene disabled in admin settings", code: "scene_off" }, { status: 403 });
   }
@@ -147,10 +166,6 @@ export async function POST(request: NextRequest) {
       { jobId, status: "pending", pollUrl: `/api/jobs/${jobId}` },
       { status: 202 }
     );
-  }
-
-  if (scene === "zodiac_avatar" && !body.zodiac?.trim()) {
-    return NextResponse.json({ error: "zodiac required for zodiac_avatar" }, { status: 400 });
   }
 
   let billingCharge: BillingChargeResult | null = null;

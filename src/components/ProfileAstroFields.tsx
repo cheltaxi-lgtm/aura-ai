@@ -2,14 +2,18 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { formatZodiacLabel, genderLabel, getZodiacFromDate } from "@/utils/zodiac";
+import {
+  formatZodiacLabel,
+  genderLabel,
+  getZodiacFromDate,
+  zodiacSignArtUrl,
+} from "@/utils/zodiac";
 import {
   buildAstroMeta,
   LIFE_FOCUS_OPTIONS,
   type AstroMeta,
   type LifeFocus,
 } from "@/lib/astro-profile";
-import { useSceneImage } from "@/hooks/useSceneImage";
 import SceneImage from "@/components/SceneImage";
 
 export interface ProfileAstroValues {
@@ -96,18 +100,7 @@ export default function ProfileAstroFields({
     return getZodiacFromDate(values.birthDate);
   }, [values.birthDate]);
 
-  const zodiacLabel = zodiac ? formatZodiacLabel(zodiac) : "";
-  const {
-    imageUrl: zodiacAvatar,
-    loading: zodiacAvatarLoading,
-    failed: zodiacAvatarFailed,
-    retry: retryZodiacAvatar,
-  } = useSceneImage(
-    enableSceneArt && zodiacLabel
-      ? { scene: "zodiac_avatar", zodiac: zodiacLabel }
-      : null,
-    enableSceneArt
-  );
+  const zodiacAvatar = enableSceneArt && zodiac ? zodiacSignArtUrl(zodiac) : null;
 
   const astroMeta = useMemo(() => {
     if (!values.birthDate) return null;
@@ -274,28 +267,15 @@ export default function ProfileAstroFields({
           animate={{ opacity: 1, scale: 1 }}
           key={`${zodiac.name}-${astroMeta.birthYear}`}
         >
-          {(enableSceneArt && (zodiacAvatarLoading || zodiacAvatar)) && (
+          {zodiacAvatar ? (
             <SceneImage
               imageUrl={zodiacAvatar}
-              loading={zodiacAvatarLoading}
               label="Дух вашего знака"
               variant="card"
               expandable
               className="mx-auto mb-4 max-w-[140px] border-aura-emerald/20"
             />
-          )}
-          {enableSceneArt && zodiacAvatarFailed && !zodiacAvatarLoading && (
-            <div className="mb-4 text-center">
-              <p className="text-xs text-amber-200/80">Дух знака не загрузился.</p>
-              <button
-                type="button"
-                onClick={retryZodiacAvatar}
-                className="mt-2 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 transition hover:border-aura-purple/50 hover:text-white"
-              >
-                Повторить
-              </button>
-            </div>
-          )}
+          ) : null}
           <p className="text-center text-xs uppercase tracking-widest text-gray-500">
             Рассчитано автоматически
           </p>

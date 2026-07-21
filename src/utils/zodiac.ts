@@ -55,6 +55,30 @@ export function formatZodiacLabel(sign: ZodiacSign): string {
   return `${sign.name} ${sign.emoji}`;
 }
 
+/** Static deck art for sun-sign spirit (no AI generation). */
+const ZODIAC_ART_SLUG: Record<string, string> = {
+  Овен: "aries",
+  Телец: "taurus",
+  Близнецы: "gemini",
+  Рак: "cancer",
+  Лев: "leo",
+  Дева: "virgo",
+  Весы: "libra",
+  Скорпион: "scorpio",
+  Стрелец: "sagittarius",
+  Козерог: "capricorn",
+  Водолей: "aquarius",
+  Рыбы: "pisces",
+};
+
+/** Accepts sign name or `formatZodiacLabel` string (`Дева ♍`). */
+export function zodiacSignArtUrl(zodiac: string | ZodiacSign | null | undefined): string | null {
+  if (!zodiac) return null;
+  const name = typeof zodiac === "string" ? zodiac.trim().split(/\s+/)[0] : zodiac.name;
+  const slug = ZODIAC_ART_SLUG[name];
+  return slug ? `/decks/astrology/${slug}.webp` : null;
+}
+
 export function genderLabel(gender: "male" | "female"): string {
   return gender === "male" ? "Мужской" : "Женский";
 }
