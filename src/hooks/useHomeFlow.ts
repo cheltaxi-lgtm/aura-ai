@@ -5,7 +5,7 @@ import type { FlowStep } from "@/components/FlowStepper";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { loadGuestTriplet, clearGuestTriplet, GUEST_TRIPLET_KEY } from "@/lib/guest-triplet";
 import { mergeGuestTripletIntoProfile } from "@/lib/guest-triplet";
-import { clearGuestResumeUiCache, hasActiveGuestResumeIntent } from "@/lib/guest-resume-ui-cache";
+import { clearGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
   POST_AUTH_RETURN_TO_KEY,
   PENDING_INTENT_KEY,
@@ -216,15 +216,10 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       if (typeof window !== "undefined") {
         const params = new URLSearchParams(window.location.search);
         const urlStep = params.get("step") as FlowStep | null;
-        // OAuth just landed: cookie may lag one tick. Never strip step=onboarding
-        // or force intro — that leaves a blank homepage ("white screen").
-        if (
-          urlStep === "onboarding" ||
-          isAuthPending() ||
-          hasAuthPendingQuery() ||
-          hasActiveGuestResumeIntent() ||
-          hasPendingServerProfile()
-        ) {
+        // OAuth cookie lag: keep onboarding deep-link only. Do NOT treat guest
+        // resume UI cache as "needs onboarding" — that blanks the marketing
+        // landing after the free 3-card flip (step≠intro, !isLoggedIn → empty UI).
+        if (urlStep === "onboarding" || isAuthPending() || hasAuthPendingQuery()) {
           setStepState("onboarding");
           persistStep("onboarding");
           finishBootstrap();

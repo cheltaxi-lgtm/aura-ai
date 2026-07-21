@@ -134,7 +134,15 @@ section("static: logged-in 401 never shows guest register copy");
   assert.ok(window.includes("isLoggedIn") || window.includes("else"));
 }
 
-section("static: onboarding cooldown must not skip incomplete profile");
+section("static: guest landing must not blank after triplet");
+{
+  const homeFlow = readSrc("src/hooks/useHomeFlow.ts");
+  // Guest resume cache alone must never force step=onboarding while logged out.
+  assert.ok(homeFlow.includes("Do NOT treat guest"));
+  assert.ok(homeFlow.includes("urlStep === \"onboarding\" || isAuthPending()"));
+  const homePage = readSrc("src/components/HomePage.tsx");
+  assert.ok(homePage.includes("showLanding || step === \"onboarding\""));
+}
 {
   const src = readSrc("src/hooks/useOnboardingFlow.ts");
   assert.ok(src.includes("forceProfileOnboarding"));

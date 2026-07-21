@@ -2515,7 +2515,8 @@ export default function HomePage({
     step !== "chat";
   /** Marketing landing — guests only; never blocked by session bootstrap. */
   /** Guests always get intro landing when step=intro; deep-link ?step= must not hide it. */
-  const showSeoLanding = !isLoggedIn && showLanding;
+  // Recover from a bad local step=onboarding left by guest-resume cache (empty page).
+  const showSeoLanding = !isLoggedIn && (showLanding || step === "onboarding");
   const showSalonHome = showSeoLanding || (!bootstrapping && step === "masters" && !selectedCharacter);
   /** Logged-in home: show salon as soon as flow is bootstrapped (don't wait on session spinner). */
   const showPersonalSalon =
