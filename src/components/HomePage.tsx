@@ -118,6 +118,7 @@ import {
   FLOW_STEP_KEY,
   LAST_MASTER_KEY,
   PENDING_MASTER_KEY,
+  hasPendingServerProfile,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
 import { resetGuestSpreadFlow } from "@/lib/guest-spread-reset";
@@ -1144,8 +1145,12 @@ export default function HomePage({
     if (typeof window !== "undefined") {
       const savedStep = localStorage.getItem(FLOW_STEP_KEY);
       const urlStep = new URLSearchParams(window.location.search).get("step");
-      // Incomplete profile always wins over a stale chat/masters step.
-      if (!authUser?.profileUserId) {
+      // Only force anketa when profile is still incomplete — never after birthDate
+      // was just saved (profileUserId may lag a tick behind refreshAuth).
+      const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
+      const needsAnketa =
+        hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth);
+      if (needsAnketa) {
         setStep("onboarding");
         localStorage.setItem(FLOW_STEP_KEY, "onboarding");
         return;
@@ -1157,7 +1162,8 @@ export default function HomePage({
         return;
       }
     }
-    if (!authUser?.profileUserId) {
+    const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
+    if (hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth)) {
       setStep("onboarding");
       return;
     }
@@ -1172,7 +1178,11 @@ export default function HomePage({
   useEffect(() => {
     if (authLoading || !flowBootstrapped || !isLoggedIn) return;
     if (sessionListMaster) return;
-    if (!authUser?.profileUserId) {
+    const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
+    const needsAnketa =
+      hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth);
+    // Do NOT clear an in-flight guest-resume chat while profileUserId is catching up.
+    if (needsAnketa) {
       if (selectedCharacter) setSelectedCharacter(null);
       if (step !== "onboarding") {
         setStep("onboarding");
@@ -2797,18 +2807,6 @@ export default function HomePage({
             returnTo={resolveRegistrationReturnTo({ guestSpread: true })}
             source="chat_register_gate"
           />
-        ) : selectedCharacter && !authUser?.profileUserId ? (
-          <section className="mb-12 mx-auto max-w-4xl px-6 py-8">
-            <OnboardingForm
-              initialName={authUser?.name ?? profile?.name}
-              initialGender={
-                authUser?.oauthGender === "male" || authUser?.oauthGender === "female"
-                  ? authUser.oauthGender
-                  : profile?.gender
-              }
-              onComplete={handleOnboardingComplete}
-            />
-          </section>
         ) : selectedCharacter ? (
           <>
           <ChatWindow

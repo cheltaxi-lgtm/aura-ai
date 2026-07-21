@@ -140,6 +140,7 @@ section("static: onboarding cooldown must not skip incomplete profile");
   assert.ok(src.includes("forceProfileOnboarding"));
   assert.ok(src.includes("Incomplete profile must stay on the anketa"));
   assert.ok(src.includes("Never auto-open chat before birth profile"));
+  assert.ok(src.includes("Profile is ready — resume even if the form step"));
 }
 
 section("static: reading API distinguishes needs_profile");

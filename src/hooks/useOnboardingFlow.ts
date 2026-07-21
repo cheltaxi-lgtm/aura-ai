@@ -1687,6 +1687,34 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     const shouldGuestResume =
       Boolean(uiCacheForResume) && existingCards.length >= 3;
 
+    // Claim/reading need profileUserId on the server — client authUser may lag.
+    // Profile PATCH already returned userId/profileUserId when linked.
+    if (shouldGuestResume) {
+      if (!savedUserId) {
+        for (let i = 0; i < 6; i += 1) {
+          await refreshAuth?.();
+          await new Promise((r) => window.setTimeout(r, 250));
+          // Re-check local flag from latest /me via a lightweight probe.
+          try {
+            const me = await fetch("/api/auth/me", {
+              credentials: "include",
+              cache: "no-store",
+            });
+            const body = (await me.json().catch(() => ({}))) as {
+              user?: { profileUserId?: string | null };
+            };
+            if (body.user?.profileUserId) {
+              savedUserId = body.user.profileUserId;
+              break;
+            }
+          } catch {
+            /* retry */
+          }
+        }
+      }
+      patchGuestResumeUiCache({ phase: "claiming" });
+    }
+
     // Claim/resume must not be blocked by daily triplet cooldown (AC).
     if (responseData.cooldownBlocked && !shouldGuestResume) {
       persistProfile({
@@ -3469,11 +3497,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     const activeProfile = getActiveProfile();
-    if (!authUser?.profileUserId || hasPendingServerProfile()) {
+    const localBirth = Boolean(
+      String(activeProfile?.birthDate ?? profile?.birthDate ?? "").trim()
+    );
+    if (hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth)) {
       forceProfileOnboarding();
       return;
     }
-    if (!activeProfile?.birthDate && !profile?.birthDate) {
+    if (!localBirth) {
       forceProfileOnboarding();
       return;
     }
@@ -3847,7 +3878,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (hasPendingGuestQuestion()) return;
     // Never auto-open chat before birth profile exists on the server.
     if (!authUser?.profileUserId || hasPendingServerProfile()) return;
-    if (loadGuestResumeUiCache()?.phase === "onboarding_required") return;
+    // Stale onboarding_required is fine once profile exists — guest bootstrap owns resume.
 
     const params = new URLSearchParams(window.location.search);
     const resumeChat =
@@ -4189,7 +4220,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       return;
     }
 
-    if (step === "onboarding") return;
+    // Profile is ready — resume even if the form step is still showing (post-submit lag).
+    // handleOnboardingComplete may already be running; inFlight dedupes claim.
+    if (step === "onboarding" && guestResumeBootRef.current) return;
 
     guestResumeBootRef.current = true;
     setGuestResumeCanRetry(false);
