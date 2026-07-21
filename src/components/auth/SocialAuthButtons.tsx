@@ -27,6 +27,11 @@ export function resolveOAuthErrorMessage(code: string | null | undefined): strin
   return OAUTH_ERROR_MESSAGES[code] ?? OAUTH_ERROR_MESSAGES.oauth_failed;
 }
 
+const CONTINUE_LABEL: Record<OAuthProvider, string> = {
+  yandex: "Продолжить с Яндекс",
+  vk: "Продолжить с VK",
+};
+
 interface SocialAuthButtonsProps {
   mode: OAuthMode;
   returnTo: string;
@@ -63,10 +68,11 @@ export default function SocialAuthButtons({
   disabled = false,
   consentScrollTargetId,
   showEmailDivider = true,
-  emailDividerLabel = "или email",
+  emailDividerLabel = "или по email",
 }: SocialAuthButtonsProps) {
   const [providers, setProviders] = useState<OAuthProvider[]>([]);
   const [nativeError, setNativeError] = useState("");
+  const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const useNativeOAuth = isNativeCapacitorPlatform();
 
   useEffect(() => {
@@ -101,9 +107,9 @@ export default function SocialAuthButtons({
   }, [mode, returnTo, acceptedTerms, ageConfirmed, marketingConsent]);
 
   const handleOAuthClick = (provider: OAuthProvider) => async (e: React.MouseEvent) => {
-    if (consentBlocked || disabled) {
+    if (consentBlocked || disabled || pendingProvider) {
       e.preventDefault();
-      if (consentScrollTargetId) {
+      if (consentBlocked && consentScrollTargetId) {
         document.getElementById(consentScrollTargetId)?.scrollIntoView({
           behavior: "smooth",
           block: "center",
@@ -118,6 +124,7 @@ export default function SocialAuthButtons({
 
     e.preventDefault();
     setNativeError("");
+    setPendingProvider(provider);
     try {
       if (provider === "vk") {
         const { accessToken } = await nativeVkAuth.signIn();
@@ -173,39 +180,43 @@ export default function SocialAuthButtons({
       } else {
         window.location.assign(startHref(provider));
       }
+    } finally {
+      setPendingProvider(null);
     }
   };
 
   if (providers.length === 0) return null;
 
+  // Prefer Yandex then VK for a stable visual order when both are enabled.
+  const ordered = [...providers].sort((a, b) => {
+    const rank = (p: OAuthProvider) => (p === "yandex" ? 0 : p === "vk" ? 1 : 2);
+    return rank(a) - rank(b);
+  });
+
   return (
-    <div className="oauth-provider-buttons space-y-4">
-      <div className="flex flex-wrap items-start justify-center gap-8 sm:gap-10">
-        {providers.map((provider) => {
+    <div className="oauth-provider-buttons space-y-3">
+      <div className="auth-salon-oauth">
+        {ordered.map((provider) => {
           const brand = OAUTH_PROVIDER_BRAND[provider];
-          const blocked = consentBlocked || disabled;
+          const blocked = consentBlocked || disabled || Boolean(pendingProvider);
+          const busy = pendingProvider === provider;
           return (
             <a
               key={provider}
               href={blocked ? "#" : startHref(provider)}
               aria-disabled={blocked}
-              aria-label={brand.label}
-              title={brand.label}
+              aria-busy={busy || undefined}
+              aria-label={CONTINUE_LABEL[provider] ?? brand.label}
+              title={CONTINUE_LABEL[provider] ?? brand.label}
               data-oauth-provider={provider}
               onClick={handleOAuthClick(provider)}
-              className={`oauth-provider-button group flex w-[5.5rem] flex-col items-center gap-2.5 no-underline ${
-                blocked ? "cursor-not-allowed opacity-45" : ""
-              }`}
+              className="auth-salon-oauth-btn"
             >
-              <span
-                className={`oauth-provider-icon flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-white shadow-lg ring-2 ring-offset-2 ring-offset-[#0a0612] transition duration-200 ${brand.bg} ${brand.ring} ${
-                  blocked ? "" : `${brand.hover} group-hover:scale-105 group-active:scale-95`
-                }`}
-              >
-                <OAuthProviderIcon provider={provider} className="h-8 w-8" />
+              <span className={`auth-salon-oauth-icon ${brand.bg}`}>
+                <OAuthProviderIcon provider={provider} className="h-4 w-4" />
               </span>
-              <span className="oauth-provider-label text-center text-xs font-medium leading-tight text-aura-ivory/80">
-                {brand.label}
+              <span className="auth-salon-oauth-label">
+                {busy ? "Открываем…" : CONTINUE_LABEL[provider] ?? brand.label}
               </span>
             </a>
           );
@@ -213,20 +224,15 @@ export default function SocialAuthButtons({
       </div>
 
       {consentBlocked ? (
-        <p className="text-center text-xs text-amber-200/85">
-          Отметьте согласие с условиями и возраст 18+, затем выберите соцсеть.
+        <p className="auth-salon-hint text-center">
+          Подтвердите возраст и согласие с условиями, чтобы продолжить
         </p>
       ) : null}
       {nativeError ? <p className="text-center text-xs text-red-300">{nativeError}</p> : null}
 
       {showEmailDivider ? (
-        <div className="relative py-1">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-white/10" />
-          </div>
-          <p className="relative mx-auto w-fit bg-transparent px-3 text-xs text-gray-500">
-            {emailDividerLabel}
-          </p>
+        <div className="auth-salon-divider">
+          <span>{emailDividerLabel}</span>
         </div>
       ) : null}
     </div>
@@ -238,7 +244,10 @@ export function OAuthErrorBanner({ code, returnTo }: { code?: string | null; ret
   const message = resolveOAuthErrorMessage(code ?? null);
   if (!message) return null;
   return (
-    <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-center text-sm text-amber-200/90">
+    <div
+      role="alert"
+      className="rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-3 text-center text-sm text-amber-100/90"
+    >
       {message}
     </div>
   );

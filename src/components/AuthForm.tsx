@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
 import { isAgeGateConfirmed } from "@/lib/age-gate";
 import {
@@ -79,6 +80,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [returnTo, setReturnTo] = useState("/");
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
@@ -447,11 +449,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     requiresLegalConsent ? (
       <div
         id="oauth-consent-block"
-        className={`rounded-xl border bg-white/[0.02] p-4 ${
+        className={
           oauthError === "consent_required"
-            ? "border-amber-400/40 ring-1 ring-amber-400/20"
-            : "border-white/8"
-        }`}
+            ? "rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-3.5"
+            : ""
+        }
       >
         <OAuthConsentFields
           acceptedTerms={acceptedTerms}
@@ -472,16 +474,28 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           ageId="legal-age-consent"
         />
         {!acceptedTerms || !ageConfirmed ? (
-          <p className="mt-3 text-center text-xs text-amber-200/80">
-            Отметьте согласие с условиями и подтвердите возраст 18+.
+          <p className="auth-salon-hint mt-3 text-center">
+            Подтвердите возраст и согласие с условиями, чтобы продолжить
           </p>
         ) : null}
       </div>
     ) : null;
 
+  const isUserLogin = mode === "login" && role === "user";
+  const fieldClass = isUserLogin || isUserRegister
+    ? "auth-salon-field"
+    : "w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white";
+  const labelClass = isUserLogin || isUserRegister
+    ? "auth-salon-label"
+    : "mb-1 block text-xs text-gray-500";
+  const formShellClass =
+    isUserLogin || isUserRegister
+      ? "auth-form space-y-5"
+      : "auth-form glass-panel mx-auto max-w-lg space-y-5 p-8";
+
   if (isUserRegister && !showEmailRegister) {
     return (
-      <div className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
+      <div className={formShellClass}>
         <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
         {legalConsentFields}
         <SocialAuthButtons
@@ -498,13 +512,16 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         <button
           type="button"
           onClick={() => setShowEmailRegister(true)}
-          className="btn-luxe btn-luxe--md btn-luxe--ghost w-full py-3 text-sm"
+          className="btn-ghost w-full py-3 text-sm"
         >
           Регистрация по email
         </button>
-        <p className="text-center text-xs text-gray-600">
+        <p className="text-center text-sm text-aura-ivory/55">
           Уже есть аккаунт?{" "}
-          <Link href={loginHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+          <Link
+            href={loginHref}
+            className="font-medium text-aura-champagne underline-offset-2 hover:underline"
+          >
             Войти
           </Link>
         </p>
@@ -513,12 +530,12 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
+    <form onSubmit={handleSubmit} className={formShellClass}>
       {isUserRegister ? (
         <button
           type="button"
           onClick={() => setShowEmailRegister(false)}
-          className="text-xs text-gray-500 transition hover:text-aura-champagne"
+          className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
         >
           ← Войти через VK или Яндекс
         </button>
@@ -536,16 +553,17 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             marketingConsent={marketingConsent}
             disabled={loading}
             consentScrollTargetId="oauth-consent-block"
+            emailDividerLabel="или по email"
           />
         </>
       ) : null}
       {isUserRegister ? (
-        <p className="text-center text-sm text-gray-400">Создайте аккаунт по email</p>
+        <p className="text-center text-sm text-aura-ivory/60">Создайте аккаунт по email</p>
       ) : null}
       {mode === "register" && !isUserRegister ? (
         <>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Имя *</label>
+            <label className={labelClass}>Имя *</label>
             <input
               type="text"
               required
@@ -553,29 +571,29 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className={fieldClass}
             />
           </div>
           {isExpert && (
             <>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Адрес страницы</label>
+                <label className={labelClass}>Адрес страницы</label>
                 <input
                   type="text"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="gadalka_marina"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                  className={fieldClass}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Специализация</label>
+                <label className={labelClass}>Специализация</label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Таро · Расклады"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                  className={fieldClass}
                 />
               </div>
             </>
@@ -586,7 +604,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       {mode === "register" && isUserRegister ? (
         <>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Имя *</label>
+            <label className={labelClass}>Имя *</label>
             <input
               type="text"
               required
@@ -594,7 +612,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className={fieldClass}
             />
           </div>
           {legalConsentFields}
@@ -602,12 +620,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       ) : null}
 
       <div className={isUserRegister ? "border-t border-white/10 pt-5" : ""}>
-        <p className={isUserRegister ? "mb-4 text-center text-xs text-gray-500" : "hidden"}>
+        <p className={isUserRegister ? "mb-4 text-center text-xs text-aura-ivory/45" : "hidden"}>
           Аккаунт для сохранения истории
         </p>
         <div className="space-y-4">
           <div>
-            <label htmlFor={`${role}-${mode}-email`} className="mb-1 block text-xs text-gray-500">Email *</label>
+            <label htmlFor={`${role}-${mode}-email`} className={labelClass}>
+              Email *
+            </label>
             <input
               id={`${role}-${mode}-email`}
               type="email"
@@ -615,25 +635,47 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className={fieldClass}
             />
           </div>
 
           <div>
-            <label htmlFor={`${role}-${mode}-password`} className="mb-1 block text-xs text-gray-500">Пароль *</label>
-            <input
-              id={`${role}-${mode}-password`}
-              type="password"
-              required
-              minLength={mode === "register" ? MIN_PASSWORD_LENGTH : undefined}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "register" ? "new-password" : "current-password"}
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
-            />
+            <div className="mb-1 flex items-end justify-between gap-3">
+              <label htmlFor={`${role}-${mode}-password`} className={`${labelClass} mb-0`}>
+                Пароль *
+              </label>
+              {mode === "login" && role === "user" ? (
+                <Link
+                  href="/auth/user/forgot-password"
+                  className="shrink-0 text-xs text-aura-champagne/85 hover:text-aura-champagne hover:underline"
+                >
+                  Забыли пароль?
+                </Link>
+              ) : null}
+            </div>
+            <div className="auth-salon-password-wrap">
+              <input
+                id={`${role}-${mode}-password`}
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={mode === "register" ? MIN_PASSWORD_LENGTH : undefined}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                className={fieldClass}
+              />
+              <button
+                type="button"
+                className="auth-salon-password-toggle"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {mode === "register" ? (
               <div className="mt-2 space-y-1">
-                <p className="text-xs text-gray-500">Минимум {MIN_PASSWORD_LENGTH} символов</p>
+                <p className="text-xs text-aura-ivory/45">Минимум {MIN_PASSWORD_LENGTH} символов</p>
                 {password.length > 0 && passwordStrength ? (
                   <p className={`text-xs ${PASSWORD_STRENGTH_COLORS[passwordStrength]}`}>
                     Надёжность: {PASSWORD_STRENGTH_LABELS[passwordStrength]}
@@ -641,45 +683,35 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
                 ) : null}
               </div>
             ) : null}
-            {mode === "login" && role === "user" ? (
-              <p className="mt-2 text-right">
-                <Link
-                  href="/auth/user/forgot-password"
-                  className="text-xs text-aura-champagne/80 hover:text-aura-champagne hover:underline"
-                >
-                  Забыли пароль?
-                </Link>
-              </p>
-            ) : null}
           </div>
         </div>
       </div>
 
       {isUserRegister ? (
         <details className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-          <summary className="cursor-pointer text-sm text-gray-400">
+          <summary className="cursor-pointer text-sm text-aura-ivory/55">
             Дата рождения (необязательно) — пропустить отдельный шаг
           </summary>
           <div className="mt-4 space-y-3">
-            <p className="text-xs leading-relaxed text-gray-500">
+            <p className="text-xs leading-relaxed text-aura-ivory/45">
               Если укажете сейчас, сразу откроем кабинет и начислим стартовые руны. Иначе спросим на
               следующем экране.
             </p>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Дата рождения</label>
+              <label className={labelClass}>Дата рождения</label>
               <input
                 type="date"
                 value={optionalBirthDate}
                 onChange={(e) => setOptionalBirthDate(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                className={fieldClass}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Пол</label>
+              <label className={labelClass}>Пол</label>
               <select
                 value={optionalGender}
                 onChange={(e) => setOptionalGender(e.target.value as "male" | "female")}
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                className={fieldClass}
               >
                 <option value="female">Женский</option>
                 <option value="male">Мужской</option>
@@ -689,59 +721,77 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </details>
       ) : null}
 
-      {emailExists ? (
-        <p className="text-center text-sm text-amber-300/90">
-          Этот email уже зарегистрирован.{" "}
-          <Link href={loginHref} className="text-aura-champagne underline underline-offset-2">
-            Войти в аккаунт
-          </Link>
-        </p>
-      ) : error ? (
-        <div className="space-y-2 text-center">
-          <p className="text-sm text-red-400">{error}</p>
-          {recaptchaFailed ? (
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              className="text-sm text-aura-champagne underline underline-offset-2 hover:text-white"
-            >
-              Повторить проверку
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="auth-salon-error-slot space-y-2 text-center" aria-live="polite">
+        {emailExists ? (
+          <p className="text-sm text-amber-200/90">
+            Этот email уже зарегистрирован.{" "}
+            <Link href={loginHref} className="text-aura-champagne underline underline-offset-2">
+              Войти в аккаунт
+            </Link>
+          </p>
+        ) : error ? (
+          <div className="space-y-2">
+            <p className="text-sm text-red-300">{error}</p>
+            {recaptchaFailed ? (
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                className="text-sm text-aura-champagne underline underline-offset-2 hover:text-white"
+              >
+                Повторить проверку
+              </button>
+            ) : null}
+            {mode === "login" ? (
+              <ul className="space-y-1 text-xs leading-relaxed text-aura-ivory/45">
+                {getLoginFormHints(role).map((hint) => (
+                  <li key={hint}>• {hint}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       {mode === "login" && role !== "user" ? legalConsentFields : null}
-
-      {mode === "login" ? (
-        <ul className="space-y-1 text-xs leading-relaxed text-gray-500">
-          {getLoginFormHints(role).map((hint) => (
-            <li key={hint}>• {hint}</li>
-          ))}
-        </ul>
-      ) : null}
 
       <button
         type="submit"
         disabled={!canSubmit}
-        className="btn-neon w-full py-3 text-sm disabled:opacity-50"
+        className="btn-primary w-full py-3.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
       >
-        {loading ? "Сохраняем…" : mode === "login" ? "Войти" : "Создать аккаунт и продолжить"}
+        {loading
+          ? mode === "login"
+            ? "Входим…"
+            : "Сохраняем…"
+          : mode === "login"
+            ? "Войти"
+            : "Создать аккаунт и продолжить"}
       </button>
+      {!canSubmit && requiresLegalConsent && (!acceptedTerms || !ageConfirmed) && !loading ? (
+        <p className="auth-salon-hint -mt-2 text-center">
+          Подтвердите возраст и согласие с условиями, чтобы продолжить
+        </p>
+      ) : null}
 
       {(mode === "login" && showRegisterLink) || mode === "register" ? (
-        <p className="text-center text-xs text-gray-600">
+        <p className="text-center text-sm text-aura-ivory/55">
           {mode === "login" ? (
             <>
-              Нет аккаунта?{" "}
-              <Link href={registerHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
-                Регистрация
+              Впервые в Zovus?{" "}
+              <Link
+                href={registerHref}
+                className="font-medium text-aura-champagne underline-offset-2 hover:underline"
+              >
+                Создать аккаунт
               </Link>
             </>
           ) : (
             <>
               Уже есть аккаунт?{" "}
-              <Link href={loginHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+              <Link
+                href={loginHref}
+                className="font-medium text-aura-champagne underline-offset-2 hover:underline"
+              >
                 Войти
               </Link>
             </>
