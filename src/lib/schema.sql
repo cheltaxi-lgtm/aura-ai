@@ -104,6 +104,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'completed')),
   awaiting_context BOOLEAN NOT NULL DEFAULT FALSE,
+  guest_resume_token_hash TEXT,
+  guest_resume_expires_at TIMESTAMPTZ,
+  guest_resume_status TEXT
+    CHECK (
+      guest_resume_status IS NULL
+      OR guest_resume_status IN ('issued', 'claimed', 'reading_consumed', 'expired')
+    ),
+  guest_resume_fingerprint TEXT,
+  guest_resume_reading_id UUID REFERENCES history(id) ON DELETE SET NULL,
+  guest_resume_claimed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -115,6 +125,14 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_character
 
 CREATE INDEX IF NOT EXISTS idx_sessions_active
   ON sessions (user_id, character_key, status, updated_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_guest_resume_token_hash
+  ON sessions (guest_resume_token_hash)
+  WHERE guest_resume_token_hash IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sessions_guest_resume_expiry
+  ON sessions (guest_resume_expires_at)
+  WHERE guest_resume_status = 'issued';
 
 -- === Чат ===
 CREATE TABLE IF NOT EXISTS chat_messages (

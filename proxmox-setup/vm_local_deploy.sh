@@ -382,6 +382,7 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/cron-pg-backup.sh \
   /opt/aura-ai/proxmox-setup/cron-cleanup-empty-sessions.sh \
   /opt/aura-ai/proxmox-setup/cron-joint-reading-sweep.sh \
+  /opt/aura-ai/proxmox-setup/cron-guest-resume-expire.sh \
   /opt/aura-ai/proxmox-setup/cron-natal-transits.sh \
   /opt/aura-ai/proxmox-setup/cron-reengagement-emails.sh 2>/dev/null || true
 bash /opt/aura-ai/proxmox-setup/install-crons.sh

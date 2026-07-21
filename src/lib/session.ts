@@ -61,9 +61,23 @@ function parseSessionCards(raw: unknown): string[] | null {
   if (!raw) return null;
   if (Array.isArray(raw)) {
     const names = raw
-      .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
-      .map((c) => c.trim());
+      .map((c) => {
+        if (typeof c === "string" && c.trim()) return c.trim();
+        if (c && typeof c === "object" && typeof (c as { name?: unknown }).name === "string") {
+          const name = String((c as { name: string }).name).trim();
+          const reversed = Boolean((c as { reversed?: unknown }).reversed);
+          return name ? (reversed ? `${name} (перевёрнутая)` : name) : "";
+        }
+        return "";
+      })
+      .filter((n) => n.length > 0);
     return names.length ? names : null;
+  }
+  if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    if (obj.kind === "guest_triplet_resume" && Array.isArray(obj.symbols)) {
+      return parseSessionCards(obj.symbols);
+    }
   }
   return null;
 }

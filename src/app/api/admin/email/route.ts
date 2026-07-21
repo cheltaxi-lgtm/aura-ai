@@ -46,6 +46,13 @@ const CRON_JOBS = [
     endpoint: "/api/cron/joint-reading-sweep",
     description: "Истечение приглашений и email партнёрам.",
   },
+  {
+    id: "guest-resume-expire",
+    label: "Guest triplet resume TTL",
+    schedule: "05:35 UTC ежедневно (proxmox-setup/install-crons.sh)",
+    endpoint: "/api/cron/guest-resume-expire",
+    description: "Помечает expired только unclaimed issued-чеки старше 24ч.",
+  },
 ];
 
 function parsePurgeParams(body: Record<string, unknown>) {

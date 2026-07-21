@@ -13,7 +13,9 @@ import {
 import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
+import { saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import { buildGuestTripletPreview, buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
+import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
   GUEST_SPREAD_DRAFT_KEY,
@@ -354,21 +356,67 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
   const handleFinish = () => {
     if (deck.length < CARD_COUNT || !allRevealed) return;
     const teaser = buildGuestTripletTeaser(deck);
-    saveGuestTriplet({
-      tarotCards: deck,
-      deckSystem: system,
-      teaser,
-      completedAt: new Date().toISOString(),
-      question: landingQuestion || undefined,
-      masterId,
-    });
-    trackGuestSpreadCompleted();
-    trackRegistrationGateView("guest_triplet_done");
-    setStep("done");
-    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
-    window.requestAnimationFrame(() => {
-      document.getElementById("guest-spread")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    const symbols = deck.map((card, index) => ({
+      id: card.id,
+      name: card.name,
+      position: index,
+      reversed: false,
+    }));
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/guest-triplet/complete", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            masterId,
+            system,
+            spreadId: GUEST_RESUME_SPREAD_ID,
+            question: landingQuestion || "",
+            cards: symbols,
+          }),
+        });
+        if (!res.ok) {
+          setAgeGateError(
+            res.status === 403
+              ? "Подтвердите возраст 18+, чтобы сохранить расклад."
+              : "Не удалось сохранить расклад. Попробуйте ещё раз."
+          );
+          return;
+        }
+      } catch {
+        setAgeGateError("Не удалось сохранить расклад. Проверьте соединение и попробуйте ещё раз.");
+        return;
+      }
+
+      saveGuestTriplet({
+        tarotCards: deck,
+        deckSystem: system,
+        teaser,
+        completedAt: new Date().toISOString(),
+        question: landingQuestion || undefined,
+        masterId,
+      });
+      saveGuestResumeUiCache({
+        version: 1,
+        origin: "guest",
+        masterId,
+        system,
+        spreadId: GUEST_RESUME_SPREAD_ID,
+        question: landingQuestion || "",
+        teaser,
+        cards: symbols,
+        completedAt: new Date().toISOString(),
+      });
+      trackGuestSpreadCompleted();
+      trackRegistrationGateView("guest_triplet_done");
+      setStep("done");
+      sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+      window.requestAnimationFrame(() => {
+        document.getElementById("guest-spread")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    })();
   };
 
   const sharePayload = useMemo(() => {

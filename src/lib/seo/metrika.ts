@@ -157,6 +157,60 @@ export function trackRegistrationError(errorType: string): void {
   trackLandingEvent("registration_error", { error_type: errorType });
 }
 
+export function trackGuestTripletResumeDetected(props: {
+  has_question: boolean;
+  master_id: string;
+  cards_count: number;
+  auth_method?: string;
+}): void {
+  trackLandingEvent("guest_triplet_resume_detected", {
+    has_question: props.has_question ? 1 : 0,
+    master_id: props.master_id,
+    cards_count: props.cards_count,
+    ...(props.auth_method ? { auth_method: props.auth_method } : {}),
+  });
+}
+
+export function trackGuestTripletResumeStarted(props: {
+  master_id: string;
+  cards_count: number;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_triplet_resume_started", {
+    master_id: props.master_id,
+    cards_count: props.cards_count,
+    has_question: props.has_question ? 1 : 0,
+  });
+}
+
+export function trackGuestTripletResumeCompleted(props: {
+  master_id: string;
+  reading_mode: string;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_triplet_resume_completed", {
+    master_id: props.master_id,
+    reading_mode: props.reading_mode,
+    has_question: props.has_question ? 1 : 0,
+  });
+}
+
+export function trackGuestTripletResumeFailed(
+  stage: "receipt" | "claim" | "session" | "reading" | "expired" | "storage" | "sync"
+): void {
+  trackLandingEvent("guest_triplet_resume_failed", { stage });
+}
+
+export function trackGuestTripletRedrawPrevented(props: {
+  had_ask_params: boolean;
+  master_id: string;
+}): void {
+  trackLandingEvent("guest_triplet_redraw_prevented", {
+    had_ask_params: props.had_ask_params ? 1 : 0,
+    master_id: props.master_id,
+  });
+}
+
 export function trackRunePurchase(amountRub: number, packageId?: string): void {
   if (typeof window === "undefined" || !window.ym || !Number.isFinite(amountRub)) return;
   try {

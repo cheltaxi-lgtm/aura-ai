@@ -121,6 +121,7 @@ import {
   readStoredProfile,
 } from "@/lib/home-flow-storage";
 import { resetGuestSpreadFlow } from "@/lib/guest-spread-reset";
+import { loadGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
   consumePendingGuestQuestion,
   persistPendingIntent,
@@ -128,7 +129,7 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
-import { trackFirstChatOpened } from "@/lib/seo/metrika";
+import { trackFirstChatOpened, trackGuestTripletRedrawPrevented } from "@/lib/seo/metrika";
 import {
   decodeNumerologSpreadId,
   isNumerologSessionToolId,
@@ -456,6 +457,8 @@ export default function HomePage({
     newTripletDraft,
     tripletNotice,
     setTripletNotice,
+    guestResumeCanRetry,
+    retryGuestTripletResume,
     tripletCooldown,
     spreadRitual,
     setSpreadRitual,
@@ -662,6 +665,22 @@ export default function HomePage({
     if (askParam) {
       deepLinkSpreadParsedRef.current = true;
       autoAskParsedRef.current = true;
+
+      // Guest resume guard: never open SEO newSpreadOnly when UI cache expects claim.
+      const guestUi = loadGuestResumeUiCache();
+      if (isLoggedIn && guestUi) {
+        trackGuestTripletRedrawPrevented({
+          had_ask_params: true,
+          master_id: guestUi.masterId || params.get("master")?.trim() || "veronika",
+        });
+        const url = new URL(window.location.href);
+        url.searchParams.delete("ask");
+        url.searchParams.delete("master");
+        url.searchParams.delete("spread");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        return;
+      }
+
       const spreadFromHero = params.get("spread") === "1";
       const matched = matchSpreadIntentFromQuestion(askParam);
       if (matched) {
@@ -2932,7 +2951,16 @@ export default function HomePage({
                 </div>
                 {tripletNotice ? (
                   <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
-                    {tripletNotice}
+                    <p>{tripletNotice}</p>
+                    {guestResumeCanRetry ? (
+                      <button
+                        type="button"
+                        onClick={retryGuestTripletResume}
+                        className="btn-neon mt-3 px-5 py-2 text-sm"
+                      >
+                        Повторить
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 {tripletCooldown && !tripletCooldown.allowed ? (
@@ -3105,7 +3133,16 @@ export default function HomePage({
                 ) : null}
                 {tripletNotice ? (
                   <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
-                    {tripletNotice}
+                    <p>{tripletNotice}</p>
+                    {guestResumeCanRetry ? (
+                      <button
+                        type="button"
+                        onClick={retryGuestTripletResume}
+                        className="btn-neon mt-3 px-5 py-2 text-sm"
+                      >
+                        Повторить
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 {deckGalleryOpen && (profile || browseDeckMaster) && (

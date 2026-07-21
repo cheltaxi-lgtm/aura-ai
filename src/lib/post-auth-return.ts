@@ -199,15 +199,9 @@ export function resolveRegistrationReturnTo(context: RegistrationReturnContext =
   }
   if (context.guestSpread) {
     const masterId = resolveGuestSpreadMasterId(context.guestMasterId);
-    const question = context.guestQuestion?.trim();
-    if (question && question.length >= 8) {
-      const params = new URLSearchParams({
-        ask: question,
-        spread: "1",
-        master: masterId,
-      });
-      return withAppShellIfNeeded(`/?${params.toString()}`);
-    }
+    // Never emit SEO ask+spread=1 — guest resume uses server receipt + cookies.
+    // Question/cards stay in UI cache / server receipt, not URL.
+    void context.guestQuestion;
     return withAppShellIfNeeded(`/?master=${encodeURIComponent(masterId)}`);
   }
   return withAppShellIfNeeded("/");

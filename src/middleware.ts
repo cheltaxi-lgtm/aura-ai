@@ -26,6 +26,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/ritual/config",
   "/api/age-gate/confirm",
   "/api/session",
+  "/api/guest-triplet/complete",
   "/api/debug/client-log",
   // Diagnostic breadcrumb only (camera/upload failures) — must not depend on
   // login state, otherwise failures from logged-out users vanish silently.

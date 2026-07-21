@@ -22,7 +22,7 @@ import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
 import { pickUserFacingError } from "@/lib/user-facing-error";
-import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
+import { loadGuestTriplet } from "@/lib/guest-triplet";
 import {
   clearNeedsServerProfile,
   clearPendingMasterResume,
@@ -337,18 +337,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         if (guest?.question?.trim()) {
           persistPendingGuestQuestion(guest.question);
         }
-        if (data.profile) {
-          try {
-            const raw = localStorage.getItem("aura_profile");
-            const mergedProfile = raw ? JSON.parse(raw) : null;
-            if (mergedProfile) {
-              await syncGuestSpreadToServer(mergedProfile, guest);
-            }
-          } catch {
-            /* reading can still load from local profile */
-          }
-          clearGuestTriplet();
-        }
+        // Guest resume: server receipt + cookies are authoritative. Do not clear UI cache here.
       }
 
       if (typeof window !== "undefined" && isUserRegister && !data.profile) {

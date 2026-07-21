@@ -1,0 +1,33 @@
+# Local-staging Postgres only — NOT production, NOT default docker-compose.yml.
+# Distinct DB/user/port from the default auraai/5432 development stack.
+#
+# Usage:
+#   docker compose -f docker-compose.local-staging.yml up -d
+#   set DATABASE_URL=postgresql://zovus_stg:<password>@127.0.0.1:5433/zovus_local_staging
+#   npm run migrate:status && npm run migrate
+#   docker compose -f docker-compose.local-staging.yml down -v
+#
+# Override password via LOCAL_STAGING_PGPASSWORD (never commit real secrets).
+
+services:
+  postgres-local-staging:
+    image: pgvector/pgvector:pg16
+    container_name: zovus-local-staging-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zovus_stg
+      POSTGRES_PASSWORD: ${LOCAL_STAGING_PGPASSWORD:-local_staging_only_change_me}
+      POSTGRES_DB: zovus_local_staging
+    ports:
+      - "5433:5432"
+    volumes:
+      - local_staging_pg_data:/var/lib/postgresql/data
+      - ./src/lib/schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zovus_stg -d zovus_local_staging"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  local_staging_pg_data:

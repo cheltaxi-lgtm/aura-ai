@@ -94,6 +94,14 @@ import {
 import { pythagorasSquare } from "@/lib/numerology/pythagoras-square";
 import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet, loadGuestTriplet } from "@/lib/guest-triplet";
+import { loadGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import {
+  GUEST_RESUME_CAPACITOR_RECOVERY,
+  GUEST_RESUME_RETRY_TITLE,
+  GUEST_RESUME_TRANSITION_SUBTITLE,
+  GUEST_RESUME_TRANSITION_TITLE,
+  runGuestTripletResume,
+} from "@/lib/guest-triplet-resume";
 import { GUEST_SPREAD_SECTION_ID, GUEST_SPREAD_START_EVENT, GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import {
   formatTripletCooldownRu,
@@ -373,6 +381,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [tripletCooldown, setTripletCooldown] = useState<TripletCooldownStatus | null>(null);
   const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
   const [tripletNotice, setTripletNotice] = useState<string | null>(null);
+  const [guestResumeCanRetry, setGuestResumeCanRetry] = useState(false);
   const [serverContinueIds, setServerContinueIds] = useState<string[]>([]);
   const [newTripletDraft, setNewTripletDraft] = useState(false);
   const [spreadRitual, setSpreadRitual] = useState<{
@@ -428,7 +437,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const newTripletInProgressRef = useRef(false);
   const pendingReadingResumeRef = useRef<string | null>(null);
   const sessionSpreadMetaRef = useRef<{
-    spreadType?: "daily" | "new" | "photo";
+    spreadType?: "daily" | "new" | "photo" | "guest_resume";
     spreadId?: SpreadId | string;
     cardNames?: string[];
     periodSpreadScope?: PeriodSpreadScope;
@@ -440,6 +449,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const bindSessionToMasterRef = useRef<(masterId: string, overrideSessionId?: string) => Promise<void>>(
     async () => {}
   );
+  type GuestResumeLoadArgs = {
+    sessionId: string;
+    masterId: string;
+    question: string;
+    cards: Array<{ id: number; name: string; position: number; reversed: boolean }>;
+    profileBase?: StoredProfile | null;
+    questionFallback?: string;
+    teaserFallback?: string;
+    deckSystem?: StoredProfile["deckSystem"];
+  };
+  const loadGuestResumeReadingRef = useRef<
+    (args: GuestResumeLoadArgs) => Promise<"full" | "existing" | "failed">
+  >(async () => "failed");
   const sessionListBackMasterRef = useRef<string | null>(null);
   const pendingChatOptsRef = useRef<{ masterId: string; skipReading: boolean } | null>(null);
   const openChatWithSessionParamsRef = useRef<
@@ -1558,14 +1580,22 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     };
 
     const guestDraft = loadGuestTriplet();
+    const uiCacheEarly = loadGuestResumeUiCache();
     const existingCards =
       (profile?.tarotCards?.length ?? 0) >= 3
         ? profile!.tarotCards!
         : (guestDraft?.tarotCards?.length ?? 0) >= 3
           ? guestDraft!.tarotCards
-          : [];
+          : uiCacheEarly
+            ? uiCacheEarly.cards.map((c) => ({
+                id: c.id,
+                name: c.name,
+                meaning: "",
+              }))
+            : [];
     let savedUserId = profile?.userId;
-    const hasGuestSpread = existingCards.length >= 3;
+    // Server receipt is authoritative for guest resume — do not create a new triplet via /api/onboarding.
+    const hasGuestSpread = existingCards.length >= 3 && !uiCacheEarly;
     const endpoint = hasGuestSpread ? "/api/onboarding" : "/api/profile";
     const payload = hasGuestSpread
       ? {
@@ -1619,10 +1649,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     clearNeedsServerProfile();
     persistProfile(savedProfile);
     clearOnboardingUrlParams();
+    // Keep guest UI cache until resume coordinator acknowledges (do not clearGuestTriplet early).
     if (hasGuestSpread) clearGuestTriplet();
     await refreshAuth?.();
 
-    if (responseData.cooldownBlocked) {
+    const uiCacheForResume = loadGuestResumeUiCache();
+    const shouldGuestResume =
+      Boolean(uiCacheForResume) && existingCards.length >= 3;
+
+    // Claim/resume must not be blocked by daily triplet cooldown (AC).
+    if (responseData.cooldownBlocked && !shouldGuestResume) {
       persistProfile({
         ...savedProfile,
         teaser: profile?.teaser ?? guestDraft?.teaser,
@@ -1636,32 +1672,52 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       return;
     }
 
-    if (effectiveTripletCooldown && !effectiveTripletCooldown.allowed) {
+    if (
+      effectiveTripletCooldown &&
+      !effectiveTripletCooldown.allowed &&
+      !shouldGuestResume
+    ) {
       refreshSavedReadings();
       void finishProfileOnboarding("masters");
       return;
     }
     refreshSavedReadings();
     if (existingCards.length >= 3) {
-      const guestQuestion = (data.mainQuestion || profile?.mainQuestion)?.trim();
-      if (guestQuestion && guestQuestion.length >= 8) {
+      const uiCache = uiCacheForResume;
+      if (uiCache) {
+        setGuestResumeCanRetry(false);
+        setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
+        const resumeResult = await runGuestTripletResume({
+          authMethod: "onboarding",
+          loadReading: (args) =>
+            loadGuestResumeReadingRef.current({
+              ...args,
+              profileBase: savedProfile,
+              questionFallback: data.mainQuestion || profile?.mainQuestion,
+              teaserFallback: uiCache.teaser || savedProfile.teaser,
+              deckSystem: uiCache.system as StoredProfile["deckSystem"],
+            }),
+        });
+
+        if (!resumeResult.ok) {
+          if (resumeResult.capacitorRecovery) {
+            setGuestResumeCanRetry(false);
+            setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+            void finishProfileOnboarding("masters");
+            return;
+          }
+          setGuestResumeCanRetry(true);
+          setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+          // Keep UI cache for retry; stay on masters with notice.
+          void finishProfileOnboarding("masters");
+          return;
+        }
+
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
         trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
         clearShareRegistrationAttribution();
-        const masterId = resolveTripletChatMasterId(
-          masters,
-          profile?.deckSystem ?? tripletSystem,
-          profile?.tripletMasterId ||
-            localStorage.getItem(PENDING_MASTER_KEY) ||
-            undefined
-        );
-        const destination = resolveRegistrationReturnTo({
-          guestSpread: true,
-          guestMasterId: masterId,
-          guestQuestion,
-        });
-        if (typeof window !== "undefined") {
-          window.location.assign(destination);
-        }
+        clearOnboardingUrlParams();
         return;
       }
 
@@ -2151,6 +2207,92 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       handleOpenPaywallRef,
     ]
   );
+
+  loadGuestResumeReadingRef.current = async ({
+    sessionId,
+    masterId,
+    question,
+    cards,
+    profileBase,
+    questionFallback,
+    teaserFallback,
+    deckSystem,
+  }) => {
+    const masterToBind = resolveTripletChatMasterId(
+      masters,
+      deckSystem ?? profile?.deckSystem ?? tripletSystem,
+      masterId ||
+        profileBase?.tripletMasterId ||
+        profile?.tripletMasterId ||
+        localStorage.getItem(PENDING_MASTER_KEY) ||
+        undefined
+    );
+    if (!masterToBind) return "failed";
+
+    const ordered = [...cards].sort((a, b) => a.position - b.position);
+    const cardNames = ordered.map((c) =>
+      c.reversed ? `${c.name} (перевёрнутая)` : c.name
+    );
+    const base = profileBase ?? getActiveProfile();
+    if (base) {
+      persistProfile({
+        ...base,
+        tarotCards: ordered.map((c) => ({
+          id: c.id,
+          name: c.name,
+          meaning: "",
+        })),
+        ...(deckSystem ? { deckSystem } : {}),
+        mainQuestion: question || questionFallback || base.mainQuestion,
+        tripletMasterId: masterToBind,
+        teaser: teaserFallback || base.teaser,
+      });
+    }
+    applyTripletMaster(masterToBind);
+    sessionSpreadMetaRef.current = { spreadType: "guest_resume", cardNames };
+    setSessionIntention(null);
+    persistSessionIntention(masterToBind, null);
+    setIntentionSpread(null);
+    persistIntentionSpreadState(masterToBind, null);
+    setSpreadFlipped(spreadFlippedState(ordered.length, true));
+    pendingChatOptsRef.current = { masterId: masterToBind, skipReading: false };
+    const deps = chat();
+    if (deps) {
+      deps.chatLoadedForRef.current = null;
+      deps.setMessages([]);
+      deps.setConsultationSessionId(sessionId);
+      if (deps.consultationSessionIdRef) {
+        deps.consultationSessionIdRef.current = sessionId;
+      }
+    }
+    await bindSessionToMasterRef.current(masterToBind, sessionId);
+    persistStep("chat");
+    await beginChatAfterIntention(masterToBind, null, "existing");
+    try {
+      const readingRes = await fetch("/api/reading", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterId: masterToBind,
+          sessionId,
+          tarotCards: ordered.map((c) => ({
+            id: c.id,
+            name: c.reversed ? `${c.name} (перевёрнутая)` : c.name,
+            meaning: "",
+            reversed: c.reversed,
+          })),
+          customQuestion: question || undefined,
+          spreadType: "guest_resume",
+          spreadId: "triplet",
+        }),
+      });
+      if (!readingRes.ok) return "failed";
+      return "full";
+    } catch {
+      return "failed";
+    }
+  };
 
   const handleTripletComplete = async (cards: SpreadSymbol[], teaser: string) => {
     if (!isLoggedIn) {
@@ -3838,6 +3980,86 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     });
   }, [setStep, readingInFlightRef, chatDepsRef]);
 
+  const guestResumeBootRef = useRef(false);
+
+  const retryGuestTripletResume = useCallback(() => {
+    const cache = loadGuestResumeUiCache();
+    if (!cache || !isLoggedIn) return;
+    setGuestResumeCanRetry(false);
+    setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
+    guestResumeBootRef.current = true;
+    void runGuestTripletResume({
+      authMethod: "retry",
+      loadReading: (args) =>
+        loadGuestResumeReadingRef.current({
+          ...args,
+          profileBase: getActiveProfile(),
+          questionFallback: getActiveProfile()?.mainQuestion,
+          teaserFallback: cache.teaser,
+          deckSystem: cache.system as StoredProfile["deckSystem"],
+        }),
+    }).then((result) => {
+      if (!result.ok) {
+        if (result.capacitorRecovery) {
+          setGuestResumeCanRetry(false);
+          setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+        } else {
+          setGuestResumeCanRetry(true);
+          setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+        }
+        guestResumeBootRef.current = false;
+      } else {
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
+        setTripletNotice(null);
+      }
+    });
+  }, [isLoggedIn, getActiveProfile]);
+
+  useEffect(() => {
+    if (!isLoggedIn || guestResumeBootRef.current) return;
+    if (step === "onboarding" || step === "intro") return;
+    const cache = loadGuestResumeUiCache();
+    if (!cache) return;
+    const active = getActiveProfile();
+    if (!String(active?.birthDate ?? "").trim()) return;
+
+    guestResumeBootRef.current = true;
+    setGuestResumeCanRetry(false);
+    setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
+
+    void runGuestTripletResume({
+      authMethod: "bootstrap",
+      loadReading: (args) =>
+        loadGuestResumeReadingRef.current({
+          ...args,
+          profileBase: active,
+          questionFallback: active?.mainQuestion,
+          teaserFallback: cache.teaser,
+          deckSystem: cache.system as StoredProfile["deckSystem"],
+        }),
+    }).then((result) => {
+      if (!result.ok) {
+        if (result.capacitorRecovery) {
+          setGuestResumeCanRetry(false);
+          setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+        } else {
+          setGuestResumeCanRetry(true);
+          setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+        }
+        guestResumeBootRef.current = false;
+      } else {
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
+        setTripletNotice(null);
+      }
+    });
+  }, [
+    isLoggedIn,
+    step,
+    getActiveProfile,
+  ]);
+
   return {
     masters,
     tripletSystem,
@@ -3848,6 +4070,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setNewTripletDraft,
     tripletNotice,
     setTripletNotice,
+    guestResumeCanRetry,
+    retryGuestTripletResume,
     tripletCooldown,
     tripletCooldownReady,
     spreadRitual,

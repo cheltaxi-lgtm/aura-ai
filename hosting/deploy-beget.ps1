@@ -73,6 +73,7 @@ $RequiredArtifacts = @(
   "scripts/migrations/073_migrate_async_job_billing_and_reaper.sql",
   "scripts/migrations/074_migrate_registration_attribution.sql",
   "scripts/migrations/075_migrate_oauth_registration_attribution.sql",
+  "scripts/migrations/076_migrate_guest_triplet_receipt.sql",
   "src/app/api/numerology/matrix-report/route.ts",
   "src/lib/services/numerology-report-service.ts",
   "scripts/run-async-jobs.ts",

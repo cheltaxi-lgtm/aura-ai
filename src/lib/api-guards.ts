@@ -325,3 +325,42 @@ export async function enforceSessionCreateRateLimit(ip: string): Promise<NextRes
   }
   return null;
 }
+
+const GUEST_TRIPLET_COMPLETE_LIMIT = 8;
+const GUEST_TRIPLET_COMPLETE_WINDOW_MS = 60 * 60 * 1000;
+const GUEST_TRIPLET_CLAIM_LIMIT = 20;
+const GUEST_TRIPLET_CLAIM_WINDOW_MS = 60 * 60 * 1000;
+
+export async function enforceGuestTripletCompleteRateLimit(
+  ip: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("guest_triplet_complete", ip),
+    GUEST_TRIPLET_COMPLETE_LIMIT,
+    GUEST_TRIPLET_COMPLETE_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
+
+export async function enforceGuestTripletClaimRateLimit(
+  accountId: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("guest_triplet_claim", accountId),
+    GUEST_TRIPLET_CLAIM_LIMIT,
+    GUEST_TRIPLET_CLAIM_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}

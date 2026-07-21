@@ -263,7 +263,7 @@ export interface UseChatActionsOptions {
   pendingNewChatThreadRef: MutableRefObject<boolean>;
   pendingReadingMasterRef: MutableRefObject<string | null>;
   sessionSpreadMetaRef: MutableRefObject<{
-    spreadType?: "daily" | "new" | "photo";
+    spreadType?: "daily" | "new" | "photo" | "guest_resume";
     spreadId?: string;
     cardNames?: string[];
     periodSpreadScope?: PeriodSpreadScope;

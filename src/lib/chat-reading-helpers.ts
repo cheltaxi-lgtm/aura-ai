@@ -83,7 +83,7 @@ export function resolveSpreadCardsForReading(input: {
   characterId: string;
   masters?: ShowcaseMaster[];
   sessionSpreadMeta?: {
-    spreadType?: "daily" | "new" | "photo";
+    spreadType?: "daily" | "new" | "photo" | "guest_resume";
     spreadId?: SpreadId | string;
     cardNames?: string[];
     periodSpreadScope?: PeriodSpreadScope;
@@ -228,7 +228,7 @@ export function resolveSpreadCardsForReading(input: {
 export function resolveTarotCardsForOutgoingChat(input: {
   characterId: string;
   sessionSpreadMeta?: {
-    spreadType?: "daily" | "new" | "photo";
+    spreadType?: "daily" | "new" | "photo" | "guest_resume";
     spreadId?: SpreadId | string;
     cardNames?: string[];
     periodSpreadScope?: PeriodSpreadScope;

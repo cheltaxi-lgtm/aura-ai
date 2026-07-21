@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
-import { ensureDb } from "@/lib/db";
+import { ensureDb, query } from "@/lib/db";
 import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading, fallbackReading } from "@/lib/chat-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
@@ -22,6 +22,8 @@ import { resolveSessionForUser } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { resolveIsDailyFreeReading } from "@/lib/daily-spread-billing";
+import { resolveGuestResumeFreeReading } from "@/lib/guest-resume-billing";
+import { setGuestResumeReadingId } from "@/lib/guest-triplet-receipt-db";
 import {
   findSpreadReadingEntry,
   withSpreadReadingLock,
@@ -82,7 +84,7 @@ async function persistReadingToSession(input: {
   reading: string;
   tarotCards: { name: string }[];
   intention?: string;
-  spreadType?: "daily" | "new";
+  spreadType?: "daily" | "new" | "guest_resume";
   spreadId?: string;
   customQuestion?: string;
 }): Promise<string | null> {
@@ -93,7 +95,7 @@ async function persistReadingToSession(input: {
     reading: input.reading,
     tarotCards: input.tarotCards,
     intention: input.intention,
-    spreadType: input.spreadType,
+    spreadType: input.spreadType === "guest_resume" ? null : input.spreadType,
     spreadId: input.spreadId,
     customQuestion: input.customQuestion,
   });
@@ -107,7 +109,7 @@ async function respondWithExistingSpreadReading(input: {
   tarotCards: { name: string; meaning: string }[];
   sessionId?: string;
   intention?: string;
-  spreadType?: "daily" | "new";
+  spreadType?: "daily" | "new" | "guest_resume";
   spreadId?: string;
   customQuestion?: string;
   userName: string;
@@ -424,20 +426,80 @@ export async function POST(request: NextRequest) {
     // History cache reused the old watery report even after report rows were deleted.
     const skipHistoryCacheForMatrix =
       isNumerologMaster(characterId) && requestNumerologToolId === MATRIX_REPORT_TOOL_ID;
-    const isDailySpread = await resolveIsDailyFreeReading({
+
+    const guestResume = await resolveGuestResumeFreeReading({
       profileUserId: authed.profileUserId,
-      spreadType,
-      intention,
       sessionId,
-      tarotCards,
       session: resolvedSession,
+      characterId,
+      tarotCards,
     });
+    const isGuestResumeFree = Boolean(guestResume?.free);
+    if (guestResume?.question && !customQuestion) {
+      customQuestion = guestResume.question;
+    }
+    if (guestResume && tarotCards.length < 3) {
+      tarotCards = guestResume.cardNames.map((name) => ({ name, meaning: "" }));
+    }
+
+    // Durable reading reference — return before name-keyed cache / generation.
+    if (guestResume?.readingId && !forceRegenerate && (await ensureDb())) {
+      const { rows: historyRows } = await query<{
+        id: string;
+        context_data: Record<string, unknown>;
+        is_paid: boolean;
+        created_at: Date;
+      }>(
+        `SELECT id, context_data, is_paid, created_at
+         FROM history
+         WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [guestResume.readingId, authed.profileUserId]
+      );
+      const existingRow = historyRows[0];
+      if (existingRow && typeof existingRow.context_data?.reading === "string") {
+        return respondWithExistingSpreadReading({
+          existing: existingRow,
+          profileUserId: authed.profileUserId,
+          characterId,
+          cardsKey: guestResume.fingerprint,
+          tarotCards,
+          sessionId,
+          intention: intention || undefined,
+          spreadType: "guest_resume",
+          spreadId: storedSpreadId,
+          customQuestion: customQuestion || guestResume.question || undefined,
+          userName,
+          birthDate,
+          isPaid: true,
+        });
+      }
+    }
+
+    const isDailySpread =
+      !isGuestResumeFree &&
+      (await resolveIsDailyFreeReading({
+        profileUserId: authed.profileUserId,
+        spreadType,
+        intention,
+        sessionId,
+        tarotCards,
+        session: resolvedSession,
+      }));
     if (isDailySpread) {
       spreadType = "daily";
       isPaid = true;
     }
+    if (isGuestResumeFree) {
+      isPaid = true;
+      spreadType = "guest_resume";
+    }
     let historyId: string | undefined;
     let reading: string;
+
+    const lockKey = isGuestResumeFree && guestResume
+      ? `guest-resume:${guestResume.fingerprint}`
+      : cardsKey;
 
     if (await ensureDb() && cardsKey && !forceRegenerate && !skipHistoryCacheForMatrix) {
       const existing = await findSpreadReadingEntry(
@@ -738,6 +800,7 @@ export async function POST(request: NextRequest) {
       const runeSettings = await getRuneSettings();
       const useRuneBilling =
         !isDailySpread &&
+        !isGuestResumeFree &&
         isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
       let runeBalance: number | undefined;
 
@@ -867,11 +930,22 @@ export async function POST(request: NextRequest) {
             zodiac,
             gender,
             birthDate,
+            ...(sessionId ? { sessionId } : {}),
             ...(isDailySpread ? { spreadType: "daily" } : {}),
+            ...(isGuestResumeFree
+              ? {
+                  spreadType: "guest_resume",
+                  guestResumeFingerprint: guestResume?.fingerprint,
+                }
+              : {}),
           },
           isPaid,
         });
         historyId = entry.id;
+
+        if (isGuestResumeFree && sessionId && historyId) {
+          await setGuestResumeReadingId(sessionId, authed.profileUserId, historyId);
+        }
 
         void patchTripletInterpretation(authed.profileUserId, cardsKey, {
           text: reading,
@@ -887,7 +961,11 @@ export async function POST(request: NextRequest) {
             reading,
             tarotCards,
             intention: intention || undefined,
-            spreadType: isDailySpread ? "daily" : undefined,
+            spreadType: isGuestResumeFree
+              ? "guest_resume"
+              : isDailySpread
+                ? "daily"
+                : undefined,
             spreadId: storedSpreadId,
           });
         } catch (err) {
@@ -905,11 +983,11 @@ export async function POST(request: NextRequest) {
     };
 
     const lockedResult =
-      cardsKey && (await ensureDb())
+      lockKey && (await ensureDb())
         ? await withSpreadReadingLock(
             authed.profileUserId,
             characterId,
-            cardsKey,
+            lockKey,
             runLockedGeneration
           )
         : await runLockedGeneration();

@@ -4,7 +4,7 @@ import { fetchAuthMeWithRetry } from "@/lib/client-auth-session";
 import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
-import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
+import { loadGuestTriplet } from "@/lib/guest-triplet";
 import {
   clearNeedsServerProfile,
   clearPendingMasterResume,
@@ -114,18 +114,7 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
     if (guest?.question?.trim()) {
       persistPendingGuestQuestion(guest.question);
     }
-    if (opts.profile) {
-      try {
-        const raw = localStorage.getItem("aura_profile");
-        const mergedProfile = raw ? JSON.parse(raw) : null;
-        if (mergedProfile) {
-          await syncGuestSpreadToServer(mergedProfile, guest);
-        }
-      } catch {
-        /* reading can still load from local profile */
-      }
-      clearGuestTriplet();
-    }
+    // Guest resume: do not clear UI cache or sync cards here — claim coordinator owns that.
   }
 
   if (isRegisterFlow && opts.needsProfile) {
