@@ -5,6 +5,7 @@ import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
 import { loadGuestTriplet } from "@/lib/guest-triplet";
+import { loadGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
   clearNeedsServerProfile,
   clearPendingMasterResume,
@@ -46,8 +47,20 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
   const returnTo = sanitizeReturnTo(opts.returnTo, "/");
   const isRegisterFlow = opts.isNewUser;
   const guest = loadGuestTriplet();
-  const guestMasterId = resolveGuestSpreadMasterId(guest?.masterId);
-  const hasGuestCards = Boolean(guest?.tarotCards?.length);
+  const uiCache = loadGuestResumeUiCache();
+  const guestMasterId = resolveGuestSpreadMasterId(
+    guest?.masterId || uiCache?.masterId
+  );
+  const guestCardsFromCache = uiCache?.cards?.length === 3
+    ? uiCache.cards.map((c) => ({ id: c.id, name: c.name, meaning: "" }))
+    : [];
+  const guestTarotCards =
+    guest?.tarotCards?.length ? guest.tarotCards : guestCardsFromCache;
+  const hasGuestCards = guestTarotCards.length >= 3;
+  const guestQuestion =
+    guest?.question?.trim() || uiCache?.question?.trim() || undefined;
+  const guestTeaser = guest?.teaser || uiCache?.teaser;
+  const guestDeckSystem = guest?.deckSystem || uiCache?.system;
   const defaultGender =
     opts.oauthGender ??
     inferGenderFromFirstName(opts.userName) ??
@@ -64,10 +77,12 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
       clearNeedsServerProfile();
       const mergedProfile = {
         ...opts.profile,
-        tarotCards: guest?.tarotCards ?? opts.profile.tarotCards ?? [],
-        deckSystem: guest?.deckSystem ?? opts.profile.deckSystem,
-        teaser: guest?.teaser ?? opts.profile.teaser,
-        mainQuestion: guest?.question || opts.profile.mainQuestion,
+        tarotCards: guestTarotCards.length
+          ? guestTarotCards
+          : opts.profile.tarotCards ?? [],
+        deckSystem: guestDeckSystem ?? opts.profile.deckSystem,
+        teaser: guestTeaser ?? opts.profile.teaser,
+        mainQuestion: guestQuestion || opts.profile.mainQuestion,
         tripletMasterId: guestMasterId,
       };
       localStorage.setItem("aura_profile", JSON.stringify(mergedProfile));
@@ -88,10 +103,10 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
           gender: defaultGender,
           birthDate: "",
           zodiac: "",
-          tarotCards: guest?.tarotCards ?? [],
-          deckSystem: guest?.deckSystem,
-          teaser: guest?.teaser,
-          mainQuestion: guest?.question,
+          tarotCards: guestTarotCards,
+          deckSystem: guestDeckSystem,
+          teaser: guestTeaser,
+          mainQuestion: guestQuestion,
           tripletMasterId: guestMasterId,
         })
       );
@@ -105,14 +120,14 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
 
   let destination = returnTo;
 
-  if (isRegisterFlow && hasGuestCards) {
+  if (hasGuestCards) {
     destination = resolveRegistrationReturnTo({
       guestSpread: true,
       guestMasterId,
-      guestQuestion: guest?.question,
+      guestQuestion,
     });
-    if (guest?.question?.trim()) {
-      persistPendingGuestQuestion(guest.question);
+    if (guestQuestion) {
+      persistPendingGuestQuestion(guestQuestion);
     }
     // Guest resume: do not clear UI cache or sync cards here — claim coordinator owns that.
   }
@@ -123,7 +138,7 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
         ? resolveRegistrationReturnTo({
             guestSpread: true,
             guestMasterId,
-            guestQuestion: guest?.question,
+            guestQuestion,
           })
         : destination
     );
@@ -146,7 +161,15 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
     const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
     if (needsProfile) {
       markNeedsServerProfile();
-      persistPostAuthReturnTo(destination);
+      persistPostAuthReturnTo(
+        hasGuestCards
+          ? resolveRegistrationReturnTo({
+              guestSpread: true,
+              guestMasterId,
+              guestQuestion,
+            })
+          : destination
+      );
       localStorage.setItem(
         "aura_profile",
         JSON.stringify({
@@ -154,9 +177,16 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
           gender: defaultGender,
           birthDate: "",
           zodiac: "",
-          tarotCards: [],
+          tarotCards: guestTarotCards,
+          deckSystem: guestDeckSystem,
+          teaser: guestTeaser,
+          mainQuestion: guestQuestion,
+          tripletMasterId: hasGuestCards ? guestMasterId : undefined,
         })
       );
+      if (hasGuestCards) {
+        localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+      }
       localStorage.setItem("aura_flow_step", "onboarding");
       return withAppShellAuthParams(onboardingRedirectUrl());
     }

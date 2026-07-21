@@ -4,6 +4,16 @@
  */
 export const GUEST_RESUME_UI_CACHE_KEY = "zovus_guest_resume_ui_v1";
 
+export type GuestResumeUiPhase =
+  | "idle"
+  | "receipt_pending_auth"
+  | "claiming"
+  | "onboarding_required"
+  | "resuming_reading"
+  | "reading_ready"
+  | "recoverable_error"
+  | "safe_recovery";
+
 export type GuestResumeUiCache = {
   version: 1;
   origin: "guest";
@@ -19,6 +29,9 @@ export type GuestResumeUiCache = {
     reversed: boolean;
   }>;
   completedAt: string;
+  /** Set after successful claim — allows reading retry without receipt cookie. */
+  claimedSessionId?: string;
+  phase?: GuestResumeUiPhase;
 };
 
 export function isGuestResumeUiCache(value: unknown): value is GuestResumeUiCache {
@@ -33,6 +46,7 @@ export function isGuestResumeUiCache(value: unknown): value is GuestResumeUiCach
     const card = c as Record<string, unknown>;
     if (typeof card.id !== "number" || typeof card.name !== "string") return false;
   }
+  if (v.claimedSessionId != null && typeof v.claimedSessionId !== "string") return false;
   return true;
 }
 
@@ -43,6 +57,16 @@ export function saveGuestResumeUiCache(cache: GuestResumeUiCache): void {
   } catch {
     /* private mode */
   }
+}
+
+export function patchGuestResumeUiCache(
+  patch: Partial<GuestResumeUiCache>
+): GuestResumeUiCache | null {
+  const current = loadGuestResumeUiCache();
+  if (!current) return null;
+  const next = { ...current, ...patch };
+  saveGuestResumeUiCache(next);
+  return next;
 }
 
 export function loadGuestResumeUiCache(): GuestResumeUiCache | null {
@@ -68,4 +92,9 @@ export function clearGuestResumeUiCache(): void {
 
 export function hasGuestResumeUiCache(): boolean {
   return Boolean(loadGuestResumeUiCache());
+}
+
+/** Banner may show only during these active transition phases. */
+export function isGuestResumeBannerPhase(phase?: GuestResumeUiPhase | null): boolean {
+  return phase === "claiming" || phase === "resuming_reading";
 }

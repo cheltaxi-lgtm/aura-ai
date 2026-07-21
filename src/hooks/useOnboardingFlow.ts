@@ -94,7 +94,7 @@ import {
 import { pythagorasSquare } from "@/lib/numerology/pythagoras-square";
 import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet, loadGuestTriplet } from "@/lib/guest-triplet";
-import { loadGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import { loadGuestResumeUiCache, patchGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
   GUEST_RESUME_CAPACITOR_RECOVERY,
   GUEST_RESUME_RETRY_TITLE,
@@ -462,6 +462,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const loadGuestResumeReadingRef = useRef<
     (args: GuestResumeLoadArgs) => Promise<"full" | "existing" | "failed">
   >(async () => "failed");
+  const guestResumeBootRef = useRef(false);
   const sessionListBackMasterRef = useRef<string | null>(null);
   const pendingChatOptsRef = useRef<{ masterId: string; skipReading: boolean } | null>(null);
   const openChatWithSessionParamsRef = useRef<
@@ -713,6 +714,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   useEffect(() => {
     if (!isLoggedIn || newTripletDraft || step === "triplet" || step === "onboarding") return;
+    // Never wipe local cards while guest resume is in progress / awaiting reading.
+    if (loadGuestResumeUiCache()) return;
+    if (sessionSpreadMetaRef.current?.spreadType === "guest_resume") return;
     if (hasServerTripletSpread(savedReadings)) return;
     setProfile((prev) => {
       if (!prev) return prev;
@@ -1687,6 +1691,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       if (uiCache) {
         setGuestResumeCanRetry(false);
         setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
+        guestResumeBootRef.current = true;
         const resumeResult = await runGuestTripletResume({
           authMethod: "onboarding",
           loadReading: (args) =>
@@ -1700,9 +1705,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         });
 
         if (!resumeResult.ok) {
-          if (resumeResult.capacitorRecovery) {
+          guestResumeBootRef.current = false;
+          if (resumeResult.capacitorRecovery || resumeResult.phase === "safe_recovery") {
             setGuestResumeCanRetry(false);
             setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+            void finishProfileOnboarding("masters");
+            return;
+          }
+          if (resumeResult.stage === "expired" || resumeResult.phase === "idle") {
+            setGuestResumeCanRetry(false);
+            setTripletNotice(null);
             void finishProfileOnboarding("masters");
             return;
           }
@@ -1715,6 +1727,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
         setGuestResumeCanRetry(false);
         clearGuestTriplet();
+        setTripletNotice(null);
         trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
         clearShareRegistrationAttribution();
         clearOnboardingUrlParams();
@@ -2184,7 +2197,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       } finally {
         readingInFlightRef.current = false;
         deps.setIsLoadingHistory(false);
-        deps.skipNextReadingRef.current = false;
+        // Keep skip when caller (guest resume) will POST /api/reading itself —
+        // clearing it races ChatWindow into a blank daily loadReading.
+        deps.skipNextReadingRef.current = Boolean(opts?.skipReading);
       }
     },
     [
@@ -2255,19 +2270,28 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setIntentionSpread(null);
     persistIntentionSpreadState(masterToBind, null);
     setSpreadFlipped(spreadFlippedState(ordered.length, true));
-    pendingChatOptsRef.current = { masterId: masterToBind, skipReading: false };
+    // Open canonical session chat without restoreChat / daily loadReading race.
     const deps = chat();
-    if (deps) {
-      deps.chatLoadedForRef.current = null;
-      deps.setMessages([]);
-      deps.setConsultationSessionId(sessionId);
-      if (deps.consultationSessionIdRef) {
-        deps.consultationSessionIdRef.current = sessionId;
-      }
+    if (!deps) return "failed";
+    deps.setSessionListMaster(null);
+    deps.setSessionOnlyChat(false);
+    deps.setMessages([]);
+    deps.setConsultationSessionId(sessionId);
+    if (deps.consultationSessionIdRef) {
+      deps.consultationSessionIdRef.current = sessionId;
     }
+    deps.archiveSessionIdRef.current = null;
+    deps.skipNextReadingRef.current = true;
+    // Mark loaded before selecting character so ChatWindow won't restore blank history.
+    deps.chatLoadedForRef.current = masterToBind;
+    deps.setSelectedCharacter(masterToBind);
+    deps.setIsLoadingHistory(false);
     await bindSessionToMasterRef.current(masterToBind, sessionId);
+    localStorage.setItem(LAST_MASTER_KEY, masterToBind);
+    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    setLastMasterId(masterToBind);
     persistStep("chat");
-    await beginChatAfterIntention(masterToBind, null, "existing");
+    setStep("chat");
     try {
       const readingRes = await fetch("/api/reading", {
         method: "POST",
@@ -2288,6 +2312,26 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         }),
       });
       if (!readingRes.ok) return "failed";
+      const data = (await readingRes.json().catch(() => ({}))) as {
+        reading?: string;
+        cached?: boolean;
+      };
+      const readingText =
+        typeof data.reading === "string" ? data.reading.trim() : "";
+      if (!readingText) return "failed";
+      const chatDeps = chat();
+      if (chatDeps) {
+        chatDeps.setMessages([
+          {
+            id: generateId(),
+            role: "assistant",
+            content: readingText,
+            timestamp: new Date(),
+          },
+        ]);
+        chatDeps.skipNextReadingRef.current = true;
+        chatDeps.chatLoadedForRef.current = masterToBind;
+      }
       return "full";
     } catch {
       return "failed";
@@ -3980,7 +4024,29 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     });
   }, [setStep, readingInFlightRef, chatDepsRef]);
 
-  const guestResumeBootRef = useRef(false);
+  const applyGuestResumeResultNotice = useCallback(
+    (result: Awaited<ReturnType<typeof runGuestTripletResume>>) => {
+      if (result.ok) {
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
+        setTripletNotice(null);
+        return;
+      }
+      if (result.capacitorRecovery || result.phase === "safe_recovery") {
+        setGuestResumeCanRetry(false);
+        setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+        return;
+      }
+      if (result.stage === "expired" || result.phase === "idle") {
+        setGuestResumeCanRetry(false);
+        setTripletNotice(null);
+        return;
+      }
+      setGuestResumeCanRetry(true);
+      setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+    },
+    []
+  );
 
   const retryGuestTripletResume = useCallback(() => {
     const cache = loadGuestResumeUiCache();
@@ -3999,30 +4065,42 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           deckSystem: cache.system as StoredProfile["deckSystem"],
         }),
     }).then((result) => {
-      if (!result.ok) {
-        if (result.capacitorRecovery) {
-          setGuestResumeCanRetry(false);
-          setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
-        } else {
-          setGuestResumeCanRetry(true);
-          setTripletNotice(GUEST_RESUME_RETRY_TITLE);
-        }
-        guestResumeBootRef.current = false;
-      } else {
-        setGuestResumeCanRetry(false);
-        clearGuestTriplet();
-        setTripletNotice(null);
-      }
+      applyGuestResumeResultNotice(result);
+      if (!result.ok) guestResumeBootRef.current = false;
     });
-  }, [isLoggedIn, getActiveProfile]);
+  }, [isLoggedIn, getActiveProfile, applyGuestResumeResultNotice]);
 
   useEffect(() => {
     if (!isLoggedIn || guestResumeBootRef.current) return;
-    if (step === "onboarding" || step === "intro") return;
+    if (step === "intro") return;
     const cache = loadGuestResumeUiCache();
-    if (!cache) return;
+    if (!cache) {
+      // Stale transition banner must not survive without an active resume cache.
+      setTripletNotice((prev) =>
+        prev &&
+        (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
+          prev === GUEST_RESUME_RETRY_TITLE)
+          ? null
+          : prev
+      );
+      return;
+    }
+
     const active = getActiveProfile();
-    if (!String(active?.birthDate ?? "").trim()) return;
+    const hasBirth = Boolean(String(active?.birthDate ?? "").trim());
+
+    if (!hasBirth) {
+      patchGuestResumeUiCache({ phase: "onboarding_required" });
+      // Do not show "готовит трактовку" on homepage while profile is incomplete.
+      setTripletNotice(null);
+      if (step !== "onboarding") {
+        setStepState("onboarding");
+        persistStep("onboarding");
+      }
+      return;
+    }
+
+    if (step === "onboarding") return;
 
     guestResumeBootRef.current = true;
     setGuestResumeCanRetry(false);
@@ -4039,25 +4117,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           deckSystem: cache.system as StoredProfile["deckSystem"],
         }),
     }).then((result) => {
-      if (!result.ok) {
-        if (result.capacitorRecovery) {
-          setGuestResumeCanRetry(false);
-          setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
-        } else {
-          setGuestResumeCanRetry(true);
-          setTripletNotice(GUEST_RESUME_RETRY_TITLE);
-        }
-        guestResumeBootRef.current = false;
-      } else {
-        setGuestResumeCanRetry(false);
-        clearGuestTriplet();
-        setTripletNotice(null);
-      }
+      applyGuestResumeResultNotice(result);
+      if (!result.ok) guestResumeBootRef.current = false;
     });
   }, [
     isLoggedIn,
     step,
     getActiveProfile,
+    applyGuestResumeResultNotice,
+    setStepState,
   ]);
 
   return {

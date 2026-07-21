@@ -121,7 +121,13 @@ import {
   readStoredProfile,
 } from "@/lib/home-flow-storage";
 import { resetGuestSpreadFlow } from "@/lib/guest-spread-reset";
-import { loadGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import {
+  isGuestResumeBannerPhase,
+  loadGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
+import {
+  GUEST_RESUME_TRANSITION_SUBTITLE,
+} from "@/lib/guest-triplet-resume";
 import {
   consumePendingGuestQuestion,
   persistPendingIntent,
@@ -534,6 +540,20 @@ export default function HomePage({
     handleSessionListBack,
     handleSpreadReadingRitualComplete,
   } = onboarding;
+
+  // Transition banner only while resume is actively claiming/loading — never
+  // leave "готовит трактовку" sticky on a normal homepage without that phase.
+  const visibleTripletNotice = useMemo(() => {
+    if (!tripletNotice) return null;
+    const isTransition =
+      tripletNotice.includes(GUEST_RESUME_TRANSITION_SUBTITLE);
+    if (!isTransition) return tripletNotice;
+    const phase = loadGuestResumeUiCache()?.phase;
+    if (isGuestResumeBannerPhase(phase) || guestResumeCanRetry) {
+      return tripletNotice;
+    }
+    return null;
+  }, [tripletNotice, guestResumeCanRetry]);
 
   const openSpreadIntentFlow = useCallback(
     (
@@ -2949,9 +2969,9 @@ export default function HomePage({
                     />
                   ) : null}
                 </div>
-                {tripletNotice ? (
+                {visibleTripletNotice ? (
                   <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
-                    <p>{tripletNotice}</p>
+                    <p>{visibleTripletNotice}</p>
                     {guestResumeCanRetry ? (
                       <button
                         type="button"
@@ -3131,9 +3151,9 @@ export default function HomePage({
                     }}
                   />
                 ) : null}
-                {tripletNotice ? (
+                {visibleTripletNotice ? (
                   <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
-                    <p>{tripletNotice}</p>
+                    <p>{visibleTripletNotice}</p>
                     {guestResumeCanRetry ? (
                       <button
                         type="button"

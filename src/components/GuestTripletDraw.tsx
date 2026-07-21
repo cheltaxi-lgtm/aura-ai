@@ -408,6 +408,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
         teaser,
         cards: symbols,
         completedAt: new Date().toISOString(),
+        phase: "receipt_pending_auth",
       });
       trackGuestSpreadCompleted();
       trackRegistrationGateView("guest_triplet_done");

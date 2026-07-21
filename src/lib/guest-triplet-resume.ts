@@ -1,6 +1,12 @@
 "use client";
 
-import { clearGuestResumeUiCache, loadGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import {
+  clearGuestResumeUiCache,
+  loadGuestResumeUiCache,
+  patchGuestResumeUiCache,
+  saveGuestResumeUiCache,
+  type GuestResumeUiPhase,
+} from "@/lib/guest-resume-ui-cache";
 import {
   trackGuestTripletResumeCompleted,
   trackGuestTripletResumeDetected,
@@ -33,6 +39,7 @@ export type GuestResumeOrchestrationResult =
       ok: false;
       stage: "receipt" | "claim" | "session" | "reading" | "expired";
       capacitorRecovery?: boolean;
+      phase?: GuestResumeUiPhase;
     };
 
 function detectCapacitorPlatform(): boolean {
@@ -47,9 +54,40 @@ function detectCapacitorPlatform(): boolean {
   }
 }
 
+function setPhase(phase: GuestResumeUiPhase): void {
+  patchGuestResumeUiCache({ phase });
+}
+
+type StatusPayload = {
+  ok?: boolean;
+  status?: "none" | "claimed" | "reading_consumed";
+  sessionId?: string;
+  masterId?: string;
+  question?: string;
+  system?: string;
+  cards?: GuestResumeClaimResult["cards"];
+  readingId?: string | null;
+  alreadyClaimed?: boolean;
+};
+
+async function fetchOwnedResumeStatus(): Promise<StatusPayload | null> {
+  try {
+    const res = await fetch("/api/guest-triplet/status", {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as StatusPayload;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Single client orchestrator for guest triplet resume.
  * Claim uses HttpOnly cookies only — never sends token from JS storage.
+ * After claim, claimedSessionId is stored in UI cache so reading retry works
+ * even after receipt cookies are cleared.
  */
 export async function runGuestTripletResume(opts?: {
   authMethod?: string;
@@ -63,85 +101,188 @@ export async function runGuestTripletResume(opts?: {
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
-    const cache = loadGuestResumeUiCache();
+    let cache = loadGuestResumeUiCache();
+
     if (!cache) {
-      trackGuestTripletResumeFailed("receipt");
-      return { ok: false, stage: "receipt" as const };
+      const owned = await fetchOwnedResumeStatus();
+      if (
+        owned?.ok &&
+        (owned.status === "claimed" || owned.status === "reading_consumed") &&
+        owned.sessionId &&
+        Array.isArray(owned.cards) &&
+        owned.cards.length === 3
+      ) {
+        cache = {
+          version: 1,
+          origin: "guest",
+          masterId: owned.masterId || "veronika",
+          system: owned.system || "tarot-veronika",
+          spreadId: "triplet",
+          question: owned.question || "",
+          teaser: "",
+          cards: owned.cards,
+          completedAt: new Date().toISOString(),
+          claimedSessionId: owned.sessionId,
+          phase: "resuming_reading",
+        };
+        saveGuestResumeUiCache(cache);
+      } else {
+        trackGuestTripletResumeFailed("receipt");
+        return { ok: false, stage: "receipt" as const, phase: "idle" };
+      }
     }
 
     trackGuestTripletResumeDetected({
-      has_question: Boolean(cache.question.trim()),
-      master_id: cache.masterId,
-      cards_count: cache.cards.length,
+      has_question: Boolean((cache?.question ?? "").trim()),
+      master_id: cache?.masterId || "veronika",
+      cards_count: cache?.cards?.length ?? 0,
       auth_method: opts?.authMethod,
     });
 
     trackGuestTripletResumeStarted({
-      master_id: cache.masterId,
-      cards_count: cache.cards.length,
-      has_question: Boolean(cache.question.trim()),
+      master_id: cache?.masterId || "veronika",
+      cards_count: cache?.cards?.length ?? 0,
+      has_question: Boolean((cache?.question ?? "").trim()),
     });
 
-    let claimRes: Response;
-    try {
-      claimRes = await fetch("/api/guest-triplet/claim", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-    } catch {
-      trackGuestTripletResumeFailed("claim");
-      return { ok: false, stage: "claim" as const };
-    }
+    setPhase("claiming");
 
-    if (!claimRes.ok) {
-      if (detectCapacitorPlatform()) {
-        trackGuestTripletResumeFailed("claim");
-        return { ok: false, stage: "claim" as const, capacitorRecovery: true };
-      }
-      trackGuestTripletResumeFailed(claimRes.status === 404 ? "expired" : "claim");
-      return {
-        ok: false,
-        stage: claimRes.status === 404 ? ("expired" as const) : ("claim" as const),
+    let claim: GuestResumeClaimResult | null = null;
+
+    if (cache?.claimedSessionId && cache.cards?.length === 3) {
+      claim = {
+        sessionId: cache.claimedSessionId,
+        masterId: cache.masterId,
+        question: cache.question,
+        system: cache.system,
+        cards: cache.cards,
+        alreadyClaimed: true,
       };
+    } else {
+      let claimRes: Response;
+      try {
+        claimRes = await fetch("/api/guest-triplet/claim", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+      } catch {
+        setPhase("recoverable_error");
+        trackGuestTripletResumeFailed("claim");
+        return { ok: false, stage: "claim" as const, phase: "recoverable_error" };
+      }
+
+      if (!claimRes.ok) {
+        const owned = await fetchOwnedResumeStatus();
+        if (
+          owned?.ok &&
+          (owned.status === "claimed" || owned.status === "reading_consumed") &&
+          owned.sessionId &&
+          Array.isArray(owned.cards) &&
+          owned.cards.length === 3
+        ) {
+          claim = {
+            sessionId: owned.sessionId,
+            masterId: owned.masterId || cache?.masterId || "veronika",
+            question: owned.question ?? cache?.question ?? "",
+            system: owned.system ?? cache?.system ?? "tarot-veronika",
+            cards: owned.cards,
+            alreadyClaimed: true,
+          };
+          if (cache) {
+            patchGuestResumeUiCache({
+              claimedSessionId: claim.sessionId,
+              masterId: claim.masterId,
+              question: claim.question,
+              system: claim.system,
+              cards: claim.cards,
+              phase: "resuming_reading",
+            });
+            cache = loadGuestResumeUiCache();
+          }
+        } else {
+          if (detectCapacitorPlatform()) {
+            setPhase("safe_recovery");
+            clearGuestResumeUiCache();
+            trackGuestTripletResumeFailed("claim");
+            return {
+              ok: false,
+              stage: "claim" as const,
+              capacitorRecovery: true,
+              phase: "safe_recovery",
+            };
+          }
+          const expired = claimRes.status === 404;
+          setPhase(expired ? "idle" : "recoverable_error");
+          if (expired) clearGuestResumeUiCache();
+          trackGuestTripletResumeFailed(expired ? "expired" : "claim");
+          return {
+            ok: false,
+            stage: expired ? ("expired" as const) : ("claim" as const),
+            phase: expired ? "idle" : "recoverable_error",
+          };
+        }
+      } else {
+        let claimData: {
+          ok?: boolean;
+          sessionId?: string;
+          masterId?: string;
+          question?: string;
+          system?: string;
+          cards?: GuestResumeClaimResult["cards"];
+          alreadyClaimed?: boolean;
+        };
+        try {
+          claimData = (await claimRes.json()) as typeof claimData;
+        } catch {
+          setPhase("recoverable_error");
+          trackGuestTripletResumeFailed("claim");
+          return { ok: false, stage: "claim" as const, phase: "recoverable_error" };
+        }
+
+        if (
+          !claimData.ok ||
+          !claimData.sessionId ||
+          !claimData.masterId ||
+          !Array.isArray(claimData.cards) ||
+          claimData.cards.length !== 3
+        ) {
+          setPhase("recoverable_error");
+          trackGuestTripletResumeFailed("session");
+          return { ok: false, stage: "session" as const, phase: "recoverable_error" };
+        }
+
+        claim = {
+          sessionId: claimData.sessionId,
+          masterId: claimData.masterId,
+          question: claimData.question ?? cache?.question ?? "",
+          system: claimData.system ?? cache?.system ?? "tarot-veronika",
+          cards: claimData.cards,
+          alreadyClaimed: Boolean(claimData.alreadyClaimed),
+        };
+
+        // Persist claimed session before reading so cookie loss / retry still works.
+        if (cache) {
+          patchGuestResumeUiCache({
+            claimedSessionId: claim.sessionId,
+            masterId: claim.masterId,
+            question: claim.question,
+            system: claim.system,
+            cards: claim.cards,
+            phase: "resuming_reading",
+          });
+        }
+      }
     }
 
-    let claimData: {
-      ok?: boolean;
-      sessionId?: string;
-      masterId?: string;
-      question?: string;
-      system?: string;
-      cards?: GuestResumeClaimResult["cards"];
-      alreadyClaimed?: boolean;
-    };
-    try {
-      claimData = (await claimRes.json()) as typeof claimData;
-    } catch {
-      trackGuestTripletResumeFailed("claim");
-      return { ok: false, stage: "claim" as const };
-    }
-
-    if (
-      !claimData.ok ||
-      !claimData.sessionId ||
-      !claimData.masterId ||
-      !Array.isArray(claimData.cards) ||
-      claimData.cards.length !== 3
-    ) {
+    if (!claim) {
+      setPhase("recoverable_error");
       trackGuestTripletResumeFailed("session");
-      return { ok: false, stage: "session" as const };
+      return { ok: false, stage: "session" as const, phase: "recoverable_error" };
     }
 
-    const claim: GuestResumeClaimResult = {
-      sessionId: claimData.sessionId,
-      masterId: claimData.masterId,
-      question: claimData.question ?? cache.question,
-      system: claimData.system ?? cache.system,
-      cards: claimData.cards,
-      alreadyClaimed: Boolean(claimData.alreadyClaimed),
-    };
+    setPhase("resuming_reading");
 
     let readingMode: "full" | "existing" = "full";
     if (opts?.loadReading) {
@@ -152,8 +293,9 @@ export async function runGuestTripletResume(opts?: {
         cards: claim.cards,
       });
       if (outcome === "failed") {
+        setPhase("recoverable_error");
         trackGuestTripletResumeFailed("reading");
-        return { ok: false, stage: "reading" as const };
+        return { ok: false, stage: "reading" as const, phase: "recoverable_error" };
       }
       readingMode = outcome;
     }
@@ -164,7 +306,7 @@ export async function runGuestTripletResume(opts?: {
       has_question: Boolean(claim.question.trim()),
     });
 
-    // Variant A: clear UI cache after successful claim+reading path acknowledgement.
+    setPhase("reading_ready");
     clearGuestResumeUiCache();
 
     return { ok: true, claim, readingMode };
