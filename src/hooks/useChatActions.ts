@@ -84,7 +84,8 @@ import {
   hasActivePeriodSpread,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
-import { FLOW_STEP_KEY, LAST_MASTER_KEY } from "@/lib/home-flow-storage";
+import { FLOW_STEP_KEY, LAST_MASTER_KEY, markNeedsServerProfile } from "@/lib/home-flow-storage";
+import { patchGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import type { StoredProfile } from "@/types/stored-profile";
 import type { Message } from "@/types";
 import type { StoredReadingRow } from "@/lib/reading-progress";
@@ -758,12 +759,20 @@ export function useChatActions(options: UseChatActionsOptions) {
               typeof data?.code === "string" ? String(data.code).toUpperCase() : "";
             const isGuestResume =
               sessionSpreadMetaRef.current?.spreadType === "guest_resume";
+            if (isLoggedIn && code === "NEEDS_PROFILE") {
+              // Never leave the user in chat with a stub — show the anketa.
+              markNeedsServerProfile();
+              patchGuestResumeUiCache({ phase: "onboarding_required" });
+              setSelectedCharacter(null);
+              chatLoadedForRef.current = null;
+              setMessages([]);
+              setStep("onboarding");
+              localStorage.setItem(FLOW_STEP_KEY, "onboarding");
+              return;
+            }
             let content: string;
             if (isLoggedIn) {
-              if (code === "NEEDS_PROFILE") {
-                content =
-                  "Завершите анкету, чтобы получить расшифровку расклада. Ваши карты сохранены.";
-              } else if (isGuestResume) {
+              if (isGuestResume) {
                 content =
                   "Не удалось подтвердить сессию для сохранённого расклада. Нажмите «Повторить» или обновите страницу — карты не сгорят.";
               } else {
@@ -926,6 +935,9 @@ export function useChatActions(options: UseChatActionsOptions) {
       masters,
       sessionIntention,
       setMessages,
+      setStep,
+      setSelectedCharacter,
+      chatLoadedForRef,
       setIntentionSpread,
       setSpreadFlipped,
       setIsLoading,

@@ -124,6 +124,7 @@ import {
   clearNeedsServerProfile,
   clearOnboardingUrlParams,
   hasPendingServerProfile,
+  markNeedsServerProfile,
   persistStep,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
@@ -382,6 +383,31 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
   const [tripletNotice, setTripletNotice] = useState<string | null>(null);
   const [guestResumeCanRetry, setGuestResumeCanRetry] = useState(false);
+
+  /** Leave chat/salon and show birth profile form — never leave selectedCharacter set. */
+  const forceProfileOnboarding = useCallback(() => {
+    markNeedsServerProfile();
+    patchGuestResumeUiCache({ phase: "onboarding_required" });
+    const deps = chat();
+    if (deps) {
+      deps.setSelectedCharacter(null);
+      deps.setMessages([]);
+      deps.setConsultationSessionId(null);
+      if (deps.consultationSessionIdRef) {
+        deps.consultationSessionIdRef.current = null;
+      }
+      deps.chatLoadedForRef.current = null;
+      deps.setIsLoadingHistory(false);
+    } else {
+      setSelectedCharacter(null);
+    }
+    readingInFlightRef.current = false;
+    setGuestResumeCanRetry(false);
+    setTripletNotice(null);
+    setStepState("onboarding");
+    persistStep("onboarding");
+  }, [setSelectedCharacter, setStepState, readingInFlightRef]);
+
   const [serverContinueIds, setServerContinueIds] = useState<string[]>([]);
   const [newTripletDraft, setNewTripletDraft] = useState(false);
   const [spreadRitual, setSpreadRitual] = useState<{
@@ -2704,13 +2730,27 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (step !== "onboarding" || !tripletCooldownReady || !tripletCooldown || tripletCooldown.allowed) {
       return;
     }
+    // Incomplete profile must stay on the anketa — never bounce to masters/chat
+    // just because guest already drew today's triplet (cooldown active).
+    if (!authUser?.profileUserId || hasPendingServerProfile()) return;
+    if (!getActiveProfile()?.birthDate && !profile?.birthDate) return;
+    if (loadGuestResumeUiCache()?.phase === "onboarding_required") return;
     if (displayTarotCards.length < 3) return;
     const hint = tripletCooldown.nextAvailableAt
       ? `Новый расклад из 3 карт ${formatTripletCooldownRu(tripletCooldown.nextAvailableAt)}`
       : "Новый расклад из 3 карт доступен один раз в сутки";
     setTripletNotice(hint);
     setStep("masters");
-  }, [step, tripletCooldownReady, tripletCooldown, displayTarotCards.length, setStep]);
+  }, [
+    step,
+    tripletCooldownReady,
+    tripletCooldown,
+    displayTarotCards.length,
+    setStep,
+    authUser?.profileUserId,
+    profile?.birthDate,
+    getActiveProfile,
+  ]);
 
   useEffect(() => {
     if (step !== "triplet" || !tripletCooldownReady) return;
@@ -3429,8 +3469,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     const activeProfile = getActiveProfile();
+    if (!authUser?.profileUserId || hasPendingServerProfile()) {
+      forceProfileOnboarding();
+      return;
+    }
     if (!activeProfile?.birthDate && !profile?.birthDate) {
-      setStep("onboarding");
+      forceProfileOnboarding();
       return;
     }
 
@@ -3801,6 +3845,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   useEffect(() => {
     if (authLoading || sessionLoading || !isLoggedIn || autoResumeDoneRef.current) return;
     if (hasPendingGuestQuestion()) return;
+    // Never auto-open chat before birth profile exists on the server.
+    if (!authUser?.profileUserId || hasPendingServerProfile()) return;
+    if (loadGuestResumeUiCache()?.phase === "onboarding_required") return;
 
     const params = new URLSearchParams(window.location.search);
     const resumeChat =
@@ -3902,6 +3949,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     authLoading,
     sessionLoading,
     isLoggedIn,
+    authUser?.profileUserId,
     selectedCharacter,
     beginChatAfterIntention,
     getActiveProfile,
@@ -4068,11 +4116,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return;
       }
       if (result.phase === "onboarding_required") {
-        setGuestResumeCanRetry(false);
-        setTripletNotice(null);
-        patchGuestResumeUiCache({ phase: "onboarding_required" });
-        setStepState("onboarding");
-        persistStep("onboarding");
+        forceProfileOnboarding();
         return;
       }
       if (result.capacitorRecovery || result.phase === "safe_recovery") {
@@ -4088,7 +4132,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setGuestResumeCanRetry(true);
       setTripletNotice(GUEST_RESUME_RETRY_TITLE);
     },
-    [setStepState]
+    [forceProfileOnboarding]
   );
 
   const retryGuestTripletResume = useCallback(() => {
@@ -4136,12 +4180,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     // Claim/reading need server profileUserId — local birthDate alone is not enough.
     if (!hasBirth || !hasServerProfile) {
-      patchGuestResumeUiCache({ phase: "onboarding_required" });
-      // Do not show "готовит трактовку" on homepage while profile is incomplete.
-      setTripletNotice(null);
-      if (step !== "onboarding") {
-        setStepState("onboarding");
-        persistStep("onboarding");
+      if (step !== "onboarding" || selectedCharacter) {
+        forceProfileOnboarding();
+      } else {
+        patchGuestResumeUiCache({ phase: "onboarding_required" });
+        setTripletNotice(null);
       }
       return;
     }
@@ -4173,7 +4216,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     step,
     getActiveProfile,
     applyGuestResumeResultNotice,
-    setStepState,
+    forceProfileOnboarding,
+    selectedCharacter,
   ]);
 
   return {

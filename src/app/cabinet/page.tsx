@@ -38,7 +38,9 @@ import CabinetDailySpreads from "@/components/cabinet/CabinetDailySpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
-import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
+import CabinetDeleteAccount, {
+  ACCOUNT_DELETED_HOME_KEY,
+} from "@/components/cabinet/CabinetDeleteAccount";
 import CabinetDailyNotifications from "@/components/cabinet/CabinetDailyNotifications";
 import CabinetAppVersion from "@/components/cabinet/CabinetAppVersion";
 import CabinetJointReadings from "@/components/cabinet/CabinetJointReadings";
@@ -147,6 +149,17 @@ export default function CabinetPage() {
       { credentials: "include" }
     );
     if (res.status === 401) {
+      try {
+        if (sessionStorage.getItem(ACCOUNT_DELETED_HOME_KEY) === "1") {
+          const home =
+            sessionStorage.getItem("zovus_app_shell") === "1" ? "/?app=1" : "/";
+          sessionStorage.removeItem(ACCOUNT_DELETED_HOME_KEY);
+          window.location.replace(home);
+          return null;
+        }
+      } catch {
+        /* private mode */
+      }
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       return null;
     }
@@ -180,6 +193,18 @@ export default function CabinetPage() {
     if (authLoading) return;
 
     if (!authUser) {
+      // After account deletion, go to guest homepage — never the login wall.
+      try {
+        if (sessionStorage.getItem(ACCOUNT_DELETED_HOME_KEY) === "1") {
+          const home =
+            sessionStorage.getItem("zovus_app_shell") === "1" ? "/?app=1" : "/";
+          sessionStorage.removeItem(ACCOUNT_DELETED_HOME_KEY);
+          window.location.replace(home);
+          return;
+        }
+      } catch {
+        /* private mode */
+      }
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       setLoading(false);
       return;

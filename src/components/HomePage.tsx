@@ -1144,6 +1144,12 @@ export default function HomePage({
     if (typeof window !== "undefined") {
       const savedStep = localStorage.getItem(FLOW_STEP_KEY);
       const urlStep = new URLSearchParams(window.location.search).get("step");
+      // Incomplete profile always wins over a stale chat/masters step.
+      if (!authUser?.profileUserId) {
+        setStep("onboarding");
+        localStorage.setItem(FLOW_STEP_KEY, "onboarding");
+        return;
+      }
       if (
         (savedStep && savedStep !== "intro") ||
         (urlStep && urlStep !== "intro")
@@ -1166,6 +1172,14 @@ export default function HomePage({
   useEffect(() => {
     if (authLoading || !flowBootstrapped || !isLoggedIn) return;
     if (sessionListMaster) return;
+    if (!authUser?.profileUserId) {
+      if (selectedCharacter) setSelectedCharacter(null);
+      if (step !== "onboarding") {
+        setStep("onboarding");
+        localStorage.setItem(FLOW_STEP_KEY, "onboarding");
+      }
+      return;
+    }
     if (step !== "chat" || selectedCharacter) return;
     if (pendingChatOptsRef.current) return;
     if (readingInFlightRef.current) return;
@@ -1196,11 +1210,13 @@ export default function HomePage({
     authLoading,
     flowBootstrapped,
     isLoggedIn,
+    authUser?.profileUserId,
     step,
     selectedCharacter,
     lastMasterId,
     sessionListMaster,
     setStep,
+    setSelectedCharacter,
     pendingChatOptsRef,
     setLastMasterId,
     bindSessionToMaster,
@@ -2781,6 +2797,18 @@ export default function HomePage({
             returnTo={resolveRegistrationReturnTo({ guestSpread: true })}
             source="chat_register_gate"
           />
+        ) : selectedCharacter && !authUser?.profileUserId ? (
+          <section className="mb-12 mx-auto max-w-4xl px-6 py-8">
+            <OnboardingForm
+              initialName={authUser?.name ?? profile?.name}
+              initialGender={
+                authUser?.oauthGender === "male" || authUser?.oauthGender === "female"
+                  ? authUser.oauthGender
+                  : profile?.gender
+              }
+              onComplete={handleOnboardingComplete}
+            />
+          </section>
         ) : selectedCharacter ? (
           <>
           <ChatWindow

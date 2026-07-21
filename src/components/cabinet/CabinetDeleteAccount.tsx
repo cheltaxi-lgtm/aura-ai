@@ -5,28 +5,53 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import { clearAuthPending } from "@/lib/auth-pending";
-import { AUTH_LOGOUT_EVENT, clearClientAuthState } from "@/lib/client-logout";
+import { clearClientAuthState } from "@/lib/client-logout";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
+
+/** Set before hard-nav so cabinet cannot race-redirect to /auth/login. */
+export const ACCOUNT_DELETED_HOME_KEY = "zovus_account_deleted_home";
 
 interface Props {
   onDeleted?: () => void | Promise<void>;
 }
 
-/** After account erasure — always land on the public homepage (guest landing). */
-function redirectToHomeAfterAccountDeletion(): void {
-  clearAuthPending();
-  clearClientAuthState();
-  window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_EVENT));
-
-  let target = "/";
+function homeUrlAfterAccountDeletion(): string {
   try {
     if (sessionStorage.getItem("zovus_app_shell") === "1") {
-      target = "/?app=1";
+      return "/?app=1";
     }
   } catch {
     /* private mode */
   }
+  return "/";
+}
+
+/**
+ * After successful DELETE /api/user/delete:
+ * clear client state and hard-navigate to guest homepage.
+ * Must NOT dispatch AUTH_LOGOUT_EVENT / setState before navigation — cabinet's
+ * `!authUser` effect would otherwise router.replace → /auth/user/login.
+ */
+function leaveToHomeAfterAccountDeletion(): void {
+  const target = homeUrlAfterAccountDeletion();
+  try {
+    sessionStorage.setItem(ACCOUNT_DELETED_HOME_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+  clearAuthPending();
+  clearClientAuthState();
+  // Hard document navigation — do not use Next router / AUTH_LOGOUT_EVENT.
   window.location.replace(target);
+  // Absolute fallback if replace is swallowed by the SPA.
+  window.setTimeout(() => {
+    if (
+      window.location.pathname.startsWith("/cabinet") ||
+      window.location.pathname.startsWith("/auth/")
+    ) {
+      window.location.href = target;
+    }
+  }, 250);
 }
 
 export default function CabinetDeleteAccount({ onDeleted }: Props) {
@@ -85,13 +110,17 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
         );
       }
 
-      // Cookie already cleared by DELETE /api/user/delete — do not call
-      // performClientLogout (extra /api/auth/me DELETE is useless and can stall).
-      await flushWebViewCookies();
-      resetForm();
-      setOpen(false);
-      await onDeleted?.();
-      redirectToHomeAfterAccountDeletion();
+      // Flag + hard-nav MUST run synchronously after success.
+      // Cookie is already cleared; any /me 401 can null authUser and cabinet
+      // would otherwise router.replace → login before we leave.
+      try {
+        sessionStorage.setItem(ACCOUNT_DELETED_HOME_KEY, "1");
+      } catch {
+        /* private mode */
+      }
+      leaveToHomeAfterAccountDeletion();
+      void flushWebViewCookies().catch(() => undefined);
+      void Promise.resolve(onDeleted?.()).catch(() => undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка удаления");
       setDeleting(false);
