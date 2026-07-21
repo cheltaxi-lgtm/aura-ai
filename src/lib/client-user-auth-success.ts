@@ -4,8 +4,7 @@ import { fetchAuthMeWithRetry } from "@/lib/client-auth-session";
 import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
-import { loadGuestTriplet } from "@/lib/guest-triplet";
-import { loadGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import { loadGuestTriplet, saveGuestTriplet } from "@/lib/guest-triplet";
 import {
   clearNeedsServerProfile,
   clearPendingMasterResume,
@@ -14,6 +13,12 @@ import {
   clearOnboardingUrlParams,
   PENDING_MASTER_KEY,
 } from "@/lib/home-flow-storage";
+import {
+  hasActiveGuestResumeIntent,
+  loadGuestResumeUiCache,
+  clearGuestResumeUiCache,
+  saveGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
 import {
   onboardingRedirectUrl,
   persistPendingGuestQuestion,
@@ -32,6 +37,7 @@ import {
 } from "@/lib/seo/metrika";
 import { persistRegistrationAttribution } from "@/lib/persist-registration-attribution";
 import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
+import type { DeckSystem } from "@/lib/decks/types";
 
 export type UserAuthSuccessOptions = {
   mode: "login" | "register";
@@ -43,20 +49,33 @@ export type UserAuthSuccessOptions = {
   oauthGender?: "male" | "female";
 };
 
+/**
+ * Post-auth handoff for email + OAuth.
+ * Guest triplet path: auth → onboarding (date/gender/city/time) → same cards → full reading.
+ * Must never hijack normal provider login with a stale guest UI cache.
+ */
 export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promise<string> {
   const returnTo = sanitizeReturnTo(opts.returnTo, "/");
   const isRegisterFlow = opts.isNewUser;
   const guest = loadGuestTriplet();
-  const uiCache = loadGuestResumeUiCache();
+  const uiCache = hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null;
+
+  // Stale cache left from a failed/abandoned flow — drop it so OAuth login is normal.
+  if (!uiCache && loadGuestResumeUiCache()) {
+    clearGuestResumeUiCache();
+  }
+
   const guestMasterId = resolveGuestSpreadMasterId(
     guest?.masterId || uiCache?.masterId
   );
-  const guestCardsFromCache = uiCache?.cards?.length === 3
-    ? uiCache.cards.map((c) => ({ id: c.id, name: c.name, meaning: "" }))
-    : [];
-  const guestTarotCards =
-    guest?.tarotCards?.length ? guest.tarotCards : guestCardsFromCache;
-  const hasGuestCards = guestTarotCards.length >= 3;
+  const guestCardsFromCache =
+    uiCache?.cards?.length === 3
+      ? uiCache.cards.map((c) => ({ id: c.id, name: c.name, meaning: "" }))
+      : [];
+  const guestTarotCards = guest?.tarotCards?.length
+    ? guest.tarotCards
+    : guestCardsFromCache;
+  const hasGuestCards = Boolean(uiCache) && guestTarotCards.length >= 3;
   const guestQuestion =
     guest?.question?.trim() || uiCache?.question?.trim() || undefined;
   const guestTeaser = guest?.teaser || uiCache?.teaser;
@@ -65,6 +84,18 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
     opts.oauthGender ??
     inferGenderFromFirstName(opts.userName) ??
     "female";
+
+  // Keep draft in sync with UI cache so HomeFlow merge still works after auth.
+  if (hasGuestCards && uiCache && (guest?.tarotCards?.length ?? 0) < 3) {
+    saveGuestTriplet({
+      tarotCards: guestTarotCards,
+      deckSystem: (guestDeckSystem as DeckSystem) || "tarot-veronika",
+      teaser: guestTeaser || "",
+      completedAt: uiCache.completedAt,
+      question: guestQuestion,
+      masterId: guestMasterId,
+    });
+  }
 
   if (isRegisterFlow) {
     const regSource = resolveRegistrationSource("oauth");
@@ -118,86 +149,92 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
     }
   }
 
-  let destination = returnTo;
+  // Guest resume always lands on a clean home URL — coordinator / onboarding own the next step.
+  // Do NOT use /?master=… (opens salon noise) or /?ask&spread=1 (redraw).
+  const guestHome = resolveRegistrationReturnTo({
+    guestSpread: true,
+    guestMasterId,
+    guestQuestion,
+  });
 
-  if (hasGuestCards) {
-    destination = resolveRegistrationReturnTo({
-      guestSpread: true,
-      guestMasterId,
-      guestQuestion,
-    });
-    if (guestQuestion) {
-      persistPendingGuestQuestion(guestQuestion);
-    }
-    // Guest resume: do not clear UI cache or sync cards here — claim coordinator owns that.
+  if (hasGuestCards && guestQuestion) {
+    persistPendingGuestQuestion(guestQuestion);
   }
 
+  // New account without birth profile → анкета (дата, пол, город, время), then resume.
   if (isRegisterFlow && opts.needsProfile) {
-    persistPostAuthReturnTo(
-      hasGuestCards
-        ? resolveRegistrationReturnTo({
-            guestSpread: true,
-            guestMasterId,
-            guestQuestion,
-          })
-        : destination
-    );
+    persistPostAuthReturnTo(hasGuestCards ? guestHome : returnTo);
     clearOnboardingUrlParams();
     return onboardingRedirectUrl();
   }
 
   if (isRegisterFlow && opts.profile && hasGuestCards) {
-    return destination;
+    return guestHome;
   }
 
-  if (!isRegisterFlow) {
-    markAuthPending();
-    await flushWebViewCookies();
-    const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
-    if (!me?.authenticated) {
-      // Cookie not visible yet — hard-nav with pending flag; useAuth will keep polling.
-      return withAppShellAuthParams(destination);
-    }
-    const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
-    if (needsProfile) {
-      markNeedsServerProfile();
-      persistPostAuthReturnTo(
-        hasGuestCards
-          ? resolveRegistrationReturnTo({
-              guestSpread: true,
-              guestMasterId,
-              guestQuestion,
-            })
-          : destination
-      );
-      localStorage.setItem(
-        "aura_profile",
-        JSON.stringify({
-          name: me.user?.name ?? "",
-          gender: defaultGender,
-          birthDate: "",
-          zodiac: "",
-          tarotCards: guestTarotCards,
-          deckSystem: guestDeckSystem,
-          teaser: guestTeaser,
-          mainQuestion: guestQuestion,
-          tripletMasterId: hasGuestCards ? guestMasterId : undefined,
-        })
-      );
-      if (hasGuestCards) {
-        localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
-      }
-      localStorage.setItem("aura_flow_step", "onboarding");
-      return withAppShellAuthParams(onboardingRedirectUrl());
-    }
-    clearClientAuthState();
-    clearNeedsServerProfile();
-    const landing = new URL(destination, window.location.origin);
-    landing.searchParams.delete("step");
-    return withAppShellAuthParams(
-      `${landing.pathname}${landing.search}${landing.hash}`
+  if (isRegisterFlow) {
+    return hasGuestCards ? guestHome : returnTo;
+  }
+
+  // ——— Login (existing account, OAuth or email) ———
+  markAuthPending();
+  await flushWebViewCookies();
+  const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
+  if (!me?.authenticated) {
+    return withAppShellAuthParams(hasGuestCards ? guestHome : returnTo);
+  }
+
+  const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
+  if (needsProfile) {
+    markNeedsServerProfile();
+    persistPostAuthReturnTo(hasGuestCards ? guestHome : returnTo);
+    localStorage.setItem(
+      "aura_profile",
+      JSON.stringify({
+        name: me.user?.name ?? "",
+        gender: defaultGender,
+        birthDate: "",
+        zodiac: "",
+        tarotCards: guestTarotCards,
+        deckSystem: guestDeckSystem,
+        teaser: guestTeaser,
+        mainQuestion: guestQuestion,
+        tripletMasterId: hasGuestCards ? guestMasterId : undefined,
+      })
     );
+    if (hasGuestCards) {
+      localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+    }
+    localStorage.setItem("aura_flow_step", "onboarding");
+    return withAppShellAuthParams(onboardingRedirectUrl());
   }
 
-  return destination;
+  // Full profile: wipe generic client auth noise, but KEEP active guest resume cache.
+  if (hasGuestCards) {
+    const resumeCache = loadGuestResumeUiCache();
+    clearClientAuthState();
+    if (resumeCache) {
+      saveGuestResumeUiCache(resumeCache);
+      saveGuestTriplet({
+        tarotCards: guestTarotCards,
+        deckSystem: (guestDeckSystem as DeckSystem) || "tarot-veronika",
+        teaser: guestTeaser || "",
+        completedAt: resumeCache.completedAt,
+        question: guestQuestion,
+        masterId: guestMasterId,
+      });
+      localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+      localStorage.setItem("aura_flow_step", "masters");
+    }
+    clearNeedsServerProfile();
+    return withAppShellAuthParams(guestHome);
+  }
+
+  clearClientAuthState();
+  clearNeedsServerProfile();
+  const landing = new URL(returnTo, window.location.origin);
+  landing.searchParams.delete("step");
+  return withAppShellAuthParams(
+    `${landing.pathname}${landing.search}${landing.hash}`
+  );
 }

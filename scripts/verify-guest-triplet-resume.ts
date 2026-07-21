@@ -230,7 +230,8 @@ section("returnTo guest never emits ask+spread=1");
   });
   assert.ok(!href.includes("ask="), href);
   assert.ok(!href.includes("spread=1"), href);
-  assert.ok(href.includes("master=veronika"), href);
+  // Clean home — claim/onboarding own next step (no master deep-link hijack).
+  assert.ok(!href.includes("master="), href);
 }
 
 section("SEO without receipt still has ask+spread path (static)");

@@ -159,8 +159,17 @@ section("static: auth success uses UI cache for guest cards");
 {
   const src = readSrc("src/lib/client-user-auth-success.ts");
   assert.ok(src.includes("loadGuestResumeUiCache"));
-  assert.ok(src.includes("guestCardsFromCache"));
+  assert.ok(src.includes("hasActiveGuestResumeIntent"));
   assert.ok(src.includes("hasGuestCards"));
+  assert.ok(src.includes("onboardingRedirectUrl"));
+}
+
+section("static: stale guest cache must not hijack OAuth");
+{
+  const src = readSrc("src/lib/guest-resume-ui-cache.ts");
+  assert.ok(src.includes("hasActiveGuestResumeIntent"));
+  assert.ok(src.includes("GUEST_RESUME_UI_MAX_AGE_MS"));
+  assert.ok(src.includes("ACTIVE_PHASES"));
 }
 
 section("static: status route exists and never returns token");

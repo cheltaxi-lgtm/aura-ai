@@ -24,6 +24,10 @@ import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-
 import { pickUserFacingError } from "@/lib/user-facing-error";
 import { loadGuestTriplet } from "@/lib/guest-triplet";
 import {
+  hasActiveGuestResumeIntent,
+  loadGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
+import {
   clearNeedsServerProfile,
   clearPendingMasterResume,
   hasGuestExplicitMasterResume,
@@ -274,8 +278,15 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         const regSource = resolveRegistrationSource("auth_form");
         trackRegistrationAccountCreated(regSource);
         const guest = loadGuestTriplet();
-        const guestMasterId = resolveGuestSpreadMasterId(guest?.masterId);
-        const hasGuestCards = Boolean(guest?.tarotCards?.length);
+        const uiCache = hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null;
+        const guestMasterId = resolveGuestSpreadMasterId(
+          guest?.masterId || uiCache?.masterId
+        );
+        const guestCards =
+          guest?.tarotCards?.length
+            ? guest.tarotCards
+            : uiCache?.cards?.map((c) => ({ id: c.id, name: c.name, meaning: "" })) ?? [];
+        const hasGuestCards = guestCards.length >= 3;
         guestRegisterMasterId = guestMasterId;
         guestRegisterHasCards = hasGuestCards;
 
@@ -285,10 +296,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           clearNeedsServerProfile();
           const mergedProfile = {
             ...data.profile,
-            tarotCards: guest?.tarotCards ?? data.profile.tarotCards ?? [],
-            deckSystem: guest?.deckSystem ?? data.profile.deckSystem,
-            teaser: guest?.teaser ?? data.profile.teaser,
-            mainQuestion: guest?.question || data.profile.mainQuestion,
+            tarotCards: guestCards.length ? guestCards : data.profile.tarotCards ?? [],
+            deckSystem: guest?.deckSystem ?? uiCache?.system ?? data.profile.deckSystem,
+            teaser: guest?.teaser ?? uiCache?.teaser ?? data.profile.teaser,
+            mainQuestion:
+              guest?.question || uiCache?.question || data.profile.mainQuestion,
             tripletMasterId: guestMasterId,
           };
           localStorage.setItem("aura_profile", JSON.stringify(mergedProfile));
@@ -309,10 +321,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               gender: "female",
               birthDate: "",
               zodiac: "",
-              tarotCards: guest?.tarotCards ?? [],
-              deckSystem: guest?.deckSystem,
-              teaser: guest?.teaser,
-              mainQuestion: guest?.question,
+              tarotCards: guestCards,
+              deckSystem: guest?.deckSystem ?? uiCache?.system,
+              teaser: guest?.teaser ?? uiCache?.teaser,
+              mainQuestion: guest?.question || uiCache?.question,
               tripletMasterId: guestMasterId,
             })
           );
@@ -328,14 +340,18 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
       if (typeof window !== "undefined" && isUserRegister && guestRegisterHasCards) {
         const guest = loadGuestTriplet();
-        const guestMasterId = guestRegisterMasterId ?? resolveGuestSpreadMasterId(guest?.masterId);
+        const uiCache = loadGuestResumeUiCache();
+        const guestMasterId =
+          guestRegisterMasterId ??
+          resolveGuestSpreadMasterId(guest?.masterId || uiCache?.masterId);
         destination = resolveRegistrationReturnTo({
           guestSpread: true,
           guestMasterId,
-          guestQuestion: guest?.question,
+          guestQuestion: guest?.question || uiCache?.question,
         });
-        if (guest?.question?.trim()) {
-          persistPendingGuestQuestion(guest.question);
+        const q = guest?.question?.trim() || uiCache?.question?.trim();
+        if (q) {
+          persistPendingGuestQuestion(q);
         }
         // Guest resume: server receipt + cookies are authoritative. Do not clear UI cache here.
       }

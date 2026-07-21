@@ -198,11 +198,11 @@ export function resolveRegistrationReturnTo(context: RegistrationReturnContext =
     return withAppShellIfNeeded("/?photo=1");
   }
   if (context.guestSpread) {
-    const masterId = resolveGuestSpreadMasterId(context.guestMasterId);
-    // Never emit SEO ask+spread=1 — guest resume uses server receipt + cookies.
-    // Question/cards stay in UI cache / server receipt, not URL.
+    // Clean home — onboarding / claim coordinator owns next step.
+    // Never emit SEO ask+spread=1 (redraw) or master-only deep links that open salon noise.
+    void context.guestMasterId;
     void context.guestQuestion;
-    return withAppShellIfNeeded(`/?master=${encodeURIComponent(masterId)}`);
+    return withAppShellIfNeeded("/");
   }
   return withAppShellIfNeeded("/");
 }

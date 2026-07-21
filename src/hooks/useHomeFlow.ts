@@ -5,6 +5,7 @@ import type { FlowStep } from "@/components/FlowStepper";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { loadGuestTriplet, clearGuestTriplet, GUEST_TRIPLET_KEY } from "@/lib/guest-triplet";
 import { mergeGuestTripletIntoProfile } from "@/lib/guest-triplet";
+import { clearGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
   POST_AUTH_RETURN_TO_KEY,
   PENDING_INTENT_KEY,
@@ -390,6 +391,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       localStorage.removeItem(PENDING_INTENT_KEY);
       localStorage.removeItem(GUEST_TRIPLET_KEY);
       clearGuestTriplet();
+      clearGuestResumeUiCache();
       setProfile(null);
       setStepState("intro");
       onAccountSwitch?.();

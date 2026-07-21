@@ -3,6 +3,8 @@
  * Never stores receipt token or binding secrets.
  */
 export const GUEST_RESUME_UI_CACHE_KEY = "zovus_guest_resume_ui_v1";
+/** Guest receipt TTL — stale cache must not hijack normal OAuth/login. */
+const GUEST_RESUME_UI_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export type GuestResumeUiPhase =
   | "idle"
@@ -33,6 +35,20 @@ export type GuestResumeUiCache = {
   claimedSessionId?: string;
   phase?: GuestResumeUiPhase;
 };
+
+const TERMINAL_PHASES: ReadonlySet<GuestResumeUiPhase> = new Set([
+  "idle",
+  "reading_ready",
+  "safe_recovery",
+]);
+
+const ACTIVE_PHASES: ReadonlySet<GuestResumeUiPhase> = new Set([
+  "receipt_pending_auth",
+  "claiming",
+  "onboarding_required",
+  "resuming_reading",
+  "recoverable_error",
+]);
 
 export function isGuestResumeUiCache(value: unknown): value is GuestResumeUiCache {
   if (!value || typeof value !== "object") return false;
@@ -97,4 +113,30 @@ export function hasGuestResumeUiCache(): boolean {
 /** Banner may show only during these active transition phases. */
 export function isGuestResumeBannerPhase(phase?: GuestResumeUiPhase | null): boolean {
   return phase === "claiming" || phase === "resuming_reading";
+}
+
+/**
+ * True only while a guest triplet is awaiting auth/onboarding/resume.
+ * Stale or terminal cache must NOT redirect normal OAuth/login.
+ */
+export function hasActiveGuestResumeIntent(): boolean {
+  const cache = loadGuestResumeUiCache();
+  if (!cache || cache.cards.length !== 3) return false;
+
+  const completedAt = Date.parse(cache.completedAt);
+  if (!Number.isFinite(completedAt) || Date.now() - completedAt > GUEST_RESUME_UI_MAX_AGE_MS) {
+    clearGuestResumeUiCache();
+    return false;
+  }
+
+  const phase = cache.phase;
+  if (!phase) {
+    // Legacy cache without phase — treat as pending auth.
+    return true;
+  }
+  if (TERMINAL_PHASES.has(phase)) {
+    clearGuestResumeUiCache();
+    return false;
+  }
+  return ACTIVE_PHASES.has(phase);
 }

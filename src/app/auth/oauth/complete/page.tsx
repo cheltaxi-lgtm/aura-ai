@@ -147,11 +147,16 @@ export default function OAuthCompletePage() {
           me.user?.oauthGender === "male" || me.user?.oauthGender === "female"
             ? me.user.oauthGender
             : undefined;
+        // Prefer live /me over URL flags — callback query can lag or be wrong.
+        const liveNeedsProfile = Boolean(
+          needsProfile || me.needsProfile || !me.user?.profileUserId
+        );
+        const liveIsNewUser = Boolean(isNewUser || (liveNeedsProfile && mode === "register"));
         const destination = await finishUserAuthSuccess({
           mode,
           returnTo,
-          isNewUser,
-          needsProfile,
+          isNewUser: liveIsNewUser,
+          needsProfile: liveNeedsProfile,
           userName: me.user?.name,
           profile,
           oauthGender,

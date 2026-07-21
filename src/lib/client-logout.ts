@@ -1,5 +1,6 @@
 import { clearChatCache } from "@/lib/chat-cache";
 import { clearGuestTriplet } from "@/lib/guest-triplet";
+import { clearGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import { GUEST_SPREAD_DRAFT_KEY } from "@/lib/landing-offer";
 import {
   POST_AUTH_RETURN_TO_KEY,
@@ -38,6 +39,7 @@ export function clearClientAuthState(): void {
   }
   clearChatCache();
   clearGuestTriplet();
+  clearGuestResumeUiCache();
   try {
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   } catch {
