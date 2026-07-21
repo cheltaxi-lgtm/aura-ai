@@ -5,7 +5,7 @@ import type { FlowStep } from "@/components/FlowStepper";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { loadGuestTriplet, clearGuestTriplet, GUEST_TRIPLET_KEY } from "@/lib/guest-triplet";
 import { mergeGuestTripletIntoProfile } from "@/lib/guest-triplet";
-import { clearGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import { clearGuestResumeUiCache, hasActiveGuestResumeIntent } from "@/lib/guest-resume-ui-cache";
 import {
   POST_AUTH_RETURN_TO_KEY,
   PENDING_INTENT_KEY,
@@ -33,6 +33,7 @@ import {
 } from "@/lib/home-flow-storage";
 import { APP_SHELL_QUERY, APP_SHELL_VALUE } from "@/lib/app-shell";
 import { isJointSpreadStartUrl } from "@/lib/joint-reading-nav";
+import { hasAuthPendingQuery, isAuthPending } from "@/lib/auth-pending";
 
 export type { StoredProfile };
 
@@ -212,15 +213,38 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     const finishBootstrap = () => setFlowBootstrapped(true);
 
     if (!isLoggedIn) {
-      setStepState("intro");
-      persistStep("intro");
       if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        if (url.searchParams.has("step")) {
+        const params = new URLSearchParams(window.location.search);
+        const urlStep = params.get("step") as FlowStep | null;
+        // OAuth just landed: cookie may lag one tick. Never strip step=onboarding
+        // or force intro — that leaves a blank homepage ("white screen").
+        if (
+          urlStep === "onboarding" ||
+          isAuthPending() ||
+          hasAuthPendingQuery() ||
+          hasActiveGuestResumeIntent() ||
+          hasPendingServerProfile()
+        ) {
+          setStepState("onboarding");
+          persistStep("onboarding");
+          finishBootstrap();
+          return;
+        }
+        setStepState("intro");
+        persistStep("intro");
+        if (params.has("step")) {
+          const url = new URL(window.location.href);
           url.searchParams.delete("step");
           const nextSearch = url.searchParams.toString();
-          window.history.replaceState(null, "", nextSearch ? `${url.pathname}?${nextSearch}` : url.pathname);
+          window.history.replaceState(
+            null,
+            "",
+            nextSearch ? `${url.pathname}?${nextSearch}` : url.pathname
+          );
         }
+      } else {
+        setStepState("intro");
+        persistStep("intro");
       }
       finishBootstrap();
       return;

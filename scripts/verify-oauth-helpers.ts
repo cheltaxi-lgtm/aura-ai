@@ -113,6 +113,8 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
   assert.ok(complete.includes("OAUTH_COMPLETE_WATCHDOG_MS"));
   assert.ok(complete.includes("hardNavigate"));
   assert.ok(complete.includes("skipAuthRecheck"));
+  assert.ok(complete.includes("started.current = false"));
+  assert.ok(complete.includes("bg-[#07060c]"));
 }
 
 async function verifyAsyncCases() {

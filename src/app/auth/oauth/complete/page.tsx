@@ -20,30 +20,29 @@ type RegistrationPreview = {
 };
 
 /** Hard ceiling — never leave the user on "Завершаем вход…" forever. */
-const OAUTH_COMPLETE_WATCHDOG_MS = 8_000;
+const OAUTH_COMPLETE_WATCHDOG_MS = 4_000;
 
 async function ensureAuthenticated(handoff: string | null): Promise<AuthMeResponse | null> {
-  // Cookie from OAuth callback document redirect is usually already visible.
-  let me = await fetchAuthMeWithRetry({ attempts: 3, delayMs: 200, timeoutMs: 6_000 });
+  // Keep this short: watchdog + hardNavigate own the escape hatch.
+  let me = await fetchAuthMeWithRetry({ attempts: 2, delayMs: 150, timeoutMs: 2_500 });
   if (me?.authenticated) return me;
   if (!handoff) {
-    // One more short burst — cookie lag on some browsers.
-    return fetchAuthMeWithRetry({ attempts: 4, delayMs: 250, timeoutMs: 6_000 });
+    return fetchAuthMeWithRetry({ attempts: 2, delayMs: 200, timeoutMs: 2_500 });
   }
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const handoffRes = await fetchWithTimeout("/api/auth/oauth/handoff", {
         method: "POST",
         credentials: "include",
         cache: "no-store",
-        timeoutMs: 8_000,
+        timeoutMs: 4_000,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: handoff }),
       });
       if (handoffRes.ok) {
         await flushWebViewCookies();
-        return fetchAuthMeWithRetry({ attempts: 5, delayMs: 250, timeoutMs: 6_000 });
+        return fetchAuthMeWithRetry({ attempts: 3, delayMs: 150, timeoutMs: 2_500 });
       }
       if (handoffRes.status === 400 || handoffRes.status === 404) {
         break;
@@ -51,26 +50,24 @@ async function ensureAuthenticated(handoff: string | null): Promise<AuthMeRespon
     } catch {
       /* retry handoff POST on network errors */
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+    await new Promise((resolve) => window.setTimeout(resolve, 150 * (attempt + 1)));
   }
 
-  return fetchAuthMeWithRetry({ attempts: 4, delayMs: 300, timeoutMs: 6_000 });
+  return fetchAuthMeWithRetry({ attempts: 2, delayMs: 200, timeoutMs: 2_500 });
 }
 
 function hardNavigate(destination: string): void {
   const landing = withAppShellAuthParams(destination);
-  // Prefer assign+replace race: if one is blocked, the other still fires.
   try {
     window.location.replace(landing);
   } catch {
     window.location.href = landing;
   }
-  // Absolute fallback if browser swallows replace (extensions / bfcache).
   window.setTimeout(() => {
     if (window.location.pathname.startsWith("/auth/oauth/complete")) {
       window.location.href = landing;
     }
-  }, 400);
+  }, 300);
 }
 
 export default function OAuthCompletePage() {
@@ -157,23 +154,18 @@ export default function OAuthCompletePage() {
             handoff
           );
           if (bridged) {
-            window.clearTimeout(watchdog);
-            navigated.current = true;
+            // Bridge performs its own navigation — keep watchdog until leave.
             return;
           }
         }
 
         const me = await ensureAuthenticated(alreadyBridged ? null : handoff);
-        await flushWebViewCookies();
+        void flushWebViewCookies().catch(() => undefined);
         markAuthPending();
 
         if (!me?.authenticated) {
-          if (handoff && !alreadyBridged) {
-            go(returnTo);
-            return;
-          }
-          window.clearTimeout(watchdog);
-          setError("Сессия не создана. Попробуйте войти снова.");
+          // Cookie often already set by provider redirect — leave complete page.
+          go(needsProfile || isNewUser ? onboardingRedirectUrl() : returnTo);
           return;
         }
 
@@ -183,7 +175,7 @@ export default function OAuthCompletePage() {
             const profileRes = await fetchWithTimeout("/api/cabinet", {
               credentials: "include",
               cache: "no-store",
-              timeoutMs: 4_000,
+              timeoutMs: 2_000,
             });
             if (profileRes.ok) {
               profile = ((await profileRes.json()) as { profile?: Record<string, unknown> })
@@ -218,16 +210,12 @@ export default function OAuthCompletePage() {
         if (shouldUseSessionBridge()) {
           const bridged = await navigateViaSessionBridge(destination);
           if (bridged) {
-            window.clearTimeout(watchdog);
-            navigated.current = true;
             return;
           }
         }
         go(destination);
       } catch {
-        window.clearTimeout(watchdog);
         if (!navigated.current) {
-          // Last resort: cookie is often already set — leave complete page.
           watchdogFallback();
         }
       }
@@ -235,6 +223,10 @@ export default function OAuthCompletePage() {
 
     return () => {
       window.clearTimeout(watchdog);
+      // React Strict Mode remount: allow effect to run again if we never left.
+      if (!navigated.current) {
+        started.current = false;
+      }
     };
   }, []);
 
@@ -290,7 +282,7 @@ export default function OAuthCompletePage() {
 
   if (registrationCode && !error) {
     return (
-      <main className="auth-page flex min-h-screen items-center justify-center px-5 py-12">
+      <main className="auth-page flex min-h-screen items-center justify-center bg-[#07060c] px-5 py-12">
         <section className="glass-panel w-full max-w-md space-y-5 p-6 text-center">
           <h1 className="text-xl font-semibold text-white">Один шаг до входа</h1>
           <p className="text-sm text-aura-ivory/70">
@@ -336,7 +328,7 @@ export default function OAuthCompletePage() {
 
   if (error) {
     return (
-      <div className="auth-page flex min-h-screen flex-col items-center justify-center px-6 py-16 text-center">
+      <div className="auth-page flex min-h-screen flex-col items-center justify-center bg-[#07060c] px-6 py-16 text-center">
         <p className="mb-4 text-sm text-red-400">{error}</p>
         <Link href="/auth/user/login" className="text-sm text-aura-champagne underline">
           Вернуться ко входу
@@ -346,8 +338,8 @@ export default function OAuthCompletePage() {
   }
 
   return (
-    <div className="auth-page flex min-h-screen flex-col items-center justify-center px-6 py-16 text-center">
-      <p className="text-sm text-aura-ivory/60">Завершаем вход…</p>
+    <div className="auth-page flex min-h-screen flex-col items-center justify-center bg-[#07060c] px-6 py-16 text-center">
+      <p className="text-sm text-white/70">Завершаем вход…</p>
     </div>
   );
 }
