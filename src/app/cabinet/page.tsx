@@ -39,10 +39,7 @@ import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
 import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
-import {
-  ACCOUNT_DELETED_HOME_KEY,
-  homeUrlAfterAccountDeletion,
-} from "@/lib/account-deleted";
+import { redirectHomeAfterAccountDeletion } from "@/lib/account-deleted";
 import CabinetDailyNotifications from "@/components/cabinet/CabinetDailyNotifications";
 import CabinetAppVersion from "@/components/cabinet/CabinetAppVersion";
 import CabinetJointReadings from "@/components/cabinet/CabinetJointReadings";
@@ -151,15 +148,7 @@ export default function CabinetPage() {
       { credentials: "include" }
     );
     if (res.status === 401) {
-      try {
-        if (sessionStorage.getItem(ACCOUNT_DELETED_HOME_KEY) === "1") {
-          sessionStorage.removeItem(ACCOUNT_DELETED_HOME_KEY);
-          window.location.replace(homeUrlAfterAccountDeletion());
-          return null;
-        }
-      } catch {
-        /* private mode */
-      }
+      if (redirectHomeAfterAccountDeletion()) return null;
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       return null;
     }
@@ -194,15 +183,7 @@ export default function CabinetPage() {
 
     if (!authUser) {
       // After account deletion, go to guest homepage — never the login wall.
-      try {
-        if (sessionStorage.getItem(ACCOUNT_DELETED_HOME_KEY) === "1") {
-          sessionStorage.removeItem(ACCOUNT_DELETED_HOME_KEY);
-          window.location.replace(homeUrlAfterAccountDeletion());
-          return;
-        }
-      } catch {
-        /* private mode */
-      }
+      if (redirectHomeAfterAccountDeletion()) return;
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       setLoading(false);
       return;

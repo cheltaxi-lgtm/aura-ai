@@ -12,6 +12,8 @@ function readProviderConfig(provider: OAuthProvider): OAuthProviderConfig | null
     process.env[
       provider === "vk" ? "VK_CLIENT_ID" : "YANDEX_OAUTH_CLIENT_ID"
     ]?.trim() ?? "";
+  const serviceToken =
+    provider === "vk" ? process.env.VK_SERVICE_TOKEN?.trim() || undefined : undefined;
   // VK calls this credential the protected key. VK_CLIENT_SECRET remains a
   // compatibility alias for existing deployments; VK_SERVICE_TOKEN is separate.
   const clientSecret =
@@ -20,11 +22,16 @@ function readProviderConfig(provider: OAuthProvider): OAuthProviderConfig | null
         process.env.VK_CLIENT_SECRET?.trim() ||
         ""
       : process.env.YANDEX_OAUTH_CLIENT_SECRET?.trim() ?? "";
-  if (!clientId || !clientSecret) return null;
+  // Yandex confidential clients require their secret. VK ID calls the token
+  // credential service_token; accept its dedicated env without requiring a
+  // duplicate protected-key alias, while retaining both legacy aliases.
+  if (!clientId || (provider === "yandex" ? !clientSecret : !serviceToken && !clientSecret)) {
+    return null;
+  }
   return {
     clientId,
     clientSecret,
-    serviceToken: provider === "vk" ? process.env.VK_SERVICE_TOKEN?.trim() || undefined : undefined,
+    serviceToken,
   };
 }
 

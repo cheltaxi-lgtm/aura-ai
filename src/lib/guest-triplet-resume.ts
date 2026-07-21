@@ -70,11 +70,15 @@ type StatusPayload = {
   alreadyClaimed?: boolean;
 };
 
-async function fetchOwnedResumeStatus(): Promise<StatusPayload | null> {
+async function fetchExactOwnedResumeStatus(
+  sessionId: string
+): Promise<StatusPayload | null> {
   try {
-    const res = await fetch("/api/guest-triplet/status", {
+    const params = new URLSearchParams({ sessionId });
+    const res = await fetch(`/api/guest-triplet/status?${params.toString()}`, {
       method: "GET",
       credentials: "include",
+      cache: "no-store",
     });
     if (!res.ok) return null;
     return (await res.json()) as StatusPayload;
@@ -104,32 +108,32 @@ export async function runGuestTripletResume(opts?: {
     let cache = loadGuestResumeUiCache();
 
     if (!cache) {
-      const owned = await fetchOwnedResumeStatus();
+      trackGuestTripletResumeFailed("receipt");
+      return { ok: false, stage: "receipt" as const, phase: "idle" };
+    }
+
+    if (cache.claimedSessionId) {
+      const exact = await fetchExactOwnedResumeStatus(cache.claimedSessionId);
       if (
-        owned?.ok &&
-        (owned.status === "claimed" || owned.status === "reading_consumed") &&
-        owned.sessionId &&
-        Array.isArray(owned.cards) &&
-        owned.cards.length === 3
+        !exact?.ok ||
+        (exact.status !== "claimed" && exact.status !== "reading_consumed") ||
+        exact.sessionId !== cache.claimedSessionId ||
+        !Array.isArray(exact.cards) ||
+        exact.cards.length !== 3
       ) {
-        cache = {
-          version: 1,
-          origin: "guest",
-          masterId: owned.masterId || "veronika",
-          system: owned.system || "tarot-veronika",
-          spreadId: "triplet",
-          question: owned.question || "",
-          teaser: "",
-          cards: owned.cards,
-          completedAt: new Date().toISOString(),
-          claimedSessionId: owned.sessionId,
-          phase: "resuming_reading",
-        };
-        saveGuestResumeUiCache(cache);
-      } else {
-        trackGuestTripletResumeFailed("receipt");
-        return { ok: false, stage: "receipt" as const, phase: "idle" };
+        setPhase("recoverable_error");
+        trackGuestTripletResumeFailed("session");
+        return { ok: false, stage: "session" as const, phase: "recoverable_error" };
       }
+      cache = {
+        ...cache,
+        masterId: exact.masterId || cache.masterId,
+        system: exact.system || cache.system,
+        question: exact.question ?? cache.question,
+        cards: exact.cards,
+        phase: "resuming_reading",
+      };
+      saveGuestResumeUiCache(cache);
     }
 
     trackGuestTripletResumeDetected({
@@ -174,65 +178,34 @@ export async function runGuestTripletResume(opts?: {
       }
 
       if (!claimRes.ok) {
-        const owned = await fetchOwnedResumeStatus();
-        if (
-          owned?.ok &&
-          (owned.status === "claimed" || owned.status === "reading_consumed") &&
-          owned.sessionId &&
-          Array.isArray(owned.cards) &&
-          owned.cards.length === 3
-        ) {
-          claim = {
-            sessionId: owned.sessionId,
-            masterId: owned.masterId || cache?.masterId || "veronika",
-            question: owned.question ?? cache?.question ?? "",
-            system: owned.system ?? cache?.system ?? "tarot-veronika",
-            cards: owned.cards,
-            alreadyClaimed: true,
-          };
-          if (cache) {
-            patchGuestResumeUiCache({
-              claimedSessionId: claim.sessionId,
-              masterId: claim.masterId,
-              question: claim.question,
-              system: claim.system,
-              cards: claim.cards,
-              phase: "resuming_reading",
-            });
-            cache = loadGuestResumeUiCache();
-          }
-        } else {
-          if (claimRes.status === 403) {
-            // Authenticated but profile incomplete — claim needs profileUserId.
-            setPhase("onboarding_required");
-            trackGuestTripletResumeFailed("claim");
-            return {
-              ok: false,
-              stage: "claim" as const,
-              phase: "onboarding_required",
-            };
-          }
-          if (detectCapacitorPlatform()) {
-            setPhase("safe_recovery");
-            clearGuestResumeUiCache();
-            trackGuestTripletResumeFailed("claim");
-            return {
-              ok: false,
-              stage: "claim" as const,
-              capacitorRecovery: true,
-              phase: "safe_recovery",
-            };
-          }
-          const expired = claimRes.status === 404;
-          setPhase(expired ? "idle" : "recoverable_error");
-          if (expired) clearGuestResumeUiCache();
-          trackGuestTripletResumeFailed(expired ? "expired" : "claim");
+        if (claimRes.status === 403) {
+          // Authenticated but profile incomplete — claim needs profileUserId.
+          setPhase("onboarding_required");
+          trackGuestTripletResumeFailed("claim");
           return {
             ok: false,
-            stage: expired ? ("expired" as const) : ("claim" as const),
-            phase: expired ? "idle" : "recoverable_error",
+            stage: "claim" as const,
+            phase: "onboarding_required",
           };
         }
+        if (detectCapacitorPlatform()) {
+          setPhase("safe_recovery");
+          trackGuestTripletResumeFailed("claim");
+          return {
+            ok: false,
+            stage: "claim" as const,
+            capacitorRecovery: true,
+            phase: "safe_recovery",
+          };
+        }
+        const expired = claimRes.status === 404;
+        setPhase(expired ? "idle" : "recoverable_error");
+        trackGuestTripletResumeFailed(expired ? "expired" : "claim");
+        return {
+          ok: false,
+          stage: expired ? ("expired" as const) : ("claim" as const),
+          phase: expired ? "idle" : "recoverable_error",
+        };
       } else {
         let claimData: {
           ok?: boolean;
@@ -317,6 +290,18 @@ export async function runGuestTripletResume(opts?: {
         return { ok: false, stage: "reading" as const, phase: "recoverable_error" };
       }
       readingMode = outcome;
+    }
+
+    const persisted = await fetchExactOwnedResumeStatus(claim.sessionId);
+    if (
+      !persisted?.ok ||
+      persisted.status !== "reading_consumed" ||
+      persisted.sessionId !== claim.sessionId ||
+      !persisted.readingId
+    ) {
+      setPhase("recoverable_error");
+      trackGuestTripletResumeFailed("reading");
+      return { ok: false, stage: "reading" as const, phase: "recoverable_error" };
     }
 
     trackGuestTripletResumeCompleted({

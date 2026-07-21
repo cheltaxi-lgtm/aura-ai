@@ -23,6 +23,11 @@ function redirectNoStore(url: string | URL) {
   return NextResponse.redirect(url, { headers: OAUTH_NO_STORE_HEADERS });
 }
 
+function buildSessionBridgePath(token: string, destination: string): string {
+  const params = new URLSearchParams({ token, to: destination });
+  return `/api/auth/session-bridge?${params.toString()}`;
+}
+
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const fallbackReturn = "/";
   let mode: "login" | "register" = "login";
@@ -127,17 +132,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
     if (result.profile) completeParams.set("hasProfile", "1");
 
-    // Always mint a one-time handoff in the query string.
-    // Fragments on 302 Location are dropped by some browsers (incl. Yandex),
-    // which left complete-page without a recovery token when Set-Cookie lagged.
+    // Always mint a one-time handoff. Android receives it in the deep link and
+    // consumes it through a document navigation. Web enters the same document
+    // bridge here, so completion never relies on a fetch Set-Cookie becoming
+    // visible before the next navigation.
     const handoff = await createOAuthHandoff(result.account.id);
-    completeParams.set("handoff", handoff);
     const completePath = `/auth/oauth/complete?${completeParams.toString()}`;
 
     return redirectNoStore(
       pending.appFlow
-        ? buildAppOAuthCompleteUrl(completePath)
-        : oauthAbsoluteUrl(request, completePath)
+        ? buildAppOAuthCompleteUrl(
+            `${completePath}&handoff=${encodeURIComponent(handoff)}`
+          )
+        : oauthAbsoluteUrl(request, buildSessionBridgePath(handoff, completePath))
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "oauth_failed";

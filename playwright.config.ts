@@ -29,6 +29,11 @@ export default defineConfig({
       testMatch: /natal\.public\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "guest-triplet-mobile",
+      testMatch: /guest-triplet\.public\.spec\.ts/,
+      use: { ...devices["Pixel 7"] },
+    },
     ...(fixtureBaseURL && storageState
       ? [{
           name: "authenticated-natal",

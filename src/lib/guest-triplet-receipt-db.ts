@@ -109,22 +109,6 @@ export async function getGuestResumeSessionById(
   return rows[0] ?? null;
 }
 
-/** Latest claimed/consumed guest-resume session owned by the profile user. */
-export async function findLatestOwnedGuestResume(
-  profileUserId: string
-): Promise<GuestResumeSessionRow | null> {
-  const { rows } = await query<GuestResumeSessionRow>(
-    `SELECT ${RESUME_SELECT}
-     FROM sessions
-     WHERE user_id = $1
-       AND guest_resume_status IN ('claimed', 'reading_consumed')
-     ORDER BY COALESCE(guest_resume_claimed_at, updated_at) DESC
-     LIMIT 1`,
-    [profileUserId]
-  );
-  return rows[0] ?? null;
-}
-
 export async function expireIssuedGuestResumeIfNeeded(
   row: GuestResumeSessionRow
 ): Promise<GuestResumeSessionRow> {

@@ -106,6 +106,8 @@ export function buildLandingOfferCopy(
 }
 
 export const GUEST_SPREAD_SECTION_ID = "guest-spread";
+/** The interactive age gate/card picker, separate from the promotional CTA section. */
+export const GUEST_SPREAD_PICKER_ID = "guest-spread-picker";
 export const GUEST_SPREAD_START_EVENT = "zovus:start-guest-spread";
 export const GUEST_SPREAD_RESET_EVENT = "zovus:reset-guest-spread";
 export const GUEST_SPREAD_DRAFT_KEY = "zovus_guest_spread_draft";

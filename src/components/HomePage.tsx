@@ -18,6 +18,7 @@ import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { parseInsufficientRunes } from "@/lib/api-errors";
+import { consumeAccountDeletedHomeArrival } from "@/lib/account-deleted";
 import IntentionPicker from "@/components/IntentionPicker";
 import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
@@ -179,6 +180,10 @@ export default function HomePage({
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
   const { isLoggedIn, loading: authLoading, user: authUser, refresh: refreshAuth } = useAuth();
   const { openPaywall, showRateLimit } = usePaywall();
+
+  useEffect(() => {
+    consumeAccountDeletedHomeArrival();
+  }, []);
 
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [lastMasterId, setLastMasterId] = useState<string | null>(null);

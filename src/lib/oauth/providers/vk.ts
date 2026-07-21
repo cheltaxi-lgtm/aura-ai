@@ -91,13 +91,16 @@ export async function exchangeVkCode(
   if (!options?.deviceId?.trim()) {
     throw new Error("vk_device_id_required");
   }
+  if (!codeVerifier.trim()) {
+    throw new Error("vk_code_verifier_required");
+  }
   const { clientId, clientSecret, serviceToken } = requireOAuthProviderConfig("vk");
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     client_id: clientId,
     redirect_uri: redirectUri,
-    code_verifier: codeVerifier,
+    code_verifier: codeVerifier.trim(),
     device_id: options.deviceId.trim(),
   });
   if (options?.state) body.set("state", options.state);

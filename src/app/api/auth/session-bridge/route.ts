@@ -9,6 +9,23 @@ import {
 } from "@/lib/oauth/request-security";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 
+const BRIDGE_HEADERS = {
+  ...OAUTH_NO_STORE_HEADERS,
+  "Referrer-Policy": "no-referrer",
+} as const;
+
+function sessionBridgeLoginUrl(request: NextRequest): URL {
+  const origin = resolveOAuthOrigin(request);
+  const to = sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/");
+  const destination = new URL(to, `${origin}/`);
+  const loginUrl = new URL("/auth/user/login", `${origin}/`);
+  if (destination.searchParams.get("app") === "1") {
+    loginUrl.searchParams.set("app", "1");
+  }
+  loginUrl.searchParams.set("returnTo", to);
+  return loginUrl;
+}
+
 /**
  * POST: mint a one-time handoff from the current XHR session (cookie visible to fetch).
  * GET: consume handoff and redirect with Set-Cookie on the document response.
@@ -22,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "rate_limited" },
-        { status: 429, headers: OAUTH_NO_STORE_HEADERS }
+        { status: 429, headers: BRIDGE_HEADERS }
       );
     }
 
@@ -31,17 +48,17 @@ export async function POST(request: NextRequest) {
     if (!auth || auth.role !== "user") {
       return NextResponse.json(
         { error: "unauthorized" },
-        { status: 401, headers: OAUTH_NO_STORE_HEADERS }
+        { status: 401, headers: BRIDGE_HEADERS }
       );
     }
 
     const token = await createOAuthHandoff(auth.sub);
-    return NextResponse.json({ ok: true, token }, { headers: OAUTH_NO_STORE_HEADERS });
+    return NextResponse.json({ ok: true, token }, { headers: BRIDGE_HEADERS });
   } catch (error) {
     console.error("session-bridge mint failed:", error);
     return NextResponse.json(
       { error: "mint_failed" },
-      { status: 500, headers: OAUTH_NO_STORE_HEADERS }
+      { status: 500, headers: BRIDGE_HEADERS }
     );
   }
 }
@@ -50,39 +67,30 @@ export async function GET(request: NextRequest) {
   try {
     const rate = await checkOAuthRequestRateLimit(request, "session-bridge", 30);
     if (!rate.allowed) {
-      return NextResponse.redirect(
-        new URL("/auth/user/login?app=1", `${resolveOAuthOrigin(request)}/`),
-        { headers: OAUTH_NO_STORE_HEADERS }
-      );
+      return NextResponse.redirect(sessionBridgeLoginUrl(request), { headers: BRIDGE_HEADERS });
     }
 
     const token = request.nextUrl.searchParams.get("token")?.trim() ?? "";
-    const to = sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/?app=1");
+    const to = sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/");
     const origin = resolveOAuthOrigin(request);
-    const loginUrl = new URL("/auth/user/login", `${origin}/`);
-    loginUrl.searchParams.set("app", "1");
-    loginUrl.searchParams.set("returnTo", to);
+    const destination = new URL(to, `${origin}/`);
+    const loginUrl = sessionBridgeLoginUrl(request);
 
     if (!token) {
-      return NextResponse.redirect(loginUrl, { headers: OAUTH_NO_STORE_HEADERS });
+      return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
     const accountId = await consumeOAuthHandoff(token);
     if (!accountId) {
-      return NextResponse.redirect(loginUrl, { headers: OAUTH_NO_STORE_HEADERS });
+      return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
     const account = await findUserById(accountId);
     if (!account) {
-      return NextResponse.redirect(loginUrl, { headers: OAUTH_NO_STORE_HEADERS });
+      return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
-    const destination = new URL(to, `${origin}/`);
-    if (!destination.searchParams.has("app")) {
-      destination.searchParams.set("app", "1");
-    }
-
-    const response = NextResponse.redirect(destination, { headers: OAUTH_NO_STORE_HEADERS });
+    const response = NextResponse.redirect(destination, { headers: BRIDGE_HEADERS });
     await applyAuthCookie(
       response,
       {
@@ -96,9 +104,6 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("session-bridge redirect failed:", error);
-    return NextResponse.redirect(
-      new URL("/auth/user/login?app=1", `${resolveOAuthOrigin(request)}/`),
-      { headers: OAUTH_NO_STORE_HEADERS }
-    );
+    return NextResponse.redirect(sessionBridgeLoginUrl(request), { headers: BRIDGE_HEADERS });
   }
 }

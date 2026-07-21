@@ -57,11 +57,23 @@ export function isGuestResumeUiCache(value: unknown): value is GuestResumeUiCach
   if (typeof v.masterId !== "string" || !v.masterId.trim()) return false;
   if (typeof v.system !== "string") return false;
   if (!Array.isArray(v.cards) || v.cards.length !== 3) return false;
+  const positions = new Set<number>();
   for (const c of v.cards) {
     if (!c || typeof c !== "object") return false;
     const card = c as Record<string, unknown>;
     if (typeof card.id !== "number" || typeof card.name !== "string") return false;
+    if (
+      typeof card.position !== "number" ||
+      !Number.isInteger(card.position) ||
+      card.position < 0 ||
+      card.position > 2 ||
+      typeof card.reversed !== "boolean"
+    ) {
+      return false;
+    }
+    positions.add(card.position);
   }
+  if (positions.size !== 3) return false;
   if (v.claimedSessionId != null && typeof v.claimedSessionId !== "string") return false;
   return true;
 }

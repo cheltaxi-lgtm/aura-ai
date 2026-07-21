@@ -99,7 +99,6 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
       // Flag + hard-nav MUST run synchronously after success.
       // Cookie is already cleared; any /me 401 can null authUser and cabinet
       // would otherwise router.replace → login before we leave.
-      markAccountDeletedHome();
       leaveToHomeAfterAccountDeletion();
       void flushWebViewCookies().catch(() => undefined);
       void Promise.resolve(onDeleted?.()).catch(() => undefined);

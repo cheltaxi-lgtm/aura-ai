@@ -5,7 +5,10 @@ import type { FlowStep } from "@/components/FlowStepper";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { loadGuestTriplet, clearGuestTriplet, GUEST_TRIPLET_KEY } from "@/lib/guest-triplet";
 import { mergeGuestTripletIntoProfile } from "@/lib/guest-triplet";
-import { clearGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import {
+  clearGuestResumeUiCache,
+  hasActiveGuestResumeIntent,
+} from "@/lib/guest-resume-ui-cache";
 import {
   POST_AUTH_RETURN_TO_KEY,
   PENDING_INTENT_KEY,
@@ -401,6 +404,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
 
     const prevAccount = localStorage.getItem(ACCOUNT_KEY);
     if (prevAccount && prevAccount !== authUser.sub) {
+      const preserveGuestResume = hasActiveGuestResumeIntent();
       localStorage.removeItem(PROFILE_KEY);
       localStorage.removeItem(FLOW_STEP_KEY);
       localStorage.removeItem(LAST_MASTER_KEY);
@@ -408,9 +412,11 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
       localStorage.removeItem(NEEDS_PROFILE_KEY);
       localStorage.removeItem(POST_AUTH_RETURN_TO_KEY);
       localStorage.removeItem(PENDING_INTENT_KEY);
-      localStorage.removeItem(GUEST_TRIPLET_KEY);
-      clearGuestTriplet();
-      clearGuestResumeUiCache();
+      if (!preserveGuestResume) {
+        localStorage.removeItem(GUEST_TRIPLET_KEY);
+        clearGuestTriplet();
+        clearGuestResumeUiCache();
+      }
       setProfile(null);
       setStepState("intro");
       onAccountSwitch?.();

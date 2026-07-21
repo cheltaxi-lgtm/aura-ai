@@ -35,6 +35,9 @@ export function buildYandexAuthorizeUrl(
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
     scope: "login:info login:email",
+    // Avoid Yandex's silent re-authorization path, which can remain on an
+    // endless blank spinner for accounts that previously granted access.
+    force_confirm: "yes",
   });
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
 }
@@ -44,6 +47,9 @@ export async function exchangeYandexCode(
   codeVerifier: string,
   redirectUri: string
 ): Promise<OAuthUserInfo> {
+  if (!codeVerifier.trim()) {
+    throw new Error("yandex_code_verifier_required");
+  }
   const { clientId, clientSecret } = requireOAuthProviderConfig("yandex");
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -51,7 +57,7 @@ export async function exchangeYandexCode(
     client_id: clientId,
     client_secret: clientSecret,
     redirect_uri: redirectUri,
-    code_verifier: codeVerifier,
+    code_verifier: codeVerifier.trim(),
   });
 
   const tokenRes = await fetch("https://oauth.yandex.ru/token", {

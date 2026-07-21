@@ -155,6 +155,41 @@ section("fingerprint ignores display names");
   assert.equal(a, b);
 }
 
+section("fingerprint preserves selected positions and orientation");
+{
+  const base = {
+    system: "tarot-veronika" as const,
+    masterId: "veronika",
+    spreadId: "triplet",
+  };
+  const original = computeGuestResumeFingerprint({
+    ...base,
+    symbols: [
+      { id: 1, name: "A", position: 0, reversed: false },
+      { id: 2, name: "B", position: 1, reversed: true },
+      { id: 3, name: "C", position: 2, reversed: false },
+    ],
+  });
+  const reordered = computeGuestResumeFingerprint({
+    ...base,
+    symbols: [
+      { id: 1, name: "A", position: 1, reversed: false },
+      { id: 2, name: "B", position: 0, reversed: true },
+      { id: 3, name: "C", position: 2, reversed: false },
+    ],
+  });
+  const upright = computeGuestResumeFingerprint({
+    ...base,
+    symbols: [
+      { id: 1, name: "A", position: 0, reversed: false },
+      { id: 2, name: "B", position: 1, reversed: false },
+      { id: 3, name: "C", position: 2, reversed: false },
+    ],
+  });
+  assert.notEqual(original, reordered);
+  assert.notEqual(original, upright);
+}
+
 section("opaque token hash is not raw token");
 {
   const token = createGuestResumeToken();
@@ -291,6 +326,14 @@ section("payload roundtrip");
   const parsed = parseGuestResumeCardsPayload(payload);
   assert.ok(parsed);
   assert.equal(parsed?.question, "hello world");
+  assert.deepEqual(
+    parsed?.symbols.map(({ id, position, reversed }) => ({ id, position, reversed })),
+    [
+      { id: 1, position: 0, reversed: false },
+      { id: 2, position: 1, reversed: true },
+      { id: 3, position: 2, reversed: false },
+    ]
+  );
 }
 
 section("client billing preflight treats guest_resume as free UI");

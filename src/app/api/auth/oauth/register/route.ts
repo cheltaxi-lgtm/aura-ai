@@ -64,10 +64,16 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as RegistrationBody;
     const code = body.code?.trim();
     if (!code) {
-      return NextResponse.json({ error: "missing_registration_code" }, { status: 400 });
+      return NextResponse.json(
+        { error: "missing_registration_code" },
+        { status: 400, headers: NO_STORE }
+      );
     }
     if (body.acceptedTerms !== true || body.ageConfirmed !== true) {
-      return NextResponse.json({ error: "consent_required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "consent_required" },
+        { status: 400, headers: NO_STORE }
+      );
     }
 
     const now = new Date().toISOString();
@@ -95,7 +101,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (!completed) {
-      return NextResponse.json({ error: "invalid_registration_code" }, { status: 410 });
+      return NextResponse.json(
+        { error: "invalid_registration_code" },
+        { status: 410, headers: NO_STORE }
+      );
     }
 
     const profileUserId = await getProfileUserIdForAccount(completed.account.accountId);
@@ -122,9 +131,10 @@ export async function POST(request: NextRequest) {
       request
     );
 
-    const handoff = completed.pending.appFlow
-      ? await createOAuthHandoff(completed.account.accountId)
-      : undefined;
+    // Registration completes through fetch, whose Set-Cookie can lag in both
+    // browsers and Android WebView. Always provide a one-time document handoff;
+    // setAuthCookie above remains for backwards compatibility.
+    const handoff = await createOAuthHandoff(completed.account.accountId);
 
     if (completed.account.isNewUser) {
       void sendWelcomeEmail(
@@ -143,13 +153,17 @@ export async function POST(request: NextRequest) {
         sessionLinked,
         name: completed.account.name,
         gender: completed.pending.info.gender ?? null,
-        ...(handoff ? { handoff } : {}),
+        appFlow: completed.pending.appFlow,
+        handoff,
       },
       { headers: NO_STORE }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "registration_failed";
     console.error("OAuth registration completion failed:", message);
-    return NextResponse.json({ error: "registration_failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "registration_failed" },
+      { status: 500, headers: NO_STORE }
+    );
   }
 }

@@ -29,7 +29,6 @@ import LandingSeoHub from "@/components/seo/LandingSeoHub";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
 import {
   buildLandingOfferCopy,
-  GUEST_SPREAD_START_EVENT,
   LANDING_QUESTION_KEY,
   resolveLandingHeroVariant,
   type GuestSpreadStartDetail,
@@ -258,6 +257,10 @@ export default function AuraSellingLanding({
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
+  const [guestSpreadRequest, setGuestSpreadRequest] = useState<{
+    id: number;
+    detail: GuestSpreadStartDetail;
+  } | null>(null);
   const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub, heroVariant);
   useLandingSocialProofVisible(showSellingSections || (showHero && !isLoggedIn));
 
@@ -297,7 +300,10 @@ export default function AuraSellingLanding({
       question: normalizedQuestion,
       masterId,
     };
-    window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+    setGuestSpreadRequest((current) => ({
+      id: (current?.id ?? 0) + 1,
+      detail,
+    }));
   };
 
   const handlePrimaryCta = (placement: "hero" | "sticky" | "final") => {
@@ -410,7 +416,7 @@ export default function AuraSellingLanding({
       {!isLoggedIn ? (
         <>
           <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
-          <GuestTripletDraw />
+          <GuestTripletDraw startRequest={guestSpreadRequest} />
         </>
       ) : null}
 

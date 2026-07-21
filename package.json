@@ -40,11 +40,13 @@
     "verify:android-release": "node scripts/verify-android-release.mjs",
     "repair:android-release": "node scripts/verify-android-release.mjs --repair",
     "verify:oauth": "tsx scripts/verify-oauth-helpers.ts",
+    "verify:account-deleted": "tsx scripts/verify-account-deleted.ts",
     "verify:destiny-matrix": "npx tsx scripts/verify-destiny-matrix.mjs",
     "verify:natal-chart": "npx tsx scripts/verify-natal-chart.mjs && node scripts/verify-natal-backend.mjs",
     "verify:natal-backend": "node scripts/verify-natal-backend.mjs",
     "verify:async-natal-jobs": "node scripts/verify-async-natal-jobs.mjs",
     "test:e2e:natal": "playwright test",
+    "test:e2e:guest-triplet": "playwright test --project=guest-triplet-mobile",
     "build:geonames": "node scripts/build-geonames-index.mjs"
   },
   "dependencies": {

@@ -102,7 +102,7 @@ import {
   GUEST_RESUME_TRANSITION_TITLE,
   runGuestTripletResume,
 } from "@/lib/guest-triplet-resume";
-import { GUEST_SPREAD_SECTION_ID, GUEST_SPREAD_START_EVENT, GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
+import { GUEST_SPREAD_PICKER_ID, GUEST_SPREAD_START_EVENT, GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import {
   formatTripletCooldownRu,
   tripletCooldownFromLastDraw,
@@ -462,6 +462,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const autoResumeDoneRef = useRef(false);
   const newTripletInProgressRef = useRef(false);
   const pendingReadingResumeRef = useRef<string | null>(null);
+  const profileSaveAuthorityRef = useRef<{
+    profileUserId: string;
+    expiresAt: number;
+  } | null>(null);
   const sessionSpreadMetaRef = useRef<{
     spreadType?: "daily" | "new" | "photo" | "guest_resume";
     spreadId?: SpreadId | string;
@@ -1617,13 +1621,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         : (guestDraft?.tarotCards?.length ?? 0) >= 3
           ? guestDraft!.tarotCards
           : uiCacheEarly
-            ? uiCacheEarly.cards.map((c) => ({
-                id: c.id,
-                name: c.name,
-                meaning: "",
-              }))
+            ? [...uiCacheEarly.cards]
+                .sort((a, b) => a.position - b.position)
+                .map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  meaning: "",
+                  reversed: c.reversed,
+                }))
             : [];
-    let savedUserId = profile?.userId;
+    let savedUserId: string | undefined;
     // Server receipt is authoritative for guest resume — do not create a new triplet via /api/onboarding.
     const hasGuestSpread = existingCards.length >= 3 && !uiCacheEarly;
     const endpoint = hasGuestSpread ? "/api/onboarding" : "/api/profile";
@@ -1663,8 +1670,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         responseData.message || responseData.error || "Не удалось сохранить профиль."
       );
     }
-    if (responseData.userId || responseData.profileUserId) {
-      savedUserId = responseData.userId || responseData.profileUserId;
+    if (typeof responseData.profileUserId === "string" && responseData.profileUserId) {
+      savedUserId = responseData.profileUserId;
+    } else if (typeof responseData.userId === "string" && responseData.userId) {
+      // Legacy /api/onboarding response; both IDs are server-issued profile IDs.
+      savedUserId = responseData.userId;
+    }
+    if (savedUserId) {
+      // Bridge only the short auth-store propagation window with the ID returned
+      // by the profile API itself; never infer profile ownership from local data.
+      profileSaveAuthorityRef.current = {
+        profileUserId: savedUserId,
+        expiresAt: Date.now() + 3_000,
+      };
     }
 
     const savedProfile: StoredProfile = {
@@ -1705,6 +1723,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             };
             if (body.user?.profileUserId) {
               savedUserId = body.user.profileUserId;
+              profileSaveAuthorityRef.current = {
+                profileUserId: savedUserId,
+                expiresAt: Date.now() + 3_000,
+              };
               break;
             }
           } catch {
@@ -1712,7 +1734,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           }
         }
       }
-      patchGuestResumeUiCache({ phase: "claiming" });
+      if (!savedUserId) {
+        patchGuestResumeUiCache({ phase: "onboarding_required" });
+        setGuestResumeCanRetry(true);
+        setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+        void finishProfileOnboarding("masters");
+        return;
+      }
     }
 
     // Claim/resume must not be blocked by daily triplet cooldown (AC).
@@ -2338,6 +2366,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           id: c.id,
           name: c.name,
           meaning: "",
+          reversed: c.reversed,
         })),
         ...(deckSystem ? { deckSystem } : {}),
         mainQuestion: question || questionFallback || base.mainQuestion,
@@ -2795,7 +2824,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (!isLoggedIn) {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT));
-        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        requestAnimationFrame(() => {
+          document.getElementById(GUEST_SPREAD_PICKER_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
       return;
     }
@@ -3482,7 +3513,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             detail: { masterId: GUEST_TRIPLET_MASTER_ID },
           })
         );
-        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        requestAnimationFrame(() => {
+          document.getElementById(GUEST_SPREAD_PICKER_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
       return;
     }
@@ -4207,7 +4240,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     const active = getActiveProfile();
     const hasBirth = Boolean(String(active?.birthDate ?? "").trim());
-    const hasServerProfile = Boolean(authUser?.profileUserId);
+    const savedProfileAuthority = profileSaveAuthorityRef.current;
+    const hasServerProfile = Boolean(
+      authUser?.profileUserId ||
+        (savedProfileAuthority && savedProfileAuthority.expiresAt > Date.now())
+    );
 
     // Claim/reading need server profileUserId — local birthDate alone is not enough.
     if (!hasBirth || !hasServerProfile) {

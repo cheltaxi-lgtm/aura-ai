@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
-import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
+import { getDeckDefinition, getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
   buildSeededTableDeck,
@@ -13,14 +13,18 @@ import {
 import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import { saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import {
+  hasActiveGuestResumeIntent,
+  loadGuestResumeUiCache,
+  saveGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
 import { buildGuestTripletPreview, buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
 import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
   GUEST_SPREAD_DRAFT_KEY,
+  GUEST_SPREAD_PICKER_ID,
   GUEST_SPREAD_RESET_EVENT,
-  GUEST_SPREAD_SECTION_ID,
   GUEST_SPREAD_START_EVENT,
   GUEST_TRIPLET_MASTER_ID,
   LANDING_QUESTION_KEY,
@@ -75,11 +79,19 @@ type GuestSpreadDraft = {
 
 type GuestTripletDrawProps = {
   className?: string;
+  startRequest?: {
+    id: number;
+    detail: GuestSpreadStartDetail;
+  } | null;
 };
 
 function GuestSpreadSection({ children }: { children: React.ReactNode }) {
   return (
-    <section className="aura-landing-section aura-landing-section--guest-spread">
+    <section
+      id={GUEST_SPREAD_PICKER_ID}
+      className="aura-landing-section aura-landing-section--guest-spread"
+      tabIndex={-1}
+    >
       <div className="mx-auto max-w-6xl">{children}</div>
     </section>
   );
@@ -98,7 +110,10 @@ function readGuestSpreadDraft(): GuestSpreadDraft | null {
   }
 }
 
-export default function GuestTripletDraw({ className = "" }: GuestTripletDrawProps) {
+export default function GuestTripletDraw({
+  className = "",
+  startRequest = null,
+}: GuestTripletDrawProps) {
   const masterId = GUEST_TRIPLET_MASTER_ID;
   const system = resolveMasterDeckSystem(masterId);
   const positions = getDeckPositions(system);
@@ -113,6 +128,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
   const [landingQuestion, setLandingQuestion] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const handledStartRequestId = useRef<number | null>(null);
   const [oauthAgeConfirmed, setOauthAgeConfirmed] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -159,11 +175,43 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       setDeck(draft.deck);
       setRevealed(draft.revealed);
       setLandingQuestion(draft.landingQuestion);
-    } else if (draft) {
-      sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    } else {
+      const completed = hasActiveGuestResumeIntent()
+        ? loadGuestResumeUiCache()
+        : null;
+      if (
+        completed?.phase === "receipt_pending_auth" &&
+        !completed.claimedSessionId &&
+        completed.masterId === GUEST_TRIPLET_MASTER_ID &&
+        completed.cards.length === CARD_COUNT
+      ) {
+        const byId = new Map(
+          getDeckDefinition(system).symbols.map((symbol) => [symbol.id, symbol])
+        );
+        const restoredCards = [...completed.cards]
+          .sort((a, b) => a.position - b.position)
+          .map((card) => ({
+            ...(byId.get(card.id) ?? {
+              id: card.id,
+              name: card.name,
+              meaning: "",
+            }),
+            name: card.name,
+            reversed: card.reversed,
+          }));
+        setDeck(restoredCards);
+        setRevealed([true, true, true]);
+        setLandingQuestion(completed.question);
+        setAgeConfirmed(isAgeGateConfirmed());
+        setOauthAgeConfirmed(isAgeGateConfirmed());
+        setStep("done");
+      }
+      if (draft) {
+        sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+      }
     }
     setDraftRestored(true);
-  }, [draftRestored]);
+  }, [draftRestored, system]);
 
   useEffect(() => {
     if (typeof window === "undefined" || step === "idle" || step === "done") return;
@@ -257,9 +305,8 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     beginGuestSpread(pendingQuestion || undefined);
   }, [beginGuestSpread, landingQuestion]);
 
-  useEffect(() => {
-    const onStart = (event: Event) => {
-      const detail = (event as CustomEvent<GuestSpreadStartDetail>).detail;
+  const handleStartRequest = useCallback(
+    (detail?: GuestSpreadStartDetail) => {
       const nextQuestion = detail?.question?.trim();
       if (nextQuestion) {
         sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
@@ -272,16 +319,40 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       }
       setAgeGateError("");
       setStep("age");
+    },
+    [beginGuestSpread]
+  );
+
+  useEffect(() => {
+    const onStart = (event: Event) => {
+      handleStartRequest((event as CustomEvent<GuestSpreadStartDetail>).detail);
     };
     window.addEventListener(GUEST_SPREAD_START_EVENT, onStart);
     return () => window.removeEventListener(GUEST_SPREAD_START_EVENT, onStart);
-  }, [beginGuestSpread]);
+  }, [handleStartRequest]);
+
+  useEffect(() => {
+    if (!startRequest) return;
+    if (handledStartRequestId.current === startRequest.id) return;
+    handledStartRequestId.current = startRequest.id;
+    handleStartRequest(startRequest.detail);
+  }, [startRequest, handleStartRequest]);
 
   useEffect(() => {
     const onReset = () => exitToLanding();
     window.addEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
     return () => window.removeEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
   }, [exitToLanding]);
+
+  useEffect(() => {
+    if (step === "idle") return;
+    const frame = window.requestAnimationFrame(() => {
+      const picker = document.getElementById(GUEST_SPREAD_PICKER_ID);
+      picker?.scrollIntoView({ behavior: "smooth", block: "start" });
+      picker?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [step]);
 
   useEffect(() => {
     if (step === "idle") return;
@@ -300,9 +371,6 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       if (cards.length < CARD_COUNT) return;
       setDeck(cards);
       setStep("flip");
-      window.requestAnimationFrame(() => {
-        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
     },
     [system, tableSize]
   );
@@ -360,7 +428,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       id: card.id,
       name: card.name,
       position: index,
-      reversed: false,
+      reversed: Boolean(card.reversed),
     }));
 
     void (async () => {
@@ -610,6 +678,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
                   <DeckCard
                     card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
                     system={system}
+                    reversed={deck[i]?.reversed}
                     showMeaning={false}
                     size="md"
                     className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"

@@ -96,7 +96,7 @@ export function validateGuestCompleteInput(body: GuestCompleteInput): GuestCompl
     seenIds.add(id);
     const position =
       typeof card.position === "number" && Number.isFinite(card.position) ? card.position : i;
-    if (position < 0 || position > 2) {
+    if (!Number.isInteger(position) || position < 0 || position > 2) {
       return { ok: false, error: "invalid_position" };
     }
     const def = byId.get(id)!;

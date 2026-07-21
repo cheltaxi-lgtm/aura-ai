@@ -10,7 +10,14 @@ import {
 import { parseOAuthCallbackParams } from "../src/lib/oauth/callback-params";
 import { shouldUseVerifiedEmailForLinking } from "../src/lib/oauth/accounts";
 import { hasRequiredOAuthConsent } from "../src/lib/oauth/finish";
-import { exchangeVkCode } from "../src/lib/oauth/providers/vk";
+import {
+  buildVkAuthorizeUrl,
+  exchangeVkCode,
+} from "../src/lib/oauth/providers/vk";
+import {
+  buildYandexAuthorizeUrl,
+  exchangeYandexCode,
+} from "../src/lib/oauth/providers/yandex";
 import type { OAuthTransaction } from "../src/lib/oauth/types";
 import { buildAppOAuthCompleteUrl } from "../src/lib/oauth/app-return";
 
@@ -100,9 +107,23 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
 {
   const bridge = fs.readFileSync(path.join(root, "src/lib/session-bridge.ts"), "utf8");
   assert.ok(bridge.includes("isNativeCapacitorPlatform()"));
+  assert.ok(bridge.includes("window.location.replace"));
   assert.ok(
     !bridge.includes("shouldUseAppShellClient()"),
     "desktop app-shell must not force session-bridge (OAuth hang)"
+  );
+  const bridgeRoute = fs.readFileSync(
+    path.join(root, "src/app/api/auth/session-bridge/route.ts"),
+    "utf8"
+  );
+  assert.ok(bridgeRoute.includes('"Referrer-Policy": "no-referrer"'));
+  assert.ok(
+    bridgeRoute.includes('sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/")'),
+    "session bridge must use a web-safe fallback"
+  );
+  assert.ok(
+    !bridgeRoute.includes('destination.searchParams.set("app", "1")'),
+    "desktop session bridge destination must not be forced into app shell"
   );
 }
 {
@@ -110,10 +131,15 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
     path.join(root, "src/app/auth/oauth/complete/page.tsx"),
     "utf8"
   );
-  assert.ok(complete.includes("OAUTH_COMPLETE_WATCHDOG_MS"));
+  assert.ok(complete.includes("OAUTH_COMPLETE_OPERATION_MS"));
+  assert.ok(complete.includes("withOperationTimeout"));
+  assert.ok(complete.includes("takeHandoffFromLocation"));
+  assert.ok(complete.includes("history.replaceState"));
   assert.ok(complete.includes("hardNavigate"));
   assert.ok(complete.includes("skipAuthRecheck"));
   assert.ok(complete.includes("started.current = false"));
+  assert.ok(!complete.includes("watchdog"));
+  assert.ok(!complete.includes('fetchWithTimeout("/api/auth/oauth/handoff"'));
   assert.ok(complete.includes("bg-[#07060c]"));
   assert.ok(complete.includes("Если экран не меняется"));
 }
@@ -123,7 +149,7 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
     "utf8"
   );
   assert.ok(callback.includes("createOAuthHandoff"));
-  assert.ok(callback.includes('completeParams.set("handoff", handoff)'));
+  assert.ok(callback.includes("buildSessionBridgePath(handoff, completePath)"));
   assert.ok(!callback.includes("#handoff="));
 }
 {
@@ -132,12 +158,119 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
   assert.ok(!vk.includes('body.set("client_secret"'));
   assert.ok(!/"client_secret"\s*:/.test(vk));
 }
+{
+  const registration = fs.readFileSync(
+    path.join(root, "src/app/api/auth/oauth/register/route.ts"),
+    "utf8"
+  );
+  assert.ok(registration.includes("const handoff = await createOAuthHandoff"));
+  assert.ok(registration.includes("appFlow: completed.pending.appFlow"));
+}
 
 async function verifyAsyncCases() {
   await assert.rejects(
     exchangeVkCode("code", "verifier", "https://example.test/callback"),
     /vk_device_id_required/
   );
+  await assert.rejects(
+    exchangeYandexCode("code", " ", "https://example.test/callback"),
+    /yandex_code_verifier_required/
+  );
+  await assert.rejects(
+    exchangeVkCode("code", " ", "https://example.test/callback", {
+      deviceId: "device",
+    }),
+    /vk_code_verifier_required/
+  );
+
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    yandexId: process.env.YANDEX_OAUTH_CLIENT_ID,
+    yandexSecret: process.env.YANDEX_OAUTH_CLIENT_SECRET,
+    vkId: process.env.VK_CLIENT_ID,
+    vkServiceToken: process.env.VK_SERVICE_TOKEN,
+    vkProtectedKey: process.env.VK_CLIENT_PROTECTED_KEY,
+    vkSecret: process.env.VK_CLIENT_SECRET,
+  };
+  const calls: Array<{ url: string; body: URLSearchParams }> = [];
+  process.env.YANDEX_OAUTH_CLIENT_ID = "yandex-client";
+  process.env.YANDEX_OAUTH_CLIENT_SECRET = "yandex-secret";
+  process.env.VK_CLIENT_ID = "vk-client";
+  process.env.VK_SERVICE_TOKEN = "vk-service-token";
+  delete process.env.VK_CLIENT_PROTECTED_KEY;
+  delete process.env.VK_CLIENT_SECRET;
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    calls.push({
+      url,
+      body: new URLSearchParams(typeof init?.body === "string" ? init.body : ""),
+    });
+    if (url.includes("oauth.yandex.ru/token")) {
+      return Response.json({ access_token: "yandex-access" });
+    }
+    if (url.includes("login.yandex.ru/info")) {
+      return Response.json({
+        id: "yandex-user",
+        default_email: "user@yandex.test",
+        display_name: "Yandex User",
+      });
+    }
+    if (url.includes("id.vk.ru/oauth2/auth")) {
+      return Response.json({ access_token: "vk-access" });
+    }
+    if (url.includes("id.vk.ru/oauth2/user_info")) {
+      return Response.json({
+        user: {
+          user_id: "vk-user",
+          email: "user@vk.test",
+          first_name: "VK",
+          last_name: "User",
+        },
+      });
+    }
+    throw new Error(`Unexpected OAuth fetch: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const yandexAuthorize = new URL(
+      buildYandexAuthorizeUrl("state", "challenge", "https://example.test/yandex")
+    );
+    assert.equal(yandexAuthorize.searchParams.get("code_challenge"), "challenge");
+    assert.equal(yandexAuthorize.searchParams.get("code_challenge_method"), "S256");
+    assert.equal(yandexAuthorize.searchParams.get("force_confirm"), "yes");
+    await exchangeYandexCode("yandex-code", "yandex-verifier", "https://example.test/yandex");
+    const yandexToken = calls.find((call) => call.url.includes("oauth.yandex.ru/token"));
+    assert.equal(yandexToken?.body.get("client_secret"), "yandex-secret");
+    assert.equal(yandexToken?.body.get("code_verifier"), "yandex-verifier");
+
+    const vkAuthorize = new URL(
+      buildVkAuthorizeUrl("state", "challenge", "https://example.test/vk")
+    );
+    assert.equal(vkAuthorize.searchParams.get("code_challenge"), "challenge");
+    assert.equal(vkAuthorize.searchParams.get("code_challenge_method"), "S256");
+    await exchangeVkCode("vk-code", "vk-verifier", "https://example.test/vk", {
+      deviceId: "vk-device",
+      state: "state",
+    });
+    const vkToken = calls.find((call) => call.url.includes("id.vk.ru/oauth2/auth"));
+    assert.equal(vkToken?.body.get("device_id"), "vk-device");
+    assert.equal(vkToken?.body.get("code_verifier"), "vk-verifier");
+    assert.equal(vkToken?.body.get("service_token"), "vk-service-token");
+    assert.equal(vkToken?.body.has("client_secret"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    const restore = (name: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    };
+    restore("YANDEX_OAUTH_CLIENT_ID", originalEnv.yandexId);
+    restore("YANDEX_OAUTH_CLIENT_SECRET", originalEnv.yandexSecret);
+    restore("VK_CLIENT_ID", originalEnv.vkId);
+    restore("VK_SERVICE_TOKEN", originalEnv.vkServiceToken);
+    restore("VK_CLIENT_PROTECTED_KEY", originalEnv.vkProtectedKey);
+    restore("VK_CLIENT_SECRET", originalEnv.vkSecret);
+  }
   console.log("OAuth helper verification passed");
 }
 

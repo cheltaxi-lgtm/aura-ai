@@ -177,7 +177,12 @@ export async function POST(request: NextRequest) {
   let gender = "";
   let zodiac = "";
   let birthDate = "";
-  let tarotCards: { name: string; meaning: string }[] = [];
+  let tarotCards: {
+    id?: number;
+    name: string;
+    meaning: string;
+    reversed?: boolean;
+  }[] = [];
   let sessionId: string | undefined;
   let birthTime: string | undefined;
   let birthCity: string | undefined;
@@ -346,6 +351,30 @@ export async function POST(request: NextRequest) {
       isPaid = true;
     }
 
+    const guestResume = await resolveGuestResumeFreeReading({
+      profileUserId: authed.profileUserId,
+      sessionId,
+      session: resolvedSession,
+      characterId,
+      tarotCards,
+    });
+    const isGuestResumeFree = Boolean(guestResume?.free);
+    if (guestResume?.question && !customQuestion) {
+      customQuestion = guestResume.question;
+    }
+    if (guestResume) {
+      tarotCards = [...guestResume.symbols]
+        .sort((a, b) => a.position - b.position)
+        .map((symbol) => ({
+          id: symbol.id,
+          name: symbol.reversed
+            ? `${symbol.name} (перевёрнутая)`
+            : symbol.name,
+          meaning: "",
+          reversed: symbol.reversed,
+        }));
+    }
+
     const today = new Date().toLocaleDateString("ru-RU", {
       day: "numeric",
       month: "long",
@@ -419,8 +448,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const cardsKey =
-      isNumerologMaster(characterId) && requestNumerologToolId
+    const cardsKey = guestResume?.fingerprint ??
+      (isNumerologMaster(characterId) && requestNumerologToolId
         ? numerologReadingCacheKey({
             characterId,
             toolId: requestNumerologToolId,
@@ -428,26 +457,11 @@ export async function POST(request: NextRequest) {
             cardNames: tarotCards.map((c) => c.name),
             params: numerologToolParams,
           })
-        : tarotCardsKey(tarotCards);
+        : tarotCardsKey(tarotCards));
     // Full Matrix buy-once lives in numerology_report_history only.
     // History cache reused the old watery report even after report rows were deleted.
     const skipHistoryCacheForMatrix =
       isNumerologMaster(characterId) && requestNumerologToolId === MATRIX_REPORT_TOOL_ID;
-
-    const guestResume = await resolveGuestResumeFreeReading({
-      profileUserId: authed.profileUserId,
-      sessionId,
-      session: resolvedSession,
-      characterId,
-      tarotCards,
-    });
-    const isGuestResumeFree = Boolean(guestResume?.free);
-    if (guestResume?.question && !customQuestion) {
-      customQuestion = guestResume.question;
-    }
-    if (guestResume && tarotCards.length < 3) {
-      tarotCards = guestResume.cardNames.map((name) => ({ name, meaning: "" }));
-    }
 
     // Durable reading reference — return before name-keyed cache / generation.
     if (guestResume?.readingId && !forceRegenerate && (await ensureDb())) {

@@ -61,13 +61,24 @@ export function parseGuestResumeCardsPayload(raw: unknown): GuestResumeCardsPayl
   if (typeof obj.system !== "string") return null;
   if (!Array.isArray(obj.symbols) || obj.symbols.length !== 3) return null;
   const symbols: GuestResumeSymbol[] = [];
+  const positions = new Set<number>();
   for (const item of obj.symbols) {
     if (!item || typeof item !== "object") return null;
     const s = item as Record<string, unknown>;
     const id = typeof s.id === "number" ? s.id : Number(s.id);
     const name = typeof s.name === "string" ? s.name.trim() : "";
     const position = typeof s.position === "number" ? s.position : Number(s.position);
-    if (!Number.isFinite(id) || !name || !Number.isFinite(position)) return null;
+    if (
+      !Number.isFinite(id) ||
+      !name ||
+      !Number.isInteger(position) ||
+      position < 0 ||
+      position > 2 ||
+      typeof s.reversed !== "boolean"
+    ) {
+      return null;
+    }
+    positions.add(position);
     symbols.push({
       id,
       name,
@@ -75,6 +86,7 @@ export function parseGuestResumeCardsPayload(raw: unknown): GuestResumeCardsPayl
       reversed: Boolean(s.reversed),
     });
   }
+  if (positions.size !== 3) return null;
   return {
     kind: GUEST_RESUME_CARDS_KIND,
     question: typeof obj.question === "string" ? obj.question : "",

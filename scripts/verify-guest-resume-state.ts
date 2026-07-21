@@ -143,6 +143,14 @@ section("static: guest landing must not blank after triplet");
   const homePage = readSrc("src/components/HomePage.tsx");
   assert.ok(homePage.includes("showLanding || step === \"onboarding\""));
 }
+
+section("static: account bootstrap preserves active guest resume");
+{
+  const homeFlow = readSrc("src/hooks/useHomeFlow.ts");
+  assert.ok(homeFlow.includes("hasActiveGuestResumeIntent"));
+  assert.ok(homeFlow.includes("preserveGuestResume"));
+  assert.ok(homeFlow.includes("if (!preserveGuestResume)"));
+}
 {
   const src = readSrc("src/hooks/useOnboardingFlow.ts");
   assert.ok(src.includes("forceProfileOnboarding"));
@@ -163,8 +171,10 @@ section("static: claim persists claimedSessionId before reading");
   const src = readSrc("src/lib/guest-triplet-resume.ts");
   assert.ok(src.includes("claimedSessionId: claim.sessionId"));
   assert.ok(src.includes('setPhase("resuming_reading")'));
-  assert.ok(src.includes("fetchOwnedResumeStatus"));
+  assert.ok(src.includes("fetchExactOwnedResumeStatus"));
   assert.ok(src.includes("/api/guest-triplet/status"));
+  assert.ok(src.includes("persisted.status !== \"reading_consumed\""));
+  assert.ok(src.indexOf("clearGuestResumeUiCache();") > src.indexOf("persisted.status"));
 }
 
 section("static: homepage gates transition banner by phase");
@@ -195,10 +205,41 @@ section("static: stale guest cache must not hijack OAuth");
 section("static: status route exists and never returns token");
 {
   const src = readSrc("src/app/api/guest-triplet/status/route.ts");
-  assert.ok(src.includes("findLatestOwnedGuestResume"));
+  assert.ok(src.includes("getGuestResumeSessionById"));
+  assert.ok(src.includes('searchParams.get("sessionId")'));
+  assert.ok(src.includes("row.user_id !== profileUserId"));
+  assert.ok(!src.includes("findLatestOwnedGuestResume"));
   assert.ok(src.includes("requireUserAuth"));
   assert.ok(!/receiptToken|rawToken|tokenHash|"token"/.test(src));
   assert.ok(!src.includes("zovus_guest_resume"));
+}
+
+section("static: completed registration gate restores from UI cache");
+{
+  const src = readSrc("src/components/GuestTripletDraw.tsx");
+  assert.ok(src.includes('completed?.phase === "receipt_pending_auth"'));
+  assert.ok(src.includes('setStep("done")'));
+  assert.ok(src.includes("setRevealed([true, true, true])"));
+}
+
+section("static: guest reading uses authoritative ordered orientation");
+{
+  const reading = readSrc("src/app/api/reading/route.ts");
+  assert.ok(reading.includes("guestResume?.fingerprint ??"));
+  assert.ok(reading.includes("[...guestResume.symbols]"));
+  assert.ok(reading.includes(".sort((a, b) => a.position - b.position)"));
+  assert.ok(reading.includes("symbol.reversed"));
+  const onboarding = readSrc("src/hooks/useOnboardingFlow.ts");
+  assert.ok(onboarding.includes("reversed: c.reversed"));
+}
+
+section("static: profile save authority is server-issued and bounded");
+{
+  const onboarding = readSrc("src/hooks/useOnboardingFlow.ts");
+  assert.ok(onboarding.includes("profileSaveAuthorityRef"));
+  assert.ok(onboarding.includes("profileUserId: savedUserId"));
+  assert.ok(onboarding.includes("Date.now() + 3_000"));
+  assert.ok(onboarding.includes("savedProfileAuthority.expiresAt > Date.now()"));
 }
 
 console.log("\nverify-guest-resume-state: OK");

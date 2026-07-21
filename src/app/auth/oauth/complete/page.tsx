@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { finishUserAuthSuccess } from "@/lib/client-user-auth-success";
 import { fetchAuthMeWithRetry, type AuthMeResponse } from "@/lib/client-auth-session";
@@ -19,40 +19,27 @@ type RegistrationPreview = {
   gender: "male" | "female" | null;
 };
 
-/** Hard ceiling — never leave the user on "Завершаем вход…" forever. */
-const OAUTH_COMPLETE_WATCHDOG_MS = 3_500;
+/** One ceiling for completion work; navigation is chosen only after it settles. */
+const OAUTH_COMPLETE_OPERATION_MS = 8_000;
 
-async function ensureAuthenticated(handoff: string | null): Promise<AuthMeResponse | null> {
+async function ensureAuthenticated(): Promise<AuthMeResponse | null> {
   let me = await fetchAuthMeWithRetry({ attempts: 2, delayMs: 120, timeoutMs: 2_000 });
   if (me?.authenticated) return me;
-  if (!handoff) {
-    return fetchAuthMeWithRetry({ attempts: 2, delayMs: 150, timeoutMs: 2_000 });
-  }
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const handoffRes = await fetchWithTimeout("/api/auth/oauth/handoff", {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        timeoutMs: 3_500,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: handoff }),
-      });
-      if (handoffRes.ok) {
-        await flushWebViewCookies();
-        return fetchAuthMeWithRetry({ attempts: 3, delayMs: 120, timeoutMs: 2_000 });
-      }
-      if (handoffRes.status === 400 || handoffRes.status === 404) {
-        break;
-      }
-    } catch {
-      /* retry */
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 120 * (attempt + 1)));
-  }
-
   return fetchAuthMeWithRetry({ attempts: 2, delayMs: 150, timeoutMs: 2_000 });
+}
+
+async function withOperationTimeout<T>(operation: Promise<T>): Promise<T | null> {
+  let timer = 0;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<null>((resolve) => {
+        timer = window.setTimeout(() => resolve(null), OAUTH_COMPLETE_OPERATION_MS);
+      }),
+    ]);
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 function hardNavigate(destination: string): void {
@@ -62,21 +49,24 @@ function hardNavigate(destination: string): void {
   } catch {
     window.location.href = landing;
   }
-  window.setTimeout(() => {
-    if (window.location.pathname.startsWith("/auth/oauth/complete")) {
-      window.location.href = landing;
-    }
-  }, 250);
 }
 
-function readHandoffFromLocation(): string | null {
-  const params = new URLSearchParams(window.location.search);
+function takeHandoffFromLocation(): string | null {
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
   const fromQuery = params.get("handoff");
-  if (fromQuery) return fromQuery;
-  const raw = window.location.hash.startsWith("#")
-    ? window.location.hash.slice(1)
-    : window.location.hash;
-  return new URLSearchParams(raw).get("handoff");
+  const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
+  const handoff = fromQuery || hashParams.get("handoff");
+  if (!handoff) return null;
+
+  // Treat the handoff like a credential: retain it only in memory and remove it
+  // before any fetch, bridge, analytics, copy, or manual navigation can expose it.
+  params.delete("handoff");
+  hashParams.delete("handoff");
+  const remainingHash = hashParams.toString();
+  url.hash = remainingHash ? `#${remainingHash}` : "";
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  return handoff;
 }
 
 export default function OAuthCompletePage() {
@@ -90,17 +80,35 @@ export default function OAuthCompletePage() {
   const [submitting, setSubmitting] = useState(false);
   const [fallbackHref, setFallbackHref] = useState("/");
 
+  const navigateOnce = useCallback((destination: string, handoff?: string | null): boolean => {
+    if (navigated.current) return false;
+    navigated.current = true;
+    markAuthPending();
+    if (handoff) {
+      void navigateViaSessionBridge(destination, handoff)
+        .then((bridged) => {
+          if (!bridged) hardNavigate(destination);
+        })
+        .catch(() => hardNavigate(destination));
+      return true;
+    }
+    hardNavigate(destination);
+    return true;
+  }, []);
+
   useEffect(() => {
     if (started.current || typeof window === "undefined") return;
     started.current = true;
 
     const params = new URLSearchParams(window.location.search);
+    const locationHandoff = takeHandoffFromLocation();
     const registration = params.get("registration")?.trim();
     if (registration) {
       setRegistrationCode(registration);
-      void fetch(`/api/auth/oauth/register?code=${encodeURIComponent(registration)}`, {
+      void fetchWithTimeout(`/api/auth/oauth/register?code=${encodeURIComponent(registration)}`, {
         credentials: "include",
         cache: "no-store",
+        timeoutMs: OAUTH_COMPLETE_OPERATION_MS,
       })
         .then(async (response) => {
           if (!response.ok) throw new Error("Ссылка регистрации устарела.");
@@ -124,114 +132,93 @@ export default function OAuthCompletePage() {
     } catch {
       handoffFromStore = null;
     }
-    const handoff = readHandoffFromLocation() || handoffFromStore;
+    const handoff = locationHandoff || handoffFromStore;
 
     const urgentFallback =
       needsProfile || isNewUser ? onboardingRedirectUrl() : returnTo;
     setFallbackHref(withAppShellAuthParams(urgentFallback));
 
-    const watchdogFallback = () => {
-      if (navigated.current) return;
-      navigated.current = true;
-      markAuthPending();
-      hardNavigate(urgentFallback);
-    };
-    const watchdog = window.setTimeout(watchdogFallback, OAUTH_COMPLETE_WATCHDOG_MS);
+    // A handoff is consumed only by a document response. This avoids the
+    // fetch Set-Cookie race on web and WebView alike. Claim navigation before
+    // starting it, so no timeout or late async branch can choose another URL.
+    if (handoff && !alreadyBridged) {
+      const resume = new URL(window.location.href);
+      resume.searchParams.set("_bridged", "1");
+      if (shouldUseSessionBridge()) resume.searchParams.set("app", "1");
+      navigateOnce(`${resume.pathname}${resume.search}${resume.hash}`, handoff);
+      return;
+    }
 
-    const go = (destination: string) => {
-      if (navigated.current) return;
-      navigated.current = true;
-      window.clearTimeout(watchdog);
-      hardNavigate(destination);
+    const resolveDestination = async (): Promise<string> => {
+      const me = await ensureAuthenticated();
+      void flushWebViewCookies().catch(() => undefined);
+
+      if (!me?.authenticated) {
+        return urgentFallback;
+      }
+
+      let profile: Record<string, unknown> | null = null;
+      if (hasProfileFlag && me.user?.profileUserId) {
+        try {
+          const profileRes = await fetchWithTimeout("/api/cabinet", {
+            credentials: "include",
+            cache: "no-store",
+            timeoutMs: 1_500,
+          });
+          if (profileRes.ok) {
+            profile = ((await profileRes.json()) as { profile?: Record<string, unknown> })
+              ?.profile ?? null;
+          }
+        } catch {
+          /* optional */
+        }
+      }
+
+      const oauthGender =
+        me.user?.oauthGender === "male" || me.user?.oauthGender === "female"
+          ? me.user.oauthGender
+          : undefined;
+      const liveNeedsProfile = Boolean(
+        needsProfile || me.needsProfile || !me.user?.profileUserId
+      );
+      const liveIsNewUser = Boolean(isNewUser || (liveNeedsProfile && mode === "register"));
+
+      return finishUserAuthSuccess({
+        mode,
+        returnTo,
+        isNewUser: liveIsNewUser,
+        needsProfile: liveNeedsProfile,
+        userName: me.user?.name,
+        profile,
+        oauthGender,
+        skipAuthRecheck: true,
+      });
     };
 
     void (async () => {
       try {
-        if (handoff && shouldUseSessionBridge() && !alreadyBridged) {
-          const resume = new URL(window.location.href);
-          resume.searchParams.delete("handoff");
-          resume.hash = "";
-          resume.searchParams.set("app", "1");
-          resume.searchParams.set("_bridged", "1");
-          const bridged = await navigateViaSessionBridge(
-            `${resume.pathname}${resume.search}`,
-            handoff
-          );
-          if (bridged) return;
-        }
-
-        const me = await ensureAuthenticated(alreadyBridged ? null : handoff);
-        void flushWebViewCookies().catch(() => undefined);
-        markAuthPending();
-
-        if (!me?.authenticated) {
-          // Cookie/handoff lag — still leave this page; home/onboarding will recheck.
-          go(urgentFallback);
-          return;
-        }
-
-        let profile: Record<string, unknown> | null = null;
-        if (hasProfileFlag && me.user?.profileUserId) {
-          try {
-            const profileRes = await fetchWithTimeout("/api/cabinet", {
-              credentials: "include",
-              cache: "no-store",
-              timeoutMs: 1_500,
-            });
-            if (profileRes.ok) {
-              profile = ((await profileRes.json()) as { profile?: Record<string, unknown> })
-                ?.profile ?? null;
-            }
-          } catch {
-            /* optional */
-          }
-        }
-
-        const oauthGender =
-          me.user?.oauthGender === "male" || me.user?.oauthGender === "female"
-            ? me.user.oauthGender
-            : undefined;
-        const liveNeedsProfile = Boolean(
-          needsProfile || me.needsProfile || !me.user?.profileUserId
-        );
-        const liveIsNewUser = Boolean(isNewUser || (liveNeedsProfile && mode === "register"));
-
-        const destination = await finishUserAuthSuccess({
-          mode,
-          returnTo,
-          isNewUser: liveIsNewUser,
-          needsProfile: liveNeedsProfile,
-          userName: me.user?.name,
-          profile,
-          oauthGender,
-          skipAuthRecheck: true,
-        });
-
-        if (shouldUseSessionBridge()) {
-          const bridged = await navigateViaSessionBridge(destination);
-          if (bridged) return;
-        }
-        go(destination);
+        const destination = await withOperationTimeout(resolveDestination());
+        navigateOnce(destination ?? urgentFallback);
       } catch {
-        if (!navigated.current) watchdogFallback();
+        navigateOnce(urgentFallback);
       }
     })();
 
     return () => {
-      window.clearTimeout(watchdog);
       if (!navigated.current) started.current = false;
     };
-  }, []);
+  }, [navigateOnce]);
 
   const completeRegistration = async () => {
     if (!accepted || submitting) return;
     setSubmitting(true);
     setError("");
     try {
-      const response = await fetch("/api/auth/oauth/register", {
+      const response = await fetchWithTimeout("/api/auth/oauth/register", {
         method: "POST",
         credentials: "include",
         cache: "no-store",
+        timeoutMs: OAUTH_COMPLETE_OPERATION_MS,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: registrationCode,
@@ -244,7 +231,7 @@ export default function OAuthCompletePage() {
       const data = await response.json();
       if (!response.ok) throw new Error("Не удалось завершить регистрацию.");
 
-      if (data.handoff && !isNativeCapacitorPlatform()) {
+      if (data.handoff && data.appFlow && !isNativeCapacitorPlatform()) {
         const params = new URLSearchParams({
           handoff: data.handoff,
           returnTo: sanitizeReturnTo(data.returnTo, "/"),
@@ -252,6 +239,8 @@ export default function OAuthCompletePage() {
           new: data.isNewUser ? "1" : "0",
           needsProfile: data.needsProfile ? "1" : "0",
         });
+        if (navigated.current) return;
+        navigated.current = true;
         window.location.replace(`zovus://open/auth/oauth/complete?${params.toString()}`);
         return;
       }
@@ -266,7 +255,7 @@ export default function OAuthCompletePage() {
           data.gender === "male" || data.gender === "female" ? data.gender : undefined,
         skipAuthRecheck: true,
       });
-      hardNavigate(destination);
+      navigateOnce(destination, typeof data.handoff === "string" ? data.handoff : null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось завершить регистрацию.");
       setSubmitting(false);
@@ -323,6 +312,15 @@ export default function OAuthCompletePage() {
           >
             {submitting ? "Входим…" : "Продолжить"}
           </button>
+          <Link
+            href="/auth/user/login"
+            onClick={() => {
+              navigated.current = true;
+            }}
+            className="block text-sm text-aura-champagne underline"
+          >
+            Вернуться ко входу
+          </Link>
         </section>
       </main>
     );
@@ -342,7 +340,13 @@ export default function OAuthCompletePage() {
   return (
     <div className="auth-page flex min-h-screen flex-col items-center justify-center bg-[#07060c] px-6 py-16 text-center">
       <p className="text-sm text-white/80">Завершаем вход…</p>
-      <a href={fallbackHref} className="mt-6 text-sm text-aura-champagne underline">
+      <a
+        href={fallbackHref}
+        onClick={() => {
+          navigated.current = true;
+        }}
+        className="mt-6 text-sm text-aura-champagne underline"
+      >
         Если экран не меняется — нажмите сюда
       </a>
     </div>

@@ -1,22 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
-import {
-  findLatestOwnedGuestResume,
-} from "@/lib/guest-triplet-receipt-db";
+import { getGuestResumeSessionById } from "@/lib/guest-triplet-receipt-db";
 import { parseGuestResumeCardsPayload } from "@/lib/guest-triplet-receipt-shared";
 import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 
 export const runtime = "nodejs";
 
 /**
- * Auth-only: return the caller's latest claimed/consumed guest-resume session.
+ * Auth-only: return one exact claimed/consumed guest-resume session.
  * Used for refresh/retry after receipt cookies were cleared on claim.
  * Never returns raw receipt token.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "unavailable" }, { status: 503 });
   }
@@ -31,8 +29,18 @@ export async function GET() {
     return NextResponse.json({ ok: true, status: "none" as const });
   }
 
-  const row = await findLatestOwnedGuestResume(profileUserId);
-  if (!row) {
+  const sessionId = request.nextUrl.searchParams.get("sessionId")?.trim();
+  if (!sessionId) {
+    return NextResponse.json({ error: "session_id_required" }, { status: 400 });
+  }
+
+  const row = await getGuestResumeSessionById(sessionId);
+  if (
+    !row ||
+    row.user_id !== profileUserId ||
+    (row.guest_resume_status !== "claimed" &&
+      row.guest_resume_status !== "reading_consumed")
+  ) {
     return NextResponse.json({ ok: true, status: "none" as const });
   }
 

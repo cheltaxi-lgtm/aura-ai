@@ -46,7 +46,8 @@ export async function navigateViaSessionBridge(
   }
   if (!token) return false;
   const url = new URL(buildSessionBridgeUrl(token, to), appShellNavigationOrigin());
-  window.location.assign(url.toString());
+  // Do not leave a one-time token or the completion page in browser history.
+  window.location.replace(url.toString());
   return true;
 }
 

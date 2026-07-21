@@ -72,7 +72,14 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
   );
   const guestCardsFromCache =
     uiCache?.cards?.length === 3
-      ? uiCache.cards.map((c) => ({ id: c.id, name: c.name, meaning: "" }))
+      ? [...uiCache.cards]
+          .sort((a, b) => a.position - b.position)
+          .map((c) => ({
+            id: c.id,
+            name: c.name,
+            meaning: "",
+            reversed: c.reversed,
+          }))
       : [];
   const guestTarotCards = guest?.tarotCards?.length
     ? guest.tarotCards
