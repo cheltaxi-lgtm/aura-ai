@@ -7,7 +7,10 @@ import {
   hashOAuthOpaqueCode,
   isOAuthOpaqueCode,
 } from "../src/lib/oauth/state-cookie";
-import { parseOAuthCallbackParams } from "../src/lib/oauth/callback-params";
+import {
+  getRawQueryParam,
+  parseOAuthCallbackParams,
+} from "../src/lib/oauth/callback-params";
 import { shouldUseVerifiedEmailForLinking } from "../src/lib/oauth/accounts";
 import { hasRequiredOAuthConsent } from "../src/lib/oauth/finish";
 import {
@@ -64,6 +67,54 @@ assert.deepEqual(parseOAuthCallbackParams("vk", vkFlatUrl), {
   deviceId: "device",
   error: null,
 });
+
+// VK often returns code/state in payload and device_id as a sibling query param.
+const vkSplitUrl = new URL("https://example.test/callback");
+vkSplitUrl.searchParams.set(
+  "payload",
+  JSON.stringify({ code: "split-code", state: first })
+);
+vkSplitUrl.searchParams.set("device_id", "sibling-device");
+assert.deepEqual(parseOAuthCallbackParams("vk", vkSplitUrl), {
+  code: "split-code",
+  state: first,
+  deviceId: "sibling-device",
+  error: null,
+});
+
+// URLSearchParams turns bare `+` into space — must not corrupt VK device_id/code.
+assert.equal(
+  getRawQueryParam("?device_id=abc+def%2Bghi&code=x", "device_id"),
+  "abc+def+ghi"
+);
+const vkPlusUrl = new URL(
+  "https://example.test/callback?code=c%2Bode&state=st&device_id=dev+ice%2Bid"
+);
+assert.deepEqual(parseOAuthCallbackParams("vk", vkPlusUrl), {
+  code: "c+ode",
+  state: "st",
+  deviceId: "dev+ice+id",
+  error: null,
+});
+assert.notEqual(
+  new URL("https://example.test/?device_id=dev+ice").searchParams.get("device_id"),
+  "dev+ice",
+  "sanity: URLSearchParams must mangle bare plus (why we use getRawQueryParam)"
+);
+
+// Raw request URL string path (what the callback route passes) must also preserve `+`.
+assert.deepEqual(
+  parseOAuthCallbackParams(
+    "vk",
+    "https://example.test/callback?code=c%2Bode&state=st&device_id=dev+ice%2Bid"
+  ),
+  {
+    code: "c+ode",
+    state: "st",
+    deviceId: "dev+ice+id",
+    error: null,
+  }
+);
 
 assert.equal(
   shouldUseVerifiedEmailForLinking({
@@ -125,6 +176,15 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
     !bridgeRoute.includes('destination.searchParams.set("app", "1")'),
     "desktop session bridge destination must not be forced into app shell"
   );
+  assert.ok(
+    bridgeRoute.includes("redirectIfAlreadyAuthenticated"),
+    "duplicate bridge hits must reuse an already-set auth cookie"
+  );
+  assert.ok(
+    bridgeRoute.includes('oauthError", "session_lost"') ||
+      bridgeRoute.includes("session_lost"),
+    "bridge failures must surface session_lost instead of a silent login bounce"
+  );
 }
 {
   const complete = fs.readFileSync(
@@ -138,6 +198,8 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
   assert.ok(complete.includes("hardNavigate"));
   assert.ok(complete.includes("skipAuthRecheck"));
   assert.ok(complete.includes("started.current = false"));
+  assert.ok(complete.includes("sessionLostUrl"));
+  assert.ok(complete.includes("session_lost"));
   assert.ok(!complete.includes("watchdog"));
   assert.ok(!complete.includes('fetchWithTimeout("/api/auth/oauth/handoff"'));
   assert.ok(complete.includes("bg-[#07060c]"));
@@ -149,12 +211,23 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
     "utf8"
   );
   assert.ok(callback.includes("createOAuthHandoff"));
-  assert.ok(callback.includes("buildSessionBridgePath(handoff, completePath)"));
+  assert.ok(
+    callback.includes("parseOAuthCallbackParams(provider, request.url)"),
+    "callback must parse raw request.url so VK + is not mangled by NextURL"
+  );
+  assert.ok(
+    !callback.includes("buildSessionBridgePath"),
+    "web callback must not hop through session-bridge (duplicate Allow → login race)"
+  );
+  assert.ok(callback.includes("getOAuthTransaction"));
+  assert.ok(callback.includes("vk_device_id_required"));
+  assert.ok(callback.includes("applyAuthCookie"));
   assert.ok(!callback.includes("#handoff="));
 }
 {
   const vk = fs.readFileSync(path.join(root, "src/lib/oauth/providers/vk.ts"), "utf8");
   assert.ok(vk.includes('body.set("service_token", vkServiceToken)'));
+  assert.ok(vk.includes("id.vk.ru/oauth2/auth?"));
   assert.ok(!vk.includes('body.set("client_secret"'));
   assert.ok(!/"client_secret"\s*:/.test(vk));
 }
@@ -254,9 +327,15 @@ async function verifyAsyncCases() {
       state: "state",
     });
     const vkToken = calls.find((call) => call.url.includes("id.vk.ru/oauth2/auth"));
-    assert.equal(vkToken?.body.get("device_id"), "vk-device");
-    assert.equal(vkToken?.body.get("code_verifier"), "vk-verifier");
+    // Match @vkid/sdk: device_id / code_verifier in query, code (+ service_token) in body.
+    const vkTokenUrl = new URL(vkToken!.url);
+    assert.equal(vkTokenUrl.searchParams.get("device_id"), "vk-device");
+    assert.equal(vkTokenUrl.searchParams.get("code_verifier"), "vk-verifier");
+    assert.equal(vkTokenUrl.searchParams.get("grant_type"), "authorization_code");
+    assert.equal(vkTokenUrl.searchParams.get("state"), "state");
+    assert.equal(vkToken?.body.get("code"), "vk-code");
     assert.equal(vkToken?.body.get("service_token"), "vk-service-token");
+    assert.equal(vkToken?.body.has("device_id"), false);
     assert.equal(vkToken?.body.has("client_secret"), false);
   } finally {
     globalThis.fetch = originalFetch;

@@ -65,6 +65,37 @@ export async function createOAuthTransaction(transaction: OAuthTransaction): Pro
   return code;
 }
 
+function mapTransactionRow(row: TransactionRow): OAuthTransaction {
+  return {
+    provider: row.provider,
+    codeVerifier: row.code_verifier,
+    redirectUri: row.redirect_uri,
+    returnTo: row.return_to,
+    sessionId: row.session_id,
+    acceptedTerms: row.accepted_terms,
+    ageConfirmed: row.age_confirmed,
+    marketingConsent: row.marketing_consent,
+    mode: row.mode,
+    appFlow: row.app_flow,
+    registrationAttribution: mapAttribution(row.registration_attribution),
+  };
+}
+
+/** Read pending OAuth state without consuming (error redirects need mode/returnTo). */
+export async function getOAuthTransaction(code: string): Promise<OAuthTransaction | null> {
+  if (!isOAuthOpaqueCode(code)) return null;
+  const { rows } = await query<TransactionRow>(
+    `SELECT provider, code_verifier, redirect_uri, return_to, session_id, mode,
+            accepted_terms, age_confirmed, marketing_consent, app_flow,
+            registration_attribution
+     FROM oauth_transactions
+     WHERE code_hash = $1 AND expires_at > NOW()
+     LIMIT 1`,
+    [hashOAuthOpaqueCode(code)]
+  );
+  return rows[0] ? mapTransactionRow(rows[0]) : null;
+}
+
 /** DELETE ... RETURNING makes validation and consumption one atomic operation. */
 export async function consumeOAuthTransaction(code: string): Promise<OAuthTransaction | null> {
   if (!isOAuthOpaqueCode(code)) return null;
@@ -76,22 +107,7 @@ export async function consumeOAuthTransaction(code: string): Promise<OAuthTransa
                registration_attribution`,
     [hashOAuthOpaqueCode(code)]
   );
-  const row = rows[0];
-  return row
-    ? {
-        provider: row.provider,
-        codeVerifier: row.code_verifier,
-        redirectUri: row.redirect_uri,
-        returnTo: row.return_to,
-        sessionId: row.session_id,
-        acceptedTerms: row.accepted_terms,
-        ageConfirmed: row.age_confirmed,
-        marketingConsent: row.marketing_consent,
-        mode: row.mode,
-        appFlow: row.app_flow,
-        registrationAttribution: mapAttribution(row.registration_attribution),
-      }
-    : null;
+  return rows[0] ? mapTransactionRow(rows[0]) : null;
 }
 
 export async function createPendingOAuthRegistration(

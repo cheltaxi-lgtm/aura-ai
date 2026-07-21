@@ -135,6 +135,8 @@ export async function ensureSpreadReadingInChatMessages(
     Math.min(requiredCards, 1)
   );
 
+  // updateSessionChatMeta preserves guest_triplet_resume / guest_resume cards
+  // payload when present — do not store a plain name array over the receipt.
   await updateSessionChatMeta(sessionId, {
     characterKey: input.characterId,
     cards: resolvedCardNames.length ? resolvedCardNames : null,

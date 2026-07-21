@@ -251,8 +251,32 @@ export async function updateSessionChatMeta(
     params.push(meta.spreadId);
   }
   if (meta.cards !== undefined) {
-    sets.push(`cards = $${idx++}::jsonb`);
-    params.push(meta.cards?.length ? JSON.stringify(meta.cards) : null);
+    // Preserve structured guest-resume receipt payload if present.
+    let preserveGuestPayload = false;
+    if (meta.cards?.length) {
+      try {
+        const { rows } = await query<{ cards: unknown; spread_type: string | null }>(
+          `SELECT cards, spread_type FROM sessions WHERE id = $1 LIMIT 1`,
+          [sessionId]
+        );
+        const existing = rows[0];
+        const existingCards = existing?.cards;
+        const isGuestPayload =
+          existingCards &&
+          typeof existingCards === "object" &&
+          !Array.isArray(existingCards) &&
+          (existingCards as { kind?: unknown }).kind === "guest_triplet_resume";
+        const isGuestSpread =
+          existing?.spread_type === "guest_resume" || meta.spreadType === "guest_resume";
+        preserveGuestPayload = Boolean(isGuestPayload || isGuestSpread);
+      } catch {
+        preserveGuestPayload = false;
+      }
+    }
+    if (!preserveGuestPayload) {
+      sets.push(`cards = $${idx++}::jsonb`);
+      params.push(meta.cards?.length ? JSON.stringify(meta.cards) : null);
+    }
   }
   if (meta.numerologToolParams !== undefined) {
     sets.push(`numerolog_tool_params = $${idx++}::jsonb`);

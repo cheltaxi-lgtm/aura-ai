@@ -14,16 +14,29 @@ const BRIDGE_HEADERS = {
   "Referrer-Policy": "no-referrer",
 } as const;
 
-function sessionBridgeLoginUrl(request: NextRequest): URL {
+function sessionBridgeLoginUrl(request: NextRequest, oauthError?: string): URL {
   const origin = resolveOAuthOrigin(request);
   const to = sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/");
   const destination = new URL(to, `${origin}/`);
-  const loginUrl = new URL("/auth/user/login", `${origin}/`);
+  const mode = destination.searchParams.get("mode");
+  const authBase =
+    mode === "register" ? "/auth/user/register" : "/auth/user/login";
+  const loginUrl = new URL(authBase, `${origin}/`);
   if (destination.searchParams.get("app") === "1") {
     loginUrl.searchParams.set("app", "1");
   }
   loginUrl.searchParams.set("returnTo", to);
+  if (oauthError) loginUrl.searchParams.set("oauthError", oauthError);
   return loginUrl;
+}
+
+/** Cookie already visible (callback Set-Cookie or prior bridge hit) — continue. */
+async function redirectIfAlreadyAuthenticated(
+  destination: URL
+): Promise<NextResponse | null> {
+  const auth = await getAuth();
+  if (!auth || auth.role !== "user") return null;
+  return NextResponse.redirect(destination, { headers: BRIDGE_HEADERS });
 }
 
 /**
@@ -66,22 +79,34 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const rate = await checkOAuthRequestRateLimit(request, "session-bridge", 30);
-    if (!rate.allowed) {
-      return NextResponse.redirect(sessionBridgeLoginUrl(request), { headers: BRIDGE_HEADERS });
-    }
-
-    const token = request.nextUrl.searchParams.get("token")?.trim() ?? "";
     const to = sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/");
     const origin = resolveOAuthOrigin(request);
     const destination = new URL(to, `${origin}/`);
-    const loginUrl = sessionBridgeLoginUrl(request);
+
+    if (!rate.allowed) {
+      const already = await redirectIfAlreadyAuthenticated(destination);
+      if (already) return already;
+      return NextResponse.redirect(
+        sessionBridgeLoginUrl(request, "session_lost"),
+        { headers: BRIDGE_HEADERS }
+      );
+    }
+
+    const token = request.nextUrl.searchParams.get("token")?.trim() ?? "";
+    const loginUrl = sessionBridgeLoginUrl(request, "session_lost");
 
     if (!token) {
+      const already = await redirectIfAlreadyAuthenticated(destination);
+      if (already) return already;
       return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
     const accountId = await consumeOAuthHandoff(token);
     if (!accountId) {
+      // Duplicate document hit (prefetch / double 302) after a successful first
+      // consume: cookie from finishOAuthLogin or the first bridge is enough.
+      const already = await redirectIfAlreadyAuthenticated(destination);
+      if (already) return already;
       return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
@@ -104,6 +129,9 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("session-bridge redirect failed:", error);
-    return NextResponse.redirect(sessionBridgeLoginUrl(request), { headers: BRIDGE_HEADERS });
+    return NextResponse.redirect(
+      sessionBridgeLoginUrl(request, "session_lost"),
+      { headers: BRIDGE_HEADERS }
+    );
   }
 }

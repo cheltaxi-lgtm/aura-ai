@@ -4,7 +4,10 @@ import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getGuestResumeSessionById } from "@/lib/guest-triplet-receipt-db";
-import { parseGuestResumeCardsPayload } from "@/lib/guest-triplet-receipt-shared";
+import {
+  parseGuestResumeCardsPayload,
+  recoverGuestResumeCardsFromNames,
+} from "@/lib/guest-triplet-receipt-shared";
 import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 
 export const runtime = "nodejs";
@@ -44,8 +47,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, status: "none" as const });
   }
 
-  const payload = parseGuestResumeCardsPayload(row.cards);
+  const payload =
+    parseGuestResumeCardsPayload(row.cards) ??
+    recoverGuestResumeCardsFromNames(row.cards);
   if (!payload) {
+    // Still surface a consumed reading so the client can finish resume.
+    if (
+      row.guest_resume_status === "reading_consumed" &&
+      row.guest_resume_reading_id
+    ) {
+      return NextResponse.json({
+        ok: true,
+        status: row.guest_resume_status,
+        sessionId: row.id,
+        masterId: row.character_key || GUEST_TRIPLET_MASTER_ID,
+        question: "",
+        system: "tarot-veronika",
+        cards: [],
+        readingId: row.guest_resume_reading_id,
+        alreadyClaimed: true,
+      });
+    }
     return NextResponse.json({ ok: true, status: "none" as const });
   }
 

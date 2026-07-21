@@ -20,12 +20,22 @@ type RegistrationPreview = {
 };
 
 /** One ceiling for completion work; navigation is chosen only after it settles. */
-const OAUTH_COMPLETE_OPERATION_MS = 8_000;
+const OAUTH_COMPLETE_OPERATION_MS = 12_000;
 
 async function ensureAuthenticated(): Promise<AuthMeResponse | null> {
-  let me = await fetchAuthMeWithRetry({ attempts: 2, delayMs: 120, timeoutMs: 2_000 });
+  // Yandex Browser / WebView often lag on Set-Cookie from the session-bridge hop.
+  let me = await fetchAuthMeWithRetry({ attempts: 4, delayMs: 200, timeoutMs: 2_500 });
   if (me?.authenticated) return me;
-  return fetchAuthMeWithRetry({ attempts: 2, delayMs: 150, timeoutMs: 2_000 });
+  return fetchAuthMeWithRetry({ attempts: 4, delayMs: 350, timeoutMs: 2_500 });
+}
+
+function sessionLostUrl(mode: "login" | "register", returnTo: string): string {
+  const base = mode === "register" ? "/auth/user/register" : "/auth/user/login";
+  const params = new URLSearchParams({
+    oauthError: "session_lost",
+    returnTo: sanitizeReturnTo(returnTo, "/"),
+  });
+  return `${base}?${params.toString()}`;
 }
 
 async function withOperationTimeout<T>(operation: Promise<T>): Promise<T | null> {
@@ -150,11 +160,13 @@ export default function OAuthCompletePage() {
     }
 
     const resolveDestination = async (): Promise<string> => {
-      const me = await ensureAuthenticated();
       void flushWebViewCookies().catch(() => undefined);
+      const me = await ensureAuthenticated();
 
       if (!me?.authenticated) {
-        return urgentFallback;
+        // Do not send users to home / guest resume while logged out — that looks
+        // like a "lost session" after Yandex/VK, especially in Yandex Browser.
+        return sessionLostUrl(mode, returnTo);
       }
 
       let profile: Record<string, unknown> | null = null;
@@ -195,12 +207,14 @@ export default function OAuthCompletePage() {
       });
     };
 
+    const lostSession = sessionLostUrl(mode, returnTo);
     void (async () => {
       try {
         const destination = await withOperationTimeout(resolveDestination());
-        navigateOnce(destination ?? urgentFallback);
+        // Never fall through to home while unauthenticated — that drops the session UX.
+        navigateOnce(destination ?? lostSession);
       } catch {
-        navigateOnce(urgentFallback);
+        navigateOnce(lostSession);
       }
     })();
 

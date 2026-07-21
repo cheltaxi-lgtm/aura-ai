@@ -554,11 +554,10 @@ export default function HomePage({
     const isTransition =
       tripletNotice.includes(GUEST_RESUME_TRANSITION_SUBTITLE);
     if (!isTransition) return tripletNotice;
+    // Transition copy only while claim/reading is actively in flight — never
+    // keep "готовит трактовку" sticky after recoverable_error / idle.
     const phase = loadGuestResumeUiCache()?.phase;
-    if (isGuestResumeBannerPhase(phase) || guestResumeCanRetry) {
-      return tripletNotice;
-    }
-    return null;
+    return isGuestResumeBannerPhase(phase) ? tripletNotice : null;
   }, [tripletNotice, guestResumeCanRetry]);
 
   const openSpreadIntentFlow = useCallback(

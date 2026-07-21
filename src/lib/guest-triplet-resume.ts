@@ -114,26 +114,28 @@ export async function runGuestTripletResume(opts?: {
 
     if (cache.claimedSessionId) {
       const exact = await fetchExactOwnedResumeStatus(cache.claimedSessionId);
-      if (
-        !exact?.ok ||
-        (exact.status !== "claimed" && exact.status !== "reading_consumed") ||
-        exact.sessionId !== cache.claimedSessionId ||
-        !Array.isArray(exact.cards) ||
-        exact.cards.length !== 3
-      ) {
-        setPhase("recoverable_error");
-        trackGuestTripletResumeFailed("session");
-        return { ok: false, stage: "session" as const, phase: "recoverable_error" };
+      const exactOwned =
+        exact?.ok &&
+        (exact.status === "claimed" || exact.status === "reading_consumed") &&
+        exact.sessionId === cache.claimedSessionId;
+      const exactCardsOk =
+        Array.isArray(exact?.cards) && (exact?.cards.length ?? 0) === 3;
+      if (!exactOwned) {
+        // Stale claimedSessionId (or status parse lag) — drop id and re-claim via cookie.
+        patchGuestResumeUiCache({ claimedSessionId: undefined, phase: "claiming" });
+        cache = { ...cache, claimedSessionId: undefined, phase: "claiming" };
+      } else {
+        cache = {
+          ...cache,
+          masterId: exact.masterId || cache.masterId,
+          system: exact.system || cache.system,
+          question: exact.question ?? cache.question,
+          // Prefer server cards; keep UI-cache cards if server payload was corrupted.
+          cards: exactCardsOk ? exact.cards! : cache.cards,
+          phase: "resuming_reading",
+        };
+        saveGuestResumeUiCache(cache);
       }
-      cache = {
-        ...cache,
-        masterId: exact.masterId || cache.masterId,
-        system: exact.system || cache.system,
-        question: exact.question ?? cache.question,
-        cards: exact.cards,
-        phase: "resuming_reading",
-      };
-      saveGuestResumeUiCache(cache);
     }
 
     trackGuestTripletResumeDetected({

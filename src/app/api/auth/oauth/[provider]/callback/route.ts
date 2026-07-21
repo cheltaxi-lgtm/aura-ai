@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { applyAuthCookie, getAuth } from "@/lib/auth";
 import { ensureDb } from "@/lib/db";
 import { isOAuthProviderEnabled, oauthAbsoluteUrl } from "@/lib/oauth/config";
 import { finishOAuthLogin, oauthErrorRedirect } from "@/lib/oauth/finish";
@@ -7,6 +8,7 @@ import { exchangeProviderCode } from "@/lib/oauth/providers";
 import {
   consumeOAuthTransaction,
   createPendingOAuthRegistration,
+  getOAuthTransaction,
 } from "@/lib/oauth/storage";
 import { parseOAuthCallbackParams } from "@/lib/oauth/callback-params";
 import type { OAuthProvider } from "@/lib/oauth/types";
@@ -23,9 +25,19 @@ function redirectNoStore(url: string | URL) {
   return NextResponse.redirect(url, { headers: OAUTH_NO_STORE_HEADERS });
 }
 
-function buildSessionBridgePath(token: string, destination: string): string {
-  const params = new URLSearchParams({ token, to: destination });
-  return `/api/auth/session-bridge?${params.toString()}`;
+function completePathFor(
+  returnTo: string,
+  mode: "login" | "register",
+  flags?: { isNewUser?: boolean; needsProfile?: boolean; hasProfile?: boolean }
+): string {
+  const completeParams = new URLSearchParams({
+    returnTo,
+    mode,
+    new: flags?.isNewUser ? "1" : "0",
+    needsProfile: flags?.needsProfile ? "1" : "0",
+  });
+  if (flags?.hasProfile) completeParams.set("hasProfile", "1");
+  return `/auth/oauth/complete?${completeParams.toString()}`;
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -61,11 +73,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
     const provider = rawProvider as OAuthProvider;
 
-    const url = request.nextUrl;
-    const callbackParams = parseOAuthCallbackParams(provider, url);
+    // Prefer raw request.url — NextURL.search can already turn VK `+` into spaces.
+    const callbackParams = parseOAuthCallbackParams(provider, request.url);
     const code = callbackParams.code;
     const state = callbackParams.state;
     const providerError = callbackParams.error;
+    const deviceId = callbackParams.deviceId?.trim() || undefined;
+
+    // Validate VK device_id before burning the one-time state — otherwise the user
+    // must click Allow again on a fresh OAuth start (looks like a double consent).
+    if (provider === "vk" && code && state && !providerError && !deviceId) {
+      const peeked = await getOAuthTransaction(state);
+      mode = peeked?.mode ?? mode;
+      returnTo = sanitizeReturnTo(peeked?.returnTo, returnTo);
+      return redirectNoStore(
+        oauthAbsoluteUrl(
+          request,
+          oauthErrorRedirect("vk_device_id_required", mode, returnTo)
+        )
+      );
+    }
 
     const pending = state ? await consumeOAuthTransaction(state) : null;
     mode = pending?.mode ?? "login";
@@ -78,12 +105,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     if (!pending || pending.provider !== provider) {
+      // Duplicate callback after a successful first hop — cookie may already be set.
+      const auth = await getAuth();
+      if (auth?.role === "user") {
+        return redirectNoStore(
+          oauthAbsoluteUrl(request, completePathFor(returnTo, mode))
+        );
+      }
       return redirectNoStore(
         oauthAbsoluteUrl(request, oauthErrorRedirect("state_mismatch", mode, returnTo))
       );
     }
 
-    const deviceId = callbackParams.deviceId?.trim() || undefined;
     if (provider === "vk" && !deviceId) {
       return redirectNoStore(
         oauthAbsoluteUrl(request, oauthErrorRedirect("vk_device_id_required", mode, returnTo))
@@ -124,35 +157,56 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       throw error;
     }
 
-    const completeParams = new URLSearchParams({
-      returnTo,
-      mode,
-      new: result.isNewUser ? "1" : "0",
-      needsProfile: result.needsProfile ? "1" : "0",
+    const completePath = completePathFor(returnTo, mode, {
+      isNewUser: result.isNewUser,
+      needsProfile: result.needsProfile,
+      hasProfile: Boolean(result.profile),
     });
-    if (result.profile) completeParams.set("hasProfile", "1");
 
-    // Always mint a one-time handoff. Android receives it in the deep link and
-    // consumes it through a document navigation. Web enters the same document
-    // bridge here, so completion never relies on a fetch Set-Cookie becoming
-    // visible before the next navigation.
-    const handoff = await createOAuthHandoff(result.account.id);
-    const completePath = `/auth/oauth/complete?${completeParams.toString()}`;
+    // App / WebView still needs the handoff deep-link + document bridge.
+    if (pending.appFlow) {
+      const handoff = await createOAuthHandoff(result.account.id);
+      return redirectNoStore(
+        buildAppOAuthCompleteUrl(
+          `${completePath}&handoff=${encodeURIComponent(handoff)}`
+        )
+      );
+    }
 
-    return redirectNoStore(
-      pending.appFlow
-        ? buildAppOAuthCompleteUrl(
-            `${completePath}&handoff=${encodeURIComponent(handoff)}`
-          )
-        : oauthAbsoluteUrl(request, buildSessionBridgePath(handoff, completePath))
+    // Web: one document hop from VK → complete with Set-Cookie.
+    // Extra session-bridge hop raced with duplicate callbacks and bounced
+    // returning users to the login form after the second Allow.
+    const response = NextResponse.redirect(oauthAbsoluteUrl(request, completePath), {
+      headers: OAUTH_NO_STORE_HEADERS,
+    });
+    await applyAuthCookie(
+      response,
+      {
+        sub: result.account.id,
+        role: "user",
+        email: result.account.email,
+        name: result.account.name,
+      },
+      request
     );
+    return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "oauth_failed";
     console.error("OAuth callback failed:", message);
 
+    // Duplicate callback (double Allow / prefetch) after a successful first exchange:
+    // cookie is already set — continue instead of bouncing to the login form.
+    const auth = await getAuth();
+    if (auth?.role === "user") {
+      return redirectNoStore(
+        oauthAbsoluteUrl(request, completePathFor(returnTo, mode))
+      );
+    }
+
     let code = "oauth_failed";
     if (message === "vk_device_id_required") code = "vk_device_id_required";
-    if (/vk_token_failed|invalid_client|invalid_grant|service_token/i.test(message)) {
+    else if (/device_id is invalid/i.test(message)) code = "vk_device_id_invalid";
+    else if (/vk_token_failed|invalid_client|invalid_grant|service_token|Invalid code/i.test(message)) {
       code = "oauth_failed";
     }
 

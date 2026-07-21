@@ -95,6 +95,35 @@ export function parseGuestResumeCardsPayload(raw: unknown): GuestResumeCardsPayl
   };
 }
 
+/**
+ * Recover guest-resume cards when sessions.cards was overwritten as a plain
+ * name array (legacy bug in updateSessionChatMeta during reading persist).
+ * IDs are positional placeholders — prefer UI-cache cards for fingerprint checks.
+ */
+export function recoverGuestResumeCardsFromNames(
+  raw: unknown,
+  fallback?: { system?: DeckSystem; question?: string }
+): GuestResumeCardsPayload | null {
+  const parsed = parseGuestResumeCardsPayload(raw);
+  if (parsed) return parsed;
+  if (!Array.isArray(raw) || raw.length !== 3) return null;
+  const symbols: GuestResumeSymbol[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    const item = raw[i];
+    if (typeof item !== "string" || !item.trim()) return null;
+    const reversed = /\(перевёрнут/i.test(item);
+    const name = item.replace(/\s*\(перевёрнут[аы]?\)\s*$/i, "").trim();
+    if (!name) return null;
+    symbols.push({ id: i + 1, name, position: i, reversed });
+  }
+  return {
+    kind: GUEST_RESUME_CARDS_KIND,
+    question: fallback?.question ?? "",
+    system: (fallback?.system as DeckSystem) || "tarot-veronika",
+    symbols,
+  };
+}
+
 export function cardNamesFromGuestPayload(payload: GuestResumeCardsPayload): string[] {
   return [...payload.symbols]
     .sort((a, b) => a.position - b.position)

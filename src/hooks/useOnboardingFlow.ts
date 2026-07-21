@@ -66,6 +66,7 @@ import {
 } from "@/lib/photo-chat";
 import {
   getSpreadForSystem,
+  reconcileSpreadDeck,
   resolveMasterSpread,
   resolveTripletDisplaySpread,
   resolveRecapSpread,
@@ -543,9 +544,20 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         const local = resolveRecapSpread(profile, tripletSystem);
         return local.cards.length >= 3 ? local.cards : [];
       }
-      if (!hasServerTripletSpread(savedReadings)) return [];
-      const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
-      return latest.cards.length >= 3 ? latest.cards : [];
+      if (hasServerTripletSpread(savedReadings)) {
+        const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
+        return latest.cards.length >= 3 ? latest.cards : [];
+      }
+      // Guest resume / post-anketa: keep cards visible until server history lands.
+      const local = resolveRecapSpread(profile, tripletSystem);
+      if (local.cards.length >= 3) return local.cards;
+      const uiCache = loadGuestResumeUiCache();
+      if (uiCache?.cards?.length === 3) {
+        const system = (uiCache.system as DeckSystem) || tripletSystem;
+        const ordered = [...uiCache.cards].sort((a, b) => a.position - b.position);
+        return reconcileSpreadDeck(system, ordered).cards;
+      }
+      return [];
     }
     const latest = resolveTripletDisplaySpread(savedReadings, profile, tripletSystem);
     return latest.cards.length >= 3 ? latest.cards : [];
@@ -559,9 +571,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         const local = resolveRecapSpread(profile, tripletSystem);
         return local.cards.length >= 3 ? local.system : (profile?.deckSystem ?? tripletSystem);
       }
-      if (!hasServerTripletSpread(savedReadings)) return profile?.deckSystem ?? tripletSystem;
-      const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
-      return latest.cards.length >= 3 ? latest.system : (profile?.deckSystem ?? tripletSystem);
+      if (hasServerTripletSpread(savedReadings)) {
+        const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
+        return latest.cards.length >= 3 ? latest.system : (profile?.deckSystem ?? tripletSystem);
+      }
+      const local = resolveRecapSpread(profile, tripletSystem);
+      if (local.cards.length >= 3) return local.system;
+      const uiCache = loadGuestResumeUiCache();
+      if (uiCache?.system) return (uiCache.system as DeckSystem) || tripletSystem;
+      return profile?.deckSystem ?? tripletSystem;
     }
     const latest = resolveTripletDisplaySpread(savedReadings, profile, tripletSystem);
     return latest.cards.length >= 3 ? latest.system : (profile?.deckSystem ?? tripletSystem);
@@ -855,7 +873,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const displayTeaser = useMemo(() => {
     const useLocalProfile = !isLoggedIn || newTripletDraft || step === "triplet";
     if (isLoggedIn && !useLocalProfile && !hasServerTripletSpread(savedReadings)) {
-      return undefined;
+      // Keep guest teaser while resume/history catch up after anketa.
+      const uiCache = loadGuestResumeUiCache();
+      return profile?.teaser ?? uiCache?.teaser ?? undefined;
     }
     const triplet = savedReadings
       .filter((r) => r.characterName === "triplet")

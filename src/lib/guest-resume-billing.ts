@@ -1,8 +1,10 @@
 import type { SessionRow } from "@/lib/session";
 import {
   computeGuestResumeFingerprint,
+  GUEST_RESUME_CARDS_KIND,
   GUEST_RESUME_SPREAD_TYPE,
   parseGuestResumeCardsPayload,
+  recoverGuestResumeCardsFromNames,
   type GuestResumeSymbol,
 } from "@/lib/guest-triplet-receipt";
 import { getGuestResumeSessionById } from "@/lib/guest-triplet-receipt-db";
@@ -47,8 +49,65 @@ export async function resolveGuestResumeFreeReading(input: {
     return null;
   }
 
-  const payload = parseGuestResumeCardsPayload(resume.cards);
-  if (!payload || !resume.guest_resume_fingerprint) return null;
+  const structured = parseGuestResumeCardsPayload(resume.cards);
+  const recovered = structured
+    ? null
+    : recoverGuestResumeCardsFromNames(resume.cards);
+  const requestSymbols: GuestResumeSymbol[] | null =
+    input.tarotCards?.length === 3 &&
+    input.tarotCards.every((c) => typeof c.id === "number")
+      ? input.tarotCards.map((c, i) => ({
+          id: c.id as number,
+          name: c.name,
+          position: i,
+          reversed: Boolean(c.reversed),
+        }))
+      : null;
+
+  // Prefer structured payload; if cards were overwritten as names[], use request
+  // cards (authoritative for fingerprint) or recovered names for display-only.
+  let payload = structured;
+  if (!payload && requestSymbols && resume.guest_resume_fingerprint) {
+    const reqFp = computeGuestResumeFingerprint({
+      system: (recovered?.system || "tarot-veronika") as DeckSystem,
+      masterId: resume.character_key || input.characterId || "",
+      spreadId: resume.spread_id || "triplet",
+      symbols: requestSymbols,
+    });
+    if (reqFp === resume.guest_resume_fingerprint) {
+      payload = {
+        kind: GUEST_RESUME_CARDS_KIND,
+        question: recovered?.question ?? "",
+        system: (recovered?.system || "tarot-veronika") as DeckSystem,
+        symbols: requestSymbols,
+      };
+    }
+  }
+  if (!payload) payload = recovered;
+  if (!payload || !resume.guest_resume_fingerprint) {
+    // Already-consumed reading: still allow reopen via history id.
+    if (
+      resume.guest_resume_status === "reading_consumed" &&
+      resume.guest_resume_reading_id &&
+      requestSymbols
+    ) {
+      return {
+        free: true,
+        sessionId: resume.id,
+        fingerprint: resume.guest_resume_fingerprint || "consumed",
+        readingId: resume.guest_resume_reading_id,
+        status: resume.guest_resume_status,
+        question: "",
+        system: "tarot-veronika",
+        symbols: requestSymbols,
+        masterId: resume.character_key || "",
+        cardNames: requestSymbols.map((s) =>
+          s.reversed ? `${s.name} (перевёрнутая)` : s.name
+        ),
+      };
+    }
+    return null;
+  }
 
   const expectedFp = computeGuestResumeFingerprint({
     system: payload.system,
@@ -56,7 +115,26 @@ export async function resolveGuestResumeFreeReading(input: {
     spreadId: resume.spread_id || "triplet",
     symbols: payload.symbols,
   });
-  if (expectedFp !== resume.guest_resume_fingerprint) return null;
+  // Skip fingerprint match for recovered name-only payloads (ids are placeholders).
+  if (structured && expectedFp !== resume.guest_resume_fingerprint) return null;
+  if (!structured && requestSymbols) {
+    const reqFp = computeGuestResumeFingerprint({
+      system: payload.system,
+      masterId: resume.character_key || input.characterId || "",
+      spreadId: resume.spread_id || "triplet",
+      symbols: requestSymbols,
+    });
+    if (reqFp !== resume.guest_resume_fingerprint) return null;
+    payload = { ...payload, symbols: requestSymbols };
+  } else if (!structured && expectedFp !== resume.guest_resume_fingerprint) {
+    // Name-only recovery cannot prove fingerprint — only allow if already consumed.
+    if (
+      resume.guest_resume_status !== "reading_consumed" ||
+      !resume.guest_resume_reading_id
+    ) {
+      return null;
+    }
+  }
 
   if (
     resume.character_key &&
