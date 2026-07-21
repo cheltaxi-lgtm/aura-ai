@@ -128,8 +128,8 @@ function buildActiveSteps(ctx: {
   presetSpreadLocked: boolean;
 }): Step[] {
   if (ctx.numerologFlow) {
+    // Эвелина: своё меню расчётов, без шага тем Таро.
     const steps: Step[] = [];
-    if (!ctx.topicLocked) steps.push("topic");
     if (!ctx.masterLocked) steps.push("master");
     steps.push("calculation", "ritual", "reveal");
     return steps;
@@ -387,8 +387,7 @@ export default function MasterSessionFlow({
   const allFlipped = flipped.slice(0, cardCount).every(Boolean);
   const spreadReady =
     newCards.slice(0, cardCount).filter((c) => c.name.trim()).length >= cardCount;
-  // Preselected tool (e.g. destiny_matrix deep-link) skips the Tarot topic picker.
-  const topicLocked = Boolean(initialTopic || initialNumerologTool);
+  const topicLocked = Boolean(initialTopic);
   const masterLocked = Boolean(preselectedMaster);
   const activeSteps = buildActiveSteps({
     numerologFlow,
@@ -438,9 +437,8 @@ export default function MasterSessionFlow({
     if (numerologPreselected || (newSpreadOnly && isNumerologMaster(preselectedMaster))) {
       setCardType("new");
       setFlipped(emptyFlipped(getNumerologTool(resolvedNumerologTool).drawCount));
-      // Topic seeds spheres when the user picks a general numerology session.
-      // When a concrete tool is already chosen (Матрица судьбы / deep-link), go straight to calc.
-      setStep(initialTopic || initialNumerologTool ? "calculation" : "topic");
+      // Always open Эвелина's calculation menu (Матрица / Пифагор / …), never Tarot topics.
+      setStep("calculation");
       return;
     }
 
@@ -570,9 +568,8 @@ export default function MasterSessionFlow({
     }
     else if (step === "calculation") {
       if (showCardsChoice && cardType === "new") setStep("cards");
-      else if (masterLocked && topicLocked) onClose();
-      else if (!masterLocked && master) setStep("master");
-      else if (!topicLocked) setStep("topic");
+      else if (masterLocked) onClose();
+      else if (master) setStep("master");
       else onClose();
     }
     else if (step === "ritual") {
