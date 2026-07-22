@@ -34,6 +34,7 @@ import {
   trackGuestCardRevealed,
   trackGuestSpreadCompleted,
   trackGuestSpreadStarted,
+  trackGuestAuth,
   trackGuestTeaserCta,
   trackGuestTeaserView,
   trackRegistrationGateView,
@@ -171,6 +172,7 @@ export default function GuestTripletDraw({
     teaserViewTracked.current = true;
     trackGuestTeaserView();
     trackRegistrationGateView("guest_triplet_done");
+    trackGuestAuth("guest_triplet_done");
   }, [step]);
 
   const resetSpreadState = useCallback(() => {

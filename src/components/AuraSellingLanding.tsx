@@ -409,10 +409,6 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showSellingSections && isEditorial && !isLoggedIn ? (
-        <EditorialTopicsSection onTopic={handleTopic} />
-      ) : null}
-
       {showLoggedInHome ? (
         <LoggedInHomeBanner
           userName={homeUserName}
@@ -441,6 +437,10 @@ export default function AuraSellingLanding({
                 : undefined)
           }
         />
+      ) : null}
+
+      {showSellingSections && isEditorial && !isLoggedIn ? (
+        <EditorialTopicsSection onTopic={handleTopic} />
       ) : null}
 
       {!isLoggedIn ? <GuestTripletDraw startRequest={guestSpreadRequest} /> : null}

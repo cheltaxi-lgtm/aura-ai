@@ -198,7 +198,7 @@ export default function MastersShowcase({
             <div>
               <p className="font-display text-lg font-semibold text-white">Вы — эзотерик или таролог?</p>
               <p className="mt-1 text-sm text-gray-500">
-                Регистрируйтесь как эксперт, подключайте свои материалы к ИИ-образу и получайте свою витрину
+                Регистрируйтесь как эксперт, подключайте свои материалы к образу наставника и получайте свою витрину
               </p>
             </div>
             <Link href="/auth/expert/register" className="btn-neon shrink-0 px-6 py-3 text-sm">

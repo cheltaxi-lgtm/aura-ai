@@ -113,6 +113,37 @@ export function trackGuestTeaserCta(): void {
   trackLandingEvent("guest_teaser_cta");
 }
 
+/** Auth step of guest funnel (gate / OAuth / email start). */
+export function trackGuestAuth(source: string): void {
+  trackLandingEvent("guest_auth", { source });
+}
+
+/** Claim/resume of the same guest receipt after auth. */
+export function trackGuestClaim(props: {
+  master_id: string;
+  cards_count: number;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_claim", {
+    master_id: props.master_id,
+    cards_count: props.cards_count,
+    has_question: props.has_question ? 1 : 0,
+  });
+}
+
+/** Full reading delivered after claim/resume. */
+export function trackGuestFull(props: {
+  master_id: string;
+  reading_mode: string;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_full", {
+    master_id: props.master_id,
+    reading_mode: props.reading_mode,
+    has_question: props.has_question ? 1 : 0,
+  });
+}
+
 export function trackGuestChatContinue(source: string): void {
   trackLandingEvent("guest_chat_continue", { source });
 }
@@ -193,6 +224,7 @@ export function trackGuestTripletResumeStarted(props: {
     cards_count: props.cards_count,
     has_question: props.has_question ? 1 : 0,
   });
+  trackGuestClaim(props);
 }
 
 export function trackGuestTripletResumeCompleted(props: {
@@ -205,6 +237,7 @@ export function trackGuestTripletResumeCompleted(props: {
     reading_mode: props.reading_mode,
     has_question: props.has_question ? 1 : 0,
   });
+  trackGuestFull(props);
 }
 
 export function trackGuestTripletResumeFailed(

@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useMotionLite } from "@/lib/motion-lite";
 import { ArrowRight, UserRound } from "lucide-react";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
-import { MASTER_PUBLIC_BADGE } from "@/lib/master-disclosure";
+import { MASTER_SHOWCASE_BADGE } from "@/lib/master-disclosure";
 import { isRitualMaster, RITUAL_MASTER_SHOWCASE_BADGE } from "@/lib/ritual-config";
 import { formatMasterPriceDisplay, type MasterPriceKind } from "@/lib/master-pricing";
 import { resolveMasterDeckSystem } from "@/lib/decks";
@@ -127,7 +127,7 @@ export default function MasterShowcaseCard({
           ) : null}
           <CardBadge variant="neutral">
             <UserRound className="master-showcase-card__badge-icon" aria-hidden />
-            {MASTER_PUBLIC_BADGE}
+            {MASTER_SHOWCASE_BADGE}
           </CardBadge>
         </div>
 
