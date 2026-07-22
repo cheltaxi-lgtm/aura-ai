@@ -7724,21 +7724,22 @@ body.cookie-banner-visible .auth-salon-page .auth-form {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
-  padding: 1rem 0.85rem 0.5rem;
+  padding: 0.75rem 0.65rem 1.5rem;
 }
 
 /* deck-pick body uses global brass scrollbar */
 
 .deck-pick__grid {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.5rem;
   max-width: 960px;
   margin: 0 auto;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.75rem;
+  justify-items: center;
 }
 
 @media (min-width: 640px) {
-  .deck-pick__grid { gap: 0.85rem; }
+  .deck-pick__grid { gap: 0.65rem; }
 }
 
 .deck-pick__grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -7759,25 +7760,35 @@ body.cookie-banner-visible .auth-salon-page .auth-form {
 
 .deck-pick__slot {
   position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 108px;
+  justify-content: center;
   border: none;
-  padding: 0.2rem;
+  padding: 0;
   background: transparent;
   cursor: pointer;
-  border-radius: 0.75rem;
-  transition: filter 0.2s;
+  border-radius: 0.65rem;
+  transition: filter 0.2s, transform 0.15s;
+}
+
+.deck-pick__card-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 0.65rem;
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .deck-pick__slot--picked {
-  filter: brightness(1.08);
+  filter: brightness(1.06);
 }
 
-.deck-pick__slot--picked::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 0.75rem;
-  box-shadow: 0 0 0 2px var(--dp-accent), 0 0 24px var(--dp-glow);
-  pointer-events: none;
+/* Ring hugs the card face — not the empty grid cell */
+.deck-pick__slot--picked .deck-pick__card-wrap {
+  box-shadow:
+    0 0 0 2px var(--dp-accent),
+    0 0 16px var(--dp-glow);
 }
 
 .deck-pick__slot--dim {
@@ -7790,26 +7801,26 @@ body.cookie-banner-visible .auth-salon-page .auth-form {
 }
 
 .deck-pick__card {
-  max-width: 108px;
+  max-width: none;
 }
 
-.deck-pick__grid--8 .deck-pick__card,
-.deck-pick__grid--6 .deck-pick__card {
-  max-width: 92px;
+.deck-pick__grid--8 .deck-pick__slot,
+.deck-pick__grid--6 .deck-pick__slot {
+  max-width: 84px;
 }
 
 @media (min-width: 768px) {
-  .deck-pick__grid--8 .deck-pick__card { max-width: 88px; }
+  .deck-pick__grid--8 .deck-pick__slot { max-width: 80px; }
 }
 
 .deck-pick__badge {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: -0.3rem;
+  right: -0.3rem;
   z-index: 3;
   display: flex;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.35rem;
+  height: 1.35rem;
   align-items: center;
   justify-content: center;
   border-radius: 9999px;

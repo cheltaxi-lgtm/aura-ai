@@ -136,6 +136,8 @@ export default function MagicalSpreadTable({
               ? { name: tableCards?.[index]?.name ?? String(index + 1), meaning: "" }
               : { name: "?", meaning: "" };
 
+            const enterDelay = slotCount > 36 ? 0 : Math.min(index * 0.012, 0.6);
+
             return (
               <motion.button
                 key={index}
@@ -143,12 +145,12 @@ export default function MagicalSpreadTable({
                 disabled={disabled || resolving || pickComplete || selected}
                 onClick={() => onPick(index)}
                 className={`deck-pick__slot ${selected ? "deck-pick__slot--picked" : ""} ${dimmed ? "deck-pick__slot--dim" : ""}`}
-                initial={{ opacity: 0, y: 12 }}
+                initial={{ opacity: 0, y: slotCount > 36 ? 0 : 12 }}
                 animate={{ opacity: dimmed ? 0.28 : 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.012, 0.6), duration: 0.35 }}
+                transition={{ delay: enterDelay, duration: slotCount > 36 ? 0.2 : 0.35 }}
                 whileHover={
                   !selected && !pickComplete && !disabled
-                    ? { y: -6, transition: { duration: 0.15 } }
+                    ? { y: -4, transition: { duration: 0.15 } }
                     : undefined
                 }
                 whileTap={!selected && !pickComplete && !disabled ? { scale: 0.96 } : undefined}
@@ -160,27 +162,29 @@ export default function MagicalSpreadTable({
                       : `Карта ${index + 1}`
                 }
               >
-                <DeckCard
-                  card={cardData}
-                  system={system}
-                  masterId={masterId}
-                  size={size}
-                  faceDown={!faceUp}
-                  hideCaption={!faceUp}
-                  interactive={false}
-                  className="deck-pick__card mx-auto w-full"
-                />
-                <AnimatePresence>
-                  {selected ? (
-                    <motion.span
-                      className="deck-pick__badge"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                    >
-                      {order + 1}
-                    </motion.span>
-                  ) : null}
-                </AnimatePresence>
+                <span className="deck-pick__card-wrap">
+                  <DeckCard
+                    card={cardData}
+                    system={system}
+                    masterId={masterId}
+                    size={size}
+                    faceDown={!faceUp}
+                    hideCaption={!faceUp}
+                    interactive={false}
+                    className="deck-pick__card w-full"
+                  />
+                  <AnimatePresence>
+                    {selected ? (
+                      <motion.span
+                        className="deck-pick__badge"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                      >
+                        {order + 1}
+                      </motion.span>
+                    ) : null}
+                  </AnimatePresence>
+                </span>
               </motion.button>
             );
           })}

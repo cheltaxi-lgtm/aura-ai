@@ -16,13 +16,13 @@ import { resolveSpreadDeckSystem } from "@/lib/decks";
 export type { SpreadSeedParts };
 
 export const NUMEROLOG_TABLE_SIZE = 12;
-export const GUEST_TRIPLET_TABLE_SIZE = 18;
+/** @deprecated Guest triplet uses the full deck — kept for call-site compatibility. */
+export const GUEST_TRIPLET_TABLE_SIZE = 78;
 
 /** Full master deck — every symbol lies face-down on the table. */
-export function resolveTableSize(system: DeckSystem, guestTriplet = false): number {
-  const full = DECK_REGISTRY[system].symbols.length;
-  if (guestTriplet) return Math.min(GUEST_TRIPLET_TABLE_SIZE, full);
-  return full;
+export function resolveTableSize(system: DeckSystem, _guestTriplet = false): number {
+  void _guestTriplet;
+  return DECK_REGISTRY[system].symbols.length;
 }
 
 export function resolveSpreadSessionSeed(parts: SpreadSeedParts): string {
