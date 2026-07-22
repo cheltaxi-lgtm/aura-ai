@@ -284,7 +284,7 @@ export default function AuraSellingLanding({
     const intent = getSpreadIntentBySlug(intentSlug);
     if (!intent) return;
     trackQuickQuestionClick(intentSlug);
-    if (onQuickQuestionSelect) {
+    if (isLoggedIn && onQuickQuestionSelect) {
       onQuickQuestionSelect(intent.questionTemplate, intentSlug);
       return;
     }
@@ -362,7 +362,9 @@ export default function AuraSellingLanding({
           onPrimaryCta={() => handlePrimaryCta("hero")}
           onSecondaryCta={scrollToSession}
           onQuestionSubmit={(question) =>
-            onCustomQuestionSubmit ? onCustomQuestionSubmit(question) : startGuestSpread(question)
+            isLoggedIn && onCustomQuestionSubmit
+              ? onCustomQuestionSubmit(question)
+              : startGuestSpread(question)
           }
         />
       ) : null}
@@ -422,19 +424,19 @@ export default function AuraSellingLanding({
         <QuickQuestions
           showQuestionField={!isLoggedIn && !showHero && !showLoggedInHome}
           onQuestionSelect={
-            onQuickQuestionSelect ??
-            ((question, intentSlug) => {
-              const intent = intentSlug ? getSpreadIntentBySlug(intentSlug) : null;
-              startGuestSpread(question, intent?.recommendedMasterId);
-            })
+            isLoggedIn && onQuickQuestionSelect
+              ? onQuickQuestionSelect
+              : (question, intentSlug) => {
+                  const intent = intentSlug ? getSpreadIntentBySlug(intentSlug) : null;
+                  startGuestSpread(question, intent?.recommendedMasterId);
+                }
           }
           onCustomQuestionSubmit={
-            onCustomQuestionSubmit ??
-            (isLoggedIn
-              ? undefined
+            isLoggedIn
+              ? onCustomQuestionSubmit
               : !showHero
                 ? (question) => startGuestSpread(question)
-                : undefined)
+                : undefined
           }
         />
       ) : null}

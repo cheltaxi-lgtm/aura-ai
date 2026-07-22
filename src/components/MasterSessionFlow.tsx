@@ -1,9 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Mic, MicOff } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
+import {
+  buildLoginHref,
+  buildRegisterHref,
+  resolveRegistrationReturnTo,
+} from "@/lib/post-auth-return";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import { resolveJointReadingToken } from "@/lib/joint-reading-storage";
 import {
@@ -191,6 +197,14 @@ export default function MasterSessionFlow({
   const [flipped, setFlipped] = useState<boolean[]>(() => emptyFlipped(3));
   const [drawLoading, setDrawLoading] = useState(false);
   const [drawError, setDrawError] = useState<string | null>(null);
+  const needsAuth = drawError === "Нужна регистрация";
+  const authReturnTo = useMemo(() => {
+    if (typeof window === "undefined") return resolveRegistrationReturnTo({});
+    const path = `${window.location.pathname}${window.location.search}`;
+    return path && path !== "/" ? path : resolveRegistrationReturnTo({});
+  }, []);
+  const loginHref = buildLoginHref(authReturnTo);
+  const registerHref = buildRegisterHref(authReturnTo);
   const [sessionSeed, setSessionSeed] = useState("");
   const [ritualTitle, setRitualTitle] = useState("");
   const [ritualBody, setRitualBody] = useState("");
@@ -1657,13 +1671,30 @@ export default function MasterSessionFlow({
                 ) : drawError ? (
                   <div className="mt-8 text-center">
                     <p className="text-sm text-red-300">{drawError}</p>
-                    <button
-                      type="button"
-                      onClick={() => void initSpreadSession()}
-                      className="btn-luxe btn-luxe--sm btn-luxe--gold mt-3"
-                    >
-                      Попробовать снова
-                    </button>
+                    {needsAuth ? (
+                      <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                        <Link
+                          href={loginHref}
+                          className="btn-luxe btn-luxe--sm btn-luxe--gold inline-flex min-w-[10rem] justify-center"
+                        >
+                          Войти
+                        </Link>
+                        <Link
+                          href={registerHref}
+                          className="btn-luxe btn-luxe--sm inline-flex min-w-[10rem] justify-center"
+                        >
+                          Зарегистрироваться
+                        </Link>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void initSpreadSession()}
+                        className="btn-luxe btn-luxe--sm btn-luxe--gold mt-3"
+                      >
+                        Попробовать снова
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -1762,6 +1793,22 @@ export default function MasterSessionFlow({
                 {drawError ? (
                   <div className="mt-8 text-center">
                     <p className="text-sm text-red-300">{drawError}</p>
+                    {needsAuth ? (
+                      <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                        <Link
+                          href={loginHref}
+                          className="btn-luxe btn-luxe--sm btn-luxe--gold inline-flex min-w-[10rem] justify-center"
+                        >
+                          Войти
+                        </Link>
+                        <Link
+                          href={registerHref}
+                          className="btn-luxe btn-luxe--sm inline-flex min-w-[10rem] justify-center"
+                        >
+                          Зарегистрироваться
+                        </Link>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <>

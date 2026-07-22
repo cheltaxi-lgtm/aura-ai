@@ -630,16 +630,13 @@ export default function HomePage({
     (question: string, intentSlug?: string) => {
       const q = question.trim();
       if (!q) return;
+      // Guests use GuestTriplet on the editorial landing — never open paid session init.
+      if (!isLoggedIn) return;
       const matched =
         (intentSlug ? getSpreadIntentBySlug(intentSlug) : null) ??
         matchSpreadIntentFromQuestion(q);
       if (matched) {
         openSpreadIntentFlow(matched);
-        return;
-      }
-
-      if (!isLoggedIn) {
-        handleLandingCustomQuestion(q);
         return;
       }
 
@@ -652,7 +649,7 @@ export default function HomePage({
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },
-    [isLoggedIn, openSpreadIntentFlow, handleLandingCustomQuestion, setShowSessionFlow, setSessionFlowPreselectedMaster]
+    [isLoggedIn, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
 
   useEffect(() => {
@@ -2642,8 +2639,8 @@ export default function HomePage({
       onOpenPhotoReading={() => openPhotoReading()}
       onOpenMarkCards={openMarkCards}
       photoNavLabel={photoNavLabel}
-      onCustomQuestionSubmit={handleLandingCustomQuestion}
-      onQuickQuestionSelect={handleLandingQuickQuestion}
+      onCustomQuestionSubmit={isLoggedIn ? handleLandingCustomQuestion : undefined}
+      onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}
     />
   );
 
