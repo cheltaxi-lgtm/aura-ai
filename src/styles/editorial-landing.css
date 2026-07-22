@@ -499,6 +499,22 @@ html:has(.editorial-landing) .aura-mystic-bg {
   color: var(--color-text-muted);
 }
 
+.editorial-hero__proof {
+  margin-top: 1.25rem;
+  max-width: 26rem;
+  margin-inline: auto;
+}
+
+.editorial-hero .landing-social-proof--hero {
+  border-color: rgba(232, 199, 126, 0.18);
+  background: linear-gradient(
+    165deg,
+    rgba(12, 8, 22, 0.72),
+    rgba(6, 4, 14, 0.55)
+  );
+  backdrop-filter: blur(8px);
+}
+
 /* Aura functional blocks inside editorial shell */
 .editorial-landing .aura-landing-section {
   margin-bottom: 2rem;

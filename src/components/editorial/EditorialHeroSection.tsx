@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
+import LandingSocialProofStats from "@/components/seo/LandingSocialProofStats";
 import { BRAND_NAME } from "@/lib/brand";
 import { EDITORIAL_HERO } from "@/lib/editorial-landing-content";
 
@@ -51,6 +52,9 @@ export default function EditorialHeroSection({
         </div>
         <p className="editorial-hero__micro">{EDITORIAL_HERO.microcopy}</p>
         {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}
+        {!isLoggedIn ? (
+          <LandingSocialProofStats variant="hero" className="editorial-hero__proof" />
+        ) : null}
       </motion.div>
     </section>
   );
