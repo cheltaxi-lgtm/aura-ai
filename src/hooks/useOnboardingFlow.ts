@@ -500,6 +500,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     (args: GuestResumeLoadArgs) => Promise<"full" | "existing" | "failed">
   >(async () => "failed");
   const guestResumeBootRef = useRef(false);
+  /** Prevents stampeding /api/guest-triplet/status when effect deps churn. */
+  const guestResumeHydrateAttemptedRef = useRef(false);
   const sessionListBackMasterRef = useRef<string | null>(null);
   const pendingChatOptsRef = useRef<{ masterId: string; skipReading: boolean } | null>(null);
   const openChatWithSessionParamsRef = useRef<
@@ -4266,7 +4268,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   }, [isLoggedIn, getActiveProfile, applyGuestResumeResultNotice]);
 
   useEffect(() => {
-    if (!isLoggedIn || guestResumeBootRef.current) return;
+    if (!isLoggedIn) {
+      guestResumeHydrateAttemptedRef.current = false;
+      return;
+    }
+    if (guestResumeBootRef.current) return;
     if (step === "intro") return;
     if (authLoading) return;
 
@@ -4278,16 +4284,30 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         (savedProfileAuthority && savedProfileAuthority.expiresAt > Date.now())
     );
 
-    // Profile is ready — resume even if the form step is still showing (post-submit lag).
-    if (step === "onboarding" && guestResumeBootRef.current) return;
+    let cache = loadGuestResumeUiCache();
+    if (!cache && !(hasBirth && hasServerProfile)) {
+      setTripletNotice((prev) =>
+        prev &&
+        (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
+          prev === GUEST_RESUME_RETRY_TITLE)
+          ? null
+          : prev
+      );
+      return;
+    }
 
+    // Lock before any await — unstable deps used to stampede /api/guest-triplet/status.
+    guestResumeBootRef.current = true;
     let cancelled = false;
 
     void (async () => {
-      let cache = loadGuestResumeUiCache();
-
-      // Cookie/localStorage loss after re-register: hydrate from latest owned claim.
+      // Cookie/localStorage loss after re-register: hydrate from latest owned claim (once).
       if (!cache && hasBirth && hasServerProfile) {
+        if (guestResumeHydrateAttemptedRef.current) {
+          guestResumeBootRef.current = false;
+          return;
+        }
+        guestResumeHydrateAttemptedRef.current = true;
         try {
           const res = await fetch("/api/guest-triplet/status", {
             method: "GET",
@@ -4339,7 +4359,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         }
       }
 
-      if (cancelled) return;
+      if (cancelled) {
+        guestResumeBootRef.current = false;
+        return;
+      }
 
       if (!cache) {
         setTripletNotice((prev) =>
@@ -4349,6 +4372,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             ? null
             : prev
         );
+        guestResumeBootRef.current = false;
         return;
       }
 
@@ -4359,11 +4383,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           patchGuestResumeUiCache({ phase: "onboarding_required" });
           setTripletNotice(null);
         }
+        guestResumeBootRef.current = false;
         return;
       }
 
-      if (guestResumeBootRef.current) return;
-      guestResumeBootRef.current = true;
+      // Profile is ready — resume even if the form step is still "onboarding".
       setGuestResumeCanRetry(false);
       setTripletNotice(
         `${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`
@@ -4390,16 +4414,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     return () => {
       cancelled = true;
+      // Remount (Strict Mode) may retry resume; hydrateAttemptedRef blocks status storms.
+      guestResumeBootRef.current = false;
     };
   }, [
     isLoggedIn,
     authLoading,
     authUser?.profileUserId,
     step,
-    getActiveProfile,
+    profile?.birthDate,
     applyGuestResumeResultNotice,
     forceProfileOnboarding,
     selectedCharacter,
+    getActiveProfile,
   ]);
 
   return {

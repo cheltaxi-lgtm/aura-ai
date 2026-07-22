@@ -348,6 +348,24 @@ export async function enforceGuestTripletCompleteRateLimit(
   return null;
 }
 
+/** Guard against client boot loops hammering status (was taking down prod). */
+export async function enforceGuestTripletStatusRateLimit(
+  accountId: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("guest_triplet_status", accountId),
+    20,
+    60_000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много запросов. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 60) } }
+    );
+  }
+  return null;
+}
+
 export async function enforceGuestTripletClaimRateLimit(
   accountId: string
 ): Promise<NextResponse | null> {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureDb } from "@/lib/db";
+import { enforceGuestTripletStatusRateLimit } from "@/lib/api-guards";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import {
@@ -30,6 +31,9 @@ export async function GET(request: NextRequest) {
   if (!auth) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  const limited = await enforceGuestTripletStatusRateLimit(auth.sub);
+  if (limited) return limited;
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {

@@ -5,6 +5,9 @@ export const BRAND_DOMAIN = "zovus.ru";
 export const BRAND_URL = `https://${BRAND_DOMAIN}`;
 export const BRAND_TAGLINE = "приватный цифровой салон";
 export const BRAND_PLUS = "Zovus+";
+/** Official VK community. */
+export const BRAND_VK_URL = "https://vk.ru/zovus";
+export const BRAND_VK_LABEL = "Мы ВКонтакте";
 
 /** Shared header lockup — mark + OVUS + beta. */
 export const BRAND_LOGO_HEADER = {
