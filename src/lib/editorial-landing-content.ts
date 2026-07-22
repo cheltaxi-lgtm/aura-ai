@@ -109,7 +109,7 @@ export const EDITORIAL_PRACTICES = [
     id: "matrix",
     title: "Матрица судьбы",
     subtitle: "Дата рождения — и схема на экране. Без анкеты и без оплаты за расчёт.",
-    image: "/landing/practices/numerology.jpg",
+    image: "/landing/practices/destiny-matrix.jpg",
     cta: "Рассчитать бесплатно",
     /** Free preview — skip registration gate for guests. */
     guestHref: "/numerology/destiny-matrix",
