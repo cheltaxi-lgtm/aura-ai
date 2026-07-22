@@ -99,6 +99,7 @@ import {
   clearGuestResumeUiCache,
   loadGuestResumeUiCache,
   patchGuestResumeUiCache,
+  saveGuestResumeUiCache,
 } from "@/lib/guest-resume-ui-cache";
 import {
   GUEST_RESUME_ALREADY_USED,
@@ -2376,15 +2377,18 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     teaserFallback,
     deckSystem,
   }) => {
-    const masterToBind = resolveTripletChatMasterId(
-      masters,
-      deckSystem ?? profile?.deckSystem ?? tripletSystem,
-      masterId ||
+    // Prefer the claimed guest master (Veronika) — remapping can break
+    // resolveGuestResumeFreeReading fingerprint / character_key checks.
+    const masterToBind =
+      (masterId && String(masterId).trim()) ||
+      resolveTripletChatMasterId(
+        masters,
+        deckSystem ?? profile?.deckSystem ?? tripletSystem,
         profileBase?.tripletMasterId ||
-        profile?.tripletMasterId ||
-        localStorage.getItem(PENDING_MASTER_KEY) ||
-        undefined
-    );
+          profile?.tripletMasterId ||
+          localStorage.getItem(PENDING_MASTER_KEY) ||
+          undefined
+      );
     if (!masterToBind) return "failed";
 
     const ordered = [...cards].sort((a, b) => a.position - b.position);
@@ -4265,18 +4269,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (!isLoggedIn || guestResumeBootRef.current) return;
     if (step === "intro") return;
     if (authLoading) return;
-    const cache = loadGuestResumeUiCache();
-    if (!cache) {
-      // Stale transition banner must not survive without an active resume cache.
-      setTripletNotice((prev) =>
-        prev &&
-        (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
-          prev === GUEST_RESUME_RETRY_TITLE)
-          ? null
-          : prev
-      );
-      return;
-    }
 
     const active = getActiveProfile();
     const hasBirth = Boolean(String(active?.birthDate ?? "").trim());
@@ -4286,39 +4278,119 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         (savedProfileAuthority && savedProfileAuthority.expiresAt > Date.now())
     );
 
-    // Claim/reading need server profileUserId — local birthDate alone is not enough.
-    if (!hasBirth || !hasServerProfile) {
-      if (step !== "onboarding" || selectedCharacter) {
-        forceProfileOnboarding();
-      } else {
-        patchGuestResumeUiCache({ phase: "onboarding_required" });
-        setTripletNotice(null);
-      }
-      return;
-    }
-
     // Profile is ready — resume even if the form step is still showing (post-submit lag).
-    // handleOnboardingComplete may already be running; inFlight dedupes claim.
     if (step === "onboarding" && guestResumeBootRef.current) return;
 
-    guestResumeBootRef.current = true;
-    setGuestResumeCanRetry(false);
-    setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
+    let cancelled = false;
 
-    void runGuestTripletResume({
-      authMethod: "bootstrap",
-      loadReading: (args) =>
-        loadGuestResumeReadingRef.current({
-          ...args,
-          profileBase: active,
-          questionFallback: active?.mainQuestion,
-          teaserFallback: cache.teaser,
-          deckSystem: cache.system as StoredProfile["deckSystem"],
-        }),
-    }).then((result) => {
+    void (async () => {
+      let cache = loadGuestResumeUiCache();
+
+      // Cookie/localStorage loss after re-register: hydrate from latest owned claim.
+      if (!cache && hasBirth && hasServerProfile) {
+        try {
+          const res = await fetch("/api/guest-triplet/status", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          });
+          const owned = (await res.json().catch(() => null)) as {
+            ok?: boolean;
+            status?: string;
+            sessionId?: string;
+            masterId?: string;
+            question?: string;
+            system?: string;
+            cards?: Array<{
+              id: number;
+              name: string;
+              position: number;
+              reversed: boolean;
+            }>;
+            readingId?: string | null;
+          } | null;
+          const cardsOk =
+            Array.isArray(owned?.cards) && (owned?.cards.length ?? 0) === 3;
+          if (
+            !cancelled &&
+            owned?.ok &&
+            owned.sessionId &&
+            cardsOk &&
+            (owned.status === "claimed" ||
+              (owned.status === "reading_consumed" && owned.readingId))
+          ) {
+            cache = {
+              version: 1,
+              origin: "guest",
+              masterId: owned.masterId || "veronika",
+              system: owned.system || "tarot-veronika",
+              spreadId: "triplet",
+              question: owned.question ?? "",
+              teaser: "",
+              cards: owned.cards!,
+              completedAt: new Date().toISOString(),
+              claimedSessionId: owned.sessionId,
+              phase: "resuming_reading",
+            };
+            saveGuestResumeUiCache(cache);
+          }
+        } catch {
+          /* ignore — fall through */
+        }
+      }
+
+      if (cancelled) return;
+
+      if (!cache) {
+        setTripletNotice((prev) =>
+          prev &&
+          (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
+            prev === GUEST_RESUME_RETRY_TITLE)
+            ? null
+            : prev
+        );
+        return;
+      }
+
+      if (!hasBirth || !hasServerProfile) {
+        if (step !== "onboarding" || selectedCharacter) {
+          forceProfileOnboarding();
+        } else {
+          patchGuestResumeUiCache({ phase: "onboarding_required" });
+          setTripletNotice(null);
+        }
+        return;
+      }
+
+      if (guestResumeBootRef.current) return;
+      guestResumeBootRef.current = true;
+      setGuestResumeCanRetry(false);
+      setTripletNotice(
+        `${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`
+      );
+
+      const result = await runGuestTripletResume({
+        authMethod: "bootstrap",
+        loadReading: (args) =>
+          loadGuestResumeReadingRef.current({
+            ...args,
+            profileBase: active,
+            questionFallback: active?.mainQuestion,
+            teaserFallback: cache!.teaser,
+            deckSystem: cache!.system as StoredProfile["deckSystem"],
+          }),
+      });
+      if (cancelled) {
+        guestResumeBootRef.current = false;
+        return;
+      }
       applyGuestResumeResultNotice(result);
       if (!result.ok) guestResumeBootRef.current = false;
-    });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     isLoggedIn,
     authLoading,

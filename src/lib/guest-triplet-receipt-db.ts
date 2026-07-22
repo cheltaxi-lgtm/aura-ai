@@ -109,6 +109,22 @@ export async function getGuestResumeSessionById(
   return rows[0] ?? null;
 }
 
+/** Latest claimed/consumed guest resume for this profile (cookie-loss recovery). */
+export async function findLatestOwnedGuestResume(
+  profileUserId: string
+): Promise<GuestResumeSessionRow | null> {
+  const { rows } = await query<GuestResumeSessionRow>(
+    `SELECT ${RESUME_SELECT}
+     FROM sessions
+     WHERE user_id = $1
+       AND guest_resume_status IN ('claimed', 'reading_consumed')
+     ORDER BY COALESCE(guest_resume_claimed_at, updated_at, created_at) DESC
+     LIMIT 1`,
+    [profileUserId]
+  );
+  return rows[0] ?? null;
+}
+
 export async function expireIssuedGuestResumeIfNeeded(
   row: GuestResumeSessionRow
 ): Promise<GuestResumeSessionRow> {
@@ -170,11 +186,13 @@ export async function profileHasUsedGuestResume(
 export async function claimGuestResumeSession(input: {
   token: string;
   profileUserId: string;
-  bindingOk: boolean;
+  /**
+   * Optional defense-in-depth: session-claim cookie matched this receipt.
+   * Not required — HttpOnly guest resume cookie is sufficient. OAuth/login
+   * often overwrites aura_session_claim with a fresh /api/session id.
+   */
+  bindingOk?: boolean;
 }): Promise<ClaimGuestResumeResult> {
-  if (!input.bindingOk) {
-    return { ok: false, code: "unavailable" };
-  }
   if (!input.token) {
     return { ok: false, code: "unavailable" };
   }

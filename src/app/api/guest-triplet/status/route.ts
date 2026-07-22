@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
-import { getGuestResumeSessionById } from "@/lib/guest-triplet-receipt-db";
+import {
+  findLatestOwnedGuestResume,
+  getGuestResumeSessionById,
+} from "@/lib/guest-triplet-receipt-db";
 import {
   parseGuestResumeCardsPayload,
   recoverGuestResumeCardsFromNames,
@@ -13,8 +16,9 @@ import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 export const runtime = "nodejs";
 
 /**
- * Auth-only: return one exact claimed/consumed guest-resume session.
- * Used for refresh/retry after receipt cookies were cleared on claim.
+ * Auth-only: return one claimed/consumed guest-resume session.
+ * - ?sessionId=… → exact session (refresh/retry after cookies cleared)
+ * - no sessionId → latest owned claimed/consumed (cookie-loss recovery)
  * Never returns raw receipt token.
  */
 export async function GET(request: NextRequest) {
@@ -33,11 +37,9 @@ export async function GET(request: NextRequest) {
   }
 
   const sessionId = request.nextUrl.searchParams.get("sessionId")?.trim();
-  if (!sessionId) {
-    return NextResponse.json({ error: "session_id_required" }, { status: 400 });
-  }
-
-  const row = await getGuestResumeSessionById(sessionId);
+  const row = sessionId
+    ? await getGuestResumeSessionById(sessionId)
+    : await findLatestOwnedGuestResume(profileUserId);
   if (
     !row ||
     row.user_id !== profileUserId ||

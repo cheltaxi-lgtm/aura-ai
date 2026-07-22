@@ -173,8 +173,11 @@ section("static: claim persists claimedSessionId before reading");
   assert.ok(src.includes('setPhase("resuming_reading")'));
   assert.ok(src.includes("fetchExactOwnedResumeStatus"));
   assert.ok(src.includes("/api/guest-triplet/status"));
-  assert.ok(src.includes("persisted.status !== \"reading_consumed\""));
-  assert.ok(src.indexOf("clearGuestResumeUiCache();") > src.indexOf("persisted.status"));
+  assert.ok(src.includes('persisted.status === "reading_consumed"'));
+  assert.ok(src.includes("consumedOk"));
+  // Reading already on screen must not bounce home on laggy consume mark.
+  assert.ok(src.includes("do not fail closed on a laggy"));
+  assert.ok(src.indexOf("clearGuestResumeUiCache();") > src.indexOf("consumedOk"));
 }
 
 section("static: homepage gates transition banner by phase");
@@ -206,9 +209,9 @@ section("static: status route exists and never returns token");
 {
   const src = readSrc("src/app/api/guest-triplet/status/route.ts");
   assert.ok(src.includes("getGuestResumeSessionById"));
+  assert.ok(src.includes("findLatestOwnedGuestResume"));
   assert.ok(src.includes('searchParams.get("sessionId")'));
   assert.ok(src.includes("row.user_id !== profileUserId"));
-  assert.ok(!src.includes("findLatestOwnedGuestResume"));
   assert.ok(src.includes("requireUserAuth"));
   assert.ok(!/receiptToken|rawToken|tokenHash|"token"/.test(src));
   assert.ok(!src.includes("zovus_guest_resume"));

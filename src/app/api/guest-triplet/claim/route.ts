@@ -24,7 +24,8 @@ export const runtime = "nodejs";
 
 /**
  * Post-auth: atomically claim a server-issued guest receipt into the user's session.
- * Token from HttpOnly cookie only; binding via aura_session_claim.
+ * Token from HttpOnly cookie is authoritative. aura_session_claim is optional
+ * (often overwritten by /api/session after OAuth) and only used to clear itself.
  */
 export async function POST(request: NextRequest) {
   if (!(await ensureDb())) {

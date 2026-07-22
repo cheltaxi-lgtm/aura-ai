@@ -210,7 +210,7 @@ section("complete stores hash not raw token (static)");
   assert.ok(complete.includes("Never return the opaque token") || !complete.includes("token,"));
 }
 
-section("claim requires both cookies (static)");
+section("claim uses guest cookie; session-claim is optional (static)");
 {
   const claim = readSrc("src/app/api/guest-triplet/claim/route.ts");
   assert.ok(claim.includes("readGuestResumeCookie"));
@@ -219,12 +219,20 @@ section("claim requires both cookies (static)");
   assert.ok(claim.includes("requireUserAuth"));
   assert.ok(!claim.includes("body.token") && !claim.includes("body?.token"));
   const db = readSrc("src/lib/guest-triplet-receipt-db.ts");
-  assert.ok(db.includes("if (!input.bindingOk)"));
+  // bindingOk must not hard-block claim (OAuth overwrites aura_session_claim).
+  assert.ok(!db.includes("if (!input.bindingOk)"));
+  assert.ok(db.includes("bindingOk?: boolean") || db.includes("bindingOk?"));
   assert.ok(db.includes("guest_resume_status = 'claimed'"));
   assert.ok(db.includes("user_id IS NULL"));
   assert.ok(
     db.includes("profileHasUsedGuestResume") && db.includes("already_used"),
     "claim must reject a second landing free reading per profile"
+  );
+  const sessionClaim = readSrc("src/lib/session-claim.ts");
+  assert.ok(
+    sessionClaim.includes("pending guest-resume binding") ||
+      sessionClaim.includes("Do not overwrite a pending guest-resume"),
+    "setSessionClaimCookie must preserve guest resume binding"
   );
   assert.ok(
     db.includes("guest-resume-user:"),

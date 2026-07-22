@@ -136,6 +136,21 @@ async function respondWithExistingSpreadReading(input: {
   const historyId = existing.id;
   const paid = existing.is_paid || input.isPaid;
 
+  // Cache hit must still consume guest entitlement — otherwise the client opens
+  // chat, fails the reading_consumed post-check, and kicks back to the homepage.
+  if (
+    input.spreadType === "guest_resume" &&
+    input.sessionId &&
+    historyId &&
+    (await ensureDb())
+  ) {
+    try {
+      await setGuestResumeReadingId(input.sessionId, input.profileUserId, historyId);
+    } catch (err) {
+      console.warn("Guest resume consume on cache hit failed:", err);
+    }
+  }
+
   void patchTripletInterpretation(input.profileUserId, input.cardsKey, {
     text: reading,
     masterId: input.characterId,
@@ -328,6 +343,7 @@ export async function POST(request: NextRequest) {
   let spentRunes = 0;
   let billingCharge: BillingChargeResult | null = null;
   let resolvedSession: Awaited<ReturnType<typeof resolveSessionForUser>>["session"] = null;
+  let isGuestResumeFree = false;
 
   try {
     const unlimited = await resolveUnlimitedAccess({
@@ -358,7 +374,7 @@ export async function POST(request: NextRequest) {
       characterId,
       tarotCards,
     });
-    const isGuestResumeFree = Boolean(guestResume?.free);
+    isGuestResumeFree = Boolean(guestResume?.free);
     if (guestResume?.question && !customQuestion) {
       customQuestion = guestResume.question;
     }
@@ -537,12 +553,16 @@ export async function POST(request: NextRequest) {
           tarotCards,
           sessionId,
           intention: intention || undefined,
-          spreadType: isDailySpread ? "daily" : undefined,
+          spreadType: isGuestResumeFree
+            ? "guest_resume"
+            : isDailySpread
+              ? "daily"
+              : undefined,
           spreadId: storedSpreadId,
-          customQuestion: customQuestion || undefined,
+          customQuestion: customQuestion || guestResume?.question || undefined,
           userName,
           birthDate,
-          isPaid,
+          isPaid: isGuestResumeFree ? true : isPaid,
         });
       }
     }
@@ -1022,12 +1042,16 @@ export async function POST(request: NextRequest) {
         tarotCards,
         sessionId,
         intention: intention || undefined,
-        spreadType: isDailySpread ? "daily" : undefined,
+        spreadType: isGuestResumeFree
+          ? "guest_resume"
+          : isDailySpread
+            ? "daily"
+            : undefined,
         spreadId: storedSpreadId,
-        customQuestion: customQuestion || undefined,
+        customQuestion: customQuestion || guestResume?.question || undefined,
         userName,
         birthDate,
-        isPaid,
+        isPaid: isGuestResumeFree ? true : isPaid,
       });
     }
 
@@ -1067,6 +1091,11 @@ export async function POST(request: NextRequest) {
       } catch (refundErr) {
         console.error("Reading refund failed:", refundErr);
       }
+    }
+    // Guest resume must not return a soft "success" fallback: the client would
+    // open chat, fail reading_consumed verification, and bounce to the homepage.
+    if (isGuestResumeFree) {
+      return NextResponse.json({ error: "Reading generation failed" }, { status: 502 });
     }
     const reading = fallbackReading(characterId, { userName, isPaid, tarotCards });
     return NextResponse.json({ reading, isPaid, fallback: true });
