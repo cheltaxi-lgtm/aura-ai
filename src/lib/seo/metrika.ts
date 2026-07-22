@@ -105,6 +105,18 @@ export function trackGuestSpreadCompleted(): void {
   trackLandingEvent("guest_spread_completed");
 }
 
+export function trackGuestTeaserView(): void {
+  trackLandingEvent("guest_teaser_view");
+}
+
+export function trackGuestTeaserCta(): void {
+  trackLandingEvent("guest_teaser_cta");
+}
+
+export function trackGuestChatContinue(source: string): void {
+  trackLandingEvent("guest_chat_continue", { source });
+}
+
 export function trackRegistrationGateView(source: string): void {
   trackLandingEvent("registration_gate_view", { source });
 }

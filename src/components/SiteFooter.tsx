@@ -61,6 +61,9 @@ export default function SiteFooter({
       <div className="editorial-footer__top">
         <BrandLogo {...BRAND_LOGO_FOOTER} />
         <p className="editorial-footer__tagline">{EDITORIAL_FOOTER_TAGLINE}</p>
+        <p className="editorial-footer__service-line mt-2 text-sm text-aura-ivory/55">
+          18+ · Развлекательный сервис
+        </p>
       </div>
 
       <nav className="editorial-footer__nav" aria-label="Навигация в подвале">
@@ -88,6 +91,15 @@ export default function SiteFooter({
         <Link href="/statyi" className="editorial-footer__link">
           Журнал
         </Link>
+        <LegalDocLink href="/offer" className="editorial-footer__link">
+          Оферта
+        </LegalDocLink>
+        <LegalDocLink href="/privacy" className="editorial-footer__link">
+          Конфиденциальность
+        </LegalDocLink>
+        <LegalDocLink href="/disclaimer" className="editorial-footer__link">
+          О сервисе
+        </LegalDocLink>
       </nav>
 
       <div className="editorial-footer__legal">

@@ -144,6 +144,12 @@ interface ChatWindowProps {
   userBirthDate?: string;
   /** Active consultation session id (share / persistence hooks). */
   sessionId?: string;
+  /** Guest-resume follow-ups: static chips after full reading (click → send). */
+  suggestedReplies?: { label: string; message: string }[];
+  /** Soft prompt to continue in chat when reading is ready and no user follow-up yet. */
+  showContinueInChat?: boolean;
+  onContinueInChat?: () => void;
+  onSuggestedReplySend?: (message: string) => void;
 }
 
 export default function ChatWindow({
@@ -204,6 +210,10 @@ export default function ChatWindow({
   startingNewSession = false,
   userBirthDate,
   sessionId,
+  suggestedReplies,
+  showContinueInChat = false,
+  onContinueInChat,
+  onSuggestedReplySend,
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
@@ -1132,6 +1142,46 @@ export default function ChatWindow({
             {sessionQuestionsRemaining === 1 ? "вопрос" : "вопроса"} из {SESSION_CHAT_QUESTION_LIMIT}.
           </p>
         ) : null}
+        {showContinueInChat && !readOnly ? (
+          <div className="rounded-xl border border-aura-gold/25 bg-aura-gold/10 px-3 py-2.5">
+            <p className="text-xs font-medium text-aura-champagne">Продолжить в чате</p>
+            <p className="mt-0.5 text-[11px] leading-snug text-aura-ivory/65">
+              Задайте уточнение по картам — или выберите подсказку ниже.
+            </p>
+            {onContinueInChat ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onContinueInChat();
+                  textInputRef.current?.focus();
+                }}
+                className="mt-2 text-[11px] font-medium text-aura-gold underline-offset-2 hover:underline"
+              >
+                К полю ввода
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {suggestedReplies && suggestedReplies.length > 0 && !readOnly ? (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Подсказки для продолжения">
+            {suggestedReplies.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                disabled={quickChipsDisabled}
+                onClick={() => {
+                  if (quickChipsDisabled) return;
+                  pinnedToBottomRef.current = true;
+                  onSuggestedReplySend?.(chip.message);
+                  onSendMessage(chip.message);
+                }}
+                className="rounded-xl border border-white/[0.08] bg-[rgba(20,18,16,0.9)] px-3 py-2 text-[11px] font-medium text-aura-champagne/95 transition-colors hover:border-aura-gold/35 disabled:opacity-40"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {isNumerologChat ? (
           <NumerologQuickChips
             disabled={quickChipsDisabled}
@@ -1140,7 +1190,7 @@ export default function ChatWindow({
               onSendMessage(text);
             }}
           />
-        ) : hasMasterQuickChips(characterId) && !readOnly ? (
+        ) : hasMasterQuickChips(characterId) && !readOnly && !suggestedReplies?.length ? (
           <MasterQuickChips
             masterId={characterId}
             disabled={quickChipsDisabled}

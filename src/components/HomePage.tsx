@@ -137,7 +137,12 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
-import { trackFirstChatOpened, trackGuestTripletRedrawPrevented } from "@/lib/seo/metrika";
+import { GUEST_TRIPLET_SUGGESTED_REPLIES } from "@/lib/guest-chat-suggestions";
+import {
+  trackFirstChatOpened,
+  trackGuestChatContinue,
+  trackGuestTripletRedrawPrevented,
+} from "@/lib/seo/metrika";
 import {
   decodeNumerologSpreadId,
   isNumerologSessionToolId,
@@ -2656,6 +2661,34 @@ export default function HomePage({
 
   const inActiveChat = step === "chat" || Boolean(selectedCharacter);
 
+  const guestResumeChatAssist = useMemo(() => {
+    // Ref is read on message-driven re-renders after guest resume sets chat.
+    const isGuestResume = sessionSpreadMetaRef.current?.spreadType === "guest_resume";
+    if (!isGuestResume || !selectedCharacter) {
+      return {
+        showContinue: false,
+        replies: undefined as undefined | { label: string; message: string }[],
+      };
+    }
+    const hasReading = messages.some(
+      (m) =>
+        m.role === "assistant" &&
+        Boolean(m.content?.trim()) &&
+        (m.content?.trim().length ?? 0) >= MIN_SPREAD_READING_CHARS
+    );
+    const hasUserFollowUp = messages.some((m) => m.role === "user");
+    if (!hasReading) {
+      return { showContinue: false, replies: undefined };
+    }
+    return {
+      showContinue: !hasUserFollowUp,
+      replies: GUEST_TRIPLET_SUGGESTED_REPLIES.map((r) => ({
+        label: r.label,
+        message: r.message,
+      })),
+    };
+  }, [selectedCharacter, messages, sessionSpreadMetaRef]);
+
   useEffect(() => {
     const onAppHomeNav = () => {
       setStep("masters");
@@ -2917,6 +2950,10 @@ export default function HomePage({
                 : undefined
             }
             sessionId={consultationSessionId ?? session?.sessionId ?? undefined}
+            suggestedReplies={guestResumeChatAssist.replies}
+            showContinueInChat={guestResumeChatAssist.showContinue}
+            onContinueInChat={() => trackGuestChatContinue("prompt")}
+            onSuggestedReplySend={() => trackGuestChatContinue("suggested_reply")}
           />
           <MasterSessionFlow
             isOpen={showSessionFlow}

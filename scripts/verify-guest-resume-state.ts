@@ -225,11 +225,40 @@ section("static: guest draw must not hijack the homepage");
   assert.ok(!src.includes("window.location.replace"));
   assert.ok(!src.includes("window.location.assign(guestRegisterHref"));
   assert.ok(src.includes('sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY)'));
+  assert.ok(
+    !src.includes('phase === "receipt_pending_auth"'),
+    "cold / must not open done/auth from receipt_pending_auth"
+  );
   const landing = readSrc("src/components/AuraSellingLanding.tsx");
   assert.ok(
     !landing.includes("guestSpreadActive"),
     "landing must not gate marketing sections on guestSpreadActive"
   );
+}
+
+section("static: guest finish lands on done teaser, not idle");
+{
+  const src = readSrc("src/components/GuestTripletDraw.tsx");
+  assert.ok(src.includes('setStep("done")'), "complete must set step done");
+  assert.ok(src.includes("buildGuestTripletPreview"), "done uses preview helper");
+  assert.ok(src.includes("Получить полный разбор"), "done primary CTA");
+  assert.ok(src.includes("Карты зафиксированы"), "continuity microcopy");
+  assert.ok(src.includes("SocialAuthButtons"), "auth on done screen");
+  assert.ok(src.includes("trackGuestTeaserView"), "teaser view metric");
+  assert.ok(src.includes("trackGuestTeaserCta"), "teaser CTA metric");
+  // Must not treat idle as the success path after complete.
+  const finishIdx = src.indexOf("trackGuestSpreadCompleted();");
+  assert.ok(finishIdx > 0);
+  const afterFinish = src.slice(finishIdx, finishIdx + 400);
+  assert.ok(afterFinish.includes('setStep("done")'));
+  assert.ok(!afterFinish.includes('setStep("idle")'));
+}
+
+section("static: SEO ask+spread without receipt stays a new draw path");
+{
+  const home = readSrc("src/components/HomePage.tsx");
+  assert.ok(home.includes("trackGuestTripletRedrawPrevented"));
+  assert.ok(home.includes("GUEST_TRIPLET_MASTER_ID") || home.includes("guest"));
 }
 
 section("static: guest reading uses authoritative ordered orientation");

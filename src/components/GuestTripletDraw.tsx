@@ -14,7 +14,7 @@ import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
 import { saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
-import { buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
+import { buildGuestTripletPreview, buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
 import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
@@ -27,16 +27,27 @@ import {
   type GuestSpreadStartDetail,
 } from "@/lib/landing-offer";
 import {
+  buildRegisterHref,
+  resolveRegistrationReturnTo,
+} from "@/lib/post-auth-return";
+import {
   trackGuestCardRevealed,
   trackGuestSpreadCompleted,
   trackGuestSpreadStarted,
+  trackGuestTeaserCta,
+  trackGuestTeaserView,
   trackRegistrationGateView,
+  trackRegistrationStarted,
 } from "@/lib/seo/metrika";
 import DeckCard from "@/components/DeckCard";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
+import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
+import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 
 const GUEST_ID_KEY = "zovus_guest_id";
 const CARD_COUNT = 3;
+const GUEST_TEASER_AUTH_ID = "guest-teaser-auth";
 
 function getGuestId(): string {
   if (typeof window === "undefined") return "guest";
@@ -97,28 +108,49 @@ export default function GuestTripletDraw({
   const [pickedIndices, setPickedIndices] = useState<number[]>([]);
   const [revealed, setRevealed] = useState<boolean[]>([false, false, false]);
   const [ageConfirming, setAgeConfirming] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [ageGateError, setAgeGateError] = useState("");
   const [landingQuestion, setLandingQuestion] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [oauthAgeConfirmed, setOauthAgeConfirmed] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const handledStartRequestId = useRef<number | null>(null);
+  const teaserViewTracked = useRef(false);
   const [draftRestored, setDraftRestored] = useState(false);
+
+  const oauthReturnTo = useMemo(
+    () =>
+      resolveRegistrationReturnTo({
+        guestSpread: true,
+        guestMasterId: masterId,
+        guestQuestion: landingQuestion || undefined,
+      }),
+    [masterId, landingQuestion]
+  );
 
   const ritualCopy = useMemo(
     () => getSpreadRitualCopy(masterId, { hasBirthDate: false, cardCount: CARD_COUNT }),
     [masterId]
   );
 
+  const previewText = useMemo(() => {
+    if (deck.length < CARD_COUNT) return "";
+    return buildGuestTripletPreview(deck, positions);
+  }, [deck, positions]);
+
   useEffect(() => {
     if (typeof window === "undefined" || draftRestored) return;
     const stored = sessionStorage.getItem(LANDING_QUESTION_KEY);
     if (stored) setLandingQuestion(stored);
     setAgeConfirmed(isAgeGateConfirmed());
+    setOauthAgeConfirmed(isAgeGateConfirmed());
 
-    // Never auto-restore an in-progress guest draw on homepage load — a stuck
-    // draft previously hijacked the whole landing (and with a bad deploy, the site).
+    // Never auto-restore an in-progress guest draw or pending-auth teaser on homepage
+    // load — a stuck draft previously hijacked the whole landing.
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     setDraftRestored(true);
-  }, [draftRestored, system]);
+  }, [draftRestored]);
 
   useEffect(() => {
     if (typeof window === "undefined" || step === "idle" || step === "done") return;
@@ -134,18 +166,28 @@ export default function GuestTripletDraw({
     sessionStorage.setItem(GUEST_SPREAD_DRAFT_KEY, JSON.stringify(draft));
   }, [step, masterId, sessionSeed, pickedIndices, deck, revealed, landingQuestion]);
 
+  useEffect(() => {
+    if (step !== "done" || teaserViewTracked.current) return;
+    teaserViewTracked.current = true;
+    trackGuestTeaserView();
+    trackRegistrationGateView("guest_triplet_done");
+  }, [step]);
+
   const resetSpreadState = useCallback(() => {
     setSessionSeed("");
     setPickedIndices([]);
     setDeck([]);
     setRevealed([false, false, false]);
+    setCompleting(false);
+    setAgeGateError("");
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   }, []);
 
   const exitToLanding = useCallback(() => {
+    // UI only — receipt / guest resume UI cache stays for post-auth claim.
     resetSpreadState();
-    setAgeGateError("");
     setStep("idle");
+    teaserViewTracked.current = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [resetSpreadState]);
 
@@ -176,6 +218,7 @@ export default function GuestTripletDraw({
   const beginGuestSpread = useCallback(
     (question?: string) => {
       resetSpreadState();
+      teaserViewTracked.current = false;
       setAgeGateError("");
       if (question) {
         sessionStorage.setItem(LANDING_QUESTION_KEY, question);
@@ -204,6 +247,7 @@ export default function GuestTripletDraw({
       return;
     }
     setAgeConfirmed(true);
+    setOauthAgeConfirmed(true);
     const pendingQuestion =
       typeof window !== "undefined"
         ? sessionStorage.getItem(LANDING_QUESTION_KEY) || landingQuestion
@@ -220,6 +264,7 @@ export default function GuestTripletDraw({
       }
       if (isAgeGateConfirmed()) {
         setAgeConfirmed(true);
+        setOauthAgeConfirmed(true);
         beginGuestSpread(nextQuestion);
         return;
       }
@@ -311,8 +356,26 @@ export default function GuestTripletDraw({
 
   const allRevealed = revealed.every(Boolean);
 
+  const focusAuthBlock = useCallback(() => {
+    trackGuestTeaserCta();
+    window.requestAnimationFrame(() => {
+      const auth = document.getElementById(GUEST_TEASER_AUTH_ID);
+      auth?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusable = auth?.querySelector<HTMLElement>("button, a, input, [tabindex]");
+      focusable?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const goToEmailRegistration = useCallback(() => {
+    trackRegistrationStarted("guest_triplet_email");
+    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    window.location.assign(
+      buildRegisterHref(oauthReturnTo, "/", { method: "email" })
+    );
+  }, [oauthReturnTo]);
+
   const handleFinish = () => {
-    if (deck.length < CARD_COUNT || !allRevealed) return;
+    if (deck.length < CARD_COUNT || !allRevealed || completing) return;
     const teaser = buildGuestTripletTeaser(deck);
     const symbols = deck.map((card, index) => ({
       id: card.id,
@@ -320,6 +383,9 @@ export default function GuestTripletDraw({
       position: index,
       reversed: Boolean(card.reversed),
     }));
+
+    setCompleting(true);
+    setAgeGateError("");
 
     void (async () => {
       try {
@@ -341,10 +407,12 @@ export default function GuestTripletDraw({
               ? "Подтвердите возраст 18+, чтобы сохранить расклад."
               : "Не удалось сохранить расклад. Попробуйте ещё раз."
           );
+          setCompleting(false);
           return;
         }
       } catch {
         setAgeGateError("Не удалось сохранить расклад. Проверьте соединение и попробуйте ещё раз.");
+        setCompleting(false);
         return;
       }
 
@@ -369,11 +437,9 @@ export default function GuestTripletDraw({
         phase: "receipt_pending_auth",
       });
       trackGuestSpreadCompleted();
-      trackRegistrationGateView("guest_triplet_done");
       sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
-      // Back to the normal landing — login via header/Войти, not an inline gate.
-      setStep("idle");
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setCompleting(false);
+      setStep("done");
     })();
   };
 
@@ -401,7 +467,7 @@ export default function GuestTripletDraw({
             <p className="lux-label">Подтверждение возраста</p>
             <h2 className="font-display text-2xl text-white">Сервис только для взрослых 18+</h2>
             <p className="text-sm leading-relaxed text-aura-ivory/70">
-              Расклады и диалог с ИИ-наставником — развлекательно-ознакомительный сервис. Подтвердите,
+              Расклады и диалог с наставником — развлекательно-ознакомительный сервис. Подтвердите,
               что вам исполнилось 18 лет.
             </p>
             {ageGateError ? (
@@ -453,76 +519,212 @@ export default function GuestTripletDraw({
     );
   }
 
-  return (
-    <GuestSpreadSection>
-    <div className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
-      {backToLandingButton}
-      <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
-      <p className="mb-2 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
-      <p className="mb-8 text-center text-sm font-medium text-aura-champagne/80">
-        {allRevealed ? "Расклад открыт — сохраните результат" : "Нажмите на каждую карту, чтобы открыть"}
-      </p>
+  if (step === "done") {
+    return (
+      <GuestSpreadSection>
+        <div className={`mx-auto max-w-lg px-4 pb-12 ${className}`.trim()}>
+          {backToLandingButton}
+          <motion.div
+            className="glass-panel space-y-5 p-6 sm:p-8"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45 }}
+          >
+            <p className="text-center text-sm font-medium text-aura-champagne/85">
+              Краткий ориентир по вашему раскладу
+            </p>
 
-      <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
-        {positions.map((pos, i) => (
-          <div key={pos} className="flex max-w-[148px] flex-col items-center gap-2">
-            <p className="lux-label text-center">{pos}</p>
-            <button
-              type="button"
-              onClick={() => handleFlip(i)}
-              disabled={revealed[i] || !deck[i]?.name}
-              className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
-              aria-label={revealed[i] ? deck[i]?.name ?? pos : `Открыть ${pos}`}
-            >
-              <motion.div
-                className="relative h-full w-full preserve-3d"
-                animate={{ rotateY: revealed[i] ? 180 : 0 }}
-                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <div className="absolute inset-0 backface-hidden">
-                  <DeckCard
-                    card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
-                    system={system}
-                    faceDown
-                    showMeaning={false}
-                    size="md"
-                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                  />
-                </div>
-                <div className="absolute inset-0 backface-hidden rotate-y-180">
-                  <DeckCard
-                    card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
-                    system={system}
-                    reversed={deck[i]?.reversed}
-                    showMeaning={false}
-                    size="md"
-                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                  />
-                </div>
-              </motion.div>
-            </button>
-            {revealed[i] && deck[i]?.meaning ? (
-              <p className="guest-spread-card-meaning text-center text-[10px] leading-snug text-aura-ivory/55">
-                {deck[i].meaning}
+            {landingQuestion ? (
+              <p className="rounded-xl border border-white/8 bg-black/20 px-4 py-3 text-center text-sm text-aura-ivory/80">
+                <span className="block text-[11px] uppercase tracking-wide text-aura-ivory/45">
+                  Ваш вопрос
+                </span>
+                <span className="mt-1 block font-medium text-white">{landingQuestion}</span>
               </p>
             ) : null}
-          </div>
-        ))}
-      </div>
 
-      <div className="text-center">
-        <button
-          type="button"
-          onClick={handleFinish}
-          disabled={!allRevealed}
-          className="btn-primary px-10 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          {allRevealed
-            ? "Сохранить расклад и продолжить"
-            : `Откройте все карты (${revealed.filter(Boolean).length}/${CARD_COUNT})`}
-        </button>
+            <div className="flex flex-wrap items-end justify-center gap-4 sm:gap-5">
+              {positions.map((pos, i) => (
+                <div key={pos} className="flex max-w-[120px] flex-col items-center gap-2">
+                  <p className="lux-label text-center text-[10px]">{pos}</p>
+                  <div className="h-[180px] w-[112px] sm:h-[196px] sm:w-[120px]">
+                    <DeckCard
+                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
+                      system={system}
+                      reversed={deck[i]?.reversed}
+                      showMeaning={false}
+                      size="md"
+                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {previewText ? (
+              <div className="guest-spread-preview rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm text-aura-ivory/80">
+                <PremiumReadingBody content={previewText} className="text-aura-ivory/80" />
+              </div>
+            ) : (
+              <p className="text-center text-sm text-aura-ivory/60">
+                Карты зафиксированы. Полный связный разбор — после входа.
+              </p>
+            )}
+
+            <p className="text-center text-sm leading-relaxed text-aura-ivory/70">
+              После входа мастер разберёт{" "}
+              <span className="text-aura-champagne/90">этот же расклад</span>
+              {landingQuestion ? " по вашему вопросу" : ""} — связь карт, что делать дальше и ответы
+              в чате. Пересчёта не будет.
+            </p>
+
+            <p className="text-center text-xs text-aura-ivory/50">
+              Карты зафиксированы — пересчёта не будет · 18+
+            </p>
+
+            <button
+              type="button"
+              onClick={focusAuthBlock}
+              className="btn-luxe btn-luxe--md btn-luxe--gold w-full"
+            >
+              Получить полный разбор
+            </button>
+
+            <div
+              id={GUEST_TEASER_AUTH_ID}
+              className="scroll-mt-28 space-y-4 rounded-xl border border-white/8 bg-black/20 p-4"
+            >
+              <div>
+                <h3 className="font-display text-lg text-white">Продолжить к полному разбору</h3>
+                <p className="mt-1 text-sm text-aura-ivory/65">
+                  Войдите — откроется расшифровка именно этих трёх карт, а не новый расклад.
+                </p>
+              </div>
+
+              <div id="guest-oauth-consent">
+                <OAuthConsentFields
+                  acceptedTerms={acceptedTerms}
+                  ageConfirmed={oauthAgeConfirmed}
+                  marketingConsent={marketingConsent}
+                  onAcceptedTermsChange={setAcceptedTerms}
+                  onAgeConfirmedChange={setOauthAgeConfirmed}
+                  onMarketingConsentChange={setMarketingConsent}
+                  showDisclaimer
+                  termsId="guest-oauth-terms"
+                  ageId="guest-oauth-age"
+                />
+              </div>
+
+              <SocialAuthButtons
+                mode="register"
+                returnTo={oauthReturnTo}
+                requireConsent
+                acceptedTerms={acceptedTerms}
+                ageConfirmed={oauthAgeConfirmed}
+                marketingConsent={marketingConsent}
+                consentScrollTargetId="guest-oauth-consent"
+                showEmailDivider
+                emailDividerLabel="или email"
+              />
+
+              <button
+                type="button"
+                onClick={goToEmailRegistration}
+                className="btn-luxe btn-luxe--md btn-luxe--ghost w-full"
+              >
+                Регистрация по email
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      </GuestSpreadSection>
+    );
+  }
+
+  return (
+    <GuestSpreadSection>
+      <div className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
+        {backToLandingButton}
+        <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
+        <p className="mb-2 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
+        <p className="mb-8 text-center text-sm font-medium text-aura-champagne/80">
+          {allRevealed ? "Расклад открыт — сохраните результат" : "Нажмите на каждую карту, чтобы открыть"}
+        </p>
+
+        {landingQuestion ? (
+          <p className="mb-6 text-center text-sm text-aura-ivory/70">
+            Вопрос: <span className="text-white">{landingQuestion}</span>
+          </p>
+        ) : null}
+
+        <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
+          {positions.map((pos, i) => (
+            <div key={pos} className="flex max-w-[148px] flex-col items-center gap-2">
+              <p className="lux-label text-center">{pos}</p>
+              <button
+                type="button"
+                onClick={() => handleFlip(i)}
+                disabled={revealed[i] || !deck[i]?.name}
+                className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
+                aria-label={revealed[i] ? deck[i]?.name ?? pos : `Открыть ${pos}`}
+              >
+                <motion.div
+                  className="relative h-full w-full preserve-3d"
+                  animate={{ rotateY: revealed[i] ? 180 : 0 }}
+                  transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <div className="absolute inset-0 backface-hidden">
+                    <DeckCard
+                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
+                      system={system}
+                      faceDown
+                      showMeaning={false}
+                      size="md"
+                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                    />
+                  </div>
+                  <div className="absolute inset-0 backface-hidden rotate-y-180">
+                    <DeckCard
+                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
+                      system={system}
+                      reversed={deck[i]?.reversed}
+                      showMeaning={false}
+                      size="md"
+                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                    />
+                  </div>
+                </motion.div>
+              </button>
+              {revealed[i] && deck[i]?.meaning ? (
+                <p className="guest-spread-card-meaning text-center text-[10px] leading-snug text-aura-ivory/55">
+                  {deck[i].meaning}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        {ageGateError ? (
+          <p className="mb-4 text-center text-sm text-red-300/90" role="alert">
+            {ageGateError}
+          </p>
+        ) : null}
+
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={handleFinish}
+            disabled={!allRevealed || completing}
+            className="btn-primary px-10 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {completing
+              ? "Сохраняем…"
+              : allRevealed
+                ? "Сохранить расклад и продолжить"
+                : `Откройте все карты (${revealed.filter(Boolean).length}/${CARD_COUNT})`}
+          </button>
+        </div>
       </div>
-    </div>
     </GuestSpreadSection>
   );
 }

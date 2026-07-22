@@ -358,7 +358,7 @@ export default function AuraSellingLanding({
       {showHero && isEditorial ? (
         <EditorialHeroSection
           isLoggedIn={isLoggedIn}
-          pricingLine={ready ? offer.pricingLine : undefined}
+          pricingLine={undefined}
           onPrimaryCta={() => handlePrimaryCta("hero")}
           onSecondaryCta={scrollToSession}
           onQuestionSubmit={(question) =>
@@ -413,13 +413,6 @@ export default function AuraSellingLanding({
         <EditorialTopicsSection onTopic={handleTopic} />
       ) : null}
 
-      {!isLoggedIn ? (
-        <>
-          <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
-          <GuestTripletDraw startRequest={guestSpreadRequest} />
-        </>
-      ) : null}
-
       {showLoggedInHome ? (
         <LoggedInHomeBanner
           userName={homeUserName}
@@ -448,6 +441,14 @@ export default function AuraSellingLanding({
                 : undefined)
           }
         />
+      ) : null}
+
+      {!isLoggedIn ? <GuestTripletDraw startRequest={guestSpreadRequest} /> : null}
+
+      {showSellingSections && isEditorial ? <EditorialSessionStepsSection /> : null}
+
+      {!isLoggedIn ? (
+        <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
       ) : null}
 
       {showQuickQuestionsBlock || (showSellingSections && isEditorial) ? (
@@ -516,8 +517,6 @@ export default function AuraSellingLanding({
           className="aura-landing-masters"
         />
       ) : null}
-
-      {showSellingSections && isEditorial ? <EditorialSessionStepsSection /> : null}
 
       {showSellingSections && isEditorial ? (
         <EditorialPracticesSection isLoggedIn={isLoggedIn} />
