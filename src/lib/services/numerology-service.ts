@@ -166,6 +166,8 @@ export async function generateNumerologStreamReply(
       engineFacts,
       fallback,
       gender: params.gender,
+      // Chat chips may use engine; paid session path checks null below.
+      allowEngineFallback: true,
     }),
     matrixForFinale
       ? Promise.resolve(buildMatrixPlainFinale(firstName, matrixForFinale))
@@ -176,6 +178,10 @@ export async function generateNumerologStreamReply(
           gender: params.gender,
         }),
   ]);
+
+  if (!engineBody?.trim()) {
+    return null;
+  }
 
   return {
     reply: appendNumerologFinale(engineBody, finale),
@@ -218,8 +224,8 @@ export async function generateNumerologSpreadOpeningReading(input: {
       topic: "spread_opening",
       userMessage: "Три числа текущего периода",
       engineFacts,
-      fallback: mathSummary,
       gender: input.gender,
+      allowEngineFallback: false,
     }),
     generateNumerologFinale({
       name: firstName,
@@ -229,17 +235,20 @@ export async function generateNumerologSpreadOpeningReading(input: {
     }),
   ]);
 
-  const analysis =
-    deniesHavingSpreadNumbers(analysisRaw) || analysisRaw.trim() === mathSummary.trim()
-      ? ""
-      : analysisRaw.trim();
+  if (
+    !analysisRaw?.trim() ||
+    deniesHavingSpreadNumbers(analysisRaw) ||
+    analysisRaw.trim() === mathSummary.trim()
+  ) {
+    throw new Error("numerolog_spread_ai_failed");
+  }
 
+  const analysis = analysisRaw.trim();
   const finale = spreadFinaleMatchesNumbers(finaleRaw, spreadNumbers)
     ? finaleRaw
     : buildSpreadOpeningFinale(firstName, spreadNumbers);
 
-  const body = analysis ? `${mathSummary.trim()}\n\n${analysis}` : mathSummary;
-
+  const body = `${mathSummary.trim()}\n\n${analysis}`;
   return appendNumerologFinale(body, finale);
 }
 
@@ -283,25 +292,10 @@ export async function generateNumerologSessionReading(input: {
     memoryBlock: input.memoryBlock,
   });
 
-  if (streamed) {
+  if (streamed?.reply?.trim()) {
     return streamed;
   }
 
-  const fallback = tryNumerologEngineFallback({
-    characterId: "numerolog",
-    userName: input.userName,
-    birthDate: input.birthDate,
-    profileName: input.fullName ?? input.userName,
-    gender: input.gender,
-    lastUserMessage: message,
-    recentUserMessages: [],
-    spreadNumbers,
-    memoryBlock: input.memoryBlock,
-  });
-
-  if (!fallback) {
-    throw new Error("numerolog_session_reading_failed");
-  }
-
-  return fallback;
+  // Paid session reading requires genuine AI — never substitute engine prose.
+  throw new Error("numerolog_session_reading_failed");
 }

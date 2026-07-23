@@ -407,6 +407,9 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
   try {
     const synastry = await resolveJointSynastry(row);
     const combined = await generateCombinedReading(row, synastry);
+    if (!combined?.trim()) {
+      throw new Error("joint_combined_empty");
+    }
     await query(
       `UPDATE joint_readings
        SET combined_reading = $2, synastry_data = $3::jsonb,
@@ -417,6 +420,7 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
     );
     return (await getJointReadingByToken(row.token)) ?? { ...row, combined_reading: combined, status: "completed" };
   } catch (err) {
+    // Keep both side readings; do not persist concatenation stubs as combined success.
     await query(
       `UPDATE joint_readings SET combined_claim_token = NULL, combined_claim_at = NULL
        WHERE token = $1 AND combined_claim_token = $2`,
@@ -754,22 +758,14 @@ ${buildPaidSpreadReadingExtras({ cardCount, masterId, includeFinalConclusion: tr
       userMessage,
       intention: "love",
     });
-    if (generated.text?.trim()) return polishCombinedReading(generated.text);
+    if (generated.fromLlm && generated.text?.trim()) {
+      return polishCombinedReading(generated.text);
+    }
+    throw new Error("joint_combined_ai_failed");
   } catch (err) {
-    console.warn("Joint reading combined synthesis failed, using plain fallback:", err);
+    console.warn("Joint reading combined synthesis failed (fail-closed):", err);
+    throw err instanceof Error ? err : new Error("joint_combined_ai_failed");
   }
-
-  return polishCombinedReading(
-    [
-      `Совместный расклад ${initiatorLabel} и ${partnerLabel}.`,
-      "",
-      initiatorText,
-      "",
-      partnerText,
-      "",
-      `Карты показывают, что у вас как у ${relation} есть общий ресурс для сближения — обсудите выводы вместе.`,
-    ].join("\n")
-  );
 }
 
 export function buildJointReadingUrl(token: string): string {

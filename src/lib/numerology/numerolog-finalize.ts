@@ -219,18 +219,26 @@ const FINALE_INSTRUCTIONS: Partial<Record<NumerologFinaleTopic, string>> = {
     "Только блок КЛЮЧИ ДЛЯ РЕЗЮМЕ: опора характера, предназначение, деньги, аркан года — дословно эти четыре аркана. Аркан года нельзя подменять Отшельником/Силой/другой точкой. Без пути/души/личности и без квадрата Пифагора.",
 };
 
-/** Warm main reading from engine facts — LLM prose adapted to the user's question. */
+/**
+ * Warm main reading from engine facts — LLM prose only.
+ * Returns null when AI fails (callers must not treat engine fallback as AI success).
+ */
 export async function generateNumerologMainReading(params: {
   name: string;
   topic: NumerologFinaleTopic;
   userMessage: string;
   engineFacts: string;
-  fallback: string;
+  /** @deprecated ignored for success path — kept for call-site compatibility */
+  fallback?: string;
   gender?: string | null;
-}): Promise<string> {
+  /** When true, return engine fallback string instead of null (free chips only). */
+  allowEngineFallback?: boolean;
+}): Promise<string | null> {
   const factsCap = params.topic === "destiny_matrix" ? 6500 : 4000;
   const facts = params.engineFacts.trim().slice(0, factsCap);
-  if (!facts) return params.fallback;
+  if (!facts) {
+    return params.allowEngineFallback ? params.fallback ?? null : null;
+  }
 
   const topicLabel = TOPIC_LABELS[params.topic] ?? params.topic;
   const extra = MAIN_READING_INSTRUCTIONS[params.topic] ?? "";
@@ -294,13 +302,15 @@ export async function generateNumerologMainReading(params: {
 
   const trimmed = normalizeProseChunk(text ?? "");
   if (!trimmed || trimmed.length < 80 || isUnusableRussianLlmOutput(trimmed, 40)) {
-    return params.fallback;
+    return params.allowEngineFallback ? params.fallback ?? null : null;
   }
   if (/только движком|что разобрать\?/i.test(trimmed)) {
-    return polishNumerologClientReply(params.fallback);
+    return params.allowEngineFallback
+      ? polishNumerologClientReply(params.fallback ?? "")
+      : null;
   }
   if (params.topic === "spread_opening" && deniesHavingSpreadNumbers(trimmed)) {
-    return params.fallback;
+    return params.allowEngineFallback ? params.fallback ?? null : null;
   }
   return polishNumerologClientReply(trimmed);
 }

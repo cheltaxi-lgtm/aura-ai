@@ -97,117 +97,12 @@ async function responseJson<T>(response: Response): Promise<T> {
 }
 
 async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> {
-  const storageKey = "aura:natal-active-job";
-  const startedAtKey = "aura:natal-active-job-started";
-  let terminal = false;
-  let authFailures = 0;
-  let transientFailures = 0;
-  window.localStorage.setItem(storageKey, jobId);
-  if (!window.localStorage.getItem(startedAtKey)) {
-    window.localStorage.setItem(startedAtKey, String(Date.now()));
-  }
-  try {
-    const startedAt = Number(window.localStorage.getItem(startedAtKey) || Date.now());
-    if (Number.isFinite(startedAt) && Date.now() - startedAt > 45 * 60_000) {
-      terminal = true;
-      throw new Error("Сохранённая генерация устарела. Запустите отчёт снова при необходимости.");
-    }
-    for (let attempt = 0; attempt < 180; attempt += 1) {
-      let response: Response;
-      try {
-        response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
-      } catch {
-        transientFailures += 1;
-        if (transientFailures <= 15) {
-          await new Promise((resolve) =>
-            window.setTimeout(resolve, Math.min(10_000, 1_000 * transientFailures))
-          );
-          continue;
-        }
-        terminal = false;
-        throw new Error(
-          "Отчёт продолжает формироваться, но связь с сервером нестабильна. Обновите страницу позже — ожидание восстановится автоматически."
-        );
-      }
-
-      // Caddy/Next can briefly return an HTML 502/503/504 while the worker is
-      // generating. Do not parse that body as JSON or abandon the saved job.
-      if (
-        response.status === 429 ||
-        response.status === 502 ||
-        response.status === 503 ||
-        response.status === 504
-      ) {
-        transientFailures += 1;
-        if (transientFailures <= 15) {
-          const retryAfter = Number(response.headers.get("retry-after"));
-          await new Promise((resolve) =>
-            window.setTimeout(
-              resolve,
-              Number.isFinite(retryAfter) && retryAfter > 0
-                ? Math.min(15_000, retryAfter * 1_000)
-                : Math.min(10_000, 1_000 * transientFailures)
-            )
-          );
-          continue;
-        }
-        terminal = false;
-        throw new Error(
-          "Отчёт продолжает формироваться, но сервер временно занят. Обновите страницу позже — ожидание восстановится автоматически."
-        );
-      }
-
-      const job = await responseJson<{
-        status?: string;
-        result?: Record<string, unknown>;
-        error?: string;
-        code?: string;
-        refunded?: boolean;
-      }>(response);
-      if (response.status === 404) {
-        terminal = true;
-        throw new Error("Задача генерации не найдена. Запустите отчёт снова.");
-      }
-      if (response.status === 401) {
-        // Enqueue already proved the session works — transient 401 on poll must
-        // not look like a logout. Retry, then ask the user to refresh history.
-        authFailures += 1;
-        if (authFailures <= 5) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1_000 * authFailures));
-          continue;
-        }
-        terminal = false; // keep job id so refresh can resume
-        throw new Error(
-          "Отчёт ещё обрабатывается, но статус временно недоступен. Обновите страницу через 1–2 минуты — результат появится в архиве."
-        );
-      }
-      authFailures = 0;
-      transientFailures = 0;
-      if (!response.ok) throw new Error(job.error || "Не удалось проверить статус генерации.");
-      if (job.status === "completed") {
-        terminal = true;
-        return job.result ?? {};
-      }
-      if (job.status === "failed") {
-        terminal = true;
-        const fallback = job.refunded
-          ? "Генерация не завершилась. Оплата возвращена."
-          : "Генерация не завершилась. Если руны списались — проверьте баланс или поддержку.";
-        throw new Error(job.error || fallback);
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
-    }
-    terminal = false;
-    throw new Error("Генерация ещё выполняется. Её статус сохранён, обновите страницу позже.");
-  } finally {
-    if (terminal) {
-      window.localStorage.removeItem(storageKey);
-      window.localStorage.removeItem(startedAtKey);
-    }
-  }
+  const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+  return waitForAsyncJob({
+    jobId,
+    storageKey: "aura:natal-active-job",
+    startedAtKey: "aura:natal-active-job-started",
+  });
 }
 
 async function fetchRobust(input: RequestInfo | URL, init?: RequestInit, retries = 2): Promise<Response> {

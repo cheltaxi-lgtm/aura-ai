@@ -232,11 +232,12 @@ export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
   image_generate: IMAGE_GENERATE,
 };
 
-/** Kinds the durable worker processes by default (natal first; others via ASYNC_JOB_KINDS). */
+/** Kinds the durable worker processes by default (others via ASYNC_JOB_KINDS). */
 export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "natal_interpretation",
   "natal_forecast",
   "natal_compatibility",
+  "reading",
 ];
 
 export function getJobKindConfig(kind: AsyncJobKind): PaidJobKindConfig {

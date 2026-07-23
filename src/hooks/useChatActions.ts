@@ -11,8 +11,10 @@ import {
 } from "react";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
+import { waitForAsyncJob } from "@/lib/client/wait-for-async-job";
 import { isProseLikelyTruncated } from "@/lib/prose-truncation";
 import { rateLimitMessage } from "@/lib/rate-limit-messages";
+import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   loadChatCacheForMaster,
   loadChatCacheAny,
@@ -740,6 +742,7 @@ export function useChatActions(options: UseChatActionsOptions) {
               forceRegenerate: loadOptions?.force ?? false,
               spreadType: effectiveSpreadType,
               readingScope: loadOptions?.readingScope,
+              async: true,
               ...readingPayloadForMaster(
                 activeProfile,
                 characterId,
@@ -752,8 +755,28 @@ export function useChatActions(options: UseChatActionsOptions) {
               ),
             }),
           });
-          const data = await res.json();
-          if (res.status === 401) {
+          let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          let status = res.status;
+          if (status === 202 && typeof data.jobId === "string") {
+            try {
+              data = await waitForAsyncJob({
+                jobId: data.jobId,
+                storageKey: "aura:reading-active-job",
+                signal: controller.signal,
+              });
+              status = 200;
+            } catch (pollErr) {
+              status = 502;
+              data = {
+                error:
+                  pollErr instanceof Error
+                    ? pollErr.message
+                    : "Не удалось получить трактовку. Попробуйте ещё раз.",
+                code: "generation_failed",
+              };
+            }
+          }
+          if (status === 401) {
             closeSpreadReadingRitual();
             const code =
               typeof data?.code === "string" ? String(data.code).toUpperCase() : "";
@@ -793,7 +816,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             ]);
             return;
           }
-          if (res.status === 429) {
+          if (status === 429) {
             const rl = getRateLimitPayload(data);
             showRateLimit(rl?.action ?? "reading", rl?.retryAfter);
             const base = rateLimitMessage(rl?.action ?? "reading");
@@ -811,7 +834,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             ]);
             return;
           }
-          if (res.status === 402) {
+          if (status === 402) {
             const parsed = parseInsufficientRunes(data);
             if (parsed) {
               const required = parsed.required || runeCost("READING");
@@ -844,7 +867,8 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
           // Refresh free-question allowance after Full Matrix purchase / reopen.
           if (
-            res.ok &&
+            status >= 200 &&
+            status < 300 &&
             session?.sessionId &&
             !session.offline &&
             (typeof data.runeBalance === "number" ||
@@ -853,13 +877,26 @@ export function useChatActions(options: UseChatActionsOptions) {
           ) {
             void refresh(session.sessionId);
           }
-          if (res.ok && data.reading) {
+          const readingText =
+            typeof data.reading === "string" ? data.reading : "";
+          if (status >= 200 && status < 300 && readingText.trim()) {
             clearPendingReading();
             pendingReadingMasterRef.current = null;
             const readingMsgId = generateId();
-            const readingTs = data.createdAt ? new Date(data.createdAt) : new Date();
-            const cleanedReading =
-              coerceSpreadReadingText(data.reading, cardNames) || buildTeaser(activeProfile);
+            const readingTs = data.createdAt ? new Date(String(data.createdAt)) : new Date();
+            const cleanedReading = coerceSpreadReadingText(readingText, cardNames);
+            if (!cleanedReading) {
+              setMessages([
+                {
+                  id: generateId(),
+                  role: "assistant",
+                  content:
+                    "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+                  timestamp: new Date(),
+                },
+              ]);
+              return;
+            }
             const readingMsg: Message = {
               id: readingMsgId,
               role: "assistant",
@@ -883,7 +920,10 @@ export function useChatActions(options: UseChatActionsOptions) {
               {
                 id: generateId(),
                 role: "assistant",
-                content: buildTeaser(activeProfile),
+                content: toUserFacingError(
+                  data.error ?? data.message ?? data.code,
+                  "Не удалось получить трактовку. Попробуйте ещё раз."
+                ),
                 timestamp: new Date(),
               },
             ]);

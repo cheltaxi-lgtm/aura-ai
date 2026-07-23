@@ -1142,6 +1142,21 @@ export default function PhotoReadingFlow({
         setStreamingAnalysis(streamedText);
       });
 
+      if (data.llmFailed || (!data.reply && !data.analysis && !streamedText.trim())) {
+        setStep("confirm");
+        setStreamingAnalysis("");
+        setError(
+          data.runesRefunded || data.refunded
+            ? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+            : "Не удалось получить трактовку. Попробуйте ещё раз."
+        );
+        if (typeof data.runeBalance === "number") {
+          onRuneBalanceChange?.(data.runeBalance as number);
+        }
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
       const analysis = String(data.reply ?? data.analysis ?? streamedText);
       const nextResult = {
         analysis,

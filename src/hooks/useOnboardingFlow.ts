@@ -2441,23 +2441,32 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           customQuestion: question || undefined,
           spreadType: "guest_resume",
           spreadId: "triplet",
+          async: true,
         }),
       });
+      let data = (await readingRes.json().catch(() => ({}))) as {
+        reading?: string;
+        cached?: boolean;
+        jobId?: string;
+        code?: string;
+        error?: string;
+      };
       if (readingRes.status === 401 || readingRes.status === 403) {
-        const errBody = (await readingRes.json().catch(() => ({}))) as {
-          code?: string;
-        };
-        const code = String(errBody.code ?? "").toUpperCase();
+        const code = String(data.code ?? "").toUpperCase();
         if (code === "NEEDS_PROFILE") {
           patchGuestResumeUiCache({ phase: "onboarding_required" });
         }
         return "failed";
       }
-      if (!readingRes.ok) return "failed";
-      const data = (await readingRes.json().catch(() => ({}))) as {
-        reading?: string;
-        cached?: boolean;
-      };
+      if (readingRes.status === 202 && typeof data.jobId === "string") {
+        const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+        data = (await waitForAsyncJob({
+          jobId: data.jobId,
+          storageKey: "aura:guest-resume-active-job",
+        })) as typeof data;
+      } else if (!readingRes.ok) {
+        return "failed";
+      }
       readingText = typeof data.reading === "string" ? data.reading.trim() : "";
       if (!readingText) return "failed";
     } catch {

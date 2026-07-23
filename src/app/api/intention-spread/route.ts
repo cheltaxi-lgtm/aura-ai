@@ -915,6 +915,8 @@ export async function POST(request: NextRequest) {
           deckSystem: system,
           system,
           sessionId: storedSessionId,
+          source: "ai",
+          provenance: { source: "ai", generatedAt: new Date().toISOString() },
         },
       });
     } catch (histErr) {

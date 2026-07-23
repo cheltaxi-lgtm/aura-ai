@@ -1,8 +1,5 @@
 import { createChatResponseStream } from "@/lib/chat-stream";
-import {
-  photoInterpretationMaxTokens,
-  photoReadingFallback,
-} from "@/lib/photo-reading-prompts";
+import { photoInterpretationMaxTokens } from "@/lib/photo-reading-prompts";
 
 export async function createPhotoInterpretationStream(params: {
   systemPrompt: string;
@@ -32,7 +29,8 @@ export async function createPhotoInterpretationStream(params: {
     maxTokens: photoInterpretationMaxTokens(n),
     onComplete: async (meta) => {
       const llmFailed = meta.llmFailed || !meta.reply.trim();
-      const reply = llmFailed ? photoReadingFallback(params.userName) : meta.reply;
+      // Fail-closed: never substitute template prose for a failed photo reading.
+      const reply = llmFailed ? "" : meta.reply;
       const extras = await params.onComplete({ reply, llmFailed });
       return { ...extras, reply, llmFailed };
     },

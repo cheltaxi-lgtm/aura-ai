@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { ensureDb, query } from "@/lib/db";
 import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading } from "@/lib/chat-prompts";
@@ -9,6 +8,16 @@ import {
   profileAuthFailureResponse,
   resolveProfileUserContext,
 } from "@/lib/require-auth";
+import {
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  beginWorkerJobSave,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+} from "@/lib/async-job-lifecycle";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { isRuneBillingActive } from "@/lib/rune-service";
@@ -73,13 +82,6 @@ import {
 import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
-import {
-  completeAsyncJob,
-  createAsyncJob,
-  failAsyncJob,
-  markAsyncJobRunning,
-} from "@/lib/async-jobs";
-
 async function persistReadingToSession(input: {
   sessionId: string | undefined;
   profileUserId: string;
@@ -184,7 +186,7 @@ async function respondWithExistingSpreadReading(input: {
   });
 }
 
-export const maxDuration = 90;
+export const maxDuration = 180;
 
 export async function POST(request: NextRequest) {
   let characterId = "ragnar";
@@ -268,14 +270,20 @@ export async function POST(request: NextRequest) {
     intention = "";
   }
 
-  const profileCtx = await resolveProfileUserContext();
-  if (!profileCtx.ok) {
-    return profileAuthFailureResponse(profileCtx.reason);
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let authed: { auth: { sub: string }; profileUserId: string };
+  if (workerUserId) {
+    authed = { auth: { sub: workerUserId }, profileUserId: workerUserId };
+  } else {
+    const profileCtx = await resolveProfileUserContext();
+    if (!profileCtx.ok) {
+      return profileAuthFailureResponse(profileCtx.reason);
+    }
+    authed = {
+      auth: profileCtx.auth,
+      profileUserId: profileCtx.profileUserId,
+    };
   }
-  const authed = {
-    auth: profileCtx.auth,
-    profileUserId: profileCtx.profileUserId,
-  };
 
   if (intention === "life_death") {
     return NextResponse.json({ reading: "", skipReading: true });
@@ -299,45 +307,18 @@ export async function POST(request: NextRequest) {
     astroMeta = serverProfile.astro_meta as import("@/lib/astro-profile").AstroMeta;
   }
 
-  const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "reading");
-  if (rateLimited) return rateLimited;
+  if (!workerUserId) {
+    const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "reading");
+    if (rateLimited) return rateLimited;
+  }
 
-  if (asyncRequested) {
-    if (!(await ensureDb())) {
-      return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
-    }
-    const jobPayload = { ...rawBody, async: false };
-    const jobId = await createAsyncJob({
+  if (asyncRequested && isAsyncJobWorkerConfigured()) {
+    return enqueuePaidAsyncJob({
       userId: authed.profileUserId,
       kind: "reading",
-      payload: jobPayload,
+      payload: { ...rawBody, async: false },
+      bypassDeliveryGate: true,
     });
-    after(async () => {
-      await markAsyncJobRunning(jobId);
-      try {
-        const innerReq = new NextRequest(request.url, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            cookie: request.headers.get("cookie") ?? "",
-          },
-          body: JSON.stringify(jobPayload),
-        });
-        const res = await POST(innerReq);
-        const data = (await res.json()) as Record<string, unknown> & { error?: string };
-        if (!res.ok) {
-          await failAsyncJob(jobId, data.error ?? `HTTP ${res.status}`);
-          return;
-        }
-        await completeAsyncJob(jobId, data);
-      } catch (err) {
-        await failAsyncJob(jobId, err instanceof Error ? err.message : "reading job failed");
-      }
-    });
-    return NextResponse.json(
-      { jobId, status: "pending", pollUrl: `/api/jobs/${jobId}` },
-      { status: 202 }
-    );
   }
 
   let spentRunes = 0;
@@ -949,6 +930,20 @@ export async function POST(request: NextRequest) {
       }
 
       if (await ensureDb()) {
+        if (!(await beginWorkerJobSave(request))) {
+          if (billingCharge) {
+            runeBalance = await BillingService.rollbackCharge({
+              userId: authed.profileUserId,
+              cost: billingCharge.spentRunes,
+              wasFreeQuestion: billingCharge.wasFreeQuestion,
+              actionType: "READING",
+              transactionId: billingCharge.transactionId,
+            });
+            billingCharge = null;
+            spentRunes = 0;
+          }
+          return { kind: "failed" as const };
+        }
         const entry = await createHistoryEntry({
           userId: authed.profileUserId,
           characterName: characterId,
@@ -961,6 +956,8 @@ export async function POST(request: NextRequest) {
             zodiac,
             gender,
             birthDate,
+            source: "ai",
+            provenance: { source: "ai", generatedAt: new Date().toISOString() },
             ...(sessionId ? { sessionId } : {}),
             ...(isDailySpread ? { spreadType: "daily" } : {}),
             ...(isGuestResumeFree
@@ -1050,10 +1047,21 @@ export async function POST(request: NextRequest) {
     }
 
     if (lockedResult.kind === "failed") {
-      return NextResponse.json({ error: "Reading generation failed" }, { status: 502 });
+      await trackWorkerJobFailed(request, "Reading generation failed", {
+        refunded: spentRunes > 0,
+        errorCode: "generation_failed",
+      });
+      return NextResponse.json(
+        {
+          error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+          code: "generation_failed",
+          refunded: spentRunes > 0,
+        },
+        { status: 502 }
+      );
     }
 
-    return NextResponse.json({
+    const successPayload = {
       reading: lockedResult.reading,
       isPaid: lockedResult.isPaid,
       historyId: lockedResult.historyId,
@@ -1067,7 +1075,9 @@ export async function POST(request: NextRequest) {
       ...("numerologyUi" in lockedResult && lockedResult.numerologyUi
         ? { numerologyUi: lockedResult.numerologyUi }
         : {}),
-    });
+    };
+    await trackWorkerJobCompleted(request, successPayload);
+    return NextResponse.json(successPayload);
   } catch (error) {
     console.error("Reading error:", error);
     if (spentRunes > 0) {
@@ -1082,6 +1092,10 @@ export async function POST(request: NextRequest) {
         console.error("Reading refund failed:", refundErr);
       }
     }
+    await trackWorkerJobFailed(request, "Reading generation failed", {
+      refunded: spentRunes > 0,
+      errorCode: "generation_failed",
+    });
     // Fail-closed: never return template prose as a successful reading.
     return NextResponse.json(
       {

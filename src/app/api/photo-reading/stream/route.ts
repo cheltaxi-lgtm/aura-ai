@@ -3,10 +3,7 @@ import { ensureDb } from "@/lib/db";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { requireUserAuth } from "@/lib/require-auth";
 import { hasPaidAccess, getSession } from "@/lib/session";
-import {
-  photoReadingFallback,
-  resolvePhotoInterpretationPrompt,
-} from "@/lib/photo-reading-prompts";
+import { resolvePhotoInterpretationPrompt } from "@/lib/photo-reading-prompts";
 import { createPhotoInterpretationStream } from "@/lib/photo-reading-stream";
 import { getUserById, serializeUserProfile } from "@/lib/users";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
