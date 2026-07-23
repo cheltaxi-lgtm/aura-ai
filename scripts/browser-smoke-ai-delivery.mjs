@@ -165,7 +165,7 @@ async function main() {
   const intention = await api(page, "POST", "/api/intention-spread", {
     async: true,
     characterId: "veronika",
-    intention: "career",
+    intention: "love",
     spreadId: "triplet",
   });
   if (intention.status === 202 && intention.json?.jobId) {
