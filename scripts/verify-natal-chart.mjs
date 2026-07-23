@@ -1046,10 +1046,20 @@ async function main() {
       natalLabels.includes("GRAHA_LABELS") &&
       natalLabels.includes("TIMING_SOURCE_LABELS") &&
       natalLabels.includes("IMPORTANCE_PLANET_KEYS") &&
+      natalLabels.includes("normalizeLabelKey") &&
       !astrologyWorkspace.includes("} /> {planet}") &&
       !astrologyWorkspace.includes("{event.source}"),
     "visible natal UI uses reusable Russian labels instead of calculation keys"
   );
+  {
+    const { russianGrahaLabel } = await import("../src/lib/natal/labels.ts");
+    assert(
+      russianGrahaLabel("Venus") === "Шукра (Венера)" &&
+        russianGrahaLabel("Sun") === "Сурья (Солнце)" &&
+        russianGrahaLabel("Ketu") === "Кету",
+      "Vimshottari TitleCase lords map to Russian graha labels"
+    );
+  }
   assert(
     printableReport.includes("Приложение: расчётные данные") &&
       (printableReport.includes("Основано на рассчитанных данных") ||

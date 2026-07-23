@@ -42,12 +42,17 @@ export const TIMING_SOURCE_LABELS: Record<TimingSource, string> = {
 
 export const IMPORTANCE_PLANET_KEYS = ["sun", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"] as const;
 
+function normalizeLabelKey(key: string): string {
+  return key.trim().toLowerCase();
+}
+
 export function russianPlanetLabel(key: string): string {
-  return PLANET_LABELS[key] ?? "Неуказанный объект";
+  return PLANET_LABELS[normalizeLabelKey(key)] ?? "Неуказанный объект";
 }
 
 export function russianGrahaLabel(key: string): string {
-  return GRAHA_LABELS[key] ?? "Неуказанная граха";
+  // natalengine Vimshottari lords arrive as "Venus"/"Sun"; dictionary keys are lowercase.
+  return GRAHA_LABELS[normalizeLabelKey(key)] ?? "Неуказанная граха";
 }
 
 export function russianSignLabel(sign: string): string {
