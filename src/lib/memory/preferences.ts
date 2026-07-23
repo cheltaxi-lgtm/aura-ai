@@ -9,12 +9,24 @@ import { getSetting } from "@/lib/settings";
 export const MEMORY_CONSENT_VERSION = "memory-v2-2026-07-23";
 export const MEMORY_INITIAL_PROMPT_VERSION = "personal-memory-v1-2026-07-23";
 
+export function getMemoryExperimentAssignment(userId: string): {
+  bucket: number;
+  variant: "continuity" | "history";
+} {
+  const bucket =
+    Number.parseInt(createHash("sha256").update(`memory-choice:${userId}`).digest("hex").slice(0, 8), 16) %
+    100;
+  return { bucket, variant: bucket % 2 === 0 ? "continuity" : "history" };
+}
+
 export type MemoryPreferences = {
   userId: string;
   memoryEnabled: boolean;
   autoCaptureEnabled: boolean;
   sensitiveCaptureEnabled: boolean;
   eventRemindersEnabled: boolean;
+  momentsMode: "active" | "quiet";
+  cabinetMode: "simple" | "advanced";
   initialChoice: "enabled" | "disabled" | null;
   initialChoiceAt: string | null;
   initialPromptVersion: string | null;
@@ -30,6 +42,8 @@ const DEFAULT_PREFS = (userId: string): MemoryPreferences => ({
   autoCaptureEnabled: false,
   sensitiveCaptureEnabled: false,
   eventRemindersEnabled: false,
+  momentsMode: "active",
+  cabinetMode: "simple",
   initialChoice: null,
   initialChoiceAt: null,
   initialPromptVersion: null,
@@ -45,6 +59,8 @@ type PrefRow = {
   auto_capture_enabled: boolean;
   sensitive_capture_enabled: boolean;
   event_reminders_enabled: boolean;
+  memory_moments_mode: "active" | "quiet";
+  memory_cabinet_mode: "simple" | "advanced";
   memory_initial_choice: "enabled" | "disabled" | null;
   memory_initial_choice_at: Date | string | null;
   memory_initial_prompt_version: string | null;
@@ -67,6 +83,8 @@ function mapRow(row: PrefRow): MemoryPreferences {
     autoCaptureEnabled: Boolean(row.auto_capture_enabled),
     sensitiveCaptureEnabled: Boolean(row.sensitive_capture_enabled),
     eventRemindersEnabled: Boolean(row.event_reminders_enabled),
+    momentsMode: row.memory_moments_mode ?? "active",
+    cabinetMode: row.memory_cabinet_mode ?? "simple",
     initialChoice: row.memory_initial_choice,
     initialChoiceAt: iso(row.memory_initial_choice_at),
     initialPromptVersion: row.memory_initial_prompt_version,
@@ -81,7 +99,8 @@ export async function getMemoryPreferences(userId: string): Promise<MemoryPrefer
   if (!userId) return DEFAULT_PREFS("");
   const { rows } = await query<PrefRow>(
     `SELECT user_id, memory_enabled, auto_capture_enabled, sensitive_capture_enabled,
-            event_reminders_enabled, memory_initial_choice, memory_initial_choice_at,
+            event_reminders_enabled, memory_moments_mode, memory_cabinet_mode,
+            memory_initial_choice, memory_initial_choice_at,
             memory_initial_prompt_version, consent_version, consent_granted_at,
             consent_revoked_at, updated_at
        FROM user_memory_preferences
@@ -97,6 +116,8 @@ export type MemoryPreferencesPatch = {
   autoCaptureEnabled?: boolean;
   sensitiveCaptureEnabled?: boolean;
   eventRemindersEnabled?: boolean;
+  momentsMode?: "active" | "quiet";
+  cabinetMode?: "simple" | "advanced";
 };
 
 /**
@@ -119,6 +140,8 @@ export async function updateMemoryPreferences(
       patch.sensitiveCaptureEnabled ?? current.sensitiveCaptureEnabled,
     eventRemindersEnabled:
       patch.eventRemindersEnabled ?? current.eventRemindersEnabled,
+    momentsMode: patch.momentsMode ?? current.momentsMode,
+    cabinetMode: patch.cabinetMode ?? current.cabinetMode,
   };
 
   // Auto/sensitive require memory_enabled.
@@ -139,17 +162,18 @@ export async function updateMemoryPreferences(
   const { rows } = await query<PrefRow>(
     `INSERT INTO user_memory_preferences (
        user_id, memory_enabled, auto_capture_enabled, sensitive_capture_enabled,
-       event_reminders_enabled, memory_initial_choice, memory_initial_choice_at,
+       event_reminders_enabled, memory_moments_mode, memory_cabinet_mode,
+       memory_initial_choice, memory_initial_choice_at,
        memory_initial_prompt_version, consent_version, consent_granted_at,
        consent_revoked_at, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5,
-       CASE WHEN $6 THEN 'enabled' ELSE NULL END,
-       CASE WHEN $6 THEN NOW() ELSE NULL END,
-       CASE WHEN $6 THEN $7 ELSE NULL END,
-       CASE WHEN $6 THEN $8 ELSE NULL END,
-       CASE WHEN $6 THEN NOW() ELSE NULL END,
-       CASE WHEN $9 THEN NOW() ELSE NULL END,
+       $1, $2, $3, $4, $5, $6, $7,
+       CASE WHEN $8 THEN 'enabled' ELSE NULL END,
+       CASE WHEN $8 THEN NOW() ELSE NULL END,
+       CASE WHEN $8 THEN $9 ELSE NULL END,
+       CASE WHEN $8 THEN $10 ELSE NULL END,
+       CASE WHEN $8 THEN NOW() ELSE NULL END,
+       CASE WHEN $11 THEN NOW() ELSE NULL END,
        NOW()
      )
      ON CONFLICT (user_id) DO UPDATE SET
@@ -157,30 +181,32 @@ export async function updateMemoryPreferences(
        auto_capture_enabled = EXCLUDED.auto_capture_enabled,
        sensitive_capture_enabled = EXCLUDED.sensitive_capture_enabled,
        event_reminders_enabled = EXCLUDED.event_reminders_enabled,
+       memory_moments_mode = EXCLUDED.memory_moments_mode,
+       memory_cabinet_mode = EXCLUDED.memory_cabinet_mode,
        memory_initial_choice = CASE
-         WHEN $6 THEN 'enabled'
+         WHEN $8 THEN 'enabled'
          ELSE user_memory_preferences.memory_initial_choice
        END,
        memory_initial_choice_at = CASE
-         WHEN $6 THEN COALESCE(user_memory_preferences.memory_initial_choice_at, NOW())
+         WHEN $8 THEN COALESCE(user_memory_preferences.memory_initial_choice_at, NOW())
          ELSE user_memory_preferences.memory_initial_choice_at
        END,
        memory_initial_prompt_version = CASE
-         WHEN $6 THEN $7
+         WHEN $8 THEN $9
          ELSE user_memory_preferences.memory_initial_prompt_version
        END,
        consent_version = CASE
-         WHEN $6 THEN $8
-         WHEN $9 THEN user_memory_preferences.consent_version
+         WHEN $8 THEN $10
+         WHEN $11 THEN user_memory_preferences.consent_version
          ELSE COALESCE(user_memory_preferences.consent_version, EXCLUDED.consent_version)
        END,
        consent_granted_at = CASE
-         WHEN $6 THEN NOW()
+         WHEN $8 THEN NOW()
          ELSE user_memory_preferences.consent_granted_at
        END,
        consent_revoked_at = CASE
-         WHEN $9 THEN NOW()
-         WHEN $6 THEN NULL
+         WHEN $11 THEN NOW()
+         WHEN $8 THEN NULL
          ELSE user_memory_preferences.consent_revoked_at
        END,
        updated_at = NOW()
@@ -191,6 +217,8 @@ export async function updateMemoryPreferences(
       next.autoCaptureEnabled,
       next.sensitiveCaptureEnabled,
       next.eventRemindersEnabled,
+      next.momentsMode,
+      next.cabinetMode,
       enabling,
       MEMORY_INITIAL_PROMPT_VERSION,
       MEMORY_CONSENT_VERSION,
@@ -224,6 +252,24 @@ export async function isMemoryChoiceRolloutEligible(userId: string): Promise<boo
   return bucket < percent;
 }
 
+export async function isMemoryMoatV2Eligible(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const features = await getSetting("features");
+  if (features.personalMemoryMoatV2Enabled === false) return false;
+  const percent = Math.min(
+    100,
+    Math.max(0, Number(features.personalMemoryMoatV2RolloutPercent ?? 100))
+  );
+  if (percent >= 100) return true;
+  if (percent <= 0) return false;
+  const bucket =
+    Number.parseInt(
+      createHash("sha256").update(`memory-v2:${userId}`).digest("hex").slice(0, 8),
+      16
+    ) % 100;
+  return bucket < percent;
+}
+
 /** Record the mandatory first choice. Sensitive capture and reminders stay off. */
 export async function recordInitialMemoryChoice(
   userId: string,
@@ -234,11 +280,12 @@ export async function recordInitialMemoryChoice(
   const { rows } = await query<PrefRow>(
     `INSERT INTO user_memory_preferences (
        user_id, memory_enabled, auto_capture_enabled, sensitive_capture_enabled,
-       event_reminders_enabled, memory_initial_choice, memory_initial_choice_at,
+       event_reminders_enabled, memory_moments_mode, memory_cabinet_mode,
+       memory_initial_choice, memory_initial_choice_at,
        memory_initial_prompt_version, consent_version, consent_granted_at,
        consent_revoked_at, updated_at
      ) VALUES (
-       $1, $2, $2, FALSE, FALSE, $3, NOW(), $4,
+       $1, $2, $2, FALSE, FALSE, 'active', 'simple', $3, NOW(), $4,
        CASE WHEN $2 THEN $5 ELSE NULL END,
        CASE WHEN $2 THEN NOW() ELSE NULL END,
        CASE WHEN $2 THEN NULL ELSE NOW() END,
@@ -258,6 +305,14 @@ export async function recordInitialMemoryChoice(
        updated_at = NOW()
      RETURNING *`,
     [userId, enabled, choice, MEMORY_INITIAL_PROMPT_VERSION, MEMORY_CONSENT_VERSION]
+  );
+  const assignment = getMemoryExperimentAssignment(userId);
+  await query(
+    `UPDATE user_memory_preferences
+        SET memory_rollout_bucket = COALESCE(memory_rollout_bucket, $2),
+            memory_prompt_variant = COALESCE(memory_prompt_variant, $3)
+      WHERE user_id = $1`,
+    [userId, assignment.bucket, assignment.variant]
   );
   return mapRow(rows[0]);
 }

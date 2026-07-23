@@ -50,6 +50,17 @@ export default function FaqPage() {
           </Link>
         </p>
       </AboutSection>
+      <AboutSection title="Персональная память">
+        <p>
+          Память включается только после отдельного выбора и помогает учитывать релевантный
+          жизненный контекст в следующих консультациях. Сведения можно исправлять и удалять, а
+          отдельный разговор начать без памяти.{" "}
+          <Link href="/about/personal-memory" className="text-aura-gold hover:underline">
+            Как работает персональная память
+          </Link>
+          .
+        </p>
+      </AboutSection>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{

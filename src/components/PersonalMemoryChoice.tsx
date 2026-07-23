@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Brain, Check, Loader2, ShieldCheck } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import LegalDocLink from "@/components/legal/LegalDocLink";
+import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
 
 export default function PersonalMemoryChoice({
   enabled,
@@ -13,6 +14,11 @@ export default function PersonalMemoryChoice({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [experiment, setExperiment] = useState<{
+    promptVersion: string;
+    variant: "continuity" | "history";
+  } | null>(null);
+  const trackedShown = useRef(false);
 
   useEffect(() => {
     if (!enabled) {
@@ -24,14 +30,36 @@ export default function PersonalMemoryChoice({
       .then(async (res) => {
         const data = (await res.json().catch(() => ({}))) as {
           needsInitialChoice?: boolean;
+          memoryExperiment?: {
+            promptVersion?: string;
+            variant?: "continuity" | "history";
+          };
         };
-        if (!cancelled && res.ok) setOpen(Boolean(data.needsInitialChoice));
+        if (!cancelled && res.ok) {
+          setOpen(Boolean(data.needsInitialChoice));
+          if (data.memoryExperiment?.promptVersion && data.memoryExperiment.variant) {
+            setExperiment({
+              promptVersion: data.memoryExperiment.promptVersion,
+              variant: data.memoryExperiment.variant,
+            });
+          }
+        }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [enabled]);
+
+  useEffect(() => {
+    if (!open || trackedShown.current) return;
+    trackedShown.current = true;
+    trackMemoryProductEvent({
+      event: "consent_prompt_shown",
+      promptVersion: experiment?.promptVersion,
+      variant: experiment?.variant,
+    });
+  }, [experiment, open]);
 
   const choose = async (choice: "enabled" | "disabled") => {
     setLoading(true);
@@ -48,6 +76,14 @@ export default function PersonalMemoryChoice({
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "save_failed");
+      trackMemoryProductEvent({
+        event: choice === "enabled" ? "consent_choice_enabled" : "consent_choice_disabled",
+        promptVersion: experiment?.promptVersion,
+        variant: experiment?.variant,
+        memoryEnabled: choice === "enabled",
+        autoCaptureEnabled: choice === "enabled",
+        momentsMode: "active",
+      });
       setOpen(false);
       window.dispatchEvent(
         new CustomEvent("personal-memory-choice", { detail: { choice } })
@@ -81,9 +117,9 @@ export default function PersonalMemoryChoice({
               Персональная память
             </h2>
             <p className="mt-3 text-sm leading-6 text-white/65">
-              Сервис сможет запоминать важные сведения из ваших сообщений: цели,
-              перемены, близких и значимые события. Следующие консультации станут
-              последовательнее и будут учитывать ваш жизненный контекст.
+              {experiment?.variant === "history"
+                ? "Вы сможете видеть, как менялись ваши вопросы и жизненные обстоятельства, а консультации — продолжать эту историю без повторения вводных."
+                : "Следующие консультации смогут продолжать важную для вас линию, а не начинать знакомство заново. Сервис подберёт только то, что относится к новому вопросу."}
             </p>
           </div>
 
@@ -91,11 +127,11 @@ export default function PersonalMemoryChoice({
             <ul className="space-y-3 text-sm text-white/72">
               <li className="flex gap-3">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
-                Вы увидите сохранённые сведения и сможете исправить каждое из них.
+                Замечайте траекторию: что изменилось с прошлого разговора и какой шаг следует дальше.
               </li>
               <li className="flex gap-3">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" aria-hidden />
-                Чувствительные сведения и напоминания не включаются автоматически.
+                Вы увидите сохранённые сведения и сможете исправить или удалить каждое из них.
               </li>
             </ul>
 
@@ -127,8 +163,10 @@ export default function PersonalMemoryChoice({
             </button>
 
             <p className="text-center text-[11px] leading-5 text-white/38">
-              Выбор можно изменить, а память полностью очистить в кабинете. Подробнее
-              — в <LegalDocLink href="/privacy">Политике обработки данных</LegalDocLink>.
+              Выбор можно изменить, а память полностью очистить в кабинете.{" "}
+              <LegalDocLink href="/about/personal-memory">Как работает память</LegalDocLink>
+              {" · "}
+              <LegalDocLink href="/privacy">Политика обработки данных</LegalDocLink>
             </p>
           </div>
         </div>

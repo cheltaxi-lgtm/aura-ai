@@ -10,6 +10,7 @@ import {
   Camera,
   Loader2,
   Trash2,
+  Brain,
 } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { normalizeMessageText } from "@/components/MessageContent";
@@ -25,6 +26,7 @@ import type { SessionIntention } from "@/lib/intention";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import SessionFeedback from "@/components/SessionFeedback";
 import MemoryMoments from "@/components/MemoryMoments";
+import MemoryAnchorSuggestion from "@/components/MemoryAnchorSuggestion";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
@@ -72,6 +74,7 @@ import { chatSpreadToSharePayload } from "@/lib/share/payload-builders";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
+import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
 
 interface MasterDisplay {
   name: string;
@@ -223,14 +226,57 @@ export default function ChatWindow({
     setInput("");
     const el = textInputRef.current;
     if (el) el.value = "";
-  }, []);
+  }, [textInputRef]);
 
   useEffect(() => {
     const el = textInputRef.current;
     if (!el || el.value === input) return;
     el.value = input;
-  }, [input]);
+  }, [input, textInputRef]);
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
+  const [memoryFresh, setMemoryFresh] = useState(false);
+  const [memoryModeBusy, setMemoryModeBusy] = useState(false);
+  const memoryAnchorQuery = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") return messages[index].content;
+    }
+    return "";
+  }, [messages]);
+  useEffect(() => {
+    if (!sessionId || readOnly) return;
+    void fetch(`/api/session?id=${encodeURIComponent(sessionId)}`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((data) => setMemoryFresh(data?.memoryReadMode === "fresh"))
+      .catch(() => undefined);
+  }, [readOnly, sessionId]);
+  const toggleMemoryMode = useCallback(async () => {
+    if (!sessionId || memoryModeBusy) return;
+    const next = memoryFresh ? "default" : "fresh";
+    setMemoryModeBusy(true);
+    try {
+      const res = await fetch("/api/session", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, memoryReadMode: next }),
+      });
+      if (res.ok) {
+        setMemoryFresh(next === "fresh");
+        if (next === "fresh") {
+          trackMemoryProductEvent({
+            event: "fresh_session_started",
+            sessionId,
+            sourceType: "chat",
+          });
+        }
+      }
+    } finally {
+      setMemoryModeBusy(false);
+    }
+  }, [memoryFresh, memoryModeBusy, sessionId]);
   const isNumerologChat = characterId === "numerolog" && !readOnly;
   /** Matrix diagram from props, or recompute from birth date when reopen skipped UI payload. */
   const resolvedDestinyMatrix = useMemo((): DestinyMatrixResult | null => {
@@ -637,6 +683,27 @@ export default function ChatWindow({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {sessionId && !readOnly ? (
+            <button
+              type="button"
+              onClick={() => void toggleMemoryMode()}
+              disabled={memoryModeBusy}
+              title={memoryFresh ? "Включить персональную память" : "Начать без прошлой памяти"}
+              aria-pressed={memoryFresh}
+              className={`flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] transition-colors disabled:opacity-40 ${
+                memoryFresh
+                  ? "border-violet-300/35 bg-violet-400/10 text-violet-200"
+                  : "border-white/10 text-gray-400"
+              }`}
+            >
+              {memoryModeBusy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Brain className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">{memoryFresh ? "Чистый лист" : "С памятью"}</span>
+            </button>
+          ) : null}
           {onCompleteSession && !readOnly && messages.length > 0 && !isLoadingHistory && (
             <button
               type="button"
@@ -1100,6 +1167,11 @@ export default function ChatWindow({
         </motion.div>
       )}
 
+      <MemoryAnchorSuggestion
+        sessionId={sessionId}
+        queryText={memoryAnchorQuery}
+        active={!readOnly && !memoryFresh && !isLoading}
+      />
       <MemoryMoments sessionId={sessionId} active={!readOnly} />
       <SessionFeedback characterId={characterId} visible={showSessionFeedback && !readOnly} />
 

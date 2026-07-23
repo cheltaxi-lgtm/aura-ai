@@ -33,6 +33,9 @@ export default function AboutPageShell({
         <Link href="/about/how-readings-work" className="text-aura-gold hover:underline">
           Как проходит расклад
         </Link>
+        <Link href="/about/personal-memory" className="text-aura-gold hover:underline">
+          Персональная память
+        </Link>
         <Link href="/faq" className="text-aura-gold hover:underline">
           FAQ
         </Link>

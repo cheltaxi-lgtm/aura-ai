@@ -34,6 +34,7 @@ import {
   revokeMemoryConsent,
 } from "@/lib/memory/preferences";
 import { isFactTombstoned } from "@/lib/memory/tombstones";
+import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 
 const U = "00000000-0000-0000-0000-0000000000aa";
 
@@ -70,6 +71,7 @@ async function okRetry(
 async function cleanup() {
   await purgeAllUserMemory(U).catch(() => {});
   await purgeFacts(U).catch(() => {});
+  await query(`DELETE FROM sessions WHERE user_id=$1`, [U]).catch(() => {});
   await query(`DELETE FROM users WHERE id=$1`, [U]).catch(() => {});
 }
 
@@ -166,6 +168,22 @@ async function main() {
 
     await updateMemoryPreferences(U, { autoCaptureEnabled: true });
     const sessionId = "00000000-0000-0000-0000-0000000000bb";
+    await query(
+      `INSERT INTO sessions (id, user_id, character_key, memory_read_mode)
+       VALUES ($1, $2, 'tarolog', 'fresh')`,
+      [sessionId, U]
+    );
+    const freshContext = await buildMemoryContext({
+      userId: U,
+      sessionId,
+      characterId: "tarolog",
+      lastUserMessage: "Что изменится в моей работе?",
+      includePastSessions: true,
+    });
+    ok(
+      !freshContext.factsBlock && !freshContext.pastSessionsBlock,
+      "fresh session suppresses long-term facts and past sessions"
+    );
     await recordTurn({
       userId: U,
       userMessage: "У меня новая работа в банке",
@@ -185,6 +203,10 @@ async function main() {
       [U]
     );
     ok(Number(jobsOn[0]?.c ?? 0) >= 2, "each chat turn enqueues its own extraction job");
+    ok(
+      Number(jobsOn[0]?.c ?? 0) >= 2,
+      "fresh session still captures new user-authored turns"
+    );
     const extraction = await processMemoryExtractionJobs(5, U);
     ok(
       extraction.processed >= 2 && extraction.failed === 0,
@@ -206,6 +228,50 @@ async function main() {
       Number(completedJobs[0]?.c ?? 0) >= 2,
       "completed extraction jobs retain quality metrics"
     );
+
+    const draftSource = "00000000-0000-0000-0000-0000000000dd";
+    await upsertFact(U, {
+      fact: "Клиент, вероятно, планирует сменить сферу работы",
+      category: "work",
+      predicateKey: "goal.current",
+      confidence: 0.75,
+      evidenceQuote: "думаю, возможно, сменить сферу работы",
+      sourceType: "chat",
+      sourceEntityId: draftSource,
+    });
+    const { rows: draftRows } = await query<{ id: string; status: string }>(
+      `SELECT id, status FROM user_facts
+        WHERE user_id=$1 AND source_entity_id=$2 LIMIT 1`,
+      [U, draftSource]
+    );
+    ok(draftRows[0]?.status === "draft", "lower-confidence safe fact is stored as draft");
+    const draftSearch = await searchFacts(U, "сменить сферу работы", { topK: 10 });
+    ok(
+      !draftSearch.some((fact) => fact.id === draftRows[0]?.id),
+      "draft fact is never returned for prompt retrieval"
+    );
+    if (draftRows[0]?.id) {
+      const promoted = await confirmFact(U, draftRows[0].id);
+      ok(promoted?.status === "active", "confirm atomically promotes draft to active");
+    }
+
+    await updateMemoryPreferences(U, { momentsMode: "quiet" });
+    const quietSource = "00000000-0000-0000-0000-0000000000ee";
+    await upsertFact(U, {
+      fact: "Клиент планирует поездку в Казань",
+      category: "event",
+      confidence: 0.95,
+      evidenceQuote: "планирую поездку в Казань",
+      sourceType: "chat",
+      sourceEntityId: quietSource,
+    });
+    const { rows: quietRows } = await query<{ seen: boolean }>(
+      `SELECT (seen_at IS NOT NULL) AS seen FROM user_memory_activity
+        WHERE user_id=$1 AND source_entity_id=$2 ORDER BY created_at DESC LIMIT 1`,
+      [U, quietSource]
+    );
+    ok(quietRows[0]?.seen === true, "quiet mode stores facts but auto-hides memory moments");
+    await updateMemoryPreferences(U, { momentsMode: "active" });
 
     // Employment lifecycle: searching → current must supersede the old row.
     const searchingFact = "Клиент ищет работу программистом";

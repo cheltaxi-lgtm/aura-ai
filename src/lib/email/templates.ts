@@ -40,6 +40,32 @@ export function welcomeEmailHtml(name: string, opts?: { needsOnboarding?: boolea
   );
 }
 
+export function memoryChoiceEnabledEmailHtml(name: string, siteUrl?: string): string {
+  const url = siteUrl || getSiteUrl();
+  const safeName = name.trim() || "друг";
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Персональная память включена. Следующие консультации смогут учитывать только активные сведения, которые относятся к вашему новому вопросу.</p>
+     <p style="font-size:14px;color:#555">В кабинете можно проверить и исправить сведения, начать отдельный свежий сеанс без памяти или в любой момент отключить и очистить её.</p>
+     ${cta(`${url}/cabinet`, "Управлять памятью")}
+     <p style="font-size:13px"><a href="${url}/about/personal-memory" style="color:#8b6914">Как работает персональная память</a></p>`,
+    `Служебное подтверждение выбора персональной памяти в ${BRAND_NAME}.`
+  );
+}
+
+export function memoryChoiceDisabledEmailHtml(name: string, siteUrl?: string): string {
+  const url = siteUrl || getSiteUrl();
+  const safeName = name.trim() || "друг";
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Персональная память отключена. Новые консультации не будут использовать сохранённые сведения о вашем жизненном контексте.</p>
+     <p style="font-size:14px;color:#555">История сеансов управляется отдельно. Если вы захотите вернуть последовательный контекст, выбор можно изменить в кабинете.</p>
+     ${cta(`${url}/cabinet`, "Открыть настройки памяти")}
+     <p style="font-size:13px"><a href="${url}/about/personal-memory" style="color:#8b6914">Подробнее о памяти</a></p>`,
+    `Служебное подтверждение выбора персональной памяти в ${BRAND_NAME}.`
+  );
+}
+
 export function passwordChangedEmailHtml(name: string): string {
   const siteUrl = getSiteUrl();
   const safeName = name.trim() || "друг";

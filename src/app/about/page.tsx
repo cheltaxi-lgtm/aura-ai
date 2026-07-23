@@ -57,6 +57,11 @@ export default function AboutPage() {
             </Link>
           </li>
           <li>
+            <Link href="/about/personal-memory" className="text-aura-gold hover:underline">
+              Персональная память
+            </Link>
+          </li>
+          <li>
             <Link href="/privacy" className="text-aura-gold hover:underline">
               Политика ПДн
             </Link>

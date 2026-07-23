@@ -22,6 +22,8 @@ import {
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
 import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import { canReadMemory } from "@/lib/memory/preferences";
+import { canSessionReadLongTermMemory } from "@/lib/session";
+import { recordMemoryProductEvent } from "@/lib/memory/product-analytics";
 
 export interface MemoryContextParams {
   userId?: string | null;
@@ -66,10 +68,18 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
 
   const userId = params.userId ?? "";
   const includePastSessions = params.includePastSessions ?? true;
-  const memoryOn = userId ? await canReadMemory(userId).catch(() => false) : false;
+  const consentOn = userId ? await canReadMemory(userId).catch(() => false) : false;
+  const sessionAllowsLongTerm =
+    !params.sessionId ||
+    (userId
+      ? await canSessionReadLongTermMemory(params.sessionId, userId).catch(() => false)
+      : false);
+  const memoryOn = consentOn && sessionAllowsLongTerm;
 
   const [factsBlock, pastSessionsBlock, sessionAnchorBlock] = await Promise.all([
-    memoryOn ? loadClientMemoryBlock({ userId, queryText }) : Promise.resolve(""),
+    memoryOn
+      ? loadClientMemoryBlock({ userId, queryText, sessionId: params.sessionId })
+      : Promise.resolve(""),
     memoryOn && includePastSessions
       ? buildMemoryBlock(userId, params.characterId, params.sessionId ?? null, queryText)
       : Promise.resolve(""),
@@ -87,6 +97,16 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
 
   // Profile identity fields stay available; thematic fields remain relevance-gated.
   const clientBlock = params.profile ? buildClientBlock(params.profile, queryText) : "";
+
+  if (userId && (factsBlock || pastSessionsBlock)) {
+    void recordMemoryProductEvent({
+      event: "memory_injected",
+      userId,
+      sessionId: params.sessionId ?? null,
+      sourceType: "chat",
+      memoryEnabled: true,
+    });
+  }
 
   return { queryText, clientBlock, pastSessionsBlock, sessionAnchorBlock, factsBlock };
 }

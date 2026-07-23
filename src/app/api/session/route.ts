@@ -15,6 +15,7 @@ import {
   updateSessionReferrer,
   getFreeQuestionLimit,
   setSessionAwaitingContext,
+  setSessionMemoryReadMode,
   updateSessionChatMeta,
 } from "@/lib/session";
 
@@ -64,6 +65,7 @@ function formatSession(
     free_questions_used: number;
     paid_until: Date | null;
     has_single_unlock: boolean;
+    memory_read_mode?: "default" | "fresh";
   },
   unlimited = false,
   freeLimit = 2,
@@ -82,6 +84,7 @@ function formatSession(
     referrerSlug: session.referrer_slug,
     isUnlimited: unlimited,
     ownerMismatch,
+    memoryReadMode: session.memory_read_mode ?? "default",
   };
 }
 
@@ -168,6 +171,10 @@ export async function PATCH(request: NextRequest) {
         ? null
         : String(body.referrerSlug);
     const awaitingContext = body.awaitingContext as boolean | undefined;
+    const memoryReadMode =
+      body.memoryReadMode === "default" || body.memoryReadMode === "fresh"
+        ? body.memoryReadMode
+        : undefined;
     const characterKey =
       typeof body.characterKey === "string" ? body.characterKey.trim() : undefined;
     const intention =
@@ -195,6 +202,17 @@ export async function PATCH(request: NextRequest) {
     const profileUserId = await getProfileUserIdForAccount(auth.sub);
     const resolved = await resolveSessionForUser(sessionId, profileUserId);
     if (resolved.error) return resolved.error;
+
+    if (memoryReadMode && profileUserId) {
+      const updatedMode = await setSessionMemoryReadMode(
+        sessionId,
+        profileUserId,
+        memoryReadMode
+      );
+      if (!updatedMode) {
+        return NextResponse.json({ error: "not_found" }, { status: 404 });
+      }
+    }
 
     const hasReferrerUpdate = Object.prototype.hasOwnProperty.call(body, "referrerSlug");
     if (hasReferrerUpdate) {

@@ -20,6 +20,7 @@ export interface SessionRow {
   spread_id?: string | null;
   cards?: string[] | null;
   numerolog_tool_params?: NumerologToolParams | null;
+  memory_read_mode?: "default" | "fresh";
   status?: string;
   created_at?: Date;
   updated_at?: Date;
@@ -40,6 +41,7 @@ const SESSION_SELECT_FIELDS = `
   id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
   COALESCE(awaiting_context, false) AS awaiting_context,
   character_key, intention, spread_type, spread_id, cards, numerolog_tool_params,
+  COALESCE(memory_read_mode, 'default') AS memory_read_mode,
   COALESCE(status, 'active') AS status, created_at, updated_at
 `;
 
@@ -174,6 +176,38 @@ export async function setSessionAwaitingContext(
     `UPDATE sessions SET awaiting_context = $2, updated_at = NOW() WHERE id = $1`,
     [sessionId, awaiting]
   );
+}
+
+/** Owner-scoped switch for suppressing all long-term memory reads in one session. */
+export async function setSessionMemoryReadMode(
+  sessionId: string,
+  userId: string,
+  mode: "default" | "fresh"
+): Promise<boolean> {
+  const result = await query(
+    `UPDATE sessions
+        SET memory_read_mode = $3, updated_at = NOW()
+      WHERE id = $1 AND user_id = $2
+        AND COALESCE(status, 'active') = 'active'`,
+    [sessionId, userId, mode]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Fail closed: only the owner and default mode may read long-term memory. */
+export async function canSessionReadLongTermMemory(
+  sessionId: string,
+  userId: string
+): Promise<boolean> {
+  const { rows } = await query<{ allowed: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM sessions
+        WHERE id = $1 AND user_id = $2
+          AND COALESCE(memory_read_mode, 'default') = 'default'
+     ) AS allowed`,
+    [sessionId, userId]
+  );
+  return rows[0]?.allowed === true;
 }
 
 export async function getSessionChatMeta(sessionId: string): Promise<SessionChatMeta | null> {

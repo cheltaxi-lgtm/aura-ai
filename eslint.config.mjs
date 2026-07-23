@@ -4,6 +4,7 @@ const eslintConfig = [
   {
     ignores: [
       ".next/**",
+      ".next-e2e/**",
       "node_modules/**",
       "scripts/**/*.mjs",
       "mobile/android/app/build/**",

@@ -1,6 +1,10 @@
 import { deliverEmail } from "@/lib/email/transport";
 import { logEmailAttempt } from "@/lib/email/log";
-import { getAdminNotifyEmail, getSupportEmail } from "@/lib/email/mail-config";
+import {
+  getAdminNotifyEmail,
+  getSiteUrl,
+  getSupportEmail,
+} from "@/lib/email/mail-config";
 
 const SUPPORT_REPLY = () => getSupportEmail();
 
@@ -16,6 +20,8 @@ export {
   jointReadingPartnerDoneEmailHtml,
   jointReadingCompletedEmailHtml,
   jointReadingExpiringEmailHtml,
+  memoryChoiceEnabledEmailHtml,
+  memoryChoiceDisabledEmailHtml,
   supportReplyEmailHtml,
   supportNewTicketAdminEmailHtml,
   supportAutoReplyEmailHtml,
@@ -23,7 +29,11 @@ export {
 
 import type { SendEmailParams } from "@/lib/email/types";
 import { isDeliverableUserEmail } from "@/lib/email/mail-config";
-import { welcomeEmailHtml } from "@/lib/email/templates";
+import {
+  memoryChoiceDisabledEmailHtml,
+  memoryChoiceEnabledEmailHtml,
+  welcomeEmailHtml,
+} from "@/lib/email/templates";
 
 export async function sendEmail(
   params: SendEmailParams & { template?: string; replyTo?: string }
@@ -63,6 +73,29 @@ export async function sendWelcomeEmail(
       ? "Добро пожаловать в Zovus — завершите регистрацию на zovus.ru"
       : "Добро пожаловать в Zovus — откройте расклад на zovus.ru",
     template: "welcome",
+  });
+}
+
+/** Transactional confirmation helper; the preferences route must call this after a saved choice. */
+export async function sendMemoryChoiceEmail(params: {
+  to: string;
+  name: string;
+  choice: "enabled" | "disabled";
+}): Promise<boolean> {
+  if (!isDeliverableUserEmail(params.to)) return false;
+  const enabled = params.choice === "enabled";
+  return sendEmail({
+    to: params.to,
+    subject: enabled
+      ? "Zovus — персональная память включена"
+      : "Zovus — персональная память отключена",
+    html: enabled
+      ? memoryChoiceEnabledEmailHtml(params.name || params.to)
+      : memoryChoiceDisabledEmailHtml(params.name || params.to),
+    text: enabled
+      ? `Персональная память включена. Управление: ${getSiteUrl()}/cabinet`
+      : `Персональная память отключена. Настройки: ${getSiteUrl()}/cabinet`,
+    template: enabled ? "memory_choice_enabled" : "memory_choice_disabled",
   });
 }
 

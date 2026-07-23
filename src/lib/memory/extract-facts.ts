@@ -73,6 +73,19 @@ interface RawFact {
   evidenceQuote?: unknown;
 }
 
+const DRAFT_PREDICATE_WHITELIST = new Set([
+  "employment.current",
+  "employment.searching",
+  "relationship.status",
+  "relationship.partner",
+  "residence.current",
+  "family.child",
+  "family.spouse",
+  "goal.current",
+  "event.upcoming",
+  "education.current",
+]);
+
 function parseFacts(raw: string): FactInput[] {
   let text = raw.trim();
   const arrMatch = text.match(/\[[\s\S]*\]/);
@@ -147,7 +160,12 @@ function parseFacts(raw: string): FactInput[] {
         ? "sensitive"
         : "normal";
 
-    if (confidence < 0.85) continue;
+    const draftEligible =
+      confidence >= 0.7 &&
+      confidence < 0.85 &&
+      sensitivity === "normal" &&
+      Boolean(predicateKey && DRAFT_PREDICATE_WHITELIST.has(predicateKey));
+    if (confidence < 0.85 && !draftEligible) continue;
     if (!evidenceQuote) continue;
 
     // Singleton predicates default to replace even when the model omits operation.

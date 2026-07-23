@@ -37,7 +37,7 @@ type MemoryFact = {
   eventDate: string | null;
   salience: number;
   addedByUser?: boolean;
-  status?: "active" | "superseded";
+  status?: "draft" | "active" | "superseded";
   sourceType?: string | null;
   evidenceQuote?: string | null;
   sourceCapturedAt?: string | null;
@@ -51,6 +51,8 @@ type MemoryPrefs = {
   autoCaptureEnabled: boolean;
   sensitiveCaptureEnabled: boolean;
   eventRemindersEnabled: boolean;
+  momentsMode: "active" | "quiet";
+  cabinetMode: "simple" | "advanced";
 };
 
 const CATEGORY_ICONS: Record<UserFactCategory, LucideIcon> = {
@@ -117,6 +119,8 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     autoCaptureEnabled: false,
     sensitiveCaptureEnabled: false,
     eventRemindersEnabled: false,
+    momentsMode: "active",
+    cabinetMode: "simple",
   });
   const [loading, setLoading] = useState(true);
   const [prefsSaving, setPrefsSaving] = useState(false);
@@ -158,6 +162,8 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           autoCaptureEnabled: Boolean(prefsData.preferences.autoCaptureEnabled),
           sensitiveCaptureEnabled: Boolean(prefsData.preferences.sensitiveCaptureEnabled),
           eventRemindersEnabled: Boolean(prefsData.preferences.eventRemindersEnabled),
+          momentsMode: prefsData.preferences.momentsMode === "quiet" ? "quiet" : "active",
+          cabinetMode: prefsData.preferences.cabinetMode === "advanced" ? "advanced" : "simple",
         });
       }
     } catch {
@@ -238,6 +244,8 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           autoCaptureEnabled: Boolean(data.preferences.autoCaptureEnabled),
           sensitiveCaptureEnabled: Boolean(data.preferences.sensitiveCaptureEnabled),
           eventRemindersEnabled: Boolean(data.preferences.eventRemindersEnabled),
+          momentsMode: data.preferences.momentsMode === "quiet" ? "quiet" : "active",
+          cabinetMode: data.preferences.cabinetMode === "advanced" ? "advanced" : "simple",
         });
       } else {
         setPrefs(next);
@@ -356,6 +364,8 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
         autoCaptureEnabled: false,
         sensitiveCaptureEnabled: false,
         eventRemindersEnabled: false,
+        momentsMode: "active",
+        cabinetMode: "simple",
       });
     } catch {
       setError("Не удалось очистить память. Попробуйте позже.");
@@ -427,6 +437,23 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
             Согласие и настройки
           </p>
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-white/8 bg-black/20 p-1">
+            {(["simple", "advanced"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                disabled={prefsSaving}
+                onClick={() => void patchPrefs({ cabinetMode: mode })}
+                className={`rounded-lg px-3 py-2 text-xs ${
+                  prefs.cabinetMode === mode
+                    ? "bg-purple-500/20 text-purple-100"
+                    : "text-white/40"
+                }`}
+              >
+                {mode === "simple" ? "Простой" : "Расширенный"}
+              </button>
+            ))}
+          </div>
           <PrefToggle
             checked={prefs.memoryEnabled}
             busy={prefsSaving}
@@ -434,29 +461,39 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             hint="Факты из списка ниже могут попадать в ответы мастера, если тема совпадает."
             onChange={(memoryEnabled) => void patchPrefs({ memoryEnabled })}
           />
-          <PrefToggle
+          {prefs.cabinetMode === "advanced" ? <PrefToggle
             checked={prefs.autoCaptureEnabled}
             disabled={!prefs.memoryEnabled}
             busy={prefsSaving}
             label="Автозапоминание из чата"
             hint="Система сможет извлекать факты из ваших сообщений в фоне. Без этого — только ручные записи."
             onChange={(autoCaptureEnabled) => void patchPrefs({ autoCaptureEnabled })}
-          />
-          <PrefToggle
+          /> : null}
+          {prefs.cabinetMode === "advanced" ? <PrefToggle
             checked={prefs.sensitiveCaptureEnabled}
             disabled={!prefs.memoryEnabled || !prefs.autoCaptureEnabled}
             busy={prefsSaving}
             label="Чувствительные темы"
             hint="Разрешить автозапоминание более личных сведений (здоровье, деньги, отношения)."
             onChange={(sensitiveCaptureEnabled) => void patchPrefs({ sensitiveCaptureEnabled })}
-          />
-          <PrefToggle
+          /> : null}
+          {prefs.cabinetMode === "advanced" ? <PrefToggle
             checked={prefs.eventRemindersEnabled}
             disabled={!prefs.memoryEnabled}
             busy={prefsSaving}
             label="Напоминания о событиях"
             hint="Короткое уведомление перед датами, которые вы сохранили в памяти."
             onChange={(eventRemindersEnabled) => void patchPrefs({ eventRemindersEnabled })}
+          /> : null}
+          <PrefToggle
+            checked={prefs.momentsMode === "active"}
+            disabled={!prefs.memoryEnabled}
+            busy={prefsSaving}
+            label="Показывать моменты памяти"
+            hint="Показывать до двух новых фактов в текущем сеансе."
+            onChange={(enabled) =>
+              void patchPrefs({ momentsMode: enabled ? "active" : "quiet" })
+            }
           />
           <p className="text-[11px] leading-relaxed text-white/35">
             Включая память, вы соглашаетесь на обработку указанных персональных данных по{" "}
@@ -593,6 +630,9 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                           {f.status === "superseded" ? (
                             <span className="text-[10px] text-white/30">изменилось</span>
                           ) : null}
+                          {f.status === "draft" ? (
+                            <span className="text-[10px] text-violet-300/80">предложение</span>
+                          ) : null}
                         </div>
                         <p className="text-[15px] leading-relaxed text-white/92">
                           {formatMemoryFactForDisplay(f.fact)}
@@ -602,7 +642,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                             Из вашего сообщения: «{f.evidenceQuote}»
                           </p>
                         ) : null}
-                        {stale ? (
+                        {stale || f.status === "draft" ? (
                           <button
                             type="button"
                             disabled={deletingId === f.id}
@@ -610,7 +650,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                             className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/15 bg-emerald-400/8 px-2.5 py-1.5 text-[11px] text-emerald-200/80"
                           >
                             <Check className="h-3 w-3" aria-hidden />
-                            Это всё ещё актуально
+                            {f.status === "draft" ? "Сохранить в память" : "Это всё ещё актуально"}
                           </button>
                         ) : null}
                       </div>

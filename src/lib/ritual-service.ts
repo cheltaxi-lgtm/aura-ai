@@ -13,6 +13,10 @@ import {
 } from "@/lib/ritual-timing";
 import { resolveWordOfPowerTranscription } from "@/lib/word-of-power-transcription";
 import { captureRitualReviewMemory } from "@/lib/memory/capture-helpers";
+import {
+  appendMemoryContextToPrompt,
+  type MemoryContext,
+} from "@/lib/memory/build-memory-context";
 import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
 
 export type RitualStatus =
@@ -305,13 +309,14 @@ export async function listStuckGeneratingRituals(
 
 export async function attemptRitualGeneration(
   ritualId: string,
-  userProfile: { name: string; zodiac: string; gender?: string | null }
+  userProfile: { name: string; zodiac: string; gender?: string | null },
+  memoryContext?: MemoryContext
 ): Promise<RitualRow | null> {
   const ritual = await getRitualById(ritualId);
   if (!ritual) return null;
   if (ritual.status === "completed" || ritual.status === "reviewed") return ritual;
   if (ritual.status !== "generating") return null;
-  const generated = await generateRitualContent(ritual, userProfile);
+  const generated = await generateRitualContent(ritual, userProfile, memoryContext);
   if (generated) return generated;
   // Concurrent generator may have completed first — treat as success if done.
   const latest = await getRitualById(ritualId);
@@ -516,7 +521,8 @@ export async function submitRitualReview(
 
 export async function generateRitualContent(
   ritual: RitualRow,
-  userProfile: { name: string; zodiac: string; gender?: string | null }
+  userProfile: { name: string; zodiac: string; gender?: string | null },
+  memoryContext?: MemoryContext
 ): Promise<RitualRow | null> {
   const referenceDate = ritual.created_at ?? new Date();
   const schedule = computeRitualSchedule(ritual.ritual_type, referenceDate);
@@ -535,9 +541,12 @@ export async function generateRitualContent(
   });
 
   const { wrapSystemPrompt } = await import("@/lib/prompt-policy");
-  const systemPrompt = await wrapSystemPrompt(
+  const baseSystemPrompt = await wrapSystemPrompt(
     "Ты составляешь персональный ритуал Zovus по раскладу. Честность по символам обязательна; не смягчай тень карт. Ответ — строго JSON по инструкции пользователя."
   );
+  const systemPrompt = memoryContext
+    ? appendMemoryContextToPrompt(baseSystemPrompt, memoryContext)
+    : baseSystemPrompt;
 
   const llmBase = {
     messages: [

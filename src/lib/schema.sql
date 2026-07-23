@@ -124,6 +124,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   spread_type TEXT,
   spread_id TEXT,
   cards JSONB,
+  memory_read_mode TEXT NOT NULL DEFAULT 'default'
+    CHECK (memory_read_mode IN ('default', 'fresh')),
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'completed')),
   awaiting_context BOOLEAN NOT NULL DEFAULT FALSE,
@@ -510,6 +512,8 @@ CREATE TABLE IF NOT EXISTS user_facts (
   evidence_quote   TEXT,
   source_captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   confirmation_count INTEGER NOT NULL DEFAULT 0,
+  capture_tier TEXT NOT NULL DEFAULT 'durable'
+    CHECK (capture_tier IN ('draft', 'durable', 'user_confirmed')),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -540,6 +544,13 @@ CREATE TABLE IF NOT EXISTS user_memory_preferences (
   memory_initial_choice TEXT CHECK (memory_initial_choice IN ('enabled', 'disabled')),
   memory_initial_choice_at TIMESTAMPTZ,
   memory_initial_prompt_version TEXT,
+  memory_moments_mode TEXT NOT NULL DEFAULT 'active'
+    CHECK (memory_moments_mode IN ('active', 'quiet')),
+  memory_cabinet_mode TEXT NOT NULL DEFAULT 'simple'
+    CHECK (memory_cabinet_mode IN ('simple', 'advanced')),
+  memory_rollout_bucket SMALLINT CHECK (memory_rollout_bucket BETWEEN 0 AND 99),
+  memory_prompt_variant TEXT,
+  memory_choice_email_version TEXT,
   consent_version TEXT,
   consent_granted_at TIMESTAMPTZ,
   consent_revoked_at TIMESTAMPTZ,
@@ -577,7 +588,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_extraction_jobs_pending
 CREATE TABLE IF NOT EXISTS user_memory_activity (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  fact_id UUID REFERENCES user_facts(id) ON DELETE CASCADE,
+  fact_id UUID REFERENCES user_facts(id) ON DELETE SET NULL,
   source_entity_id UUID,
   activity_type TEXT NOT NULL DEFAULT 'learned',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -587,6 +598,44 @@ CREATE TABLE IF NOT EXISTS user_memory_activity (
 CREATE INDEX IF NOT EXISTS idx_user_memory_activity_unseen
   ON user_memory_activity (user_id, created_at DESC)
   WHERE seen_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS session_memory_fact_decisions (
+  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  fact_id UUID NOT NULL REFERENCES user_facts(id) ON DELETE CASCADE,
+  decision TEXT NOT NULL CHECK (decision IN ('included', 'excluded')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (session_id, fact_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_product_events (
+  id BIGSERIAL PRIMARY KEY,
+  event TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id UUID REFERENCES user_accounts(id) ON DELETE SET NULL,
+  session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+  source_type TEXT,
+  prompt_version TEXT,
+  consent_version TEXT,
+  rollout_bucket SMALLINT CHECK (rollout_bucket BETWEEN 0 AND 99),
+  variant TEXT,
+  memory_enabled BOOLEAN,
+  auto_capture_enabled BOOLEAN,
+  moments_mode TEXT,
+  fact_category TEXT,
+  fact_source_type TEXT,
+  sensitivity TEXT,
+  numeric_value NUMERIC(14, 2),
+  properties JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_product_events_event_created
+  ON memory_product_events (event, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_memory_product_events_user_created
+  ON memory_product_events (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_memory_tombstones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

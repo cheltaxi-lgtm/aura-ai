@@ -23,6 +23,7 @@ const ABOUT_PATHS = [
   "/about/masters",
   "/about/limitations",
   "/about/privacy-practices",
+  "/about/personal-memory",
 ];
 
 const LENORMAND_PATHS = ["/lenormand", "/lenormand/sochetaniya"];

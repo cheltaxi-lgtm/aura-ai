@@ -29,6 +29,12 @@ assert(
   "buildMemoryContext gates reads on canReadMemory",
   buildMemoryContextSrc.includes("canReadMemory")
 );
+assert(
+  "fresh sessions centrally suppress long-term facts and past-session memory",
+  buildMemoryContextSrc.includes("canSessionReadLongTermMemory") &&
+    buildMemoryContextSrc.includes("sessionAllowsLongTerm") &&
+    buildMemoryContextSrc.includes("consentOn && sessionAllowsLongTerm")
+);
 
 const photoRoute = read("src/app/api/photo-reading/stream/route.ts");
 assert(
@@ -77,6 +83,13 @@ assert(
 );
 
 const userFacts = read("src/lib/memory/user-facts.ts");
+assert(
+  "draft facts are isolated from active retrieval and promoted only on confirmation",
+  userFacts.includes("targetStatus = draft ? \"draft\" : \"active\"") &&
+    userFacts.includes("status = 'active'") &&
+    userFacts.includes("status IN ('draft', 'active')") &&
+    userFacts.includes("capture_tier = 'user_confirmed'")
+);
 assert(
   "searchFacts empty query returns []",
   userFacts.includes("if (!trimmed) return [];")
@@ -141,6 +154,13 @@ const prefsRoute = read("src/app/api/memory/preferences/route.ts");
 assert(
   "memory preferences API requires PD consent to enable",
   prefsRoute.includes("pdConsent") && prefsRoute.includes("consent_required")
+);
+assert(
+  "initial choice has stable experiment assignment and one-time transactional email",
+  prefsRoute.includes("getMemoryExperimentAssignment") &&
+    prefsRoute.includes("sendMemoryChoiceEmail") &&
+    prefsRoute.includes("memory_choice_email_version") &&
+    prefsRoute.includes("consent_choice_enabled")
 );
 
 const extractCron = read("src/app/api/cron/memory-extract/route.ts");
@@ -389,6 +409,38 @@ assert(
     migration081.includes("evidence_quote") &&
     migration081.includes("user_memory_activity") &&
     migration081.includes("grounding_rejected_count")
+);
+const migration082 = read("scripts/migrations/082_migrate_memory_product_moat_v2.sql");
+assert(
+  "migration 082 adds fresh sessions, quiet UI, drafts, decisions, and privacy-safe analytics",
+  migration082.includes("memory_read_mode") &&
+    migration082.includes("memory_moments_mode") &&
+    migration082.includes("'draft'") &&
+    migration082.includes("session_memory_fact_decisions") &&
+    migration082.includes("memory_product_events")
+);
+const extractFactsV2 = read("src/lib/memory/extract-facts.ts");
+assert(
+  "confidence-tier drafts are limited to a non-sensitive predicate whitelist",
+  extractFactsV2.includes("DRAFT_PREDICATE_WHITELIST") &&
+    extractFactsV2.includes("confidence >= 0.7") &&
+    extractFactsV2.includes('sensitivity === "normal"')
+);
+const memoryActivityRoute = read("src/app/api/memory/activity/route.ts");
+assert(
+  "quiet mode and two-moment cap are enforced server-side",
+  memoryActivityRoute.includes("memory_moments_mode = 'active'") &&
+    memoryActivityRoute.includes("moment_number <= 2") &&
+    memoryActivityRoute.includes("LIMIT 2") &&
+    userFacts.includes("memory_moments_mode = 'quiet'") &&
+    userFacts.includes(") < 2")
+);
+assert(
+  "session anchor choices are owner-scoped, relevant, and capped",
+  read("src/app/api/memory/session-facts/route.ts").includes("searchFacts") &&
+    read("src/app/api/memory/session-facts/route.ts").includes("s.user_id = $2") &&
+    read("src/app/api/memory/session-facts/route.ts").includes("decision_count") &&
+    read("src/components/MemoryAnchorSuggestion.tsx").includes("Учитывать это дальше")
 );
 const extractionJobs = read("src/lib/memory/extraction-jobs.ts");
 assert(

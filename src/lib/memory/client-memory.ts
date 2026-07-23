@@ -16,10 +16,17 @@ import {
   MEMORY_USAGE_RULES,
 } from "@/lib/memory/memory-relevance";
 import { isTextRelevantToQueryAsync } from "@/lib/memory/session-memory-semantic";
-import { canAutoCapture, canCaptureSensitive, canReadMemory } from "@/lib/memory/preferences";
+import {
+  canAutoCapture,
+  canCaptureSensitive,
+  canReadMemory,
+  isMemoryMoatV2Eligible,
+} from "@/lib/memory/preferences";
 import { isSensitiveFact } from "@/lib/memory/predicates";
+import { getSetting } from "@/lib/settings";
 import {
   getCriticalFacts,
+  getSessionMemoryFactSelection,
   getUpcomingEvents,
   reembedMissingFacts,
   searchFacts,
@@ -73,8 +80,9 @@ export async function loadClientMemoryBlock(params: {
   userId: string;
   queryText?: string;
   topK?: number;
+  sessionId?: string | null;
 }): Promise<string> {
-  const { userId, queryText = "", topK = 8 } = params;
+  const { userId, queryText = "", topK = 8, sessionId } = params;
   if (!userId) return "";
 
   try {
@@ -102,6 +110,16 @@ export async function loadClientMemoryBlock(params: {
     console.warn("[memory] load failed:", err instanceof Error ? err.message : err);
     return "";
   }
+  const selection = sessionId
+    ? await getSessionMemoryFactSelection(userId, sessionId).catch(() => ({
+        included: [] as UserFact[],
+        excludedIds: new Set<string>(),
+      }))
+    : { included: [] as UserFact[], excludedIds: new Set<string>() };
+  const allowed = (fact: UserFact) => !selection.excludedIds.has(fact.id);
+  upcoming = upcoming.filter(allowed);
+  critical = critical.filter(allowed);
+  relevant = relevant.filter(allowed);
 
   const upcomingIds = new Set(upcoming.map((f) => f.id));
 
@@ -120,7 +138,9 @@ export async function loadClientMemoryBlock(params: {
     )
   );
   const general = filterActiveMemoryFacts(
-    dedupeById([criticalFiltered, relevantSearch]).filter((f) => !upcomingIds.has(f.id))
+    dedupeById([selection.included, criticalFiltered, relevantSearch]).filter(
+      (f) => !upcomingIds.has(f.id)
+    )
   );
 
   if (!upcoming.length && !general.length) return "";
@@ -214,6 +234,10 @@ export async function processMemoryExtractionJobs(
         continue;
       }
       const allowSensitive = await canCaptureSensitive(job.userId);
+      const features = await getSetting("features");
+      const draftCaptureEnabled =
+        features.personalMemoryDraftCaptureEnabled !== false &&
+        (await isMemoryMoatV2Eligible(job.userId).catch(() => false));
       await reembedMissingFacts(job.userId).catch(() => 0);
       const known = await searchFacts(job.userId, job.userMessage, { topK: 12 }).catch(
         () => []
@@ -223,9 +247,11 @@ export async function processMemoryExtractionJobs(
         job.assistantReply ?? "",
         known.map((f) => f.fact)
       );
-      const filtered = extraction.facts.filter(
-        (f) => allowSensitive || !isSensitiveFact(f)
-      );
+      const filtered = extraction.facts.filter((f) => {
+        if (!allowSensitive && isSensitiveFact(f)) return false;
+        if ((f.confidence ?? 1) < 0.85 && !draftCaptureEnabled) return false;
+        return true;
+      });
       let storedForJob = 0;
       if (filtered.length) {
         storedForJob = await upsertFacts(

@@ -9,6 +9,7 @@ type MemoryActivity = {
   fact: string;
   category: string | null;
   eventDate: string | null;
+  proposal?: boolean;
 };
 
 export default function MemoryMoments({
@@ -22,9 +23,34 @@ export default function MemoryMoments({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<MemoryActivity | null>(null);
   const [draft, setDraft] = useState("");
+  const [momentsEnabled, setMomentsEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!active || !sessionId) {
+      setMomentsEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/memory/preferences", { credentials: "include", cache: "no-store" })
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) {
+          setMomentsEnabled(
+            data?.preferences?.memoryEnabled === true &&
+              data?.preferences?.momentsMode !== "quiet"
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMomentsEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, sessionId]);
 
   const load = useCallback(async () => {
-    if (!active || !sessionId) return;
+    if (!active || !momentsEnabled || !sessionId) return;
     const res = await fetch(
       `/api/memory/activity?sourceEntityId=${encodeURIComponent(sessionId)}`,
       { credentials: "include", cache: "no-store" }
@@ -34,24 +60,24 @@ export default function MemoryMoments({
       activities?: MemoryActivity[];
     };
     if (Array.isArray(data.activities)) setItems(data.activities);
-  }, [active, sessionId]);
+  }, [active, momentsEnabled, sessionId]);
 
   useEffect(() => {
-    if (!active || !sessionId) {
+    if (!active || !momentsEnabled || !sessionId) {
       setItems([]);
       return;
     }
     void load();
     const timer = window.setInterval(() => void load(), 4_000);
     return () => window.clearInterval(timer);
-  }, [active, load, sessionId]);
+  }, [active, load, momentsEnabled, sessionId]);
 
-  const markSeen = async (activityId: string) => {
+  const markSeen = async (activityId: string, dismissed = false) => {
     await fetch("/api/memory/activity", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: [activityId] }),
+      body: JSON.stringify({ ids: [activityId], dismissed }),
     }).catch(() => undefined);
   };
 
@@ -80,7 +106,7 @@ export default function MemoryMoments({
 
   const dismiss = async (item: MemoryActivity) => {
     setItems((current) => current.filter((candidate) => candidate.id !== item.id));
-    await markSeen(item.id);
+    await markSeen(item.id, true);
   };
 
   if (!items.length) return null;
@@ -94,7 +120,7 @@ export default function MemoryMoments({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-200/65">
-            Запомнила
+            {item.proposal ? "Предлагаю запомнить" : "Запомнила"}
           </p>
           {editing?.id === item.id ? (
             <div className="mt-2 space-y-2">

@@ -355,6 +355,78 @@
       "id": "prognoz_hub_view",
       "group": "seo",
       "metrikaGoalId": 586829324
+    },
+    {
+      "id": "memory_consent_prompt_shown",
+      "group": "memory"
+    },
+    {
+      "id": "memory_consent_choice_enabled",
+      "group": "memory"
+    },
+    {
+      "id": "memory_consent_choice_disabled",
+      "group": "memory"
+    },
+    {
+      "id": "memory_settings_changed",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_captured",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_confirmed",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_feedback_positive",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_feedback_negative",
+      "group": "memory"
+    },
+    {
+      "id": "memory_moments_mode_changed",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fresh_session_started",
+      "group": "memory"
+    },
+    {
+      "id": "memory_injected",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_draft_captured",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_changed",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_forgotten",
+      "group": "memory"
+    },
+    {
+      "id": "memory_fact_dismissed",
+      "group": "memory"
+    },
+    {
+      "id": "memory_anchor_included",
+      "group": "memory"
+    },
+    {
+      "id": "memory_anchor_excluded",
+      "group": "memory"
+    },
+    {
+      "id": "memory_purged",
+      "group": "memory"
     }
   ]
 }

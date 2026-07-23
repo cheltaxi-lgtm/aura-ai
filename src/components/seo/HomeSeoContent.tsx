@@ -145,6 +145,11 @@ export default function HomeSeoContent() {
             Методика
           </Link>
         </li>
+        <li>
+          <Link href="/about/personal-memory" className="text-aura-gold hover:underline">
+            Как работает персональная память
+          </Link>
+        </li>
       </ul>
 
       {featured.length > 0 ? (

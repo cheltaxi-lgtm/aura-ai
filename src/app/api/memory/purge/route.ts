@@ -4,6 +4,7 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { purgeAllUserMemory } from "@/lib/memory/user-facts";
+import { recordMemoryProductEvent } from "@/lib/memory/product-analytics";
 
 /**
  * Self-service full memory wipe (facts + session summaries) — the user-facing
@@ -49,6 +50,15 @@ export async function POST(request: NextRequest) {
   }
 
   const { factsRemoved, sessionMemoriesRemoved } = await purgeAllUserMemory(profileUserId);
+  void recordMemoryProductEvent({
+    event: "memory_purged",
+    userId: profileUserId,
+    accountId: auth.sub,
+    sourceType: "cabinet",
+    memoryEnabled: false,
+    autoCaptureEnabled: false,
+    numericValue: factsRemoved + sessionMemoriesRemoved,
+  });
   return NextResponse.json({
     ok: true,
     factsRemoved,

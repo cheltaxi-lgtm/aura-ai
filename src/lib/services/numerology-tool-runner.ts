@@ -80,6 +80,14 @@ export async function runNumerologTool(
     memoryCtx.clientBlock,
     memoryCtx.pastSessionsBlock,
     memoryCtx.factsBlock,
+    memoryCtx.pastSessionsBlock || memoryCtx.factsBlock
+      ? `ПРИМЕНЕНИЕ ПАМЯТИ В РАСЧЁТЕ:
+— Свяжи вывод максимум с 1–2 активными фактами или итогами прошлых сеансов, только если они
+  напрямую относятся к выбранному расчёту.
+— Обозначь траекторию: что число помогает понять в уже известной ситуации и какой следующий
+  шаг из этого следует.
+— Не используй черновики, не называй источник памятью и не позволяй контексту менять сам расчёт.`
+      : "",
   ]
     .filter(Boolean)
     .join("\n")

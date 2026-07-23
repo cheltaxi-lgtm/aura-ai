@@ -1,5 +1,9 @@
 import { BillingService } from "@/lib/services/billing-service";
-import { captureRitualMemory } from "@/lib/memory/capture-helpers";
+import {
+  buildRitualAnswersMessage,
+  captureRitualMemory,
+} from "@/lib/memory/capture-helpers";
+import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 import {
   attemptRitualGeneration,
   getRitualById,
@@ -72,7 +76,28 @@ export async function runRitualGenerationForUser(params: {
   };
 
   try {
-    const result = await attemptRitualGeneration(params.ritualId, userProfile);
+    const memoryContext = await buildMemoryContext({
+      userId: params.userId,
+      characterId: ritual.character_key,
+      profile: {
+        name: userProfile.name,
+        gender: userProfile.gender ?? undefined,
+        zodiac: userProfile.zodiac,
+      },
+      lastUserMessage: [
+        ritual.ritual_type,
+        buildRitualAnswersMessage(ritual.ritual_type, ritual.answers),
+      ].join("\n"),
+      includePastSessions: true,
+    }).catch((err) => {
+      console.warn("Ritual memory context failed:", err);
+      return undefined;
+    });
+    const result = await attemptRitualGeneration(
+      params.ritualId,
+      userProfile,
+      memoryContext
+    );
     if (result) {
       captureRitualMemory({
         userId: params.userId,
