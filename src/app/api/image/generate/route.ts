@@ -1,5 +1,4 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
 import { enforceImageGenRateLimit } from "@/lib/api-guards";
 import { generateSceneImage, isImageGenConfigured } from "@/lib/image-gen";
@@ -19,15 +18,16 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { isRuneBillingActive } from "@/lib/rune-service";
-import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import type { RuneActionType } from "@/lib/rune-costs";
 import {
-  completeAsyncJob,
-  createAsyncJob,
-  failAsyncJob,
-  markAsyncJobRunning,
-} from "@/lib/async-jobs";
-import { ensureDb } from "@/lib/db";
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+} from "@/lib/async-job-lifecycle";
 
 export const maxDuration = 120;
 
@@ -49,13 +49,23 @@ function isSceneType(value: string): value is ImageSceneType {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUserAuth();
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized", code: "auth_required" }, { status: 401 });
-  }
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let accountId: string;
+  let profileUserId: string | null;
 
-  const rateLimited = await enforceImageGenRateLimit(auth.sub);
-  if (rateLimited) return rateLimited;
+  if (workerUserId) {
+    accountId = workerUserId;
+    profileUserId = workerUserId;
+  } else {
+    const auth = await requireUserAuth();
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized", code: "auth_required" }, { status: 401 });
+    }
+    accountId = auth.sub;
+    profileUserId = await getProfileUserIdForAccount(auth.sub);
+    const rateLimited = await enforceImageGenRateLimit(auth.sub);
+    if (rateLimited) return rateLimited;
+  }
 
   const visual = await getSetting("visual");
   if (!visual.enabled) {
@@ -111,10 +121,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "aiResponseText required for scene_illustration" }, { status: 400 });
   }
 
-  const profileUserId = await getProfileUserIdForAccount(auth.sub);
   const runeSettings = await getRuneSettings();
   const unlimited = await resolveUnlimitedAccess({
-    accountId: auth.sub,
+    accountId,
     profileUserId: profileUserId ?? undefined,
   });
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
@@ -127,45 +136,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (asyncRequested) {
+  if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
     if (!profileUserId) {
       return NextResponse.json({ error: "Profile required", code: "auth_required" }, { status: 401 });
     }
-    if (!(await ensureDb())) {
-      return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
-    }
-    const jobPayload = { ...rawBody, async: false };
-    const jobId = await createAsyncJob({
+    return enqueuePaidAsyncJob({
       userId: profileUserId,
       kind: "image_generate",
-      payload: jobPayload,
+      payload: {
+        ...rawBody,
+        async: false,
+        cardsKey: spreadCardsKey(body.cards?.map(String), body.spreadId, "new"),
+      },
+      bypassDeliveryGate: true,
     });
-    after(async () => {
-      await markAsyncJobRunning(jobId);
-      try {
-        const innerReq = new NextRequest(request.url, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            cookie: request.headers.get("cookie") ?? "",
-          },
-          body: JSON.stringify(jobPayload),
-        });
-        const res = await POST(innerReq);
-        const data = (await res.json()) as Record<string, unknown> & { error?: string };
-        if (!res.ok) {
-          await failAsyncJob(jobId, data.error ?? `HTTP ${res.status}`);
-          return;
-        }
-        await completeAsyncJob(jobId, data);
-      } catch (err) {
-        await failAsyncJob(jobId, err instanceof Error ? err.message : "image job failed");
-      }
-    });
-    return NextResponse.json(
-      { jobId, status: "pending", pollUrl: `/api/jobs/${jobId}` },
-      { status: 202 }
-    );
   }
 
   let billingCharge: BillingChargeResult | null = null;
@@ -181,12 +165,14 @@ export async function POST(request: NextRequest) {
     if (profileUserId && scene !== "scene_illustration") {
       const existingUrl = await findExistingSceneArtUrl(profileUserId, scene, cardsKey);
       if (existingUrl) {
-        return NextResponse.json({
+        const payload = {
           imageUrl: existingUrl,
           scene,
           sceneLabel: sceneLabel(scene),
           reused: true,
-        });
+        };
+        await trackWorkerJobCompleted(request, payload);
+        return NextResponse.json(payload);
       }
     }
 
@@ -220,6 +206,10 @@ export async function POST(request: NextRequest) {
           console.error("Scene art refund failed:", refundErr);
         }
       }
+      await trackWorkerJobFailed(request, "Image generation failed", {
+        refunded: Boolean(billingCharge),
+        errorCode: "generation_failed",
+      });
       return NextResponse.json({ error: "Image generation failed", code: "generation_failed" }, { status: 502 });
     }
 
@@ -237,7 +227,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    const payload = {
       imageUrl: result.imageUrl,
       scene: result.scene,
       sceneLabel: sceneLabel(result.scene),
@@ -245,7 +235,9 @@ export async function POST(request: NextRequest) {
       aspectRatio: result.aspectRatio,
       quality: result.quality,
       runeBalance,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("Image generate error:", error);
     if (profileUserId && billingCharge) {
@@ -260,6 +252,10 @@ export async function POST(request: NextRequest) {
         console.error("Scene art refund failed:", refundErr);
       }
     }
+    await trackWorkerJobFailed(request, "Image generation error", {
+      refunded: Boolean(billingCharge),
+      errorCode: "generation_failed",
+    });
     return NextResponse.json({ error: "Image generation error" }, { status: 500 });
   }
 }

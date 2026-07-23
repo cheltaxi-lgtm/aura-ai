@@ -402,6 +402,7 @@ export function parsePhotoReadingResponse(
   };
 }
 
+/** @deprecated Fail-closed delivery — do not call from production success paths. */
 export function photoReadingFallback(userName?: string): string {
   const name = userName ?? "друг";
   return `${name}, связь с образом прервалась — не могу сейчас расшифровать расклад. Руны возвращены на баланс. Попробуйте ещё раз с более чётким фото: все карты целиком в кадре, без бликов, сверху. Или соберите расклад вручную в фото-режиме.`;

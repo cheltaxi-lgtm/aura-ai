@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
+import {
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+} from "@/lib/async-job-lifecycle";
 import { getUserById } from "@/lib/users";
 import {
   DailyReadingGenerationError,
@@ -82,9 +91,24 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUserAuth();
-  if (!auth) {
-    return NextResponse.json({ error: "auth_required" }, { status: 401 });
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let accountId: string;
+  let userId: string;
+
+  if (workerUserId) {
+    accountId = workerUserId;
+    userId = workerUserId;
+  } else {
+    const auth = await requireUserAuth();
+    if (!auth) {
+      return NextResponse.json({ error: "auth_required" }, { status: 401 });
+    }
+    accountId = auth.sub;
+    const profileId = await getProfileUserIdForAccount(auth.sub);
+    if (!profileId) {
+      return NextResponse.json(EMPTY);
+    }
+    userId = profileId;
   }
 
   if (!(await ensureDb())) {
@@ -93,12 +117,9 @@ export async function POST(request: NextRequest) {
 
   await ensureSpreadCatalogSettingsLoaded();
 
-  const userId = await getProfileUserIdForAccount(auth.sub);
-  if (!userId) {
-    return NextResponse.json(EMPTY);
-  }
-
   const body = await request.json().catch(() => ({}));
+  const rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const asyncRequested = rawBody.async === true;
   const requested = typeof body.characterKey === "string" ? body.characterKey : "veronika";
   const charKey = isCharacterKey(requested) ? requested : "veronika";
   const localDate = resolveLocalDate(typeof body.localDate === "string" ? body.localDate : null);
@@ -130,7 +151,7 @@ export async function POST(request: NextRequest) {
       existingSpreadId === spreadId ||
       existingSpreadId === "daily-extended"
     ) {
-      return NextResponse.json({
+      const payload = {
         text: existing.text,
         cards: existing.cards,
         system: existing.system,
@@ -138,8 +159,29 @@ export async function POST(request: NextRequest) {
         spreadId: existing.spreadId,
         locked: false,
         purged: false,
-      });
+        reused: true,
+      };
+      await trackWorkerJobCompleted(request, payload);
+      return NextResponse.json(payload);
     }
+  }
+
+  if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
+    const kind = spreadId === "daily-extended" ? "daily_extended" : "daily_reading";
+    return enqueuePaidAsyncJob({
+      userId,
+      kind,
+      payload: {
+        ...rawBody,
+        async: false,
+        readingDate: localDate,
+        variant: spreadId,
+        spreadId,
+        characterKey: charKey,
+        localDate,
+      },
+      bypassDeliveryGate: true,
+    });
   }
 
   const user = await getUserById(userId);
@@ -147,7 +189,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(EMPTY);
   }
 
-  const unlimited = await resolveUnlimitedAccess({ accountId: auth.sub, profileUserId: userId });
+  const unlimited = await resolveUnlimitedAccess({ accountId, profileUserId: userId });
   const runeSettings = await getRuneSettings();
   const useRuneBilling = isRuneBillingActive(userId, unlimited, runeSettings);
 
@@ -184,7 +226,7 @@ export async function POST(request: NextRequest) {
       spreadId,
     });
 
-    return NextResponse.json({
+    const payload = {
       text: result.text,
       cards: result.cards,
       system: result.system,
@@ -192,7 +234,9 @@ export async function POST(request: NextRequest) {
       spreadId: result.spreadId,
       locked: false,
       purged: false,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (err) {
     if (err instanceof DailyReadingLockedError) {
       return NextResponse.json(
@@ -206,6 +250,7 @@ export async function POST(request: NextRequest) {
       );
     }
     if (err instanceof DailyReadingGenerationError) {
+      let refunded = false;
       if (extendedCharge && extendedCharge.spentRunes > 0) {
         try {
           await BillingService.rollbackCharge({
@@ -215,15 +260,20 @@ export async function POST(request: NextRequest) {
             actionType: "DAILY_EXTENDED",
             transactionId: extendedCharge.transactionId,
           });
+          refunded = true;
         } catch (refundErr) {
           console.error("Daily extended refund failed:", refundErr);
         }
       }
+      await trackWorkerJobFailed(request, "Daily reading generation failed", {
+        refunded,
+        errorCode: "generation_failed",
+      });
       return NextResponse.json(
         {
           error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
           code: "generation_failed",
-          refunded: Boolean(extendedCharge && extendedCharge.spentRunes > 0),
+          refunded,
         },
         { status: 502 }
       );

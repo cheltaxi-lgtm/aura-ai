@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { requireProfileUserId } from "@/lib/require-auth";
-import { resolveUnlimitedAccess } from "@/lib/accounts";
+import {
+  profileAuthFailureResponse,
+  requireProfileUserId,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
+import {
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  beginWorkerJobSave,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+} from "@/lib/async-job-lifecycle";
+import {
+  buildAiProvenance,
+  fingerprintAiInput,
+  isAiCacheReusable,
+} from "@/lib/ai-generation-contract";
+import { resolveUnlimitedAccess, getUserReadingHistory, findCachedIntentionSpread } from "@/lib/accounts";
+import { getSetting } from "@/lib/settings";
 import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import {
@@ -13,7 +33,6 @@ import {
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { getUserById, createHistoryEntry } from "@/lib/users";
-import { getUserReadingHistory, findCachedIntentionSpread } from "@/lib/accounts";
 import { resolveApiCharacterId, sanitizeTextField, sanitizeReadingForClient } from "@/lib/chat-sanitize";
 import {
   resolveMasterDeckSystem,
@@ -177,8 +196,9 @@ export async function GET(request: NextRequest) {
       cardNames.map((name) => ({ name })),
       spreadId
     );
+    const reusable = cached && isAiCacheReusable(cached);
     const reading =
-      cached?.reading?.trim()
+      reusable && cached?.reading?.trim()
         ? sanitizeReadingForClient(cached.reading, cardNames)
         : "";
 
@@ -451,9 +471,13 @@ export async function POST(request: NextRequest) {
   let cardNames: string[] | undefined;
   let spreadId: SpreadId = "triplet";
   let jointToken: string | undefined;
+  let asyncRequested = false;
+  let rawBody: Record<string, unknown> = {};
 
   try {
     const body = await request.json();
+    rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    asyncRequested = body.async === true;
     characterId = await resolveApiCharacterId(body.characterId);
     intention = sanitizeTextField(body.intention, 40) ?? "";
     customQuestion = sanitizeTextField(body.customQuestion, 400) ?? undefined;
@@ -531,13 +555,38 @@ export async function POST(request: NextRequest) {
     customQuestion = q;
   }
 
-  const authed = await requireProfileUserId();
-  if (!authed) {
-    return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let authed: { auth: { sub: string }; profileUserId: string };
+  if (workerUserId) {
+    authed = { auth: { sub: workerUserId }, profileUserId: workerUserId };
+  } else {
+    const profileCtx = await resolveProfileUserContext();
+    if (!profileCtx.ok) {
+      return profileAuthFailureResponse(profileCtx.reason);
+    }
+    authed = {
+      auth: profileCtx.auth,
+      profileUserId: profileCtx.profileUserId,
+    };
   }
 
-  const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "intention_spread");
-  if (rateLimited) return rateLimited;
+  if (!workerUserId) {
+    const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "intention_spread");
+    if (rateLimited) return rateLimited;
+  }
+
+  if (asyncRequested && isAsyncJobWorkerConfigured()) {
+    return enqueuePaidAsyncJob({
+      userId: authed.profileUserId,
+      kind: "intention_spread",
+      payload: {
+        ...rawBody,
+        async: false,
+        cardsKey: Array.isArray(cardNames) ? cardNames.join("|") : undefined,
+      },
+      bypassDeliveryGate: true,
+    });
+  }
 
   const system = resolveSpreadDeckSystem(spreadId, characterId);
   const positionLabels = resolveSpreadPositions(
@@ -594,7 +643,7 @@ export async function POST(request: NextRequest) {
       drawn.map((c) => ({ name: c.name })),
       spreadId
     );
-    if (cached?.reading) {
+    if (cached?.reading && isAiCacheReusable(cached)) {
       const cardNames = drawn.map((c) => c.name);
       const cleaned = sanitizeReadingForClient(cached.reading, cardNames);
       if (cleaned) {
@@ -636,7 +685,7 @@ export async function POST(request: NextRequest) {
           if (!jointResult.ok) jointError = jointResult.error;
         }
 
-        return NextResponse.json({
+        const reusedPayload = {
           reading: cleaned,
           cards: drawn,
           system,
@@ -647,7 +696,9 @@ export async function POST(request: NextRequest) {
           reused: true,
           jointSaved,
           jointError,
-        });
+        };
+        await trackWorkerJobCompleted(request, reusedPayload);
+        return NextResponse.json(reusedPayload);
       }
     }
   }
@@ -838,6 +889,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (err) {
     console.error("Intention spread generation failed:", err);
+    let refunded = false;
     if (billingCharge) {
       try {
         runeBalance = await BillingService.rollbackCharge({
@@ -847,16 +899,21 @@ export async function POST(request: NextRequest) {
           actionType: "INTENTION_SPREAD",
           transactionId: billingCharge.transactionId,
         });
+        refunded = true;
       } catch (refundErr) {
         console.error("Intention spread refund failed:", refundErr);
       }
       billingCharge = null;
     }
+    await trackWorkerJobFailed(request, "Intention spread generation failed", {
+      refunded,
+      errorCode: "generation_failed",
+    });
     return NextResponse.json(
       {
         error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
         code: "generation_failed",
-        refunded: true,
+        refunded,
       },
       { status: 502 }
     );
@@ -901,6 +958,46 @@ export async function POST(request: NextRequest) {
 
   if (await ensureDb()) {
     try {
+      if (!(await beginWorkerJobSave(request))) {
+        if (billingCharge) {
+          try {
+            await BillingService.rollbackCharge({
+              userId: authed.profileUserId,
+              cost: billingCharge.spentRunes,
+              wasFreeQuestion: billingCharge.wasFreeQuestion,
+              actionType: "INTENTION_SPREAD",
+              transactionId: billingCharge.transactionId,
+            });
+          } catch (refundErr) {
+            console.error("Intention spread refund failed:", refundErr);
+          }
+        }
+        await trackWorkerJobFailed(request, "Intention spread save race", {
+          refunded: Boolean(billingCharge),
+          errorCode: "generation_failed",
+        });
+        return NextResponse.json(
+          {
+            error: "Не удалось сохранить трактовку. Руны возвращены. Попробуйте ещё раз.",
+            code: "generation_failed",
+            refunded: Boolean(billingCharge),
+          },
+          { status: 502 }
+        );
+      }
+      const aiSettings = await getSetting("ai");
+      const provenance = buildAiProvenance({
+        model: String(aiSettings.paidModel || aiSettings.model || "unknown"),
+        attempts: 1,
+        finishReason: "stop",
+        inputFingerprint: fingerprintAiInput([
+          characterId,
+          intention,
+          spreadId,
+          drawn.map((c) => c.name),
+        ]),
+        content: reading,
+      });
       await createHistoryEntry({
         userId: authed.profileUserId,
         characterName: characterId,
@@ -916,7 +1013,7 @@ export async function POST(request: NextRequest) {
           system,
           sessionId: storedSessionId,
           source: "ai",
-          provenance: { source: "ai", generatedAt: new Date().toISOString() },
+          provenance,
         },
       });
     } catch (histErr) {
@@ -973,7 +1070,7 @@ export async function POST(request: NextRequest) {
     authed.profileUserId
   );
 
-  return NextResponse.json({
+  const successPayload = {
     reading,
     cards: drawn,
     system,
@@ -984,5 +1081,7 @@ export async function POST(request: NextRequest) {
     isPaid: true,
     jointSaved,
     jointError,
-  });
+  };
+  await trackWorkerJobCompleted(request, successPayload);
+  return NextResponse.json(successPayload);
 }

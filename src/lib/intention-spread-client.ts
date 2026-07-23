@@ -1,9 +1,13 @@
+import { postWithAsyncJob } from "@/lib/client/wait-for-async-job";
+
 /** POST timeout — must exceed server LLM queue + generation (up to ~120s under load). */
 export const INTENTION_SPREAD_POST_TIMEOUT_MS = 150_000;
 
 /** Poll saved spread after POST abort — server may still finish and persist to history. */
 export const INTENTION_SPREAD_POLL_INTERVAL_MS = 2_500;
 export const INTENTION_SPREAD_POLL_MAX_ATTEMPTS = 28;
+
+export const INTENTION_SPREAD_JOB_STORAGE_KEY = "aura:intention-spread-active-job";
 
 export type IntentionSpreadPollParams = {
   characterId: string;
@@ -48,39 +52,53 @@ export async function pollIntentionSpreadReading(
   return null;
 }
 
-/** Client-side POST with retries — paid spreads must survive flaky networks. */
+/**
+ * Client-side POST with durable async job + poll.
+ * Returns a Response-like object so existing call sites keep working.
+ */
 export async function postIntentionSpreadRequest(
   body: Record<string, unknown>,
-  options?: { retries?: number; timeoutMs?: number }
+  options?: { retries?: number; timeoutMs?: number; signal?: AbortSignal }
 ): Promise<Response> {
   const retries = Math.max(1, options?.retries ?? 2);
-  const timeoutMs = options?.timeoutMs ?? INTENTION_SPREAD_POST_TIMEOUT_MS;
   let lastError: unknown;
 
   for (let attempt = 0; attempt < retries; attempt++) {
     const controller = new AbortController();
+    const timeoutMs = options?.timeoutMs ?? INTENTION_SPREAD_POST_TIMEOUT_MS;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const onOuterAbort = () => controller.abort();
+    options?.signal?.addEventListener("abort", onOuterAbort);
 
     try {
-      const response = await fetch("/api/intention-spread", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      const { status, data } = await postWithAsyncJob({
+        url: "/api/intention-spread",
+        body,
+        storageKey: INTENTION_SPREAD_JOB_STORAGE_KEY,
         signal: controller.signal,
       });
       clearTimeout(timer);
+      options?.signal?.removeEventListener("abort", onOuterAbort);
 
-      if (response.ok || response.status === 402) return response;
+      if (status === 402 || status < 500) {
+        return new Response(JSON.stringify(data), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
-      if (response.status >= 500 && attempt < retries - 1) {
+      if (attempt < retries - 1) {
         await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
         continue;
       }
 
-      return response;
+      return new Response(JSON.stringify(data), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
     } catch (err) {
       clearTimeout(timer);
+      options?.signal?.removeEventListener("abort", onOuterAbort);
       lastError = err;
       if (attempt < retries - 1) {
         await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));

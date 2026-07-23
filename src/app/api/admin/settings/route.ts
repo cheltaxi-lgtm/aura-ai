@@ -31,7 +31,22 @@ export async function PATCH(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { section, values } = await request.json();
-  if (!section || !values || !["ai", "pricing", "features", "prompts", "tts", "visual", "runes", "share", "natalChart"].includes(section)) {
+  if (
+    !section ||
+    !values ||
+    ![
+      "ai",
+      "aiDelivery",
+      "pricing",
+      "features",
+      "prompts",
+      "tts",
+      "visual",
+      "runes",
+      "share",
+      "natalChart",
+    ].includes(section)
+  ) {
     return NextResponse.json({ error: "Invalid section" }, { status: 400 });
   }
   if (section === "natalChart" && !isValidNatalChartSettings(values)) {

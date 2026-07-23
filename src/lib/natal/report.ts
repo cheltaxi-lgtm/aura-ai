@@ -281,6 +281,7 @@ function buildEvidenceGroundedClaimText(
 }
 
 /** Deterministic last-resort report that always validates when evidence is non-empty. */
+/** @deprecated Fail-closed delivery — do not call from production success paths. */
 export function buildMinimalNatalReport(
   evidence: readonly NatalEvidence[],
   tradition: NatalTradition,

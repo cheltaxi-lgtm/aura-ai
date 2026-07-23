@@ -26,6 +26,7 @@ import {
   buildClientGenderInstruction,
   resolveClientGender,
 } from "@/lib/russian-name-gender";
+import { hashAiContent } from "@/lib/ai-generation-contract";
 
 export class DailyReadingLockedError extends Error {
   spreadId: string | null;
@@ -578,6 +579,13 @@ async function syncDailyReadingHistory(params: {
         position: c.position,
         reversed: c.reversed,
       })),
+      source: "ai",
+      provenance: {
+        source: "ai",
+        generatedAt: new Date().toISOString(),
+        contentHash: hashAiContent(params.reading),
+        model: "daily-energy",
+      },
     },
   });
 }

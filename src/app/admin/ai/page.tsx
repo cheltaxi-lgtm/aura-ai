@@ -161,6 +161,56 @@ export default function AdminAiPage() {
           />
         </div>
 
+        <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-white">Цепочки fallback-моделей</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              Список через запятую. При сбое основной модели генератор пробует следующие
+              (validated AI path). Пусто = без доп. моделей.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">fallbackModels (чат / расклады)</label>
+            <input
+              type="text"
+              value={Array.isArray(ai.fallbackModels) ? (ai.fallbackModels as string[]).join(", ") : ""}
+              onChange={(e) =>
+                setAi({
+                  ...ai,
+                  fallbackModels: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+              placeholder="openai/gpt-4o-mini, google/gemini-2.5-flash"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">natalFallbackModels</label>
+            <input
+              type="text"
+              value={
+                Array.isArray(ai.natalFallbackModels)
+                  ? (ai.natalFallbackModels as string[]).join(", ")
+                  : ""
+              }
+              onChange={(e) =>
+                setAi({
+                  ...ai,
+                  natalFallbackModels: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+              placeholder="openai/gpt-4o-mini"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+        </div>
+
         {numField("Temperature", "temperature", ai, setAi)}
         {numField("Max tokens (чат)", "maxTokens", ai, setAi)}
         {numField("Max tokens (расклад)", "maxReadingTokens", ai, setAi)}

@@ -372,6 +372,8 @@ export function findCachedIntentionSpread(
   tarotCards: { name: string; meaning?: string }[];
   deckSystem?: string;
   system?: string;
+  source?: string;
+  provenance?: unknown;
 } | null {
   const key = tarotCardsKey(cards);
   if (!key) return null;
@@ -394,6 +396,8 @@ export function findCachedIntentionSpread(
     tarotCards: (ctx.tarotCards as { name: string; meaning?: string }[]) ?? cards,
     deckSystem: ctx.deckSystem as string | undefined,
     system: ctx.system as string | undefined,
+    source: typeof ctx.source === "string" ? ctx.source : undefined,
+    provenance: ctx.provenance,
   };
 }
 

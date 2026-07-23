@@ -208,17 +208,17 @@ export default function PremiumEnergyBlock({
     setDrawing(true);
     setErrorMessage(null);
     try {
-      const res = await fetch("/api/daily-reading", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data } = await postWithAsyncJob({
+        url: "/api/daily-reading",
+        body: {
           characterKey: master,
           localDate: localDateStr(),
           spreadId: activeSpreadId,
-        }),
+        },
+        storageKey: "aura:daily-reading-active-job",
       });
-      const data = (await res.json()) as {
+      const typed = data as {
         text?: string;
         cards?: DailyCard[];
         system?: DeckSystem | null;
@@ -228,39 +228,50 @@ export default function PremiumEnergyBlock({
         message?: string;
         balance?: number;
         required?: number;
+        code?: string;
       };
-      if (res.status === 402 && data.error === "insufficient_runes") {
+      if (resStatus === 402 && typed.error === "insufficient_runes") {
         if (
           onInsufficientRunes &&
-          typeof data.balance === "number" &&
-          typeof data.required === "number"
+          typeof typed.balance === "number" &&
+          typeof typed.required === "number"
         ) {
-          onInsufficientRunes({ balance: data.balance, required: data.required });
+          onInsufficientRunes({ balance: typed.balance, required: typed.required });
         } else {
           setErrorMessage("Недостаточно рун для расширенного расклада.");
         }
         return;
       }
-      if (res.status === 403 && data.error === "daily_reading_locked") {
+      if (resStatus === 403 && typed.error === "daily_reading_locked") {
         setLockedToday(true);
         setDrawnToday(true);
-        setErrorMessage(data.message ?? "Расклад на сегодня уже был — новый будет доступен завтра.");
+        setErrorMessage(typed.message ?? "Расклад на сегодня уже был — новый будет доступен завтра.");
         return;
       }
-      if (data.drawn && data.text && Array.isArray(data.cards) && data.cards.length) {
-        setText(data.text);
-        setCards(data.cards);
-        setSystem(data.system ?? pickSystem);
-        setSpreadId(data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
+      if (resStatus >= 500 || typed.code === "generation_failed") {
+        setErrorMessage(
+          typed.error ?? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+        );
+        return;
+      }
+      if (typed.drawn && typed.text && Array.isArray(typed.cards) && typed.cards.length) {
+        setText(typed.text);
+        setCards(typed.cards);
+        setSystem(typed.system ?? pickSystem);
+        setSpreadId(typed.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
         setRevealed(0);
         setDrawnToday(true);
-      } else if (data.message) {
-        setErrorMessage(data.message);
+      } else if (typed.message) {
+        setErrorMessage(typed.message);
       } else {
         setErrorMessage("Не удалось разложить карты. Попробуйте ещё раз.");
       }
-    } catch {
-      setErrorMessage("Не удалось разложить карты. Попробуйте ещё раз.");
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error && err.message
+          ? err.message
+          : "Не удалось разложить карты. Попробуйте ещё раз."
+      );
     } finally {
       setDrawing(false);
     }

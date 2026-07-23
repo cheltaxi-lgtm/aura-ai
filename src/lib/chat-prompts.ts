@@ -317,6 +317,7 @@ const FALLBACK_READINGS: Record<string, (ctx: { userName: string; isPaid: boolea
     }`,
 };
 
+/** @deprecated Fail-closed delivery — do not call from production success paths. Repair tooling only. */
 export function buildCardAwareFallbackReading(
   characterId: string,
   ctx: {
@@ -400,6 +401,7 @@ export function buildCardAwareFallbackReading(
   return [opener, ...cardBlocks, finalBlock].join("\n\n");
 }
 
+/** @deprecated Fail-closed delivery — do not call from production success paths. Repair tooling only. */
 export function fallbackReading(
   characterId: string,
   ctx: { userName: string; isPaid: boolean; tarotCards?: { name: string; meaning?: string }[]; intention?: string | null }

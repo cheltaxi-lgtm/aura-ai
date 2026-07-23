@@ -238,6 +238,10 @@ export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "natal_forecast",
   "natal_compatibility",
   "reading",
+  "intention_spread",
+  "daily_reading",
+  "daily_extended",
+  "image_generate",
 ];
 
 export function getJobKindConfig(kind: AsyncJobKind): PaidJobKindConfig {

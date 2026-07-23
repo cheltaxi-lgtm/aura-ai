@@ -18,6 +18,12 @@ import {
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
+import {
+  buildAiProvenance,
+  fingerprintAiInput,
+  isAiCacheReusable,
+} from "@/lib/ai-generation-contract";
+import { getSetting } from "@/lib/settings";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { isRuneBillingActive } from "@/lib/rune-service";
@@ -475,7 +481,11 @@ export async function POST(request: NextRequest) {
         [guestResume.readingId, authed.profileUserId]
       );
       const existingRow = historyRows[0];
-      if (existingRow && typeof existingRow.context_data?.reading === "string") {
+      if (
+        existingRow &&
+        typeof existingRow.context_data?.reading === "string" &&
+        isAiCacheReusable(existingRow.context_data)
+      ) {
         return respondWithExistingSpreadReading({
           existing: existingRow,
           profileUserId: authed.profileUserId,
@@ -525,7 +535,7 @@ export async function POST(request: NextRequest) {
         characterId,
         cardsKey
       );
-      if (existing) {
+      if (existing && isAiCacheReusable(existing.context_data)) {
         return respondWithExistingSpreadReading({
           existing,
           profileUserId: authed.profileUserId,
@@ -555,7 +565,7 @@ export async function POST(request: NextRequest) {
           characterId,
           cardsKey
         );
-        if (existing) {
+        if (existing && isAiCacheReusable(existing.context_data)) {
           return { kind: "existing" as const, existing };
         }
       }
@@ -944,6 +954,7 @@ export async function POST(request: NextRequest) {
           }
           return { kind: "failed" as const };
         }
+        const aiSettings = await getSetting("ai");
         const entry = await createHistoryEntry({
           userId: authed.profileUserId,
           characterName: characterId,
@@ -957,7 +968,18 @@ export async function POST(request: NextRequest) {
             gender,
             birthDate,
             source: "ai",
-            provenance: { source: "ai", generatedAt: new Date().toISOString() },
+            provenance: buildAiProvenance({
+              model: String(aiSettings.paidModel || aiSettings.model || "unknown"),
+              attempts: 1,
+              finishReason: "stop",
+              inputFingerprint: fingerprintAiInput([
+                characterId,
+                intention,
+                spreadId,
+                tarotCards.map((c) => c.name),
+              ]),
+              content: reading,
+            }),
             ...(sessionId ? { sessionId } : {}),
             ...(isDailySpread ? { spreadType: "daily" } : {}),
             ...(isGuestResumeFree
