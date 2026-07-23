@@ -393,6 +393,11 @@ assert(
   read("src/lib/memory/predicates.ts").includes("supersedeGroupForPredicate") &&
     read("src/lib/memory/user-facts.ts").includes("supersedeGroupForPredicate")
 );
+assert(
+  "semantic dedup does not merge contradictory supersede-group predicates",
+  read("src/lib/memory/user-facts.ts").includes("conflictingPredicate") &&
+    read("src/lib/memory/user-facts.ts").includes("incomingGroup.includes")
+);
 
 const installCrons = read("proxmox-setup/install-crons.sh");
 assert(

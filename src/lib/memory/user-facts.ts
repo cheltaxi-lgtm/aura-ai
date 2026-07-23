@@ -173,9 +173,14 @@ async function upsertFactLocked(
 
   if (embedding) {
     const vec = toVectorLiteral(embedding);
-    const { rows } = await queryClient<{ id: string; distance: number; source_character: string | null }>(
+    const { rows } = await queryClient<{
+      id: string;
+      distance: number;
+      source_character: string | null;
+      predicate_key: string | null;
+    }>(
       client,
-      `SELECT id, (embedding <=> $2::vector) AS distance, source_character
+      `SELECT id, (embedding <=> $2::vector) AS distance, source_character, predicate_key
          FROM user_facts
         WHERE user_id = $1 AND embedding IS NOT NULL AND status = 'active'
           AND COALESCE(embedding_model, $3) = $3
@@ -184,7 +189,19 @@ async function upsertFactLocked(
       [userId, vec, model]
     );
     const nearest = rows[0];
-    if (nearest && Number(nearest.distance) <= DEDUP_MAX_DISTANCE) {
+    const incomingGroup = supersedeGroupForPredicate(input.predicateKey);
+    // Contradictory singleton states (e.g. employment.searching → current) must
+    // insert + supersede, not collapse into the old row via semantic merge.
+    const conflictingPredicate =
+      Boolean(nearest?.predicate_key) &&
+      Boolean(input.predicateKey) &&
+      nearest!.predicate_key !== input.predicateKey &&
+      incomingGroup.includes(nearest!.predicate_key!);
+    if (
+      nearest &&
+      Number(nearest.distance) <= DEDUP_MAX_DISTANCE &&
+      !conflictingPredicate
+    ) {
       const incomingUser =
         input.sourceCharacter === "user" || sourceType === "user";
       await queryClient(

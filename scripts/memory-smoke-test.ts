@@ -195,8 +195,12 @@ async function main() {
     const currentRow = empStatus.find((r) => r.predicate_key === "employment.current");
     ok(currentRow?.status === "active", "employment.current stays active after replace");
     ok(
-      searchingRow?.status === "superseded",
-      "employment.searching is superseded by employment.current"
+      Boolean(searchingRow) && searchingRow?.status === "superseded",
+      "employment.searching is superseded by employment.current (not merged away)"
+    );
+    ok(
+      empStatus.filter((r) => r.status === "active" && r.predicate_key?.startsWith("employment.")).length === 1,
+      "only one active employment.* fact remains"
     );
 
     // Tombstone blocks re-ingest of deleted text.
