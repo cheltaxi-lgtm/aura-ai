@@ -242,8 +242,12 @@ async function main() {
         WHERE user_id=$1 AND predicate_key IN ('employment.searching','employment.current')`,
       [U]
     );
-    const searchingRow = empStatus.find((r) => r.predicate_key === "employment.searching");
-    const currentRow = empStatus.find((r) => r.predicate_key === "employment.current");
+    const searchingRow = empStatus.find(
+      (r) => r.predicate_key === "employment.searching" && r.status === "superseded"
+    );
+    const currentRow = empStatus.find(
+      (r) => r.predicate_key === "employment.current" && r.status === "active"
+    );
     ok(currentRow?.status === "active", "employment.current stays active after replace");
     ok(
       Boolean(searchingRow) && searchingRow?.status === "superseded",
