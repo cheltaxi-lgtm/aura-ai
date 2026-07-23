@@ -175,6 +175,8 @@ const DEFAULTS = {
     recaptchaScopes: { ...DEFAULT_RECAPTCHA_SCOPES },
     spreadsCatalogEnabled: DEFAULT_SPREAD_CATALOG_SETTINGS.spreadsCatalogEnabled,
     spreadOverrides: { ...DEFAULT_SPREAD_CATALOG_SETTINGS.spreadOverrides },
+    personalMemoryChoiceEnabled: true,
+    personalMemoryRolloutPercent: 100,
     freeQuestionLimit: 2,
     demoPayments: true,
   },

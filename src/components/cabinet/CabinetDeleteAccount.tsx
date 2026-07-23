@@ -118,7 +118,7 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
           <div className="min-w-0">
             <p className="text-sm font-medium text-red-100/90">Удалить аккаунт целиком</p>
             <p className="mt-0.5 text-xs text-red-200/50">
-              Безвозвратно: профиль, руны, история и память ИИ
+              Безвозвратно: профиль, руны, история и персональная память
             </p>
           </div>
           <button

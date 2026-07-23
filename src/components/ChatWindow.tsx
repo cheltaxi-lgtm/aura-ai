@@ -24,6 +24,7 @@ import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import type { SessionIntention } from "@/lib/intention";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import SessionFeedback from "@/components/SessionFeedback";
+import MemoryMoments from "@/components/MemoryMoments";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
@@ -1099,6 +1100,7 @@ export default function ChatWindow({
         </motion.div>
       )}
 
+      <MemoryMoments sessionId={sessionId} active={!readOnly} />
       <SessionFeedback characterId={characterId} visible={showSessionFeedback && !readOnly} />
 
       {readOnly ? (

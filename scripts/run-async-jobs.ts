@@ -18,8 +18,17 @@ import {
   reapStaleRunningAsyncJobs,
   type AsyncJobRow,
 } from "../src/lib/async-jobs";
+import { processMemoryExtractionJobs } from "../src/lib/memory/client-memory";
 
 const POLL_INTERVAL_MS = Math.max(250, Number(process.env.ASYNC_JOB_POLL_MS) || 1_000);
+const MEMORY_POLL_INTERVAL_MS = Math.max(
+  1_000,
+  Number(process.env.MEMORY_JOB_POLL_MS) || 3_000
+);
+const MEMORY_BATCH_SIZE = Math.min(
+  10,
+  Math.max(1, Number(process.env.MEMORY_JOB_BATCH_SIZE) || 3)
+);
 const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.ASYNC_JOB_CONCURRENCY) || 2));
 /**
  * Stay under Next route maxDuration (300s). After abort we still wait TIMEOUT_GRACE
@@ -48,6 +57,7 @@ const baseUrl = assertLoopbackAppUrl(
 
 let stopping = false;
 const inFlight = new Set<Promise<void>>();
+let memoryDrain: Promise<void> | null = null;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -131,6 +141,25 @@ function track(promise: Promise<void>): Promise<void> {
   });
 }
 
+function scheduleMemoryDrain(): void {
+  if (stopping || memoryDrain) return;
+  memoryDrain = (async () => {
+    try {
+      const result = await processMemoryExtractionJobs(MEMORY_BATCH_SIZE);
+      if (result.processed || result.failed) {
+        console.log(
+          `[memory-jobs] processed=${result.processed} stored=${result.stored} failed=${result.failed}`
+        );
+      }
+    } catch (error) {
+      console.error("[memory-jobs] drain failed:", error);
+    }
+  })().finally(() => {
+    memoryDrain = null;
+  });
+  void track(memoryDrain);
+}
+
 async function main(): Promise<void> {
   if (!process.env.ASYNC_JOB_WORKER_SECRET) {
     throw new Error("ASYNC_JOB_WORKER_SECRET is required");
@@ -138,6 +167,9 @@ async function main(): Promise<void> {
   console.log(
     `[async-jobs] worker ${workerId} polling ${baseUrl} kinds=${WORKER_KINDS.join(",")}`
   );
+  const memoryTimer = setInterval(scheduleMemoryDrain, MEMORY_POLL_INTERVAL_MS);
+  memoryTimer.unref();
+  scheduleMemoryDrain();
   while (!stopping) {
     try {
       const reaped = await reapStaleRunningAsyncJobs({
@@ -165,6 +197,7 @@ async function main(): Promise<void> {
     await Promise.all(jobs.map((job) => track(runJob(job))));
   }
 
+  clearInterval(memoryTimer);
   if (inFlight.size) {
     console.log(`[async-jobs] draining ${inFlight.size} in-flight job(s)`);
     await Promise.allSettled([...inFlight]);

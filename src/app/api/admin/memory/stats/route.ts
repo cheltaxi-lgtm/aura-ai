@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
-  const [facts, sessions] = await Promise.all([
+  const [facts, sessions, jobs] = await Promise.all([
     query<{
       total: string;
       manual: string;
@@ -30,10 +30,42 @@ export async function GET() {
       `SELECT COUNT(*)::text AS total, COUNT(DISTINCT user_id)::text AS distinct_users
        FROM session_memories`
     ),
+    query<{
+      pending: string;
+      running: string;
+      failed: string;
+      completed_24h: string;
+      stored_24h: string;
+      grounding_rejected_24h: string;
+      avg_lag_seconds: string | null;
+      oldest_pending_seconds: string | null;
+    }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'pending')::text AS pending,
+         COUNT(*) FILTER (WHERE status = 'running')::text AS running,
+         COUNT(*) FILTER (WHERE status = 'failed')::text AS failed,
+         COUNT(*) FILTER (
+           WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '24 hours'
+         )::text AS completed_24h,
+         COALESCE(SUM(stored_count) FILTER (
+           WHERE completed_at > NOW() - INTERVAL '24 hours'
+         ), 0)::text AS stored_24h,
+         COALESCE(SUM(grounding_rejected_count) FILTER (
+           WHERE completed_at > NOW() - INTERVAL '24 hours'
+         ), 0)::text AS grounding_rejected_24h,
+         AVG(EXTRACT(EPOCH FROM (completed_at - created_at))) FILTER (
+           WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '24 hours'
+         )::text AS avg_lag_seconds,
+         MAX(EXTRACT(EPOCH FROM (NOW() - created_at))) FILTER (
+           WHERE status = 'pending'
+         )::text AS oldest_pending_seconds
+       FROM memory_extraction_jobs`
+    ),
   ]);
 
   const f = facts.rows[0];
   const s = sessions.rows[0];
+  const j = jobs.rows[0];
   const n = (v: string | undefined) => Number.parseInt(v ?? "0", 10);
 
   return NextResponse.json({
@@ -48,6 +80,16 @@ export async function GET() {
     sessionMemories: {
       total: n(s?.total),
       distinctUsers: n(s?.distinct_users),
+    },
+    extraction: {
+      pending: n(j?.pending),
+      running: n(j?.running),
+      failed: n(j?.failed),
+      completed24h: n(j?.completed_24h),
+      stored24h: n(j?.stored_24h),
+      groundingRejected24h: n(j?.grounding_rejected_24h),
+      avgLagSeconds: Math.round(Number(j?.avg_lag_seconds ?? 0)),
+      oldestPendingSeconds: Math.round(Number(j?.oldest_pending_seconds ?? 0)),
     },
   });
 }

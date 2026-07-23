@@ -106,13 +106,17 @@ export async function enqueueMemoryExtraction(params: {
   }
 }
 
-export async function claimMemoryExtractionJobs(limit = 10): Promise<MemoryExtractionJob[]> {
+export async function claimMemoryExtractionJobs(
+  limit = 10,
+  userId?: string
+): Promise<MemoryExtractionJob[]> {
   const { rows } = await query<JobRow>(
     `WITH claimed AS (
        SELECT id FROM memory_extraction_jobs
         WHERE status = 'pending'
           AND next_attempt_at <= NOW()
           AND attempts < 5
+          AND ($2::uuid IS NULL OR user_id = $2::uuid)
         ORDER BY next_attempt_at ASC
         LIMIT $1
         FOR UPDATE SKIP LOCKED
@@ -123,17 +127,34 @@ export async function claimMemoryExtractionJobs(limit = 10): Promise<MemoryExtra
        FROM claimed
       WHERE j.id = claimed.id
       RETURNING j.*`,
-    [limit]
+    [limit, userId ?? null]
   );
   return rows.map(mapJob);
 }
 
-export async function completeMemoryExtractionJob(jobId: string): Promise<void> {
+export async function completeMemoryExtractionJob(
+  jobId: string,
+  metrics?: {
+    extractedCount?: number;
+    storedCount?: number;
+    groundingRejectedCount?: number;
+  }
+): Promise<void> {
   await query(
     `UPDATE memory_extraction_jobs
-        SET status = 'completed', completed_at = NOW(), last_error = NULL
+        SET status = 'completed',
+            completed_at = NOW(),
+            last_error = NULL,
+            extracted_count = $2,
+            stored_count = $3,
+            grounding_rejected_count = $4
       WHERE id = $1`,
-    [jobId]
+    [
+      jobId,
+      metrics?.extractedCount ?? 0,
+      metrics?.storedCount ?? 0,
+      metrics?.groundingRejectedCount ?? 0,
+    ]
   );
 }
 

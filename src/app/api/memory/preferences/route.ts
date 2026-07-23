@@ -5,6 +5,9 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import {
   getMemoryPreferences,
+  isMemoryChoiceRolloutEligible,
+  needsMemoryInitialChoice,
+  recordInitialMemoryChoice,
   updateMemoryPreferences,
   type MemoryPreferencesPatch,
 } from "@/lib/memory/preferences";
@@ -20,7 +23,42 @@ export async function GET() {
     return NextResponse.json({ error: "profile_required" }, { status: 400 });
   }
   const prefs = await getMemoryPreferences(profileUserId);
-  return NextResponse.json({ preferences: prefs });
+  return NextResponse.json({
+    preferences: prefs,
+    needsInitialChoice:
+      (await isMemoryChoiceRolloutEligible(profileUserId)) &&
+      (await needsMemoryInitialChoice(profileUserId)),
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireUserAuth();
+  if (!auth) return NextResponse.json({ error: "auth_required" }, { status: 401 });
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (!profileUserId) {
+    return NextResponse.json({ error: "profile_required" }, { status: 400 });
+  }
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("memory_initial_choice", auth.sub),
+    10,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json({ error: "rate_limit", retryAfterSec }, { status: 429 });
+  }
+  const body = await request.json().catch(() => ({}));
+  const choice = body.choice;
+  if (choice !== "enabled" && choice !== "disabled") {
+    return NextResponse.json({ error: "invalid_choice" }, { status: 422 });
+  }
+  if (choice === "enabled" && body.pdConsent !== true) {
+    return NextResponse.json({ error: "consent_required" }, { status: 422 });
+  }
+  const preferences = await recordInitialMemoryChoice(profileUserId, choice);
+  return NextResponse.json({ ok: true, preferences, needsInitialChoice: false });
 }
 
 export async function PUT(request: NextRequest) {

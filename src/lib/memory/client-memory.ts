@@ -3,7 +3,7 @@
  * Read: consent-gated prompt block (structured XML serialization).
  * Write: durable extraction outbox (not fire-and-forget LLM).
  */
-import { extractFactsFromTurn } from "@/lib/memory/extract-facts";
+import { extractFactsFromTurnDetailed } from "@/lib/memory/extract-facts";
 import {
   claimMemoryExtractionJobs,
   completeMemoryExtractionJob,
@@ -13,9 +13,9 @@ import {
 import { escapeMemoryXml, MEMORY_SECURITY_RULES } from "@/lib/memory/injection-guard";
 import { filterActiveMemoryFacts } from "@/lib/memory/fact-date-filter";
 import {
-  isTextRelevantToQuery,
   MEMORY_USAGE_RULES,
 } from "@/lib/memory/memory-relevance";
+import { isTextRelevantToQueryAsync } from "@/lib/memory/session-memory-semantic";
 import { canAutoCapture, canCaptureSensitive, canReadMemory } from "@/lib/memory/preferences";
 import { isSensitiveFact } from "@/lib/memory/predicates";
 import {
@@ -29,17 +29,6 @@ import {
 
 const MAX_BLOCK_CHARS = 3500;
 const MAX_FACT_LINES = 10;
-/** Imminent events only enter prompt when relevant (no unconditional bypass). */
-const IMMINENT_EVENT_DAYS = 3;
-
-function daysUntil(eventDate: string | null): number | null {
-  if (!eventDate) return null;
-  const d = new Date(`${eventDate}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - today.getTime()) / 86_400_000);
-}
 
 function formatEventDate(iso: string | null): string {
   if (!iso) return "";
@@ -117,21 +106,17 @@ export async function loadClientMemoryBlock(params: {
   const upcomingIds = new Set(upcoming.map((f) => f.id));
 
   const relevantSearch = filterActiveMemoryFacts(relevant);
+  const [upcomingMatches, criticalMatches] = await Promise.all([
+    isTextRelevantToQueryAsync(queryTrimmed, upcoming.map((f) => f.fact)),
+    isTextRelevantToQueryAsync(queryTrimmed, critical.map((f) => f.fact)),
+  ]);
   upcoming = filterActiveMemoryFacts(
-    upcoming.filter((f) => {
-      const days = daysUntil(f.eventDate);
-      // Imminent events still require relevance — no unconditional leak.
-      if (days !== null && days <= IMMINENT_EVENT_DAYS) {
-        return isTextRelevantToQuery(queryTrimmed, f.fact);
-      }
-      return isTextRelevantToQuery(queryTrimmed, f.fact);
-    })
+    upcoming.filter((_f, index) => upcomingMatches[index])
   );
   const criticalFiltered = filterActiveMemoryFacts(
     critical.filter(
-      (f) =>
-        relevantSearch.some((r) => r.id === f.id) ||
-        isTextRelevantToQuery(queryTrimmed, f.fact)
+      (f, index) =>
+        relevantSearch.some((r) => r.id === f.id) || criticalMatches[index]
     )
   );
   const general = filterActiveMemoryFacts(
@@ -215,9 +200,10 @@ export async function recordTurn(params: {
 
 /** Process pending extraction jobs (cron / admin maintenance). */
 export async function processMemoryExtractionJobs(
-  limit = 10
+  limit = 10,
+  userId?: string
 ): Promise<{ processed: number; stored: number; failed: number }> {
-  const jobs = await claimMemoryExtractionJobs(limit);
+  const jobs = await claimMemoryExtractionJobs(limit, userId);
   let stored = 0;
   let failed = 0;
 
@@ -232,16 +218,17 @@ export async function processMemoryExtractionJobs(
       const known = await searchFacts(job.userId, job.userMessage, { topK: 12 }).catch(
         () => []
       );
-      const facts = await extractFactsFromTurn(
+      const extraction = await extractFactsFromTurnDetailed(
         job.userMessage,
         job.assistantReply ?? "",
         known.map((f) => f.fact)
       );
-      const filtered = facts.filter(
+      const filtered = extraction.facts.filter(
         (f) => allowSensitive || !isSensitiveFact(f)
       );
+      let storedForJob = 0;
       if (filtered.length) {
-        stored += await upsertFacts(
+        storedForJob = await upsertFacts(
           job.userId,
           filtered.map((f) => ({
             ...f,
@@ -251,8 +238,13 @@ export async function processMemoryExtractionJobs(
             allowSensitive,
           }))
         );
+        stored += storedForJob;
       }
-      await completeMemoryExtractionJob(job.id);
+      await completeMemoryExtractionJob(job.id, {
+        extractedCount: extraction.parsedCount,
+        storedCount: storedForJob,
+        groundingRejectedCount: extraction.groundingRejectedCount,
+      });
     } catch (err) {
       failed += 1;
       await failMemoryExtractionJob(

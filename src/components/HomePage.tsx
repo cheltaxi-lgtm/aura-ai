@@ -16,6 +16,7 @@ import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
 import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
+import PersonalMemoryChoice from "@/components/PersonalMemoryChoice";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { parseInsufficientRunes } from "@/lib/api-errors";
 import { consumeAccountDeletedHomeArrival } from "@/lib/account-deleted";
@@ -3472,6 +3473,9 @@ export default function HomePage({
 
       <DailyBonusClaimer
         enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}
+      />
+      <PersonalMemoryChoice
+        enabled={!authLoading && isLoggedIn && Boolean(authUser?.profileUserId)}
       />
 
       <SpreadRitualLoader

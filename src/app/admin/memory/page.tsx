@@ -16,6 +16,16 @@ interface MemoryStats {
     total: number;
     distinctUsers: number;
   };
+  extraction: {
+    pending: number;
+    running: number;
+    failed: number;
+    completed24h: number;
+    stored24h: number;
+    groundingRejected24h: number;
+    avgLagSeconds: number;
+    oldestPendingSeconds: number;
+  };
 }
 
 interface MaintenanceResult {
@@ -106,6 +116,31 @@ export default function AdminMemoryPage() {
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             <StatCard label="Всего сводок" value={stats.sessionMemories.total} />
             <StatCard label="Пользователей" value={stats.sessionMemories.distinctUsers} />
+          </div>
+        </div>
+
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-gray-400">Очередь извлечения</h2>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <StatCard label="Ожидают" value={stats.extraction.pending} />
+            <StatCard label="В работе" value={stats.extraction.running} />
+            <StatCard
+              label="Ошибки"
+              value={stats.extraction.failed}
+              accent={stats.extraction.failed > 0 ? "text-red-400" : "text-white"}
+            />
+            <StatCard label="Сохранено за 24ч" value={stats.extraction.stored24h} />
+            <StatCard label="Завершено за 24ч" value={stats.extraction.completed24h} />
+            <StatCard
+              label="Grounding reject за 24ч"
+              value={stats.extraction.groundingRejected24h}
+            />
+            <StatCard label="Средняя задержка, сек" value={stats.extraction.avgLagSeconds} />
+            <StatCard
+              label="Старейшая pending, сек"
+              value={stats.extraction.oldestPendingSeconds}
+              accent={stats.extraction.oldestPendingSeconds > 60 ? "text-amber-400" : "text-white"}
+            />
           </div>
         </div>
 

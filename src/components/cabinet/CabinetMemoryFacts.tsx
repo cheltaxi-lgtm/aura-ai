@@ -7,6 +7,7 @@ import {
   Brain,
   Briefcase,
   Calendar,
+  Check,
   Heart,
   Loader2,
   Pencil,
@@ -36,6 +37,13 @@ type MemoryFact = {
   eventDate: string | null;
   salience: number;
   addedByUser?: boolean;
+  status?: "active" | "superseded";
+  sourceType?: string | null;
+  evidenceQuote?: string | null;
+  sourceCapturedAt?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  confirmationCount?: number;
 };
 
 type MemoryPrefs = {
@@ -118,6 +126,8 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   const [editingFact, setEditingFact] = useState<MemoryFact | null>(null);
   const [draft, setDraft] = useState("");
   const [category, setCategory] = useState<string>("other");
+  const [eventDate, setEventDate] = useState("");
+  const [view, setView] = useState<"current" | "changes" | "events">("current");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [pdConsent, setPdConsent] = useState(false);
@@ -128,7 +138,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     setError(null);
     try {
       const [factsRes, prefsRes] = await Promise.all([
-        fetch("/api/memory/facts", { credentials: "include" }),
+        fetch("/api/memory/facts?view=timeline", { credentials: "include" }),
         fetch("/api/memory/preferences", { credentials: "include" }),
       ]);
       const factsData = (await factsRes.json().catch(() => ({}))) as {
@@ -165,6 +175,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   const resetAddForm = () => {
     setDraft("");
     setCategory("other");
+    setEventDate("");
     setPdConsent(false);
     setFormError(null);
     setEditingFact(null);
@@ -180,6 +191,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     setEditingFact(fact);
     setDraft(fact.fact);
     setCategory(resolveFactCategory(fact.category));
+    setEventDate(fact.eventDate ?? "");
     setPdConsent(true);
     setFormError(null);
     setAddModalOpen(true);
@@ -261,6 +273,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             factId: editingFact.id,
             fact: text,
             category,
+            eventDate: eventDate || null,
           }),
         });
         const data = (await res.json().catch(() => ({}))) as {
@@ -281,7 +294,12 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fact: text, category, pdConsent: true }),
+          body: JSON.stringify({
+            fact: text,
+            category,
+            eventDate: eventDate || null,
+            pdConsent: true,
+          }),
         });
         const data = (await res.json().catch(() => ({}))) as {
           fact?: MemoryFact;
@@ -314,7 +332,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   const handlePurgeAll = async () => {
     if (
       !window.confirm(
-        "Полностью очистить память? Мастер забудет все сохранённые факты и итоги прошлых сеансов. Согласие на память будет отозвано. Действие необратимо."
+        "Полностью очистить персональную память? Сохранённые факты и краткие итоги сеансов будут удалены, согласие отозвано. Исходная история сообщений удаляется отдельно. Действие необратимо."
       )
     ) {
       return;
@@ -363,6 +381,30 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     }
   };
 
+  const handleConfirm = async (factId: string) => {
+    setDeletingId(factId);
+    try {
+      const res = await fetch("/api/memory/facts/action", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factId, action: "confirm" }),
+      });
+      if (!res.ok) throw new Error("confirm_failed");
+      await load();
+    } catch {
+      setError("Не удалось подтвердить факт.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const displayedFacts = facts.filter((fact) => {
+    if (view === "changes") return fact.status === "superseded";
+    if (view === "events") return Boolean(fact.eventDate) && fact.status !== "superseded";
+    return fact.status !== "superseded";
+  });
+
   return (
     <>
       <section className={hideTitle ? "space-y-5" : "rounded-2xl border border-white/10 bg-white/[0.03] p-5"}>
@@ -372,10 +414,10 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               <Brain className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold text-white">Память о вас</h2>
+              <h2 className="text-base font-semibold text-white">Персональная память</h2>
               <p className="mt-1 text-sm text-white/50">
-                По умолчанию память выключена. Включите согласие — и мастер будет учитывать факты
-                только по теме сеанса.
+                Важные сведения используются только по теме сеанса и всегда остаются под вашим
+                контролем.
               </p>
             </div>
           </div>
@@ -429,6 +471,25 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           </p>
         </div>
 
+        <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/8 bg-black/20 p-1">
+          {([
+            ["current", "Сейчас"],
+            ["changes", "Изменения"],
+            ["events", "События"],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setView(id)}
+              className={`rounded-lg px-2 py-2 text-xs transition ${
+                view === id ? "bg-purple-500/20 text-purple-100" : "text-white/40 hover:text-white/65"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {!loading && facts.length > 0 ? (
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-amber-400/70">
@@ -474,7 +535,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             <p className="rounded-2xl border border-red-400/20 bg-red-950/20 px-4 py-3 text-sm text-red-300">
               {error}
             </p>
-          ) : facts.length === 0 ? (
+          ) : displayedFacts.length === 0 ? (
             <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/12 bg-gradient-to-br from-purple-950/30 via-black/20 to-amber-950/15 px-6 py-10 text-center">
               <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-purple-600/10 blur-2xl" />
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-300">
@@ -488,10 +549,15 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             </div>
           ) : (
             <ul className="space-y-3">
-              {facts.map((f) => {
+              {displayedFacts.map((f) => {
                 const cat = resolveFactCategory(f.category);
                 const accent = FACT_CATEGORY_ACCENTS[cat];
                 const Icon = CATEGORY_ICONS[cat];
+                const stale =
+                  f.status !== "superseded" &&
+                  Boolean(f.sourceCapturedAt) &&
+                  Date.now() - new Date(f.sourceCapturedAt!).getTime() > 120 * 86_400_000 &&
+                  !f.confirmationCount;
                 return (
                   <li
                     key={f.id}
@@ -524,11 +590,31 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                           >
                             {f.addedByUser ? "добавлено вами" : "замечено автоматически"}
                           </span>
+                          {f.status === "superseded" ? (
+                            <span className="text-[10px] text-white/30">изменилось</span>
+                          ) : null}
                         </div>
                         <p className="text-[15px] leading-relaxed text-white/92">
                           {formatMemoryFactForDisplay(f.fact)}
                         </p>
+                        {f.evidenceQuote ? (
+                          <p className="mt-2 border-l border-white/10 pl-2 text-[11px] italic text-white/35">
+                            Из вашего сообщения: «{f.evidenceQuote}»
+                          </p>
+                        ) : null}
+                        {stale ? (
+                          <button
+                            type="button"
+                            disabled={deletingId === f.id}
+                            onClick={() => void handleConfirm(f.id)}
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/15 bg-emerald-400/8 px-2.5 py-1.5 text-[11px] text-emerald-200/80"
+                          >
+                            <Check className="h-3 w-3" aria-hidden />
+                            Это всё ещё актуально
+                          </button>
+                        ) : null}
                       </div>
+                      {f.status !== "superseded" ? (
                       <div className="flex shrink-0 flex-col gap-1.5">
                         <button
                           type="button"
@@ -552,6 +638,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                           )}
                         </button>
                       </div>
+                      ) : null}
                     </div>
                   </li>
                 );
@@ -630,13 +717,26 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                     </select>
                   </label>
 
+                  <label className="block text-xs text-white/50">
+                    Дата события
+                    <input
+                      type="date"
+                      value={eventDate}
+                      onChange={(e) => setEventDate(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                    />
+                    <span className="mt-1 block text-[10px] text-white/30">
+                      Если включены напоминания, сервис заранее напомнит об этой дате.
+                    </span>
+                  </label>
+
                   {!editingFact ? (
                     <>
                       <div className="rounded-lg border border-white/8 bg-black/25 px-3 py-2.5 text-[11px] leading-relaxed text-white/45">
                         Добавляя сведения о себе, вы даёте оператору платформы Zovus согласие на
                         обработку указанных персональных данных (сбор, запись, хранение,
                         использование) в целях персонализации консультаций, в том числе с применением
-                        автоматизированных средств (ИИ), на основании{" "}
+                        автоматизированных средств, на основании{" "}
                         <LegalDocLink
                           href="/privacy"
                           external

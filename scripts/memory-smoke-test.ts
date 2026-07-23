@@ -17,9 +17,22 @@ import {
   purgeAllUserMemory,
   updateFact,
   deleteFact,
+  confirmFact,
+  changeFact,
+  listFactTimeline,
 } from "@/lib/memory/user-facts";
-import { loadClientMemoryBlock, recordTurn } from "@/lib/memory/client-memory";
-import { updateMemoryPreferences, revokeMemoryConsent } from "@/lib/memory/preferences";
+import {
+  loadClientMemoryBlock,
+  processMemoryExtractionJobs,
+  recordTurn,
+} from "@/lib/memory/client-memory";
+import {
+  getMemoryPreferences,
+  needsMemoryInitialChoice,
+  recordInitialMemoryChoice,
+  updateMemoryPreferences,
+  revokeMemoryConsent,
+} from "@/lib/memory/preferences";
 import { isFactTombstoned } from "@/lib/memory/tombstones";
 
 const U = "00000000-0000-0000-0000-0000000000aa";
@@ -74,6 +87,17 @@ async function main() {
   const eventDate = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
 
   try {
+    ok(await needsMemoryInitialChoice(U), "new profile requires initial memory choice");
+    await recordInitialMemoryChoice(U, "disabled");
+    const declined = await getMemoryPreferences(U);
+    ok(
+      declined.initialChoice === "disabled" &&
+        !declined.memoryEnabled &&
+        !declined.autoCaptureEnabled,
+      "explicit decline is audited and remains fail-closed"
+    );
+    ok(!(await needsMemoryInitialChoice(U)), "explicit decline is not prompted repeatedly");
+
     await upsertFacts(U, [
       { fact: `У клиента сын Артём, выпускной ${eventDate}`, category: "event", eventDate, salience: 3 },
       { fact: "Клиент работает программистом и думает сменить работу", category: "work", salience: 3 },
@@ -88,10 +112,16 @@ async function main() {
     });
     ok(!denied.trim(), "without consent, memory block is empty");
 
-    await updateMemoryPreferences(U, {
-      memoryEnabled: true,
-      autoCaptureEnabled: false,
-    });
+    await recordInitialMemoryChoice(U, "enabled");
+    await updateMemoryPreferences(U, { autoCaptureEnabled: false });
+    const enabledPrefs = await getMemoryPreferences(U);
+    ok(
+      enabledPrefs.memoryEnabled &&
+        !enabledPrefs.autoCaptureEnabled &&
+        !enabledPrefs.sensitiveCaptureEnabled &&
+        !enabledPrefs.eventRemindersEnabled,
+      "initial enable keeps sensitive capture and reminders off"
+    );
 
     await okRetry(async () => {
       const work = await searchFacts(U, "стоит ли мне менять работу?", { topK: 3 });
@@ -155,6 +185,27 @@ async function main() {
       [U]
     );
     ok(Number(jobsOn[0]?.c ?? 0) >= 2, "each chat turn enqueues its own extraction job");
+    const extraction = await processMemoryExtractionJobs(5, U);
+    ok(
+      extraction.processed >= 2 && extraction.failed === 0,
+      "durable extraction jobs process end-to-end for the smoke user"
+    );
+    const { rows: completedJobs } = await query<{
+      c: string;
+      extracted: string;
+      rejected: string;
+    }>(
+      `SELECT COUNT(*)::text AS c,
+              COALESCE(SUM(extracted_count), 0)::text AS extracted,
+              COALESCE(SUM(grounding_rejected_count), 0)::text AS rejected
+         FROM memory_extraction_jobs
+        WHERE user_id=$1 AND status='completed'`,
+      [U]
+    );
+    ok(
+      Number(completedJobs[0]?.c ?? 0) >= 2,
+      "completed extraction jobs retain quality metrics"
+    );
 
     // Employment lifecycle: searching → current must supersede the old row.
     const searchingFact = "Клиент ищет работу программистом";
@@ -264,6 +315,56 @@ async function main() {
         "updateFact persists edited fact text"
       );
       ok(after.rows[0]?.has_emb === true, "updateFact never wipes existing embedding to null");
+    }
+
+    const provenanceSource = "00000000-0000-0000-0000-0000000000cc";
+    await upsertFact(U, {
+      fact: "Клиент готовится к собеседованию в пятницу",
+      category: "event",
+      salience: 4,
+      eventDate,
+      evidenceQuote: "готовлюсь к собеседованию в пятницу",
+      sourceType: "chat",
+      sourceEntityId: provenanceSource,
+    });
+    const { rows: provenanceRows } = await query<{
+      id: string;
+      evidence_quote: string | null;
+    }>(
+      `SELECT id, evidence_quote FROM user_facts
+        WHERE user_id=$1 AND source_entity_id=$2 LIMIT 1`,
+      [U, provenanceSource]
+    );
+    const provenanceFact = provenanceRows[0];
+    ok(
+      provenanceFact?.evidence_quote === "готовлюсь к собеседованию в пятницу",
+      "extraction evidence and source provenance are persisted"
+    );
+    const { rows: activityRows } = await query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM user_memory_activity
+        WHERE user_id=$1 AND fact_id=$2 AND activity_type='learned'`,
+      [U, provenanceFact?.id ?? null]
+    );
+    ok(Number(activityRows[0]?.c ?? 0) === 1, "learned fact emits one memory activity");
+
+    if (provenanceFact?.id) {
+      const confirmed = await confirmFact(U, provenanceFact.id);
+      ok(
+        Boolean(confirmed && (confirmed.confirmationCount ?? 0) >= 1),
+        "fact confirmation updates trust metadata"
+      );
+      const changed = await changeFact(
+        U,
+        provenanceFact.id,
+        "Клиент успешно прошёл собеседование и ждёт оффер"
+      );
+      ok(Boolean(changed?.id), "user change creates a new fact version");
+      const timeline = await listFactTimeline(U);
+      ok(
+        timeline.some((fact) => fact.id === provenanceFact.id && fact.status === "superseded") &&
+          timeline.some((fact) => fact.id === changed?.id && fact.status === "active"),
+        "timeline keeps superseded and current versions"
+      );
     }
 
     await revokeMemoryConsent(U);

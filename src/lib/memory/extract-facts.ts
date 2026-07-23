@@ -191,9 +191,30 @@ export async function extractFactsFromTurn(
   _assistantReply: string,
   knownFacts: string[] = []
 ): Promise<FactInput[]> {
+  const result = await extractFactsFromTurnDetailed(
+    userMessage,
+    _assistantReply,
+    knownFacts
+  );
+  return result.facts;
+}
+
+export async function extractFactsFromTurnDetailed(
+  userMessage: string,
+  _assistantReply: string,
+  knownFacts: string[] = []
+): Promise<{
+  facts: FactInput[];
+  parsedCount: number;
+  groundingRejectedCount: number;
+}> {
   const user = userMessage?.trim();
-  if (!user || user.length < 8) return [];
-  if (user.length < 40 && FACTLESS_RE.test(user)) return [];
+  if (!user || user.length < 8) {
+    return { facts: [], parsedCount: 0, groundingRejectedCount: 0 };
+  }
+  if (user.length < 40 && FACTLESS_RE.test(user)) {
+    return { facts: [], parsedCount: 0, groundingRejectedCount: 0 };
+  }
 
   const knownBlock = knownFacts.length
     ? `УЖЕ ИЗВЕСТНО О КЛИЕНТЕ (не повторяй без изменения):\n${knownFacts
@@ -222,8 +243,13 @@ export async function extractFactsFromTurn(
     priority: "background",
     modelOverride: extractModelOverride(),
   });
-  if (!raw) return [];
+  if (!raw) return { facts: [], parsedCount: 0, groundingRejectedCount: 0 };
 
   const parsed = parseFacts(raw);
-  return filterGroundedFacts(user, parsed);
+  const facts = filterGroundedFacts(user, parsed);
+  return {
+    facts,
+    parsedCount: parsed.length,
+    groundingRejectedCount: Math.max(0, parsed.length - facts.length),
+  };
 }

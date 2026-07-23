@@ -104,10 +104,10 @@ assert(
   clientMemory.includes("if (!queryTrimmed)") && clientMemory.includes('return "";')
 );
 assert(
-  "imminent events still require relevance (no unconditional bypass)",
-  clientMemory.includes("IMMINENT_EVENT_DAYS") &&
-    clientMemory.includes("isTextRelevantToQuery(queryTrimmed, f.fact)") &&
-    !clientMemory.includes("days <= IMMINENT_EVENT_DAYS) return true;")
+  "facts and events use semantic relevance fallback (no unconditional bypass)",
+  clientMemory.includes("isTextRelevantToQueryAsync") &&
+    clientMemory.includes("upcomingMatches") &&
+    clientMemory.includes("criticalMatches")
 );
 {
   const recordTurnSrc = clientMemory.slice(
@@ -382,6 +382,14 @@ assert(
   migration080.includes("DROP INDEX IF EXISTS idx_memory_extraction_jobs_dedupe") &&
     migration080.includes("idx_memory_extraction_jobs_pending_msg")
 );
+const migration081 = read("scripts/migrations/081_migrate_personal_memory_moat.sql");
+assert(
+  "migration 081 adds initial choice, provenance, activity, and extraction metrics",
+  migration081.includes("memory_initial_choice") &&
+    migration081.includes("evidence_quote") &&
+    migration081.includes("user_memory_activity") &&
+    migration081.includes("grounding_rejected_count")
+);
 const extractionJobs = read("src/lib/memory/extraction-jobs.ts");
 assert(
   "enqueue inserts a new job per turn (no completed-job freeze)",
@@ -424,9 +432,10 @@ assert(
 
 const privacy = read("src/app/(legal)/privacy/page.tsx");
 assert(
-  "privacy policy documents memory opt-in and cabinet controls",
-  privacy.includes("По умолчанию память") &&
-    privacy.includes("управлять памятью ИИ")
+  "privacy policy documents explicit memory choice and cabinet controls",
+  privacy.includes("обязательный явный выбор") &&
+    privacy.includes("управлять персональной памятью") &&
+    privacy.includes("исходную историю сообщений")
 );
 
 const captureHelpers = read("src/lib/memory/capture-helpers.ts");
@@ -464,6 +473,40 @@ assert(
   read("src/app/api/onboarding/route.ts").includes("upsertFact") &&
     read("src/app/api/onboarding/route.ts").includes("canAutoCapture") &&
     read("src/app/api/onboarding/route.ts").includes("goal.current")
+);
+assert(
+  "post-profile memory choice covers all auth paths",
+  read("src/components/HomePage.tsx").includes("PersonalMemoryChoice") &&
+    read("src/components/PersonalMemoryChoice.tsx").includes("Персональная память") &&
+    !read("src/components/PersonalMemoryChoice.tsx").includes("ИИ")
+);
+assert(
+  "initial choice enables normal memory but keeps sensitive/reminders off",
+  preferences.includes("recordInitialMemoryChoice") &&
+    preferences.includes("sensitive_capture_enabled = FALSE") &&
+    preferences.includes("event_reminders_enabled = FALSE")
+);
+assert(
+  "memory activity API is self-only and source scoped",
+  read("src/app/api/memory/activity/route.ts").includes("requireUserAuth") &&
+    read("src/app/api/memory/activity/route.ts").includes("a.user_id = $1") &&
+    read("src/app/api/memory/activity/route.ts").includes("source_entity_id")
+);
+assert(
+  "memory moments expose confirm/change/forget",
+  read("src/components/MemoryMoments.tsx").includes('"confirm"') &&
+    read("src/components/MemoryMoments.tsx").includes('"change"') &&
+    read("src/components/MemoryMoments.tsx").includes('"forget"')
+);
+assert(
+  "worker drains durable memory outbox near-real-time",
+  read("scripts/run-async-jobs.ts").includes("scheduleMemoryDrain") &&
+    read("scripts/run-async-jobs.ts").includes("processMemoryExtractionJobs")
+);
+assert(
+  "production tombstones require a configured secret",
+  read("src/lib/memory/tombstones.ts").includes('NODE_ENV === "production"') &&
+    read("src/lib/memory/tombstones.ts").includes("is required in production")
 );
 
 console.log(`\n--- ${failed} failed ---`);

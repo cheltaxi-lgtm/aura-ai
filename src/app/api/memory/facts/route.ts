@@ -7,13 +7,17 @@ import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { validateUserSubmittedFact } from "@/lib/memory/user-fact-input";
 import {
   deleteFact,
+  listFactTimeline,
   listFacts,
   searchFacts,
   updateFact,
   upsertFact,
   MAX_FACTS_PER_USER,
 } from "@/lib/memory/user-facts";
-import { updateMemoryPreferences } from "@/lib/memory/preferences";
+import {
+  needsMemoryInitialChoice,
+  updateMemoryPreferences,
+} from "@/lib/memory/preferences";
 
 /**
  * Cap for user-submitted (manually entered) facts specifically, distinct from
@@ -28,6 +32,15 @@ function mapFact(f: {
   eventDate: string | null;
   salience: number;
   sourceCharacter: string | null;
+  status?: string;
+  predicateKey?: string | null;
+  sourceType?: string | null;
+  sourceEntityId?: string | null;
+  evidenceQuote?: string | null;
+  sourceCapturedAt?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  confirmationCount?: number;
 }) {
   return {
     id: f.id,
@@ -38,11 +51,20 @@ function mapFact(f: {
     // "user" = added by hand in the cabinet; anything else (a character id, or
     // null for older rows) was picked up automatically from a chat/reading.
     addedByUser: f.sourceCharacter === "user",
+    status: f.status ?? "active",
+    predicateKey: f.predicateKey ?? null,
+    sourceType: f.sourceType ?? null,
+    sourceEntityId: f.sourceEntityId ?? null,
+    evidenceQuote: f.evidenceQuote ?? null,
+    sourceCapturedAt: f.sourceCapturedAt ?? null,
+    validFrom: f.validFrom ?? null,
+    validTo: f.validTo ?? null,
+    confirmationCount: f.confirmationCount ?? 0,
   };
 }
 
 /** List, add, or delete the authenticated user's long-term memory facts. */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireUserAuth();
   if (!auth) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 });
@@ -72,7 +94,10 @@ export async function GET() {
 
   // Show everything the system knows for this user, not just the manual-entry
   // cap — auto-extracted facts are just as relevant for the user to review/delete.
-  const facts = await listFacts(profileUserId, MAX_FACTS_PER_USER);
+  const timeline = request.nextUrl.searchParams.get("view") === "timeline";
+  const facts = timeline
+    ? await listFactTimeline(profileUserId, MAX_FACTS_PER_USER)
+    : await listFacts(profileUserId, MAX_FACTS_PER_USER);
   return NextResponse.json({
     facts: facts.map(mapFact),
     count: facts.length,
@@ -91,6 +116,15 @@ export async function POST(request: NextRequest) {
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
     return NextResponse.json({ error: "profile_required" }, { status: 400 });
+  }
+  if (await needsMemoryInitialChoice(profileUserId)) {
+    return NextResponse.json(
+      {
+        error: "memory_choice_required",
+        message: "Сначала выберите настройку персональной памяти.",
+      },
+      { status: 409 }
+    );
   }
 
   const { allowed, retryAfterSec } = await checkRateLimit(

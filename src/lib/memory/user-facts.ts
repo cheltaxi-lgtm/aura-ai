@@ -34,6 +34,12 @@ export interface UserFact {
   sensitivity?: string;
   confidence?: number;
   sourceType?: string | null;
+  sourceEntityId?: string | null;
+  evidenceQuote?: string | null;
+  sourceCapturedAt?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  confirmationCount?: number;
 }
 
 export interface FactInput {
@@ -52,6 +58,7 @@ export interface FactInput {
   sourceType?: string | null;
   sourceEntityId?: string | null;
   allowSensitive?: boolean;
+  forceNewVersion?: boolean;
 }
 
 const DEDUP_MAX_DISTANCE = 0.22;
@@ -74,12 +81,20 @@ type FactRow = {
   sensitivity?: string;
   confidence?: number;
   source_type?: string | null;
+  source_entity_id?: string | null;
+  evidence_quote?: string | null;
+  source_captured_at?: Date | string | null;
+  valid_from?: Date | string | null;
+  valid_to?: Date | string | null;
+  confirmation_count?: number;
 };
 
 const FACT_COLUMNS = `id, fact, category, event_date::text AS event_date, source_character, salience,
-  status, predicate_key, entity_key, subject_key, sensitivity, confidence, source_type`;
+  status, predicate_key, entity_key, subject_key, sensitivity, confidence, source_type,
+  source_entity_id, evidence_quote, source_captured_at, valid_from, valid_to, confirmation_count`;
 const FACT_COLUMNS_F = `f.id, f.fact, f.category, f.event_date::text AS event_date, f.source_character, f.salience,
-  f.status, f.predicate_key, f.entity_key, f.subject_key, f.sensitivity, f.confidence, f.source_type`;
+  f.status, f.predicate_key, f.entity_key, f.subject_key, f.sensitivity, f.confidence, f.source_type,
+  f.source_entity_id, f.evidence_quote, f.source_captured_at, f.valid_from, f.valid_to, f.confirmation_count`;
 
 function toVectorLiteral(vec: number[]): string {
   return `[${vec.join(",")}]`;
@@ -105,6 +120,12 @@ function mapRow(r: FactRow): UserFact {
     sensitivity: r.sensitivity ?? "normal",
     confidence: r.confidence ?? 1,
     sourceType: r.source_type ?? null,
+    sourceEntityId: r.source_entity_id ?? null,
+    evidenceQuote: r.evidence_quote ?? null,
+    sourceCapturedAt: r.source_captured_at ? new Date(r.source_captured_at).toISOString() : null,
+    validFrom: r.valid_from ? new Date(r.valid_from).toISOString() : null,
+    validTo: r.valid_to ? new Date(r.valid_to).toISOString() : null,
+    confirmationCount: r.confirmation_count ?? 0,
   };
 }
 
@@ -165,7 +186,7 @@ async function upsertFactLocked(
   input: FactInput,
   salience: number,
   embedding: number[] | null
-): Promise<void> {
+): Promise<string | null> {
   const fact = input.fact.trim();
   const sensitivity = isSensitiveFact(input) ? "sensitive" : "normal";
   const model = embedModel();
@@ -200,7 +221,8 @@ async function upsertFactLocked(
     if (
       nearest &&
       Number(nearest.distance) <= DEDUP_MAX_DISTANCE &&
-      !conflictingPredicate
+      !conflictingPredicate &&
+      !input.forceNewVersion
     ) {
       const incomingUser =
         input.sourceCharacter === "user" || sourceType === "user";
@@ -254,7 +276,7 @@ async function upsertFactLocked(
         ]
       );
       await supersedeReplaceables(client, userId, input, nearest.id);
-      return;
+      return nearest.id;
     }
 
     const { rows: inserted } = await queryClient<{ id: string }>(
@@ -287,7 +309,7 @@ async function upsertFactLocked(
       ]
     );
     if (inserted[0]) await supersedeReplaceables(client, userId, input, inserted[0].id);
-    return;
+    return inserted[0]?.id ?? null;
   }
 
   const { rows: textDup } = await queryClient<{ id: string; source_character: string | null }>(
@@ -300,7 +322,7 @@ async function upsertFactLocked(
       LIMIT 1`,
     [userId, fact.slice(0, 600)]
   );
-  if (textDup[0]) {
+  if (textDup[0] && !input.forceNewVersion) {
     const incomingUser =
       input.sourceCharacter === "user" || sourceType === "user";
     await queryClient(
@@ -341,7 +363,7 @@ async function upsertFactLocked(
       ]
     );
     await supersedeReplaceables(client, userId, input, textDup[0].id);
-    return;
+    return textDup[0].id;
   }
 
   const { rows: inserted } = await queryClient<{ id: string }>(
@@ -370,6 +392,7 @@ async function upsertFactLocked(
     ]
   );
   if (inserted[0]) await supersedeReplaceables(client, userId, input, inserted[0].id);
+  return inserted[0]?.id ?? null;
 }
 
 export async function upsertFact(userId: string, input: FactInput): Promise<boolean> {
@@ -384,6 +407,7 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
   const salience = clampSalience(input.salience);
   const embedding = await embedOne(fact);
 
+  let storedFactId: string | null = null;
   await withTransaction(async (client) => {
     await queryClient(client, `SELECT pg_advisory_xact_lock($1, hashtext($2))`, [
       FACT_WRITE_LOCK_CLASS,
@@ -391,9 +415,34 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
     ]);
     // Re-check tombstone under lock to shrink the race window.
     if (await isFactTombstoned(userId, fact)) return;
-    await upsertFactLocked(client, userId, input, salience, embedding);
+    storedFactId = await upsertFactLocked(client, userId, input, salience, embedding);
     await pruneUser(client, userId);
   });
+  if (storedFactId && (input.evidenceQuote || input.sourceEntityId)) {
+    await query(
+      `UPDATE user_facts
+          SET evidence_quote = COALESCE($3, evidence_quote),
+              source_entity_id = COALESCE($4::uuid, source_entity_id),
+              source_captured_at = NOW()
+        WHERE user_id = $1 AND id = $2`,
+      [
+        userId,
+        storedFactId,
+        input.evidenceQuote?.trim().slice(0, 400) || null,
+        input.sourceEntityId ?? null,
+      ]
+    );
+    await query(
+      `INSERT INTO user_memory_activity (user_id, fact_id, source_entity_id, activity_type)
+       SELECT $1, $2, $3::uuid, 'learned'
+        WHERE NOT EXISTS (
+          SELECT 1 FROM user_memory_activity
+           WHERE user_id = $1 AND fact_id = $2
+             AND created_at > NOW() - INTERVAL '10 minutes'
+        )`,
+      [userId, storedFactId, input.sourceEntityId ?? null]
+    );
+  }
   return true;
 }
 
@@ -711,6 +760,97 @@ export async function listFacts(userId: string, limit = 100): Promise<UserFact[]
     [userId, limit]
   );
   return rows.map(mapRow);
+}
+
+export async function listFactTimeline(userId: string, limit = 200): Promise<UserFact[]> {
+  const { rows } = await query<FactRow>(
+    `SELECT ${FACT_COLUMNS}
+       FROM user_facts
+      WHERE user_id = $1 AND status IN ('active', 'superseded')
+      ORDER BY COALESCE(valid_from, source_captured_at, created_at) DESC
+      LIMIT $2`,
+    [userId, limit]
+  );
+  return rows.map(mapRow);
+}
+
+export async function confirmFact(
+  userId: string,
+  factId: string
+): Promise<UserFact | null> {
+  const { rows } = await query<FactRow>(
+    `UPDATE user_facts
+        SET last_confirmed_at = NOW(),
+            confirmation_count = confirmation_count + 1,
+            salience = LEAST(5, salience + 1),
+            updated_at = NOW()
+      WHERE user_id = $1 AND id = $2 AND status = 'active'
+      RETURNING ${FACT_COLUMNS}`,
+    [userId, factId]
+  );
+  if (!rows[0]) return null;
+  await query(
+    `INSERT INTO user_memory_activity (user_id, fact_id, source_entity_id, activity_type)
+     VALUES ($1, $2, $3, 'confirmed')`,
+    [userId, factId, rows[0].source_entity_id ?? null]
+  );
+  return mapRow(rows[0]);
+}
+
+export async function changeFact(
+  userId: string,
+  factId: string,
+  nextFact: string,
+  eventDate?: string | null
+): Promise<UserFact | null> {
+  const fact = nextFact.trim();
+  if (fact.length < 6 || isInstructionLikeFact(fact)) return null;
+  const { rows: oldRows } = await query<FactRow>(
+    `SELECT ${FACT_COLUMNS} FROM user_facts
+      WHERE user_id = $1 AND id = $2 AND status = 'active' LIMIT 1`,
+    [userId, factId]
+  );
+  const old = oldRows[0] ? mapRow(oldRows[0]) : null;
+  if (!old) return null;
+
+  const stored = await upsertFact(userId, {
+    fact,
+    category: old.category,
+    eventDate: eventDate ?? old.eventDate,
+    salience: Math.max(3, old.salience),
+    predicateKey: old.predicateKey,
+    entityKey: old.entityKey,
+    subjectKey: old.subjectKey,
+    operation: "replace",
+    sensitivity: old.sensitivity === "sensitive" ? "sensitive" : "normal",
+    sourceCharacter: "user",
+    sourceType: "user",
+    allowSensitive: true,
+    forceNewVersion: true,
+  });
+  if (!stored) return null;
+  const { rows: nextRows } = await query<FactRow>(
+    `SELECT ${FACT_COLUMNS} FROM user_facts
+      WHERE user_id = $1 AND status = 'active'
+        AND lower(regexp_replace(fact, '\\s+', ' ', 'g')) =
+            lower(regexp_replace($2, '\\s+', ' ', 'g'))
+      ORDER BY created_at DESC LIMIT 1`,
+    [userId, fact.slice(0, 600)]
+  );
+  const next = nextRows[0] ? mapRow(nextRows[0]) : null;
+  if (!next) return null;
+  await query(
+    `UPDATE user_facts
+        SET status = 'superseded', valid_to = NOW(), superseded_by = $3, updated_at = NOW()
+      WHERE user_id = $1 AND id = $2 AND id <> $3 AND status = 'active'`,
+    [userId, factId, next.id]
+  );
+  await query(
+    `INSERT INTO user_memory_activity (user_id, fact_id, source_entity_id, activity_type)
+     VALUES ($1, $2, $3, 'changed')`,
+    [userId, next.id, next.sourceEntityId ?? null]
+  );
+  return next;
 }
 
 export async function deleteFact(userId: string, factId: string): Promise<boolean> {

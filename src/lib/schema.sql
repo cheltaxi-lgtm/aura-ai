@@ -507,6 +507,9 @@ CREATE TABLE IF NOT EXISTS user_facts (
   embedding_model  TEXT,
   embedding_version TEXT,
   consent_version  TEXT,
+  evidence_quote   TEXT,
+  source_captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  confirmation_count INTEGER NOT NULL DEFAULT 0,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -534,6 +537,9 @@ CREATE TABLE IF NOT EXISTS user_memory_preferences (
   auto_capture_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   sensitive_capture_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   event_reminders_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  memory_initial_choice TEXT CHECK (memory_initial_choice IN ('enabled', 'disabled')),
+  memory_initial_choice_at TIMESTAMPTZ,
+  memory_initial_prompt_version TEXT,
   consent_version TEXT,
   consent_granted_at TIMESTAMPTZ,
   consent_revoked_at TIMESTAMPTZ,
@@ -552,6 +558,9 @@ CREATE TABLE IF NOT EXISTS memory_extraction_jobs (
   attempts INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_error TEXT,
+  extracted_count INTEGER NOT NULL DEFAULT 0,
+  stored_count INTEGER NOT NULL DEFAULT 0,
+  grounding_rejected_count INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   completed_at TIMESTAMPTZ
 );
@@ -564,6 +573,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_extraction_jobs_pending_msg
 CREATE INDEX IF NOT EXISTS idx_memory_extraction_jobs_pending
   ON memory_extraction_jobs (status, next_attempt_at ASC)
   WHERE status IN ('pending', 'running');
+
+CREATE TABLE IF NOT EXISTS user_memory_activity (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  fact_id UUID REFERENCES user_facts(id) ON DELETE CASCADE,
+  source_entity_id UUID,
+  activity_type TEXT NOT NULL DEFAULT 'learned',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  seen_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_memory_activity_unseen
+  ON user_memory_activity (user_id, created_at DESC)
+  WHERE seen_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS user_memory_tombstones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
