@@ -5,11 +5,12 @@ export type LandingSocialProofStat = {
   live?: boolean;
 };
 
-const LAUNCH = { year: 2024, month: 2, day: 12 };
+/** Старт публичного запуска — масштаб счётчиков под сайт ~1 месяца. */
+const LAUNCH = { year: 2026, month: 6, day: 18 };
 const MOSCOW_TZ = "Europe/Moscow";
 
 /** Трафик по часам (МСК): ночью тихо, пик 19–22. */
-const HOUR_ONLINE_BASE = [3, 2, 2, 1, 1, 2, 3, 5, 7, 9, 10, 11, 12, 13, 13, 14, 15, 16, 17, 16, 14, 11, 8, 5];
+const HOUR_ONLINE_BASE = [2, 1, 1, 1, 1, 1, 2, 3, 4, 5, 5, 6, 6, 7, 7, 7, 8, 9, 9, 8, 7, 5, 4, 3];
 
 type MoscowParts = {
   year: number;
@@ -94,8 +95,8 @@ function daysSinceLaunch(year: number, month: number, day: number): number {
 function dailySpreadCap(parts: MoscowParts): number {
   const weekend = parts.weekday === 0 || parts.weekday === 6;
   const seed = hash32(dateKey(parts.year, parts.month, parts.day));
-  // Выше дневной объём → счётчик заметно тикает каждые несколько минут днём.
-  return seededInt(seed, weekend ? 160 : 110, weekend ? 260 : 200);
+  // Дневной объём для молодого сайта: тик каждые несколько минут, без разгона в десятки тысяч.
+  return seededInt(seed, weekend ? 38 : 24, weekend ? 62 : 44);
 }
 
 /** Доля дневного объёма к текущему моменту (утро мало, вечер больше). */
@@ -125,7 +126,7 @@ function cumulativeAnswersAtMidnight(parts: MoscowParts): number {
   if (cached !== undefined) return cached;
 
   const dayCount = daysSinceLaunch(parts.year, parts.month, parts.day);
-  let total = 2_640;
+  let total = 96;
 
   for (let i = 0; i < dayCount; i += 1) {
     const launchUtc = Date.UTC(LAUNCH.year, LAUNCH.month - 1, LAUNCH.day);
@@ -136,7 +137,7 @@ function cumulativeAnswersAtMidnight(parts: MoscowParts): number {
     const dow = dt.getUTCDay();
     const weekend = dow === 0 || dow === 6;
     const seed = hash32(dateKey(y, m, d));
-    total += seededInt(seed, weekend ? 34 : 19, weekend ? 71 : 52);
+    total += seededInt(seed, weekend ? 28 : 16, weekend ? 48 : 34);
   }
 
   cumulativeAnswersCache.set(todayKey, total);
@@ -154,7 +155,7 @@ function totalAnswersNow(parts: MoscowParts): number {
  */
 function totalUsersNow(answers: number, parts: MoscowParts): number {
   const seed = hash32(dateKey(parts.year, parts.month, parts.day) + 91);
-  const ratio = 0.58 + (seed % 700) / 10_000;
+  const ratio = 0.62 + (seed % 600) / 10_000;
   return Math.max(1, Math.floor(answers * ratio));
 }
 
@@ -162,9 +163,9 @@ function onlineNow(parts: MoscowParts): number {
   const daySeed = hash32(dateKey(parts.year, parts.month, parts.day));
   const hourSeed = hash32(daySeed + parts.hour);
   const minuteSwing = seededInt(hash32(hourSeed + Math.floor(parts.minute / 5)), -1, 1);
-  const daySwing = seededInt(daySeed, -2, 2);
-  const base = HOUR_ONLINE_BASE[parts.hour] ?? 6;
-  return clamp(base + daySwing + minuteSwing, 2, 19);
+  const daySwing = seededInt(daySeed, -1, 1);
+  const base = HOUR_ONLINE_BASE[parts.hour] ?? 4;
+  return clamp(base + daySwing + minuteSwing, 1, 12);
 }
 
 function parseGrouped(value: string): number {
@@ -172,7 +173,17 @@ function parseGrouped(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Merge real session counts from /api/stats/public when available (floor, not freeze). */
+/**
+ * Подмешиваем реальные счётчики только как мягкий пол.
+ * Если в БД накопились тестовые/гостевые сессии и число «взрывается»,
+ * оставляем синтетический масштаб молодого сайта.
+ */
+function blendWithReal(synthetic: number, real: number): number {
+  if (real <= 0) return synthetic;
+  if (real > synthetic * 2) return synthetic;
+  return Math.max(synthetic, real);
+}
+
 export function mergeLandingSocialProofWithPublicStats(
   stats: LandingSocialProofStat[],
   sessions: number,
@@ -181,12 +192,10 @@ export function mergeLandingSocialProofWithPublicStats(
   if (sessions <= 0 && users <= 0) return stats;
   return stats.map((stat) => {
     if (stat.key === "total" && sessions > 0) {
-      const synthetic = parseGrouped(stat.value);
-      return { ...stat, value: formatGrouped(Math.max(sessions, synthetic)) };
+      return { ...stat, value: formatGrouped(blendWithReal(parseGrouped(stat.value), sessions)) };
     }
     if (stat.key === "users" && users > 0) {
-      const synthetic = parseGrouped(stat.value);
-      return { ...stat, value: formatGrouped(Math.max(users, synthetic)) };
+      return { ...stat, value: formatGrouped(blendWithReal(parseGrouped(stat.value), users)) };
     }
     return stat;
   });
