@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { markAppShellOnDocument, shouldUseAppShellClient, isAppShellSplashDone } from "@/lib/app-shell";
+import {
+  clearStaleDesktopAppShell,
+  markAppShellOnDocument,
+  shouldUseAppShellClient,
+  isAppShellSplashDone,
+} from "@/lib/app-shell";
 import { registerAppShellRouter } from "@/lib/app-shell-router-bus";
 import { resolveAppShellDeepLink } from "@/lib/allowed-hosts";
 import { checkAndroidAppUpdate, dismissOptionalUpdate } from "@/lib/app-shell-update-check";
@@ -54,6 +59,8 @@ export default function AppShellBridge() {
   }, [router]);
 
   useEffect(() => {
+    // Desktop browsers: drop sticky app-shell so the legal/VK footer stays visible.
+    clearStaleDesktopAppShell();
     if (shouldUseAppShellClient()) markAppShellOnDocument();
 
     let backListener: { remove: () => void } | undefined;
