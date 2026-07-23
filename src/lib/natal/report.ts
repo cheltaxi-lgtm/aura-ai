@@ -509,11 +509,38 @@ export function validateNatalReport(
   };
 }
 
-export function natalReportToPlainText(report: NatalReport): string {
-  return report.sections
-    .map((section) => `${section.title}\n${section.claims.map((claim) => claim.text).join("\n\n")}`)
-    .concat([`Методология\n${report.methodology}`, `Важно\n${report.disclaimer}`])
+/** One report section as mystic markdown (same pipeline as spread readings). */
+export function formatNatalSectionForDisplay(section: {
+  title: string;
+  claims: Array<{ text: string }>;
+}): string {
+  const title = section.title.trim();
+  const body = section.claims
+    .map((claim) => claim.text.trim())
+    .filter(Boolean)
     .join("\n\n");
+  if (!title && !body) return "";
+  if (!title) return body;
+  if (!body) return `## ${title}`;
+  return `## ${title}\n\n${body}`;
+}
+
+/** Full structured natal report as premium reading markdown. */
+export function formatNatalReportForDisplay(report: NatalReport): string {
+  const sections = report.sections
+    .map((section) => formatNatalSectionForDisplay(section))
+    .filter(Boolean);
+  const footer = [
+    report.methodology.trim()
+      ? `## Методология\n\n${report.methodology.trim()}`
+      : "",
+    report.disclaimer.trim() ? `## Важно\n\n${report.disclaimer.trim()}` : "",
+  ].filter(Boolean);
+  return [...sections, ...footer].join("\n\n---\n\n");
+}
+
+export function natalReportToPlainText(report: NatalReport): string {
+  return formatNatalReportForDisplay(report);
 }
 
 export function buildNatalReportJsonInstructions(

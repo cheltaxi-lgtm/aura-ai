@@ -17,7 +17,7 @@ import type { CompatibilityEvidence, CompatibilityReport } from "@/lib/natal/com
 import type { ClientSynastryPayload } from "@/lib/natal/synastry";
 import { useAuth } from "@/lib/useAuth";
 import { useRuneConfig } from "@/lib/useRuneConfig";
-import PremiumReadingBody from "@/components/PremiumReadingBody";
+import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
 import CompositeWheel from "./CompositeWheel";
 import NatalSynastryWheel from "./NatalSynastryWheel";
 import ReportShareControls from "./ReportShareControls";
@@ -739,15 +739,26 @@ function CompatibilityViewer({
 
     {record.report ? <div className="mt-7 space-y-4">
       <h4 className="font-display text-xl text-amber-50">Персональный отчёт</h4>
-      {record.report.sections.map((section) => <article key={section.key} className="rounded-xl border border-white/8 bg-white/[0.025] p-4">
-        <h5 className="font-display text-lg text-rose-50">{section.title}</h5>
-        <div className="mt-3 space-y-3">{section.claims.map((claim, index) =>
-          <div key={`${section.key}-${index}`}>
-            <PremiumReadingBody content={claim.text} className="text-sm text-white/65" />
-          {claim.evidenceIds?.length ? <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className="text-[10px] uppercase tracking-wide text-white/30">Основано на</span>{claim.evidenceIds.map((id) => <button type="button" key={id} onClick={() => focusEvidence(id)} className="rounded-full border border-rose-300/20 bg-rose-300/[0.07] px-2 py-1 text-[11px] text-rose-100/75 hover:bg-rose-300/[0.13]">{evidenceById.get(id) ?? id}</button>)}</div> : null}</div>
-        )}</div>
-      </article>)}
-      <p className="text-xs leading-5 text-white/35">{record.report.disclaimer}</p>
+      <NatalStructuredReportView
+        sections={record.report.sections}
+        evidence={[
+          ...(record.evidence?.dimensions ?? []).map((item) => ({
+            id: `dimension:${item.key}`,
+            label: item.label,
+            deepLink: `dimension:${item.key}`,
+          })),
+          ...(record.evidence?.crossAspects ?? []).map((aspect) => ({
+            id: aspect.id,
+            label: evidenceById.get(aspect.id) ?? aspect.label,
+            deepLink: aspect.id,
+          })),
+        ]}
+        onEvidence={focusEvidence}
+        methodology={null}
+        disclaimer={record.report.disclaimer}
+        evidenceTone="rose"
+        showMethodology={Boolean(record.report.disclaimer)}
+      />
       <div className="flex flex-wrap gap-3">
         <Link href={`/cabinet/astrology/compatibility/${record.id}/print`} className="btn-luxe btn-luxe--sm btn-luxe--ghost">Печать / PDF</Link>
         {isOwner ? <button type="button" disabled={busy !== null} onClick={onDelete}

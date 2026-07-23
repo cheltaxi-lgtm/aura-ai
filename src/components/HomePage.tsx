@@ -3312,6 +3312,7 @@ export default function HomePage({
                           onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
                           onInsufficientRunes={landingInsufficientRunes}
                           onStartRitual={handleDailyStartRitual}
+                          isUnlimited={Boolean(session?.isUnlimited)}
                           onTalkToMaster={(masterId) => {
                             setEnergyFlowMasterId(masterId);
                             setShowSessionFlow(true);

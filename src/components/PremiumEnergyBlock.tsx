@@ -53,6 +53,8 @@ export interface PremiumEnergyBlockProps {
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
   /** Open in-app ritual flow with recommended type from daily reading. */
   onStartRitual?: (ritualType: RitualType) => void;
+  /** Unlimited accounts skip DAILY_EXTENDED charge — hide fake price. */
+  isUnlimited?: boolean;
   /** @deprecated Footer only closes modal — kept for call-site compatibility. */
   onTalkToMaster?: (masterId: string) => void;
   /** @deprecated Footer only closes modal — kept for call-site compatibility. */
@@ -88,9 +90,11 @@ export default function PremiumEnergyBlock({
   onAutoOpenHandled,
   onInsufficientRunes,
   onStartRitual,
+  isUnlimited = false,
 }: PremiumEnergyBlockProps) {
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
-  const extendedCost = runeCost("DAILY_EXTENDED");
+  const extendedCost = isUnlimited ? 0 : runeCost("DAILY_EXTENDED");
+  const showExtendedPrice = runeConfig.enabled && !isUnlimited;
   const [loaded, setLoaded] = useState(false);
   const [drawnToday, setDrawnToday] = useState(false);
   const [lockedToday, setLockedToday] = useState(false);
@@ -435,7 +439,9 @@ export default function PremiumEnergyBlock({
                         <span className="block font-medium">Расширенный</span>
                         <span className="mt-0.5 block text-[10px] opacity-80">
                           7 сфер ·{" "}
-                          {runeConfig.enabled ? (
+                          {isUnlimited ? (
+                            "без списания"
+                          ) : showExtendedPrice ? (
                             <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />
                           ) : (
                             "10 рун"
@@ -497,7 +503,9 @@ export default function PremiumEnergyBlock({
                       className="mt-2 w-full rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/15 disabled:opacity-50"
                     >
                       Расширить до 7 карт
-                      {runeConfig.enabled ? (
+                      {isUnlimited ? (
+                        " · без списания"
+                      ) : showExtendedPrice ? (
                         <>
                           {" · "}
                           <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />

@@ -19,6 +19,7 @@ import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
 import { buildLoginHref } from "@/lib/post-auth-return";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
+import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
 import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   aspectRows, bigThree, methodology, midpointRows, patternRows,
@@ -1353,38 +1354,23 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
 }
 
 function StructuredReport({ report, evidence, onEvidence }: { report: NatalReport; evidence: NatalEvidence[]; onEvidence: (target: string) => void }) {
-  const byId = new Map(evidence.map((item) => [item.id, item]));
-  return <article className="min-w-0">
-    <div className="divide-y divide-white/[0.07]">
-    {report.sections.map((section) => <section key={section.key} className="min-w-0 py-6 first:pt-0">
-      <h3 className="font-display text-xl leading-snug text-amber-50">{section.title}</h3>
-      <div className="mt-3 space-y-5">{section.claims.map((claim, index) => <div key={`${section.key}-${index}`}>
-        <PremiumReadingBody content={claim.text} className="text-white/75" />
-        <div className="mt-3 flex flex-wrap items-center gap-1.5"><span className="text-[10px] uppercase tracking-wide text-white/30">Основано на</span>
-          {claim.evidenceIds.map((id) => {
-            const item = byId.get(id);
-            if (!item) return null;
-            return <button type="button" key={id} title={`${item.value}${item.uncertainty ? ` · ${item.uncertainty}` : ""}`}
-              onClick={() => onEvidence(item.deepLink)}
-              className="rounded-full border border-amber-300/20 bg-amber-300/[0.07] px-2.5 py-1 text-[11px] text-amber-100/75 transition hover:bg-amber-300/[0.13]">
-              Показать расчёт: {item.label} · {item.confidence === "high" ? "полнота высокая" : item.confidence === "medium" ? "полнота средняя" : "полнота ограничена"}
-            </button>;
-          })}
-        </div>
-      </div>)}</div>
-    </section>)}
-    </div>
-    <aside className="rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-4 text-xs leading-5 text-white/45">
-      <p><span className="text-cyan-100/65">Методология:</span> {report.methodology}</p>
-      <p className="mt-2">Метка полноты показывает, насколько полны исходные данные и расчёт; она не подтверждает истинность интерпретации.</p>
-      <p className="mt-2"><span className="text-amber-100/65">Ограничения:</span> {report.disclaimer}</p>
-      {evidence.some((item) => item.uncertainty) ? <details className="mt-2"><summary className="cursor-pointer text-white/55">Ограничения расчёта</summary><ul className="mt-2 space-y-1">{evidence.filter((item) => item.uncertainty).slice(0, 12).map((item) => <li key={item.id}>• {item.label}: {item.uncertainty}</li>)}</ul></details> : null}
-    </aside>
-  </article>;
+  return (
+    <NatalStructuredReportView
+      sections={report.sections}
+      evidence={evidence}
+      onEvidence={onEvidence}
+      methodology={report.methodology}
+      disclaimer={report.disclaimer}
+    />
+  );
 }
 
 function Interpretation({ text }: { text: string }) {
-  return <PremiumReadingBody content={text} className="text-sm text-white/70" />;
+  return (
+    <div className="master-message-bubble natal-structured-report__body rounded-2xl border border-amber-300/15 bg-gradient-to-b from-white/[0.04] to-transparent px-4 py-5 sm:px-5 sm:py-6">
+      <PremiumReadingBody content={text} />
+    </div>
+  );
 }
 function UnknownTimeWarning({ context }: { context?: string }) { return <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.07] p-4 text-sm text-amber-50"><p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Ограниченная точность без времени рождения</p><p className="mt-1 text-xs leading-5 text-amber-100/60">{context ? `${context}: ` : ""}Асцендент, середина неба, дома и лагна скрыты; асцендент девятой карты (навамша) также исключён. Положения быстрых объектов и привязка периодов могут иметь дополнительную неопределённость.</p></div>; }
 function Panel({ title, eyebrow, className = "", children }: { title: string; eyebrow: string; className?: string; children: React.ReactNode }) {

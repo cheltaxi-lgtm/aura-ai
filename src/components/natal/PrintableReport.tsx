@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
+import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
 import PrintButton from "./PrintButton";
 
 type Section = { key: string; title: string; claims: Array<{ text: string; evidenceIds?: string[] }> };
@@ -37,21 +38,27 @@ export default function PrintableReport({
         {evidence.length ? <li><a href="#evidence">Приложение: расчётные данные</a></li> : null}
       </ol>
     </nav>
-    {sections.map((section) => <section key={section.key} id={section.key} data-print-section="true" className="mb-7">
-      <h2 className="text-xl font-semibold">{section.title}</h2>
-      {section.claims.map((claim, index) => <article key={index} className="mt-3">
-        <PremiumReadingBody content={claim.text} variant="print" />
-        {claim.evidenceIds?.length ? <p className="mt-1 text-xs text-black/55">Основано на рассчитанных данных: {claim.evidenceIds.length}</p> : null}
-      </article>)}
-    </section>)}
+    {sections.length ? (
+      <div className="space-y-6">
+        {sections.map((section) => (
+          <div key={section.key} id={section.key} data-print-section="true">
+            <NatalStructuredReportView
+              sections={[section]}
+              evidence={evidence}
+              variant="print"
+              showMethodology={false}
+            />
+          </div>
+        ))}
+      </div>
+    ) : null}
     {legacyContent ? (
       <section data-legacy-printable="true" className="leading-7">
         <PremiumReadingBody content={legacyContent} variant="print" />
       </section>
     ) : null}
     {methodology ? <section id="methodology" data-print-section="true" className="mt-8 border-t border-black/20 pt-5">
-      <h2 className="text-xl font-semibold">Методология</h2><p className="mt-3 leading-7">{methodology}</p>
-      {disclaimer ? <p className="mt-3 text-sm">{disclaimer}</p> : null}
+      <PremiumReadingBody content={`## Методология\n\n${methodology}${disclaimer ? `\n\n## Важно\n\n${disclaimer}` : ""}`} variant="print" />
     </section> : null}
     {evidence.length ? <section id="evidence" data-evidence-appendix="true" className="mt-8 border-t border-black/20 pt-5">
       <h2 className="text-xl font-semibold">Приложение: расчётные данные</h2>
