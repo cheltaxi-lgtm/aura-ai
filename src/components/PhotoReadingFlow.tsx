@@ -278,42 +278,6 @@ function imageCacheKey(data: { base64: string; mimeType: string }): string {
   return `${data.mimeType}:${data.base64.length}:${data.base64.slice(0, 64)}`;
 }
 
-async function readPhotoStream(
-  response: Response,
-  onToken: (token: string) => void
-): Promise<Record<string, unknown>> {
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("No stream body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let donePayload: Record<string, unknown> | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const data = line.slice(6).trim();
-      if (data === "[DONE]") continue;
-      try {
-        const json = JSON.parse(data) as Record<string, unknown>;
-        if (typeof json.token === "string") onToken(json.token);
-        if (json.type === "done") donePayload = json;
-      } catch {
-        /* skip malformed chunk */
-      }
-    }
-  }
-
-  if (!donePayload) throw new Error("Stream ended without done payload");
-  return donePayload;
-}
-
 export default function PhotoReadingFlow({
   open,
   onClose,
@@ -416,6 +380,44 @@ export default function PhotoReadingFlow({
     sessionStorage.setItem("zovus_photo_rev", PHOTO_UPLOAD_REV);
     trackPhotoReadingPhase("open", { mode: initialMode });
   }, [open, initialMode]);
+
+  useEffect(() => {
+    if (!open || !isLoggedIn) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { resumeStoredOrActiveAsyncJob } = await import(
+          "@/lib/client/wait-for-async-job"
+        );
+        const data = await resumeStoredOrActiveAsyncJob({
+          storageKey: "aura:photo-reading-active-job",
+          kind: "photo_reading",
+        });
+        if (cancelled || !data) return;
+        const analysis = String(data.analysis ?? data.reply ?? "");
+        if (!analysis.trim()) return;
+        setStep("result");
+        setStreamingAnalysis(analysis);
+        setResult({
+          analysis,
+          detectedCards: (data.detectedCards as string[]) ?? [],
+          deckType: data.deckType as string | undefined,
+          spreadType: data.spreadType as string | undefined,
+          saved: Boolean(data.saved),
+          historyId: data.historyId as string | undefined,
+        });
+        if (typeof data.runeBalance === "number") {
+          onRuneBalanceChange?.(data.runeBalance as number);
+        }
+        if (data.saved || data.historyId) onSaved?.();
+      } catch {
+        /* keep UI on current step */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isLoggedIn, onRuneBalanceChange, onSaved]);
 
   useEffect(() => {
     if (!open || !isLoggedIn) return;
@@ -1038,117 +1040,51 @@ export default function PhotoReadingFlow({
       onSpreadRitualStart?.(redrawSpread);
       ritualActive = true;
 
-      const res = await fetch(PHOTO_STREAM_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify({
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data } = await postWithAsyncJob({
+        url: PHOTO_STREAM_URL,
+        storageKey: "aura:photo-reading-active-job",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: {
           characterId: masterId,
           question: question.trim() || undefined,
           sessionId,
           confirmedSpread: redrawSpread,
           idempotencyKey,
-        }),
+        },
       });
 
-      const contentType = res.headers.get("content-type") ?? "";
-      if (contentType.includes("application/json")) {
-        const data = await res.json();
-
-        if (res.status === 429) {
-          setStep("confirm");
-          setError("Слишком много фото-чтений. Подождите минуту.");
-          return;
-        }
-
-        if (res.status === 402) {
-          setStep("confirm");
-          const parsed = parseInsufficientRunes(data);
-          if (parsed) {
-            onInsufficientRunes?.({ balance: parsed.balance, required: parsed.required });
-            onOpenPaywall?.();
-            setError(`Недостаточно рун. Не хватает ${parsed.shortage} ᚢ.`);
-            return;
-          }
-        }
-
-        if (res.status === 422 && data.error === "INCOMPLETE_SPREAD") {
-          setStep("confirm");
-          setError(
-            pickUserFacingError(data, "Добавьте хотя бы один символ в расклад.")
-          );
-          return;
-        }
-
-        if (!res.ok) {
-          setStep("confirm");
-          setError(pickUserFacingError(data, "Не удалось расшифровать расклад"));
-          return;
-        }
-
-        const nextResult = {
-          analysis: String(data.analysis ?? ""),
-          detectedCards: (data.detectedCards as string[]) ?? [],
-          deckType: data.deckType as string | undefined,
-          spreadType: data.spreadType as string | undefined,
-          saved: Boolean(data.saved),
-          historyId: data.historyId as string | undefined,
-        };
-        setResult(nextResult);
-        setStreamingAnalysis(nextResult.analysis);
-
-        if (typeof data.runeBalance === "number") {
-          onRuneBalanceChange?.(data.runeBalance);
-        }
-        if (data.firstPhotoDiscount) {
-          setPhotoPricing((prev) =>
-            prev ? { ...prev, firstPhotoDiscount: false, effectiveCost: prev.baseCost } : prev
-          );
-        }
-        if (data.saved || data.historyId) onSaved?.();
-        trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
-
-        if (onContinueChat && nextResult.analysis && !data.cached) {
-          if (ritualActive) {
-            onSpreadRitualEnd?.();
-            ritualActive = false;
-          }
-          await onContinueChat(masterId, {
-            analysis: nextResult.analysis,
-            question: question.trim() || undefined,
-            detectedCards: nextResult.detectedCards,
-            redrawSpread: redrawSpread ?? undefined,
-            sessionId: data.sessionId as string | undefined,
-            historyId: nextResult.historyId,
-          });
-          return;
-        }
-        return;
-      }
-
-      if (!res.ok) {
+      if (resStatus === 429) {
         setStep("confirm");
-        setError("Не удалось расшифровать расклад");
-        trackPhotoReadingPhase("interpret_fail");
+        setError("Слишком много фото-чтений. Подождите минуту.");
         return;
       }
 
-      trackPhotoReadingPhase("interpret_stream");
-      let streamedText = "";
-      const data = await readPhotoStream(res, (token) => {
-        streamedText += token;
-        setStreamingAnalysis(streamedText);
-      });
+      if (resStatus === 402) {
+        setStep("confirm");
+        const parsed = parseInsufficientRunes(data);
+        if (parsed) {
+          onInsufficientRunes?.({ balance: parsed.balance, required: parsed.required });
+          onOpenPaywall?.();
+          setError(`Недостаточно рун. Не хватает ${parsed.shortage} ᚢ.`);
+          return;
+        }
+      }
 
-      if (data.llmFailed || (!data.reply && !data.analysis && !streamedText.trim())) {
+      if (resStatus === 422 && data.error === "INCOMPLETE_SPREAD") {
+        setStep("confirm");
+        setError(pickUserFacingError(data, "Добавьте хотя бы один символ в расклад."));
+        return;
+      }
+
+      if (resStatus >= 500 || data.code === "generation_failed" || data.llmFailed) {
         setStep("confirm");
         setStreamingAnalysis("");
         setError(
-          data.runesRefunded || data.refunded
-            ? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
-            : "Не удалось получить трактовку. Попробуйте ещё раз."
+          pickUserFacingError(
+            data,
+            "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+          )
         );
         if (typeof data.runeBalance === "number") {
           onRuneBalanceChange?.(data.runeBalance as number);
@@ -1157,7 +1093,21 @@ export default function PhotoReadingFlow({
         return;
       }
 
-      const analysis = String(data.reply ?? data.analysis ?? streamedText);
+      if (resStatus >= 400) {
+        setStep("confirm");
+        setError(pickUserFacingError(data, "Не удалось расшифровать расклад"));
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      const analysis = String(data.analysis ?? data.reply ?? "");
+      if (!analysis.trim()) {
+        setStep("confirm");
+        setError("Не удалось получить трактовку. Попробуйте ещё раз.");
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
       const nextResult = {
         analysis,
         detectedCards: (data.detectedCards as string[]) ?? [],
@@ -1178,9 +1128,9 @@ export default function PhotoReadingFlow({
         );
       }
       if (data.saved || data.historyId) onSaved?.();
-      trackPhotoReadingPhase("interpret_done", { streamed: true });
+      trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
 
-      if (onContinueChat && analysis) {
+      if (onContinueChat && analysis && !data.cached) {
         if (ritualActive) {
           onSpreadRitualEnd?.();
           ritualActive = false;
@@ -1195,9 +1145,13 @@ export default function PhotoReadingFlow({
         });
         return;
       }
-    } catch {
+    } catch (err) {
       setStep("confirm");
-      setError("Ошибка сети. Попробуйте ещё раз.");
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Ошибка сети. Попробуйте ещё раз."
+      );
       trackPhotoReadingPhase("interpret_fail");
     } finally {
       setLoading(false);

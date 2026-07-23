@@ -144,17 +144,22 @@ export default function RitualGenerating({
       const timer = window.setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
 
       try {
-        const res = await fetch(`/api/ritual/${ritualId}/regenerate`, {
-          method: "POST",
+        const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+        const { status, data } = await postWithAsyncJob({
+          url: `/api/ritual/${ritualId}/regenerate`,
+          body: {},
+          storageKey: `aura:ritual-active-job:${ritualId}`,
           signal: controller.signal,
         });
-        const data = (await res.json()) as {
-          status?: string;
-          error?: string;
-          ritual?: { status?: string };
-          achievement?: RitualAchievementPayload | null;
-        };
-        return handleGenerationResult(data, res.ok);
+        return handleGenerationResult(
+          data as {
+            status?: string;
+            error?: string;
+            ritual?: { status?: string };
+            achievement?: RitualAchievementPayload | null;
+          },
+          status < 400
+        );
       } catch {
         return false;
       } finally {

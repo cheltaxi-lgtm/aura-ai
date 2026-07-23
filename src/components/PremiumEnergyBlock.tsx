@@ -185,6 +185,35 @@ export default function PremiumEnergyBlock({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { resumeStoredOrActiveAsyncJob } = await import(
+          "@/lib/client/wait-for-async-job"
+        );
+        const data = await resumeStoredOrActiveAsyncJob({
+          storageKey: "aura:daily-reading-active-job",
+          kind: "daily_reading,daily_extended",
+        });
+        if (cancelled || !data?.text || !Array.isArray(data.cards) || !data.cards.length) {
+          return;
+        }
+        setText(String(data.text));
+        setCards(data.cards as DailyCard[]);
+        setSystem((data.system as DeckSystem | null) ?? null);
+        setSpreadId(data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
+        setRevealed((data.cards as DailyCard[]).length);
+        setDrawnToday(true);
+      } catch {
+        /* ignore resume errors */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !drawing) setOpen(false);

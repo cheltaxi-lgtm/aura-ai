@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { requireProfileUserId } from "@/lib/require-auth";
+import {
+  profileAuthFailureResponse,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
+import {
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  trackWorkerJobCharged,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/async-job-lifecycle";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { isJointReadingEnabled } from "@/lib/settings";
@@ -22,19 +36,40 @@ import { normalizeSpreadId } from "@/lib/spreads";
 
 export async function POST(request: NextRequest) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Сервис временно недоступен. Попробуйте позже." },
+      { status: 503 }
+    );
   }
 
-  const authed = await requireProfileUserId();
-  if (!authed) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let authed: { auth: { sub: string }; profileUserId: string };
+  if (workerUserId) {
+    authed = { auth: { sub: workerUserId }, profileUserId: workerUserId };
+  } else {
+    const profileCtx = await resolveProfileUserContext();
+    if (!profileCtx.ok) {
+      return profileAuthFailureResponse(profileCtx.reason);
+    }
+    authed = {
+      auth: profileCtx.auth,
+      profileUserId: profileCtx.profileUserId,
+    };
   }
 
-  const rateLimited = await enforcePaidRouteRateLimit(authed.profileUserId, "joint_reading_create");
-  if (rateLimited) return rateLimited;
+  if (!workerUserId) {
+    const rateLimited = await enforcePaidRouteRateLimit(
+      authed.profileUserId,
+      "joint_reading_create"
+    );
+    if (rateLimited) return rateLimited;
+  }
 
   if (!(await isJointReadingEnabled())) {
-    return NextResponse.json({ error: "Совместные расклады временно отключены." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Совместные расклады временно отключены." },
+      { status: 403 }
+    );
   }
 
   let initiatorName: string | undefined;
@@ -42,26 +77,54 @@ export async function POST(request: NextRequest) {
   let spreadId: SpreadId = "love-7";
   let intentSlug = "sovmestimost-pary";
   let forceNew = false;
+  let asyncRequested = false;
+  let rawBody: Record<string, unknown> = {};
+  let idempotencyKey: string | undefined;
 
   try {
     const body = await request.json();
+    rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    asyncRequested = body.async === true;
     initiatorName = typeof body.initiatorName === "string" ? body.initiatorName : undefined;
     partnerName = typeof body.partnerName === "string" ? body.partnerName : undefined;
     if (typeof body.spreadId === "string") spreadId = normalizeSpreadId(body.spreadId);
     if (typeof body.intentSlug === "string") intentSlug = body.intentSlug.trim().slice(0, 80);
     forceNew = body.forceNew === true;
+    idempotencyKey =
+      typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim().slice(0, 80) : undefined;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   const profile = await getUserById(authed.profileUserId);
-  const resolvedInitiatorName = normalizeStoredDisplayName(
-    initiatorName?.trim() || profile?.name,
-    ""
-  ).slice(0, 40) || undefined;
+  const resolvedInitiatorName =
+    normalizeStoredDisplayName(initiatorName?.trim() || profile?.name, "").slice(0, 40) ||
+    undefined;
   const resolvedPartnerName = partnerName?.trim()
     ? normalizeStoredDisplayName(partnerName, partnerName.trim()).slice(0, 40)
     : undefined;
+
+  const partnerKey = [
+    spreadId,
+    intentSlug,
+    resolvedInitiatorName ?? "",
+    resolvedPartnerName ?? "",
+    forceNew ? "force" : "reuse",
+  ].join("|");
+
+  if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
+    return enqueuePaidAsyncJob({
+      userId: authed.profileUserId,
+      kind: "joint_reading",
+      payload: {
+        ...rawBody,
+        async: false,
+        partnerKey,
+        idempotencyKey: idempotencyKey || partnerKey,
+      },
+      bypassDeliveryGate: true,
+    });
+  }
 
   if (!forceNew) {
     const reconciled = await reconcileActiveJointInviteForCreation({
@@ -72,7 +135,7 @@ export async function POST(request: NextRequest) {
       partnerName: resolvedPartnerName,
     });
     if (reconciled.row && !reconciled.createFresh) {
-      return NextResponse.json({
+      const payload = {
         token: reconciled.row.token,
         url: buildJointReadingUrl(reconciled.row.token),
         intentSlug: reconciled.row.intent_slug,
@@ -80,7 +143,9 @@ export async function POST(request: NextRequest) {
         expiresAt: reconciled.row.expires_at,
         reused: true,
         configUpdated: reconciled.configUpdated,
-      });
+      };
+      await trackWorkerJobCompleted(request, payload);
+      return NextResponse.json(payload);
     }
   }
 
@@ -97,6 +162,7 @@ export async function POST(request: NextRequest) {
         action: "JOINT_READING",
         hasFullAccess: false,
       });
+      await trackWorkerJobCharged(request, charge.transactionId);
     }
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
@@ -116,7 +182,7 @@ export async function POST(request: NextRequest) {
       runeCharged: Boolean(charge),
     });
 
-    return NextResponse.json({
+    const payload = {
       token: invite.token,
       url: buildJointReadingUrl(invite.token),
       intentSlug: invite.intent_slug,
@@ -124,7 +190,9 @@ export async function POST(request: NextRequest) {
       expiresAt: invite.expires_at,
       reused: false,
       configUpdated: false,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (err) {
     if (charge) {
       await BillingService.rollbackCharge({
@@ -135,7 +203,12 @@ export async function POST(request: NextRequest) {
       }).catch((rollbackErr) => {
         console.error("Joint reading invite rune rollback failed:", rollbackErr);
       });
+      await trackWorkerJobRefunded(request);
     }
+    await trackWorkerJobFailed(request, "Joint reading create failed", {
+      refunded: Boolean(charge),
+      errorCode: "generation_failed",
+    });
     throw err;
   }
 }

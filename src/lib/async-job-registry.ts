@@ -242,6 +242,9 @@ export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "daily_reading",
   "daily_extended",
   "image_generate",
+  "photo_reading",
+  "ritual_generation",
+  "joint_reading",
 ];
 
 export function getJobKindConfig(kind: AsyncJobKind): PaidJobKindConfig {

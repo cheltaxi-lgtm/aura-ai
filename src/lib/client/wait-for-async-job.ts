@@ -12,6 +12,8 @@ export type WaitForAsyncJobOptions = {
 };
 
 export type AsyncJobPollResult = {
+  jobId?: string;
+  kind?: string;
   status: string;
   result?: Record<string, unknown>;
   error?: string;
@@ -203,10 +205,14 @@ export async function postWithAsyncJob(params: {
   body: Record<string, unknown>;
   storageKey: string;
   signal?: AbortSignal;
+  headers?: Record<string, string>;
 }): Promise<{ status: number; data: Record<string, unknown> }> {
   const res = await fetch(params.url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(params.headers ?? {}),
+    },
     credentials: "include",
     signal: params.signal,
     body: JSON.stringify({ ...params.body, async: true }),
@@ -223,4 +229,31 @@ export async function postWithAsyncJob(params: {
   }
 
   return { status: res.status, data };
+}
+
+/**
+ * Resume a job from localStorage or `/api/jobs/active`.
+ * Returns null when nothing active; otherwise polls to completion.
+ */
+export async function resumeStoredOrActiveAsyncJob(params: {
+  storageKey: string;
+  kind?: string;
+  signal?: AbortSignal;
+}): Promise<Record<string, unknown> | null> {
+  let jobId = readStoredAsyncJobId(params.storageKey);
+  if (!jobId && params.kind) {
+    const jobs = await fetchActiveAsyncJobs(params.kind);
+    const active = jobs.find(
+      (job) =>
+        typeof job.jobId === "string" &&
+        (job.status === "pending" || job.status === "running" || job.status === "claimed")
+    );
+    jobId = active?.jobId ?? null;
+  }
+  if (!jobId) return null;
+  return waitForAsyncJob({
+    jobId,
+    storageKey: params.storageKey,
+    signal: params.signal,
+  });
 }

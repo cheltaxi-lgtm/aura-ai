@@ -56,18 +56,18 @@ export default function JointReadingInvite() {
     setError(null);
     setConfigUpdated(false);
     try {
-      const res = await fetch("/api/joint-reading/create", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data: raw } = await postWithAsyncJob({
+        url: "/api/joint-reading/create",
+        storageKey: "aura:joint-reading-active-job",
+        body: {
           initiatorName: initiatorName.trim() || undefined,
           partnerName: partnerName.trim() || undefined,
           spreadId,
           intentSlug,
-        }),
+        },
       });
-      const data = (await res.json()) as {
+      const data = raw as {
         url?: string;
         token?: string;
         intentSlug?: string;
@@ -76,15 +76,15 @@ export default function JointReadingInvite() {
         reused?: boolean;
         configUpdated?: boolean;
       };
-      if (res.status === 402) {
+      if (resStatus === 402) {
         setError("Недостаточно рун для совместного расклада.");
         return;
       }
-      if (res.status === 403 && data.error) {
+      if (resStatus === 403 && data.error) {
         setError(data.error);
         return;
       }
-      if (!res.ok || !data.url) {
+      if (resStatus >= 400 || !data.url) {
         setError(
           data.error === "Unauthorized"
             ? "Войдите, чтобы создать приглашение."

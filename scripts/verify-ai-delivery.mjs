@@ -73,9 +73,9 @@ const photoStream = read("src/lib/photo-reading-stream.ts");
 assert.doesNotMatch(photoStream, /photoReadingFallback/);
 assert.match(photoStream, /Fail-closed/);
 
-const joint = read("src/lib/joint-reading-service.ts");
-assert.doesNotMatch(joint, /using plain fallback/);
-assert.match(joint, /joint_combined_ai_failed/);
+const jointService = read("src/lib/joint-reading-service.ts");
+assert.doesNotMatch(jointService, /using plain fallback/);
+assert.match(jointService, /joint_combined_ai_failed/);
 
 const numerolog = read("src/lib/numerology/numerolog-finalize.ts");
 assert.match(numerolog, /allowEngineFallback/);
@@ -106,5 +106,34 @@ assert.match(quarantine, /legacy_fallback/);
 
 const syncEnv = read("hosting/sync-async-jobs-env.sh");
 assert.match(syncEnv, /ASYNC_JOB_KINDS/);
+
+const photo = read("src/app/api/photo-reading/stream/route.ts");
+assert.match(photo, /enqueuePaidAsyncJob/);
+assert.match(photo, /createPhotoInterpretationJson/);
+assert.match(photo, /trackWorkerJobCompleted/);
+
+const ritual = read("src/app/api/ritual/[id]/regenerate/route.ts");
+assert.match(ritual, /enqueuePaidAsyncJob/);
+assert.match(ritual, /trackWorkerJobCompleted/);
+
+const joint = read("src/app/api/joint-reading/create/route.ts");
+assert.match(joint, /enqueuePaidAsyncJob/);
+assert.match(joint, /trackWorkerJobCompleted/);
+
+assert.match(registry, /photo_reading/);
+assert.match(registry, /ritual_generation/);
+assert.match(registry, /joint_reading/);
+
+const photoClient = read("src/components/PhotoReadingFlow.tsx");
+assert.match(photoClient, /postWithAsyncJob/);
+assert.match(photoClient, /resumeStoredOrActiveAsyncJob/);
+
+const ritualClient = read("src/components/ritual/RitualGenerating.tsx");
+assert.match(ritualClient, /postWithAsyncJob/);
+
+const jointClient = read("src/components/seo/JointReadingInvite.tsx");
+assert.match(jointClient, /postWithAsyncJob/);
+
+assert.match(client, /resumeStoredOrActiveAsyncJob/);
 
 console.log("verify-ai-delivery: OK");
