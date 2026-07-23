@@ -12,7 +12,6 @@ import {
   selectEvidenceForForecastPrompt,
 } from "@/lib/natal/evidence";
 import {
-  buildMinimalNatalReport,
   buildNatalReportJsonInstructions,
   natalReportToPlainText,
 } from "@/lib/natal/report";
@@ -234,33 +233,23 @@ ${timingEvidenceIds.join("\n")}`),
     });
     if (!generated.ok) {
       console.warn(
-        "[natal-chart] forecast validation failed, using evidence fallback:",
+        "[natal-chart] forecast validation failed:",
         generated.errors.slice(0, 12),
         `evidence=${promptEvidence.length}/${evidence.length}`
       );
-      const fallback = buildMinimalNatalReport(
-        evidence,
-        "western",
-        "forecast",
-        horizon,
-        FORECAST_METADATA_DEFAULTS
+      await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Не удалось получить AI-прогноз. Оплата возвращена.",
+        { refunded: true, errorCode: "invalid_model_report" }
       );
-      if (!fallback.ok) {
-        await rollback();
-        await trackWorkerJobFailed(
-          request,
-          "Не удалось подготовить прогноз по расчётным данным. Оплата возвращена.",
-          { refunded: true, errorCode: "invalid_model_report" }
-        );
-        return NextResponse.json(
-          {
-            error: "Не удалось подготовить прогноз по расчётным данным. Оплата возвращена.",
-            refunded: true,
-          },
-          { status: 502 }
-        );
-      }
-      generated = { ok: true, report: fallback.report, raw: null };
+      return NextResponse.json(
+        {
+          error: "Не удалось получить AI-прогноз. Оплата возвращена.",
+          refunded: true,
+        },
+        { status: 502 }
+      );
     }
 
     const report = generated.report;

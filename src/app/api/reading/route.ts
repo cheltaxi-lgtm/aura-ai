@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { ensureDb, query } from "@/lib/db";
 import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
-import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading, fallbackReading } from "@/lib/chat-prompts";
+import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading } from "@/lib/chat-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import {
@@ -923,34 +923,24 @@ export async function POST(request: NextRequest) {
         positionLabels,
         userMessage,
       });
-      reading =
-        sanitizeReadingForClient(
-          stripMemoryLeakFromReply(generated.text) || generated.text,
-          tarotCards.map((c) => c.name)
-        ) ||
-        fallbackReading(characterId, {
-          userName,
-          isPaid,
-          tarotCards,
-          intention: intention || null,
-        });
+      reading = sanitizeReadingForClient(
+        stripMemoryLeakFromReply(generated.text) || generated.text,
+        tarotCards.map((c) => c.name)
+      );
 
-      if (!isPaidSpreadTextComplete(reading, tarotCards.map((c) => c.name))) {
-        reading = fallbackReading(characterId, {
-          userName,
-          isPaid,
-          tarotCards,
-          intention: intention || null,
-        });
-      }
+      const readingOk =
+        generated.fromLlm &&
+        Boolean(reading?.trim()) &&
+        isPaidSpreadTextComplete(reading, tarotCards.map((c) => c.name));
 
-      if (!reading?.trim()) {
+      if (!readingOk) {
         if (billingCharge) {
           runeBalance = await BillingService.rollbackCharge({
             userId: authed.profileUserId,
             cost: billingCharge.spentRunes,
             wasFreeQuestion: billingCharge.wasFreeQuestion,
             actionType: "READING",
+            transactionId: billingCharge.transactionId,
           });
           billingCharge = null;
           spentRunes = 0;
@@ -1092,12 +1082,14 @@ export async function POST(request: NextRequest) {
         console.error("Reading refund failed:", refundErr);
       }
     }
-    // Guest resume must not return a soft "success" fallback: the client would
-    // open chat, fail reading_consumed verification, and bounce to the homepage.
-    if (isGuestResumeFree) {
-      return NextResponse.json({ error: "Reading generation failed" }, { status: 502 });
-    }
-    const reading = fallbackReading(characterId, { userName, isPaid, tarotCards });
-    return NextResponse.json({ reading, isPaid, fallback: true });
+    // Fail-closed: never return template prose as a successful reading.
+    return NextResponse.json(
+      {
+        error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+        code: "generation_failed",
+        refunded: spentRunes > 0,
+      },
+      { status: 502 }
+    );
   }
 }

@@ -2,7 +2,6 @@ import { getNatalModel } from "@/lib/ai-model";
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import type { NatalEvidence } from "./evidence";
 import {
-  buildMinimalNatalReport,
   extractJsonObject,
   NATAL_REPORT_SECTION_KEYS,
   NATAL_REPORT_VERSION,
@@ -754,11 +753,6 @@ export async function generateValidatedNatalReport(
               `[natal-chart] ${params.reportType} accepted via evidence salvage (model=${model})`
             );
             validation = salvaged;
-          } else if (salvaged.ok && params.reportType === "forecast") {
-            console.warn(
-              `[natal-chart] forecast accepted via soft salvage (model=${model})`
-            );
-            validation = salvaged;
           }
         } catch {
           /* keep prior validation errors */
@@ -782,10 +776,7 @@ export async function generateValidatedNatalReport(
     }
   }
 
-  if (
-    validation.ok &&
-    (isSubstantiveReport(validation.report, params) || params.reportType === "forecast")
-  ) {
+  if (validation.ok && isSubstantiveReport(validation.report, params)) {
     const sanitized = sanitizeNatalReport(validation.report, params);
     // Skip editorial for section-wise forecasts: rewriting the full JSON often truncates again.
     const edited =
@@ -793,27 +784,6 @@ export async function generateValidatedNatalReport(
         ? await editorialPass(sanitized, params, model)
         : null;
     return { ok: true, report: edited ?? sanitized, raw };
-  }
-
-  // Hard fallback for paid forecasts: deterministic evidence-grounded report.
-  if (params.reportType === "forecast" && params.evidence.length) {
-    const minimal = buildMinimalNatalReport(
-      params.evidence,
-      params.tradition,
-      params.reportType,
-      params.horizonDays,
-      params.metadataDefaults
-    );
-    if (minimal.ok) {
-      console.warn(
-        `[natal-chart] forecast falling back to evidence-grounded minimal report (model=${model})`
-      );
-      return {
-        ok: true,
-        report: sanitizeNatalReport(minimal.report, params),
-        raw,
-      };
-    }
   }
 
   if (validation.ok) {

@@ -84,12 +84,28 @@ export async function POST(request: NextRequest) {
       isPaid: false,
     });
 
+    const text = stripStageDirections(prediction ?? "").trim();
+    if (!text) {
+      return NextResponse.json(
+        {
+          error: "Не удалось получить предсказание. Попробуйте ещё раз.",
+          code: "generation_failed",
+        },
+        { status: 502 }
+      );
+    }
     return NextResponse.json({
-      prediction: stripStageDirections(prediction ?? "") || card.meaning,
+      prediction: text,
       characterId: characterKey,
       cardName: card.name,
     });
   } catch {
-    return NextResponse.json({ prediction: card.meaning, characterId: characterKey, cardName: card.name });
+    return NextResponse.json(
+      {
+        error: "Не удалось получить предсказание. Попробуйте ещё раз.",
+        code: "generation_failed",
+      },
+      { status: 502 }
+    );
   }
 }

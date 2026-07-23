@@ -4,6 +4,7 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { getUserById } from "@/lib/users";
 import {
+  DailyReadingGenerationError,
   DailyReadingLockedError,
   getExistingDailyReading,
   getOrCreateDailyReading,
@@ -155,9 +156,12 @@ export async function POST(request: NextRequest) {
     useRuneBilling &&
     (!existing || normalizeSpreadId(existing.spreadId) !== "daily-extended");
 
+  let extendedCharge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | null =
+    null;
+
   if (needsExtendedCharge) {
     try {
-      await BillingService.chargeRuneAction({
+      extendedCharge = await BillingService.chargeRuneAction({
         userId,
         action: "DAILY_EXTENDED",
       });
@@ -199,6 +203,29 @@ export async function POST(request: NextRequest) {
           locked: true,
         },
         { status: 403 }
+      );
+    }
+    if (err instanceof DailyReadingGenerationError) {
+      if (extendedCharge && extendedCharge.spentRunes > 0) {
+        try {
+          await BillingService.rollbackCharge({
+            userId,
+            cost: extendedCharge.spentRunes,
+            wasFreeQuestion: extendedCharge.wasFreeQuestion,
+            actionType: "DAILY_EXTENDED",
+            transactionId: extendedCharge.transactionId,
+          });
+        } catch (refundErr) {
+          console.error("Daily extended refund failed:", refundErr);
+        }
+      }
+      return NextResponse.json(
+        {
+          error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+          code: "generation_failed",
+          refunded: Boolean(extendedCharge && extendedCharge.spentRunes > 0),
+        },
+        { status: 502 }
       );
     }
     throw err;

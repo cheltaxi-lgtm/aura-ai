@@ -526,11 +526,8 @@ export async function generateReading(
     if (accepted) return { text: accepted, fromLlm: true };
   }
 
-  const id = ctx.characterId ?? "ragnar";
-  return {
-    text: buildCardAwareFallbackReading(id, ctx),
-    fromLlm: false,
-  };
+  // Fail-closed: never synthesize template prose as a paid reading success.
+  return { text: "", fromLlm: false };
 }
 
 export async function generateChatReply(

@@ -36,8 +36,6 @@ import {
   buildCharacterPrompt,
   buildHumanReadingPrompt,
   generateReading,
-  fallbackReading,
-  buildCardAwareFallbackReading,
 } from "@/lib/chat-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import { getSession, updateSessionChatMeta, getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
@@ -799,7 +797,7 @@ export async function POST(request: NextRequest) {
   });
   systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
 
-  let reading: string;
+  let reading = "";
   try {
     const userForContext = userContextFromProfile({
       name: userName,
@@ -828,48 +826,40 @@ export async function POST(request: NextRequest) {
       positionLabels,
       userMessage,
     });
-    reading = generated.text.trim();
     reading =
-      sanitizeReadingForClient(reading, drawn.map((c) => c.name)) ||
-      buildCardAwareFallbackReading(characterId, {
-        userName,
-        tarotCards,
-        intention,
-        isPaid: true,
-        spreadId,
-        positionLabels,
-      });
+      sanitizeReadingForClient(generated.text.trim(), drawn.map((c) => c.name)) || "";
+    const cardNamesForCheck = drawn.map((c) => c.name);
+    const readingOk =
+      generated.fromLlm &&
+      Boolean(reading.trim()) &&
+      isPaidSpreadTextComplete(reading, cardNamesForCheck);
+    if (!readingOk) {
+      throw new Error("intention_spread_ai_failed");
+    }
   } catch (err) {
     console.error("Intention spread generation failed:", err);
-    reading = fallbackReading(characterId, {
-      userName,
-      isPaid: true,
-      tarotCards,
-      intention,
-    });
-  }
-
-  if (!reading.trim()) {
-    reading = buildCardAwareFallbackReading(characterId, {
-      userName,
-      tarotCards,
-      intention,
-      isPaid: true,
-      spreadId,
-      positionLabels,
-    });
-  }
-
-  const cardNamesForCheck = drawn.map((c) => c.name);
-  if (!isPaidSpreadTextComplete(reading, cardNamesForCheck)) {
-    reading = buildCardAwareFallbackReading(characterId, {
-      userName,
-      tarotCards,
-      intention,
-      isPaid: true,
-      spreadId,
-      positionLabels,
-    });
+    if (billingCharge) {
+      try {
+        runeBalance = await BillingService.rollbackCharge({
+          userId: authed.profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          actionType: "INTENTION_SPREAD",
+          transactionId: billingCharge.transactionId,
+        });
+      } catch (refundErr) {
+        console.error("Intention spread refund failed:", refundErr);
+      }
+      billingCharge = null;
+    }
+    return NextResponse.json(
+      {
+        error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+        code: "generation_failed",
+        refunded: true,
+      },
+      { status: 502 }
+    );
   }
 
   const ownedSessionId = await persistToOwnedSession(

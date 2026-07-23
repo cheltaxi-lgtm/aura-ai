@@ -37,6 +37,13 @@ export class DailyReadingLockedError extends Error {
   }
 }
 
+export class DailyReadingGenerationError extends Error {
+  constructor(message = "daily_reading_generation_failed") {
+    super(message);
+    this.name = "DailyReadingGenerationError";
+  }
+}
+
 export interface DailyReadingCard {
   name: string;
   meaning: string;
@@ -69,35 +76,10 @@ export function isDailyReadingPlaceholder(text: string, cards: DailyReadingCard[
   return t.length < minLen;
 }
 
-function buildDailyFallbackReading(
-  charKey: CharacterKey,
-  params: { name: string; cards: DailyReadingCard[]; spreadId: SpreadId }
-): string {
-  const spread = getSpread(params.spreadId);
-  const title =
-    params.spreadId === DEFAULT_SPREAD_ID ? "энергия дня" : spread.label.toLowerCase();
-  const persona = MASTER_PERSONA[charKey]?.split("\n")[0]?.trim();
-  const opener = persona
-    ? `${params.name}, ${persona.charAt(0).toLowerCase()}${persona.slice(1)} — ваш прогноз «${title}».`
-    : `${params.name}, ваш прогноз «${title}».`;
-
-  const parts = params.cards.map((c) => {
-    const meaning = c.meaning?.replace(/^[^:]+:\s*/, "").trim() || c.name;
-    const short = meaning.split(/[.;!?…]/)[0]?.trim() || meaning;
-    const pos = c.position.toLowerCase();
-    return `В ${pos} — «${c.name}»${c.reversed ? " (перев.)" : ""}: ${short}.`;
-  });
-
-  const adviceCard =
-    params.cards.find((c) => /совет|послание/i.test(c.position)) ??
-    params.cards[params.cards.length - 1];
-  const closer = adviceCard
-    ? ` Главный ориентир на сегодня — «${adviceCard.name}» в позиции «${adviceCard.position}».`
-    : "";
-
-  return sanitizeDailyReadingText(`${opener} ${parts.join(" ")}${closer}`) || `${opener} ${parts.join(" ")}`;
-}
-
+/**
+ * Resolve AI daily text only. Returns empty string when LLM cannot produce
+ * a non-placeholder reading — never synthesizes card-template prose.
+ */
 async function resolveDailyReadingText(
   charKey: CharacterKey,
   raw: string | null | undefined,
@@ -121,20 +103,12 @@ async function resolveDailyReadingText(
   text = sanitizeDailyReadingText(fromLlm);
   if (text && !isDailyReadingPlaceholder(text, params.cards)) return text;
 
-  if (fromLlm) {
-    console.warn("Daily reading LLM output too short, using card fallback", {
-      spreadId: params.spreadId,
-      cardCount: params.cards.length,
-      len: fromLlm.length,
-    });
-  } else {
-    console.warn("Daily reading LLM empty, using card fallback", {
-      spreadId: params.spreadId,
-      cardCount: params.cards.length,
-    });
-  }
-
-  return buildDailyFallbackReading(charKey, params);
+  console.warn("Daily reading LLM failed fail-closed", {
+    spreadId: params.spreadId,
+    cardCount: params.cards.length,
+    len: fromLlm?.length ?? 0,
+  });
+  return "";
 }
 
 function parseStoredCards(raw: unknown): DailyReadingCard[] {
@@ -413,7 +387,7 @@ export async function getExistingDailyReading(
         month: "long",
         year: "numeric",
       });
-      reading = await resolveDailyReadingText(charKey, reading, {
+      const repaired = await resolveDailyReadingText(charKey, reading, {
         name: normalizePersonDisplayNameOr(user.name, "друг"),
         zodiac: user.zodiac,
         birthDate: user.birth_date,
@@ -425,8 +399,8 @@ export async function getExistingDailyReading(
         mainQuestion: user.main_question ?? undefined,
         userId,
       });
-    } else if (!reading) {
-      reading = DAILY_READING_GENERIC_FALLBACK;
+      // Keep existing placeholder in DB until AI succeeds; do not invent template text.
+      if (repaired) reading = repaired;
     }
   }
 
@@ -537,8 +511,10 @@ export async function getOrCreateDailyReading(params: {
   };
 
   const text = await generateDailyReadingText(charKey, promptProfile);
-
   const reading = await resolveDailyReadingText(charKey, text, promptProfile);
+  if (!reading.trim()) {
+    throw new DailyReadingGenerationError();
+  }
 
   await query(
     `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date, spread_id)

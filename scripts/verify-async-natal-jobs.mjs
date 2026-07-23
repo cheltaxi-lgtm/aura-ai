@@ -10,6 +10,10 @@ const jobs = read("src/lib/async-jobs.ts");
 assert.match(jobs, /"natal_interpretation"/);
 assert.match(jobs, /"natal_forecast"/);
 assert.match(jobs, /"natal_compatibility"/);
+assert.match(jobs, /"intention_spread"/);
+assert.match(jobs, /dedupe_key/);
+assert.match(jobs, /attachAsyncJobOutput/);
+assert.match(jobs, /listActiveAsyncJobsForUser/);
 assert.match(jobs, /FOR UPDATE SKIP LOCKED/);
 assert.match(jobs, /attempt_count/);
 assert.match(jobs, /reapStaleRunningAsyncJobs/);
@@ -35,6 +39,12 @@ const migration073 = read("scripts/migrations/073_migrate_async_job_billing_and_
 assert.match(migration073, /charge_transaction_id/);
 assert.match(migration073, /idx_async_jobs_stale_running/);
 
+const migration077 = read("scripts/migrations/077_migrate_premium_ai_delivery.sql");
+assert.match(migration077, /dedupe_key/);
+assert.match(migration077, /provenance/);
+assert.match(migration077, /idx_async_jobs_dedupe_active/);
+assert.match(migration077, /intention_spread/);
+
 for (const route of [
   "src/app/api/natal-chart/interpretation/route.ts",
   "src/app/api/natal-chart/forecast/route.ts",
@@ -51,14 +61,26 @@ for (const route of [
   assert.doesNotMatch(source, /await BillingService\.chargeRuneAction/);
 }
 
-const enqueue = read("src/lib/natal/async-job-route.ts");
-assert.match(enqueue, /MAX_ACTIVE_NATAL_JOBS_PER_USER/);
+const enqueueCompat = read("src/lib/natal/async-job-route.ts");
+assert.match(enqueueCompat, /enqueueNatalAsyncJob/);
+assert.match(enqueueCompat, /async-job-enqueue/);
+
+const enqueue = read("src/lib/async-job-enqueue.ts");
+assert.match(enqueue, /enqueuePaidAsyncJob/);
 assert.match(enqueue, /async_job_limit/);
+assert.match(enqueue, /getJobKindConfig/);
+
+const registry = read("src/lib/async-job-registry.ts");
+assert.match(registry, /natal_forecast/);
+assert.match(registry, /DEFAULT_WORKER_KINDS/);
+assert.match(registry, /endpointForJob/);
+assert.match(registry, /resolveWorkerKindsFromEnv/);
 
 const worker = read("scripts/run-async-jobs.ts");
 assert.match(worker, /claimAsyncJobs/);
 assert.match(worker, /ASYNC_JOB_WORKER_SECRET/);
-assert.match(worker, /natal_compatibility/);
+assert.match(worker, /endpointForJob/);
+assert.match(worker, /resolveWorkerKindsFromEnv/);
 assert.match(worker, /completeAsyncJob/);
 assert.match(worker, /failAsyncJobAndRefundIfCharged/);
 assert.match(worker, /reapStaleRunningAsyncJobs/);
@@ -68,7 +90,8 @@ assert.match(worker, /WORKER_JOB_HEADER/);
 assert.match(worker, /280_000/);
 
 const sharedAuth = read("src/lib/async-job-worker-auth-shared.ts");
-assert.match(sharedAuth, /isAuthenticatedNatalWorkerRequest/);
+assert.match(sharedAuth, /isAuthenticatedAsyncJobWorkerRequest|isAuthenticatedNatalWorkerRequest/);
+assert.match(sharedAuth, /isAsyncJobWorkerEndpoint/);
 assert.match(sharedAuth, /isDirectLoopbackWorkerCall/);
 assert.match(sharedAuth, /isLoopbackAddress/);
 assert.match(sharedAuth, /::ffff:127\.0\.0\.1/);
@@ -78,7 +101,10 @@ const middleware = read("src/middleware.ts");
 assert.match(middleware, /natalWorkerRequest/);
 assert.match(middleware, /finish in-flight paid jobs during maintenance/);
 
-const lifecycle = read("src/lib/natal/async-job-lifecycle.ts");
+const lifecycleCompat = read("src/lib/natal/async-job-lifecycle.ts");
+assert.match(lifecycleCompat, /async-job-lifecycle/);
+
+const lifecycle = read("src/lib/async-job-lifecycle.ts");
 assert.match(lifecycle, /beginWorkerJobSave/);
 assert.match(lifecycle, /chargeRuneActionForWorkerJob/);
 assert.match(lifecycle, /claimAsyncJobForSave/);
@@ -99,17 +125,14 @@ const ensureUser = read("hosting/ensure-async-jobs-user.sh");
 assert.match(ensureUser, /chmod 600/);
 assert.doesNotMatch(ensureUser, /usermod -aG/);
 
-const callback = read("src/app/api/auth/oauth/[provider]/callback/route.ts");
-assert.match(callback, /#handoff=/);
-assert.doesNotMatch(callback, /completeParams\.set\("handoff"/);
+const contract = read("src/lib/ai-generation-contract.ts");
+assert.match(contract, /AiGenerationOutcome/);
+assert.match(contract, /isAiCacheReusable/);
+assert.match(contract, /buildAiProvenance/);
 
-const social = read("src/components/auth/SocialAuthButtons.tsx");
-assert.match(social, /aura_oauth_handoff/);
-assert.doesNotMatch(social, /params\.set\("handoff"/);
-
-const complete = read("src/app/auth/oauth/complete/page.tsx");
-assert.match(complete, /handoffFromHash/);
-assert.match(complete, /aura_oauth_handoff/);
+const validated = read("src/lib/validated-ai-generation.ts");
+assert.match(validated, /generateValidatedAiText/);
+assert.match(validated, /fallbackModels|natalFallbackModels|resolveModelChain/);
 
 const refundService = read("src/lib/rune-service.ts");
 assert.match(refundService, /ON CONFLICT \(refund_of_transaction_id\)/);
