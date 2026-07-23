@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS async_jobs (
   user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind          TEXT NOT NULL CHECK (kind IN (
     'reading', 'image_generate', 'natal_interpretation',
-    'natal_forecast', 'natal_compatibility'
+    'natal_forecast', 'natal_compatibility',
+    'intention_spread', 'daily_reading', 'daily_extended',
+    'joint_reading', 'photo_reading', 'ritual_generation',
+    'numerology_reading'
   )),
   status        TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'running', 'completed', 'failed')),
@@ -42,7 +45,18 @@ CREATE TABLE IF NOT EXISTS async_jobs (
   expires_at    TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
   locked_at     TIMESTAMPTZ,
   worker_id     TEXT,
-  attempt_count INTEGER NOT NULL DEFAULT 0
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  period_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_code    TEXT,
+  billing_state TEXT NOT NULL DEFAULT 'unbilled'
+    CHECK (billing_state IN ('unbilled', 'charged', 'refunded', 'completed')),
+  charge_transaction_id UUID,
+  dedupe_key    TEXT NOT NULL DEFAULT '',
+  action_type   TEXT,
+  output_entity_id UUID,
+  output_entity_table TEXT,
+  provenance    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  next_attempt_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_async_jobs_user_created
@@ -53,6 +67,15 @@ CREATE INDEX IF NOT EXISTS idx_async_jobs_pending
 CREATE INDEX IF NOT EXISTS idx_async_jobs_worker_claim
   ON async_jobs (created_at)
   WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_async_jobs_stale_running
+  ON async_jobs (locked_at)
+  WHERE status = 'running';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_async_jobs_dedupe_active
+  ON async_jobs (user_id, kind, dedupe_key)
+  WHERE status IN ('pending', 'running') AND dedupe_key <> '';
+CREATE INDEX IF NOT EXISTS idx_async_jobs_next_attempt
+  ON async_jobs (next_attempt_at)
+  WHERE status = 'pending' AND next_attempt_at IS NOT NULL;
 
 -- === SPEC: History (сеансы и контекст) ===
 CREATE TABLE IF NOT EXISTS history (

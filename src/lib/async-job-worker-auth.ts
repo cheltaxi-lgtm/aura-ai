@@ -12,7 +12,9 @@ import {
 
 export {
   assertLoopbackAppUrl,
+  isAuthenticatedAsyncJobWorkerRequest,
   isAuthenticatedNatalWorkerRequest,
+  isAsyncJobWorkerEndpoint,
   isDirectLoopbackWorkerCall,
   isNatalWorkerEndpoint,
   isWorkerUserId,

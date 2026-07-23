@@ -16,6 +16,9 @@ const REQUIRED_MIGRATIONS = [
   "067_migrate_private_report_shares.sql",
   "068_harden_natal_backend.sql",
   "069_migrate_natal_compatibility.sql",
+  "070_migrate_natal_async_jobs.sql",
+  "073_migrate_async_job_billing_and_reaper.sql",
+  "077_migrate_premium_ai_delivery.sql",
 ];
 const REQUIRED_TABLES = [
   "natal_report_history",
@@ -25,9 +28,25 @@ const REQUIRED_TABLES = [
   "natal_ai_preferences",
   "private_report_shares",
   "natal_compatibility_reports",
+  "async_jobs",
 ];
 const REQUIRED_COLUMNS = {
   rune_transactions: ["refund_of_transaction_id"],
+  async_jobs: [
+    "locked_at",
+    "worker_id",
+    "attempt_count",
+    "period_metadata",
+    "error_code",
+    "billing_state",
+    "charge_transaction_id",
+    "dedupe_key",
+    "action_type",
+    "output_entity_id",
+    "output_entity_table",
+    "provenance",
+    "next_attempt_at",
+  ],
   natal_report_history: [
     "birth_fingerprint",
     "engine_version",

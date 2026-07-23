@@ -6,7 +6,14 @@ export type AsyncJobKind =
   | "image_generate"
   | "natal_interpretation"
   | "natal_forecast"
-  | "natal_compatibility";
+  | "natal_compatibility"
+  | "intention_spread"
+  | "daily_reading"
+  | "daily_extended"
+  | "joint_reading"
+  | "photo_reading"
+  | "ritual_generation"
+  | "numerology_reading";
 export type AsyncJobStatus = "pending" | "running" | "completed" | "failed";
 export type AsyncJobBillingState = "unbilled" | "charged" | "refunded" | "completed";
 
@@ -29,34 +36,67 @@ export type AsyncJobRow = {
   error_code: string | null;
   billing_state: AsyncJobBillingState;
   charge_transaction_id: string | null;
+  dedupe_key: string;
+  action_type: string | null;
+  output_entity_id: string | null;
+  output_entity_table: string | null;
+  provenance: Record<string, unknown>;
+  next_attempt_at: Date | null;
 };
 
 const JOB_SELECT = `id, user_id, kind, status, input, result, error_message,
             created_at, updated_at, completed_at, expires_at,
             locked_at, worker_id, attempt_count, period_metadata, error_code,
-            billing_state, charge_transaction_id`;
+            billing_state, charge_transaction_id,
+            dedupe_key, action_type, output_entity_id, output_entity_table,
+            provenance, next_attempt_at`;
 
 export async function createAsyncJob(input: {
   userId: string;
   kind: AsyncJobKind;
   payload: Record<string, unknown>;
   periodMetadata?: Record<string, unknown>;
+  dedupeKey?: string;
+  actionType?: string;
 }): Promise<string> {
   const { rows } = await query<{ id: string }>(
-    `INSERT INTO async_jobs (user_id, kind, input, period_metadata)
-     VALUES ($1, $2, $3::jsonb, $4::jsonb)
+    `INSERT INTO async_jobs (user_id, kind, input, period_metadata, dedupe_key, action_type)
+     VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6)
      RETURNING id`,
-    [input.userId, input.kind, JSON.stringify(input.payload), JSON.stringify(input.periodMetadata ?? {})]
+    [
+      input.userId,
+      input.kind,
+      JSON.stringify(input.payload),
+      JSON.stringify(input.periodMetadata ?? {}),
+      input.dedupeKey ?? "",
+      input.actionType ?? null,
+    ]
   );
   return rows[0]!.id;
 }
 
-/** Return an in-flight job with the same payload instead of enqueueing a duplicate. */
+/** Return an in-flight job with the same dedupe key (preferred) or payload. */
 export async function findActiveAsyncJob(input: {
   userId: string;
   kind: AsyncJobKind;
   payload: Record<string, unknown>;
+  dedupeKey?: string;
 }): Promise<string | null> {
+  if (input.dedupeKey) {
+    const { rows } = await query<{ id: string }>(
+      `SELECT id
+       FROM async_jobs
+       WHERE user_id = $1
+         AND kind = $2
+         AND status IN ('pending', 'running')
+         AND expires_at > NOW()
+         AND dedupe_key = $3
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [input.userId, input.kind, input.dedupeKey]
+    );
+    if (rows[0]?.id) return rows[0].id;
+  }
   const { rows } = await query<{ id: string }>(
     `SELECT id
      FROM async_jobs
@@ -143,6 +183,7 @@ export async function claimAsyncJobs(input: {
          FROM async_jobs
          WHERE status = 'pending'
            AND expires_at > NOW()
+           AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
            AND (cardinality($2::text[]) = 0 OR kind = ANY($2::text[]))
          ORDER BY created_at
          FOR UPDATE SKIP LOCKED
@@ -153,6 +194,7 @@ export async function claimAsyncJobs(input: {
            worker_id = $3,
            locked_at = NOW(),
            attempt_count = jobs.attempt_count + 1,
+           next_attempt_at = NULL,
            updated_at = NOW()
        FROM candidates
        WHERE jobs.id = candidates.id
@@ -160,7 +202,9 @@ export async function claimAsyncJobs(input: {
                  jobs.result, jobs.error_message, jobs.created_at, jobs.updated_at,
                  jobs.completed_at, jobs.expires_at, jobs.locked_at, jobs.worker_id,
                  jobs.attempt_count, jobs.period_metadata, jobs.error_code,
-                 jobs.billing_state, jobs.charge_transaction_id`,
+                 jobs.billing_state, jobs.charge_transaction_id,
+                 jobs.dedupe_key, jobs.action_type, jobs.output_entity_id,
+                 jobs.output_entity_table, jobs.provenance, jobs.next_attempt_at`,
       [limit, kinds, input.workerId]
     );
     return rows;
@@ -403,6 +447,50 @@ export function scheduleAsyncJob(jobId: string, runner: () => Promise<void>): vo
   });
 }
 
+export async function attachAsyncJobOutput(
+  jobId: string,
+  input: {
+    entityTable: string;
+    entityId: string;
+    provenance?: Record<string, unknown>;
+  }
+): Promise<void> {
+  await query(
+    `UPDATE async_jobs
+     SET output_entity_table = $2,
+         output_entity_id = $3::uuid,
+         provenance = CASE
+           WHEN $4::jsonb = '{}'::jsonb THEN provenance
+           ELSE COALESCE(provenance, '{}'::jsonb) || $4::jsonb
+         END,
+         updated_at = NOW()
+     WHERE id = $1`,
+    [
+      jobId,
+      input.entityTable,
+      input.entityId,
+      JSON.stringify(input.provenance ?? {}),
+    ]
+  );
+}
+
+export async function listActiveAsyncJobsForUser(
+  userId: string,
+  kinds?: AsyncJobKind[]
+): Promise<AsyncJobRow[]> {
+  const { rows } = await query<AsyncJobRow>(
+    `SELECT ${JOB_SELECT}
+     FROM async_jobs
+     WHERE user_id = $1
+       AND status IN ('pending', 'running')
+       AND expires_at > NOW()
+       AND (cardinality($2::text[]) = 0 OR kind = ANY($2::text[]))
+     ORDER BY created_at DESC`,
+    [userId, kinds ?? []]
+  );
+  return rows;
+}
+
 export function asyncJobPollPayload(job: AsyncJobRow) {
   const refunded = job.billing_state === "refunded";
   return {
@@ -416,5 +504,9 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
     createdAt: job.created_at.toISOString(),
     completedAt: job.completed_at?.toISOString() ?? null,
     attempts: job.attempt_count,
+    outputEntityId: job.output_entity_id,
+    outputEntityTable: job.output_entity_table,
+    provenance: job.provenance,
+    dedupeKey: job.dedupe_key || undefined,
   };
 }

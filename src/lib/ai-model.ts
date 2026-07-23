@@ -24,3 +24,15 @@ export async function getNatalModel(): Promise<string> {
   if (natal) return natal;
   return ai.model;
 }
+
+/** Ordered chat/reading backup models from admin settings (may be empty). */
+export async function getChatFallbackModels(): Promise<string[]> {
+  const ai = await getAdminAiSettings();
+  return (ai.fallbackModels ?? []).map((m) => m.trim()).filter(Boolean);
+}
+
+/** Ordered natal backup models from admin settings (may be empty). */
+export async function getNatalFallbackModels(): Promise<string[]> {
+  const ai = await getAdminAiSettings();
+  return (ai.natalFallbackModels ?? []).map((m) => m.trim()).filter(Boolean);
+}

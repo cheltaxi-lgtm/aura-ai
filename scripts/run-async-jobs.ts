@@ -7,6 +7,10 @@ import {
   WORKER_USER_HEADER,
 } from "../src/lib/async-job-worker-auth-shared";
 import {
+  endpointForJob,
+  resolveWorkerKindsFromEnv,
+} from "../src/lib/async-job-registry";
+import {
   claimAsyncJobs,
   completeAsyncJob,
   failAsyncJobAndRefundIfCharged,
@@ -33,11 +37,8 @@ const TIMEOUT_GRACE_MS = Math.max(
   5_000,
   Number(process.env.ASYNC_JOB_TIMEOUT_GRACE_MS) || 20_000
 );
-const NATAL_KINDS = [
-  "natal_interpretation",
-  "natal_forecast",
-  "natal_compatibility",
-] as const;
+
+const WORKER_KINDS = resolveWorkerKindsFromEnv();
 
 const workerId = `${hostname()}:${process.pid}`;
 // Never fall back to NEXT_PUBLIC_APP_URL (public origin) — worker must stay on loopback.
@@ -50,25 +51,6 @@ const inFlight = new Set<Promise<void>>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function endpointFor(job: AsyncJobRow): { path: string; body: Record<string, unknown> } {
-  if (job.kind === "natal_interpretation") {
-    return { path: "/api/natal-chart/interpretation", body: { ...job.input, async: false } };
-  }
-  if (job.kind === "natal_forecast") {
-    return { path: "/api/natal-chart/forecast", body: { ...job.input, async: false } };
-  }
-  if (job.kind === "natal_compatibility") {
-    const id = job.input.id;
-    if (typeof id !== "string") throw new Error("invalid compatibility job payload");
-    const { id: _id, ...body } = job.input;
-    return {
-      path: `/api/natal-chart/compatibility/${encodeURIComponent(id)}/generate`,
-      body: { ...body, async: false },
-    };
-  }
-  throw new Error(`unsupported async job kind: ${job.kind}`);
 }
 
 async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
@@ -86,7 +68,7 @@ async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
 async function runJob(job: AsyncJobRow): Promise<void> {
   const secret = process.env.ASYNC_JOB_WORKER_SECRET;
   if (!secret) throw new Error("ASYNC_JOB_WORKER_SECRET is not configured");
-  const { path, body } = endpointFor(job);
+  const { path, body } = endpointForJob(job);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -107,15 +89,18 @@ async function runJob(job: AsyncJobRow): Promise<void> {
       if (latest?.status === "completed" || latest?.status === "failed") return;
       const message =
         typeof data.error === "string" ? data.error : `HTTP ${response.status}`;
-      const refunded = data.refunded === true || latest?.billing_state === "refunded";
       await failAsyncJobAndRefundIfCharged(
         job.id,
-        refunded ? message : message,
+        message,
         typeof data.code === "string" ? data.code : "generation_failed"
       );
       return;
     }
-    await completeAsyncJob(job.id, data);
+    // Route is source of truth via trackWorkerJobCompleted; only complete if still running.
+    const latest = await getAsyncJobById(job.id);
+    if (latest?.status === "running") {
+      await completeAsyncJob(job.id, data);
+    }
   } catch (error) {
     const aborted =
       (error instanceof Error && error.name === "AbortError") ||
@@ -131,7 +116,7 @@ async function runJob(job: AsyncJobRow): Promise<void> {
     if (latest?.status === "completed" || latest?.status === "failed") return;
     await failAsyncJobAndRefundIfCharged(
       job.id,
-      error instanceof Error ? error.message : "natal job failed",
+      error instanceof Error ? error.message : "async job failed",
       "generation_failed"
     );
   } finally {
@@ -150,12 +135,14 @@ async function main(): Promise<void> {
   if (!process.env.ASYNC_JOB_WORKER_SECRET) {
     throw new Error("ASYNC_JOB_WORKER_SECRET is required");
   }
-  console.log(`[async-jobs] worker ${workerId} polling ${baseUrl}`);
+  console.log(
+    `[async-jobs] worker ${workerId} polling ${baseUrl} kinds=${WORKER_KINDS.join(",")}`
+  );
   while (!stopping) {
     try {
       const reaped = await reapStaleRunningAsyncJobs({
         staleAfterMs: STALE_RUNNING_MS,
-        kinds: [...NATAL_KINDS],
+        kinds: [...WORKER_KINDS],
       });
       if (reaped.requeued || reaped.failed) {
         console.warn(
@@ -169,7 +156,7 @@ async function main(): Promise<void> {
     const jobs = await claimAsyncJobs({
       workerId,
       limit: CONCURRENCY,
-      kinds: [...NATAL_KINDS],
+      kinds: [...WORKER_KINDS],
     });
     if (!jobs.length) {
       await sleep(POLL_INTERVAL_MS);

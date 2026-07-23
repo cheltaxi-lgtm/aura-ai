@@ -303,7 +303,7 @@ function buildRequestBody(
   };
 }
 
-type CompleteChatOptions = {
+export type CompleteChatOptions = {
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;

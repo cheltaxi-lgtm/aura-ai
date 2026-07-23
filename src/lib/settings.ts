@@ -22,9 +22,23 @@ export interface AiSettings {
   visionModel: string;
   /** Fast structured JSON model for natal reports and synastry (not reasoning). */
   natalModel?: string;
+  /** Ordered AI backup models for chat/reading generation (admin-configured). */
+  fallbackModels?: string[];
+  /** Ordered AI backup models for natal JSON reports. */
+  natalFallbackModels?: string[];
   temperature: number;
   maxTokens: number;
   maxReadingTokens: number;
+}
+
+/** Rollout controls for durable premium AI delivery. */
+export interface AiDeliveryPlatformSettings {
+  /** Job kinds allowed for general traffic (empty = natal-only legacy mode). */
+  enabledKinds: string[];
+  /** Profile user ids that may use kinds before global enable. */
+  pilotAccountIds: string[];
+  maxJobAgeMinutes: number;
+  maxAttempts: number;
 }
 
 export interface PricingSettings {
@@ -139,9 +153,17 @@ const DEFAULTS = {
     freeModel: "openai/gpt-4o-mini",
     visionModel: "google/gemini-2.0-flash-001",
     natalModel: "openai/gpt-4o-mini",
+    fallbackModels: [] as string[],
+    natalFallbackModels: [] as string[],
     temperature: 0.85,
     maxTokens: 800,
     maxReadingTokens: 900,
+  },
+  aiDelivery: {
+    enabledKinds: [] as string[],
+    pilotAccountIds: [] as string[],
+    maxJobAgeMinutes: 45,
+    maxAttempts: 3,
   },
   pricing: { singlePrice: 199, subscriptionPrice: 590, currency: "RUB" },
   features: {
@@ -271,21 +293,61 @@ export async function setSetting<K extends keyof typeof DEFAULTS>(
 }
 
 export async function getAllSettings() {
-  const [ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading, natalChart] =
-    await Promise.all([
-      getSetting("ai"),
-      getSetting("pricing"),
-      getSetting("features"),
-      getSetting("prompts"),
-      getSetting("tts"),
-      getSetting("visual"),
-      getSetting("runes"),
-      getSetting("share"),
-      getSetting("rituals"),
-      getSetting("jointReading"),
-      getSetting("natalChart"),
-    ]);
-  return { ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading, natalChart };
+  const [
+    ai,
+    aiDelivery,
+    pricing,
+    features,
+    prompts,
+    tts,
+    visual,
+    runes,
+    share,
+    rituals,
+    jointReading,
+    natalChart,
+  ] = await Promise.all([
+    getSetting("ai"),
+    getSetting("aiDelivery"),
+    getSetting("pricing"),
+    getSetting("features"),
+    getSetting("prompts"),
+    getSetting("tts"),
+    getSetting("visual"),
+    getSetting("runes"),
+    getSetting("share"),
+    getSetting("rituals"),
+    getSetting("jointReading"),
+    getSetting("natalChart"),
+  ]);
+  return {
+    ai,
+    aiDelivery,
+    pricing,
+    features,
+    prompts,
+    tts,
+    visual,
+    runes,
+    share,
+    rituals,
+    jointReading,
+    natalChart,
+  };
+}
+
+export async function getAiDeliverySettings(): Promise<AiDeliveryPlatformSettings> {
+  return getSetting("aiDelivery");
+}
+
+/** Whether a user may use durable AI delivery for a given job kind. */
+export async function isAiDeliveryKindEnabled(
+  kind: string,
+  userId?: string | null
+): Promise<boolean> {
+  const settings = await getAiDeliverySettings();
+  if (userId && settings.pilotAccountIds.includes(userId)) return true;
+  return settings.enabledKinds.includes(kind);
 }
 
 export async function isJointReadingEnabled(): Promise<boolean> {

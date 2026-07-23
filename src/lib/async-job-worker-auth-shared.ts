@@ -56,22 +56,38 @@ function isLoopbackAddress(value: string): boolean {
   );
 }
 
+/** @deprecated use isAsyncJobWorkerEndpoint */
 export function isNatalWorkerEndpoint(pathname: string): boolean {
+  return isAsyncJobWorkerEndpoint(pathname);
+}
+
+/**
+ * Pathnames the durable worker may invoke with the worker secret.
+ * Kept edge-safe (no Node-only imports): mirror of async-job-registry paths.
+ */
+export function isAsyncJobWorkerEndpoint(pathname: string): boolean {
   return (
     pathname === "/api/natal-chart/interpretation" ||
     pathname === "/api/natal-chart/forecast" ||
-    /^\/api\/natal-chart\/compatibility\/[^/]+\/generate$/.test(pathname)
+    /^\/api\/natal-chart\/compatibility\/[^/]+\/generate$/.test(pathname) ||
+    pathname === "/api/reading" ||
+    pathname === "/api/intention-spread" ||
+    pathname === "/api/daily-reading" ||
+    pathname === "/api/photo-reading/stream" ||
+    pathname === "/api/image/generate" ||
+    pathname === "/api/joint-reading/create" ||
+    /^\/api\/ritual\/[^/]+\/regenerate$/.test(pathname)
   );
 }
 
 /**
  * Middleware gate: secret + UUID user + loopback-only call.
  */
-export function isAuthenticatedNatalWorkerRequest(
+export function isAuthenticatedAsyncJobWorkerRequest(
   request: NextRequest,
   pathname: string
 ): boolean {
-  if (!isNatalWorkerEndpoint(pathname)) return false;
+  if (!isAsyncJobWorkerEndpoint(pathname)) return false;
   if (!isDirectLoopbackWorkerCall(request)) return false;
 
   const expected = process.env.ASYNC_JOB_WORKER_SECRET;
@@ -79,6 +95,14 @@ export function isAuthenticatedNatalWorkerRequest(
   const userId = request.headers.get(WORKER_USER_HEADER);
   if (!expected || !provided || !isWorkerUserId(userId)) return false;
   return secretsMatchEdge(provided, expected);
+}
+
+/** @deprecated use isAuthenticatedAsyncJobWorkerRequest */
+export function isAuthenticatedNatalWorkerRequest(
+  request: NextRequest,
+  pathname: string
+): boolean {
+  return isAuthenticatedAsyncJobWorkerRequest(request, pathname);
 }
 
 /** Reject non-loopback app URLs so the worker never posts secrets to the public origin. */
