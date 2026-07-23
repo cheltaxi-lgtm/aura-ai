@@ -47,7 +47,12 @@ export default function RootLayout({
         <SalonBackground />
         <Providers>
           <GlobalAppTopHeader />
-          <div className="app-main-column relative z-10 flex min-h-0 flex-1 flex-col">{children}</div>
+          {/*
+            Do not put min-h-0 on the main column by default: it caps height to the
+            viewport and lets long landing content paint over the site footer.
+            Chat mode re-applies min-h-0 + overflow via body.chat-session-active.
+          */}
+          <div className="app-main-column relative z-10 w-full flex-1">{children}</div>
           <AppAwareSiteFooter />
         </Providers>
         <UtmCapture />

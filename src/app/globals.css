@@ -5316,11 +5316,20 @@ body.chat-session-active {
 }
 
 body.chat-session-active .app-main-column {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-height: 0;
   height: 100%;
   max-height: 100dvh;
   overflow: hidden;
+}
+
+/* Keep the marketing/legal footer after page content, never under a capped shell. */
+body:not(.chat-session-active):not(.flow-overlay-open) .site-legal-footer {
+  display: block;
+  position: relative;
+  z-index: 20;
 }
 
 /*

@@ -1,11 +1,15 @@
 "use client";
 
 import SiteFooter from "@/components/SiteFooter";
-import { shouldUseAppShellClient } from "@/lib/app-shell";
+import { readAppShellFromDocument } from "@/lib/app-shell";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-/** Site footer on the web; marketing variant on home; hidden in app shell. */
+/**
+ * Site footer on the web; marketing variant on home; hidden only in the real
+ * native/app shell (data-app-shell), not merely because sessionStorage once
+ * saw ?app=1 during a prior visit in this tab.
+ */
 export default function AppAwareSiteFooter() {
   const [inShell, setInShell] = useState(false);
   const pathname = usePathname();
@@ -13,10 +17,9 @@ export default function AppAwareSiteFooter() {
   const isAdmin = Boolean(pathname?.startsWith("/admin"));
 
   useEffect(() => {
-    setInShell(shouldUseAppShellClient());
-    const observer = new MutationObserver(() => {
-      setInShell(shouldUseAppShellClient());
-    });
+    const sync = () => setInShell(readAppShellFromDocument());
+    sync();
+    const observer = new MutationObserver(sync);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-app-shell"],
