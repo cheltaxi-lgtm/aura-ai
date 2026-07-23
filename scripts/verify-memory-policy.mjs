@@ -1,5 +1,5 @@
 /**
- * Static checks for global memory relevance policy.
+ * Static checks for global memory relevance + governance policy.
  * Run: npx tsx scripts/verify-memory-policy.mjs
  */
 import { readFileSync } from "node:fs";
@@ -24,6 +24,10 @@ assert(
   "shared buildMemoryContext exists and composes query text",
   buildMemoryContextSrc.includes("export async function buildMemoryContext") &&
     buildMemoryContextSrc.includes("composeMemoryQueryText")
+);
+assert(
+  "buildMemoryContext gates reads on canReadMemory",
+  buildMemoryContextSrc.includes("canReadMemory")
 );
 
 const photoRoute = read("src/app/api/photo-reading/stream/route.ts");
@@ -50,8 +54,8 @@ assert(
 );
 
 assert(
-  "past sessions load even without current sessionId",
-  buildMemoryContextSrc.includes("userId && includePastSessions") &&
+  "past sessions load even without current sessionId (consent-gated)",
+  buildMemoryContextSrc.includes("memoryOn && includePastSessions") &&
     !buildMemoryContextSrc.includes("userId && params.sessionId && includePastSessions")
 );
 
@@ -75,25 +79,81 @@ assert(
 const userFacts = read("src/lib/memory/user-facts.ts");
 assert(
   "searchFacts empty query returns []",
-  /if \(!trimmed\) \{\s*return \[\];/s.test(userFacts)
+  userFacts.includes("if (!trimmed) return [];")
+);
+assert(
+  "purgeAllUserMemory revokes consent, clears jobs/reminders, keeps tombstones",
+  userFacts.includes("purgeAllUserMemory") &&
+    userFacts.includes("revokeMemoryConsent") &&
+    userFacts.includes("purgeMemoryExtractionJobs") &&
+    userFacts.includes("event_reminder") &&
+    userFacts.includes("addTombstone") &&
+    userFacts.includes("tombstonesAdded") &&
+    !/purgeAllUserMemory[\s\S]*purgeTombstones/.test(userFacts)
+);
+assert(
+  "fact lifecycle includes supersede/expire/tombstones",
+  userFacts.includes("expireStaleFacts") &&
+    userFacts.includes("addTombstone") &&
+    userFacts.includes("status = 'active'")
 );
 
 const clientMemory = read("src/lib/memory/client-memory.ts");
 assert(
-  "loadClientMemoryBlock does NOT early-return on empty query (would make the " +
-    "imminent-events-are-unconditional branch below it unreachable)",
-  !clientMemory.includes('if (!queryTrimmed) return "";')
+  "loadClientMemoryBlock fail-closes on empty query (no unconditional event leak)",
+  clientMemory.includes("if (!queryTrimmed)") && clientMemory.includes('return "";')
 );
 assert(
-  "loadClientMemoryBlock still surfaces imminent events unconditionally of query relevance",
-  clientMemory.includes("days <= IMMINENT_EVENT_DAYS) return true;")
+  "imminent events still require relevance (no unconditional bypass)",
+  clientMemory.includes("IMMINENT_EVENT_DAYS") &&
+    clientMemory.includes("isTextRelevantToQuery(queryTrimmed, f.fact)") &&
+    !clientMemory.includes("days <= IMMINENT_EVENT_DAYS) return true;")
+);
+{
+  const recordTurnSrc = clientMemory.slice(
+    clientMemory.indexOf("export async function recordTurn"),
+    clientMemory.indexOf("export async function processMemoryExtractionJobs")
+  );
+  assert(
+    "recordTurn enqueues durable jobs (no in-request extract LLM)",
+    recordTurnSrc.includes("enqueueMemoryExtraction") &&
+      !recordTurnSrc.includes("extractFactsFromTurn")
+  );
+}
+assert(
+  "client memory serializes facts as untrusted XML",
+  clientMemory.includes("memory_data") &&
+    clientMemory.includes("false") &&
+    clientMemory.includes("MEMORY_SECURITY_RULES") &&
+    clientMemory.includes("escapeMemoryXml")
+);
+
+const preferences = read("src/lib/memory/preferences.ts");
+assert(
+  "memory preferences fail-closed by default",
+  preferences.includes("memoryEnabled: false") &&
+    preferences.includes("autoCaptureEnabled: false") &&
+    preferences.includes("canReadMemory") &&
+    preferences.includes("canAutoCapture")
+);
+
+const prefsRoute = read("src/app/api/memory/preferences/route.ts");
+assert(
+  "memory preferences API requires PD consent to enable",
+  prefsRoute.includes("pdConsent") && prefsRoute.includes("consent_required")
+);
+
+const extractCron = read("src/app/api/cron/memory-extract/route.ts");
+assert(
+  "memory extraction cron drains processMemoryExtractionJobs",
+  extractCron.includes("processMemoryExtractionJobs") && extractCron.includes("x-cron-secret")
 );
 
 const userMemory = read("src/lib/user-memory.ts");
 assert(
-  "buildMemoryBlock degrades to a single recent-visit line on empty query (no full history injection)",
-  userMemory.includes("ПОСЛЕДНИЙ ВИЗИТ КЛИЕНТА") &&
-    userMemory.includes("Не возвращайся к прошлой теме сам")
+  "buildMemoryBlock returns empty on empty query (no episodic leak)",
+  userMemory.includes("if (!topicQuery) return \"\";") &&
+    userMemory.includes("buildMemoryBlock")
 );
 assert(
   "past-session retrieval downranks sessions the client rated poorly (1-2)",
@@ -102,6 +162,11 @@ assert(
 assert(
   "buildClientBlock gates mainQuestion by relevance",
   userMemory.includes("isTextRelevantToQuery(query, profile.mainQuestion)")
+);
+assert(
+  "buildClientBlock does not inject birthDate on empty query",
+  userMemory.includes("Boolean(query)") &&
+    userMemory.includes("/натал|астро|зодиак|гороскоп|нумеролог|матриц|даша|транзит|рожден/i")
 );
 assert(
   "buildCurrentSessionAnchorBlock rejects empty query",
@@ -162,6 +227,14 @@ assert(
   "memory facts POST requires PD consent",
   factsRoute.includes("pdConsent") && factsRoute.includes("consent_required")
 );
+assert(
+  "manual fact add enables memory read (not auto-capture)",
+  factsRoute.includes("memoryEnabled: true") && factsRoute.includes("updateMemoryPreferences")
+);
+assert(
+  "memory facts API supports PATCH edit",
+  factsRoute.includes("export async function PATCH") && factsRoute.includes("updateFact")
+);
 
 const cabinetMemory = read("src/components/cabinet/CabinetMemoryFacts.tsx");
 assert(
@@ -174,6 +247,18 @@ assert(
   cabinetMemory.includes("pdConsent") &&
     cabinetMemory.includes("152-ФЗ") &&
     cabinetMemory.includes("/privacy")
+);
+assert(
+  "cabinet memory exposes governance toggles",
+  cabinetMemory.includes("/api/memory/preferences") &&
+    cabinetMemory.includes("autoCaptureEnabled") &&
+    cabinetMemory.includes("Использовать память в сеансах")
+);
+assert(
+  "cabinet memory supports edit + purge",
+  cabinetMemory.includes("method: \"PATCH\"") &&
+    cabinetMemory.includes("/api/memory/purge") &&
+    cabinetMemory.includes("Очистить всю память")
 );
 
 const userFactDisplay = read("src/lib/memory/user-fact-display.ts");
@@ -260,10 +345,6 @@ assert(
     purgeRoute.includes("purgeAllUserMemory") &&
     purgeRoute.includes("confirm")
 );
-assert(
-  "cabinet UI exposes the self-service purge action",
-  cabinetMemory.includes("/api/memory/purge") && cabinetMemory.includes("Очистить всю память")
-);
 
 const adminMemoryStatsRoute = read("src/app/api/admin/memory/stats/route.ts");
 assert(
@@ -281,6 +362,33 @@ const gitignore = read(".gitignore");
 assert(
   "gitignore excludes local debug artifacts",
   gitignore.includes(".tmp-*")
+);
+
+const migration079 = read("scripts/migrations/079_migrate_memory_governance.sql");
+assert(
+  "migration 079 creates prefs, jobs, tombstones",
+  migration079.includes("user_memory_preferences") &&
+    migration079.includes("memory_extraction_jobs") &&
+    migration079.includes("user_memory_tombstones")
+);
+
+const installCrons = read("proxmox-setup/install-crons.sh");
+assert(
+  "install-crons schedules memory-extract every 5 minutes",
+  installCrons.includes("cron-memory-extract.sh") && installCrons.includes("*/5 * * * *")
+);
+
+const numerologyRunner = read("src/lib/services/numerology-tool-runner.ts");
+assert(
+  "numerology tool runner uses buildMemoryContext + recordTurn",
+  numerologyRunner.includes("buildMemoryContext") && numerologyRunner.includes("recordTurn")
+);
+
+const privacy = read("src/app/(legal)/privacy/page.tsx");
+assert(
+  "privacy policy documents memory opt-in and cabinet controls",
+  privacy.includes("По умолчанию память") &&
+    privacy.includes("управлять памятью ИИ")
 );
 
 console.log(`\n--- ${failed} failed ---`);

@@ -189,6 +189,8 @@ export async function ensureSpreadReadingInChatMessages(
       characterId: input.characterId,
       userMessage: userTurnText,
       assistantReply: formattedReading,
+      sourceType: "spread",
+      sourceEntityId: sessionId,
     }).catch((err) => console.warn("[memory] recordTurn after spread failed:", err));
   }
 

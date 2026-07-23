@@ -1244,6 +1244,8 @@ export class ChatOrchestrator {
         characterId: this.characterId,
         userMessage: this.lastUserMsg,
         assistantReply: finalReply,
+        sourceType: "chat",
+        sourceEntityId: this.session?.id ?? null,
       }).catch((err) => console.error("[memory] recordTurn failed:", err));
     }
 

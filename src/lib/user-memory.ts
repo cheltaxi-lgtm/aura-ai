@@ -6,11 +6,13 @@ import {
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
+import { MEMORY_SECURITY_RULES } from "@/lib/memory/injection-guard";
 import { isTextRelevantToQuery, MEMORY_USAGE_RULES } from "@/lib/memory/memory-relevance";
 import { isTextRelevantToQueryAsync } from "@/lib/memory/session-memory-semantic";
 import { genderPromptValue } from "@/lib/russian-name-gender";
 
-const MAX_BLOCK_CHARS = 4000;
+const MAX_BLOCK_CHARS = 2800;
+const EPISODIC_CANDIDATE_LIMIT = 40;
 const PLACEHOLDER_PREDICTION = "Сеанс в процессе";
 
 export type SessionAnchorFallback = {
@@ -158,7 +160,11 @@ export type ClientProfile = {
   lifeFocus?: string | null;
 };
 
-/** Level 1: client profile for prompts — thematic fields gated by query relevance. */
+/**
+ * Level 1: client profile for prompts.
+ * Name always; gender for grammar; birthDate/zodiac only when query looks natal/astro;
+ * thematic fields relevance-gated.
+ */
 export function buildClientBlock(
   profile: ClientProfile | null | undefined,
   queryText?: string
@@ -173,8 +179,11 @@ export function buildClientBlock(
     const label = genderPromptValue(profile.gender);
     if (label) lines.push(`Пол: ${label}.`);
   }
-  if (profile.zodiac) lines.push(`Знак: ${profile.zodiac}.`);
-  if (profile.birthDate) lines.push(`Дата рождения: ${profile.birthDate}.`);
+  const wantsAstro =
+    Boolean(query) &&
+    /натал|астро|зодиак|гороскоп|нумеролог|матриц|даша|транзит|рожден/i.test(query);
+  if (profile.zodiac && wantsAstro) lines.push(`Знак: ${profile.zodiac}.`);
+  if (profile.birthDate && wantsAstro) lines.push(`Дата рождения: ${profile.birthDate}.`);
   if (profile.mainQuestion && query && isTextRelevantToQuery(query, profile.mainQuestion)) {
     lines.push(`Главный вопрос: «${profile.mainQuestion}».`);
   }
@@ -198,61 +207,50 @@ export async function buildMemoryBlock(
   if (!(await ensureDb())) return "";
 
   const excludeSession = Boolean(currentSessionId?.trim());
+  const topicQuery = queryText?.trim() ?? "";
+  // Empty query: do not inject episodic topics (avoids leaking past sensitive themes).
+  if (!topicQuery) return "";
+
   const { rows } = await query<{
     topic_summary: string;
     key_cards: string[] | null;
     prediction: string;
     mood: string | null;
     session_date: Date;
+    character_key: string;
   }>(
     excludeSession
-      ? `SELECT topic_summary, key_cards, prediction, mood, session_date
+      ? `SELECT topic_summary, key_cards, prediction, mood, session_date, character_key
          FROM session_memories
          WHERE user_id = $1
-           AND character_key = $2
            AND session_id IS NOT NULL
-           AND session_id <> $3
+           AND session_id <> $2
          ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
-         LIMIT 3`
-      : `SELECT topic_summary, key_cards, prediction, mood, session_date
+         LIMIT $3`
+      : `SELECT topic_summary, key_cards, prediction, mood, session_date, character_key
          FROM session_memories
          WHERE user_id = $1
-           AND character_key = $2
            AND session_id IS NOT NULL
          ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
-         LIMIT 3`,
-    excludeSession ? [userId, characterKey, currentSessionId] : [userId, characterKey]
+         LIMIT $2`,
+    excludeSession
+      ? [userId, currentSessionId, EPISODIC_CANDIDATE_LIMIT]
+      : [userId, EPISODIC_CANDIDATE_LIMIT]
   );
 
   if (!rows.length) return "";
 
-  const topicQuery = queryText?.trim() ?? "";
-  if (!topicQuery) {
-    // No active topic (e.g. a daily pull with no intention and no saved main
-    // question). Full relevance gating is impossible, but going completely
-    // silent loses continuity — surface only the single most recent visit,
-    // compactly, with an explicit "don't steer back to it" rule.
-    const last = [...rows].sort(
-      (a, b) => new Date(b.session_date).getTime() - new Date(a.session_date).getTime()
-    )[0];
-    const date = new Date(last.session_date).toLocaleDateString("ru-RU", {
-      day: "numeric",
-      month: "long",
-    });
-    return [
-      "",
-      "ПОСЛЕДНИЙ ВИЗИТ КЛИЕНТА (только для мягкой преемственности):",
-      `— ${date}: ${last.topic_summary}.`,
-      "Не возвращайся к прошлой теме сам — упомяни её только если клиент сам о ней заговорит.",
-      "",
-    ].join("\n");
-  }
+  // Prefer same-master sessions, but allow cross-master continuity when relevant.
+  const ranked = [
+    ...rows.filter((r) => r.character_key === characterKey),
+    ...rows.filter((r) => r.character_key !== characterKey),
+  ];
 
-  const candidateTexts = rows.map(
+  const candidateTexts = ranked.map(
     (m) => `${m.topic_summary} ${m.prediction} ${(m.key_cards ?? []).join(" ")}`
   );
   const relevanceFlags = await isTextRelevantToQueryAsync(topicQuery, candidateTexts);
-  const filtered = rows.filter((_, i) => relevanceFlags[i]);
+  const filtered = ranked.filter((_, i) => relevanceFlags[i]).slice(0, 3);
 
   if (!filtered.length) return "";
 
@@ -263,18 +261,43 @@ export async function buildMemoryBlock(
         month: "long",
       });
       const cards = m.key_cards?.join(" · ") ?? "";
-      return `— ${date}: ${m.topic_summary}. Карты: ${cards}.`;
+      const master =
+        m.character_key && m.character_key !== characterKey
+          ? ` (мастер: ${m.character_key})`
+          : "";
+      return `— ${date}${master}: ${m.topic_summary}. Карты: ${cards}.`;
     })
     .join("\n");
 
   const block = `
-ПАМЯТЬ О ПРОШЛЫХ СЕАНСАХ С ЭТИМ ЧЕЛОВЕКОМ (по текущему вопросу):
+ПАМЯТЬ О ПРОШЛЫХ СЕАНСАХ (по текущему вопросу):
 ${list}
 
 ${MEMORY_USAGE_RULES}
+
+${MEMORY_SECURITY_RULES}
 `;
 
-  return block.length > MAX_BLOCK_CHARS ? `${block.slice(0, MAX_BLOCK_CHARS - 1)}…` : block;
+  if (block.length <= MAX_BLOCK_CHARS) return block;
+  // Drop extras rather than slicing mid-rules.
+  const shortList = filtered
+    .slice(0, 1)
+    .map((m) => {
+      const date = new Date(m.session_date).toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "long",
+      });
+      return `— ${date}: ${m.topic_summary}.`;
+    })
+    .join("\n");
+  return `
+ПАМЯТЬ О ПРОШЛЫХ СЕАНСАХ (по текущему вопросу):
+${shortList}
+
+${MEMORY_USAGE_RULES}
+
+${MEMORY_SECURITY_RULES}
+`;
 }
 
 export function appendUserMemoryToPrompt(systemPrompt: string, memoryBlock: string | null): string {

@@ -492,6 +492,21 @@ CREATE TABLE IF NOT EXISTS user_facts (
   source_character TEXT,
   salience         SMALLINT NOT NULL DEFAULT 3,
   embedding        vector(1024),
+  source_type      TEXT NOT NULL DEFAULT 'legacy',
+  source_entity_id UUID,
+  subject_key      TEXT,
+  predicate_key    TEXT,
+  entity_key       TEXT,
+  status           TEXT NOT NULL DEFAULT 'active',
+  confidence       REAL NOT NULL DEFAULT 1,
+  sensitivity      TEXT NOT NULL DEFAULT 'normal',
+  valid_from       TIMESTAMPTZ,
+  valid_to         TIMESTAMPTZ,
+  superseded_by    UUID,
+  last_confirmed_at TIMESTAMPTZ,
+  embedding_model  TEXT,
+  embedding_version TEXT,
+  consent_version  TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -508,6 +523,48 @@ CREATE INDEX IF NOT EXISTS idx_user_facts_events
 
 CREATE INDEX IF NOT EXISTS idx_user_facts_fts
   ON user_facts USING gin (to_tsvector('russian', fact));
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_active
+  ON user_facts (user_id, updated_at DESC)
+  WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS user_memory_preferences (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  memory_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  auto_capture_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  sensitive_capture_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  event_reminders_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_version TEXT,
+  consent_granted_at TIMESTAMPTZ,
+  consent_revoked_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS memory_extraction_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source_type TEXT NOT NULL,
+  source_entity_id UUID,
+  character_id TEXT,
+  user_message TEXT NOT NULL,
+  assistant_reply TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS user_memory_tombstones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  fact_hmac TEXT NOT NULL,
+  predicate_key TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  UNIQUE (user_id, fact_hmac)
+);
 
 CREATE TABLE IF NOT EXISTS diary_entries (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

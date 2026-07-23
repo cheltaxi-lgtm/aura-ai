@@ -1,8 +1,8 @@
 import { ensureDb } from "@/lib/db";
 import { getSessionMessagesForLlm, saveMessage } from "@/lib/session";
 import { getUserById, serializeUserProfile } from "@/lib/users";
-import { loadClientMemoryBlock, recordTurn } from "@/lib/memory/client-memory";
-import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
+import { recordTurn } from "@/lib/memory/client-memory";
+import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 import { polishNumerologClientReply } from "@/lib/numerology/numerolog-finale-client";
 import {
   buildNumerologToolMessage,
@@ -46,10 +46,31 @@ export async function runNumerologTool(
         .map((m) => m.content)
     : [];
 
-  const memoryBlock = await loadClientMemoryBlock({
+  const memoryCtx = await buildMemoryContext({
     userId: input.profileUserId,
-    queryText: composeMemoryQueryText({ lastUserMessage: userMessage }),
+    characterId: "numerolog",
+    sessionId: input.sessionId,
+    profile: profile
+      ? {
+          name: profile.name,
+          gender: profile.gender,
+          zodiac: profile.zodiac,
+          birthDate: profile.birthDate,
+          mainQuestion: profile.mainQuestion,
+          lifeFocus: profile.lifeFocus,
+        }
+      : null,
+    lastUserMessage: userMessage,
+    includePastSessions: true,
   });
+  const memoryBlock = [
+    memoryCtx.clientBlock,
+    memoryCtx.pastSessionsBlock,
+    memoryCtx.factsBlock,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 
   const engineParams = {
     characterId: "numerolog",
@@ -87,6 +108,8 @@ export async function runNumerologTool(
       characterId: "numerolog",
       userMessage,
       assistantReply: reply,
+      sourceType: "numerology",
+      sourceEntityId: input.sessionId,
     });
   }
 

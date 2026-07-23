@@ -1,4 +1,5 @@
 import type { FactInput } from "@/lib/memory/user-facts";
+import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
 import { normalizeUserFactPhrase } from "@/lib/memory/user-fact-display";
 
 export const USER_FACT_CATEGORIES = [
@@ -35,6 +36,7 @@ export function isQualityMemoryFact(fact: string): boolean {
   if (f.length < 6 || f.length > 600) return false;
   if (!CYRILLIC_RE.test(f)) return false;
   if (META_FACT_RE.test(f)) return false;
+  if (isInstructionLikeFact(f)) return false;
   return true;
 }
 

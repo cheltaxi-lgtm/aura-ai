@@ -21,6 +21,7 @@ import {
 } from "@/lib/user-memory";
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
 import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
+import { canReadMemory } from "@/lib/memory/preferences";
 
 export interface MemoryContextParams {
   userId?: string | null;
@@ -65,11 +66,14 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
 
   const userId = params.userId ?? "";
   const includePastSessions = params.includePastSessions ?? true;
+  const memoryOn = userId ? await canReadMemory(userId).catch(() => false) : false;
+
   const [factsBlock, pastSessionsBlock, sessionAnchorBlock] = await Promise.all([
-    userId ? loadClientMemoryBlock({ userId, queryText }) : Promise.resolve(""),
-    userId && includePastSessions
+    memoryOn ? loadClientMemoryBlock({ userId, queryText }) : Promise.resolve(""),
+    memoryOn && includePastSessions
       ? buildMemoryBlock(userId, params.characterId, params.sessionId ?? null, queryText)
       : Promise.resolve(""),
+    // Live session anchor is operational context, not long-term memory storage.
     userId && params.sessionId && params.includeSessionAnchor
       ? buildCurrentSessionAnchorBlock(
           userId,
@@ -81,6 +85,7 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
       : Promise.resolve(""),
   ]);
 
+  // Profile identity fields stay available; thematic fields remain relevance-gated.
   const clientBlock = params.profile ? buildClientBlock(params.profile, queryText) : "";
 
   return { queryText, clientBlock, pastSessionsBlock, sessionAnchorBlock, factsBlock };

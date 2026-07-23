@@ -5,7 +5,15 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { sanitizeTextField } from "@/lib/chat-sanitize";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { validateUserSubmittedFact } from "@/lib/memory/user-fact-input";
-import { deleteFact, listFacts, searchFacts, upsertFact, MAX_FACTS_PER_USER } from "@/lib/memory/user-facts";
+import {
+  deleteFact,
+  listFacts,
+  searchFacts,
+  updateFact,
+  upsertFact,
+  MAX_FACTS_PER_USER,
+} from "@/lib/memory/user-facts";
+import { updateMemoryPreferences } from "@/lib/memory/preferences";
 
 /**
  * Cap for user-submitted (manually entered) facts specifically, distinct from
@@ -147,7 +155,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await upsertFact(profileUserId, input);
+  // Manual add implies the user wants memory usable; enable read without auto-capture.
+  await updateMemoryPreferences(profileUserId, { memoryEnabled: true }).catch(() => undefined);
+
+  await upsertFact(profileUserId, {
+    ...input,
+    sourceType: "user",
+    allowSensitive: true,
+  });
 
   const matched = await searchFacts(profileUserId, input.fact, { topK: 1 });
   const created = matched[0] ?? existing.find((f) => f.fact === input.fact);
@@ -156,6 +171,71 @@ export async function POST(request: NextRequest) {
     ok: true,
     fact: created ? mapFact(created) : { fact: input.fact, category: input.category, salience: input.salience },
   });
+}
+
+export async function PATCH(request: NextRequest) {
+  const auth = await requireUserAuth();
+  if (!auth) {
+    return NextResponse.json({ error: "auth_required" }, { status: 401 });
+  }
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
+
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (!profileUserId) {
+    return NextResponse.json({ error: "profile_required" }, { status: 400 });
+  }
+
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("memory_fact_patch", auth.sub),
+    40,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", retryAfterSec, message: "Слишком много изменений. Попробуйте позже." },
+      { status: 429 }
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const factId = typeof body.factId === "string" ? body.factId.trim() : "";
+  if (!factId) {
+    return NextResponse.json({ error: "factId_required" }, { status: 400 });
+  }
+
+  const factText = sanitizeTextField(body.fact, 400);
+  if (!factText || factText.length < 6) {
+    return NextResponse.json(
+      { error: "invalid_fact", message: "Напишите факт подробнее (от 6 символов)." },
+      { status: 422 }
+    );
+  }
+
+  const category = sanitizeTextField(body.category, 20) ?? null;
+  const eventDate = sanitizeTextField(body.eventDate, 10) ?? null;
+  const input = validateUserSubmittedFact(factText, category, eventDate);
+  if (!input) {
+    return NextResponse.json(
+      {
+        error: "invalid_fact",
+        message:
+          "Не удалось сохранить: нужен факт о вашей жизни по-русски, без карт/гаданий и общих фраз.",
+      },
+      { status: 422 }
+    );
+  }
+
+  const updated = await updateFact(profileUserId, factId, {
+    ...input,
+    allowSensitive: true,
+    sourceType: "user",
+  });
+  if (!updated) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, fact: mapFact(updated) });
 }
 
 export async function DELETE(request: NextRequest) {

@@ -226,16 +226,25 @@ export async function PATCH(request: NextRequest) {
 
     const serialized = profile ? serializeUserProfile(profile) : null;
 
-    // Seed the client's main question into long-term memory so it is
-    // semantically searchable across masters (vector dedup collapses repeats).
+    // Seed main question only when the user opted into auto memory capture.
     const trimmedQuestion = mainQuestion?.trim();
     if (profileUserId && trimmedQuestion && trimmedQuestion.length >= 8) {
-      void upsertFact(profileUserId, {
-        fact: `Главный запрос клиента: ${trimmedQuestion}`,
-        category: "goal",
-        salience: 4,
-        sourceCharacter: "profile",
-      }).catch((err) => console.warn("[memory] seed main question failed:", err));
+      void import("@/lib/memory/preferences")
+        .then(({ canAutoCapture }) => canAutoCapture(profileUserId))
+        .then((allowed) => {
+          if (!allowed) return;
+          return upsertFact(profileUserId, {
+            fact: `Главный запрос клиента: ${trimmedQuestion}`,
+            category: "goal",
+            salience: 4,
+            sourceCharacter: "profile",
+            sourceType: "profile",
+            predicateKey: "goal.current",
+            operation: "replace",
+            allowSensitive: false,
+          });
+        })
+        .catch((err) => console.warn("[memory] seed main question failed:", err));
     }
 
     const birthFieldsTouched =

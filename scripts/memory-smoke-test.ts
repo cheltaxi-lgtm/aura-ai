@@ -1,14 +1,8 @@
 /**
  * Deploy-gating smoke test for long-term memory — runs the REAL production code
  * (imports searchFacts / loadClientMemoryBlock / events / critical), not SQL
- * replicas. This is deliberate: hand-written SQL copies drift from the real
- * queries and have twice hidden retrieval bugs (param typing, ambiguous "id")
- * that `tsc`/`next build` cannot see. Seeds a disposable temp user, asserts the
- * full read path, and always cleans up.
- *
- * Deterministic: seeding uses embeddings (reliable) but no extraction LLM, so it
- * does not flake. Tolerant of the embeddings provider being down (vector signal
- * simply drops out; lexical + events + critical still validate the SQL + facade).
+ * replicas. Seeds a disposable temp user, asserts consent-gated read path,
+ * and always cleans up.
  *
  * Run:  cd /opt/aura-ai && <env> npx tsx scripts/memory-smoke-test.ts
  */
@@ -19,8 +13,10 @@ import {
   getUpcomingEvents,
   getCriticalFacts,
   purgeFacts,
+  purgeAllUserMemory,
 } from "@/lib/memory/user-facts";
-import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
+import { loadClientMemoryBlock, recordTurn } from "@/lib/memory/client-memory";
+import { updateMemoryPreferences, revokeMemoryConsent } from "@/lib/memory/preferences";
 
 const U = "00000000-0000-0000-0000-0000000000aa";
 
@@ -32,12 +28,6 @@ const ok = (c: boolean, m: string) => {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Retry an async check that depends on the embeddings provider. The hybrid read
- * path calls the embeddings API; right after a deploy the provider can be cold or
- * rate-limited, so a single transient miss must not gate the deploy. A real
- * SQL/param regression fails every attempt, so retrying keeps the gate honest.
- */
 async function okRetry(
   produce: () => Promise<boolean>,
   message: string,
@@ -61,6 +51,7 @@ async function okRetry(
 }
 
 async function cleanup() {
+  await purgeAllUserMemory(U).catch(() => {});
   await purgeFacts(U).catch(() => {});
   await query(`DELETE FROM users WHERE id=$1`, [U]).catch(() => {});
 }
@@ -76,12 +67,9 @@ async function main() {
     [U]
   );
 
-  // Always in the near future — a hardcoded date silently rots and starts
-  // failing the upcoming-events checks once it passes.
   const eventDate = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
 
   try {
-    // Seed via the REAL write path (embeds; no chat LLM → not flaky).
     await upsertFacts(U, [
       { fact: `У клиента сын Артём, выпускной ${eventDate}`, category: "event", eventDate, salience: 3 },
       { fact: "Клиент работает программистом и думает сменить работу", category: "work", salience: 3 },
@@ -89,8 +77,18 @@ async function main() {
       { fact: "У клиента ипотека, переживает из-за долгов", category: "money", salience: 4 },
     ]);
 
-    // Hybrid retrieval (this is where the param-typing & ambiguous-id bugs lived).
-    // Retried: depends on the embeddings provider, which can flake right after deploy.
+    // Fail-closed without consent: facts exist but must not inject.
+    const denied = await loadClientMemoryBlock({
+      userId: U,
+      queryText: "Артём выпускной и смена работы",
+    });
+    ok(!denied.trim(), "without consent, memory block is empty");
+
+    await updateMemoryPreferences(U, {
+      memoryEnabled: true,
+      autoCaptureEnabled: false,
+    });
+
     await okRetry(async () => {
       const work = await searchFacts(U, "стоит ли мне менять работу?", { topK: 3 });
       return work.some((f) => /работ/i.test(f.fact));
@@ -112,17 +110,46 @@ async function main() {
       queryText: "Артём выпускной и смена работы",
     });
     ok(/ДОЛГОСРОЧНАЯ ПАМЯТЬ/.test(block), "assembled block has memory header");
-    ok(/БЛИЖАЙШИЕ СОБЫТИЯ/.test(block), "assembled block has upcoming-events section");
+    ok(/upcoming_events|<fact /.test(block), "assembled block serializes facts");
+    ok(/trusted="false"/.test(block), "assembled block marks memory untrusted");
 
-    // Empty query (e.g. a daily pull with no intention/mainQuestion) must still
-    // surface imminent dated events unconditionally, but must NOT drag in
-    // unrelated general/critical facts that require relevance matching.
+    // Empty query must not inject events/critical/facts.
     const emptyBlock = await loadClientMemoryBlock({ userId: U, queryText: "" });
-    ok(
-      /БЛИЖАЙШИЕ СОБЫТИЯ/.test(emptyBlock) && /Артём|выпускн/i.test(emptyBlock),
-      "empty query still surfaces imminent event unconditionally"
+    ok(!emptyBlock.trim(), "empty query injects nothing");
+
+    // Auto-capture off ⇒ recordTurn must not enqueue.
+    await recordTurn({
+      userId: U,
+      userMessage: "У меня новая работа в банке",
+      assistantReply: "Понял.",
+      sourceType: "smoke",
+    });
+    const { rows: jobsOff } = await query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM memory_extraction_jobs WHERE user_id=$1`,
+      [U]
     );
-    ok(!/развод/i.test(emptyBlock), "empty query does not drag in unrelated critical fact");
+    ok(Number(jobsOff[0]?.c ?? 0) === 0, "auto-capture off does not enqueue extraction");
+
+    await updateMemoryPreferences(U, { autoCaptureEnabled: true });
+    await recordTurn({
+      userId: U,
+      userMessage: "У меня новая работа в банке",
+      assistantReply: "Понял.",
+      sourceType: "smoke",
+      sourceEntityId: "00000000-0000-0000-0000-0000000000bb",
+    });
+    const { rows: jobsOn } = await query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM memory_extraction_jobs WHERE user_id=$1 AND status='pending'`,
+      [U]
+    );
+    ok(Number(jobsOn[0]?.c ?? 0) >= 1, "auto-capture on enqueues extraction job");
+
+    await revokeMemoryConsent(U);
+    const afterRevoke = await loadClientMemoryBlock({
+      userId: U,
+      queryText: "работа Артём",
+    });
+    ok(!afterRevoke.trim(), "revoked consent stops memory injection");
   } finally {
     await cleanup();
   }

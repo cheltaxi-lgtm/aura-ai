@@ -1,16 +1,21 @@
 /**
- * Durable, cross-master client facts stored in our own PostgreSQL (pgvector).
- *
- * Source of truth for long-term semantic memory (replaces Mem0). Facts are
- * embedded with bge-m3 (1024-dim, via OpenRouter) and retrieved by cosine
- * distance, with graceful fallbacks (salience/recency) when embeddings are
- * unavailable.
- *
- * Hygiene: near-duplicate facts are merged on write, and each user is capped
- * to MAX_FACTS_PER_USER (lowest-salience/oldest pruned).
+ * Durable, cross-master client facts (PostgreSQL + pgvector).
+ * Governance: status lifecycle, consent-aware purge, tombstones, supersede.
  */
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
-import { EMBED_DIM, embedTexts } from "@/lib/memory/embeddings";
+import { EMBED_DIM, embedModel, embedTexts } from "@/lib/memory/embeddings";
+import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
+import { isReplacePredicate, isSensitiveFact } from "@/lib/memory/predicates";
+import { MEMORY_CONSENT_VERSION, revokeMemoryConsent } from "@/lib/memory/preferences";
+import {
+  addTombstone,
+  expireOldTombstones,
+  isFactTombstoned,
+} from "@/lib/memory/tombstones";
+import {
+  cancelPendingMemoryJobs,
+  purgeMemoryExtractionJobs,
+} from "@/lib/memory/extraction-jobs";
 
 export interface UserFact {
   id: string;
@@ -19,6 +24,13 @@ export interface UserFact {
   eventDate: string | null;
   sourceCharacter: string | null;
   salience: number;
+  status?: string;
+  predicateKey?: string | null;
+  entityKey?: string | null;
+  subjectKey?: string | null;
+  sensitivity?: string;
+  confidence?: number;
+  sourceType?: string | null;
 }
 
 export interface FactInput {
@@ -27,30 +39,23 @@ export interface FactInput {
   eventDate?: string | null;
   sourceCharacter?: string | null;
   salience?: number;
+  predicateKey?: string | null;
+  entityKey?: string | null;
+  subjectKey?: string | null;
+  operation?: "add" | "replace";
+  sensitivity?: "normal" | "sensitive";
+  confidence?: number;
+  evidenceQuote?: string | null;
+  sourceType?: string | null;
+  sourceEntityId?: string | null;
+  allowSensitive?: boolean;
 }
 
-/**
- * Cosine distance under which two facts are treated as duplicates (merge).
- * 0.18 was too tight — near-identical paraphrases of the same fact across
- * sessions ("ищет работу" vs "в поисках работы") often sat just above it and
- * accumulated as separate rows instead of merging. Widened to catch more
- * paraphrases while still well clear of SEARCH_MAX_DISTANCE below.
- */
 const DEDUP_MAX_DISTANCE = 0.22;
-/** Cosine distance ceiling for a fact to be considered relevant to a query. */
 const SEARCH_MAX_DISTANCE = 0.62;
-/** Max facts retained per user; excess is pruned by salience then recency. */
 export const MAX_FACTS_PER_USER = 300;
-/**
- * "Critical" facts (salience>=5) with no dated event never expire on their
- * own — unlike dated events (see fact-date-filter.ts), a crisis fact like
- * "клиент разводится" has nothing to compare against "now". Without decay it
- * would keep forcing itself into getCriticalFacts()/loadClientMemoryBlock
- * indefinitely, long after it stopped being current. Step it down to a
- * normal-salience fact (still retrievable by search, just no longer forced)
- * once it has gone quiet for this long.
- */
 const CRITICAL_DECAY_AFTER_DAYS = 120;
+const EMBED_VERSION = "1";
 
 type FactRow = {
   id: string;
@@ -59,11 +64,19 @@ type FactRow = {
   event_date: string | null;
   source_character: string | null;
   salience: number;
+  status?: string;
+  predicate_key?: string | null;
+  entity_key?: string | null;
+  subject_key?: string | null;
+  sensitivity?: string;
+  confidence?: number;
+  source_type?: string | null;
 };
 
-const FACT_COLUMNS = `id, fact, category, event_date::text AS event_date, source_character, salience`;
-/** Same columns, table-qualified — for queries that JOIN (avoids ambiguous "id"). */
-const FACT_COLUMNS_F = `f.id, f.fact, f.category, f.event_date::text AS event_date, f.source_character, f.salience`;
+const FACT_COLUMNS = `id, fact, category, event_date::text AS event_date, source_character, salience,
+  status, predicate_key, entity_key, subject_key, sensitivity, confidence, source_type`;
+const FACT_COLUMNS_F = `f.id, f.fact, f.category, f.event_date::text AS event_date, f.source_character, f.salience,
+  f.status, f.predicate_key, f.entity_key, f.subject_key, f.sensitivity, f.confidence, f.source_type`;
 
 function toVectorLiteral(vec: number[]): string {
   return `[${vec.join(",")}]`;
@@ -82,6 +95,13 @@ function mapRow(r: FactRow): UserFact {
     eventDate: r.event_date,
     sourceCharacter: r.source_character,
     salience: r.salience,
+    status: r.status ?? "active",
+    predicateKey: r.predicate_key ?? null,
+    entityKey: r.entity_key ?? null,
+    subjectKey: r.subject_key ?? null,
+    sensitivity: r.sensitivity ?? "normal",
+    confidence: r.confidence ?? 1,
+    sourceType: r.source_type ?? null,
   };
 }
 
@@ -92,24 +112,18 @@ async function embedOne(text: string, timeoutMs?: number): Promise<number[] | nu
   return vectors?.[0] ?? null;
 }
 
-/** Short timeout for the user-facing read path so chat never stalls. */
 const SEARCH_EMBED_TIMEOUT_MS = 2500;
-
-/**
- * Advisory-lock class for per-user fact writes. Any distinct constant works —
- * it only has to differ from other advisory-lock namespaces in this app.
- */
 const FACT_WRITE_LOCK_CLASS = 823_401;
 
-/** Keep only the top MAX_FACTS_PER_USER facts for a user. */
 async function pruneUser(client: PoolClient, userId: string): Promise<void> {
   await queryClient(
     client,
     `DELETE FROM user_facts
       WHERE user_id = $1
+        AND status = 'active'
         AND id NOT IN (
           SELECT id FROM user_facts
-           WHERE user_id = $1
+           WHERE user_id = $1 AND status = 'active'
            ORDER BY salience DESC, updated_at DESC
            LIMIT $2
         )`,
@@ -117,18 +131,213 @@ async function pruneUser(client: PoolClient, userId: string): Promise<void> {
   );
 }
 
-/**
- * Insert a fact, or merge into a near-identical existing fact (vector dedup,
- * with a normalized-text fallback while embeddings are unavailable). The
- * dedup lookup + write + prune run in one transaction under a per-user
- * advisory lock, so concurrent recordTurn calls for the same user serialize
- * instead of racing read-then-write into near-duplicate rows. No-op on empty
- * text. The embedding call happens *before* the transaction — never hold the
- * lock across a network round-trip.
- */
+async function supersedeReplaceables(
+  client: PoolClient,
+  userId: string,
+  input: FactInput,
+  newId: string
+): Promise<void> {
+  if (input.operation !== "replace" || !isReplacePredicate(input.predicateKey)) return;
+  await queryClient(
+    client,
+    `UPDATE user_facts
+        SET status = 'superseded',
+            valid_to = NOW(),
+            superseded_by = $4,
+            updated_at = NOW()
+      WHERE user_id = $1
+        AND status = 'active'
+        AND id <> $4
+        AND predicate_key = $2
+        AND COALESCE(subject_key, 'client') = COALESCE($3, 'client')`,
+    [userId, input.predicateKey, input.subjectKey ?? "client", newId]
+  );
+}
+
+async function upsertFactLocked(
+  client: PoolClient,
+  userId: string,
+  input: FactInput,
+  salience: number,
+  embedding: number[] | null
+): Promise<void> {
+  const fact = input.fact.trim();
+  const sensitivity = isSensitiveFact(input) ? "sensitive" : "normal";
+  const model = embedModel();
+  const sourceType = input.sourceType ?? (input.sourceCharacter === "user" ? "user" : "chat");
+
+  if (embedding) {
+    const vec = toVectorLiteral(embedding);
+    const { rows } = await queryClient<{ id: string; distance: number; source_character: string | null }>(
+      client,
+      `SELECT id, (embedding <=> $2::vector) AS distance, source_character
+         FROM user_facts
+        WHERE user_id = $1 AND embedding IS NOT NULL AND status = 'active'
+          AND COALESCE(embedding_model, $3) = $3
+        ORDER BY embedding <=> $2::vector
+        LIMIT 1`,
+      [userId, vec, model]
+    );
+    const nearest = rows[0];
+    if (nearest && Number(nearest.distance) <= DEDUP_MAX_DISTANCE) {
+      const keepUserSource = nearest.source_character === "user";
+      await queryClient(
+        client,
+        `UPDATE user_facts
+            SET fact = $2,
+                category = COALESCE($3, category),
+                event_date = COALESCE($4::date, event_date),
+                source_character = CASE WHEN $8 THEN source_character ELSE COALESCE($5, source_character) END,
+                salience = GREATEST(salience, $6),
+                embedding = $7::vector,
+                embedding_model = $9,
+                embedding_version = $10,
+                predicate_key = COALESCE($11, predicate_key),
+                entity_key = COALESCE($12, entity_key),
+                subject_key = COALESCE($13, subject_key),
+                sensitivity = $14,
+                confidence = GREATEST(confidence, $15),
+                source_type = CASE WHEN $8 THEN source_type ELSE COALESCE($16, source_type) END,
+                last_confirmed_at = NOW(),
+                consent_version = $17,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [
+          nearest.id,
+          fact.slice(0, 600),
+          input.category ?? null,
+          input.eventDate ?? null,
+          input.sourceCharacter ?? null,
+          salience,
+          vec,
+          keepUserSource,
+          model,
+          EMBED_VERSION,
+          input.predicateKey ?? null,
+          input.entityKey ?? null,
+          input.subjectKey ?? "client",
+          sensitivity,
+          input.confidence ?? 1,
+          sourceType,
+          MEMORY_CONSENT_VERSION,
+        ]
+      );
+      await supersedeReplaceables(client, userId, input, nearest.id);
+      return;
+    }
+
+    const { rows: inserted } = await queryClient<{ id: string }>(
+      client,
+      `INSERT INTO user_facts
+         (user_id, fact, category, event_date, source_character, salience, embedding,
+          embedding_model, embedding_version, predicate_key, entity_key, subject_key,
+          sensitivity, confidence, source_type, source_entity_id, status, consent_version,
+          last_confirmed_at, valid_from)
+       VALUES ($1,$2,$3,$4::date,$5,$6,$7::vector,$8,$9,$10,$11,$12,$13,$14,$15,$16,'active',$17,NOW(),NOW())
+       RETURNING id`,
+      [
+        userId,
+        fact.slice(0, 600),
+        input.category ?? null,
+        input.eventDate ?? null,
+        input.sourceCharacter ?? null,
+        salience,
+        vec,
+        model,
+        EMBED_VERSION,
+        input.predicateKey ?? null,
+        input.entityKey ?? null,
+        input.subjectKey ?? "client",
+        sensitivity,
+        input.confidence ?? 1,
+        sourceType,
+        input.sourceEntityId ?? null,
+        MEMORY_CONSENT_VERSION,
+      ]
+    );
+    if (inserted[0]) await supersedeReplaceables(client, userId, input, inserted[0].id);
+    return;
+  }
+
+  const { rows: textDup } = await queryClient<{ id: string; source_character: string | null }>(
+    client,
+    `SELECT id, source_character FROM user_facts
+      WHERE user_id = $1
+        AND status = 'active'
+        AND lower(regexp_replace(fact, '\\s+', ' ', 'g')) =
+            lower(regexp_replace($2, '\\s+', ' ', 'g'))
+      LIMIT 1`,
+    [userId, fact.slice(0, 600)]
+  );
+  if (textDup[0]) {
+    const keepUserSource = textDup[0].source_character === "user";
+    await queryClient(
+      client,
+      `UPDATE user_facts
+          SET category = COALESCE($2, category),
+              event_date = COALESCE($3::date, event_date),
+              source_character = CASE WHEN $6 THEN source_character ELSE COALESCE($4, source_character) END,
+              salience = GREATEST(salience, $5),
+              predicate_key = COALESCE($7, predicate_key),
+              entity_key = COALESCE($8, entity_key),
+              subject_key = COALESCE($9, subject_key),
+              sensitivity = $10,
+              last_confirmed_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [
+        textDup[0].id,
+        input.category ?? null,
+        input.eventDate ?? null,
+        input.sourceCharacter ?? null,
+        salience,
+        keepUserSource,
+        input.predicateKey ?? null,
+        input.entityKey ?? null,
+        input.subjectKey ?? "client",
+        sensitivity,
+      ]
+    );
+    await supersedeReplaceables(client, userId, input, textDup[0].id);
+    return;
+  }
+
+  const { rows: inserted } = await queryClient<{ id: string }>(
+    client,
+    `INSERT INTO user_facts
+       (user_id, fact, category, event_date, source_character, salience,
+        predicate_key, entity_key, subject_key, sensitivity, confidence,
+        source_type, source_entity_id, status, consent_version, last_confirmed_at, valid_from)
+     VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10,$11,$12,$13,'active',$14,NOW(),NOW())
+     RETURNING id`,
+    [
+      userId,
+      fact.slice(0, 600),
+      input.category ?? null,
+      input.eventDate ?? null,
+      input.sourceCharacter ?? null,
+      salience,
+      input.predicateKey ?? null,
+      input.entityKey ?? null,
+      input.subjectKey ?? "client",
+      sensitivity,
+      input.confidence ?? 1,
+      sourceType,
+      input.sourceEntityId ?? null,
+      MEMORY_CONSENT_VERSION,
+    ]
+  );
+  if (inserted[0]) await supersedeReplaceables(client, userId, input, inserted[0].id);
+}
+
 export async function upsertFact(userId: string, input: FactInput): Promise<void> {
   const fact = input.fact?.trim();
   if (!userId || !fact) return;
+  if (isInstructionLikeFact(fact)) return;
+  if (await isFactTombstoned(userId, fact)) return;
+  if (isSensitiveFact(input) && !input.allowSensitive && input.sourceCharacter !== "user") {
+    return;
+  }
 
   const salience = clampSalience(input.salience);
   const embedding = await embedOne(fact);
@@ -143,111 +352,19 @@ export async function upsertFact(userId: string, input: FactInput): Promise<void
   });
 }
 
-/** Dedup + write for one fact. Caller must hold the per-user advisory lock. */
-async function upsertFactLocked(
-  client: PoolClient,
-  userId: string,
-  input: FactInput,
-  salience: number,
-  embedding: number[] | null
-): Promise<void> {
-  const fact = input.fact.trim();
-
-  if (embedding) {
-    const vec = toVectorLiteral(embedding);
-    const { rows } = await queryClient<{ id: string; distance: number }>(
-      client,
-      `SELECT id, (embedding <=> $2::vector) AS distance
-         FROM user_facts
-        WHERE user_id = $1 AND embedding IS NOT NULL
-        ORDER BY embedding <=> $2::vector
-        LIMIT 1`,
-      [userId, vec]
-    );
-    const nearest = rows[0];
-    if (nearest && Number(nearest.distance) <= DEDUP_MAX_DISTANCE) {
-      await queryClient(
-        client,
-        `UPDATE user_facts
-            SET fact = $2,
-                category = COALESCE($3, category),
-                event_date = COALESCE($4::date, event_date),
-                source_character = COALESCE($5, source_character),
-                salience = GREATEST(salience, $6),
-                embedding = $7::vector,
-                updated_at = NOW()
-          WHERE id = $1`,
-        [nearest.id, fact.slice(0, 600), input.category ?? null, input.eventDate ?? null,
-         input.sourceCharacter ?? null, salience, vec]
-      );
-      return;
-    }
-
-    await queryClient(
-      client,
-      `INSERT INTO user_facts
-         (user_id, fact, category, event_date, source_character, salience, embedding)
-       VALUES ($1, $2, $3, $4::date, $5, $6, $7::vector)`,
-      [userId, fact.slice(0, 600), input.category ?? null, input.eventDate ?? null,
-       input.sourceCharacter ?? null, salience, vec]
-    );
-    return;
-  }
-
-  // No embedding (provider offline) — fall back to normalized-text dedup so
-  // outages don't accumulate exact/near-exact duplicate rows. Re-embedded later.
-  const { rows: textDup } = await queryClient<{ id: string }>(
-    client,
-    `SELECT id FROM user_facts
-      WHERE user_id = $1
-        AND lower(regexp_replace(fact, '\\s+', ' ', 'g')) =
-            lower(regexp_replace($2, '\\s+', ' ', 'g'))
-      LIMIT 1`,
-    [userId, fact.slice(0, 600)]
-  );
-  if (textDup[0]) {
-    await queryClient(
-      client,
-      `UPDATE user_facts
-          SET category = COALESCE($2, category),
-              event_date = COALESCE($3::date, event_date),
-              source_character = COALESCE($4, source_character),
-              salience = GREATEST(salience, $5),
-              updated_at = NOW()
-        WHERE id = $1`,
-      [textDup[0].id, input.category ?? null, input.eventDate ?? null,
-       input.sourceCharacter ?? null, salience]
-    );
-    return;
-  }
-
-  await queryClient(
-    client,
-    `INSERT INTO user_facts
-       (user_id, fact, category, event_date, source_character, salience)
-     VALUES ($1, $2, $3, $4::date, $5, $6)`,
-    [userId, fact.slice(0, 600), input.category ?? null, input.eventDate ?? null,
-     input.sourceCharacter ?? null, salience]
-  );
-}
-
-export async function upsertFacts(userId: string, inputs: FactInput[]): Promise<void> {
+export async function upsertFacts(userId: string, inputs: FactInput[]): Promise<number> {
+  let stored = 0;
   for (const input of inputs) {
     try {
       await upsertFact(userId, input);
+      stored += 1;
     } catch (err) {
       console.warn("[memory] upsertFact failed:", err instanceof Error ? err.message : err);
     }
   }
+  return stored;
 }
 
-/**
- * Hybrid retrieval (Mem0 v3 style): fuse semantic vector similarity with
- * Russian full-text keyword ranking via Reciprocal Rank Fusion, then break
- * ties by salience and recency (latest-truth-wins). Degrades gracefully:
- *  - no embedding (provider down) → lexical-only;
- *  - no query text → salience/recency.
- */
 export async function searchFacts(
   userId: string,
   queryText: string,
@@ -256,22 +373,21 @@ export async function searchFacts(
   if (!userId) return [];
   const topK = opts.topK ?? 8;
   const trimmed = queryText.trim();
-
-  if (!trimmed) {
-    return [];
-  }
+  if (!trimmed) return [];
 
   const embedding = await embedOne(trimmed, SEARCH_EMBED_TIMEOUT_MS);
   const vec = embedding ? toVectorLiteral(embedding) : null;
+  const model = embedModel();
 
-  // Reciprocal Rank Fusion (k=60) over two ranked candidate lists.
   const { rows } = await query<FactRow>(
     `WITH       vec_ranked AS (
         SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rnk
           FROM user_facts
          WHERE user_id = $1
+           AND status = 'active'
            AND $2::vector IS NOT NULL
            AND embedding IS NOT NULL
+           AND COALESCE(embedding_model, $5) = $5
            AND (embedding <=> $2::vector) <= ${SEARCH_MAX_DISTANCE}
          ORDER BY embedding <=> $2::vector
          LIMIT 20
@@ -283,6 +399,7 @@ export async function searchFacts(
                ) AS rnk
           FROM user_facts
          WHERE user_id = $1
+           AND status = 'active'
            AND to_tsvector('russian', fact) @@ plainto_tsquery('russian', $3)
          LIMIT 20
       ),
@@ -297,20 +414,14 @@ export async function searchFacts(
       SELECT ${FACT_COLUMNS_F}
         FROM user_facts f
         JOIN fused ON fused.id = f.id
+       WHERE f.status = 'active'
        ORDER BY fused.score DESC, f.salience DESC, f.updated_at DESC
        LIMIT $4`,
-    [userId, vec, trimmed, topK]
+    [userId, vec, trimmed, topK, model]
   );
-  if (rows.length) return rows.map(mapRow);
-
-  return [];
+  return rows.map(mapRow);
 }
 
-/**
- * Dated events from today forward, up to `withinDays` out. This only fetches
- * candidates — callers (see ClientMemory.loadClientMemoryBlock) still relevance-gate
- * anything beyond the imminent lead time before injecting it into the prompt.
- */
 export async function getUpcomingEvents(
   userId: string,
   withinDays = 45,
@@ -321,6 +432,7 @@ export async function getUpcomingEvents(
     `SELECT ${FACT_COLUMNS}
        FROM user_facts
       WHERE user_id = $1
+        AND status = 'active'
         AND event_date IS NOT NULL
         AND event_date >= CURRENT_DATE
         AND event_date <= CURRENT_DATE + ($2 || ' days')::interval
@@ -339,11 +451,6 @@ export interface GlobalUpcomingEvent {
   sourceCharacter: string | null;
 }
 
-/**
- * Cron-facing: dated events across ALL users that fall within `leadDays` and
- * have NOT yet produced an `event_reminder` notification. Dedup is done against
- * the notifications table (no extra schema), so the proactive nudge fires once.
- */
 export async function getGlobalUpcomingEvents(
   leadDays = 3,
   limit = 200
@@ -357,7 +464,11 @@ export async function getGlobalUpcomingEvents(
   }>(
     `SELECT f.id, f.user_id, f.fact, f.event_date::text AS event_date, f.source_character
        FROM user_facts f
-      WHERE f.event_date IS NOT NULL
+       JOIN user_memory_preferences p ON p.user_id = f.user_id
+      WHERE f.status = 'active'
+        AND p.memory_enabled = TRUE
+        AND p.event_reminders_enabled = TRUE
+        AND f.event_date IS NOT NULL
         AND f.event_date >= CURRENT_DATE
         AND f.event_date <= CURRENT_DATE + ($1 || ' days')::interval
         AND NOT EXISTS (
@@ -379,13 +490,12 @@ export async function getGlobalUpcomingEvents(
   }));
 }
 
-/** High-salience facts (salience >= 5) — surfaced only when queryText matches in client-memory. */
 export async function getCriticalFacts(userId: string, limit = 3): Promise<UserFact[]> {
   if (!userId) return [];
   const { rows } = await query<FactRow>(
     `SELECT ${FACT_COLUMNS}
        FROM user_facts
-      WHERE user_id = $1 AND salience >= 5
+      WHERE user_id = $1 AND status = 'active' AND salience >= 5
       ORDER BY updated_at DESC
       LIMIT $2`,
     [userId, limit]
@@ -393,33 +503,32 @@ export async function getCriticalFacts(userId: string, limit = 3): Promise<UserF
   return rows.map(mapRow);
 }
 
-/** Opportunistically embed facts that were stored without a vector. */
 export async function reembedMissingFacts(userId: string, limit = 5): Promise<number> {
   if (!userId) return 0;
   const { rows } = await query<{ id: string; fact: string }>(
     `SELECT id, fact FROM user_facts
-      WHERE user_id = $1 AND embedding IS NULL
+      WHERE user_id = $1 AND status = 'active' AND embedding IS NULL
       LIMIT $2`,
     [userId, limit]
   );
   let done = 0;
+  const model = embedModel();
   for (const r of rows) {
     const vec = await embedOne(r.fact);
-    if (!vec) break; // embeddings still unavailable — stop early
-    await query(`UPDATE user_facts SET embedding = $2::vector WHERE id = $1`, [
-      r.id,
-      toVectorLiteral(vec),
-    ]);
+    if (!vec) break;
+    await query(
+      `UPDATE user_facts
+          SET embedding = $2::vector,
+              embedding_model = $3,
+              embedding_version = $4
+        WHERE id = $1`,
+      [r.id, toVectorLiteral(vec), model, EMBED_VERSION]
+    );
     done++;
   }
   return done;
 }
 
-/**
- * Step down undated "critical" facts that have gone quiet for
- * CRITICAL_DECAY_AFTER_DAYS — see the constant's doc comment. Dated events are
- * handled separately (isPastEventFact) so they're excluded here.
- */
 export async function decayStaleCriticalFacts(limit = 500): Promise<number> {
   const { rows } = await query<{ id: string }>(
     `UPDATE user_facts
@@ -427,6 +536,7 @@ export async function decayStaleCriticalFacts(limit = 500): Promise<number> {
       WHERE id IN (
         SELECT id FROM user_facts
          WHERE salience >= 5
+           AND status = 'active'
            AND event_date IS NULL
            AND updated_at < NOW() - ($2 || ' days')::interval
          LIMIT $1
@@ -437,11 +547,31 @@ export async function decayStaleCriticalFacts(limit = 500): Promise<number> {
   return rows.length;
 }
 
-/**
- * Cap episodic memory per user (mirrors MAX_SESSION_MEMORIES_PER_USER in
- * session-memory.ts). Global pass for the maintenance cron — trims users that
- * grew past the cap before opportunistic per-write pruning existed.
- */
+/** TTL: delete expired / past / superseded facts. */
+export async function expireStaleFacts(limit = 500): Promise<number> {
+  const { rows } = await query<{ id: string }>(
+    `DELETE FROM user_facts
+      WHERE id IN (
+        SELECT id FROM user_facts
+         WHERE (
+              (status = 'superseded' AND updated_at < NOW() - INTERVAL '90 days')
+           OR (event_date IS NOT NULL AND event_date < CURRENT_DATE - INTERVAL '30 days')
+           OR (source_type NOT IN ('user', 'profile')
+               AND status = 'active'
+               AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '365 days'
+               AND sensitivity = 'normal')
+           OR (sensitivity = 'sensitive'
+               AND source_type NOT IN ('user', 'profile')
+               AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '180 days')
+         )
+         LIMIT $1
+      )
+      RETURNING id`,
+    [limit]
+  );
+  return rows.length;
+}
+
 export const SESSION_MEMORIES_MAINTENANCE_CAP = 200;
 
 export async function pruneAllSessionMemories(
@@ -464,37 +594,53 @@ export async function pruneAllSessionMemories(
   return rowCount ?? 0;
 }
 
-/**
- * Maintenance pass (cron/admin): heal facts left without a vector across all
- * users (e.g. inserted while the embeddings provider was down), decay stale
- * critical facts, and trim episodic memory to the per-user cap. Re-embedding
- * stops early if embeddings are unavailable; the other steps always run.
- */
 export async function runMemoryMaintenance(
   limit = 200
-): Promise<{ scanned: number; reembedded: number; decayed: number; sessionsPruned: number }> {
+): Promise<{
+  scanned: number;
+  reembedded: number;
+  decayed: number;
+  sessionsPruned: number;
+  expired: number;
+  tombstonesExpired: number;
+}> {
   const { rows } = await query<{ id: string; fact: string }>(
-    `SELECT id, fact FROM user_facts WHERE embedding IS NULL ORDER BY updated_at ASC LIMIT $1`,
+    `SELECT id, fact FROM user_facts
+      WHERE embedding IS NULL AND status = 'active'
+      ORDER BY updated_at ASC LIMIT $1`,
     [limit]
   );
   let reembedded = 0;
+  const model = embedModel();
   for (const r of rows) {
     const vec = await embedOne(r.fact);
-    if (!vec) break; // embeddings unavailable — abort the pass
-    await query(`UPDATE user_facts SET embedding = $2::vector WHERE id = $1`, [
-      r.id,
-      toVectorLiteral(vec),
-    ]);
+    if (!vec) break;
+    await query(
+      `UPDATE user_facts
+          SET embedding = $2::vector, embedding_model = $3, embedding_version = $4
+        WHERE id = $1`,
+      [r.id, toVectorLiteral(vec), model, EMBED_VERSION]
+    );
     reembedded++;
   }
   const decayed = await decayStaleCriticalFacts().catch(() => 0);
   const sessionsPruned = await pruneAllSessionMemories().catch(() => 0);
-  return { scanned: rows.length, reembedded, decayed, sessionsPruned };
+  const expired = await expireStaleFacts().catch(() => 0);
+  const tombstonesExpired = await expireOldTombstones().catch(() => 0);
+  return {
+    scanned: rows.length,
+    reembedded,
+    decayed,
+    sessionsPruned,
+    expired,
+    tombstonesExpired,
+  };
 }
 
 export async function countFacts(userId: string): Promise<number> {
   const { rows } = await query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM user_facts WHERE user_id = $1`,
+    `SELECT COUNT(*)::text AS count FROM user_facts
+      WHERE user_id = $1 AND status = 'active'`,
     [userId]
   );
   return Number.parseInt(rows[0]?.count ?? "0", 10);
@@ -504,7 +650,7 @@ export async function listFacts(userId: string, limit = 100): Promise<UserFact[]
   const { rows } = await query<FactRow>(
     `SELECT ${FACT_COLUMNS}
        FROM user_facts
-      WHERE user_id = $1
+      WHERE user_id = $1 AND status = 'active'
       ORDER BY salience DESC, updated_at DESC
       LIMIT $2`,
     [userId, limit]
@@ -513,11 +659,62 @@ export async function listFacts(userId: string, limit = 100): Promise<UserFact[]
 }
 
 export async function deleteFact(userId: string, factId: string): Promise<boolean> {
-  const res = await query(`DELETE FROM user_facts WHERE user_id = $1 AND id = $2`, [
-    userId,
-    factId,
-  ]);
-  return (res.rowCount ?? 0) > 0;
+  const { rows } = await query<{ fact: string; predicate_key: string | null }>(
+    `DELETE FROM user_facts
+      WHERE user_id = $1 AND id = $2
+      RETURNING fact, predicate_key`,
+    [userId, factId]
+  );
+  if (!rows[0]) return false;
+  await addTombstone(userId, rows[0].fact, rows[0].predicate_key);
+  await query(
+    `DELETE FROM notifications
+      WHERE user_id = $1
+        AND type = 'event_reminder'
+        AND data->>'factId' = $2`,
+    [userId, factId]
+  ).catch(() => undefined);
+  return true;
+}
+
+export async function updateFact(
+  userId: string,
+  factId: string,
+  input: FactInput
+): Promise<UserFact | null> {
+  const fact = input.fact?.trim();
+  if (!userId || !factId || !fact) return null;
+  if (isInstructionLikeFact(fact) || !fact) return null;
+
+  const { rows } = await query<FactRow>(
+    `UPDATE user_facts
+        SET fact = $3,
+            category = COALESCE($4, category),
+            event_date = COALESCE($5::date, event_date),
+            salience = GREATEST(salience, $6),
+            predicate_key = COALESCE($7, predicate_key),
+            entity_key = COALESCE($8, entity_key),
+            subject_key = COALESCE($9, subject_key),
+            sensitivity = $10,
+            embedding = NULL,
+            last_confirmed_at = NOW(),
+            updated_at = NOW()
+      WHERE user_id = $1 AND id = $2 AND status = 'active'
+      RETURNING ${FACT_COLUMNS}`,
+    [
+      userId,
+      factId,
+      fact.slice(0, 600),
+      input.category ?? null,
+      input.eventDate ?? null,
+      clampSalience(input.salience),
+      input.predicateKey ?? null,
+      input.entityKey ?? null,
+      input.subjectKey ?? "client",
+      isSensitiveFact(input) ? "sensitive" : "normal",
+    ]
+  );
+  return rows[0] ? mapRow(rows[0]) : null;
 }
 
 export async function purgeFacts(userId: string): Promise<number> {
@@ -525,16 +722,44 @@ export async function purgeFacts(userId: string): Promise<number> {
   return res.rowCount ?? 0;
 }
 
-/** Wipe AI memory only (facts + session summaries). Does not touch chats or cabinet history. */
+/** Wipe AI memory + reminders + jobs; revoke consent; keep tombstones against re-ingest. */
 export async function purgeAllUserMemory(userId: string): Promise<{
   factsRemoved: number;
   sessionMemoriesRemoved: number;
+  remindersRemoved: number;
+  jobsRemoved: number;
+  tombstonesAdded: number;
 }> {
+  await cancelPendingMemoryJobs(userId).catch(() => 0);
+  const jobsRemoved = await purgeMemoryExtractionJobs(userId).catch(() => 0);
+
+  const { rows: doomed } = await query<{ fact: string; predicate_key: string | null }>(
+    `SELECT fact, predicate_key FROM user_facts WHERE user_id = $1`,
+    [userId]
+  );
+  let tombstonesAdded = 0;
+  for (const row of doomed) {
+    try {
+      await addTombstone(userId, row.fact, row.predicate_key);
+      tombstonesAdded += 1;
+    } catch {
+      /* keep purging even if a fingerprint write fails */
+    }
+  }
+
   const sessionRes = await query(`DELETE FROM session_memories WHERE user_id = $1`, [userId]);
   const factsRes = await query(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
+  const remindersRes = await query(
+    `DELETE FROM notifications WHERE user_id = $1 AND type = 'event_reminder'`,
+    [userId]
+  );
+  await revokeMemoryConsent(userId).catch(() => undefined);
   return {
     sessionMemoriesRemoved: sessionRes.rowCount ?? 0,
     factsRemoved: factsRes.rowCount ?? 0,
+    remindersRemoved: remindersRes.rowCount ?? 0,
+    jobsRemoved,
+    tombstonesAdded,
   };
 }
 

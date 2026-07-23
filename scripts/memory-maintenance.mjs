@@ -46,7 +46,9 @@ async function main() {
   await c.connect();
   try {
     const { rows } = await c.query(
-      `SELECT id, fact FROM user_facts WHERE embedding IS NULL ORDER BY updated_at ASC LIMIT $1`,
+      `SELECT id, fact FROM user_facts
+        WHERE embedding IS NULL AND status = 'active'
+        ORDER BY updated_at ASC LIMIT $1`,
       [LIMIT]
     );
     let reembedded = 0;
@@ -56,10 +58,14 @@ async function main() {
         console.warn("memory-maintenance: embeddings unavailable, stopping early.");
         break;
       }
-      await c.query(`UPDATE user_facts SET embedding = $2::vector WHERE id = $1`, [
-        r.id,
-        `[${v.join(",")}]`,
-      ]);
+      await c.query(
+        `UPDATE user_facts
+            SET embedding = $2::vector,
+                embedding_model = $3,
+                embedding_version = '1'
+          WHERE id = $1`,
+        [r.id, `[${v.join(",")}]`, EMBED_MODEL]
+      );
       reembedded++;
     }
     console.log(`memory-maintenance: scanned ${rows.length}, re-embedded ${reembedded}`);
@@ -70,6 +76,7 @@ async function main() {
         WHERE id IN (
           SELECT id FROM user_facts
            WHERE salience >= 5
+             AND status = 'active'
              AND event_date IS NULL
              AND updated_at < NOW() - ($1 || ' days')::interval
            LIMIT 500
@@ -78,6 +85,26 @@ async function main() {
       [String(CRITICAL_DECAY_AFTER_DAYS)]
     );
     console.log(`memory-maintenance: decayed ${decay.rowCount} stale critical fact(s)`);
+
+    const expired = await c.query(
+      `DELETE FROM user_facts
+        WHERE id IN (
+          SELECT id FROM user_facts
+           WHERE (
+                (status = 'superseded' AND updated_at < NOW() - INTERVAL '90 days')
+             OR (event_date IS NOT NULL AND event_date < CURRENT_DATE - INTERVAL '30 days')
+           )
+           LIMIT 500
+        )
+        RETURNING id`
+    );
+    console.log(`memory-maintenance: expired ${expired.rowCount} stale fact(s)`);
+
+    const tombs = await c.query(
+      `DELETE FROM user_memory_tombstones
+        WHERE expires_at IS NOT NULL AND expires_at < NOW()`
+    );
+    console.log(`memory-maintenance: expired ${tombs.rowCount} tombstone(s)`);
 
     // Mirrors MAX_SESSION_MEMORIES_PER_USER in src/lib/session-memory.ts.
     const sessionsPruned = await c.query(

@@ -9,6 +9,7 @@ import {
   Calendar,
   Heart,
   Loader2,
+  Pencil,
   Plus,
   Sparkles,
   Target,
@@ -37,6 +38,13 @@ type MemoryFact = {
   addedByUser?: boolean;
 };
 
+type MemoryPrefs = {
+  memoryEnabled: boolean;
+  autoCaptureEnabled: boolean;
+  sensitiveCaptureEnabled: boolean;
+  eventRemindersEnabled: boolean;
+};
+
 const CATEGORY_ICONS: Record<UserFactCategory, LucideIcon> = {
   family: Heart,
   work: Briefcase,
@@ -60,10 +68,18 @@ function factCountLabel(count: number): string {
 
 export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: boolean }) {
   const [facts, setFacts] = useState<MemoryFact[]>([]);
+  const [prefs, setPrefs] = useState<MemoryPrefs>({
+    memoryEnabled: false,
+    autoCaptureEnabled: false,
+    sensitiveCaptureEnabled: false,
+    eventRemindersEnabled: false,
+  });
   const [loading, setLoading] = useState(true);
+  const [prefsSaving, setPrefsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editingFact, setEditingFact] = useState<MemoryFact | null>(null);
   const [draft, setDraft] = useState("");
   const [category, setCategory] = useState<string>("other");
   const [saving, setSaving] = useState(false);
@@ -75,15 +91,29 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/memory/facts", { credentials: "include" });
-      const data = (await res.json().catch(() => ({}))) as {
+      const [factsRes, prefsRes] = await Promise.all([
+        fetch("/api/memory/facts", { credentials: "include" }),
+        fetch("/api/memory/preferences", { credentials: "include" }),
+      ]);
+      const factsData = (await factsRes.json().catch(() => ({}))) as {
         facts?: MemoryFact[];
         error?: string;
       };
-      if (!res.ok) {
-        throw new Error(data.error ?? "load_failed");
+      const prefsData = (await prefsRes.json().catch(() => ({}))) as {
+        preferences?: MemoryPrefs;
+      };
+      if (!factsRes.ok) {
+        throw new Error(factsData.error ?? "load_failed");
       }
-      setFacts(Array.isArray(data.facts) ? data.facts : []);
+      setFacts(Array.isArray(factsData.facts) ? factsData.facts : []);
+      if (prefsRes.ok && prefsData.preferences) {
+        setPrefs({
+          memoryEnabled: Boolean(prefsData.preferences.memoryEnabled),
+          autoCaptureEnabled: Boolean(prefsData.preferences.autoCaptureEnabled),
+          sensitiveCaptureEnabled: Boolean(prefsData.preferences.sensitiveCaptureEnabled),
+          eventRemindersEnabled: Boolean(prefsData.preferences.eventRemindersEnabled),
+        });
+      }
     } catch {
       setError("Не удалось загрузить память.");
       setFacts([]);
@@ -101,12 +131,75 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     setCategory("other");
     setPdConsent(false);
     setFormError(null);
+    setEditingFact(null);
   };
 
   const closeAddModal = () => {
     if (saving) return;
     setAddModalOpen(false);
     resetAddForm();
+  };
+
+  const openEdit = (fact: MemoryFact) => {
+    setEditingFact(fact);
+    setDraft(fact.fact);
+    setCategory(resolveFactCategory(fact.category));
+    setPdConsent(true);
+    setFormError(null);
+    setAddModalOpen(true);
+  };
+
+  const patchPrefs = async (patch: Partial<MemoryPrefs>) => {
+    const next = { ...prefs, ...patch };
+    if (!next.memoryEnabled) {
+      next.autoCaptureEnabled = false;
+      next.sensitiveCaptureEnabled = false;
+      next.eventRemindersEnabled = false;
+    }
+    if (!next.autoCaptureEnabled) {
+      next.sensitiveCaptureEnabled = false;
+    }
+
+    const enabling =
+      Boolean(patch.memoryEnabled) ||
+      Boolean(patch.autoCaptureEnabled) ||
+      Boolean(patch.sensitiveCaptureEnabled);
+
+    setPrefsSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/memory/preferences", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...next,
+          pdConsent: enabling ? true : undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        preferences?: MemoryPrefs;
+        message?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.message ?? "prefs_failed");
+      }
+      if (data.preferences) {
+        setPrefs({
+          memoryEnabled: Boolean(data.preferences.memoryEnabled),
+          autoCaptureEnabled: Boolean(data.preferences.autoCaptureEnabled),
+          sensitiveCaptureEnabled: Boolean(data.preferences.sensitiveCaptureEnabled),
+          eventRemindersEnabled: Boolean(data.preferences.eventRemindersEnabled),
+        });
+      } else {
+        setPrefs(next);
+      }
+    } catch {
+      setError("Не удалось сохранить настройки памяти.");
+      await load();
+    } finally {
+      setPrefsSaving(false);
+    }
   };
 
   const handleAdd = async () => {
@@ -123,33 +216,60 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     setSaving(true);
     setFormError(null);
     try {
-      const res = await fetch("/api/memory/facts", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fact: text, category, pdConsent: true }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        fact?: MemoryFact;
-        message?: string;
-        error?: string;
-      };
-      if (!res.ok) {
-        setFormError(data.message ?? "Не удалось сохранить факт.");
-        return;
-      }
-      if (data.fact?.id) {
-        setFacts((prev) => {
-          const withoutDup = prev.filter((f) => f.id !== data.fact!.id);
-          return [data.fact!, ...withoutDup];
+      if (editingFact) {
+        const res = await fetch("/api/memory/facts", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            factId: editingFact.id,
+            fact: text,
+            category,
+          }),
         });
+        const data = (await res.json().catch(() => ({}))) as {
+          fact?: MemoryFact;
+          message?: string;
+        };
+        if (!res.ok) {
+          setFormError(data.message ?? "Не удалось обновить факт.");
+          return;
+        }
+        if (data.fact?.id) {
+          setFacts((prev) => prev.map((f) => (f.id === data.fact!.id ? data.fact! : f)));
+        } else {
+          await load();
+        }
       } else {
-        await load();
+        const res = await fetch("/api/memory/facts", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fact: text, category, pdConsent: true }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          fact?: MemoryFact;
+          message?: string;
+          error?: string;
+        };
+        if (!res.ok) {
+          setFormError(data.message ?? "Не удалось сохранить факт.");
+          return;
+        }
+        if (data.fact?.id) {
+          setFacts((prev) => {
+            const withoutDup = prev.filter((f) => f.id !== data.fact!.id);
+            return [data.fact!, ...withoutDup];
+          });
+        } else {
+          await load();
+        }
+        setPrefs((p) => ({ ...p, memoryEnabled: true }));
       }
       setAddModalOpen(false);
       resetAddForm();
     } catch {
-      setFormError("Не удалось сохранить факт.");
+      setFormError(editingFact ? "Не удалось обновить факт." : "Не удалось сохранить факт.");
     } finally {
       setSaving(false);
     }
@@ -158,7 +278,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   const handlePurgeAll = async () => {
     if (
       !window.confirm(
-        "Полностью очистить память? Мастер забудет все сохранённые факты и итоги прошлых сеансов. Действие необратимо."
+        "Полностью очистить память? Мастер забудет все сохранённые факты и итоги прошлых сеансов. Согласие на память будет отозвано. Действие необратимо."
       )
     ) {
       return;
@@ -177,6 +297,12 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
         throw new Error(data.message ?? "purge_failed");
       }
       setFacts([]);
+      setPrefs({
+        memoryEnabled: false,
+        autoCaptureEnabled: false,
+        sensitiveCaptureEnabled: false,
+        eventRemindersEnabled: false,
+      });
     } catch {
       setError("Не удалось очистить память. Попробуйте позже.");
     } finally {
@@ -201,6 +327,38 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     }
   };
 
+  const PrefToggle = ({
+    checked,
+    disabled,
+    label,
+    hint,
+    onChange,
+  }: {
+    checked: boolean;
+    disabled?: boolean;
+    label: string;
+    hint: string;
+    onChange: (next: boolean) => void;
+  }) => (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-xl border border-white/8 bg-black/20 px-3 py-3 ${
+        disabled ? "opacity-45" : ""
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled || prefsSaving}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-white/85">{label}</span>
+        <span className="mt-0.5 block text-[11px] leading-relaxed text-white/40">{hint}</span>
+      </span>
+    </label>
+  );
+
   return (
     <>
       <section className={hideTitle ? "space-y-5" : "rounded-2xl border border-white/10 bg-white/[0.03] p-5"}>
@@ -212,11 +370,56 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             <div className="min-w-0 flex-1">
               <h2 className="text-base font-semibold text-white">Память о вас</h2>
               <p className="mt-1 text-sm text-white/50">
-                Добавляйте важное о себе — мастер учтёт это в будущих сеансах, если тема совпадёт.
+                По умолчанию память выключена. Включите согласие — и мастер будет учитывать факты
+                только по теме сеанса.
               </p>
             </div>
           </div>
         ) : null}
+
+        <div className="space-y-2">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
+            Согласие и настройки
+          </p>
+          <PrefToggle
+            checked={prefs.memoryEnabled}
+            label="Использовать память в сеансах"
+            hint="Факты из списка ниже могут попадать в ответы мастера, если тема совпадает."
+            onChange={(memoryEnabled) => void patchPrefs({ memoryEnabled })}
+          />
+          <PrefToggle
+            checked={prefs.autoCaptureEnabled}
+            disabled={!prefs.memoryEnabled}
+            label="Автозапоминание из чата"
+            hint="Система сможет извлекать факты из ваших сообщений в фоне. Без этого — только ручные записи."
+            onChange={(autoCaptureEnabled) => void patchPrefs({ autoCaptureEnabled })}
+          />
+          <PrefToggle
+            checked={prefs.sensitiveCaptureEnabled}
+            disabled={!prefs.memoryEnabled || !prefs.autoCaptureEnabled}
+            label="Чувствительные темы"
+            hint="Разрешить автозапоминание более личных сведений (здоровье, деньги, отношения)."
+            onChange={(sensitiveCaptureEnabled) => void patchPrefs({ sensitiveCaptureEnabled })}
+          />
+          <PrefToggle
+            checked={prefs.eventRemindersEnabled}
+            disabled={!prefs.memoryEnabled}
+            label="Напоминания о событиях"
+            hint="Короткое уведомление перед датами, которые вы сохранили в памяти."
+            onChange={(eventRemindersEnabled) => void patchPrefs({ eventRemindersEnabled })}
+          />
+          <p className="text-[11px] leading-relaxed text-white/35">
+            Включая память, вы соглашаетесь на обработку указанных персональных данных по{" "}
+            <LegalDocLink
+              href="/privacy"
+              external
+              className="text-aura-champagne/85 underline underline-offset-2 hover:text-aura-champagne"
+            >
+              Политике
+            </LegalDocLink>
+            . Отзыв — выключением тумблеров, очисткой памяти или удалением аккаунта.
+          </p>
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {!loading && facts.length > 0 ? (
@@ -228,7 +431,10 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           )}
           <button
             type="button"
-            onClick={() => setAddModalOpen(true)}
+            onClick={() => {
+              resetAddForm();
+              setAddModalOpen(true);
+            }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/25 bg-gradient-to-r from-purple-700/35 via-purple-900/40 to-amber-950/30 px-5 py-3.5 text-sm font-semibold text-amber-100 shadow-[0_8px_32px_rgba(88,28,135,0.25),inset_0_1px_0_rgba(255,255,255,0.08)] transition-all hover:border-amber-400/40 hover:shadow-[0_12px_40px_rgba(88,28,135,0.35)] sm:w-auto"
           >
             <Plus className="h-4 w-4" aria-hidden />
@@ -268,8 +474,8 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               </div>
               <p className="mt-4 text-base font-medium text-white/85">Пока пусто</p>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-white/45">
-                Добавьте факты о себе — семья, работа, планы. Мастер подхватит их, когда тема сеанса
-                совпадёт.
+                Добавьте факты о себе — семья, работа, планы. Мастер подхватит их после включения
+                памяти, когда тема сеанса совпадёт.
               </p>
             </div>
           ) : (
@@ -315,19 +521,29 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                           {formatMemoryFactForDisplay(f.fact)}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        disabled={deletingId === f.id}
-                        onClick={() => void handleDelete(f.id)}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/35 transition-colors hover:border-red-400/35 hover:bg-red-950/30 hover:text-red-300 disabled:opacity-50"
-                        aria-label="Удалить факт"
-                      >
-                        {deletingId === f.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                      <div className="flex shrink-0 flex-col gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(f)}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/35 transition-colors hover:border-amber-400/35 hover:text-amber-200"
+                          aria-label="Редактировать факт"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingId === f.id}
+                          onClick={() => void handleDelete(f.id)}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/35 transition-colors hover:border-red-400/35 hover:bg-red-950/30 hover:text-red-300 disabled:opacity-50"
+                          aria-label="Удалить факт"
+                        >
+                          {deletingId === f.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </li>
                 );
@@ -361,10 +577,10 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                 <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/10 bg-[#1a1028]/95 px-5 py-4 backdrop-blur-sm">
                   <div>
                     <h2 id="cabinet-memory-add-title" className="text-lg font-semibold text-white">
-                      Новый факт
+                      {editingFact ? "Изменить факт" : "Новый факт"}
                     </h2>
                     <p className="mt-1 text-sm text-white/50">
-                      Мастер учтёт это в будущих сеансах, если тема совпадёт.
+                      Мастер учтёт это в будущих сеансах, если тема совпадёт и память включена.
                     </p>
                   </div>
                   <button
@@ -406,43 +622,47 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                     </select>
                   </label>
 
-                  <div className="rounded-lg border border-white/8 bg-black/25 px-3 py-2.5 text-[11px] leading-relaxed text-white/45">
-                    Добавляя сведения о себе, вы даёте оператору платформы Zovus согласие на обработку
-                    указанных персональных данных (сбор, запись, хранение, использование) в целях
-                    персонализации консультаций, в том числе с применением автоматизированных средств (ИИ),
-                    на основании{" "}
-                    <LegalDocLink
-                      href="/privacy"
-                      external
-                      className="text-aura-champagne/85 underline underline-offset-2 hover:text-aura-champagne"
-                    >
-                      Политики обработки персональных данных
-                    </LegalDocLink>
-                    . Согласие действует до отзыва — удалением фактов, очисткой памяти или аккаунта
-                    (152-ФЗ).
-                  </div>
+                  {!editingFact ? (
+                    <>
+                      <div className="rounded-lg border border-white/8 bg-black/25 px-3 py-2.5 text-[11px] leading-relaxed text-white/45">
+                        Добавляя сведения о себе, вы даёте оператору платформы Zovus согласие на
+                        обработку указанных персональных данных (сбор, запись, хранение,
+                        использование) в целях персонализации консультаций, в том числе с применением
+                        автоматизированных средств (ИИ), на основании{" "}
+                        <LegalDocLink
+                          href="/privacy"
+                          external
+                          className="text-aura-champagne/85 underline underline-offset-2 hover:text-aura-champagne"
+                        >
+                          Политики обработки персональных данных
+                        </LegalDocLink>
+                        . Согласие действует до отзыва — удалением фактов, очисткой памяти или аккаунта
+                        (152-ФЗ).
+                      </div>
 
-                  <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-white/55">
-                    <input
-                      type="checkbox"
-                      checked={pdConsent}
-                      onChange={(e) => {
-                        setPdConsent(e.target.checked);
-                        if (e.target.checked) setFormError(null);
-                      }}
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
-                    />
-                    <span>
-                      Я даю согласие на обработку персональных данных, указанных в поле «Новый факт», в
-                      описанных целях.
-                    </span>
-                  </label>
+                      <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-white/55">
+                        <input
+                          type="checkbox"
+                          checked={pdConsent}
+                          onChange={(e) => {
+                            setPdConsent(e.target.checked);
+                            if (e.target.checked) setFormError(null);
+                          }}
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
+                        />
+                        <span>
+                          Я даю согласие на обработку персональных данных, указанных в поле «Новый
+                          факт», в описанных целях.
+                        </span>
+                      </label>
+                    </>
+                  ) : null}
 
                   {formError ? <p className="text-xs text-red-300">{formError}</p> : null}
 
                   <p className="text-[11px] text-white/35">
-                    Без карт, гаданий и общих фраз. Можно писать от первого лица — сохраним в формате для
-                    мастера.
+                    Без карт, гаданий и общих фраз. Можно писать от первого лица — сохраним в формате
+                    для мастера.
                   </p>
 
                   <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
@@ -456,16 +676,20 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                     </button>
                     <button
                       type="button"
-                      disabled={saving || draft.trim().length < 6 || !pdConsent}
+                      disabled={
+                        saving || draft.trim().length < 6 || (!editingFact && !pdConsent)
+                      }
                       onClick={() => void handleAdd()}
                       className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-purple-600/80 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-40"
                     >
                       {saving ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : editingFact ? (
+                        <Pencil className="h-4 w-4" />
                       ) : (
                         <Plus className="h-4 w-4" />
                       )}
-                      Сохранить
+                      {editingFact ? "Сохранить" : "Добавить"}
                     </button>
                   </div>
                 </div>
