@@ -8,7 +8,6 @@ import {
   buildHumanReadingPrompt,
   generateChatReply,
   regenerateChatReply,
-  buildChatFallbackReply,
   llmUnavailableReply,
   type UserContext,
 } from "@/lib/chat-prompts";
@@ -1093,7 +1092,10 @@ export class ChatOrchestrator {
     ];
   }
 
-  /** Never return a partial paid spread — complete via continuation or card-aware fallback. */
+  /**
+   * Complete a paid spread via AI continuation only.
+   * Returns empty string when AI cannot produce a complete reading (fail-closed).
+   */
   private async finalizeSpreadReply(
     raw: string | null,
     contextMessages: ChatMessage[]
@@ -1113,18 +1115,8 @@ export class ChatOrchestrator {
     const cleaned = text ? this.sanitizeChatReply(text) : "";
     if (cleaned && isPaidSpreadTextComplete(cleaned, cardNames)) return cleaned;
 
-    console.warn("[chat] paid spread incomplete after continuation — using fallback");
-    const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
-    const fallback = buildChatFallbackReply(this.characterId, {
-      userName: normalizePersonDisplayNameOr(this.userProfile?.name, "друг"),
-      lastUserMessage: this.lastUserMsg,
-      cardNames,
-      intention: this.periodSpreadScope ? null : this.resolvedIntention,
-      spreadId: activeSpreadId,
-    });
-    const fb = fallback.trim();
-    if (fb) return fb;
-    return llmUnavailableReply({});
+    console.warn("[chat] paid spread incomplete after continuation — fail-closed");
+    return "";
   }
 
   /** Generate full spread off-stream, then stream the complete text (no mid-word cutoffs). */
@@ -1137,6 +1129,17 @@ export class ChatOrchestrator {
       cardNames: this.activeSpreadCardNames(),
     });
     const reply = await this.finalizeSpreadReply(draft, contextMessages);
+    if (!reply) {
+      let runesRefunded = false;
+      if (this.billingHandle) {
+        const rollback = await this.billingHandle.rollbackLlmFailure();
+        runesRefunded = rollback.runesRefunded;
+      }
+      return this.streamDeterministicReply(
+        llmUnavailableReply({ runesRefunded }),
+        { llmFailed: true, runesRefunded }
+      );
+    }
     return this.streamDeterministicReply(reply);
   }
 
@@ -1189,29 +1192,12 @@ export class ChatOrchestrator {
     }
 
     if (failed) {
-      const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
-      const cardNames =
-        hasCompleteSpread(
-          qualityOpts.cardNames,
-          activeSpreadId,
-          this.resolvedSpreadType ?? this.spreadType
-        )
-          ? qualityOpts.cardNames!
-          : this.resolvedCardNames;
-      const fallback = buildChatFallbackReply(this.characterId, {
-        userName: normalizePersonDisplayNameOr(this.userProfile?.name, "друг"),
-        lastUserMessage: this.lastUserMsg,
-        cardNames: cardNames ?? [],
-        intention: this.periodSpreadScope ? null : this.resolvedIntention,
-        spreadId: activeSpreadId,
-      });
-      if (fallback.trim()) {
-        console.warn("[chat] using card-aware chat fallback");
-        return { reply: fallback, llmFailed: false, usedFallback: true };
+      // Long-form / paid spreads must never become template success.
+      if (this.isLongFormSpreadReply()) {
+        console.warn("[chat] long-form spread AI failed — fail-closed");
+        return { reply: "", llmFailed: true, usedFallback: false };
       }
-    }
-
-    if (!reply && failed) {
+      // Short chat: explicit unavailable message only (not a reading).
       return { reply: "", llmFailed: true, usedFallback: false };
     }
 
@@ -1236,7 +1222,8 @@ export class ChatOrchestrator {
     finalReply: string,
     llmFailed: boolean
   ): Promise<Awaited<ReturnType<typeof checkAchievements>>> {
-    if (this.dbOk && this.session && this.profileUserId && finalReply) {
+    // Technical refusals are UI error-state only — never store as master messages.
+    if (this.dbOk && this.session && this.profileUserId && finalReply && !llmFailed) {
       try {
         await saveMessage(
           this.session.id,
@@ -1334,11 +1321,12 @@ export class ChatOrchestrator {
     reply: string,
     extra: Record<string, unknown> = {}
   ): Response {
+    const llmFailed = extra.llmFailed === true;
     return createDeterministicTextStream({
       reply,
-      llmFailed: false,
+      llmFailed,
       onComplete: async () => {
-        const persisted = await this.persistAssistantOutcomeWithRollback(reply, false);
+        const persisted = await this.persistAssistantOutcomeWithRollback(reply, llmFailed);
         if (persisted.persistFailed) {
           return {
             ...this.baseResponseMeta(extra),
@@ -1349,6 +1337,8 @@ export class ChatOrchestrator {
         }
         return {
           ...this.baseResponseMeta(extra),
+          llmFailed,
+          runesRefunded: extra.runesRefunded === true,
           ...(persisted.achievement ? { achievement: persisted.achievement } : {}),
         };
       },
@@ -1373,10 +1363,12 @@ export class ChatOrchestrator {
       if (!isPaidSpreadTextComplete(finalReply, cardNames) && this.lastSystemPrompt) {
         const contextMessages = await this.buildSpreadContextMessages(this.lastSystemPrompt);
         finalReply = await this.finalizeSpreadReply(finalReply, contextMessages);
+        if (!finalReply) llmFailed = true;
       }
     }
 
-    if (llmFailed && this.numerologParams) {
+    // Engine math may answer tool-style numerology chips, but never replaces a paid long-form AI reading.
+    if (llmFailed && this.numerologParams && !this.isLongFormSpreadReply()) {
       const engineFallback = tryNumerologEngineFallback(this.numerologParams);
       if (engineFallback) {
         finalReply = engineFallback.reply;
@@ -1384,8 +1376,6 @@ export class ChatOrchestrator {
           this.numerologyUi = engineFallback.numerologyUi;
         }
         llmFailed = false;
-      } else {
-        finalReply = llmUnavailableReply({ runesRefunded });
       }
     }
 
@@ -1448,7 +1438,7 @@ export class ChatOrchestrator {
     reply = resolved.reply;
     llmFailed = resolved.llmFailed;
 
-    if (llmFailed && this.numerologParams) {
+    if (llmFailed && this.numerologParams && !this.isLongFormSpreadReply()) {
       const engineFallback = tryNumerologEngineFallback(this.numerologParams);
       if (engineFallback) {
         reply = engineFallback.reply;
