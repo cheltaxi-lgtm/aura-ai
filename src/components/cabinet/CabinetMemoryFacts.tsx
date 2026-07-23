@@ -204,21 +204,24 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   };
 
   const patchPrefs = async (patch: Partial<MemoryPrefs>) => {
-    const next = { ...prefs, ...patch };
-    if (!next.memoryEnabled) {
-      next.autoCaptureEnabled = false;
-      next.sensitiveCaptureEnabled = false;
-      next.eventRemindersEnabled = false;
-    }
-    if (!next.autoCaptureEnabled) {
-      next.sensitiveCaptureEnabled = false;
-    }
-
+    // Send only changed fields — full prefs + memoryEnabled:true without pdConsent
+    // was rejected as consent_required and the UI blinked back to simple.
     const enabling =
-      Boolean(patch.memoryEnabled) ||
-      Boolean(patch.autoCaptureEnabled) ||
-      Boolean(patch.sensitiveCaptureEnabled);
+      (patch.memoryEnabled === true && !prefs.memoryEnabled) ||
+      (patch.autoCaptureEnabled === true && !prefs.autoCaptureEnabled) ||
+      (patch.sensitiveCaptureEnabled === true && !prefs.sensitiveCaptureEnabled);
 
+    const previous = prefs;
+    setPrefs((current) => {
+      const next = { ...current, ...patch };
+      if (!next.memoryEnabled) {
+        next.autoCaptureEnabled = false;
+        next.sensitiveCaptureEnabled = false;
+        next.eventRemindersEnabled = false;
+      }
+      if (!next.autoCaptureEnabled) next.sensitiveCaptureEnabled = false;
+      return next;
+    });
     setPrefsSaving(true);
     setError(null);
     try {
@@ -227,7 +230,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...next,
+          ...patch,
           pdConsent: enabling ? true : undefined,
         }),
       });
@@ -247,12 +250,10 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           momentsMode: data.preferences.momentsMode === "quiet" ? "quiet" : "active",
           cabinetMode: data.preferences.cabinetMode === "advanced" ? "advanced" : "simple",
         });
-      } else {
-        setPrefs(next);
       }
     } catch {
+      setPrefs(previous);
       setError("Не удалось сохранить настройки памяти.");
-      await load();
     } finally {
       setPrefsSaving(false);
     }

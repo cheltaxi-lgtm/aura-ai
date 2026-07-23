@@ -160,12 +160,12 @@ export async function PUT(request: NextRequest) {
     patch.cabinetMode = body.cabinetMode;
   }
 
-  if (
-    (patch.memoryEnabled === true ||
-      patch.autoCaptureEnabled === true ||
-      patch.sensitiveCaptureEnabled === true) &&
-    body.pdConsent !== true
-  ) {
+  const before = await getMemoryPreferences(profileUserId);
+  const enablingMemory =
+    (patch.memoryEnabled === true && !before.memoryEnabled) ||
+    (patch.autoCaptureEnabled === true && !before.autoCaptureEnabled) ||
+    (patch.sensitiveCaptureEnabled === true && !before.sensitiveCaptureEnabled);
+  if (enablingMemory && body.pdConsent !== true) {
     return NextResponse.json(
       {
         error: "consent_required",
@@ -175,7 +175,6 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  const before = await getMemoryPreferences(profileUserId);
   const preferences = await updateMemoryPreferences(profileUserId, patch);
   if (Object.keys(patch).length) {
     void recordMemoryProductEvent({
