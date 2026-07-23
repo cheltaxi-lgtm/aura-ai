@@ -66,7 +66,9 @@ export default function NatalStructuredReportView({
             {evidenceIds.length && (onEvidence || variant === "print") ? (
               <div className="mt-3 flex flex-wrap items-center gap-1.5 px-1">
                 <span className="text-[10px] uppercase tracking-wide text-white/30 print:text-black/45">
-                  Основано на
+                  {variant === "print"
+                    ? "Основано на рассчитанных данных"
+                    : "Основано на"}
                 </span>
                 {evidenceIds.map((id) => {
                   const item = byId.get(id);

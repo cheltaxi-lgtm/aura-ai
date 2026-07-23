@@ -844,6 +844,9 @@ async function main() {
   const printableReport = readFileSync(
     new URL("../src/components/natal/PrintableReport.tsx", import.meta.url), "utf8"
   );
+  const natalStructuredReportView = readFileSync(
+    new URL("../src/components/natal/NatalStructuredReportView.tsx", import.meta.url), "utf8"
+  );
   const natalExplainers = readFileSync(
     new URL("../src/lib/natal/explainers.ts", import.meta.url), "utf8"
   );
@@ -1049,7 +1052,10 @@ async function main() {
   );
   assert(
     printableReport.includes("Приложение: расчётные данные") &&
-      printableReport.includes("Основано на рассчитанных данных") &&
+      (printableReport.includes("Основано на рассчитанных данных") ||
+        natalStructuredReportView.includes("Основано на рассчитанных данных")) &&
+      printableReport.includes("NatalStructuredReportView") &&
+      astrologyWorkspace.includes("NatalStructuredReportView") &&
       !printableReport.includes("Evidence:") &&
       !astrologyWorkspace.includes('label="FORECAST_REPORT"') &&
       !astrologyWorkspace.includes("fingerprint {report.birthFingerprint}"),
@@ -1067,9 +1073,9 @@ async function main() {
     "all major natal panels include plain-language introductions"
   );
   assert(
-    astrologyWorkspace.includes("Показать расчёт:") &&
-      astrologyWorkspace.includes("полноты показывает") &&
-      astrologyWorkspace.includes("не подтверждает истинность") &&
+    natalStructuredReportView.includes("Показать расчёт:") &&
+      natalStructuredReportView.includes("полноты показывает") &&
+      natalStructuredReportView.includes("не подтверждает истинность") &&
       natalSettings.includes("не создают прогноз") &&
       astrologyWorkspace.includes("асцендент девятой карты (навамша) также исключён") &&
       astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
