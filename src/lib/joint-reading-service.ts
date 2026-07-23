@@ -17,6 +17,10 @@ import { isNatalChartEnabled } from "@/lib/settings";
 import { getOrComputeNatalChart } from "@/lib/services/natal-chart-service";
 import { computeSynastry } from "@/lib/natal/synastry";
 import { getNotificationPrefs } from "@/lib/daily-reminder-service";
+import {
+  captureJointCombinedMemory,
+  captureJointInviteMemory,
+} from "@/lib/memory/capture-helpers";
 
 export type JointReadingStatus = "pending_partner" | "partner_done" | "completed" | "expired";
 
@@ -184,6 +188,18 @@ export async function createJointReadingInvite(params: {
       partnerName: params.partnerName,
     });
     if (reconciled.row && !reconciled.createFresh) {
+      if (
+        reconciled.row.initiator_name?.trim() ||
+        reconciled.row.partner_name?.trim()
+      ) {
+        captureJointInviteMemory({
+          userId: reconciled.row.initiator_user_id,
+          jointId: reconciled.row.id,
+          initiatorName: reconciled.row.initiator_name,
+          partnerName: reconciled.row.partner_name,
+          intentSlug: reconciled.row.intent_slug,
+        });
+      }
       return reconciled.row;
     }
   }
@@ -210,7 +226,15 @@ export async function createJointReadingInvite(params: {
           params.runeCharged ?? false,
         ]
       );
-      return mapRow(res.rows[0] as Record<string, unknown>);
+      const created = mapRow(res.rows[0] as Record<string, unknown>);
+      captureJointInviteMemory({
+        userId: created.initiator_user_id,
+        jointId: created.id,
+        initiatorName: created.initiator_name,
+        partnerName: created.partner_name,
+        intentSlug: created.intent_slug,
+      });
+      return created;
     } catch (err) {
       const code = (err as { code?: string })?.code;
       if (code === "23505") continue;
@@ -418,7 +442,21 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
        WHERE token = $1 AND combined_claim_token = $4`,
       [row.token, combined, synastry ? JSON.stringify(synastry) : null, claimToken]
     );
-    return (await getJointReadingByToken(row.token)) ?? { ...row, combined_reading: combined, status: "completed" };
+    const completed =
+      (await getJointReadingByToken(row.token)) ??
+      ({ ...row, combined_reading: combined, status: "completed" } as JointReadingRow);
+    if (completed.combined_reading?.trim()) {
+      captureJointCombinedMemory({
+        initiatorUserId: completed.initiator_user_id,
+        partnerUserId: completed.partner_user_id,
+        jointId: completed.id,
+        initiatorName: completed.initiator_name,
+        partnerName: completed.partner_name,
+        intentSlug: completed.intent_slug,
+        combinedReading: completed.combined_reading,
+      });
+    }
+    return completed;
   } catch (err) {
     // Keep both side readings; do not persist concatenation stubs as combined success.
     await query(
@@ -546,6 +584,17 @@ export async function submitJointReadingSide(params: {
 
   let updated = await getJointReadingByToken(params.token);
   if (!updated) return { ok: false, error: "Не удалось сохранить расклад." };
+
+  // Capture names when a side submits (invite may have been created without them).
+  if (updated.initiator_name?.trim() || updated.partner_name?.trim()) {
+    captureJointInviteMemory({
+      userId: isInitiator ? updated.initiator_user_id : params.userId,
+      jointId: updated.id,
+      initiatorName: updated.initiator_name,
+      partnerName: updated.partner_name,
+      intentSlug: updated.intent_slug,
+    });
+  }
 
   if (
     updated.initiator_reading?.trim() &&

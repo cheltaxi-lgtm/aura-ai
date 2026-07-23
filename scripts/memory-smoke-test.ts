@@ -8,15 +8,19 @@
  */
 import { query } from "@/lib/db";
 import {
+  upsertFact,
   upsertFacts,
   searchFacts,
   getUpcomingEvents,
   getCriticalFacts,
   purgeFacts,
   purgeAllUserMemory,
+  updateFact,
+  deleteFact,
 } from "@/lib/memory/user-facts";
 import { loadClientMemoryBlock, recordTurn } from "@/lib/memory/client-memory";
 import { updateMemoryPreferences, revokeMemoryConsent } from "@/lib/memory/preferences";
+import { isFactTombstoned } from "@/lib/memory/tombstones";
 
 const U = "00000000-0000-0000-0000-0000000000aa";
 
@@ -151,6 +155,112 @@ async function main() {
       [U]
     );
     ok(Number(jobsOn[0]?.c ?? 0) >= 2, "each chat turn enqueues its own extraction job");
+
+    // Employment lifecycle: searching → current must supersede the old row.
+    const searchingFact = "Клиент ищет работу программистом";
+    const currentFact = "Клиент устроился программистом в банк";
+    ok(
+      await upsertFact(U, {
+        fact: searchingFact,
+        category: "work",
+        salience: 4,
+        predicateKey: "employment.searching",
+        operation: "replace",
+        sourceType: "chat",
+      }),
+      "seeded employment.searching fact"
+    );
+    ok(
+      await upsertFact(U, {
+        fact: currentFact,
+        category: "work",
+        salience: 4,
+        predicateKey: "employment.current",
+        operation: "replace",
+        sourceType: "chat",
+      }),
+      "seeded employment.current fact"
+    );
+    const { rows: empStatus } = await query<{
+      id: string;
+      status: string;
+      predicate_key: string;
+      fact: string;
+    }>(
+      `SELECT id, status, predicate_key, fact FROM user_facts
+        WHERE user_id=$1 AND predicate_key IN ('employment.searching','employment.current')`,
+      [U]
+    );
+    const searchingRow = empStatus.find((r) => r.predicate_key === "employment.searching");
+    const currentRow = empStatus.find((r) => r.predicate_key === "employment.current");
+    ok(currentRow?.status === "active", "employment.current stays active after replace");
+    ok(
+      searchingRow?.status === "superseded",
+      "employment.searching is superseded by employment.current"
+    );
+
+    // Tombstone blocks re-ingest of deleted text.
+    if (currentRow?.id) {
+      await deleteFact(U, currentRow.id);
+      ok(await isFactTombstoned(U, currentFact), "deleteFact adds tombstone");
+      const blocked = await upsertFact(U, {
+        fact: currentFact,
+        category: "work",
+        salience: 4,
+        predicateKey: "employment.current",
+        operation: "replace",
+        sourceType: "chat",
+      });
+      ok(!blocked, "tombstoned fact cannot be re-ingested");
+    }
+
+    // updateFact never wipes an existing embedding to null (COALESCE path).
+    const residenceFact = "Клиент живёт в Екатеринбурге";
+    ok(
+      await upsertFact(U, {
+        fact: residenceFact,
+        category: "personal",
+        salience: 3,
+        predicateKey: "residence.current",
+        operation: "replace",
+        sourceType: "user",
+        sourceCharacter: "user",
+      }),
+      "seeded residence fact for edit"
+    );
+    const { rows: residenceRows } = await query<{ id: string }>(
+      `SELECT id FROM user_facts
+        WHERE user_id=$1 AND predicate_key='residence.current' AND status='active'
+        LIMIT 1`,
+      [U]
+    );
+    const residenceId = residenceRows[0]?.id;
+    if (residenceId) {
+      await query(
+        `UPDATE user_facts
+            SET embedding = array_fill(0.01::real, ARRAY[1024])::vector,
+                embedding_model = 'smoke-embed'
+          WHERE id=$1`,
+        [residenceId]
+      );
+      const updated = await updateFact(U, residenceId, {
+        fact: "Клиент живёт в Екатеринбурге, район Центр",
+        category: "personal",
+        predicateKey: "residence.current",
+        sourceCharacter: "user",
+        sourceType: "user",
+      });
+      ok(Boolean(updated), "updateFact returns updated row");
+      const after = await query<{ fact: string; has_emb: boolean }>(
+        `SELECT fact, (embedding IS NOT NULL) AS has_emb FROM user_facts WHERE id=$1`,
+        [residenceId]
+      );
+      ok(
+        Boolean(after.rows[0]?.fact?.includes("Центр")),
+        "updateFact persists edited fact text"
+      );
+      ok(after.rows[0]?.has_emb === true, "updateFact never wipes existing embedding to null");
+    }
 
     await revokeMemoryConsent(U);
     const afterRevoke = await loadClientMemoryBlock({

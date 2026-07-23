@@ -1,4 +1,5 @@
 import { BillingService } from "@/lib/services/billing-service";
+import { captureRitualMemory } from "@/lib/memory/capture-helpers";
 import {
   attemptRitualGeneration,
   getRitualById,
@@ -73,6 +74,20 @@ export async function runRitualGenerationForUser(params: {
   try {
     const result = await attemptRitualGeneration(params.ritualId, userProfile);
     if (result) {
+      captureRitualMemory({
+        userId: params.userId,
+        ritualId: result.id,
+        characterKey: result.character_key,
+        ritualType: result.ritual_type,
+        answers: result.answers,
+        assistantSummary: [
+          result.ritual_words,
+          result.ritual_place,
+          ...(result.ritual_steps ?? []).map((s) => s.step),
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
       return { ok: true, status: "completed", ritual: result, freshlyCompleted: true };
     }
 

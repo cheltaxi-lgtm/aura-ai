@@ -13,7 +13,7 @@ import { resolveApiCharacterId } from "@/lib/chat-sanitize";
 import { resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
 import { resolveSpreadSymbols, buildSessionSpreadCards } from "@/lib/intention-draw";
 import { mergeSpreadReadingIntoMessages } from "@/lib/chat-history-merge";
-import { findStoredSpreadReading } from "@/lib/session-spread-reading";
+import { findStoredSpreadReadingWithMeta } from "@/lib/session-spread-reading";
 import {
   ensureSpreadReadingInChatMessages,
   sessionHasSpreadReadingMessage,
@@ -229,14 +229,14 @@ export async function GET(request: NextRequest) {
       : null;
 
   if (!sessionRow.character_key || sessionRow.character_key === characterId) {
-    const spreadReading = await findStoredSpreadReading(
+    const spreadReadingMeta = await findStoredSpreadReadingWithMeta(
       profileUserId,
       messageCharacterId,
       sessionRow
     );
 
     if (
-      spreadReading &&
+      spreadReadingMeta &&
       !(await sessionHasSpreadReadingMessage(
         sessionRow.id,
         messageCharacterId,
@@ -247,7 +247,8 @@ export async function GET(request: NextRequest) {
         sessionId: sessionRow.id,
         profileUserId,
         characterId: messageCharacterId,
-        reading: spreadReading,
+        reading: spreadReadingMeta.reading,
+        customQuestion: spreadReadingMeta.customQuestion,
         tarotCards: sessionRow.cards?.map((name) => ({ name })),
         intention: sessionRow.intention ?? undefined,
         spreadType:
@@ -267,10 +268,10 @@ export async function GET(request: NextRequest) {
           ? messageRows.slice(0, historyLimit)
           : messageRows
       );
-    } else if (spreadReading) {
+    } else if (spreadReadingMeta) {
       messages = mergeSpreadReadingIntoMessages(
         messages,
-        spreadReading,
+        spreadReadingMeta.reading,
         sessionRow.created_at
       );
     }

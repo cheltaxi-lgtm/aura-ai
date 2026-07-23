@@ -11,6 +11,11 @@ import {
 
 const MIN_STORED_READING_CHARS = 80;
 
+export type StoredSpreadReadingMeta = {
+  reading: string;
+  customQuestion: string | null;
+};
+
 function sessionSpreadIsComplete(session: SessionRow, characterId: string): boolean {
   const sessionCards = session.cards ?? [];
   const numerologToolId = decodeNumerologSpreadId(session.spread_id);
@@ -24,6 +29,16 @@ function sessionSpreadIsComplete(session: SessionRow, characterId: string): bool
 function pickStoredReading(ctx: Record<string, unknown>): string | null {
   const reading = typeof ctx.reading === "string" ? ctx.reading.trim() : "";
   return reading.length >= MIN_STORED_READING_CHARS ? reading : null;
+}
+
+function pickCustomQuestion(ctx: Record<string, unknown>): string | null {
+  const q = typeof ctx.customQuestion === "string" ? ctx.customQuestion.trim() : "";
+  return q.length >= 8 ? q.slice(0, 500) : null;
+}
+
+function asMeta(reading: string | null, customQuestion: string | null = null): StoredSpreadReadingMeta | null {
+  if (!reading) return null;
+  return { reading, customQuestion };
 }
 
 async function findSessionMemoryReading(
@@ -41,11 +56,11 @@ async function findSessionMemoryReading(
   return prediction.length >= MIN_STORED_READING_CHARS ? prediction : null;
 }
 
-async function findHistoryReadingBySessionId(
+async function findHistoryMetaBySessionId(
   profileUserId: string,
   characterId: string,
   sessionId: string
-): Promise<string | null> {
+): Promise<StoredSpreadReadingMeta | null> {
   const { rows } = await query<{ context_data: Record<string, unknown> }>(
     `SELECT context_data FROM history
      WHERE user_id = $1
@@ -57,7 +72,9 @@ async function findHistoryReadingBySessionId(
   );
   for (const row of rows) {
     const reading = pickStoredReading(row.context_data);
-    if (reading) return reading;
+    if (reading) {
+      return { reading, customQuestion: pickCustomQuestion(row.context_data) };
+    }
   }
   return null;
 }
@@ -67,6 +84,15 @@ export async function findSpreadReadingForSession(
   characterId: string,
   session: SessionRow
 ): Promise<string | null> {
+  const meta = await findSpreadReadingMetaForSession(profileUserId, characterId, session);
+  return meta?.reading ?? null;
+}
+
+async function findSpreadReadingMetaForSession(
+  profileUserId: string,
+  characterId: string,
+  session: SessionRow
+): Promise<StoredSpreadReadingMeta | null> {
   const sessionCards = session.cards ?? [];
   const spreadId = normalizeSpreadId(session.spread_id);
   const numerologToolId = decodeNumerologSpreadId(session.spread_id);
@@ -97,40 +123,47 @@ export async function findSpreadReadingForSession(
     const reading = pickStoredReading(ctx);
     if (!reading) continue;
 
-    if (ctx.sessionId === session.id) return reading;
+    if (ctx.sessionId === session.id) {
+      return { reading, customQuestion: pickCustomQuestion(ctx) };
+    }
 
     if (cardKey && session.intention && ctx.intention === session.intention) {
       const stored = ctx.tarotCards as { name: string }[] | undefined;
-      if (tarotCardsKey(stored) === cardKey) return reading;
+      if (tarotCardsKey(stored) === cardKey) {
+        return { reading, customQuestion: pickCustomQuestion(ctx) };
+      }
     }
   }
 
   return null;
 }
 
-/** Load spread reading from PostgreSQL (intention_spread + triplet/daily reading rows). */
-export async function findStoredSpreadReading(
+/**
+ * Load spread reading + optional customQuestion from history for chat repair
+ * and memory capture.
+ */
+export async function findStoredSpreadReadingWithMeta(
   profileUserId: string,
   characterId: string,
   session: SessionRow
-): Promise<string | null> {
-  const bySessionId = await findHistoryReadingBySessionId(
+): Promise<StoredSpreadReadingMeta | null> {
+  const bySessionId = await findHistoryMetaBySessionId(
     profileUserId,
     characterId,
     session.id
   );
   if (bySessionId) return bySessionId;
 
-  const intentionReading = await findSpreadReadingForSession(
+  const intentionMeta = await findSpreadReadingMetaForSession(
     profileUserId,
     characterId,
     session
   );
-  if (intentionReading) return intentionReading;
+  if (intentionMeta) return intentionMeta;
 
   const sessionCards = session.cards ?? [];
   if (!sessionSpreadIsComplete(session, characterId)) {
-    return findSessionMemoryReading(profileUserId, session.id, characterId);
+    return asMeta(await findSessionMemoryReading(profileUserId, session.id, characterId));
   }
 
   const numerologToolId = decodeNumerologSpreadId(session.spread_id);
@@ -159,14 +192,26 @@ export async function findStoredSpreadReading(
       if (ctx.numerologToolId !== numerologToolId) continue;
       const stored = ctx.tarotCards as { name: string }[] | undefined;
       if (tarotCardsKey(stored) === tarotCardsKey(sessionCards.map((name) => ({ name })))) {
-        return reading;
+        return { reading, customQuestion: pickCustomQuestion(ctx) };
       }
       continue;
     }
 
     const stored = ctx.tarotCards as { name: string }[] | undefined;
-    if (cardKey && tarotCardsKey(stored) === cardKey) return reading;
+    if (cardKey && tarotCardsKey(stored) === cardKey) {
+      return { reading, customQuestion: pickCustomQuestion(ctx) };
+    }
   }
 
-  return findSessionMemoryReading(profileUserId, session.id, characterId);
+  return asMeta(await findSessionMemoryReading(profileUserId, session.id, characterId));
+}
+
+/** Load spread reading from PostgreSQL (intention_spread + triplet/daily reading rows). */
+export async function findStoredSpreadReading(
+  profileUserId: string,
+  characterId: string,
+  session: SessionRow
+): Promise<string | null> {
+  const meta = await findStoredSpreadReadingWithMeta(profileUserId, characterId, session);
+  return meta?.reading ?? null;
 }

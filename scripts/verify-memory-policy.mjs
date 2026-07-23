@@ -424,5 +424,42 @@ assert(
     privacy.includes("управлять памятью ИИ")
 );
 
+const captureHelpers = read("src/lib/memory/capture-helpers.ts");
+assert(
+  "capture helpers cover ritual + joint sources",
+  captureHelpers.includes('sourceType: "ritual"') &&
+    captureHelpers.includes('sourceType: "ritual_review"') &&
+    captureHelpers.includes('sourceType: "joint"') &&
+    captureHelpers.includes('sourceType: "joint_combined"') &&
+    captureHelpers.includes("sourceEntityId: params.ritualId") &&
+    captureHelpers.includes("sourceEntityId: params.jointId")
+);
+assert(
+  "ritual generation runner captures on fresh complete",
+  read("src/lib/ritual-generation-runner.ts").includes("captureRitualMemory")
+);
+assert(
+  "ritual review captures outcome text",
+  read("src/lib/ritual-service.ts").includes("captureRitualReviewMemory")
+);
+assert(
+  "joint invite + combined capture are wired",
+  read("src/lib/joint-reading-service.ts").includes("captureJointInviteMemory") &&
+    read("src/lib/joint-reading-service.ts").includes("captureJointCombinedMemory")
+);
+assert(
+  "chat history repair recovers customQuestion for memory capture",
+  read("src/app/api/chat/history/route.ts").includes("findStoredSpreadReadingWithMeta") &&
+    read("src/app/api/chat/history/route.ts").includes("customQuestion: spreadReadingMeta.customQuestion") &&
+    read("src/lib/session-spread-reading.ts").includes("findStoredSpreadReadingWithMeta") &&
+    read("src/lib/session-spread-reading.ts").includes("pickCustomQuestion")
+);
+assert(
+  "onboarding seeds mainQuestion via upsertFact when auto-capture allowed",
+  read("src/app/api/onboarding/route.ts").includes("upsertFact") &&
+    read("src/app/api/onboarding/route.ts").includes("canAutoCapture") &&
+    read("src/app/api/onboarding/route.ts").includes("goal.current")
+);
+
 console.log(`\n--- ${failed} failed ---`);
 process.exit(failed > 0 ? 1 : 0);

@@ -12,6 +12,7 @@ import {
   resolveRitualTimeDisplay,
 } from "@/lib/ritual-timing";
 import { resolveWordOfPowerTranscription } from "@/lib/word-of-power-transcription";
+import { captureRitualReviewMemory } from "@/lib/memory/capture-helpers";
 import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
 
 export type RitualStatus =
@@ -499,6 +500,15 @@ export async function submitRitualReview(
         params.outcomeRating,
       ]
     );
+  }
+
+  if (outcomeText && outcomeText.length >= 8) {
+    captureRitualReviewMemory({
+      userId: ritual.user_id,
+      ritualId: ritual.id,
+      characterKey: ritual.character_key,
+      outcomeText,
+    });
   }
 
   return true;

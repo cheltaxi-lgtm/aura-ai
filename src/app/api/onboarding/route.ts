@@ -26,6 +26,7 @@ import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { tarotCardsKey } from "@/lib/tarot";
 import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
 import { isNatalChartEnabled } from "@/lib/settings";
+import { upsertFact } from "@/lib/memory/user-facts";
 
 function normalizeOptionalText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -168,6 +169,27 @@ export async function POST(request: NextRequest) {
       throw new Error(`Profile user ${user.id} not found after save`);
     }
     user = verifiedUser;
+
+    const trimmedMainQuestion =
+      typeof mainQuestion === "string" ? mainQuestion.trim() : "";
+    if (trimmedMainQuestion.length >= 8) {
+      void import("@/lib/memory/preferences")
+        .then(({ canAutoCapture }) => canAutoCapture(user!.id))
+        .then((allowed) => {
+          if (!allowed) return;
+          return upsertFact(user!.id, {
+            fact: `Главный запрос клиента: ${trimmedMainQuestion}`,
+            category: "goal",
+            salience: 4,
+            sourceCharacter: "profile",
+            sourceType: "profile",
+            predicateKey: "goal.current",
+            operation: "replace",
+            allowSensitive: false,
+          });
+        })
+        .catch((err) => console.warn("[memory] onboarding seed main question failed:", err));
+    }
 
     if (await isNatalChartEnabled()) {
       scheduleNatalChartCompute(user.id);
