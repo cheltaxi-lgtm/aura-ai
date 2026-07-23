@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 
+import { resolveUnlimitedAccess } from "@/lib/accounts";
 import {
   claimAsyncJobForSave,
   completeAsyncJob,
@@ -11,7 +12,8 @@ import {
 import { getAsyncJobIdFromRequest } from "@/lib/async-job-worker-auth";
 import { query } from "@/lib/db";
 import type { RuneActionType } from "@/lib/rune-costs";
-import { getRuneBalance } from "@/lib/rune-service";
+import { getRuneSettings } from "@/lib/rune-settings";
+import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import {
   BillingService,
   type BillingChargeResult,
@@ -120,6 +122,19 @@ export async function chargeRuneActionForWorkerJob(input: {
       );
       if (reused) return reused;
     }
+  }
+
+  const unlimited = await resolveUnlimitedAccess({ profileUserId: input.userId });
+  const runeSettings = await getRuneSettings();
+  if (!isRuneBillingActive(input.userId, unlimited, runeSettings)) {
+    const balance = await getRuneBalance(input.userId);
+    return {
+      spentRunes: 0,
+      wasFreeQuestion: false,
+      newBalance: balance,
+      actionType: input.action,
+      slotReserved: false,
+    };
   }
 
   const charge = await BillingService.chargeRuneAction({

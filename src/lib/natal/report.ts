@@ -1,3 +1,4 @@
+import { toParagraphs } from "@/lib/format-paragraphs";
 import type { NatalEvidence } from "./evidence";
 import type { NatalTradition } from "./types";
 
@@ -507,6 +508,71 @@ export function validateNatalReport(
       methodology: (root.methodology as string).trim(),
     },
   };
+}
+
+const LEGACY_NATAL_SECTION_MARKERS: Array<{ re: RegExp; title: string }> = [
+  { re: /Асцендент|в первом доме|1[-‑ ]?доме/i, title: "Личность и внешний образ" },
+  { re: /стеллиум|ядро твоей личности/i, title: "Ядро личности" },
+  { re: /\bЛун[аыуе]\b|эмоциональн/i, title: "Эмоции и потребности" },
+  { re: /Венер|отношен|партн|седьмой дом|7[-‑ ]?доме/i, title: "Отношения" },
+  {
+    re: /карьер|професс|десятый дом|10[-‑ ]?доме|середина неба|\bMC\b/i,
+    title: "Карьера и призвание",
+  },
+  { re: /Сатурн|напряжен|урок|вызов|ограничен/i, title: "Напряжения и уроки" },
+  { re: /ресурс|второй дом|2[-‑ ]?доме|деньг|финанс/i, title: "Ресурсы" },
+  { re: /совет|рекоменд|практик|важно помнить|в итоге/i, title: "Рекомендации" },
+];
+
+function emphasizeNatalTerms(text: string): string {
+  return text.replace(
+    /(?<![\w*])(Асцендент|Середина неба|Солнце|Луна|Луны|Луну|Меркурий|Венера|Венеры|Марс|Марса|Юпитер|Сатурн|Уран|Нептун|Плутон|стеллиум)(?![\w*])/giu,
+    "**$1**"
+  );
+}
+
+/**
+ * Legacy natal interpretations were saved as a single wall of prose
+ * (no structured_data, often no newlines). Turn them into mystic markdown
+ * so they render like modern spread readings.
+ */
+export function formatLegacyNatalProseForDisplay(raw: string): string {
+  const input = (raw ?? "").replace(/\r\n/g, "\n").trim();
+  if (!input) return raw;
+  if ((input.match(/^#{1,3}\s/gm) ?? []).length >= 2) {
+    return input;
+  }
+
+  const paras = toParagraphs(input);
+  if (!paras.length) return input;
+
+  const chunks: string[] = [];
+  let lastTitle = "";
+
+  paras.forEach((para, index) => {
+    let title: string | null = null;
+    if (index === 0) {
+      title = "Вступление";
+    } else {
+      for (const marker of LEGACY_NATAL_SECTION_MARKERS) {
+        if (marker.re.test(para) && marker.title !== lastTitle) {
+          title = marker.title;
+          break;
+        }
+      }
+    }
+
+    const body = emphasizeNatalTerms(para);
+    if (title && title !== lastTitle) {
+      if (chunks.length) chunks.push("---");
+      chunks.push(`## ${title}\n\n${body}`);
+      lastTitle = title;
+    } else {
+      chunks.push(body);
+    }
+  });
+
+  return chunks.join("\n\n");
 }
 
 /** One report section as mystic markdown (same pipeline as spread readings). */

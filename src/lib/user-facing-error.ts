@@ -23,6 +23,9 @@ const EXACT: Record<string, string> = {
   auth_required: "Войдите, чтобы продолжить.",
   AUTH_REQUIRED: "Войдите, чтобы продолжить.",
   forbidden: "Недостаточно прав для этого действия.",
+  insufficient: "Недостаточно рун для этого действия.",
+  insufficient_runes: "Недостаточно рун для этого действия.",
+  INSUFFICIENT_RUNES: "Недостаточно рун для этого действия.",
 };
 
 const CONTAINS: Array<{ re: RegExp; message: string }> = [
@@ -34,6 +37,7 @@ const CONTAINS: Array<{ re: RegExp; message: string }> = [
   { re: /tts|synthesis/i, message: "Озвучка временно недоступна." },
   { re: /vision|not_a_spread|incomplete_spread/i, message: "Не удалось распознать расклад. Проверьте фото и попробуйте снова." },
   { re: /network|fetch failed|failed to fetch/i, message: "Сеть недоступна. Проверьте соединение." },
+  { re: /insufficient(_runes)?/i, message: "Недостаточно рун для этого действия." },
 ];
 
 function looksEnglishCode(raw: string): boolean {

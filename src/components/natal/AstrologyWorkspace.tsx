@@ -32,7 +32,11 @@ import {
 } from "@/lib/natal/labels";
 import type { NatalTradition } from "@/lib/natal/types";
 import type { NatalEvidence } from "@/lib/natal/evidence";
-import { isNatalReport, type NatalReport } from "@/lib/natal/report";
+import {
+  formatLegacyNatalProseForDisplay,
+  isNatalReport,
+  type NatalReport,
+} from "@/lib/natal/report";
 import type { VedicChart } from "@/lib/natal/vedic";
 import type {
   PersonalTimingResult, TimingCategory, TimingEvent, TimingHorizon,
@@ -525,9 +529,19 @@ export default function AstrologyWorkspace() {
           return;
         }
         setNotice("");
-        setError(
-          toUserFacingError(raw, "Сеть недоступна. Проверьте соединение.")
+        const message = toUserFacingError(
+          raw,
+          "Сеть недоступна. Проверьте соединение."
         );
+        if (/недостаточно рун/i.test(message)) {
+          openPaywall({
+            currentBalance: 0,
+            requiredRunes: cost("NATAL_READING"),
+            onClose: () => void loadChart(),
+          });
+          return;
+        }
+        setError(message);
       }
     } finally {
       setBusy(null);
@@ -1366,9 +1380,10 @@ function StructuredReport({ report, evidence, onEvidence }: { report: NatalRepor
 }
 
 function Interpretation({ text }: { text: string }) {
+  const markdown = formatLegacyNatalProseForDisplay(text);
   return (
     <div className="master-message-bubble natal-structured-report__body rounded-2xl border border-amber-300/15 bg-gradient-to-b from-white/[0.04] to-transparent px-4 py-5 sm:px-5 sm:py-6">
-      <PremiumReadingBody content={text} />
+      <PremiumReadingBody content={markdown} />
     </div>
   );
 }

@@ -334,9 +334,17 @@ ${evidenceIds.join("\n")}`),
       console.warn("[natal-chart] billing rollback failed");
     });
     if (error instanceof InsufficientFundsError) {
-      await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
+      await trackWorkerJobFailed(request, "Недостаточно рун для этого действия.", {
+        errorCode: "insufficient_runes",
+      });
       return NextResponse.json(
-        { error: "insufficient", balance: error.balance, cost: error.required },
+        {
+          error: "insufficient_runes",
+          message: "Недостаточно рун для этого действия.",
+          balance: error.balance,
+          required: error.required,
+          cost: error.required,
+        },
         { status: 402 }
       );
     }
