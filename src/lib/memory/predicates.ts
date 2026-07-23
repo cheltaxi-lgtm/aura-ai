@@ -31,6 +31,21 @@ export function isReplacePredicate(predicateKey: string | null | undefined): boo
   return Boolean(predicateKey && REPLACE_PREDICATES.has(predicateKey));
 }
 
+/** Predicates that mutually supersede (contradictory singleton states). */
+export function supersedeGroupForPredicate(
+  predicateKey: string | null | undefined
+): string[] {
+  if (!predicateKey) return [];
+  if (
+    predicateKey === "employment.current" ||
+    predicateKey === "employment.searching"
+  ) {
+    return ["employment.current", "employment.searching"];
+  }
+  if (isReplacePredicate(predicateKey)) return [predicateKey];
+  return [];
+}
+
 export function isSensitiveFact(input: {
   predicateKey?: string | null;
   category?: string | null;

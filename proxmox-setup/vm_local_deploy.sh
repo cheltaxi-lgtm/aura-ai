@@ -86,6 +86,11 @@ if [ -f "$TARBALL" ]; then
     rm -rf "$SCENE_ART_BACKUP"
   fi
   mkdir -p /opt/aura-ai/public/scene-art
+  # Restored artifacts keep prior modes from backup — re-harden them.
+  find /opt/aura-ai/public/releases -type d -exec chmod 755 {} + 2>/dev/null || true
+  find /opt/aura-ai/public/releases -type f -exec chmod 644 {} + 2>/dev/null || true
+  find /opt/aura-ai/public/scene-art -type d -exec chmod 755 {} + 2>/dev/null || true
+  find /opt/aura-ai/public/scene-art -type f -exec chmod 644 {} + 2>/dev/null || true
   if id ubuntu >/dev/null 2>&1; then
     if [ "$(id -u)" -eq 0 ]; then
       chown -R ubuntu:ubuntu /opt/aura-ai

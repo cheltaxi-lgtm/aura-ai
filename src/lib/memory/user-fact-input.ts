@@ -57,14 +57,15 @@ export function validateUserSubmittedFact(
   const date =
     eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : null;
 
-  const predicateByCategory: Partial<Record<UserFactCategory, string>> = {
-    work: "employment.current",
-    relationship: "relationship.status",
-    goal: "goal.current",
-    event: "event.upcoming",
-    health: "health.condition",
-    money: "finance.debt",
-  };
+  const predicateKey = inferManualPredicate(fact, cat);
+  const multi = [
+    "family.child",
+    "family.spouse",
+    "health.condition",
+    "health.procedure",
+    "finance.debt",
+    "event.upcoming",
+  ].includes(predicateKey);
 
   return {
     fact: fact.slice(0, 600),
@@ -73,15 +74,32 @@ export function validateUserSubmittedFact(
     salience: boostFactSalience(fact, 4),
     sourceCharacter: "user",
     sourceType: "user",
-    predicateKey: predicateByCategory[cat] ?? "other",
-    operation: (["event", "family", "health", "money"] as UserFactCategory[]).includes(
-      cat
-    )
-      ? "add"
-      : "replace",
+    predicateKey,
+    operation: multi ? "add" : "replace",
     subjectKey: "client",
     allowSensitive: true,
   };
+}
+
+function inferManualPredicate(fact: string, cat: UserFactCategory): string {
+  const f = fact.toLowerCase();
+  if (cat === "work") {
+    if (/ищу\s+работ|в\s+поиске\s+работ|безработ|хочу\s+смен/i.test(f)) {
+      return "employment.searching";
+    }
+    return "employment.current";
+  }
+  if (cat === "family") {
+    if (/муж|жена|супруг|партн[её]р/i.test(f)) return "family.spouse";
+    if (/сын|доч|реб[её]н|дети|внук/i.test(f)) return "family.child";
+    return "family.child";
+  }
+  if (cat === "relationship") return "relationship.status";
+  if (cat === "goal") return "goal.current";
+  if (cat === "event") return "event.upcoming";
+  if (cat === "health") return "health.condition";
+  if (cat === "money") return "finance.debt";
+  return "other";
 }
 
 export function isValidFactCategory(category: string): boolean {

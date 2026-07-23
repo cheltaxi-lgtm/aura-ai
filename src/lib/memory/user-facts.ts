@@ -5,7 +5,10 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { EMBED_DIM, embedModel, embedTexts } from "@/lib/memory/embeddings";
 import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
-import { isReplacePredicate, isSensitiveFact } from "@/lib/memory/predicates";
+import {
+  isSensitiveFact,
+  supersedeGroupForPredicate,
+} from "@/lib/memory/predicates";
 import { MEMORY_CONSENT_VERSION, revokeMemoryConsent } from "@/lib/memory/preferences";
 import {
   addTombstone,
@@ -137,9 +140,9 @@ async function supersedeReplaceables(
   input: FactInput,
   newId: string
 ): Promise<void> {
-  // Singleton predicates always supersede prior active rows — even if the
-  // extractor forgot operation=replace (common LLM omission).
-  if (!isReplacePredicate(input.predicateKey)) return;
+  // Singleton / mutually exclusive predicates supersede prior active rows.
+  const group = supersedeGroupForPredicate(input.predicateKey);
+  if (!group.length) return;
   await queryClient(
     client,
     `UPDATE user_facts
@@ -150,9 +153,9 @@ async function supersedeReplaceables(
       WHERE user_id = $1
         AND status = 'active'
         AND id <> $4
-        AND predicate_key = $2
+        AND predicate_key = ANY($2::text[])
         AND COALESCE(subject_key, 'client') = COALESCE($3, 'client')`,
-    [userId, input.predicateKey, input.subjectKey ?? "client", newId]
+    [userId, group, input.subjectKey ?? "client", newId]
   );
 }
 
@@ -352,13 +355,13 @@ async function upsertFactLocked(
   if (inserted[0]) await supersedeReplaceables(client, userId, input, inserted[0].id);
 }
 
-export async function upsertFact(userId: string, input: FactInput): Promise<void> {
+export async function upsertFact(userId: string, input: FactInput): Promise<boolean> {
   const fact = input.fact?.trim();
-  if (!userId || !fact) return;
-  if (isInstructionLikeFact(fact)) return;
-  if (await isFactTombstoned(userId, fact)) return;
+  if (!userId || !fact) return false;
+  if (isInstructionLikeFact(fact)) return false;
+  if (await isFactTombstoned(userId, fact)) return false;
   if (isSensitiveFact(input) && !input.allowSensitive && input.sourceCharacter !== "user") {
-    return;
+    return false;
   }
 
   const salience = clampSalience(input.salience);
@@ -369,17 +372,19 @@ export async function upsertFact(userId: string, input: FactInput): Promise<void
       FACT_WRITE_LOCK_CLASS,
       userId,
     ]);
+    // Re-check tombstone under lock to shrink the race window.
+    if (await isFactTombstoned(userId, fact)) return;
     await upsertFactLocked(client, userId, input, salience, embedding);
     await pruneUser(client, userId);
   });
+  return true;
 }
 
 export async function upsertFacts(userId: string, inputs: FactInput[]): Promise<number> {
   let stored = 0;
   for (const input of inputs) {
     try {
-      await upsertFact(userId, input);
-      stored += 1;
+      if (await upsertFact(userId, input)) stored += 1;
     } catch (err) {
       console.warn("[memory] upsertFact failed:", err instanceof Error ? err.message : err);
     }
@@ -718,9 +723,12 @@ export async function updateFact(
   const fact = input.fact?.trim();
   if (!userId || !factId || !fact) return null;
   if (isInstructionLikeFact(fact) || !fact) return null;
+  if (await isFactTombstoned(userId, fact)) return null;
 
   const embedding = await embedOne(fact);
   const model = embedModel();
+  const incomingUser =
+    input.sourceCharacter === "user" || input.sourceType === "user";
   const { rows } = await query<FactRow>(
     `UPDATE user_facts
         SET fact = $3,
@@ -731,9 +739,11 @@ export async function updateFact(
             entity_key = COALESCE($8, entity_key),
             subject_key = COALESCE($9, subject_key),
             sensitivity = $10,
-            embedding = $11::vector,
+            embedding = COALESCE($11::vector, embedding),
             embedding_model = CASE WHEN $11::vector IS NULL THEN embedding_model ELSE $12 END,
             embedding_version = CASE WHEN $11::vector IS NULL THEN embedding_version ELSE $13 END,
+            source_character = CASE WHEN $14 THEN 'user' ELSE source_character END,
+            source_type = CASE WHEN $14 THEN 'user' ELSE source_type END,
             last_confirmed_at = NOW(),
             updated_at = NOW()
       WHERE user_id = $1 AND id = $2 AND status = 'active'
@@ -752,9 +762,16 @@ export async function updateFact(
       embedding ? toVectorLiteral(embedding) : null,
       model,
       EMBED_VERSION,
+      incomingUser,
     ]
   );
-  return rows[0] ? mapRow(rows[0]) : null;
+  const updated = rows[0] ? mapRow(rows[0]) : null;
+  if (updated) {
+    await withTransaction(async (client) => {
+      await supersedeReplaceables(client, userId, input, updated.id);
+    }).catch(() => undefined);
+  }
+  return updated;
 }
 
 export async function purgeFacts(userId: string): Promise<number> {

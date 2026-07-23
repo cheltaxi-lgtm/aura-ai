@@ -149,12 +149,60 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    if (!birthDate && !name && !gender && !lifeFocus) {
+    const hasCoreField = Boolean(birthDate || name || gender || lifeFocus);
+    const hasMainQuestionUpdate = mainQuestion !== undefined;
+    if (!hasCoreField && !hasMainQuestionUpdate) {
       return NextResponse.json({ error: "Нет данных для обновления" }, { status: 400 });
     }
 
     let profileUserId = await getProfileUserIdForAccount(auth.sub);
     let profile = profileUserId ? await getUserById(profileUserId) : null;
+
+    // Allow mainQuestion-only edits on an existing profile without re-sending birth data.
+    if (!hasCoreField && hasMainQuestionUpdate) {
+      if (!profileUserId || !profile?.birth_date) {
+        return NextResponse.json(
+          { error: "Сначала заполните профиль (дата рождения)" },
+          { status: 400 }
+        );
+      }
+      profile = await updateUserProfile(profileUserId, {
+        name: profile.name,
+        gender: (normalizeUserGender(profile.gender) ?? "female") as "male" | "female",
+        birthDate: profile.birth_date,
+        zodiac: profile.zodiac,
+        birthTime: profile.birth_time ?? undefined,
+        birthCity: profile.birth_city ?? undefined,
+        lifeFocus: (profile.life_focus ?? "general") as LifeFocus,
+        mainQuestion: mainQuestion ?? undefined,
+        astroMeta: (profile.astro_meta as AstroMeta | undefined) ?? undefined,
+      });
+      const trimmedQuestion = mainQuestion?.trim();
+      if (trimmedQuestion && trimmedQuestion.length >= 8) {
+        void import("@/lib/memory/preferences")
+          .then(({ canAutoCapture }) => canAutoCapture(profileUserId!))
+          .then((allowed) => {
+            if (!allowed) return;
+            return upsertFact(profileUserId!, {
+              fact: `Главный запрос клиента: ${trimmedQuestion}`,
+              category: "goal",
+              salience: 4,
+              sourceCharacter: "profile",
+              sourceType: "profile",
+              predicateKey: "goal.current",
+              operation: "replace",
+              allowSensitive: false,
+            });
+          })
+          .catch((err) => console.warn("[memory] seed main question failed:", err));
+      }
+      return NextResponse.json({
+        ok: true,
+        profileUserId,
+        needsProfile: false,
+        profile: profile ? serializeUserProfile(profile) : null,
+      });
+    }
 
     if (!birthDate && !profile?.birth_date) {
       return NextResponse.json({ error: "Укажите дату рождения" }, { status: 400 });

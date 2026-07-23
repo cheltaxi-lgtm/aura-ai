@@ -174,6 +174,20 @@ assert(
     mainQuestion: "развод и ипотека",
   }) === ""
 );
+assert(
+  "short chat reply does not revive spread intention for memory retrieval",
+  composeMemoryQueryText({
+    lastUserMessage: "ок",
+    intention: "love",
+  }) === ""
+);
+assert(
+  "empty message still uses spread intention for memory retrieval",
+  composeMemoryQueryText({
+    lastUserMessage: "",
+    intention: "love",
+  }).includes("Любовь")
+);
 
 assert(
   "expandIntentionForQuery maps love slug",

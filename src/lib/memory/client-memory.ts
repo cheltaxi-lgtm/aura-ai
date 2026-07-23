@@ -94,6 +94,12 @@ export async function loadClientMemoryBlock(params: {
     return "";
   }
 
+  const queryTrimmed = queryText.trim();
+  if (!queryTrimmed) {
+    // Empty query: do not inject critical/past/events (fail-closed relevance).
+    return "";
+  }
+
   let upcoming: UserFact[] = [];
   let critical: UserFact[] = [];
   let relevant: UserFact[] = [];
@@ -109,11 +115,6 @@ export async function loadClientMemoryBlock(params: {
   }
 
   const upcomingIds = new Set(upcoming.map((f) => f.id));
-  const queryTrimmed = queryText.trim();
-  if (!queryTrimmed) {
-    // Empty query: do not inject critical/past/events (fail-closed relevance).
-    return "";
-  }
 
   const relevantSearch = filterActiveMemoryFacts(relevant);
   upcoming = filterActiveMemoryFacts(

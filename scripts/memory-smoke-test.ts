@@ -131,18 +131,26 @@ async function main() {
     ok(Number(jobsOff[0]?.c ?? 0) === 0, "auto-capture off does not enqueue extraction");
 
     await updateMemoryPreferences(U, { autoCaptureEnabled: true });
+    const sessionId = "00000000-0000-0000-0000-0000000000bb";
     await recordTurn({
       userId: U,
       userMessage: "У меня новая работа в банке",
       assistantReply: "Понял.",
-      sourceType: "smoke",
-      sourceEntityId: "00000000-0000-0000-0000-0000000000bb",
+      sourceType: "chat",
+      sourceEntityId: sessionId,
+    });
+    await recordTurn({
+      userId: U,
+      userMessage: "Ещё у меня сын Артём учится в пятом классе",
+      assistantReply: "Хорошо.",
+      sourceType: "chat",
+      sourceEntityId: sessionId,
     });
     const { rows: jobsOn } = await query<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM memory_extraction_jobs WHERE user_id=$1 AND status='pending'`,
       [U]
     );
-    ok(Number(jobsOn[0]?.c ?? 0) >= 1, "auto-capture on enqueues extraction job");
+    ok(Number(jobsOn[0]?.c ?? 0) >= 2, "each chat turn enqueues its own extraction job");
 
     await revokeMemoryConsent(U);
     const afterRevoke = await loadClientMemoryBlock({

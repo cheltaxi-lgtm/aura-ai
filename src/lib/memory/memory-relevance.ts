@@ -138,6 +138,10 @@ export function composeMemoryQueryText(parts: {
   // Substantive user message wins — don't pull old profile/intention into relevance.
   if (last.length >= 10) return last;
 
+  // Short non-empty replies ("ок", "привет") during a spread must not revive
+  // topic-slug memory. Empty lastUserMessage still allows intention/custom.
+  if (last.length > 0) return "";
+
   const custom = parts.customQuestion?.trim() ?? "";
   if (parts.intention === "custom" && custom.length >= 8) {
     return custom;
@@ -146,13 +150,8 @@ export function composeMemoryQueryText(parts: {
   const intentionText = parts.intention?.trim()
     ? expandIntentionForQuery(parts.intention.trim())
     : "";
-  // Spread topic slug is a real current-turn signal (love/work/…); use it.
   if (intentionText) return intentionText;
-
-  // Short chat replies ("ок", "привет") must NOT revive mainQuestion and leak
-  // unrelated long-term memory. Callers that need profile focus (daily/natal)
-  // already pass a synthetic lastUserMessage ≥ 10 chars.
-  if (!last && custom.length >= 8) return custom;
+  if (custom.length >= 8) return custom;
   return "";
 }
 

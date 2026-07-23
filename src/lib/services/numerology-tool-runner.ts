@@ -30,6 +30,19 @@ export interface RunNumerologToolResult {
   primaryTopic: string;
 }
 
+function numerologToolHasUserAuthoredFacts(
+  toolId: NumerologToolId,
+  params?: NumerologToolParams
+): boolean {
+  if (toolId === "compatibility") {
+    return Boolean(params?.partnerName?.trim() || params?.partnerDate?.trim());
+  }
+  if (toolId === "object_number") {
+    return Boolean(params?.objectValue?.trim());
+  }
+  return false;
+}
+
 export async function runNumerologTool(
   input: RunNumerologToolInput
 ): Promise<RunNumerologToolResult> {
@@ -103,14 +116,18 @@ export async function runNumerologTool(
   if (await ensureDb()) {
     await saveMessage(input.sessionId, "numerolog", "user", userMessage, input.profileUserId);
     await saveMessage(input.sessionId, "numerolog", "assistant", reply, input.profileUserId);
-    void recordTurn({
-      userId: input.profileUserId,
-      characterId: "numerolog",
-      userMessage,
-      assistantReply: reply,
-      sourceType: "numerology",
-      sourceEntityId: input.sessionId,
-    });
+    // Only enqueue when the tool carries real user-authored form data
+    // (partner/object), not synthetic UI labels like "Разбери квадрат Пифагора".
+    if (numerologToolHasUserAuthoredFacts(input.toolId, input.params)) {
+      void recordTurn({
+        userId: input.profileUserId,
+        characterId: "numerolog",
+        userMessage,
+        assistantReply: reply,
+        sourceType: "numerology",
+        sourceEntityId: input.sessionId,
+      });
+    }
   }
 
   return {

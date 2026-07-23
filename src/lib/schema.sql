@@ -556,6 +556,15 @@ CREATE TABLE IF NOT EXISTS memory_extraction_jobs (
   completed_at TIMESTAMPTZ
 );
 
+-- Soft-dedupe identical pending spam only (one turn = one job).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_extraction_jobs_pending_msg
+  ON memory_extraction_jobs (user_id, source_type, md5(user_message))
+  WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_memory_extraction_jobs_pending
+  ON memory_extraction_jobs (status, next_attempt_at ASC)
+  WHERE status IN ('pending', 'running');
+
 CREATE TABLE IF NOT EXISTS user_memory_tombstones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

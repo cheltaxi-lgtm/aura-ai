@@ -77,6 +77,7 @@ $RequiredArtifacts = @(
   "scripts/migrations/077_migrate_premium_ai_delivery.sql",
   "scripts/migrations/078_migrate_joint_combined_job.sql",
   "scripts/migrations/079_migrate_memory_governance.sql",
+  "scripts/migrations/080_fix_memory_extraction_outbox.sql",
   "src/app/api/memory/preferences/route.ts",
   "src/app/api/cron/memory-extract/route.ts",
   "src/lib/memory/preferences.ts",

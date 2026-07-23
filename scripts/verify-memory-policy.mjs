@@ -187,8 +187,8 @@ assert(
 );
 assert(
   "composeMemoryQueryText does not revive mainQuestion for short chat replies",
-  relevance.includes("Short chat replies") &&
-    relevance.includes('return "";')
+  relevance.includes("Short non-empty replies") &&
+    relevance.includes("if (last.length > 0) return \"\";")
 );
 
 const adminMemory = read("src/app/api/admin/users/[userId]/memory/route.ts");
@@ -375,6 +375,23 @@ assert(
   migration079.includes("user_memory_preferences") &&
     migration079.includes("memory_extraction_jobs") &&
     migration079.includes("user_memory_tombstones")
+);
+const migration080 = read("scripts/migrations/080_fix_memory_extraction_outbox.sql");
+assert(
+  "migration 080 drops session-level outbox unique index",
+  migration080.includes("DROP INDEX IF EXISTS idx_memory_extraction_jobs_dedupe") &&
+    migration080.includes("idx_memory_extraction_jobs_pending_msg")
+);
+const extractionJobs = read("src/lib/memory/extraction-jobs.ts");
+assert(
+  "enqueue inserts a new job per turn (no completed-job freeze)",
+  extractionJobs.includes("INSERT INTO memory_extraction_jobs") &&
+    !extractionJobs.includes("WHEN memory_extraction_jobs.status = 'completed'")
+);
+assert(
+  "employment predicates mutually supersede",
+  read("src/lib/memory/predicates.ts").includes("supersedeGroupForPredicate") &&
+    read("src/lib/memory/user-facts.ts").includes("supersedeGroupForPredicate")
 );
 
 const installCrons = read("proxmox-setup/install-crons.sh");
