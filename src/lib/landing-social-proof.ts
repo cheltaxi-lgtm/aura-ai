@@ -17,6 +17,7 @@ type MoscowParts = {
   day: number;
   hour: number;
   minute: number;
+  second: number;
   weekday: number;
 };
 
@@ -53,6 +54,7 @@ function getMoscowParts(now: Date): MoscowParts {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     weekday: "short",
     hour12: false,
   }).formatToParts(now);
@@ -77,6 +79,7 @@ function getMoscowParts(now: Date): MoscowParts {
     day: pick("day"),
     hour: pick("hour"),
     minute: pick("minute"),
+    second: pick("second"),
     weekday: weekdayMap[weekdayLabel] ?? 1,
   };
 }
@@ -91,12 +94,13 @@ function daysSinceLaunch(year: number, month: number, day: number): number {
 function dailySpreadCap(parts: MoscowParts): number {
   const weekend = parts.weekday === 0 || parts.weekday === 6;
   const seed = hash32(dateKey(parts.year, parts.month, parts.day));
-  return seededInt(seed, weekend ? 28 : 16, weekend ? 58 : 41);
+  // Выше дневной объём → счётчик заметно тикает каждые несколько минут днём.
+  return seededInt(seed, weekend ? 160 : 110, weekend ? 260 : 200);
 }
 
 /** Доля дневного объёма к текущему моменту (утро мало, вечер больше). */
-function spreadProgressThroughDay(hour: number, minute: number): number {
-  const t = hour + minute / 60;
+function spreadProgressThroughDay(hour: number, minute: number, second: number): number {
+  const t = hour + minute / 60 + second / 3600;
   if (t < 7) return 0.04 * (t / 7);
   if (t < 12) return 0.04 + 0.14 * ((t - 7) / 5);
   if (t < 17) return 0.18 + 0.32 * ((t - 12) / 5);
@@ -106,16 +110,16 @@ function spreadProgressThroughDay(hour: number, minute: number): number {
 
 function spreadsToday(parts: MoscowParts): number {
   const cap = dailySpreadCap(parts);
-  const progress = spreadProgressThroughDay(parts.hour, parts.minute);
+  const progress = spreadProgressThroughDay(parts.hour, parts.minute, parts.second);
   const raw = Math.floor(cap * progress);
   if (parts.hour < 7) return Math.max(0, raw);
   return Math.max(1, raw);
 }
 
-/** Накопительный счётчик с даты запуска — каждый день прибавляет своё число. */
+/** Накопительный счётчик к полуночи текущего дня (МСК). */
 const cumulativeAnswersCache = new Map<number, number>();
 
-function cumulativeAnswers(parts: MoscowParts): number {
+function cumulativeAnswersAtMidnight(parts: MoscowParts): number {
   const todayKey = dateKey(parts.year, parts.month, parts.day);
   const cached = cumulativeAnswersCache.get(todayKey);
   if (cached !== undefined) return cached;
@@ -139,6 +143,21 @@ function cumulativeAnswers(parts: MoscowParts): number {
   return total;
 }
 
+/** Полный счётчик ответов: прошлые дни + сегодняшний прогресс (растёт в течение дня). */
+function totalAnswersNow(parts: MoscowParts): number {
+  return cumulativeAnswersAtMidnight(parts) + spreadsToday(parts);
+}
+
+/**
+ * Пользователи соразмерны ответам (~58–65%): часть людей получает несколько ответов.
+ * Растёт вместе с ответами, но чуть медленнее.
+ */
+function totalUsersNow(answers: number, parts: MoscowParts): number {
+  const seed = hash32(dateKey(parts.year, parts.month, parts.day) + 91);
+  const ratio = 0.58 + (seed % 700) / 10_000;
+  return Math.max(1, Math.floor(answers * ratio));
+}
+
 function onlineNow(parts: MoscowParts): number {
   const daySeed = hash32(dateKey(parts.year, parts.month, parts.day));
   const hourSeed = hash32(daySeed + parts.hour);
@@ -148,7 +167,12 @@ function onlineNow(parts: MoscowParts): number {
   return clamp(base + daySwing + minuteSwing, 2, 19);
 }
 
-/** Merge real session counts from /api/stats/public when available. */
+function parseGrouped(value: string): number {
+  const n = Number.parseInt(value.replace(/\s/g, ""), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Merge real session counts from /api/stats/public when available (floor, not freeze). */
 export function mergeLandingSocialProofWithPublicStats(
   stats: LandingSocialProofStat[],
   sessions: number,
@@ -157,9 +181,12 @@ export function mergeLandingSocialProofWithPublicStats(
   if (sessions <= 0 && users <= 0) return stats;
   return stats.map((stat) => {
     if (stat.key === "total" && sessions > 0) {
-      const synthetic = parseInt(stat.value.replace(/\s/g, ""), 10);
-      const real = Math.max(sessions, users, Number.isFinite(synthetic) ? synthetic : 0);
-      return { ...stat, value: formatGrouped(real) };
+      const synthetic = parseGrouped(stat.value);
+      return { ...stat, value: formatGrouped(Math.max(sessions, synthetic)) };
+    }
+    if (stat.key === "users" && users > 0) {
+      const synthetic = parseGrouped(stat.value);
+      return { ...stat, value: formatGrouped(Math.max(users, synthetic)) };
     }
     return stat;
   });
@@ -168,15 +195,15 @@ export function mergeLandingSocialProofWithPublicStats(
 /** «Живая» статистика для лендинга — меняется по календарному дню (МСК) и времени суток. */
 export function getLandingSocialProofStats(now = new Date()): LandingSocialProofStat[] {
   const moscow = getMoscowParts(now);
-  const todaySpreads = spreadsToday(moscow);
-  const totalAnswers = cumulativeAnswers(moscow);
+  const totalAnswers = totalAnswersNow(moscow);
+  const totalUsers = totalUsersNow(totalAnswers, moscow);
   const online = onlineNow(moscow);
 
   return [
     {
-      key: "today",
-      value: formatGrouped(todaySpreads),
-      label: "раскладов сегодня",
+      key: "users",
+      value: formatGrouped(totalUsers),
+      label: "пользователей",
     },
     {
       key: "total",

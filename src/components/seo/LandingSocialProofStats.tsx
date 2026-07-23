@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getLandingSocialProofStats,
   mergeLandingSocialProofWithPublicStats,
@@ -12,6 +12,9 @@ type LandingSocialProofStatsProps = {
   variant?: "hero" | "trust";
   className?: string;
 };
+
+const TICK_MS = 20_000;
+const PUBLIC_STATS_MS = 300_000;
 
 function StatItem({
   stat,
@@ -36,37 +39,46 @@ export default function LandingSocialProofStats({
   className = "",
 }: LandingSocialProofStatsProps) {
   const [stats, setStats] = useState<LandingSocialProofStat[]>(() => getLandingSocialProofStats());
+  const publicFloorRef = useRef({ sessions: 0, users: 0 });
 
   useEffect(() => {
     let cancelled = false;
 
-    const refresh = async () => {
-      const base = getLandingSocialProofStats();
+    const apply = () => {
+      const next = mergeLandingSocialProofWithPublicStats(
+        getLandingSocialProofStats(),
+        publicFloorRef.current.sessions,
+        publicFloorRef.current.users
+      );
+      if (!cancelled) setStats(next);
+    };
+
+    const fetchPublic = async () => {
       try {
         const res = await fetch("/api/stats/public");
-        if (!res.ok) {
-          if (!cancelled) setStats(base);
-          return;
-        }
+        if (!res.ok) return;
         const data = (await res.json()) as { sessions?: number; users?: number };
-        const merged = mergeLandingSocialProofWithPublicStats(
-          base,
-          typeof data.sessions === "number" ? data.sessions : 0,
-          typeof data.users === "number" ? data.users : 0
-        );
-        if (!cancelled) setStats(merged);
+        publicFloorRef.current = {
+          sessions: typeof data.sessions === "number" ? data.sessions : 0,
+          users: typeof data.users === "number" ? data.users : 0,
+        };
+        apply();
       } catch {
-        if (!cancelled) setStats(base);
+        /* keep synthetic */
       }
     };
 
-    void refresh();
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 300_000);
+    apply();
+    void fetchPublic();
+    const tick = window.setInterval(apply, TICK_MS);
+    const publicTimer = window.setInterval(() => {
+      void fetchPublic();
+    }, PUBLIC_STATS_MS);
+
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      window.clearInterval(tick);
+      window.clearInterval(publicTimer);
     };
   }, []);
 
