@@ -22,7 +22,7 @@ import { buildSpreadContinuePrompt } from "../src/lib/prose-completion.ts";
 import {
   buildCardAwareFallbackReading,
   buildChatFallbackReply,
-} from "../src/lib/chat-prompts.ts";
+} from "../src/lib/repair/legacy-fallback-text.ts";
 import { isPaidSpreadTextComplete } from "../src/lib/spread-reading-complete.ts";
 import { polishSpreadReadingText } from "../src/lib/reading-text-polish.ts";
 import { parseCardNamesFromSpreadText } from "../src/lib/session-spread-meta.ts";

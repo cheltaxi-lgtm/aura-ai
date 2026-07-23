@@ -173,8 +173,35 @@ export default function RitualGenerating({
   useEffect(() => {
     let cancelled = false;
     const startedAt = Date.now();
+    const storageKey = `aura:ritual-active-job:${ritualId}`;
 
     void (async () => {
+      try {
+        const { resumeStoredOrActiveAsyncJob } = await import(
+          "@/lib/client/wait-for-async-job"
+        );
+        const resumed = await resumeStoredOrActiveAsyncJob({
+          storageKey,
+          kind: "ritual_generation",
+        });
+        if (cancelled) return;
+        if (resumed) {
+          const handled = handleGenerationResult(
+            resumed as {
+              status?: string;
+              error?: string;
+              ritual?: { status?: string };
+              achievement?: RitualAchievementPayload | null;
+              refunded?: boolean;
+            },
+            true
+          );
+          if (handled) return;
+        }
+      } catch {
+        /* fall through to regenerate */
+      }
+
       const firstDone = await triggerGeneration(false);
       if (cancelled || firstDone) return;
 
@@ -207,7 +234,7 @@ export default function RitualGenerating({
     return () => {
       cancelled = true;
     };
-  }, [ritualId, triggerGeneration, pollStatus]);
+  }, [ritualId, triggerGeneration, pollStatus, handleGenerationResult]);
 
   const handleRetry = () => {
     void triggerGeneration(true);

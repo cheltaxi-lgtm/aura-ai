@@ -136,6 +136,27 @@ export default function JointReadingTokenPage() {
     };
   }, [data, load]);
 
+  useEffect(() => {
+    if (!token || !data?.combinedJobId || data.combinedReading) return;
+    let cancelled = false;
+    const storageKey = `aura:joint-combined-job:${token}`;
+    void (async () => {
+      try {
+        const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+        await waitForAsyncJob({
+          jobId: data.combinedJobId!,
+          storageKey,
+        });
+      } catch {
+        /* GET polling below still covers completion */
+      }
+      if (!cancelled) await load();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, data?.combinedJobId, data?.combinedReading, load]);
+
   const inviteUrl = useMemo(() => {
     if (typeof window === "undefined") return `/joint-reading/${token}`;
     return `${window.location.origin}/joint-reading/${encodeURIComponent(token)}`;
