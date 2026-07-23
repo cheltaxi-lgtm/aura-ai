@@ -40,6 +40,8 @@ type JointPayload = {
   hasInitiatorReading: boolean;
   hasPartnerReading: boolean;
   combinedReading: string | null;
+  combinedPending?: boolean;
+  combinedJobId?: string | null;
   initiatorReading: string | null;
   partnerReading: string | null;
   viewerRole: "initiator" | "partner" | "guest" | null;
@@ -351,6 +353,25 @@ export default function JointReadingTokenPage() {
             <PremiumReadingBody content={data.partnerReading} className="text-sm text-white/75" />
           </div>
         </article>
+      ) : null}
+
+      {!data.combinedReading &&
+      data.hasInitiatorReading &&
+      data.hasPartnerReading ? (
+        <div
+          role="status"
+          className="mt-8 rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-xs leading-relaxed text-amber-50/90"
+        >
+          <p className="font-medium text-amber-100">
+            {data.combinedPending
+              ? "Собираем общую интерпретацию"
+              : "Оба расклада готовы — готовим общий синтез"}
+          </p>
+          <p className="mt-1 text-amber-50/70">
+            Можно закрыть страницу — результат сохранится. Страница обновится
+            автоматически.
+          </p>
+        </div>
       ) : null}
 
       {data.combinedReading ? (

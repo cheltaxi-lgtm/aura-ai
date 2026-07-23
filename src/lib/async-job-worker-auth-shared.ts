@@ -76,6 +76,7 @@ export function isAsyncJobWorkerEndpoint(pathname: string): boolean {
     pathname === "/api/photo-reading/stream" ||
     pathname === "/api/image/generate" ||
     pathname === "/api/joint-reading/create" ||
+    /^\/api\/joint-reading\/[^/]+\/combine$/.test(pathname) ||
     /^\/api\/ritual\/[^/]+\/regenerate$/.test(pathname)
   );
 }

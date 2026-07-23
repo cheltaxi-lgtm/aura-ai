@@ -11,6 +11,7 @@ export type AsyncJobKind =
   | "daily_reading"
   | "daily_extended"
   | "joint_reading"
+  | "joint_combined"
   | "photo_reading"
   | "ritual_generation"
   | "numerology_reading";

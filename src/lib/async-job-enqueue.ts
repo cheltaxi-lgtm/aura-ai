@@ -109,3 +109,51 @@ export async function enqueueNatalAsyncJob(input: {
     bypassDeliveryGate: true,
   });
 }
+
+/**
+ * Fire-and-forget durable enqueue used from service layers (returns jobId).
+ * Dedupes active jobs for the same kind/dedupe key.
+ */
+export async function schedulePaidAsyncJob(input: {
+  userId: string;
+  kind: AsyncJobKind;
+  payload: Record<string, unknown>;
+  bypassDeliveryGate?: boolean;
+}): Promise<string | null> {
+  if (!isAsyncJobWorkerConfigured()) return null;
+  if (!(await ensureDb())) return null;
+
+  const config = getJobKindConfig(input.kind);
+  const natalKinds = new Set([
+    "natal_interpretation",
+    "natal_forecast",
+    "natal_compatibility",
+  ]);
+  const bypass = input.bypassDeliveryGate || natalKinds.has(input.kind);
+  if (!bypass && !(await isAiDeliveryKindEnabled(input.kind, input.userId))) {
+    return null;
+  }
+
+  const dedupeKey = config.buildDedupeKey(input.userId, input.payload);
+  const existingId = await findActiveAsyncJob({
+    userId: input.userId,
+    kind: input.kind,
+    payload: input.payload,
+    dedupeKey,
+  });
+  if (existingId) return existingId;
+
+  const activeCount = await countActiveAsyncJobsForUser({
+    userId: input.userId,
+    kinds: [input.kind],
+  });
+  if (activeCount >= config.maxActivePerUser) return null;
+
+  return createAsyncJob({
+    userId: input.userId,
+    kind: input.kind,
+    payload: input.payload,
+    dedupeKey,
+    actionType: config.runeAction,
+  });
+}

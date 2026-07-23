@@ -552,20 +552,33 @@ export async function submitJointReadingSide(params: {
     updated.partner_reading?.trim() &&
     !updated.combined_reading
   ) {
-    updated = await ensureCombinedReading(updated);
-
-    if (updated.combined_reading && await claimJointCompletionNotification(params.token)) {
-      await notifyJointReadingEvent({
-        userId: updated.initiator_user_id,
-        type: "joint_reading_completed",
-        token: params.token,
-      });
-      if (updated.partner_user_id) {
-        await notifyJointReadingEvent({
-          userId: updated.partner_user_id,
-          type: "joint_reading_completed",
-          token: params.token,
-        });
+    const { schedulePaidAsyncJob } = await import("@/lib/async-job-enqueue");
+    const jobId = await schedulePaidAsyncJob({
+      userId: updated.initiator_user_id,
+      kind: "joint_combined",
+      payload: { token: updated.token, async: false },
+      bypassDeliveryGate: true,
+    });
+    if (!jobId) {
+      // Worker unavailable: keep fail-closed sync path as last resort.
+      try {
+        updated = await ensureCombinedReading(updated);
+        if (updated.combined_reading && (await claimJointCompletionNotification(params.token))) {
+          await notifyJointReadingEvent({
+            userId: updated.initiator_user_id,
+            type: "joint_reading_completed",
+            token: params.token,
+          });
+          if (updated.partner_user_id) {
+            await notifyJointReadingEvent({
+              userId: updated.partner_user_id,
+              type: "joint_reading_completed",
+              token: params.token,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[joint-reading] sync combined fallback failed:", err);
       }
     }
   }

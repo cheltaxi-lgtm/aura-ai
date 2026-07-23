@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS async_jobs (
     'reading', 'image_generate', 'natal_interpretation',
     'natal_forecast', 'natal_compatibility',
     'intention_spread', 'daily_reading', 'daily_extended',
-    'joint_reading', 'photo_reading', 'ritual_generation',
+    'joint_reading', 'joint_combined', 'photo_reading', 'ritual_generation',
     'numerology_reading'
   )),
   status        TEXT NOT NULL DEFAULT 'pending'

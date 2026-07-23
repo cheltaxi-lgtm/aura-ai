@@ -186,6 +186,25 @@ const JOINT_READING: PaidJobKindConfig = {
     hashDedupeParts([userId, "joint_reading", payload.idempotencyKey ?? payload.partnerKey]),
 };
 
+const JOINT_COMBINED: PaidJobKindConfig = {
+  kind: "joint_combined",
+  maxActivePerUser: 2,
+  timeoutMs: 180_000,
+  workerPath: (job) => {
+    const token = job.input.token;
+    if (typeof token !== "string" || !token.trim()) {
+      throw new Error("invalid joint_combined job payload");
+    }
+    return {
+      path: `/api/joint-reading/${encodeURIComponent(token.trim())}/combine`,
+      body: { ...job.input, async: false },
+    };
+  },
+  matchesWorkerPath: (pathname) => /^\/api\/joint-reading\/[^/]+\/combine$/.test(pathname),
+  buildDedupeKey: (userId, payload) =>
+    hashDedupeParts([userId, "joint_combined", payload.token]),
+};
+
 const NUMEROLOGY_READING: PaidJobKindConfig = {
   kind: "numerology_reading",
   maxActivePerUser: 2,
@@ -228,6 +247,7 @@ export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
   photo_reading: PHOTO_READING,
   ritual_generation: RITUAL_GENERATION,
   joint_reading: JOINT_READING,
+  joint_combined: JOINT_COMBINED,
   numerology_reading: NUMEROLOGY_READING,
   image_generate: IMAGE_GENERATE,
 };
@@ -245,6 +265,7 @@ export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "photo_reading",
   "ritual_generation",
   "joint_reading",
+  "joint_combined",
 ];
 
 export function getJobKindConfig(kind: AsyncJobKind): PaidJobKindConfig {

@@ -13,6 +13,7 @@ const ENABLE_KINDS = [
   "photo_reading",
   "ritual_generation",
   "joint_reading",
+  "joint_combined",
   "numerology_reading",
   "image_generate",
   "natal_interpretation",

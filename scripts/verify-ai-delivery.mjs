@@ -136,4 +136,10 @@ assert.match(jointClient, /postWithAsyncJob/);
 
 assert.match(client, /resumeStoredOrActiveAsyncJob/);
 
+const combine = read("src/app/api/joint-reading/[token]/combine/route.ts");
+assert.match(combine, /joint_combined|ensureCombinedReading/);
+assert.match(combine, /trackWorkerJobCompleted/);
+
+assert.match(registry, /joint_combined/);
+
 console.log("verify-ai-delivery: OK");
