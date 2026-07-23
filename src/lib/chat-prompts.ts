@@ -418,7 +418,11 @@ export function fallbackReading(
   return FALLBACK_READINGS[id](ctx);
 }
 
-export type ReadingGenerationResult = { text: string; fromLlm: boolean };
+export type ReadingGenerationResult = {
+  text: string;
+  fromLlm: boolean;
+  provenance?: import("@/lib/ai-generation-contract").AiProvenance;
+};
 
 export async function generateReading(
   systemPrompt: string,
@@ -491,42 +495,59 @@ export async function generateReading(
 
   const maxTokens = cardCount > 5 ? 5000 : cardCount > 3 ? 4200 : 2800;
 
-  const attemptPlans: Array<{
-    messages: ChatMessage[];
-    maxTokens: number;
-    timeoutMs: number;
-    maxAttempts: number;
-    temperature?: number;
-  }> = thematic
-    ? [
-        { messages: baseMessages, maxTokens, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 },
-        {
-          messages: baseMessages,
-          maxTokens: Math.round(maxTokens * 0.75),
-          timeoutMs: 90_000,
-          maxAttempts: 1,
-          temperature: 0.85,
-        },
-      ]
-    : [{ messages: baseMessages, maxTokens, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 }];
-
-  for (const plan of attemptPlans) {
-    let text = await completeProseWithContinuation(plan.messages, {
-      maxTokens: plan.maxTokens,
-      temperature: plan.temperature ?? 0.85,
-      maxPasses: cardCount > 5 ? 4 : 3,
+  const { generateValidatedAiText } = await import("@/lib/validated-ai-generation");
+  const validated = await generateValidatedAiText({
+    messages: baseMessages,
+    inputParts: [
+      ctx.characterId ?? "ragnar",
+      ctx.intention ?? null,
+      spreadId,
       cardNames,
-    });
-    if (text && !isPaidSpreadTextComplete(text, cardNames)) {
-      text = await ensurePaidSpreadTextComplete(plan.messages, text, cardNames, {
-        maxTokens: Math.max(2200, Math.round(plan.maxTokens * 0.5)),
-        temperature: plan.temperature ?? 0.85,
-        maxRounds: 4,
-      });
+      ctx.userMessage ?? null,
+    ],
+    maxTokens,
+    temperature: 0.85,
+    timeoutMs: 120_000,
+    validate: (text) => {
+      const accepted = acceptReading(text);
+      return accepted
+        ? { ok: true }
+        : { ok: false, code: "validation_failed", detail: "incomplete_or_truncated" };
+    },
+    buildRepairMessages: (failedText) => [
+      ...baseMessages,
+      { role: "assistant", content: failedText },
+      {
+        role: "user",
+        content:
+          "Допиши расклад целиком: раскрой каждую позицию по имени символа и заверши полным финальным блоком выводов. Без удержания.",
+      },
+    ],
+  });
+
+  if (validated.ok) {
+    const accepted = acceptReading(validated.content) ?? validated.content.trim();
+    if (accepted) {
+      return { text: accepted, fromLlm: true, provenance: validated.provenance };
     }
-    const accepted = acceptReading(text);
-    if (accepted) return { text: accepted, fromLlm: true };
   }
+
+  // Legacy continuation path as last AI-only attempt before fail-closed.
+  let text = await completeProseWithContinuation(baseMessages, {
+    maxTokens,
+    temperature: 0.85,
+    maxPasses: cardCount > 5 ? 4 : 3,
+    cardNames,
+  });
+  if (text && !isPaidSpreadTextComplete(text, cardNames)) {
+    text = await ensurePaidSpreadTextComplete(baseMessages, text, cardNames, {
+      maxTokens: Math.max(2200, Math.round(maxTokens * 0.5)),
+      temperature: 0.85,
+      maxRounds: 4,
+    });
+  }
+  const accepted = acceptReading(text);
+  if (accepted) return { text: accepted, fromLlm: true };
 
   // Fail-closed: never synthesize template prose as a paid reading success.
   return { text: "", fromLlm: false };

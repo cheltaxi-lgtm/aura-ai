@@ -849,6 +849,7 @@ export async function POST(request: NextRequest) {
   systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
 
   let reading = "";
+  let readingProvenance: import("@/lib/ai-generation-contract").AiProvenance | undefined;
   try {
     const userForContext = userContextFromProfile({
       name: userName,
@@ -877,6 +878,7 @@ export async function POST(request: NextRequest) {
       positionLabels,
       userMessage,
     });
+    readingProvenance = generated.provenance;
     reading =
       sanitizeReadingForClient(generated.text.trim(), drawn.map((c) => c.name)) || "";
     const cardNamesForCheck = drawn.map((c) => c.name);
@@ -986,18 +988,20 @@ export async function POST(request: NextRequest) {
         );
       }
       const aiSettings = await getSetting("ai");
-      const provenance = buildAiProvenance({
-        model: String(aiSettings.paidModel || aiSettings.model || "unknown"),
-        attempts: 1,
-        finishReason: "stop",
-        inputFingerprint: fingerprintAiInput([
-          characterId,
-          intention,
-          spreadId,
-          drawn.map((c) => c.name),
-        ]),
-        content: reading,
-      });
+      const provenance =
+        readingProvenance ??
+        buildAiProvenance({
+          model: String(aiSettings.paidModel || aiSettings.model || "unknown"),
+          attempts: 1,
+          finishReason: "stop",
+          inputFingerprint: fingerprintAiInput([
+            characterId,
+            intention,
+            spreadId,
+            drawn.map((c) => c.name),
+          ]),
+          content: reading,
+        });
       await createHistoryEntry({
         userId: authed.profileUserId,
         characterName: characterId,

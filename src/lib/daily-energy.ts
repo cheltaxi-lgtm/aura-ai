@@ -310,9 +310,39 @@ ${buildClientGenderInstruction({
     { role: "system", content: await wrapSystemPrompt(system) },
     { role: "user", content: buildDailyPrompt({ ...promptParams, spreadId }) },
   ];
+  const cardCount = promptParams.cards.length || getSpread(spreadId).cardCount;
+  const { generateValidatedAiText } = await import("@/lib/validated-ai-generation");
+  const outcome = await generateValidatedAiText({
+    messages,
+    inputParts: [
+      charKey,
+      spreadId,
+      promptParams.dateRu,
+      promptParams.cards.map((c) => c.name),
+    ],
+    maxTokens: paidSpreadMaxTokens(cardCount),
+    temperature: 0.75,
+    timeoutMs: 90_000,
+    validate: (text) => {
+      const cleaned = sanitizeDailyReadingText(text);
+      return cleaned && !isDailyReadingPlaceholder(cleaned, promptParams.cards)
+        ? { ok: true }
+        : { ok: false, code: "validation_failed", detail: "daily_placeholder_or_short" };
+    },
+    buildRepairMessages: (failedText) => [
+      ...messages,
+      { role: "assistant", content: failedText },
+      {
+        role: "user",
+        content:
+          "Допиши прогноз дня целиком: все позиции расклада и одно конкретное действие на сегодня.",
+      },
+    ],
+  });
+  if (outcome.ok) return outcome.content;
 
   return completeProseWithContinuation(messages, {
-    maxTokens: paidSpreadMaxTokens(promptParams.cards.length || getSpread(spreadId).cardCount),
+    maxTokens: paidSpreadMaxTokens(cardCount),
     temperature: 0.75,
     maxPasses: 3,
   });

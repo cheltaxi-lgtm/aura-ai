@@ -955,6 +955,20 @@ export async function POST(request: NextRequest) {
           return { kind: "failed" as const };
         }
         const aiSettings = await getSetting("ai");
+        const provenance =
+          generated.provenance ??
+          buildAiProvenance({
+            model: String(aiSettings.paidModel || aiSettings.model || "unknown"),
+            attempts: 1,
+            finishReason: "stop",
+            inputFingerprint: fingerprintAiInput([
+              characterId,
+              intention,
+              spreadId,
+              tarotCards.map((c) => c.name),
+            ]),
+            content: reading,
+          });
         const entry = await createHistoryEntry({
           userId: authed.profileUserId,
           characterName: characterId,
@@ -968,18 +982,7 @@ export async function POST(request: NextRequest) {
             gender,
             birthDate,
             source: "ai",
-            provenance: buildAiProvenance({
-              model: String(aiSettings.paidModel || aiSettings.model || "unknown"),
-              attempts: 1,
-              finishReason: "stop",
-              inputFingerprint: fingerprintAiInput([
-                characterId,
-                intention,
-                spreadId,
-                tarotCards.map((c) => c.name),
-              ]),
-              content: reading,
-            }),
+            provenance,
             ...(sessionId ? { sessionId } : {}),
             ...(isDailySpread ? { spreadType: "daily" } : {}),
             ...(isGuestResumeFree

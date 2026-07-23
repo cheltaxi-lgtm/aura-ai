@@ -253,6 +253,21 @@ export default function RitualGenerating({
 
   return (
     <div className="flex min-h-[360px] flex-col items-center justify-center px-6 py-10">
+      <div className="mb-4 w-full max-w-sm">
+        {/* lazy import avoided — tiny notice */}
+        {isGenerating ? (
+          <div
+            role="status"
+            className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs leading-relaxed text-amber-50/90"
+          >
+            <p className="font-medium text-amber-100">Составляем обряд</p>
+            <p className="mt-1 text-amber-50/70">
+              Можно закрыть страницу — результат сохранится. После обновления
+              ожидание восстановится автоматически.
+            </p>
+          </div>
+        ) : null}
+      </div>
       <div className="relative mb-8 flex h-32 w-32 items-center justify-center">
         {symbols.map((sym, i) => (
           <motion.span

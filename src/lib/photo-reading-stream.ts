@@ -1,5 +1,4 @@
 import { createChatResponseStream } from "@/lib/chat-stream";
-import { completeChat } from "@/lib/llm";
 import { photoInterpretationMaxTokens } from "@/lib/photo-reading-prompts";
 
 function buildPhotoInterpretationUserBlock(params: {
@@ -28,29 +27,49 @@ export async function createPhotoInterpretationJson(params: {
   question?: string;
   userName: string;
   cardCount?: number;
-}): Promise<{ reply: string; llmFailed: boolean }> {
+}): Promise<{
+  reply: string;
+  llmFailed: boolean;
+  provenance?: import("@/lib/ai-generation-contract").AiProvenance;
+}> {
   const n = Math.max(1, params.cardCount ?? 1);
-  const text = await completeChat({
-    messages: [
-      { role: "system", content: params.systemPrompt },
+  const messages = [
+    { role: "system" as const, content: params.systemPrompt },
+    {
+      role: "user" as const,
+      content: buildPhotoInterpretationUserBlock({
+        spreadSummary: params.spreadSummary,
+        question: params.question,
+        cardCount: n,
+      }),
+    },
+  ];
+  const { generateValidatedAiText } = await import("@/lib/validated-ai-generation");
+  const outcome = await generateValidatedAiText({
+    messages,
+    inputParts: [params.userName, params.spreadSummary, params.question ?? "", n],
+    maxTokens: photoInterpretationMaxTokens(n),
+    temperature: 0.65,
+    timeoutMs: 120_000,
+    validate: (text) =>
+      text.trim().length >= 120
+        ? { ok: true }
+        : { ok: false, code: "validation_failed", detail: "too_short" },
+    buildRepairMessages: (failedText) => [
+      ...messages,
+      { role: "assistant", content: failedText },
       {
         role: "user",
-        content: buildPhotoInterpretationUserBlock({
-          spreadSummary: params.spreadSummary,
-          question: params.question,
-          cardCount: n,
-        }),
+        content:
+          "Дополни расшифровку: отдельный абзац по каждой позиции и финальный блок выводов.",
       },
     ],
-    temperature: 0.65,
-    maxTokens: photoInterpretationMaxTokens(n),
-    timeoutMs: 120_000,
-    maxAttempts: 2,
   });
-  const reply = typeof text === "string" ? text.trim() : "";
+  if (outcome.ok) {
+    return { reply: outcome.content.trim(), llmFailed: false, provenance: outcome.provenance };
+  }
   // Fail-closed: never substitute template prose for a failed photo reading.
-  if (!reply) return { reply: "", llmFailed: true };
-  return { reply, llmFailed: false };
+  return { reply: "", llmFailed: true };
 }
 
 export async function createPhotoInterpretationStream(params: {

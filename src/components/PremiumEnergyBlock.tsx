@@ -21,6 +21,7 @@ import {
   showDailyJointReading,
 } from "@/lib/daily-retention";
 import type { RitualType } from "@/lib/ritual-config";
+import AsyncJobProgressNotice from "@/components/AsyncJobProgressNotice";
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const GOLD_GRADIENT = "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)";
@@ -620,6 +621,13 @@ export default function PremiumEnergyBlock({
                           : null}
                   </p>
                 )}
+
+                <div className="mt-3">
+                  <AsyncJobProgressNotice
+                    active={drawing}
+                    label="Мастер готовит энергию дня"
+                  />
+                </div>
 
                 {errorMessage && (
                   <p className="mt-3 text-center text-xs text-red-400">{errorMessage}</p>

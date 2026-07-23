@@ -11,7 +11,10 @@ import {
 } from "react";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
-import { waitForAsyncJob } from "@/lib/client/wait-for-async-job";
+import {
+  resumeStoredOrActiveAsyncJob,
+  waitForAsyncJob,
+} from "@/lib/client/wait-for-async-job";
 import { isProseLikelyTruncated } from "@/lib/prose-truncation";
 import { rateLimitMessage } from "@/lib/rate-limit-messages";
 import { toUserFacingError } from "@/lib/user-facing-error";
@@ -1428,6 +1431,48 @@ export function useChatActions(options: UseChatActionsOptions) {
     setMessages,
     sessionWelcome,
     messages.length,
+  ]);
+
+  useEffect(() => {
+    if (!isLoggedIn || authLoading || sessionLoading) return;
+    if (readingInFlightRef.current || isLoading) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await resumeStoredOrActiveAsyncJob({
+          storageKey: "aura:reading-active-job",
+          kind: "reading",
+        });
+        if (cancelled || !data) return;
+        const readingText =
+          typeof data.reading === "string" ? data.reading.trim() : "";
+        if (readingText.length < MIN_SPREAD_READING_CHARS) return;
+        readingInFlightRef.current = true;
+        setIsLoading(true);
+        setMessages((prev) => appendSpreadReadingMessage(prev, readingText));
+        if (typeof data.runeBalance === "number") {
+          emitRuneBalanceUpdate(data.runeBalance);
+        }
+      } catch {
+        /* keep chat as-is */
+      } finally {
+        if (!cancelled) {
+          readingInFlightRef.current = false;
+          setIsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isLoggedIn,
+    authLoading,
+    sessionLoading,
+    isLoading,
+    setIsLoading,
+    setMessages,
+    readingInFlightRef,
   ]);
 
   useEffect(() => {
