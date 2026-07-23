@@ -66,6 +66,42 @@ function factCountLabel(count: number): string {
   return `${count} сохранённых фактов`;
 }
 
+function PrefToggle({
+  checked,
+  disabled,
+  busy,
+  label,
+  hint,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  busy?: boolean;
+  label: string;
+  hint: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-xl border border-white/8 bg-black/20 px-3 py-3 ${
+        disabled ? "opacity-45" : ""
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled || busy}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-white/85">{label}</span>
+        <span className="mt-0.5 block text-[11px] leading-relaxed text-white/40">{hint}</span>
+      </span>
+    </label>
+  );
+}
+
 export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: boolean }) {
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [prefs, setPrefs] = useState<MemoryPrefs>({
@@ -327,38 +363,6 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     }
   };
 
-  const PrefToggle = ({
-    checked,
-    disabled,
-    label,
-    hint,
-    onChange,
-  }: {
-    checked: boolean;
-    disabled?: boolean;
-    label: string;
-    hint: string;
-    onChange: (next: boolean) => void;
-  }) => (
-    <label
-      className={`flex cursor-pointer items-start gap-3 rounded-xl border border-white/8 bg-black/20 px-3 py-3 ${
-        disabled ? "opacity-45" : ""
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled || prefsSaving}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-transparent"
-      />
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-white/85">{label}</span>
-        <span className="mt-0.5 block text-[11px] leading-relaxed text-white/40">{hint}</span>
-      </span>
-    </label>
-  );
-
   return (
     <>
       <section className={hideTitle ? "space-y-5" : "rounded-2xl border border-white/10 bg-white/[0.03] p-5"}>
@@ -383,6 +387,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           </p>
           <PrefToggle
             checked={prefs.memoryEnabled}
+            busy={prefsSaving}
             label="Использовать память в сеансах"
             hint="Факты из списка ниже могут попадать в ответы мастера, если тема совпадает."
             onChange={(memoryEnabled) => void patchPrefs({ memoryEnabled })}
@@ -390,6 +395,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           <PrefToggle
             checked={prefs.autoCaptureEnabled}
             disabled={!prefs.memoryEnabled}
+            busy={prefsSaving}
             label="Автозапоминание из чата"
             hint="Система сможет извлекать факты из ваших сообщений в фоне. Без этого — только ручные записи."
             onChange={(autoCaptureEnabled) => void patchPrefs({ autoCaptureEnabled })}
@@ -397,6 +403,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           <PrefToggle
             checked={prefs.sensitiveCaptureEnabled}
             disabled={!prefs.memoryEnabled || !prefs.autoCaptureEnabled}
+            busy={prefsSaving}
             label="Чувствительные темы"
             hint="Разрешить автозапоминание более личных сведений (здоровье, деньги, отношения)."
             onChange={(sensitiveCaptureEnabled) => void patchPrefs({ sensitiveCaptureEnabled })}
@@ -404,6 +411,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           <PrefToggle
             checked={prefs.eventRemindersEnabled}
             disabled={!prefs.memoryEnabled}
+            busy={prefsSaving}
             label="Напоминания о событиях"
             hint="Короткое уведомление перед датами, которые вы сохранили в памяти."
             onChange={(eventRemindersEnabled) => void patchPrefs({ eventRemindersEnabled })}
