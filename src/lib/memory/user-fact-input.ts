@@ -49,11 +49,22 @@ export function validateUserSubmittedFact(
   const fact = normalizeUserFactPhrase(raw);
   if (!isQualityMemoryFact(fact)) return null;
 
-  const cat =
-    category && VALID_CATEGORIES.has(category) ? category : ("other" as UserFactCategory);
+  const cat: UserFactCategory =
+    category && VALID_CATEGORIES.has(category)
+      ? (category as UserFactCategory)
+      : "other";
 
   const date =
     eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : null;
+
+  const predicateByCategory: Partial<Record<UserFactCategory, string>> = {
+    work: "employment.current",
+    relationship: "relationship.status",
+    goal: "goal.current",
+    event: "event.upcoming",
+    health: "health.condition",
+    money: "finance.debt",
+  };
 
   return {
     fact: fact.slice(0, 600),
@@ -61,6 +72,15 @@ export function validateUserSubmittedFact(
     eventDate: date,
     salience: boostFactSalience(fact, 4),
     sourceCharacter: "user",
+    sourceType: "user",
+    predicateKey: predicateByCategory[cat] ?? "other",
+    operation: (["event", "family", "health", "money"] as UserFactCategory[]).includes(
+      cat
+    )
+      ? "add"
+      : "replace",
+    subjectKey: "client",
+    allowSensitive: true,
   };
 }
 

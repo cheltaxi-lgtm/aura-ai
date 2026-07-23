@@ -62,6 +62,15 @@ if [ -f "$TARBALL" ]; then
     --exclude='node_modules/' \
     --exclude='logs/' \
     "$STAGE/" /opt/aura-ai/
+  # Windows tar often packs modes as 666/777 — harden before the app starts.
+  echo ">>> Hardening /opt/aura-ai file modes..."
+  find /opt/aura-ai -type d -exec chmod 755 {} +
+  find /opt/aura-ai -type f -exec chmod 644 {} +
+  if [ -f /opt/aura-ai/.env.local ]; then
+    chmod 600 /opt/aura-ai/.env.local
+  fi
+  find /opt/aura-ai/proxmox-setup -type f -name '*.sh' -exec chmod 750 {} +
+  find /opt/aura-ai/hosting -type f \( -name '*.sh' -o -name '*.ps1' \) -exec chmod 750 {} + 2>/dev/null || true
   echo ">>> Verifying installed GeoNames index after rsync..."
   verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
   echo ">>> Rsync complete ($(test -f /opt/aura-ai/deploy-sha.txt && tr -d '\r\n' < /opt/aura-ai/deploy-sha.txt || echo no-sha))"

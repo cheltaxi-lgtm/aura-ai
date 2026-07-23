@@ -97,6 +97,8 @@ export async function persistPhotoReadingResult(params: {
       characterId: params.characterId,
       userMessage: params.question,
       assistantReply: params.analysisBody,
+      sourceType: "photo",
+      sourceEntityId: historyId ?? params.resolvedSessionId ?? null,
     }).catch((err) => console.warn("[memory] photo recordTurn failed:", err));
   }
 

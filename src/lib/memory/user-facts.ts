@@ -137,7 +137,9 @@ async function supersedeReplaceables(
   input: FactInput,
   newId: string
 ): Promise<void> {
-  if (input.operation !== "replace" || !isReplacePredicate(input.predicateKey)) return;
+  // Singleton predicates always supersede prior active rows — even if the
+  // extractor forgot operation=replace (common LLM omission).
+  if (!isReplacePredicate(input.predicateKey)) return;
   await queryClient(
     client,
     `UPDATE user_facts
@@ -180,14 +182,19 @@ async function upsertFactLocked(
     );
     const nearest = rows[0];
     if (nearest && Number(nearest.distance) <= DEDUP_MAX_DISTANCE) {
-      const keepUserSource = nearest.source_character === "user";
+      const incomingUser =
+        input.sourceCharacter === "user" || sourceType === "user";
       await queryClient(
         client,
         `UPDATE user_facts
             SET fact = $2,
                 category = COALESCE($3, category),
                 event_date = COALESCE($4::date, event_date),
-                source_character = CASE WHEN $8 THEN source_character ELSE COALESCE($5, source_character) END,
+                source_character = CASE
+                  WHEN $8 THEN 'user'
+                  WHEN source_character = 'user' THEN source_character
+                  ELSE COALESCE($5, source_character)
+                END,
                 salience = GREATEST(salience, $6),
                 embedding = $7::vector,
                 embedding_model = $9,
@@ -197,7 +204,11 @@ async function upsertFactLocked(
                 subject_key = COALESCE($13, subject_key),
                 sensitivity = $14,
                 confidence = GREATEST(confidence, $15),
-                source_type = CASE WHEN $8 THEN source_type ELSE COALESCE($16, source_type) END,
+                source_type = CASE
+                  WHEN $8 THEN 'user'
+                  WHEN source_type = 'user' THEN source_type
+                  ELSE COALESCE($16, source_type)
+                END,
                 last_confirmed_at = NOW(),
                 consent_version = $17,
                 updated_at = NOW()
@@ -210,7 +221,7 @@ async function upsertFactLocked(
           input.sourceCharacter ?? null,
           salience,
           vec,
-          keepUserSource,
+          incomingUser,
           model,
           EMBED_VERSION,
           input.predicateKey ?? null,
@@ -270,18 +281,28 @@ async function upsertFactLocked(
     [userId, fact.slice(0, 600)]
   );
   if (textDup[0]) {
-    const keepUserSource = textDup[0].source_character === "user";
+    const incomingUser =
+      input.sourceCharacter === "user" || sourceType === "user";
     await queryClient(
       client,
       `UPDATE user_facts
           SET category = COALESCE($2, category),
               event_date = COALESCE($3::date, event_date),
-              source_character = CASE WHEN $6 THEN source_character ELSE COALESCE($4, source_character) END,
+              source_character = CASE
+                WHEN $6 THEN 'user'
+                WHEN source_character = 'user' THEN source_character
+                ELSE COALESCE($4, source_character)
+              END,
               salience = GREATEST(salience, $5),
               predicate_key = COALESCE($7, predicate_key),
               entity_key = COALESCE($8, entity_key),
               subject_key = COALESCE($9, subject_key),
               sensitivity = $10,
+              source_type = CASE
+                WHEN $6 THEN 'user'
+                WHEN source_type = 'user' THEN source_type
+                ELSE COALESCE($11, source_type)
+              END,
               last_confirmed_at = NOW(),
               updated_at = NOW()
         WHERE id = $1`,
@@ -291,11 +312,12 @@ async function upsertFactLocked(
         input.eventDate ?? null,
         input.sourceCharacter ?? null,
         salience,
-        keepUserSource,
+        incomingUser,
         input.predicateKey ?? null,
         input.entityKey ?? null,
         input.subjectKey ?? "client",
         sensitivity,
+        sourceType,
       ]
     );
     await supersedeReplaceables(client, userId, input, textDup[0].id);
@@ -547,29 +569,40 @@ export async function decayStaleCriticalFacts(limit = 500): Promise<number> {
   return rows.length;
 }
 
-/** TTL: delete expired / past / superseded facts. */
+/** TTL: delete expired / past / superseded facts (tombstone first). */
 export async function expireStaleFacts(limit = 500): Promise<number> {
-  const { rows } = await query<{ id: string }>(
-    `DELETE FROM user_facts
-      WHERE id IN (
-        SELECT id FROM user_facts
-         WHERE (
-              (status = 'superseded' AND updated_at < NOW() - INTERVAL '90 days')
-           OR (event_date IS NOT NULL AND event_date < CURRENT_DATE - INTERVAL '30 days')
-           OR (source_type NOT IN ('user', 'profile')
-               AND status = 'active'
-               AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '365 days'
-               AND sensitivity = 'normal')
-           OR (sensitivity = 'sensitive'
-               AND source_type NOT IN ('user', 'profile')
-               AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '180 days')
-         )
-         LIMIT $1
+  const { rows } = await query<{
+    id: string;
+    user_id: string;
+    fact: string;
+    predicate_key: string | null;
+  }>(
+    `SELECT id, user_id, fact, predicate_key FROM user_facts
+      WHERE (
+           (status = 'superseded' AND updated_at < NOW() - INTERVAL '90 days')
+        OR (event_date IS NOT NULL AND event_date < CURRENT_DATE - INTERVAL '30 days')
+        OR (source_type NOT IN ('user', 'profile')
+            AND status = 'active'
+            AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '365 days'
+            AND sensitivity = 'normal')
+        OR (sensitivity = 'sensitive'
+            AND source_type NOT IN ('user', 'profile')
+            AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '180 days')
       )
-      RETURNING id`,
+      ORDER BY updated_at ASC
+      LIMIT $1`,
     [limit]
   );
-  return rows.length;
+  if (!rows.length) return 0;
+  for (const row of rows) {
+    await addTombstone(row.user_id, row.fact, row.predicate_key).catch(() => undefined);
+  }
+  const ids = rows.map((r) => r.id);
+  const deleted = await query(
+    `DELETE FROM user_facts WHERE id = ANY($1::uuid[])`,
+    [ids]
+  );
+  return deleted.rowCount ?? 0;
 }
 
 export const SESSION_MEMORIES_MAINTENANCE_CAP = 200;
@@ -686,6 +719,8 @@ export async function updateFact(
   if (!userId || !factId || !fact) return null;
   if (isInstructionLikeFact(fact) || !fact) return null;
 
+  const embedding = await embedOne(fact);
+  const model = embedModel();
   const { rows } = await query<FactRow>(
     `UPDATE user_facts
         SET fact = $3,
@@ -696,7 +731,9 @@ export async function updateFact(
             entity_key = COALESCE($8, entity_key),
             subject_key = COALESCE($9, subject_key),
             sensitivity = $10,
-            embedding = NULL,
+            embedding = $11::vector,
+            embedding_model = CASE WHEN $11::vector IS NULL THEN embedding_model ELSE $12 END,
+            embedding_version = CASE WHEN $11::vector IS NULL THEN embedding_version ELSE $13 END,
             last_confirmed_at = NOW(),
             updated_at = NOW()
       WHERE user_id = $1 AND id = $2 AND status = 'active'
@@ -712,6 +749,9 @@ export async function updateFact(
       input.entityKey ?? null,
       input.subjectKey ?? "client",
       isSensitiveFact(input) ? "sensitive" : "normal",
+      embedding ? toVectorLiteral(embedding) : null,
+      model,
+      EMBED_VERSION,
     ]
   );
   return rows[0] ? mapRow(rows[0]) : null;

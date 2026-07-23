@@ -185,6 +185,11 @@ assert(
   "composeMemoryQueryText expands intention slug",
   relevance.includes("expandIntentionForQuery")
 );
+assert(
+  "composeMemoryQueryText does not revive mainQuestion for short chat replies",
+  relevance.includes("Short chat replies") &&
+    relevance.includes('return "";')
+);
 
 const adminMemory = read("src/app/api/admin/users/[userId]/memory/route.ts");
 assert(
@@ -376,6 +381,17 @@ const installCrons = read("proxmox-setup/install-crons.sh");
 assert(
   "install-crons schedules memory-extract every 5 minutes",
   installCrons.includes("cron-memory-extract.sh") && installCrons.includes("*/5 * * * *")
+);
+assert(
+  "install-crons hardens cron wrappers to mode 750 (not world-writable)",
+  installCrons.includes("chmod 750")
+);
+const vmDeploy = read("proxmox-setup/vm_local_deploy.sh");
+assert(
+  "vm_local_deploy hardens file modes after rsync",
+  vmDeploy.includes("Hardening /opt/aura-ai file modes") &&
+    vmDeploy.includes("chmod 755") &&
+    vmDeploy.includes("chmod 644")
 );
 
 const numerologyRunner = read("src/lib/services/numerology-tool-runner.ts");

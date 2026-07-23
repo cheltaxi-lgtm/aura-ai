@@ -5,7 +5,7 @@
 import { completeChat } from "@/lib/llm";
 import { filterGroundedFacts } from "@/lib/memory/grounding";
 import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
-import { isSensitiveFact } from "@/lib/memory/predicates";
+import { isSensitiveFact, REPLACE_PREDICATES } from "@/lib/memory/predicates";
 import {
   boostFactSalience,
   isQualityMemoryFact,
@@ -134,7 +134,6 @@ function parseFacts(raw: string): FactInput[] {
       typeof item.subjectKey === "string" && item.subjectKey.trim()
         ? item.subjectKey.trim().slice(0, 40)
         : "client";
-    const operation = item.operation === "replace" ? "replace" : "add";
     const confidenceRaw =
       typeof item.confidence === "number" ? item.confidence : Number(item.confidence);
     const confidence = Number.isFinite(confidenceRaw)
@@ -150,6 +149,14 @@ function parseFacts(raw: string): FactInput[] {
 
     if (confidence < 0.85) continue;
     if (!evidenceQuote) continue;
+
+    // Singleton predicates default to replace even when the model omits operation.
+    const operation =
+      item.operation === "replace" ||
+      (item.operation !== "add" &&
+        Boolean(predicateKey && REPLACE_PREDICATES.has(predicateKey)))
+        ? "replace"
+        : "add";
 
     out.push({
       fact: fact.slice(0, 600),

@@ -16,13 +16,14 @@ export function quoteAppearsInSource(source: string, quote: string): boolean {
   const q = normalizeForMatch(quote);
   if (!s || !q || q.length < 6) return false;
   if (s.includes(q)) return true;
-  // Allow loose match when quote is a contiguous token subsequence.
+  // Loose match: tokens in order with a tight gap (not scattered across the message).
   const qTokens = q.split(" ").filter((t) => t.length >= 3);
   if (qTokens.length < 2) return false;
   let from = 0;
   for (const token of qTokens) {
     const idx = s.indexOf(token, from);
     if (idx < 0) return false;
+    if (idx - from > 24) return false;
     from = idx + token.length;
   }
   return true;

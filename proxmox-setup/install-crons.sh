@@ -10,7 +10,8 @@ MARK_BEGIN="# >>> zovus-crons >>>"
 MARK_END="# <<< zovus-crons <<<"
 
 mkdir -p "$LOG_DIR"
-chmod +x "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
+# Root-owned cron wrappers must not be world-writable (Windows deploy packs 666).
+chmod 750 "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
          "$REPO/proxmox-setup/cron-memory-extract.sh" \
          "$REPO/proxmox-setup/cron-proactive-reminders.sh" \
          "$REPO/proxmox-setup/cron-daily-reading-remind.sh" \
@@ -20,7 +21,8 @@ chmod +x "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
          "$REPO/proxmox-setup/cron-cleanup-empty-sessions.sh" \
          "$REPO/proxmox-setup/cron-joint-reading-sweep.sh" \
          "$REPO/proxmox-setup/cron-guest-resume-expire.sh" \
-         "$REPO/proxmox-setup/cron-natal-transits.sh" 2>/dev/null || true
+         "$REPO/proxmox-setup/cron-natal-transits.sh" \
+         "$REPO/proxmox-setup/install-crons.sh" 2>/dev/null || true
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 # Drop any previously-managed block, keep everything else untouched.

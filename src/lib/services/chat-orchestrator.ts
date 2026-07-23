@@ -681,7 +681,9 @@ export class ChatOrchestrator {
       lastUserMessage: this.lastUserMsg,
       recentUserMessages,
       spreadNumbers,
-      memoryBlock: this.memoryBlock || undefined,
+      memoryBlock:
+        [this.clientMemoryBlock, this.memoryBlock].filter(Boolean).join("\n\n") ||
+        undefined,
       intention: this.periodSpreadScope ? null : this.resolvedIntention,
     };
   }

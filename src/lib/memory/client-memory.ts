@@ -178,6 +178,9 @@ export async function loadClientMemoryBlock(params: {
 /**
  * Enqueue durable extraction. Never runs LLM on the request path.
  */
+const FACTLESS_TURN_RE =
+  /^(спасибо[!.\s]*|благодарю[!.\s]*|привет[!.\s]*|здравствуй(те)?[!.\s]*|да[!.\s]*|нет[!.\s]*|ок(ей)?[!.\s]*|хорошо[!.\s]*|понятно[!.\s]*|ясно[!.\s]*|угу[!.\s]*|ага[!.\s]*|спс[!.\s]*)+$/i;
+
 export async function recordTurn(params: {
   userId: string;
   characterId?: string;
@@ -187,6 +190,10 @@ export async function recordTurn(params: {
   sourceEntityId?: string | null;
 }): Promise<void> {
   if (!params.userId || !params.userMessage?.trim()) return;
+  const userMessage = params.userMessage.trim();
+  // Skip trivial turns early — no outbox noise / embedding burn.
+  if (userMessage.length < 8) return;
+  if (userMessage.length < 40 && FACTLESS_TURN_RE.test(userMessage)) return;
   try {
     if (!(await canAutoCapture(params.userId))) return;
     await enqueueMemoryExtraction({
@@ -194,7 +201,7 @@ export async function recordTurn(params: {
       sourceType: params.sourceType ?? "chat",
       sourceEntityId: params.sourceEntityId ?? null,
       characterId: params.characterId ?? null,
-      userMessage: params.userMessage,
+      userMessage,
       assistantReply: params.assistantReply,
     });
   } catch (err) {

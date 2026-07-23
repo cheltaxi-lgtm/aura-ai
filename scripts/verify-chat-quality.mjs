@@ -168,6 +168,14 @@ assert(
 );
 
 assert(
+  "short chat reply does not revive mainQuestion for memory retrieval",
+  composeMemoryQueryText({
+    lastUserMessage: "ок",
+    mainQuestion: "развод и ипотека",
+  }) === ""
+);
+
+assert(
   "expandIntentionForQuery maps love slug",
   expandIntentionForQuery("love").includes("Любовь")
 );
