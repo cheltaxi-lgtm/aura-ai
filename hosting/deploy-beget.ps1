@@ -80,6 +80,8 @@ $RequiredArtifacts = @(
   "src/lib/async-job-registry.ts",
   "src/lib/async-job-enqueue.ts",
   "src/lib/async-job-lifecycle.ts",
+  "src/lib/client/wait-for-async-job.ts",
+  "scripts/verify-ai-delivery.mjs",
   "src/app/api/jobs/active/route.ts",
   "src/app/api/numerology/matrix-report/route.ts",
   "src/lib/services/numerology-report-service.ts",
