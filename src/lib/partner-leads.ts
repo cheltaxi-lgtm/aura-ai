@@ -3,8 +3,14 @@
  * Separate from support tickets — own admin inbox.
  */
 import { query } from "@/lib/db";
+import {
+  isValidPartnerLeadStatus,
+  PARTNER_LEAD_STATUS_LABELS,
+  type PartnerLeadStatus,
+} from "@/lib/partner-leads-shared";
 
-export type PartnerLeadStatus = "new" | "in_progress" | "done" | "spam";
+export type { PartnerLeadStatus };
+export { isValidPartnerLeadStatus, PARTNER_LEAD_STATUS_LABELS };
 
 export interface PartnerLeadRow {
   id: string;
@@ -20,13 +26,6 @@ export interface PartnerLeadRow {
   updated_at: Date;
 }
 
-export const PARTNER_LEAD_STATUS_LABELS: Record<PartnerLeadStatus, string> = {
-  new: "Новая",
-  in_progress: "В работе",
-  done: "Закрыта",
-  spam: "Спам",
-};
-
 const MAX_NAME = 120;
 const MAX_PHONE = 40;
 const MAX_EMAIL = 200;
@@ -34,10 +33,6 @@ const MAX_COMPANY = 200;
 const MAX_WEBSITE = 300;
 const MAX_MESSAGE = 4000;
 const MAX_NOTE = 2000;
-
-export function isValidPartnerLeadStatus(v: string): v is PartnerLeadStatus {
-  return ["new", "in_progress", "done", "spam"].includes(v);
-}
 
 function sanitize(text: string, maxLen: number): string {
   return text.replace(/\0/g, "").trim().slice(0, maxLen);
