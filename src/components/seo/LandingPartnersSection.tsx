@@ -97,12 +97,11 @@ export default function LandingPartnersSection() {
         <div className="editorial-partners__final">
           <p className="editorial-partners__eyebrow">Пилот на запуске</p>
           <h3 className="editorial-partners__final-title">
-            Ищем одну-две колоды, с которыми пойдём в долгую
+            Отбираем 1–2 колоды для пилотного партнёрства
           </h3>
           <p className="editorial-partners__final-text">
-            Zovus активно тестируется и дорабатывается, но сервисом уже пользуются. Первым
-            постоянным партнёрам — приоритет в пилоте и индивидуальные условия при подтверждённом
-            потоке.
+            Сервис в активной доработке и уже используется. Для первых партнёров — приоритетное
+            размещение и индивидуальные условия при подтверждённом потоке пользователей.
           </p>
           <button
             type="button"
