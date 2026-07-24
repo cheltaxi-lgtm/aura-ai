@@ -1,10 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import Link from "next/link";
-import { attachRecaptchaToken } from "@/lib/client-recaptcha";
-import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import { useCallback, useRef, useState } from "react";
 import { EDITORIAL_SECTION_IDS } from "@/lib/editorial-landing-content";
+import PartnerInquiryModal from "@/components/partners/PartnerInquiryModal";
 
 const EXAMPLE_PARTNERS = [
   {
@@ -19,84 +17,18 @@ const EXAMPLE_PARTNERS = [
   },
 ] as const;
 
-const ERROR_COPY: Record<string, string> = {
-  name_required: "Укажите имя",
-  phone_invalid: "Укажите корректный телефон",
-  email_invalid: "Укажите корректный email",
-  company_required: "Укажите компанию или бренд",
-  message_required: "Расскажите кратко о сотрудничестве (от 10 символов)",
-  rate_limited: "Слишком много заявок. Попробуйте позже.",
-  captcha: "Не удалось пройти проверку. Обновите страницу и попробуйте снова.",
-};
-
 export default function LandingPartnersSection() {
-  const { expertRegistrationEnabled, recaptcha, featuresLoaded } = usePlatformFeatures();
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [company, setCompany] = useState("");
-  const [website, setWebsite] = useState("");
-  const [message, setMessage] = useState("");
-  const [honeypot, setHoneypot] = useState("");
-  const [sending, setSending] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (sending || done) return;
-    setError(null);
-    setSending(true);
+  const openModal = useCallback((el?: HTMLElement | null) => {
+    lastTriggerRef.current = el ?? null;
+    setModalOpen(true);
+  }, []);
 
-    const body: Record<string, unknown> = {
-      name,
-      phone,
-      email,
-      company,
-      website: website.trim() || undefined,
-      message,
-      website_url: honeypot,
-    };
-
-    try {
-      if (featuresLoaded) {
-        const captchaError = await attachRecaptchaToken(
-          body,
-          "partners",
-          { expertRegistrationEnabled, recaptcha }
-        );
-        if (captchaError) {
-          setError(captchaError);
-          setSending(false);
-          return;
-        }
-      }
-
-      const res = await fetch("/api/partners/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const code = typeof data.error === "string" ? data.error : "unknown";
-        setError(ERROR_COPY[code] ?? "Не удалось отправить. Попробуйте позже.");
-        setSending(false);
-        return;
-      }
-      setDone(true);
-      setName("");
-      setPhone("");
-      setEmail("");
-      setCompany("");
-      setWebsite("");
-      setMessage("");
-    } catch {
-      setError("Не удалось отправить. Проверьте соединение.");
-    } finally {
-      setSending(false);
-    }
-  };
+  const closeModal = useCallback(() => {
+    setModalOpen(false);
+  }, []);
 
   return (
     <section
@@ -120,6 +52,13 @@ export default function LandingPartnersSection() {
             <li>Аккуратные форматы без «магазина в лоб»</li>
             <li>Пилот и разговор по существу</li>
           </ul>
+          <button
+            type="button"
+            className="editorial-btn editorial-btn--gold editorial-partners__cta"
+            onClick={(e) => openModal(e.currentTarget)}
+          >
+            Обсудить пилот
+          </button>
         </div>
 
         <div className="editorial-partners__examples" aria-label="Примеры направлений сотрудничества">
@@ -134,125 +73,53 @@ export default function LandingPartnersSection() {
               </div>
             </article>
           ))}
+          <article className="editorial-partners__example editorial-partners__example--pilot">
+            <span className="editorial-partners__mark" aria-hidden>
+              П
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="editorial-partners__example-name">Пилот для партнёра</h3>
+              <p className="editorial-partners__example-blurb">
+                Совместный формат под вашу колоду: аккуратная интеграция в салон и разбор по итогам
+                пилота.
+              </p>
+              <button
+                type="button"
+                className="editorial-btn editorial-btn--ghost editorial-partners__card-cta"
+                onClick={(e) => openModal(e.currentTarget)}
+              >
+                Стать партнёром
+              </button>
+            </div>
+          </article>
           <p className="editorial-partners__examples-note">Примеры направлений сотрудничества</p>
         </div>
 
-        <div className="editorial-partners__form-wrap">
-          {done ? (
-            <p className="editorial-partners__success" role="status">
-              Заявка принята. Мы ответим на почту в рабочие дни.
-            </p>
-          ) : (
-            <form
-              className="editorial-partners__form relative"
-              onSubmit={(e) => void onSubmit(e)}
-              noValidate
-            >
-              <div className="editorial-partners__fields">
-                <label className="editorial-partners__field">
-                  <span>Имя</span>
-                  <input
-                    name="name"
-                    autoComplete="name"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    maxLength={120}
-                  />
-                </label>
-                <label className="editorial-partners__field">
-                  <span>Телефон</span>
-                  <input
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    maxLength={40}
-                    placeholder="+7 …"
-                  />
-                </label>
-                <label className="editorial-partners__field">
-                  <span>Email</span>
-                  <input
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    maxLength={200}
-                  />
-                </label>
-                <label className="editorial-partners__field">
-                  <span>Компания / бренд</span>
-                  <input
-                    name="company"
-                    autoComplete="organization"
-                    required
-                    value={company}
-                    onChange={(e) => setCompany(e.target.value)}
-                    maxLength={200}
-                  />
-                </label>
-                <label className="editorial-partners__field editorial-partners__field--full">
-                  <span>Сайт или соцсеть (необязательно)</span>
-                  <input
-                    name="website"
-                    autoComplete="url"
-                    value={website}
-                    onChange={(e) => setWebsite(e.target.value)}
-                    maxLength={300}
-                    placeholder="https://…"
-                  />
-                </label>
-                <label className="editorial-partners__field editorial-partners__field--full">
-                  <span>Сообщение</span>
-                  <textarea
-                    name="message"
-                    required
-                    rows={4}
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    maxLength={4000}
-                    placeholder="Чем занимаетесь и какой формат сотрудничества интересен"
-                  />
-                </label>
-                {/* Honeypot */}
-                <label className="editorial-partners__hp" aria-hidden tabIndex={-1}>
-                  <span>Сайт</span>
-                  <input
-                    name="website_url"
-                    tabIndex={-1}
-                    autoComplete="off"
-                    value={honeypot}
-                    onChange={(e) => setHoneypot(e.target.value)}
-                  />
-                </label>
-              </div>
-              {error ? (
-                <p className="editorial-partners__error" role="alert">
-                  {error}
-                </p>
-              ) : null}
-              <button
-                type="submit"
-                className="editorial-btn editorial-btn--gold"
-                disabled={sending}
-              >
-                {sending ? "Отправляем…" : "Обсудить сотрудничество"}
-              </button>
-              <p className="editorial-partners__legal">
-                Нажимая кнопку, вы соглашаетесь на обработку данных для ответа на заявку.{" "}
-                <Link href="/privacy" className="editorial-partners__legal-link">
-                  Политика конфиденциальности
-                </Link>
-              </p>
-            </form>
-          )}
+        <div className="editorial-partners__final">
+          <p className="editorial-partners__eyebrow">Пилот на запуске</p>
+          <h3 className="editorial-partners__final-title">
+            Ищем одну-две колоды, с которыми пойдём в долгую
+          </h3>
+          <p className="editorial-partners__final-text">
+            Zovus активно тестируется и дорабатывается, но сервисом уже пользуются. Первым
+            постоянным партнёрам — приоритет в пилоте и индивидуальные условия при подтверждённом
+            потоке.
+          </p>
+          <button
+            type="button"
+            className="editorial-btn editorial-btn--gold editorial-partners__cta"
+            onClick={(e) => openModal(e.currentTarget)}
+          >
+            Обсудить партнёрство
+          </button>
         </div>
       </div>
+
+      <PartnerInquiryModal
+        open={modalOpen}
+        onClose={closeModal}
+        returnFocusRef={lastTriggerRef}
+      />
     </section>
   );
 }

@@ -86,6 +86,8 @@ $RequiredArtifacts = @(
   "src/app/api/admin/partners/leads/route.ts",
   "src/app/admin/partners/page.tsx",
   "src/components/seo/LandingPartnersSection.tsx",
+  "src/components/partners/PartnerInquiryForm.tsx",
+  "src/components/partners/PartnerInquiryModal.tsx",
   "src/app/api/memory/preferences/route.ts",
   "src/app/api/memory/activity/route.ts",
   "src/app/api/memory/facts/action/route.ts",

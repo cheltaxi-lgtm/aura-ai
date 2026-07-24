@@ -1409,15 +1409,24 @@ button.editorial-footer__link {
   margin-top: 0.25rem;
 }
 
+.editorial-partners__cta {
+  margin-top: 1.25rem;
+  min-height: 2.75rem;
+}
+
 .editorial-partners__examples {
   display: grid;
   gap: 0.75rem;
-  margin-bottom: 1.75rem;
+  margin: 1.75rem 0;
 }
 
 @media (min-width: 640px) {
   .editorial-partners__examples {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .editorial-partners__example--pilot {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1429,6 +1438,15 @@ button.editorial-footer__link {
   border: 1px solid rgba(201, 162, 74, 0.14);
   border-radius: 0.85rem;
   background: rgba(8, 6, 12, 0.45);
+}
+
+.editorial-partners__example--pilot {
+  align-items: stretch;
+}
+
+.editorial-partners__card-cta {
+  margin-top: 0.85rem;
+  min-height: 2.75rem;
 }
 
 .editorial-partners__mark {
@@ -1467,8 +1485,26 @@ button.editorial-footer__link {
   color: rgba(237, 230, 218, 0.35);
 }
 
-.editorial-partners__form-wrap {
-  max-width: 36rem;
+.editorial-partners__final {
+  max-width: 40rem;
+  padding: 1.5rem 0 0.25rem;
+  border-top: 1px solid rgba(201, 162, 74, 0.12);
+}
+
+.editorial-partners__final-title {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: clamp(1.35rem, 2.6vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-text, #ede6da);
+}
+
+.editorial-partners__final-text {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: rgba(237, 230, 218, 0.68);
 }
 
 .editorial-partners__fields {
@@ -1498,18 +1534,44 @@ button.editorial-footer__link {
 .editorial-partners__field input,
 .editorial-partners__field textarea {
   width: 100%;
+  min-height: 2.75rem;
   border-radius: 0.65rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.35);
   color: #ede6da;
-  padding: 0.65rem 0.8rem;
-  font-size: 0.875rem;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.9375rem;
   outline: none;
+}
+
+.editorial-partners__field textarea {
+  min-height: 7rem;
+  resize: vertical;
 }
 
 .editorial-partners__field input:focus,
 .editorial-partners__field textarea:focus {
   border-color: rgba(232, 199, 126, 0.45);
+}
+
+.editorial-partners__field input:disabled,
+.editorial-partners__field textarea:disabled {
+  opacity: 0.65;
+}
+
+.editorial-partners__submit {
+  width: 100%;
+  min-height: 2.75rem;
+}
+
+.partner-inquiry-modal__panel {
+  max-height: min(92dvh, calc(100dvh - 0.5rem));
+}
+
+@media (max-width: 639px) {
+  .partner-inquiry-modal__panel {
+    max-height: min(94dvh, 100dvh);
+  }
 }
 
 .editorial-partners__hp {
