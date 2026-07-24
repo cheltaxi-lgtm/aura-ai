@@ -4,19 +4,6 @@ import { useCallback, useRef, useState } from "react";
 import { EDITORIAL_SECTION_IDS } from "@/lib/editorial-landing-content";
 import PartnerInquiryModal from "@/components/partners/PartnerInquiryModal";
 
-const EXAMPLE_PARTNERS = [
-  {
-    mark: "СН",
-    name: "Ателье колоды «Северная нить»",
-    blurb: "Авторские колоды Таро — пилот «колода месяца» в цифровом салоне.",
-  },
-  {
-    mark: "ДБ",
-    name: "Дом бумаги и символа",
-    blurb: "Офлайн-витрина и QR на гостевой расклад после покупки колоды.",
-  },
-] as const;
-
 export default function LandingPartnersSection() {
   const [modalOpen, setModalOpen] = useState(false);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
@@ -60,18 +47,7 @@ export default function LandingPartnersSection() {
           </button>
         </div>
 
-        <div className="editorial-partners__examples" aria-label="Примеры направлений сотрудничества">
-          {EXAMPLE_PARTNERS.map((p) => (
-            <article key={p.name} className="editorial-partners__example">
-              <span className="editorial-partners__mark" aria-hidden>
-                {p.mark}
-              </span>
-              <div>
-                <h3 className="editorial-partners__example-name">{p.name}</h3>
-                <p className="editorial-partners__example-blurb">{p.blurb}</p>
-              </div>
-            </article>
-          ))}
+        <div className="editorial-partners__examples">
           <article className="editorial-partners__example editorial-partners__example--pilot">
             <span className="editorial-partners__mark" aria-hidden>
               П
@@ -79,8 +55,7 @@ export default function LandingPartnersSection() {
             <div className="min-w-0 flex-1">
               <h3 className="editorial-partners__example-name">Пилот для партнёра</h3>
               <p className="editorial-partners__example-blurb">
-                Совместный формат под вашу колоду: аккуратная интеграция в салон и разбор по итогам
-                пилота.
+                Совместный формат под вашу колоду: интеграция в сервис и разбор по итогам пилота.
               </p>
               <button
                 type="button"
@@ -91,7 +66,6 @@ export default function LandingPartnersSection() {
               </button>
             </div>
           </article>
-          <p className="editorial-partners__examples-note">Примеры направлений сотрудничества</p>
         </div>
 
         <div className="editorial-partners__final">
