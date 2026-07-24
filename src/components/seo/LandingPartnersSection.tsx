@@ -38,20 +38,19 @@ export default function LandingPartnersSection() {
     >
       <div className="editorial-landing__inner">
         <div className="editorial-partners__head">
-          <p className="editorial-partners__eyebrow">Сотрудничество</p>
+          <p className="editorial-partners__eyebrow">Партнёрский пилот</p>
           <h2 id="editorial-partners-title" className="editorial-partners__title">
-            Для брендов колод и эзотерических магазинов
+            Ваша колода может стать частью Zovus
           </h2>
           <p className="editorial-partners__lead">
-            Zovus — приватный цифровой салон: люди приходят с вопросом и остаются в диалоге с
-            наставником. Мы открыты к пилотам с теми, кто делает колоды, издаёт материалы и ведёт
-            офлайн-пространства — чтобы соединить вещь в руках и смысл в сеансе.
+            Сейчас мы приглашаем авторов, издателей и магазины колод к пилоту. Партнёр получает
+            отдельное представление колоды в сервисе, ссылку на покупку и возможность вместе с нами
+            задать формат интеграции.
           </p>
-          <ul className="editorial-partners__points">
-            <li>Аудитория с намерением, а не холодный трафик</li>
-            <li>Аккуратные форматы без «магазина в лоб»</li>
-            <li>Пилот и разговор по существу</li>
-          </ul>
+          <p className="editorial-partners__lead editorial-partners__lead--secondary">
+            Для первых партнёров готовы обсуждать приоритетное размещение и индивидуальные условия
+            при подтверждённом потоке пользователей.
+          </p>
           <button
             type="button"
             className="editorial-btn editorial-btn--gold editorial-partners__cta"

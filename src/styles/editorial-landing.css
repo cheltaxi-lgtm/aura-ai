@@ -1391,22 +1391,15 @@ button.editorial-footer__link {
 }
 
 .editorial-partners__lead {
-  margin: 0 0 1rem;
+  margin: 0 0 0.85rem;
   font-size: 0.9375rem;
   line-height: 1.55;
   color: rgba(237, 230, 218, 0.72);
 }
 
-.editorial-partners__points {
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: 0.875rem;
-  line-height: 1.55;
-  color: rgba(237, 230, 218, 0.55);
-}
-
-.editorial-partners__points li + li {
-  margin-top: 0.25rem;
+.editorial-partners__lead--secondary {
+  margin-bottom: 0;
+  color: rgba(237, 230, 218, 0.58);
 }
 
 .editorial-partners__cta {
