@@ -25,6 +25,7 @@ export {
   supportReplyEmailHtml,
   supportNewTicketAdminEmailHtml,
   supportAutoReplyEmailHtml,
+  partnerLeadAdminEmailHtml,
 } from "@/lib/email/templates";
 
 import type { SendEmailParams } from "@/lib/email/types";

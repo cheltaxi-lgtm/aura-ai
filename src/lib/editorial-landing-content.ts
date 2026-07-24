@@ -5,6 +5,7 @@ export const EDITORIAL_SECTION_IDS = {
   session: "как-проходит-сеанс",
   practices: "практики",
   guestSpread: "guest-spread",
+  partners: "партнёрам",
 } as const;
 
 export const EDITORIAL_HERO = {

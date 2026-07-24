@@ -28,6 +28,7 @@ import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import OfflineSpreadBlock from "@/components/seo/OfflineSpreadBlock";
 import AndroidDownloadBlock from "@/components/seo/AndroidDownloadBlock";
 import LandingSeoHub from "@/components/seo/LandingSeoHub";
+import LandingPartnersSection from "@/components/seo/LandingPartnersSection";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
 import {
   buildLandingOfferCopy,
@@ -757,6 +758,8 @@ export default function AuraSellingLanding({
           compact
         />
       ) : null}
+
+      {!isLoggedIn && (showSellingSections || showHero) ? <LandingPartnersSection /> : null}
 
       {showSellingSections && !isEditorial ? <AndroidDownloadBlock /> : null}
 

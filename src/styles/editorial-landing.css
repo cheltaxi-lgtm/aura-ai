@@ -1360,6 +1360,196 @@ button.editorial-footer__link {
   margin: 0;
   padding: 0;
 }
+
+/* ── Partners (guest landing) ── */
+.editorial-partners {
+  padding: 3rem 1.25rem 3.5rem;
+  border-top: 1px solid rgba(201, 162, 74, 0.12);
+}
+
+.editorial-partners__head {
+  max-width: 40rem;
+  margin-bottom: 1.75rem;
+}
+
+.editorial-partners__eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.65);
+}
+
+.editorial-partners__title {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-text, #ede6da);
+}
+
+.editorial-partners__lead {
+  margin: 0 0 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: rgba(237, 230, 218, 0.72);
+}
+
+.editorial-partners__points {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: rgba(237, 230, 218, 0.55);
+}
+
+.editorial-partners__points li + li {
+  margin-top: 0.25rem;
+}
+
+.editorial-partners__examples {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+@media (min-width: 640px) {
+  .editorial-partners__examples {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.editorial-partners__example {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(201, 162, 74, 0.14);
+  border-radius: 0.85rem;
+  background: rgba(8, 6, 12, 0.45);
+}
+
+.editorial-partners__mark {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(232, 199, 126, 0.35);
+  color: #e8c77e;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.editorial-partners__example-name {
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: rgba(237, 230, 218, 0.92);
+}
+
+.editorial-partners__example-blurb {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(237, 230, 218, 0.55);
+}
+
+.editorial-partners__examples-note {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: rgba(237, 230, 218, 0.35);
+}
+
+.editorial-partners__form-wrap {
+  max-width: 36rem;
+}
+
+.editorial-partners__fields {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 640px) {
+  .editorial-partners__fields {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .editorial-partners__field--full {
+    grid-column: 1 / -1;
+  }
+}
+
+.editorial-partners__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: rgba(237, 230, 218, 0.55);
+}
+
+.editorial-partners__field input,
+.editorial-partners__field textarea {
+  width: 100%;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  color: #ede6da;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.editorial-partners__field input:focus,
+.editorial-partners__field textarea:focus {
+  border-color: rgba(232, 199, 126, 0.45);
+}
+
+.editorial-partners__hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.editorial-partners__error {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: #f0a8a8;
+}
+
+.editorial-partners__success {
+  margin: 0;
+  padding: 1.25rem 1.1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(201, 162, 74, 0.22);
+  background: rgba(232, 199, 126, 0.08);
+  color: rgba(237, 230, 218, 0.85);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.editorial-partners__legal {
+  margin: 0.85rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: rgba(237, 230, 218, 0.4);
+}
+
+.editorial-partners__legal-link {
+  color: rgba(232, 199, 126, 0.75);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 html[data-motion-lite="1"] .editorial-topic-card:hover,
 html[data-motion-lite="1"] .editorial-practice-card:hover {
   transform: none;

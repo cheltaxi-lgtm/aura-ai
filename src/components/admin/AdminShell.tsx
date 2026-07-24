@@ -22,6 +22,7 @@ import {
   Flame,
   HeartHandshake,
   Database,
+  Handshake,
 } from "lucide-react";
 
 const NAV = [
@@ -36,6 +37,7 @@ const NAV = [
   { href: "/admin/memory", label: "Память", icon: Database },
   { href: "/admin/sessions", label: "Сессии и чат", icon: MessageSquare },
   { href: "/admin/support", label: "Поддержка", icon: Headphones },
+  { href: "/admin/partners", label: "Партнёры", icon: Handshake },
   { href: "/admin/email", label: "Почта", icon: Mail },
   { href: "/admin/ai", label: "Модели и промпты", icon: Brain },
   { href: "/admin/settings", label: "Платформа", icon: Settings },

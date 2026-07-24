@@ -219,3 +219,30 @@ export function supportAutoReplyEmailHtml(name: string, subject: string, ticketU
      ${cta(ticketUrl, "Открыть обращение")}`
   );
 }
+
+export function partnerLeadAdminEmailHtml(params: {
+  contactName: string;
+  phone: string;
+  email: string;
+  company: string;
+  website: string | null;
+  preview: string;
+  adminUrl: string;
+}): string {
+  const websiteLine = params.website
+    ? `<li><strong>Сайт:</strong> ${params.website.slice(0, 200)}</li>`
+    : "";
+  return shell(
+    `<p>Новая заявка на партнёрство ${BRAND_NAME}.</p>
+     <ul style="font-size:14px;line-height:1.7">
+       <li><strong>Имя:</strong> ${params.contactName.slice(0, 120)}</li>
+       <li><strong>Телефон:</strong> ${params.phone.slice(0, 40)}</li>
+       <li><strong>Email:</strong> ${params.email.slice(0, 200)}</li>
+       <li><strong>Компания:</strong> ${params.company.slice(0, 200)}</li>
+       ${websiteLine}
+     </ul>
+     <p style="font-size:14px;color:#444">${params.preview.slice(0, 600).replace(/\n/g, "<br/>")}</p>
+     ${cta(params.adminUrl, "Открыть в админке")}`,
+    "Уведомление о партнёрской заявке."
+  );
+}
