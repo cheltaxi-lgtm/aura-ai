@@ -7,7 +7,7 @@ import AdminShell, { AdminTitle, StatCard, AdminBtn } from "@/components/admin/A
 import {
   PARTNER_LEAD_STATUS_LABELS,
   type PartnerLeadStatus,
-} from "@/lib/partner-leads";
+} from "@/lib/partner-leads-shared";
 
 interface Lead {
   id: string;
