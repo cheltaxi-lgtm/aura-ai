@@ -69,10 +69,10 @@ export default function MasterListRow({
   if (variant === "editorial") {
     return (
       <motion.li
-        initial={{ opacity: 0, x: -12 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.4, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
+        initial={false}
+        whileInView={{ x: 0 }}
+        viewport={{ once: true, margin: "-24px" }}
+        transition={{ duration: 0.35, delay: Math.min(index, 8) * 0.03, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className={`editorial-master-row ${recommended ? "editorial-master-row--recommended" : ""}`}>
           <span className="editorial-master-row__portrait">
@@ -113,10 +113,10 @@ export default function MasterListRow({
 
   return (
     <motion.li
-      initial={{ opacity: 0, y: 8 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.35, delay: index * 0.03, ease: [0.22, 1, 0.36, 1] }}
+      initial={false}
+      whileInView={{ y: 0 }}
+      viewport={{ once: true, margin: "-24px" }}
+      transition={{ duration: 0.3, delay: Math.min(index, 8) * 0.03, ease: [0.22, 1, 0.36, 1] }}
     >
       <button
         type="button"

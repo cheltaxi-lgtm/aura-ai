@@ -96,14 +96,14 @@ export default function MasterShowcaseCard({
         compact ? "master-showcase-card--compact" : ""
       } ${recommended ? "master-showcase-card--recommended" : ""}`}
       style={{ "--master-glow": master.glowColor } as CSSProperties}
-      initial={motionLite ? false : { opacity: 0, y: 20 }}
-      animate={motionLite ? { opacity: 1, y: 0 } : undefined}
-      whileInView={motionLite ? undefined : { opacity: 1, y: 0 }}
-      viewport={motionLite ? undefined : { once: true }}
+      // Never start at opacity 0 — cards must be visible on first paint / soft nav.
+      initial={false}
+      whileInView={motionLite ? undefined : { y: 0 }}
+      viewport={motionLite ? undefined : { once: true, margin: "-32px" }}
       transition={
         motionLite
           ? undefined
-          : { duration: 0.45, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }
+          : { duration: 0.4, delay: Math.min(index, 6) * 0.04, ease: [0.22, 1, 0.36, 1] }
       }
     >
       <div className="master-showcase-card__glow pointer-events-none" aria-hidden />

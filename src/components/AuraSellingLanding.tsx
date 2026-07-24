@@ -433,12 +433,7 @@ export default function AuraSellingLanding({
       {showHero && !isEditorial ? (
         <section className="aura-landing-hero">
           <div className="aura-landing-hero__grid mx-auto max-w-6xl">
-            <motion.div
-              className="aura-landing-hero__copy"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            >
+            <div className="aura-landing-hero__copy">
               <p className="aura-landing-hero__eyebrow">{offer.heroEyebrow}</p>
               <h1 className="font-mystic-display aura-landing-hero__title">{offer.heroTitle}</h1>
               <p className="aura-landing-hero__subtitle">{offer.heroSubtitle}</p>
@@ -458,17 +453,11 @@ export default function AuraSellingLanding({
               <p className="aura-landing-hero__trust aura-landing-hero__trust--prominent">{offer.heroMicrocopy}</p>
               {ready ? <p className="aura-landing-hero__pricing">{offer.pricingLine}</p> : null}
               {!isLoggedIn ? <LandingSocialProofStats variant="hero" className="mt-5" /> : null}
-            </motion.div>
+            </div>
 
-            <motion.div
-              className="aura-landing-hero__visual"
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-              aria-hidden
-            >
+            <div className="aura-landing-hero__visual" aria-hidden>
               <LandingHeroVisual masters={masters} />
-            </motion.div>
+            </div>
           </div>
         </section>
       ) : null}
@@ -598,10 +587,10 @@ export default function AuraSellingLanding({
                 <motion.div
                   key={step.num}
                   className="aura-landing-step glass-panel"
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1, duration: 0.45 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.08, duration: 0.4 }}
                 >
                   <span className="aura-landing-step__num">{step.num}</span>
                   <h3 className="font-display aura-landing-step__title">{step.title}</h3>
@@ -635,10 +624,10 @@ export default function AuraSellingLanding({
                 <motion.article
                   key={item.title}
                   className="aura-landing-benefit glass-panel"
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.08, duration: 0.45 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.06, duration: 0.4 }}
                 >
                   <div className="aura-landing-benefit__icon">
                     <item.icon className="h-5 w-5 text-aura-champagne" strokeWidth={1.5} />
@@ -676,10 +665,10 @@ export default function AuraSellingLanding({
                 <motion.div
                   key={row.title}
                   className="aura-landing-compare__row"
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.06, duration: 0.4 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.05, duration: 0.35 }}
                 >
                   <h3 className="aura-landing-compare__row-title">{row.title}</h3>
                   <div className="aura-landing-compare__cell aura-landing-compare__cell--them">
@@ -740,10 +729,10 @@ export default function AuraSellingLanding({
                   type="button"
                   onClick={() => handleDirection(dir.filter)}
                   className="aura-landing-direction glass-panel text-left"
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.06, duration: 0.4 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.05, duration: 0.35 }}
                 >
                   <dir.icon className="mb-3 h-5 w-5 text-aura-champagne/80" strokeWidth={1.5} />
                   <h3 className="font-display text-base font-semibold text-white">{dir.title}</h3>
@@ -773,13 +762,7 @@ export default function AuraSellingLanding({
 
       {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section aura-landing-section--final px-4 sm:px-0">
-          <motion.div
-            className="aura-landing-final__panel mx-auto max-w-3xl text-center"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-          >
+          <div className="aura-landing-final__panel mx-auto max-w-3xl text-center">
             <h2 className="font-mystic-display aura-landing-final__title">
               Откройте карты — и получите свой ответ
             </h2>
@@ -810,7 +793,7 @@ export default function AuraSellingLanding({
                 </Link>
               </p>
             ) : null}
-          </motion.div>
+          </div>
         </section>
       ) : null}
 

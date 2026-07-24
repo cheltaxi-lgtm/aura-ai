@@ -1,17 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { resetWindowScroll } from "@/lib/reset-window-scroll";
 
 /**
- * Next.js soft navigation can leave the previous window scroll position
- * (especially with `html { scroll-behavior: smooth }`). Reset on route change;
- * leave hash targets alone so in-page anchors still work.
+ * Soft nav and hard reload can leave the window mid-page. Always pin to top
+ * unless the URL has a hash target (in-page anchors).
  */
 export default function ScrollToTopOnNavigate() {
   const pathname = usePathname();
-  const isFirstRender = useRef(true);
 
   useEffect(() => {
     if (!("scrollRestoration" in history)) return;
@@ -23,15 +21,20 @@ export default function ScrollToTopOnNavigate() {
   }, []);
 
   useLayoutEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
     if (typeof window === "undefined" || window.location.hash) return;
 
     resetWindowScroll();
     const frame = window.requestAnimationFrame(() => resetWindowScroll());
-    return () => window.cancelAnimationFrame(frame);
+    // Home swaps guest/logged content after paint — brief re-pin only there.
+    const timers: number[] = [];
+    if (pathname === "/") {
+      timers.push(window.setTimeout(() => resetWindowScroll(), 50));
+      timers.push(window.setTimeout(() => resetWindowScroll(), 180));
+    }
+    return () => {
+      window.cancelAnimationFrame(frame);
+      for (const id of timers) window.clearTimeout(id);
+    };
   }, [pathname]);
 
   return null;

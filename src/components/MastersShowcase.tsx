@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MasterShowcaseCard from "@/components/MasterShowcaseCard";
 import MasterListRow from "@/components/MasterListRow";
@@ -189,12 +188,7 @@ export default function MastersShowcase({
         ) : null}
 
         {showExpertCta ? (
-          <motion.div
-            className="glass-panel master-showcase-section__expert-cta flex flex-col items-center justify-between gap-3 p-4 sm:flex-row"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-          >
+          <div className="glass-panel master-showcase-section__expert-cta flex flex-col items-center justify-between gap-3 p-4 sm:flex-row">
             <div>
               <p className="font-display text-lg font-semibold text-white">Вы — эзотерик или таролог?</p>
               <p className="mt-1 text-sm text-gray-500">
@@ -204,7 +198,7 @@ export default function MastersShowcase({
             <Link href="/auth/expert/register" className="btn-neon shrink-0 px-6 py-3 text-sm">
               Стать мастером
             </Link>
-          </motion.div>
+          </div>
         ) : null}
       </div>
     </section>

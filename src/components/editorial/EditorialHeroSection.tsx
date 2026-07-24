@@ -1,13 +1,10 @@
 "use client";
 
-import { motion } from "framer-motion";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import LandingSocialProofStats from "@/components/seo/LandingSocialProofStats";
 import { BRAND_NAME } from "@/lib/brand";
 import { EDITORIAL_HERO } from "@/lib/editorial-landing-content";
-
-const motionEase = [0.22, 1, 0.36, 1] as const;
 
 type EditorialHeroSectionProps = {
   isLoggedIn: boolean;
@@ -17,6 +14,7 @@ type EditorialHeroSectionProps = {
   onQuestionSubmit: (question: string) => void;
 };
 
+/** Hero stays fully opaque on first paint — no fade-in flash on load/nav. */
 export default function EditorialHeroSection({
   isLoggedIn,
   pricingLine,
@@ -30,12 +28,7 @@ export default function EditorialHeroSection({
         <EditorialImage src="/landing/hero.jpg" alt="" priority className="editorial-hero__img" />
         <div className="editorial-hero__overlay" aria-hidden />
       </div>
-      <motion.div
-        className="editorial-hero__content"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, ease: motionEase }}
-      >
+      <div className="editorial-hero__content">
         <p className="editorial-hero__brand">{BRAND_NAME}</p>
         <h1 id="editorial-hero-title" className="editorial-hero__title">
           {EDITORIAL_HERO.title}
@@ -55,7 +48,7 @@ export default function EditorialHeroSection({
         {!isLoggedIn ? (
           <LandingSocialProofStats variant="hero" className="editorial-hero__proof" />
         ) : null}
-      </motion.div>
+      </div>
     </section>
   );
 }

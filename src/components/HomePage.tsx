@@ -1024,18 +1024,20 @@ export default function HomePage({
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
   }, []);
 
+  // Scroll to hash only once when the target exists — re-running on every
+  // auth/step change was yanking logged-in home to mid-page after remounts.
+  const hashScrolledRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined" || !window.location.hash) return;
+    if (hashScrolledRef.current) return;
 
-    const scrollToHash = () => {
-      const id = decodeURIComponent(window.location.hash.slice(1));
-      if (id === "фото-расклад") return;
-      const el = document.getElementById(id);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (!id || id === "фото-расклад") return;
+    const el = document.getElementById(id);
+    if (!el) return;
 
-    const timer = window.setTimeout(scrollToHash, 150);
-    return () => window.clearTimeout(timer);
+    hashScrolledRef.current = true;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [step, selectedCharacter, isLoggedIn]);
 
   useEffect(() => {
