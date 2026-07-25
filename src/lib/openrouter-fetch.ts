@@ -42,7 +42,7 @@ async function fetchDirectIpv4(
 }
 
 /**
- * OpenRouter requests: primary via OPENROUTER_HTTPS_PROXY (Latvia),
+ * OpenRouter requests: primary via OPENROUTER_HTTPS_PROXY (Sweden),
  * fallback without proxy (wg-foxdpi split routes on prod when configured).
  */
 export async function openRouterFetch(
