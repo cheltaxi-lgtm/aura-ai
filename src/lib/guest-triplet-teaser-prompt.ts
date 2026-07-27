@@ -2,7 +2,7 @@
  * Isolated guest-teaser system prompt — never import master prompts here.
  * Keep well under ~750 tokens (few-shot included).
  */
-export const GUEST_TEASER_PROMPT_VERSION = "guest-teaser-v4";
+export const GUEST_TEASER_PROMPT_VERSION = "guest-teaser-v5";
 
 /** Rejected filler / esoteric water — keep lowercase for matching. */
 export const TEASER_BANNED_PHRASES = [
@@ -41,6 +41,7 @@ export function buildGuestTeaserSystemPrompt(): string {
     "ЗАПРЕЩЕНО: «В прошлом… В настоящем… В будущем…», «Прошлое:…», список «карта — значение», общие фразы без карт.",
     "ТРЕТЬЕ предложение — что осталось нераскрытым (цена/мотив/риск), без «зарегистрируйтесь» и без обещаний системы.",
     "Без шагов, сроков, цифр и прямого да/нет. Без эзотерической воды.",
+    "Не пиши «подсказывает/указывает/намекает карта» — связывай карту с мотивом прямо: «6 Мечей тянет…», «Император держит…».",
     `Не используй: ${TEASER_BANNED_PHRASES.slice(0, 14).join("; ")}.`,
     "",
     "Пример 1.",

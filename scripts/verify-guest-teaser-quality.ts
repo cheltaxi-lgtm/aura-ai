@@ -36,6 +36,15 @@ console.log(
   oneCardRejected.ok ? "none" : oneCardRejected.reason
 );
 
+const inflectedBanned =
+  "Смена работы уже назрела. 6 Мечей тянет к переходу, Император держит опорой, а 10 Кубков манит гармонией ради эмоционального удовлетворения. Неясно, готовы ли вы рискнуть.";
+const inflectedRejected = validateGuestTeaserQuality(inflectedBanned, cardNames, meaningHints);
+assert.equal(inflectedRejected.ok, false, "inflected banned phrase must be rejected");
+console.log(
+  "inflected_banned_reason:",
+  inflectedRejected.ok ? "none" : inflectedRejected.reason
+);
+
 const good = validateGuestTeaserQuality(
   "Смена работы у вас уже не про деньги, а про то, что привычная роль перестала совпадать с тем, кем вы хотите быть. 6 Мечей тянет к переходу прочь от трудностей, Император держит опорой статуса и власти, а 10 Кубков манит гармонией, где наконец тепло. Неясным остаётся, готовы ли вы потерять эту опору ради движения — или снова убедите себя подождать.",
   cardNames,

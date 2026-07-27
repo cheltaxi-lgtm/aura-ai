@@ -172,6 +172,24 @@ export type TeaserQualityResult =
   | { ok: true }
   | { ok: false; reason: string };
 
+/** Match banned phrase in base form or common Russian inflections. */
+export function matchesBannedPhrase(lowerText: string, phrase: string): boolean {
+  const needle = phrase.toLowerCase().trim();
+  if (!needle) return false;
+  if (lowerText.includes(needle)) return true;
+  const words = needle.split(/\s+/).filter((w) => w.length >= 5);
+  if (words.length === 0) return false;
+  return words.every((word) => {
+    const core = word.replace(/[аеёийоуыэюяьъ]+$/i, "");
+    if (core.length < 5) return lowerText.includes(word);
+    const re = new RegExp(
+      `${core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[а-яё]{0,5}`,
+      "i"
+    );
+    return re.test(lowerText);
+  });
+}
+
 /** Motif tokens from deck meaning hints — used to reject card-ungrounded prose. */
 export function extractTeaserMotifs(meaningHints: string[]): string[] {
   const stop = new Set([
@@ -228,7 +246,7 @@ export function validateGuestTeaserQuality(
 
   const lower = cleaned.toLowerCase();
   for (const phrase of TEASER_BANNED_PHRASES) {
-    if (lower.includes(phrase.toLowerCase())) {
+    if (matchesBannedPhrase(lower, phrase)) {
       return { ok: false, reason: `banned:${phrase}` };
     }
   }
