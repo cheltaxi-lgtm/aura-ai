@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { DeckSystem } from "@/lib/decks/types";
-import { drawSpread, getDeckPositions } from "@/lib/decks";
+import { drawSpread, getDeckPositionsForUi } from "@/lib/decks";
 import { buildSpreadTeaser } from "@/lib/spread-teaser";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
@@ -31,7 +31,7 @@ export default function TarotTriplet({
   onComplete,
   onAllRevealed,
 }: TarotTripletProps) {
-  const positions = useMemo(() => getDeckPositions(system), [system]);
+  const positions = useMemo(() => getDeckPositionsForUi(system), [system]);
 
   const [deck] = useState(() =>
     initialCards?.length === 3 ? initialCards : drawSpread(system, 3)

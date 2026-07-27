@@ -114,6 +114,28 @@ export function getDeckPositions(system: DeckSystem): readonly string[] {
   return DECK_REGISTRY[system].positions;
 }
 
+/**
+ * Question-oriented labels for classic 3-card time spreads (UI only).
+ * Backend / prompts keep Прошлое · Настоящее · Будущее via getDeckPositions.
+ */
+export const TRIPLET_UI_POSITIONS = [
+  "Что происходит",
+  "Что скрыто",
+  "К чему ведёт",
+] as const;
+
+/** Display labels for deck UI — never feed into master/teaser prompts. */
+export function getDeckPositionsForUi(system: DeckSystem): readonly string[] {
+  if (
+    system === "tarot-veronika" ||
+    system === "tarot-marina" ||
+    system === "slavic"
+  ) {
+    return TRIPLET_UI_POSITIONS;
+  }
+  return getDeckPositions(system);
+}
+
 export function drawSpread(
   system: DeckSystem,
   count = 3,

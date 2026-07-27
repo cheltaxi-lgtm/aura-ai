@@ -1730,7 +1730,7 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
 }
 
 .landing-demo__question {
-  margin: 0 auto 1.5rem;
+  margin: 0 auto 2.25rem;
   max-width: 36rem;
   padding: 1rem 1.25rem;
   border-radius: 1rem;
@@ -1741,75 +1741,142 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
   line-height: 1.45;
 }
 
-.landing-demo__cards {
-  list-style: none;
-  margin: 0 auto 1.5rem;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
-  max-width: 36rem;
+.landing-demo__question p {
+  margin: 0;
 }
 
-.landing-demo__cards li {
+.landing-demo__spread {
+  list-style: none;
+  margin: 0 auto 2.5rem;
+  padding: 0;
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1.25rem 1.5rem;
+  max-width: 40rem;
+}
+
+.landing-demo__spread-item {
+  display: flex;
+  width: 7rem;
   flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.85rem 1rem;
-  border-radius: 0.85rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(8, 6, 4, 0.45);
+  align-items: center;
+  gap: 0.45rem;
+}
+
+@media (min-width: 480px) {
+  .landing-demo__spread-item {
+    width: 7.5rem;
+  }
 }
 
 .landing-demo__pos {
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
+  margin: 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+  text-align: center;
   color: rgba(232, 199, 126, 0.72);
+  line-height: 1.3;
+}
+
+.landing-demo__card-slot {
+  width: 7rem;
+  height: 11.25rem;
+  flex-shrink: 0;
+}
+
+@media (min-width: 480px) {
+  .landing-demo__card-slot {
+    width: 7.5rem;
+    height: 12.25rem;
+  }
+}
+
+.landing-demo__card-name {
+  margin: 0;
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  text-align: center;
+  color: rgba(237, 230, 218, 0.9);
+}
+
+.landing-demo__reading {
+  position: relative;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding-bottom: 1.5rem;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+}
+
+.landing-demo__reading--shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 55% 0 0;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 20%,
+    rgba(255, 248, 235, 0.07) 45%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  animation: landing-demo-shimmer 3.6s linear infinite;
+}
+
+@keyframes landing-demo-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-demo__reading--shimmer::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .landing-demo__teaser {
-  max-width: 40rem;
-  margin: 0 auto;
+  margin: 0;
   display: grid;
-  gap: 0.9rem;
-  font-size: 0.95rem;
-  line-height: 1.65;
-  color: rgba(237, 230, 218, 0.86);
+  gap: 1.35em;
+  font-size: 0.98rem;
+  line-height: 1.75;
+  color: rgba(237, 230, 218, 0.88);
 }
 
-.landing-demo__curtain {
-  position: relative;
-  max-width: 40rem;
-  margin: 1.25rem auto 0;
-  border-radius: 1rem;
-  overflow: hidden;
-  border: 1px solid rgba(232, 199, 126, 0.18);
+.landing-demo__teaser p {
+  margin: 0;
 }
 
 .landing-demo__full-peek {
   margin: 0;
-  padding: 1rem 1.15rem 3.5rem;
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: rgba(237, 230, 218, 0.55);
+  color: rgba(237, 230, 218, 0.7);
 }
 
-.landing-demo__curtain-panel {
-  position: absolute;
-  inset: 0;
+.landing-demo__cta {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  padding: 1.5rem 1rem 1.25rem;
-  background: linear-gradient(to top, rgba(8, 6, 4, 0.96) 35%, rgba(8, 6, 4, 0.55) 70%, transparent 100%);
+  gap: 0.7rem;
+  max-width: 40rem;
+  margin: 0.5rem auto 0;
+  padding-top: 0.25rem;
 }
 
-.landing-demo__curtain-label {
+.landing-demo__cta-label {
   margin: 0;
-  font-size: 0.875rem;
-  color: rgba(232, 199, 126, 0.9);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  color: rgba(232, 199, 126, 0.88);
+  text-align: center;
 }
 
 .landing-honest__grid {

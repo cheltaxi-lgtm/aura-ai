@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
-import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
+import { getDeckPositionsForUi, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
   buildSeededTableDeck,
@@ -105,7 +105,7 @@ export default function GuestTripletDraw({
 }: GuestTripletDrawProps) {
   const masterId = GUEST_TRIPLET_MASTER_ID;
   const system = resolveMasterDeckSystem(masterId);
-  const positions = getDeckPositions(system);
+  const positions = getDeckPositionsForUi(system);
   const tableSize = resolveTableSize(system, true);
   const [step, setStep] = useState<GuestStep>("idle");
   const [sessionSeed, setSessionSeed] = useState("");

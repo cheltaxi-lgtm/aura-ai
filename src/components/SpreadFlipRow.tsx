@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import type { DeckSystem } from "@/lib/decks/types";
-import { getDeckPositions } from "@/lib/decks";
+import { getDeckPositionsForUi } from "@/lib/decks";
 import DeckCard from "@/components/DeckCard";
 
 export interface SpreadFlipCard {
@@ -31,7 +31,7 @@ export default function SpreadFlipRow({
   compact = false,
   positions: positionsProp,
 }: SpreadFlipRowProps) {
-  const positions = (positionsProp ?? getDeckPositions(system)).slice(0, cards.length);
+  const positions = (positionsProp ?? getDeckPositionsForUi(system)).slice(0, cards.length);
   const displayCards = cards.slice(0, positions.length || cards.length);
   const allFlipped = flipped.every(Boolean);
   const cardWidth = compact ? 104 : 120;
