@@ -167,6 +167,10 @@ export default function GuestTripletDraw({
       return;
     }
 
+    // Reserve teaser slot immediately — never flash keyword meanings while waiting.
+    setTeaserLoading(true);
+    setTeaserText("");
+
     let cancelled = false;
     let timer: number | null = null;
 
@@ -178,7 +182,6 @@ export default function GuestTripletDraw({
       });
       if (cancelled || teaserFetchedRef.current) return;
       teaserFetchedRef.current = true;
-      setTeaserLoading(true);
       try {
         const res = await fetch("/api/guest-triplet/teaser", {
           method: "POST",
@@ -667,7 +670,7 @@ export default function GuestTripletDraw({
               className="guest-spread-teaser rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm leading-relaxed text-aura-ivory/85"
               aria-live="polite"
             >
-              {teaserLoading || (!teaserText && !keywordFallback) ? (
+              {teaserLoading || !teaserText ? (
                 <div
                   className={`guest-spread-teaser__skeleton${
                     teaserPaused ? " guest-spread-teaser__skeleton--paused" : ""
@@ -679,9 +682,7 @@ export default function GuestTripletDraw({
                   <span />
                 </div>
               ) : (
-                <p className="guest-spread-teaser__text whitespace-pre-wrap">
-                  {teaserText || keywordFallback}
-                </p>
+                <p className="guest-spread-teaser__text whitespace-pre-wrap">{teaserText}</p>
               )}
             </div>
 
@@ -804,11 +805,6 @@ export default function GuestTripletDraw({
                   </div>
                 </motion.div>
               </button>
-              {revealed[i] && deck[i]?.meaning ? (
-                <p className="guest-spread-card-meaning text-center text-[10px] leading-snug text-aura-ivory/55">
-                  {deck[i].meaning}
-                </p>
-              ) : null}
             </div>
           ))}
         </div>

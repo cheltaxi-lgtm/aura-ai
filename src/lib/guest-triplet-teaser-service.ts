@@ -19,18 +19,22 @@ import {
   buildGuestTeaserSystemPrompt,
   buildGuestTeaserUserPrompt,
   GUEST_TEASER_PROMPT_VERSION,
+  TEASER_BANNED_PHRASES,
 } from "@/lib/guest-triplet-teaser-prompt";
 import { completeChatDetailed } from "@/lib/llm";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const TEASER_QUESTION_PROMPT_MAX = 300;
 export const TEASER_MAX_CHARS = 720;
+export const TEASER_MIN_CHARS = 80;
 export const TEASER_TIMEOUT_MS = 7000;
 export const TEASER_MAX_TOKENS = 220;
 export const TEASER_RECEIPT_MIN_AGE_MS = 3_000;
 export const TEASER_RECEIPT_MAX_AGE_MS = 30 * 60_000;
 const TEASER_CONCURRENCY_CAP = 5;
 const TEASER_MAX_FAILS = 2;
+/** One quality-driven regeneration max per receipt (total ≤2 LLM calls). */
+const TEASER_QUALITY_REGEN_MAX = 1;
 
 const BOT_UA_RE =
   /bot|crawler|spider|slurp|bingpreview|facebookexternalhit|whatsapp|telegram|discord|preview|headless|phantom|selenium|puppeteer|scrapy|curl\/|wget|python-requests|go-http-client|httpclient|okhttp|java\/|libwww/i;
@@ -157,8 +161,65 @@ export function truncateTeaserText(text: string, maxChars = TEASER_MAX_CHARS): s
 }
 
 export function buildTeaserCacheKey(questionNormalized: string, cardIds: number[]): string {
-  const base = `${questionNormalized.toLowerCase()}|${cardIds.join(",")}`;
+  const base = `${GUEST_TEASER_PROMPT_VERSION}|${questionNormalized.toLowerCase()}|${cardIds.join(",")}`;
   return createHash("sha256").update(base).digest("hex").slice(0, 32);
+}
+
+const POSITION_SENTENCE_RE =
+  /^\s*(в\s+вашем\s+)?(прошлом|настоящем|будущем)\b/i;
+
+export type TeaserQualityResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+/**
+ * Server-side quality gate for LLM teaser text.
+ * Exported for regression: old dictionary-style prod text must fail.
+ */
+export function validateGuestTeaserQuality(
+  text: string,
+  cardNames: string[]
+): TeaserQualityResult {
+  const cleaned = truncateTeaserText(text);
+  if (cleaned.length < TEASER_MIN_CHARS) {
+    return { ok: false, reason: "too_short" };
+  }
+  if (cleaned.length > TEASER_MAX_CHARS) {
+    return { ok: false, reason: "too_long" };
+  }
+
+  const lower = cleaned.toLowerCase();
+  for (const phrase of TEASER_BANNED_PHRASES) {
+    if (lower.includes(phrase.toLowerCase())) {
+      return { ok: false, reason: `banned:${phrase}` };
+    }
+  }
+
+  const sentences = cleaned
+    .split(/(?<=[.!?…])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let positionHits = 0;
+  for (const sentence of sentences) {
+    if (POSITION_SENTENCE_RE.test(sentence)) positionHits += 1;
+  }
+  if (positionHits >= 2) {
+    return { ok: false, reason: "position_scaffold" };
+  }
+
+  let cardMentions = 0;
+  for (const name of cardNames) {
+    const n = name.trim();
+    if (n.length < 2) continue;
+    const re = new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    const matches = cleaned.match(re);
+    if (matches) cardMentions += matches.length;
+  }
+  if (cardMentions > 1) {
+    return { ok: false, reason: "too_many_card_names" };
+  }
+
+  return { ok: true };
 }
 
 export function hashIpUa(ip: string, ua: string): string {
@@ -397,7 +458,10 @@ export async function resolveGuestTeaser(input: {
   }
 
   const dbCached = await findGuestResumeTeaserByCacheKey(cacheKey);
-  if (dbCached?.text) {
+  if (
+    dbCached?.text &&
+    dbCached.promptVersion === GUEST_TEASER_PROMPT_VERSION
+  ) {
     bump("teaser_cache_hits");
     memoryCache.set(cacheKey, {
       text: dbCached.text,
@@ -414,40 +478,10 @@ export async function resolveGuestTeaser(input: {
     };
   }
 
-  if (teaserInflight >= TEASER_CONCURRENCY_CAP) {
-    bump("teaser_rate_limited");
-    return returnFallback("concurrency");
-  }
-
-  const ip = clientIp(request);
-  const ua = request.headers.get("user-agent") ?? "";
-  const ipHash = hashIpUa(ip, ua);
-
-  const hourLimit = await checkRateLimit(rateLimitKey("teaser_ip_h", ipHash), 3, 3_600_000);
-  if (!hourLimit.allowed) {
-    bump("teaser_rate_limited");
-    return returnFallback("rate_limit");
-  }
-  const dayLimit = await checkRateLimit(rateLimitKey("teaser_ip_d", ipHash), 10, 86_400_000);
-  if (!dayLimit.allowed) {
-    bump("teaser_rate_limited");
-    return returnFallback("rate_limit");
-  }
-
-  const dayKey = new Date().toISOString().slice(0, 10);
-  const budget = await checkRateLimit(
-    rateLimitKey("teaser_budget", dayKey),
-    teaserDailyBudgetCalls(),
-    86_400_000
-  );
-  if (!budget.allowed) {
-    bump("teaser_rate_limited");
-    return returnFallback("budget");
-  }
-
-  const attempts = payload.teaserAttempts ?? 0;
-  if (attempts >= TEASER_MAX_FAILS) {
-    const failedPayload = { ...payload, teaserFailed: true };
+  let workingPayload = payload;
+  const attempts = workingPayload.teaserAttempts ?? 0;
+  if (attempts >= TEASER_MAX_FAILS || workingPayload.teaserFailed) {
+    const failedPayload = { ...workingPayload, teaserFailed: true };
     await updateGuestResumeCardsPayload(row.id, failedPayload);
     return returnFallback("failed");
   }
@@ -461,77 +495,153 @@ export async function resolveGuestTeaser(input: {
       positionLabel: positions[s.position] ?? `Позиция ${s.position + 1}`,
       reversed: s.reversed,
     }));
-
+  const cardNames = cardLines.map((c) => c.name);
   const model = teaserModelName();
-  teaserInflight += 1;
-  try {
-    const result = await completeChatDetailed({
-      messages: [
-        { role: "system", content: buildGuestTeaserSystemPrompt() },
-        {
-          role: "user",
-          content: buildGuestTeaserUserPrompt({
-            question: questionForPrompt,
-            cards: cardLines,
-          }),
-        },
-      ],
-      maxTokens: TEASER_MAX_TOKENS,
-      temperature: 0.7,
-      timeoutMs: TEASER_TIMEOUT_MS,
-      maxAttempts: 1,
-      skipTemperatureRetry: true,
-      modelOverride: model,
-      priority: "background",
-    });
+  const ip = clientIp(request);
+  const ua = request.headers.get("user-agent") ?? "";
+  const ipHash = hashIpUa(ip, ua);
 
-    const usageIn = result.usage?.promptTokens ?? 0;
-    const usageOut = result.usage?.completionTokens ?? 0;
-    bump("teaser_llm_calls");
-    bump("teaser_tokens_in", usageIn);
-    bump("teaser_tokens_out", usageOut);
-    console.info(
-      JSON.stringify({
-        event: "teaser_llm_call",
-        model,
-        receipt_id: row.id,
-        ip_hash: ipHash,
-        input_tokens: usageIn,
-        output_tokens: usageOut,
-        cache_key: cacheKey,
-      })
-    );
-
-    const text = truncateTeaserText(result.text ?? "");
-    if (!text || text.length < 40) {
-      await markTeaserAttempt(row.id, payload, true);
-      return returnFallback(result.text == null ? "timeout" : "error");
+  const reserveGenerationSlot = async (): Promise<
+    { ok: true } | { ok: false; source: GuestTeaserResult["source"] }
+  > => {
+    if (teaserInflight >= TEASER_CONCURRENCY_CAP) {
+      bump("teaser_rate_limited");
+      return { ok: false, source: "concurrency" };
     }
+    const hourLimit = await checkRateLimit(rateLimitKey("teaser_ip_h", ipHash), 3, 3_600_000);
+    if (!hourLimit.allowed) {
+      bump("teaser_rate_limited");
+      return { ok: false, source: "rate_limit" };
+    }
+    const dayLimit = await checkRateLimit(rateLimitKey("teaser_ip_d", ipHash), 10, 86_400_000);
+    if (!dayLimit.allowed) {
+      bump("teaser_rate_limited");
+      return { ok: false, source: "rate_limit" };
+    }
+    const dayKey = new Date().toISOString().slice(0, 10);
+    const budget = await checkRateLimit(
+      rateLimitKey("teaser_budget", dayKey),
+      teaserDailyBudgetCalls(),
+      86_400_000
+    );
+    if (!budget.allowed) {
+      bump("teaser_rate_limited");
+      return { ok: false, source: "budget" };
+    }
+    return { ok: true };
+  };
 
-    const record: GuestResumeTeaserRecord = {
-      text,
-      promptVersion: GUEST_TEASER_PROMPT_VERSION,
-      model,
-      createdAt: new Date().toISOString(),
-      cacheKey,
-    };
-    await persistTeaser(row.id, payload, record);
-    return {
-      text,
-      isFallback: false,
-      source: "llm",
-      promptVersion: GUEST_TEASER_PROMPT_VERSION,
-      model,
-    };
+  const runLlmOnce = async (): Promise<{
+    text: string | null;
+    timedOut: boolean;
+    blocked?: GuestTeaserResult["source"];
+  }> => {
+    const slot = await reserveGenerationSlot();
+    if (!slot.ok) return { text: null, timedOut: false, blocked: slot.source };
+
+    teaserInflight += 1;
+    try {
+      const result = await completeChatDetailed({
+        messages: [
+          { role: "system", content: buildGuestTeaserSystemPrompt() },
+          {
+            role: "user",
+            content: buildGuestTeaserUserPrompt({
+              question: questionForPrompt,
+              cards: cardLines,
+            }),
+          },
+        ],
+        maxTokens: TEASER_MAX_TOKENS,
+        temperature: 0.65,
+        timeoutMs: TEASER_TIMEOUT_MS,
+        maxAttempts: 1,
+        skipTemperatureRetry: true,
+        modelOverride: model,
+        priority: "background",
+      });
+
+      const usageIn = result.usage?.promptTokens ?? 0;
+      const usageOut = result.usage?.completionTokens ?? 0;
+      bump("teaser_llm_calls");
+      bump("teaser_tokens_in", usageIn);
+      bump("teaser_tokens_out", usageOut);
+      console.info(
+        JSON.stringify({
+          event: "teaser_llm_call",
+          model,
+          receipt_id: row.id,
+          ip_hash: ipHash,
+          input_tokens: usageIn,
+          output_tokens: usageOut,
+          cache_key: cacheKey,
+          prompt_version: GUEST_TEASER_PROMPT_VERSION,
+        })
+      );
+
+      const text = truncateTeaserText(result.text ?? "");
+      return { text: text || null, timedOut: result.text == null };
+    } finally {
+      teaserInflight = Math.max(0, teaserInflight - 1);
+    }
+  };
+
+  try {
+    let qualityRegens = 0;
+    for (;;) {
+      const { text, timedOut, blocked } = await runLlmOnce();
+      if (blocked) return returnFallback(blocked);
+      if (!text) {
+        workingPayload = await markTeaserAttempt(row.id, workingPayload, true);
+        return returnFallback(timedOut ? "timeout" : "error");
+      }
+
+      const quality = validateGuestTeaserQuality(text, cardNames);
+      if (quality.ok) {
+        const record: GuestResumeTeaserRecord = {
+          text,
+          promptVersion: GUEST_TEASER_PROMPT_VERSION,
+          model,
+          createdAt: new Date().toISOString(),
+          cacheKey,
+        };
+        await persistTeaser(row.id, workingPayload, record);
+        return {
+          text,
+          isFallback: false,
+          source: "llm",
+          promptVersion: GUEST_TEASER_PROMPT_VERSION,
+          model,
+        };
+      }
+
+      console.info(
+        JSON.stringify({
+          event: "teaser_quality_rejected",
+          reason: quality.reason,
+          receipt_id: row.id,
+          prompt_version: GUEST_TEASER_PROMPT_VERSION,
+          regen: qualityRegens,
+        })
+      );
+      workingPayload = await markTeaserAttempt(row.id, workingPayload, true);
+
+      if (qualityRegens >= TEASER_QUALITY_REGEN_MAX) {
+        return returnFallback("error");
+      }
+      if ((workingPayload.teaserAttempts ?? 0) >= TEASER_MAX_FAILS) {
+        return returnFallback("failed");
+      }
+      qualityRegens += 1;
+      // One quality regen only — still subject to fails-per-receipt.
+    }
   } catch (err) {
     console.warn(
       "[guest-teaser] llm failed",
       err instanceof Error ? err.message : "error"
     );
-    await markTeaserAttempt(row.id, payload, true);
+    await markTeaserAttempt(row.id, workingPayload, true);
     return returnFallback("error");
-  } finally {
-    teaserInflight = Math.max(0, teaserInflight - 1);
   }
 }
 
