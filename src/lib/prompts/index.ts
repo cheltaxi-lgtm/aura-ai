@@ -1,7 +1,7 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 import { todayLabelRu } from "@/lib/prompt-date";
 
-import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
+import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
@@ -277,6 +277,7 @@ export function buildSystemPrompt(
         : spreadCardCount === 3
           ? "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов."
           : `РЕЖИМ: полный расклад — дай развёрнутую расшифровку всех ${spreadCardCount} символов.`,
+    mode === "chat" ? CHAT_CLARIFYING_QUESTION_RULE : "",
     formatBlock,
     spreadFinalBlock,
     mode === "reading" && hasSpread && options.spreadType !== "photo"

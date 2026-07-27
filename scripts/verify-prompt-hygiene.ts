@@ -18,12 +18,26 @@ import { HONESTY_POLICY } from "@/lib/prompt-policy";
 import { buildSystemPrompt } from "@/lib/prompts";
 import {
   CARD_GROUNDED_READING_RULES,
+  CHAT_CLARIFYING_QUESTION_RULE,
   CONTEXT_RULES,
   DARK_TOPICS_POLICY,
 } from "@/lib/prompts/format";
 import { SPREAD_TRUTH_RULES } from "@/lib/prompts/gender-context";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const promptUser = {
+  name: "Юлия",
+  gender: "female",
+  zodiac: "Дева",
+  birthDate: "1990-09-01",
+  cards: [
+    { name: "Башня", meaning: "разрушение старого" },
+    { name: "Семёрка Мечей", meaning: "обман, скрытность" },
+    { name: "Звезда", meaning: "надежда, свет" },
+  ],
+  isPaid: true,
+};
 
 function readSrc(rel: string): string {
   return fs.readFileSync(path.join(root, rel), "utf8");
@@ -198,19 +212,6 @@ section("5. every photo-reading path wraps its system prompt");
 
 section("6. assembled prompt contains each rule block exactly once");
 {
-  const user = {
-    name: "Юлия",
-    gender: "female",
-    zodiac: "Дева",
-    birthDate: "1990-09-01",
-    cards: [
-      { name: "Башня", meaning: "разрушение старого" },
-      { name: "Семёрка Мечей", meaning: "обман, скрытность" },
-      { name: "Звезда", meaning: "надежда, свет" },
-    ],
-    isPaid: true,
-  };
-
   const blocks: Record<string, string> = {
     SPREAD_TRUTH_RULES,
     HONESTY_POLICY,
@@ -220,7 +221,7 @@ section("6. assembled prompt contains each rule block exactly once");
   };
 
   for (const character of ["veronika", "ragnar", "agafya", "shri-raj", "numerolog"] as const) {
-    const base = buildSystemPrompt(character, user, {
+    const base = buildSystemPrompt(character, promptUser, {
       mode: "reading",
       intention: "love",
       spreadId: "past-present-future",
@@ -237,6 +238,46 @@ section("6. assembled prompt contains each rule block exactly once");
     }
     console.log(`ok — ${character}: ${assembled.length} chars, no duplicated rule blocks`);
   }
+}
+
+section("7. one answer-structure declaration, and it names its precedence");
+{
+  const format = readSrc("src/lib/prompts/format.ts");
+  const declarations = [...format.matchAll(/^СТРУКТУРА[^\n]*:$/gm)].map((m) => m[0]);
+  assert.equal(
+    declarations.length,
+    1,
+    `format.ts must declare the answer structure once — found ${declarations.length}:\n${declarations.join("\n")}`
+  );
+  assert.match(
+    declarations[0],
+    /ИНСТРУКЦИИ ПО РАСКЛАДУ/,
+    "the structure declaration must say which block wins in a full reading"
+  );
+  console.log(`ok — single declaration: ${declarations[0]}`);
+}
+
+section("8. clarifying question is chat-only");
+{
+  const readingPrompt = buildSystemPrompt("veronika", promptUser, {
+    mode: "reading",
+    intention: "love",
+    spreadId: "past-present-future",
+  });
+  const chatPrompt = buildSystemPrompt("veronika", promptUser, {
+    mode: "chat",
+    lastUserMessage: "Что с моими отношениями?",
+    spreadId: "past-present-future",
+  });
+  assert.ok(
+    !readingPrompt.includes(CHAT_CLARIFYING_QUESTION_RULE.trim()),
+    "paid reading must not invite a clarifying question — it contradicts the thematic rules and the forward hook"
+  );
+  assert.ok(
+    chatPrompt.includes(CHAT_CLARIFYING_QUESTION_RULE.trim()),
+    "live chat lost the clarifying-question rule"
+  );
+  console.log("ok — reading has no clarifying-question instruction, chat does");
 }
 
 console.log("\nprompt hygiene: all checks passed");

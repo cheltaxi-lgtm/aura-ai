@@ -14,7 +14,7 @@ import {
   stripTheaterFromReply,
 } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, fromLegacyContext } from "@/lib/prompts";
-import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
+import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
@@ -187,7 +187,11 @@ export function buildHumanChatPrompt(
   ctx: Partial<UserContext>,
   knowledge?: string
 ): string {
-  const parts = [buildHumanMasterPersona(blogger, knowledge), CARD_GROUNDED_READING_RULES];
+  const parts = [
+    buildHumanMasterPersona(blogger, knowledge),
+    CARD_GROUNDED_READING_RULES,
+    CHAT_CLARIFYING_QUESTION_RULE,
+  ];
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
 
   if (ctx.userName) {
