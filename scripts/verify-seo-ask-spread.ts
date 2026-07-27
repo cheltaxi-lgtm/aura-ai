@@ -69,6 +69,15 @@ export function simulateSeoAskSpreadMatrix(input: {
   return { action: "new_draw", cards: redrawCards ?? baselineCards };
 }
 
+section("static: middleware allows guest teaser without JWT");
+{
+  const mw = readSrc("src/middleware.ts");
+  assert.ok(
+    mw.includes('"/api/guest-triplet/teaser"'),
+    "teaser must be in PUBLIC_API_EXACT (else middleware returns Unauthorized)"
+  );
+}
+
 section("static: HomePage routes guest ask/spread to GuestTriplet");
 {
   const home = readSrc("src/components/HomePage.tsx");
