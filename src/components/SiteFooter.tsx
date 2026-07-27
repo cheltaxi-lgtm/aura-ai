@@ -4,7 +4,14 @@ import Link from "next/link";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import BrandLogo from "@/components/BrandLogo";
 import OAuthProviderIcon from "@/components/auth/OAuthProviderIcon";
-import { BRAND_LOGO_FOOTER, BRAND_NAME, BRAND_VK_LABEL, BRAND_VK_URL } from "@/lib/brand";
+import {
+  BRAND_DZEN_LABEL,
+  BRAND_DZEN_URL,
+  BRAND_LOGO_FOOTER,
+  BRAND_NAME,
+  BRAND_VK_LABEL,
+  BRAND_VK_URL,
+} from "@/lib/brand";
 import { navigateToSpreadCatalog } from "@/lib/app-shell-nav";
 import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
 import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
@@ -81,16 +88,39 @@ export default function SiteFooter({
           <BrandLogo {...BRAND_LOGO_FOOTER} />
           <p className="editorial-footer__tagline">{EDITORIAL_FOOTER_TAGLINE}</p>
           <p className="editorial-footer__service-line">18+ · Развлекательный сервис</p>
-          <a
-            href={BRAND_VK_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="editorial-footer__vk"
-            aria-label={`${BRAND_VK_LABEL} — группа Zovus`}
-          >
-            <OAuthProviderIcon provider="vk" className="editorial-footer__vk-icon" />
-            <span>{BRAND_VK_LABEL}</span>
-          </a>
+          <div className="editorial-footer__social" aria-label="Мы в соцсетях">
+            <a
+              href={BRAND_VK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="editorial-footer__social-btn editorial-footer__social-btn--vk"
+              aria-label={`${BRAND_VK_LABEL} — группа Zovus`}
+            >
+              <OAuthProviderIcon provider="vk" className="editorial-footer__social-icon" />
+              <span>{BRAND_VK_LABEL}</span>
+            </a>
+            <a
+              href={BRAND_DZEN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="editorial-footer__social-btn editorial-footer__social-btn--dzen"
+              aria-label={`${BRAND_DZEN_LABEL} — канал Zovus`}
+            >
+              <svg
+                className="editorial-footer__social-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle cx="12" cy="12" r="11" fill="currentColor" opacity="0.18" />
+                <path
+                  fill="currentColor"
+                  d="M7.2 6.4h3.1c2.9 0 4.7 1.6 4.7 4.1 0 1.7-.8 3-2.1 3.6L16.8 17.6h-3.3l-3.5-3.3H10.3v3.3H7.2V6.4Zm3.1 5.7c1.2 0 1.9-.7 1.9-1.7s-.7-1.7-1.9-1.7H10.3v3.4h-.0Z"
+                />
+              </svg>
+              <span>{BRAND_DZEN_LABEL}</span>
+            </a>
+          </div>
         </div>
 
         <div className="editorial-footer__columns">

@@ -9,6 +9,10 @@ export const BRAND_PLUS = "Zovus+";
 export const BRAND_VK_URL = "https://vk.ru/zovus";
 export const BRAND_VK_LABEL = "Мы ВКонтакте";
 
+/** Official Dzen channel. */
+export const BRAND_DZEN_URL = "https://dzen.ru/id/6a50b97e363bf24ef269684e";
+export const BRAND_DZEN_LABEL = "Мы в Дзен";
+
 /** Shared header lockup — mark + OVUS + beta. */
 export const BRAND_LOGO_HEADER = {
   linkToHome: true,
