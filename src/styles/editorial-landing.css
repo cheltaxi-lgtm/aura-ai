@@ -482,6 +482,12 @@ html:has(.editorial-landing) .aura-mystic-bg {
   text-wrap: balance;
 }
 
+/* Keep the person's name in original case — never inherit uppercase styling. */
+.editorial-hero__title-name {
+  text-transform: none;
+  letter-spacing: -0.02em;
+}
+
 .editorial-hero__subtitle {
   margin-top: 1.25rem;
   font-size: clamp(0.9375rem, 2vw, 1.0625rem);

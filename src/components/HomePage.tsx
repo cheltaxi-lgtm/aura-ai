@@ -125,6 +125,7 @@ import {
 } from "@/lib/home-flow-storage";
 import { resetGuestSpreadFlow } from "@/lib/guest-spread-reset";
 import {
+  hasActiveGuestResumeIntent,
   isGuestResumeBannerPhase,
   loadGuestResumeUiCache,
 } from "@/lib/guest-resume-ui-cache";
@@ -137,7 +138,13 @@ import {
   buildRegisterHref,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
+import {
+  GUEST_SPREAD_PICKER_ID,
+  GUEST_SPREAD_START_EVENT,
+  GUEST_TRIPLET_MASTER_ID,
+  LANDING_QUESTION_KEY,
+  type GuestSpreadStartDetail,
+} from "@/lib/landing-offer";
 import { GUEST_TRIPLET_SUGGESTED_REPLIES } from "@/lib/guest-chat-suggestions";
 import {
   trackFirstChatOpened,
@@ -694,12 +701,37 @@ export default function HomePage({
       deepLinkSpreadParsedRef.current = true;
       autoAskParsedRef.current = true;
 
-      // Guest resume guard: never open SEO newSpreadOnly when UI cache expects claim.
+      // Active guest receipt/UI: never start a new pick (SEO deep-link ≠ redraw).
       const guestUi = loadGuestResumeUiCache();
-      if (isLoggedIn && guestUi) {
+      if (hasActiveGuestResumeIntent() || (isLoggedIn && guestUi)) {
         trackGuestTripletRedrawPrevented({
           had_ask_params: true,
-          master_id: guestUi.masterId || params.get("master")?.trim() || "veronika",
+          master_id: guestUi?.masterId || params.get("master")?.trim() || "veronika",
+        });
+        const url = new URL(window.location.href);
+        url.searchParams.delete("ask");
+        url.searchParams.delete("master");
+        url.searchParams.delete("spread");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        return;
+      }
+
+      // Guest SEO/deep-link → GuestTriplet (server-issued receipt), not paid session wall.
+      if (!isLoggedIn) {
+        try {
+          sessionStorage.setItem(LANDING_QUESTION_KEY, askParam);
+        } catch {
+          /* private mode */
+        }
+        const detail: GuestSpreadStartDetail = {
+          question: askParam,
+          masterId: params.get("master")?.trim() || GUEST_TRIPLET_MASTER_ID,
+        };
+        window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+        requestAnimationFrame(() => {
+          document
+            .getElementById(GUEST_SPREAD_PICKER_ID)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
         });
         const url = new URL(window.location.href);
         url.searchParams.delete("ask");
@@ -713,7 +745,7 @@ export default function HomePage({
       const matched = matchSpreadIntentFromQuestion(askParam);
       if (matched) {
         openSpreadIntentFlow(matched, { customQuestion: askParam });
-      } else if (spreadFromHero || !isLoggedIn) {
+      } else if (spreadFromHero) {
         consumePendingGuestQuestion();
         setDeepLinkSpreadId(null);
         setSeoFlowIntentSlug(null);
@@ -809,6 +841,34 @@ export default function HomePage({
 
     if (!spreadParam) return;
     deepLinkSpreadParsedRef.current = true;
+
+    // Bare /?ask&spread=1 (empty ask) and /?spread=1 — guest SEO entry.
+    if (!isLoggedIn && (spreadParam === "1" || spreadParam === "triplet")) {
+      const guestUi = loadGuestResumeUiCache();
+      if (hasActiveGuestResumeIntent()) {
+        trackGuestTripletRedrawPrevented({
+          had_ask_params: Boolean(params.get("ask") != null),
+          master_id: guestUi?.masterId || params.get("master")?.trim() || "veronika",
+        });
+      } else {
+        const detail: GuestSpreadStartDetail = {
+          masterId: params.get("master")?.trim() || GUEST_TRIPLET_MASTER_ID,
+        };
+        window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+        requestAnimationFrame(() => {
+          document
+            .getElementById(GUEST_SPREAD_PICKER_ID)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.delete("ask");
+      url.searchParams.delete("master");
+      url.searchParams.delete("spread");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      return;
+    }
+
     if (spreadParam === "love-7") {
       const compatIntent = getSpreadIntentBySlug("sovmestimost-pary");
       if (compatIntent) {

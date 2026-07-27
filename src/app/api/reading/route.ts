@@ -57,7 +57,13 @@ import {
 } from "@/lib/prompts/user-context";
 import { getSessionMemories, countSessionMemories } from "@/lib/session-memory";
 import { isValidSessionIntention } from "@/lib/session-topics";
-import { resolveApiCharacterId, sanitizeTextField, stripMemoryLeakFromReply, sanitizeReadingForClient } from "@/lib/chat-sanitize";
+import {
+  formatUserQuestionForPrompt,
+  resolveApiCharacterId,
+  sanitizeTextField,
+  stripMemoryLeakFromReply,
+  sanitizeReadingForClient,
+} from "@/lib/chat-sanitize";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import { INTENTION_OPTIONS, intentionPromptBlock, intentionReadingPromptBlock } from "@/lib/intention";
 import {
@@ -365,6 +371,10 @@ export async function POST(request: NextRequest) {
     if (guestResume?.question && !customQuestion) {
       customQuestion = guestResume.question;
     }
+    // Harden before any prompt / history embedding (length, quote breakout, tag strip).
+    customQuestion = customQuestion
+      ? formatUserQuestionForPrompt(customQuestion)
+      : "";
     if (guestResume) {
       tarotCards = [...guestResume.symbols]
         .sort((a, b) => a.position - b.position)
@@ -377,6 +387,10 @@ export async function POST(request: NextRequest) {
           reversed: symbol.reversed,
         }));
     }
+    // Free-form guest/custom question uses the existing "custom" intention slot —
+    // do not invent a catalog topic when the user left the question empty.
+    const readingIntention =
+      intention || (customQuestion ? "custom" : "");
 
     const today = new Date().toLocaleDateString("ru-RU", {
       day: "numeric",
@@ -427,8 +441,10 @@ export async function POST(request: NextRequest) {
       // here too used to render the *same* rows a second time through the
       // legacy formatLegacySessionMemories() path — doubling prompt tokens.
       memory: [],
-      intention: intention || null,
+      intention: readingIntention || null,
       spreadId,
+      lastUserMessage: customQuestion || undefined,
+      customQuestion: customQuestion || null,
       natalChartBlock,
     });
 
@@ -436,18 +452,19 @@ export async function POST(request: NextRequest) {
       const blogger = await getBloggerBySlug(characterId);
       if (blogger) {
         const knowledge = await getBloggerKnowledge(blogger.id);
-        systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge, intention || null, {
+        systemPrompt = buildHumanReadingPrompt(blogger, ctx, knowledge, readingIntention || null, {
           spreadId,
           positionLabels,
         });
       }
     }
 
-    if (intention) {
-      systemPrompt += intentionReadingPromptBlock(intention, {
+    if (readingIntention) {
+      systemPrompt += intentionReadingPromptBlock(readingIntention, {
         spreadId,
         cardCount: tarotCards.length,
         positionLabels,
+        customQuestion: customQuestion || null,
       });
     }
 
@@ -900,7 +917,9 @@ export async function POST(request: NextRequest) {
       const userMessage = buildSpreadUserMessage({
         user: userForContext,
         cards: cardsForContext,
-        intention: resolveIntentionLabel(intention || null),
+        intention: customQuestion
+          ? customQuestion
+          : resolveIntentionLabel(readingIntention || intention || null),
         readingScopeLabel: periodScope ? periodSpreadTaskLabel(periodScope) : null,
       });
 
@@ -984,6 +1003,10 @@ export async function POST(request: NextRequest) {
             source: "ai",
             provenance,
             ...(sessionId ? { sessionId } : {}),
+            ...(customQuestion
+              ? { question: customQuestion, customQuestion }
+              : {}),
+            ...(readingIntention ? { intention: readingIntention } : {}),
             ...(isDailySpread ? { spreadType: "daily" } : {}),
             ...(isGuestResumeFree
               ? {

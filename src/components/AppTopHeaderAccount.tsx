@@ -7,7 +7,6 @@ import { Bell, ChevronDown, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
 import { navigateToCabinet } from "@/lib/app-shell-nav";
-import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import type { AuthUser } from "@/lib/useAuth";
 
 type Anchor = { top: number; right: number; minWidth: number };
@@ -118,7 +117,7 @@ export default function AppTopHeaderAccount({
       ? "Админка"
       : user.role === "expert"
         ? "Кабинет"
-        : normalizePersonDisplayNameOr(user.name, user.name.split(" ")[0]);
+        : (user.name?.trim().replace(/\s+/g, " ").split(/\s+/)[0] || "Профиль");
 
   const panel =
     open && anchor && mounted

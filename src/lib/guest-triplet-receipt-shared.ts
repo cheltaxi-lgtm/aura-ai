@@ -38,7 +38,12 @@ export type GuestCompleteInput = {
 
 export function sanitizeGuestQuestion(raw: unknown): string {
   if (typeof raw !== "string") return "";
-  return raw.replace(/\s+/g, " ").trim().slice(0, MAX_GUEST_QUESTION_LENGTH);
+  // Length + whitespace only at storage time; prompt escaping happens at reading.
+  return raw
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_GUEST_QUESTION_LENGTH);
 }
 
 export function buildGuestResumeCardsPayload(input: {

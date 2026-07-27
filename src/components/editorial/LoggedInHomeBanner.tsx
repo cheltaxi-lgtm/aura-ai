@@ -34,9 +34,7 @@ export default function LoggedInHomeBanner({
   onOpenDestinyMatrixSession,
 }: LoggedInHomeBannerProps) {
   const [matrixOwned, setMatrixOwned] = useState(false);
-  const greeting = userName?.trim()
-    ? `С возвращением, ${userName.trim().split(/\s+/)[0]}`
-    : "С возвращением";
+  const greetingName = userName?.trim().replace(/\s+/g, " ").split(/\s+/)[0] || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +86,14 @@ export default function LoggedInHomeBanner({
       <div className="editorial-hero__content">
         <p className="editorial-hero__eyebrow">Ваше пространство</p>
         <h2 id="logged-in-home-banner-title" className="editorial-hero__title">
-          {greeting}
+          {greetingName ? (
+            <>
+              С возвращением,{" "}
+              <span className="editorial-hero__title-name">{greetingName}</span>
+            </>
+          ) : (
+            "С возвращением"
+          )}
         </h2>
         <p className="editorial-hero__subtitle">
           Задайте вопрос или продолжите с мастером, с которым уже говорили.

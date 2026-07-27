@@ -11,6 +11,8 @@ export type IntentionPromptOptions = {
   cardCount?: number;
   positionLabels?: string[];
   spreadId?: SpreadId | string | null;
+  /** Free-form user question (intention === "custom"). */
+  customQuestion?: string | null;
 };
 export type SessionIntention =
   | "Любовь"
@@ -334,7 +336,7 @@ export function intentionReadingPromptBlock(
   options?: IntentionPromptOptions
 ): string {
   if (intention === "life_death") return "";
-  return intentionSpreadPromptBlock(intention, null, options);
+  return intentionSpreadPromptBlock(intention, options?.customQuestion ?? null, options);
 }
 
 /** @deprecated use buildIntentionOpening */

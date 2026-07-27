@@ -2,7 +2,7 @@
  * Normalize a person display name for RU product UX:
  * - keep first name only (drop surname / patronymic / OAuth leftovers)
  * - map common Latin OAuth spellings to Russian given names
- * - phonetic Latin→Cyrillic fallback for unknown names
+ * - preserve unknown Latin as typed (never invent "QA" → "Ка")
  */
 
 const KNOWN_FIRST_NAMES: Record<string, string> = {
@@ -313,9 +313,11 @@ export function normalizePersonDisplayName(raw: string | null | undefined): stri
     }
   }
 
-  // Latin → known map / transliteration
+  // Latin → known RU map only; unknown Latin stays as typed (no phonetic "QA"→"Ка")
   if (LATIN_RE.test(token)) {
-    return transliterateLatinToken(token);
+    const lookup = latinLookupForm(token) || token.toLowerCase();
+    if (KNOWN_FIRST_NAMES[lookup]) return KNOWN_FIRST_NAMES[lookup];
+    return token;
   }
 
   return titleCaseRu(token);
@@ -333,16 +335,24 @@ const MAX_STORED_NAME_LENGTH = 80;
 
 /**
  * Canonical name for DB / cookie / UI storage.
- * Prefers Russian given name; falls back to trimmed raw, then fallback.
+ * Preserves user-entered display (spaces, Latin, Cyrillic, hyphens).
+ * Single known Latin OAuth given names still map to Russian.
  */
 export function normalizeStoredDisplayName(
   raw: string | null | undefined,
   fallback = "Гость"
 ): string {
-  const normalized = normalizePersonDisplayName(raw);
-  if (normalized) return normalized.slice(0, MAX_STORED_NAME_LENGTH);
   const trimmed = raw?.trim().replace(/\s+/g, " ").slice(0, MAX_STORED_NAME_LENGTH) ?? "";
-  return trimmed || fallback;
+  if (!trimmed) return fallback;
+
+  // Single-token known Latin OAuth name → RU given name
+  if (!/\s/.test(trimmed) && LATIN_RE.test(trimmed) && !CYRILLIC_RE.test(trimmed)) {
+    const lookup = latinLookupForm(trimmed) || trimmed.toLowerCase();
+    const known = KNOWN_FIRST_NAMES[lookup];
+    if (known) return known.slice(0, MAX_STORED_NAME_LENGTH);
+  }
+
+  return trimmed;
 }
 
 /** True when the string still has Latin letters (needs cleanup for RU UX). */
