@@ -42,6 +42,7 @@ import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { resolveIsDailyFreeReading } from "@/lib/daily-spread-billing";
 import { resolveGuestResumeFreeReading } from "@/lib/guest-resume-billing";
 import { setGuestResumeReadingId } from "@/lib/guest-triplet-receipt-db";
+import { buildTeaserContinuityPromptBlock } from "@/lib/guest-triplet-teaser-service";
 import {
   findSpreadReadingEntry,
   withSpreadReadingLock,
@@ -466,6 +467,10 @@ export async function POST(request: NextRequest) {
         positionLabels,
         customQuestion: customQuestion || null,
       });
+    }
+
+    if (guestResume?.teaserText) {
+      systemPrompt += buildTeaserContinuityPromptBlock(guestResume.teaserText);
     }
 
     const cardsKey = guestResume?.fingerprint ??

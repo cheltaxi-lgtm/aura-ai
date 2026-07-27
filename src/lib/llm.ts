@@ -201,6 +201,7 @@ async function callChatCompletions(
 export type ChatCompletionResult = {
   text: string | null;
   finishReason: string | null;
+  usage?: { promptTokens?: number; completionTokens?: number };
 };
 
 async function callChatCompletionsDetailed(
@@ -243,12 +244,31 @@ async function callChatCompletionsDetailed(
         const rawText = extractAssistantTextFromMessage(choice?.message, extractOpts);
         const finishReason =
           typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
+        const usageRaw = data.usage as
+          | { prompt_tokens?: number; completion_tokens?: number }
+          | undefined;
+        const usage =
+          usageRaw &&
+          (typeof usageRaw.prompt_tokens === "number" ||
+            typeof usageRaw.completion_tokens === "number")
+            ? {
+                promptTokens:
+                  typeof usageRaw.prompt_tokens === "number"
+                    ? usageRaw.prompt_tokens
+                    : undefined,
+                completionTokens:
+                  typeof usageRaw.completion_tokens === "number"
+                    ? usageRaw.completion_tokens
+                    : undefined,
+              }
+            : undefined;
         if (rawText) {
           return {
             text: acceptLlmText(rawText, {
               structuredJson: extractOpts?.structuredJson,
             }),
             finishReason,
+            usage,
           };
         }
         console.warn(
@@ -256,7 +276,7 @@ async function callChatCompletionsDetailed(
           model,
           JSON.stringify(choice?.message)?.slice(0, 200)
         );
-        return { text: null, finishReason };
+        return { text: null, finishReason, usage };
       } catch (error) {
         if (attempt < maxAttempts - 1) {
           await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));

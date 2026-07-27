@@ -32,7 +32,7 @@ export type GuestResumeSessionRow = {
 };
 
 const RESUME_SELECT = `
-  id, user_id, character_key, spread_type, spread_id, cards,
+  id, user_id, character_key, spread_type, spread_id, cards, created_at,
   guest_resume_token_hash, guest_resume_expires_at, guest_resume_status,
   guest_resume_fingerprint, guest_resume_reading_id, guest_resume_claimed_at
 `;
@@ -353,4 +353,37 @@ export async function expireUnclaimedGuestResumes(limit = 100): Promise<number> 
 
 export function guestResumeDisplayCards(payload: GuestResumeCardsPayload): string[] {
   return cardNamesFromGuestPayload(payload);
+}
+
+/** Persist teaser / attempt flags into sessions.cards JSON (no migration). */
+export async function updateGuestResumeCardsPayload(
+  sessionId: string,
+  payload: GuestResumeCardsPayload
+): Promise<void> {
+  await query(
+    `UPDATE sessions
+     SET cards = $2::jsonb, updated_at = NOW()
+     WHERE id = $1
+       AND guest_resume_status IS NOT NULL`,
+    [sessionId, JSON.stringify(payload)]
+  );
+}
+
+/** Cross-receipt teaser reuse by cacheKey stored inside cards.teaser. */
+export async function findGuestResumeTeaserByCacheKey(
+  cacheKey: string
+): Promise<import("@/lib/guest-triplet-receipt-shared").GuestResumeTeaserRecord | null> {
+  if (!cacheKey.trim()) return null;
+  const { rows } = await query<{ cards: unknown }>(
+    `SELECT cards
+     FROM sessions
+     WHERE guest_resume_status IS NOT NULL
+       AND cards->'teaser'->>'cacheKey' = $1
+       AND COALESCE(cards->'teaser'->>'text', '') <> ''
+     ORDER BY COALESCE(guest_resume_claimed_at, updated_at, created_at) DESC
+     LIMIT 1`,
+    [cacheKey]
+  );
+  const payload = parseGuestResumeCardsPayload(rows[0]?.cards);
+  return payload?.teaser ?? null;
 }

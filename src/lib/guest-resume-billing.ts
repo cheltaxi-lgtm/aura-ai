@@ -24,6 +24,8 @@ export type GuestResumeFreeDecision = {
   symbols: GuestResumeSymbol[];
   masterId: string;
   cardNames: string[];
+  /** Persisted guest teaser text (if any) for continuity in full reading. */
+  teaserText?: string | null;
 };
 
 /**
@@ -189,6 +191,7 @@ export async function resolveGuestResumeFreeReading(input: {
     symbols: payload.symbols,
     masterId: resume.character_key || "",
     cardNames,
+    teaserText: payload.teaser?.text?.trim() || null,
   };
 }
 

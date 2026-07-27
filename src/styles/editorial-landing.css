@@ -1920,3 +1920,72 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
   color: rgba(232, 199, 126, 0.85);
   line-height: 1;
 }
+
+/* Guest short teaser (done step) — reserved height, no layout shift */
+.guest-spread-teaser {
+  position: relative;
+  z-index: 1;
+  min-height: 5.5rem;
+}
+
+.guest-spread-teaser__text {
+  margin: 0;
+}
+
+.guest-spread-teaser__skeleton {
+  display: grid;
+  gap: 0.55rem;
+  min-height: 4.5rem;
+}
+
+.guest-spread-teaser__skeleton span {
+  display: block;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(232, 199, 126, 0.18) 45%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: guest-teaser-shimmer 1.4s ease-in-out infinite;
+}
+
+.guest-spread-teaser__skeleton span:nth-child(2) {
+  width: 92%;
+}
+
+.guest-spread-teaser__skeleton span:nth-child(3) {
+  width: 78%;
+}
+
+.guest-spread-teaser__skeleton--paused span {
+  animation: none;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guest-spread-teaser__skeleton span {
+    animation: none;
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+@keyframes guest-teaser-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.guest-teaser-auth {
+  position: relative;
+  z-index: 2;
+}
+
+.landing-sticky-cta {
+  z-index: 40;
+}

@@ -41,7 +41,6 @@ import {
   trackRegistrationStarted,
 } from "@/lib/seo/metrika";
 import DeckCard from "@/components/DeckCard";
-import PremiumReadingBody from "@/components/PremiumReadingBody";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
@@ -49,6 +48,8 @@ import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 const GUEST_ID_KEY = "zovus_guest_id";
 const CARD_COUNT = 3;
 const GUEST_TEASER_AUTH_ID = "guest-teaser-auth";
+/** Match server TEASER_RECEIPT_MIN_AGE_MS before first teaser fetch. */
+const TEASER_FETCH_MIN_DELAY_MS = 3200;
 
 function getGuestId(): string {
   if (typeof window === "undefined") return "guest";
@@ -119,6 +120,12 @@ export default function GuestTripletDraw({
   const handledStartRequestId = useRef<number | null>(null);
   const teaserViewTracked = useRef(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [teaserText, setTeaserText] = useState("");
+  const [teaserLoading, setTeaserLoading] = useState(false);
+  const [teaserPaused, setTeaserPaused] = useState(false);
+  const receiptReadyAtRef = useRef<number | null>(null);
+  const teaserFetchedRef = useRef(false);
+  const teaserBlockRef = useRef<HTMLDivElement | null>(null);
 
   const oauthReturnTo = useMemo(
     () =>
@@ -135,10 +142,105 @@ export default function GuestTripletDraw({
     [masterId]
   );
 
-  const previewText = useMemo(() => {
+  const keywordFallback = useMemo(() => {
     if (deck.length < CARD_COUNT) return "";
     return buildGuestTripletPreview(deck, positions);
   }, [deck, positions]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (step === "idle") {
+      delete document.documentElement.dataset.guestSpreadActive;
+    } else {
+      document.documentElement.dataset.guestSpreadActive = "1";
+    }
+    return () => {
+      delete document.documentElement.dataset.guestSpreadActive;
+    };
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== "done") {
+      teaserFetchedRef.current = false;
+      setTeaserText("");
+      setTeaserLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const run = async () => {
+      const readyAt = receiptReadyAtRef.current ?? Date.now();
+      const wait = Math.max(0, TEASER_FETCH_MIN_DELAY_MS - (Date.now() - readyAt));
+      await new Promise<void>((resolve) => {
+        timer = window.setTimeout(() => resolve(), wait);
+      });
+      if (cancelled || teaserFetchedRef.current) return;
+      teaserFetchedRef.current = true;
+      setTeaserLoading(true);
+      try {
+        const res = await fetch("/api/guest-triplet/teaser", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!res.ok) {
+          if (!cancelled) setTeaserText(keywordFallback);
+          return;
+        }
+        const data = (await res.json()) as {
+          text?: string;
+          isFallback?: boolean;
+        };
+        if (cancelled) return;
+        const text = typeof data.text === "string" ? data.text.trim() : "";
+        setTeaserText(text || keywordFallback);
+      } catch {
+        if (!cancelled) setTeaserText(keywordFallback);
+      } finally {
+        if (!cancelled) setTeaserLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [step, keywordFallback]);
+
+  useEffect(() => {
+    if (step !== "done") return;
+
+    const onVisibility = () => {
+      setTeaserPaused(document.visibilityState === "hidden");
+    };
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const node = teaserBlockRef.current;
+    let io: IntersectionObserver | null = null;
+    if (node && typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (!entry) return;
+          setTeaserPaused((prev) => {
+            const hiddenPage = document.visibilityState === "hidden";
+            return hiddenPage || !entry.isIntersecting;
+          });
+        },
+        { threshold: 0.15 }
+      );
+      io.observe(node);
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      io?.disconnect();
+    };
+  }, [step]);
 
   useEffect(() => {
     if (typeof window === "undefined" || draftRestored) return;
@@ -182,6 +284,10 @@ export default function GuestTripletDraw({
     setRevealed([false, false, false]);
     setCompleting(false);
     setAgeGateError("");
+    setTeaserText("");
+    setTeaserLoading(false);
+    receiptReadyAtRef.current = null;
+    teaserFetchedRef.current = false;
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   }, []);
 
@@ -358,16 +464,6 @@ export default function GuestTripletDraw({
 
   const allRevealed = revealed.every(Boolean);
 
-  const focusAuthBlock = useCallback(() => {
-    trackGuestTeaserCta();
-    window.requestAnimationFrame(() => {
-      const auth = document.getElementById(GUEST_TEASER_AUTH_ID);
-      auth?.scrollIntoView({ behavior: "smooth", block: "center" });
-      const focusable = auth?.querySelector<HTMLElement>("button, a, input, [tabindex]");
-      focusable?.focus({ preventScroll: true });
-    });
-  }, []);
-
   const goToEmailRegistration = useCallback(() => {
     trackRegistrationStarted("guest_triplet_email");
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
@@ -440,6 +536,9 @@ export default function GuestTripletDraw({
       });
       trackGuestSpreadCompleted();
       sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+      receiptReadyAtRef.current = Date.now();
+      teaserFetchedRef.current = false;
+      setTeaserText("");
       setCompleting(false);
       setStep("done");
     })();
@@ -563,41 +662,46 @@ export default function GuestTripletDraw({
               ))}
             </div>
 
-            {previewText ? (
-              <div className="guest-spread-preview rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm text-aura-ivory/80">
-                <PremiumReadingBody content={previewText} className="text-aura-ivory/80" />
-              </div>
-            ) : (
-              <p className="text-center text-sm text-aura-ivory/60">
-                Карты зафиксированы. Полный связный разбор — после входа.
-              </p>
-            )}
+            <div
+              ref={teaserBlockRef}
+              className="guest-spread-teaser rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm leading-relaxed text-aura-ivory/85"
+              aria-live="polite"
+            >
+              {teaserLoading || (!teaserText && !keywordFallback) ? (
+                <div
+                  className={`guest-spread-teaser__skeleton${
+                    teaserPaused ? " guest-spread-teaser__skeleton--paused" : ""
+                  }`}
+                  aria-hidden
+                >
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : (
+                <p className="guest-spread-teaser__text whitespace-pre-wrap">
+                  {teaserText || keywordFallback}
+                </p>
+              )}
+            </div>
 
             <p className="text-center text-sm leading-relaxed text-aura-ivory/70">
               После входа мастер разберёт{" "}
               <span className="text-aura-champagne/90">этот же расклад</span>
-              {landingQuestion ? " по вашему вопросу" : ""} — связь карт, что делать дальше и ответы
-              в чате. Пересчёта не будет.
+              {landingQuestion ? " по вашему вопросу" : ""} — что с этим делать и ответы в чате.
+              Пересчёта не будет.
             </p>
 
             <p className="text-center text-xs text-aura-ivory/50">
               Карты зафиксированы — пересчёта не будет · 18+
             </p>
 
-            <button
-              type="button"
-              onClick={focusAuthBlock}
-              className="btn-luxe btn-luxe--md btn-luxe--gold w-full"
-            >
-              Получить полный разбор
-            </button>
-
             <div
               id={GUEST_TEASER_AUTH_ID}
-              className="scroll-mt-28 space-y-4 rounded-xl border border-white/8 bg-black/20 p-4"
+              className="guest-teaser-auth scroll-mt-28 space-y-4 rounded-xl border border-white/8 bg-black/20 p-4"
             >
               <div>
-                <h3 className="font-display text-lg text-white">Продолжить к полному разбору</h3>
+                <h3 className="font-display text-lg text-white">Получить полный разбор</h3>
                 <p className="mt-1 text-sm text-aura-ivory/65">
                   Войдите — откроется расшифровка именно этих трёх карт, а не новый расклад.
                 </p>
@@ -631,7 +735,10 @@ export default function GuestTripletDraw({
 
               <button
                 type="button"
-                onClick={goToEmailRegistration}
+                onClick={() => {
+                  trackGuestTeaserCta();
+                  goToEmailRegistration();
+                }}
                 className="btn-luxe btn-luxe--md btn-luxe--ghost w-full"
               >
                 Регистрация по email
