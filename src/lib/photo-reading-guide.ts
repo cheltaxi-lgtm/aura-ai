@@ -37,7 +37,7 @@ export const PHOTO_READING_GUIDE_STEPS: PhotoReadingGuideStep[] = [
 
 /** UI-only position labels — keep prompt/backend time keys elsewhere. */
 export const PHOTO_SPREAD_LAYOUT_LABELS = [
-  "Что происходит",
-  "Что скрыто",
-  "К чему ведёт",
+  "Прошлое",
+  "Настоящее",
+  "Будущее",
 ] as const;

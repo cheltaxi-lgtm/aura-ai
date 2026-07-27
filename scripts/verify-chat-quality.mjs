@@ -255,7 +255,9 @@ assert(
 const honesty = readFileSync(resolve(root, "src/lib/prompt-policy.ts"), "utf8");
 assert(
   "honesty policy names darkness without soft watering-down",
-  honesty.includes("без смягчения") && honesty.includes("одна короткая фраза про выбор")
+  honesty.includes("без смягчения") &&
+    honesty.includes("Вердикт по доминирующим") &&
+    honesty.includes("рассвет близко")
 );
 
 assert("min mentions: 5 cards require all 5", minCardMentionsRequired(5) === 5);

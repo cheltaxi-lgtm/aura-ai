@@ -115,16 +115,16 @@ export function getDeckPositions(system: DeckSystem): readonly string[] {
 }
 
 /**
- * Question-oriented labels for classic 3-card time spreads (UI only).
- * Backend / prompts keep Прошлое · Настоящее · Будущее via getDeckPositions.
+ * Classic 3-card time labels — same canon as prompts / getDeckPositions.
+ * Topic-specific UI (love/life_death) uses resolveSpreadPositions in spread layouts.
  */
 export const TRIPLET_UI_POSITIONS = [
-  "Что происходит",
-  "Что скрыто",
-  "К чему ведёт",
+  "Прошлое",
+  "Настоящее",
+  "Будущее",
 ] as const;
 
-/** Display labels for deck UI — never feed into master/teaser prompts. */
+/** Display labels for deck UI — aligned with prompt position canon for triplet decks. */
 export function getDeckPositionsForUi(system: DeckSystem): readonly string[] {
   if (
     system === "tarot-veronika" ||

@@ -91,13 +91,15 @@ function cardsBlock(
   labels = ["Прошлое", "Настоящее", "Будущее"]
 ): string {
   if (!cards.length) return "Карты расклада пока не переданы — опирайся на вопрос и знак клиента.";
-  return cards
+  const lines = cards
     .map((c, i) => {
       const label = labels[i] ?? `Позиция ${i + 1}`;
       if (typeof c === "string") return `${label}: «${c}»`;
       return `${label}: «${c.name}» — ${c.meaning}`;
     })
     .join("\n");
+  return `${lines}
+Метки позиций выше — единственный канон. Не подменяй их словами «корень/прошлое/вектор», если в блоке другие названия.`;
 }
 
 function clientBlock(
@@ -280,7 +282,8 @@ export function buildSystemPrompt(
     mode === "chat" ? CHAT_CLARIFYING_QUESTION_RULE : "",
     formatBlock,
     spreadFinalBlock,
-    mode === "reading" && hasSpread && options.spreadType !== "photo"
+    // Thematic path already defines structure — skip the older «120 слов» block to avoid format fights.
+    mode === "reading" && hasSpread && options.spreadType !== "photo" && !thematicReading
       ? getSpreadInstructions(
           character,
           options.spreadId,

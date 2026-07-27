@@ -48,7 +48,7 @@ function photoInterpretationRules(cardCount: number, masterId: string): string {
 РЕЖИМ: РАСШИФРОВКА ПОДТВЕРЖДЁННОГО ФОТО-РАСКЛАДА.
 Карты уже распознаны и подтверждены клиентом — НЕ определяй колоду заново, НЕ выводи служебные строки (КОЛОДА/РАСКЛАД/КАРТЫ), НЕ перечисляй карты списком с номерами.
 
-${buildPaidSpreadReadingExtras({ cardCount: n, masterId })}
+${buildPaidSpreadReadingExtras({ cardCount: n, masterId, includeDepthBlocks: true })}
 
 ДОПОЛНИТЕЛЬНО ДЛЯ ФОТО-РАСКЛАДА:
 - по каждой карте: название → значение в её позиции → вывод для клиента (отдельный развёрнутый абзац);
