@@ -243,7 +243,10 @@ section("static: guest finish lands on done teaser, not idle");
 {
   const src = readSrc("src/components/GuestTripletDraw.tsx");
   assert.ok(src.includes('setStep("done")'), "complete must set step done");
-  assert.ok(src.includes("buildGuestTripletPreview"), "done uses preview helper");
+  assert.ok(
+    src.includes("buildGuestNarrativeFallback"),
+    "done uses narrative fallback helper (not dictionary Past/Present/Future)"
+  );
   assert.ok(src.includes("Получить полный разбор"), "done primary CTA");
   assert.ok(src.includes("Карты зафиксированы"), "continuity microcopy");
   assert.ok(src.includes("SocialAuthButtons"), "auth on done screen");
