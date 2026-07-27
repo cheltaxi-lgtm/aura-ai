@@ -32,8 +32,7 @@ import LandingPartnersSection from "@/components/seo/LandingPartnersSection";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
 import LandingDemoSection from "@/components/seo/LandingDemoSection";
 import LandingHonestSection from "@/components/seo/LandingHonestSection";
-import LandingFaqSection from "@/components/seo/LandingFaqSection";
-import LandingFinalCtaSection from "@/components/seo/LandingFinalCtaSection";
+import LandingClosingBand from "@/components/seo/LandingClosingBand";
 import {
   buildLandingOfferCopy,
   LANDING_QUESTION_KEY,
@@ -463,8 +462,7 @@ export default function AuraSellingLanding({
           />
         ) : null}
         <EditorialPracticesSection isLoggedIn={false} />
-        <LandingFaqSection />
-        <LandingFinalCtaSection onOpenCards={() => handlePrimaryCta("final")} />
+        <LandingClosingBand onOpenCards={() => handlePrimaryCta("final")} />
         {showTariffs ? (
           <LandingSeoHub
             rubPerRune={config.rubPerRune}

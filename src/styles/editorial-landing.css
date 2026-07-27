@@ -1699,10 +1699,188 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
 }
 
 .landing-demo,
-.landing-honest,
-.landing-faq,
-.landing-final-cta {
+.landing-honest {
   padding: 3.5rem 0;
+}
+
+/* FAQ + final CTA — shared column, local sky, unified rhythm */
+.landing-closing-band {
+  --section-gap: 2.75rem;
+  position: relative;
+  isolation: isolate;
+  padding: 3.25rem 0 3.75rem;
+  overflow: hidden;
+}
+
+.landing-closing-band__inner {
+  position: relative;
+  z-index: 1;
+  max-width: 72.5rem; /* 1160px within 1120–1200 */
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .landing-closing-band__inner {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .landing-closing-band__inner {
+    padding-inline: 2rem;
+  }
+}
+
+.landing-closing-band__sky {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.landing-closing-band__stars {
+  position: absolute;
+  inset: -8%;
+  background-repeat: repeat;
+  pointer-events: none;
+}
+
+.landing-closing-band__stars--far {
+  opacity: 0.38;
+  background-image:
+    radial-gradient(1.5px 1.5px at 8% 12%, rgba(255, 248, 230, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 22% 38%, rgba(255, 248, 230, 0.65), transparent),
+    radial-gradient(2px 2px at 35% 18%, rgba(232, 199, 126, 0.75), transparent),
+    radial-gradient(1.5px 1.5px at 48% 55%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 62% 22%, rgba(255, 248, 230, 0.7), transparent),
+    radial-gradient(2px 2px at 74% 48%, rgba(232, 199, 126, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 88% 15%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 12% 72%, rgba(255, 248, 230, 0.55), transparent);
+  background-size: 380px 380px;
+}
+
+.landing-closing-band__stars--mid {
+  opacity: 0.32;
+  background-image:
+    radial-gradient(1.5px 1.5px at 18% 28%, rgba(255, 248, 230, 0.7), transparent),
+    radial-gradient(2px 2px at 44% 62%, rgba(232, 199, 126, 0.65), transparent),
+    radial-gradient(1.5px 1.5px at 70% 20%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 86% 74%, rgba(255, 248, 230, 0.6), transparent),
+    radial-gradient(2px 2px at 30% 84%, rgba(232, 199, 126, 0.55), transparent);
+  background-size: 460px 460px;
+}
+
+.landing-closing-band__stars--near {
+  opacity: 0.34;
+  background-image:
+    radial-gradient(2.5px 2.5px at 15% 25%, rgba(255, 250, 235, 0.85), transparent),
+    radial-gradient(3px 3px at 40% 40%, rgba(232, 199, 126, 0.8), transparent),
+    radial-gradient(2.5px 2.5px at 65% 18%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(3px 3px at 85% 55%, rgba(232, 199, 126, 0.75), transparent),
+    radial-gradient(2.5px 2.5px at 30% 70%, rgba(255, 250, 235, 0.8), transparent);
+  background-size: 520px 520px;
+}
+
+.landing-closing-band__lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.landing-closing-band--sky-on .landing-closing-band__stars--far,
+.landing-closing-band--sky-on .landing-closing-band__stars--mid,
+.landing-closing-band--sky-on .landing-closing-band__stars--near {
+  will-change: transform;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+/* Amplitudes ~8–14px; periods 28 / 36 / 42s */
+.landing-closing-band--sky-on .landing-closing-band__stars--far {
+  animation-name: landing-closing-drift-far;
+  animation-duration: 42s;
+}
+
+.landing-closing-band--sky-on .landing-closing-band__stars--mid {
+  animation-name: landing-closing-drift-mid;
+  animation-duration: 36s;
+}
+
+.landing-closing-band--sky-on .landing-closing-band__stars--near {
+  animation-name: landing-closing-drift-near;
+  animation-duration: 28s;
+}
+
+.landing-closing-band--sky-on .landing-closing-band__dots circle {
+  animation: landing-closing-star-pulse 6s ease-in-out infinite;
+}
+
+.landing-closing-band--sky-on .landing-closing-band__dots circle:nth-child(3n) {
+  animation-duration: 4.5s;
+  animation-delay: 0.8s;
+}
+
+.landing-closing-band--sky-on .landing-closing-band__dots circle:nth-child(3n + 1) {
+  animation-duration: 7.2s;
+  animation-delay: 1.6s;
+}
+
+.landing-closing-band--sky-on .landing-closing-band__dots circle:nth-child(3n + 2) {
+  animation-duration: 5.4s;
+  animation-delay: 0.3s;
+}
+
+@keyframes landing-closing-drift-far {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(10px, -8px, 0); }
+}
+
+@keyframes landing-closing-drift-mid {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-12px, 10px, 0); }
+}
+
+@keyframes landing-closing-drift-near {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(8px, 12px, 0); }
+}
+
+@keyframes landing-closing-star-pulse {
+  0%,
+  100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-closing-band--sky-on .landing-closing-band__stars--far,
+  .landing-closing-band--sky-on .landing-closing-band__stars--mid,
+  .landing-closing-band--sky-on .landing-closing-band__stars--near,
+  .landing-closing-band--sky-on .landing-closing-band__dots circle {
+    animation: none !important;
+    will-change: auto;
+  }
+}
+
+html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__stars--far,
+html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__stars--mid,
+html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__stars--near,
+html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__dots circle {
+  animation: none !important;
+  will-change: auto;
+}
+
+.landing-faq {
+  padding: 0;
+}
+
+.landing-final-cta {
+  padding: var(--section-gap) 0 0;
+  margin-top: 0;
 }
 
 .landing-demo__head,
@@ -1712,9 +1890,7 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
 }
 
 .landing-demo__title,
-.landing-honest__title,
-.landing-faq__title,
-.landing-final-cta__title {
+.landing-honest__title {
   font-family: var(--font-mystic-display), Georgia, serif;
   font-size: clamp(1.65rem, 3vw, 2.25rem);
   font-weight: 500;
@@ -1961,31 +2137,120 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
   color: rgba(237, 230, 218, 0.5);
 }
 
+.landing-faq__title {
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: clamp(1.65rem, 3vw, 2.25rem);
+  font-weight: 500;
+  color: var(--color-text);
+  margin: 0 auto;
+  text-align: center;
+  max-width: 47.5rem; /* 760px — same axis as accordion */
+}
+
 .landing-faq__list {
-  max-width: 40rem;
-  margin: 1.5rem auto 0;
+  max-width: 47.5rem; /* 760px */
+  margin: 1.75rem auto 0;
   display: grid;
-  gap: 0.65rem;
+  gap: 0;
 }
 
 .landing-faq__item {
-  border-radius: 0.85rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(8, 6, 4, 0.4);
-  padding: 0.85rem 1rem;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  padding: 0;
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.45s ease-out,
+    transform 0.45s ease-out,
+    background-color 0.2s ease;
+  transition-delay: var(--faq-stagger, 0ms);
+}
+
+.landing-faq__list--revealed .landing-faq__item {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.landing-faq__item--open {
+  background: rgba(255, 248, 235, 0.035);
+}
+
+.landing-faq__heading {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 .landing-faq__q {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  padding: 1.05rem 0.35rem 1.05rem 0.15rem;
+  border: 0;
+  background: transparent;
   cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 1.05rem;
   font-weight: 600;
-  color: rgba(255, 248, 235, 0.94);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: rgba(255, 248, 235, 0.96);
+  border-radius: 0.35rem;
+}
+
+.landing-faq__q:focus-visible {
+  outline: 2px solid rgba(232, 199, 126, 0.85);
+  outline-offset: 3px;
+}
+
+.landing-faq__q-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.landing-faq__chevron {
+  flex-shrink: 0;
+  color: rgba(232, 199, 126, 0.82);
+  transform: rotate(-90deg);
+  transition: transform 200ms ease;
+}
+
+.landing-faq__item--open .landing-faq__chevron {
+  transform: rotate(0deg);
+}
+
+.landing-faq__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 280ms ease-out,
+    opacity 280ms ease-out;
+}
+
+.landing-faq__item--open .landing-faq__panel {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.landing-faq__panel-inner {
+  overflow: hidden;
+  min-height: 0;
 }
 
 .landing-faq__a {
-  margin: 0.65rem 0 0;
-  font-size: 0.9rem;
-  line-height: 1.55;
-  color: rgba(237, 230, 218, 0.78);
+  margin: 0;
+  padding: 0 0.15rem 1.1rem;
+  font-size: 0.94rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: rgba(237, 230, 218, 0.68);
 }
 
 .landing-faq__link {
@@ -1994,15 +2259,82 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
   text-underline-offset: 2px;
 }
 
-.landing-final-cta__inner {
+.landing-final-cta {
   text-align: center;
-  max-width: 36rem;
-  margin: 0 auto;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+
+.landing-final-cta__title {
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: clamp(1.65rem, 3vw, 2.25rem);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-text);
+  margin: 0;
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.5s ease-out,
+    transform 0.5s ease-out;
+}
+
+.landing-final-cta__title-keep {
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .landing-final-cta__title-keep {
+    white-space: normal;
+  }
 }
 
 .landing-final-cta__sub {
-  margin: 0.75rem 0 1.25rem;
+  margin: 0.55rem 0 0;
   color: rgba(237, 230, 218, 0.72);
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.5s ease-out 80ms,
+    transform 0.5s ease-out 80ms;
+}
+
+.landing-final-cta .editorial-btn {
+  margin-top: 1.45rem;
+  /* Clickable from first paint — never gated by entrance opacity */
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.landing-final-cta--in .landing-final-cta__title,
+.landing-final-cta--in .landing-final-cta__sub {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-faq__item,
+  .landing-faq__list--revealed .landing-faq__item,
+  .landing-faq__panel,
+  .landing-faq__item--open .landing-faq__panel,
+  .landing-faq__chevron,
+  .landing-final-cta__title,
+  .landing-final-cta__sub,
+  .landing-final-cta--in .landing-final-cta__title,
+  .landing-final-cta--in .landing-final-cta__sub {
+    transition: none !important;
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+
+  .landing-faq__panel {
+    grid-template-rows: 0fr;
+  }
+
+  .landing-faq__item--open .landing-faq__panel {
+    grid-template-rows: 1fr;
+  }
 }
 
 .landing-seo-hub__inline-link {
