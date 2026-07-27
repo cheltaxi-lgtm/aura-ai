@@ -1750,22 +1750,37 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
   margin: 0 auto 2.5rem;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-end;
   justify-content: center;
-  gap: 1.25rem 1.5rem;
+  gap: 0.65rem 0.75rem;
   max-width: 40rem;
 }
 
 .landing-demo__spread-item {
   display: flex;
-  width: 7rem;
+  width: 5.5rem;
   flex-direction: column;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
-@media (min-width: 480px) {
+@media (min-width: 400px) {
+  .landing-demo__spread {
+    gap: 1rem 1.15rem;
+  }
+
+  .landing-demo__spread-item {
+    width: 6.5rem;
+  }
+}
+
+@media (min-width: 560px) {
+  .landing-demo__spread {
+    gap: 1.25rem 1.5rem;
+  }
+
   .landing-demo__spread-item {
     width: 7.5rem;
   }
@@ -1773,21 +1788,35 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
 
 .landing-demo__pos {
   margin: 0;
-  font-size: 0.65rem;
-  letter-spacing: 0.14em;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   text-align: center;
   color: rgba(232, 199, 126, 0.72);
   line-height: 1.3;
 }
 
+@media (min-width: 400px) {
+  .landing-demo__pos {
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+  }
+}
+
 .landing-demo__card-slot {
-  width: 7rem;
-  height: 11.25rem;
+  width: 5.5rem;
+  height: 8.9rem;
   flex-shrink: 0;
 }
 
-@media (min-width: 480px) {
+@media (min-width: 400px) {
+  .landing-demo__card-slot {
+    width: 6.5rem;
+    height: 10.5rem;
+  }
+}
+
+@media (min-width: 560px) {
   .landing-demo__card-slot {
     width: 7.5rem;
     height: 12.25rem;
@@ -1797,10 +1826,16 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
 .landing-demo__card-name {
   margin: 0;
   font-family: var(--font-mystic-display), Georgia, serif;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   line-height: 1.25;
   text-align: center;
   color: rgba(237, 230, 218, 0.9);
+}
+
+@media (min-width: 400px) {
+  .landing-demo__card-name {
+    font-size: 0.78rem;
+  }
 }
 
 .landing-demo__reading {
