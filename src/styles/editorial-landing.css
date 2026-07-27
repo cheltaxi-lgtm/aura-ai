@@ -1989,3 +1989,10 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
 .landing-sticky-cta {
   z-index: 40;
 }
+
+/* While guest spread is active, hide SEO demo sample so it doesn't look like
+   keyword meanings appearing before the user's own teaser. */
+html[data-guest-spread-active="1"] .landing-demo,
+html[data-guest-spread-active="1"] .landing-sticky-cta {
+  display: none !important;
+}
