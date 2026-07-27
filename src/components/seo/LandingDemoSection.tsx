@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import DeckCard from "@/components/DeckCard";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { TRIPLET_UI_POSITIONS } from "@/lib/decks";
 
 type LandingDemoSectionProps = {
@@ -42,6 +43,7 @@ const DEMO_PEEK =
 export default function LandingDemoSection({ onOpenCards }: LandingDemoSectionProps) {
   const readingRef = useRef<HTMLDivElement | null>(null);
   const [shimmerOn, setShimmerOn] = useState(true);
+  const { ref: sectionRef, className: revealClass } = useScrollReveal<HTMLElement>();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -75,7 +77,11 @@ export default function LandingDemoSection({ onOpenCards }: LandingDemoSectionPr
   }, []);
 
   return (
-    <section className="landing-demo scroll-mt-24" aria-labelledby="landing-demo-title">
+    <section
+      ref={sectionRef}
+      className={`landing-demo scroll-mt-24 ${revealClass}`}
+      aria-labelledby="landing-demo-title"
+    >
       <div className="editorial-landing__inner">
         <header className="landing-demo__head">
           <h2 id="landing-demo-title" className="landing-demo__title">

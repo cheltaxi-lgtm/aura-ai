@@ -96,7 +96,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .salon-bg__stars--near {
+  .salon-bg__stars--near,
+  .salon-bg__stars--far {
     animation: none;
   }
 }
@@ -2454,4 +2455,169 @@ html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__
 html[data-guest-spread-active="1"] .landing-demo,
 html[data-guest-spread-active="1"] .landing-sticky-cta {
   display: none !important;
+}
+
+/* ── Salon scroll / mount reveals (transform + opacity only) ── */
+.salon-reveal .salon-reveal__item,
+.salon-reveal.salon-reveal--self {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  transition:
+    opacity 0.55s ease-out,
+    transform 0.55s ease-out;
+  transition-delay: var(--salon-delay, 0ms);
+}
+
+.salon-reveal--in .salon-reveal__item,
+.salon-reveal--in.salon-reveal--self {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Stagger: set --salon-i on .salon-reveal__item (0-based) */
+.salon-reveal--stagger .salon-reveal__item {
+  --salon-delay: calc(var(--salon-i, 0) * 70ms);
+}
+
+/* Hero: content cascade + slow ken-burns on media */
+.editorial-hero.salon-reveal .editorial-hero__brand { --salon-delay: 0ms; }
+.editorial-hero.salon-reveal .editorial-hero__title { --salon-delay: 80ms; }
+.editorial-hero.salon-reveal .editorial-hero__subtitle { --salon-delay: 150ms; }
+.editorial-hero.salon-reveal .editorial-hero__question { --salon-delay: 220ms; }
+.editorial-hero.salon-reveal .editorial-hero__pain-chips { --salon-delay: 290ms; }
+.editorial-hero.salon-reveal .editorial-hero__actions { --salon-delay: 360ms; }
+.editorial-hero.salon-reveal .editorial-hero__micro,
+.editorial-hero.salon-reveal .editorial-hero__pricing,
+.editorial-hero.salon-reveal .editorial-hero__legal-note { --salon-delay: 420ms; }
+
+.editorial-hero.salon-reveal .editorial-hero__brand,
+.editorial-hero.salon-reveal .editorial-hero__title,
+.editorial-hero.salon-reveal .editorial-hero__subtitle,
+.editorial-hero.salon-reveal .editorial-hero__question,
+.editorial-hero.salon-reveal .editorial-hero__pain-chips,
+.editorial-hero.salon-reveal .editorial-hero__actions,
+.editorial-hero.salon-reveal .editorial-hero__micro,
+.editorial-hero.salon-reveal .editorial-hero__pricing,
+.editorial-hero.salon-reveal .editorial-hero__legal-note {
+  opacity: 0;
+  transform: translate3d(0, 16px, 0);
+  transition:
+    opacity 0.6s ease-out,
+    transform 0.6s ease-out;
+  transition-delay: var(--salon-delay, 0ms);
+}
+
+.editorial-hero.salon-reveal--in .editorial-hero__brand,
+.editorial-hero.salon-reveal--in .editorial-hero__title,
+.editorial-hero.salon-reveal--in .editorial-hero__subtitle,
+.editorial-hero.salon-reveal--in .editorial-hero__question,
+.editorial-hero.salon-reveal--in .editorial-hero__pain-chips,
+.editorial-hero.salon-reveal--in .editorial-hero__actions,
+.editorial-hero.salon-reveal--in .editorial-hero__micro,
+.editorial-hero.salon-reveal--in .editorial-hero__pricing,
+.editorial-hero.salon-reveal--in .editorial-hero__legal-note {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Buttons stay clickable from frame 0 */
+.editorial-hero .editorial-btn,
+.editorial-hero .editorial-hero__pain-chip,
+.editorial-hero .hero-question button {
+  pointer-events: auto;
+}
+
+.editorial-hero__img {
+  transform: scale(1.05);
+  transform-origin: 50% 42%;
+}
+
+.editorial-hero.salon-reveal--in .editorial-hero__img {
+  animation: salon-hero-kenburns 32s ease-in-out infinite alternate;
+}
+
+@keyframes salon-hero-kenburns {
+  from {
+    transform: scale(1.05) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.11) translate3d(-1.2%, 1%, 0);
+  }
+}
+
+/* Demo spread cards stagger */
+.landing-demo.salon-reveal .landing-demo__head,
+.landing-demo.salon-reveal .landing-demo__question,
+.landing-demo.salon-reveal .landing-demo__spread,
+.landing-demo.salon-reveal .landing-demo__reading,
+.landing-demo.salon-reveal .landing-demo__cta {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  transition:
+    opacity 0.55s ease-out,
+    transform 0.55s ease-out;
+}
+
+.landing-demo.salon-reveal .landing-demo__head { transition-delay: 0ms; }
+.landing-demo.salon-reveal .landing-demo__question { transition-delay: 70ms; }
+.landing-demo.salon-reveal .landing-demo__spread { transition-delay: 140ms; }
+.landing-demo.salon-reveal .landing-demo__reading { transition-delay: 220ms; }
+.landing-demo.salon-reveal .landing-demo__cta { transition-delay: 280ms; }
+
+.landing-demo.salon-reveal--in .landing-demo__head,
+.landing-demo.salon-reveal--in .landing-demo__question,
+.landing-demo.salon-reveal--in .landing-demo__spread,
+.landing-demo.salon-reveal--in .landing-demo__reading,
+.landing-demo.salon-reveal--in .landing-demo__cta {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.landing-demo .landing-demo__cta .editorial-btn {
+  pointer-events: auto;
+}
+
+/* Global far star layer — quieter second drift */
+.salon-bg__stars--far {
+  animation: salon-stars-drift-far 48s ease-in-out infinite alternate;
+}
+
+@keyframes salon-stars-drift-far {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(14px, -10px, 0); }
+}
+
+html[data-motion-lite="1"] .salon-bg__stars--far,
+html[data-motion-lite="1"] .editorial-hero.salon-reveal--in .editorial-hero__img {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .salon-reveal .salon-reveal__item,
+  .salon-reveal.salon-reveal--self,
+  .editorial-hero.salon-reveal .editorial-hero__brand,
+  .editorial-hero.salon-reveal .editorial-hero__title,
+  .editorial-hero.salon-reveal .editorial-hero__subtitle,
+  .editorial-hero.salon-reveal .editorial-hero__question,
+  .editorial-hero.salon-reveal .editorial-hero__pain-chips,
+  .editorial-hero.salon-reveal .editorial-hero__actions,
+  .editorial-hero.salon-reveal .editorial-hero__micro,
+  .editorial-hero.salon-reveal .editorial-hero__pricing,
+  .editorial-hero.salon-reveal .editorial-hero__legal-note,
+  .landing-demo.salon-reveal .landing-demo__head,
+  .landing-demo.salon-reveal .landing-demo__question,
+  .landing-demo.salon-reveal .landing-demo__spread,
+  .landing-demo.salon-reveal .landing-demo__reading,
+  .landing-demo.salon-reveal .landing-demo__cta {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .editorial-hero__img,
+  .editorial-hero.salon-reveal--in .editorial-hero__img,
+  .salon-bg__stars--far {
+    animation: none !important;
+    transform: none !important;
+  }
 }

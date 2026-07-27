@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { GUEST_SPREAD_SECTION_ID } from "@/lib/landing-offer";
 import { buildLoginHref, resolveRegistrationReturnTo } from "@/lib/post-auth-return";
 import RuneIcon from "@/components/RuneIcon";
@@ -11,15 +12,17 @@ type EditorialStarterPackSectionProps = {
 
 export default function EditorialStarterPackSection({ onOpenFreeSpread }: EditorialStarterPackSectionProps) {
   const loginHref = buildLoginHref(resolveRegistrationReturnTo({ guestSpread: true }));
+  const { ref, className } = useScrollReveal<HTMLElement>();
 
   return (
     <section
+      ref={ref}
       id={GUEST_SPREAD_SECTION_ID}
-      className="editorial-starter-pack scroll-mt-24"
+      className={`editorial-starter-pack scroll-mt-24 ${className}`}
       aria-labelledby="editorial-starter-pack-title"
     >
       <div className="editorial-landing__inner">
-        <div className="editorial-starter-pack__card">
+        <div className="editorial-starter-pack__card salon-reveal__item" style={{ ["--salon-i" as string]: 0 }}>
           <div className="editorial-starter-pack__glow" aria-hidden />
           <div className="editorial-starter-pack__grid">
             <div className="editorial-starter-pack__visual" aria-hidden>

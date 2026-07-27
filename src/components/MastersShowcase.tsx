@@ -6,6 +6,7 @@ import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MasterShowcaseCard from "@/components/MasterShowcaseCard";
 import MasterListRow from "@/components/MasterListRow";
 import MasterServiceDisclaimer from "@/components/MasterServiceDisclaimer";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { MASTER_SECTION_SUBTITLE } from "@/lib/master-disclosure";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 
@@ -63,6 +64,7 @@ export default function MastersShowcase({
   guestLanding = false,
 }: MastersShowcaseProps) {
   const continueSet = useMemo(() => new Set(continueMasterIds), [continueMasterIds]);
+  const { ref: revealRef, className: revealClass } = useScrollReveal<HTMLElement>();
 
   const listBody = masters.map((master, index) => {
     const canContinue = continueSet.has(master.id);
@@ -167,16 +169,27 @@ export default function MastersShowcase({
     );
 
     return (
-      <section id="наставники" className={`master-showcase-section scroll-mt-24 ${className}`.trim()}>
+      <section
+        ref={revealRef}
+        id="наставники"
+        className={`master-showcase-section scroll-mt-24 ${revealClass} ${className}`.trim()}
+      >
         {rowVariant === "editorial" ? <div className="editorial-landing__inner">{inner}</div> : inner}
       </section>
     );
   }
 
   return (
-    <section id="наставники" className={`master-showcase-section scroll-mt-24 ${className}`.trim()}>
+    <section
+      ref={revealRef}
+      id="наставники"
+      className={`master-showcase-section scroll-mt-24 ${revealClass} salon-reveal--stagger ${className}`.trim()}
+    >
       <div className="mx-auto w-full max-w-[1120px] px-4 sm:px-6">
-        <div className="master-showcase-section__head">
+        <div
+          className="master-showcase-section__head salon-reveal__item"
+          style={{ ["--salon-i" as string]: 0 }}
+        >
           <h2 className="font-display master-showcase-section__title">{title}</h2>
           <p className="master-showcase-section__subtitle">{subtitle}</p>
         </div>
@@ -188,7 +201,8 @@ export default function MastersShowcase({
           {guestLanding ? (
             <Link
               href="/about/masters"
-              className="master-showcase-card master-showcase-card--gallery master-showcase-card--compact master-showcase-card--guest-landing master-showcase-card--all-masters group relative flex h-full w-full max-w-[350px] flex-col items-center justify-center gap-3 p-6 text-center no-underline"
+              className="master-showcase-card master-showcase-card--gallery master-showcase-card--compact master-showcase-card--guest-landing master-showcase-card--all-masters group relative flex h-full w-full max-w-[350px] flex-col items-center justify-center gap-3 p-6 text-center no-underline salon-reveal__item"
+              style={{ ["--salon-i" as string]: masters.length + 2 }}
             >
               <span className="master-showcase-card__all-arrow" aria-hidden>
                 →
