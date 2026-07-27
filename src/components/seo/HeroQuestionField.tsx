@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
 import { buildAskUrl, buildSpreadStartUrl } from "@/lib/spread-intents/router";
@@ -27,15 +27,40 @@ type HeroQuestionFieldProps = {
   className?: string;
   /** Landing guest flow: keep the user in-page and start the preview spread. */
   onQuestionSubmit?: (question: string) => void;
+  /** Desktop-only autofocus (never on mobile). */
+  autoFocusDesktop?: boolean;
+  /** Button style for the submit control. */
+  submitVariant?: "gold" | "secondary";
+  placeholder?: string;
+  hint?: string;
+  /** Readable hint over photographic hero backgrounds. */
+  hintOnScrim?: boolean;
 };
 
 export default function HeroQuestionField({
   compact = false,
   className = "",
   onQuestionSubmit,
+  autoFocusDesktop = false,
+  submitVariant = "gold",
+  placeholder = "Например: вернётся ли он?",
+  hint = "Подберём схему и мастера — или откроем готовый расклад из каталога",
+  hintOnScrim = false,
 }: HeroQuestionFieldProps) {
   const [question, setQuestion] = useState("");
   const inputRef = useNativeInputSync<HTMLInputElement>(setQuestion);
+
+  useEffect(() => {
+    if (!autoFocusDesktop || compact) return;
+    if (typeof window === "undefined") return;
+    const isDesktop = window.matchMedia("(min-width: 768px) and (pointer: fine)").matches;
+    if (!isDesktop) return;
+    const id = window.requestAnimationFrame(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus once on mount when enabled
+  }, [autoFocusDesktop, compact]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -98,25 +123,27 @@ export default function HeroQuestionField({
     );
   }
 
+  const submitClass =
+    submitVariant === "secondary"
+      ? "hero-question__submit editorial-btn editorial-btn--outline"
+      : "hero-question__submit btn-luxe btn-luxe--md btn-luxe--gold";
+
   return (
-    <form onSubmit={submit} className={`hero-question ${className}`.trim()}>
+    <form
+      onSubmit={submit}
+      className={`hero-question hero-question--landing ${hintOnScrim ? "hero-question--hint-scrim" : ""} ${className}`.trim()}
+    >
       <label htmlFor="hero-question" className="hero-question__label">
         Спросите, что хотите узнать
       </label>
       <div className="hero-question__row">
-        <input
-          {...inputProps}
-          id="hero-question"
-          placeholder="Например: вернётся ли он? стоит ли менять работу?"
-        />
-        <button type="submit" className="hero-question__submit btn-luxe btn-luxe--md btn-luxe--gold">
+        <input {...inputProps} id="hero-question" placeholder={placeholder} />
+        <button type="submit" className={submitClass}>
           <Sparkles className="h-4 w-4" aria-hidden />
           Разложить карты
         </button>
       </div>
-      <p className="hero-question__hint">
-        Подберём схему и мастера — или откроем готовый расклад из каталога
-      </p>
+      <p className="hero-question__hint">{hint}</p>
     </form>
   );
 }

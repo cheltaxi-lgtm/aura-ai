@@ -1,31 +1,31 @@
-interface RuneIconProps {
+type RuneIconProps = {
   className?: string;
   title?: string;
-}
+};
 
-/** Золотая SVG-иконка руны (Uruz) для цен и тарифов */
-export default function RuneIcon({ className = "h-4 w-4", title }: RuneIconProps) {
+/** Uruz (ᚢ / U+16A2) — SVG so the glyph never falls back to a tofu box. */
+export default function RuneIcon({ className = "inline-block h-[1em] w-[0.7em]", title = "ᚢ" }: RuneIconProps) {
   return (
     <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
       className={className}
-      role={title ? "img" : "presentation"}
-      aria-hidden={title ? undefined : true}
+      viewBox="0 0 32 48"
+      fill="currentColor"
+      role="img"
+      aria-label={title}
+      focusable="false"
     >
-      {title ? <title>{title}</title> : null}
-      <path
-        d="M12 3.5L7.5 20.5H10.2L12 14.2L13.8 20.5H16.5L12 3.5Z"
-        fill="currentColor"
-      />
-      <path
-        d="M9.5 20.5H14.5"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        opacity="0.45"
-      />
+      <title>{title}</title>
+      <path d="M6 4 L16 44 L26 4 L22.5 4 L16 32.5 L9.5 4 Z" />
     </svg>
+  );
+}
+
+/** Inline rune for string-like UI: “120 ᚢ”. */
+export function RuneAmount({ amount, className = "" }: { amount: number | string; className?: string }) {
+  return (
+    <span className={`inline-flex items-baseline gap-1 ${className}`.trim()}>
+      <span>{amount}</span>
+      <RuneIcon className="relative top-[0.05em] h-[0.95em] w-[0.65em]" />
+    </span>
   );
 }

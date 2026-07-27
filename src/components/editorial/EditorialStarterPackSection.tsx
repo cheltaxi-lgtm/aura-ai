@@ -1,15 +1,16 @@
 "use client";
 
-import { Gift } from "lucide-react";
+import Link from "next/link";
 import { GUEST_SPREAD_SECTION_ID } from "@/lib/landing-offer";
-import { buildRegisterHref, resolveRegistrationReturnTo } from "@/lib/post-auth-return";
+import { buildLoginHref, resolveRegistrationReturnTo } from "@/lib/post-auth-return";
+import RuneIcon from "@/components/RuneIcon";
 
 type EditorialStarterPackSectionProps = {
   onOpenFreeSpread?: () => void;
 };
 
 export default function EditorialStarterPackSection({ onOpenFreeSpread }: EditorialStarterPackSectionProps) {
-  const registerHref = buildRegisterHref(resolveRegistrationReturnTo({ guestSpread: true }));
+  const loginHref = buildLoginHref(resolveRegistrationReturnTo({ guestSpread: true }));
 
   return (
     <section
@@ -23,38 +24,41 @@ export default function EditorialStarterPackSection({ onOpenFreeSpread }: Editor
           <div className="editorial-starter-pack__grid">
             <div className="editorial-starter-pack__visual" aria-hidden>
               <div className="editorial-starter-pack__rune-ring">
-                <span className="editorial-starter-pack__rune-glyph">ᚢ</span>
+                <RuneIcon className="editorial-starter-pack__rune-glyph h-10 w-7" />
               </div>
             </div>
 
             <div className="editorial-starter-pack__copy">
-              <p className="editorial-starter-pack__eyebrow">
-                <Gift className="h-3.5 w-3.5" aria-hidden />
-                После входа
-              </p>
+              <p className="editorial-starter-pack__eyebrow">После входа</p>
               <h2 id="editorial-starter-pack-title" className="editorial-starter-pack__title">
-                После входа — полный разбор
+                Полный разбор именно этих карт
               </h2>
               <p className="editorial-starter-pack__subtitle">
-                Сохраните расклад, получите связную расшифровку в чате и стартовые руны ᚢ на баланс —
-                хватит на полный разбор и первые уточнения.
+                Не новый расклад — те же три карты, полностью.
               </p>
               <ul className="editorial-starter-pack__perks">
-                <li>Полный разбор именно тех карт, что уже открыты</li>
+                <li>
+                  Стартовые руны <RuneIcon className="inline-block h-[0.95em] w-[0.65em] align-[-0.1em]" /> на
+                  балансе — хватит на разбор и первые уточнения
+                </li>
                 <li>История сеансов сохраняется в кабинете</li>
-                <li>Можно продолжить практику без срочной оплаты картой</li>
+                <li>Карту привязывать не нужно</li>
               </ul>
               <div className="editorial-starter-pack__actions">
-                <a href={registerHref} className="editorial-btn editorial-btn--gold editorial-starter-pack__cta-primary">
-                  Войти и получить разбор
-                </a>
                 {onOpenFreeSpread ? (
-                  <button type="button" className="editorial-btn editorial-btn--ghost" onClick={onOpenFreeSpread}>
-                    Сначала открыть 3 карты
+                  <button
+                    type="button"
+                    className="editorial-btn editorial-btn--gold editorial-starter-pack__cta-primary"
+                    onClick={onOpenFreeSpread}
+                  >
+                    Открыть 3 карты
                   </button>
                 ) : null}
+                <Link href={loginHref} className="editorial-btn editorial-btn--ghost">
+                  Войти
+                </Link>
               </div>
-              <p className="editorial-starter-pack__fine">18+ · развлекательно-ознакомительный сервис</p>
+              <p className="editorial-starter-pack__fine">уже есть аккаунт · 18+</p>
             </div>
           </div>
         </div>

@@ -116,8 +116,11 @@ export default function SiteFooter({
             <Link href="/statyi" className="editorial-footer__link">
               Журнал
             </Link>
-            <Link href="/#партнёрам" className="editorial-footer__link">
+            <Link href="/partners" className="editorial-footer__link">
               Партнёрам
+            </Link>
+            <Link href="/auth/expert/register" className="editorial-footer__link">
+              Стать мастером
             </Link>
           </nav>
 

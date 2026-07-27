@@ -40,7 +40,7 @@ export default function LandingPartnersSection() {
           </p>
           <button
             type="button"
-            className="editorial-btn editorial-btn--gold editorial-partners__cta"
+            className="editorial-btn editorial-btn--outline editorial-partners__cta"
             onClick={(e) => openModal(e.currentTarget)}
           >
             Обсудить пилот
@@ -49,9 +49,6 @@ export default function LandingPartnersSection() {
 
         <div className="editorial-partners__examples">
           <article className="editorial-partners__example editorial-partners__example--pilot">
-            <span className="editorial-partners__mark" aria-hidden>
-              П
-            </span>
             <div className="min-w-0 flex-1">
               <h3 className="editorial-partners__example-name">Пилот для партнёра</h3>
               <p className="editorial-partners__example-blurb">
@@ -79,7 +76,7 @@ export default function LandingPartnersSection() {
           </p>
           <button
             type="button"
-            className="editorial-btn editorial-btn--gold editorial-partners__cta"
+            className="editorial-btn editorial-btn--outline editorial-partners__cta"
             onClick={(e) => openModal(e.currentTarget)}
           >
             Обсудить партнёрство

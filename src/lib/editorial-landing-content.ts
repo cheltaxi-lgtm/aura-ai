@@ -9,12 +9,11 @@ export const EDITORIAL_SECTION_IDS = {
 } as const;
 
 export const EDITORIAL_HERO = {
-  title: "Когда нужен разговор с собой",
-  subtitle:
-    "Тихое место для ясного вопроса: три карты и краткий ориентир — полный разбор после входа.",
-  primaryCta: "Открыть 3 карты бесплатно",
+  title: "Спросите то, о чём думаете каждый день",
+  subtitle: "Три карты откроются прямо здесь — бесплатно и без регистрации.",
+  primaryCta: "Открыть 3 карты",
   secondaryCta: "Как проходит сеанс",
-  microcopy: "3 карты бесплатно · 18+ · развлекательный сервис",
+  microcopy: "Бесплатно · без привязки карты · 18+",
 } as const;
 
 export type EditorialTopic = {

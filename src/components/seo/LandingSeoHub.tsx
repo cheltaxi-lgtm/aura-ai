@@ -1,6 +1,7 @@
 "use client";
 
 import { type MouseEvent } from "react";
+import Link from "next/link";
 import {
   BookOpen,
   Camera,
@@ -11,6 +12,7 @@ import {
   Stars,
 } from "lucide-react";
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
+import RuneIcon, { RuneAmount } from "@/components/RuneIcon";
 
 const SERVICES = [
   { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
@@ -89,15 +91,32 @@ const go = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
 type LandingSeoHubProps = {
   rubPerRune?: number;
   readingPriceLabel?: string;
+  /** Prefer numeric cost + RuneIcon (avoids tofu for ᚢ). */
+  readingCost?: number;
   /** Compact link row instead of large service cards (default). */
   compact?: boolean;
+  /** When FAQ lives in a dedicated landing section. */
+  hideFaq?: boolean;
 };
 
 export default function LandingSeoHub({
   rubPerRune = 2,
   readingPriceLabel,
+  readingCost,
   compact = true,
+  hideFaq = false,
 }: LandingSeoHubProps) {
+  const priceNode =
+    typeof readingCost === "number" ? (
+      <strong className="text-aura-champagne/90 inline-flex items-baseline gap-1">
+        <RuneAmount amount={readingCost} />
+        {rubPerRune > 0 ? (
+          <span className="text-aura-ivory/55 font-normal"> · ~{readingCost * rubPerRune} ₽</span>
+        ) : null}
+      </strong>
+    ) : readingPriceLabel ? (
+      <strong className="text-aura-champagne/90">{readingPriceLabel}</strong>
+    ) : null;
   return (
     <section
       id="тарифы"
@@ -141,32 +160,44 @@ export default function LandingSeoHub({
           </ul>
         )}
 
-        <div className="landing-seo-hub__faq">
-          <h3 className="landing-seo-hub__faq-title">Частые вопросы</h3>
-          <div className="landing-seo-hub__faq-list">
-            {LANDING_FAQ_ITEMS.map(({ question, answer }) => (
-              <details key={question} className="landing-seo-hub__faq-item">
-                <summary className="landing-seo-hub__faq-q">{question}</summary>
-                <p className="landing-seo-hub__faq-a">{answer}</p>
-              </details>
-            ))}
+        {!hideFaq ? (
+          <div className="landing-seo-hub__faq">
+            <h3 className="landing-seo-hub__faq-title">Частые вопросы</h3>
+            <div className="landing-seo-hub__faq-list">
+              {LANDING_FAQ_ITEMS.map(({ question, answer }) => (
+                <details key={question} className="landing-seo-hub__faq-item">
+                  <summary className="landing-seo-hub__faq-q">{question}</summary>
+                  <p className="landing-seo-hub__faq-a">{answer}</p>
+                </details>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <p className="landing-seo-hub__pricing-note">
-          {readingPriceLabel ? (
+          {priceNode ? (
             <>
-              Полная расшифровка расклада — <strong className="text-aura-champagne/90">{readingPriceLabel}</strong>
+              Полная расшифровка расклада — {priceNode}
               {rubPerRune > 0 ? (
-                <span className="text-aura-ivory/55"> · курс 1 ᚢ = {rubPerRune} ₽</span>
+                <span className="text-aura-ivory/55">
+                  {" "}
+                  · курс 1 <RuneIcon className="inline-block h-[0.9em] w-[0.6em] align-[-0.1em]" /> ={" "}
+                  {rubPerRune} ₽
+                </span>
               ) : null}
-              . Подробный прайс — кнопка{" "}
-              <strong className="text-aura-champagne/90">«Тарифы»</strong> в верхнем меню.
+              . Подробный прайс — в{" "}
+              <Link href="/#тарифы" className="landing-seo-hub__inline-link">
+                разделе тарифов
+              </Link>
+              .
             </>
           ) : (
             <>
-              Полный прайс в рунах и курс к рублю — кнопка{" "}
-              <strong className="text-aura-champagne/90">«Тарифы»</strong> в верхнем меню.
+              Полный прайс в рунах и курс к рублю — в{" "}
+              <Link href="/#тарифы" className="landing-seo-hub__inline-link">
+                разделе тарифов
+              </Link>
+              .
             </>
           )}
         </p>

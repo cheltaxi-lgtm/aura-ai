@@ -30,6 +30,10 @@ import AndroidDownloadBlock from "@/components/seo/AndroidDownloadBlock";
 import LandingSeoHub from "@/components/seo/LandingSeoHub";
 import LandingPartnersSection from "@/components/seo/LandingPartnersSection";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
+import LandingDemoSection from "@/components/seo/LandingDemoSection";
+import LandingHonestSection from "@/components/seo/LandingHonestSection";
+import LandingFaqSection from "@/components/seo/LandingFaqSection";
+import LandingFinalCtaSection from "@/components/seo/LandingFinalCtaSection";
 import {
   buildLandingOfferCopy,
   LANDING_QUESTION_KEY,
@@ -259,8 +263,10 @@ export default function AuraSellingLanding({
   layout = "classic",
 }: AuraSellingLandingProps) {
   const isEditorial = layout === "editorial";
+  const isGuestEditorial = isEditorial && !isLoggedIn;
   const showLoggedInHome = isLoggedIn && !showHero && showLoggedInHomeBanner;
-  const showQuickQuestionsBlock = showHero || Boolean(afterQuickQuestions) || showLoggedInHome;
+  const showQuickQuestionsBlock =
+    !isGuestEditorial && (showHero || Boolean(afterQuickQuestions) || showLoggedInHome);
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
@@ -270,7 +276,9 @@ export default function AuraSellingLanding({
   } | null>(null);
   const [topicAuthSlug, setTopicAuthSlug] = useState<string | null>(null);
   const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub, heroVariant);
-  useLandingSocialProofVisible(showSellingSections || (showHero && !isLoggedIn));
+  useLandingSocialProofVisible(
+    !isGuestEditorial && (showSellingSections || (showHero && !isLoggedIn))
+  );
 
   useEffect(() => {
     const variant = resolveLandingHeroVariant();
@@ -366,52 +374,113 @@ export default function AuraSellingLanding({
     ? resolveRegistrationReturnTo({ intentSlug: topicAuthSlug })
     : null;
 
-  return (
-    <div className={isEditorial ? "editorial-landing" : "aura-landing"}>
-      <BodyPortal active={Boolean(topicAuthSlug)}>
-        {topicAuthSlug && topicAuthReturnTo ? (
-          <div className="fixed inset-0 z-[7000] flex items-end justify-center sm:items-center">
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-              onClick={() => setTopicAuthSlug(null)}
-              aria-label="Закрыть"
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="topic-auth-title"
-              className="relative z-10 flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0a0612] shadow-2xl sm:mx-4 sm:rounded-2xl"
-            >
-              <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-amber-400/70">Zovus</p>
-                  <h2 id="topic-auth-title" className="font-display text-lg font-bold text-white">
-                    Войти или зарегистрироваться
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTopicAuthSlug(null)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
-                  aria-label="Закрыть"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+  const topicAuthPortal = (
+    <BodyPortal active={Boolean(topicAuthSlug)}>
+      {topicAuthSlug && topicAuthReturnTo ? (
+        <div className="fixed inset-0 z-[7000] flex items-end justify-center sm:items-center">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={() => setTopicAuthSlug(null)}
+            aria-label="Закрыть"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="topic-auth-title"
+            className="relative z-10 flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0a0612] shadow-2xl sm:mx-4 sm:rounded-2xl"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-400/70">Zovus</p>
+                <h2 id="topic-auth-title" className="font-display text-lg font-bold text-white">
+                  Войти или зарегистрироваться
+                </h2>
               </div>
-              <div className="lux-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
-                <RegisterGate
-                  compact
-                  title="Продолжите выбранную тему"
-                  description="После входа откроем расклад по этой теме — вопрос и мастер уже будут подставлены."
-                  returnTo={topicAuthReturnTo}
-                  source="editorial_topic"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => setTopicAuthSlug(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+                aria-label="Закрыть"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="lux-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
+              <RegisterGate
+                compact
+                title="Продолжите выбранную тему"
+                description="После входа откроем расклад по этой теме — вопрос и мастер уже будут подставлены."
+                returnTo={topicAuthReturnTo}
+                source="editorial_topic"
+              />
             </div>
           </div>
+        </div>
+      ) : null}
+    </BodyPortal>
+  );
+
+  if (isGuestEditorial) {
+    return (
+      <div className="editorial-landing editorial-landing--guest-conversion">
+        {topicAuthPortal}
+        <EditorialHeroSection
+          isLoggedIn={false}
+          conversionHero
+          pricingLine={undefined}
+          onPrimaryCta={() => handlePrimaryCta("hero")}
+          onSecondaryCta={scrollToSession}
+          onQuestionSubmit={(question) => startGuestSpread(question)}
+          onPainChip={(question, intentSlug) => {
+            const intent = getSpreadIntentBySlug(intentSlug);
+            startGuestSpread(question, intent?.recommendedMasterId);
+          }}
+        />
+        {/* Same guest-receipt flow; mounted under hero (no full navigation). Idle = null. */}
+        <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
+        <LandingDemoSection onOpenCards={() => handlePrimaryCta("final")} />
+        <EditorialSessionStepsSection />
+        <LandingHonestSection />
+        <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
+        {showMasters ? (
+          <MastersShowcase
+            masters={masters}
+            onSelect={onSelectMaster}
+            onBrowseDeck={onBrowseDeck}
+            recommendedId={recommendedId}
+            continueMasterIds={continueMasterIds}
+            spreadReadingDone={spreadReadingDone}
+            runesEnabled={false}
+            enforceBalance={false}
+            layout="grid"
+            guestLanding
+            showExpertCta={false}
+            showDisclaimer={false}
+            title="Выберите наставника"
+            subtitle="Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
+            className="aura-landing-masters"
+          />
         ) : null}
-      </BodyPortal>
+        <EditorialPracticesSection isLoggedIn={false} />
+        <LandingFaqSection />
+        <LandingFinalCtaSection onOpenCards={() => handlePrimaryCta("final")} />
+        {showTariffs ? (
+          <LandingSeoHub
+            rubPerRune={config.rubPerRune}
+            readingCost={ready && config.enabled ? cost("READING") : undefined}
+            compact
+            hideFaq
+          />
+        ) : null}
+        <LandingStickyCta label="Открыть 3 карты" onClick={() => handlePrimaryCta("sticky")} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={isEditorial ? "editorial-landing" : "aura-landing"}>
+      {topicAuthPortal}
 
       {!showHero ? (
         <h1 className="sr-only">
