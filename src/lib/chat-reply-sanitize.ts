@@ -5,6 +5,11 @@ import {
   stripEnglishLeakageFromRussianText,
 } from "@/lib/reading-text-polish";
 
+/** Collapse runs of spaces/tabs only — never eat paragraph breaks. */
+function collapseHorizontalWhitespace(text: string): string {
+  return text.replace(/[^\S\n]{2,}/g, " ");
+}
+
 /** Remove theater / voice stage directions like «(Голос низкий, хриплый…)». */
 export function stripStageDirections(text: string): string {
   let out = text.trim();
@@ -13,7 +18,7 @@ export function stripStageDirections(text: string): string {
   for (let i = 0; i < 4; i++) {
     const lead = out.match(/^\([^)]{3,220}\)\s*(?:\/|\||[-–—])?\s*/u);
     if (!lead) break;
-    out = out.slice(lead[0].length).trim();
+    out = out.slice(lead[0].length).trimStart();
   }
 
   out = out.replace(
@@ -21,15 +26,16 @@ export function stripStageDirections(text: string): string {
     ""
   );
 
-  out = out.replace(/^\s*[/\-–—|]\s*/, "").replace(/\s{2,}/g, " ").trim();
-  return out;
+  out = out.replace(/^[^\S\n]*[/\-–—|]\s*/, "");
+  return collapseHorizontalWhitespace(out).replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Strip stage directions in parentheses, asterisks, and bracketed asides. */
 export function stripTheaterFromReply(text: string): string {
   let out = stripStageDirections(text);
 
-  out = out.replace(/\*[^*\n]{2,120}\*/g, " ");
+  // Single-asterisk asides (*вздыхает*) only — never touch **markdown bold** card names.
+  out = out.replace(/(?<!\*)\*([^*\n]{2,120})\*(?!\*)/g, " ");
   out = out.replace(/(?<!!)\[[^\]\n]{2,120}\]/g, " ");
   out = out.replace(
     /\([^)]{2,160}(?:вздых|смотр|шепч|пауз|голос|задум|усмех|медлен|интонац|тяжел|хрип|тихо|громко|задумч)[^)]{0,120}\)/giu,
@@ -37,7 +43,7 @@ export function stripTheaterFromReply(text: string): string {
   );
 
   return stripEnglishLeakageFromRussianText(
-    out.replace(/\n{3,}/g, "\n\n").replace(/  +/g, " ").trim()
+    collapseHorizontalWhitespace(out.replace(/\n{3,}/g, "\n\n")).trim()
   );
 }
 

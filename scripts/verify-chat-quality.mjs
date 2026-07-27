@@ -12,6 +12,8 @@ import {
   missingCardMentions,
   resolveClientReadingText,
   sanitizeReadingForClient,
+  stripStageDirections,
+  stripTheaterFromReply,
 } from "../src/lib/chat-reply-sanitize.ts";
 import { coerceSpreadReadingText } from "../src/lib/chat-reading-helpers.ts";
 import { chatHasSpreadReading } from "../src/lib/chat-cache.ts";
@@ -332,6 +334,60 @@ assert(
     ["Шут", "Маг", "Жрица"]
   ) === false
 );
+
+// --- stripTheater must preserve markdown bold + paragraph breaks ---
+const WELL_FORMATTED_READING = [
+  "Юлия, смотрю на твои карты.",
+  "",
+  "**Семёрка Мечей** — корень. Здесь скрытность и жесты за спиной.",
+  "",
+  "**Тройка Мечей** — боль в союзе, доверие подорвано.",
+  "",
+  "**Луна** — иллюзии развеются, скрытое станет явным.",
+  "",
+  "## Простыми словами",
+  "",
+  "Ложь есть, и она ранит. Готовься к разговору.",
+].join("\n");
+const WELL_CARDS = ["Семёрка Мечей", "Тройка Мечей", "Луна"];
+
+const theaterKept = stripTheaterFromReply(WELL_FORMATTED_READING);
+assert("theater keeps bold card names", WELL_CARDS.every((c) => theaterKept.includes(`**${c}**`)));
+assert("theater keeps blank-line paragraphs", (theaterKept.match(/\n\s*\n/g) || []).length >= 3);
+assert("theater keeps ## heading on its own line", /(^|\n)##\s*Простыми словами/.test(theaterKept));
+assert("theater does not invent empty * * placeholders", !/\*\s+\*/.test(theaterKept));
+
+const persistPath = polishSpreadReadingText(theaterKept, WELL_CARDS);
+assert(
+  "persist path keeps all three card interpretations",
+  WELL_CARDS.every((c) => persistPath.includes(c)) &&
+    persistPath.includes("скрытность") &&
+    persistPath.includes("боль в союзе") &&
+    persistPath.includes("иллюзии")
+);
+assert(
+  "persist path does not glue first card to last meaning",
+  !/Семёрка Мечей[^*\n]{0,40}иллюзии/.test(persistPath.replace(/\s+/g, " "))
+);
+
+const sanitizedWell = sanitizeReadingForClient(theaterKept, WELL_CARDS);
+assert("sanitize accepts well-formatted reading", sanitizedWell.length >= 120);
+assert(
+  "sanitize keeps card bold after accept",
+  WELL_CARDS.every((c) => sanitizedWell.includes(c))
+);
+
+const withAside = "Юлия, смотри. *вздыхает* **Луна** — тень.\n\nДальше ясно.";
+const asideStripped = stripTheaterFromReply(withAside);
+assert("single-asterisk aside removed", !asideStripped.includes("вздыхает"));
+assert("bold survives beside aside", asideStripped.includes("**Луна**"));
+assert("aside strip keeps paragraph break", asideStripped.includes("\n"));
+
+const staged = "(Голос низкий, хриплый)\n\nЮлия, вот расклад.\n\n**Луна** — путь.";
+const stagedOut = stripStageDirections(staged);
+assert("stage lead paren removed", !stagedOut.includes("хриплый"));
+assert("stage strip keeps newlines", stagedOut.includes("\n\n") || stagedOut.includes("\n"));
+assert("stage strip keeps bold", stagedOut.includes("**Луна**"));
 
 console.log(`\n--- ${failed} failed ---`);
 process.exit(failed > 0 ? 1 : 0);

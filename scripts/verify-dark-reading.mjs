@@ -48,11 +48,28 @@ const reading = buildCharacterPrompt(
 const wrapped = await wrapSystemPrompt(`${reading}\n\n${extras}`);
 
 assert("honesty forbids soft watering of shadow", /без смягчения/.test(HONESTY_POLICY));
+assert("honesty forbids only-positive readings", /Только позитив запрещён/.test(HONESTY_POLICY));
 assert("dark policy bans «возможны трудности» watering", /возможны трудности/.test(DARK_TOPICS_POLICY));
 assert("dark policy requires direct acknowledgment", /прямо и без смягчений/.test(DARK_TOPICS_POLICY));
+assert(
+  "dark policy requires shadow in every reading",
+  /ТЕНЬ В КАЖДОМ РАСКЛАДЕ/.test(DARK_TOPICS_POLICY) && /Только позитив — ложь/.test(DARK_TOPICS_POLICY)
+);
+assert(
+  "dark policy strengthens underside of light cards",
+  /изнанку по символам|Тёмную сторону усиливай/.test(DARK_TOPICS_POLICY)
+);
 assert("card-grounded names shadow directly", /называй прямо/.test(CARD_GROUNDED_READING_RULES));
+assert(
+  "card-grounded forbids only-positive full readings",
+  /Только позитив запрещён/.test(CARD_GROUNDED_READING_RULES)
+);
 assert("premium extras: no forbidden topics", /Нет запретных тем расклада/.test(extras));
 assert("premium extras: name pain/break/cold", /разрыв, холод, риск, боль/.test(extras));
+assert(
+  "premium extras: require resource AND shadow",
+  /опора\/ресурс И тень/.test(extras) || /опора\/ресурс И тень\/цена\/риск/.test(extras)
+);
 assert("reading prompt includes dark card names", wrapped.includes("Тройка Мечей") && wrapped.includes("Башня"));
 assert("reading prompt includes betrayal meanings", wrapped.includes("предательство"));
 assert("wrap injects honesty + dark policies", wrapped.includes("ПОЛИТИКА ЧЕСТНОСТИ") && wrapped.includes("ТЁМНЫЕ ТЕМЫ"));
