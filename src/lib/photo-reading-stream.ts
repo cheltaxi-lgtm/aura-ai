@@ -1,5 +1,6 @@
 import { createChatResponseStream } from "@/lib/chat-stream";
 import { photoInterpretationMaxTokens } from "@/lib/photo-reading-prompts";
+import { wrapSystemPrompt } from "@/lib/prompt-policy";
 
 function buildPhotoInterpretationUserBlock(params: {
   spreadSummary: string;
@@ -33,8 +34,11 @@ export async function createPhotoInterpretationJson(params: {
   provenance?: import("@/lib/ai-generation-contract").AiProvenance;
 }> {
   const n = Math.max(1, params.cardCount ?? 1);
+  // Streaming path wraps inside createChatResponseStream; JSON path must wrap here
+  // or the async/mobile clients lose the honesty and dark-topics policies.
+  const systemPrompt = await wrapSystemPrompt(params.systemPrompt);
   const messages = [
-    { role: "system" as const, content: params.systemPrompt },
+    { role: "system" as const, content: systemPrompt },
     {
       role: "user" as const,
       content: buildPhotoInterpretationUserBlock({

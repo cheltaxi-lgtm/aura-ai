@@ -9,7 +9,7 @@ import {
   TAROT_RUNE_CHAT_FORMAT,
   tarotRuneThematicReadingRules,
 } from "./tarot-rune-format";
-import { buildGenderPronounBlock, SPREAD_TRUTH_RULES } from "./gender-context";
+import { buildGenderPronounBlock } from "./gender-context";
 import { resolveClientGender } from "@/lib/russian-name-gender";
 import { AGAFYA_PERSONA } from "./masters/agafya";
 import { RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE } from "./masters/ragnar";
@@ -38,7 +38,7 @@ const MASTER_DISPLAY: Record<CharacterKey, string> = {
   ragnar: "Рагнар Хрёгвидссон",
   veronika: "Вероника Лунная",
   agafya: "Баба Агафья",
-  "shri-raj": "Гуру Шри Радж Кumar",
+  "shri-raj": "Гуру Шри Радж Кумар",
   numerolog: "Эвелина Числа",
 };
 
@@ -214,8 +214,9 @@ export function buildSystemPrompt(
 
   const formatBlock = (() => {
     if (character === "numerolog") {
-      return thematicReading
-        ? thematicSpreadReadingRules(spreadCardCount)
+      if (thematicReading) return thematicSpreadReadingRules(spreadCardCount);
+      return mode === "reading" && spreadCardCount !== 3
+        ? responseFormatForSpread(spreadCardCount)
         : RESPONSE_FORMAT;
     }
     if (tarotRune) {
@@ -255,7 +256,7 @@ export function buildSystemPrompt(
     numerologyBlock,
     options.natalChartBlock ?? "",
     CONTEXT_RULES,
-    SPREAD_TRUTH_RULES,
+    // SPREAD_TRUTH_RULES is injected once by wrapSystemPrompt — do not repeat it here.
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
     clientBlock(
       user,
