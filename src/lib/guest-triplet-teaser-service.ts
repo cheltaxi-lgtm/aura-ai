@@ -172,13 +172,51 @@ export type TeaserQualityResult =
   | { ok: true }
   | { ok: false; reason: string };
 
+/** Motif tokens from deck meaning hints — used to reject card-ungrounded prose. */
+export function extractTeaserMotifs(meaningHints: string[]): string[] {
+  const stop = new Set([
+    "это",
+    "или",
+    "для",
+    "что",
+    "как",
+    "при",
+    "без",
+    "под",
+    "над",
+    "между",
+    "свой",
+    "своя",
+    "свои",
+    "ваш",
+    "ваша",
+    "ваши",
+    "того",
+    "этом",
+    "также",
+    "через",
+    "может",
+    "быть",
+  ]);
+  const out = new Set<string>();
+  for (const hint of meaningHints) {
+    for (const raw of hint.toLowerCase().split(/[,;./—–\-\s]+/)) {
+      const token = raw.replace(/[^a-zа-яё0-9]/gi, "");
+      if (token.length < 5 || stop.has(token)) continue;
+      out.add(token.slice(0, 8));
+    }
+  }
+  return [...out];
+}
+
 /**
  * Server-side quality gate for LLM teaser text.
  * Exported for regression: old dictionary-style prod text must fail.
  */
 export function validateGuestTeaserQuality(
   text: string,
-  cardNames: string[]
+  cardNames: string[],
+  meaningHints: string[] = []
 ): TeaserQualityResult {
   const cleaned = truncateTeaserText(text);
   if (cleaned.length < TEASER_MIN_CHARS) {
@@ -215,8 +253,19 @@ export function validateGuestTeaserQuality(
     const matches = cleaned.match(re);
     if (matches) cardMentions += matches.length;
   }
+  if (cardMentions === 0) {
+    return { ok: false, reason: "no_card_anchor" };
+  }
   if (cardMentions > 1) {
     return { ok: false, reason: "too_many_card_names" };
+  }
+
+  const motifs = extractTeaserMotifs(meaningHints);
+  if (motifs.length >= 3) {
+    const hits = motifs.filter((m) => lower.includes(m));
+    if (hits.length < 2) {
+      return { ok: false, reason: "ungrounded_cards" };
+    }
   }
 
   return { ok: true };
@@ -488,14 +537,21 @@ export async function resolveGuestTeaser(input: {
 
   const questionForPrompt = formatUserQuestionForPrompt(gate.normalized, TEASER_QUESTION_PROMPT_MAX);
   const positions = getDeckPositions(payload.system);
+  const deckById = new Map(getDeckDefinition(payload.system).symbols.map((c) => [c.id, c]));
   const cardLines = [...payload.symbols]
     .sort((a, b) => a.position - b.position)
-    .map((s) => ({
-      name: s.name,
-      positionLabel: positions[s.position] ?? `Позиция ${s.position + 1}`,
-      reversed: s.reversed,
-    }));
+    .map((s) => {
+      const def = deckById.get(s.id);
+      const meaningHint = (def?.meaning || "").trim().split(/(?<=[.!?])\s+/)[0] || "";
+      return {
+        name: s.name || def?.name || `Карта ${s.id}`,
+        positionLabel: positions[s.position] ?? `Позиция ${s.position + 1}`,
+        reversed: s.reversed,
+        meaningHint: meaningHint.slice(0, 100),
+      };
+    });
   const cardNames = cardLines.map((c) => c.name);
+  const meaningHints = cardLines.map((c) => c.meaningHint).filter(Boolean);
   const model = teaserModelName();
   const ip = clientIp(request);
   const ua = request.headers.get("user-agent") ?? "";
@@ -596,7 +652,7 @@ export async function resolveGuestTeaser(input: {
         return returnFallback(timedOut ? "timeout" : "error");
       }
 
-      const quality = validateGuestTeaserQuality(text, cardNames);
+      const quality = validateGuestTeaserQuality(text, cardNames, meaningHints);
       if (quality.ok) {
         const record: GuestResumeTeaserRecord = {
           text,
