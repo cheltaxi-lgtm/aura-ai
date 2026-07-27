@@ -27,11 +27,20 @@ console.log(
   ungroundedRejected.ok ? "none" : ungroundedRejected.reason
 );
 
+const oneCardOnly =
+  "Смена работы у вас уже назрела как уход от того, что больше не кормит. Император держит вас статусом и рамками, хотя внутри вы уже в переходе прочь от трудностей. Неясно, уходите ли вы к своей опоре — или просто прочь от давления.";
+const oneCardRejected = validateGuestTeaserQuality(oneCardOnly, cardNames, meaningHints);
+assert.equal(oneCardRejected.ok, false, "single-card teaser must be rejected");
+console.log(
+  "one_card_rejected_reason:",
+  oneCardRejected.ok ? "none" : oneCardRejected.reason
+);
+
 const good = validateGuestTeaserQuality(
-  "Смена работы у вас уже не про деньги, а про то, что привычная роль перестала совпадать с тем, кем вы хотите быть. Император держит вас в опоре статуса, хотя внутри вы уже в переходе прочь от трудностей текущего места. Неясным остаётся, готовы ли вы потерять эту опору ради движения — или снова убедите себя подождать ради домашней гармонии.",
+  "Смена работы у вас уже не про деньги, а про то, что привычная роль перестала совпадать с тем, кем вы хотите быть. 6 Мечей тянет к переходу прочь от трудностей, Император держит опорой статуса и власти, а 10 Кубков манит гармонией, где наконец тепло. Неясным остаётся, готовы ли вы потерять эту опору ради движения — или снова убедите себя подождать.",
   cardNames,
   meaningHints
 );
-assert.equal(good.ok, true, "topic-first card-grounded teaser must pass");
+assert.equal(good.ok, true, "all-three-cards grounded teaser must pass");
 
 console.log("verify-guest-teaser-quality: OK");

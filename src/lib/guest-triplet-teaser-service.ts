@@ -245,18 +245,26 @@ export function validateGuestTeaserQuality(
     return { ok: false, reason: "position_scaffold" };
   }
 
-  let cardMentions = 0;
-  for (const name of cardNames) {
-    const n = name.trim();
-    if (n.length < 2) continue;
-    const re = new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  const namedCards = cardNames
+    .map((n) => n.trim())
+    .filter((n) => n.length >= 2);
+  let missingName = "";
+  let totalMentions = 0;
+  for (const name of namedCards) {
+    const re = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
     const matches = cleaned.match(re);
-    if (matches) cardMentions += matches.length;
+    const count = matches?.length ?? 0;
+    totalMentions += count;
+    if (count < 1) {
+      missingName = name;
+      break;
+    }
   }
-  if (cardMentions === 0) {
-    return { ok: false, reason: "no_card_anchor" };
+  if (missingName) {
+    return { ok: false, reason: `missing_card:${missingName}` };
   }
-  if (cardMentions > 1) {
+  // Allow each name once; soft cap avoids dictionary-style repetition.
+  if (totalMentions > namedCards.length + 1) {
     return { ok: false, reason: "too_many_card_names" };
   }
 
@@ -609,7 +617,7 @@ export async function resolveGuestTeaser(input: {
           },
         ],
         maxTokens: TEASER_MAX_TOKENS,
-        temperature: 0.65,
+        temperature: 0.45,
         timeoutMs: TEASER_TIMEOUT_MS,
         maxAttempts: 1,
         skipTemperatureRetry: true,
