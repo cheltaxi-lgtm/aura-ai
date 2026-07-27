@@ -14,7 +14,10 @@ import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
 import { saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
-import { buildGuestTripletPreview, buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
+import {
+  buildGuestNarrativeFallback,
+  buildGuestTripletTeaser,
+} from "@/lib/guest-triplet-teaser";
 import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
@@ -144,8 +147,11 @@ export default function GuestTripletDraw({
 
   const keywordFallback = useMemo(() => {
     if (deck.length < CARD_COUNT) return "";
-    return buildGuestTripletPreview(deck, positions);
-  }, [deck, positions]);
+    return buildGuestNarrativeFallback(
+      landingQuestion,
+      deck.map((c) => ({ name: c.name, meaning: c.meaning }))
+    );
+  }, [deck, landingQuestion]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;

@@ -14,7 +14,10 @@ import {
   updateGuestResumeCardsPayload,
   type GuestResumeSessionRow,
 } from "@/lib/guest-triplet-receipt-db";
-import { buildGuestTripletPreview } from "@/lib/guest-triplet-teaser";
+import {
+  buildGuestNarrativeFallback,
+  buildGuestTripletPreview,
+} from "@/lib/guest-triplet-teaser";
 import {
   buildGuestTeaserSystemPrompt,
   buildGuestTeaserUserPrompt,
@@ -172,22 +175,31 @@ export type TeaserQualityResult =
   | { ok: true }
   | { ok: false; reason: string };
 
+function stemMatches(lowerText: string, word: string): boolean {
+  const core = word.replace(/[аеёийоуыэюяьъ]+$/i, "");
+  if (core.length < 3) return lowerText.includes(word);
+  const re = new RegExp(
+    `${core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[а-яё]{0,5}`,
+    "i"
+  );
+  return re.test(lowerText);
+}
+
 /** Match banned phrase in base form or common Russian inflections. */
 export function matchesBannedPhrase(lowerText: string, phrase: string): boolean {
   const needle = phrase.toLowerCase().trim();
   if (!needle) return false;
   if (lowerText.includes(needle)) return true;
-  const words = needle.split(/\s+/).filter((w) => w.length >= 5);
-  if (words.length === 0) return false;
-  return words.every((word) => {
-    const core = word.replace(/[аеёийоуыэюяьъ]+$/i, "");
-    if (core.length < 5) return lowerText.includes(word);
-    const re = new RegExp(
-      `${core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[а-яё]{0,5}`,
-      "i"
-    );
-    return re.test(lowerText);
-  });
+  const words = needle.split(/\s+/).filter(Boolean);
+  // Multi-word bans need ≥2 significant stems — never ban on a single leftover word.
+  if (words.length >= 2) {
+    const significant = words.filter((w) => w.length >= 3);
+    if (significant.length < 2) return false;
+    return significant.every((word) => stemMatches(lowerText, word));
+  }
+  const only = words[0] || "";
+  if (only.length < 5) return false;
+  return stemMatches(lowerText, only);
 }
 
 /** Motif tokens from deck meaning hints — used to reject card-ungrounded prose. */
@@ -365,28 +377,30 @@ export function assertTeaserRequestAllowed(
 }
 
 export function buildKeywordFallbackText(payload: GuestResumeCardsPayload): string {
-  const positions = getDeckPositions(payload.system);
   const deck = getDeckDefinition(payload.system).symbols;
   const byId = new Map(deck.map((c) => [c.id, c]));
-  const cards: SpreadSymbol[] = [...payload.symbols]
+  const cards = [...payload.symbols]
     .sort((a, b) => a.position - b.position)
     .map((s) => {
       const def = byId.get(s.id);
       return {
-        id: s.id,
         name: s.name || def?.name || `Карта ${s.id}`,
         meaning: def?.meaning ?? s.name,
-        reversed: s.reversed,
       };
     });
-  return buildGuestTripletPreview(cards, positions);
+  return buildGuestNarrativeFallback(payload.question || "", cards);
 }
 
 export function buildKeywordFallbackFromDeck(
   cards: SpreadSymbol[],
   system: GuestResumeCardsPayload["system"]
 ): string {
-  return buildGuestTripletPreview(cards, getDeckPositions(system));
+  // Keep signature for callers; ignore position labels — never show dictionary scaffold.
+  void system;
+  return buildGuestNarrativeFallback(
+    "",
+    cards.map((c) => ({ name: c.name, meaning: c.meaning }))
+  );
 }
 
 export type GuestTeaserResult = {
@@ -416,10 +430,14 @@ async function markTeaserAttempt(
   failed: boolean
 ): Promise<GuestResumeCardsPayload> {
   const attempts = (payload.teaserAttempts ?? 0) + (failed ? 1 : 0);
+  const hardFail = failed && attempts >= TEASER_MAX_FAILS;
   const next: GuestResumeCardsPayload = {
     ...payload,
     teaserAttempts: attempts,
-    teaserFailed: failed && attempts >= TEASER_MAX_FAILS ? true : payload.teaserFailed,
+    teaserFailed: hardFail ? true : payload.teaserFailed,
+    ...(hardFail
+      ? { teaserFailPromptVersion: GUEST_TEASER_PROMPT_VERSION }
+      : {}),
   };
   await updateGuestResumeCardsPayload(sessionId, next);
   return next;
@@ -464,8 +482,11 @@ export async function resolveGuestTeaser(input: {
     return { text: fallbackText, isFallback: true, source };
   };
 
-  // Idempotent success path
-  if (payload.teaser?.text) {
+  // Idempotent success path — only reuse teaser from current prompt version.
+  if (
+    payload.teaser?.text &&
+    payload.teaser.promptVersion === GUEST_TEASER_PROMPT_VERSION
+  ) {
     return {
       text: payload.teaser.text,
       isFallback: false,
@@ -473,10 +494,6 @@ export async function resolveGuestTeaser(input: {
       promptVersion: payload.teaser.promptVersion,
       model: payload.teaser.model,
     };
-  }
-
-  if (payload.teaserFailed) {
-    return returnFallback("failed");
   }
 
   if (!isTeaserLlmEnabled()) {
@@ -554,11 +571,24 @@ export async function resolveGuestTeaser(input: {
   }
 
   let workingPayload = payload;
-  const attempts = workingPayload.teaserAttempts ?? 0;
-  if (attempts >= TEASER_MAX_FAILS || workingPayload.teaserFailed) {
-    const failedPayload = { ...workingPayload, teaserFailed: true };
-    await updateGuestResumeCardsPayload(row.id, failedPayload);
-    return returnFallback("failed");
+  if (
+    workingPayload.teaserFailed ||
+    (workingPayload.teaserAttempts ?? 0) >= TEASER_MAX_FAILS
+  ) {
+    const failedOnCurrent =
+      workingPayload.teaserFailPromptVersion === GUEST_TEASER_PROMPT_VERSION;
+    if (failedOnCurrent) {
+      return returnFallback("failed");
+    }
+    // Prompt bumped since the hard-fail — allow one fresh attempt window.
+    workingPayload = {
+      ...workingPayload,
+      teaserAttempts: 0,
+      teaserFailed: false,
+      teaserFailPromptVersion: undefined,
+      teaser: undefined,
+    };
+    await updateGuestResumeCardsPayload(row.id, workingPayload);
   }
 
   const questionForPrompt = formatUserQuestionForPrompt(gate.normalized, TEASER_QUESTION_PROMPT_MAX);
@@ -590,7 +620,7 @@ export async function resolveGuestTeaser(input: {
       bump("teaser_rate_limited");
       return { ok: false, source: "concurrency" };
     }
-    const hourLimit = await checkRateLimit(rateLimitKey("teaser_ip_h", ipHash), 3, 3_600_000);
+    const hourLimit = await checkRateLimit(rateLimitKey("teaser_ip_h", ipHash), 8, 3_600_000);
     if (!hourLimit.allowed) {
       bump("teaser_rate_limited");
       return { ok: false, source: "rate_limit" };
@@ -613,7 +643,9 @@ export async function resolveGuestTeaser(input: {
     return { ok: true };
   };
 
-  const runLlmOnce = async (): Promise<{
+  const runLlmOnce = async (
+    repairReason?: string
+  ): Promise<{
     text: string | null;
     timedOut: boolean;
     blocked?: GuestTeaserResult["source"];
@@ -631,6 +663,7 @@ export async function resolveGuestTeaser(input: {
             content: buildGuestTeaserUserPrompt({
               question: questionForPrompt,
               cards: cardLines,
+              repairReason,
             }),
           },
         ],
@@ -658,6 +691,7 @@ export async function resolveGuestTeaser(input: {
           output_tokens: usageOut,
           cache_key: cacheKey,
           prompt_version: GUEST_TEASER_PROMPT_VERSION,
+          repair: Boolean(repairReason),
         })
       );
 
@@ -670,8 +704,9 @@ export async function resolveGuestTeaser(input: {
 
   try {
     let qualityRegens = 0;
+    let repairReason: string | undefined;
     for (;;) {
-      const { text, timedOut, blocked } = await runLlmOnce();
+      const { text, timedOut, blocked } = await runLlmOnce(repairReason);
       if (blocked) return returnFallback(blocked);
       if (!text) {
         workingPayload = await markTeaserAttempt(row.id, workingPayload, true);
@@ -706,16 +741,14 @@ export async function resolveGuestTeaser(input: {
           regen: qualityRegens,
         })
       );
-      workingPayload = await markTeaserAttempt(row.id, workingPayload, true);
 
       if (qualityRegens >= TEASER_QUALITY_REGEN_MAX) {
+        // Only hard-fail the receipt after the single quality regen is spent.
+        workingPayload = await markTeaserAttempt(row.id, workingPayload, true);
         return returnFallback("error");
       }
-      if ((workingPayload.teaserAttempts ?? 0) >= TEASER_MAX_FAILS) {
-        return returnFallback("failed");
-      }
+      repairReason = quality.reason;
       qualityRegens += 1;
-      // One quality regen only — still subject to fails-per-receipt.
     }
   } catch (err) {
     console.warn(

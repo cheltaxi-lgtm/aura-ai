@@ -36,6 +36,8 @@ export type GuestResumeCardsPayload = {
   teaserAttempts?: number;
   /** After 2 unsuccessful LLM tries — always keyword fallback, no more calls. */
   teaserFailed?: boolean;
+  /** Prompt version under which teaserFailed was set — allows retry after prompt bump. */
+  teaserFailPromptVersion?: string;
 };
 
 export type GuestCompleteInput = {
@@ -131,6 +133,10 @@ export function parseGuestResumeCardsPayload(raw: unknown): GuestResumeCardsPayl
       ? Math.max(0, Math.floor(obj.teaserAttempts))
       : undefined;
   const teaserFailed = obj.teaserFailed === true ? true : undefined;
+  const teaserFailPromptVersion =
+    typeof obj.teaserFailPromptVersion === "string" && obj.teaserFailPromptVersion.trim()
+      ? obj.teaserFailPromptVersion.trim()
+      : undefined;
 
   return {
     kind: GUEST_RESUME_CARDS_KIND,
@@ -140,6 +146,7 @@ export function parseGuestResumeCardsPayload(raw: unknown): GuestResumeCardsPayl
     ...(teaser ? { teaser } : {}),
     ...(teaserAttempts != null ? { teaserAttempts } : {}),
     ...(teaserFailed ? { teaserFailed } : {}),
+    ...(teaserFailPromptVersion ? { teaserFailPromptVersion } : {}),
   };
 }
 
