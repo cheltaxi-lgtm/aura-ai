@@ -5468,6 +5468,14 @@ body:not(.chat-session-active):not(.flow-overlay-open) .site-legal-footer {
   text-shadow: 0 0 24px rgba(232, 199, 126, 0.25);
 }
 
+.spread-ritual-loader__timer {
+  @apply mt-3 text-center font-mono text-sm tabular-nums text-white/70;
+}
+
+.spread-ritual-loader__timer-hint {
+  @apply font-sans text-xs text-white/40;
+}
+
 /* Inline deck shuffle (ritual step — «Перемешать ещё раз») */
 .deck-shuffle {
   @apply mx-auto mt-6 flex w-full max-w-sm flex-col items-center gap-3;

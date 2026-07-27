@@ -232,6 +232,11 @@ if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
   cp -a "$RELEASES_BACKUP/." /opt/aura-ai/public/releases/
   rm -rf "$RELEASES_BACKUP"
 fi
+# Keep Safe Browsing clean: never leave junk/test APKs on public paths.
+rm -f /opt/aura-ai/public/zovus.apk \
+  /opt/aura-ai/public/test-root.apk \
+  /opt/aura-ai/public/releases/test.apk \
+  /opt/aura-ai/public/releases/zovus-latest.zip
 rm -rf "$STAGE"
 sed -i 's/\r$//' /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
 chmod +x /opt/aura-ai/proxmox-setup/vm_local_deploy.sh

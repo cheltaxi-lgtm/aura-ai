@@ -2337,13 +2337,16 @@ export default function HomePage({
   const handlePhotoContinueChat = async (masterId: string, payload: PhotoReadingChatPayload) => {
     if (!isLoggedIn) return;
 
-    const merged = mergeActiveProfile(profile, readStoredProfileSpread());
-    const displayName = merged?.name || authUser?.name;
-    if (!displayName) return;
-
     if (!payload.sessionId) {
-      const syncedId = await syncPhotoSessionForMaster(masterId, payload.historyId);
-      if (syncedId) payload.sessionId = syncedId;
+      try {
+        const syncedId = await Promise.race([
+          syncPhotoSessionForMaster(masterId, payload.historyId),
+          new Promise<undefined>((resolve) => window.setTimeout(() => resolve(undefined), 8_000)),
+        ]);
+        if (syncedId) payload.sessionId = syncedId;
+      } catch {
+        /* best-effort */
+      }
     }
 
     let photoSpreadSymbols: DeckCardInput[] | null = null;
@@ -2375,14 +2378,25 @@ export default function HomePage({
     readingInFlightRef.current = true;
     skipNextReadingRef.current = true;
 
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | undefined> => {
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<undefined>((resolve) => window.setTimeout(() => resolve(undefined), ms)),
+        ]);
+      } catch {
+        return undefined;
+      }
+    };
+
     try {
       if (resolvedSessionId) {
-        await bindSessionToMaster(masterId, resolvedSessionId);
+        await withTimeout(bindSessionToMaster(masterId, resolvedSessionId), 10_000);
         setConsultationSessionId(resolvedSessionId);
         setConsultationReadOnly(false);
         archiveSessionIdRef.current = null;
       } else {
-        await bindSessionToMaster(masterId);
+        await withTimeout(bindSessionToMaster(masterId), 10_000);
       }
 
       // Always start with an empty history — each photo spread is a new conversation.
@@ -2392,8 +2406,11 @@ export default function HomePage({
         try {
           const params = new URLSearchParams({ characterId: masterId });
           params.set("sessionId", resolvedSessionId);
-          const res = await fetch(`/api/chat/history?${params}`);
-          if (res.ok) {
+          const res = await Promise.race([
+            fetch(`/api/chat/history?${params}`),
+            new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 8_000)),
+          ]);
+          if (res?.ok) {
             const data = await res.json();
             if (data.messages?.length) {
               const serverMessages: Message[] = data.messages.map(
@@ -2454,6 +2471,8 @@ export default function HomePage({
     } finally {
       readingInFlightRef.current = false;
       setSpreadRitual({ active: false });
+      // Always surface the reading even if session bind hung.
+      setPhotoReadingOpen(false);
     }
   };
 

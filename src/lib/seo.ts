@@ -78,6 +78,7 @@ export function getRootMetadata(): Metadata {
     },
     verification: {
       yandex: "7902ba7dfdb76ac3",
+      google: "2xfoyJJx5rzmo7m9RUmw07wh1Zh3YBveFi71f3aZAqw",
     },
     icons: {
       icon: [{ url: "/icon.svg", type: "image/svg+xml" }],

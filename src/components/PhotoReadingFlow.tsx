@@ -331,6 +331,7 @@ export default function PhotoReadingFlow({
   const [question, setQuestion] = useState("");
   const questionInputSyncRef = useNativeInputSync<HTMLTextAreaElement>(setQuestion);
   const [loading, setLoading] = useState(false);
+  const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
   const [preparingImage, setPreparingImage] = useState(false);
   const [recognizeAttempt, setRecognizeAttempt] = useState(0);
   const [error, setError] = useState("");
@@ -453,6 +454,23 @@ export default function PhotoReadingFlow({
   useEffect(() => {
     if (open) setMasterId(defaultMasterId);
   }, [open, defaultMasterId]);
+
+  useEffect(() => {
+    if (!loading && !preparingImage) {
+      setLoadingElapsedSec(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setLoadingElapsedSec(0);
+    const t = window.setInterval(() => {
+      setLoadingElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [loading, preparingImage]);
+
+  const loadingElapsedLabel = `${Math.floor(loadingElapsedSec / 60)}:${String(
+    loadingElapsedSec % 60
+  ).padStart(2, "0")}`;
 
   const spreadMasterRef = useRef<string | null>(null);
 
@@ -1028,6 +1046,8 @@ export default function PhotoReadingFlow({
     setStep("result");
     trackPhotoReadingPhase("interpret_start");
     let ritualActive = false;
+    const interpretAbort = new AbortController();
+    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
 
     const idempotencyKey =
       interpretIdempotencyKeyRef.current ??
@@ -1044,6 +1064,7 @@ export default function PhotoReadingFlow({
       const { status: resStatus, data } = await postWithAsyncJob({
         url: PHOTO_STREAM_URL,
         storageKey: "aura:photo-reading-active-job",
+        signal: interpretAbort.signal,
         headers: { "Idempotency-Key": idempotencyKey },
         body: {
           characterId: masterId,
@@ -1118,6 +1139,8 @@ export default function PhotoReadingFlow({
       };
       setResult(nextResult);
       setStreamingAnalysis(analysis);
+      // Unlock UI as soon as text is ready — chat handoff must not keep the spinner forever.
+      setLoading(false);
 
       if (typeof data.runeBalance === "number") {
         onRuneBalanceChange?.(data.runeBalance as number);
@@ -1135,25 +1158,40 @@ export default function PhotoReadingFlow({
           onSpreadRitualEnd?.();
           ritualActive = false;
         }
-        await onContinueChat(masterId, {
-          analysis,
-          question: question.trim() || undefined,
-          detectedCards: nextResult.detectedCards,
-          redrawSpread: redrawSpread ?? undefined,
-          sessionId: data.sessionId as string | undefined,
-          historyId: nextResult.historyId,
-        });
+        try {
+          await Promise.race([
+            onContinueChat(masterId, {
+              analysis,
+              question: question.trim() || undefined,
+              detectedCards: nextResult.detectedCards,
+              redrawSpread: redrawSpread ?? undefined,
+              sessionId: data.sessionId as string | undefined,
+              historyId: nextResult.historyId,
+            }),
+            new Promise<void>((_, reject) =>
+              window.setTimeout(() => reject(new Error("chat_handoff_timeout")), 20_000)
+            ),
+          ]);
+        } catch {
+          // Analysis already shown/saved — handoff is best-effort.
+        }
         return;
       }
     } catch (err) {
+      const aborted =
+        interpretAbort.signal.aborted ||
+        (err instanceof Error && /отменен|cancelled|abort/i.test(err.message));
       setStep("confirm");
       setError(
-        err instanceof Error && err.message
-          ? err.message
-          : "Ошибка сети. Попробуйте ещё раз."
+        aborted
+          ? "Расшифровка занимает слишком долго. Обновите страницу или откройте кабинет — расклад мог уже сохраниться."
+          : err instanceof Error && err.message
+            ? err.message
+            : "Ошибка сети. Попробуйте ещё раз."
       );
       trackPhotoReadingPhase("interpret_fail");
     } finally {
+      window.clearTimeout(interpretWatchdog);
       setLoading(false);
       if (ritualActive) {
         onSpreadRitualEnd?.();
@@ -1310,10 +1348,10 @@ export default function PhotoReadingFlow({
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin text-aura-gold" />
                   <span>
                     {step === "result" || step === "confirm"
-                      ? `${masterDisplayName} расшифровывает…`
+                      ? `${masterDisplayName} расшифровывает… ${loadingElapsedLabel}`
                       : recognizeAttempt > 1
-                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})…`
-                        : "Распознаём и перерисовываем…"}
+                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})… ${loadingElapsedLabel}`
+                        : `Распознаём и перерисовываем… ${loadingElapsedLabel}`}
                   </span>
                 </motion.div>
               )}
@@ -1559,7 +1597,14 @@ export default function PhotoReadingFlow({
                         ) : null}
                       </>
                     ) : (
-                      <p className="text-sm text-gray-400">Мастер готовит расшифровку…</p>
+                      <p className="text-sm text-gray-400">
+                        Мастер готовит расшифровку… {loadingElapsedLabel}
+                        {loadingElapsedSec >= 60 ? (
+                          <span className="mt-1 block text-xs text-white/40">
+                            Обычно 30–90 сек. Если дольше двух минут — откройте кабинет, расклад мог уже сохраниться.
+                          </span>
+                        ) : null}
+                      </p>
                     )}
                   </div>
 
@@ -1699,11 +1744,11 @@ export default function PhotoReadingFlow({
                       <Sparkles className="h-4 w-4" />
                     )}
                     {preparingImage
-                      ? "Подготавливаем фото…"
+                      ? `Подготавливаем фото… ${loadingElapsedLabel}`
                       : loading
                       ? recognizeAttempt > 1
-                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})…`
-                        : "Распознаём и перерисовываем…"
+                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})… ${loadingElapsedLabel}`
+                        : `Распознаём и перерисовываем… ${loadingElapsedLabel}`
                       : runeConfig.enabled
                         ? `Начать фото-расклад · ${formatRunes(photoCost)}`
                         : "Начать фото-расклад"}
@@ -1721,7 +1766,7 @@ export default function PhotoReadingFlow({
                   >
                     <span className="flex items-center justify-center gap-2">
                       {loading ? (
-                        <><Loader2 className="h-4 w-4 animate-spin" />Расшифровывает…</>
+                        <><Loader2 className="h-4 w-4 animate-spin" />Расшифровывает… {loadingElapsedLabel}</>
                       ) : (
                         <>Подтвердить<ArrowRight className="h-4 w-4" /></>
                       )}

@@ -4,6 +4,11 @@ www.zovus.ru {
 
 zovus.ru {
 	encode gzip
+	# Google Search Console HTML-file ownership verification.
+	handle /googlea07e95e8199f7e09.html {
+		root * /opt/aura-ai/public
+		file_server
+	}
 	# HSTS only at the TLS edge. XFO / nosniff / Referrer / CSP come from Next
 	# (avoids duplicate response headers).
 	header {

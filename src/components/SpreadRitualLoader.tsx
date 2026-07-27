@@ -20,6 +20,12 @@ interface SpreadRitualLoaderProps {
   system?: DeckSystem;
 }
 
+function formatElapsed(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export default function SpreadRitualLoader({
   active,
   cards = [],
@@ -27,14 +33,17 @@ export default function SpreadRitualLoader({
 }: SpreadRitualLoaderProps) {
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [litRunes, setLitRunes] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
 
   useEffect(() => {
     if (!active) {
       setPhraseIndex(0);
       setLitRunes(0);
+      setElapsedSec(0);
       return;
     }
 
+    const startedAt = Date.now();
     const phraseTimer = window.setInterval(() => {
       setPhraseIndex((i) => (i + 1) % PHRASES.length);
     }, 2400);
@@ -43,9 +52,14 @@ export default function SpreadRitualLoader({
       setLitRunes((n) => (n >= RING_RUNES.length ? 0 : n + 1));
     }, 320);
 
+    const clockTimer = window.setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
     return () => {
       window.clearInterval(phraseTimer);
       window.clearInterval(runeTimer);
+      window.clearInterval(clockTimer);
     };
   }, [active]);
 
@@ -148,6 +162,17 @@ export default function SpreadRitualLoader({
                 {PHRASES[phraseIndex]}
               </motion.p>
             </AnimatePresence>
+
+            <p className="spread-ritual-loader__timer" aria-live="polite">
+              {formatElapsed(elapsedSec)}
+              <span className="spread-ritual-loader__timer-hint">
+                {elapsedSec < 45
+                  ? " · обычно 30–90 сек"
+                  : elapsedSec < 120
+                    ? " · ещё чуть-чуть"
+                    : " · дольше обычного, не закрывайте"}
+              </span>
+            </p>
           </div>
         </motion.div>
       ) : null}
