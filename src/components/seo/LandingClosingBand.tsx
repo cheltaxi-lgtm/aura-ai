@@ -15,6 +15,7 @@ type LandingClosingBandProps = {
 export default function LandingClosingBand({ onOpenCards }: LandingClosingBandProps) {
   const bandRef = useRef<HTMLDivElement | null>(null);
   const [skyMotion, setSkyMotion] = useState(false);
+  const [skyPauseReason, setSkyPauseReason] = useState("init");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -24,11 +25,19 @@ export default function LandingClosingBand({ onOpenCards }: LandingClosingBandPr
     let visibleDoc = typeof document !== "undefined" ? document.visibilityState === "visible" : true;
 
     const apply = () => {
-      const on = !reduce.matches && inView && visibleDoc;
+      let reason = "on";
+      if (reduce.matches) reason = "reduce";
+      else if (!visibleDoc) reason = "hidden";
+      else if (!inView) reason = "out";
+      const on = reason === "on";
       setSkyMotion(on);
-      if (typeof window !== "undefined") {
-        (window as Window & { __zovusClosingSkyMotion?: boolean }).__zovusClosingSkyMotion = on;
-      }
+      setSkyPauseReason(reason);
+      const w = window as Window & {
+        __zovusClosingSkyMotion?: boolean;
+        __zovusClosingSkyPauseReason?: string;
+      };
+      w.__zovusClosingSkyMotion = on;
+      w.__zovusClosingSkyPauseReason = reason;
     };
     apply();
 
@@ -64,6 +73,7 @@ export default function LandingClosingBand({ onOpenCards }: LandingClosingBandPr
       ref={bandRef}
       className={`landing-closing-band${skyMotion ? " landing-closing-band--sky-on" : ""}`}
       data-sky-motion={skyMotion ? "on" : "off"}
+      data-sky-pause={skyPauseReason}
     >
       <div className="landing-closing-band__sky" aria-hidden="true">
         <div className="landing-closing-band__stars landing-closing-band__stars--far" />

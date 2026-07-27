@@ -64,6 +64,12 @@ export default function LandingFaqSection() {
       setRevealed(true);
       return;
     }
+    // Already in view on first paint (deep-link / restore) — skip delayed reveal CLS.
+    const rect = node.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      setRevealed(true);
+      return;
+    }
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
