@@ -2,17 +2,22 @@ import { InputFile } from "grammy";
 import type { Context } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
+import { randomUUID } from "node:crypto";
 import {
   canDrawTriplet,
+  claimSpreadSlot,
   clearFlow,
   consumeBonusSpread,
   countTripletsToday,
   createGuestSession,
   effectiveTripletLimit,
+  findSessionById,
   getFlow,
   setFlow,
   touchStreak,
   trackEvent,
+  consumeTtsQuota,
+  flagEnabled,
   type BotUser,
 } from "../db/repos.js";
 import { deckProvider } from "../domain/deck/local-provider.js";
@@ -26,11 +31,10 @@ import {
 } from "../domain/session/token.js";
 import { generateTeaser } from "../domain/teaser/provider.js";
 import { ttsProvider } from "../domain/tts/openrouter-provider.js";
-import { consumeTtsQuota, flagEnabled } from "../db/repos.js";
 import { ctaKeyboard, questionKeyboard, salonKeyboard } from "../keyboards/index.js";
+import { markIrreversible } from "../middleware/irreversible.js";
 import { ensureOnboarded, track } from "./helpers.js";
 import { ritualReveal } from "./ritual.js";
-import { randomUUID } from "node:crypto";
 
 let copyCounter = 0;
 
@@ -114,12 +118,32 @@ async function runSpread(
   track(user, "question_submitted", { source, question_len: validated.question.length });
   setFlow(user.telegram_user_id, "spread", "drawing", { question: validated.question, source });
 
+  const sessionId = randomUUID();
+  const claim = claimSpreadSlot(user.telegram_user_id, validated.question, sessionId, user);
+  if (!claim.claimed) {
+    clearFlow(user.telegram_user_id);
+    const existing = findSessionById(claim.sessionId);
+    if (existing?.teaser_text) {
+      await ctx.reply(existing.teaser_text, { reply_markup: salonKeyboard() });
+      await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {
+        reply_markup: salonKeyboard(),
+      });
+    } else {
+      await ctx.reply(copy.limitReached(user.telegram_user_id, copyCounter++), {
+        reply_markup: salonKeyboard(),
+      });
+    }
+    return;
+  }
+
+  // Point of no return: claim reserved — do not release update_id on later errors.
+  markIrreversible(ctx);
+
   await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
   await ctx.replyWithChatAction("typing");
   await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
 
   const cards = deckProvider.drawTriplet();
-  const sessionId = randomUUID();
 
   try {
     await ritualReveal(ctx, cards, sessionId, user.telegram_user_id);
@@ -148,7 +172,7 @@ async function runSpread(
   const token = createSessionToken();
   const symbols = toGuestSymbols(cards);
   const usedBonus =
-    countTripletsToday(user.telegram_user_id) >= botConfig.tripletDailyLimit &&
+    countTripletsToday(user.telegram_user_id, user) >= botConfig.tripletDailyLimit &&
     (user.bonus_spreads ?? 0) > 0;
 
   createGuestSession({

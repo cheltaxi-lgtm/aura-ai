@@ -10,6 +10,7 @@ import {
   trackEvent,
   upsertUser,
 } from "../db/repos.js";
+import { isIrreversible } from "./irreversible.js";
 
 let disabledCounter = 0;
 
@@ -22,11 +23,26 @@ export async function privateOnly(ctx: Context, next: NextFunction): Promise<voi
 
 export async function idempotent(ctx: Context, next: NextFunction): Promise<void> {
   const id = ctx.update.update_id;
-  if (!claimUpdate(id)) return;
+  if (!claimUpdate(id)) {
+    trackEvent("duplicate_update_suppressed", ctx.from?.id ?? null, {
+      update_id: id,
+      reason: "already_claimed",
+    });
+    return;
+  }
   try {
     await next();
   } catch (err) {
-    releaseUpdate(id);
+    // Release only before the point of no return (validation / pre-draw).
+    // After draw/session side effects, keep the claim so Telegram retries are no-ops.
+    if (!isIrreversible(ctx)) {
+      releaseUpdate(id);
+    } else {
+      trackEvent("duplicate_update_suppressed", ctx.from?.id ?? null, {
+        update_id: id,
+        reason: "error_after_irreversible",
+      });
+    }
     throw err;
   }
 }

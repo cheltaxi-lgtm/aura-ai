@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { botConfig } from "../config.js";
-import { getDb, nowIso, todayInTz } from "./client.js";
+import { hashQuestion } from "../domain/question/hash.js";
+import { localDateKey } from "../domain/time/local-date.js";
 import type { DrawnCard, GuestSymbol } from "../domain/deck/types.js";
+import { getDb, nowIso, todayInTz } from "./client.js";
 
 export type BotUser = {
   telegram_user_id: number;
@@ -307,21 +309,67 @@ export function trackEvent(
     .run(name, telegramUserId, JSON.stringify(payload), nowIso());
 }
 
-export function countTripletsToday(telegramUserId: number): number {
-  const day = todayInTz();
+export function countTripletsToday(telegramUserId: number, user?: BotUser | null): number {
+  const u = user ?? getUser(telegramUserId);
+  const day = localDateKey(u);
   const rows = getDb()
-    .prepare(`SELECT created_at FROM bot_guest_sessions WHERE telegram_user_id = ?`)
+    .prepare(
+      `SELECT created_at FROM bot_guest_sessions WHERE telegram_user_id = ?`
+    )
     .all(telegramUserId) as Array<{ created_at: string }>;
-  return rows.filter((r) => moscowDay(r.created_at) === day).length;
+  return rows.filter((r) => localDateKey(u, new Date(r.created_at)) === day).length;
 }
 
-function moscowDay(iso: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: botConfig.timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(iso));
+export type SpreadClaimResult =
+  | { claimed: true; sessionId: string }
+  | { claimed: false; sessionId: string; reason: "duplicate" };
+
+/**
+ * Atomic UNIQUE claim for (user, question_hash, local_date).
+ * On conflict returns the existing session_id without creating a second spread.
+ */
+export function claimSpreadSlot(
+  telegramUserId: number,
+  question: string,
+  sessionId: string,
+  user?: BotUser | null
+): SpreadClaimResult {
+  const u = user ?? getUser(telegramUserId);
+  const qHash = hashQuestion(question);
+  const day = localDateKey(u);
+  try {
+    getDb()
+      .prepare(
+        `INSERT INTO bot_spread_claims (telegram_user_id, question_hash, local_date, session_id, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(telegramUserId, qHash, day, sessionId, nowIso());
+    return { claimed: true, sessionId };
+  } catch {
+    const existing = getDb()
+      .prepare(
+        `SELECT session_id FROM bot_spread_claims
+         WHERE telegram_user_id = ? AND question_hash = ? AND local_date = ?`
+      )
+      .get(telegramUserId, qHash, day) as { session_id: string } | undefined;
+    trackEvent("duplicate_update_suppressed", telegramUserId, {
+      reason: "spread_claim_unique",
+      local_date: day,
+    });
+    return {
+      claimed: false,
+      sessionId: existing?.session_id ?? sessionId,
+      reason: "duplicate",
+    };
+  }
+}
+
+export function findSessionById(sessionId: string): GuestSessionRow | null {
+  return (
+    (getDb().prepare(`SELECT * FROM bot_guest_sessions WHERE id = ?`).get(sessionId) as
+      | GuestSessionRow
+      | undefined) ?? null
+  );
 }
 
 export function createGuestSession(input: {
@@ -432,6 +480,7 @@ export function deleteUserData(telegramUserId: number): void {
     db.prepare(`DELETE FROM bot_reminder_log WHERE telegram_user_id = ?`).run(telegramUserId);
     db.prepare(`DELETE FROM bot_day_cards WHERE telegram_user_id = ?`).run(telegramUserId);
     db.prepare(`DELETE FROM bot_flow_state WHERE telegram_user_id = ?`).run(telegramUserId);
+    db.prepare(`DELETE FROM bot_spread_claims WHERE telegram_user_id = ?`).run(telegramUserId);
     db.prepare(`DELETE FROM bot_guest_sessions WHERE telegram_user_id = ?`).run(telegramUserId);
     db.prepare(`DELETE FROM bot_events WHERE telegram_user_id = ?`).run(telegramUserId);
     db.prepare(`DELETE FROM bot_users WHERE telegram_user_id = ?`).run(telegramUserId);
