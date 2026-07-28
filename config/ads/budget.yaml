@@ -1,0 +1,29 @@
+mode: discovery
+target_romi: 3
+discovery_daily_cap_rub: 300
+discovery_total_budget_rub: 9000
+discovery_target_cpa_reg_rub: 150
+discovery_max_cpa_reg_rub: 400
+discovery_target_registrations: 100
+discovery_freq_min: 100
+discovery_freq_max: 5000
+global_daily_cap_rub: 300
+campaign_daily_budget_rub: 300
+negative_min_clicks: 30
+rules_window_days: 3
+min_clicks_per_entity: 30
+approval_ttl_hours: 48
+ctr_min: 0.005
+
+# Conversion north star: registration + rune purchase (not free spreads)
+cpa_start_kill_rub: 100
+cpa_reg_kill_rub: 250
+cpa_rune_kill_rub: 500
+
+test_budget_total_rub: 30000
+owner_topup_rub: 30000
+
+notes:
+  - Optimize toward registration and first rune purchase, not free spreads.
+  - Programmatic daily cap (300) is the kill-switch source; cabinet weekly min is 7000.
+  - Autopilot never raises money limits without approval_request.

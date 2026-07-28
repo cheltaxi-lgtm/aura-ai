@@ -56,6 +56,10 @@ const PUBLIC_API_PREFIXES = [
   // rate limits in the handler. Keep this narrower than the /api/public namespace.
   "/api/public/reports/",
   "/api/cron/",
+  // Ads Autopilot beacon (guest): click capture + micro-conversions only.
+  // /api/ads/link stays auth-gated. Handlers return 404 when ads.enabled=false.
+  "/api/ads/t",
+  "/api/ads/e",
   // GET /api/joint-reading/[token] must be reachable by a guest partner who hasn't
   // logged in yet (the page shows a login gate) — create/complete/mine still enforce
   // their own requireProfileUserId() check inside the handler.

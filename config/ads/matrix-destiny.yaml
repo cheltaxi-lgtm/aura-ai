@@ -1,0 +1,14 @@
+cluster: matrix-destiny
+landing_path: /matrix-destiny
+optimization_goal: registration
+seed_keywords:
+  - phrase: матрица судьбы
+    freq: 1200
+  - phrase: матрица судьбы онлайн
+    freq: 800
+  - phrase: рассчитать матрицу судьбы
+    freq: 600
+creative:
+  title: Матрица судьбы онлайн
+  title2: Разбор по дате
+  text_body: Спокойный цифровой разбор.

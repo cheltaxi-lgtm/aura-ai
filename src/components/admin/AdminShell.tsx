@@ -23,9 +23,10 @@ import {
   HeartHandshake,
   Database,
   Handshake,
+  Megaphone,
 } from "lucide-react";
 
-const NAV = [
+const NAV_BASE = [
   { href: "/admin", label: "Дашборд", icon: LayoutDashboard },
   { href: "/admin/users", label: "Пользователи", icon: Users },
   { href: "/admin/experts", label: "Эзотерики", icon: Sparkles },
@@ -42,21 +43,29 @@ const NAV = [
   { href: "/admin/ai", label: "Модели и промпты", icon: Brain },
   { href: "/admin/settings", label: "Платформа", icon: Settings },
   { href: "/admin/audit", label: "Аудит", icon: ScrollText },
-];
+] as const;
+
+const ADS_NAV = { href: "/admin/ads", label: "Реклама", icon: Megaphone } as const;
 
 function AdminNavLinks({
   pathname,
   onNavigate,
+  showAds,
   className = "space-y-1",
 }: {
   pathname: string;
   onNavigate?: () => void;
+  showAds: boolean;
   className?: string;
 }) {
+  const nav = showAds
+    ? [...NAV_BASE.slice(0, 14), ADS_NAV, ...NAV_BASE.slice(14)]
+    : [...NAV_BASE];
   return (
     <nav className={className}>
-      {NAV.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href;
+      {nav.map(({ href, label, icon: Icon }) => {
+        const active =
+          pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
         return (
           <Link
             key={href}
@@ -83,6 +92,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [admin, setAdmin] = useState<{ email: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [showAdsNav, setShowAdsNav] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -97,6 +107,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       .catch(() => router.replace("/admin/login"))
       .finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    // Ads nav only when module flag is on (API returns 404 when ads.enabled=false).
+    fetch("/api/ads/admin/overview")
+      .then((r) => setShowAdsNav(r.status !== 404))
+      .catch(() => setShowAdsNav(false));
+  }, []);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -155,7 +172,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <p className="truncate text-xs text-gray-600">{admin.email}</p>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <AdminNavLinks pathname={pathname} onNavigate={closeMobileNav} />
+          <AdminNavLinks
+            pathname={pathname}
+            onNavigate={closeMobileNav}
+            showAds={showAdsNav}
+          />
         </div>
         <button
           onClick={() => {
@@ -175,7 +196,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <p className="font-display text-lg font-bold text-aura-neon">Zovus Admin</p>
             <p className="truncate text-xs text-gray-600">{admin.email}</p>
           </div>
-          <AdminNavLinks pathname={pathname} />
+          <AdminNavLinks pathname={pathname} showAds={showAdsNav} />
           <button
             onClick={logout}
             className="mt-8 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-500 hover:bg-white/5 hover:text-red-400"

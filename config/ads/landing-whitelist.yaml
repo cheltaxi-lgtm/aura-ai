@@ -1,0 +1,31 @@
+# Content hubs only — no transactional funnels (auth, paywall, start-spread, cabinet).
+# Prefer rune/registration-adjacent hubs for Ads Autopilot creatives.
+# Free-card articles may stay as SEO context but are NOT the conversion north star.
+# Paths must resolve HTTP 200 on https://zovus.ru (redirects allowed if final 200).
+version: 1
+base_url: https://zovus.ru
+paths:
+  - /runy
+  - /runy/fehu
+  - /matrix-destiny
+  - /numerology
+  - /numerology/destiny-matrix
+  - /taro
+  - /prognoz
+  - /statyi
+  - /statyi/rasshifrovka-taro-po-foto
+  - /statyi/kak-fotografirovat-rasklad-taro
+# Optional patterns for future Autopilot expansion (verifier checks `paths` only).
+patterns:
+  - /runy/*
+  - /statyi/*
+  - /prognoz/*
+denied_prefixes:
+  - /auth
+  - /cabinet
+  - /api
+  - /admin
+  - /payment
+  - /rasklady/
+  - /photo-rasklad
+  - /obryady

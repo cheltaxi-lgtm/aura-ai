@@ -7,6 +7,7 @@ import AppAwareSiteFooter from "@/components/AppAwareSiteFooter";
 import GlobalAppTopHeader from "@/components/GlobalAppTopHeader";
 import UtmCapture from "@/components/UtmCapture";
 import YandexMetrika from "@/components/YandexMetrika";
+import AdsBeaconServer from "@/modules/ads/beacon/AdsBeaconServer";
 import { getRootMetadata } from "@/lib/seo";
 import "../styles/tokens.css";
 import "./globals.css";
@@ -56,6 +57,7 @@ export default function RootLayout({
           <AppAwareSiteFooter />
         </Providers>
         <UtmCapture />
+        <AdsBeaconServer />
         <AppAwareCookieBanner />
         <YandexMetrika />
       </body>
