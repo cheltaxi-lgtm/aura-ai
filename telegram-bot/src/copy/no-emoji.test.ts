@@ -1,8 +1,6 @@
 import { collectBodyCopySamples } from "./ru.js";
-
-/** Rough emoji / pictograph detector for body copy. */
-const EMOJI_RE =
-  /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}]/u;
+import { EMOJI_RE, hasDisallowedEmoji } from "./emoji-whitelist.js";
+import { NAV } from "../keyboards/index.js";
 
 function main(): void {
   const samples = collectBodyCopySamples();
@@ -14,7 +12,16 @@ function main(): void {
     console.error("Emoji found in body copy:", bad);
     process.exit(1);
   }
-  console.log(`ok: ${samples.length} body copy samples without emoji`);
+
+  const btnBad = Object.values(NAV).filter((label) => hasDisallowedEmoji(label));
+  if (btnBad.length) {
+    console.error("Disallowed emoji on NAV buttons:", btnBad);
+    process.exit(1);
+  }
+
+  console.log(
+    `ok: ${samples.length} body samples without emoji; ${Object.keys(NAV).length} NAV labels whitelisted`
+  );
 }
 
 main();

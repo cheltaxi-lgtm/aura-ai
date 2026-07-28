@@ -1,0 +1,4 @@
+#!/bin/sh
+# Local reference hook — install via: node scripts/install-git-hooks.mjs
+cd "$(dirname "$0")/.." || exit 1
+npm run audit

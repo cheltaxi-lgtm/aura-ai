@@ -48,7 +48,11 @@ export function runSafetyCorpus(): { ok: boolean; fails: string[]; counts: Recor
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` || process.argv[1]?.includes("run-corpus")) {
+const isDirect =
+  process.argv[1] &&
+  (process.argv[1].includes("run-corpus") || process.argv[1].endsWith("run-corpus.ts"));
+
+if (isDirect) {
   const r = runSafetyCorpus();
   console.log(r.counts);
   if (!r.ok) {

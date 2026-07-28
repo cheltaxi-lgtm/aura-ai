@@ -1,40 +1,98 @@
 /**
  * Offline functional audit of the autonomous Telegram bot.
- * Run: npx tsx scripts/audit-bot.ts
+ * Run: npm run audit
  */
-import { migrate } from "../src/db/client.js";
-import { ensureCriticalColumns, migrateUp } from "../src/db/migrate-runner.js";
-import { getDb } from "../src/db/client.js";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { collectBodyCopySamples } from "../src/copy/ru.js";
+import { EMOJI_RE, hasDisallowedEmoji } from "../src/copy/emoji-whitelist.js";
+import { getDb, migrate } from "../src/db/client.js";
+import { EXPECTED_TABLES } from "../src/db/expected-schema.js";
 import {
-  applyReferral,
+  ensureCriticalColumns,
+  migrateUp,
+  schemaGaps,
+} from "../src/db/migrate-runner.js";
+import {
   canDrawTriplet,
+  claimSpreadSlot,
+  claimUpdate,
   confirmAge,
   confirmConsent,
+  countTripletsToday,
   createGuestSession,
   deleteUserData,
-  ensureRefCode,
+  findSessionById,
   getUser,
+  releaseUpdate,
   setTimezoneOffset,
+  trackEvent,
   upsertUser,
 } from "../src/db/repos.js";
-import { parseStartPayload } from "../src/domain/attribution.js";
+import { hashQuestion } from "../src/domain/question/hash.js";
 import { validateQuestion } from "../src/domain/question/validate.js";
-import { createSessionToken, hashSessionToken } from "../src/domain/session/token.js";
-import { CB, NAV, NAV_LABELS, timezoneKeyboard } from "../src/keyboards/index.js";
-import { copy } from "../src/copy/ru.js";
+import {
+  createSessionToken,
+  hashSessionToken,
+  isSessionToken,
+} from "../src/domain/session/token.js";
+import { localDateKey } from "../src/domain/time/local-date.js";
+import { NAV, NAV_LABELS } from "../src/keyboards/index.js";
+import { isIrreversible, markIrreversible } from "../src/middleware/irreversible.js";
+import { runSafetyCorpus } from "../src/safety/__tests__/run-corpus.js";
 
 type Check = { name: string; ok: boolean; detail?: string };
-
 const checks: Check[] = [];
+
 function check(name: string, ok: boolean, detail?: string) {
   checks.push({ name, ok, detail });
-  const mark = ok ? "OK" : "FAIL";
-  console.log(`[${mark}] ${name}${detail ? ` — ${detail}` : ""}`);
+  console.log(`[${ok ? "OK" : "FAIL"}] ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
-function hasCol(table: string, col: string): boolean {
-  const cols = getDb().prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  return cols.some((c) => c.name === col);
+function dumpSchema(db: DatabaseSync): string {
+  const rows = db
+    .prepare(
+      `SELECT type, name, sql FROM sqlite_master
+       WHERE sql IS NOT NULL AND name LIKE 'bot_%'
+       ORDER BY type, name`
+    )
+    .all() as Array<{ type: string; name: string; sql: string }>;
+  return rows.map((r) => r.sql.trim()).join(";\n") + ";\n";
+}
+
+function migrateFreshDb(path: string): void {
+  const db = new DatabaseSync(path);
+  db.exec("PRAGMA journal_mode = WAL;");
+  db.exec("PRAGMA foreign_keys = ON;");
+  const schema = readFileSync(new URL("../src/db/schema.sql", import.meta.url), "utf8");
+  db.exec(schema);
+  const migDirUrl = new URL("../src/db/migrations/", import.meta.url);
+  const migDirPath = migDirUrl.pathname.startsWith("/") && process.platform === "win32"
+    ? decodeURIComponent(migDirUrl.pathname.slice(1))
+    : decodeURIComponent(migDirUrl.pathname);
+  const files = readdirSync(migDirPath)
+    .filter((f) => /^\d+_.*\.sql$/.test(f) && !f.endsWith(".down.sql"))
+    .sort();
+  for (const file of files) {
+    const sql = readFileSync(join(migDirPath, file), "utf8");
+    for (const stmt of sql
+      .split("\n")
+      .map((l) => (l.trim().startsWith("--") ? "" : l))
+      .join("\n")
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== "SELECT 1")) {
+      try {
+        db.exec(stmt);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/duplicate column|already exists/i.test(msg)) throw e;
+      }
+    }
+  }
+  db.close();
 }
 
 async function main() {
@@ -42,118 +100,178 @@ async function main() {
   console.log("[migrate]", migrateUp());
   ensureCriticalColumns();
 
-  // Schema
-  for (const col of [
-    "timezone_offset_minutes",
-    "timezone_asked_at",
-    "voice_mode",
-    "ref_code",
-    "bonus_spreads",
-    "consent_version",
-  ]) {
-    check(`schema bot_users.${col}`, hasCol("bot_users", col));
-  }
-  for (const col of ["deck_id", "teaser_seed", "plain_token_prefix", "expired_at"]) {
-    check(`schema bot_guest_sessions.${col}`, hasCol("bot_guest_sessions", col));
-  }
-  for (const t of ["bot_llm_usage", "bot_tts_usage", "bot_events", "bot_flow_state"]) {
-    try {
-      getDb().prepare(`SELECT 1 FROM ${t} LIMIT 1`).get();
-      check(`schema table ${t}`, true);
-    } catch (e) {
-      check(`schema table ${t}`, false, e instanceof Error ? e.message : String(e));
-    }
+  // 1) Full expected schema
+  const gaps = schemaGaps();
+  check("expected schema complete", gaps.length === 0, JSON.stringify(gaps));
+  for (const table of EXPECTED_TABLES) {
+    const cols = new Set(
+      (getDb().prepare(`PRAGMA table_info(${table.name})`).all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    const missing = table.columns.map((c) => c.name).filter((n) => !cols.has(n));
+    check(`schema ${table.name}`, missing.length === 0, missing.join(",") || undefined);
   }
 
-  // Keyboards / nav
-  check("NAV labels registered", NAV_LABELS.size === 6);
-  check("timezone keyboard has callbacks", timezoneKeyboard().inline_keyboard.length >= 6);
-  check("CB.tz ask", CB.tzPrefix + "ask" === "tz:ask");
+  // 2) Safety corpus
+  const corpus = runSafetyCorpus();
+  check("safety corpus", corpus.ok, corpus.fails.slice(0, 3).join(" | ") || JSON.stringify(corpus.counts));
 
-  // Copy has no emoji in bodies we care about (spot check)
-  check("copy.timezoneSet non-empty", copy.timezoneSet.length > 10);
-  check("copy.greeting works", copy.greeting("Тест").includes("Тест"));
+  // Crisis side-effects: no session, event without question text
+  const crisisUid = 9_100_000_001;
+  deleteUserData(crisisUid);
+  upsertUser({ telegramUserId: crisisUid, chatId: crisisUid, firstName: "C" });
+  confirmAge(crisisUid);
+  confirmConsent(crisisUid);
+  const crisisQ = "хочу умереть";
+  const crisisVal = validateQuestion(crisisQ);
+  check("crisis blocks validation", !crisisVal.ok && crisisVal.code === "crisis");
+  if (!crisisVal.ok && crisisVal.code === "crisis") {
+    trackEvent("crisis_detected", crisisUid, { source: "audit" });
+  }
+  const crisisSessions = getDb()
+    .prepare(`SELECT COUNT(*) AS c FROM bot_guest_sessions WHERE telegram_user_id = ?`)
+    .get(crisisUid) as { c: number };
+  check("crisis no session row", crisisSessions.c === 0);
+  const crisisEv = getDb()
+    .prepare(
+      `SELECT payload FROM bot_events WHERE telegram_user_id = ? AND name = 'crisis_detected' ORDER BY id DESC LIMIT 1`
+    )
+    .get(crisisUid) as { payload: string } | undefined;
+  check(
+    "crisis event without question text",
+    Boolean(crisisEv && !crisisEv.payload.includes("умереть") && !crisisEv.payload.includes(crisisQ))
+  );
+  deleteUserData(crisisUid);
 
-  // Attribution
-  const a = parseStartPayload("ref_abc123");
-  check("parseStartPayload ref", Boolean(a.ref));
-
-  // Question validation
-  check("validate chip-like", validateQuestion("Что меняет фокус сейчас?").ok);
-  check("validate crisis", !validateQuestion("хочу умереть").ok);
-  check("validate crisis phrase", !validateQuestion("не хочу жить больше").ok);
-  check("validate medical", !validateQuestion("какое лекарство пить от депрессии").ok);
-
-  // Token
-  const tok = createSessionToken();
-  check("session token zg_", tok.startsWith("zg_"));
-  check("token hash length", hashSessionToken(tok).length === 64);
-
-  // DB user lifecycle (isolated fake id)
-  const uid = 9_000_000_001;
+  // 3) Idempotency: claim + irreversible + spread claim + spread update
+  const uid = 9_100_000_002;
   deleteUserData(uid);
-  upsertUser({
-    telegramUserId: uid,
-    chatId: uid,
-    username: "audit_user",
-    firstName: "Audit",
-    languageCode: "ru",
-  });
+  upsertUser({ telegramUserId: uid, chatId: uid, firstName: "I" });
   confirmAge(uid);
   confirmConsent(uid);
-  try {
-    setTimezoneOffset(uid, 300);
-    const u = getUser(uid)!;
-    check("setTimezoneOffset persists", u.timezone_offset_minutes === 300 && Boolean(u.timezone_asked_at));
-  } catch (e) {
-    check("setTimezoneOffset persists", false, e instanceof Error ? e.message : String(e));
-  }
-
-  const code = ensureRefCode(uid);
-  check("ensureRefCode", Boolean(code && code.length >= 4));
-
-  const invitee = 9_000_000_002;
-  deleteUserData(invitee);
-  upsertUser({
-    telegramUserId: invitee,
-    chatId: invitee,
-    username: "invitee",
-    firstName: "Inv",
-    languageCode: "ru",
-  });
-  applyReferral(invitee, code);
-  const inviter = getUser(uid)!;
-  check("referral increments", (inviter.referral_count ?? 0) >= 1 || (inviter.bonus_spreads ?? 0) >= 1);
-
-  const u2 = getUser(uid)!;
-  check("canDrawTriplet after gates", canDrawTriplet(u2));
-
-  const sessionTok = createSessionToken();
+  setTimezoneOffset(uid, 180);
+  const user = getUser(uid)!;
+  const q = "Что меняет фокус сейчас в работе";
+  const sid = "audit-session-idem-1";
+  const updateId = 880_001;
+  check("claim update first", claimUpdate(updateId));
+  const fakeCtx = {};
+  markIrreversible(fakeCtx as never);
+  check("irreversible marked", isIrreversible(fakeCtx as never));
+  const c1 = claimSpreadSlot(uid, q, sid, user);
+  check("spread claim first", c1.claimed);
   createGuestSession({
+    id: sid,
     telegramUserId: uid,
-    question: "Аудит вопрос",
+    question: q,
     cards: [
       { id: 1, name: "A", reversed: false, position: 0 },
       { id: 2, name: "B", reversed: false, position: 1 },
       { id: 3, name: "C", reversed: true, position: 2 },
     ],
-    teaserText: "Тестовый тизер",
-    teaserPromptVersion: "audit",
-    teaserModel: "audit",
-    teaserSeed: "audit",
-    tokenHash: hashSessionToken(sessionTok),
-    fingerprint: "audit-fp",
+    teaserText: "Тизер аудит",
+    teaserPromptVersion: "a",
+    teaserModel: "a",
+    teaserSeed: "a",
+    tokenHash: hashSessionToken(createSessionToken()),
+    fingerprint: "fp",
     questionSource: "chip",
   });
-  check("createGuestSession", true);
-
-  // Nav constants match menu routing expectations
-  for (const key of Object.keys(NAV) as Array<keyof typeof NAV>) {
-    check(`NAV.${key} has emoji prefix`, /^\p{Emoji}/u.test(NAV[key]));
-  }
-
+  // Simulate error after irreversible: do NOT release
+  check("no release after irreversible", isIrreversible(fakeCtx as never));
+  check("duplicate update suppressed", !claimUpdate(updateId));
+  const c2 = claimSpreadSlot(uid, q, "audit-session-idem-2", user);
+  check("duplicate spread claim blocked", !c2.claimed && c2.sessionId === sid);
+  const sessCount = getDb()
+    .prepare(`SELECT COUNT(*) AS c FROM bot_guest_sessions WHERE telegram_user_id = ?`)
+    .get(uid) as { c: number };
+  check("exactly one session after retry", sessCount.c === 1);
+  check("existing session readable", Boolean(findSessionById(sid)?.teaser_text));
+  releaseUpdate(updateId); // cleanup
   deleteUserData(uid);
-  deleteUserData(invitee);
+
+  // 4) Copy: bodies no emoji; buttons whitelist
+  const bodies = collectBodyCopySamples();
+  const bodyBad = bodies.filter((s) => EMOJI_RE.test(s));
+  check("body copy has no emoji", bodyBad.length === 0, bodyBad[0]?.slice(0, 60));
+  const buttonBad = Object.values(NAV).filter((label) => hasDisallowedEmoji(label));
+  check("NAV button emoji whitelisted", buttonBad.length === 0, buttonBad.join(","));
+  check("NAV labels count", NAV_LABELS.size === 6);
+
+  // 5) localDateKey across TZ
+  const at = new Date("2026-07-28T22:30:00.000Z");
+  const d3 = localDateKey({ timezone_offset_minutes: 180 }, at);
+  const d10 = localDateKey({ timezone_offset_minutes: 600 }, at);
+  const dm5 = localDateKey({ timezone_offset_minutes: -300 }, at);
+  check("localDateKey UTC+3", d3 === "2026-07-29");
+  check("localDateKey UTC+10", d10 === "2026-07-29");
+  check("localDateKey UTC-5", dm5 === "2026-07-28");
+
+  const limUid = 9_100_000_003;
+  deleteUserData(limUid);
+  upsertUser({ telegramUserId: limUid, chatId: limUid, firstName: "L" });
+  confirmAge(limUid);
+  confirmConsent(limUid);
+  setTimezoneOffset(limUid, 600);
+  let limUser = getUser(limUid)!;
+  check("can draw before session", canDrawTriplet(limUser));
+  createGuestSession({
+    id: "lim-1",
+    telegramUserId: limUid,
+    question: "Лимит тест вопрос один",
+    cards: [
+      { id: 1, name: "A", reversed: false, position: 0 },
+      { id: 2, name: "B", reversed: false, position: 1 },
+      { id: 3, name: "C", reversed: false, position: 2 },
+    ],
+    teaserText: "t",
+    teaserPromptVersion: "a",
+    teaserModel: "a",
+    teaserSeed: "a",
+    tokenHash: hashSessionToken(createSessionToken()),
+    fingerprint: "fp2",
+    questionSource: "free",
+  });
+  limUser = getUser(limUid)!;
+  check("count today after draw", countTripletsToday(limUid, limUser) >= 1);
+  check("cannot draw again same local day", !canDrawTriplet(limUser));
+  // TZ hop attempt
+  setTimezoneOffset(limUid, -300);
+  limUser = getUser(limUid)!;
+  check("TZ hop does not unlock free draw", !canDrawTriplet(limUser));
+  deleteUserData(limUid);
+
+  // 6) session_token format
+  const tok = createSessionToken();
+  check("token zg_ prefix", tok.startsWith("zg_"));
+  check("token alphabet/length", isSessionToken(tok));
+  check("token hash 64 hex", /^[a-f0-9]{64}$/.test(hashSessionToken(tok)));
+  check("question hash no plaintext", !hashQuestion("секретный вопрос").includes("секрет"));
+
+  // Fresh DB schema smoke (column presence via expected)
+  const tmp = mkdtempSync(join(tmpdir(), "zovus-bot-"));
+  const freshPath = join(tmp, "fresh.sqlite");
+  try {
+    migrateFreshDb(freshPath);
+    const fresh = new DatabaseSync(freshPath);
+    const freshCols = new Set(
+      (fresh.prepare(`PRAGMA table_info(bot_users)`).all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    check("fresh DB has timezone_offset_minutes", freshCols.has("timezone_offset_minutes"));
+    check("fresh DB has timezone_source", freshCols.has("timezone_source"));
+    const claims = fresh
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='bot_spread_claims'`
+      )
+      .get() as { name: string } | undefined;
+    check("fresh DB has bot_spread_claims", Boolean(claims));
+    fresh.close();
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 
   const failed = checks.filter((c) => !c.ok);
   console.log("\n---");
