@@ -1,7 +1,9 @@
 /**
- * Read-only Metrika traffic + goals for Ads Sources dashboard.
+ * Read-only Metrika traffic + organic search phrases for Ads Sources.
  */
 import { metrikaCounterId, metrikaToken } from "./env";
+
+export type PeriodDays = 7 | 14 | 30 | 90;
 
 export type MetrikaGoalRow = {
   id: number;
@@ -14,36 +16,51 @@ export type MetrikaMappedGoal = {
   label: string;
   id: number | null;
   name: string | null;
-  reaches7d: number | null;
-  reaches30d: number | null;
-  cr7d: number | null;
+  reaches: number | null;
+  cr: number | null;
+  /** @deprecated keep for older snapshots */
+  reaches7d?: number | null;
+  reaches30d?: number | null;
+  cr7d?: number | null;
+};
+
+export type SearchPhraseRow = {
+  phrase: string;
+  engine: string;
+  visits: number;
+  users: number;
+  bounceRate: number | null;
+};
+
+export type MetrikaTraffic = {
+  visits: number;
+  users: number;
+  pageviews: number;
+  bounceRate: number | null;
+  avgDurationSec: number | null;
 };
 
 export type MetrikaSnapshot = {
   counterId: string | null;
-  range7d: { from: string; to: string };
-  range30d: { from: string; to: string };
+  periodDays: PeriodDays;
+  range: { from: string; to: string };
+  /** aliases for older UI */
+  range7d?: { from: string; to: string };
+  range30d?: { from: string; to: string };
   goals: MetrikaGoalRow[];
   mappedGoals: MetrikaMappedGoal[];
-  traffic7d: {
-    visits: number;
-    users: number;
-    pageviews: number;
-    bounceRate: number | null;
-    avgDurationSec: number | null;
-  } | null;
-  traffic30d: {
-    visits: number;
-    users: number;
-    pageviews: number;
-    bounceRate: number | null;
-    avgDurationSec: number | null;
-  } | null;
-  daily: { date: string; visits: number; users: number }[];
+  traffic: MetrikaTraffic | null;
+  trafficOrganic: MetrikaTraffic | null;
+  traffic7d?: MetrikaTraffic | null;
+  traffic30d?: MetrikaTraffic | null;
+  daily: { date: string; visits: number; users: number; organicVisits: number }[];
   bySource: { source: string; visits: number; users: number; bounceRate: number | null }[];
   byDevice: { device: string; visits: number; users: number }[];
+  bySearchEngine: { engine: string; visits: number; users: number; bounceRate: number | null }[];
   topLandings: { path: string; visits: number; bounceRate: number | null }[];
-  topSearchPhrases: { phrase: string; visits: number }[];
+  /** Organic search phrases that brought visits from search engines */
+  searchPhrases: SearchPhraseRow[];
+  topSearchPhrases?: { phrase: string; visits: number }[];
   offlineUploadingsOk: boolean | null;
 };
 
@@ -54,6 +71,8 @@ const MAPPED = [
   { env: "ADS_GOAL_CLAIM", label: "Claim гостя" },
   { env: "ADS_GOAL_GUEST_SPREAD_START", label: "Старт гостевого расклада" },
 ] as const;
+
+const ORGANIC_FILTER = encodeURIComponent("ym:s:lastTrafficSource=='organic'");
 
 function oauthHeaders() {
   const token = metrikaToken();
@@ -66,20 +85,35 @@ function dayOffset(offset: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function rangeFor(days: PeriodDays): { from: string; to: string } {
+  return { from: dayOffset(-(days - 1)), to: dayOffset(0) };
+}
+
+async function sleep(ms: number) {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 async function metrikaJson(
   pathAndQuery: string
 ): Promise<Record<string, unknown> | null> {
   const headers = oauthHeaders();
   if (!headers) return null;
-  try {
-    const res = await fetch(`https://api-metrika.yandex.net${pathAndQuery}`, {
-      headers,
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as Record<string, unknown>;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const res = await fetch(`https://api-metrika.yandex.net${pathAndQuery}`, {
+        headers,
+      });
+      if (res.status === 429 || res.status >= 500) {
+        await sleep(400 * (attempt + 1));
+        continue;
+      }
+      if (!res.ok) return null;
+      return (await res.json()) as Record<string, unknown>;
+    } catch {
+      await sleep(300 * (attempt + 1));
+    }
   }
+  return null;
 }
 
 function num(v: unknown): number {
@@ -96,12 +130,14 @@ function pct(v: unknown): number | null {
 async function trafficTotals(
   counter: string,
   date1: string,
-  date2: string
-): Promise<MetrikaSnapshot["traffic7d"]> {
+  date2: string,
+  filters?: string
+): Promise<MetrikaTraffic | null> {
+  const filterQ = filters ? `&filters=${filters}` : "";
   const json = await metrikaJson(
     `/stat/v1/data?ids=${counter}` +
       `&metrics=ym:s:visits,ym:s:users,ym:s:pageviews,ym:s:bounceRate,ym:s:avgVisitDurationSeconds` +
-      `&date1=${date1}&date2=${date2}&accuracy=full`
+      `&date1=${date1}&date2=${date2}&accuracy=full${filterQ}`
   );
   if (!json) return null;
   const totals = (json.totals as unknown[]) || [];
@@ -134,19 +170,40 @@ async function dailySeries(
   date1: string,
   date2: string
 ): Promise<MetrikaSnapshot["daily"]> {
-  const json = await metrikaJson(
-    `/stat/v1/data?ids=${counter}` +
-      `&metrics=ym:s:visits,ym:s:users` +
-      `&dimensions=ym:s:date` +
-      `&date1=${date1}&date2=${date2}&sort=ym:s:date&limit=40&accuracy=full`
-  );
-  if (!json) return [];
-  const rows = (json.data as { dimensions?: { name?: string }[]; metrics?: unknown[] }[]) || [];
-  return rows.map((r) => ({
-    date: r.dimensions?.[0]?.name || "",
-    visits: num(r.metrics?.[0]),
-    users: num(r.metrics?.[1]),
-  })).filter((r) => r.date);
+  const [all, organic] = await Promise.all([
+    metrikaJson(
+      `/stat/v1/data?ids=${counter}` +
+        `&metrics=ym:s:visits,ym:s:users` +
+        `&dimensions=ym:s:date` +
+        `&date1=${date1}&date2=${date2}&sort=ym:s:date&limit=100&accuracy=full`
+    ),
+    metrikaJson(
+      `/stat/v1/data?ids=${counter}` +
+        `&metrics=ym:s:visits` +
+        `&dimensions=ym:s:date` +
+        `&date1=${date1}&date2=${date2}&sort=ym:s:date&limit=100&accuracy=full` +
+        `&filters=${ORGANIC_FILTER}`
+    ),
+  ]);
+  const organicByDate = new Map<string, number>();
+  for (const r of (organic?.data as { dimensions?: { name?: string }[]; metrics?: unknown[] }[]) ||
+    []) {
+    const d = r.dimensions?.[0]?.name || "";
+    if (d) organicByDate.set(d, num(r.metrics?.[0]));
+  }
+  const rows =
+    (all?.data as { dimensions?: { name?: string }[]; metrics?: unknown[] }[]) || [];
+  return rows
+    .map((r) => {
+      const date = r.dimensions?.[0]?.name || "";
+      return {
+        date,
+        visits: num(r.metrics?.[0]),
+        users: num(r.metrics?.[1]),
+        organicVisits: organicByDate.get(date) ?? 0,
+      };
+    })
+    .filter((r) => r.date);
 }
 
 async function byDim(
@@ -154,13 +211,15 @@ async function byDim(
   date1: string,
   date2: string,
   dimension: string,
-  limit: number
+  limit: number,
+  filters?: string
 ): Promise<{ name: string; visits: number; users: number; bounceRate: number | null }[]> {
+  const filterQ = filters ? `&filters=${filters}` : "";
   const json = await metrikaJson(
     `/stat/v1/data?ids=${counter}` +
       `&metrics=ym:s:visits,ym:s:users,ym:s:bounceRate` +
       `&dimensions=${encodeURIComponent(dimension)}` +
-      `&date1=${date1}&date2=${date2}&sort=-ym:s:visits&limit=${limit}&accuracy=full`
+      `&date1=${date1}&date2=${date2}&sort=-ym:s:visits&limit=${limit}&accuracy=full${filterQ}`
   );
   if (!json) return [];
   const rows = (json.data as { dimensions?: { name?: string }[]; metrics?: unknown[] }[]) || [];
@@ -174,28 +233,56 @@ async function byDim(
     .filter((r) => r.visits > 0);
 }
 
-async function topPhrases(
+/** Phrases that brought traffic FROM search engines (organic). */
+async function organicSearchPhrases(
   counter: string,
   date1: string,
   date2: string
-): Promise<MetrikaSnapshot["topSearchPhrases"]> {
+): Promise<SearchPhraseRow[]> {
   const json = await metrikaJson(
     `/stat/v1/data?ids=${counter}` +
-      `&metrics=ym:s:visits` +
-      `&dimensions=ym:s:lastSearchPhrase` +
-      `&date1=${date1}&date2=${date2}&sort=-ym:s:visits&limit=25&accuracy=full`
+      `&metrics=ym:s:visits,ym:s:users,ym:s:bounceRate` +
+      `&dimensions=ym:s:lastSearchPhrase,ym:s:lastSearchEngineRoot` +
+      `&date1=${date1}&date2=${date2}&sort=-ym:s:visits&limit=50&accuracy=full` +
+      `&filters=${ORGANIC_FILTER}`
   );
   if (!json) return [];
-  const rows = (json.data as { dimensions?: { name?: string }[]; metrics?: unknown[] }[]) || [];
+  const rows =
+    (json.data as {
+      dimensions?: { name?: string }[];
+      metrics?: unknown[];
+    }[]) || [];
   return rows
-    .map((r) => ({
-      phrase: r.dimensions?.[0]?.name || "",
-      visits: num(r.metrics?.[0]),
-    }))
-    .filter((r) => r.phrase && r.phrase !== "(not set)" && r.visits > 0);
+    .map((r) => {
+      const phrase = (r.dimensions?.[0]?.name || "").trim();
+      const engine = (r.dimensions?.[1]?.name || "Поиск").trim() || "Поиск";
+      return {
+        phrase,
+        engine,
+        visits: num(r.metrics?.[0]),
+        users: num(r.metrics?.[1]),
+        bounceRate: pct(r.metrics?.[2]),
+      };
+    })
+    .filter(
+      (r) =>
+        r.phrase &&
+        r.phrase !== "(not set)" &&
+        r.phrase !== "(не задано)" &&
+        !/^not provided$/i.test(r.phrase) &&
+        r.visits > 0
+    );
 }
 
-export async function fetchMetrikaSnapshot(): Promise<MetrikaSnapshot> {
+export function parsePeriodDays(raw: unknown): PeriodDays {
+  const n = Number(raw);
+  if (n === 7 || n === 14 || n === 30 || n === 90) return n;
+  return 30;
+}
+
+export async function fetchMetrikaSnapshot(
+  periodDays: PeriodDays = 30
+): Promise<MetrikaSnapshot> {
   const counterId = metrikaCounterId();
   const headers = oauthHeaders();
   if (!counterId || !headers) {
@@ -208,12 +295,8 @@ export async function fetchMetrikaSnapshot(): Promise<MetrikaSnapshot> {
     throw new Error(`Metrika credentials missing: ${missing}`);
   }
 
-  const d0 = dayOffset(0);
-  const d7 = dayOffset(-6);
-  const d14 = dayOffset(-13);
-  const d30 = dayOffset(-29);
-  const range7d = { from: d7, to: d0 };
-  const range30d = { from: d30, to: d0 };
+  const range = rangeFor(periodDays);
+  const { from: date1, to: date2 } = range;
 
   let goals: MetrikaGoalRow[] = [];
   try {
@@ -222,37 +305,54 @@ export async function fetchMetrikaSnapshot(): Promise<MetrikaSnapshot> {
       { headers }
     );
     if (res.ok) {
-      const json = (await res.json()) as { goals?: { id: number; name: string; type?: string }[] };
+      const json = (await res.json()) as {
+        goals?: { id: number; name: string; type?: string }[];
+      };
       goals = (json.goals || []).map((g) => ({ id: g.id, name: g.name, type: g.type }));
     }
   } catch {
     /* degrade */
   }
 
-  const traffic7d = await trafficTotals(counterId, d7, d0);
-  const traffic30d = await trafficTotals(counterId, d30, d0);
-  const daily = await dailySeries(counterId, d14, d0);
-  const sources = await byDim(counterId, d7, d0, "ym:s:lastTrafficSource", 12);
-  const devices = await byDim(counterId, d7, d0, "ym:s:deviceCategory", 8);
-  const landings = await byDim(counterId, d7, d0, "ym:s:startURLPath", 20);
-  const phrases = await topPhrases(counterId, d30, d0);
+  const r7 = rangeFor(7);
+  const r30 = rangeFor(30);
+  // Batch to avoid Metrika 429s (quota ~10 req/s soft limit).
+  const traffic = await trafficTotals(counterId, date1, date2);
+  const trafficOrganic = await trafficTotals(counterId, date1, date2, ORGANIC_FILTER);
+  const traffic7d =
+    periodDays === 7 ? traffic : await trafficTotals(counterId, r7.from, r7.to);
+  const traffic30d =
+    periodDays === 30 ? traffic : await trafficTotals(counterId, r30.from, r30.to);
+  const daily = await dailySeries(counterId, date1, date2);
+  const sources = await byDim(counterId, date1, date2, "ym:s:lastTrafficSource", 12);
+  const devices = await byDim(counterId, date1, date2, "ym:s:deviceCategory", 8);
+  const engines = await byDim(
+    counterId,
+    date1,
+    date2,
+    "ym:s:lastSearchEngineRoot",
+    10,
+    ORGANIC_FILTER
+  );
+  const landings = await byDim(counterId, date1, date2, "ym:s:startURLPath", 20);
+  const phrases = await organicSearchPhrases(counterId, date1, date2);
 
   const byId = new Map(goals.map((g) => [g.id, g.name]));
+  const visits = traffic?.visits || 0;
   const mappedGoals: MetrikaMappedGoal[] = [];
   for (const m of MAPPED) {
     const id = Number(process.env[m.env]) || null;
-    const reaches7d = id ? await goalReaches(counterId, id, d7, d0) : null;
-    const reaches30d = id ? await goalReaches(counterId, id, d30, d0) : null;
-    const visits7 = traffic7d?.visits || 0;
+    const reaches = id ? await goalReaches(counterId, id, date1, date2) : null;
     mappedGoals.push({
       env: m.env,
       label: m.label,
       id,
       name: id ? byId.get(id) || m.label : null,
-      reaches7d,
-      reaches30d,
-      cr7d:
-        reaches7d != null && visits7 > 0 ? reaches7d / visits7 : null,
+      reaches,
+      cr: reaches != null && visits > 0 ? reaches / visits : null,
+      reaches7d: periodDays === 7 ? reaches : null,
+      reaches30d: periodDays === 30 ? reaches : null,
+      cr7d: periodDays === 7 && reaches != null && visits > 0 ? reaches / visits : null,
     });
   }
 
@@ -269,12 +369,16 @@ export async function fetchMetrikaSnapshot(): Promise<MetrikaSnapshot> {
 
   return {
     counterId,
-    range7d,
-    range30d,
+    periodDays,
+    range,
+    range7d: rangeFor(7),
+    range30d: rangeFor(30),
     goals: goals.slice(0, 100),
     mappedGoals,
-    traffic7d,
-    traffic30d,
+    traffic,
+    trafficOrganic,
+    traffic7d: periodDays === 7 ? traffic : traffic7d,
+    traffic30d: periodDays === 30 ? traffic : traffic30d,
     daily,
     bySource: sources.map((s) => ({
       source: s.name,
@@ -287,12 +391,19 @@ export async function fetchMetrikaSnapshot(): Promise<MetrikaSnapshot> {
       visits: d.visits,
       users: d.users,
     })),
+    bySearchEngine: engines.map((e) => ({
+      engine: e.name,
+      visits: e.visits,
+      users: e.users,
+      bounceRate: e.bounceRate,
+    })),
     topLandings: landings.map((l) => ({
       path: l.name,
       visits: l.visits,
       bounceRate: l.bounceRate,
     })),
-    topSearchPhrases: phrases,
+    searchPhrases: phrases,
+    topSearchPhrases: phrases.map((p) => ({ phrase: p.phrase, visits: p.visits })),
     offlineUploadingsOk,
   };
 }
@@ -303,14 +414,15 @@ export async function persistMetrikaGoalStats(
   const { adsQuery } = await import("../db");
   const date = new Date().toISOString().slice(0, 10);
   for (const g of snapshot.mappedGoals) {
-    if (g.id == null || g.reaches7d == null) continue;
+    const reaches = g.reaches ?? g.reaches7d;
+    if (g.id == null || reaches == null) continue;
     await adsQuery(
       `INSERT INTO ads.metrika_goal_stat (date, goal_id, goal_name, reaches)
        VALUES ($1::date, $2, $3, $4)
        ON CONFLICT (date, goal_id) DO UPDATE SET
          goal_name = EXCLUDED.goal_name,
          reaches = EXCLUDED.reaches`,
-      [date, g.id, g.name || g.label, g.reaches7d]
+      [date, g.id, g.name || g.label, reaches]
     );
   }
 }

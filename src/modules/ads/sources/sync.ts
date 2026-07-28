@@ -53,7 +53,7 @@ export async function syncDirectSource(): Promise<{ ok: boolean; error?: string 
 
 export async function syncMetrikaSource(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const payload = await fetchMetrikaSnapshot();
+    const payload = await fetchMetrikaSnapshot(30);
     await persistMetrikaGoalStats(payload);
     await saveSnapshot("metrika", true, payload, null);
     return { ok: true };
@@ -100,7 +100,10 @@ export async function syncHealthSource(partial?: {
     },
     tokens,
     directBalanceRub: partial?.direct?.balanceRub ?? null,
-    metrikaVisits7d: partial?.metrika?.traffic7d?.visits ?? null,
+    metrikaVisits7d:
+      partial?.metrika?.traffic7d?.visits ??
+      (partial?.metrika?.periodDays === 7 ? partial.metrika.traffic?.visits : null) ??
+      null,
     webmasterQueries: partial?.webmaster?.queries?.length ?? null,
     moneyBlocker:
       partial?.direct?.balanceRub != null && partial.direct.balanceRub <= 0
