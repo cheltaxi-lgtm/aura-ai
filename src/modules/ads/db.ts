@@ -37,14 +37,19 @@ export function assertAdsMutationAllowed(text: string): void {
   const stripped = text
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/--[^\n]*/g, " ");
+  // ON CONFLICT ... DO UPDATE SET is not a table UPDATE — strip before matching.
+  const forGuard = stripped.replace(
+    /\bON\s+CONFLICT\b[\s\S]*?\bDO\s+UPDATE\s+SET\b/gi,
+    " /* upsert */ "
+  );
   // Allow CREATE/ALTER only inside ads. during tests — runtime app code should not DDL.
   const touchesNonAds =
-    /\b(INTO|UPDATE|FROM|TABLE)\s+(?!ads\.)([a-z_][a-z0-9_]*)/i.test(stripped) ||
-    /\bpublic\./i.test(stripped);
+    /\b(INTO|UPDATE|FROM|TABLE)\s+(?!SET\b)(?!ads\.)([a-z_][a-z0-9_]*)/i.test(forGuard) ||
+    /\bpublic\./i.test(forGuard);
   // INTO ads.click OK; INTO users FAIL
-  const intoMatch = stripped.match(/\bINTO\s+([a-z_][a-z0-9_.]*)/gi) || [];
-  const updateMatch = stripped.match(/\bUPDATE\s+([a-z_][a-z0-9_.]*)/gi) || [];
-  const deleteMatch = stripped.match(/\bDELETE\s+FROM\s+([a-z_][a-z0-9_.]*)/gi) || [];
+  const intoMatch = forGuard.match(/\bINTO\s+([a-z_][a-z0-9_.]*)/gi) || [];
+  const updateMatch = forGuard.match(/\bUPDATE\s+(?!SET\b)([a-z_][a-z0-9_.]*)/gi) || [];
+  const deleteMatch = forGuard.match(/\bDELETE\s+FROM\s+([a-z_][a-z0-9_.]*)/gi) || [];
   const targets = [...intoMatch, ...updateMatch, ...deleteMatch].map((m) =>
     m.replace(/^(INTO|UPDATE|DELETE\s+FROM)\s+/i, "").toLowerCase()
   );
@@ -53,7 +58,7 @@ export function assertAdsMutationAllowed(text: string): void {
       throw new Error(`ADS_DB_GUARD: mutating query outside ads schema: ${t}`);
     }
   }
-  if (touchesNonAds && targets.length === 0 && !/\bads\./i.test(stripped)) {
+  if (touchesNonAds && targets.length === 0 && !/\bads\./i.test(forGuard)) {
     throw new Error("ADS_DB_GUARD: mutating query must reference ads.*");
   }
 }

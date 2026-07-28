@@ -273,6 +273,13 @@ async function main() {
     assert.doesNotThrow(() =>
       assertAdsMutationAllowed("INSERT INTO ads.click (id) VALUES ('x')")
     );
+    assert.doesNotThrow(() =>
+      assertAdsMutationAllowed(
+        `INSERT INTO ads.source_snapshot (source, ok, payload_json)
+         VALUES ('metrika', true, '{}'::jsonb)
+         ON CONFLICT (source) DO UPDATE SET ok = EXCLUDED.ok, payload_json = EXCLUDED.payload_json`
+      )
+    );
   });
 
   await test("V13 dry_run blocks Direct write log", async () => {
