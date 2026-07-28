@@ -42,8 +42,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ads_conversion_user_type_uidx
   WHERE user_id IS NOT NULL AND type IN (
     'registration','claim','first_rune_spend','first_payment'
   );
+-- timestamptz::date is not IMMUTABLE (session TZ). UTC wrapper is required for the index.
+CREATE OR REPLACE FUNCTION ads.utc_date(ts timestamptz)
+RETURNS date
+LANGUAGE sql
+IMMUTABLE
+AS $$ SELECT ($1 AT TIME ZONE 'UTC')::date $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS ads_conversion_micro_day_uidx
-  ON ads.conversion (click_id, type, (occurred_at::date))
+  ON ads.conversion (click_id, type, ads.utc_date(occurred_at))
   WHERE click_id IS NOT NULL AND type IN (
     'deck_view','card_pick','spread_submit','teaser_view'
   );
