@@ -190,7 +190,7 @@ try {
 } catch {
   "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
 }
-tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.next-e2e --exclude=.git --exclude=.cursor --exclude=test-results --exclude=.env.local --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip .
+tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.next-e2e --exclude=.git --exclude=.cursor --exclude=test-results --exclude=.env.local --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip --exclude=telegram-bot --exclude=docs/qa-guest-teaser-i2 --exclude=docs/qa-landing-demo --exclude=docs/qa-landing-faq-cta .
 Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ">>> Upload tarball..."

@@ -38,7 +38,6 @@
     "verify:memory-adversarial": "npx tsx scripts/verify-memory-adversarial.mjs",
     "verify:memory-analytics": "node scripts/verify-memory-analytics.mjs",
     "verify:personal-memory-product": "node scripts/verify-personal-memory-product.mjs",
-    "verify:personal-memory-product": "node scripts/verify-personal-memory-product.mjs",
     "maintenance:memory": "node scripts/memory-maintenance.mjs",
     "predeploy:check": "npm run test && npm run build",
     "mobile:sync": "npm run --prefix mobile sync",
@@ -84,7 +83,8 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "undici": "^6.27.0",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
