@@ -1,0 +1,701 @@
+import { randomUUID } from "node:crypto";
+import { botConfig } from "../config.js";
+import { getDb, nowIso, todayInTz } from "./client.js";
+import type { DrawnCard, GuestSymbol } from "../domain/deck/types.js";
+
+export type BotUser = {
+  telegram_user_id: number;
+  chat_id: number;
+  username: string | null;
+  first_name: string | null;
+  language_code: string | null;
+  age_confirmed_at: string | null;
+  terms_accepted_at: string | null;
+  privacy_accepted_at: string | null;
+  consent_source: string | null;
+  consent_version?: string | null;
+  ref: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  master_pref: string | null;
+  reminder_mode: "morning" | "evening" | "off";
+  reminder_hour: number | null;
+  streak_days: number;
+  streak_last_date: string | null;
+  streak_grace_used?: number | null;
+  blocked_at: string | null;
+  banned_at: string | null;
+  zovus_user_id: string | null;
+  timezone_offset_minutes?: number | null;
+  voice_mode?: "text" | "text_voice" | null;
+  ref_code?: string | null;
+  invited_by?: number | null;
+  referral_count?: number | null;
+  bonus_spreads?: number | null;
+  last_active_at?: string | null;
+  unsubscribed_at?: string | null;
+  timezone_asked_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Attribution = {
+  ref?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_content?: string;
+  master?: string;
+};
+
+export type GuestSessionRow = {
+  id: string;
+  telegram_user_id: number;
+  question: string;
+  cards: string;
+  master: string;
+  system: string;
+  spread_id: string;
+  teaser_text: string | null;
+  teaser_prompt_version: string | null;
+  teaser_model: string | null;
+  session_token_hash: string;
+  fingerprint: string | null;
+  question_source: string | null;
+  source: string;
+  created_at: string;
+  expires_at: string;
+  claimed_at: string | null;
+};
+
+export function upsertUser(input: {
+  telegramUserId: number;
+  chatId: number;
+  username?: string;
+  firstName?: string;
+  languageCode?: string;
+  attribution?: Attribution;
+}): BotUser {
+  const db = getDb();
+  const existing = db
+    .prepare(`SELECT * FROM bot_users WHERE telegram_user_id = ?`)
+    .get(input.telegramUserId) as BotUser | undefined;
+  const now = nowIso();
+
+  if (!existing) {
+    db.prepare(
+      `INSERT INTO bot_users (
+        telegram_user_id, chat_id, username, first_name, language_code,
+        ref, utm_source, utm_medium, utm_campaign, utm_content, master_pref,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      input.telegramUserId,
+      input.chatId,
+      input.username ?? null,
+      input.firstName ?? null,
+      input.languageCode ?? null,
+      input.attribution?.ref ?? null,
+      input.attribution?.utm_source ?? null,
+      input.attribution?.utm_medium ?? null,
+      input.attribution?.utm_campaign ?? null,
+      input.attribution?.utm_content ?? null,
+      input.attribution?.master ?? botConfig.masterId,
+      now,
+      now
+    );
+  } else {
+    db.prepare(
+      `UPDATE bot_users SET
+        chat_id = ?,
+        username = COALESCE(?, username),
+        first_name = COALESCE(?, first_name),
+        language_code = COALESCE(?, language_code),
+        updated_at = ?
+       WHERE telegram_user_id = ?`
+    ).run(
+      input.chatId,
+      input.username ?? null,
+      input.firstName ?? null,
+      input.languageCode ?? null,
+      now,
+      input.telegramUserId
+    );
+
+    // First-touch attribution only
+    if (input.attribution) {
+      const a = input.attribution;
+      db.prepare(
+        `UPDATE bot_users SET
+          ref = COALESCE(ref, ?),
+          utm_source = COALESCE(utm_source, ?),
+          utm_medium = COALESCE(utm_medium, ?),
+          utm_campaign = COALESCE(utm_campaign, ?),
+          utm_content = COALESCE(utm_content, ?),
+          master_pref = COALESCE(master_pref, ?)
+         WHERE telegram_user_id = ?`
+      ).run(
+        a.ref ?? null,
+        a.utm_source ?? null,
+        a.utm_medium ?? null,
+        a.utm_campaign ?? null,
+        a.utm_content ?? null,
+        a.master ?? null,
+        input.telegramUserId
+      );
+    }
+  }
+
+  return getUser(input.telegramUserId)!;
+}
+
+export function getUser(telegramUserId: number): BotUser | null {
+  return (
+    (getDb().prepare(`SELECT * FROM bot_users WHERE telegram_user_id = ?`).get(telegramUserId) as
+      | BotUser
+      | undefined) ?? null
+  );
+}
+
+export function hasGates(user: BotUser): boolean {
+  return Boolean(user.age_confirmed_at && user.terms_accepted_at && user.privacy_accepted_at);
+}
+
+export function confirmAge(telegramUserId: number): void {
+  const now = nowIso();
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET age_confirmed_at = COALESCE(age_confirmed_at, ?), updated_at = ? WHERE telegram_user_id = ?`
+    )
+    .run(now, now, telegramUserId);
+}
+
+export function confirmConsent(telegramUserId: number): void {
+  const now = nowIso();
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET
+        terms_accepted_at = COALESCE(terms_accepted_at, ?),
+        privacy_accepted_at = COALESCE(privacy_accepted_at, ?),
+        consent_source = 'telegram',
+        consent_version = COALESCE(consent_version, ?),
+        updated_at = ?
+       WHERE telegram_user_id = ?`
+    )
+    .run(now, now, botConfig.consentVersion, now, telegramUserId);
+}
+
+export function setReminderMode(
+  telegramUserId: number,
+  mode: "morning" | "evening" | "off",
+  hour: number | null
+): void {
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET reminder_mode = ?, reminder_hour = ?, updated_at = ? WHERE telegram_user_id = ?`
+    )
+    .run(mode, hour, nowIso(), telegramUserId);
+}
+
+export function markBlocked(telegramUserId: number): void {
+  getDb()
+    .prepare(`UPDATE bot_users SET blocked_at = ?, updated_at = ? WHERE telegram_user_id = ?`)
+    .run(nowIso(), nowIso(), telegramUserId);
+}
+
+export function banUser(telegramUserId: number): void {
+  getDb()
+    .prepare(`UPDATE bot_users SET banned_at = ?, updated_at = ? WHERE telegram_user_id = ?`)
+    .run(nowIso(), nowIso(), telegramUserId);
+}
+
+export function touchStreak(telegramUserId: number): number {
+  const user = getUser(telegramUserId);
+  if (!user) return 0;
+  const today = todayInTz();
+  if (user.streak_last_date === today) return user.streak_days;
+
+  let next = 1;
+  let grace = user.streak_grace_used ?? 0;
+  if (user.streak_last_date) {
+    const prev = new Date(`${user.streak_last_date}T12:00:00Z`);
+    const cur = new Date(`${today}T12:00:00Z`);
+    const diffDays = Math.round((cur.getTime() - prev.getTime()) / 86400000);
+    if (diffDays === 1) {
+      next = user.streak_days + 1;
+      grace = 0;
+    } else if (diffDays === 2 && grace === 0) {
+      // Soft miss: one skipped day does not reset
+      next = user.streak_days + 1;
+      grace = 1;
+    }
+  }
+
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET streak_days = ?, streak_last_date = ?, streak_grace_used = ?, updated_at = ?, last_active_at = ? WHERE telegram_user_id = ?`
+    )
+    .run(next, today, grace, nowIso(), nowIso(), telegramUserId);
+  return next;
+}
+
+export function setFlow(
+  telegramUserId: number,
+  flow: string,
+  step: string,
+  data: Record<string, unknown> = {}
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO bot_flow_state (telegram_user_id, flow, step, data, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(telegram_user_id) DO UPDATE SET
+         flow = excluded.flow,
+         step = excluded.step,
+         data = excluded.data,
+         updated_at = excluded.updated_at`
+    )
+    .run(telegramUserId, flow, step, JSON.stringify(data), nowIso());
+}
+
+export function getFlow(telegramUserId: number): {
+  flow: string;
+  step: string;
+  data: Record<string, unknown>;
+} | null {
+  const row = getDb()
+    .prepare(`SELECT flow, step, data FROM bot_flow_state WHERE telegram_user_id = ?`)
+    .get(telegramUserId) as { flow: string; step: string; data: string } | undefined;
+  if (!row) return null;
+  return {
+    flow: row.flow,
+    step: row.step,
+    data: JSON.parse(row.data || "{}") as Record<string, unknown>,
+  };
+}
+
+export function clearFlow(telegramUserId: number): void {
+  getDb().prepare(`DELETE FROM bot_flow_state WHERE telegram_user_id = ?`).run(telegramUserId);
+}
+
+export function claimUpdate(updateId: number): boolean {
+  try {
+    getDb()
+      .prepare(`INSERT INTO bot_processed_updates (update_id, processed_at) VALUES (?, ?)`)
+      .run(updateId, nowIso());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function releaseUpdate(updateId: number): void {
+  getDb().prepare(`DELETE FROM bot_processed_updates WHERE update_id = ?`).run(updateId);
+}
+
+export function trackEvent(
+  name: string,
+  telegramUserId: number | null,
+  payload: Record<string, unknown> = {}
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO bot_events (name, telegram_user_id, payload, created_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(name, telegramUserId, JSON.stringify(payload), nowIso());
+}
+
+export function countTripletsToday(telegramUserId: number): number {
+  const day = todayInTz();
+  const rows = getDb()
+    .prepare(`SELECT created_at FROM bot_guest_sessions WHERE telegram_user_id = ?`)
+    .all(telegramUserId) as Array<{ created_at: string }>;
+  return rows.filter((r) => moscowDay(r.created_at) === day).length;
+}
+
+function moscowDay(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: botConfig.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+export function createGuestSession(input: {
+  id?: string;
+  telegramUserId: number;
+  question: string;
+  cards: GuestSymbol[];
+  teaserText: string;
+  teaserPromptVersion: string;
+  teaserModel: string;
+  teaserSeed: string;
+  tokenHash: string;
+  fingerprint: string;
+  questionSource: "chip" | "free";
+  collageCacheKey?: string;
+}): GuestSessionRow {
+  const id = input.id ?? randomUUID();
+  const created = nowIso();
+  const expires = new Date(Date.now() + botConfig.sessionTtlMs).toISOString();
+  getDb()
+    .prepare(
+      `INSERT INTO bot_guest_sessions (
+        id, telegram_user_id, question, cards, master, system, spread_id, deck_id,
+        teaser_text, teaser_prompt_version, teaser_model, teaser_seed,
+        session_token_hash, fingerprint, question_source, source, collage_cache_key,
+        created_at, expires_at, claimed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL)`
+    )
+    .run(
+      id,
+      input.telegramUserId,
+      input.question,
+      JSON.stringify(input.cards),
+      botConfig.masterId,
+      botConfig.system,
+      botConfig.spreadId,
+      botConfig.deckId,
+      input.teaserText,
+      input.teaserPromptVersion,
+      input.teaserModel,
+      input.teaserSeed,
+      input.tokenHash,
+      input.fingerprint,
+      input.questionSource,
+      input.collageCacheKey ?? id,
+      created,
+      expires
+    );
+  return getDb().prepare(`SELECT * FROM bot_guest_sessions WHERE id = ?`).get(id) as GuestSessionRow;
+}
+
+export function listSessions(telegramUserId: number, limit = 10): GuestSessionRow[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM bot_guest_sessions WHERE telegram_user_id = ? ORDER BY created_at DESC LIMIT ?`
+    )
+    .all(telegramUserId, limit) as GuestSessionRow[];
+}
+
+export function countSessions(telegramUserId: number): number {
+  const row = getDb()
+    .prepare(`SELECT COUNT(*) AS c FROM bot_guest_sessions WHERE telegram_user_id = ?`)
+    .get(telegramUserId) as { c: number };
+  return row.c;
+}
+
+export function getDayCard(telegramUserId: number, day = todayInTz()): {
+  card: DrawnCard;
+  text: string;
+} | null {
+  const row = getDb()
+    .prepare(`SELECT card, text FROM bot_day_cards WHERE telegram_user_id = ? AND day = ?`)
+    .get(telegramUserId, day) as { card: string; text: string } | undefined;
+  if (!row) return null;
+  return { card: JSON.parse(row.card) as DrawnCard, text: row.text };
+}
+
+export function saveDayCard(telegramUserId: number, card: DrawnCard, text: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO bot_day_cards (telegram_user_id, day, card, text, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(telegramUserId, todayInTz(), JSON.stringify(card), text, nowIso());
+}
+
+export function flagEnabled(key: string, fallback: boolean): boolean {
+  const row = getDb().prepare(`SELECT value FROM bot_flags WHERE key = ?`).get(key) as
+    | { value: string }
+    | undefined;
+  if (!row) return fallback;
+  return row.value === "1" || row.value === "true";
+}
+
+export function setFlag(key: string, enabled: boolean): void {
+  getDb()
+    .prepare(
+      `INSERT INTO bot_flags (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    )
+    .run(key, enabled ? "1" : "0", nowIso());
+}
+
+export function deleteUserData(telegramUserId: number): void {
+  const db = getDb();
+  db.exec("BEGIN");
+  try {
+    db.prepare(`DELETE FROM bot_reminder_log WHERE telegram_user_id = ?`).run(telegramUserId);
+    db.prepare(`DELETE FROM bot_day_cards WHERE telegram_user_id = ?`).run(telegramUserId);
+    db.prepare(`DELETE FROM bot_flow_state WHERE telegram_user_id = ?`).run(telegramUserId);
+    db.prepare(`DELETE FROM bot_guest_sessions WHERE telegram_user_id = ?`).run(telegramUserId);
+    db.prepare(`DELETE FROM bot_events WHERE telegram_user_id = ?`).run(telegramUserId);
+    db.prepare(`DELETE FROM bot_users WHERE telegram_user_id = ?`).run(telegramUserId);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+export function listUsers(limit = 100): BotUser[] {
+  return getDb()
+    .prepare(`SELECT * FROM bot_users ORDER BY created_at DESC LIMIT ?`)
+    .all(limit) as BotUser[];
+}
+
+export function audit(action: string, detail: Record<string, unknown> = {}, actor = "cli"): void {
+  getDb()
+    .prepare(
+      `INSERT INTO bot_admin_audit (action, actor, detail, created_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(action, actor, JSON.stringify(detail), nowIso());
+}
+
+export function reminderAlreadySent(
+  telegramUserId: number,
+  kind: string,
+  day = todayInTz()
+): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS ok FROM bot_reminder_log WHERE telegram_user_id = ? AND kind = ? AND day = ?`
+    )
+    .get(telegramUserId, kind, day) as { ok: number } | undefined;
+  return Boolean(row);
+}
+
+export function markReminderSent(telegramUserId: number, kind: string): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO bot_reminder_log (telegram_user_id, kind, day, created_at) VALUES (?, ?, ?, ?)`
+    )
+    .run(telegramUserId, kind, todayInTz(), nowIso());
+}
+
+export function usersForReminder(mode: "morning" | "evening"): BotUser[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM bot_users
+       WHERE reminder_mode = ?
+         AND blocked_at IS NULL
+         AND banned_at IS NULL
+         AND age_confirmed_at IS NOT NULL
+         AND (unsubscribed_at IS NULL OR unsubscribed_at = '')`
+    )
+    .all(mode) as BotUser[];
+}
+
+export function abandonedFlows(olderThanMs: number): Array<{
+  telegram_user_id: number;
+  chat_id: number;
+  data: string;
+  updated_at: string;
+}> {
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+  return getDb()
+    .prepare(
+      `SELECT s.telegram_user_id, u.chat_id, s.data, s.updated_at
+       FROM bot_flow_state s
+       JOIN bot_users u ON u.telegram_user_id = s.telegram_user_id
+       WHERE s.flow = 'spread' AND s.step = 'await_question' AND s.updated_at < ?
+         AND u.blocked_at IS NULL`
+    )
+    .all(cutoff) as Array<{
+    telegram_user_id: number;
+    chat_id: number;
+    data: string;
+    updated_at: string;
+  }>;
+}
+
+export function exportEventsCsv(): string {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, name, telegram_user_id, payload, created_at FROM bot_events ORDER BY id ASC`
+    )
+    .all() as Array<{
+    id: number;
+    name: string;
+    telegram_user_id: number | null;
+    payload: string;
+    created_at: string;
+  }>;
+  const header = "id,name,telegram_user_id,payload,created_at";
+  const body = rows.map((r) =>
+    [r.id, r.name, r.telegram_user_id ?? "", JSON.stringify(r.payload).replaceAll('"', '""'), r.created_at]
+      .map((c, i) => (i === 3 ? `"${c}"` : String(c)))
+      .join(",")
+  );
+  return [header, ...body].join("\n");
+}
+
+export function effectiveTripletLimit(user: BotUser): number {
+  return botConfig.tripletDailyLimit + (user.bonus_spreads ?? 0);
+}
+
+export function canDrawTriplet(user: BotUser): boolean {
+  return countTripletsToday(user.telegram_user_id) < effectiveTripletLimit(user);
+}
+
+export function consumeBonusSpread(telegramUserId: number): void {
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET bonus_spreads = CASE WHEN COALESCE(bonus_spreads,0) > 0 THEN bonus_spreads - 1 ELSE 0 END, updated_at = ? WHERE telegram_user_id = ?`
+    )
+    .run(nowIso(), telegramUserId);
+}
+
+export function findSessionByTokenHash(hash: string): GuestSessionRow | null {
+  return (
+    (getDb()
+      .prepare(`SELECT * FROM bot_guest_sessions WHERE session_token_hash = ?`)
+      .get(hash) as GuestSessionRow | undefined) ?? null
+  );
+}
+
+export function expireSessions(): number {
+  const now = nowIso();
+  const res = getDb().prepare(
+    `UPDATE bot_guest_sessions SET expired_at = COALESCE(expired_at, ?)
+     WHERE expires_at < ? AND claimed_at IS NULL AND expired_at IS NULL`
+  ).run(now, now);
+  return Number(res.changes ?? 0);
+}
+
+export function consumeLlmQuota(telegramUserId: number): boolean {
+  const day = todayInTz();
+  const row = getDb()
+    .prepare(`SELECT calls FROM bot_llm_usage WHERE telegram_user_id = ? AND day = ?`)
+    .get(telegramUserId, day) as { calls: number } | undefined;
+  const calls = row?.calls ?? 0;
+  if (calls >= botConfig.llmDailyCap) return false;
+  getDb()
+    .prepare(
+      `INSERT INTO bot_llm_usage (telegram_user_id, day, calls) VALUES (?, ?, 1)
+       ON CONFLICT(telegram_user_id, day) DO UPDATE SET calls = calls + 1`
+    )
+    .run(telegramUserId, day);
+  return true;
+}
+
+export function consumeTtsQuota(telegramUserId: number): boolean {
+  const day = todayInTz();
+  const row = getDb()
+    .prepare(`SELECT calls FROM bot_tts_usage WHERE telegram_user_id = ? AND day = ?`)
+    .get(telegramUserId, day) as { calls: number } | undefined;
+  if ((row?.calls ?? 0) >= botConfig.ttsDailyCap) return false;
+  getDb()
+    .prepare(
+      `INSERT INTO bot_tts_usage (telegram_user_id, day, calls) VALUES (?, ?, 1)
+       ON CONFLICT(telegram_user_id, day) DO UPDATE SET calls = calls + 1`
+    )
+    .run(telegramUserId, day);
+  return true;
+}
+
+export function ensureRefCode(telegramUserId: number): string {
+  const user = getUser(telegramUserId);
+  if (user?.ref_code) return user.ref_code;
+  const code = `r${telegramUserId.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  getDb()
+    .prepare(`UPDATE bot_users SET ref_code = ?, updated_at = ? WHERE telegram_user_id = ?`)
+    .run(code, nowIso(), telegramUserId);
+  return code;
+}
+
+export function applyReferral(inviteeId: number, refCode: string): boolean {
+  const inviter = getDb()
+    .prepare(`SELECT * FROM bot_users WHERE ref_code = ?`)
+    .get(refCode) as BotUser | undefined;
+  if (!inviter || inviter.telegram_user_id === inviteeId) return false;
+  const invitee = getUser(inviteeId);
+  if (!invitee || invitee.invited_by) return false;
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET invited_by = ?, updated_at = ? WHERE telegram_user_id = ? AND invited_by IS NULL`
+    )
+    .run(inviter.telegram_user_id, nowIso(), inviteeId);
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET referral_count = COALESCE(referral_count,0) + 1,
+        bonus_spreads = COALESCE(bonus_spreads,0) + 1, updated_at = ? WHERE telegram_user_id = ?`
+    )
+    .run(nowIso(), inviter.telegram_user_id);
+  trackEvent("referral_joined", inviteeId, { inviter: inviter.telegram_user_id });
+  return true;
+}
+
+export function setVoiceMode(telegramUserId: number, mode: "text" | "text_voice"): void {
+  getDb()
+    .prepare(`UPDATE bot_users SET voice_mode = ?, updated_at = ? WHERE telegram_user_id = ?`)
+    .run(mode, nowIso(), telegramUserId);
+}
+
+export function setTimezoneOffset(telegramUserId: number, minutes: number): void {
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET timezone_offset_minutes = ?, timezone_asked_at = ?, updated_at = ? WHERE telegram_user_id = ?`
+    )
+    .run(minutes, nowIso(), nowIso(), telegramUserId);
+  trackEvent("timezone_set", telegramUserId, { offset: minutes });
+}
+
+export function setUnsubscribed(telegramUserId: number): void {
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET unsubscribed_at = ?, reminder_mode = 'off', updated_at = ? WHERE telegram_user_id = ?`
+    )
+    .run(nowIso(), nowIso(), telegramUserId);
+}
+
+export function localHourForUser(user: BotUser): number {
+  const offset = user.timezone_offset_minutes;
+  if (offset == null) {
+    return Number(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: botConfig.timezone,
+        hour: "numeric",
+        hour12: false,
+      })
+        .formatToParts(new Date())
+        .find((p) => p.type === "hour")?.value ?? "0"
+    );
+  }
+  const utc = new Date();
+  const local = new Date(utc.getTime() + offset * 60_000);
+  return local.getUTCHours();
+}
+
+export function metricsSummary(): Record<string, number> {
+  const day = todayInTz();
+  const count = (name: string) => {
+    const row = getDb()
+      .prepare(
+        `SELECT COUNT(*) AS c FROM bot_events WHERE name = ? AND substr(created_at,1,10) = ?`
+      )
+      .get(name, day) as { c: number };
+    return row.c;
+  };
+  return {
+    users_new: (
+      getDb()
+        .prepare(`SELECT COUNT(*) AS c FROM bot_users WHERE substr(created_at,1,10) = ?`)
+        .get(day) as { c: number }
+    ).c,
+    spreads: (
+      getDb()
+        .prepare(`SELECT COUNT(*) AS c FROM bot_guest_sessions WHERE substr(created_at,1,10) = ?`)
+        .get(day) as { c: number }
+    ).c,
+    cta_click: count("cta_click"),
+    ritual_completed: count("ritual_completed"),
+    crisis_detected: count("crisis_detected"),
+    voice_sent: count("voice_sent"),
+    voice_failed: count("voice_failed"),
+  };
+}
