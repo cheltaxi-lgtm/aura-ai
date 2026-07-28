@@ -1,3 +1,5 @@
+import { normalizeSafetyText } from "../../safety/normalize.js";
+
 const MAX_LEN = 500;
 const MIN_LEN = 8;
 
@@ -5,17 +7,22 @@ export type QuestionValidation =
   | { ok: true; question: string }
   | { ok: false; reason: string; code?: "crisis" | "medical" | "minor" | "third_party" | "weak" };
 
-const CRISIS =
-  /суицид|убить себя|покончить с собой|не хочу жить|хочу умереть|умертвить себя|самоубий|порезать себя|самоповрежд|убить (его|её|ее|их|кого)|расчлен|застрел/i;
+/**
+ * Patterns against normalizeSafetyText (no spaces; letter repeats collapsed to 1).
+ * Note: "хочу"+"умереть" → хочумереть; "покончить с собой" → покончитьсобой.
+ */
+const CRISIS_NORM =
+  /суицид|убитьсебя|покончитьсобой|нехочужит|хочумерет|умертвитьсебя|самоубий|порезатьсебя|самоповрежд|убить(его|ее|их|кого)|расчлен|застрел/;
 
-const MEDICAL =
-  /диагноз|лечить|лекарств|онкологи|беременн.*(тест|срок)|аборт|психиатр|суд\b|адвокат|приговор|юрист/i;
+const MEDICAL_NORM =
+  /диагноз|лечить|лекарств|онкологи|аборт|психиатр|адвокат|приговор|юрист|беременнтест|беременнсрок/;
 
-const MINOR =
-  /\b(ребён|ребенок|девочк|мальчик|школьник|несовершеннолет|подростк)/i;
+/** Minors: require ownership / legal-age markers — avoid “чувствую себя как ребёнок”. */
+const MINOR_RAW =
+  /несовершеннолет|(мой|моего|мою|моя|моему|моей)\s+(ребён|ребенок|девочк|мальчик|сын|дочь)|подростк[а-яё]*\s+сын|(ребён|ребенок|девочк|мальчик).{0,12}школ|гада[а-яё]*.{0,24}(ребён|ребенок|девочк|мальчик|дочь|сын)/i;
 
-const THIRD =
-  /\b(моя жена|мой муж|моя дочь|мой сын|его жена|её муж)\b.*\b(изменит|изменил|умрёт|умрет|умрёт)\b/i;
+const THIRD_RAW =
+  /\b(моя жена|мой муж|моя дочь|мой сын|его жена|её муж)\b.*\b(изменит|изменил|умрёт|умрет)\b/i;
 
 export function sanitizeQuestion(raw: string): string {
   return raw
@@ -40,16 +47,18 @@ export function validateQuestion(raw: unknown): QuestionValidation {
   if (/^(.)\1{5,}$/i.test(question) || /^[.?!\s]+$/.test(question)) {
     return { ok: false, reason: "Похоже на случайный набор. Переформулируйте вопрос.", code: "weak" };
   }
-  if (CRISIS.test(question)) {
+
+  const norm = normalizeSafetyText(question);
+  if (CRISIS_NORM.test(norm)) {
     return { ok: false, reason: "crisis", code: "crisis" };
   }
-  if (MEDICAL.test(question)) {
+  if (MEDICAL_NORM.test(norm) || MEDICAL_NORM.test(normalizeSafetyText(question.replace(/ё/g, "е")))) {
     return { ok: false, reason: "medical", code: "medical" };
   }
-  if (MINOR.test(question)) {
+  if (MINOR_RAW.test(question)) {
     return { ok: false, reason: "minor", code: "minor" };
   }
-  if (THIRD.test(question)) {
+  if (THIRD_RAW.test(question)) {
     return { ok: false, reason: "third_party", code: "third_party" };
   }
   return { ok: true, question };
