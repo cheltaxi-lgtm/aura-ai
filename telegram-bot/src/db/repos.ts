@@ -31,6 +31,7 @@ export type BotUser = {
   banned_at: string | null;
   zovus_user_id: string | null;
   timezone_offset_minutes?: number | null;
+  timezone_source?: "default" | "user" | null;
   voice_mode?: "text" | "text_voice" | null;
   ref_code?: string | null;
   invited_by?: number | null;
@@ -91,8 +92,9 @@ export function upsertUser(input: {
       `INSERT INTO bot_users (
         telegram_user_id, chat_id, username, first_name, language_code,
         ref, utm_source, utm_medium, utm_campaign, utm_content, master_pref,
+        timezone_offset_minutes, timezone_source,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 180, 'default', ?, ?)`
     ).run(
       input.telegramUserId,
       input.chatId,
@@ -688,10 +690,48 @@ export function setVoiceMode(telegramUserId: number, mode: "text" | "text_voice"
 export function setTimezoneOffset(telegramUserId: number, minutes: number): void {
   getDb()
     .prepare(
-      `UPDATE bot_users SET timezone_offset_minutes = ?, timezone_asked_at = ?, updated_at = ? WHERE telegram_user_id = ?`
+      `UPDATE bot_users SET
+        timezone_offset_minutes = ?,
+        timezone_asked_at = ?,
+        timezone_source = 'user',
+        updated_at = ?
+       WHERE telegram_user_id = ?`
     )
     .run(minutes, nowIso(), nowIso(), telegramUserId);
-  trackEvent("timezone_set", telegramUserId, { offset: minutes });
+  trackEvent("timezone_set", telegramUserId, { offset: minutes, source: "user" });
+}
+
+/** Soft-skip TZ prompt after first spread; keep default Moscow. */
+export function skipTimezonePrompt(telegramUserId: number): void {
+  getDb()
+    .prepare(
+      `UPDATE bot_users SET timezone_asked_at = COALESCE(timezone_asked_at, ?), updated_at = ?
+       WHERE telegram_user_id = ?`
+    )
+    .run(nowIso(), nowIso(), telegramUserId);
+  trackEvent("timezone_skip", telegramUserId, {});
+}
+
+/** True when user still on default TZ and has not answered/skipped the soft prompt. */
+export function needsSoftTimezonePrompt(user: BotUser): boolean {
+  if (user.timezone_source === "user") return false;
+  if (user.timezone_asked_at) return false;
+  return true;
+}
+
+export function needsUserTimezoneForReminders(user: BotUser): boolean {
+  return user.timezone_source !== "user";
+}
+
+export function formatTimezoneLabel(user: BotUser): string {
+  const mins = user.timezone_offset_minutes ?? 180;
+  const hours = mins / 60;
+  const sign = hours >= 0 ? "+" : "";
+  const source =
+    user.timezone_source === "user"
+      ? "выбран вами"
+      : "по умолчанию (Москва)";
+  return `UTC${sign}${hours} · ${source}`;
 }
 
 export function setUnsubscribed(telegramUserId: number): void {

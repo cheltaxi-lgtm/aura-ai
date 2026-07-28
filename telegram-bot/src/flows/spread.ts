@@ -13,6 +13,8 @@ import {
   effectiveTripletLimit,
   findSessionById,
   getFlow,
+  getUser,
+  needsSoftTimezonePrompt,
   setFlow,
   touchStreak,
   trackEvent,
@@ -31,7 +33,12 @@ import {
 } from "../domain/session/token.js";
 import { generateTeaser } from "../domain/teaser/provider.js";
 import { ttsProvider } from "../domain/tts/openrouter-provider.js";
-import { ctaKeyboard, questionKeyboard, salonKeyboard } from "../keyboards/index.js";
+import {
+  ctaKeyboard,
+  questionKeyboard,
+  salonKeyboard,
+  timezoneKeyboard,
+} from "../keyboards/index.js";
 import { markIrreversible } from "../middleware/irreversible.js";
 import { ensureOnboarded, track } from "./helpers.js";
 import { ritualReveal } from "./ritual.js";
@@ -238,6 +245,14 @@ async function runSpread(
   }
 
   clearFlow(user.telegram_user_id);
+
+  const fresh = getUser(user.telegram_user_id);
+  if (fresh && needsSoftTimezonePrompt(fresh)) {
+    await ctx.reply(copy.timezoneAskSoft, {
+      reply_markup: timezoneKeyboard({ allowSkip: true }),
+    });
+  }
+
   void effectiveTripletLimit;
 }
 

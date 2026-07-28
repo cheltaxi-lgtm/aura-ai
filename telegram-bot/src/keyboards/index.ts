@@ -85,8 +85,8 @@ export function settingsKeyboard(): InlineKeyboard {
     .text("🌍 Часовой пояс", `${CB.tzPrefix}ask`);
 }
 
-export function timezoneKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
+export function timezoneKeyboard(opts?: { allowSkip?: boolean }): InlineKeyboard {
+  const kb = new InlineKeyboard()
     .text("🌍 Калининград (UTC+2)", `${CB.tzPrefix}120`)
     .row()
     .text("🌍 Москва (UTC+3)", `${CB.tzPrefix}180`)
@@ -98,6 +98,10 @@ export function timezoneKeyboard(): InlineKeyboard {
     .text("🌍 Новосибирск (UTC+7)", `${CB.tzPrefix}420`)
     .row()
     .text("🌍 Владивосток (UTC+10)", `${CB.tzPrefix}600`);
+  if (opts?.allowSkip) {
+    kb.row().text("Пропустить", `${CB.tzPrefix}skip`);
+  }
+  return kb;
 }
 
 export function deleteKeyboard(): InlineKeyboard {

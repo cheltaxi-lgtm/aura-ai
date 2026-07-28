@@ -9,10 +9,13 @@ import {
   countSessions,
   deleteUserData,
   ensureRefCode,
+  formatTimezoneLabel,
   getUser,
   listSessions,
+  needsUserTimezoneForReminders,
   setReminderMode,
   setTimezoneOffset,
+  skipTimezonePrompt,
   setUnsubscribed,
   setVoiceMode,
   trackEvent,
@@ -79,10 +82,6 @@ export function registerFlows(bot: Bot): void {
       await ctx.reply(copy.consentAsk(botConfig.siteUrl), { reply_markup: consentKeyboard() });
       return;
     }
-    if (!fresh.timezone_asked_at) {
-      await ctx.reply(copy.timezoneAsk, { reply_markup: timezoneKeyboard() });
-      return;
-    }
     await attachSalonBar(ctx);
   });
 
@@ -108,7 +107,7 @@ export function registerFlows(bot: Bot): void {
     track(user, "consent_given", {});
     await ctx.answerCallbackQuery();
     await ctx.editMessageText("Согласие принято.");
-    await ctx.reply(copy.timezoneAsk, { reply_markup: timezoneKeyboard() });
+    await attachSalonBar(ctx);
   });
 
   bot.callbackQuery(/^tz:(.+)$/, async (ctx) => {
@@ -121,6 +120,16 @@ export function registerFlows(bot: Bot): void {
     if (raw === "ask") {
       await ctx.answerCallbackQuery();
       await ctx.reply(copy.timezoneAsk, { reply_markup: timezoneKeyboard() });
+      return;
+    }
+    if (raw === "skip") {
+      skipTimezonePrompt(ctx.from.id);
+      await ctx.answerCallbackQuery({ text: "Пропущено" });
+      try {
+        await ctx.editMessageText(copy.timezoneSkipped);
+      } catch {
+        await ctx.reply(copy.timezoneSkipped, { reply_markup: salonKeyboard() });
+      }
       return;
     }
     const minutes = Number(raw);
@@ -189,6 +198,11 @@ export function registerFlows(bot: Bot): void {
   bot.callbackQuery(CB.remMorning, async (ctx) => {
     const user = await ensureOnboarded(ctx);
     if (!user) return;
+    if (needsUserTimezoneForReminders(user)) {
+      await ctx.answerCallbackQuery();
+      await ctx.reply(copy.timezoneAskReminders, { reply_markup: timezoneKeyboard() });
+      return;
+    }
     setReminderMode(user.telegram_user_id, "morning", 9);
     await ctx.answerCallbackQuery();
     await ctx.reply("Напоминания: утро.", { reply_markup: salonKeyboard() });
@@ -196,6 +210,11 @@ export function registerFlows(bot: Bot): void {
   bot.callbackQuery(CB.remEvening, async (ctx) => {
     const user = await ensureOnboarded(ctx);
     if (!user) return;
+    if (needsUserTimezoneForReminders(user)) {
+      await ctx.answerCallbackQuery();
+      await ctx.reply(copy.timezoneAskReminders, { reply_markup: timezoneKeyboard() });
+      return;
+    }
     setReminderMode(user.telegram_user_id, "evening", 20);
     await ctx.answerCallbackQuery();
     await ctx.reply("Напоминания: вечер.", { reply_markup: salonKeyboard() });
@@ -332,6 +351,7 @@ async function showProfile(ctx: Context): Promise<void> {
       consent: Boolean(user.terms_accepted_at && user.privacy_accepted_at),
       refLink: `https://t.me/${botConfig.botUsername}?start=ref_${code}`,
       invites: user.referral_count ?? 0,
+      timezone: formatTimezoneLabel(user),
     }),
     { reply_markup: inviteKeyboard() }
   );
@@ -360,7 +380,14 @@ async function showSettings(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
   await ctx.reply(
-    `${copy.settingsTitle}\n\n${copy.settingsHint}\nСейчас: напоминания ${user.reminder_mode}, голос ${user.voice_mode ?? "text_voice"}.`,
+    [
+      copy.settingsTitle,
+      "",
+      copy.settingsHint,
+      `Сейчас: напоминания ${user.reminder_mode}, голос ${user.voice_mode ?? "text_voice"}.`,
+      `Часовой пояс: ${formatTimezoneLabel(user)}.`,
+      "Сменить пояс — кнопка ниже.",
+    ].join("\n"),
     { reply_markup: settingsKeyboard() }
   );
 }

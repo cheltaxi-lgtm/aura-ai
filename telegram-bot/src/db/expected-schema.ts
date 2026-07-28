@@ -20,6 +20,7 @@ export type ExpectedTable = {
 /** Additive columns from migration 002 (+ 003 timezone fix). */
 const BOT_USERS_PREMIUM: ExpectedColumn[] = [
   { name: "timezone_offset_minutes", sqlType: "INTEGER", nullable: true },
+  { name: "timezone_source", sqlType: "TEXT", nullable: true },
   { name: "consent_version", sqlType: "TEXT", nullable: true },
   { name: "voice_mode", sqlType: "TEXT", nullable: true },
   { name: "ref_code", sqlType: "TEXT", nullable: true },
