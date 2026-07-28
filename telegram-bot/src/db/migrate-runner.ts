@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDb, migrate as ensureBaseline, nowIso } from "./client.js";
+import { EXPECTED_TABLES, additiveColumns } from "./expected-schema.js";
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "migrations");
 
@@ -92,57 +93,59 @@ export function migrateDown(): string[] {
   return [last];
 }
 
-/** Safety net: add critical columns if a prior buggy migrate skipped them. */
+/**
+ * Safety net driven by EXPECTED_TABLES / additiveColumns().
+ * Creates missing tables and ADD COLUMN for missing additive columns.
+ */
 export function ensureCriticalColumns(): void {
   const db = getDb();
-  const userCols = new Set(
-    (db.prepare(`PRAGMA table_info(bot_users)`).all() as Array<{ name: string }>).map((c) => c.name)
-  );
-  const sessionCols = new Set(
-    (db.prepare(`PRAGMA table_info(bot_guest_sessions)`).all() as Array<{ name: string }>).map(
-      (c) => c.name
-    )
-  );
 
-  const userNeed: Array<[string, string]> = [
-    ["timezone_offset_minutes", "INTEGER"],
-    ["consent_version", "TEXT"],
-    ["voice_mode", "TEXT"],
-    ["ref_code", "TEXT"],
-    ["invited_by", "INTEGER"],
-    ["referral_count", "INTEGER NOT NULL DEFAULT 0"],
-    ["bonus_spreads", "INTEGER NOT NULL DEFAULT 0"],
-    ["last_active_at", "TEXT"],
-    ["streak_grace_used", "INTEGER NOT NULL DEFAULT 0"],
-    ["unsubscribed_at", "TEXT"],
-    ["timezone_asked_at", "TEXT"],
-  ];
-  for (const [name, typ] of userNeed) {
-    if (!userCols.has(name)) {
+  for (const table of EXPECTED_TABLES) {
+    if (table.createSql) {
       try {
-        db.exec(`ALTER TABLE bot_users ADD COLUMN ${name} ${typ}`);
-        console.log(`[schema] added bot_users.${name}`);
+        db.exec(table.createSql);
       } catch (err) {
-        console.error(`[schema] bot_users.${name}`, err);
+        console.error(`[schema] create ${table.name}`, err);
       }
     }
   }
 
-  const sessionNeed: Array<[string, string]> = [
-    ["deck_id", "TEXT"],
-    ["teaser_seed", "TEXT"],
-    ["collage_cache_key", "TEXT"],
-    ["plain_token_prefix", "TEXT"],
-    ["expired_at", "TEXT"],
-  ];
-  for (const [name, typ] of sessionNeed) {
-    if (!sessionCols.has(name)) {
-      try {
-        db.exec(`ALTER TABLE bot_guest_sessions ADD COLUMN ${name} ${typ}`);
-        console.log(`[schema] added bot_guest_sessions.${name}`);
-      } catch (err) {
-        console.error(`[schema] bot_guest_sessions.${name}`, err);
-      }
+  for (const { table, column } of additiveColumns()) {
+    const cols = new Set(
+      (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    if (cols.has(column.name)) continue;
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column.name} ${column.sqlType}`);
+      console.log(`[schema] added ${table}.${column.name}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/duplicate column|already exists/i.test(msg)) continue;
+      console.error(`[schema] ${table}.${column.name}`, err);
     }
   }
+}
+
+/** Diff actual DB columns vs EXPECTED_TABLES (missing only). */
+export function schemaGaps(): Array<{ table: string; missing: string[] }> {
+  const db = getDb();
+  const gaps: Array<{ table: string; missing: string[] }> = [];
+  for (const table of EXPECTED_TABLES) {
+    let cols: Set<string>;
+    try {
+      cols = new Set(
+        (db.prepare(`PRAGMA table_info(${table.name})`).all() as Array<{ name: string }>).map(
+          (c) => c.name
+        )
+      );
+    } catch {
+      gaps.push({ table: table.name, missing: table.columns.map((c) => c.name) });
+      continue;
+    }
+    const missing = table.columns.map((c) => c.name).filter((n) => !cols.has(n));
+    if (missing.length) gaps.push({ table: table.name, missing });
+  }
+  return gaps;
 }
