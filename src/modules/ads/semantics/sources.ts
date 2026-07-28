@@ -62,8 +62,9 @@ export class WebmasterSource implements KeywordSource {
   name = "webmaster";
 
   async collect(): Promise<RawKeyword[]> {
-    const token = process.env.WEBMASTER_TOKEN;
-    const hostId = process.env.WEBMASTER_HOST_ID;
+    const { webmasterHostId, webmasterToken } = await import("../sources/env");
+    const token = webmasterToken();
+    const hostId = webmasterHostId();
     if (!token || !hostId) return [];
     try {
       const userRes = await fetch("https://api.webmaster.yandex.net/v4/user", {
@@ -107,8 +108,9 @@ export class MetrikaSource implements KeywordSource {
   name = "metrika";
 
   async collect(): Promise<RawKeyword[]> {
-    const token = process.env.METRIKA_TOKEN;
-    const counter = process.env.METRIKA_COUNTER_ID;
+    const { metrikaCounterId, metrikaToken } = await import("../sources/env");
+    const token = metrikaToken();
+    const counter = metrikaCounterId();
     if (!token || !counter) return [];
     try {
       // Optional enrichment; degrade empty if API shape unavailable.

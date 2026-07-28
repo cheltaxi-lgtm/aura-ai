@@ -1,6 +1,7 @@
 /**
  * Read-only Webmaster popular queries.
  */
+import { webmasterHostId, webmasterToken } from "./env";
 
 export type WebmasterQuery = {
   query: string;
@@ -18,36 +19,29 @@ export type WebmasterSnapshot = {
 };
 
 export async function fetchWebmasterSnapshot(): Promise<WebmasterSnapshot> {
-  const token = process.env.WEBMASTER_TOKEN;
-  const hostId = process.env.WEBMASTER_HOST_ID || null;
-  if (!token || !hostId) {
-    return {
-      hostId,
-      hostDisplay: null,
-      queries: [],
-      dateFrom: null,
-      dateTo: null,
-    };
+  const token = webmasterToken();
+  const hostId = webmasterHostId();
+  if (!token) {
+    throw new Error(
+      "Webmaster token missing: set WEBMASTER_TOKEN (or reuse METRIKA/YANDEX_METRIKA/ADS_DIRECT OAuth with webmaster scopes)"
+    );
+  }
+  if (!hostId) {
+    throw new Error("WEBMASTER_HOST_ID missing (example: https:zovus.ru:443)");
   }
 
   const headers = { Authorization: `OAuth ${token}` };
-  let uid: number | null = null;
-  try {
-    const userRes = await fetch("https://api.webmaster.yandex.net/v4/user", { headers });
-    if (!userRes.ok) throw new Error(`webmaster user ${userRes.status}`);
-    const uj = (await userRes.json()) as { user_id?: number };
-    uid = uj.user_id ?? null;
-  } catch {
-    return {
-      hostId,
-      hostDisplay: null,
-      queries: [],
-      dateFrom: null,
-      dateTo: null,
-    };
+  const userRes = await fetch("https://api.webmaster.yandex.net/v4/user", { headers });
+  if (!userRes.ok) {
+    const body = await userRes.text().catch(() => "");
+    throw new Error(
+      `webmaster user ${userRes.status}${body ? `: ${body.slice(0, 160)}` : ""}`
+    );
   }
+  const uj = (await userRes.json()) as { user_id?: number };
+  const uid = uj.user_id ?? null;
   if (!uid) {
-    return { hostId, hostDisplay: null, queries: [], dateFrom: null, dateTo: null };
+    throw new Error("webmaster user_id missing in API response");
   }
 
   const to = new Date();
@@ -56,25 +50,28 @@ export async function fetchWebmasterSnapshot(): Promise<WebmasterSnapshot> {
   const dateTo = to.toISOString().slice(0, 10);
   const encodedHost = encodeURIComponent(hostId);
 
-  try {
-    const url =
-      `https://api.webmaster.yandex.net/v4/user/${uid}/hosts/${encodedHost}/search-queries/popular` +
-      `?date_from=${dateFrom}&date_to=${dateTo}&query_indicator=TOTAL_SHOWS&order_by=TOTAL_CLICKS&limit=50`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      return { hostId, hostDisplay: hostId, queries: [], dateFrom, dateTo };
-    }
-    const json = (await res.json()) as {
-      queries?: {
-        query_text?: string;
-        indicators?: {
-          TOTAL_CLICKS?: number;
-          TOTAL_SHOWS?: number;
-          AVG_SHOW_POSITION?: number;
-        };
-      }[];
-    };
-    const queries: WebmasterQuery[] = (json.queries || []).map((q) => ({
+  const url =
+    `https://api.webmaster.yandex.net/v4/user/${uid}/hosts/${encodedHost}/search-queries/popular` +
+    `?date_from=${dateFrom}&date_to=${dateTo}&query_indicator=TOTAL_SHOWS&order_by=TOTAL_CLICKS&limit=50`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `webmaster queries ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
+    );
+  }
+  const json = (await res.json()) as {
+    queries?: {
+      query_text?: string;
+      indicators?: {
+        TOTAL_CLICKS?: number;
+        TOTAL_SHOWS?: number;
+        AVG_SHOW_POSITION?: number;
+      };
+    }[];
+  };
+  const queries: WebmasterQuery[] = (json.queries || [])
+    .map((q) => ({
       query: q.query_text || "",
       clicks: Number(q.indicators?.TOTAL_CLICKS || 0),
       shows: Number(q.indicators?.TOTAL_SHOWS || 0),
@@ -82,12 +79,10 @@ export async function fetchWebmasterSnapshot(): Promise<WebmasterSnapshot> {
         q.indicators?.AVG_SHOW_POSITION != null
           ? Number(q.indicators.AVG_SHOW_POSITION)
           : null,
-    })).filter((q) => q.query);
+    }))
+    .filter((q) => q.query);
 
-    return { hostId, hostDisplay: hostId, queries, dateFrom, dateTo };
-  } catch {
-    return { hostId, hostDisplay: hostId, queries: [], dateFrom, dateTo };
-  }
+  return { hostId, hostDisplay: hostId, queries, dateFrom, dateTo };
 }
 
 export async function persistWebmasterQueries(snapshot: WebmasterSnapshot): Promise<void> {

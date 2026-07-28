@@ -183,6 +183,11 @@ export default function AdsSourcesPage() {
             </span>
           </div>
           <p className="text-xs text-gray-500">counter {mPayload.counterId || "—"}</p>
+          {!metrika?.ok && !metrika?.error ? (
+            <p className="mt-2 text-xs text-amber-400">
+              Нет снимка — нажмите «Обновить сейчас»
+            </p>
+          ) : null}
           <p className="mt-1 text-xs text-gray-400">
             7д: {mPayload.traffic7d?.visits ?? "—"} визитов / {mPayload.traffic7d?.users ?? "—"}{" "}
             польз.
@@ -217,8 +222,16 @@ export default function AdsSourcesPage() {
               {webmaster?.ok ? "ok" : "err"} · {ago(webmaster?.fetchedAt)}
             </span>
           </div>
+          <p className="text-xs text-gray-500">
+            host {(webmaster?.payload as { hostId?: string } | undefined)?.hostId || "—"}
+          </p>
           {webmaster?.error ? (
             <p className="mt-2 text-xs text-red-400">{webmaster.error}</p>
+          ) : null}
+          {!webmaster?.ok && !webmaster?.error ? (
+            <p className="mt-2 text-xs text-amber-400">
+              Нет снимка — нажмите «Обновить сейчас»
+            </p>
           ) : null}
           <div className="mt-3 max-h-64 overflow-auto">
             <AdminTable

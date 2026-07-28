@@ -2,9 +2,10 @@
  * Upload offline conversions to Yandex Metrika.
  * registration (no sum); first_payment / repeat_payment (with sum).
  * Never upload spread_submit. Idempotent via uploaded_at.
- * No-op without METRIKA_TOKEN.
+ * No-op without METRIKA_TOKEN / YANDEX_METRIKA_OAUTH_TOKEN.
  */
 import { adsQuery } from "./db";
+import { metrikaCounterId, metrikaToken } from "./sources/env";
 
 const UPLOAD_TYPES = ["registration", "first_payment", "repeat_payment"] as const;
 
@@ -18,8 +19,8 @@ export type OfflineConversionRow = {
 };
 
 function metrikaBase(): string | null {
-  const token = process.env.METRIKA_TOKEN;
-  const counter = process.env.METRIKA_COUNTER_ID;
+  const token = metrikaToken();
+  const counter = metrikaCounterId();
   if (!token || !counter) return null;
   return `https://api-metrika.yandex.net/management/v1/counter/${counter}/offline_conversions`;
 }
@@ -74,7 +75,7 @@ export async function uploadOfflineConversions(limit = 500): Promise<{
   }
 
   const csv = buildOfflineConversionsCsv(rows);
-  const token = process.env.METRIKA_TOKEN!;
+  const token = metrikaToken()!;
   const form = new FormData();
   form.append(
     "file",

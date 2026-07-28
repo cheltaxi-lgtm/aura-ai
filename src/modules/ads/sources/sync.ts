@@ -17,6 +17,7 @@ import {
   persistWebmasterQueries,
   type WebmasterSnapshot,
 } from "./webmaster";
+import { adsSourceTokenFlags } from "./env";
 
 export type SourceName = "direct" | "metrika" | "webmaster" | "health";
 
@@ -82,13 +83,7 @@ export async function syncHealthSource(partial?: {
   webmaster?: WebmasterSnapshot | null;
 }): Promise<void> {
   const budget = await getBudget();
-  const tokens = {
-    ADS_DIRECT_TOKEN: Boolean(process.env.ADS_DIRECT_TOKEN),
-    METRIKA_TOKEN: Boolean(process.env.METRIKA_TOKEN),
-    WEBMASTER_TOKEN: Boolean(process.env.WEBMASTER_TOKEN),
-    WORDSTAT_TOKEN: Boolean(process.env.WORDSTAT_TOKEN),
-    ADS_GOAL_REGISTRATION: Boolean(process.env.ADS_GOAL_REGISTRATION),
-  };
+  const tokens = adsSourceTokenFlags();
   const payload = {
     flags: {
       enabled: await isAdsEnabled(),

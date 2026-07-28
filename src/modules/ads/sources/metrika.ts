@@ -1,6 +1,7 @@
 /**
  * Read-only Metrika goals + traffic (no ads spend required).
  */
+import { metrikaCounterId, metrikaToken } from "./env";
 
 export type MetrikaGoalRow = {
   id: number;
@@ -26,7 +27,7 @@ const MAPPED = [
 ] as const;
 
 function oauthHeaders() {
-  const token = process.env.METRIKA_TOKEN;
+  const token = metrikaToken();
   if (!token) return null;
   return { Authorization: `OAuth ${token}` };
 }
@@ -80,22 +81,16 @@ async function traffic(
 }
 
 export async function fetchMetrikaSnapshot(): Promise<MetrikaSnapshot> {
-  const counterId = process.env.METRIKA_COUNTER_ID || null;
+  const counterId = metrikaCounterId();
   const headers = oauthHeaders();
   if (!counterId || !headers) {
-    return {
-      counterId,
-      goals: [],
-      mappedGoals: MAPPED.map((m) => ({
-        env: m.env,
-        id: Number(process.env[m.env]) || null,
-        name: null,
-        reaches7d: null,
-      })),
-      traffic7d: null,
-      traffic30d: null,
-      offlineUploadingsOk: null,
-    };
+    const missing = [
+      !counterId ? "METRIKA_COUNTER_ID|YANDEX_METRIKA_COUNTER_ID" : null,
+      !headers ? "METRIKA_TOKEN|YANDEX_METRIKA_OAUTH_TOKEN" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    throw new Error(`Metrika credentials missing: ${missing}`);
   }
 
   let goals: MetrikaGoalRow[] = [];
