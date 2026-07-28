@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn, StatCard } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
-import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
 
 type Snap = {
   fetchedAt: string;
@@ -16,7 +15,12 @@ type SourcesResponse = {
   needsMigration?: boolean;
   error?: string;
   snapshots: Record<string, Snap>;
-  recentWebmaster: { query: string; clicks: number; shows: number; position: number | null }[];
+  recentWebmaster: {
+    query: string;
+    clicks: number;
+    shows: number;
+    position: number | null;
+  }[];
   recentGoals: { date: string; goal_id: number; goal_name: string | null; reaches: number }[];
 };
 
@@ -31,23 +35,46 @@ function ago(iso?: string) {
   return new Date(iso).toLocaleString("ru-RU");
 }
 
+function fmtPct(n: number | null | undefined, digits = 1): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  // Metrika bounceRate is already 0–100; CTR we store 0–1
+  const v = n > 1 ? n : n * 100;
+  return `${v.toFixed(digits)}%`;
+}
+
+function fmtDur(sec: number | null | undefined): string {
+  if (sec == null || !Number.isFinite(sec)) return "—";
+  const s = Math.round(sec);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}м ${r}с` : `${r}с`;
+}
+
+function fmtNum(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return Math.round(n).toLocaleString("ru-RU");
+}
+
 export default function AdsSourcesPage() {
   const [data, setData] = useState<SourcesResponse | null>(null);
-  const [disabled, setDisabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/ads/admin/sources")
       .then(async (r) => {
-        if (r.status === 404) {
-          setDisabled(true);
+        if (r.status === 403) {
+          setLoadError("Нужна роль admin");
           return;
         }
-        if (!r.ok) return;
+        if (!r.ok) {
+          setLoadError(`sources HTTP ${r.status}`);
+          return;
+        }
         setData(await r.json());
       })
-      .catch(() => {});
+      .catch(() => setLoadError("Не удалось загрузить источники"));
   }, []);
 
   useEffect(() => {
@@ -67,7 +94,14 @@ export default function AdsSourcesPage() {
       if (!res.ok) {
         setNotice(d.error ?? "Ошибка обновления");
       } else {
-        setNotice("Снимки обновлены из Direct / Метрики / Вебмастера");
+        const parts = [
+          d.result?.metrika?.ok ? "Метрика ✓" : `Метрика ✗ ${d.result?.metrika?.error || ""}`,
+          d.result?.webmaster?.ok
+            ? "Вебмастер ✓"
+            : `Вебмастер ✗ ${d.result?.webmaster?.error || ""}`,
+          d.result?.direct?.ok ? "Директ ✓" : `Директ ✗ ${d.result?.direct?.error || ""}`,
+        ];
+        setNotice(parts.join(" · "));
         load();
       }
     } finally {
@@ -75,203 +109,243 @@ export default function AdsSourcesPage() {
     }
   };
 
-  if (disabled) return <AdsDisabled />;
-
   const direct = data?.snapshots?.direct;
   const metrika = data?.snapshots?.metrika;
   const webmaster = data?.snapshots?.webmaster;
-  const health = data?.snapshots?.health;
+  const m = (metrika?.payload || {}) as {
+    counterId?: string | null;
+    range7d?: { from: string; to: string };
+    range30d?: { from: string; to: string };
+    traffic7d?: {
+      visits: number;
+      users: number;
+      pageviews: number;
+      bounceRate: number | null;
+      avgDurationSec: number | null;
+    } | null;
+    traffic30d?: {
+      visits: number;
+      users: number;
+      pageviews: number;
+      bounceRate: number | null;
+      avgDurationSec: number | null;
+    } | null;
+    daily?: { date: string; visits: number; users: number }[];
+    bySource?: { source: string; visits: number; users: number; bounceRate: number | null }[];
+    byDevice?: { device: string; visits: number; users: number }[];
+    topLandings?: { path: string; visits: number; bounceRate: number | null }[];
+    topSearchPhrases?: { phrase: string; visits: number }[];
+    mappedGoals?: {
+      label: string;
+      env: string;
+      id: number | null;
+      name: string | null;
+      reaches7d: number | null;
+      reaches30d: number | null;
+      cr7d: number | null;
+    }[];
+  };
+  const w = (webmaster?.payload || {}) as {
+    hostDisplay?: string | null;
+    hostId?: string | null;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    totals?: {
+      clicks: number;
+      shows: number;
+      avgPosition: number | null;
+      ctr: number | null;
+      queryCount: number;
+    };
+    queries?: {
+      query: string;
+      clicks: number;
+      shows: number;
+      position: number | null;
+      ctr: number | null;
+    }[];
+  };
   const dPayload = (direct?.payload || {}) as {
     balanceRub?: number | null;
-    units?: string | null;
     login?: string | null;
     sandbox?: boolean;
-    campaigns?: { id: number; name: string; state: string; status: string; dailyBudgetRub: number | null }[];
   };
-  const mPayload = (metrika?.payload || {}) as {
-    counterId?: string | null;
-    traffic7d?: { visits: number; users: number; pageviews: number } | null;
-    traffic30d?: { visits: number; users: number } | null;
-    mappedGoals?: { env: string; id: number | null; name: string | null; reaches7d: number | null }[];
-    offlineUploadingsOk?: boolean | null;
-  };
-  const hPayload = (health?.payload || {}) as {
-    moneyBlocker?: string | null;
-    flags?: { enabled?: boolean; observe?: boolean; rulesMode?: string };
-    tokens?: Record<string, boolean>;
-  };
+
+  const webmasterRows =
+    (w.queries && w.queries.length > 0
+      ? w.queries
+      : (data?.recentWebmaster || []).map((q) => ({
+          ...q,
+          ctr: q.shows > 0 ? q.clicks / q.shows : null,
+        }))
+    ).slice(0, 40);
+
+  const maxDaily = Math.max(1, ...(m.daily || []).map((d) => d.visits));
 
   return (
     <AdminShell>
       <AdminTitle
         title="Источники"
-        subtitle="Direct · Метрика · Вебмастер — без кабинетов Яндекса. Работает при балансе 0 ₽"
+        subtitle="Живая статистика сайта: Метрика + Вебмастер. Обновляется по кнопке или cron."
       />
       <AdsAdminNav />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <AdminBtn onClick={() => void refresh()} disabled={busy}>
-          {busy ? "Обновляю…" : "Обновить сейчас"}
+          {busy ? "Тяну из Яндекса…" : "Обновить статистику"}
         </AdminBtn>
         {notice ? <span className="text-xs text-aura-gold">{notice}</span> : null}
+        {loadError ? <span className="text-xs text-red-400">{loadError}</span> : null}
         {data?.needsMigration ? (
-          <span className="text-xs text-amber-400">Нужна миграция 085 (npm run migrate)</span>
+          <span className="text-xs text-amber-400">Нужна миграция 085</span>
         ) : null}
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI strip */}
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+        <StatCard label="Визиты 7д" value={fmtNum(m.traffic7d?.visits)} accent="text-aura-gold" />
+        <StatCard label="Пользователи 7д" value={fmtNum(m.traffic7d?.users)} />
+        <StatCard label="Отказы 7д" value={fmtPct(m.traffic7d?.bounceRate)} />
+        <StatCard label="Ср. время" value={fmtDur(m.traffic7d?.avgDurationSec)} />
         <StatCard
-          label="Баланс Директа"
-          value={
-            dPayload.balanceRub != null ? `${Math.round(dPayload.balanceRub)} ₽` : "н/д"
-          }
-          accent={dPayload.balanceRub === 0 ? "text-amber-400" : "text-aura-gold"}
+          label="Клики поиска 28д"
+          value={fmtNum(w.totals?.clicks)}
+          accent="text-aura-emerald"
         />
-        <StatCard
-          label="Визиты Метрики 7д"
-          value={mPayload.traffic7d?.visits ?? "—"}
-        />
-        <StatCard
-          label="Запросы Вебмастера"
-          value={data?.recentWebmaster?.length ?? "—"}
-        />
-        <StatCard
-          label="Блокер трат"
-          value={
-            hPayload.moneyBlocker === "direct_balance_zero"
-              ? "баланс 0"
-              : hPayload.moneyBlocker === "direct_balance_unknown"
-                ? "баланс ?"
-                : "нет"
-          }
-          accent="text-amber-400"
-        />
+        <StatCard label="Показы поиска 28д" value={fmtNum(w.totals?.shows)} />
       </div>
 
-      <div className="mb-8 grid gap-4 lg:grid-cols-3">
-        <div className="glass-panel p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">Директ</h2>
-            <span className={`text-[10px] ${direct?.ok ? "text-aura-emerald" : "text-red-400"}`}>
-              {direct?.ok ? "ok" : "err"} · {ago(direct?.fetchedAt)}
-            </span>
-          </div>
-          <p className="text-xs text-gray-500">
-            login {dPayload.login || "—"}
-            {dPayload.sandbox ? " · sandbox" : " · production"}
-          </p>
-          <p className="mt-1 text-xs text-gray-500">Units: {dPayload.units || "—"}</p>
-          {direct?.error ? <p className="mt-2 text-xs text-red-400">{direct.error}</p> : null}
-          <div className="mt-3 max-h-48 overflow-auto">
-            <AdminTable
-              headers={["ID", "Кампания", "State", "Status"]}
-              rows={(dPayload.campaigns || []).map((c) => [
-                String(c.id),
-                c.name,
-                c.state,
-                c.status,
-              ])}
-            />
-          </div>
-        </div>
+      <div className="mb-2 flex flex-wrap gap-4 text-[11px] text-gray-500">
+        <span>
+          Метрика: {metrika?.ok ? "ok" : "err"} · {ago(metrika?.fetchedAt)}
+          {m.range7d ? ` · ${m.range7d.from}…${m.range7d.to}` : ""}
+        </span>
+        <span>
+          Вебмастер: {webmaster?.ok ? "ok" : "err"} · {ago(webmaster?.fetchedAt)}
+          {w.dateFrom ? ` · ${w.dateFrom}…${w.dateTo}` : ""}
+        </span>
+        <span>
+          Директ: {direct?.ok ? "ok" : "err"}
+          {dPayload.balanceRub != null ? ` · баланс ${Math.round(dPayload.balanceRub)} ₽` : ""}
+          {direct?.error ? ` · ${direct.error}` : ""}
+        </span>
+      </div>
+      {metrika?.error ? <p className="mb-2 text-xs text-red-400">{metrika.error}</p> : null}
+      {webmaster?.error ? <p className="mb-2 text-xs text-red-400">{webmaster.error}</p> : null}
 
-        <div className="glass-panel p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">Метрика</h2>
-            <span className={`text-[10px] ${metrika?.ok ? "text-aura-emerald" : "text-red-400"}`}>
-              {metrika?.ok ? "ok" : "err"} · {ago(metrika?.fetchedAt)}
-            </span>
+      {/* Daily spark bars */}
+      <div className="glass-panel mb-6 p-4">
+        <h2 className="mb-3 text-sm font-semibold text-white">Визиты по дням (14д)</h2>
+        {(m.daily || []).length === 0 ? (
+          <p className="text-sm text-gray-600">Нет ряда — нажмите «Обновить статистику»</p>
+        ) : (
+          <div className="flex h-28 items-end gap-1">
+            {(m.daily || []).map((d) => (
+              <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                <span className="text-[9px] text-gray-500">{d.visits}</span>
+                <div
+                  className="w-full rounded-t bg-aura-gold/70"
+                  style={{ height: `${Math.max(4, (d.visits / maxDaily) * 100)}%` }}
+                  title={`${d.date}: ${d.visits} визитов / ${d.users} польз.`}
+                />
+                <span className="truncate text-[9px] text-gray-600">
+                  {d.date.slice(5)}
+                </span>
+              </div>
+            ))}
           </div>
-          <p className="text-xs text-gray-500">counter {mPayload.counterId || "—"}</p>
-          {!metrika?.ok && !metrika?.error ? (
-            <p className="mt-2 text-xs text-amber-400">
-              Нет снимка — нажмите «Обновить сейчас»
+        )}
+      </div>
+
+      <div className="mb-8 grid gap-4 lg:grid-cols-2">
+        <div className="glass-panel p-4">
+          <h2 className="mb-3 text-sm font-semibold text-white">Источники трафика (7д)</h2>
+          <AdminTable
+            headers={["Источник", "Визиты", "Польз.", "Отказы"]}
+            rows={(m.bySource || []).map((s) => [
+              s.source,
+              fmtNum(s.visits),
+              fmtNum(s.users),
+              fmtPct(s.bounceRate),
+            ])}
+          />
+        </div>
+        <div className="glass-panel p-4">
+          <h2 className="mb-3 text-sm font-semibold text-white">Устройства (7д)</h2>
+          <AdminTable
+            headers={["Устройство", "Визиты", "Польз."]}
+            rows={(m.byDevice || []).map((d) => [
+              d.device,
+              fmtNum(d.visits),
+              fmtNum(d.users),
+            ])}
+          />
+          <h2 className="mb-3 mt-6 text-sm font-semibold text-white">Цели воронки</h2>
+          <AdminTable
+            headers={["Цель", "7д", "30д", "CR 7д"]}
+            rows={(m.mappedGoals || []).map((g) => [
+              g.name || g.label,
+              g.id == null ? "нет ID" : fmtNum(g.reaches7d),
+              g.id == null ? "—" : fmtNum(g.reaches30d),
+              g.cr7d == null ? "—" : fmtPct(g.cr7d),
+            ])}
+          />
+        </div>
+      </div>
+
+      <div className="mb-8 grid gap-4 lg:grid-cols-2">
+        <div className="glass-panel p-4">
+          <h2 className="mb-3 text-sm font-semibold text-white">Топ посадочных (7д)</h2>
+          <AdminTable
+            headers={["Путь", "Визиты", "Отказы"]}
+            rows={(m.topLandings || []).map((l) => [
+              l.path,
+              fmtNum(l.visits),
+              fmtPct(l.bounceRate),
+            ])}
+          />
+        </div>
+        <div className="glass-panel p-4">
+          <h2 className="mb-3 text-sm font-semibold text-white">Поисковые фразы Метрики (30д)</h2>
+          <AdminTable
+            headers={["Фраза", "Визиты"]}
+            rows={(m.topSearchPhrases || []).map((p) => [p.phrase, fmtNum(p.visits)])}
+          />
+          {(m.topSearchPhrases || []).length === 0 ? (
+            <p className="mt-2 text-xs text-gray-600">
+              Пусто — мало органики с передачей фразы или not provided.
             </p>
           ) : null}
-          <p className="mt-1 text-xs text-gray-400">
-            7д: {mPayload.traffic7d?.visits ?? "—"} визитов / {mPayload.traffic7d?.users ?? "—"}{" "}
-            польз.
-          </p>
-          <p className="text-xs text-gray-400">
-            30д: {mPayload.traffic30d?.visits ?? "—"} визитов · offline upload:{" "}
-            {mPayload.offlineUploadingsOk == null
-              ? "—"
-              : mPayload.offlineUploadingsOk
-                ? "ok"
-                : "fail"}
-          </p>
-          {metrika?.error ? <p className="mt-2 text-xs text-red-400">{metrika.error}</p> : null}
-          <div className="mt-3">
-            <AdminTable
-              headers={["Цель", "ID", "Достижения 7д"]}
-              rows={(mPayload.mappedGoals || []).map((g) => [
-                g.name || g.env,
-                g.id != null ? String(g.id) : "—",
-                g.reaches7d != null ? String(g.reaches7d) : "—",
-              ])}
-            />
-          </div>
-        </div>
-
-        <div className="glass-panel p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">Вебмастер</h2>
-            <span
-              className={`text-[10px] ${webmaster?.ok ? "text-aura-emerald" : "text-red-400"}`}
-            >
-              {webmaster?.ok ? "ok" : "err"} · {ago(webmaster?.fetchedAt)}
-            </span>
-          </div>
-          <p className="text-xs text-gray-500">
-            host {(webmaster?.payload as { hostId?: string } | undefined)?.hostId || "—"}
-          </p>
-          {webmaster?.error ? (
-            <p className="mt-2 text-xs text-red-400">{webmaster.error}</p>
-          ) : null}
-          {!webmaster?.ok && !webmaster?.error ? (
-            <p className="mt-2 text-xs text-amber-400">
-              Нет снимка — нажмите «Обновить сейчас»
-            </p>
-          ) : null}
-          <div className="mt-3 max-h-64 overflow-auto">
-            <AdminTable
-              headers={["Запрос", "Клики", "Показы", "Поз."]}
-              rows={(data?.recentWebmaster || []).map((q) => [
-                q.query,
-                String(q.clicks),
-                String(q.shows),
-                q.position != null ? q.position.toFixed(1) : "—",
-              ])}
-            />
-          </div>
         </div>
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-white">Токены и флаги</h2>
-      <div className="glass-panel mb-8 grid gap-2 p-4 text-xs text-gray-400 sm:grid-cols-2">
-        <div>
-          enabled: {String(hPayload.flags?.enabled)} · observe:{" "}
-          {String(hPayload.flags?.observe)} · rules: {hPayload.flags?.rulesMode}
+      <div className="glass-panel mb-8 p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-white">
+            Яндекс.Вебмастер · запросы ({w.hostDisplay || w.hostId || "—"})
+          </h2>
+          <span className="text-xs text-gray-500">
+            клики {fmtNum(w.totals?.clicks)} · показы {fmtNum(w.totals?.shows)} · CTR{" "}
+            {fmtPct(w.totals?.ctr)} · ср.поз.{" "}
+            {w.totals?.avgPosition != null ? w.totals.avgPosition.toFixed(1) : "—"}
+          </span>
         </div>
-        <div>
-          {Object.entries(hPayload.tokens || {}).map(([k, v]) => (
-            <span key={k} className="mr-3">
-              {k.replace(/_TOKEN|_GOAL_REGISTRATION/, "")}:{v ? "✓" : "✗"}
-            </span>
-          ))}
-        </div>
+        <AdminTable
+          headers={["Запрос", "Клики", "Показы", "CTR", "Поз."]}
+          rows={webmasterRows.map((q) => [
+            q.query,
+            fmtNum(q.clicks),
+            fmtNum(q.shows),
+            fmtPct(q.ctr),
+            q.position != null ? q.position.toFixed(1) : "—",
+          ])}
+        />
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-white">Цели Метрики (кэш)</h2>
-      <AdminTable
-        headers={["Дата", "Goal", "ID", "Reaches"]}
-        rows={(data?.recentGoals || []).map((g) => [
-          g.date,
-          g.goal_name || "—",
-          String(g.goal_id),
-          String(g.reaches),
-        ])}
-      />
+      <p className="text-[11px] text-gray-600">
+        counter {m.counterId || "—"} · 30д: {fmtNum(m.traffic30d?.visits)} визитов /{" "}
+        {fmtNum(m.traffic30d?.users)} польз. · отказы {fmtPct(m.traffic30d?.bounceRate)}
+      </p>
     </AdminShell>
   );
 }
