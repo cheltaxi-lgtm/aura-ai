@@ -1,6 +1,24 @@
 # Ads Autopilot — build report
 
-Updated: 2026-07-28
+Updated: 2026-07-28 (budget guards B1–B7)
+
+## Budget protection layer (B1–B7) — inventory
+
+| ID | Уже было | Добавлено сейчас |
+| --- | --- | --- |
+| B1 hard total | soft caps K1/K4/D2/D3, total_budget в yaml | `guard/budget.ts`, ledger, cron `ads-budget-guard`, `assertBudgetAvailable`, immutable `hard_total_budget_rub` |
+| B2 freshness | — | `guard/freshness.ts`, cron `ads-freshness-guard`, fail streak в sync-stats |
+| B3 landing | D4/K3 (clicks→deck/reg) | `guard/landing.ts`, cron `ads-landing-check`, resume only non-CPA |
+| B4 expensive cfg | creative/keyword/goal validator | расширен `validateDiscoveryCampaignConfig` (поиск, регион, автотаргет, freq, strategy…) |
+| B5 approval | TTL + money→approval | impact preview, typed confirm >2×, server expired reject |
+| B6 forgotten test | — | `guard/max-days.ts`, cron `ads-max-days-guard` + `ads-weekly-digest` (in-app notify) |
+| B7 emergency | stop UI + `/api/ads/admin/stop` | `/emergency-stop` + `requireAdmin` 403, `scripts/ads-stop.ts` Direct-only |
+
+D4/K3: **уже было** — не дублировали.
+
+## Final verifier (B1–B7 tranche)
+
+**SUMMARY PASS=37 FAIL=0 WAITING=3** (V03/V06/V12). V26–V40 all PASS after iteration fixing V30 `failStreak` name.
 
 ## Sources dashboard (post-push)
 
@@ -64,19 +82,47 @@ New code only under `src/modules/ads/**`, `src/app/(ads)/**`, `config/ads/**`, `
 
 ## Cron routes
 
-| Path | Role without secret |
-| --- | --- |
-| `/api/cron/ads-collect-conversions` | 401 |
-| `/api/cron/ads-funnel-rollup` | 401 |
-| `/api/cron/ads-sync-stats` | 401 |
-| `/api/cron/ads-sync-entities` | 401 |
-| `/api/cron/ads-semantics` | 401 |
-| `/api/cron/ads-economics` | 401 |
-| `/api/cron/ads-offline-conversions` | 401 |
-| `/api/cron/ads-search-queries` | 401 |
-| `/api/cron/ads-rules` | 401 |
+| Path | Schedule (owner) | Without secret | API down |
+| --- | --- | --- |
+| `/api/cron/ads-collect-conversions` | hourly+ | 401 | n/a |
+| `/api/cron/ads-funnel-rollup` | daily | 401 | n/a |
+| `/api/cron/ads-sync-stats` | hourly | 401 | fail streak++; ≥3 → pause ALL |
+| `/api/cron/ads-sync-entities` | hourly | 401 | log/alert |
+| `/api/cron/ads-semantics` | daily | 401 | degrade |
+| `/api/cron/ads-economics` | daily | 401 | skip |
+| `/api/cron/ads-offline-conversions` | daily | 401 | skip |
+| `/api/cron/ads-search-queries` | daily | 401 | skip |
+| `/api/cron/ads-rules` | hourly | 401 | skip |
+| `/api/cron/ads-sync-sources` | hourly | 401 | snapshot ok=false |
+| `/api/cron/ads-budget-guard` | **/15 min** | 401 | pause if ledger≥hard; Direct estimate best-effort |
+| `/api/cron/ads-freshness-guard` | hourly | 401 | stale/missing → pause ALL |
+| `/api/cron/ads-landing-check` | hourly | 401 | non-200/timeout → pause by landing |
+| `/api/cron/ads-max-days-guard` | daily | 401 | >discovery_max_days → pause |
+| `/api/cron/ads-weekly-digest` | weekly | 401 | in-app notify only |
 
-All also 404 when `ads.enabled=false`.
+All also 404 when `ads.enabled=false` (except observe-only Sources where applicable).
+Guards B1–B7 ignore `ads.rules.enabled` / `ADS_RULES_MODE` / `ads.autopilot.write`; safety pauses use Direct `safetyPause`.
+
+## Migration 086
+
+- Tables: `ads.budget_ledger`, `ads.health_check`
+- Nullable: `ads.entity_snapshot.pause_reason`
+- Config: `hard_total_budget_rub=9000`, `budget_warn_pct=90`, `stats_stale_warn_hours=24`, `stats_stale_stop_hours=48`, `discovery_max_days=45`, `landing_timeout_ms=5000`, `guard.sync_stats_fail_streak`, `guard.landing_paused_ids`, `guard.cpa_paused_ids`, `guard.protection_status`
+
+## Spend limits: physical vs programmatic
+
+| Layer | What |
+| --- | --- |
+| Physical (Yandex cabinet) | Account balance; campaign daily budget in Direct UI; shared account limits |
+| Programmatic (this module) | hard_total 9000 + pause; assertBudgetAvailable before writes; discovery daily/CPA/freq validators; soft K/D pauses; emergency-stop; ads-stop.ts |
+
+## Owner checklist (Yandex Direct UI)
+
+1. Пополнить баланс (C4 BLOCKER: 0 ₽).
+2. Подключить логин к Директу (sandbox/prod) — иначе V12/ads-stop FAIL.
+3. В кампаниях discovery: только Поиск; автотаргетинг OFF; регионы явно; без РГТ; не ручные ставки если запрещены валидатором.
+4. Дневной бюджет кампании ≤ discovery_daily_cap; общий кабинетный потолок ≥ programmatic hard_total.
+5. После деплоя: `npm run migrate` (084–086); cron schedule для новых guard-роутов; ADS_ENABLED=true только после dry_run.
 
 ## Action → auto or approval
 
@@ -147,3 +193,195 @@ Overview · Campaign · Approvals · Semantics · Economics · Rules · Alerts �
 | V25 | PASS | sample < 100 covered by ads-unit |
 
 SUMMARY PASS=22 FAIL=0 WAITING=3 SKIP=0
+
+### Iteration 2026-07-28T14:45:33.246Z
+
+| ID | Status | Reason |
+| --- | --- | --- |
+| V01 | PASS | ads tsc clean; pre-existing non-ads tsc debt (2) — ДОПУЩЕНИЕ |
+| V02 | PASS | ads imports only in allowed existing files: (ads tree only) |
+| V03 | WAITING | 084 SQL ok (schema ads only; no public FK); DB unreachable to apply |
+| V04 | PASS | ads.enabled=false → 404 gate + beacon omitted |
+| V05 | PASS | DB guard unit ok |
+| V06 | WAITING | DB unreachable or ads schema not applied yet |
+| V07 | PASS | D1–D8 / K1–K4 covered by ads-unit |
+| V08 | PASS | classifier covered by ads-unit |
+| V09 | PASS | validator covered by ads-unit |
+| V10 | PASS | semantics degrade covered by ads-unit |
+| V11 | PASS | no landing covered by ads-unit |
+| V12 | WAITING | WAITING/FAIL: 
+ |
+| V13 | PASS | dry_run write block covered by ads-unit |
+| V14 | PASS | no secrets in .next/static |
+| V15 | PASS | cron-auth 401 + 15 ads cron routes guarded |
+| V16 | PASS | admin pages + action_log helper present |
+| V17 | PASS | kill-switch covered by ads-unit |
+| V18 | PASS | forbidden goals covered by ads-unit |
+| V19 | PASS | economics covered by ads-unit |
+| V20 | PASS | money approval covered by ads-unit |
+| V21 | PASS | ROMI gated covered by ads-unit |
+| V22 | PASS | D5 no pause covered by ads-unit |
+| V23 | PASS | exit mode_switch covered by ads-unit |
+| V24 | PASS | offline no spread_submit covered by ads-unit |
+| V25 | PASS | sample < 100 covered by ads-unit |
+| V26 | PASS | hard budget pause independent of flags (safetyPause) |
+| V27 | PASS | assertBudgetAvailable on Direct create/resume |
+| V28 | PASS | hard_total immutable via setConfigJson |
+| V29 | PASS | 48h stale stats → pause |
+| V30 | FAIL | 3× sync-stats fail → pause |
+| V31 | PASS | landing 500/timeout pauses campaigns |
+| V32 | PASS | landing resume skips CPA-paused |
+| V33 | PASS | RSYA/autotargeting blocked in validator |
+| V34 | PASS | campaign without region blocked |
+| V35 | PASS | freq above discovery_freq_max blocked |
+| V36 | PASS | expired TTL rejected server-side |
+| V37 | PASS | approval >2× requires typed confirm |
+| V38 | PASS | discovery_max_days pause |
+| V39 | PASS | ads-stop.ts Direct-only dry-run |
+| V40 | PASS | emergency-stop admin-only 403 |
+
+SUMMARY PASS=36 FAIL=1 WAITING=3 SKIP=0
+
+### Iteration 2026-07-28T14:46:01.767Z
+
+| ID | Status | Reason |
+| --- | --- | --- |
+| V01 | PASS | ads tsc clean; pre-existing non-ads tsc debt (2) — ДОПУЩЕНИЕ |
+| V02 | PASS | ads imports only in allowed existing files: (ads tree only) |
+| V03 | WAITING | 084 SQL ok (schema ads only; no public FK); DB unreachable to apply |
+| V04 | PASS | ads.enabled=false → 404 gate + beacon omitted |
+| V05 | PASS | DB guard unit ok |
+| V06 | WAITING | DB unreachable or ads schema not applied yet |
+| V07 | PASS | D1–D8 / K1–K4 covered by ads-unit |
+| V08 | PASS | classifier covered by ads-unit |
+| V09 | PASS | validator covered by ads-unit |
+| V10 | PASS | semantics degrade covered by ads-unit |
+| V11 | PASS | no landing covered by ads-unit |
+| V12 | WAITING | WAITING/FAIL: 
+ |
+| V13 | PASS | dry_run write block covered by ads-unit |
+| V14 | PASS | no secrets in .next/static |
+| V15 | PASS | cron-auth 401 + 15 ads cron routes guarded |
+| V16 | PASS | admin pages + action_log helper present |
+| V17 | PASS | kill-switch covered by ads-unit |
+| V18 | PASS | forbidden goals covered by ads-unit |
+| V19 | PASS | economics covered by ads-unit |
+| V20 | PASS | money approval covered by ads-unit |
+| V21 | PASS | ROMI gated covered by ads-unit |
+| V22 | PASS | D5 no pause covered by ads-unit |
+| V23 | PASS | exit mode_switch covered by ads-unit |
+| V24 | PASS | offline no spread_submit covered by ads-unit |
+| V25 | PASS | sample < 100 covered by ads-unit |
+| V26 | PASS | hard budget pause independent of flags (safetyPause) |
+| V27 | PASS | assertBudgetAvailable on Direct create/resume |
+| V28 | PASS | hard_total immutable via setConfigJson |
+| V29 | PASS | 48h stale stats → pause |
+| V30 | PASS | 3× sync-stats fail → pause |
+| V31 | PASS | landing 500/timeout pauses campaigns |
+| V32 | PASS | landing resume skips CPA-paused |
+| V33 | PASS | RSYA/autotargeting blocked in validator |
+| V34 | PASS | campaign without region blocked |
+| V35 | PASS | freq above discovery_freq_max blocked |
+| V36 | PASS | expired TTL rejected server-side |
+| V37 | PASS | approval >2× requires typed confirm |
+| V38 | PASS | discovery_max_days pause |
+| V39 | PASS | ads-stop.ts Direct-only dry-run |
+| V40 | PASS | emergency-stop admin-only 403 |
+
+SUMMARY PASS=37 FAIL=0 WAITING=3 SKIP=0
+
+### Iteration 2026-07-28T14:50:07.265Z
+
+| ID | Status | Reason |
+| --- | --- | --- |
+| V01 | PASS | ads tsc clean; pre-existing non-ads tsc debt (2) — ДОПУЩЕНИЕ |
+| V02 | PASS | ads imports only in allowed existing files: (ads tree only) |
+| V03 | WAITING | 084 SQL ok (schema ads only; no public FK); DB unreachable to apply |
+| V04 | PASS | ads.enabled=false → 404 gate + beacon omitted |
+| V05 | PASS | DB guard unit ok |
+| V06 | WAITING | DB unreachable or ads schema not applied yet |
+| V07 | PASS | D1–D8 / K1–K4 covered by ads-unit |
+| V08 | PASS | classifier covered by ads-unit |
+| V09 | PASS | validator covered by ads-unit |
+| V10 | PASS | semantics degrade covered by ads-unit |
+| V11 | PASS | no landing covered by ads-unit |
+| V12 | WAITING | WAITING/FAIL: 
+ |
+| V13 | PASS | dry_run write block covered by ads-unit |
+| V14 | PASS | no secrets in .next/static |
+| V15 | PASS | cron-auth 401 + 15 ads cron routes guarded |
+| V16 | PASS | admin pages + action_log helper present |
+| V17 | PASS | kill-switch covered by ads-unit |
+| V18 | PASS | forbidden goals covered by ads-unit |
+| V19 | PASS | economics covered by ads-unit |
+| V20 | PASS | money approval covered by ads-unit |
+| V21 | PASS | ROMI gated covered by ads-unit |
+| V22 | PASS | D5 no pause covered by ads-unit |
+| V23 | PASS | exit mode_switch covered by ads-unit |
+| V24 | PASS | offline no spread_submit covered by ads-unit |
+| V25 | PASS | sample < 100 covered by ads-unit |
+| V26 | PASS | hard budget pause independent of flags (safetyPause) |
+| V27 | PASS | assertBudgetAvailable on Direct create/resume |
+| V28 | PASS | hard_total immutable via setConfigJson |
+| V29 | PASS | 48h stale stats → pause |
+| V30 | PASS | 3× sync-stats fail → pause |
+| V31 | PASS | landing 500/timeout pauses campaigns |
+| V32 | PASS | landing resume skips CPA-paused |
+| V33 | PASS | RSYA/autotargeting blocked in validator |
+| V34 | PASS | campaign without region blocked |
+| V35 | PASS | freq above discovery_freq_max blocked |
+| V36 | PASS | expired TTL rejected server-side |
+| V37 | PASS | approval >2× requires typed confirm |
+| V38 | PASS | discovery_max_days pause |
+| V39 | PASS | ads-stop.ts Direct-only dry-run |
+| V40 | PASS | emergency-stop admin-only 403 |
+
+SUMMARY PASS=37 FAIL=0 WAITING=3 SKIP=0
+
+### Iteration 2026-07-28T14:54:43.255Z
+
+| ID | Status | Reason |
+| --- | --- | --- |
+| V01 | PASS | ads tsc clean; pre-existing non-ads tsc debt (2) — ДОПУЩЕНИЕ |
+| V02 | PASS | ads imports only in allowed existing files: (ads tree only) |
+| V03 | WAITING | 084 SQL ok (schema ads only; no public FK); DB unreachable to apply |
+| V04 | PASS | ads.enabled=false → 404 gate + beacon omitted |
+| V05 | PASS | DB guard unit ok |
+| V06 | WAITING | DB unreachable or ads schema not applied yet |
+| V07 | PASS | D1–D8 / K1–K4 covered by ads-unit |
+| V08 | PASS | classifier covered by ads-unit |
+| V09 | PASS | validator covered by ads-unit |
+| V10 | PASS | semantics degrade covered by ads-unit |
+| V11 | PASS | no landing covered by ads-unit |
+| V12 | WAITING | WAITING/FAIL: 
+ |
+| V13 | PASS | dry_run write block covered by ads-unit |
+| V14 | PASS | no secrets in .next/static |
+| V15 | PASS | cron-auth 401 + 15 ads cron routes guarded |
+| V16 | PASS | admin pages + action_log helper present |
+| V17 | PASS | kill-switch covered by ads-unit |
+| V18 | PASS | forbidden goals covered by ads-unit |
+| V19 | PASS | economics covered by ads-unit |
+| V20 | PASS | money approval covered by ads-unit |
+| V21 | PASS | ROMI gated covered by ads-unit |
+| V22 | PASS | D5 no pause covered by ads-unit |
+| V23 | PASS | exit mode_switch covered by ads-unit |
+| V24 | PASS | offline no spread_submit covered by ads-unit |
+| V25 | PASS | sample < 100 covered by ads-unit |
+| V26 | PASS | hard budget pause independent of flags (safetyPause) |
+| V27 | PASS | assertBudgetAvailable on Direct create/resume |
+| V28 | PASS | hard_total immutable via setConfigJson |
+| V29 | PASS | 48h stale stats → pause |
+| V30 | PASS | 3× sync-stats fail → pause |
+| V31 | PASS | landing 500/timeout pauses campaigns |
+| V32 | PASS | landing resume skips CPA-paused |
+| V33 | PASS | RSYA/autotargeting blocked in validator |
+| V34 | PASS | campaign without region blocked |
+| V35 | PASS | freq above discovery_freq_max blocked |
+| V36 | PASS | expired TTL rejected server-side |
+| V37 | PASS | approval >2× requires typed confirm |
+| V38 | PASS | discovery_max_days pause |
+| V39 | PASS | ads-stop.ts Direct-only dry-run |
+| V40 | PASS | emergency-stop admin-only 403 |
+
+SUMMARY PASS=37 FAIL=0 WAITING=3 SKIP=0

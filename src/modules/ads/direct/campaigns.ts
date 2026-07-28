@@ -1,4 +1,5 @@
 import { directCall } from "./client";
+import { assertBudgetAvailable } from "../guard/budget";
 
 export async function getCampaigns() {
   return directCall<{ Campaigns?: { Id: number; Name: string; State: string; Status: string }[] }>(
@@ -11,13 +12,22 @@ export async function getCampaigns() {
   );
 }
 
-export async function pauseCampaigns(ids: number[]) {
+export async function pauseCampaigns(
+  ids: number[],
+  opts?: { safetyPause?: boolean }
+) {
   if (!ids.length) return { result: {}, units: null };
-  return directCall("campaigns", "suspend", { SelectionCriteria: { Ids: ids } }, { mutate: true });
+  return directCall(
+    "campaigns",
+    "suspend",
+    { SelectionCriteria: { Ids: ids } },
+    { mutate: true, safetyPause: opts?.safetyPause }
+  );
 }
 
 export async function resumeCampaigns(ids: number[]) {
   if (!ids.length) return { result: {}, units: null };
+  await assertBudgetAvailable(0);
   return directCall("campaigns", "resume", { SelectionCriteria: { Ids: ids } }, { mutate: true });
 }
 
@@ -25,6 +35,7 @@ export async function addTextCampaign(input: {
   name: string;
   dailyBudgetRub: number;
 }): Promise<{ Id?: number }> {
+  await assertBudgetAvailable(input.dailyBudgetRub);
   const micros = Math.round(input.dailyBudgetRub * 1_000_000);
   const { result } = await directCall<{ AddResults?: { Id?: number }[] }>(
     "campaigns",

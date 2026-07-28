@@ -10,6 +10,11 @@ import {
 import { adsQuery } from "@/modules/ads/db";
 import { pauseCampaigns } from "@/modules/ads/direct/campaigns";
 import { createApprovalRequest } from "@/modules/ads/approvals";
+import {
+  hoursSinceLastDailyStats,
+  hoursSinceMetrikaHealth,
+} from "@/modules/ads/guard/freshness";
+import { getConfigJson, setConfigJson } from "@/modules/ads/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,14 +59,17 @@ export async function POST(request: NextRequest) {
   const spreadSubmitsTotal = funnel.rows[0]?.spread_submits || 0;
   const registrationsTotal = regsTotal.rows[0]?.n || 0;
 
+  const statsStaleHours = (await hoursSinceLastDailyStats().catch(() => null)) ?? 0;
+  const metrikaStaleHours = (await hoursSinceMetrikaHealth().catch(() => null)) ?? 0;
+
   const killCtx = {
     budget,
     spendTodayRub,
     spendTotalRub,
     clicks24h,
     registrations24h,
-    statsStaleHours: 1,
-    metrikaStaleHours: 1,
+    statsStaleHours,
+    metrikaStaleHours,
   };
   const discCtx = {
     budget,
@@ -109,6 +117,21 @@ export async function POST(request: NextRequest) {
       try {
         await pauseCampaigns(ids);
         applied.push(`paused:${ids.join(",")}`);
+        // Track CPA pauses separately so landing resume cannot resurrect them (V32)
+        if (all.some((r) => r.rule === "D1" && r.applyPause)) {
+          const prev = (await getConfigJson<number[]>("guard.cpa_paused_ids")) || [];
+          await setConfigJson(
+            "guard.cpa_paused_ids",
+            [...new Set([...prev, ...ids])],
+            "ads-rules"
+          );
+          await adsQuery(
+            `UPDATE ads.entity_snapshot
+             SET pause_reason = 'cpa'
+             WHERE level='campaign' AND external_id = ANY($1::text[])`,
+            [ids.map(String)]
+          );
+        }
       } catch (e) {
         applied.push(`pause_failed:${e instanceof Error ? e.message : "err"}`);
       }

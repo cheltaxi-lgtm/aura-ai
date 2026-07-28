@@ -3,6 +3,7 @@ import { getBudget, isAdsEnabled, isAdsObserve, rulesMode } from "@/modules/ads/
 import { adsQuery } from "@/modules/ads/db";
 import { isAdsAdminAuth, requireAdsAdmin } from "@/modules/ads/admin/guard";
 import { loadSourceSnapshots } from "@/modules/ads/sources/sync";
+import { getHardBudgetConfig, sumLedgerAndStats } from "@/modules/ads/guard/budget";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,44 +15,65 @@ export async function GET() {
   if (!isAdsAdminAuth(gate)) return gate;
 
   const budget = await getBudget();
-  const [spend, visits, regs, funnelAgg] = await Promise.all([
-    adsQuery<{ s: string }>(
-      `SELECT COALESCE(SUM(cost_rub),0)::text AS s FROM ads.daily_stats`
-    ),
-    adsQuery<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM ads.click`
-    ),
-    adsQuery<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM ads.conversion WHERE type='registration'`
-    ),
-    adsQuery<{
-      clicks: string;
-      deck_views: string;
-      spread_submits: string;
-      teaser_views: string;
-      registrations: string;
-      claims: string;
-      first_payments: string;
-    }>(
-      `SELECT
-         COALESCE(SUM(clicks),0)::text AS clicks,
-         COALESCE(SUM(deck_views),0)::text AS deck_views,
-         COALESCE(SUM(spread_submits),0)::text AS spread_submits,
-         COALESCE(SUM(teaser_views),0)::text AS teaser_views,
-         COALESCE(SUM(registrations),0)::text AS registrations,
-         COALESCE(SUM(claims),0)::text AS claims,
-         COALESCE(SUM(first_payments),0)::text AS first_payments
-       FROM ads.funnel_daily`
-    ),
-  ]);
+  let spent = 0;
+  let visitsN = 0;
+  let regsN = 0;
+  let f: {
+    clicks?: string;
+    deck_views?: string;
+    spread_submits?: string;
+    teaser_views?: string;
+    registrations?: string;
+    claims?: string;
+    first_payments?: string;
+  } | null = null;
+  let schemaOk = true;
+  let schemaError: string | null = null;
 
-  const spent = Number(spend.rows[0]?.s || 0);
-  const visitsN = Number(visits.rows[0]?.n || 0);
-  const regsN = Number(regs.rows[0]?.n || 0);
+  try {
+    const [spend, visits, regs, funnelAgg] = await Promise.all([
+      adsQuery<{ s: string }>(
+        `SELECT COALESCE(SUM(cost_rub),0)::text AS s FROM ads.daily_stats`
+      ),
+      adsQuery<{ n: string }>(`SELECT COUNT(*)::text AS n FROM ads.click`),
+      adsQuery<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM ads.conversion WHERE type='registration'`
+      ),
+      adsQuery<{
+        clicks: string;
+        deck_views: string;
+        spread_submits: string;
+        teaser_views: string;
+        registrations: string;
+        claims: string;
+        first_payments: string;
+      }>(
+        `SELECT
+           COALESCE(SUM(clicks),0)::text AS clicks,
+           COALESCE(SUM(deck_views),0)::text AS deck_views,
+           COALESCE(SUM(spread_submits),0)::text AS spread_submits,
+           COALESCE(SUM(teaser_views),0)::text AS teaser_views,
+           COALESCE(SUM(registrations),0)::text AS registrations,
+           COALESCE(SUM(claims),0)::text AS claims,
+           COALESCE(SUM(first_payments),0)::text AS first_payments
+         FROM ads.funnel_daily`
+      ),
+    ]);
+    spent = Number(spend.rows[0]?.s || 0);
+    visitsN = Number(visits.rows[0]?.n || 0);
+    regsN = Number(regs.rows[0]?.n || 0);
+    f = funnelAgg.rows[0] ?? null;
+  } catch (e) {
+    schemaOk = false;
+    schemaError =
+      e instanceof Error
+        ? e.message
+        : "ads schema unavailable — run npm run migrate (084–086)";
+  }
+
   const target = budget.discovery_target_registrations || 100;
   const progressPct = Math.min(100, Math.round((regsN / target) * 1000) / 10);
 
-  const f = funnelAgg.rows[0];
   const steps: FunnelStep[] = [
     { key: "clicks", label: "Клики", value: Number(f?.clicks || 0) },
     { key: "deck_view", label: "deck_view", value: Number(f?.deck_views || 0) },
@@ -128,6 +150,38 @@ export async function GET() {
     /* 085 not applied yet */
   }
 
+  let hardBudget = {
+    spentRub: spent,
+    hardTotalRub: 9000,
+    remainRub: 9000,
+    pct: 0,
+    exhaustDate: null as string | null,
+  };
+  try {
+    const h = await getHardBudgetConfig();
+    const s = await sumLedgerAndStats();
+    const remain = Math.max(0, h.hardTotalRub - s.spentRub);
+    const week = await adsQuery<{ s: string }>(
+      `SELECT COALESCE(SUM(cost_rub),0)::text AS s
+       FROM ads.daily_stats WHERE date >= CURRENT_DATE - 7`
+    );
+    const pace = Number(week.rows[0]?.s || 0) / 7;
+    let exhaustDate: string | null = null;
+    if (pace > 0 && remain > 0) {
+      const days = remain / pace;
+      exhaustDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    }
+    hardBudget = {
+      spentRub: s.spentRub,
+      hardTotalRub: h.hardTotalRub,
+      remainRub: remain,
+      pct: h.hardTotalRub > 0 ? (s.spentRub / h.hardTotalRub) * 100 : 0,
+      exhaustDate,
+    };
+  } catch {
+    /* 086 */
+  }
+
   return NextResponse.json({
     mode: budget.mode,
     flags: {
@@ -135,6 +189,8 @@ export async function GET() {
       observe: await isAdsObserve(),
       rulesMode: rulesMode(),
     },
+    schemaOk,
+    schemaError,
     spent,
     visits: visitsN,
     registrations: regsN,
@@ -144,6 +200,6 @@ export async function GET() {
     worstStep: worstIdx >= 0 ? funnel[worstIdx].key : null,
     insights,
     health,
-    // discovery: no ROMI / ДРР
+    hardBudget,
   });
 }

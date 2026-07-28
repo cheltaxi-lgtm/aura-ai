@@ -3,6 +3,9 @@ import { requireAdsEnabled } from "@/modules/ads/gate";
 import { requireCronOrAdmin } from "@/modules/ads/cron-auth";
 import { fetchCustomReport } from "@/modules/ads/direct/reports";
 import { adsQuery } from "@/modules/ads/db";
+import { setConfigJson } from "@/modules/ads/config";
+import { bumpSyncStatsFailStreak } from "@/modules/ads/guard/freshness";
+import { safetyPauseAll } from "@/modules/ads/guard/pause-all";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,10 +56,25 @@ export async function POST(request: NextRequest) {
       );
       rows++;
     }
+    await bumpSyncStatsFailStreak(true);
+    await setConfigJson("guard.last_stats_sync_at", new Date().toISOString(), "cron");
     return NextResponse.json({ ok: true, day, rows, units });
   } catch (e) {
+    const failStreak = await bumpSyncStatsFailStreak(false);
+    if (failStreak >= 3) {
+      try {
+        await safetyPauseAll({
+          reason: "sync_stats",
+          code: "B2_SYNC_STATS_FAIL",
+          message: `ads-sync-stats упал ${failStreak} раза подряд`,
+          severity: "critical",
+        });
+      } catch {
+        /* ignore secondary */
+      }
+    }
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "error" },
+      { ok: false, error: e instanceof Error ? e.message : "error", failStreak },
       { status: 502 }
     );
   }

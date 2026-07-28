@@ -67,13 +67,18 @@ export async function directCall<T>(
   service: string,
   method: string,
   params: unknown,
-  opts?: { mutate?: boolean }
+  opts?: { mutate?: boolean; safetyPause?: boolean }
 ): Promise<DirectCallResult<T>> {
   const token = process.env.ADS_DIRECT_TOKEN;
   const login = process.env.ADS_DIRECT_LOGIN;
   if (!token) throw new DirectApiError("ADS_DIRECT_TOKEN missing");
 
-  if (opts?.mutate && !writesAllowed()) {
+  // Safety pauses (budget/freshness/landing/emergency) ignore dry_run / write flags.
+  const safety =
+    opts?.safetyPause === true &&
+    (method === "suspend" || method === "delete" || service === "campaigns");
+
+  if (opts?.mutate && !safety && !writesAllowed()) {
     throw new DirectApiError(
       `Direct write blocked (dry_run or ADS_AUTOPILOT_WRITE off): ${service}.${method}`
     );

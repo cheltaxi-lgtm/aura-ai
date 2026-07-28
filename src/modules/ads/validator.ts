@@ -53,7 +53,6 @@ function loadYaml<T>(rel: string): T | null {
   try {
     const path = join(process.cwd(), rel);
     if (!existsSync(path)) return null;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const yaml = require("yaml") as { parse: (s: string) => T };
     return yaml.parse(readFileSync(path, "utf8"));
   } catch {
@@ -211,6 +210,116 @@ export function validateOptimizationGoal(goal: string): ValidationResult {
       code: "unknown_goal",
       message: `Optimization goal not allowed: ${goal}`,
     });
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * B4 — block expensive discovery configurations before push.
+ * Extends the existing validator (no second validator module).
+ */
+export type DiscoveryCampaignConfig = {
+  /** Must be "search" in discovery */
+  campaignType?: string;
+  /** Network / RSYA serving */
+  networkEnabled?: boolean;
+  /** Autotargeting / автотаргетинг */
+  autotargetingEnabled?: boolean;
+  /** Explicit region ids (e.g. 225 = Russia). Empty/missing = blocked */
+  regionIds?: number[] | null;
+  /** Extended geo targeting */
+  extendedGeoEnabled?: boolean;
+  /** Manual CPC / HIGHEST_POSITION etc. */
+  biddingStrategy?: string | null;
+  dailyBudgetRub?: number | null;
+  targetCpaRegRub?: number | null;
+  discoveryDailyCapRub?: number;
+  discoveryMaxCpaRegRub?: number;
+  discoveryFreqMin?: number;
+  discoveryFreqMax?: number;
+  keywords?: { phrase: string; freq?: number | null }[];
+};
+
+export function validateDiscoveryCampaignConfig(
+  input: DiscoveryCampaignConfig
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  const type = (input.campaignType || "search").toLowerCase();
+  if (type !== "search") {
+    issues.push({
+      code: "campaign_type",
+      message: `В discovery разрешён только поиск; запрещено: ${input.campaignType}`,
+    });
+  }
+  if (input.networkEnabled) {
+    issues.push({
+      code: "rsya",
+      message: "РСЯ / сеть запрещены в discovery — Network должен быть SERVING_OFF",
+    });
+  }
+  if (input.autotargetingEnabled) {
+    issues.push({
+      code: "autotargeting",
+      message: "Автотаргетинг должен быть явно выключен в каждой группе",
+    });
+  }
+  if (!input.regionIds || input.regionIds.length === 0) {
+    issues.push({
+      code: "region_required",
+      message: "Регион показа должен быть задан явно (вся Россия по умолчанию — дорого)",
+    });
+  }
+  if (input.extendedGeoEnabled) {
+    issues.push({
+      code: "extended_geo",
+      message: "Расширенный географический таргетинг запрещён в discovery",
+    });
+  }
+  const strategy = (input.biddingStrategy || "").toUpperCase();
+  if (
+    strategy &&
+    (strategy.includes("MANUAL") ||
+      strategy === "HIGHEST_POSITION" ||
+      strategy === "WB_MAXIMUM_CLICKS" ||
+      strategy === "SERVING_OFF")
+  ) {
+    if (strategy.includes("MANUAL") || strategy === "HIGHEST_POSITION") {
+      issues.push({
+        code: "manual_bids",
+        message: "Ручные ставки запрещены в discovery — только pay-for-conversion / AVERAGE_CPA",
+      });
+    }
+  }
+  if (
+    input.dailyBudgetRub != null &&
+    input.discoveryDailyCapRub != null &&
+    input.dailyBudgetRub > input.discoveryDailyCapRub
+  ) {
+    issues.push({
+      code: "daily_budget_cap",
+      message: `Дневной бюджет ${input.dailyBudgetRub} ₽ > discovery_daily_cap ${input.discoveryDailyCapRub} ₽`,
+    });
+  }
+  if (
+    input.targetCpaRegRub != null &&
+    input.discoveryMaxCpaRegRub != null &&
+    input.targetCpaRegRub > input.discoveryMaxCpaRegRub
+  ) {
+    issues.push({
+      code: "cpa_cap",
+      message: `CPA ${input.targetCpaRegRub} ₽ > discovery_max_cpa_reg ${input.discoveryMaxCpaRegRub} ₽`,
+    });
+  }
+  const fMin = input.discoveryFreqMin ?? DISCOVERY_FREQ_MIN;
+  const fMax = input.discoveryFreqMax ?? DISCOVERY_FREQ_MAX;
+  for (const kw of input.keywords || []) {
+    const freq = kw.freq;
+    if (freq != null && (freq < fMin || freq > fMax)) {
+      issues.push({
+        code: "freq_range",
+        message: `Ключ «${kw.phrase}»: частотность ${freq} вне [${fMin}, ${fMax}]`,
+      });
+    }
   }
   return { ok: issues.length === 0, issues };
 }

@@ -96,7 +96,7 @@ export default function AdsSettingsPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const res = await fetch("/api/ads/admin/stop", { method: "POST" });
+      const res = await fetch("/api/ads/admin/emergency-stop", { method: "POST" });
       const d = await res.json().catch(() => ({}));
       setStopOpen(false);
       setNotice(

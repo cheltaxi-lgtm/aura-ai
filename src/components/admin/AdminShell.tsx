@@ -92,7 +92,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [admin, setAdmin] = useState<{ email: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [showAdsNav, setShowAdsNav] = useState(false);
+  // Always show for admins — flags (ads.enabled / observe) gate beacon/spend, not the nav.
+  // Hiding behind a 404 probe made the module unreachable when both flags were off.
+  const showAdsNav = true;
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -107,13 +109,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       .catch(() => router.replace("/admin/login"))
       .finally(() => setLoading(false));
   }, [router]);
-
-  useEffect(() => {
-    // Ads nav only when module flag is on (API returns 404 when ads.enabled=false).
-    fetch("/api/ads/admin/overview")
-      .then((r) => setShowAdsNav(r.status !== 404))
-      .catch(() => setShowAdsNav(false));
-  }, []);
 
   useEffect(() => {
     setMobileNavOpen(false);

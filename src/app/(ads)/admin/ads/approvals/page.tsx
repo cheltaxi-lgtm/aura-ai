@@ -5,6 +5,16 @@ import AdminShell, { AdminTitle, AdminTable, AdminBtn, StatCard } from "@/compon
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
 
+type Impact = {
+  currentRub: number | null;
+  proposedRub: number | null;
+  deltaDayRub: number | null;
+  delta30dRub: number | null;
+  budgetRemainRub: number | null;
+  daysAfterApply: number | null;
+  requiresTypedConfirm: boolean;
+};
+
 type Item = {
   id: string;
   kind: string;
@@ -14,6 +24,7 @@ type Item = {
   status: string;
   created_at: string;
   expires_at: string | null;
+  impact?: Impact;
 };
 
 function fmt(v: unknown): string {
@@ -30,6 +41,9 @@ export default function AdsApprovalsPage() {
   const [pending, setPending] = useState(0);
   const [disabled, setDisabled] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [confirmInput, setConfirmInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/ads/admin/approvals")
@@ -50,18 +64,35 @@ export default function AdsApprovalsPage() {
     load();
   }, [load]);
 
-  const decide = async (id: string, decision: "apply" | "reject") => {
+  const decide = async (id: string, decision: "apply" | "reject", confirmAmount?: number) => {
     setBusy(id);
+    setError(null);
     try {
       const res = await fetch("/api/ads/admin/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, decision }),
+        body: JSON.stringify({ id, decision, confirmAmount }),
       });
-      if (res.ok) load();
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(d.error ?? `Ошибка ${res.status}`);
+        return;
+      }
+      setConfirmId(null);
+      setConfirmInput("");
+      load();
     } finally {
       setBusy(null);
     }
+  };
+
+  const onApplyClick = (it: Item) => {
+    if (it.impact?.requiresTypedConfirm) {
+      setConfirmId(it.id);
+      setConfirmInput("");
+      return;
+    }
+    void decide(it.id, "apply");
   };
 
   if (disabled) return <AdsDisabled />;
@@ -71,13 +102,15 @@ export default function AdsApprovalsPage() {
       <AdminTitle title="Апрувы" subtitle="Очередь изменений, требующих подтверждения" />
       <AdsAdminNav pendingApprovals={pending} />
 
+      {error ? <p className="mb-4 text-sm text-red-400">{error}</p> : null}
+
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <StatCard label="В очереди" value={pending} accent="text-aura-gold" />
         <StatCard label="Всего в ленте" value={items.length} />
       </div>
 
       <AdminTable
-        headers={["Тип", "Текущее → предлагаемое", "Обоснование", "TTL", "Статус", ""]}
+        headers={["Тип", "Текущее → предлагаемое", "Δ / остаток", "TTL", "Статус", ""]}
         rows={items.map((it) => [
           it.kind,
           <span key="v" className="text-xs">
@@ -85,16 +118,47 @@ export default function AdsApprovalsPage() {
             {" → "}
             <span className="text-aura-gold">{fmt(it.proposed_value)}</span>
           </span>,
-          <span key="r" className="text-xs text-gray-500">
-            {fmt(it.rationale_json)}
+          <span key="i" className="text-xs text-gray-400">
+            {it.impact?.deltaDayRub != null
+              ? `Δдень ${Math.round(it.impact.deltaDayRub)} · Δ30д ${Math.round(it.impact.delta30dRub ?? 0)}`
+              : "—"}
+            {it.impact?.budgetRemainRub != null
+              ? ` · остаток ${Math.round(it.impact.budgetRemainRub)}`
+              : ""}
+            {it.impact?.daysAfterApply != null
+              ? ` · ~${Math.round(it.impact.daysAfterApply)} дн.`
+              : ""}
+            {it.impact?.requiresTypedConfirm ? (
+              <span className="ml-1 text-amber-400">×2+</span>
+            ) : null}
           </span>,
           it.expires_at ? new Date(it.expires_at).toLocaleString("ru-RU") : "—",
           it.status,
           it.status === "pending" ? (
-            <span key="a" className="flex gap-2">
-              <AdminBtn disabled={busy === it.id} onClick={() => void decide(it.id, "apply")}>
-                Применить
-              </AdminBtn>
+            <span key="a" className="flex flex-col gap-2">
+              {confirmId === it.id ? (
+                <span className="flex flex-col gap-1">
+                  <input
+                    type="number"
+                    placeholder={`Введите ${it.impact?.proposedRub ?? ""}`}
+                    value={confirmInput}
+                    onChange={(e) => setConfirmInput(e.target.value)}
+                    className="w-28 rounded border border-white/20 bg-black/40 px-2 py-1 text-xs text-white"
+                  />
+                  <AdminBtn
+                    disabled={busy === it.id}
+                    onClick={() =>
+                      void decide(it.id, "apply", Number(confirmInput))
+                    }
+                  >
+                    Подтвердить
+                  </AdminBtn>
+                </span>
+              ) : (
+                <AdminBtn disabled={busy === it.id} onClick={() => onApplyClick(it)}>
+                  Применить
+                </AdminBtn>
+              )}
               <AdminBtn
                 variant="danger"
                 disabled={busy === it.id}

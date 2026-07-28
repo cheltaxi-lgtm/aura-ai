@@ -6,6 +6,7 @@ import { getBudget } from "./config";
 import {
   DISCLAIMER_TAIL,
   validateCreative,
+  validateDiscoveryCampaignConfig,
   validateKeyword,
   validateOptimizationGoal,
 } from "./validator";
@@ -99,6 +100,25 @@ export async function buildDiscoveryPlan(opts?: {
   const targetCpaRegRub =
     opts?.targetCpaRegRub ?? budget.discovery_target_cpa_reg_rub;
 
+  const cfgCheck = validateDiscoveryCampaignConfig({
+    campaignType: "search",
+    networkEnabled: false,
+    autotargetingEnabled: false,
+    regionIds: [225],
+    extendedGeoEnabled: false,
+    biddingStrategy: "AVERAGE_CPA",
+    dailyBudgetRub,
+    targetCpaRegRub,
+    discoveryDailyCapRub: budget.discovery_daily_cap_rub,
+    discoveryMaxCpaRegRub: budget.discovery_max_cpa_reg_rub,
+    discoveryFreqMin: budget.discovery_freq_min,
+    discoveryFreqMax: budget.discovery_freq_max,
+    keywords: accepted,
+  });
+  if (!cfgCheck.ok) {
+    issues.push(...cfgCheck.issues.map((i) => i.message));
+  }
+
   let needsApproval: DiscoveryPlan["needsApproval"];
   if (
     requiresMoneyApproval({
@@ -166,6 +186,25 @@ export async function pushDiscoveryCampaign(opts?: {
   const creativeOk = validateCreative(plan.creative);
   if (!creativeOk.ok) {
     return { ok: false, reason: creativeOk.issues.map((i) => i.message).join("; ") };
+  }
+  const budget = await getBudget();
+  const cfgOk = validateDiscoveryCampaignConfig({
+    campaignType: "search",
+    networkEnabled: false,
+    autotargetingEnabled: false,
+    regionIds: [225],
+    extendedGeoEnabled: false,
+    biddingStrategy: plan.strategyMode,
+    dailyBudgetRub: plan.dailyBudgetRub,
+    targetCpaRegRub: plan.targetCpaRegRub,
+    discoveryDailyCapRub: budget.discovery_daily_cap_rub,
+    discoveryMaxCpaRegRub: budget.discovery_max_cpa_reg_rub,
+    discoveryFreqMin: budget.discovery_freq_min,
+    discoveryFreqMax: budget.discovery_freq_max,
+    keywords: plan.keywords,
+  });
+  if (!cfgOk.ok) {
+    return { ok: false, reason: cfgOk.issues.map((i) => i.message).join("; ") };
   }
 
   if (plan.needsApproval) {

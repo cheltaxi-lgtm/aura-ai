@@ -51,7 +51,6 @@ function loadYamlBudget(): Partial<AdsBudget> {
     const root = join(process.cwd());
     const path = join(root, "config/ads/budget.yaml");
     if (!existsSync(path)) return {};
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const yaml = require("yaml") as { parse: (s: string) => Record<string, unknown> };
     const raw = yaml.parse(readFileSync(path, "utf8")) || {};
     const out: Partial<AdsBudget> = {};
@@ -83,6 +82,11 @@ export async function setConfigJson(
   value: unknown,
   updatedBy = "system"
 ): Promise<void> {
+  // B1: hard_total_budget_rub is immutable via normal setters
+  if (key === "hard_total_budget_rub") {
+    const { HardBudgetImmutableError } = await import("./guard/errors");
+    throw new HardBudgetImmutableError();
+  }
   await adsQuery(
     `INSERT INTO ads.config (key, value_json, updated_at, updated_by)
      VALUES ($1, $2::jsonb, NOW(), $3)

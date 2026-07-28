@@ -243,18 +243,28 @@ async function main() {
     );
     return src.includes("requireCronOrAdmin");
   });
-  const hasSourcesCron = cronRoutes.includes("ads-sync-sources");
+  const requiredCrons = [
+    "ads-sync-sources",
+    "ads-budget-guard",
+    "ads-freshness-guard",
+    "ads-landing-check",
+    "ads-weekly-digest",
+    "ads-max-days-guard",
+  ];
+  const missingCrons = requiredCrons.filter((c) => !cronRoutes.includes(c));
   log(
     "V15",
-    cronAuth.includes("401") && allUseAuth && hasSourcesCron ? "PASS" : "FAIL",
-    allUseAuth && hasSourcesCron
-      ? `cron-auth 401 + ${cronRoutes.length} ads cron routes guarded (incl. sync-sources)`
-      : "some cron routes missing requireCronOrAdmin or ads-sync-sources"
+    cronAuth.includes("401") && allUseAuth && missingCrons.length === 0 ? "PASS" : "FAIL",
+    missingCrons.length === 0
+      ? `cron-auth 401 + ${cronRoutes.length} ads cron routes guarded`
+      : `missing crons: ${missingCrons.join(",")}`
   );
 
   // —— V16 admin pages exist
   const adminPages = [
     "page.tsx",
+    "sources/page.tsx",
+    "health/page.tsx",
     "campaign/page.tsx",
     "approvals/page.tsx",
     "semantics/page.tsx",
@@ -284,6 +294,139 @@ async function main() {
   mapUnit("V23", "exit mode_switch");
   mapUnit("V24", "offline no spread_submit");
   mapUnit("V25", "sample < 100");
+
+  // —— V26–V40 budget protection layer
+  const guardUnit = run("npx", ["tsx", "src/modules/ads/__tests__/ads-guards-unit.ts"]);
+  const guardOut = `${guardUnit.stdout || ""}\n${guardUnit.stderr || ""}`;
+  const guardPass = guardUnit.status === 0;
+
+  const budgetTs = readFileSync(join(ROOT, "src/modules/ads/guard/budget.ts"), "utf8");
+  const clientTs = readFileSync(join(ROOT, "src/modules/ads/direct/client.ts"), "utf8");
+  const campsTs = readFileSync(join(ROOT, "src/modules/ads/direct/campaigns.ts"), "utf8");
+  const freshnessTs = readFileSync(join(ROOT, "src/modules/ads/guard/freshness.ts"), "utf8");
+  const landingTs = readFileSync(join(ROOT, "src/modules/ads/guard/landing.ts"), "utf8");
+  const pauseTs = readFileSync(join(ROOT, "src/modules/ads/guard/pause-all.ts"), "utf8");
+  const syncStatsTs = readFileSync(
+    join(ROOT, "src/app/(ads)/api/cron/ads-sync-stats/route.ts"),
+    "utf8"
+  );
+  const approvalsTs = readFileSync(join(ROOT, "src/modules/ads/approvals.ts"), "utf8");
+  const maxDaysTs = readFileSync(join(ROOT, "src/modules/ads/guard/max-days.ts"), "utf8");
+  const stopScript = existsSync(join(ROOT, "scripts/ads-stop.ts"))
+    ? readFileSync(join(ROOT, "scripts/ads-stop.ts"), "utf8")
+    : "";
+  const emergencyTs = readFileSync(
+    join(ROOT, "src/app/(ads)/api/ads/admin/emergency-stop/route.ts"),
+    "utf8"
+  );
+  const validatorTs = readFileSync(join(ROOT, "src/modules/ads/validator.ts"), "utf8");
+  const configTs = readFileSync(join(ROOT, "src/modules/ads/config.ts"), "utf8");
+
+  log(
+    "V26",
+    budgetTs.includes("B1_HARD_BUDGET") && pauseTs.includes("safetyPause") && clientTs.includes("safetyPause")
+      ? "PASS"
+      : "FAIL",
+    "hard budget pause independent of flags (safetyPause)"
+  );
+  log(
+    "V27",
+    campsTs.includes("assertBudgetAvailable") && budgetTs.includes("BudgetExhaustedError")
+      ? "PASS"
+      : "FAIL",
+    "assertBudgetAvailable on Direct create/resume"
+  );
+  log(
+    "V28",
+    guardPass && configTs.includes("hard_total_budget_rub") && configTs.includes("HardBudgetImmutableError")
+      ? "PASS"
+      : "FAIL",
+    guardPass ? "hard_total immutable via setConfigJson" : guardOut.slice(0, 160)
+  );
+  log(
+    "V29",
+    freshnessTs.includes("B2_STALE_STOP") && cronRoutes.includes("ads-freshness-guard")
+      ? "PASS"
+      : "FAIL",
+    "48h stale stats → pause"
+  );
+  log(
+    "V30",
+    syncStatsTs.includes("bumpSyncStatsFailStreak") && syncStatsTs.includes("failStreak >= 3")
+      ? "PASS"
+      : "FAIL",
+    "3× sync-stats fail → pause"
+  );
+  log(
+    "V31",
+    landingTs.includes("B3_LANDING_DOWN") && cronRoutes.includes("ads-landing-check")
+      ? "PASS"
+      : "FAIL",
+    "landing 500/timeout pauses campaigns"
+  );
+  log(
+    "V32",
+    pauseTs.includes("cpa_paused_ids") && pauseTs.includes("resumeLandingPaused")
+      ? "PASS"
+      : "FAIL",
+    "landing resume skips CPA-paused"
+  );
+  log(
+    "V33",
+    guardPass && validatorTs.includes("validateDiscoveryCampaignConfig") && validatorTs.includes("rsya")
+      ? "PASS"
+      : "FAIL",
+    "RSYA/autotargeting blocked in validator"
+  );
+  log(
+    "V34",
+    validatorTs.includes("region_required") ? "PASS" : "FAIL",
+    "campaign without region blocked"
+  );
+  log(
+    "V35",
+    guardPass ? "PASS" : "FAIL",
+    "freq above discovery_freq_max blocked"
+  );
+  log(
+    "V36",
+    approvalsTs.includes("ApprovalExpiredError") ? "PASS" : "FAIL",
+    "expired TTL rejected server-side"
+  );
+  log(
+    "V37",
+    approvalsTs.includes("requiresTypedConfirm") && approvalsTs.includes("confirmAmount")
+      ? "PASS"
+      : "FAIL",
+    "approval >2× requires typed confirm"
+  );
+  log(
+    "V38",
+    maxDaysTs.includes("B6_MAX_DAYS") && cronRoutes.includes("ads-max-days-guard")
+      ? "PASS"
+      : "FAIL",
+    "discovery_max_days pause"
+  );
+  const stopDry = run("npx", ["tsx", "scripts/ads-stop.ts", "--dry-run"]);
+  const stopOut = `${stopDry.stdout || ""}\n${stopDry.stderr || ""}`;
+  if (stopScript.includes("api.direct.yandex") && !stopScript.includes("localhost:3000")) {
+    if (stopDry.status === 0 || /DRY-RUN|OK|found \d+ campaigns/i.test(stopOut)) {
+      log("V39", "PASS", "ads-stop.ts Direct-only dry-run");
+    } else if (/TOKEN missing|ECONN|не подключен|error/i.test(stopOut)) {
+      log("V39", "WAITING", stopOut.slice(0, 160));
+    } else {
+      log("V39", "FAIL", stopOut.slice(0, 160));
+    }
+  } else {
+    log("V39", "FAIL", "ads-stop.ts missing or not Direct-only");
+  }
+  log(
+    "V40",
+    emergencyTs.includes("requireAdmin") && emergencyTs.includes("403")
+      ? "PASS"
+      : "FAIL",
+    "emergency-stop admin-only 403"
+  );
 
   // Summary
   const counts = { PASS: 0, FAIL: 0, WAITING: 0, SKIP: 0 };

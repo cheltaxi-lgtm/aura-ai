@@ -41,7 +41,6 @@ function loadNegatives(): NegativesYaml {
   try {
     const path = join(process.cwd(), "config/ads/negatives.yaml");
     if (!existsSync(path)) return {};
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const yaml = require("yaml") as { parse: (s: string) => NegativesYaml };
     return yaml.parse(readFileSync(path, "utf8")) || {};
   } catch {

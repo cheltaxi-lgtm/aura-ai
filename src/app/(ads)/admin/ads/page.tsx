@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, StatCard } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
-import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
 
 type FunnelRow = {
   key: string;
@@ -17,6 +16,8 @@ type FunnelRow = {
 type Overview = {
   mode: string;
   flags?: { enabled: boolean; observe: boolean; rulesMode: string };
+  schemaOk?: boolean;
+  schemaError?: string | null;
   spent: number;
   visits: number;
   registrations: number;
@@ -34,6 +35,13 @@ type Overview = {
     metrikaOk: boolean | null;
     webmasterOk: boolean | null;
   };
+  hardBudget?: {
+    spentRub: number;
+    hardTotalRub: number;
+    remainRub: number;
+    pct: number;
+    exhaustDate: string | null;
+  };
 };
 
 function pct(n: number | null): string {
@@ -43,17 +51,20 @@ function pct(n: number | null): string {
 
 export default function AdsOverviewPage() {
   const [data, setData] = useState<Overview | null>(null);
-  const [disabled, setDisabled] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
 
   useEffect(() => {
     void Promise.all([
       fetch("/api/ads/admin/overview").then(async (r) => {
-        if (r.status === 404) {
-          setDisabled(true);
+        if (r.status === 403) {
+          setLoadError("Нужна роль admin");
           return;
         }
-        if (!r.ok) return;
+        if (!r.ok) {
+          setLoadError(`overview HTTP ${r.status}`);
+          return;
+        }
         setData(await r.json());
       }),
       fetch("/api/ads/admin/approvals").then(async (r) => {
@@ -63,8 +74,6 @@ export default function AdsOverviewPage() {
       }),
     ]);
   }, []);
-
-  if (disabled) return <AdsDisabled />;
 
   const h = data?.health;
 
@@ -79,6 +88,44 @@ export default function AdsOverviewPage() {
         }
       />
       <AdsAdminNav pendingApprovals={pending} />
+
+      {loadError ? (
+        <div className="glass-panel mb-6 p-4 text-sm text-amber-400">{loadError}</div>
+      ) : null}
+      {data?.schemaOk === false ? (
+        <div className="glass-panel mb-6 p-4 text-sm text-amber-400">
+          Схема ads не применена. На сервере:{" "}
+          <code className="text-gray-300">npm run migrate</code> (миграции 084–086).
+          {data.schemaError ? (
+            <p className="mt-1 text-xs text-gray-500">{data.schemaError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {data?.hardBudget && (
+        <div className="glass-panel mb-6 p-4">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <span className="font-semibold text-white">Бюджет (hard)</span>
+            <span className={(data.hardBudget.pct >= 90 ? "text-red-400" : "text-aura-gold")}>
+              {Math.round(data.hardBudget.spentRub)} / {data.hardBudget.hardTotalRub} ₽ · остаток{" "}
+              {Math.round(data.hardBudget.remainRub)} ₽ ({data.hardBudget.pct.toFixed(0)}%)
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full transition-all ${
+                data.hardBudget.pct >= 90 ? "bg-red-500" : "bg-aura-gold/80"
+              }`}
+              style={{ width: `${Math.min(100, data.hardBudget.pct)}%` }}
+            />
+          </div>
+          {data.hardBudget.exhaustDate ? (
+            <p className="mt-2 text-xs text-gray-500">
+              Прогноз исчерпания при текущем темпе: {data.hardBudget.exhaustDate}
+            </p>
+          ) : null}
+        </div>
+      )}
 
       <div className="glass-panel mb-6 grid gap-3 p-4 text-xs text-gray-400 sm:grid-cols-2 lg:grid-cols-4">
         <div>

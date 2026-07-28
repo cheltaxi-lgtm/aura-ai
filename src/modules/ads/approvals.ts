@@ -4,6 +4,11 @@
 import { adsQuery } from "./db";
 import { getBudget } from "./config";
 import type { ApprovalKind } from "./types";
+import {
+  ApprovalConfirmRequiredError,
+  ApprovalExpiredError,
+} from "./guard/errors";
+import { getHardBudgetConfig, sumLedgerAndStats } from "./guard/budget";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
 
@@ -75,10 +80,68 @@ export async function createApprovalRequest(input: {
  * Decide an approval. Does NOT mutate Direct budgets here —
  * callers apply only after status === 'approved'.
  */
+/** Impact preview for admin UI (B5). */
+export async function buildApprovalImpact(row: {
+  kind: string;
+  current_value: unknown;
+  proposed_value: unknown;
+}): Promise<{
+  currentRub: number | null;
+  proposedRub: number | null;
+  deltaDayRub: number | null;
+  delta30dRub: number | null;
+  budgetRemainRub: number | null;
+  daysAfterApply: number | null;
+  requiresTypedConfirm: boolean;
+}> {
+  const cur =
+    row.current_value && typeof row.current_value === "object"
+      ? Number((row.current_value as Record<string, unknown>).amount ?? NaN)
+      : NaN;
+  const prop =
+    row.proposed_value && typeof row.proposed_value === "object"
+      ? Number((row.proposed_value as Record<string, unknown>).amount ?? NaN)
+      : NaN;
+  const currentRub = Number.isFinite(cur) ? cur : null;
+  const proposedRub = Number.isFinite(prop) ? prop : null;
+  const deltaDayRub =
+    currentRub != null && proposedRub != null ? proposedRub - currentRub : null;
+  const delta30dRub = deltaDayRub != null ? deltaDayRub * 30 : null;
+  let budgetRemainRub: number | null = null;
+  let daysAfterApply: number | null = null;
+  try {
+    const { hardTotalRub } = await getHardBudgetConfig();
+    const { spentRub } = await sumLedgerAndStats();
+    budgetRemainRub = Math.max(0, hardTotalRub - spentRub);
+    const pace = proposedRub != null && proposedRub > 0 ? proposedRub : null;
+    if (pace && budgetRemainRub != null) {
+      daysAfterApply = budgetRemainRub / pace;
+    }
+  } catch {
+    /* ignore */
+  }
+  const requiresTypedConfirm =
+    currentRub != null &&
+    proposedRub != null &&
+    currentRub > 0 &&
+    proposedRub / currentRub > 2;
+  return {
+    currentRub,
+    proposedRub,
+    deltaDayRub,
+    delta30dRub,
+    budgetRemainRub,
+    daysAfterApply,
+    requiresTypedConfirm,
+  };
+}
+
 export async function decideApproval(input: {
   id: string;
   decision: "approved" | "rejected";
   decidedBy: string;
+  /** Required when spend increase >2× */
+  confirmAmount?: number | null;
 }): Promise<ApprovalRow | null> {
   // Expire stale first
   await adsQuery(
@@ -86,6 +149,42 @@ export async function decideApproval(input: {
      SET status = 'expired', decided_at = NOW()
      WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < NOW()`
   );
+
+  const existing = await adsQuery<ApprovalRow>(
+    `SELECT * FROM ads.approval_request WHERE id = $1::uuid`,
+    [input.id]
+  );
+  const row0 = existing.rows[0];
+  if (!row0) return null;
+  if (row0.status === "expired") {
+    throw new ApprovalExpiredError();
+  }
+  if (
+    row0.status === "pending" &&
+    row0.expires_at &&
+    new Date(row0.expires_at).getTime() < Date.now()
+  ) {
+    await adsQuery(
+      `UPDATE ads.approval_request SET status='expired', decided_at=NOW() WHERE id=$1::uuid`,
+      [input.id]
+    );
+    throw new ApprovalExpiredError();
+  }
+
+  if (input.decision === "approved") {
+    const impact = await buildApprovalImpact(row0);
+    if (impact.requiresTypedConfirm) {
+      if (
+        impact.proposedRub == null ||
+        input.confirmAmount == null ||
+        Number(input.confirmAmount) !== Number(impact.proposedRub)
+      ) {
+        throw new ApprovalConfirmRequiredError(
+          `Подтвердите сумму ${impact.proposedRub} вручную (рост расхода >2×)`
+        );
+      }
+    }
+  }
 
   const { rows } = await adsQuery<ApprovalRow>(
     `UPDATE ads.approval_request
@@ -134,8 +233,18 @@ export async function applyApprovedMoneyChange(input: {
   );
   const row = rows[0];
   if (!row) return { ok: false, reason: "not_found" };
+  if (row.status === "expired") {
+    throw new ApprovalExpiredError();
+  }
   if (row.status !== "approved") {
     return { ok: false, reason: `status_${row.status}` };
+  }
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    await adsQuery(
+      `UPDATE ads.approval_request SET status='expired' WHERE id=$1::uuid`,
+      [input.approvalId]
+    );
+    throw new ApprovalExpiredError();
   }
   await input.apply(row.proposed_value);
   await adsQuery(
