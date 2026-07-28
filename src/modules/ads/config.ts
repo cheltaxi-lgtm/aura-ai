@@ -109,6 +109,21 @@ export async function isAdsAutopilotWrite(): Promise<boolean> {
   return v === true;
 }
 
+/** Admin UI + read-only Yandex sync without enabling public beacon/spend. */
+export async function isAdsObserve(): Promise<boolean> {
+  if (process.env.ADS_OBSERVE === "0" || process.env.ADS_OBSERVE === "false") return false;
+  if (process.env.ADS_OBSERVE === "1" || process.env.ADS_OBSERVE === "true") return true;
+  const v = await getConfigJson<boolean>("ads.observe");
+  // Default true so /admin/ads works before first toggle (migration 085 seeds true).
+  return v !== false;
+}
+
+/** Admin routes / source sync: enabled OR observe. Public beacon still needs enabled. */
+export async function canAccessAdsAdmin(): Promise<boolean> {
+  if (await isAdsEnabled()) return true;
+  return isAdsObserve();
+}
+
 export async function getBudget(): Promise<AdsBudget> {
   const fromDb = await getConfigJson<Partial<AdsBudget>>("budget");
   return { ...DEFAULT_BUDGET, ...loadYamlBudget(), ...(fromDb || {}) };

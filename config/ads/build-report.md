@@ -2,6 +2,12 @@
 
 Updated: 2026-07-28
 
+## Sources dashboard (post-push)
+
+- Migration `085_migrate_ads_source_snapshots.sql` — `source_snapshot`, metrika/webmaster caches, `ads.observe`
+- Admin tab **Источники** + cron `ads-sync-sources` — Direct/Metrika/Webmaster read-only (balance 0 OK)
+- Admin access: `ads.enabled` **or** `ads.observe` (default on)
+
 ## Final verifier (latest)
 
 | ID | Status | Reason |

@@ -6,6 +6,7 @@ import {
   getConfigJson,
   isAdsAutopilotWrite,
   isAdsEnabled,
+  isAdsObserve,
   isAdsRulesEnabled,
   rulesMode,
   setConfigJson,
@@ -37,6 +38,7 @@ export async function GET() {
   return NextResponse.json({
     flags: {
       enabled: await isAdsEnabled(),
+      observe: await isAdsObserve(),
       rulesEnabled: await isAdsRulesEnabled(),
       autopilotWrite: await isAdsAutopilotWrite(),
       rulesMode: rulesMode(),
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     flags?: {
       enabled?: boolean;
+      observe?: boolean;
       rulesEnabled?: boolean;
       autopilotWrite?: boolean;
     };
@@ -71,6 +74,9 @@ export async function POST(req: NextRequest) {
   if (body.flags) {
     if (typeof body.flags.enabled === "boolean") {
       await setConfigJson("ads.enabled", body.flags.enabled, auth.sub);
+    }
+    if (typeof body.flags.observe === "boolean") {
+      await setConfigJson("ads.observe", body.flags.observe, auth.sub);
     }
     if (typeof body.flags.rulesEnabled === "boolean") {
       await setConfigJson("ads.rules.enabled", body.flags.rulesEnabled, auth.sub);

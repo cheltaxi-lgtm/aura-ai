@@ -243,12 +243,13 @@ async function main() {
     );
     return src.includes("requireCronOrAdmin");
   });
+  const hasSourcesCron = cronRoutes.includes("ads-sync-sources");
   log(
     "V15",
-    cronAuth.includes("401") && allUseAuth ? "PASS" : "FAIL",
-    allUseAuth
-      ? `cron-auth 401 + ${cronRoutes.length} ads cron routes guarded`
-      : "some cron routes missing requireCronOrAdmin"
+    cronAuth.includes("401") && allUseAuth && hasSourcesCron ? "PASS" : "FAIL",
+    allUseAuth && hasSourcesCron
+      ? `cron-auth 401 + ${cronRoutes.length} ads cron routes guarded (incl. sync-sources)`
+      : "some cron routes missing requireCronOrAdmin or ads-sync-sources"
   );
 
   // —— V16 admin pages exist

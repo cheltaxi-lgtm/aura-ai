@@ -8,6 +8,7 @@ import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
 type Settings = {
   flags: {
     enabled: boolean;
+    observe?: boolean;
     rulesEnabled: boolean;
     autopilotWrite: boolean;
     rulesMode: string;
@@ -20,7 +21,12 @@ export default function AdsSettingsPage() {
   const [data, setData] = useState<Settings | null>(null);
   const [disabled, setDisabled] = useState(false);
   const [caps, setCaps] = useState<Record<string, string>>({});
-  const [flags, setFlags] = useState({ rulesEnabled: false, autopilotWrite: false });
+  const [flags, setFlags] = useState({
+    enabled: false,
+    observe: true,
+    rulesEnabled: false,
+    autopilotWrite: false,
+  });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [stopOpen, setStopOpen] = useState(false);
@@ -36,6 +42,8 @@ export default function AdsSettingsPage() {
         const d = (await r.json()) as Settings;
         setData(d);
         setFlags({
+          enabled: d.flags.enabled,
+          observe: d.flags.observe !== false,
           rulesEnabled: d.flags.rulesEnabled,
           autopilotWrite: d.flags.autopilotWrite,
         });
@@ -58,6 +66,8 @@ export default function AdsSettingsPage() {
     try {
       const body = {
         flags: {
+          enabled: flags.enabled,
+          observe: flags.observe,
           rulesEnabled: flags.rulesEnabled,
           autopilotWrite: flags.autopilotWrite,
         },
@@ -110,9 +120,27 @@ export default function AdsSettingsPage() {
         <div className="glass-panel space-y-3 p-4">
           <h2 className="text-sm font-semibold text-white">Флаги</h2>
           <p className="text-xs text-gray-500">
-            ads.enabled: {data?.flags.enabled ? "on" : "off"} · rules mode:{" "}
-            <span className="text-aura-gold">{data?.flags.rulesMode}</span>
+            rules mode: <span className="text-aura-gold">{data?.flags.rulesMode}</span> (env
+            ADS_RULES_MODE)
           </p>
+          <label className="flex items-center gap-2 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              checked={flags.observe}
+              onChange={(e) => setFlags((f) => ({ ...f, observe: e.target.checked }))}
+              className="accent-aura-gold"
+            />
+            ads.observe — админка + sync источников без beacon
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              checked={flags.enabled}
+              onChange={(e) => setFlags((f) => ({ ...f, enabled: e.target.checked }))}
+              className="accent-aura-gold"
+            />
+            ads.enabled — публичный beacon /api/ads/t|e
+          </label>
           <label className="flex items-center gap-2 text-sm text-gray-300">
             <input
               type="checkbox"
@@ -129,7 +157,7 @@ export default function AdsSettingsPage() {
               onChange={(e) => setFlags((f) => ({ ...f, autopilotWrite: e.target.checked }))}
               className="accent-aura-gold"
             />
-            ads.autopilot.write
+            ads.autopilot.write — запись в Директ (осторожно)
           </label>
         </div>
 

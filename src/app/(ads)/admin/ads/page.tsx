@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, StatCard } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
@@ -15,6 +16,7 @@ type FunnelRow = {
 
 type Overview = {
   mode: string;
+  flags?: { enabled: boolean; observe: boolean; rulesMode: string };
   spent: number;
   visits: number;
   registrations: number;
@@ -23,6 +25,15 @@ type Overview = {
   funnel: FunnelRow[];
   worstStep: string | null;
   insights: { step: string; value: number; cr: number | null; note: string | null }[];
+  health?: {
+    balanceRub: number | null;
+    metrikaVisits7d: number | null;
+    moneyBlocker: string | null;
+    sourcesSyncedAt: string | null;
+    directOk: boolean | null;
+    metrikaOk: boolean | null;
+    webmasterOk: boolean | null;
+  };
 };
 
 function pct(n: number | null): string {
@@ -55,6 +66,8 @@ export default function AdsOverviewPage() {
 
   if (disabled) return <AdsDisabled />;
 
+  const h = data?.health;
+
   return (
     <AdminShell>
       <AdminTitle
@@ -67,10 +80,45 @@ export default function AdsOverviewPage() {
       />
       <AdsAdminNav pendingApprovals={pending} />
 
+      <div className="glass-panel mb-6 grid gap-3 p-4 text-xs text-gray-400 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="text-gray-600">Баланс Директа</p>
+          <p className="text-lg text-aura-gold">
+            {h?.balanceRub != null ? `${Math.round(h.balanceRub)} ₽` : "н/д"}
+          </p>
+          {h?.moneyBlocker === "direct_balance_zero" ? (
+            <p className="text-amber-400">Пополните счёт — единственный блокер трат</p>
+          ) : null}
+        </div>
+        <div>
+          <p className="text-gray-600">Метрика 7д (сайт)</p>
+          <p className="text-lg text-white">{h?.metrikaVisits7d ?? "—"}</p>
+        </div>
+        <div>
+          <p className="text-gray-600">Синк источников</p>
+          <p className="text-white">
+            D:{h?.directOk == null ? "?" : h.directOk ? "✓" : "✗"} · M:
+            {h?.metrikaOk == null ? "?" : h.metrikaOk ? "✓" : "✗"} · W:
+            {h?.webmasterOk == null ? "?" : h.webmasterOk ? "✓" : "✗"}
+          </p>
+          <Link href="/admin/ads/sources" className="text-aura-gold hover:underline">
+            Открыть источники →
+          </Link>
+        </div>
+        <div>
+          <p className="text-gray-600">Флаги</p>
+          <p className="text-white">
+            enabled:{data?.flags?.enabled ? "on" : "off"} · observe:
+            {data?.flags?.observe ? "on" : "off"}
+          </p>
+          <p className="text-gray-500">rules {data?.flags?.rulesMode ?? "—"}</p>
+        </div>
+      </div>
+
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Расход, ₽" value={data ? Math.round(data.spent) : "—"} accent="text-aura-gold" />
-        <StatCard label="Визиты" value={data?.visits ?? "—"} />
-        <StatCard label="Регистрации" value={data?.registrations ?? "—"} accent="text-aura-emerald" />
+        <StatCard label="Расход ads, ₽" value={data ? Math.round(data.spent) : "—"} accent="text-aura-gold" />
+        <StatCard label="Клики (ads.click)" value={data?.visits ?? "—"} />
+        <StatCard label="Регистрации (ads)" value={data?.registrations ?? "—"} accent="text-aura-emerald" />
         <StatCard
           label={`Прогресс до ${data?.targetRegistrations ?? 100}`}
           value={data ? `${data.progressPct}%` : "—"}
@@ -95,7 +143,7 @@ export default function AdsOverviewPage() {
         </div>
       )}
 
-      <h2 className="mb-3 text-sm font-semibold text-white">Воронка</h2>
+      <h2 className="mb-3 text-sm font-semibold text-white">Воронка (атрибуция ads)</h2>
       <AdminTable
         headers={["Шаг", "Кол-во", "CR от предыдущего", ""]}
         rows={(data?.funnel ?? []).map((s) => [
