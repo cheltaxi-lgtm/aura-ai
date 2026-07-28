@@ -39,6 +39,7 @@ const BOT_SESSIONS_PREMIUM: ExpectedColumn[] = [
   { name: "collage_cache_key", sqlType: "TEXT", nullable: true },
   { name: "plain_token_prefix", sqlType: "TEXT", nullable: true },
   { name: "expired_at", sqlType: "TEXT", nullable: true },
+  { name: "quota_day", sqlType: "TEXT", nullable: true },
 ];
 
 export const EXPECTED_TABLES: ExpectedTable[] = [

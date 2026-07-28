@@ -71,6 +71,7 @@ export type GuestSessionRow = {
   created_at: string;
   expires_at: string;
   claimed_at: string | null;
+  quota_day?: string | null;
 };
 
 export function upsertUser(input: {
@@ -218,7 +219,7 @@ export function banUser(telegramUserId: number): void {
 export function touchStreak(telegramUserId: number): number {
   const user = getUser(telegramUserId);
   if (!user) return 0;
-  const today = todayInTz();
+  const today = localDateKey(user);
   if (user.streak_last_date === today) return user.streak_days;
 
   let next = 1;
@@ -314,12 +315,23 @@ export function trackEvent(
 export function countTripletsToday(telegramUserId: number, user?: BotUser | null): number {
   const u = user ?? getUser(telegramUserId);
   const day = localDateKey(u);
-  const rows = getDb()
+  const row = getDb()
     .prepare(
-      `SELECT created_at FROM bot_guest_sessions WHERE telegram_user_id = ?`
+      `SELECT COUNT(*) AS c FROM bot_guest_sessions
+       WHERE telegram_user_id = ? AND COALESCE(quota_day, substr(created_at,1,10)) = ?`
     )
-    .all(telegramUserId) as Array<{ created_at: string }>;
-  return rows.filter((r) => localDateKey(u, new Date(r.created_at)) === day).length;
+    .get(telegramUserId, day) as { c: number };
+  return row.c;
+}
+
+export function getLastGuestSession(telegramUserId: number): GuestSessionRow | null {
+  return (
+    (getDb()
+      .prepare(
+        `SELECT * FROM bot_guest_sessions WHERE telegram_user_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(telegramUserId) as GuestSessionRow | undefined) ?? null
+  );
 }
 
 export type SpreadClaimResult =
@@ -391,14 +403,16 @@ export function createGuestSession(input: {
   const id = input.id ?? randomUUID();
   const created = nowIso();
   const expires = new Date(Date.now() + botConfig.sessionTtlMs).toISOString();
+  const user = getUser(input.telegramUserId);
+  const quotaDay = localDateKey(user);
   getDb()
     .prepare(
       `INSERT INTO bot_guest_sessions (
         id, telegram_user_id, question, cards, master, system, spread_id, deck_id,
         teaser_text, teaser_prompt_version, teaser_model, teaser_seed,
         session_token_hash, fingerprint, question_source, source, collage_cache_key,
-        created_at, expires_at, claimed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL)`
+        created_at, expires_at, claimed_at, quota_day
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?)`
     )
     .run(
       id,
@@ -418,7 +432,8 @@ export function createGuestSession(input: {
       input.questionSource,
       input.collageCacheKey ?? id,
       created,
-      expires
+      expires,
+      quotaDay
     );
   return getDb().prepare(`SELECT * FROM bot_guest_sessions WHERE id = ?`).get(id) as GuestSessionRow;
 }
@@ -438,13 +453,14 @@ export function countSessions(telegramUserId: number): number {
   return row.c;
 }
 
-export function getDayCard(telegramUserId: number, day = todayInTz()): {
+export function getDayCard(telegramUserId: number, day?: string): {
   card: DrawnCard;
   text: string;
 } | null {
+  const key = day ?? localDateKey(getUser(telegramUserId));
   const row = getDb()
     .prepare(`SELECT card, text FROM bot_day_cards WHERE telegram_user_id = ? AND day = ?`)
-    .get(telegramUserId, day) as { card: string; text: string } | undefined;
+    .get(telegramUserId, key) as { card: string; text: string } | undefined;
   if (!row) return null;
   return { card: JSON.parse(row.card) as DrawnCard, text: row.text };
 }
@@ -455,7 +471,13 @@ export function saveDayCard(telegramUserId: number, card: DrawnCard, text: strin
       `INSERT INTO bot_day_cards (telegram_user_id, day, card, text, created_at)
        VALUES (?, ?, ?, ?, ?)`
     )
-    .run(telegramUserId, todayInTz(), JSON.stringify(card), text, nowIso());
+    .run(
+      telegramUserId,
+      localDateKey(getUser(telegramUserId)),
+      JSON.stringify(card),
+      text,
+      nowIso()
+    );
 }
 
 export function flagEnabled(key: string, fallback: boolean): boolean {
@@ -510,22 +532,25 @@ export function audit(action: string, detail: Record<string, unknown> = {}, acto
 export function reminderAlreadySent(
   telegramUserId: number,
   kind: string,
-  day = todayInTz()
+  day?: string
 ): boolean {
+  const user = getUser(telegramUserId);
+  const key = day ?? localDateKey(user);
   const row = getDb()
     .prepare(
       `SELECT 1 AS ok FROM bot_reminder_log WHERE telegram_user_id = ? AND kind = ? AND day = ?`
     )
-    .get(telegramUserId, kind, day) as { ok: number } | undefined;
+    .get(telegramUserId, kind, key) as { ok: number } | undefined;
   return Boolean(row);
 }
 
 export function markReminderSent(telegramUserId: number, kind: string): void {
+  const user = getUser(telegramUserId);
   getDb()
     .prepare(
       `INSERT OR IGNORE INTO bot_reminder_log (telegram_user_id, kind, day, created_at) VALUES (?, ?, ?, ?)`
     )
-    .run(telegramUserId, kind, todayInTz(), nowIso());
+    .run(telegramUserId, kind, localDateKey(user), nowIso());
 }
 
 export function usersForReminder(mode: "morning" | "evening"): BotUser[] {
@@ -589,8 +614,29 @@ export function effectiveTripletLimit(user: BotUser): number {
   return botConfig.tripletDailyLimit + (user.bonus_spreads ?? 0);
 }
 
+const TZ_HOP_GUARD_MS = 20 * 60 * 60 * 1000;
+
 export function canDrawTriplet(user: BotUser): boolean {
-  return countTripletsToday(user.telegram_user_id) < effectiveTripletLimit(user);
+  const todayCount = countTripletsToday(user.telegram_user_id, user);
+  const limit = effectiveTripletLimit(user);
+  if (todayCount >= limit) return false;
+
+  // TZ-hop guard: a recent draw that falls on another quota_day under the new
+  // offset must not unlock a second free triplet without a bonus.
+  if (todayCount < botConfig.tripletDailyLimit) {
+    const last = getLastGuestSession(user.telegram_user_id);
+    if (last) {
+      const ageMs = Date.now() - new Date(last.created_at).getTime();
+      if (ageMs >= 0 && ageMs < TZ_HOP_GUARD_MS) {
+        const lastDay = last.quota_day ?? localDateKey(user, new Date(last.created_at));
+        const today = localDateKey(user);
+        if (lastDay !== today && (user.bonus_spreads ?? 0) <= 0) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 export function consumeBonusSpread(telegramUserId: number): void {
@@ -619,7 +665,7 @@ export function expireSessions(): number {
 }
 
 export function consumeLlmQuota(telegramUserId: number): boolean {
-  const day = todayInTz();
+  const day = localDateKey(getUser(telegramUserId));
   const row = getDb()
     .prepare(`SELECT calls FROM bot_llm_usage WHERE telegram_user_id = ? AND day = ?`)
     .get(telegramUserId, day) as { calls: number } | undefined;
@@ -635,7 +681,7 @@ export function consumeLlmQuota(telegramUserId: number): boolean {
 }
 
 export function consumeTtsQuota(telegramUserId: number): boolean {
-  const day = todayInTz();
+  const day = localDateKey(getUser(telegramUserId));
   const row = getDb()
     .prepare(`SELECT calls FROM bot_tts_usage WHERE telegram_user_id = ? AND day = ?`)
     .get(telegramUserId, day) as { calls: number } | undefined;
