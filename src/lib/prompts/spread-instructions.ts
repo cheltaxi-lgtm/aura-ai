@@ -38,9 +38,9 @@ ${cardContextLine}`
 
 ОБЯЗАТЕЛЬНАЯ СТРУКТУРА ОТВЕТА (не озвучивай номера и заголовки клиенту):
 
-1. ПРИВЕТСТВИЕ (2-3 предложения)
-   - Обратись по имени
-   - Назови все ${spread.cardCount} ${cardWord} одним предложением
+1. ОТКРЫТИЕ (1–2 предложения)
+   - Обратись по имени; первая фраза — вердикт по вопросу (жёстко / в плюс / смешанно)
+   - Без отдельного «приветствия» и без «смотрю на карты»
 
 ${cardBlocks}
 
@@ -48,40 +48,27 @@ ${spread.cardCount + 2}. ${synthesisLabel} (${synthesisWords})
    - Единая история расклада «${spread.label}»
 ${synthesisSubject}
 
-${spread.cardCount + 3}. КОНКРЕТНЫЕ ДЕЙСТВИЯ (3 пункта)
-   - Каждое действие — конкретное, с привязкой ко времени
+${spread.cardCount + 3}. ДЕЙСТВИЯ (0–3 пункта)
+   - Только если расклад даёт рычаг; иначе честно скажи, что пространства мало
 
 ТЕСТ ПЕРСОНАЛИЗАЦИИ (внутренний — не пиши клиенту):
 «Подошёл бы этот текст другому человеку?» Если да — перепиши.`;
 }
 
-function buildMarkdownOutput(spread: SpreadDefinition): string {
-  const compact = spread.compactPrompt ?? spread.cardCount > 3;
+/** Plain-text finale for numerolog / shri-raj (RESPONSE_FORMAT forbids markdown). */
+function buildPlainOutput(spread: SpreadDefinition): string {
   if (spread.id === "yes-no" || spread.id === "runes-yes-no") {
     return `
-ФОРМАТ ДЛЯ ДА/НЕТ:
-1. Одно предложение — название карты **жирным**.
-2. Вердикт: **Да**, **Нет** или **Не сейчас** — одним словом жирным.
+ФОРМАТ ДЛЯ ДА/НЕТ (чистый текст, без markdown):
+1. Название карты одним предложением.
+2. Вердикт: Да / Нет / Не сейчас.
 3. 2–3 предложения объяснения без сахара.`;
   }
-  if (compact) {
-    return `
-ФОРМАТ ВЫВОДА (Markdown):
-1. Вердикт одной фразой + краткое введение.
-2. По ${spread.cardCount} абзацев — **жирное** название каждой карты.
-3. ## Простыми словами — 3–5 предложений: сначала вердикт, без сахара.`;
-  }
   return `
-ФОРМАТ ВЫВОДА ДЛЯ КЛИЕНТА (Markdown — обязательно):
-1. Вердикт одной фразой (жёстко / в плюс / смешанно).
-2. ${spread.cardCount} абзацев по символам — название каждого **жирным**: **Название**.
-3. Заверши блоком:
-
-## Простыми словами
-
-3–5 предложений: первая фраза — вердикт; дальше суть без «всё будет хорошо».
-
-Запрещены скобки с действиями «(вздыхает)» и *сценические ремарки*.`;
+ФОРМАТ ВЫВОДА (чистый текст, БЕЗ markdown — как в блоке ФОРМАТ ТЕКСТА):
+1. Вердикт одной фразой.
+2. ${spread.cardCount} абзацев по символам с названием каждого.
+3. Финальный блок выводов сплошным текстом, без заголовков «Итог» / «Выводы».`;
 }
 
 const MASTER_INTROS: Record<CharacterKey, string> = {
@@ -100,7 +87,8 @@ export function getSpreadInstructions(
   const spread = getSpread(normalizeSpreadId(spreadId));
   const intro = MASTER_INTROS[character] ?? MASTER_INTROS.veronika;
   const structure = buildSpreadStructure(spread, customQuestion);
-  const markdown = buildMarkdownOutput(spread);
+  // Called only for non-tarot masters from buildSystemPrompt — keep plain text.
+  const output = buildPlainOutput(spread);
   const name =
     character === "ragnar"
       ? "РАГНАР"
@@ -115,6 +103,6 @@ export function getSpreadInstructions(
   return `--- ИНСТРУКЦИИ ПО РАСКЛАДУ (${name}) — «${spread.label}», ${spread.cardCount} карт ---
 ${intro}
 ${structure}
-${markdown}
+${output}
 --- КОНЕЦ ИНСТРУКЦИЙ ---`;
 }

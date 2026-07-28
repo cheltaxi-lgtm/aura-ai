@@ -66,9 +66,61 @@ function isMandatoryReasoningModel(model: string): boolean {
   return id.includes("deepseek-v4") || id.includes("deepseek-r1");
 }
 
+/** Models that often put the answer in `reasoning` with `content: null` (e.g. MiMo). */
+function isReasoningLeakModel(model: string): boolean {
+  const id = model.toLowerCase();
+  return id.includes("mimo");
+}
+
+/**
+ * Reject chain-of-thought meta when falling back from empty content.
+ * Keeps client-facing prose (readings) and structured JSON for natal paths.
+ */
+function looksLikeClientFacingProse(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 160) return false;
+  if (
+    /^(?:\.?\s*)?(?:Пользователь|Давайте разбер|Разберём по инструк|The user|Let me|I need to|ЖЁСТК)/iu.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  if (/Давайте разберу по инструк/iu.test(t) && !/\*\*[^*]{2,80}\*\*/.test(t)) {
+    return false;
+  }
+  if (/[а-яё]/iu.test(t)) {
+    return (
+      /\*\*[^*]{2,80}\*\*/.test(t) ||
+      /(?:вердикт|простыми словами|##\s)/iu.test(t) ||
+      t.split(/\n/).filter((l) => l.trim()).length >= 3
+    );
+  }
+  // Non-RU (JSON / structured) — natal/ritual callers opt into this explicitly.
+  return t.startsWith("{") || t.startsWith("[");
+}
+
 function extractReasoningText(message: Record<string, unknown> | undefined): string | null {
-  const reasoning = message?.reasoning;
+  if (!message) return null;
+  const reasoning = message.reasoning;
   if (typeof reasoning === "string" && reasoning.trim()) return reasoning.trim();
+  const reasoningContent = message.reasoning_content;
+  if (typeof reasoningContent === "string" && reasoningContent.trim()) {
+    return reasoningContent.trim();
+  }
+  if (Array.isArray(reasoning)) {
+    const parts = reasoning
+      .map((part) => {
+        if (typeof part === "string") return part.trim();
+        if (part && typeof part === "object" && "text" in part && typeof part.text === "string") {
+          return part.text.trim();
+        }
+        return "";
+      })
+      .filter(Boolean);
+    const joined = parts.join("\n").trim();
+    return joined || null;
+  }
   return null;
 }
 
@@ -83,10 +135,12 @@ function extractAssistantTextFromMessage(
 ): string | null {
   const content = extractAssistantText(message);
   if (content) return content;
-  if (opts?.allowReasoningFallback) {
-    return extractReasoningText(message);
-  }
-  return null;
+  if (!opts?.allowReasoningFallback) return null;
+  const reasoning = extractReasoningText(message);
+  if (!reasoning) return null;
+  // Structured JSON callers need the raw reasoning blob; prose paths filter CoT.
+  if (opts.structuredJson) return reasoning;
+  return looksLikeClientFacingProse(reasoning) ? reasoning : null;
 }
 
 function extractAssistantText(message: Record<string, unknown> | undefined): string | null {
@@ -216,6 +270,10 @@ async function callChatCompletionsDetailed(
   const isOpenRouter = url.includes("openrouter.ai");
   const model = String(body.model ?? "");
   const payload = isOpenRouter ? openRouterRequestBody(body, model) : body;
+  // MiMo (and similar) often return content:null with the answer in reasoning.
+  if (isReasoningLeakModel(model)) {
+    extractOpts = { ...extractOpts, allowReasoningFallback: true };
+  }
 
   const result = await withLlmSlot(`complete:${model}`, async () => {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -294,8 +352,11 @@ async function callChatCompletionsDetailed(
   return result ?? { text: null, finishReason: null };
 }
 
-async function resolveModel(vision: boolean): Promise<string> {
-  return vision ? getVisionModel() : getChatModel();
+async function resolveModel(vision: boolean, isPaid?: boolean): Promise<string> {
+  if (vision) return getVisionModel();
+  if (isPaid === true) return getChatModel("paid");
+  if (isPaid === false) return getChatModel("free");
+  return getChatModel("default");
 }
 
 function buildRequestBody(
@@ -328,7 +389,7 @@ export type CompleteChatOptions = {
   maxTokens?: number;
   temperature?: number;
   vision?: boolean;
-  /** @deprecated ignored — model always from admin settings unless modelOverride set */
+  /** Selects admin paidModel vs freeModel when modelOverride is not set. */
   isPaid?: boolean;
   timeoutMs?: number;
   maxAttempts?: number;
@@ -355,6 +416,7 @@ async function completeChatInternal(
     maxTokens,
     temperature,
     vision = false,
+    isPaid,
     timeoutMs,
     maxAttempts,
     skipTemperatureRetry = false,
@@ -364,7 +426,7 @@ async function completeChatInternal(
     priority,
   } = params;
   const aiSettings = await resolveAiSettings();
-  const model = modelOverride ?? (await resolveModel(vision));
+  const model = modelOverride ?? (await resolveModel(vision, isPaid));
   const extractOpts: CompletionExtractOptions = {
     allowReasoningFallback,
     structuredJson: jsonObject,
@@ -410,6 +472,7 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
     maxTokens,
     temperature,
     vision = false,
+    isPaid,
     timeoutMs,
     maxAttempts,
     skipTemperatureRetry = false,
@@ -419,7 +482,7 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
     priority,
   } = params;
   const aiSettings = await resolveAiSettings();
-  const model = modelOverride ?? (await resolveModel(vision));
+  const model = modelOverride ?? (await resolveModel(vision, isPaid));
   const extractOpts: CompletionExtractOptions = {
     allowReasoningFallback,
     structuredJson: jsonObject,

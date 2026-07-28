@@ -1658,6 +1658,14 @@ body,
     object-position: center center;
   }
 
+  .lux-tarot-card__image-wrap > img.lux-tarot-card__image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
   .lux-deck-card--sm .lux-tarot-card__image-wrap {
     aspect-ratio: 533 / 800;
   }
@@ -2556,6 +2564,45 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   color: rgba(255, 255, 255, 0.78);
 }
 
+.photo-flow-confirm-faces {
+  position: relative;
+  min-height: 16rem;
+}
+
+.photo-flow-confirm-faces__ritual {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  min-height: 16rem;
+  padding: 1.25rem 0.5rem 0.75rem;
+}
+
+/* Keep full layout under the ritual so eager faces still decode. */
+.photo-flow-confirm-faces__preview--loading {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.photo-flow-confirm-faces__preview:not(.photo-flow-confirm-faces__preview--loading) {
+  animation: photo-flow-faces-reveal 0.45s ease-out;
+}
+
+@keyframes photo-flow-faces-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .photo-flow-field label {
   display: block;
   margin-bottom: 0.375rem;
@@ -2663,18 +2710,50 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 .photo-spread-preview__item {
   width: 100%;
   max-width: 148px;
-  padding: 0.5rem;
-  border-radius: 0.875rem;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.18);
+  padding: 0.4rem 0.35rem 0.55rem;
+  border-radius: 1rem;
+  border: 1px solid transparent;
+  background: transparent;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.photo-spread-preview__tools {
+.photo-spread-preview__item--active {
+  border-color: rgba(232, 199, 126, 0.35);
+  background: rgba(232, 199, 126, 0.06);
+  box-shadow: 0 0 0 1px rgba(232, 199, 126, 0.08);
+}
+
+.photo-spread-preview__card-hit {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 0.75rem;
+}
+
+.photo-spread-preview__card-hit:focus-visible {
+  outline: 1px solid rgba(232, 199, 126, 0.55);
+  outline-offset: 3px;
+}
+
+.photo-spread-preview__toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: 0.35rem;
-  margin-top: 0.65rem;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+  padding: 0.3rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+  background: rgba(12, 10, 18, 0.72);
+  backdrop-filter: blur(8px);
 }
 
 .photo-spread-preview__add {
@@ -2731,10 +2810,6 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   color: rgba(232, 199, 126, 0.95);
 }
 
-.photo-spread-preview__card .lux-tarot-card__image {
-  object-fit: contain !important;
-}
-
 .photo-spread-preview__card .lux-deck-card {
   width: 100%;
   max-width: 148px;
@@ -2742,6 +2817,30 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 .photo-spread-preview__card {
   position: relative;
+}
+
+/* flex-1 + aspect-ratio was collapsing the face box to ~0px height in Firefox
+   while img onLoad still fired (images “loaded” but invisible). */
+.photo-spread-preview__card .lux-tarot-card__image-wrap {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 9.5rem;
+  aspect-ratio: 533 / 800;
+  background: #120c1c;
+}
+
+.photo-spread-preview__card .lux-tarot-card__image-wrap > img.lux-tarot-card__image {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  opacity: 1 !important;
+  z-index: 1;
+}
+
+.photo-spread-preview__card .lux-tarot-card__image-vignette {
+  z-index: 2;
 }
 
 .photo-spread-preview__face {
@@ -2827,29 +2926,15 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .photo-spread-preview__tool {
-  @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/55 transition-colors hover:border-aura-gold/30 hover:bg-aura-gold/10 hover:text-aura-champagne disabled:opacity-30;
+  @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent text-aura-champagne/70 transition-colors hover:bg-aura-gold/15 hover:text-aura-champagne disabled:opacity-25;
 }
 
 .photo-spread-preview__tool--danger {
-  @apply hover:border-red-400/35 hover:bg-red-500/10 hover:text-red-200;
+  @apply hover:bg-red-500/15 hover:text-red-200;
 }
 
 .photo-spread-preview__tool--active {
-  @apply border-aura-gold/60 bg-aura-gold/15 text-aura-champagne;
-}
-
-.photo-spread-preview__tool--labeled span {
-  @apply sr-only;
-}
-
-@media (min-width: 640px) {
-  .photo-spread-preview__tool--labeled {
-    @apply h-auto min-w-[4.25rem] flex-col gap-0.5 px-2 py-1.5 text-[9px] uppercase tracking-wide;
-  }
-
-  .photo-spread-preview__tool--labeled span {
-    @apply not-sr-only;
-  }
+  @apply bg-aura-gold/20 text-aura-champagne;
 }
 
 .photo-reading-steps {

@@ -769,9 +769,16 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Crisis/war questions: omit textbook glosses («романтик», «ухаживание») — they hijack the plot.
+  const { isCrisisSurvivalQuestion } = await import("@/lib/crisis-question");
+  const crisisQ = isCrisisSurvivalQuestion(
+    intention === "custom" ? customQuestion : intention
+  );
   const tarotCards = drawn.map((c, i) => ({
     name: c.name,
-    meaning: `${positionLabels[i] ?? `Позиция ${i + 1}`}: ${c.meaning}`,
+    meaning: crisisQ
+      ? `${positionLabels[i] ?? `Позиция ${i + 1}`}`
+      : `${positionLabels[i] ?? `Позиция ${i + 1}`}: ${c.meaning}`,
   }));
 
   const today = new Date().toLocaleDateString("ru-RU", {
@@ -858,7 +865,9 @@ export async function POST(request: NextRequest) {
       zodiac,
       astroMeta: astroMeta as Record<string, unknown> | undefined,
     });
-    const cardsForContext = enrichCardsForSpreadContext(system, tarotCards, positionLabels);
+    const cardsForContext = enrichCardsForSpreadContext(system, tarotCards, positionLabels, {
+      omitTextbookMeanings: crisisQ,
+    });
     const userMessage = buildSpreadUserMessage({
       user: userForContext,
       cards: cardsForContext,

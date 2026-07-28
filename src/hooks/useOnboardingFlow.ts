@@ -40,7 +40,12 @@ import {
 import { buildSessionSpreadCards, resolveSpreadSymbols } from "@/lib/intention-draw";
 import { toSessionTopicId } from "@/lib/session-topics";
 import { navigateToSessionIntention } from "@/lib/session-intention-nav";
-import { pollIntentionSpreadReading, postIntentionSpreadRequest } from "@/lib/intention-spread-client";
+import {
+  INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+  isTerminalIntentionSpreadError,
+  pollIntentionSpreadReading,
+  postIntentionSpreadRequest,
+} from "@/lib/intention-spread-client";
 import { getJointReadingRole, clearJointReadingToken, resolveJointReadingToken } from "@/lib/joint-reading-storage";
 import { postJointReadingComplete } from "@/lib/joint-reading-client";
 import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
@@ -2084,13 +2089,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           );
 
           if (intention !== "life_death" && !readingText) {
-            const polled = await pollIntentionSpreadReading({
-              characterId: masterId,
-              intention,
-              cardNames: cards.map((c) => c.name),
-              spreadId,
-              cardCount: cards.length,
-            });
+            const polled = await pollIntentionSpreadReading(
+              {
+                characterId: masterId,
+                intention,
+                cardNames: cards.map((c) => c.name),
+                spreadId,
+                cardCount: cards.length,
+              },
+              { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+            );
             readingText = polled
               ? resolveClientReadingText(polled, cards.map((c) => c.name))
               : "";
@@ -2126,12 +2134,22 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           const { readingText, cards, system, intentionCardsKey, jointSaved, jointError } = spreadResult;
 
           if (intention !== "life_death" && !readingText) {
-            // Close this ritual first — loadReading may early-return without opening its own,
-            // which previously left the timer stuck forever.
+            // Paid intention failed to return text — exit immediately, never hang on loadReading.
             skipRitualFinally = true;
             closeSpreadReadingRitual();
             setIntentionSpreadLoading(false);
-            await loadReadingRef.current(masterId, undefined, { force: true });
+            setTripletNotice(
+              "Не удалось получить трактовку. Руны не списаны или возвращены — попробуйте ещё раз."
+            );
+            deps.setMessages([
+              {
+                id: generateId(),
+                role: "assistant",
+                content:
+                  "Расклад не удалось завершить. Попробуйте ещё раз — если руны списались, они вернутся на баланс.",
+                timestamp: new Date(),
+              },
+            ]);
           } else if (intention !== "life_death" && readingText) {
             readingDelivered = true;
             spreadReadingRecoveryKeyRef.current = `${masterId}:${intention}:${intentionCardsKey}`;
@@ -2215,7 +2233,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             window.location.assign(jointRedirect);
             return;
           }
-        } catch {
+        } catch (spreadErr) {
+          skipRitualFinally = true;
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+
+          // Terminal AI fail already finished on server — do not spin a long dead poll.
+          const terminal = isTerminalIntentionSpreadError(spreadErr);
           try {
             const cardNames =
               sessionSpreadMetaRef.current?.cardNames ??
@@ -2223,14 +2247,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               [];
             const recoverySpreadId =
               sessionSpreadMetaRef.current?.spreadId ?? resolveClientSpreadId();
-            if (hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
-              const polled = await pollIntentionSpreadReading({
-                characterId: masterId,
-                intention,
-                cardNames,
-                spreadId: recoverySpreadId,
-                cardCount: requiredCardCount(recoverySpreadId, "new"),
-              });
+            if (!terminal && hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
+              const polled = await pollIntentionSpreadReading(
+                {
+                  characterId: masterId,
+                  intention,
+                  cardNames,
+                  spreadId: recoverySpreadId,
+                  cardCount: requiredCardCount(recoverySpreadId, "new"),
+                },
+                { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+              );
               const recovered = polled
                 ? resolveClientReadingText(polled, cardNames)
                 : "";
@@ -2248,20 +2275,26 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                   });
                   return next;
                 });
-              } else {
-                skipRitualFinally = true;
-                closeSpreadReadingRitual();
-                setIntentionSpreadLoading(false);
-                await loadReadingRef.current(masterId, undefined, { force: true });
               }
-            } else {
-              skipRitualFinally = true;
-              closeSpreadReadingRitual();
-              setIntentionSpreadLoading(false);
-              await loadReadingRef.current(masterId, undefined, { force: true });
             }
           } catch {
-            /* loadReading shows its own fallback message */
+            /* show explicit error below */
+          }
+
+          if (!readingDelivered) {
+            const msg =
+              spreadErr instanceof Error && spreadErr.message.trim()
+                ? spreadErr.message.trim()
+                : "Не удалось завершить трактовку. Попробуйте ещё раз.";
+            setTripletNotice(msg);
+            deps.setMessages([
+              {
+                id: generateId(),
+                role: "assistant",
+                content: msg,
+                timestamp: new Date(),
+              },
+            ]);
           }
         } finally {
           if (!skipRitualFinally) {
@@ -2949,7 +2982,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setChatSessionSpread(null);
       readingInFlightRef.current = true;
       deps.skipNextReadingRef.current = true;
+      deps.pendingNewChatThreadRef.current = true;
       deps.chatLoadedForRef.current = null;
+      // Drop any prior consultation binding before history/restore can latch onto it.
+      deps.setConsultationSessionId(null);
+      deps.consultationSessionIdRef.current = null;
+      deps.setConsultationReadOnly(false);
+      deps.archiveSessionIdRef.current = null;
 
       setSessionIntention(sessionIntentionValue);
       persistSessionIntention(characterKey, sessionIntentionValue);
@@ -3058,9 +3097,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         deps.setSessionListMaster(null);
 
         try {
-          let chatSessionId = session?.offline ? undefined : session?.sessionId;
+          let chatSessionId: string | undefined;
           if (!session?.offline) {
             chatSessionId = await beginNewSpreadSession(characterKey);
+            if (!chatSessionId) throw new Error("failed_to_create_consultation_session");
           }
           await bindSessionToMaster(characterKey, chatSessionId);
           await deps.persistSessionMetaToServer(chatSessionId, {
@@ -3075,8 +3115,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             deps.consultationSessionIdRef.current = chatSessionId;
             deps.setConsultationReadOnly(false);
             deps.archiveSessionIdRef.current = null;
-          } else if (characterKey) {
-            void deps.resolveConsultationSessionId(characterKey);
           }
           if (sessionIntentionValue !== "life_death") {
             await loadReadingRef.current(characterKey, undefined, { sessionId: chatSessionId });
@@ -3153,9 +3191,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setStep("chat");
 
         try {
-          let chatSessionId = session?.offline ? undefined : session?.sessionId;
+          let chatSessionId: string | undefined;
           if (!session?.offline) {
             chatSessionId = await beginNewSpreadSession(characterKey);
+            if (!chatSessionId) throw new Error("failed_to_create_consultation_session");
           }
           await bindSessionToMaster(characterKey, chatSessionId);
           await deps.persistSessionMetaToServer(chatSessionId, {
@@ -3171,8 +3210,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             deps.consultationSessionIdRef.current = chatSessionId;
             deps.setConsultationReadOnly(false);
             deps.archiveSessionIdRef.current = null;
-          } else if (characterKey) {
-            void deps.resolveConsultationSessionId(characterKey);
           }
           await loadReadingRef.current(characterKey, mergedProfile ?? undefined, {
             sessionId: chatSessionId,
@@ -3202,13 +3239,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       deps.setMessages([]);
       setStep("chat");
 
-      let chatSessionId = session?.offline ? undefined : session?.sessionId;
+      // Never fall back to the global/old session id — that reopens the previous chat.
+      let chatSessionId: string | undefined;
       let skipRitualFinally = false;
       let readingDelivered = false;
 
       try {
         if (!session?.offline) {
           chatSessionId = await beginNewSpreadSession(characterKey);
+          if (!chatSessionId) {
+            throw new Error("failed_to_create_consultation_session");
+          }
         }
 
         await bindSessionToMaster(characterKey, chatSessionId);
@@ -3309,13 +3350,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             }
 
             if (intention !== "life_death" && !readingText) {
-              const polled = await pollIntentionSpreadReading({
-                characterId: characterKey,
-                intention,
-                cardNames: cardNamesForClean,
-                spreadId,
-                cardCount: spreadCardCount,
-              });
+              const polled = await pollIntentionSpreadReading(
+                {
+                  characterId: characterKey,
+                  intention,
+                  cardNames: cardNamesForClean,
+                  spreadId,
+                  cardCount: spreadCardCount,
+                },
+                { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+              );
               readingText = polled ? resolveClientReadingText(polled, cardNamesForClean) : "";
             }
 
@@ -3354,22 +3398,31 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           skipRitualFinally = true;
           closeSpreadReadingRitual();
           setIntentionSpreadLoading(false);
-          await loadReadingRef.current(characterKey, undefined, {
-            force: true,
-            sessionId: spreadSessionId ?? chatSessionId,
-            spreadCardsOverride: spreadCards,
-          });
+          setTripletNotice(
+            "Не удалось получить трактовку. Руны не списаны или возвращены — попробуйте ещё раз."
+          );
+          deps.setMessages([
+            {
+              id: generateId(),
+              role: "assistant",
+              content:
+                "Расклад не удалось завершить. Попробуйте ещё раз — если руны списались, они вернутся на баланс.",
+              timestamp: new Date(),
+            },
+          ]);
         } else if (intention !== "life_death" && readingText) {
           readingDelivered = true;
           spreadReadingRecoveryKeyRef.current = `${characterKey}:${intention}:${intentionCardsKey}`;
-          deps.setMessages((prev) => {
-            const next = appendSpreadReadingMessage(prev, readingText);
-            if (next === prev) return prev;
-            saveChatCache(characterKey, next, intentionCardsKey, {
-              cards: spreadCards,
-              system,
-              variant: "intention",
-            });
+          // Fresh consultation: replace thread (append can no-op if stale messages raced in).
+          deps.setMessages(() => {
+            const next = appendSpreadReadingMessage([], readingText);
+            if (next.length) {
+              saveChatCache(characterKey, next, intentionCardsKey, {
+                cards: spreadCards,
+                system,
+                variant: "intention",
+              });
+            }
             return next;
           });
         } else if (intention === "life_death") {
@@ -3441,60 +3494,85 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           window.location.assign(jointRedirect);
           return;
         }
-      } catch {
-        try {
-          const cardNames =
-            sessionSpreadMetaRef.current?.cardNames ??
-            (cards.length
-              ? cards
-              : (readIntentionSpreadForMaster(characterKey)?.cards.map((c) => c.name) ?? []));
-          const recoverySpreadId =
-            sessionSpreadMetaRef.current?.spreadId ?? spreadId;
-          if (hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
-            const polled = await pollIntentionSpreadReading({
-              characterId: characterKey,
-              intention,
-              cardNames,
-              spreadId: recoverySpreadId,
-              cardCount: requiredCardCount(recoverySpreadId, "new"),
-            });
-            const recovered = polled ? resolveClientReadingText(polled, cardNames) : "";
-            if (recovered) {
-              const spreadCardsRecovered =
-                readIntentionSpreadForMaster(characterKey)?.cards ??
-                cardNames.map((name, i) => ({ id: i, name, meaning: "" }));
-              const systemRecovered =
-                readIntentionSpreadForMaster(characterKey)?.system ??
-                previewDeckSystem ??
-                resolveMasterDeckSystem(characterKey);
-              const intentionCardsKeyRecovered = spreadKey(spreadCardsRecovered);
-              readingDelivered = true;
-              spreadReadingRecoveryKeyRef.current = `${characterKey}:${intention}:${intentionCardsKeyRecovered}`;
-              setReadingRitualCountdownDone(true);
-              deps.setMessages((prev) => {
-                const next = appendSpreadReadingMessage(prev, recovered);
-                if (next === prev) return prev;
-                saveChatCache(characterKey, next, intentionCardsKeyRecovered, {
-                  cards: spreadCardsRecovered,
-                  system: systemRecovered,
-                  variant: "intention",
+      } catch (err) {
+        const sessionCreateFailed =
+          err instanceof Error && err.message === "failed_to_create_consultation_session";
+        if (sessionCreateFailed) {
+          skipRitualFinally = true;
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+          deps.setMessages([]);
+          deps.setSelectedCharacter(null);
+          deps.chatLoadedForRef.current = null;
+          setStep("masters");
+        } else {
+          skipRitualFinally = true;
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+          const terminal = isTerminalIntentionSpreadError(err);
+          try {
+            const cardNames =
+              sessionSpreadMetaRef.current?.cardNames ??
+              (cards.length
+                ? cards
+                : (readIntentionSpreadForMaster(characterKey)?.cards.map((c) => c.name) ?? []));
+            const recoverySpreadId =
+              sessionSpreadMetaRef.current?.spreadId ?? spreadId;
+            if (!terminal && hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
+              const polled = await pollIntentionSpreadReading(
+                {
+                  characterId: characterKey,
+                  intention,
+                  cardNames,
+                  spreadId: recoverySpreadId,
+                  cardCount: requiredCardCount(recoverySpreadId, "new"),
+                },
+                { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+              );
+              const recovered = polled ? resolveClientReadingText(polled, cardNames) : "";
+              if (recovered) {
+                const spreadCardsRecovered =
+                  readIntentionSpreadForMaster(characterKey)?.cards ??
+                  cardNames.map((name, i) => ({ id: i, name, meaning: "" }));
+                const systemRecovered =
+                  readIntentionSpreadForMaster(characterKey)?.system ??
+                  previewDeckSystem ??
+                  resolveMasterDeckSystem(characterKey);
+                const intentionCardsKeyRecovered = spreadKey(spreadCardsRecovered);
+                readingDelivered = true;
+                spreadReadingRecoveryKeyRef.current = `${characterKey}:${intention}:${intentionCardsKeyRecovered}`;
+                setReadingRitualCountdownDone(true);
+                deps.setMessages(() => {
+                  const next = appendSpreadReadingMessage([], recovered);
+                  if (next.length) {
+                    saveChatCache(characterKey, next, intentionCardsKeyRecovered, {
+                      cards: spreadCardsRecovered,
+                      system: systemRecovered,
+                      variant: "intention",
+                    });
+                  }
+                  return next;
                 });
-                return next;
-              });
-            } else {
-              skipRitualFinally = true;
-              closeSpreadReadingRitual();
-              setIntentionSpreadLoading(false);
-              await loadReadingRef.current(characterKey, undefined, { force: true });
+              }
             }
-          } else {
-            skipRitualFinally = true;
-            closeSpreadReadingRitual();
-            setIntentionSpreadLoading(false);
-            await loadReadingRef.current(characterKey, undefined, { force: true });
+          } catch {
+            /* show explicit error below */
           }
-        } catch {
-          /* loadReading shows its own fallback message */
+          if (!readingDelivered) {
+            const msg =
+              err instanceof Error && err.message.trim()
+                ? err.message.trim()
+                : "Не удалось завершить трактовку. Попробуйте ещё раз.";
+            setTripletNotice(msg);
+            deps.setMessages([
+              {
+                id: generateId(),
+                role: "assistant",
+                content: msg,
+                timestamp: new Date(),
+              },
+            ]);
+          }
         }
       } finally {
         if (!skipRitualFinally) {

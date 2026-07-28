@@ -44,7 +44,7 @@ assert(
   "openChatWithSessionParams recovery avoids cardNames.length >= 3"
 );
 assert(
-  onboarding.includes("if (hasCompleteSpread(cardNames, recoverySpreadId, \"new\"))"),
+  onboarding.includes('hasCompleteSpread(cardNames, recoverySpreadId, "new")'),
   "openChatWithSessionParams recovery uses hasCompleteSpread"
 );
 

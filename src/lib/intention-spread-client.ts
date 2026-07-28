@@ -6,6 +6,15 @@ export const INTENTION_SPREAD_POST_TIMEOUT_MS = 150_000;
 /** Poll saved spread after POST abort — server may still finish and persist to history. */
 export const INTENTION_SPREAD_POLL_INTERVAL_MS = 2_500;
 export const INTENTION_SPREAD_POLL_MAX_ATTEMPTS = 28;
+/** Short recovery only — never leave the ritual spinning for a minute after a terminal fail. */
+export const INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS = 3;
+
+export function isTerminalIntentionSpreadError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /не удалось завершить трактовку|generation_failed|intention_spread_ai_failed|трактовк/i.test(
+    msg
+  );
+}
 
 export const INTENTION_SPREAD_JOB_STORAGE_KEY = "aura:intention-spread-active-job";
 
@@ -55,6 +64,7 @@ export async function pollIntentionSpreadReading(
 /**
  * Client-side POST with durable async job + poll.
  * Returns a Response-like object so existing call sites keep working.
+ * Retries only transient transport failures — never re-bills / re-queues a terminal AI fail.
  */
 export async function postIntentionSpreadRequest(
   body: Record<string, unknown>,
@@ -87,6 +97,7 @@ export async function postIntentionSpreadRequest(
         });
       }
 
+      // 5xx from route itself (rare with async jobs) — retry once.
       if (attempt < retries - 1) {
         await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
         continue;
@@ -100,6 +111,14 @@ export async function postIntentionSpreadRequest(
       clearTimeout(timer);
       options?.signal?.removeEventListener("abort", onOuterAbort);
       lastError = err;
+      // Job already failed or cancelled — do NOT enqueue a second paid job.
+      if (isTerminalIntentionSpreadError(err) || options?.signal?.aborted) {
+        break;
+      }
+      const aborted =
+        (err instanceof DOMException && err.name === "AbortError") ||
+        (err instanceof Error && /abort|отмен/i.test(err.message));
+      if (aborted) break;
       if (attempt < retries - 1) {
         await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
         continue;

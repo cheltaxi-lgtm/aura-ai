@@ -40,8 +40,18 @@ import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding"
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
-import type { PhotoReadingChatPayload, PhotoReadingEntryMode } from "@/components/PhotoReadingFlow";
-import { buildPhotoReadingChatMessages, mergePhotoReadingIntoChat } from "@/lib/photo-chat";
+import type {
+  PhotoReadingChatPayload,
+  PhotoReadingConfirmPayload,
+  PhotoReadingEntryMode,
+} from "@/components/PhotoReadingFlow";
+import {
+  buildPhotoReadingChatMessages,
+  buildPhotoReadingPendingMessages,
+  mergePhotoReadingIntoChat,
+} from "@/lib/photo-chat";
+import { pickUserFacingError } from "@/lib/user-facing-error";
+import { trackPhotoReadingPhase } from "@/lib/photo-reading-analytics";
 
 const RitualFlow = dynamic(() => import("@/components/ritual/RitualFlow"), { ssr: false });
 const MasterDecksModal = dynamic(() => import("@/components/MasterDecksModal"), { ssr: false });
@@ -1163,6 +1173,7 @@ export default function HomePage({
     isLoading,
     sendingRef,
     readingInFlightRef,
+    pendingNewChatThreadRef,
     sessionOffline: session?.offline,
     onApplyRestoredSpread,
   });
@@ -2312,6 +2323,7 @@ export default function HomePage({
     }
     setSelectedCharacter(null);
     setConsultationSessionId(null);
+    consultationSessionIdRef.current = null;
     setConsultationReadOnly(false);
     archiveSessionIdRef.current = null;
     chatLoadedForRef.current = null;
@@ -2393,6 +2405,285 @@ export default function HomePage({
     setShowDecksModal(true);
     setPendingNav(null);
   }, [pendingNav, selectedCharacter, sessionListMaster, step]);
+
+  const handlePhotoConfirmSpread = async (
+    masterId: string,
+    payload: PhotoReadingConfirmPayload
+  ) => {
+    if (!isLoggedIn) return;
+
+    const photoDeckCards = redrawSpreadToDeckCards(payload.redrawSpread);
+    const photoSystem = payload.redrawSpread.system;
+    const prevConsultationId = consultationSessionIdRef.current;
+
+    // Fresh consultation — never append a photo spread into an existing master chat.
+    pendingNewChatThreadRef.current = true;
+    readingInFlightRef.current = true;
+    skipNextReadingRef.current = true;
+    chatLoadedForRef.current = masterId;
+    archiveSessionIdRef.current = null;
+    setConsultationReadOnly(false);
+    // Detach old thread immediately so hydrate cannot restore it while we wait on the network.
+    setConsultationSessionId(null);
+    consultationSessionIdRef.current = null;
+
+    setPhotoChatSpread({ masterId, cards: photoDeckCards, system: photoSystem });
+    setChatSessionSpread(null);
+    setIntentionSpread(null);
+    setSessionIntention(null);
+    setHideChatSpread(false);
+    sessionSpreadMetaRef.current = {
+      spreadType: "photo",
+      cardNames: payload.detectedCards,
+    };
+    setChatHeaderImage(null);
+
+    const pendingMessages = buildPhotoReadingPendingMessages(
+      payload.question ?? "",
+      payload.detectedCards
+    );
+    const photoCacheKey = tarotCardsKey(redrawSpreadToTarotCards(payload.redrawSpread));
+
+    // Open chat + timer first (before session create / LLM), so old messages never linger.
+    setMessages(pendingMessages);
+    saveChatCache(masterId, pendingMessages, photoCacheKey, {
+      cards: photoDeckCards,
+      system: photoSystem,
+      variant: "photo",
+    });
+
+    setPhotoReadingOpen(false);
+    setSessionOnlyChat(false);
+    setLastMasterId(masterId);
+    localStorage.setItem(LAST_MASTER_KEY, masterId);
+    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    setStep("chat");
+    setHistoryHasMore(false);
+    setIsLoadingHistory(false);
+    setSelectedCharacter(masterId);
+
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+    setReadingRitualCountdownDone(false);
+    setSpreadRitual({ active: false });
+
+    const ritualStartedAt = Date.now();
+
+    let newSessionId: string | undefined;
+    try {
+      newSessionId = await beginNewSpreadSession(masterId);
+    } catch {
+      newSessionId = undefined;
+    }
+    // Re-assert after await — beginNewSpreadSession / effects must not resurrect the old thread.
+    pendingNewChatThreadRef.current = true;
+    readingInFlightRef.current = true;
+    skipNextReadingRef.current = true;
+    chatLoadedForRef.current = masterId;
+    setMessages(pendingMessages);
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+
+    if (newSessionId) {
+      setConsultationSessionId(newSessionId);
+      consultationSessionIdRef.current = newSessionId;
+      try {
+        localStorage.setItem("aura_session_id", newSessionId);
+      } catch {
+        /* ignore */
+      }
+      void bindSessionToMaster(masterId, newSessionId);
+    } else {
+      setConsultationSessionId(null);
+      consultationSessionIdRef.current = null;
+    }
+
+    // #region agent log
+    {
+      const logPayload = {
+        sessionId: "5da396",
+        runId: "photo-new-session",
+        hypothesisId: "A",
+        location: "HomePage.tsx:handlePhotoConfirmSpread",
+        message: "photo_new_session",
+        data: {
+          masterId,
+          prevConsultationId,
+          newSessionId: newSessionId ?? null,
+          createdFresh: Boolean(newSessionId && newSessionId !== prevConsultationId),
+          cardCount: photoDeckCards.length,
+          ritualOpen: true,
+        },
+        timestamp: Date.now(),
+      };
+      fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5da396" },
+        body: JSON.stringify(logPayload),
+      }).catch(() => {});
+      fetch("/api/debug/client-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(logPayload),
+      }).catch(() => {});
+    }
+    // #endregion
+
+    const interpretAbort = new AbortController();
+    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
+
+    try {
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data } = await postWithAsyncJob({
+        url: "/api/photo-reading/stream",
+        storageKey: "aura:photo-reading-active-job",
+        signal: interpretAbort.signal,
+        headers: { "Idempotency-Key": payload.idempotencyKey },
+        body: {
+          characterId: masterId,
+          question: payload.question,
+          sessionId: newSessionId,
+          confirmedSpread: payload.redrawSpread,
+          idempotencyKey: payload.idempotencyKey,
+        },
+      });
+
+      if (resStatus === 429) {
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            "Слишком много фото-чтений. Подождите минуту и подтвердите расклад снова."
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (resStatus === 402) {
+        const parsed = parseInsufficientRunes(data);
+        if (parsed) {
+          setInsufficientRunes({ balance: parsed.balance, required: parsed.required });
+          handleOpenPaywall({
+            balance: parsed.balance,
+            requiredRunes: parsed.required,
+            shortage: parsed.shortage,
+          });
+        }
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            pickUserFacingError(data, "Недостаточно рун для расшифровки фото-расклада.")
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (resStatus >= 400 || data.code === "generation_failed" || data.llmFailed) {
+        if (typeof data.runeBalance === "number") {
+          setRuneBalance(data.runeBalance as number);
+          emitRuneBalanceUpdate(data.runeBalance as number);
+        }
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            pickUserFacingError(
+              data,
+              "Не удалось получить трактовку. Руны возвращены — откройте фото-расклад и подтвердите снова."
+            )
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      const analysis = String(data.analysis ?? data.reply ?? "").trim();
+      if (!analysis) {
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            "Не удалось получить трактовку. Откройте фото-расклад и подтвердите снова."
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (typeof data.runeBalance === "number") {
+        setRuneBalance(data.runeBalance as number);
+        emitRuneBalanceUpdate(data.runeBalance as number);
+      }
+
+      const detectedCards =
+        (Array.isArray(data.detectedCards) ? (data.detectedCards as string[]) : null) ??
+        payload.detectedCards;
+
+      const photoMessages = buildPhotoReadingChatMessages(
+        analysis,
+        payload.question ?? "",
+        detectedCards
+      );
+
+      setMessages((prev) => {
+        const withoutShortAssistant = prev.filter(
+          (m) => !(m.role === "assistant" && (m.content?.trim().length ?? 0) < 80)
+        );
+        const next = mergePhotoReadingIntoChat(withoutShortAssistant, photoMessages);
+        saveChatCache(masterId, next, photoCacheKey, {
+          cards: photoDeckCards,
+          system: photoSystem,
+          variant: "photo",
+        });
+        return next;
+      });
+
+      const resolvedSessionId =
+        (typeof data.sessionId === "string" && data.sessionId) || newSessionId;
+      if (resolvedSessionId) {
+        setConsultationSessionId(resolvedSessionId);
+        setConsultationReadOnly(false);
+        archiveSessionIdRef.current = null;
+        try {
+          localStorage.setItem("aura_session_id", resolvedSessionId);
+        } catch {
+          /* ignore */
+        }
+        void bindSessionToMaster(masterId, resolvedSessionId);
+      }
+
+      if (data.saved || data.historyId) void refreshSavedReadings();
+      trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
+    } catch (err) {
+      const aborted =
+        interpretAbort.signal.aborted ||
+        (err instanceof Error && /отменен|cancelled|abort/i.test(err.message));
+      setMessages((prev) =>
+        appendSpreadReadingMessage(
+          prev,
+          aborted
+            ? "Расшифровка занимает слишком долго. Обновите страницу или откройте кабинет — расклад мог уже сохраниться."
+            : err instanceof Error && err.message
+              ? err.message
+              : "Ошибка сети. Откройте фото-расклад и подтвердите снова."
+        )
+      );
+      trackPhotoReadingPhase("interpret_fail");
+    } finally {
+      window.clearTimeout(interpretWatchdog);
+      try {
+        const { ensureMinSpreadRitualDisplay } = await import("@/lib/spread-reading-ritual");
+        await ensureMinSpreadRitualDisplay(ritualStartedAt);
+      } catch {
+        /* ignore */
+      }
+      setSpreadReadingRitualOpen(false);
+      setReadingRitualActive(false);
+      setReadingRitualCountdownDone(true);
+      readingInFlightRef.current = false;
+      pendingNewChatThreadRef.current = false;
+      setSpreadRitual({ active: false });
+    }
+  };
 
   const handlePhotoContinueChat = async (masterId: string, payload: PhotoReadingChatPayload) => {
     if (!isLoggedIn) return;
@@ -2531,6 +2822,9 @@ export default function HomePage({
     } finally {
       readingInFlightRef.current = false;
       setSpreadRitual({ active: false });
+      setSpreadReadingRitualOpen(false);
+      setReadingRitualActive(false);
+      setReadingRitualCountdownDone(true);
       // Always surface the reading even if session bind hung.
       setPhotoReadingOpen(false);
     }
@@ -2912,6 +3206,11 @@ export default function HomePage({
                 setShowSessionFlow(false);
                 sessionListBackMasterRef.current = sessionListMaster;
                 setSessionListMaster(null);
+                pendingNewChatThreadRef.current = true;
+                setConsultationSessionId(null);
+                consultationSessionIdRef.current = null;
+                setConsultationReadOnly(false);
+                archiveSessionIdRef.current = null;
                 void openChatWithSessionParams(params);
               }}
             />
@@ -3282,6 +3581,11 @@ export default function HomePage({
                       onStart={(params) => {
                         setShowSessionFlow(false);
                         setEnergyFlowMasterId(null);
+                        pendingNewChatThreadRef.current = true;
+                        setConsultationSessionId(null);
+                        consultationSessionIdRef.current = null;
+                        setConsultationReadOnly(false);
+                        archiveSessionIdRef.current = null;
                         void openChatWithSessionParams(params);
                       }}
                     />
@@ -3502,6 +3806,12 @@ export default function HomePage({
             setDeepLinkSpreadId(null);
             setEnergyFlowMasterId(null);
             setSessionFlowInitialQuestion(null);
+            // Same guarantees as personal MasterSessionFlow: never bind/restore an old thread.
+            pendingNewChatThreadRef.current = true;
+            setConsultationSessionId(null);
+            consultationSessionIdRef.current = null;
+            setConsultationReadOnly(false);
+            archiveSessionIdRef.current = null;
             void openChatWithSessionParams(params);
           }}
         />
@@ -3525,6 +3835,7 @@ export default function HomePage({
           });
         }}
         onSpreadRitualEnd={() => setSpreadRitual({ active: false })}
+        onConfirmSpread={handlePhotoConfirmSpread}
         onRuneBalanceChange={(balance) => {
           setRuneBalance(balance);
           emitRuneBalanceUpdate(balance);

@@ -50,6 +50,9 @@ const CLEAN_PARAMS = [
   "step",
   "spread",
   "page",
+  "_restart",
+  "_auth",
+  "welcome",
 ] as const;
 
 export function GET() {

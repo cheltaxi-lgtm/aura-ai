@@ -1,7 +1,7 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 import { todayLabelRu } from "@/lib/prompt-date";
 
-import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
+import { CONTEXT_RULES, RESPONSE_FORMAT, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
@@ -11,11 +11,11 @@ import {
 } from "./tarot-rune-format";
 import { buildGenderPronounBlock } from "./gender-context";
 import { resolveClientGender } from "@/lib/russian-name-gender";
-import { AGAFYA_PERSONA } from "./masters/agafya";
+import { AGAFYA_PERSONA, AGAFYA_VOICE_SAMPLE } from "./masters/agafya";
 import { RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE } from "./masters/ragnar";
-import { SHRI_RAJ_PERSONA } from "./masters/shri-raj";
-import { VERONIKA_PERSONA } from "./masters/veronika";
-import { NUMEROLOG_PERSONA } from "./masters/numerolog";
+import { SHRI_RAJ_PERSONA, SHRI_RAJ_VOICE_SAMPLE } from "./masters/shri-raj";
+import { VERONIKA_PERSONA, VERONIKA_VOICE_SAMPLE } from "./masters/veronika";
+import { NUMEROLOG_PERSONA, NUMEROLOG_VOICE_SAMPLE } from "./masters/numerolog";
 import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import { resolveMasterDeckSystem, getDeckPositions } from "@/lib/decks";
 import { hasCompleteSpread, normalizeSpreadId, resolveSpreadPositions, getSpread } from "@/lib/spreads";
@@ -26,12 +26,26 @@ import { getSpreadInstructions } from "./spread-instructions";
 import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
 import type { CharacterKey, PromptUserContext, ReadingCard, SessionMemory } from "./types";
 
+/**
+ * Every master carries only its own voice sample — a shared example set made all
+ * masters open with the same line. Structure matters as much as lexicon here:
+ * the sample shows verdict-first, one block per symbol, closing conclusions.
+ */
+function withVoiceSample(persona: string, sample: string): string {
+  return `${persona}
+
+ОБРАЗЕЦ ТВОЕГО ГОЛОСА И СТРУКТУРЫ ПЛАТНОГО РАСКЛАДА:
+${sample}
+
+Держи из образца ритм, порядок блоков и прямоту. Слова и символы бери из своего расклада, а не отсюда.`;
+}
+
 const MASTER_PERSONA: Record<CharacterKey, string> = {
-  ragnar: `${RAGNAR_PERSONA}\n\nПРИМЕР ПРАВИЛЬНОГО ГОЛОСА РАГНАРА:\n${RAGNAR_VOICE_SAMPLE}`,
-  veronika: VERONIKA_PERSONA,
-  agafya: AGAFYA_PERSONA,
-  "shri-raj": SHRI_RAJ_PERSONA,
-  numerolog: NUMEROLOG_PERSONA,
+  ragnar: withVoiceSample(RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE),
+  veronika: withVoiceSample(VERONIKA_PERSONA, VERONIKA_VOICE_SAMPLE),
+  agafya: withVoiceSample(AGAFYA_PERSONA, AGAFYA_VOICE_SAMPLE),
+  "shri-raj": withVoiceSample(SHRI_RAJ_PERSONA, SHRI_RAJ_VOICE_SAMPLE),
+  numerolog: withVoiceSample(NUMEROLOG_PERSONA, NUMEROLOG_VOICE_SAMPLE),
 };
 
 const MASTER_DISPLAY: Record<CharacterKey, string> = {
@@ -282,8 +296,12 @@ export function buildSystemPrompt(
     mode === "chat" ? CHAT_CLARIFYING_QUESTION_RULE : "",
     formatBlock,
     spreadFinalBlock,
-    // Thematic path already defines structure — skip the older «120 слов» block to avoid format fights.
-    mode === "reading" && hasSpread && options.spreadType !== "photo" && !thematicReading
+    // Thematic and tarot-rune already define structure (## Простыми словами) — skip older instructions.
+    mode === "reading" &&
+    hasSpread &&
+    options.spreadType !== "photo" &&
+    !thematicReading &&
+    !tarotRune
       ? getSpreadInstructions(
           character,
           options.spreadId,

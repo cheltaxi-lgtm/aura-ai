@@ -121,22 +121,26 @@ export default function AdminAiPage() {
         </button>
 
         <ModelPicker
-          label="Модель для чата и раскладов (fallback)"
+          label="Общая модель (fallback, если платная/бесплатная не заданы)"
           value={String(ai.model ?? "")}
           onChange={(modelId) => setAi({ ...ai, model: modelId })}
         />
 
         <ModelPicker
-          label="Бесплатный чат (первые N вопросов — та же модель, что и платный, если не задана отдельно)"
+          label="Бесплатный чат (первые N вопросов)"
           value={String(ai.freeModel ?? ai.paidModel ?? ai.model ?? "")}
           onChange={(modelId) => setAi({ ...ai, freeModel: modelId })}
         />
 
         <ModelPicker
-          label="Платный чат (руны / подписка)"
+          label="Платный чат и расклады (руны / подписка)"
           value={String(ai.paidModel ?? ai.model ?? "")}
           onChange={(modelId) => setAi({ ...ai, paidModel: modelId })}
         />
+        <p className="text-[10px] text-gray-500 -mt-2">
+          Расклады идут через эту модель. Reasoning-модели (deepseek-v4-pro, r1) дают 30–90+ сек на один
+          вызов — для скорости лучше flash / gpt-4o-mini / kimi без thinking.
+        </p>
 
         <ModelPicker
           label="Модель для расклада по фото"

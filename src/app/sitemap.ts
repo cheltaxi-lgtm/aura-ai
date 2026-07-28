@@ -7,6 +7,7 @@ import { getAllSpreadIntents } from "@/lib/spread-intents";
 import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
 import { getAllSeoArticleSlugs } from "@/lib/seo/articles";
 import { getAllSpreadHubSlugs } from "@/lib/seo/hubs";
+import { isSearchIndexableIntentSlug } from "@/lib/seo/indexability";
 import {
   FORECAST_MONTHS,
   FORECAST_YEARS,
@@ -52,12 +53,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.6,
     }));
 
-  const intentPages: MetadataRoute.Sitemap = getAllSpreadIntents().map((intent) => ({
-    url: `${base}/rasklady/${intent.slug}`,
-    lastModified: now,
-    changeFrequency: "monthly" as const,
-    priority: 0.75,
-  }));
+  const intentPages: MetadataRoute.Sitemap = getAllSpreadIntents()
+    .filter((intent) => isSearchIndexableIntentSlug(intent.slug))
+    .map((intent) => ({
+      url: `${base}/rasklady/${intent.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.75,
+    }));
 
   const hubPages: MetadataRoute.Sitemap = getAllSpreadHubSlugs().map((slug) => ({
     url: `${base}/rasklady/${slug}`,

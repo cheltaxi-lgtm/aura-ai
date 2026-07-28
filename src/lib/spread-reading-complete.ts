@@ -15,7 +15,7 @@ export async function ensurePaidSpreadTextComplete(
   contextMessages: ChatMessage[],
   text: string | null | undefined,
   cardNames: string[],
-  opts: { maxTokens: number; temperature: number; maxRounds?: number }
+  opts: { maxTokens: number; temperature: number; maxRounds?: number; isPaid?: boolean }
 ): Promise<string | null> {
   let current = typeof text === "string" ? text.trim() : "";
   if (!current) return null;
@@ -25,10 +25,11 @@ export async function ensurePaidSpreadTextComplete(
     if (isPaidSpreadTextComplete(current, cardNames)) return current;
 
     const continued = await continueAssistantProse(contextMessages, current, {
-      maxTokens: Math.max(opts.maxTokens, 2200) + round * 600,
+      maxTokens: Math.max(opts.maxTokens, 1400) + round * 400,
       temperature: opts.temperature,
-      maxPasses: 2,
+      maxPasses: 1,
       cardNames,
+      isPaid: opts.isPaid,
     });
     if (!continued?.trim() || continued.trim().length <= current.length) break;
     current = continued.trim();

@@ -36,6 +36,8 @@ export type ProseContinuationOpts = {
   maxPasses?: number;
   /** When set, continue prompts ask to decode remaining named cards. */
   cardNames?: string[];
+  /** Prefer admin paidModel when continuing paid readings. */
+  isPaid?: boolean;
 };
 
 /** Complete prose with auto-continuation when the model hits max_tokens. */
@@ -52,6 +54,8 @@ export async function completeProseWithContinuation(
       messages,
       maxTokens: opts.maxTokens + pass * 400,
       temperature: opts.temperature,
+      isPaid: opts.isPaid,
+      skipTemperatureRetry: true,
     });
 
     const chunk = normalizeProseChunk(result.text ?? "");
@@ -101,6 +105,7 @@ export async function continueAssistantProse(
     temperature: opts.temperature,
     maxPasses: opts.maxPasses ?? 1,
     cardNames: opts.cardNames,
+    isPaid: opts.isPaid,
   });
   if (!continued?.trim()) return trimIncompleteTrailingSentence(partial);
 

@@ -1262,19 +1262,60 @@ export function useChatActions(options: UseChatActionsOptions) {
     }
     if (prevSelectedCharacterRef.current !== selectedCharacter) {
       prevSelectedCharacterRef.current = selectedCharacter;
-      chatLoadedForRef.current = null;
       loadReadingAttemptKeyRef.current = null;
       loadReadingInFlightKeyRef.current = null;
-      setSpreadReadingRitualOpen(false);
-      setMessages([]);
-      setHistoryHasMore(false);
-      setIsLoadingHistory(true);
 
       const preserveSessionStart =
         pendingNewChatThreadRef.current ||
         readingInFlightRef.current ||
         skipNextReadingRef.current;
+      // #region agent log
+      fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5da396" },
+        body: JSON.stringify({
+          sessionId: "5da396",
+          runId: "photo-new-session",
+          hypothesisId: "C",
+          location: "useChatActions.ts:characterChange",
+          message: "character_change_preserve",
+          data: {
+            selectedCharacter,
+            preserveSessionStart,
+            pendingNew: pendingNewChatThreadRef.current,
+            readingInFlight: readingInFlightRef.current,
+            skipNext: skipNextReadingRef.current,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      fetch("/api/debug/client-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "5da396",
+          runId: "photo-new-session",
+          hypothesisId: "C",
+          location: "useChatActions.ts:characterChange",
+          message: "character_change_preserve",
+          data: {
+            selectedCharacter,
+            preserveSessionStart,
+            pendingNew: pendingNewChatThreadRef.current,
+            readingInFlight: readingInFlightRef.current,
+            skipNext: skipNextReadingRef.current,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+      // Photo / new-spread handoff already seeded messages + ritual — do not wipe them.
       if (!preserveSessionStart) {
+        chatLoadedForRef.current = null;
+        setSpreadReadingRitualOpen(false);
+        setMessages([]);
+        setHistoryHasMore(false);
+        setIsLoadingHistory(true);
         setSessionIntention(null);
         setIntentionSpread(null);
         setIntentionHighlight(false);
@@ -1282,6 +1323,10 @@ export function useChatActions(options: UseChatActionsOptions) {
         setSessionOnlyChat(false);
         setHideChatSpread(false);
         setSpreadFlipped(spreadFlippedState(3, false));
+      } else {
+        chatLoadedForRef.current = selectedCharacter;
+        setHistoryHasMore(false);
+        setIsLoadingHistory(false);
       }
     }
   }, [
@@ -1311,7 +1356,41 @@ export function useChatActions(options: UseChatActionsOptions) {
       setIsLoadingHistory(false);
       return;
     }
-    if (readingInFlightRef.current) return;
+    // New paid spread from landing/session flow — do not hydrate an old consultation.
+    if (pendingNewChatThreadRef.current || readingInFlightRef.current) {
+      // #region agent log
+      {
+        const payload = {
+          sessionId: "5da396",
+          runId: "photo-new-session",
+          hypothesisId: "B",
+          location: "useChatActions.ts:hydrateSkip",
+          message: "hydrate_skip_new_thread",
+          data: {
+            selectedCharacter,
+            pendingNew: pendingNewChatThreadRef.current,
+            readingInFlight: readingInFlightRef.current,
+            consultationId: consultationSessionIdRef.current,
+          },
+          timestamp: Date.now(),
+        };
+        fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5da396" },
+          body: JSON.stringify(payload),
+        }).catch(() => {});
+        fetch("/api/debug/client-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).catch(() => {});
+      }
+      // #endregion
+      // Mark loaded so a later dep change cannot hydrate an old thread after flags clear.
+      chatLoadedForRef.current = selectedCharacter;
+      setIsLoadingHistory(false);
+      return;
+    }
 
     const skipSpreadLoad = skipNextReadingRef.current;
     const keepGuestResumeSkip =
@@ -1324,17 +1403,41 @@ export function useChatActions(options: UseChatActionsOptions) {
     setIsLoadingHistory(true);
     void (async () => {
       try {
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
+        const boundHint =
+          archiveSessionIdRef.current ??
+          consultationSessionIdRef.current ??
+          undefined;
         const boundSessionId = await resolveConsultationSessionId(
           selectedCharacter,
-          archiveSessionIdRef.current ??
-            consultationSessionIdRef.current ??
-            undefined
+          boundHint
         );
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
         const restored = await restoreChatForCharacter(selectedCharacter, {
           archiveSessionId: archiveSessionIdRef.current ?? undefined,
           sessionId: boundSessionId ?? undefined,
         });
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
         chatLoadedForRef.current = selectedCharacter;
+
+        // Ignore history from a different consultation than the one we just bound.
+        const expectedSessionId = consultationSessionIdRef.current;
+        if (
+          expectedSessionId &&
+          restored?.sessionId &&
+          restored.sessionId !== expectedSessionId
+        ) {
+          return;
+        }
 
         if (restored?.sessionId) setConsultationSessionId(restored.sessionId);
         if (restored?.status === "completed") setConsultationReadOnly(true);
@@ -1354,6 +1457,7 @@ export function useChatActions(options: UseChatActionsOptions) {
           setHistoryHasMore(restored.hasMore);
           const archiveId = archiveSessionIdRef.current;
           if (restored.messages.length > 0) {
+            if (pendingNewChatThreadRef.current) return;
             setMessages(restored.messages);
             if (sessionOnlyChat || chatHasSpreadReading(restored.messages)) return;
           } else if (archiveId && restored.sessionId) {

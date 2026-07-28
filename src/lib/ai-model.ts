@@ -5,9 +5,23 @@ export async function getAdminAiSettings(): Promise<AiSettings> {
   return getSetting("ai");
 }
 
-/** Primary chat/text model — always from admin settings. */
-export async function getChatModel(): Promise<string> {
+/**
+ * Which admin model field to use for text chat/readings.
+ * - paid: paidModel → model
+ * - free: freeModel → paidModel → model
+ * - default: model (legacy fallback / shared field)
+ */
+export type ChatModelTier = "default" | "paid" | "free";
+
+/** Primary chat/text model — from admin settings (tier selects paid/free/default field). */
+export async function getChatModel(tier: ChatModelTier = "default"): Promise<string> {
   const ai = await getAdminAiSettings();
+  if (tier === "paid") {
+    return ai.paidModel?.trim() || ai.model;
+  }
+  if (tier === "free") {
+    return ai.freeModel?.trim() || ai.paidModel?.trim() || ai.model;
+  }
   return ai.model;
 }
 

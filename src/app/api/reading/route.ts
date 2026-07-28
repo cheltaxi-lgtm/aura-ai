@@ -65,6 +65,7 @@ import {
   stripMemoryLeakFromReply,
   sanitizeReadingForClient,
 } from "@/lib/chat-sanitize";
+import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import { INTENTION_OPTIONS, intentionPromptBlock, intentionReadingPromptBlock } from "@/lib/intention";
 import {
@@ -92,7 +93,6 @@ import {
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
-import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
 async function persistReadingToSession(input: {

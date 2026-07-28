@@ -34,6 +34,11 @@ import {
   ensurePaidSpreadTextComplete,
   isPaidSpreadTextComplete,
 } from "@/lib/spread-reading-complete";
+import {
+  evaluatePaidReadingQuality,
+  meetsPaidDensityFloor,
+  normalizePaidReadingStructure,
+} from "@/lib/reading-quality-gate";
 import type { ChatMessage } from "@/lib/llm";
 import { query } from "@/lib/db";
 import { intentionPromptBlock } from "@/lib/intention";
@@ -1095,8 +1100,8 @@ export class ChatOrchestrator {
   }
 
   /**
-   * Complete a paid spread via AI continuation only.
-   * Returns empty string when AI cannot produce a complete reading (fail-closed).
+   * Complete a paid spread via AI continuation, then via a lean-prompt AI rescue.
+   * Returns empty only when every model in the chain failed.
    */
   private async finalizeSpreadReply(
     raw: string | null,
@@ -1115,10 +1120,79 @@ export class ChatOrchestrator {
     }
 
     const cleaned = text ? this.sanitizeChatReply(text) : "";
-    if (cleaned && isPaidSpreadTextComplete(cleaned, cardNames)) return cleaned;
+    const prepared = cleaned
+      ? normalizePaidReadingStructure(cleaned, this.characterId)
+      : "";
+    if (prepared && this.acceptPremiumSpreadText(prepared, cardNames)) return prepared;
+    if (prepared && this.softAcceptPremiumSpreadText(prepared, cardNames)) {
+      console.warn("[chat] paid spread soft-shipped before rescue");
+      return prepared;
+    }
 
-    console.warn("[chat] paid spread incomplete after continuation — fail-closed");
+    const rescued = await this.rescueSpreadReplyWithAi(prepared || cleaned || text);
+    if (rescued) return rescued;
+
+    console.error("[chat] paid spread: all AI attempts failed");
     return "";
+  }
+
+  /** Completeness + premium quality (verdict, simply-words). */
+  private acceptPremiumSpreadText(text: string, cardNames: string[]): boolean {
+    if (!isPaidSpreadTextComplete(text, cardNames)) return false;
+    return evaluatePaidReadingQuality(text, {
+      cardCount: cardNames.length,
+      characterId: this.characterId,
+    }).ok;
+  }
+
+  /** Complete AI draft with all cards — ship even if verdict/structure imperfect. */
+  private softAcceptPremiumSpreadText(text: string, cardNames: string[]): boolean {
+    return (
+      text.trim().length >= 200 &&
+      meetsPaidDensityFloor(text, cardNames.length) &&
+      isPaidSpreadTextComplete(text, cardNames)
+    );
+  }
+
+  /**
+   * Lean-prompt regeneration across the whole model chain.
+   * Fail-closed on templates: only model-authored text can ship as a paid reading.
+   */
+  private async rescueSpreadReplyWithAi(draft: string): Promise<string | null> {
+    const cardNames = this.activeSpreadCardNames();
+    if (!cardNames.length) return null;
+
+    const { rescueReadingWithAi } = await import("@/lib/reading-ai-rescue");
+    const cards = cardNames.map((name, i) => ({
+      name,
+      position: `Позиция ${i + 1}`,
+      meaning: this.tarotCards?.find((c) => c.name === name)?.meaning,
+    }));
+
+    return rescueReadingWithAi({
+      characterId: this.characterId,
+      userName: this.userProfile?.name?.trim() || "друг",
+      question: this.customQuestion?.trim() || this.lastUserMsg || "Разбор расклада",
+      cards,
+      maxTokens: Math.max(2200, this.streamMaxTokens()),
+      previousDraft: draft,
+      accept: (candidate) => {
+        const clean = this.sanitizeChatReply(candidate);
+        const prepared = clean
+          ? normalizePaidReadingStructure(clean, this.characterId)
+          : "";
+        return prepared && this.acceptPremiumSpreadText(prepared, cardNames) ? prepared : null;
+      },
+      softAccept: (candidate) => {
+        const clean = this.sanitizeChatReply(candidate);
+        const prepared = clean
+          ? normalizePaidReadingStructure(clean, this.characterId)
+          : "";
+        return prepared && this.softAcceptPremiumSpreadText(prepared, cardNames)
+          ? prepared
+          : null;
+      },
+    });
   }
 
   /** Generate full spread off-stream, then stream the complete text (no mid-word cutoffs). */
@@ -1194,9 +1268,13 @@ export class ChatOrchestrator {
     }
 
     if (failed) {
-      // Long-form / paid spreads must never become template success.
+      // Long-form / paid spreads: rescue with another AI pass, never a template.
       if (this.isLongFormSpreadReply()) {
-        console.warn("[chat] long-form spread AI failed — fail-closed");
+        const rescued = await this.rescueSpreadReplyWithAi(this.sanitizeChatReply(rawReply));
+        if (rescued) {
+          return { reply: rescued, llmFailed: false, usedFallback: false };
+        }
+        console.error("[chat] long-form spread: all AI attempts failed");
         return { reply: "", llmFailed: true, usedFallback: false };
       }
       // Short chat: explicit unavailable message only (not a reading).

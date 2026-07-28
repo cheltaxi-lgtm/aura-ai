@@ -55,17 +55,27 @@ export async function createPhotoInterpretationJson(params: {
     maxTokens: photoInterpretationMaxTokens(n),
     temperature: 0.65,
     timeoutMs: 120_000,
-    validate: (text) =>
-      text.trim().length >= 120
+    validate: (text) => {
+      const trimmed = text.trim();
+      if (trimmed.length < 200) {
+        return { ok: false, code: "validation_failed", detail: "too_short" };
+      }
+      // Soft structure: verdict signal or closing section — card names live in spreadSummary prose.
+      const hasClose =
+        /##\s*Простыми словами/iu.test(trimmed) ||
+        /вердикт|в плюс|жёстк|жестк|если коротко|в сумме/iu.test(trimmed.slice(0, 400)) ||
+        /вердикт|в плюс|жёстк|жестк|итог/iu.test(trimmed.slice(-700));
+      return hasClose
         ? { ok: true }
-        : { ok: false, code: "validation_failed", detail: "too_short" },
+        : { ok: false, code: "validation_failed", detail: "missing_verdict_or_finale" };
+    },
     buildRepairMessages: (failedText) => [
       ...messages,
       { role: "assistant", content: failedText },
       {
         role: "user",
         content:
-          "Дополни расшифровку: отдельный абзац по каждой позиции и финальный блок выводов.",
+          "Перепиши целиком: первая фраза — вердикт; отдельный абзац по каждой позиции с названием символа; в конце полный финальный блок (для таро — «## Простыми словами»). Без воды.",
       },
     ],
   });

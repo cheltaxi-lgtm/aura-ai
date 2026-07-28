@@ -20,6 +20,7 @@ import {
 import { RITUAL_TYPES } from "@/lib/ritual-config";
 import { getArticleForIntent } from "@/lib/seo/articles";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { isSearchIndexableIntentSlug } from "@/lib/seo/indexability";
 import { buildIntentFaq, intentFaqJsonLd } from "@/lib/seo/intent-faq";
 import { SPREAD_INTENT_CATEGORY_LABELS } from "@/lib/spread-intents/types";
 import { getSpreadHubBySlug } from "@/lib/seo/hubs";
@@ -40,11 +41,17 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const intent = getSpreadIntentBySlug(slug);
-  if (!intent) return { title: "Расклад" };
+  if (!intent) {
+    return {
+      title: "Расклад",
+      robots: { index: false, follow: false },
+    };
+  }
   return buildSeoMetadata({
     title: intent.seoTitle,
     description: intent.seoDescription,
     path: `/rasklady/${slug}`,
+    noIndex: !isSearchIndexableIntentSlug(slug),
   });
 }
 

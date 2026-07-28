@@ -43,12 +43,35 @@ const CORE_PRIORITY = [
   `${base}/photo-rasklad`,
   `${base}/numerology`,
   `${base}/numerology/destiny-matrix`,
+  `${base}/numerology/name-compatibility`,
   `${base}/natalnaya-karta`,
   `${base}/rasklady`,
+  `${base}/faq`,
+  `${base}/cards`,
   `${base}/prognoz`,
   `${base}/statyi`,
   `${base}/terms`,
   `${base}/privacy`,
+];
+
+/** High-value pages recently dropped from Yandex — force IndexNow re-submit. */
+const RECRAWL_PRIORITY = [
+  `${base}/rasklady/chto-meshaet-otnosheniyam`,
+  `${base}/rasklady/na-vernost`,
+  `${base}/rasklady/zhdat-ili-zabyt`,
+  `${base}/rasklady/nuzhna-li-ya-emu`,
+  `${base}/rasklady/situatsiya-na-rabote`,
+  `${base}/rasklady/lyubov-pochemu-on-molchit`,
+  `${base}/rasklady/partner-po-biznesu`,
+  `${base}/rasklady/kak-naladit-otnosheniya-s-papoy`,
+  `${base}/rasklady/prognoz-na-nedelyu`,
+  `${base}/rasklady/chto-on-delaet-nochyu`,
+  `${base}/rasklady/lyubov`,
+  `${base}/cards/6-mechey`,
+  `${base}/cards/koroleva-zhezlov`,
+  `${base}/cards/tuz-mechey`,
+  `${base}/cards/pazh-zhezlov`,
+  `${base}/cards/ierofant`,
 ];
 
 /** Wave-1 organic + natal/matrix pillars for IndexNow / checks. */
@@ -82,7 +105,7 @@ function loadAllArticleUrls() {
   return [...new Set(urls)];
 }
 
-const PRIORITY_URLS = [...CORE_PRIORITY, ...loadAllArticleUrls()];
+const PRIORITY_URLS = [...new Set([...CORE_PRIORITY, ...RECRAWL_PRIORITY, ...loadAllArticleUrls()])];
 
 let failed = 0;
 

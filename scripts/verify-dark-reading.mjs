@@ -53,7 +53,7 @@ assert("honesty bans dawn sugar", /рассвет близко/.test(HONESTY_POL
 assert("dark policy bans «возможны трудности» watering", /возможны трудности/.test(DARK_TOPICS_POLICY));
 assert("dark policy requires direct acknowledgment", /без смягчений/.test(DARK_TOPICS_POLICY));
 assert(
-  "dark policy requires honest verdict first",
+  "dark policy keeps honest-verdict contract",
   /ЧЕСТНЫЙ ВЕРДИКТ/.test(DARK_TOPICS_POLICY) && /Плохо по картам — говори плохо/.test(DARK_TOPICS_POLICY)
 );
 assert(
@@ -92,7 +92,6 @@ assert(
   !/запрещено говорить о измене|не обсуждаю тёмные темы|откажись от темы измен/i.test(wrapped)
 );
 
-// Curse / black-magic topic must still be card-first, not banned
 const curseTopics = detectTopics("на меня порча и чёрная магия");
 assert("curse/black-magic topic is recognized", curseTopics.includes("curse"));
 assert(
@@ -134,7 +133,6 @@ assert(
   !/не могу говорить о порче|запретная тема|отказываюсь/i.test(curseWrapped)
 );
 
-// Light spread: verdict honesty without inventing death/curse
 const lightReading = buildCharacterPrompt(
   "veronika",
   {

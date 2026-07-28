@@ -171,6 +171,19 @@ export function stripEnglishLeakageFromRussianText(text: string): string {
     .trim();
 }
 
+/** Drop duplicated trailing chat-invite hooks from model + prompt. */
+function dedupeTrailingChatHooks(text: string): string {
+  const re =
+    /Останутся сомнения[^\n.]{0,120}(?:разберём|разберем) глубже\.?/giu;
+  const matches = [...text.matchAll(re)];
+  if (matches.length <= 1) return text;
+  let out = text;
+  for (const m of matches.slice(0, -1)) {
+    out = out.replace(m[0], "");
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** Replace empty emphasis / orphan stars; optionally inject spread card names. */
 export function polishSpreadReadingText(text: string, cardNames?: string[]): string {
   let out = text.replace(/\r\n/g, "\n");
@@ -191,6 +204,7 @@ export function polishSpreadReadingText(text: string, cardNames?: string[]): str
   out = out.replace(/\*\*(?:\s|\u00a0)*\*\*/g, "");
 
   out = stripEnglishLeakageFromRussianText(out);
+  out = dedupeTrailingChatHooks(out);
 
   return out.replace(/  +/g, " ").trim();
 }

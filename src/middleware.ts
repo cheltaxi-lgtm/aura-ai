@@ -4,6 +4,8 @@ import { jwtVerify } from "jose";
 import {
   fetchMaintenanceModeActive,
   isMaintenanceBypassPath,
+  isSearchEngineBot,
+  MAINTENANCE_BOT_RETRY_AFTER_SEC,
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
 import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
@@ -180,7 +182,23 @@ function maintenanceApiResponse() {
       maintenanceMode: true,
       message: "Сервис временно на обслуживании",
     },
-    { status: 503 }
+    { status: 503, headers: { "Retry-After": String(MAINTENANCE_BOT_RETRY_AFTER_SEC) } }
+  );
+}
+
+/** Bots must not follow a soft-redirect to /maintenance (Yandex drops URLs as noindex). */
+function maintenanceBotHtmlResponse() {
+  return withNoStore(
+    new NextResponse(
+      "<!doctype html><title>Service Unavailable</title><h1>Service temporarily unavailable</h1>",
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Retry-After": String(MAINTENANCE_BOT_RETRY_AFTER_SEC),
+        },
+      }
+    )
   );
 }
 
@@ -224,6 +242,10 @@ async function enforceMaintenanceMode(
   }
 
   if (pathname !== MAINTENANCE_PAGE_PATH) {
+    // Humans → friendly page. Crawlers → 503 (never 302 to noindex /maintenance).
+    if (isSearchEngineBot(request.headers.get("user-agent"))) {
+      return maintenanceBotHtmlResponse();
+    }
     return withNoStore(NextResponse.redirect(publicUrl(request, MAINTENANCE_PAGE_PATH)));
   }
 

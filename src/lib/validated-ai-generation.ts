@@ -18,15 +18,23 @@ export type ValidatedAiGenerateOptions = {
   /** Stable parts that identify this generation input. */
   inputParts: unknown[];
   validate: (text: string) => { ok: true } | { ok: false; code: AiFailureCode; detail?: string };
-  /** Optional repair prompt builder. Called once after a structural/validation failure. */
+  /** Optional repair prompt builder after structural/validation failure. */
   buildRepairMessages?: (failedText: string, detail?: string) => ChatMessage[];
+  /** Repair rounds per model (default 1). Paid spreads use 2 for missing-card coverage. */
+  maxRepairRounds?: number;
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
   jsonObject?: boolean;
   allowReasoningFallback?: boolean;
-  /** Use natal primary + natalFallbackModels instead of chat models. */
-  modelFamily?: "chat" | "natal";
+  /**
+   * Model chain source:
+   * - chat: ai.model + fallbackModels
+   * - paid: ai.paidModel (then model) + fallbackModels — paid spreads/chat
+   * - free: ai.freeModel chain + fallbackModels
+   * - natal: natalModel + natalFallbackModels
+   */
+  modelFamily?: "chat" | "paid" | "free" | "natal";
   promptVersion?: string;
   validatorVersion?: string;
   /** Extra CompleteChatOptions passthrough. */
@@ -46,13 +54,24 @@ function uniqueModels(models: Array<string | undefined | null>): string[] {
   return out;
 }
 
-async function resolveModelChain(family: "chat" | "natal"): Promise<string[]> {
+async function resolveModelChain(
+  family: "chat" | "paid" | "free" | "natal"
+): Promise<string[]> {
   const ai = await getAdminAiSettings();
   if (family === "natal") {
     const primary = await getNatalModel();
     return uniqueModels([primary, ...(ai.natalFallbackModels ?? [])]);
   }
-  const primary = await getChatModel();
+  if (family === "paid") {
+    const primary = await getChatModel("paid");
+    // Prefer paid model, then shared model, then explicit fallbacks.
+    return uniqueModels([primary, ai.model, ...(ai.fallbackModels ?? [])]);
+  }
+  if (family === "free") {
+    const primary = await getChatModel("free");
+    return uniqueModels([primary, ...(ai.fallbackModels ?? [])]);
+  }
+  const primary = await getChatModel("default");
   return uniqueModels([primary, ...(ai.fallbackModels ?? [])]);
 }
 
@@ -87,10 +106,12 @@ export async function generateValidatedAiText(
   let continued = false;
   let lastCode: AiFailureCode = "empty_response";
   let lastDetail: string | undefined;
+  const maxRepairRounds = Math.max(0, Math.min(3, options.maxRepairRounds ?? 1));
 
   for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
     const model = models[modelIndex]!;
     const isFallbackModel = modelIndex > 0;
+    let modelRepairs = 0;
 
     const runOnce = async (messages: ChatMessage[]) => {
       attempts += 1;
@@ -139,7 +160,7 @@ export async function generateValidatedAiText(
       }
     }
 
-    const candidateText = result.text;
+    let candidateText = result.text;
     if (!candidateText?.trim()) {
       lastCode = "empty_response";
       lastDetail = `model=${model}`;
@@ -147,17 +168,22 @@ export async function generateValidatedAiText(
     }
 
     let validation = options.validate(candidateText);
-    if (!validation.ok && options.buildRepairMessages && !repaired) {
+    while (
+      !validation.ok &&
+      options.buildRepairMessages &&
+      modelRepairs < maxRepairRounds
+    ) {
+      modelRepairs += 1;
       repaired = true;
-      const repairMessages = options.buildRepairMessages(candidateText, validation.detail);
+      const repairMessages = options.buildRepairMessages(
+        candidateText,
+        validation.detail
+      );
       const repairedResult = await runOnce(repairMessages);
-      if (repairedResult.text?.trim()) {
-        result = repairedResult;
-        const repairedText = result.text;
-        if (repairedText?.trim()) {
-          validation = options.validate(repairedText);
-        }
-      }
+      if (!repairedResult.text?.trim()) break;
+      result = repairedResult;
+      candidateText = result.text ?? "";
+      validation = options.validate(candidateText);
     }
 
     if (!validation.ok) {

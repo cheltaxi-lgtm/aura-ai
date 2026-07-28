@@ -84,6 +84,8 @@ assert.match(worker, /resolveWorkerKindsFromEnv/);
 assert.match(worker, /completeAsyncJob/);
 assert.match(worker, /failAsyncJobAndRefundIfCharged/);
 assert.match(worker, /reapStaleRunningAsyncJobs/);
+assert.match(worker, /reapOrphanedRunningAsyncJobs/);
+assert.match(jobs, /reapOrphanedRunningAsyncJobs/);
 assert.match(worker, /assertLoopbackAppUrl/);
 assert.match(worker, /inFlight/);
 assert.match(worker, /WORKER_JOB_HEADER/);

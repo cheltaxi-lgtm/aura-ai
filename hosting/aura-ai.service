@@ -14,7 +14,10 @@ EnvironmentFile=/opt/aura-ai/.env.local
 # Bind loopback only — Caddy reverse_proxies 127.0.0.1:3000 (no public :3000).
 ExecStart=/usr/bin/npm start -- -H 127.0.0.1 -p 3000
 Restart=always
-RestartSec=5
+RestartSec=3
+# Faster stop → shorter 502 window while Caddy waits for the new process.
+TimeoutStopSec=12
+KillMode=mixed
 StandardOutput=append:/var/log/aura-ai/app.log
 StandardError=append:/var/log/aura-ai/app.log
 

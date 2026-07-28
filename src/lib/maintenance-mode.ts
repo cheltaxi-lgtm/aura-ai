@@ -1,9 +1,16 @@
 /** Edge-safe maintenance gate for middleware (no DB imports). */
 
+import { isSearchEngineBot } from "@/lib/seo/indexability";
+
 const CACHE_TTL_MS = 5_000;
 let cachedMaintenance: { active: boolean; expiresAt: number } | null = null;
 
 export const MAINTENANCE_PAGE_PATH = "/maintenance";
+
+export { isSearchEngineBot };
+
+/** Seconds for Retry-After on bot 503 during maintenance. */
+export const MAINTENANCE_BOT_RETRY_AFTER_SEC = 3600;
 
 export const MAINTENANCE_BYPASS_PREFIXES = [
   // Whole admin UI — otherwise /admin redirects to /maintenance before login can complete.

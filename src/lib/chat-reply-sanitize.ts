@@ -4,6 +4,7 @@ import {
   polishSpreadReadingText,
   stripEnglishLeakageFromRussianText,
 } from "@/lib/reading-text-polish";
+import { ensureReadingParagraphBreaks } from "@/lib/reading-quality-gate";
 
 /** Collapse runs of spaces/tabs only — never eat paragraph breaks. */
 function collapseHorizontalWhitespace(text: string): string {
@@ -279,8 +280,12 @@ export function stripTrailingPromptChecklist(text: string): string {
     out = out.slice(0, -trailingParen[0].length).trim();
   }
 
-  const lines = out.split(/\n+/);
+  // Keep blank paragraph breaks — never split on /\n+/ (that collapses \n\n → \n).
+  const lines = out.split("\n");
   while (lines.length > 1) {
+    while (lines.length > 1 && !(lines[lines.length - 1]?.trim())) {
+      lines.pop();
+    }
     const last = lines[lines.length - 1]?.trim() ?? "";
     if (
       /^[\(\[][^)\]]{6,280}[\)\]]$/u.test(last) &&
@@ -292,7 +297,7 @@ export function stripTrailingPromptChecklist(text: string): string {
     break;
   }
 
-  return lines.join("\n").trim();
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Minimum card name mentions required for a reading to pass validation. */
@@ -339,6 +344,8 @@ export function sanitizeReadingForClient(
       const missing = missingCardMentions(out, cardNames);
       if (missing.length > 0) return "";
     }
+    // Restore premium paragraph rhythm after checklist/polish passes.
+    out = ensureReadingParagraphBreaks(out);
   }
 
   return out.trim();
