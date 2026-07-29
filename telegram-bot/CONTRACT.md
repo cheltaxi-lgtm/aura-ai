@@ -6,10 +6,25 @@
 
 | Канал | Роль |
 |-------|------|
-| Сайт | Полный продукт + Login Widget / OAuth |
-| Бот | Thin client: `POST /api/internal/bot/*` с `X-Bot-Internal-Secret` |
+| Сайт | Полный продукт + разрешённая авторизация (email / Яндекс ID / VK ID; позже телефон+SMS) |
+| Бот | Thin client + канал уведомлений. **Не** система подтверждения личности |
 
 Один аккаунт = строка в `user_telegram_identities` (`telegram_user_id` ↔ `user_account_id`). После link бот синхронизирует `bot_users.zovus_user_id = profileUserId`.
+
+**Инвариант (149-ФЗ ч.10 ст.8):** `telegram_user_id` сам по себе **не даёт** доступа к аккаунту. Первичная идентификация — только разрешённым способом на сайте; Telegram — вторичная привязка.
+
+## Привязка Telegram (link-code)
+
+1. Бот: `POST /api/internal/bot/link-code` → одноразовый `code` (TTL ~10 мин) + `linkUrl`.
+2. Deep link: `/auth/telegram-link?code=…` на zovus.ru.
+3. Пользователь проходит **разрешённую** авторизацию на сайте.
+4. `POST /api/auth/telegram/link-code` (session required) → bind в `user_telegram_identities`.
+5. Сайт уведомляет бота `POST /internal/account-linked`.
+
+Запрещено и отключено (410):
+- Telegram Login Widget / «Войти через Telegram»
+- `POST /api/auth/telegram` (issue session по Telegram HMAC)
+- Site→bot auth bridge `/start a_<token>` / `POST /api/internal/bot/auth-bridge`
 
 ## Internal API сайта (bot → site)
 
@@ -18,20 +33,19 @@
 | Endpoint | Назначение |
 |----------|------------|
 | `POST /resolve` | linked / accountId / profileUserId / runes / linkUrl |
+| `POST /link-code` | выдать одноразовый код привязки (`/start link`) |
 | `POST /history` | общая история кабинета |
 | `POST /reading` | детали сессии |
 | `POST /spread` | полный триплет Вероники + биллинг рун как на сайте |
 | `POST /daily` | энергия дня (`getOrCreateDailyReading`) |
 | `POST /runes` | баланс + URL магазина |
 | `POST /modules` | каталог разделов (native + deep-link) |
-| `POST /cabinet` | обзор кабинета (натал, обряды, joint, дневник, память, support, photo) |
+| `POST /cabinet` | обзор кабинета |
 | `POST /natal` | big three / статус натала |
 | `POST /numerology` | свободная матрица судьбы |
 | `POST /support` | list / create / reply обращений |
-| `POST /chat` | follow-up вопрос по sessionId (ChatOrchestrator + руны) |
-| `POST /auth-bridge` | подтверждение входа/привязки с сайта (`/start a_<token>`) |
-
-Сайт также: `POST|GET /api/auth/telegram/bridge` — создание challenge + poll/consume (кнопка «Войти через Telegram» без Login Widget /setdomain).
+| `POST /chat` | follow-up вопрос по sessionId |
+| `POST /auth-bridge` | **disabled** (410) |
 
 Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECRET`, `BOT_REQUIRE_SITE_ACCOUNT=true`.
 
@@ -41,13 +55,13 @@ Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECR
 |----------|------------|
 | `POST /internal/receipt/verify` | guest receipt (legacy/claim) |
 | `POST /internal/receipt/claim` | атомарный claim + `zovus_user_id` |
-| `POST /internal/account-linked` | sync после Login Widget login/link |
+| `POST /internal/account-linked` | sync после post-auth bind |
 
 ## Claim (подмножество)
 
 **claim** = продолжение **конкретного** guest receipt (`tg_receipt`) на сайте с теми же картами.
 
-Claim **не** заменяет login/link. Для полного продукта достаточно `user_telegram_identities`.
+Claim **не** заменяет login/link. Для полного продукта достаточно `user_telegram_identities` после site auth.
 
 | Поле token | Значение |
 |------------|----------|
@@ -62,6 +76,8 @@ Claim **не** заменяет login/link. Для полного продукт
 ## Лимиты
 
 Продуктовый лимит «1 расклад/сутки в боте» **снят** для linked-пользователей. Действуют правила сайта (руны / guest entitlement / anti-abuse).
+
+Без привязки: только анонимные/гостевые функции; кабинет и списания — после bind к авторизованному аккаунту.
 
 ## Уведомления (типы)
 

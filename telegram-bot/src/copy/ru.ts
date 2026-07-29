@@ -153,14 +153,16 @@ export const copy = {
   profileLinkHint: "Привяжите аккаунт — история и баланс будут с вами на сайте и в боте.",
   profileContinueHint: "Есть незавершённый расклад — продолжите на сайте по кнопке ниже.",
   needSiteAccount:
-    "Бот и сайт — один аккаунт Zovus. Привяжите Telegram на сайте, чтобы расклады, история и руны были общими.",
+    "Бот и сайт — один аккаунт Zovus. Войдите на сайте (email, Яндекс или VK) по кнопке ниже — ссылка привяжет Telegram к аккаунту. Вход через Telegram недоступен.",
   needSiteOnboarding:
     "Аккаунт привязан. Завершите профиль на сайте (дата рождения) — затем расклад откроется и здесь.",
   siteBridgeDown: "Связь с сайтом временно недоступна. Попробуйте через минуту.",
-  authBridgeOk:
-    "Готово. Вернитесь на сайт Zovus — вход или привязка подтвердятся автоматически.",
-  authBridgeFail:
-    "Не удалось подтвердить вход с сайта. Откройте кнопку на сайте ещё раз и повторите.",
+  linkCodeIssued:
+    "Откройте ссылку ниже, войдите на zovus.ru (email, Яндекс или VK) — Telegram привяжется к аккаунту. Код действует несколько минут.",
+  authBridgeRetired:
+    "Вход через Telegram на сайте больше недоступен. Ниже — ссылка для привязки уже существующего аккаунта.",
+  authBridgeOk: "Готово.",
+  authBridgeFail: "Не удалось выполнить действие. Запросите новую ссылку: /start link",
   insufficientRunes: "Недостаточно рун для полного разбора. Пополните баланс на сайте.",
   fullReadingDone: "Полный разбор сохранён в вашей истории Zovus — он же на сайте.",
   fullReadingAskMore: "Можно задать уточняющий вопрос по этому раскладу — как на сайте.",
@@ -301,6 +303,8 @@ export function collectBodyCopySamples(): string[] {
     copy.needSiteAccount,
     copy.needSiteOnboarding,
     copy.siteBridgeDown,
+    copy.linkCodeIssued,
+    copy.authBridgeRetired,
     copy.authBridgeOk,
     copy.authBridgeFail,
     copy.insufficientRunes,

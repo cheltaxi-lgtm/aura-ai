@@ -246,8 +246,8 @@ export async function siteSupport(
   });
 }
 
-export async function siteAuthBridgeConfirm(input: {
-  token: string;
+/** Bot mints a one-time link code; site auth then binds telegram_user_id (not Telegram login). */
+export async function siteLinkCode(input: {
   telegramUserId: number;
   username?: string | null;
   firstName?: string | null;
@@ -255,10 +255,12 @@ export async function siteAuthBridgeConfirm(input: {
 }) {
   return siteFetch<{
     ok: boolean;
-    purpose?: string;
+    alreadyLinked?: boolean;
+    code?: string;
+    linkUrl?: string;
+    expiresAt?: string;
     error?: string;
-  }>("/api/internal/bot/auth-bridge", {
-    token: input.token,
+  }>("/api/internal/bot/link-code", {
     telegram_user_id: input.telegramUserId,
     username: input.username ?? undefined,
     first_name: input.firstName ?? undefined,

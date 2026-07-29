@@ -1,8 +1,4 @@
-import { normalizeAuthEmail } from "@/lib/auth";
-import { getProfileUserIdForAccount, recordAccountLegalConsent } from "@/lib/accounts";
 import { query, withTransaction, queryClient } from "@/lib/db";
-import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
-import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import type { TelegramLoginPayload } from "./verify";
 
 export type TelegramIdentityRow = {
@@ -14,15 +10,6 @@ export type TelegramIdentityRow = {
   first_name: string | null;
   linked_at: string;
 };
-
-function displayName(data: TelegramLoginPayload): string {
-  const parts = [data.first_name, data.last_name].filter(Boolean).join(" ").trim();
-  return normalizeStoredDisplayName(parts || data.username || `Telegram ${data.id}`);
-}
-
-function syntheticEmail(telegramUserId: number): string {
-  return normalizeAuthEmail(`telegram_${telegramUserId}@oauth.zovus.local`);
-}
 
 export async function findTelegramIdentity(
   telegramUserId: number
@@ -73,120 +60,18 @@ export type TelegramLoginResult =
     }
   | { ok: false; code: "consent_required" | "not_found" };
 
-export async function loginOrRegisterTelegram(opts: {
+/**
+ * Disabled: Telegram must not authenticate users (149-FZ art.8 p.10).
+ * Routes return 410; this fails closed if called.
+ */
+export async function loginOrRegisterTelegram(_opts: {
   data: TelegramLoginPayload;
   mode: "login" | "register";
   acceptedTerms: boolean;
   ageConfirmed: boolean;
   marketingConsent: boolean;
 }): Promise<TelegramLoginResult> {
-  const existing = await findTelegramIdentity(opts.data.id);
-  if (existing) {
-    await query(
-      `UPDATE user_telegram_identities
-       SET username = COALESCE($2, username),
-           photo_url = COALESCE($3, photo_url),
-           first_name = COALESCE($4, first_name),
-           last_login_at = NOW(),
-           updated_at = NOW()
-       WHERE telegram_user_id = $1`,
-      [opts.data.id, opts.data.username ?? null, opts.data.photo_url ?? null, opts.data.first_name]
-    );
-    const { rows } = await query<{ email: string; name: string }>(
-      `SELECT email, name FROM user_accounts WHERE id = $1`,
-      [existing.user_account_id]
-    );
-    const account = rows[0];
-    if (!account) return { ok: false, code: "not_found" };
-    const profileUserId = await getProfileUserIdForAccount(existing.user_account_id);
-    console.info("[auth] telegram_login", { accountId: existing.user_account_id });
-    return {
-      ok: true,
-      accountId: existing.user_account_id,
-      email: account.email,
-      name: account.name,
-      isNewUser: false,
-      needsProfile: !profileUserId,
-      profileUserId,
-    };
-  }
-
-  if (opts.mode === "login") {
-    return { ok: false, code: "not_found" };
-  }
-  if (!opts.acceptedTerms || !opts.ageConfirmed) {
-    return { ok: false, code: "consent_required" };
-  }
-
-  const name = displayName(opts.data);
-  const email = syntheticEmail(opts.data.id);
-
-  const accountId = await withTransaction(async (client) => {
-    await queryClient(client, "SELECT pg_advisory_xact_lock(hashtext($1))", [
-      `telegram:${opts.data.id}`,
-    ]);
-    const again = await queryClient<{ user_account_id: string }>(
-      client,
-      `SELECT user_account_id FROM user_telegram_identities WHERE telegram_user_id = $1`,
-      [opts.data.id]
-    );
-    if (again.rows[0]) return again.rows[0].user_account_id;
-
-    const now = new Date().toISOString();
-    const created = await queryClient<{ id: string }>(
-      client,
-      `INSERT INTO user_accounts (
-         email, password_hash, name,
-         terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at
-       ) VALUES ($1, NULL, $2, $3, $4, $5, $6)
-       RETURNING id`,
-      [
-        email,
-        name,
-        now,
-        now,
-        opts.marketingConsent,
-        opts.marketingConsent ? now : null,
-      ]
-    );
-    const id = created.rows[0]!.id;
-    await queryClient(
-      client,
-      `INSERT INTO user_telegram_identities (
-         user_account_id, telegram_user_id, username, photo_url, first_name, last_login_at
-       ) VALUES ($1, $2, $3, $4, $5, NOW())`,
-      [
-        id,
-        opts.data.id,
-        opts.data.username ?? null,
-        opts.data.photo_url ?? null,
-        opts.data.first_name,
-      ]
-    );
-    return id;
-  });
-
-  await recordAccountLegalConsent(accountId, {
-    ageConfirmed: true,
-    acceptedTerms: true,
-    marketingConsent: opts.marketingConsent,
-  });
-
-  const profileUserId = await getProfileUserIdForAccount(accountId);
-  if (profileUserId) {
-    await grantStarterRunesIfNeeded(profileUserId);
-  }
-
-  console.info("[auth] telegram_register", { accountId });
-  return {
-    ok: true,
-    accountId,
-    email,
-    name,
-    isNewUser: true,
-    needsProfile: !profileUserId,
-    profileUserId,
-  };
+  return { ok: false, code: "not_found" };
 }
 
 export type TelegramLinkResult =

@@ -5,7 +5,6 @@ import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
-import TelegramBridgeButton from "@/components/auth/TelegramBridgeButton";
 import { trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
@@ -230,41 +229,9 @@ export default function SocialAuthButtons({
         </div>
       ) : null}
 
-      {ordered.length > 0 ? (
-        <p className="text-center text-xs text-aura-ivory/45">или через Telegram</p>
-      ) : null}
-      <TelegramBridgeButton
-        purpose={mode === "register" ? "register" : "login"}
-        acceptedTerms={acceptedTerms}
-        ageConfirmed={ageConfirmed}
-        marketingConsent={marketingConsent}
-        disabled={disabled || consentBlocked}
-        consentBlocked={consentBlocked}
-        onConsentNeeded={() => {
-          if (consentScrollTargetId) {
-            document.getElementById(consentScrollTargetId)?.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-          }
-        }}
-        onSuccess={(result) => {
-          if (mode === "register") {
-            trackRegistrationStarted(resolveRegistrationSource("oauth_telegram"));
-          }
-          const params = new URLSearchParams({
-            returnTo,
-            mode,
-            new: result.isNewUser ? "1" : "0",
-            needsProfile: result.needsProfile ? "1" : "0",
-          });
-          window.location.assign(`/auth/oauth/complete?${params.toString()}`);
-        }}
-      />
-
       {consentBlocked ? (
         <p className="auth-salon-hint text-center">
-          Отметьте возраст 18+ и согласие с условиями — затем можно войти через Telegram
+          Подтвердите возраст и согласие с условиями, чтобы продолжить
         </p>
       ) : null}
       {nativeError ? <p className="text-center text-xs text-red-300">{nativeError}</p> : null}

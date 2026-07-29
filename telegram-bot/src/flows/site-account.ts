@@ -2,7 +2,7 @@ import type { Context } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { setZovusUserId, type BotUser } from "../db/repos.js";
-import { siteResolve, type SiteResolve } from "../domain/site-client.js";
+import { siteLinkCode, siteResolve, type SiteResolve } from "../domain/site-client.js";
 import { continueOnSiteKeyboard, linkAccountKeyboard, salonKeyboard } from "../keyboards/index.js";
 import { ensureOnboarded } from "./helpers.js";
 
@@ -14,6 +14,25 @@ export async function syncSiteAccount(user: BotUser): Promise<SiteResolve> {
     }
   }
   return resolved;
+}
+
+/** Mint post-auth bind URL (bot → site link-code). Never issues Telegram login. */
+export async function issueSiteLinkUrl(
+  ctx: Context,
+  user: BotUser
+): Promise<string | null> {
+  try {
+    const { data } = await siteLinkCode({
+      telegramUserId: user.telegram_user_id,
+      username: ctx.from?.username ?? null,
+      firstName: ctx.from?.first_name ?? null,
+      photoUrl: null,
+    });
+    if (data.ok && data.linkUrl) return data.linkUrl;
+  } catch (err) {
+    console.error("[site-account] link-code failed", err);
+  }
+  return null;
 }
 
 /** Require linked Zovus account for product actions (site as source of truth). */
@@ -42,8 +61,9 @@ export async function ensureSiteLinked(
   }
 
   if (!site.linked) {
+    const linkUrl = (await issueSiteLinkUrl(ctx, user)) || site.linkUrl;
     await ctx.reply(copy.needSiteAccount, {
-      reply_markup: linkAccountKeyboard(site.linkUrl),
+      reply_markup: linkAccountKeyboard(linkUrl),
     });
     return null;
   }

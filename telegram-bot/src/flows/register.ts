@@ -61,48 +61,20 @@ import {
   handleFreeTextQuestion,
   handleOwnQuestionPrompt,
 } from "./spread.js";
-import { ensureSiteLinked, syncSiteAccount } from "./site-account.js";
+import { ensureSiteLinked, issueSiteLinkUrl, syncSiteAccount } from "./site-account.js";
 import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
-import { siteAuthBridgeConfirm, siteHistory, siteRunes } from "../domain/site-client.js";
+import { siteHistory, siteRunes } from "../domain/site-client.js";
 
 export function registerFlows(bot: Bot): void {
   bot.command("start", async (ctx) => {
     if (!ctx.from || !ctx.chat) return;
     const payload = typeof ctx.match === "string" ? ctx.match : "";
 
-    // Site login/register/link bridge: /start a_<32hex>
-    const authToken = /^a_([a-f0-9]{32})$/i.exec(payload)?.[1]?.toLowerCase();
-    if (authToken) {
-      upsertUser({
-        telegramUserId: ctx.from.id,
-        chatId: ctx.chat.id,
-        username: ctx.from.username,
-        firstName: ctx.from.first_name,
-        languageCode: ctx.from.language_code,
-      });
-      try {
-        const { data } = await siteAuthBridgeConfirm({
-          token: authToken,
-          telegramUserId: ctx.from.id,
-          username: ctx.from.username ?? null,
-          firstName: ctx.from.first_name ?? null,
-          photoUrl: null,
-        });
-        if (data.ok) {
-          trackEvent("auth_bridge_ok", ctx.from.id, { purpose: data.purpose || "" });
-          await ctx.reply(copy.authBridgeOk, { reply_markup: salonKeyboard() });
-        } else {
-          trackEvent("auth_bridge_fail", ctx.from.id, { error: data.error || "" });
-          await ctx.reply(copy.authBridgeFail, { reply_markup: salonKeyboard() });
-        }
-      } catch (err) {
-        console.error("[auth-bridge]", err);
-        await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-      }
-      // Continue light onboarding so bot keyboard is available after site auth.
-    }
+    // Legacy site→bot login deep links are disabled (149-FZ). Offer bind-only link-code instead.
+    const legacyAuth = /^a_[a-f0-9]{32}$/i.test(payload);
+    const wantsLink = legacyAuth || /^link(?:_|$)/i.test(payload) || payload.toLowerCase() === "link";
 
-    const attribution = authToken ? {} : parseStartPayload(payload);
+    const attribution = wantsLink && !payload.startsWith("ref_") ? {} : parseStartPayload(payload);
     const user = upsertUser({
       telegramUserId: ctx.from.id,
       chatId: ctx.chat.id,
@@ -111,16 +83,28 @@ export function registerFlows(bot: Bot): void {
       languageCode: ctx.from.language_code,
       attribution,
     });
-    if (!authToken && (attribution.ref?.startsWith("r") || payload.startsWith("ref_"))) {
+    if (!wantsLink && (attribution.ref?.startsWith("r") || payload.startsWith("ref_"))) {
       const code = attribution.ref?.startsWith("ref_")
         ? attribution.ref.slice(4)
         : attribution.ref || payload.replace(/^ref_/, "");
       if (code) applyReferral(ctx.from.id, code);
     }
     ensureRefCode(ctx.from.id);
-    track(user, "bot_start", { has_payload: Boolean(payload), auth_bridge: Boolean(authToken) });
+    track(user, "bot_start", { has_payload: Boolean(payload), link_flow: wantsLink });
 
-    if (authToken) {
+    if (wantsLink) {
+      if (legacyAuth) {
+        await ctx.reply(copy.authBridgeRetired);
+      }
+      const linkUrl = await issueSiteLinkUrl(ctx, user);
+      if (!linkUrl) {
+        await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+        return;
+      }
+      trackEvent("link_code_issued", ctx.from.id, {});
+      await ctx.reply(copy.linkCodeIssued, {
+        reply_markup: linkAccountKeyboard(linkUrl),
+      });
       const freshAuth = getUser(ctx.from.id)!;
       if (!freshAuth.age_confirmed_at) {
         await ctx.reply(copy.ageAsk, { reply_markup: ageKeyboard() });
@@ -480,7 +464,10 @@ async function showProfile(ctx: Context): Promise<void> {
   const code = ensureRefCode(user.telegram_user_id);
   const linked = Boolean(site?.linked || user.zovus_user_id);
   const pending = findLatestUnclaimedCtaSession(user.telegram_user_id);
-  const linkUrl = site?.linkUrl || pending?.cta_url || `${botConfig.siteUrl}/cabinet`;
+  let linkUrl = site?.linkUrl || pending?.cta_url || `${botConfig.siteUrl}/cabinet`;
+  if (!linked) {
+    linkUrl = (await issueSiteLinkUrl(ctx, user)) || linkUrl;
+  }
   const bal =
     site?.runeBalance != null ? `\nРуны: ${site.runeBalance}` : "";
   const body = copy.profile({
