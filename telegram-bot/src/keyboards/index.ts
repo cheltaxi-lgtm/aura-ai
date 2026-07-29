@@ -50,8 +50,11 @@ export const CB = {
   chatStop: "chat:stop",
   supportNew: "sup:new",
   supportReplyPrefix: "sup:reply:",
+  histPrefix: "hist:",
   histOpenPrefix: "hist:open:",
   histAskPrefix: "hist:ask:",
+  histPagePrefix: "hist:pg:",
+  histNoop: "hist:noop",
   /** Spread catalog (site /rasklady parity). Keep payloads short — TG limit 64 bytes. */
   catHome: "cat:home",
   catBack: "cat:back",
@@ -257,6 +260,32 @@ export function historyItemKeyboard(sessionId: string): InlineKeyboard {
     .text("📜 Открыть", `${CB.histOpenPrefix}${sessionId}`)
     .row()
     .url(`🕯 ${copy.continueDiscussionOnSite}`, buildSessionChatUrl(sessionId));
+}
+
+/** History album: one entry per page with ‹ ›. */
+export function historyPagerKeyboard(opts: {
+  page: number;
+  total: number;
+  sessionId?: string | null;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const total = Math.max(1, opts.total);
+  const page = Math.min(Math.max(0, opts.page), total - 1);
+
+  if (total > 1) {
+    if (page > 0) kb.text("‹", `${CB.histPagePrefix}${page - 1}`);
+    else kb.text("·", CB.histNoop);
+    kb.text(`${page + 1} / ${total}`, CB.histNoop);
+    if (page + 1 < total) kb.text("›", `${CB.histPagePrefix}${page + 1}`);
+    else kb.text("·", CB.histNoop);
+    kb.row();
+  }
+
+  if (opts.sessionId) {
+    kb.text("📜 Открыть расклад", `${CB.histOpenPrefix}${opts.sessionId}`).row();
+    kb.url(`🕯 ${copy.continueDiscussionOnSite}`, buildSessionChatUrl(opts.sessionId));
+  }
+  return kb;
 }
 
 export function settingsKeyboard(): InlineKeyboard {

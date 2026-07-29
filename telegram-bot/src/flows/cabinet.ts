@@ -1,9 +1,10 @@
-import type { Context } from "grammy";
+import type { Context, InlineKeyboard } from "grammy";
 import { copy } from "../copy/ru.js";
 import { clearFlow, getFlow, setFlow } from "../db/repos.js";
 import {
   chunkTelegramText,
   siteCabinet,
+  siteHistory,
   siteNatal,
   siteNumerology,
   siteReading,
@@ -15,11 +16,67 @@ import {
   chatFollowUpKeyboard,
   continueOnSiteKeyboard,
   dialogStopKeyboard,
+  historyPagerKeyboard,
   modulesKeyboard,
   salonKeyboard,
   supportListKeyboard,
 } from "../keyboards/index.js";
 import { ensureSiteLinked } from "./site-account.js";
+
+type HistoryItem = {
+  sessionId: string;
+  characterKey: string;
+  date: string;
+  topic: string;
+  cards: string[];
+  preview: string;
+};
+
+type HistoryViewState = {
+  items: HistoryItem[];
+  page: number;
+};
+
+function isNotModifiedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /message is not modified/i.test(msg);
+}
+
+async function renderHistoryMessage(
+  ctx: Context,
+  text: string,
+  reply_markup: InlineKeyboard
+): Promise<void> {
+  if (ctx.callbackQuery?.message) {
+    try {
+      await ctx.editMessageText(text, { reply_markup });
+      return;
+    } catch (err) {
+      if (isNotModifiedError(err)) return;
+      console.warn("[history] edit failed, falling back to reply", err);
+    }
+  }
+  await ctx.reply(text, { reply_markup });
+}
+
+function formatHistoryPage(item: HistoryItem, page: number, total: number): string {
+  const cards = (item.cards ?? []).filter(Boolean).join(" · ");
+  const preview = (item.preview || "").trim();
+  return [
+    `${copy.historyTitle}`,
+    `· ${page + 1} / ${total} ·`,
+    "",
+    item.topic || item.characterKey || "Расклад",
+    item.date ? item.date.slice(0, 10) : "",
+    cards,
+    preview ? `\n${preview}` : "",
+  ]
+    .filter((line) => line !== "")
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 3500);
+}
 
 function linkKb(url?: string | null) {
   return url ? continueOnSiteKeyboard(url) : salonKeyboard();
@@ -362,6 +419,115 @@ export async function stopActiveDialog(ctx: Context): Promise<void> {
   if (!ctx.from) return;
   clearFlow(ctx.from.id);
   await ctx.reply(copy.chatStopped, { reply_markup: salonKeyboard() });
+}
+
+export async function showHistory(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+
+  try {
+    const { data } = await siteHistory(linked.user.telegram_user_id, 30);
+    if (!data.ok || !data.items?.length) {
+      await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
+      return;
+    }
+
+    const items: HistoryItem[] = data.items.map((r) => ({
+      sessionId: r.sessionId,
+      characterKey: r.characterKey || "",
+      date: r.date || "",
+      topic: r.topic || "",
+      cards: r.cards ?? [],
+      preview: r.preview || "",
+    }));
+
+    const state: HistoryViewState = { items, page: 0 };
+    setFlow(linked.user.telegram_user_id, "history_view", "page", state as unknown as Record<string, unknown>);
+
+    const item = items[0]!;
+    await renderHistoryMessage(
+      ctx,
+      formatHistoryPage(item, 0, items.length),
+      historyPagerKeyboard({
+        page: 0,
+        total: items.length,
+        sessionId: item.sessionId || null,
+      })
+    );
+  } catch (err) {
+    console.error("[history] site", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+export async function handleHistoryCallback(ctx: Context, data: string): Promise<boolean> {
+  if (!data.startsWith(CB.histPrefix)) return false;
+  const tid = ctx.from?.id;
+  if (!tid) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  if (data === CB.histNoop) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  if (data.startsWith(CB.histOpenPrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const sessionId = data.slice(CB.histOpenPrefix.length);
+    if (sessionId) await openHistoryReading(ctx, sessionId);
+    return true;
+  }
+
+  if (data.startsWith(CB.histAskPrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const sessionId = data.slice(CB.histAskPrefix.length);
+    if (sessionId) await beginChatFollowUp(ctx, sessionId);
+    return true;
+  }
+
+  if (!data.startsWith(CB.histPagePrefix)) {
+    return false;
+  }
+
+  const page = Number(data.slice(CB.histPagePrefix.length));
+  const flow = getFlow(tid);
+  if (!flow || flow.flow !== "history_view" || !Array.isArray(flow.data.items)) {
+    await ctx.answerCallbackQuery({ text: "Откройте историю снова" }).catch(() => undefined);
+    await showHistory(ctx);
+    return true;
+  }
+
+  const items = flow.data.items as HistoryItem[];
+  if (!items.length) {
+    await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);
+    return true;
+  }
+
+  const nextPage = Math.min(Math.max(0, Number.isFinite(page) ? page : 0), items.length - 1);
+  const state: HistoryViewState = { items, page: nextPage };
+  setFlow(tid, "history_view", "page", state as unknown as Record<string, unknown>);
+
+  const item = items[nextPage]!;
+  try {
+    await renderHistoryMessage(
+      ctx,
+      formatHistoryPage(item, nextPage, items.length),
+      historyPagerKeyboard({
+        page: nextPage,
+        total: items.length,
+        sessionId: item.sessionId || null,
+      })
+    );
+    await ctx
+      .answerCallbackQuery({ text: `${nextPage + 1} / ${items.length}` })
+      .catch(() => undefined);
+  } catch (err) {
+    console.error("[history] page edit failed", err);
+    await ctx.answerCallbackQuery({ text: "Не удалось перелистнуть" }).catch(() => undefined);
+  }
+  return true;
 }
 
 export async function openHistoryReading(ctx: Context, sessionId: string): Promise<void> {

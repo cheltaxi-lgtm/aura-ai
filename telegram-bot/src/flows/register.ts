@@ -35,7 +35,6 @@ import {
   ctaKeyboard,
   deleteConfirmKeyboard,
   deleteKeyboard,
-  historyItemKeyboard,
   inviteKeyboard,
   linkAccountKeyboard,
   salonKeyboard,
@@ -48,8 +47,9 @@ import {
   beginChatFollowUp,
   beginSupportReply,
   handleCabinetText,
-  openHistoryReading,
+  handleHistoryCallback,
   routeModuleCallback,
+  showHistory,
   showModulesMenu,
 } from "./cabinet.js";
 import { handleDay } from "./day.js";
@@ -64,7 +64,7 @@ import {
 } from "./spread.js";
 import { ensureSiteLinked, issueSiteLinkUrl, syncSiteAccount } from "./site-account.js";
 import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
-import { siteHistory, siteRunes } from "../domain/site-client.js";
+import { siteRunes } from "../domain/site-client.js";
 
 export function registerFlows(bot: Bot): void {
   bot.command("start", async (ctx) => {
@@ -406,18 +406,11 @@ export function registerFlows(bot: Bot): void {
     await beginSupportReply(ctx, ticketId);
   });
 
-  bot.callbackQuery(new RegExp(`^${CB.histOpenPrefix}(.+)$`), async (ctx) => {
-    const sessionId = ctx.match?.[1];
-    await ctx.answerCallbackQuery();
-    if (!sessionId) return;
-    await openHistoryReading(ctx, sessionId);
-  });
-
-  bot.callbackQuery(new RegExp(`^${CB.histAskPrefix}(.+)$`), async (ctx) => {
-    const sessionId = ctx.match?.[1];
-    await ctx.answerCallbackQuery();
-    if (!sessionId) return;
-    await beginChatFollowUp(ctx, sessionId);
+  bot.callbackQuery(new RegExp(`^${CB.histPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handleHistoryCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
   });
 
   bot.on("message:text", async (ctx) => {
@@ -508,34 +501,6 @@ async function showProfile(ctx: Context): Promise<void> {
         ? ctaKeyboard(pending.cta_url)
         : linkAccountKeyboard(linkUrl),
   });
-}
-
-async function showHistory(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
-  if (!linked) return;
-
-  try {
-    const { data } = await siteHistory(linked.user.telegram_user_id, 8);
-    if (!data.ok || !data.items?.length) {
-      await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
-      return;
-    }
-    for (const [i, r] of data.items.entries()) {
-      const cards = (r.cards ?? []).join(" · ");
-      const preview = r.preview ? `\n${r.preview}` : "";
-      const body =
-        `${i + 1}. ${r.topic || r.characterKey}\n${r.date.slice(0, 10)}${cards ? `\n${cards}` : ""}${preview}`.slice(
-          0,
-          900
-        );
-      await ctx.reply(body, {
-        reply_markup: r.sessionId ? historyItemKeyboard(r.sessionId) : salonKeyboard(),
-      });
-    }
-  } catch (err) {
-    console.error("[history] site", err);
-    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-  }
 }
 
 async function showRunes(ctx: Context): Promise<void> {
