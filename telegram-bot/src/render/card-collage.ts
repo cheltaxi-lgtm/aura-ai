@@ -52,7 +52,11 @@ async function cardFace(
   height: number
 ): Promise<Buffer> {
   const back = resolveBackPath();
-  const path = faceUp && card ? resolveCardPath(card.slug) : back;
+  const facePath = faceUp && card ? resolveCardPath(card.slug) : null;
+  if (faceUp && card && !facePath) {
+    console.warn(`[collage] missing asset for slug=${card.slug} — using back`);
+  }
+  const path = faceUp ? facePath ?? back : back;
   let pipeline = path
     ? sharp(path).resize(width, height, { fit: "cover" })
     : sharp({
@@ -64,7 +68,7 @@ async function cardFace(
         },
       });
 
-  if (faceUp && card?.reversed && path && path !== back) {
+  if (faceUp && card?.reversed && facePath) {
     pipeline = pipeline.rotate(180);
   }
 

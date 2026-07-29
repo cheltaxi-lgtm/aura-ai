@@ -32,17 +32,18 @@ const SUITS: Array<[string, string]> = [
   ["pentacles", "Пентаклей"],
 ];
 
+/** Rank slug must match files in public/decks/tarot-veronika (two-of-cups.webp, …). */
 const RANKS: Array<[string, string]> = [
   ["ace", "Туз"],
-  ["2", "2"],
-  ["3", "3"],
-  ["4", "4"],
-  ["5", "5"],
-  ["6", "6"],
-  ["7", "7"],
-  ["8", "8"],
-  ["9", "9"],
-  ["10", "10"],
+  ["two", "2"],
+  ["three", "3"],
+  ["four", "4"],
+  ["five", "5"],
+  ["six", "6"],
+  ["seven", "7"],
+  ["eight", "8"],
+  ["nine", "9"],
+  ["ten", "10"],
   ["page", "Паж"],
   ["knight", "Рыцарь"],
   ["queen", "Королева"],
