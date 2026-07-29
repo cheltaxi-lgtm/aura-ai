@@ -19,7 +19,7 @@ import {
 } from "./webmaster";
 import { adsSourceTokenFlags } from "./env";
 
-export type SourceName = "direct" | "metrika" | "webmaster" | "health";
+export type SourceName = "direct" | "metrika" | "webmaster" | "health" | "wordstat";
 
 async function saveSnapshot(
   source: SourceName,
@@ -119,10 +119,26 @@ export async function syncAllSources(): Promise<{
   direct: { ok: boolean; error?: string };
   metrika: { ok: boolean; error?: string };
   webmaster: { ok: boolean; error?: string };
+  wordstat: { ok: boolean; error?: string; skipped?: boolean };
 }> {
   const direct = await syncDirectSource();
   const metrika = await syncMetrikaSource();
   const webmaster = await syncWebmasterSource();
+
+  let wordstat: { ok: boolean; error?: string; skipped?: boolean } = {
+    ok: true,
+    skipped: true,
+  };
+  try {
+    const { syncWordstatSource } = await import("./wordstat");
+    // At most ~1×/day unless force (manual admin POST).
+    wordstat = await syncWordstatSource({ force: false });
+  } catch (e) {
+    wordstat = {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
 
   let directPayload: DirectSnapshot | null = null;
   let metrikaPayload: MetrikaSnapshot | null = null;
@@ -147,7 +163,7 @@ export async function syncAllSources(): Promise<{
     webmaster: webmasterPayload,
   });
 
-  return { direct, metrika, webmaster };
+  return { direct, metrika, webmaster, wordstat };
 }
 
 export async function loadSourceSnapshots() {

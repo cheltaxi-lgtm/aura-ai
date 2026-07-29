@@ -9,6 +9,7 @@ import AdminShell, {
 } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import { HorizontalBars, TrafficLineChart } from "@/modules/ads/admin/SourcesCharts";
+import WordstatPanel from "@/modules/ads/admin/WordstatPanel";
 import type { PeriodDays } from "@/modules/ads/sources/metrika";
 
 type Analytics = {
@@ -147,7 +148,7 @@ export default function AdsSourcesPage() {
     <AdminShell>
       <AdminTitle
         title="Источники"
-        subtitle="Метрика: визиты и поисковые фразы. Вебмастер: запросы в выдаче Яндекса."
+        subtitle="Метрика · Вебмастер · Wordstat по тематике Zovus"
       />
       <AdsAdminNav />
 
@@ -170,7 +171,7 @@ export default function AdsSourcesPage() {
           ))}
         </div>
         <AdminBtn onClick={() => void load(days)} disabled={busy}>
-          {busy ? "Загрузка…" : "Обновить"}
+          {busy ? "Загрузка…" : "Обновить Метрику"}
         </AdminBtn>
         {data?.fetchedAt ? (
           <span className="text-[11px] text-gray-500">
@@ -306,8 +307,10 @@ export default function AdsSourcesPage() {
         />
       </div>
 
+      <WordstatPanel />
+
       <p className="text-[11px] text-gray-600">
-        counter {m?.counterId || "—"} · данные Метрики за выбранный период, Вебмастер ~28д
+        counter {m?.counterId || "—"} · Метрика за период · Вебмастер ~28д · Wordstat история 90д
       </p>
     </AdminShell>
   );

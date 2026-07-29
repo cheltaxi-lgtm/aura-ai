@@ -49,9 +49,15 @@ wc -c "$BOT_ENV" | awk '{print "bot_env_bytes="$1}'
 grep -E '^(TELEGRAM_BOT_TOKEN|BOT_INTERNAL_SECRET|SITE_INTERNAL_BASE_URL|BOT_REQUIRE_SITE_ACCOUNT)=' "$BOT_ENV" | sed 's/=.*/=SET/'
 
 systemctl reset-failed zovus-telegram-bot.service || true
+systemctl daemon-reload || true
 systemctl restart zovus-telegram-bot.service
-sleep 5
-systemctl is-active zovus-telegram-bot.service
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS --max-time 2 http://127.0.0.1:8787/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+systemctl is-active zovus-telegram-bot.service || true
 curl -fsS http://127.0.0.1:8787/health; echo
 
 CODE=$(curl -sS -o /tmp/bot-resolve.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/internal/bot/resolve \

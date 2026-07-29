@@ -24,12 +24,20 @@ chmod 640 "$BOT_DIR/.env" || true
 cp /opt/aura-ai/hosting/zovus-telegram-bot.service /etc/systemd/system/zovus-telegram-bot.service
 sed -i 's/\r$//' /etc/systemd/system/zovus-telegram-bot.service
 cd "$BOT_DIR"
-sudo -u aura-ai npm install
+# npm cache under /opt/aura-ai must be writable by aura-ai (deploy may leave root-owned .npm).
+mkdir -p /opt/aura-ai/.npm
+chown -R aura-ai:aura-ai /opt/aura-ai/.npm || true
+sudo -u aura-ai npm install --cache /opt/aura-ai/.npm
 systemctl daemon-reload
 systemctl enable zovus-telegram-bot.service
 systemctl restart zovus-telegram-bot.service
-sleep 3
-systemctl is-active zovus-telegram-bot.service
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS --max-time 2 http://127.0.0.1:8787/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+systemctl is-active zovus-telegram-bot.service || true
 curl -fsS http://127.0.0.1:8787/health
 echo
 # site keys presence

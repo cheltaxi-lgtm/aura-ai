@@ -145,19 +145,27 @@ export class MetrikaSource implements KeywordSource {
   }
 }
 
-/** Wordstat / Cloud — degrade empty on fail or missing token. */
+/** Wordstat via Direct API v4 — degrade empty on fail or missing token. */
 export class WordstatSource implements KeywordSource {
   name = "wordstat";
 
   constructor(private seeds: string[] = []) {}
 
   async collect(): Promise<RawKeyword[]> {
-    const token = process.env.WORDSTAT_TOKEN;
-    if (!token || !this.seeds.length) return [];
     try {
-      // Placeholder: legacy Wordstat TLS is unreliable; keep empty-safe.
-      // When Cloud Wordstat is wired, enrich seeds here and cache in ads.keyword_stat.
-      return [];
+      const { fetchWordstatSnapshot } = await import("../sources/wordstat");
+      const snap = await fetchWordstatSnapshot({
+        seeds: this.seeds.length ? this.seeds : undefined,
+      });
+      return snap.phrases
+        .filter((p) => p.inTheme)
+        .slice(0, 200)
+        .map((p) => ({
+          phrase: p.phrase,
+          source: this.name,
+          freqExact: p.bucket === "with" ? p.shows : null,
+          freqPhrase: p.shows,
+        }));
     } catch {
       return [];
     }

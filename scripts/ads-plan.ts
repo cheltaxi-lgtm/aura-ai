@@ -26,7 +26,6 @@ async function main() {
     console.error(`config missing: ${config}`);
     process.exit(1);
   }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const yaml = require("yaml") as { parse: (s: string) => Record<string, unknown> };
   const cfg = yaml.parse(readFileSync(path, "utf8")) || {};
   const seeds = (cfg.seed_keywords as { phrase: string; freq?: number }[]) || [];

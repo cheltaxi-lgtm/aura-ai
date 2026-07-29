@@ -22,7 +22,6 @@ function loadWhitelist(): string[] {
   try {
     const path = join(process.cwd(), "config/ads/landing-whitelist.yaml");
     if (!existsSync(path)) return [];
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const yaml = require("yaml") as { parse: (s: string) => { paths?: string[] } };
     return yaml.parse(readFileSync(path, "utf8"))?.paths || [];
   } catch {

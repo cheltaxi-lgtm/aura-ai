@@ -92,6 +92,98 @@ export function TrafficLineChart({
   );
 }
 
+export function DualLineChart({
+  points,
+  height = 120,
+}: {
+  points: { date: string; a: number; b: number }[];
+  height?: number;
+}) {
+  if (!points.length) {
+    return (
+      <p className="py-6 text-center text-sm text-gray-600">Нет истории прогонов</p>
+    );
+  }
+  const w = 640;
+  const h = height;
+  const pad = { t: 12, r: 12, b: 24, l: 36 };
+  const innerW = w - pad.l - pad.r;
+  const innerH = h - pad.t - pad.b;
+  const maxV = Math.max(1, ...points.flatMap((p) => [p.a, p.b]));
+  const x = (i: number) =>
+    pad.l + (points.length <= 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
+  const y = (v: number) => pad.t + innerH - (v / maxV) * innerH;
+  const line = (key: "a" | "b") =>
+    points
+      .map(
+        (d, i) =>
+          `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(d[key]).toFixed(1)}`
+      )
+      .join(" ");
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg viewBox={`0 0 ${w} ${h}`} className="h-auto w-full min-w-[400px]" role="img">
+        {[0, 0.5, 1].map((t) => {
+          const v = Math.round(maxV * t);
+          return (
+            <g key={t}>
+              <line
+                x1={pad.l}
+                x2={w - pad.r}
+                y1={y(v)}
+                y2={y(v)}
+                stroke="rgba(255,255,255,0.06)"
+              />
+              <text
+                x={pad.l - 6}
+                y={y(v) + 3}
+                textAnchor="end"
+                className="fill-gray-600"
+                fontSize="10"
+              >
+                {v}
+              </text>
+            </g>
+          );
+        })}
+        <path d={line("a")} fill="none" stroke="rgba(212,175,55,0.9)" strokeWidth="2" />
+        <path
+          d={line("b")}
+          fill="none"
+          stroke="rgba(52,211,153,0.9)"
+          strokeWidth="2"
+          strokeDasharray="4 3"
+        />
+        {points.map((d, i) =>
+          i % Math.max(1, Math.ceil(points.length / 6)) === 0 ||
+          i === points.length - 1 ? (
+            <text
+              key={d.date}
+              x={x(i)}
+              y={h - 6}
+              textAnchor="middle"
+              className="fill-gray-600"
+              fontSize="9"
+            >
+              {d.date.slice(5, 10)}
+            </text>
+          ) : null
+        )}
+      </svg>
+      <div className="mt-1 flex gap-4 text-[11px] text-gray-500">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-0.5 w-4 bg-aura-gold" /> В теме
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-emerald-400" />{" "}
+          В коридоре
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function HorizontalBars({
   items,
   valueKey = "visits",
