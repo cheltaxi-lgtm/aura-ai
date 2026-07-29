@@ -23,7 +23,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { isSearchIndexableIntentSlug } from "@/lib/seo/indexability";
 import { buildIntentFaq, intentFaqJsonLd } from "@/lib/seo/intent-faq";
 import { SPREAD_INTENT_CATEGORY_LABELS } from "@/lib/spread-intents/types";
-import { getSpreadHubBySlug } from "@/lib/seo/hubs";
+import { getSeoMetaOverride } from "@/lib/seo/seo-meta-overrides";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
@@ -73,6 +73,7 @@ export default async function SpreadIntentPage({
   const article = getArticleForIntent(slug);
   const faq = buildIntentFaq(intent);
   const categoryHub = getCategoryHubPath(intent.category);
+  const metaExtra = getSeoMetaOverride(slug);
 
   const breadcrumbs = [
     { name: "Zovus", path: "/" },
@@ -92,6 +93,11 @@ export default async function SpreadIntentPage({
       </p>
       <h1 className="mt-2 font-display text-3xl font-bold">{intent.h1}</h1>
       <p className="mt-4 text-white/70">{intent.intro}</p>
+      {metaExtra?.bodyParagraphs?.map((paragraph) => (
+        <p key={paragraph.slice(0, 48)} className="mt-3 text-white/65">
+          {paragraph}
+        </p>
+      ))}
 
       <div className="mt-6 flex flex-wrap items-center gap-3 text-sm text-white/50">
         {master ? (
@@ -126,7 +132,15 @@ export default async function SpreadIntentPage({
       <SeoTrustBlock />
 
       <SeoSection title="Когда подходит этот расклад">
-        <p>{intent.description}</p>
+        {metaExtra?.whenFits?.length ? (
+          <ul className="list-disc space-y-2 pl-5">
+            {metaExtra.whenFits.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>{intent.description}</p>
+        )}
       </SeoSection>
 
       <SeoSection title="Что покажут карты">

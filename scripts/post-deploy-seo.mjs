@@ -46,6 +46,11 @@ const CORE_PRIORITY = [
   `${base}/numerology/name-compatibility`,
   `${base}/natalnaya-karta`,
   `${base}/rasklady`,
+  `${base}/rasklady/lyubov`,
+  `${base}/rasklady/vernost-i-doverie`,
+  `${base}/rasklady/chuvstva-i-myisli`,
+  `${base}/rasklady/budushchee`,
+  `${base}/rasklady/kariera`,
   `${base}/faq`,
   `${base}/cards`,
   `${base}/prognoz`,
@@ -54,8 +59,15 @@ const CORE_PRIORITY = [
   `${base}/privacy`,
 ];
 
-/** High-value pages recently dropped from Yandex — force IndexNow re-submit. */
+/** High-value pages for Yandex recovery — pillars first, then intent pages. */
 const RECRAWL_PRIORITY = [
+  `${base}/`,
+  `${base}/photo-rasklad`,
+  `${base}/taro`,
+  `${base}/gadanie`,
+  `${base}/rasklady`,
+  `${base}/rasklady/lyubov`,
+  `${base}/rasklady/vernost-i-doverie`,
   `${base}/rasklady/chto-meshaet-otnosheniyam`,
   `${base}/rasklady/na-vernost`,
   `${base}/rasklady/zhdat-ili-zabyt`,
@@ -66,22 +78,31 @@ const RECRAWL_PRIORITY = [
   `${base}/rasklady/kak-naladit-otnosheniya-s-papoy`,
   `${base}/rasklady/prognoz-na-nedelyu`,
   `${base}/rasklady/chto-on-delaet-nochyu`,
-  `${base}/rasklady/lyubov`,
+  `${base}/rasklady/chto-on-chuvstvuet`,
+  `${base}/rasklady/vernyotsya-li-on`,
+  `${base}/rasklady/lyubit-li-on-menya`,
+  `${base}/rasklady/est-li-izmena`,
+  `${base}/rasklady/chto-on-skryvaet`,
+  `${base}/rasklady/pochemu-on-molchit`,
   `${base}/cards/6-mechey`,
   `${base}/cards/koroleva-zhezlov`,
   `${base}/cards/tuz-mechey`,
   `${base}/cards/pazh-zhezlov`,
   `${base}/cards/ierofant`,
+  `${base}/cards`,
 ];
 
 /** Wave-1 organic + natal/matrix pillars for IndexNow / checks. */
 const ARTICLE_PRIORITY_SLUGS = [
   "rasshifrovka-taro-po-foto",
+  "rasshifrovka-taro-po-foto-besplatno",
+  "besplatnyy-rasklad-taro-online",
+  "kak-fotografirovat-rasklad-taro",
+  "foto-rasklad-ili-klassicheskoe-taro",
   "zhdat-ili-otpustit-taro",
   "svoboden-li-on-gadanie",
   "znachenie-kart-lenormand",
   "sochetaniya-lenormand",
-  "foto-rasklad-ili-klassicheskoe-taro",
   "ascendent-v-natalnoy-karte",
   "matrica-sudby-dengi",
   "matrica-sudby-otnosheniya",

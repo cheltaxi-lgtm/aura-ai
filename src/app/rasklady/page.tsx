@@ -7,9 +7,9 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import RaskladyCatalog from "@/components/seo/RaskladyCatalog";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: `Расклады Таро онлайн — каталог вопросов | ${BRAND_NAME}`,
+  title: `Каталог раскладов Таро — готовые вопросы онлайн | ${BRAND_NAME}`,
   description:
-    "Каталог готовых вопросов: Zovus подберёт схему расклада и разбор с ИИ-наставником — с памятью сессии.",
+    "Каталог раскладов Таро онлайн: любовь, верность, будущее, работа. Выберите готовый вопрос — Zovus подберёт схему и разбор с наставником.",
   path: "/rasklady",
 });
 
@@ -18,10 +18,15 @@ export default function RaskladyCatalogPage() {
     <SeoPageShell backHref="/" backLabel="На главную">
       <SeoPageTracker goal="rasklady_hub_view" />
       <p className="text-sm text-aura-gold/80">Каталог раскладов</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Расклады Zovus</h1>
+      <h1 className="mt-2 font-display text-3xl font-bold">Каталог раскладов Таро онлайн</h1>
       <p className="mt-4 text-white/70">
-        Выберите вопрос — откроем подходящую схему. Формулировки про партнёра подстраиваются под пол
-        из анкеты: для мужчин «она», для женщин «он».
+        Выберите готовый вопрос — откроем подходящую схему и разбор. Формулировки про партнёра
+        подстраиваются под пол из анкеты: для мужчин «она», для женщин «он». Уже разложили карты
+        дома —{" "}
+        <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
+          расшифруйте фото расклада
+        </Link>
+        .
       </p>
 
       <RaskladyCatalog />

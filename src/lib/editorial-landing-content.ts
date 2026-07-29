@@ -9,9 +9,10 @@ export const EDITORIAL_SECTION_IDS = {
 } as const;
 
 export const EDITORIAL_HERO = {
-  title: "Спросите то, о чём думаете каждый день",
-  subtitle: "Три карты откроются прямо здесь — бесплатно и без регистрации.",
-  primaryCta: "Открыть 3 карты",
+  title: "Расклад Таро онлайн бесплатно",
+  subtitle:
+    "Три карты откроются прямо здесь — без регистрации. Или загрузите фото своего расклада на расшифровку.",
+  primaryCta: "Открыть 3 карты бесплатно",
   secondaryCta: "Как проходит сеанс",
   microcopy: "Бесплатно · без привязки карты · 18+",
 } as const;
@@ -132,7 +133,7 @@ export const EDITORIAL_PRACTICES = [
     image: "/landing/practices/photo-tarot.jpg",
     cta: "Загрузить фото расклада",
     guestReturn: { photo: true },
-    loggedInHref: "/?photo=1",
+    loggedInHref: "/photo-rasklad",
   },
   {
     id: "numerology",
@@ -167,7 +168,10 @@ export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Мастера", hash: EDITORIAL_SECTION_IDS.masters },
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Натальная карта", href: "/natalnaya-karta" },
-  { label: "Таро", href: "/rasklad" },
+  { label: "Таро", href: "/taro" },
+  { label: "Гадание", href: "/gadanie" },
+  { label: "Фото-расклад", href: "/photo-rasklad" },
+  { label: "Расклады", href: "/rasklady" },
   { label: "Нумерология", href: "/numerology" },
   { label: "Моё пространство", href: "/cabinet", guestHref: "/auth/user/login" },
 ];

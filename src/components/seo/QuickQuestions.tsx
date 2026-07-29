@@ -29,8 +29,9 @@ const ENTRY_LINKS = [
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Натальная карта", href: "/natalnaya-karta" },
   { label: "Все расклады", href: "/rasklady" },
-  { label: "Фото-расклад", href: "/?photo=1" },
-  { label: "Отметить карты", href: "/?photo=1&mode=mark" },
+  { label: "Фото-расклад", href: "/photo-rasklad" },
+  { label: "Таро онлайн", href: "/taro" },
+  { label: "Гадание", href: "/gadanie" },
   { label: "Обряды", href: "/obryady" },
   { label: "Нумерология", href: "/numerology" },
   { label: "Статьи", href: "/statyi" },
@@ -114,16 +115,19 @@ export default function QuickQuestions({
 
         <p className="quick-questions__section-label">Популярные вопросы</p>
         <div className="quick-questions__chips">
-          {QUICK_INTENT_SLUGS.map((slug) => (
+          {QUICK_INTENT_SLUGS.map((slug) => {
+            const seoHref = `/rasklady/${slug}`;
+            return (
             <a
               key={slug}
-              href={`/?intent=${encodeURIComponent(slug)}`}
-              onClick={go(`/?intent=${encodeURIComponent(slug)}`, slug, quickQuestion(slug))}
+              href={seoHref}
+              onClick={go(seoHref, slug, quickQuestion(slug))}
               className="quick-questions__chip"
             >
               {quickLabel(slug)}
             </a>
-          ))}
+            );
+          })}
         </div>
 
         <div className="quick-questions__entries-wrap">
@@ -144,9 +148,9 @@ export default function QuickQuestions({
               <span key={item.slug}>
                 {i > 0 ? " · " : ""}
                 <a
-                  href={`/?intent=${encodeURIComponent(item.slug)}`}
+                  href={`/rasklady/${item.slug}`}
                   onClick={go(
-                    `/?intent=${encodeURIComponent(item.slug)}`,
+                    `/rasklady/${item.slug}`,
                     item.slug,
                     quickQuestion(item.slug)
                   )}

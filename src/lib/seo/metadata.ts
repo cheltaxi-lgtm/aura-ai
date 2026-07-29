@@ -9,8 +9,12 @@ import { BRAND_NAME, getAppUrl } from "@/lib/brand";
  * producing duplicated branding in the actual <title> tag.
  */
 function stripBrandSuffix(title: string): string {
-  const suffix = new RegExp(`\\s*[|·-]\\s*${BRAND_NAME}\\s*$`, "i");
-  return title.replace(suffix, "").trim();
+  // Match "| Zovus", "— Zovus", "– Zovus", "- Zovus" (ASCII / en / em dash).
+  const suffix = new RegExp(`\\s*[|·\\-–—]\\s*${BRAND_NAME}\\s*$`, "i");
+  let clean = title.replace(suffix, "").trim();
+  // Collapse accidental double brand left by older absolute titles.
+  clean = clean.replace(suffix, "").trim();
+  return clean;
 }
 
 export function buildSeoMetadata({

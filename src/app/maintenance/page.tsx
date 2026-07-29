@@ -3,7 +3,7 @@ import MaintenanceAutoRedirect from "@/components/MaintenanceAutoRedirect";
 import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata = {
-  title: `Технические работы — ${BRAND_NAME}`,
+  title: "Технические работы",
   robots: { index: false, follow: false },
 };
 

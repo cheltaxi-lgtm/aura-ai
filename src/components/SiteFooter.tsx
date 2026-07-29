@@ -12,7 +12,6 @@ import {
   BRAND_VK_LABEL,
   BRAND_VK_URL,
 } from "@/lib/brand";
-import { navigateToSpreadCatalog } from "@/lib/app-shell-nav";
 import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
 import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
 import { EDITORIAL_FOOTER_TAGLINE, EDITORIAL_NAV } from "@/lib/editorial-landing-content";
@@ -165,13 +164,6 @@ export default function SiteFooter({
                 </Link>,
               ];
             })}
-            <button
-              type="button"
-              className="editorial-footer__link"
-              onClick={() => navigateToSpreadCatalog()}
-            >
-              Расклады
-            </button>
           </nav>
 
           <nav className="editorial-footer__col" aria-label="Документы">

@@ -3,10 +3,10 @@ import { BRAND_NAME, BRAND_URL } from "@/lib/brand";
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 
 export const SEO_DEFAULT_TITLE =
-  "Zovus — ИИ-наставники и персональные эзотерические консультации";
+  "Расклад Таро онлайн бесплатно — гадание на картах | Zovus";
 
 export const SEO_DEFAULT_DESCRIPTION =
-  "Zovus — сервис персональных эзотерических консультаций с ИИ-наставниками в художественных образах. Таро, руны, астрология и нумерология онлайн.";
+  "Расклад Таро онлайн бесплатно: три карты до регистрации, каталог вопросов, расшифровка по фото. Таро, руны, нумерология и натал с наставником в чате — Zovus.";
 
 export const SEO_KEYWORDS = [
   "Zovus",
@@ -114,8 +114,8 @@ export function getHomeStructuredData() {
       {
         "@type": "Service",
         "@id": `${BRAND_URL}/#service`,
-        name: "Персональные эзотерические консультации",
-        serviceType: "Онлайн-консультации",
+        name: "Расклад Таро онлайн бесплатно",
+        serviceType: "Онлайн-гадание на картах Таро",
         provider: { "@id": `${BRAND_URL}/#organization` },
         areaServed: {
           "@type": "Country",
@@ -123,7 +123,14 @@ export function getHomeStructuredData() {
         },
         url: BRAND_URL,
         description:
-          "Онлайн-сервис персональных эзотерических консультаций и духовных практик с выбором наставника.",
+          "Расклад Таро онлайн бесплатно: три карты без регистрации, каталог вопросов и расшифровка расклада по фото с наставником в чате.",
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "RUB",
+          description: "Три карты бесплатно до регистрации",
+          url: `${BRAND_URL}/?spread=triplet`,
+        },
       },
       {
         "@type": "FAQPage",

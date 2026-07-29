@@ -133,7 +133,6 @@ export default function DestinyMatrixPreview() {
       cancelled = true;
     };
     // Hydrate once after auth + age gate settle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, ageReady, isLoggedIn, user?.name]);
 
   useEffect(() => {
