@@ -51,7 +51,9 @@ import {
   handleMatrixCallback,
   routeModuleCallback,
   showHistory,
+  showMatrix,
   showModulesMenu,
+  showPhoto,
 } from "./cabinet.js";
 import { siteHistory } from "../domain/site-client.js";
 import { handleDay } from "./day.js";
@@ -464,6 +466,12 @@ export function registerFlows(bot: Bot): void {
 
 async function routeNav(ctx: Context, label: string): Promise<void> {
   switch (label) {
+    case NAV.matrix:
+      await showMatrix(ctx);
+      return;
+    case NAV.photo:
+      await showPhoto(ctx);
+      return;
     case NAV.spread:
       await beginCatalog(ctx);
       return;

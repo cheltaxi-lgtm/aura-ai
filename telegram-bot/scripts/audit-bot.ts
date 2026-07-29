@@ -205,7 +205,7 @@ async function main() {
   check("body copy has no emoji", bodyBad.length === 0, bodyBad[0]?.slice(0, 60));
   const buttonBad = Object.values(NAV).filter((label) => hasDisallowedEmoji(label));
   check("NAV button emoji whitelisted", buttonBad.length === 0, buttonBad.join(","));
-  check("NAV labels count", NAV_LABELS.size === 8);
+  check("NAV labels count", NAV_LABELS.size === 10);
 
   // 5) localDateKey across TZ
   const at = new Date("2026-07-28T22:30:00.000Z");

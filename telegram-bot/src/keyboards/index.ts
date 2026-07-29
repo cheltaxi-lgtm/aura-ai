@@ -6,9 +6,11 @@ import { isShareCardEnabled } from "../flags.js";
 
 /** Persistent bottom bar — emoji allowed on buttons only (not in message bodies). */
 export const NAV = {
+  matrix: "📜 Матрица",
+  photo: "📷 Расклад по фото",
   spread: "🔮 Расклад",
   day: "🃏 Карта дня",
-  history: "📜 История",
+  history: "📚 История",
   profile: "👤 Профиль",
   runes: "🪙 Руны",
   more: "📂 Ещё",
@@ -82,6 +84,9 @@ export const CB = {
 
 export function salonKeyboard(): Keyboard {
   return new Keyboard()
+    .text(NAV.matrix)
+    .text(NAV.photo)
+    .row()
     .text(NAV.spread)
     .text(NAV.day)
     .row()
@@ -197,15 +202,12 @@ export function continueOnSiteKeyboard(url: string, label: string = copy.continu
 export function modulesKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("✨ Натал", CB.modNatal)
-    .text("📜 Матрица", CB.modMatrix)
-    .row()
     .text("🕯 Обряды", CB.modRituals)
+    .row()
     .text("🔗 Совместный", CB.modJoint)
-    .row()
     .text("📝 Дневник", CB.modDiary)
-    .text("💬 Память", CB.modMemory)
     .row()
-    .text("🃏 Фото", CB.modPhoto)
+    .text("💬 Память", CB.modMemory)
     .text("✉️ Поддержка", CB.modSupport)
     .row()
     .text("📂 Кабинет", CB.modCabinet);
