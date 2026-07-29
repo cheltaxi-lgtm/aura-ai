@@ -8,6 +8,7 @@ import {
   audit,
   banUser,
   exportEventsCsv,
+  findSessionsByTokenPrefix,
   listSessions,
   listUsers,
   metricsSummary,
@@ -23,8 +24,8 @@ async function main(): Promise<void> {
   function help(): void {
     console.log(`Zovus bot admin
 
-  users | sessions <tg_id> | ban <tg_id>
-  flag <key> <0|1> | export-csv [path] | report | backup
+  users | sessions <tg_id> | session-prefix <prefix>
+  ban <tg_id> | flag <key> <0|1> | export-csv [path] | report | backup
   presence:sync | migrate:up | migrate:down
 `);
   }
@@ -42,7 +43,18 @@ async function main(): Promise<void> {
     case "sessions": {
       const id = Number(args[0]);
       for (const s of listSessions(id, 50)) {
-        console.log(`${s.created_at}\t${s.question}\texpires=${s.expires_at}`);
+        console.log(
+          `${s.created_at}\t${s.question}\texpires=${s.expires_at}\tprefix=${s.plain_token_prefix ?? "-"}`
+        );
+      }
+      break;
+    }
+    case "session-prefix": {
+      const prefix = args[0] ?? "";
+      for (const s of findSessionsByTokenPrefix(prefix, 50)) {
+        console.log(
+          `${s.id}\ttg=${s.telegram_user_id}\tprefix=${s.plain_token_prefix}\t${s.created_at}\t${s.question.slice(0, 60)}`
+        );
       }
       break;
     }

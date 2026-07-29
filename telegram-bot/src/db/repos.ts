@@ -65,6 +65,7 @@ export type GuestSessionRow = {
   teaser_prompt_version: string | null;
   teaser_model: string | null;
   session_token_hash: string;
+  plain_token_prefix?: string | null;
   fingerprint: string | null;
   question_source: string | null;
   source: string;
@@ -386,6 +387,12 @@ export function findSessionById(sessionId: string): GuestSessionRow | null {
   );
 }
 
+/** First N chars of the token body after `zg_` — debug/admin only, not enough to guess. */
+export function plainTokenPrefixFromToken(plainToken: string): string {
+  const body = plainToken.startsWith("zg_") ? plainToken.slice(3) : plainToken;
+  return body.slice(0, botConfig.plainTokenPrefixLen);
+}
+
 export function createGuestSession(input: {
   id?: string;
   telegramUserId: number;
@@ -396,6 +403,8 @@ export function createGuestSession(input: {
   teaserModel: string;
   teaserSeed: string;
   tokenHash: string;
+  /** Plain token used only to derive short prefix; never stored in full. */
+  plainToken?: string;
   fingerprint: string;
   questionSource: "chip" | "free";
   collageCacheKey?: string;
@@ -405,14 +414,15 @@ export function createGuestSession(input: {
   const expires = new Date(Date.now() + botConfig.sessionTtlMs).toISOString();
   const user = getUser(input.telegramUserId);
   const quotaDay = localDateKey(user);
+  const prefix = input.plainToken ? plainTokenPrefixFromToken(input.plainToken) : null;
   getDb()
     .prepare(
       `INSERT INTO bot_guest_sessions (
         id, telegram_user_id, question, cards, master, system, spread_id, deck_id,
         teaser_text, teaser_prompt_version, teaser_model, teaser_seed,
-        session_token_hash, fingerprint, question_source, source, collage_cache_key,
+        session_token_hash, plain_token_prefix, fingerprint, question_source, source, collage_cache_key,
         created_at, expires_at, claimed_at, quota_day
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?)`
     )
     .run(
       id,
@@ -428,6 +438,7 @@ export function createGuestSession(input: {
       input.teaserModel,
       input.teaserSeed,
       input.tokenHash,
+      prefix,
       input.fingerprint,
       input.questionSource,
       input.collageCacheKey ?? id,
@@ -436,6 +447,18 @@ export function createGuestSession(input: {
       quotaDay
     );
   return getDb().prepare(`SELECT * FROM bot_guest_sessions WHERE id = ?`).get(id) as GuestSessionRow;
+}
+
+export function findSessionsByTokenPrefix(prefix: string, limit = 20): GuestSessionRow[] {
+  const p = prefix.trim();
+  if (!p) return [];
+  return getDb()
+    .prepare(
+      `SELECT * FROM bot_guest_sessions
+       WHERE plain_token_prefix = ?
+       ORDER BY created_at DESC LIMIT ?`
+    )
+    .all(p, limit) as GuestSessionRow[];
 }
 
 export function listSessions(telegramUserId: number, limit = 10): GuestSessionRow[] {

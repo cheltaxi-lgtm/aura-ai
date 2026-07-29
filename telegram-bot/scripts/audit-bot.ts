@@ -25,7 +25,9 @@ import {
   createGuestSession,
   deleteUserData,
   findSessionById,
+  findSessionsByTokenPrefix,
   getUser,
+  plainTokenPrefixFromToken,
   releaseUpdate,
   setFlag,
   setTimezoneOffset,
@@ -222,6 +224,7 @@ async function main() {
   setTimezoneOffset(limUid, 600);
   let limUser = getUser(limUid)!;
   check("can draw before session", canDrawTriplet(limUser));
+  const limTok = createSessionToken();
   createGuestSession({
     id: "lim-1",
     telegramUserId: limUid,
@@ -235,10 +238,24 @@ async function main() {
     teaserPromptVersion: "a",
     teaserModel: "a",
     teaserSeed: "a",
-    tokenHash: hashSessionToken(createSessionToken()),
+    tokenHash: hashSessionToken(limTok),
+    plainToken: limTok,
     fingerprint: "fp2",
     questionSource: "free",
   });
+  const limSess = findSessionById("lim-1");
+  check(
+    "plain_token_prefix stored",
+    limSess?.plain_token_prefix === plainTokenPrefixFromToken(limTok)
+  );
+  check(
+    "full token not in session row",
+    !JSON.stringify(limSess).includes(limTok)
+  );
+  check(
+    "admin prefix search",
+    findSessionsByTokenPrefix(plainTokenPrefixFromToken(limTok)).some((s) => s.id === "lim-1")
+  );
   limUser = getUser(limUid)!;
   check("count today after draw", countTripletsToday(limUid, limUser) >= 1);
   check("cannot draw again same local day", !canDrawTriplet(limUser));
@@ -254,6 +271,14 @@ async function main() {
   check("token alphabet/length", isSessionToken(tok));
   check("token hash 64 hex", /^[a-f0-9]{64}$/.test(hashSessionToken(tok)));
   check("question hash no plaintext", !hashQuestion("секретный вопрос").includes("секрет"));
+  check(
+    "plain_token_prefix length",
+    plainTokenPrefixFromToken(tok).length === botConfig.plainTokenPrefixLen
+  );
+  check(
+    "plain_token_prefix shorter than token body",
+    plainTokenPrefixFromToken(tok).length < tok.length - 3
+  );
 
   // Deck integrity (78 cards + back)
   const deck = checkDeckIntegrity();

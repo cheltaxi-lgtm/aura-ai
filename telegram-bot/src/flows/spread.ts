@@ -192,6 +192,7 @@ async function runSpread(
     teaserModel: teaser.model,
     teaserSeed: teaser.seed,
     tokenHash: hashSessionToken(token),
+    plainToken: token,
     fingerprint: computeFingerprint(symbols),
     questionSource: source,
     collageCacheKey: sessionId,
