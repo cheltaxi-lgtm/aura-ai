@@ -32,6 +32,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/guest-triplet/teaser",
   "/api/guest-triplet/status",
   "/api/guest-triplet/claim",
+  "/api/guest-triplet/telegram-claim",
   "/api/debug/client-log",
   // Diagnostic breadcrumb only (camera/upload failures) — must not depend on
   // login state, otherwise failures from logged-out users vanish silently.

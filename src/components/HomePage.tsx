@@ -140,6 +140,11 @@ import {
   loadGuestResumeUiCache,
 } from "@/lib/guest-resume-ui-cache";
 import {
+  claimTgReceiptClient,
+  stashTgReceipt,
+  takeStashedTgReceipt,
+} from "@/lib/telegram/tg-receipt-client";
+import {
   GUEST_RESUME_TRANSITION_SUBTITLE,
 } from "@/lib/guest-triplet-resume";
 import {
@@ -669,6 +674,39 @@ export default function HomePage({
     },
     [isLoggedIn, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
+
+  // Telegram bot CTA: ?tg_receipt=zg_… — stash for login, claim when authenticated.
+  useEffect(() => {
+    if (typeof window === "undefined" || authLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("tg_receipt")?.trim() || "";
+    if (fromUrl.startsWith("zg_")) {
+      stashTgReceipt(fromUrl);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("tg_receipt");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    if (!isLoggedIn) return;
+    const token = takeStashedTgReceipt() || (fromUrl.startsWith("zg_") ? fromUrl : "");
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await claimTgReceiptClient(token);
+      if (cancelled) return;
+      if (!result.ok) {
+        setTripletNotice(result.message);
+        return;
+      }
+      setTripletNotice(
+        result.alreadyClaimed
+          ? "Расклад из Telegram уже в вашем кабинете."
+          : "Расклад из Telegram перенесён — те же карты ждут вас."
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isLoggedIn, setTripletNotice]);
 
   useEffect(() => {
     if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
@@ -3123,7 +3161,7 @@ export default function HomePage({
 
         {!bootstrapping && !showLanding && !(inPersonalFlow && step === "masters") ? (
           <h1 className="sr-only">
-            Zovus — приватный цифровой салон: расклады Таро, числа и астрология
+            Zovus — расклад Таро онлайн бесплатно, гадание и расшифровка по фото
           </h1>
         ) : null}
 

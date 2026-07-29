@@ -7,6 +7,7 @@ import {
   trackEvent,
 } from "../db/repos.js";
 import { buildFinalCtaUrl, hashSessionToken, isSessionToken } from "../domain/session/token.js";
+import { handleInternalReceipt } from "./internal-receipt.js";
 
 const redirectHits = new Map<string, { n: number; reset: number }>();
 
@@ -61,6 +62,10 @@ export function startHttpServer(bot?: Bot): void {
 
     if (req.method === "GET" && path.startsWith("/r/")) {
       handleRedirect(req, res);
+      return;
+    }
+
+    if (await handleInternalReceipt(req, res, path)) {
       return;
     }
 

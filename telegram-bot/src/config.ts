@@ -84,6 +84,8 @@ export const botConfig = {
   botUsername: process.env.BOT_USERNAME?.trim() || "zovus_card_bot",
   plainTokenPrefixLen: int("BOT_PLAIN_TOKEN_PREFIX_LEN", 6),
   skipAssetCheck: bool("BOT_SKIP_ASSET_CHECK", false),
+  /** Shared secret for aura-ai → bot internal API. Empty = endpoints disabled. */
+  internalSecret: process.env.BOT_INTERNAL_SECRET?.trim() || "",
   ritual: {
     pauseMsMin: int("BOT_RITUAL_PAUSE_MS_MIN", 2000),
     pauseMsMax: int("BOT_RITUAL_PAUSE_MS_MAX", 4000),
