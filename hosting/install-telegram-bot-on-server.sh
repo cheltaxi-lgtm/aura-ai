@@ -2,7 +2,17 @@
 set -euo pipefail
 BOT_DIR=/opt/aura-ai/telegram-bot
 test -d "$BOT_DIR" || { echo "missing $BOT_DIR"; exit 1; }
-test -f "$BOT_DIR/.env" || { echo "missing $BOT_DIR/.env — run wire-telegram-env first"; exit 1; }
+if [[ ! -f "$BOT_DIR/.env" ]] || ! grep -qE '^TELEGRAM_BOT_TOKEN=.' "$BOT_DIR/.env"; then
+  if [[ -f /opt/aura-ai/hosting/restore-bot-env-on-server.sh ]]; then
+    sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh
+    bash /opt/aura-ai/hosting/restore-bot-env-on-server.sh
+  else
+    echo "missing $BOT_DIR/.env — run wire-telegram-env first"; exit 1
+  fi
+fi
+# Ensure site bridge keys exist without wiping the file
+grep -qE '^SITE_INTERNAL_BASE_URL=' "$BOT_DIR/.env" || echo 'SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000' >> "$BOT_DIR/.env"
+grep -qE '^BOT_REQUIRE_SITE_ACCOUNT=' "$BOT_DIR/.env" || echo 'BOT_REQUIRE_SITE_ACCOUNT=true' >> "$BOT_DIR/.env"
 id -u aura-ai >/dev/null 2>&1 || useradd --system --home /opt/aura-ai --shell /usr/sbin/nologin aura-ai
 mkdir -p /var/log/aura-ai "$BOT_DIR/data" "$BOT_DIR/backups"
 chown -R aura-ai:aura-ai "$BOT_DIR/data" "$BOT_DIR/backups" /var/log/aura-ai
