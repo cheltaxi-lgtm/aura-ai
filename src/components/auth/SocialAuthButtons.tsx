@@ -286,9 +286,14 @@ export default function SocialAuthButtons({
 
       {telegramEnabled ? (
         <div
-          className={`flex justify-center ${consentBlocked || disabled ? "opacity-50 pointer-events-none" : ""}`}
+          className={`space-y-2 ${consentBlocked || disabled ? "opacity-50 pointer-events-none" : ""}`}
         >
-          <TelegramLoginButton onAuth={(u) => void handleTelegramAuth(u)} size="large" />
+          {ordered.length > 0 ? (
+            <p className="text-center text-xs text-aura-ivory/45">или через Telegram</p>
+          ) : null}
+          <div className="flex justify-center">
+            <TelegramLoginButton onAuth={(u) => void handleTelegramAuth(u)} size="large" />
+          </div>
         </div>
       ) : null}
 

@@ -42,10 +42,11 @@ const nextConfig: NextConfig = {
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
           // 'unsafe-inline' required for Next.js hydration + consent-gated Metrika/captcha bootstraps.
           // script-src-attr blocks inline on* handlers (XSS hardening without breaking Next).
-          `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} https://mc.yandex.ru https://yastatic.net https://www.google.com https://www.gstatic.com https://smartcaptcha.yandexcloud.net`,
+          // telegram.org / oauth.telegram.org — official Login Widget (cabinet bind + auth).
+          `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} https://mc.yandex.ru https://yastatic.net https://www.google.com https://www.gstatic.com https://smartcaptcha.yandexcloud.net https://telegram.org`,
           "script-src-attr 'none'",
           "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru https://yandex.ru https://www.google.com https://www.gstatic.com https://smartcaptcha.yandexcloud.net https://api.yookassa.ru https://yoomoney.ru https://openrouter.ai https://api.openai.com https://api.deepseek.com",
-          "frame-src 'self' https://www.google.com https://smartcaptcha.yandexcloud.net https://yoomoney.ru https://yookassa.ru",
+          "frame-src 'self' https://www.google.com https://smartcaptcha.yandexcloud.net https://yoomoney.ru https://yookassa.ru https://oauth.telegram.org https://telegram.org",
           "media-src 'self' blob:",
           "worker-src 'self' blob:",
           "upgrade-insecure-requests",

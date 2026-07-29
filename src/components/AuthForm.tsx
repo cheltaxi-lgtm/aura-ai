@@ -542,7 +542,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           onClick={() => setShowEmailRegister(false)}
           className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
         >
-          ← Войти через VK или Яндекс
+          ← Войти через Telegram, VK или Яндекс
         </button>
       ) : null}
       {role === "user" && !isUserRegister ? (

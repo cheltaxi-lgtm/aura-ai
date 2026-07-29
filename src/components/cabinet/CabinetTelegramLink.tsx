@@ -65,10 +65,10 @@ export default function CabinetTelegramLink() {
       className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3"
     >
       <div>
-        <h2 className="text-base font-semibold text-white">Telegram</h2>
+        <h2 className="text-base font-semibold text-white">Привязка Telegram</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Привяжите Telegram, чтобы продолжать расклады из бота в этом аккаунте — на любом
-          устройстве.
+          Один аккаунт на сайте и в боте: история, руны и расклады общие. Нажмите кнопку ниже и
+          подтвердите вход в Telegram.
         </p>
       </div>
 

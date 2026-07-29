@@ -538,6 +538,7 @@ export default function CabinetPage() {
             ) : authUser?.email && profileLoading ? (
               <CabinetProfileHeaderSkeleton />
             ) : null}
+            <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}
             {achievements ? (
@@ -547,7 +548,6 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetSupportLink />
-            <CabinetTelegramLink />
             <CabinetJointReadings variant="compact" />
             <CabinetDailyNotifications />
             <CabinetAppVersion />
