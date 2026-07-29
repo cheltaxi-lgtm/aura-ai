@@ -1,4 +1,4 @@
-import type { Context, InlineKeyboard, Keyboard } from "grammy";
+import type { Context, InlineKeyboard } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { clearFlow, getFlow, setFlow, trackEvent } from "../db/repos.js";
@@ -11,13 +11,10 @@ import {
   catalogHomeKeyboard,
   catalogItemKeyboard,
   catalogListKeyboard,
-  salonKeyboard,
 } from "../keyboards/index.js";
 import { ensureOnboarded } from "./helpers.js";
 import { beginCustomQuestion, runSpreadQuestion } from "./spread.js";
 import { ensureSiteLinked } from "./site-account.js";
-
-type ReplyMarkup = InlineKeyboard | Keyboard;
 
 type CatalogMode = "featured" | "all" | "category";
 
@@ -70,48 +67,55 @@ function compactItems(items: SiteCatalogItem[]) {
   }));
 }
 
-async function replyOrEdit(
+function isNotModifiedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /message is not modified/i.test(msg);
+}
+
+/** Catalog UI stays on one Telegram message: edit on callbacks, reply only when opening fresh. */
+async function renderCatalog(
   ctx: Context,
   text: string,
-  reply_markup: ReplyMarkup
+  reply_markup: InlineKeyboard
 ): Promise<void> {
-  const canEditInline =
-    Boolean(ctx.callbackQuery?.message) &&
-    typeof (reply_markup as InlineKeyboard).inline_keyboard !== "undefined";
-  if (canEditInline) {
+  if (ctx.callbackQuery?.message) {
     try {
-      await ctx.editMessageText(text, {
-        reply_markup: reply_markup as InlineKeyboard,
-      });
+      await ctx.editMessageText(text, { reply_markup });
       return;
-    } catch {
-      // Message not editable — fall through.
+    } catch (err) {
+      if (isNotModifiedError(err)) return;
+      console.warn("[catalog] edit failed, falling back to reply", err);
     }
   }
   await ctx.reply(text, { reply_markup });
 }
 
-export async function beginCatalog(ctx: Context): Promise<void> {
-  const user = await ensureOnboarded(ctx);
-  if (!user) return;
-
+async function showHome(ctx: Context, telegramUserId: number): Promise<void> {
   let result: Awaited<ReturnType<typeof siteCatalog>>;
   try {
-    result = await siteCatalog(user.telegram_user_id, { action: "summary" });
+    result = await siteCatalog(telegramUserId, { action: "summary" });
   } catch (err) {
     console.error("[catalog] summary failed", err);
-    await ctx.reply(copy.catalogFailed, { reply_markup: salonKeyboard() });
+    await renderCatalog(
+      ctx,
+      copy.catalogFailed,
+      catalogHomeKeyboard([], siteCatalogUrl())
+    );
     return;
   }
 
   const data = result.data;
   if (!data.ok || !data.categories) {
-    await ctx.reply(copy.catalogFailed, { reply_markup: salonKeyboard() });
+    await renderCatalog(
+      ctx,
+      copy.catalogFailed,
+      catalogHomeKeyboard([], siteCatalogUrl())
+    );
     return;
   }
 
-  setFlow(user.telegram_user_id, "catalog", "home", {});
-  trackEvent("catalog_opened", user.telegram_user_id, { total: data.total ?? 0 });
+  setFlow(telegramUserId, "catalog", "home", {});
+  trackEvent("catalog_opened", telegramUserId, { total: data.total ?? 0 });
 
   const bal =
     typeof data.runeBalance === "number" ? `\nБаланс: ${data.runeBalance} рун.` : "";
@@ -131,9 +135,13 @@ export async function beginCatalog(ctx: Context): Promise<void> {
     .filter(Boolean)
     .join("\n");
 
-  await ctx.reply(text, {
-    reply_markup: catalogHomeKeyboard(data.categories, siteCatalogUrl()),
-  });
+  await renderCatalog(ctx, text, catalogHomeKeyboard(data.categories, siteCatalogUrl()));
+}
+
+export async function beginCatalog(ctx: Context): Promise<void> {
+  const user = await ensureOnboarded(ctx);
+  if (!user) return;
+  await showHome(ctx, user.telegram_user_id);
 }
 
 async function showList(
@@ -154,18 +162,26 @@ async function showList(
     });
   } catch (err) {
     console.error("[catalog] list failed", err);
-    await replyOrEdit(ctx, copy.catalogFailed, salonKeyboard());
+    await renderCatalog(
+      ctx,
+      copy.catalogFailed,
+      catalogHomeKeyboard([], siteCatalogUrl())
+    );
     return;
   }
 
   const data = result.data;
   if (!data.ok || !data.items) {
-    await replyOrEdit(ctx, copy.catalogFailed, salonKeyboard());
+    await renderCatalog(
+      ctx,
+      copy.catalogFailed,
+      catalogHomeKeyboard([], siteCatalogUrl())
+    );
     return;
   }
 
   if (!data.items.length) {
-    await replyOrEdit(
+    await renderCatalog(
       ctx,
       copy.catalogEmpty,
       catalogHomeKeyboard([], siteCatalogUrl())
@@ -195,7 +211,7 @@ async function showList(
     "",
     "Выберите расклад:",
   ].join("\n");
-  await replyOrEdit(
+  await renderCatalog(
     ctx,
     text,
     catalogListKeyboard(state.items, state.page, state.totalPages)
@@ -213,13 +229,21 @@ async function showItem(
     result = await siteCatalog(telegramUserId, { action: "item", slug });
   } catch (err) {
     console.error("[catalog] item failed", err);
-    await replyOrEdit(ctx, copy.catalogFailed, salonKeyboard());
+    await renderCatalog(
+      ctx,
+      copy.catalogFailed,
+      catalogHomeKeyboard([], siteCatalogUrl())
+    );
     return;
   }
 
   const item = result.data.item;
   if (!result.data.ok || !item) {
-    await replyOrEdit(ctx, copy.catalogFailed, salonKeyboard());
+    await renderCatalog(
+      ctx,
+      copy.catalogFailed,
+      catalogHomeKeyboard([], siteCatalogUrl())
+    );
     return;
   }
 
@@ -268,7 +292,7 @@ async function showItem(
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  await replyOrEdit(
+  await renderCatalog(
     ctx,
     text.slice(0, 3500),
     catalogItemKeyboard({ native: item.native, url: item.url })
@@ -283,12 +307,30 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
     return true;
   }
 
-  await ctx.answerCallbackQuery().catch(() => undefined);
   const tid = user.telegram_user_id;
 
+  if (data === CB.catNoop) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  await ctx.answerCallbackQuery().catch(() => undefined);
+
   if (data === CB.catHome) {
-    clearFlow(tid);
-    await beginCatalog(ctx);
+    await showHome(ctx, tid);
+    return true;
+  }
+
+  if (data === CB.catBack) {
+    const flow = getFlow(tid);
+    if (flow?.flow === "catalog" && (flow.step === "detail" || flow.step === "list")) {
+      const st = flow.data as unknown as CatalogListState;
+      if (st.mode) {
+        await showList(ctx, tid, st.mode, st.page ?? 0, st.category);
+        return true;
+      }
+    }
+    await showHome(ctx, tid);
     return true;
   }
 
@@ -319,7 +361,7 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
     const page = Number(data.slice(CB.catPagePrefix.length));
     const flow = getFlow(tid);
     if (!flow || flow.flow !== "catalog") {
-      await beginCatalog(ctx);
+      await showHome(ctx, tid);
       return true;
     }
     const st = flow.data as unknown as CatalogListState;
@@ -332,13 +374,17 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
     const idx = Number(data.slice(CB.catItemPrefix.length));
     const flow = getFlow(tid);
     if (!flow || flow.flow !== "catalog" || flow.step !== "list") {
-      await beginCatalog(ctx);
+      await showHome(ctx, tid);
       return true;
     }
     const st = flow.data as unknown as CatalogListState;
     const item = st.items?.[idx];
     if (!item) {
-      await replyOrEdit(ctx, copy.catalogEmpty, salonKeyboard());
+      await renderCatalog(
+        ctx,
+        copy.catalogEmpty,
+        catalogHomeKeyboard([], siteCatalogUrl())
+      );
       return true;
     }
     await showItem(ctx, tid, item.id, st);
@@ -348,17 +394,19 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
   if (data === CB.catRun) {
     const flow = getFlow(tid);
     if (!flow || flow.flow !== "catalog" || flow.step !== "detail") {
-      await beginCatalog(ctx);
+      await showHome(ctx, tid);
       return true;
     }
     const st = flow.data as unknown as CatalogDetailState;
     if (!st.questionTemplate?.trim()) {
-      await ctx.reply("Этот расклад лучше открыть на сайте.", {
-        reply_markup: catalogItemKeyboard({
+      await renderCatalog(
+        ctx,
+        "Этот расклад лучше открыть на сайте.",
+        catalogItemKeyboard({
           native: false,
           url: st.url || siteCatalogUrl(),
-        }),
-      });
+        })
+      );
       return true;
     }
 
@@ -367,6 +415,7 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
 
     trackEvent("catalog_native_run", tid, { slug: st.slug });
     clearFlow(tid);
+    // Reading output is a new conversation thread; leave catalog message as-is.
     await runSpreadQuestion(ctx, linked.user, st.questionTemplate, "catalog");
     return true;
   }

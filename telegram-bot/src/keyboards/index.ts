@@ -53,6 +53,8 @@ export const CB = {
   histAskPrefix: "hist:ask:",
   /** Spread catalog (site /rasklady parity). Keep payloads short — TG limit 64 bytes. */
   catHome: "cat:home",
+  catBack: "cat:back",
+  catNoop: "cat:noop",
   catFeat: "cat:feat",
   catAll: "cat:all",
   catOwn: "cat:own",
@@ -131,7 +133,7 @@ export function catalogListKeyboard(
     const prev = page > 0 ? page - 1 : totalPages - 1;
     const next = page + 1 < totalPages ? page + 1 : 0;
     kb.text("‹", `${CB.catPagePrefix}${prev}`)
-      .text(`${page + 1}/${totalPages}`, CB.catHome)
+      .text(`${page + 1}/${totalPages}`, CB.catNoop)
       .text("›", `${CB.catPagePrefix}${next}`)
       .row();
   }
@@ -149,7 +151,8 @@ export function catalogItemKeyboard(opts: {
     kb.text(`🔮 ${copy.catalogRunHere}`, CB.catRun).row();
   }
   kb.url(`🕯 ${copy.catalogOpenSite}`, opts.url).row();
-  kb.text(copy.catalogBack, CB.catHome);
+  // Back to the same list page (edit in place), not a new home message.
+  kb.text(copy.catalogBack, CB.catBack);
   return kb;
 }
 
