@@ -46,6 +46,13 @@ export const CB = {
   modPhoto: "mod:photo",
   modSupport: "mod:support",
   modCabinet: "mod:cabinet",
+  /** Destiny matrix album / actions */
+  mxPrefix: "mx:",
+  mxRun: "mx:run",
+  mxList: "mx:list",
+  mxNoop: "mx:noop",
+  mxPagePrefix: "mx:pg:",
+  mxOpenPrefix: "mx:o:",
   chatAskPrefix: "chat:ask:",
   chatStop: "chat:stop",
   supportNew: "sup:new",
@@ -284,6 +291,56 @@ export function historyPagerKeyboard(opts: {
   if (opts.sessionId) {
     kb.text("📜 Открыть расклад", `${CB.histOpenPrefix}${opts.sessionId}`).row();
     kb.url(`🕯 ${copy.continueDiscussionOnSite}`, buildSessionChatUrl(opts.sessionId));
+  }
+  return kb;
+}
+
+export function matrixSummaryKeyboard(opts: {
+  owned: boolean;
+  cost: number;
+  savedReports: number;
+  siteUrl?: string | null;
+  shopUrl?: string | null;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (opts.owned) {
+    kb.text("📜 Открыть полный разбор", CB.mxRun).row();
+  } else {
+    kb.text(`✨ Полный разбор · ${opts.cost}ᚢ`, CB.mxRun).row();
+  }
+  if (opts.savedReports > 0) {
+    kb.text(`🗂 Мои отчёты (${opts.savedReports})`, CB.mxList).row();
+  }
+  if (opts.siteUrl) {
+    kb.url(`🕯 ${copy.continueOnSite}`, opts.siteUrl);
+  }
+  if (!opts.owned && opts.shopUrl) {
+    kb.row().url("🪙 Пополнить руны", opts.shopUrl);
+  }
+  return kb;
+}
+
+/** Matrix reports album: one report preview per page. */
+export function matrixListPagerKeyboard(opts: {
+  page: number;
+  total: number;
+  reportId?: string | null;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const total = Math.max(1, opts.total);
+  const page = Math.min(Math.max(0, opts.page), total - 1);
+
+  if (total > 1) {
+    if (page > 0) kb.text("‹", `${CB.mxPagePrefix}${page - 1}`);
+    else kb.text("·", CB.mxNoop);
+    kb.text(`${page + 1} / ${total}`, CB.mxNoop);
+    if (page + 1 < total) kb.text("›", `${CB.mxPagePrefix}${page + 1}`);
+    else kb.text("·", CB.mxNoop);
+    kb.row();
+  }
+
+  if (opts.reportId) {
+    kb.text("📜 Открыть отчёт", `${CB.mxOpenPrefix}${opts.reportId}`);
   }
   return kb;
 }

@@ -256,9 +256,14 @@ export async function siteNatal(telegramUserId: number) {
   }>("/api/internal/bot/natal", { telegram_user_id: telegramUserId });
 }
 
-export async function siteNumerology(telegramUserId: number) {
+export async function siteNumerology(
+  telegramUserId: number,
+  action: "summary" | "list" | "get" | "run" = "summary",
+  reportId?: string
+) {
   return siteFetch<{
     ok: boolean;
+    action?: string;
     birthDate?: string;
     portrait?: string;
     moneyInsight?: string;
@@ -266,11 +271,37 @@ export async function siteNumerology(telegramUserId: number) {
     yearInsight?: string;
     keyArcana?: Array<{ role: string; number: number; title: string; shortMeaning: string }>;
     savedReports?: number;
+    owned?: boolean;
+    ownedReportId?: string | null;
+    cost?: number;
+    runeBalance?: number;
+    shopUrl?: string;
+    items?: Array<{
+      id: string;
+      birthDate: string;
+      date: string;
+      preview: string;
+      sessionId: string | null;
+      runeCost: number | null;
+    }>;
+    reportId?: string;
+    content?: string;
+    sessionId?: string;
+    charged?: number;
+    reused?: boolean;
     url?: string;
     error?: string;
     message?: string;
     linkUrl?: string;
-  }>("/api/internal/bot/numerology", { telegram_user_id: telegramUserId });
+  }>(
+    "/api/internal/bot/numerology",
+    {
+      telegram_user_id: telegramUserId,
+      action,
+      report_id: reportId,
+    },
+    action === "run" ? 180_000 : 30_000
+  );
 }
 
 export async function siteSupport(

@@ -2,7 +2,7 @@ import { botConfig } from "../../config.js";
 import { getDb, nowIso } from "../../db/client.js";
 import { copy } from "../../copy/ru.js";
 
-/** One-time salon message after Zovus account is linked via claim. */
+/** One-time salon message after Zovus account is linked (link-code or claim). */
 export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void> {
   const db = getDb();
   const user = db

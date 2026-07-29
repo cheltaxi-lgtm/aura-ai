@@ -214,3 +214,21 @@ export async function listUserMatrixReports(
   );
   return rows.map(mapRow);
 }
+
+export async function getUserMatrixReportById(
+  userId: string,
+  reportId: string
+): Promise<NumerologyReportHistoryItem | null> {
+  const id = reportId.trim();
+  if (!id) return null;
+  const { rows } = await query<NumerologyReportHistoryRow>(
+    `SELECT ${SELECT_COLS}
+     FROM numerology_report_history
+     WHERE user_id = $1
+       AND id = $2::uuid
+       AND tool_id = $3
+     LIMIT 1`,
+    [userId, id, MATRIX_REPORT_TOOL_ID]
+  );
+  return rows[0] ? mapRow(rows[0]) : null;
+}

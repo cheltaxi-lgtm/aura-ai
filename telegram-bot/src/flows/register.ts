@@ -48,10 +48,12 @@ import {
   beginSupportReply,
   handleCabinetText,
   handleHistoryCallback,
+  handleMatrixCallback,
   routeModuleCallback,
   showHistory,
   showModulesMenu,
 } from "./cabinet.js";
+import { siteHistory } from "../domain/site-client.js";
 import { handleDay } from "./day.js";
 import { beginCatalog, handleCatalogCallback } from "./catalog.js";
 import { handleReadingPagerCallback } from "../domain/reading/present.js";
@@ -306,21 +308,46 @@ export function registerFlows(bot: Bot): void {
       return;
     }
     await ctx.answerCallbackQuery();
-    const rows = listSessions(user.telegram_user_id, 1);
-    if (!rows[0]) {
-      await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
-      return;
+
+    let question = "";
+    let cardNames: string[] = [];
+    let sessionKey = "";
+
+    try {
+      const hist = await siteHistory(user.telegram_user_id, 8);
+      const withCards = hist.data.items?.find((i) => (i.cards?.length ?? 0) > 0);
+      if (hist.data.ok && withCards) {
+        cardNames = withCards.cards;
+        question = withCards.topic || "";
+        sessionKey = withCards.sessionId;
+      }
+    } catch {
+      /* fall back to local guest sessions */
     }
-    trackEvent("share_clicked", user.telegram_user_id, { session_id: rows[0].id });
-    const cards = JSON.parse(rows[0].cards) as DrawnCard[];
-    const enriched = cards.map((c, i) => ({
-      ...c,
-      meaning: c.meaning || "",
-      slug: (c as { slug?: string }).slug || `card-${c.id}`,
+
+    if (!cardNames.length) {
+      const rows = listSessions(user.telegram_user_id, 1);
+      if (!rows[0]) {
+        await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
+        return;
+      }
+      sessionKey = rows[0].id;
+      question = rows[0].question;
+      cardNames = (JSON.parse(rows[0].cards) as DrawnCard[]).map((c) => c.name);
+    }
+
+    trackEvent("share_clicked", user.telegram_user_id, { session_id: sessionKey });
+    const enriched = cardNames.slice(0, 3).map((name, i) => ({
+      id: i + 1,
+      name,
+      reversed: false,
+      meaning: "",
+      slug: `card-${i + 1}`,
       positionLabel: ["Прошлое", "Настоящее", "Будущее"][i] || String(i),
+      position: i,
     }));
     try {
-      const img = await renderShareCollage(enriched, rows[0].question);
+      const img = await renderShareCollage(enriched as DrawnCard[], question);
       const code = ensureRefCode(user.telegram_user_id);
       await ctx.replyWithPhoto(new InputFile(img, "share.jpg"), {
         caption: `Zovus · t.me/${botConfig.botUsername}?start=ref_${code}`,
@@ -413,6 +440,13 @@ export function registerFlows(bot: Bot): void {
     }
   });
 
+  bot.callbackQuery(new RegExp(`^${CB.mxPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handleMatrixCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
+  });
+
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return;
@@ -478,10 +512,21 @@ async function showProfile(ctx: Context): Promise<void> {
   }
   const bal =
     site?.runeBalance != null ? `\nРуны: ${site.runeBalance}` : "";
+  let spreads = countSessions(user.telegram_user_id);
+  if (linked) {
+    try {
+      const hist = await siteHistory(user.telegram_user_id, 1);
+      if (hist.data.ok && typeof hist.data.total === "number") {
+        spreads = hist.data.total;
+      }
+    } catch {
+      /* keep local count */
+    }
+  }
   const body = copy.profile({
     since: user.created_at.slice(0, 10),
     streak: user.streak_days,
-    spreads: countSessions(user.telegram_user_id),
+    spreads,
     age: Boolean(user.age_confirmed_at),
     consent: Boolean(user.terms_accepted_at && user.privacy_accepted_at),
     refLink: `https://t.me/${botConfig.botUsername}?start=ref_${code}`,

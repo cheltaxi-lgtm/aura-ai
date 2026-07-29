@@ -5,7 +5,6 @@
 import { getCabinetDiaryPreview, getCabinetPhotoSpreads } from "@/lib/cabinet-data";
 import { listJointReadingsForUser, buildJointReadingUrl } from "@/lib/joint-reading-service";
 import { listFacts } from "@/lib/memory/user-facts";
-import { buildMatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
 import { listUserMatrixReports } from "@/lib/services/numerology-report-service";
 import { getStoredNatalChart } from "@/lib/services/natal-chart-service";
 import { bigThree } from "@/lib/natal/presentation";
@@ -166,38 +165,10 @@ export async function botNatalSummary(telegramUserId: number) {
   return { ok: true as const, natal: overview.natal, url: overview.urls.astrology };
 }
 
+/** @deprecated prefer botMatrixSummary from bot-matrix-service */
 export async function botMatrixFree(telegramUserId: number) {
-  const gate = await requireLinked(telegramUserId);
-  if (!gate.ok) return gate;
-  const user = await getUserById(gate.resolved.profileUserId!);
-  if (!user?.birth_date) {
-    return {
-      ok: false as const,
-      error: "needs_onboarding" as const,
-      message: "Нужна дата рождения в профиле.",
-      linkUrl: gate.resolved.linkUrl,
-    };
-  }
-  const summary = buildMatrixFreeSummary(user.birth_date, { name: user.name || undefined });
-  if (!summary) {
-    return {
-      ok: false as const,
-      error: "internal" as const,
-      message: "Не удалось посчитать матрицу по дате рождения.",
-    };
-  }
-  const reports = await listUserMatrixReports(gate.resolved.profileUserId!, 3);
-  return {
-    ok: true as const,
-    birthDate: user.birth_date,
-    portrait: summary.portrait.slice(0, 900),
-    moneyInsight: summary.moneyInsight.slice(0, 400),
-    loveInsight: summary.loveInsight.slice(0, 400),
-    yearInsight: summary.yearInsight.slice(0, 400),
-    keyArcana: summary.keyArcana,
-    savedReports: reports.length,
-    url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=numerology`,
-  };
+  const { botMatrixSummary } = await import("@/lib/telegram/bot-matrix-service");
+  return botMatrixSummary(telegramUserId);
 }
 
 export async function botSupportList(telegramUserId: number) {

@@ -860,6 +860,10 @@ export function effectiveTripletLimit(user: BotUser): number {
 
 const TZ_HOP_GUARD_MS = 20 * 60 * 60 * 1000;
 
+/**
+ * Legacy local guest quota (SQLite). Product spreads for linked users go through
+ * site APIs and site rune/guest rules — do not use this as a product gate.
+ */
 export function canDrawTriplet(user: BotUser): boolean {
   const todayCount = countTripletsToday(user.telegram_user_id, user);
   const limit = effectiveTripletLimit(user);

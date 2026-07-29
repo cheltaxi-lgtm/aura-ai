@@ -69,6 +69,7 @@ export const botConfig = {
   deckAssetsDir: resolveDeckDir(),
   /** Guest session / tg_receipt TTL. Default 7 days (168h) for claim window. */
   sessionTtlMs: int("BOT_SESSION_TTL_HOURS", 168) * 60 * 60 * 1000,
+  /** Legacy guest SQLite quota only — not used for linked site product spreads. */
   tripletDailyLimit: int("BOT_TRIPLET_DAILY_LIMIT", 1),
   rateLimitPerMinute: int("BOT_RATE_LIMIT_PER_MIN", 20),
   abandonedHours: int("BOT_ABANDONED_HOURS", 3),

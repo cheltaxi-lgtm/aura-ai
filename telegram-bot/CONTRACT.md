@@ -43,9 +43,9 @@
 | `POST /modules` | каталог разделов (native + deep-link) |
 | `POST /cabinet` | обзор кабинета |
 | `POST /natal` | big three / статус натала |
-| `POST /numerology` | свободная матрица судьбы |
+| `POST /numerology` | матрица: `summary` / `list` / `get` / `run` (buy-once + биллинг как на сайте) |
 | `POST /support` | list / create / reply обращений |
-| `POST /chat` | follow-up вопрос по sessionId |
+| `POST /chat` | API follow-up (продуктовый UX бота: deep-link `/?chat_session=` на сайт) |
 | `POST /auth-bridge` | **disabled** (410) |
 
 Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECRET`, `BOT_REQUIRE_SITE_ACCOUNT=true`.
@@ -78,7 +78,13 @@ Claim **не** заменяет login/link. Для полного продукт
 
 Продуктовый лимит «1 расклад/сутки в боте» **снят** для linked-пользователей. Действуют правила сайта (руны / guest entitlement / anti-abuse).
 
+`BOT_TRIPLET_DAILY_LIMIT` / `canDrawTriplet` — только legacy guest SQLite (тесты/аудиты), не gate продукта.
+
 Без привязки: только анонимные/гостевые функции; кабинет и списания — после bind к авторизованному аккаунту.
+
+## UX чтения в боте
+
+Длинный разбор (расклад / матрица) — одно сообщение с pager ‹ ›. Обсуждение продолжается **на сайте** (`/?chat_session=<uuid>`), не чатом внутри бота.
 
 ## Уведомления (типы)
 

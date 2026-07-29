@@ -17,6 +17,8 @@ import {
   continueOnSiteKeyboard,
   dialogStopKeyboard,
   historyPagerKeyboard,
+  matrixListPagerKeyboard,
+  matrixSummaryKeyboard,
   modulesKeyboard,
   salonKeyboard,
   supportListKeyboard,
@@ -34,6 +36,19 @@ type HistoryItem = {
 
 type HistoryViewState = {
   items: HistoryItem[];
+  page: number;
+};
+
+type MatrixListItem = {
+  id: string;
+  birthDate: string;
+  date: string;
+  preview: string;
+  sessionId: string | null;
+};
+
+type MatrixListState = {
+  items: MatrixListItem[];
   page: number;
 };
 
@@ -159,7 +174,7 @@ export async function showMatrix(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
   try {
-    const { data } = await siteNumerology(linked.user.telegram_user_id);
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
     if (!data.ok) {
       if (data.error === "needs_onboarding") {
         await ctx.reply(copy.matrixNeedsBirth, { reply_markup: linkKb(data.linkUrl) });
@@ -185,17 +200,214 @@ export async function showMatrix(ctx: Context): Promise<void> {
       data.loveInsight || "",
       data.yearInsight || "",
       "",
+      data.owned
+        ? "Полный разбор уже куплен — можно открыть здесь."
+        : `Полный разбор Эвелины: ${data.cost ?? 20}ᚢ (разовая покупка).`,
       `Сохранённых отчётов: ${data.savedReports ?? 0}`,
     ]
       .filter((x) => x !== "")
       .join("\n");
-    for (const chunk of chunkTelegramText(body)) {
-      await ctx.reply(chunk, { reply_markup: linkKb(data.url) });
+    const chunks = chunkTelegramText(body);
+    const kb = matrixSummaryKeyboard({
+      owned: Boolean(data.owned),
+      cost: data.cost ?? 20,
+      savedReports: data.savedReports ?? 0,
+      siteUrl: data.url,
+      shopUrl: data.shopUrl,
+    });
+    for (let i = 0; i < chunks.length; i++) {
+      await ctx.reply(chunks[i]!, {
+        reply_markup: i === chunks.length - 1 ? kb : undefined,
+      });
     }
   } catch (err) {
     console.error("[cabinet] matrix", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
   }
+}
+
+function formatMatrixListPage(item: MatrixListItem, page: number, total: number): string {
+  return [
+    `Матрица · отчёт ${page + 1}/${total}`,
+    item.date ? `Дата: ${item.date}` : "",
+    item.birthDate ? `Рождение: ${item.birthDate}` : "",
+    "",
+    item.preview || "—",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function showMatrixReports(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "list");
+    if (!data.ok) {
+      await ctx.reply(data.message || copy.siteBridgeDown, {
+        reply_markup: linkKb(data.linkUrl),
+      });
+      return;
+    }
+    const items = (data.items || []) as MatrixListItem[];
+    if (!items.length) {
+      await ctx.reply(copy.matrixReportsEmpty, {
+        reply_markup: matrixSummaryKeyboard({
+          owned: false,
+          cost: 20,
+          savedReports: 0,
+          siteUrl: data.url,
+        }),
+      });
+      return;
+    }
+    const state: MatrixListState = { items, page: 0 };
+    setFlow(linked.user.telegram_user_id, "matrix_list", "page", state as unknown as Record<string, unknown>);
+    const item = items[0]!;
+    await renderHistoryMessage(
+      ctx,
+      formatMatrixListPage(item, 0, items.length),
+      matrixListPagerKeyboard({ page: 0, total: items.length, reportId: item.id })
+    );
+  } catch (err) {
+    console.error("[cabinet] matrix list", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+export async function runMatrixFull(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  await ctx.reply(copy.matrixRunning);
+  try {
+    await ctx.replyWithChatAction("typing");
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "run");
+    if (!data.ok) {
+      if (data.error === "insufficient_runes") {
+        await ctx.reply(
+          copy.matrixInsufficient(data.cost ?? 20, data.runeBalance ?? 0),
+          {
+            reply_markup: data.linkUrl
+              ? continueOnSiteKeyboard(data.linkUrl, "Пополнить руны")
+              : salonKeyboard(),
+          }
+        );
+        return;
+      }
+      await ctx.reply(data.message || copy.siteBridgeDown, {
+        reply_markup: linkKb(data.linkUrl),
+      });
+      return;
+    }
+    await presentReadingToTelegram(ctx, {
+      reading: data.content || "",
+      cardNames: [],
+      question: "Матрица судьбы",
+      sessionId: data.sessionId,
+      footer: data.reused
+        ? "Отчёт уже был в кабинете — открыли снова."
+        : data.charged
+          ? `Списано ${data.charged}ᚢ`
+          : undefined,
+    });
+  } catch (err) {
+    console.error("[cabinet] matrix run", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+export async function openMatrixReport(ctx: Context, reportId: string): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "get", reportId);
+    if (!data.ok || !data.content) {
+      await ctx.reply(data.message || copy.matrixReportsEmpty, {
+        reply_markup: salonKeyboard(),
+      });
+      return;
+    }
+    await presentReadingToTelegram(ctx, {
+      reading: data.content,
+      cardNames: [],
+      question: "Матрица судьбы",
+      sessionId: data.sessionId || undefined,
+    });
+  } catch (err) {
+    console.error("[cabinet] matrix get", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+export async function handleMatrixCallback(ctx: Context, data: string): Promise<boolean> {
+  if (!data.startsWith(CB.mxPrefix)) return false;
+  const tid = ctx.from?.id;
+  if (!tid) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  if (data === CB.mxNoop) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  if (data === CB.mxRun) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await runMatrixFull(ctx);
+    return true;
+  }
+
+  if (data === CB.mxList) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await showMatrixReports(ctx);
+    return true;
+  }
+
+  if (data.startsWith(CB.mxOpenPrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const reportId = data.slice(CB.mxOpenPrefix.length);
+    if (reportId) await openMatrixReport(ctx, reportId);
+    return true;
+  }
+
+  if (!data.startsWith(CB.mxPagePrefix)) return false;
+
+  const page = Number(data.slice(CB.mxPagePrefix.length));
+  const flow = getFlow(tid);
+  if (!flow || flow.flow !== "matrix_list" || !Array.isArray(flow.data.items)) {
+    await ctx.answerCallbackQuery({ text: "Откройте список снова" }).catch(() => undefined);
+    await showMatrixReports(ctx);
+    return true;
+  }
+
+  const items = flow.data.items as MatrixListItem[];
+  if (!items.length) {
+    await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);
+    return true;
+  }
+
+  const nextPage = Math.min(Math.max(0, Number.isFinite(page) ? page : 0), items.length - 1);
+  setFlow(tid, "matrix_list", "page", { items, page: nextPage } as unknown as Record<string, unknown>);
+  const item = items[nextPage]!;
+  try {
+    await renderHistoryMessage(
+      ctx,
+      formatMatrixListPage(item, nextPage, items.length),
+      matrixListPagerKeyboard({
+        page: nextPage,
+        total: items.length,
+        reportId: item.id,
+      })
+    );
+    await ctx
+      .answerCallbackQuery({ text: `${nextPage + 1} / ${items.length}` })
+      .catch(() => undefined);
+  } catch (err) {
+    console.error("[cabinet] matrix page", err);
+    await ctx.answerCallbackQuery({ text: "Не удалось перелистнуть" }).catch(() => undefined);
+  }
+  return true;
 }
 
 export async function showRituals(ctx: Context): Promise<void> {

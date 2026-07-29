@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { botConfig } from "../config.js";
 import { setZovusUserId } from "../db/repos.js";
+import { maybeSendLinkWelcome } from "../domain/link/welcome.js";
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -26,7 +27,7 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-/** Site → bot: Telegram Login Widget linked an account. */
+/** Site → bot: post-auth link-code bound telegram_user_id to a Zovus account. */
 export async function handleAccountLinked(
   req: IncomingMessage,
   res: ServerResponse,
@@ -64,6 +65,9 @@ export async function handleAccountLinked(
       : null;
 
   setZovusUserId(tgId, zovus);
+  if (zovus) {
+    void maybeSendLinkWelcome(tgId);
+  }
   json(res, 200, { ok: true });
   return true;
 }

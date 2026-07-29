@@ -3,7 +3,7 @@ import {
   assertBotInternalAuth,
   parseTelegramUserId,
 } from "@/lib/telegram/bot-internal-auth";
-import { botMatrixFree } from "@/lib/telegram/bot-cabinet-service";
+import { botMatrixAction } from "@/lib/telegram/bot-matrix-service";
 
 export const runtime = "nodejs";
 
@@ -13,9 +13,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
 
-  let body: { telegram_user_id?: unknown };
+  let body: {
+    telegram_user_id?: unknown;
+    action?: unknown;
+    report_id?: unknown;
+  };
   try {
-    body = (await request.json()) as { telegram_user_id?: unknown };
+    body = (await request.json()) as {
+      telegram_user_id?: unknown;
+      action?: unknown;
+      report_id?: unknown;
+    };
   } catch {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
   }
@@ -25,10 +33,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid_telegram_user_id" }, { status: 400 });
   }
 
-  const result = await botMatrixFree(telegramUserId);
+  const rawAction = typeof body.action === "string" ? body.action : "summary";
+  const action =
+    rawAction === "list" || rawAction === "get" || rawAction === "run" || rawAction === "summary"
+      ? rawAction
+      : "summary";
+  const reportId = typeof body.report_id === "string" ? body.report_id : undefined;
+
+  const result = await botMatrixAction({
+    telegramUserId,
+    action,
+    reportId,
+  });
+
   if (!result.ok) {
     const status =
-      result.error === "needs_link" ? 403 : result.error === "needs_onboarding" ? 403 : 400;
+      result.error === "needs_link" || result.error === "needs_onboarding"
+        ? 403
+        : result.error === "insufficient_runes"
+          ? 402
+          : result.error === "not_found"
+            ? 404
+            : 400;
     return NextResponse.json(result, { status });
   }
   return NextResponse.json(result);
