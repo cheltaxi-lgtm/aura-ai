@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import sharp from "sharp";
 import { botConfig } from "../config.js";
+import { reportAssetMissing, resolveAssetPath } from "../domain/deck/asset-check.js";
 import type { DrawnCard } from "../domain/deck/types.js";
 
 const LONG = 1400;
@@ -10,12 +11,7 @@ const WIDTH = Math.round(LONG * ASPECT); // vertical 4:5 → width < height; lon
 const HEIGHT = LONG;
 
 function resolveCardPath(slug: string): string | null {
-  const base = botConfig.deckAssetsDir;
-  for (const ext of ["webp", "png", "jpg"]) {
-    const p = resolve(base, `${slug}.${ext}`);
-    if (existsSync(p)) return p;
-  }
-  return null;
+  return resolveAssetPath(botConfig.deckAssetsDir, slug);
 }
 
 function resolveBackPath(): string | null {
@@ -55,6 +51,7 @@ async function cardFace(
   const facePath = faceUp && card ? resolveCardPath(card.slug) : null;
   if (faceUp && card && !facePath) {
     console.warn(`[collage] missing asset for slug=${card.slug} — using back`);
+    reportAssetMissing(card.slug);
   }
   const path = faceUp ? facePath ?? back : back;
   let pipeline = path

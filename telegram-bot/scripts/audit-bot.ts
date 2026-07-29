@@ -38,10 +38,15 @@ import {
   hashSessionToken,
   isSessionToken,
 } from "../src/domain/session/token.js";
+import {
+  checkDeckIntegrity,
+  expectedDeckSlugs,
+} from "../src/domain/deck/asset-check.js";
 import { localDateKey } from "../src/domain/time/local-date.js";
 import { NAV, NAV_LABELS } from "../src/keyboards/index.js";
 import { isIrreversible, markIrreversible } from "../src/middleware/irreversible.js";
 import { runSafetyCorpus } from "../src/safety/__tests__/run-corpus.js";
+import { botConfig } from "../src/config.js";
 
 type Check = { name: string; ok: boolean; detail?: string };
 const checks: Check[] = [];

@@ -3,6 +3,10 @@ import { botConfig } from "./config.js";
 import { migrate } from "./db/client.js";
 import { ensureCriticalColumns, migrateUp } from "./db/migrate-runner.js";
 import { expireSessions, metricsSummary, setFlag } from "./db/repos.js";
+import {
+  assertDeckAssetsOrExit,
+  setAssetMissingAlerter,
+} from "./domain/deck/asset-check.js";
 import { startHttpServer } from "./http/server.js";
 import { runReminderTick } from "./jobs/reminders.js";
 import { acquirePollingLock, releasePollingLock } from "./ops/lock.js";
@@ -11,13 +15,25 @@ async function main(): Promise<void> {
   migrate();
   console.log("[migrate] up", migrateUp());
   ensureCriticalColumns();
+  assertDeckAssetsOrExit();
   setFlag("ritual_reveal_enabled", botConfig.flags.ritualRevealEnabled);
   setFlag("tts_enabled", botConfig.flags.ttsEnabled);
   setFlag("llm_enabled", botConfig.flags.llmEnabled);
   setFlag("share_card_enabled", botConfig.flags.shareCardEnabled);
   setFlag("weekly_digest_enabled", botConfig.flags.weeklyDigestEnabled);
+  setFlag("day_card_enabled", botConfig.flags.dayCardEnabled);
+  setFlag("reminders_enabled", botConfig.flags.remindersEnabled);
+  setFlag("bot_enabled", botConfig.flags.botEnabled);
 
   const bot = createBot();
+  if (botConfig.adminChatId) {
+    setAssetMissingAlerter(async (slug) => {
+      await bot.api.sendMessage(
+        botConfig.adminChatId,
+        `Zovus bot: отсутствует файл колоды «${slug}». Показывается рубашка.`
+      );
+    });
+  }
   const me = await bot.api.getMe();
   console.log(`[bot] @${me.username} mode=${botConfig.mode}`);
 
