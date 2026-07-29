@@ -57,6 +57,8 @@ const PUBLIC_API_PREFIXES = [
   // rate limits in the handler. Keep this narrower than the /api/public namespace.
   "/api/public/reports/",
   "/api/cron/",
+  // Telegram bot → site thin client (auth via X-Bot-Internal-Secret in handler).
+  "/api/internal/bot/",
   // Ads Autopilot beacon (guest): click capture + micro-conversions only.
   // /api/ads/link stays auth-gated. Handlers return 404 when ads.enabled=false.
   "/api/ads/t",

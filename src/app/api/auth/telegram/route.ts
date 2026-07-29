@@ -3,6 +3,7 @@ import { setAuthCookie } from "@/lib/auth";
 import { clientIp, enforceLoginRateLimit, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { sendWelcomeEmail } from "@/lib/email/send";
 import { loginOrRegisterTelegram } from "@/lib/telegram/accounts";
+import { notifyBotAccountLinked } from "@/lib/telegram/notify-bot-link";
 import { verifyTelegramLoginWidget } from "@/lib/telegram/verify";
 
 export const runtime = "nodejs";
@@ -61,6 +62,11 @@ export async function POST(request: NextRequest) {
       needsOnboarding: result.needsProfile,
     });
   }
+
+  void notifyBotAccountLinked({
+    telegramUserId: verified.data.id,
+    profileUserId: result.profileUserId,
+  });
 
   return NextResponse.json({
     ok: true,

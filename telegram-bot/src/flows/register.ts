@@ -52,7 +52,9 @@ import {
   handleFreeTextQuestion,
   handleOwnQuestionPrompt,
 } from "./spread.js";
+import { ensureSiteLinked, syncSiteAccount } from "./site-account.js";
 import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
+import { siteHistory, siteModules, siteRunes } from "../domain/site-client.js";
 
 export function registerFlows(bot: Bot): void {
   bot.command("start", async (ctx) => {
@@ -345,6 +347,12 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
     case NAV.profile:
       await showProfile(ctx);
       return;
+    case NAV.runes:
+      await showRunes(ctx);
+      return;
+    case NAV.more:
+      await showModules(ctx);
+      return;
     case NAV.settings:
       await showSettings(ctx);
       return;
@@ -360,10 +368,18 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
 async function showProfile(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
+  let site;
+  try {
+    site = await syncSiteAccount(user);
+  } catch {
+    site = null;
+  }
   const code = ensureRefCode(user.telegram_user_id);
-  const linked = Boolean(user.zovus_user_id);
+  const linked = Boolean(site?.linked || user.zovus_user_id);
   const pending = findLatestUnclaimedCtaSession(user.telegram_user_id);
-  const linkUrl = pending?.cta_url || `${botConfig.siteUrl}/cabinet`;
+  const linkUrl = site?.linkUrl || pending?.cta_url || `${botConfig.siteUrl}/cabinet`;
+  const bal =
+    site?.runeBalance != null ? `\nРуны: ${site.runeBalance}` : "";
   const body = copy.profile({
     since: user.created_at.slice(0, 10),
     streak: user.streak_days,
@@ -377,14 +393,12 @@ async function showProfile(ctx: Context): Promise<void> {
   });
   const withHint =
     pending && !linked
-      ? `${body}\n\n${copy.profileContinueHint}`
-      : body;
+      ? `${body}${bal}\n\n${copy.profileContinueHint}`
+      : `${body}${bal}`;
 
   await ctx.reply(withHint, {
     reply_markup: linked
-      ? pending?.cta_url
-        ? continueOnSiteKeyboard(pending.cta_url, copy.continueReading)
-        : inviteKeyboard()
+      ? continueOnSiteKeyboard(linkUrl, copy.continueOnSite)
       : pending?.cta_url
         ? ctaKeyboard(pending.cta_url)
         : linkAccountKeyboard(linkUrl),
@@ -392,22 +406,72 @@ async function showProfile(ctx: Context): Promise<void> {
 }
 
 async function showHistory(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+
+  try {
+    const { data } = await siteHistory(linked.user.telegram_user_id, 8);
+    if (!data.ok || !data.items?.length) {
+      await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
+      return;
+    }
+    const blocks = data.items.map((r, i) => {
+      const cards = (r.cards ?? []).join(" · ");
+      const preview = r.preview ? `\n${r.preview}` : "";
+      return `${i + 1}. ${r.topic || r.characterKey}\n${r.date.slice(0, 10)}${cards ? `\n${cards}` : ""}${preview}`;
+    });
+    await ctx.reply(blocks.join("\n\n").slice(0, 3500), { reply_markup: salonKeyboard() });
+  } catch (err) {
+    console.error("[history] site", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+async function showRunes(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteRunes(linked.user.telegram_user_id);
+    if (!data.ok) {
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      return;
+    }
+    await ctx.reply(copy.runesBalance(data.runeBalance ?? 0), {
+      reply_markup: data.shopUrl
+        ? continueOnSiteKeyboard(data.shopUrl, "Пополнить руны")
+        : salonKeyboard(),
+    });
+  } catch (err) {
+    console.error("[runes] site", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+async function showModules(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
-  const rows = listSessions(user.telegram_user_id, 5);
-  if (!rows.length) {
-    await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
-    return;
+  try {
+    const { data } = await siteModules(user.telegram_user_id);
+    if (!data.ok || !data.modules?.length) {
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      return;
+    }
+    const lines = [
+      copy.modulesTitle,
+      "",
+      ...data.modules.map((m) =>
+        m.native ? `• ${m.title} — в боте` : `• ${m.title} — на сайте`
+      ),
+    ];
+    await ctx.reply(lines.join("\n"), {
+      reply_markup: data.linkUrl
+        ? continueOnSiteKeyboard(data.linkUrl, copy.continueOnSite)
+        : salonKeyboard(),
+    });
+  } catch (err) {
+    console.error("[modules] site", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
   }
-  const blocks = rows.map((r, i) => {
-    const cards = JSON.parse(r.cards) as Array<{ name: string; reversed: boolean }>;
-    const cardLine = cards
-      .map((c) => `${c.name}${c.reversed ? " (перевёрнута)" : ""}`)
-      .join(" · ");
-    const teaser = r.teaser_text ? `\n${r.teaser_text}` : "";
-    return `${i + 1}. ${r.question}\n${cardLine}${teaser}`;
-  });
-  await ctx.reply(blocks.join("\n\n").slice(0, 3500), { reply_markup: salonKeyboard() });
 }
 
 async function showSettings(ctx: Context): Promise<void> {

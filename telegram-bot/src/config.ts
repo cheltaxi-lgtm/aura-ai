@@ -84,8 +84,16 @@ export const botConfig = {
   botUsername: process.env.BOT_USERNAME?.trim() || "zovus_card_bot",
   plainTokenPrefixLen: int("BOT_PLAIN_TOKEN_PREFIX_LEN", 6),
   skipAssetCheck: bool("BOT_SKIP_ASSET_CHECK", false),
-  /** Shared secret for aura-ai → bot internal API. Empty = endpoints disabled. */
+  /** Shared secret for aura-ai ↔ bot internal API. Empty = endpoints disabled. */
   internalSecret: process.env.BOT_INTERNAL_SECRET?.trim() || "",
+  /** Site base for bot→site thin client (loopback on Beget). */
+  siteInternalBaseUrl: (
+    process.env.SITE_INTERNAL_BASE_URL?.trim() ||
+    process.env.ZOVUS_SITE_INTERNAL_URL?.trim() ||
+    "http://127.0.0.1:3000"
+  ).replace(/\/$/, ""),
+  /** When true, product actions require linked Zovus account (site SoT). */
+  requireSiteAccount: bool("BOT_REQUIRE_SITE_ACCOUNT", true),
   ritual: {
     pauseMsMin: int("BOT_RITUAL_PAUSE_MS_MIN", 2000),
     pauseMsMax: int("BOT_RITUAL_PAUSE_MS_MAX", 4000),

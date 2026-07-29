@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { authRequiredResponse, requireUserAuth } from "@/lib/require-auth";
 import { clientIp } from "@/lib/api-guards";
+import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { linkTelegramToAccount } from "@/lib/telegram/accounts";
+import { notifyBotAccountLinked } from "@/lib/telegram/notify-bot-link";
 import { verifyTelegramLoginWidget } from "@/lib/telegram/verify";
 
 export const runtime = "nodejs";
@@ -44,6 +46,12 @@ export async function POST(request: NextRequest) {
         : "К этому аккаунту уже привязан другой Telegram.";
     return NextResponse.json({ error: result.code, message }, { status: 409 });
   }
+
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  void notifyBotAccountLinked({
+    telegramUserId: verified.data.id,
+    profileUserId,
+  });
 
   return NextResponse.json({
     ok: true,

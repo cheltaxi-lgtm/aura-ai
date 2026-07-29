@@ -988,6 +988,13 @@ export function setVoiceMode(telegramUserId: number, mode: "text" | "text_voice"
     .run(mode, nowIso(), telegramUserId);
 }
 
+/** Sync site profile id onto bot user after Login Widget / resolve. */
+export function setZovusUserId(telegramUserId: number, zovusUserId: string | null): void {
+  getDb()
+    .prepare(`UPDATE bot_users SET zovus_user_id = ?, updated_at = ? WHERE telegram_user_id = ?`)
+    .run(zovusUserId, nowIso(), telegramUserId);
+}
+
 export function setTimezoneOffset(telegramUserId: number, minutes: number): void {
   getDb()
     .prepare(

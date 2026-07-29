@@ -9,6 +9,7 @@ import {
 } from "../db/repos.js";
 import { buildFinalCtaUrl, hashSessionToken, isSessionToken } from "../domain/session/token.js";
 import { pruneRateMap } from "../ops/rate-maps.js";
+import { handleAccountLinked } from "./account-linked.js";
 import { handleInternalReceipt } from "./internal-receipt.js";
 
 const redirectHits = new Map<string, { n: number; reset: number }>();
@@ -89,6 +90,10 @@ export function startHttpServer(bot?: Bot): void {
     }
 
     if (await handleInternalReceipt(req, res, path)) {
+      return;
+    }
+
+    if (await handleAccountLinked(req, res, path)) {
       return;
     }
 

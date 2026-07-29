@@ -9,6 +9,8 @@ export const NAV = {
   day: "🃏 Карта дня",
   history: "📜 История",
   profile: "👤 Профиль",
+  runes: "🪙 Руны",
+  more: "📂 Ещё",
   settings: "⚙️ Настройки",
   about: "✨ О салоне",
 } as const;
@@ -43,6 +45,9 @@ export function salonKeyboard(): Keyboard {
     .row()
     .text(NAV.history)
     .text(NAV.profile)
+    .row()
+    .text(NAV.runes)
+    .text(NAV.more)
     .row()
     .text(NAV.settings)
     .text(NAV.about)
