@@ -36,6 +36,9 @@ yarn-error.log*
 
 # env files
 .env*.local
+telegram-bot/.env
+telegram-bot/node_modules/
+telegram-bot/data/
 
 # typescript
 *.tsbuildinfo
@@ -44,6 +47,7 @@ build-decks.log
 
 # local debug artifacts
 .tmp-*
+/_verify/
 scripts/audit-yulia-chat.mjs
 scripts/heal-yulia-session.sql
 

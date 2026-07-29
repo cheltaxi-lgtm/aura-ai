@@ -81,6 +81,18 @@ $RequiredArtifacts = @(
   "scripts/migrations/081_migrate_personal_memory_moat.sql",
   "scripts/migrations/082_migrate_memory_product_moat_v2.sql",
   "scripts/migrations/083_migrate_partner_leads.sql",
+  "scripts/migrations/087_migrate_ads_wordstat_source.sql",
+  "scripts/migrations/088_migrate_ads_wordstat_history.sql",
+  "scripts/migrations/089_migrate_telegram_identities.sql",
+  "src/app/api/auth/telegram/route.ts",
+  "src/app/api/guest-triplet/telegram-claim/route.ts",
+  "telegram-bot/package.json",
+  "telegram-bot/src/index.ts",
+  "hosting/zovus-telegram-bot.service",
+  "config/ads/wordstat-seeds.yaml",
+  "src/modules/ads/sources/wordstat.ts",
+  "src/modules/ads/admin/WordstatPanel.tsx",
+  "src/app/(ads)/api/ads/admin/sources/wordstat/route.ts",
   "src/lib/partner-leads.ts",
   "src/app/api/partners/leads/route.ts",
   "src/app/api/admin/partners/leads/route.ts",
@@ -190,7 +202,7 @@ try {
 } catch {
   "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
 }
-tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.next-e2e --exclude=.git --exclude=.cursor --exclude=test-results --exclude=.env.local --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip --exclude=telegram-bot --exclude=docs/qa-guest-teaser-i2 --exclude=docs/qa-landing-demo --exclude=docs/qa-landing-faq-cta .
+tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.next-e2e --exclude=.git --exclude=.cursor --exclude=test-results --exclude=.env.local --exclude=_verify --exclude=telegram-bot/.env --exclude=telegram-bot/data --exclude=telegram-bot/node_modules --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip --exclude=docs/qa-guest-teaser-i2 --exclude=docs/qa-landing-demo --exclude=docs/qa-landing-faq-cta .
 Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ">>> Upload tarball..."
@@ -218,12 +230,16 @@ fi
 echo ">>> Bootstrap rsync from tarball..."
 rsync -a --delete --ignore-times \
   --exclude='.env.local' \
+  --exclude='telegram-bot/.env' \
+  --exclude='telegram-bot/data/' \
+  --exclude='telegram-bot/node_modules/' \
   --exclude='public/releases/' \
   --exclude='.next/' \
   --exclude='.next-candidate/' \
   --exclude='.next-previous/' \
   --exclude='node_modules/' \
   --exclude='logs/' \
+  --exclude='backups/' \
   "$STAGE/" /opt/aura-ai/
 echo ">>> Verify GeoNames index after rsync..."
 verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
@@ -240,7 +256,18 @@ rm -f /opt/aura-ai/public/zovus.apk \
 rm -rf "$STAGE"
 sed -i 's/\r$//' /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
 chmod +x /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
+# Pre-migrate dump (up-only runner)
+mkdir -p /opt/aura-ai/backups
+DUMP="/opt/aura-ai/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
+docker exec auraai-postgres pg_dump -U auraai -Fc auraai > "$DUMP" || true
+ls -la "$DUMP" || true
 bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz
+# Telegram bot beside the site (see hosting/install-telegram-bot-on-server.sh)
+if [ -f /opt/aura-ai/hosting/install-telegram-bot-on-server.sh ]; then
+  sed -i 's/\r$//' /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
+  chmod +x /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
+  bash /opt/aura-ai/hosting/install-telegram-bot-on-server.sh || echo "WARN: telegram bot install failed"
+fi
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
 if ($SshKey) {

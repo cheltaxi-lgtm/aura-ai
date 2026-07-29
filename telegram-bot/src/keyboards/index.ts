@@ -33,6 +33,7 @@ export const CB = {
   share: "share:spread",
   unsub: "unsub:yes",
   invite: "invite:switch",
+  ctaResendPrefix: "cta:resend:",
 } as const;
 
 export function salonKeyboard(): Keyboard {
@@ -77,6 +78,17 @@ export function ctaKeyboard(url: string): InlineKeyboard {
 
 export function linkAccountKeyboard(url: string): InlineKeyboard {
   return new InlineKeyboard().url(`🔗 ${copy.ctaLinkButton}`, url);
+}
+
+export function resendCtaKeyboard(sessionId: string): InlineKeyboard {
+  return new InlineKeyboard().text(
+    `🔗 ${copy.ctaResendButton}`,
+    `${CB.ctaResendPrefix}${sessionId}`
+  );
+}
+
+export function continueOnSiteKeyboard(url: string, label: string = copy.continueOnSite): InlineKeyboard {
+  return new InlineKeyboard().url(`🕯 ${label}`, url);
 }
 
 export function settingsKeyboard(): InlineKeyboard {

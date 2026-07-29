@@ -25,6 +25,7 @@ export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void
   if (updated.changes !== 1) return;
 
   const text = copy.linkWelcome(telegramUserId, 0);
+  const continueUrl = `${botConfig.siteUrl}/?utm_source=telegram&utm_medium=bot&utm_campaign=link_welcome`;
   try {
     const res = await fetch(`https://api.telegram.org/bot${botConfig.token}/sendMessage`, {
       method: "POST",
@@ -32,6 +33,11 @@ export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void
       body: JSON.stringify({
         chat_id: user.chat_id,
         text,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `🕯 ${copy.continueReading}`, url: continueUrl }],
+          ],
+        },
       }),
     });
     if (!res.ok) {

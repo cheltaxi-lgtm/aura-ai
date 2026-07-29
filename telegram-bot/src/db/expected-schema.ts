@@ -45,6 +45,7 @@ const BOT_SESSIONS_PREMIUM: ExpectedColumn[] = [
   { name: "teaser_delivered_at", sqlType: "TEXT", nullable: true },
   { name: "schema_version", sqlType: "INTEGER", nullable: true },
   { name: "claimable", sqlType: "INTEGER", nullable: true },
+  { name: "cta_url", sqlType: "TEXT", nullable: true },
 ];
 
 export const EXPECTED_TABLES: ExpectedTable[] = [

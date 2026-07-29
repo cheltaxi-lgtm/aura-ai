@@ -81,6 +81,8 @@ export type GuestSessionRow = {
   schema_version?: number | null;
   /** 1 = claimable on site; 0 = legacy / unclaimable */
   claimable?: number | null;
+  /** Tracked CTA URL for resend (same exposure as Telegram message). Cleared on claim. */
+  cta_url?: string | null;
 };
 
 /** Window to release undelivered spread claim (ms). */
@@ -423,6 +425,8 @@ export function createGuestSession(input: {
   fingerprint: string;
   questionSource: "chip" | "free";
   collageCacheKey?: string;
+  /** Tracked CTA URL (may embed token in path — same as Telegram CTA). */
+  ctaUrl?: string | null;
 }): GuestSessionRow {
   const id = input.id ?? randomUUID();
   const created = nowIso();
@@ -437,8 +441,8 @@ export function createGuestSession(input: {
         teaser_text, teaser_prompt_version, teaser_model, teaser_seed,
         session_token_hash, plain_token_prefix, fingerprint, question_source, source, collage_cache_key,
         created_at, expires_at, claimed_at, quota_day, status, teaser_delivered_at,
-        schema_version, claimable
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?, 'pending', NULL, ?, 1)`
+        schema_version, claimable, cta_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?, 'pending', NULL, ?, 1, ?)`
     )
     .run(
       id,
@@ -461,9 +465,45 @@ export function createGuestSession(input: {
       created,
       expires,
       quotaDay,
-      GUEST_SCHEMA_VERSION
+      GUEST_SCHEMA_VERSION,
+      input.ctaUrl ?? null
     );
   return getDb().prepare(`SELECT * FROM bot_guest_sessions WHERE id = ?`).get(id) as GuestSessionRow;
+}
+
+export function setSessionCtaUrl(sessionId: string, ctaUrl: string): void {
+  getDb()
+    .prepare(`UPDATE bot_guest_sessions SET cta_url = ? WHERE id = ?`)
+    .run(ctaUrl, sessionId);
+}
+
+export function clearSessionCtaUrl(sessionId: string): void {
+  getDb()
+    .prepare(`UPDATE bot_guest_sessions SET cta_url = NULL WHERE id = ?`)
+    .run(sessionId);
+}
+
+/** Latest unclaimed claimable session with a CTA URL (for profile / resend). */
+export function findLatestUnclaimedCtaSession(
+  telegramUserId: number
+): GuestSessionRow | null {
+  const now = nowIso();
+  return (
+    (getDb()
+      .prepare(
+        `SELECT * FROM bot_guest_sessions
+         WHERE telegram_user_id = ?
+           AND claimed_at IS NULL
+           AND COALESCE(claimable, 0) = 1
+           AND COALESCE(status, 'ok') != 'failed'
+           AND expires_at > ?
+           AND cta_url IS NOT NULL
+           AND length(cta_url) > 0
+         ORDER BY created_at DESC
+         LIMIT 1`
+      )
+      .get(telegramUserId, now) as GuestSessionRow | undefined) ?? null
+  );
 }
 
 export function markTeaserDelivered(sessionId: string, at: string = nowIso()): void {
@@ -602,6 +642,16 @@ export function countSessions(telegramUserId: number): number {
   return row.c;
 }
 
+export function countSessionsSince(telegramUserId: number, sinceIso: string): number {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS c FROM bot_guest_sessions
+       WHERE telegram_user_id = ? AND created_at >= ? AND COALESCE(status, 'ok') != 'failed'`
+    )
+    .get(telegramUserId, sinceIso) as { c: number };
+  return row.c;
+}
+
 export function getDayCard(telegramUserId: number, day?: string): {
   card: DrawnCard;
   text: string;
@@ -668,6 +718,51 @@ export function listUsers(limit = 100): BotUser[] {
   return getDb()
     .prepare(`SELECT * FROM bot_users ORDER BY created_at DESC LIMIT ?`)
     .all(limit) as BotUser[];
+}
+
+/** Users inactive for exactly `days` calendar days (reactivation window). */
+export function usersForReactivation(days: number, limit = 200): BotUser[] {
+  const now = Date.now();
+  const start = new Date(now - (days + 1) * 86_400_000).toISOString();
+  const end = new Date(now - days * 86_400_000).toISOString();
+  return getDb()
+    .prepare(
+      `SELECT * FROM bot_users
+       WHERE blocked_at IS NULL
+         AND banned_at IS NULL
+         AND (unsubscribed_at IS NULL OR unsubscribed_at = '')
+         AND last_active_at IS NOT NULL
+         AND last_active_at > ?
+         AND last_active_at <= ?
+       ORDER BY last_active_at ASC
+       LIMIT ?`
+    )
+    .all(start, end, limit) as BotUser[];
+}
+
+/** Active opted-in users for weekly digest (capped). */
+export function usersForWeeklyDigest(limit = 500): BotUser[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM bot_users
+       WHERE blocked_at IS NULL
+         AND banned_at IS NULL
+         AND age_confirmed_at IS NOT NULL
+         AND (unsubscribed_at IS NULL OR unsubscribed_at = '')
+       ORDER BY last_active_at DESC
+       LIMIT ?`
+    )
+    .all(limit) as BotUser[];
+}
+
+/** ISO week key YYYY-Www for digest dedupe. */
+export function isoWeekKey(d = new Date()): string {
+  const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${utc.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
 export function audit(action: string, detail: Record<string, unknown> = {}, actor = "cli"): void {
@@ -813,13 +908,18 @@ export function expireSessions(): number {
   return Number(res.changes ?? 0);
 }
 
-export function consumeLlmQuota(telegramUserId: number): boolean {
+export function hasLlmQuota(telegramUserId: number): boolean {
   const day = localDateKey(getUser(telegramUserId));
   const row = getDb()
     .prepare(`SELECT calls FROM bot_llm_usage WHERE telegram_user_id = ? AND day = ?`)
     .get(telegramUserId, day) as { calls: number } | undefined;
-  const calls = row?.calls ?? 0;
-  if (calls >= botConfig.llmDailyCap) return false;
+  return (row?.calls ?? 0) < botConfig.llmDailyCap;
+}
+
+/** Increment after a successful LLM call (not before). */
+export function consumeLlmQuota(telegramUserId: number): boolean {
+  if (!hasLlmQuota(telegramUserId)) return false;
+  const day = localDateKey(getUser(telegramUserId));
   getDb()
     .prepare(
       `INSERT INTO bot_llm_usage (telegram_user_id, day, calls) VALUES (?, ?, 1)
@@ -829,12 +929,18 @@ export function consumeLlmQuota(telegramUserId: number): boolean {
   return true;
 }
 
-export function consumeTtsQuota(telegramUserId: number): boolean {
+export function hasTtsQuota(telegramUserId: number): boolean {
   const day = localDateKey(getUser(telegramUserId));
   const row = getDb()
     .prepare(`SELECT calls FROM bot_tts_usage WHERE telegram_user_id = ? AND day = ?`)
     .get(telegramUserId, day) as { calls: number } | undefined;
-  if ((row?.calls ?? 0) >= botConfig.ttsDailyCap) return false;
+  return (row?.calls ?? 0) < botConfig.ttsDailyCap;
+}
+
+/** Increment after voice was successfully delivered (not before synthesize). */
+export function consumeTtsQuota(telegramUserId: number): boolean {
+  if (!hasTtsQuota(telegramUserId)) return false;
+  const day = localDateKey(getUser(telegramUserId));
   getDb()
     .prepare(
       `INSERT INTO bot_tts_usage (telegram_user_id, day, calls) VALUES (?, ?, 1)
@@ -977,6 +1083,9 @@ export function metricsSummary(): Record<string, number> {
         .get(day) as { c: number }
     ).c,
     cta_click: count("cta_click"),
+    cta_sent: count("cta_sent"),
+    receipt_claimed: count("receipt_claimed"),
+    teaser_shown: count("teaser_shown"),
     ritual_completed: count("ritual_completed"),
     crisis_detected: count("crisis_detected"),
     voice_sent: count("voice_sent"),

@@ -1,0 +1,23 @@
+[Unit]
+Description=Zovus Telegram bot (grammY + internal receipt HTTP)
+After=network.target aura-ai.service
+Wants=aura-ai.service
+
+[Service]
+Type=simple
+User=aura-ai
+Group=aura-ai
+WorkingDirectory=/opt/aura-ai/telegram-bot
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/aura-ai/telegram-bot/.env
+# Bind HTTP for /health + /r/:token + /internal/receipt/* on loopback (site calls 127.0.0.1:8787).
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillMode=mixed
+StandardOutput=append:/var/log/aura-ai/telegram-bot.log
+StandardError=append:/var/log/aura-ai/telegram-bot.log
+
+[Install]
+WantedBy=multi-user.target

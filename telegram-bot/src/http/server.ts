@@ -2,17 +2,24 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { webhookCallback } from "grammy";
 import type { Bot } from "grammy";
 import { botConfig } from "../config.js";
+import { getDb } from "../db/client.js";
 import {
   findSessionByTokenHash,
   trackEvent,
 } from "../db/repos.js";
 import { buildFinalCtaUrl, hashSessionToken, isSessionToken } from "../domain/session/token.js";
+import { pruneRateMap } from "../ops/rate-maps.js";
 import { handleInternalReceipt } from "./internal-receipt.js";
 
 const redirectHits = new Map<string, { n: number; reset: number }>();
+let lastRedirectPrune = 0;
 
 function rateOk(ip: string): boolean {
   const now = Date.now();
+  if (now - lastRedirectPrune > 60_000) {
+    pruneRateMap(redirectHits, now);
+    lastRedirectPrune = now;
+  }
   const slot = redirectHits.get(ip);
   if (!slot || slot.reset < now) {
     redirectHits.set(ip, { n: 1, reset: now + 60_000 });
@@ -20,6 +27,21 @@ function rateOk(ip: string): boolean {
   }
   slot.n += 1;
   return slot.n <= 60;
+}
+
+function healthPayload(): { ok: boolean; service: string; db: "ok" | "error"; ts: string } {
+  let db: "ok" | "error" = "ok";
+  try {
+    getDb().prepare(`SELECT 1 AS ok`).get();
+  } catch {
+    db = "error";
+  }
+  return {
+    ok: db === "ok",
+    service: "zovus-telegram-bot",
+    db,
+    ts: new Date().toISOString(),
+  };
 }
 
 function handleRedirect(req: IncomingMessage, res: ServerResponse): void {
@@ -55,8 +77,9 @@ export function startHttpServer(bot?: Bot): void {
     const path = req.url?.split("?")[0] || "/";
 
     if (path === "/health") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, service: "zovus-telegram-bot" }));
+      const body = healthPayload();
+      res.writeHead(body.ok ? 200 : 503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(body));
       return;
     }
 
@@ -92,8 +115,10 @@ export function startHttpServer(bot?: Bot): void {
     res.end("not found");
   });
 
-  server.listen(botConfig.webhookPort, () => {
-    console.log(`[http] :${botConfig.webhookPort} health+/r/:token${bot ? "+webhook" : ""}`);
+  // Default loopback: site calls http://127.0.0.1:8787. Override with BOT_HTTP_HOST if needed.
+  const host = (process.env.BOT_HTTP_HOST?.trim() || "127.0.0.1");
+  server.listen(botConfig.webhookPort, host, () => {
+    console.log(`[http] ${host}:${botConfig.webhookPort} health+/r/:token${bot ? "+webhook" : ""}`);
   });
 }
 

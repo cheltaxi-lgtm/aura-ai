@@ -43,7 +43,7 @@ export function isShareCardEnabled(): boolean {
   return flagEnabled("share_card_enabled", botConfig.flags.shareCardEnabled);
 }
 
-/** Declared and seeded; no consumer yet (digest job not implemented). */
+/** Weekly digest job in `jobs/reminders.ts` (Sunday ~11 local). */
 export function isWeeklyDigestEnabled(): boolean {
   return flagEnabled("weekly_digest_enabled", botConfig.flags.weeklyDigestEnabled);
 }

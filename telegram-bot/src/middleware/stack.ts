@@ -10,11 +10,13 @@ import {
   upsertUser,
 } from "../db/repos.js";
 import { isBotEnabled } from "../flags.js";
+import { pruneRateMap } from "../ops/rate-maps.js";
 import { isIrreversible } from "./irreversible.js";
 
 let disabledCounter = 0;
 
 const hits = new Map<number, { count: number; resetAt: number }>();
+let lastPrune = 0;
 
 export async function privateOnly(ctx: Context, next: NextFunction): Promise<void> {
   if (ctx.chat?.type !== "private") return;
@@ -63,6 +65,10 @@ export async function rateLimit(ctx: Context, next: NextFunction): Promise<void>
   const uid = ctx.from?.id;
   if (!uid) return;
   const now = Date.now();
+  if (now - lastPrune > 60_000) {
+    pruneRateMap(hits, now);
+    lastPrune = now;
+  }
   const slot = hits.get(uid);
   if (!slot || slot.resetAt < now) {
     hits.set(uid, { count: 1, resetAt: now + 60_000 });

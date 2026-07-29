@@ -23,6 +23,7 @@ Claim **не** является:
 | One-time | после claim `claimed_at` заполняется атомарно; повтор → `already_claimed` |
 | Claimable | `claimable=1` и `schema_version=1` у новых сессий; legacy → `claimable=0` (неклеймабельные) |
 | Пользователю | plain token не в чате; CTA `/r/:token` → 302 с `tg_receipt` |
+| CTA resend | `cta_url` на сессии до claim/expiry (тот же URL, что в кнопке Telegram); после claim очищается |
 
 ### Почему N=6 безопасно для отладки
 

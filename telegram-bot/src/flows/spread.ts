@@ -10,10 +10,10 @@ import {
   consumeBonusSpread,
   countTripletsToday,
   createGuestSession,
-  effectiveTripletLimit,
   findSessionById,
   getFlow,
   getUser,
+  hasTtsQuota,
   markTeaserDelivered,
   needsSoftTimezonePrompt,
   releaseFailedSpreadSlot,
@@ -22,6 +22,7 @@ import {
   trackEvent,
   consumeTtsQuota,
   type BotUser,
+  type GuestSessionRow,
 } from "../db/repos.js";
 import { isTtsEnabled } from "../flags.js";
 import { deckProvider } from "../domain/deck/local-provider.js";
@@ -38,6 +39,7 @@ import { ttsProvider } from "../domain/tts/openrouter-provider.js";
 import {
   ctaKeyboard,
   questionKeyboard,
+  resendCtaKeyboard,
   salonKeyboard,
   timezoneKeyboard,
 } from "../keyboards/index.js";
@@ -88,6 +90,112 @@ export async function handleFreeTextQuestion(ctx: Context, text: string): Promis
   }
   await runSpread(ctx, user, text, "free");
   return true;
+}
+
+async function replyStuckClaim(
+  ctx: Context,
+  user: BotUser,
+  existing: GuestSessionRow | null
+): Promise<void> {
+  if (!existing) {
+    await ctx.reply(copy.limitReached(user.telegram_user_id, copyCounter++), {
+      reply_markup: salonKeyboard(),
+    });
+    return;
+  }
+
+  const expired = new Date(existing.expires_at).getTime() <= Date.now();
+  if (expired) {
+    await ctx.reply(copy.ctaExpired, { reply_markup: salonKeyboard() });
+    return;
+  }
+
+  if (!existing.teaser_delivered_at) {
+    await ctx.reply(copy.spreadInProgress, { reply_markup: salonKeyboard() });
+    return;
+  }
+
+  if (existing.teaser_text) {
+    await ctx.reply(existing.teaser_text, { reply_markup: salonKeyboard() });
+  }
+
+  if (existing.cta_url) {
+    await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {
+      reply_markup: ctaKeyboard(existing.cta_url),
+    });
+    trackEvent("cta_resent", user.telegram_user_id, {
+      session_id: existing.id,
+      source: "stuck_claim",
+    });
+    return;
+  }
+
+  await ctx.reply(copy.ctaSendFailed, {
+    reply_markup: resendCtaKeyboard(existing.id),
+  });
+}
+
+async function deliverCta(
+  ctx: Context,
+  user: BotUser,
+  sessionId: string,
+  ctaUrl: string
+): Promise<boolean> {
+  try {
+    await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {
+      reply_markup: ctaKeyboard(ctaUrl),
+    });
+    trackEvent("cta_sent", user.telegram_user_id, { session_id: sessionId });
+    return true;
+  } catch (err) {
+    console.error("[spread] CTA send failed", err);
+    trackEvent("cta_failed", user.telegram_user_id, { session_id: sessionId });
+    try {
+      await ctx.reply(copy.ctaSendFailed, {
+        reply_markup: resendCtaKeyboard(sessionId),
+      });
+    } catch (err2) {
+      console.error("[spread] CTA fallback failed", err2);
+    }
+    return false;
+  }
+}
+
+export async function handleCtaResend(ctx: Context, sessionId: string): Promise<void> {
+  const user = await ensureOnboarded(ctx);
+  if (!user) return;
+
+  const session = findSessionById(sessionId);
+  if (!session || session.telegram_user_id !== user.telegram_user_id) {
+    await ctx.answerCallbackQuery({ text: "Ссылка недоступна" });
+    return;
+  }
+  if (session.claimed_at) {
+    await ctx.answerCallbackQuery({ text: "Уже привязано" });
+    await ctx.reply(copy.profileLinked, {
+      reply_markup: salonKeyboard(),
+    });
+    return;
+  }
+  if (new Date(session.expires_at).getTime() <= Date.now()) {
+    await ctx.answerCallbackQuery({ text: "Срок истёк" });
+    await ctx.reply(copy.ctaExpired, { reply_markup: salonKeyboard() });
+    return;
+  }
+  if (!session.cta_url) {
+    await ctx.answerCallbackQuery({ text: "Ссылка недоступна" });
+    await ctx.reply(copy.spreadFailed, { reply_markup: salonKeyboard() });
+    return;
+  }
+
+  await ctx.answerCallbackQuery({ text: "Отправляю" });
+  await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {
+    reply_markup: ctaKeyboard(session.cta_url),
+  });
+  trackEvent("cta_resent", user.telegram_user_id, {
+    session_id: session.id,
+    source: "button",
+  });
 }
 
 async function runSpread(
@@ -144,24 +252,13 @@ async function runSpread(
   }
   if (!claim.claimed) {
     clearFlow(user.telegram_user_id);
-    const existing = findSessionById(claim.sessionId);
-    if (existing?.teaser_text && existing.teaser_delivered_at) {
-      await ctx.reply(existing.teaser_text, { reply_markup: salonKeyboard() });
-      await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {
-        reply_markup: salonKeyboard(),
-      });
-    } else {
-      await ctx.reply(copy.limitReached(user.telegram_user_id, copyCounter++), {
-        reply_markup: salonKeyboard(),
-      });
-    }
+    await replyStuckClaim(ctx, user, findSessionById(claim.sessionId));
     return;
   }
 
   // Point of no return for update_id: claim reserved — do not release update on later errors.
   markIrreversible(ctx);
 
-  let token = "";
   let teaserText = "";
   try {
     await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
@@ -195,7 +292,8 @@ async function runSpread(
     const teaser = await generateTeaser(validated.question, cards, user.telegram_user_id);
     teaserText = teaser.text;
 
-    token = createSessionToken();
+    const token = createSessionToken();
+    const ctaUrl = buildTrackedCtaUrl(token);
     const symbols = toGuestSymbols(cards);
     const usedBonus =
       countTripletsToday(user.telegram_user_id, user) >= botConfig.tripletDailyLimit &&
@@ -215,10 +313,13 @@ async function runSpread(
       fingerprint: computeFingerprint(symbols),
       questionSource: source,
       collageCacheKey: sessionId,
+      ctaUrl,
     });
 
     if (usedBonus) consumeBonusSpread(user.telegram_user_id);
 
+    // Mark right after teaser text: avoids free re-draw if CTA/voice crashes later.
+    // CTA URL is already on the session row for resend / stuck-claim recovery.
     await ctx.reply(teaser.text, { reply_markup: salonKeyboard() });
     markTeaserDelivered(sessionId);
     track(user, "teaser_shown", {
@@ -245,18 +346,27 @@ async function runSpread(
     return;
   }
 
-  // After delivery: voice/CTA failures must NOT return the slot.
+  // After delivery: CTA/voice failures must NOT return the slot.
+  await new Promise((r) => setTimeout(r, botConfig.ritual.ctaPauseMs));
+  const session = findSessionById(sessionId);
+  const ctaUrl = session?.cta_url;
+  if (ctaUrl) {
+    await deliverCta(ctx, user, sessionId, ctaUrl);
+  } else {
+    await ctx.reply(copy.ctaSendFailed, {
+      reply_markup: resendCtaKeyboard(sessionId),
+    });
+  }
+
+  // Voice: quota only after successful send.
   const voiceMode = user.voice_mode ?? "text_voice";
-  if (
-    voiceMode === "text_voice" &&
-    isTtsEnabled() &&
-    consumeTtsQuota(user.telegram_user_id)
-  ) {
+  if (voiceMode === "text_voice" && isTtsEnabled() && hasTtsQuota(user.telegram_user_id)) {
     const short = teaserText.length > 500 ? `${teaserText.slice(0, 480)}…` : teaserText;
     const voice = await ttsProvider.synthesize(short);
     if (voice.ok) {
       try {
         await ctx.replyWithVoice(new InputFile(voice.ogg, "teaser.ogg"));
+        consumeTtsQuota(user.telegram_user_id);
         trackEvent("voice_sent", user.telegram_user_id, { session_id: sessionId });
       } catch {
         trackEvent("voice_failed", user.telegram_user_id, { session_id: sessionId });
@@ -268,12 +378,6 @@ async function runSpread(
       });
     }
   }
-
-  await new Promise((r) => setTimeout(r, botConfig.ritual.ctaPauseMs));
-  const ctaUrl = buildTrackedCtaUrl(token);
-  await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {
-    reply_markup: ctaKeyboard(ctaUrl),
-  });
 
   const streak = touchStreak(user.telegram_user_id);
   if ([3, 7, 30].includes(streak)) {
@@ -288,8 +392,6 @@ async function runSpread(
       reply_markup: timezoneKeyboard({ allowSkip: true }),
     });
   }
-
-  void effectiveTripletLimit;
 }
 
 export async function handleAgain(ctx: Context): Promise<void> {

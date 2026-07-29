@@ -11,11 +11,17 @@ import {
 } from "../domain/session/guest-contract.js";
 import { maybeSendLinkWelcome } from "../domain/link/welcome.js";
 import { hashSessionToken, isSessionToken } from "../domain/session/token.js";
+import { pruneRateMap } from "../ops/rate-maps.js";
 
 const hits = new Map<string, { n: number; reset: number }>();
+let lastPrune = 0;
 
 function rateOk(ip: string, limit = 60): boolean {
   const now = Date.now();
+  if (now - lastPrune > 60_000) {
+    pruneRateMap(hits, now);
+    lastPrune = now;
+  }
   const slot = hits.get(ip);
   if (!slot || slot.reset < now) {
     hits.set(ip, { n: 1, reset: now + 60_000 });
@@ -223,7 +229,7 @@ export async function handleInternalReceipt(
   const updated = db
     .prepare(
       `UPDATE bot_guest_sessions
-       SET claimed_at = ?
+       SET claimed_at = ?, cta_url = NULL
        WHERE id = ? AND claimed_at IS NULL AND COALESCE(claimable, 0) = 1
        RETURNING id`
     )

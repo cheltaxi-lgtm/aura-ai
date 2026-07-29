@@ -1,5 +1,5 @@
 import { botConfig } from "../../config.js";
-import { consumeLlmQuota } from "../../db/repos.js";
+import { consumeLlmQuota, hasLlmQuota } from "../../db/repos.js";
 import { isLlmEnabled } from "../../flags.js";
 import type { DrawnCard } from "../deck/types.js";
 import {
@@ -33,7 +33,7 @@ export async function generateTeaser(
 
   if (!isLlmEnabled()) return fallback;
   if (!botConfig.openRouterApiKey) return fallback;
-  if (telegramUserId != null && !consumeLlmQuota(telegramUserId)) return fallback;
+  if (telegramUserId != null && !hasLlmQuota(telegramUserId)) return fallback;
 
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -74,6 +74,7 @@ export async function generateTeaser(
     };
     const text = json.choices?.[0]?.message?.content?.trim();
     if (!text || text.length < 40) return fallback;
+    if (telegramUserId != null) consumeLlmQuota(telegramUserId);
     return {
       text: text.slice(0, 1200),
       model: botConfig.openRouterModel,

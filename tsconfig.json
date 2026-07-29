@@ -39,6 +39,7 @@
     "node_modules",
     "mobile",
     "scripts",
-    "telegram-bot"
+    "telegram-bot",
+    "_verify"
   ]
 }

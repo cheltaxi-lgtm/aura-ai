@@ -9,6 +9,7 @@ import {
   countSessions,
   deleteUserData,
   ensureRefCode,
+  findLatestUnclaimedCtaSession,
   formatTimezoneLabel,
   getUser,
   listSessions,
@@ -30,6 +31,8 @@ import {
   NAV_LABELS,
   ageKeyboard,
   consentKeyboard,
+  continueOnSiteKeyboard,
+  ctaKeyboard,
   deleteConfirmKeyboard,
   deleteKeyboard,
   inviteKeyboard,
@@ -45,6 +48,7 @@ import {
   beginSpread,
   handleAgain,
   handleChip,
+  handleCtaResend,
   handleFreeTextQuestion,
   handleOwnQuestionPrompt,
 } from "./spread.js";
@@ -177,6 +181,15 @@ export function registerFlows(bot: Bot): void {
   bot.command("profile", async (ctx) => showProfile(ctx));
   bot.command("history", async (ctx) => showHistory(ctx));
   bot.command("settings", async (ctx) => showSettings(ctx));
+
+  bot.callbackQuery(new RegExp(`^${CB.ctaResendPrefix}(.+)$`), async (ctx) => {
+    const sessionId = ctx.match?.[1];
+    if (!sessionId) {
+      await ctx.answerCallbackQuery({ text: "Ссылка недоступна" });
+      return;
+    }
+    await handleCtaResend(ctx, sessionId);
+  });
 
   bot.command("stop", async (ctx) => {
     const user = await ensureOnboarded(ctx);
@@ -349,25 +362,33 @@ async function showProfile(ctx: Context): Promise<void> {
   if (!user) return;
   const code = ensureRefCode(user.telegram_user_id);
   const linked = Boolean(user.zovus_user_id);
-  const linkUrl = `${botConfig.siteUrl}/cabinet`;
-  await ctx.reply(
-    copy.profile({
-      since: user.created_at.slice(0, 10),
-      streak: user.streak_days,
-      spreads: countSessions(user.telegram_user_id),
-      age: Boolean(user.age_confirmed_at),
-      consent: Boolean(user.terms_accepted_at && user.privacy_accepted_at),
-      refLink: `https://t.me/${botConfig.botUsername}?start=ref_${code}`,
-      invites: user.referral_count ?? 0,
-      timezone: formatTimezoneLabel(user),
-      zovusLinked: linked,
-    }),
-    {
-      reply_markup: linked
-        ? inviteKeyboard()
+  const pending = findLatestUnclaimedCtaSession(user.telegram_user_id);
+  const linkUrl = pending?.cta_url || `${botConfig.siteUrl}/cabinet`;
+  const body = copy.profile({
+    since: user.created_at.slice(0, 10),
+    streak: user.streak_days,
+    spreads: countSessions(user.telegram_user_id),
+    age: Boolean(user.age_confirmed_at),
+    consent: Boolean(user.terms_accepted_at && user.privacy_accepted_at),
+    refLink: `https://t.me/${botConfig.botUsername}?start=ref_${code}`,
+    invites: user.referral_count ?? 0,
+    timezone: formatTimezoneLabel(user),
+    zovusLinked: linked,
+  });
+  const withHint =
+    pending && !linked
+      ? `${body}\n\n${copy.profileContinueHint}`
+      : body;
+
+  await ctx.reply(withHint, {
+    reply_markup: linked
+      ? pending?.cta_url
+        ? continueOnSiteKeyboard(pending.cta_url, copy.continueReading)
+        : inviteKeyboard()
+      : pending?.cta_url
+        ? ctaKeyboard(pending.cta_url)
         : linkAccountKeyboard(linkUrl),
-    }
-  );
+  });
 }
 
 async function showHistory(ctx: Context): Promise<void> {
