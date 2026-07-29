@@ -51,6 +51,10 @@ export const CB = {
   /** Destiny matrix album / actions */
   mxPrefix: "mx:",
   mxRun: "mx:run",
+  mxCalc: "mx:calc",
+  mxDel: "mx:del",
+  mxDelYes: "mx:del:yes",
+  mxDelNo: "mx:del:no",
   mxList: "mx:list",
   mxNoop: "mx:noop",
   mxPagePrefix: "mx:pg:",
@@ -297,6 +301,39 @@ export function historyPagerKeyboard(opts: {
   return kb;
 }
 
+/** Not owned yet: get full matrix + recalculate free scheme. */
+export function matrixGetKeyboard(opts: {
+  cost: number;
+  shopUrl?: string | null;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text(`✨ Получить матрицу · ${opts.cost}ᚢ`, CB.mxRun)
+    .row()
+    .text("🔮 Рассчитать матрицу", CB.mxCalc);
+  if (opts.shopUrl) {
+    kb.row().url("🪙 Пополнить руны", opts.shopUrl);
+  }
+  return kb;
+}
+
+/** Owned full report actions. */
+export function matrixOwnedKeyboard(opts?: { siteUrl?: string | null }): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("🔮 Рассчитать матрицу", CB.mxCalc)
+    .text("🗑 Удалить", CB.mxDel);
+  if (opts?.siteUrl) {
+    kb.row().url(`🕯 ${copy.continueOnSite}`, opts.siteUrl);
+  }
+  return kb;
+}
+
+export function matrixDeleteConfirmKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🗑 Да, удалить", CB.mxDelYes)
+    .text("↩ Отмена", CB.mxDelNo);
+}
+
+/** @deprecated use matrixGetKeyboard / matrixOwnedKeyboard */
 export function matrixSummaryKeyboard(opts: {
   owned: boolean;
   cost: number;
@@ -304,22 +341,8 @@ export function matrixSummaryKeyboard(opts: {
   siteUrl?: string | null;
   shopUrl?: string | null;
 }): InlineKeyboard {
-  const kb = new InlineKeyboard();
-  if (opts.owned) {
-    kb.text("📜 Открыть полный разбор", CB.mxRun).row();
-  } else {
-    kb.text(`✨ Полный разбор · ${opts.cost}ᚢ`, CB.mxRun).row();
-  }
-  if (opts.savedReports > 0) {
-    kb.text(`🗂 Мои отчёты (${opts.savedReports})`, CB.mxList).row();
-  }
-  if (opts.siteUrl) {
-    kb.url(`🕯 ${copy.continueOnSite}`, opts.siteUrl);
-  }
-  if (!opts.owned && opts.shopUrl) {
-    kb.row().url("🪙 Пополнить руны", opts.shopUrl);
-  }
-  return kb;
+  if (opts.owned) return matrixOwnedKeyboard({ siteUrl: opts.siteUrl });
+  return matrixGetKeyboard({ cost: opts.cost, shopUrl: opts.shopUrl });
 }
 
 /** Matrix reports album: one report preview per page. */

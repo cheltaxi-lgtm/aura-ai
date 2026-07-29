@@ -35,7 +35,11 @@ export async function POST(request: NextRequest) {
 
   const rawAction = typeof body.action === "string" ? body.action : "summary";
   const action =
-    rawAction === "list" || rawAction === "get" || rawAction === "run" || rawAction === "summary"
+    rawAction === "list" ||
+    rawAction === "get" ||
+    rawAction === "run" ||
+    rawAction === "delete" ||
+    rawAction === "summary"
       ? rawAction
       : "summary";
   const reportId = typeof body.report_id === "string" ? body.report_id : undefined;

@@ -1,5 +1,6 @@
 import type { Context, InlineKeyboard } from "grammy";
 import { InputFile } from "grammy";
+import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { clearFlow, getFlow, setFlow } from "../db/repos.js";
 import {
@@ -21,12 +22,18 @@ import {
   continueOnSiteKeyboard,
   dialogStopKeyboard,
   historyPagerKeyboard,
+  matrixDeleteConfirmKeyboard,
+  matrixGetKeyboard,
   matrixListPagerKeyboard,
-  matrixSummaryKeyboard,
+  matrixOwnedKeyboard,
   modulesKeyboard,
   salonKeyboard,
   supportListKeyboard,
 } from "../keyboards/index.js";
+import {
+  formatMatrixPremiumTeaser,
+  formatMatrixReadingPremium,
+} from "../domain/matrix/format.js";
 import { ensureSiteLinked } from "./site-account.js";
 
 type HistoryItem = {
@@ -207,7 +214,8 @@ async function sendMatrixDiagram(
   }
 }
 
-export async function showMatrix(ctx: Context): Promise<void> {
+/** Free diagram + premium teaser + Get / Calculate buttons. */
+export async function showMatrixTeaser(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
   try {
@@ -224,9 +232,9 @@ export async function showMatrix(ctx: Context): Promise<void> {
     }
 
     const caption = [
-      copy.matrixTitle,
+      "🌌 Матрица судьбы",
       data.name || data.diagram?.name || null,
-      data.birthDate ? `Дата рождения: ${data.birthDate}` : null,
+      data.birthDate || null,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -237,26 +245,20 @@ export async function showMatrix(ctx: Context): Promise<void> {
       caption,
     });
 
-    const body = [
-      data.portrait || "",
-      "",
-      data.moneyInsight || "",
-      data.loveInsight || "",
-      data.yearInsight || "",
-      "",
-      data.owned
-        ? "Полный разбор уже куплен — можно открыть здесь."
-        : `Полный разбор Эвелины: ${data.cost ?? 20}ᚢ (разовая покупка).`,
-      `Сохранённых отчётов: ${data.savedReports ?? 0}`,
-    ]
-      .filter((x) => x !== "")
-      .join("\n");
-    const chunks = chunkTelegramText(body);
-    const kb = matrixSummaryKeyboard({
-      owned: Boolean(data.owned),
+    const body = formatMatrixPremiumTeaser({
+      name: data.name,
+      birthDate: data.birthDate,
+      portrait: data.portrait,
+      moneyInsight: data.moneyInsight,
+      loveInsight: data.loveInsight,
+      yearInsight: data.yearInsight,
+      keyArcana: data.keyArcana,
       cost: data.cost ?? 20,
-      savedReports: data.savedReports ?? 0,
-      siteUrl: data.url,
+      runeBalance: data.runeBalance,
+    });
+    const chunks = chunkTelegramText(body);
+    const kb = matrixGetKeyboard({
+      cost: data.cost ?? 20,
       shopUrl: data.shopUrl,
     });
     for (let i = 0; i < chunks.length; i++) {
@@ -264,6 +266,38 @@ export async function showMatrix(ctx: Context): Promise<void> {
         reply_markup: i === chunks.length - 1 ? kb : undefined,
       });
     }
+  } catch (err) {
+    console.error("[cabinet] matrix teaser", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+export async function showMatrix(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
+    if (!data.ok) {
+      if (data.error === "needs_onboarding") {
+        await ctx.reply(copy.matrixNeedsBirth, { reply_markup: linkKb(data.linkUrl) });
+        return;
+      }
+      await ctx.reply(data.message || copy.siteBridgeDown, {
+        reply_markup: linkKb(data.linkUrl),
+      });
+      return;
+    }
+
+    // Owned full report → open entire reading immediately.
+    if (data.owned && data.ownedReportId) {
+      await openMatrixReport(ctx, data.ownedReportId, {
+        siteUrl: data.url,
+        showActions: true,
+      });
+      return;
+    }
+
+    await showMatrixTeaser(ctx);
   } catch (err) {
     console.error("[cabinet] matrix", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -296,12 +330,7 @@ export async function showMatrixReports(ctx: Context): Promise<void> {
     const items = (data.items || []) as MatrixListItem[];
     if (!items.length) {
       await ctx.reply(copy.matrixReportsEmpty, {
-        reply_markup: matrixSummaryKeyboard({
-          owned: false,
-          cost: 20,
-          savedReports: 0,
-          siteUrl: data.url,
-        }),
+        reply_markup: matrixGetKeyboard({ cost: 20 }),
       });
       return;
     }
@@ -346,10 +375,10 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
     await sendMatrixDiagram(ctx, {
       diagram: data.diagram,
       birthDate: data.birthDate,
-      caption: data.birthDate ? `Матрица судьбы · ${data.birthDate}` : "Матрица судьбы",
+      caption: data.birthDate ? `🌌 Матрица судьбы · ${data.birthDate}` : "🌌 Матрица судьбы",
     });
     await presentReadingToTelegram(ctx, {
-      reading: data.content || "",
+      reading: formatMatrixReadingPremium(data.content || ""),
       cardNames: [],
       question: "Матрица судьбы",
       sessionId: data.sessionId,
@@ -359,13 +388,20 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
           ? `Списано ${data.charged}ᚢ`
           : undefined,
     });
+    await ctx.reply("Действия с матрицей:", {
+      reply_markup: matrixOwnedKeyboard({ siteUrl: data.url }),
+    });
   } catch (err) {
     console.error("[cabinet] matrix run", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
   }
 }
 
-export async function openMatrixReport(ctx: Context, reportId: string): Promise<void> {
+export async function openMatrixReport(
+  ctx: Context,
+  reportId: string,
+  opts?: { siteUrl?: string | null; showActions?: boolean }
+): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
   try {
@@ -379,16 +415,42 @@ export async function openMatrixReport(ctx: Context, reportId: string): Promise<
     await sendMatrixDiagram(ctx, {
       diagram: data.diagram,
       birthDate: data.birthDate,
-      caption: data.birthDate ? `Матрица судьбы · ${data.birthDate}` : "Матрица судьбы",
+      caption: data.birthDate ? `🌌 Матрица судьбы · ${data.birthDate}` : "🌌 Матрица судьбы",
     });
     await presentReadingToTelegram(ctx, {
-      reading: data.content,
+      reading: formatMatrixReadingPremium(data.content),
       cardNames: [],
       question: "Матрица судьбы",
       sessionId: data.sessionId || undefined,
     });
+    if (opts?.showActions !== false) {
+      await ctx.reply("Действия с матрицей:", {
+        reply_markup: matrixOwnedKeyboard({ siteUrl: opts?.siteUrl || data.url }),
+      });
+    }
   } catch (err) {
     console.error("[cabinet] matrix get", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+export async function deleteMatrixReport(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "delete");
+    if (!data.ok) {
+      await ctx.reply(data.message || "Не удалось удалить матрицу.", {
+        reply_markup: salonKeyboard(),
+      });
+      return;
+    }
+    const shopUrl = `${botConfig.siteUrl}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`;
+    await ctx.reply("🗑 Матрица удалена. Можно рассчитать схему и получить новый разбор.", {
+      reply_markup: matrixGetKeyboard({ cost: 20, shopUrl }),
+    });
+  } catch (err) {
+    console.error("[cabinet] matrix delete", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
   }
 }
@@ -412,6 +474,33 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     return true;
   }
 
+  if (data === CB.mxCalc) {
+    await ctx.answerCallbackQuery({ text: "Считаю схему…" }).catch(() => undefined);
+    await showMatrixTeaser(ctx);
+    return true;
+  }
+
+  if (data === CB.mxDel) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await ctx.reply(
+      "Удалить сохранённую матрицу? Полный разбор пропадёт — получить снова можно за руны.",
+      { reply_markup: matrixDeleteConfirmKeyboard() }
+    );
+    return true;
+  }
+
+  if (data === CB.mxDelNo) {
+    await ctx.answerCallbackQuery({ text: "Отменено" }).catch(() => undefined);
+    await ctx.reply("Оставила как было.", { reply_markup: salonKeyboard() });
+    return true;
+  }
+
+  if (data === CB.mxDelYes) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await deleteMatrixReport(ctx);
+    return true;
+  }
+
   if (data === CB.mxList) {
     await ctx.answerCallbackQuery().catch(() => undefined);
     await showMatrixReports(ctx);
@@ -421,7 +510,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
   if (data.startsWith(CB.mxOpenPrefix)) {
     await ctx.answerCallbackQuery().catch(() => undefined);
     const reportId = data.slice(CB.mxOpenPrefix.length);
-    if (reportId) await openMatrixReport(ctx, reportId);
+    if (reportId) await openMatrixReport(ctx, reportId, { showActions: true });
     return true;
   }
 

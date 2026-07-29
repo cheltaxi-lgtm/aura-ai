@@ -232,3 +232,37 @@ export async function getUserMatrixReportById(
   );
   return rows[0] ? mapRow(rows[0]) : null;
 }
+
+/** Delete one owned matrix report (buy-once unlock reset for that birth date/version row). */
+export async function deleteUserMatrixReport(
+  userId: string,
+  reportId: string
+): Promise<boolean> {
+  const id = reportId.trim();
+  if (!id) return false;
+  const { rowCount } = await query(
+    `DELETE FROM numerology_report_history
+     WHERE user_id = $1
+       AND id = $2::uuid
+       AND tool_id = $3`,
+    [userId, id, MATRIX_REPORT_TOOL_ID]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** Delete all destiny-matrix reports for a birth date (user-initiated reset). */
+export async function deleteOwnedMatrixReportsForBirth(
+  userId: string,
+  birthDateRaw: string | null | undefined
+): Promise<number> {
+  const birthDate = toIsoBirthDate(birthDateRaw);
+  if (!birthDate) return 0;
+  const { rowCount } = await query(
+    `DELETE FROM numerology_report_history
+     WHERE user_id = $1
+       AND tool_id = $2
+       AND birth_date = $3::date`,
+    [userId, MATRIX_REPORT_TOOL_ID, birthDate]
+  );
+  return rowCount ?? 0;
+}

@@ -17,6 +17,8 @@ import {
 } from "@/lib/services/billing-service";
 import { generateNumerologSessionReading } from "@/lib/services/numerology-service";
 import {
+  deleteOwnedMatrixReportsForBirth,
+  deleteUserMatrixReport,
   findOwnedMatrixReport,
   getUserMatrixReportById,
   listUserMatrixReports,
@@ -448,9 +450,40 @@ export async function botMatrixRun(telegramUserId: number): Promise<
   }
 }
 
+export async function botMatrixDelete(input: {
+  telegramUserId: number;
+  reportId?: string;
+}) {
+  const gate = await requireMatrixUser(input.telegramUserId);
+  if (!gate.ok) return gate;
+
+  const profileUserId = gate.resolved.profileUserId!;
+  let deleted = 0;
+  if (input.reportId?.trim()) {
+    deleted = (await deleteUserMatrixReport(profileUserId, input.reportId)) ? 1 : 0;
+  } else {
+    deleted = await deleteOwnedMatrixReportsForBirth(profileUserId, gate.user.birth_date);
+  }
+
+  if (deleted < 1) {
+    return {
+      ok: false as const,
+      error: "not_found" as const,
+      message: "Сохранённой матрицы не найдено.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    action: "delete" as const,
+    deleted,
+    message: "Матрица удалена. Можно рассчитать и получить разбор заново.",
+  };
+}
+
 export async function botMatrixAction(input: {
   telegramUserId: number;
-  action: "summary" | "list" | "get" | "run";
+  action: "summary" | "list" | "get" | "run" | "delete";
   reportId?: string;
 }) {
   switch (input.action) {
@@ -460,6 +493,11 @@ export async function botMatrixAction(input: {
       return botMatrixGet(input.telegramUserId, input.reportId || "");
     case "run":
       return botMatrixRun(input.telegramUserId);
+    case "delete":
+      return botMatrixDelete({
+        telegramUserId: input.telegramUserId,
+        reportId: input.reportId,
+      });
     case "summary":
     default:
       return botMatrixSummary(input.telegramUserId);

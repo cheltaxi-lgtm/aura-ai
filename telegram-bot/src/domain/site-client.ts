@@ -271,7 +271,7 @@ export type SiteMatrixDiagram = {
 
 export async function siteNumerology(
   telegramUserId: number,
-  action: "summary" | "list" | "get" | "run" = "summary",
+  action: "summary" | "list" | "get" | "run" | "delete" = "summary",
   reportId?: string
 ) {
   return siteFetch<{
@@ -304,6 +304,7 @@ export async function siteNumerology(
     sessionId?: string;
     charged?: number;
     reused?: boolean;
+    deleted?: number;
     url?: string;
     error?: string;
     message?: string;

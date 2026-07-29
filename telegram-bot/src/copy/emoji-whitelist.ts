@@ -29,6 +29,8 @@ export const BUTTON_EMOJI_WHITELIST = [
   "\u{1F5D1}\u{FE0F}", // wastebasket
   "\u{21A9}\u{FE0F}", // return
   "\u{2709}\u{FE0F}", // envelope
+  "\u{1F4B0}", // money bag (matrix get)
+  "\u{1F49E}", // revolving hearts
 ] as const;
 
 export const EMOJI_RE =
