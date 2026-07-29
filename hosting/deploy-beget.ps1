@@ -264,37 +264,26 @@ mkdir -p /opt/aura-ai/backups
 DUMP="/opt/aura-ai/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
 docker exec auraai-postgres pg_dump -U auraai -Fc auraai > "$DUMP" || true
 ls -la "$DUMP" || true
-# </dev/null: vm_local_deploy (or children) must not consume the piped deploy script stdin.
-bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz </dev/null
+# Close stdin so children cannot consume the rest of a piped script.
+exec 0</dev/null
+bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
+$RemoteDeploySh = Join-Path $env:TEMP "aura-ai-remote-deploy.sh"
+[System.IO.File]::WriteAllText($RemoteDeploySh, $DeployCmd, [System.Text.UTF8Encoding]::new($false))
 if ($SshKey) {
-  $sshArgs = @(Get-SshBaseArgs) + @("${User}@${DeployHost}", "bash", "-s")
-  $DeployCmd | & ssh.exe @sshArgs
+  Copy-Remote $RemoteDeploySh "/tmp/aura-ai-remote-deploy.sh"
+  Invoke-Remote "sed -i 's/\r$//' /tmp/aura-ai-remote-deploy.sh && bash /tmp/aura-ai-remote-deploy.sh"
   if ($LASTEXITCODE -ne 0) {
     throw "Remote deploy failed with exit code $LASTEXITCODE (active .next was not activated if candidate gates failed)"
   }
 } else {
-  Invoke-Remote $DeployCmd
+  Copy-Remote $RemoteDeploySh "/tmp/aura-ai-remote-deploy.sh"
+  Invoke-Remote "sed -i 's/\r$//' /tmp/aura-ai-remote-deploy.sh && bash /tmp/aura-ai-remote-deploy.sh"
 }
 
 Write-Host ">>> Install / restore Telegram bot..."
-$BotCmd = @'
-set -e
-sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
-chmod +x /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
-bash /opt/aura-ai/hosting/install-telegram-bot-on-server.sh </dev/null
-'@
-$BotCmd = ($BotCmd -replace "`r`n", "`n" -replace "`r", "`n")
-if ($SshKey) {
-  $sshArgs = @(Get-SshBaseArgs) + @("${User}@${DeployHost}", "bash", "-s")
-  $BotCmd | & ssh.exe @sshArgs
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "WARN: telegram bot install failed with exit code $LASTEXITCODE"
-  }
-} else {
-  Invoke-Remote $BotCmd
-}
+Invoke-Remote "sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh; chmod +x /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh; bash /opt/aura-ai/hosting/install-telegram-bot-on-server.sh"
 
 Write-Host ">>> Health check..."
 try {
