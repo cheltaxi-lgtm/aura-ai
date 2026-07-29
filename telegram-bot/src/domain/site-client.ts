@@ -246,6 +246,26 @@ export async function siteSupport(
   });
 }
 
+export async function siteAuthBridgeConfirm(input: {
+  token: string;
+  telegramUserId: number;
+  username?: string | null;
+  firstName?: string | null;
+  photoUrl?: string | null;
+}) {
+  return siteFetch<{
+    ok: boolean;
+    purpose?: string;
+    error?: string;
+  }>("/api/internal/bot/auth-bridge", {
+    token: input.token,
+    telegram_user_id: input.telegramUserId,
+    username: input.username ?? undefined,
+    first_name: input.firstName ?? undefined,
+    photo_url: input.photoUrl ?? undefined,
+  });
+}
+
 export async function siteChat(telegramUserId: number, sessionId: string, message: string) {
   return siteFetch<{
     ok: boolean;

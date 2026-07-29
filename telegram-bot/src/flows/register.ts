@@ -63,13 +63,46 @@ import {
 } from "./spread.js";
 import { ensureSiteLinked, syncSiteAccount } from "./site-account.js";
 import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
-import { siteHistory, siteRunes } from "../domain/site-client.js";
+import { siteAuthBridgeConfirm, siteHistory, siteRunes } from "../domain/site-client.js";
 
 export function registerFlows(bot: Bot): void {
   bot.command("start", async (ctx) => {
     if (!ctx.from || !ctx.chat) return;
     const payload = typeof ctx.match === "string" ? ctx.match : "";
-    const attribution = parseStartPayload(payload);
+
+    // Site login/register/link bridge: /start a_<32hex>
+    const authToken = /^a_([a-f0-9]{32})$/i.exec(payload)?.[1]?.toLowerCase();
+    if (authToken) {
+      upsertUser({
+        telegramUserId: ctx.from.id,
+        chatId: ctx.chat.id,
+        username: ctx.from.username,
+        firstName: ctx.from.first_name,
+        languageCode: ctx.from.language_code,
+      });
+      try {
+        const { data } = await siteAuthBridgeConfirm({
+          token: authToken,
+          telegramUserId: ctx.from.id,
+          username: ctx.from.username ?? null,
+          firstName: ctx.from.first_name ?? null,
+          photoUrl: null,
+        });
+        if (data.ok) {
+          trackEvent("auth_bridge_ok", ctx.from.id, { purpose: data.purpose || "" });
+          await ctx.reply(copy.authBridgeOk, { reply_markup: salonKeyboard() });
+        } else {
+          trackEvent("auth_bridge_fail", ctx.from.id, { error: data.error || "" });
+          await ctx.reply(copy.authBridgeFail, { reply_markup: salonKeyboard() });
+        }
+      } catch (err) {
+        console.error("[auth-bridge]", err);
+        await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      }
+      // Continue light onboarding so bot keyboard is available after site auth.
+    }
+
+    const attribution = authToken ? {} : parseStartPayload(payload);
     const user = upsertUser({
       telegramUserId: ctx.from.id,
       chatId: ctx.chat.id,
@@ -78,14 +111,28 @@ export function registerFlows(bot: Bot): void {
       languageCode: ctx.from.language_code,
       attribution,
     });
-    if (attribution.ref?.startsWith("r") || payload.startsWith("ref_")) {
+    if (!authToken && (attribution.ref?.startsWith("r") || payload.startsWith("ref_"))) {
       const code = attribution.ref?.startsWith("ref_")
         ? attribution.ref.slice(4)
         : attribution.ref || payload.replace(/^ref_/, "");
       if (code) applyReferral(ctx.from.id, code);
     }
     ensureRefCode(ctx.from.id);
-    track(user, "bot_start", { has_payload: Boolean(payload) });
+    track(user, "bot_start", { has_payload: Boolean(payload), auth_bridge: Boolean(authToken) });
+
+    if (authToken) {
+      const freshAuth = getUser(ctx.from.id)!;
+      if (!freshAuth.age_confirmed_at) {
+        await ctx.reply(copy.ageAsk, { reply_markup: ageKeyboard() });
+        return;
+      }
+      if (!freshAuth.terms_accepted_at || !freshAuth.privacy_accepted_at) {
+        await ctx.reply(copy.consentAsk(botConfig.siteUrl), { reply_markup: consentKeyboard() });
+        return;
+      }
+      await attachSalonBar(ctx);
+      return;
+    }
 
     const name = ctx.from.first_name?.trim() || "друг";
     await ctx.reply(copy.greeting(name));

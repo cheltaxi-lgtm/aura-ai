@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import TelegramLoginButton, {
-  type TelegramWidgetUser,
-} from "@/components/auth/TelegramLoginButton";
+import TelegramBridgeButton from "@/components/auth/TelegramBridgeButton";
 
 type Status = {
   linked: boolean;
@@ -14,7 +12,6 @@ type Status = {
 export default function CabinetTelegramLink() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -33,32 +30,6 @@ export default function CabinetTelegramLink() {
     void load();
   }, [load]);
 
-  const onAuth = async (user: TelegramWidgetUser) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth/telegram/link", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(user),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        message?: string;
-        error?: string;
-      };
-      if (!res.ok) {
-        setError(data.message || "Не удалось привязать Telegram.");
-        return;
-      }
-      await load();
-    } catch {
-      setError("Не удалось привязать Telegram.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <section
       id="cabinet-telegram-link"
@@ -67,8 +38,8 @@ export default function CabinetTelegramLink() {
       <div>
         <h2 className="text-base font-semibold text-white">Привязка Telegram</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Один аккаунт на сайте и в боте: история, руны и расклады общие. Нажмите кнопку ниже и
-          подтвердите вход в Telegram.
+          Один аккаунт на сайте и в боте: история, руны и расклады общие. Нажмите кнопку — откроется
+          Telegram, подтвердите привязку и вернитесь сюда.
         </p>
       </div>
 
@@ -84,9 +55,16 @@ export default function CabinetTelegramLink() {
           ) : null}
         </p>
       ) : (
-        <div className={busy ? "opacity-50 pointer-events-none" : undefined}>
-          <TelegramLoginButton onAuth={(u) => void onAuth(u)} size="medium" />
-        </div>
+        <TelegramBridgeButton
+          purpose="link"
+          onSuccess={async (result) => {
+            setError(null);
+            await load();
+            if (result.username) {
+              setStatus({ linked: true, username: result.username });
+            }
+          }}
+        />
       )}
 
       {error ? <p className="text-sm text-red-300">{error}</p> : null}

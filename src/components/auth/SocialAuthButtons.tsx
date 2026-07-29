@@ -5,9 +5,7 @@ import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
-import TelegramLoginButton, {
-  type TelegramWidgetUser,
-} from "@/components/auth/TelegramLoginButton";
+import TelegramBridgeButton from "@/components/auth/TelegramBridgeButton";
 import { trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
@@ -194,63 +192,11 @@ export default function SocialAuthButtons({
     }
   };
 
-  const telegramEnabled = Boolean(process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.trim());
-  if (providers.length === 0 && !telegramEnabled) return null;
-
   // Prefer Yandex then VK for a stable visual order when both are enabled.
   const ordered = [...providers].sort((a, b) => {
     const rank = (p: OAuthProvider) => (p === "yandex" ? 0 : p === "vk" ? 1 : 2);
     return rank(a) - rank(b);
   });
-
-  const handleTelegramAuth = async (user: TelegramWidgetUser) => {
-    if (consentBlocked || disabled) {
-      if (consentScrollTargetId) {
-        document.getElementById(consentScrollTargetId)?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }
-      return;
-    }
-    if (mode === "register") {
-      trackRegistrationStarted(resolveRegistrationSource("oauth_telegram"));
-    }
-    setNativeError("");
-    try {
-      const response = await fetch("/api/auth/telegram", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...user,
-          mode,
-          acceptedTerms,
-          ageConfirmed,
-          marketingConsent,
-        }),
-      });
-      const result = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        message?: string;
-        needsProfile?: boolean;
-        isNewUser?: boolean;
-      };
-      if (!response.ok) {
-        setNativeError(result.message || "Не удалось войти через Telegram.");
-        return;
-      }
-      const params = new URLSearchParams({
-        returnTo,
-        mode,
-        new: result.isNewUser ? "1" : "0",
-        needsProfile: result.needsProfile ? "1" : "0",
-      });
-      window.location.assign(`/auth/oauth/complete?${params.toString()}`);
-    } catch {
-      setNativeError("Не удалось войти через Telegram.");
-    }
-  };
 
   return (
     <div className="oauth-provider-buttons space-y-3">
@@ -284,18 +230,37 @@ export default function SocialAuthButtons({
         </div>
       ) : null}
 
-      {telegramEnabled ? (
-        <div
-          className={`space-y-2 ${consentBlocked || disabled ? "opacity-50 pointer-events-none" : ""}`}
-        >
-          {ordered.length > 0 ? (
-            <p className="text-center text-xs text-aura-ivory/45">или через Telegram</p>
-          ) : null}
-          <div className="flex justify-center">
-            <TelegramLoginButton onAuth={(u) => void handleTelegramAuth(u)} size="large" />
-          </div>
-        </div>
+      {ordered.length > 0 ? (
+        <p className="text-center text-xs text-aura-ivory/45">или через Telegram</p>
       ) : null}
+      <TelegramBridgeButton
+        purpose={mode === "register" ? "register" : "login"}
+        acceptedTerms={acceptedTerms}
+        ageConfirmed={ageConfirmed}
+        marketingConsent={marketingConsent}
+        disabled={disabled}
+        consentBlocked={consentBlocked}
+        onConsentNeeded={() => {
+          if (consentScrollTargetId) {
+            document.getElementById(consentScrollTargetId)?.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          }
+        }}
+        onSuccess={(result) => {
+          if (mode === "register") {
+            trackRegistrationStarted(resolveRegistrationSource("oauth_telegram"));
+          }
+          const params = new URLSearchParams({
+            returnTo,
+            mode,
+            new: result.isNewUser ? "1" : "0",
+            needsProfile: result.needsProfile ? "1" : "0",
+          });
+          window.location.assign(`/auth/oauth/complete?${params.toString()}`);
+        }}
+      />
 
       {consentBlocked ? (
         <p className="auth-salon-hint text-center">

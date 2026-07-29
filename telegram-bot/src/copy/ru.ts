@@ -157,6 +157,10 @@ export const copy = {
   needSiteOnboarding:
     "Аккаунт привязан. Завершите профиль на сайте (дата рождения) — затем расклад откроется и здесь.",
   siteBridgeDown: "Связь с сайтом временно недоступна. Попробуйте через минуту.",
+  authBridgeOk:
+    "Готово. Вернитесь на сайт Zovus — вход или привязка подтвердятся автоматически.",
+  authBridgeFail:
+    "Не удалось подтвердить вход с сайта. Откройте кнопку на сайте ещё раз и повторите.",
   insufficientRunes: "Недостаточно рун для полного разбора. Пополните баланс на сайте.",
   fullReadingDone: "Полный разбор сохранён в вашей истории Zovus — он же на сайте.",
   fullReadingAskMore: "Можно задать уточняющий вопрос по этому раскладу — как на сайте.",
@@ -297,6 +301,8 @@ export function collectBodyCopySamples(): string[] {
     copy.needSiteAccount,
     copy.needSiteOnboarding,
     copy.siteBridgeDown,
+    copy.authBridgeOk,
+    copy.authBridgeFail,
     copy.insufficientRunes,
     copy.fullReadingDone,
     copy.runesBalance(12),

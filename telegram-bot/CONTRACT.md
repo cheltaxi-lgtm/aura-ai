@@ -29,6 +29,9 @@
 | `POST /numerology` | свободная матрица судьбы |
 | `POST /support` | list / create / reply обращений |
 | `POST /chat` | follow-up вопрос по sessionId (ChatOrchestrator + руны) |
+| `POST /auth-bridge` | подтверждение входа/привязки с сайта (`/start a_<token>`) |
+
+Сайт также: `POST|GET /api/auth/telegram/bridge` — создание challenge + poll/consume (кнопка «Войти через Telegram» без Login Widget /setdomain).
 
 Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECRET`, `BOT_REQUIRE_SITE_ACCOUNT=true`.
 
