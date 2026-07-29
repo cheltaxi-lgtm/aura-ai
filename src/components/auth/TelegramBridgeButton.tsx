@@ -173,10 +173,11 @@ export default function TelegramBridgeButton({
   }, [purpose, poll]);
 
   const start = async () => {
-    if (disabled || busy) return;
-    if (consentBlocked) {
-      setError("Сначала подтвердите возраст и согласие с условиями выше.");
-      onConsentNeeded?.();
+    if (disabled || busy || consentBlocked) {
+      if (consentBlocked) {
+        setError("Сначала подтвердите возраст и согласие с условиями выше.");
+        onConsentNeeded?.();
+      }
       return;
     }
 
@@ -278,8 +279,9 @@ export default function TelegramBridgeButton({
       <button
         type="button"
         onClick={() => void start()}
-        disabled={disabled || busy}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#2AABEE]/45 bg-[#2AABEE]/15 px-4 py-3 text-sm font-medium text-white transition hover:bg-[#2AABEE]/25 disabled:opacity-50"
+        disabled={disabled || busy || consentBlocked}
+        aria-disabled={disabled || busy || consentBlocked || undefined}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#2AABEE]/45 bg-[#2AABEE]/15 px-4 py-3 text-sm font-medium text-white transition hover:bg-[#2AABEE]/25 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span aria-hidden className="inline-block h-4 w-4 rounded-full bg-[#2AABEE]" />
         {busy && !waiting ? "Открываем Telegram…" : label}

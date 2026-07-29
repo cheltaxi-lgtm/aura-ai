@@ -238,7 +238,7 @@ export default function SocialAuthButtons({
         acceptedTerms={acceptedTerms}
         ageConfirmed={ageConfirmed}
         marketingConsent={marketingConsent}
-        disabled={disabled}
+        disabled={disabled || consentBlocked}
         consentBlocked={consentBlocked}
         onConsentNeeded={() => {
           if (consentScrollTargetId) {
@@ -264,7 +264,7 @@ export default function SocialAuthButtons({
 
       {consentBlocked ? (
         <p className="auth-salon-hint text-center">
-          Подтвердите возраст и согласие с условиями, чтобы продолжить
+          Отметьте возраст 18+ и согласие с условиями — затем можно войти через Telegram
         </p>
       ) : null}
       {nativeError ? <p className="text-center text-xs text-red-300">{nativeError}</p> : null}
