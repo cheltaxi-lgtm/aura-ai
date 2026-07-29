@@ -4,7 +4,11 @@
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { PRICING } from "@/lib/config/pricing";
 import { buildMemoryContext } from "@/lib/memory/build-memory-context";
-import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
+import {
+  destinyMatrix,
+  MATRIX_CALCULATION_VERSION,
+  type DestinyMatrixResult,
+} from "@/lib/numerology/destiny-matrix";
 import { buildMatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
 import { getNumerologTool } from "@/lib/numerology/tools";
 import {
@@ -28,6 +32,64 @@ import { createHistoryEntry, getUserById } from "@/lib/users";
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
+}
+
+/** Diagram payload for Telegram SVG renderer (mirrors DestinyMatrixGrid slots). */
+export type BotMatrixDiagramSlot = {
+  key: string;
+  label: string;
+  area: string;
+  featured: boolean;
+  number: number;
+  arcanaName: string;
+};
+
+export type BotMatrixDiagram = {
+  name: string | null;
+  birthDate: string;
+  slots: BotMatrixDiagramSlot[];
+};
+
+const DIAGRAM_SLOTS: Array<{
+  key: keyof DestinyMatrixResult;
+  label: string;
+  area: string;
+  featured?: boolean;
+}> = [
+  { key: "energy", label: "Энергия", area: "energy" },
+  { key: "body", label: "Тело и характер", area: "body" },
+  { key: "purpose", label: "Предназначение", area: "purpose", featured: true },
+  { key: "roots", label: "Род и корни", area: "roots" },
+  { key: "talents", label: "Таланты", area: "talents" },
+  { key: "relationships", label: "Отношения", area: "rel" },
+  { key: "money", label: "Деньги", area: "money" },
+  { key: "paternal", label: "Род отца", area: "paternal" },
+  { key: "maternal", label: "Род матери", area: "maternal" },
+  { key: "karma", label: "Карма", area: "karma" },
+  { key: "yearArcana", label: "Аркан года", area: "year" },
+];
+
+function buildMatrixDiagram(
+  birthDate: string,
+  name?: string | null
+): BotMatrixDiagram | null {
+  const matrix = destinyMatrix(birthDate);
+  if (!matrix) return null;
+  return {
+    name: name?.trim() || null,
+    birthDate,
+    slots: DIAGRAM_SLOTS.map((slot) => {
+      const point = matrix[slot.key];
+      return {
+        key: slot.key,
+        label: slot.label,
+        area: slot.area,
+        featured: Boolean(slot.featured),
+        number: point.number,
+        arcanaName: point.arcanaName,
+      };
+    }),
+  };
 }
 
 type GateFail = {
@@ -80,16 +142,22 @@ export async function botMatrixSummary(telegramUserId: number) {
   const reports = await listUserMatrixReports(gate.resolved.profileUserId!, 20);
   const cost = getNumerologTool("destiny_matrix").cost || PRICING.NUMEROLOGY_SESSION;
   const runeBalance = await getRuneBalance(gate.resolved.profileUserId!);
+  const diagram = buildMatrixDiagram(
+    gate.user.birth_date!,
+    gate.user.name || gate.resolved.name
+  );
 
   return {
     ok: true as const,
     action: "summary" as const,
     birthDate: gate.user.birth_date,
+    name: gate.user.name || gate.resolved.name || null,
     portrait: summary.portrait.slice(0, 900),
     moneyInsight: summary.moneyInsight.slice(0, 400),
     loveInsight: summary.loveInsight.slice(0, 400),
     yearInsight: summary.yearInsight.slice(0, 400),
     keyArcana: summary.keyArcana,
+    diagram,
     savedReports: reports.length,
     owned: Boolean(owned?.content?.trim()),
     ownedReportId: owned?.id ?? null,
@@ -140,6 +208,10 @@ export async function botMatrixGet(telegramUserId: number, reportId: string) {
     birthDate: report.birthDate,
     content: report.content,
     sessionId: report.sessionId,
+    diagram: buildMatrixDiagram(
+      report.birthDate,
+      gate.user.name || gate.resolved.name
+    ),
     url: report.sessionId
       ? `${siteBase()}/?chat_session=${encodeURIComponent(report.sessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`
       : `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=numerology`,
@@ -158,6 +230,7 @@ export async function botMatrixRun(telegramUserId: number): Promise<
       charged: number;
       reused: boolean;
       url: string;
+      diagram: BotMatrixDiagram | null;
     }
   | GateFail
 > {
@@ -169,6 +242,7 @@ export async function botMatrixRun(telegramUserId: number): Promise<
   const isoBirth = toIsoBirthDate(birthDate) ?? birthDate;
   const tool = getNumerologTool("destiny_matrix");
   const userName = gate.user.name || gate.resolved.name || "друг";
+  const diagram = buildMatrixDiagram(isoBirth, userName);
 
   const owned = await findOwnedMatrixReport(profileUserId, isoBirth);
   if (owned?.content?.trim()) {
@@ -202,6 +276,7 @@ export async function botMatrixRun(telegramUserId: number): Promise<
       runeBalance,
       charged: 0,
       reused: true,
+      diagram,
       url: `${siteBase()}/?chat_session=${encodeURIComponent(session.id)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
   }
@@ -347,6 +422,7 @@ export async function botMatrixRun(telegramUserId: number): Promise<
       runeBalance,
       charged,
       reused: saved.status === "already_saved",
+      diagram,
       url: `${siteBase()}/?chat_session=${encodeURIComponent(session.id)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
   } catch (err) {

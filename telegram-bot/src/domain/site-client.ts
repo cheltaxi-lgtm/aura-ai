@@ -256,6 +256,19 @@ export async function siteNatal(telegramUserId: number) {
   }>("/api/internal/bot/natal", { telegram_user_id: telegramUserId });
 }
 
+export type SiteMatrixDiagram = {
+  name?: string | null;
+  birthDate?: string;
+  slots: Array<{
+    key: string;
+    label: string;
+    area: string;
+    featured: boolean;
+    number: number;
+    arcanaName: string;
+  }>;
+};
+
 export async function siteNumerology(
   telegramUserId: number,
   action: "summary" | "list" | "get" | "run" = "summary",
@@ -265,11 +278,13 @@ export async function siteNumerology(
     ok: boolean;
     action?: string;
     birthDate?: string;
+    name?: string | null;
     portrait?: string;
     moneyInsight?: string;
     loveInsight?: string;
     yearInsight?: string;
     keyArcana?: Array<{ role: string; number: number; title: string; shortMeaning: string }>;
+    diagram?: SiteMatrixDiagram | null;
     savedReports?: number;
     owned?: boolean;
     ownedReportId?: string | null;

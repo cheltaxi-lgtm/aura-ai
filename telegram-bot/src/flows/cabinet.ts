@@ -1,8 +1,10 @@
 import type { Context, InlineKeyboard } from "grammy";
+import { InputFile } from "grammy";
 import { copy } from "../copy/ru.js";
 import { clearFlow, getFlow, setFlow } from "../db/repos.js";
 import {
   chunkTelegramText,
+  type SiteMatrixDiagram,
   siteCabinet,
   siteHistory,
   siteNatal,
@@ -11,6 +13,8 @@ import {
   siteSupport,
 } from "../domain/site-client.js";
 import { presentReadingToTelegram } from "../domain/reading/present.js";
+import { buildLocalMatrixDiagram } from "../domain/matrix/calc.js";
+import { renderMatrixDiagramImage } from "../render/matrix-diagram.js";
 import {
   CB,
   chatFollowUpKeyboard,
@@ -170,6 +174,39 @@ export async function showNatal(ctx: Context): Promise<void> {
   }
 }
 
+async function sendMatrixDiagram(
+  ctx: Context,
+  opts: {
+    diagram?: SiteMatrixDiagram | null;
+    birthDate?: string | null;
+    name?: string | null;
+    caption?: string;
+  }
+): Promise<boolean> {
+  const diagram =
+    opts.diagram?.slots?.length
+      ? opts.diagram
+      : opts.birthDate
+        ? buildLocalMatrixDiagram(opts.birthDate, opts.name)
+        : null;
+  if (!diagram?.slots?.length) return false;
+  try {
+    await ctx.replyWithChatAction("upload_photo");
+    const buf = await renderMatrixDiagramImage({
+      name: diagram.name ?? opts.name,
+      birthDate: diagram.birthDate ?? opts.birthDate ?? undefined,
+      slots: diagram.slots,
+    });
+    await ctx.replyWithPhoto(new InputFile(buf, "matrix.jpg"), {
+      caption: opts.caption?.slice(0, 1024) || undefined,
+    });
+    return true;
+  } catch (err) {
+    console.error("[cabinet] matrix diagram", err);
+    return false;
+  }
+}
+
 export async function showMatrix(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
@@ -185,16 +222,23 @@ export async function showMatrix(ctx: Context): Promise<void> {
       });
       return;
     }
-    const arcs = (data.keyArcana || [])
-      .map((a) => `${a.role}: ${a.title} (${a.number})`)
-      .join("\n");
-    const body = [
+
+    const caption = [
       copy.matrixTitle,
-      data.birthDate ? `Дата: ${data.birthDate}` : "",
-      "",
+      data.name || data.diagram?.name || null,
+      data.birthDate ? `Дата рождения: ${data.birthDate}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    await sendMatrixDiagram(ctx, {
+      diagram: data.diagram,
+      birthDate: data.birthDate,
+      name: data.name || data.diagram?.name,
+      caption,
+    });
+
+    const body = [
       data.portrait || "",
-      "",
-      arcs,
       "",
       data.moneyInsight || "",
       data.loveInsight || "",
@@ -299,6 +343,11 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
       });
       return;
     }
+    await sendMatrixDiagram(ctx, {
+      diagram: data.diagram,
+      birthDate: data.birthDate,
+      caption: data.birthDate ? `Матрица судьбы · ${data.birthDate}` : "Матрица судьбы",
+    });
     await presentReadingToTelegram(ctx, {
       reading: data.content || "",
       cardNames: [],
@@ -327,6 +376,11 @@ export async function openMatrixReport(ctx: Context, reportId: string): Promise<
       });
       return;
     }
+    await sendMatrixDiagram(ctx, {
+      diagram: data.diagram,
+      birthDate: data.birthDate,
+      caption: data.birthDate ? `Матрица судьбы · ${data.birthDate}` : "Матрица судьбы",
+    });
     await presentReadingToTelegram(ctx, {
       reading: data.content,
       cardNames: [],
