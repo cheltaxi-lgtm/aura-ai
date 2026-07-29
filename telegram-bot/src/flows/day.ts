@@ -3,6 +3,11 @@ import { copy } from "../copy/ru.js";
 import { touchStreak } from "../db/repos.js";
 import { isDayCardEnabled } from "../flags.js";
 import { siteDaily } from "../domain/site-client.js";
+import {
+  drawnCardsFromSiteCards,
+  presentReadingToTelegram,
+  stripReadingForTelegram,
+} from "../domain/reading/present.js";
 import { continueOnSiteKeyboard, salonKeyboard } from "../keyboards/index.js";
 import { track } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
@@ -36,15 +41,23 @@ export async function handleDay(ctx: Context): Promise<void> {
     return;
   }
 
-  const cardLine = (data.cards ?? [])
-    .map((c) => `${c.position}: ${c.name}${c.reversed ? " (перевёрнута)" : ""}`)
-    .join("\n");
-
   touchStreak(linked.user.telegram_user_id);
   track(linked.user, "day_card_used", { source: "site", cached: data.cached });
 
-  if (cardLine) {
-    await ctx.reply(cardLine, { reply_markup: salonKeyboard() });
-  }
-  await ctx.reply(data.text, { reply_markup: salonKeyboard() });
+  const drawn = drawnCardsFromSiteCards(
+    (data.cards ?? []).map((c, i) => ({
+      name: c.name,
+      reversed: c.reversed,
+      position: i,
+      positionLabel: c.position,
+    }))
+  );
+
+  await ctx.replyWithChatAction("upload_photo");
+  await presentReadingToTelegram(ctx, {
+    reading: stripReadingForTelegram(data.text) || data.text,
+    cards: drawn,
+    question: "Энергия дня",
+    replyMarkup: salonKeyboard(),
+  });
 }

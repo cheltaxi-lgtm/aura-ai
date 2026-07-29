@@ -11,7 +11,11 @@ import {
   type BotUser,
 } from "../db/repos.js";
 import { validateQuestion } from "../domain/question/validate.js";
-import { chunkTelegramText, siteSpread } from "../domain/site-client.js";
+import { siteSpread } from "../domain/site-client.js";
+import {
+  drawnCardsFromSiteCards,
+  presentReadingToTelegram,
+} from "../domain/reading/present.js";
 import {
   chatFollowUpKeyboard,
   ctaKeyboard,
@@ -129,11 +133,7 @@ async function runSiteSpread(
     return;
   }
 
-  const cardLines = data.cards
-    .map((c) => copy.cardLine(c.positionLabel, c.name, c.reversed))
-    .join("\n");
-  await ctx.reply(cardLines, { reply_markup: salonKeyboard() });
-
+  const drawn = drawnCardsFromSiteCards(data.cards);
   track(user, "cards_shown", {
     session_id: data.sessionId,
     source: "site",
@@ -146,11 +146,13 @@ async function runSiteSpread(
     })),
   });
 
-  await ctx.replyWithChatAction("typing");
-  const chunks = chunkTelegramText(data.reading);
-  for (const chunk of chunks) {
-    await ctx.reply(chunk, { reply_markup: salonKeyboard() });
-  }
+  await ctx.replyWithChatAction("upload_photo");
+  await presentReadingToTelegram(ctx, {
+    reading: data.reading,
+    cards: drawn,
+    question: validated.question,
+    replyMarkup: salonKeyboard(),
+  });
 
   const bal =
     data.runeBalance != null

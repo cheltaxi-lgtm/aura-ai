@@ -11,6 +11,10 @@ import {
   siteSupport,
 } from "../domain/site-client.js";
 import {
+  presentReadingToTelegram,
+  stripReadingForTelegram,
+} from "../domain/reading/present.js";
+import {
   CB,
   chatFollowUpKeyboard,
   continueOnSiteKeyboard,
@@ -372,19 +376,13 @@ export async function openHistoryReading(ctx: Context, sessionId: string): Promi
       await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
       return;
     }
-    const head = [
-      data.intention || "Расклад",
-      (data.cards || []).join(" · "),
-      "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-    await ctx.reply(head.slice(0, 500), {
-      reply_markup: chatFollowUpKeyboard(sessionId),
+    await ctx.replyWithChatAction("upload_photo");
+    await presentReadingToTelegram(ctx, {
+      reading: data.reading,
+      cardNames: data.cards || [],
+      question: data.intention,
+      replyMarkup: chatFollowUpKeyboard(sessionId),
     });
-    for (const chunk of chunkTelegramText(data.reading)) {
-      await ctx.reply(chunk, { reply_markup: chatFollowUpKeyboard(sessionId) });
-    }
   } catch (err) {
     console.error("[cabinet] reading", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -421,7 +419,7 @@ export async function handleCabinetText(ctx: Context, text: string): Promise<boo
         });
         return true;
       }
-      for (const chunk of chunkTelegramText(data.reply)) {
+      for (const chunk of chunkTelegramText(stripReadingForTelegram(data.reply))) {
         await ctx.reply(chunk, { reply_markup: chatFollowUpKeyboard(sessionId) });
       }
       if (data.runeBalance != null) {
