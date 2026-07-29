@@ -1,6 +1,7 @@
 import { InlineKeyboard, Keyboard } from "grammy";
 import { copy } from "../copy/ru.js";
 import { PAIN_CHIPS } from "../domain/question/validate.js";
+import { buildSessionChatUrl } from "../domain/site-client.js";
 import { isShareCardEnabled } from "../flags.js";
 
 /** Persistent bottom bar — emoji allowed on buttons only (not in message bodies). */
@@ -200,20 +201,19 @@ export function modulesKeyboard(): InlineKeyboard {
     .text("📂 Кабинет", CB.modCabinet);
 }
 
+/** Site deep-link only — follow-up chat in the bot is closed. */
 export function chatFollowUpKeyboard(sessionId: string): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("💬 Вопрос по раскладу", `${CB.chatAskPrefix}${sessionId}`)
-    .row()
-    .text("❌ Закончить диалог", CB.chatStop);
+  return new InlineKeyboard().url(
+    `🕯 ${copy.continueDiscussionOnSite}`,
+    buildSessionChatUrl(sessionId)
+  );
 }
 
-/** Premium reading album: flip pages in one message. */
+/** Premium reading album: flip pages in one message. Follow-up only via site URL. */
 export function readingPagerKeyboard(opts: {
   page: number;
   total: number;
-  sessionId?: string | null;
-  /** Show follow-up actions (usually on the last page). */
-  showActions?: boolean;
+  chatUrl?: string | null;
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
   const total = Math.max(1, opts.total);
@@ -228,10 +228,8 @@ export function readingPagerKeyboard(opts: {
     kb.row();
   }
 
-  if (opts.showActions && opts.sessionId) {
-    kb.text("💬 Вопрос по раскладу", `${CB.chatAskPrefix}${opts.sessionId}`)
-      .row()
-      .text("❌ Закончить диалог", CB.chatStop);
+  if (opts.chatUrl) {
+    kb.url(`🕯 ${copy.continueDiscussionOnSite}`, opts.chatUrl);
   }
   return kb;
 }
@@ -257,7 +255,8 @@ export function supportListKeyboard(
 export function historyItemKeyboard(sessionId: string): InlineKeyboard {
   return new InlineKeyboard()
     .text("📜 Открыть", `${CB.histOpenPrefix}${sessionId}`)
-    .text("💬 Вопрос", `${CB.histAskPrefix}${sessionId}`);
+    .row()
+    .url(`🕯 ${copy.continueDiscussionOnSite}`, buildSessionChatUrl(sessionId));
 }
 
 export function settingsKeyboard(): InlineKeyboard {

@@ -3,7 +3,7 @@ import type { Context } from "grammy";
 import { setFlow, getFlow } from "../../db/repos.js";
 import { FULL_DECK, TRIPLET_POSITIONS } from "../deck/cards.js";
 import type { DrawnCard, TarotCardDef } from "../deck/types.js";
-import { chunkTelegramText } from "../site-client.js";
+import { buildSessionChatUrl, chunkTelegramText } from "../site-client.js";
 import { renderDayCardImage, renderTripletCollage } from "../../render/card-collage.js";
 import { CB, readingPagerKeyboard } from "../../keyboards/index.js";
 
@@ -23,7 +23,7 @@ const SECTION_HEADERS =
 type ReadingViewState = {
   pages: string[];
   page: number;
-  sessionId?: string;
+  chatUrl?: string;
   footer?: string;
 };
 
@@ -377,14 +377,10 @@ function pageHtml(
 }
 
 function pagerMarkup(state: ReadingViewState): InlineKeyboard {
-  const total = state.pages.length;
-  const page = state.page;
-  const last = page >= total - 1;
   return readingPagerKeyboard({
-    page,
-    total,
-    sessionId: state.sessionId,
-    showActions: Boolean(state.sessionId) && (total === 1 || last),
+    page: state.page,
+    total: state.pages.length,
+    chatUrl: state.chatUrl,
   });
 }
 
@@ -436,15 +432,16 @@ export async function presentReadingToTelegram(
     return;
   }
 
+  const chatUrl = input.sessionId ? buildSessionChatUrl(input.sessionId) : undefined;
   const state: ReadingViewState = {
     pages,
     page: 0,
-    sessionId: input.sessionId,
+    chatUrl,
     footer: input.footer?.trim() || undefined,
   };
 
   const html = pageHtml(state.pages, 0, state.footer);
-  const usePager = pages.length > 1 || Boolean(input.sessionId);
+  const usePager = pages.length > 1 || Boolean(chatUrl);
 
   if (usePager && tid) {
     setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
@@ -463,12 +460,11 @@ export async function presentReadingToTelegram(
   const markup =
     input.replyMarkup && isInlineKeyboard(input.replyMarkup)
       ? input.replyMarkup
-      : input.sessionId
+      : chatUrl
         ? readingPagerKeyboard({
             page: 0,
             total: 1,
-            sessionId: input.sessionId,
-            showActions: true,
+            chatUrl,
           })
         : input.replyMarkup;
 
@@ -513,7 +509,7 @@ export async function handleReadingPagerCallback(
   const state: ReadingViewState = {
     pages: flow.data.pages as string[],
     page: Number.isFinite(page) ? page : 0,
-    sessionId: typeof flow.data.sessionId === "string" ? flow.data.sessionId : undefined,
+    chatUrl: typeof flow.data.chatUrl === "string" ? flow.data.chatUrl : undefined,
     footer: typeof flow.data.footer === "string" ? flow.data.footer : undefined,
   };
   if (!state.pages.length) {

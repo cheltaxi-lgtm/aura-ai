@@ -239,6 +239,7 @@ export default function HomePage({
   const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
+  const chatSessionDeepLinkParsedRef = useRef(false);
   const numerologDeepLinkParsedRef = useRef(false);
   const masterAutoOpenParsedRef = useRef(false);
   const autoAskOpenedRef = useRef(false);
@@ -2333,6 +2334,96 @@ export default function HomePage({
       setSpreadFlipped,
     ]
   );
+
+  // Telegram bot: ?chat_session=<uuid> → open that consultation chat.
+  useEffect(() => {
+    if (typeof window === "undefined" || authLoading) return;
+    if (chatSessionDeepLinkParsedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get("chat_session")?.trim() || "";
+    if (!sid) return;
+
+    if (!isLoggedIn) {
+      chatSessionDeepLinkParsedRef.current = true;
+      const returnTo = `/?chat_session=${encodeURIComponent(sid)}`;
+      window.location.replace(
+        `/auth/user/login?returnTo=${encodeURIComponent(returnTo)}`
+      );
+      return;
+    }
+
+    chatSessionDeepLinkParsedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}`, {
+          credentials: "include",
+        });
+        if (!res.ok || cancelled) {
+          if (!cancelled) {
+            setTripletNotice("Не удалось открыть сеанс из Telegram. Найдите его в кабинете.");
+          }
+          return;
+        }
+        const data = (await res.json()) as {
+          id: string;
+          characterKey?: string | null;
+          intention?: string | null;
+          spreadType?: string | null;
+          spreadId?: string | null;
+          cards?: string[] | null;
+          status?: string | null;
+          messageCount?: number;
+          createdAt?: string;
+          updatedAt?: string;
+          topicSummary?: string | null;
+          keyCards?: string[] | null;
+          prediction?: string | null;
+        };
+        if (cancelled || !data.id) return;
+
+        const masterId = (data.characterKey || "veronika").trim() || "veronika";
+        const item: SessionListItem = {
+          id: data.id,
+          intention: data.intention ?? null,
+          spreadType: data.spreadType ?? null,
+          spreadId: data.spreadId ?? null,
+          cards: data.cards ?? null,
+          status: data.status || "active",
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          messageCount: typeof data.messageCount === "number" ? data.messageCount : 1,
+          topicSummary: data.topicSummary ?? null,
+          keyCards: data.keyCards ?? null,
+          prediction: data.prediction ?? null,
+        };
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete("chat_session");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+
+        if ((data.status || "active") === "completed") {
+          await handleOpenArchiveSession(masterId, item);
+        } else {
+          await handleContinueListedSession(masterId, item);
+        }
+      } catch {
+        if (!cancelled) {
+          setTripletNotice("Не удалось открыть сеанс из Telegram. Попробуйте из кабинета.");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authLoading,
+    isLoggedIn,
+    handleContinueListedSession,
+    handleOpenArchiveSession,
+    setTripletNotice,
+  ]);
 
   const resetChatSessionState = () => {
     pendingNewChatThreadRef.current = false;

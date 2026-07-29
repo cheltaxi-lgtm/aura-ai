@@ -135,6 +135,7 @@ export const copy = {
   ctaResendButton: "Получить ссылку снова",
   ctaExpired: "Срок ссылки на этот расклад истёк. Можно сделать новый расклад из меню.",
   continueOnSite: "Открыть на сайте",
+  continueDiscussionOnSite: "Продолжить обсуждение на сайте",
   continueReading: "Продолжить разбор",
   weeklyDigest: (p: { streak: number; spreads: number }) =>
     [

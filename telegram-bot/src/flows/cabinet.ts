@@ -4,16 +4,12 @@ import { clearFlow, getFlow, setFlow } from "../db/repos.js";
 import {
   chunkTelegramText,
   siteCabinet,
-  siteChat,
   siteNatal,
   siteNumerology,
   siteReading,
   siteSupport,
 } from "../domain/site-client.js";
-import {
-  presentReadingToTelegram,
-  stripReadingForTelegram,
-} from "../domain/reading/present.js";
+import { presentReadingToTelegram } from "../domain/reading/present.js";
 import {
   CB,
   chatFollowUpKeyboard,
@@ -352,13 +348,14 @@ export async function beginSupportReply(ctx: Context, ticketId: string): Promise
   });
 }
 
+/** Bot no longer runs follow-up Q&A — send user to the site session chat. */
 export async function beginChatFollowUp(ctx: Context, sessionId: string): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
-  if (!linked) return;
-  setFlow(linked.user.telegram_user_id, "chat", "await_message", { sessionId });
-  await ctx.reply(copy.chatAskPrompt, {
-    reply_markup: chatFollowUpKeyboard(sessionId),
-  });
+  if (!ctx.from) return;
+  clearFlow(ctx.from.id);
+  await ctx.reply(
+    "Вопросы по раскладу — на сайте, в том же сеансе. Нажмите кнопку ниже.",
+    { reply_markup: chatFollowUpKeyboard(sessionId) }
+  );
 }
 
 export async function stopActiveDialog(ctx: Context): Promise<void> {
@@ -397,41 +394,12 @@ export async function handleCabinetText(ctx: Context, text: string): Promise<boo
 
   if (flow.flow === "chat" && flow.step === "await_message") {
     const sessionId = typeof flow.data.sessionId === "string" ? flow.data.sessionId : "";
-    if (!sessionId) {
-      clearFlow(ctx.from.id);
-      return false;
+    clearFlow(ctx.from.id);
+    if (sessionId) {
+      await beginChatFollowUp(ctx, sessionId);
+      return true;
     }
-    const linked = await ensureSiteLinked(ctx);
-    if (!linked) return true;
-    await ctx.reply(copy.chatThinking, { reply_markup: chatFollowUpKeyboard(sessionId) });
-    await ctx.replyWithChatAction("typing");
-    try {
-      const { data } = await siteChat(linked.user.telegram_user_id, sessionId, text);
-      if (!data.ok || !data.reply) {
-        if (data.error === "insufficient_runes") {
-          await ctx.reply(data.message || copy.insufficientRunes, {
-            reply_markup: linkKb(data.linkUrl),
-          });
-          return true;
-        }
-        await ctx.reply(data.message || copy.spreadFailed, {
-          reply_markup: chatFollowUpKeyboard(sessionId),
-        });
-        return true;
-      }
-      for (const chunk of chunkTelegramText(stripReadingForTelegram(data.reply))) {
-        await ctx.reply(chunk, { reply_markup: chatFollowUpKeyboard(sessionId) });
-      }
-      if (data.runeBalance != null) {
-        await ctx.reply(copy.runesBalance(data.runeBalance), {
-          reply_markup: chatFollowUpKeyboard(sessionId),
-        });
-      }
-    } catch (err) {
-      console.error("[cabinet] chat", err);
-      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-    }
-    return true;
+    return false;
   }
 
   if (flow.flow === "support" && flow.step === "await_message") {

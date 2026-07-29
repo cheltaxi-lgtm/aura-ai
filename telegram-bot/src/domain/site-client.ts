@@ -341,6 +341,17 @@ export async function siteChat(telegramUserId: number, sessionId: string, messag
   );
 }
 
+/** Deep-link into the site chat for a specific consultation session. */
+export function buildSessionChatUrl(sessionId: string): string {
+  const base = botConfig.siteUrl.replace(/\/$/, "");
+  const url = new URL(`${base}/`);
+  url.searchParams.set("chat_session", sessionId);
+  url.searchParams.set("utm_source", "telegram");
+  url.searchParams.set("utm_medium", "bot");
+  url.searchParams.set("utm_campaign", "continue_chat");
+  return url.toString();
+}
+
 /** Split long reading into Telegram-safe chunks. */
 export function chunkTelegramText(text: string, max = 3500): string[] {
   const t = text.trim();
