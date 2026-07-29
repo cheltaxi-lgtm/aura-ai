@@ -18,6 +18,9 @@ function botUsername(): string {
  */
 export default function CabinetTelegramLink() {
   const [status, setStatus] = useState<Status | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -36,6 +39,41 @@ export default function CabinetTelegramLink() {
     void load();
   }, [load]);
 
+  const unlink = useCallback(async () => {
+    if (busy) return;
+    const label = status?.username ? `@${status.username}` : "этот Telegram";
+    if (
+      !window.confirm(
+        `Отвязать ${label} от аккаунта Zovus?\n\nВход на сайт не изменится. Бот перестанет видеть кабинет, пока не привяжете снова.`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/auth/telegram/unlink", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setError(data.message || "Не удалось отвязать Telegram.");
+        return;
+      }
+      setNotice(data.message || "Telegram отвязан.");
+      setStatus({ linked: false });
+    } catch {
+      setError("Не удалось отвязать Telegram. Попробуйте ещё раз.");
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, status?.username]);
+
   const botLink = `https://t.me/${botUsername()}?start=link`;
 
   return (
@@ -52,16 +90,26 @@ export default function CabinetTelegramLink() {
       </div>
 
       {status?.linked ? (
-        <p className="text-sm text-emerald-200/90">
-          Привязан
-          {status.username ? (
-            <>
-              : <span className="font-medium">@{status.username}</span>
-            </>
-          ) : status.telegramUserId ? (
-            <> (id {status.telegramUserId})</>
-          ) : null}
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-emerald-200/90">
+            Привязан
+            {status.username ? (
+              <>
+                : <span className="font-medium">@{status.username}</span>
+              </>
+            ) : status.telegramUserId ? (
+              <> (id {status.telegramUserId})</>
+            ) : null}
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void unlink()}
+            className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            {busy ? "Отвязываем…" : "Отвязать Telegram"}
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--muted)]">
@@ -79,6 +127,9 @@ export default function CabinetTelegramLink() {
           </a>
         </div>
       )}
+
+      {notice ? <p className="text-sm text-emerald-200/90">{notice}</p> : null}
+      {error ? <p className="text-sm text-red-300">{error}</p> : null}
     </section>
   );
 }

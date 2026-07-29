@@ -48,6 +48,27 @@ export async function getTelegramStatusForAccount(accountId: string): Promise<{
   };
 }
 
+/** Remove Telegram secondary bind. Does not delete the site account. */
+export async function unlinkTelegramFromAccount(accountId: string): Promise<{
+  ok: true;
+  unlinked: boolean;
+  telegramUserId: number | null;
+}> {
+  const { rows } = await query<{ telegram_user_id: string }>(
+    `DELETE FROM user_telegram_identities
+     WHERE user_account_id = $1
+     RETURNING telegram_user_id::text`,
+    [accountId]
+  );
+  const raw = rows[0]?.telegram_user_id;
+  const telegramUserId = raw && /^\d+$/.test(raw) ? Number(raw) : null;
+  return {
+    ok: true,
+    unlinked: Boolean(rows[0]),
+    telegramUserId,
+  };
+}
+
 export type TelegramLoginResult =
   | {
       ok: true;
