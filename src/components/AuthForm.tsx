@@ -552,7 +552,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           <SocialAuthButtons
             mode={mode as OAuthMode}
             returnTo={returnTo}
-            requireConsent
+            requireConsent={mode === "register"}
             acceptedTerms={acceptedTerms}
             ageConfirmed={ageConfirmed}
             marketingConsent={marketingConsent}

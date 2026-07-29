@@ -12,7 +12,6 @@ type Props = {
   disabled?: boolean;
   consentBlocked?: boolean;
   onConsentNeeded?: () => void;
-  /** Called after successful login/register (before redirect) or link. */
   onSuccess?: (result: {
     purpose: Purpose;
     isNewUser?: boolean;
@@ -22,9 +21,15 @@ type Props = {
   className?: string;
 };
 
+const RESUME_KEY = "zovus_tg_bridge";
+
+function botUser(): string {
+  return (process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || "zovus_card_bot").trim();
+}
+
 /**
- * Primary Telegram auth UX: open bot deep-link and poll site challenge.
- * Works even when BotFather Login Widget domain is not configured.
+ * Telegram auth via bot deep-link + poll.
+ * Opens the bot in a window opened synchronously on click (avoids popup blockers).
  */
 export default function TelegramBridgeButton({
   purpose,
@@ -41,7 +46,6 @@ export default function TelegramBridgeButton({
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(false);
   const [deepLink, setDeepLink] = useState<string | null>(null);
-  const tokenRef = useRef<string | null>(null);
   const timerRef = useRef<number | null>(null);
 
   const stopPoll = useCallback(() => {
@@ -52,6 +56,41 @@ export default function TelegramBridgeButton({
   }, []);
 
   useEffect(() => () => stopPoll(), [stopPoll]);
+
+  const finishError = useCallback(
+    (message: string) => {
+      stopPoll();
+      setWaiting(false);
+      setBusy(false);
+      setError(message);
+      try {
+        sessionStorage.removeItem(RESUME_KEY);
+      } catch {
+        /* ignore */
+      }
+    },
+    [stopPoll]
+  );
+
+  const finishSuccess = useCallback(
+    (result: {
+      purpose: Purpose;
+      isNewUser?: boolean;
+      needsProfile?: boolean;
+      username?: string | null;
+    }) => {
+      stopPoll();
+      setWaiting(false);
+      setBusy(false);
+      try {
+        sessionStorage.removeItem(RESUME_KEY);
+      } catch {
+        /* ignore */
+      }
+      onSuccess?.(result);
+    },
+    [onSuccess, stopPoll]
+  );
 
   const poll = useCallback(
     (token: string) => {
@@ -72,20 +111,9 @@ export default function TelegramBridgeButton({
             message?: string;
             error?: string;
           };
-          if (!res.ok) {
-            if (res.status === 404 || data.status === "expired") {
-              stopPoll();
-              setWaiting(false);
-              setBusy(false);
-              setError(data.message || "Срок подтверждения истёк. Нажмите кнопку ещё раз.");
-            }
-            return;
-          }
-          if (data.status === "consumed" || (data.ok && data.status === "consumed")) {
-            stopPoll();
-            setWaiting(false);
-            setBusy(false);
-            onSuccess?.({
+
+          if (res.ok && data.status === "consumed") {
+            finishSuccess({
               purpose: data.purpose || purpose,
               isNewUser: data.isNewUser,
               needsProfile: data.needsProfile,
@@ -93,31 +121,74 @@ export default function TelegramBridgeButton({
             });
             return;
           }
+
+          if (!res.ok) {
+            if (
+              res.status === 404 ||
+              res.status === 409 ||
+              res.status === 400 ||
+              data.status === "expired" ||
+              data.error === "not_found" ||
+              data.error === "consent_required"
+            ) {
+              finishError(
+                data.message ||
+                  (data.error === "not_found"
+                    ? "Этот Telegram ещё не привязан к аккаунту. Используйте «Регистрация через Telegram» или привяжите Telegram в кабинете."
+                    : "Не удалось завершить вход через Telegram.")
+              );
+            }
+            return;
+          }
+
           if (data.status === "expired") {
-            stopPoll();
-            setWaiting(false);
-            setBusy(false);
-            setError("Срок подтверждения истёк. Нажмите кнопку ещё раз.");
+            finishError("Срок подтверждения истёк. Нажмите кнопку ещё раз.");
           }
         } catch {
           /* keep polling */
         }
       }, 2000);
     },
-    [onSuccess, purpose, stopPoll]
+    [finishError, finishSuccess, purpose, stopPoll]
   );
+
+  // Resume poll after return from Telegram (top-level navigation case).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(RESUME_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { token?: string; purpose?: Purpose; at?: number };
+      if (!saved.token || saved.purpose !== purpose) return;
+      if (!saved.at || Date.now() - saved.at > 10 * 60 * 1000) {
+        sessionStorage.removeItem(RESUME_KEY);
+        return;
+      }
+      setDeepLink(`https://t.me/${botUser()}?start=a_${saved.token}`);
+      setWaiting(true);
+      setBusy(true);
+      poll(saved.token);
+    } catch {
+      /* ignore */
+    }
+  }, [purpose, poll]);
 
   const start = async () => {
     if (disabled || busy) return;
     if (consentBlocked) {
+      setError("Сначала подтвердите возраст и согласие с условиями выше.");
       onConsentNeeded?.();
       return;
     }
+
+    // Open synchronously — required to avoid popup blockers after await.
+    const popup = window.open("about:blank", "_blank");
+
     setBusy(true);
     setError(null);
     setWaiting(false);
     setDeepLink(null);
     stopPoll();
+
     try {
       const res = await fetch("/api/auth/telegram/bridge", {
         method: "POST",
@@ -135,21 +206,63 @@ export default function TelegramBridgeButton({
         token?: string;
         deepLink?: string;
         message?: string;
-        error?: string;
       };
       if (!res.ok || !data.ok || !data.token || !data.deepLink) {
-        setError(data.message || "Не удалось открыть вход через Telegram.");
-        setBusy(false);
+        try {
+          popup?.close();
+        } catch {
+          /* ignore */
+        }
+        finishError(data.message || "Не удалось открыть вход через Telegram.");
         return;
       }
-      tokenRef.current = data.token;
+
       setDeepLink(data.deepLink);
       setWaiting(true);
-      window.open(data.deepLink, "_blank", "noopener,noreferrer");
+      try {
+        sessionStorage.setItem(
+          RESUME_KEY,
+          JSON.stringify({ token: data.token, purpose, at: Date.now() })
+        );
+      } catch {
+        /* ignore */
+      }
+
+      let navigatedPopup = false;
+      if (popup && !popup.closed) {
+        try {
+          popup.location.href = data.deepLink;
+          navigatedPopup = true;
+        } catch {
+          try {
+            popup.location.replace(data.deepLink);
+            navigatedPopup = true;
+          } catch {
+            navigatedPopup = false;
+          }
+        }
+      }
+
+      if (!navigatedPopup) {
+        // Popup blocked: keep page and force user to use explicit link (no top navigate —
+        // that would kill React polling on desktop).
+        try {
+          popup?.close();
+        } catch {
+          /* ignore */
+        }
+        setError("Браузер заблокировал окно. Нажмите «Открыть бота» ниже.");
+      }
+
       poll(data.token);
+      setBusy(true);
     } catch {
-      setError("Не удалось открыть вход через Telegram.");
-      setBusy(false);
+      try {
+        popup?.close();
+      } catch {
+        /* ignore */
+      }
+      finishError("Не удалось открыть вход через Telegram.");
     }
   };
 
@@ -173,7 +286,7 @@ export default function TelegramBridgeButton({
       </button>
       {waiting ? (
         <p className="text-center text-xs text-[var(--muted)]">
-          Подтвердите вход в Telegram, затем вернитесь сюда — страница обновится сама.
+          В Telegram нажмите Start / Запустить у бота, затем вернитесь сюда — вход завершится сам.
           {deepLink ? (
             <>
               {" "}
@@ -183,7 +296,7 @@ export default function TelegramBridgeButton({
                 rel="noreferrer"
                 className="text-aura-champagne underline-offset-2 hover:underline"
               >
-                Открыть бота снова
+                Открыть бота
               </a>
             </>
           ) : null}
