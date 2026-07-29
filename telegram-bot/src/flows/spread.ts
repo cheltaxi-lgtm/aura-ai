@@ -151,16 +151,13 @@ async function runSiteSpread(
     reading: data.reading,
     cards: drawn,
     question: validated.question,
-    replyMarkup: salonKeyboard(),
+    replyMarkup: chatFollowUpKeyboard(data.sessionId),
   });
 
-  const bal =
-    data.runeBalance != null
-      ? `\nБаланс: ${data.runeBalance} рун${data.charged ? ` (−${data.charged})` : ""}.`
-      : "";
-  await ctx.reply(`${copy.fullReadingDone}${bal}\n\n${copy.fullReadingAskMore}`, {
-    reply_markup: chatFollowUpKeyboard(data.sessionId),
-  });
+  if (data.runeBalance != null) {
+    const bal = `Баланс: ${data.runeBalance} рун${data.charged ? ` (−${data.charged})` : ""}.`;
+    await ctx.reply(bal, { reply_markup: chatFollowUpKeyboard(data.sessionId) });
+  }
 
   track(user, "teaser_shown", {
     source: "site_full_reading",

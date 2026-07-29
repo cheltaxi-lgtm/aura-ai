@@ -11,6 +11,13 @@ const MD_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 const DECK_PATH_RE = /\/decks\/[^/]+\/([^/.]+)\.(?:png|webp|jpg|jpeg)/i;
 const REVERSED_RE = /\(перев[^)]*\)|\(rev(?:ersed)?\.?\)|перевёрнут[аы]?|перевернут[аы]?/i;
 
+/** Technical / empty intentions that must never appear in captions. */
+const JUNK_QUESTION_RE =
+  /^(custom|null|undefined|default|test|n\/?a|none|unknown|intention|question|chip|guest|-|—|\.|…)$/i;
+
+const MAJOR_HEADERS =
+  /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?(Простыми словами|Шаги(?:\s+на\s+\d+\s+дней)?|Что делать|Итог|Вывод|Совет\s+карт(?:ы)?|Практика(?:\s+на\s+(?:неделю|месяц|30\s+дней))?|Общий вывод|Ключевые выводы|Краткое резюме|Прошлое|Настоящее|Будущее|Карта\s+\d+|Позиция\s+\d+)\s*:?\s*(?=\S)/giu;
+
 function normalizeCardName(raw: string): string {
   return raw
     .toLowerCase()
@@ -43,6 +50,15 @@ function parseReversed(raw: string, explicit?: boolean): boolean {
   return REVERSED_RE.test(raw);
 }
 
+export function cleanQuestion(question?: string | null): string | null {
+  const t = (question || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length < 2) return null;
+  if (JUNK_QUESTION_RE.test(t)) return null;
+  // pure technical tokens / snake_case ids
+  if (/^[a-z][a-z0-9_]{0,24}$/i.test(t) && !/[а-яё]/i.test(t)) return null;
+  return t;
+}
+
 /** Strip site markdown card images / headers so Telegram shows clean prose. */
 export function stripReadingForTelegram(text: string): string {
   return text
@@ -53,6 +69,59 @@ export function stripReadingForTelegram(text: string): string {
     .replace(/^[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Structure reading for Telegram HTML: bold section titles, short paragraphs, lists.
+ */
+export function formatReadingForTelegramHtml(raw: string): string {
+  let text = (raw || "").replace(/\r\n/g, "\n").trim();
+  if (!text) return "";
+
+  text = text.replace(MD_IMAGE_RE, "");
+  text = text.replace(MAJOR_HEADERS, "\n\n§§$1§§\n\n");
+  text = text.replace(/\*\*([^*]{1,80})\*\*/g, "§§$1§§");
+  text = text.replace(/^#{1,6}\s+(.+)$/gm, "§§$1§§");
+  text = text.replace(/^—\s+/gm, "• ");
+  text = text.replace(/^[-*]\s+/gm, "• ");
+  text = text.replace(/\n{3,}/g, "\n\n").trim();
+
+  // Break long glued paragraphs into ~sentences for air.
+  text = text
+    .split(/\n{2,}/)
+    .map((block) => {
+      const t = block.trim();
+      if (!t || t.startsWith("§§") || t.startsWith("• ")) return t;
+      if (t.length < 220) return t;
+      return t.replace(/([.!?…])\s+(?=[А-ЯЁA-Z«"])/g, "$1\n\n");
+    })
+    .join("\n\n");
+
+  const parts = text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const htmlParts: string[] = [];
+  for (const part of parts) {
+    if (/^§§.+§§$/.test(part)) {
+      const title = part.slice(2, -2).replace(/^✦\s*/, "").trim();
+      htmlParts.push(`✦ <b>${escapeHtml(title)}</b>`);
+      continue;
+    }
+    if (part.includes("\n")) {
+      const lines = part.split("\n").map((l) => l.trim()).filter(Boolean);
+      htmlParts.push(lines.map((l) => escapeHtml(l)).join("\n"));
+      continue;
+    }
+    htmlParts.push(escapeHtml(part));
+  }
+
+  return htmlParts.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Pull card faces from markdown image rows in persisted readings. */
@@ -118,30 +187,25 @@ export function drawnCardsFromNameList(names: string[]): DrawnCard[] {
   return drawnCardsFromSiteCards(names.map((name) => ({ name })));
 }
 
-function captionFor(cards: DrawnCard[], question?: string | null): string {
-  const lines = cards.map((c) => {
-    const rev = c.reversed ? ", перевёрнута" : "";
-    return `${c.positionLabel}: ${c.name}${rev}`;
-  });
-  const q = question?.trim();
-  if (q) {
-    const short = q.length > 80 ? `${q.slice(0, 77)}…` : q;
-    return `${short}\n\n${lines.join("\n")}`.slice(0, 1024);
-  }
-  return lines.join("\n").slice(0, 1024);
+/** Short elegant caption — cards already labelled on the collage. */
+function captionFor(question?: string | null): string {
+  const q = cleanQuestion(question);
+  if (q) return `✦ ${q.length > 180 ? `${q.slice(0, 177)}…` : q}`;
+  return "✦ Расклад Zovus";
 }
 
 async function renderCardsImage(cards: DrawnCard[], question?: string | null): Promise<Buffer> {
+  const q = cleanQuestion(question);
   if (cards.length === 1) {
     return renderDayCardImage(cards[0]!);
   }
   return renderTripletCollage(cards.slice(0, 3), {
     revealedCount: Math.min(3, cards.length),
-    question: question?.trim() || undefined,
+    question: q || undefined,
   });
 }
 
-/** Photo collage (or single card) + cleaned reading text for Telegram. */
+/** Photo collage + structured HTML reading. Buttons only on the last text bubble. */
 export async function presentReadingToTelegram(
   ctx: Context,
   input: {
@@ -160,23 +224,40 @@ export async function presentReadingToTelegram(
     cards = extractCardsFromReadingMarkdown(input.reading);
   }
 
+  const question = cleanQuestion(input.question);
   const markup = input.replyMarkup;
+
   if (cards.length > 0) {
     try {
-      const buf = await renderCardsImage(cards, input.question);
+      const buf = await renderCardsImage(cards, question);
       await ctx.replyWithPhoto(new InputFile(buf, "spread.jpg"), {
-        caption: captionFor(cards, input.question),
-        reply_markup: markup,
+        caption: captionFor(question),
       });
     } catch (err) {
       console.error("[present-reading] collage failed", err);
-      await ctx.reply(captionFor(cards, input.question), { reply_markup: markup });
+      await ctx.reply(captionFor(question));
     }
   }
 
-  const body = stripReadingForTelegram(input.reading);
-  if (!body) return;
-  for (const chunk of chunkTelegramText(body)) {
-    await ctx.reply(chunk, { reply_markup: markup });
+  const html = formatReadingForTelegramHtml(input.reading);
+  if (!html) {
+    if (markup) await ctx.reply("Разбор сохранён в истории.", { reply_markup: markup });
+    return;
+  }
+
+  const chunks = chunkTelegramText(html, 3500);
+  for (let i = 0; i < chunks.length; i++) {
+    const last = i === chunks.length - 1;
+    try {
+      await ctx.reply(chunks[i]!, {
+        parse_mode: "HTML",
+        reply_markup: last ? markup : undefined,
+      });
+    } catch (err) {
+      console.error("[present-reading] html send failed, plain fallback", err);
+      await ctx.reply(stripReadingForTelegram(chunks[i]!), {
+        reply_markup: last ? markup : undefined,
+      });
+    }
   }
 }
