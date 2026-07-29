@@ -157,11 +157,14 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+    // Stop the client poll loop — challenge is terminal for login-without-account.
+    await markTelegramAuthChallengeConsumed(token);
     return NextResponse.json(
       {
         ok: false,
         error: "not_found",
-        message: "Аккаунт с этим Telegram не найден. Зарегистрируйтесь через Telegram.",
+        message:
+          "Этот Telegram ещё не привязан к аккаунту. Откройте регистрацию через Telegram или привяжите его в кабинете после входа по email.",
       },
       { status: 404 }
     );
