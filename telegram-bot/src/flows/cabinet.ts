@@ -25,6 +25,7 @@ import {
   matrixDeleteConfirmKeyboard,
   matrixGetKeyboard,
   matrixListPagerKeyboard,
+  matrixNewConfirmKeyboard,
   modulesKeyboard,
   salonKeyboard,
   supportListKeyboard,
@@ -347,13 +348,16 @@ export async function showMatrixReports(ctx: Context): Promise<void> {
   }
 }
 
+/** Order / regenerate full matrix. Always replaces any prior saved report. */
 export async function runMatrixFull(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
   await ctx.reply(copy.matrixRunning);
   try {
     await ctx.replyWithChatAction("typing");
-    const { data } = await siteNumerology(linked.user.telegram_user_id, "run");
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "run", undefined, {
+      replace: true,
+    });
     if (!data.ok) {
       if (data.error === "insufficient_runes") {
         await ctx.reply(
@@ -376,16 +380,19 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
       birthDate: data.birthDate,
       caption: data.birthDate ? `🌌 Матрица судьбы · ${data.birthDate}` : "🌌 Матрица судьбы",
     });
+    const footer = data.replaced
+      ? data.charged
+        ? `Новая матрица готова. Предыдущая заменена · списано ${data.charged}ᚢ`
+        : "Новая матрица готова. Предыдущая заменена."
+      : data.charged
+        ? `Списано ${data.charged}ᚢ`
+        : undefined;
     await presentReadingToTelegram(ctx, {
       reading: formatMatrixReadingPremium(data.content || ""),
       cardNames: [],
       question: "Матрица судьбы",
       sessionId: data.sessionId,
-      footer: data.reused
-        ? "Отчёт уже был в кабинете — открыли снова."
-        : data.charged
-          ? `Списано ${data.charged}ᚢ`
-          : undefined,
+      footer,
       matrixActions: true,
       matrixSiteUrl: data.url,
     });
@@ -464,6 +471,26 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
   }
 
   if (data === CB.mxRun) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await runMatrixFull(ctx);
+    return true;
+  }
+
+  if (data === CB.mxNew) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await ctx.reply(
+      "Заказать новую матрицу? Старый полный разбор будет затёрт, руны спишутся снова.",
+      { reply_markup: matrixNewConfirmKeyboard(20) }
+    );
+    return true;
+  }
+
+  if (data === CB.mxNewNo) {
+    await ctx.answerCallbackQuery({ text: "Отменено" }).catch(() => undefined);
+    return true;
+  }
+
+  if (data === CB.mxNewYes) {
     await ctx.answerCallbackQuery().catch(() => undefined);
     await runMatrixFull(ctx);
     return true;

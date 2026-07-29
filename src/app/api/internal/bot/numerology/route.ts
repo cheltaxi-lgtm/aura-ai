@@ -17,12 +17,14 @@ export async function POST(request: NextRequest) {
     telegram_user_id?: unknown;
     action?: unknown;
     report_id?: unknown;
+    replace?: unknown;
   };
   try {
     body = (await request.json()) as {
       telegram_user_id?: unknown;
       action?: unknown;
       report_id?: unknown;
+      replace?: unknown;
     };
   } catch {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
@@ -43,11 +45,13 @@ export async function POST(request: NextRequest) {
       ? rawAction
       : "summary";
   const reportId = typeof body.report_id === "string" ? body.report_id : undefined;
+  const replace = body.replace === true || body.replace === "true" || body.replace === 1;
 
   const result = await botMatrixAction({
     telegramUserId,
     action,
     reportId,
+    replace,
   });
 
   if (!result.ok) {

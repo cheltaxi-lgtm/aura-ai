@@ -124,6 +124,7 @@ export async function userOwnsMatrixReport(
 
 export type SaveMatrixReportResult =
   | { status: "saved"; report: NumerologyReportHistoryItem }
+  | { status: "updated"; report: NumerologyReportHistoryItem }
   | { status: "already_saved"; report: NumerologyReportHistoryItem };
 
 export async function saveMatrixReport(params: {
@@ -136,6 +137,8 @@ export async function saveMatrixReport(params: {
   structuredData?: Record<string, unknown> | null;
   calculationVersion?: string;
   toolId?: string;
+  /** When true, replace existing row for this birth date/version (new order). */
+  overwrite?: boolean;
 }): Promise<SaveMatrixReportResult> {
   const birthDate = toIsoBirthDate(params.birthDateRaw);
   if (!birthDate) {
@@ -147,8 +150,31 @@ export async function saveMatrixReport(params: {
   if (!content) {
     throw new Error("empty_matrix_report_content");
   }
+  const overwrite = Boolean(params.overwrite);
 
   return withTransaction(async (client) => {
+    if (overwrite) {
+      // Wipe any prior destiny-matrix rows for this birth date (all calculation versions).
+      await queryClient(
+        client,
+        `DELETE FROM numerology_report_history
+         WHERE user_id = $1
+           AND tool_id = $2
+           AND birth_date = $3::date`,
+        [params.userId, toolId, birthDate]
+      );
+    }
+
+    const conflictSql = overwrite
+      ? `ON CONFLICT (user_id, tool_id, birth_date, calculation_version) DO UPDATE SET
+           content = EXCLUDED.content,
+           structured_data = EXCLUDED.structured_data,
+           rune_cost = EXCLUDED.rune_cost,
+           charge_transaction_id = EXCLUDED.charge_transaction_id,
+           session_id = EXCLUDED.session_id,
+           updated_at = NOW()`
+      : `ON CONFLICT (user_id, tool_id, birth_date, calculation_version) DO NOTHING`;
+
     const inserted = await queryClient<NumerologyReportHistoryRow>(
       client,
       `INSERT INTO numerology_report_history (
@@ -157,7 +183,7 @@ export async function saveMatrixReport(params: {
        ) VALUES (
          $1, $2, $3::date, $4, $5, $6::jsonb, $7, $8, $9
        )
-       ON CONFLICT (user_id, tool_id, birth_date, calculation_version) DO NOTHING
+       ${conflictSql}
        RETURNING ${SELECT_COLS}`,
       [
         params.userId,
@@ -171,6 +197,10 @@ export async function saveMatrixReport(params: {
         params.sessionId ?? null,
       ]
     );
+
+    if (overwrite && inserted.rows[0]) {
+      return { status: "updated" as const, report: mapRow(inserted.rows[0]) };
+    }
 
     const existing =
       inserted.rows[0] ??

@@ -220,7 +220,10 @@ export async function botMatrixGet(telegramUserId: number, reportId: string) {
   };
 }
 
-export async function botMatrixRun(telegramUserId: number): Promise<
+export async function botMatrixRun(
+  telegramUserId: number,
+  opts?: { replace?: boolean }
+): Promise<
   | {
       ok: true;
       action: "run";
@@ -231,6 +234,7 @@ export async function botMatrixRun(telegramUserId: number): Promise<
       runeBalance: number;
       charged: number;
       reused: boolean;
+      replaced: boolean;
       url: string;
       diagram: BotMatrixDiagram | null;
     }
@@ -245,9 +249,11 @@ export async function botMatrixRun(telegramUserId: number): Promise<
   const tool = getNumerologTool("destiny_matrix");
   const userName = gate.user.name || gate.resolved.name || "друг";
   const diagram = buildMatrixDiagram(isoBirth, userName);
+  const replace = Boolean(opts?.replace);
 
   const owned = await findOwnedMatrixReport(profileUserId, isoBirth);
-  if (owned?.content?.trim()) {
+  // Open existing only when not explicitly ordering a replacement.
+  if (owned?.content?.trim() && !replace) {
     const session = await createSession(undefined, profileUserId);
     await updateSessionChatMeta(session.id, {
       characterKey: "numerolog",
@@ -278,9 +284,14 @@ export async function botMatrixRun(telegramUserId: number): Promise<
       runeBalance,
       charged: 0,
       reused: true,
+      replaced: false,
       diagram,
       url: `${siteBase()}/?chat_session=${encodeURIComponent(session.id)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
+  }
+
+  if (replace && owned) {
+    await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
   }
 
   const unlimited = await resolveUnlimitedAccess({
@@ -370,6 +381,8 @@ export async function botMatrixRun(telegramUserId: number): Promise<
       structuredData: matrix
         ? { version: MATRIX_CALCULATION_VERSION, matrix }
         : { version: MATRIX_CALCULATION_VERSION },
+      // New paid order always replaces any prior report for this birth date.
+      overwrite: true,
     });
 
     if (saved.status === "already_saved") {
@@ -424,6 +437,7 @@ export async function botMatrixRun(telegramUserId: number): Promise<
       runeBalance,
       charged,
       reused: saved.status === "already_saved",
+      replaced: replace || saved.status === "updated",
       diagram,
       url: `${siteBase()}/?chat_session=${encodeURIComponent(session.id)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
@@ -485,6 +499,7 @@ export async function botMatrixAction(input: {
   telegramUserId: number;
   action: "summary" | "list" | "get" | "run" | "delete";
   reportId?: string;
+  replace?: boolean;
 }) {
   switch (input.action) {
     case "list":
@@ -492,7 +507,7 @@ export async function botMatrixAction(input: {
     case "get":
       return botMatrixGet(input.telegramUserId, input.reportId || "");
     case "run":
-      return botMatrixRun(input.telegramUserId);
+      return botMatrixRun(input.telegramUserId, { replace: input.replace });
     case "delete":
       return botMatrixDelete({
         telegramUserId: input.telegramUserId,

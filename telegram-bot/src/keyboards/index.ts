@@ -51,6 +51,9 @@ export const CB = {
   /** Destiny matrix album / actions */
   mxPrefix: "mx:",
   mxRun: "mx:run",
+  mxNew: "mx:new",
+  mxNewYes: "mx:new:yes",
+  mxNewNo: "mx:new:no",
   mxCalc: "mx:calc",
   mxDel: "mx:del",
   mxDelYes: "mx:del:yes",
@@ -252,7 +255,8 @@ export function readingPagerKeyboard(opts: {
   }
 
   if (opts.matrixActions) {
-    kb.text("🔮 Рассчитать матрицу", CB.mxCalc).text("🗑 Удалить", CB.mxDel);
+    kb.text("🔮 Рассчитать матрицу", CB.mxCalc).text("🗑 Удалить", CB.mxDel).row();
+    kb.text("✨ Новая матрица", CB.mxNew);
     if (opts.matrixSiteUrl) {
       kb.row().url(`🕯 ${copy.continueOnSite}`, opts.matrixSiteUrl);
     }
@@ -341,6 +345,12 @@ export function matrixDeleteConfirmKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("🗑 Да, удалить", CB.mxDelYes)
     .text("↩ Отмена", CB.mxDelNo);
+}
+
+export function matrixNewConfirmKeyboard(cost = 20): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(`✨ Да, новая · ${cost}ᚢ`, CB.mxNewYes)
+    .text("↩ Отмена", CB.mxNewNo);
 }
 
 /** @deprecated use matrixGetKeyboard / matrixOwnedKeyboard */
