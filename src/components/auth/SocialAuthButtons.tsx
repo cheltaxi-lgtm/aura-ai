@@ -5,6 +5,9 @@ import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
+import TelegramLoginButton, {
+  type TelegramWidgetUser,
+} from "@/components/auth/TelegramLoginButton";
 import { trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
@@ -191,7 +194,8 @@ export default function SocialAuthButtons({
     }
   };
 
-  if (providers.length === 0) return null;
+  const telegramEnabled = Boolean(process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.trim());
+  if (providers.length === 0 && !telegramEnabled) return null;
 
   // Prefer Yandex then VK for a stable visual order when both are enabled.
   const ordered = [...providers].sort((a, b) => {
@@ -199,35 +203,94 @@ export default function SocialAuthButtons({
     return rank(a) - rank(b);
   });
 
+  const handleTelegramAuth = async (user: TelegramWidgetUser) => {
+    if (consentBlocked || disabled) {
+      if (consentScrollTargetId) {
+        document.getElementById(consentScrollTargetId)?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+      return;
+    }
+    if (mode === "register") {
+      trackRegistrationStarted(resolveRegistrationSource("oauth_telegram"));
+    }
+    setNativeError("");
+    try {
+      const response = await fetch("/api/auth/telegram", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...user,
+          mode,
+          acceptedTerms,
+          ageConfirmed,
+          marketingConsent,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        needsProfile?: boolean;
+        isNewUser?: boolean;
+      };
+      if (!response.ok) {
+        setNativeError(result.message || "Не удалось войти через Telegram.");
+        return;
+      }
+      const params = new URLSearchParams({
+        returnTo,
+        mode,
+        new: result.isNewUser ? "1" : "0",
+        needsProfile: result.needsProfile ? "1" : "0",
+      });
+      window.location.assign(`/auth/oauth/complete?${params.toString()}`);
+    } catch {
+      setNativeError("Не удалось войти через Telegram.");
+    }
+  };
+
   return (
     <div className="oauth-provider-buttons space-y-3">
-      <div className="auth-salon-oauth">
-        {ordered.map((provider) => {
-          const brand = OAUTH_PROVIDER_BRAND[provider];
-          const blocked = consentBlocked || disabled || Boolean(pendingProvider);
-          const busy = pendingProvider === provider;
-          return (
-            <a
-              key={provider}
-              href={blocked ? "#" : startHref(provider)}
-              aria-disabled={blocked}
-              aria-busy={busy || undefined}
-              aria-label={CONTINUE_LABEL[provider] ?? brand.label}
-              title={CONTINUE_LABEL[provider] ?? brand.label}
-              data-oauth-provider={provider}
-              onClick={handleOAuthClick(provider)}
-              className="auth-salon-oauth-btn"
-            >
-              <span className={`auth-salon-oauth-icon ${brand.bg}`}>
-                <OAuthProviderIcon provider={provider} className="h-4 w-4" />
-              </span>
-              <span className="auth-salon-oauth-label">
-                {busy ? "Открываем…" : CONTINUE_LABEL[provider] ?? brand.label}
-              </span>
-            </a>
-          );
-        })}
-      </div>
+      {ordered.length > 0 ? (
+        <div className="auth-salon-oauth">
+          {ordered.map((provider) => {
+            const brand = OAUTH_PROVIDER_BRAND[provider];
+            const blocked = consentBlocked || disabled || Boolean(pendingProvider);
+            const busy = pendingProvider === provider;
+            return (
+              <a
+                key={provider}
+                href={blocked ? "#" : startHref(provider)}
+                aria-disabled={blocked}
+                aria-busy={busy || undefined}
+                aria-label={CONTINUE_LABEL[provider] ?? brand.label}
+                title={CONTINUE_LABEL[provider] ?? brand.label}
+                data-oauth-provider={provider}
+                onClick={handleOAuthClick(provider)}
+                className="auth-salon-oauth-btn"
+              >
+                <span className={`auth-salon-oauth-icon ${brand.bg}`}>
+                  <OAuthProviderIcon provider={provider} className="h-4 w-4" />
+                </span>
+                <span className="auth-salon-oauth-label">
+                  {busy ? "Открываем…" : CONTINUE_LABEL[provider] ?? brand.label}
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {telegramEnabled ? (
+        <div
+          className={`flex justify-center ${consentBlocked || disabled ? "opacity-50 pointer-events-none" : ""}`}
+        >
+          <TelegramLoginButton onAuth={(u) => void handleTelegramAuth(u)} size="large" />
+        </div>
+      ) : null}
 
       {consentBlocked ? (
         <p className="auth-salon-hint text-center">

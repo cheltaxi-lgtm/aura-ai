@@ -38,6 +38,7 @@ import CabinetDailySpreads from "@/components/cabinet/CabinetDailySpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
+import CabinetTelegramLink from "@/components/cabinet/CabinetTelegramLink";
 import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
 import { redirectHomeAfterAccountDeletion } from "@/lib/account-deleted";
 import CabinetDailyNotifications from "@/components/cabinet/CabinetDailyNotifications";
@@ -546,6 +547,7 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetSupportLink />
+            <CabinetTelegramLink />
             <CabinetJointReadings variant="compact" />
             <CabinetDailyNotifications />
             <CabinetAppVersion />
