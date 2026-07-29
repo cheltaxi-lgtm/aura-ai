@@ -1,8 +1,8 @@
 import { InputFile } from "grammy";
 import type { Context } from "grammy";
-import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
-import { flagEnabled, getDayCard, saveDayCard, touchStreak } from "../db/repos.js";
+import { getDayCard, saveDayCard, touchStreak } from "../db/repos.js";
+import { isDayCardEnabled } from "../flags.js";
 import { deckProvider } from "../domain/deck/local-provider.js";
 import { dayCardText } from "../domain/teaser/provider.js";
 import { salonKeyboard } from "../keyboards/index.js";
@@ -13,7 +13,7 @@ export async function handleDay(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
 
-  if (!flagEnabled("day_card_enabled", botConfig.flags.dayCardEnabled)) {
+  if (!isDayCardEnabled()) {
     await ctx.reply(copy.dayDisabled, { reply_markup: salonKeyboard() });
     return;
   }

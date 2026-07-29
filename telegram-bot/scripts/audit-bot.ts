@@ -27,6 +27,7 @@ import {
   findSessionById,
   getUser,
   releaseUpdate,
+  setFlag,
   setTimezoneOffset,
   trackEvent,
   upsertUser,
@@ -253,6 +254,34 @@ async function main() {
   check("token alphabet/length", isSessionToken(tok));
   check("token hash 64 hex", /^[a-f0-9]{64}$/.test(hashSessionToken(tok)));
   check("question hash no plaintext", !hashQuestion("секретный вопрос").includes("секрет"));
+
+  // Deck integrity (78 cards + back)
+  const deck = checkDeckIntegrity();
+  check("deck expected count 79", expectedDeckSlugs().length === 79);
+  check("deck integrity", deck.ok, deck.missing.slice(0, 5).join(",") || deck.dir);
+  check("deck path not under public/", !botConfig.deckAssetsDir.replace(/\\/g, "/").includes("/public/"));
+
+  // share_card_enabled gates CTA button
+  setFlag("share_card_enabled", false);
+  {
+    const { ctaKeyboard } = await import("../src/keyboards/index.js");
+    const { isShareCardEnabled } = await import("../src/flags.js");
+    check("share flag off", !isShareCardEnabled());
+    check(
+      "share button hidden when flag off",
+      !JSON.stringify(ctaKeyboard("https://zovus.ru").inline_keyboard).includes("share:spread")
+    );
+  }
+  setFlag("share_card_enabled", true);
+  {
+    const { ctaKeyboard } = await import("../src/keyboards/index.js");
+    const { isShareCardEnabled } = await import("../src/flags.js");
+    check("share flag on", isShareCardEnabled());
+    check(
+      "share button shown when flag on",
+      JSON.stringify(ctaKeyboard("https://zovus.ru").inline_keyboard).includes("share:spread")
+    );
+  }
 
   // Fresh DB schema smoke (column presence via expected)
   const tmp = mkdtempSync(join(tmpdir(), "zovus-bot-"));

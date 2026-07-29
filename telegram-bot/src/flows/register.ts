@@ -37,6 +37,7 @@ import {
   settingsKeyboard,
   timezoneKeyboard,
 } from "../keyboards/index.js";
+import { isShareCardEnabled } from "../flags.js";
 import { renderShareCollage } from "../render/card-collage.js";
 import { handleDay } from "./day.js";
 import {
@@ -243,6 +244,10 @@ export function registerFlows(bot: Bot): void {
   bot.callbackQuery(CB.share, async (ctx) => {
     const user = await ensureOnboarded(ctx);
     if (!user) return;
+    if (!isShareCardEnabled()) {
+      await ctx.answerCallbackQuery({ text: copy.shareDisabled, show_alert: true });
+      return;
+    }
     await ctx.answerCallbackQuery();
     const rows = listSessions(user.telegram_user_id, 1);
     if (!rows[0]) {

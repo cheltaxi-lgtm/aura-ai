@@ -19,9 +19,9 @@ import {
   touchStreak,
   trackEvent,
   consumeTtsQuota,
-  flagEnabled,
   type BotUser,
 } from "../db/repos.js";
+import { isTtsEnabled } from "../flags.js";
 import { deckProvider } from "../domain/deck/local-provider.js";
 import { validateQuestion } from "../domain/question/validate.js";
 import {
@@ -211,7 +211,7 @@ async function runSpread(
   const voiceMode = user.voice_mode ?? "text_voice";
   if (
     voiceMode === "text_voice" &&
-    flagEnabled("tts_enabled", botConfig.flags.ttsEnabled) &&
+    isTtsEnabled() &&
     consumeTtsQuota(user.telegram_user_id)
   ) {
     const short =

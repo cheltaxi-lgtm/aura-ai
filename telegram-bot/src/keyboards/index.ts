@@ -1,5 +1,6 @@
 import { InlineKeyboard, Keyboard } from "grammy";
 import { PAIN_CHIPS } from "../domain/question/validate.js";
+import { isShareCardEnabled } from "../flags.js";
 
 /** Persistent bottom bar — emoji allowed on buttons only (not in message bodies). */
 export const NAV = {
@@ -66,10 +67,11 @@ export function questionKeyboard(): InlineKeyboard {
 }
 
 export function ctaKeyboard(url: string): InlineKeyboard {
-  return new InlineKeyboard()
-    .url("🕯 Полный разбор этих карт", url)
-    .row()
-    .text("📤 Поделиться раскладом", CB.share);
+  const kb = new InlineKeyboard().url("🕯 Полный разбор этих карт", url);
+  if (isShareCardEnabled()) {
+    kb.row().text("📤 Поделиться раскладом", CB.share);
+  }
+  return kb;
 }
 
 export function settingsKeyboard(): InlineKeyboard {

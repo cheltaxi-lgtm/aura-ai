@@ -9,7 +9,7 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "tsx src/copy/no-emoji.test.ts && tsx src/safety/__tests__/run-corpus.ts",
+    "test": "tsx src/copy/no-emoji.test.ts && tsx src/safety/__tests__/run-corpus.ts && tsx src/flags/__tests__/flags.test.ts",
     "audit": "tsx scripts/audit-bot.ts",
     "migrate": "tsx src/db/migrate.ts",
     "migrate:up": "tsx src/db/migrate-cli.ts up",

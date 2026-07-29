@@ -3,7 +3,6 @@ import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import {
   abandonedFlows,
-  flagEnabled,
   listUsers,
   localHourForUser,
   markReminderSent,
@@ -11,11 +10,12 @@ import {
   trackEvent,
   usersForReminder,
 } from "../db/repos.js";
+import { isRemindersEnabled } from "../flags.js";
 import { reactivationKeyboard } from "../keyboards/index.js";
 import { withBlockDetect } from "../middleware/stack.js";
 
 export async function runReminderTick(bot: Bot): Promise<void> {
-  if (!flagEnabled("reminders_enabled", botConfig.flags.remindersEnabled)) return;
+  if (!isRemindersEnabled()) return;
 
   for (const mode of ["morning", "evening"] as const) {
     const users = usersForReminder(mode);

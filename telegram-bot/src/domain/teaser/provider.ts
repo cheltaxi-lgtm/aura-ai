@@ -1,5 +1,6 @@
 import { botConfig } from "../../config.js";
-import { consumeLlmQuota, flagEnabled } from "../../db/repos.js";
+import { consumeLlmQuota } from "../../db/repos.js";
+import { isLlmEnabled } from "../../flags.js";
 import type { DrawnCard } from "../deck/types.js";
 import {
   buildTeaserSystemPrompt,
@@ -30,7 +31,7 @@ export async function generateTeaser(
     seed,
   };
 
-  if (!flagEnabled("llm_enabled", botConfig.flags.llmEnabled)) return fallback;
+  if (!isLlmEnabled()) return fallback;
   if (!botConfig.openRouterApiKey) return fallback;
   if (telegramUserId != null && !consumeLlmQuota(telegramUserId)) return fallback;
 

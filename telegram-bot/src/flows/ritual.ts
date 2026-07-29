@@ -3,6 +3,7 @@ import type { Context } from "grammy";
 import { botConfig } from "../config.js";
 import { trackEvent } from "../db/repos.js";
 import type { DrawnCard } from "../domain/deck/types.js";
+import { isRitualRevealEnabled } from "../flags.js";
 import {
   renderTripletCollage,
   writeCachedCollage,
@@ -32,7 +33,7 @@ export async function ritualReveal(
   sessionId: string,
   telegramUserId: number
 ): Promise<void> {
-  const enabled = botConfig.flags.ritualRevealEnabled;
+  const enabled = isRitualRevealEnabled();
   const stages = enabled ? [0, 1, 2, 3] : [3];
 
   const buffers: Buffer[] = [];

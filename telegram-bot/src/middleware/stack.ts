@@ -3,13 +3,13 @@ import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import {
   claimUpdate,
-  flagEnabled,
   getUser,
   markBlocked,
   releaseUpdate,
   trackEvent,
   upsertUser,
 } from "../db/repos.js";
+import { isBotEnabled } from "../flags.js";
 import { isIrreversible } from "./irreversible.js";
 
 let disabledCounter = 0;
@@ -77,7 +77,7 @@ export async function rateLimit(ctx: Context, next: NextFunction): Promise<void>
 }
 
 export async function featureGate(ctx: Context, next: NextFunction): Promise<void> {
-  if (!flagEnabled("bot_enabled", botConfig.flags.botEnabled)) {
+  if (!isBotEnabled()) {
     await ctx.reply(copy.botDisabled(ctx.from?.id ?? 1, disabledCounter++));
     return;
   }
