@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
   }
 
   const resolved = await resolveBotUser(telegramUserId);
+  const userGender = resolved.gender;
   const action = typeof body.action === "string" ? body.action.trim() : "summary";
 
   if (action === "item") {
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     if (!slug) {
       return NextResponse.json({ ok: false, error: "invalid_slug" }, { status: 400 });
     }
-    const item = getBotCatalogItem(slug);
+    const item = getBotCatalogItem(slug, userGender);
     if (!item) {
       return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     }
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
       linked: resolved.linked,
       linkUrl: resolved.linkUrl,
       runeBalance: resolved.runeBalance,
+      gender: userGender,
       item,
     });
   }
@@ -72,18 +74,20 @@ export async function POST(request: NextRequest) {
       pageSize:
         typeof body.page_size === "number" ? body.page_size : Number(body.page_size) || 8,
       featured: body.featured === true || body.featured === "true" || body.featured === 1,
+      userGender,
     });
     return NextResponse.json({
       ok: true,
       linked: resolved.linked,
       linkUrl: resolved.linkUrl,
       runeBalance: resolved.runeBalance,
+      gender: userGender,
       ...page,
     });
   }
 
   // summary (default)
-  const summary = getBotCatalogSummary();
+  const summary = getBotCatalogSummary(userGender);
   return NextResponse.json({
     ok: true,
     linked: resolved.linked,

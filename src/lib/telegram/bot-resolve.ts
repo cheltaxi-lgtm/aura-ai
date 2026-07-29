@@ -1,4 +1,5 @@
 import { findUserById, getProfileUserIdForAccount } from "@/lib/accounts";
+import { resolveClientGender, type BinaryGender } from "@/lib/russian-name-gender";
 import { getRuneBalance } from "@/lib/rune-service";
 import { getUserById } from "@/lib/users";
 import { findTelegramIdentity } from "@/lib/telegram/accounts";
@@ -11,6 +12,8 @@ export type BotResolveResult = {
   needsOnboarding: boolean;
   name: string | null;
   email: string | null;
+  /** Profile gender (or inferred from name) — same source as /rasklady copy. */
+  gender: BinaryGender | null;
   runeBalance: number | null;
   linkUrl: string;
 };
@@ -35,6 +38,7 @@ export async function resolveBotUser(telegramUserId: number): Promise<BotResolve
       needsOnboarding: true,
       name: null,
       email: null,
+      gender: null,
       runeBalance: null,
       linkUrl,
     };
@@ -44,6 +48,7 @@ export async function resolveBotUser(telegramUserId: number): Promise<BotResolve
   const profileUserId = await getProfileUserIdForAccount(identity.user_account_id);
   const profile = profileUserId ? await getUserById(profileUserId) : null;
   const runeBalance = profileUserId ? await getRuneBalance(profileUserId) : null;
+  const name = profile?.name ?? account?.name ?? null;
 
   return {
     linked: true,
@@ -51,8 +56,9 @@ export async function resolveBotUser(telegramUserId: number): Promise<BotResolve
     accountId: identity.user_account_id,
     profileUserId,
     needsOnboarding: !profileUserId || !profile?.birth_date,
-    name: profile?.name ?? account?.name ?? null,
+    name,
     email: account?.email ?? null,
+    gender: resolveClientGender(profile?.gender, name),
     runeBalance,
     linkUrl: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=cabinet`,
   };

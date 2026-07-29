@@ -5,6 +5,10 @@ import {
   getSpreadIntentsByCategory,
 } from "@/lib/spread-intents/registry";
 import {
+  resolveIntentCopy,
+  type UserGender,
+} from "@/lib/spread-intents/gender-copy";
+import {
   buildIntentSeoUrl,
   buildSpreadStartUrl,
   estimateIntentRuneCost,
@@ -71,23 +75,40 @@ function isNativeInBot(intent: SpreadIntentDefinition): boolean {
   if (intent.requiresPartnerInfo) return false;
   const spread = getSpread(intent.spreadId);
   // Bot collage/presentation currently supports 1–3 card faces well.
-  return spread.cardCount <= 3 && (intent.spreadId === "triplet" || intent.spreadId === "single" || intent.spreadId === "yes-no" || intent.spreadId === "runes-yes-no" || intent.spreadId === "triplet-love");
+  return (
+    spread.cardCount <= 3 &&
+    (intent.spreadId === "triplet" ||
+      intent.spreadId === "single" ||
+      intent.spreadId === "yes-no" ||
+      intent.spreadId === "runes-yes-no" ||
+      intent.spreadId === "triplet-love")
+  );
 }
 
-function toItem(intent: SpreadIntentDefinition): BotCatalogItem {
+function toItem(intent: SpreadIntentDefinition, userGender?: UserGender): BotCatalogItem {
   const spread = getSpread(intent.spreadId);
   const startPath = buildSpreadStartUrl(intent);
+  // Same gender adaptation as /rasklady (male → «она», female/null → seed «он»).
+  const copy = resolveIntentCopy(intent, userGender);
+  const shortBase = intent.shortTitle?.trim();
+  const title = shortBase
+    ? resolveIntentCopy(
+        { ...intent, title: shortBase, intro: shortBase, questionTemplate: shortBase },
+        userGender
+      ).title
+    : copy.title;
+
   return {
     id: intent.slug,
-    title: intent.shortTitle?.trim() || intent.title,
-    description: (intent.intro || intent.description || "").slice(0, 280),
+    title,
+    description: (copy.intro || intent.description || "").slice(0, 280),
     category: intent.category,
     categoryLabel: SPREAD_INTENT_CATEGORY_LABELS[intent.category],
     spreadId: intent.spreadId,
     cardCount: spread.cardCount,
     cost: estimateIntentRuneCost(intent.spreadId),
     masterId: resolveIntentMasterId(intent),
-    questionTemplate: intent.questionTemplate,
+    questionTemplate: copy.questionTemplate,
     positionsPreview: intent.positionsPreview?.slice(0, 8) ?? [],
     url: withUtm(startPath),
     seoUrl: withUtm(buildIntentSeoUrl(intent)),
@@ -105,10 +126,15 @@ export function listBotCatalogCategories(): BotCatalogCategory[] {
   })).filter((c) => c.count > 0);
 }
 
-export function getBotCatalogFeatured(limit = 12): BotCatalogItem[] {
+export function getBotCatalogFeatured(
+  limit = 12,
+  userGender?: UserGender
+): BotCatalogItem[] {
   const featured = getFeaturedSpreadIntents(limit);
-  if (featured.length > 0) return featured.map(toItem);
-  return getAllSpreadIntents().slice(0, limit).map(toItem);
+  if (featured.length > 0) return featured.map((i) => toItem(i, userGender));
+  return getAllSpreadIntents()
+    .slice(0, limit)
+    .map((i) => toItem(i, userGender));
 }
 
 export function getBotCatalogPage(input: {
@@ -117,6 +143,7 @@ export function getBotCatalogPage(input: {
   page?: number;
   pageSize?: number;
   featured?: boolean;
+  userGender?: UserGender;
 }): {
   items: BotCatalogItem[];
   page: number;
@@ -132,6 +159,7 @@ export function getBotCatalogPage(input: {
   const catRaw = (input.category || "").trim() as SpreadIntentCategory;
   const category = CATEGORY_ORDER.includes(catRaw) ? catRaw : null;
   const featuredOnly = Boolean(input.featured);
+  const userGender = input.userGender;
 
   let list = featuredOnly
     ? getFeaturedSpreadIntents(200)
@@ -139,19 +167,26 @@ export function getBotCatalogPage(input: {
       ? getSpreadIntentsByCategory(category)
       : getAllSpreadIntents();
   if (q) {
-    list = list.filter(
-      (i) =>
+    list = list.filter((i) => {
+      const copy = resolveIntentCopy(i, userGender);
+      return (
+        copy.title.toLowerCase().includes(q) ||
         i.title.toLowerCase().includes(q) ||
         i.slug.toLowerCase().includes(q) ||
+        copy.intro.toLowerCase().includes(q) ||
         i.description.toLowerCase().includes(q) ||
+        copy.questionTemplate.toLowerCase().includes(q) ||
         i.questionTemplate.toLowerCase().includes(q)
-    );
+      );
+    });
   }
 
   const total = list.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages - 1);
-  const slice = list.slice(safePage * pageSize, safePage * pageSize + pageSize).map(toItem);
+  const slice = list
+    .slice(safePage * pageSize, safePage * pageSize + pageSize)
+    .map((i) => toItem(i, userGender));
 
   return {
     items: slice,
@@ -164,19 +199,24 @@ export function getBotCatalogPage(input: {
   };
 }
 
-export function getBotCatalogItem(slug: string): BotCatalogItem | null {
+export function getBotCatalogItem(
+  slug: string,
+  userGender?: UserGender
+): BotCatalogItem | null {
   const intent = getSpreadIntentBySlug(slug.trim());
-  return intent ? toItem(intent) : null;
+  return intent ? toItem(intent, userGender) : null;
 }
 
-export function getBotCatalogSummary(): {
+export function getBotCatalogSummary(userGender?: UserGender): {
   total: number;
   categories: BotCatalogCategory[];
   featured: BotCatalogItem[];
+  gender: UserGender;
 } {
   return {
     total: getAllSpreadIntents().length,
     categories: listBotCatalogCategories(),
-    featured: getBotCatalogFeatured(8),
+    featured: getBotCatalogFeatured(8, userGender),
+    gender: userGender ?? null,
   };
 }
