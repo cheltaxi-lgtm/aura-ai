@@ -144,7 +144,8 @@ export function catalogItemKeyboard(opts: {
   url: string;
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
-  if (opts.native) {
+  // Prefer in-bot run whenever API marks native (question-ready intents).
+  if (opts.native !== false) {
     kb.text(`🔮 ${copy.catalogRunHere}`, CB.catRun).row();
   }
   kb.url(`🕯 ${copy.catalogOpenSite}`, opts.url).row();

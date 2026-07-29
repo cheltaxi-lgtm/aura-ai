@@ -247,11 +247,11 @@ async function showItem(
     .slice(0, 5)
     .map((p) => `· ${p}`)
     .join("\n");
-  const where = item.native
-    ? "Можно сделать в боте или на сайте."
-    : item.requiresPartnerInfo
-      ? "Нужны данные партнёра — откройте на сайте."
-      : "Полный расклад — на сайте (те же карты и биллинг).";
+  const where = item.requiresPartnerInfo
+    ? "В боте — короткий триплет Вероники по этому вопросу. Полный расклад с данными партнёра — на сайте."
+    : item.cardCount > 3
+      ? "В боте — триплет Вероники по этому вопросу. Полная схема карт — на сайте."
+      : "Можно сделать в боте или на сайте.";
 
   const text = [
     item.title,
@@ -259,8 +259,8 @@ async function showItem(
     "",
     item.description || "",
     "",
-    `Карт: ${item.cardCount} · ориентир ~${item.cost} рун`,
-    positions ? `\nПозиции:\n${positions}` : "",
+    `На сайте: ${item.cardCount} карт · ориентир ~${item.cost} рун`,
+    positions ? `\nПозиции на сайте:\n${positions}` : "",
     "",
     where,
   ]
@@ -352,7 +352,7 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
       return true;
     }
     const st = flow.data as unknown as CatalogDetailState;
-    if (!st.native || !st.questionTemplate) {
+    if (!st.questionTemplate?.trim()) {
       await ctx.reply("Этот расклад лучше открыть на сайте.", {
         reply_markup: catalogItemKeyboard({
           native: false,

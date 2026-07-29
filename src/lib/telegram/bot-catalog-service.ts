@@ -72,17 +72,9 @@ function withUtm(path: string): string {
 }
 
 function isNativeInBot(intent: SpreadIntentDefinition): boolean {
-  if (intent.requiresPartnerInfo) return false;
-  const spread = getSpread(intent.spreadId);
-  // Bot collage/presentation currently supports 1–3 card faces well.
-  return (
-    spread.cardCount <= 3 &&
-    (intent.spreadId === "triplet" ||
-      intent.spreadId === "single" ||
-      intent.spreadId === "yes-no" ||
-      intent.spreadId === "runes-yes-no" ||
-      intent.spreadId === "triplet-love")
-  );
+  // Bot thin client always runs Veronika triplet via /api/internal/bot/spread
+  // with the intent question (gender-adapted). Full geometry / partner forms stay on site.
+  return Boolean(intent.questionTemplate?.trim());
 }
 
 function toItem(intent: SpreadIntentDefinition, userGender?: UserGender): BotCatalogItem {
