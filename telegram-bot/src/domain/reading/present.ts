@@ -25,6 +25,8 @@ type ReadingViewState = {
   page: number;
   chatUrl?: string;
   footer?: string;
+  matrixActions?: boolean;
+  matrixSiteUrl?: string;
 };
 
 function normalizeCardName(raw: string): string {
@@ -381,6 +383,8 @@ function pagerMarkup(state: ReadingViewState): InlineKeyboard {
     page: state.page,
     total: state.pages.length,
     chatUrl: state.chatUrl,
+    matrixActions: state.matrixActions,
+    matrixSiteUrl: state.matrixSiteUrl,
   });
 }
 
@@ -399,6 +403,9 @@ export async function presentReadingToTelegram(
     replyMarkup?: ReplyMarkup;
     sessionId?: string;
     footer?: string;
+    /** Put matrix calc/delete/site buttons on the same album keyboard. */
+    matrixActions?: boolean;
+    matrixSiteUrl?: string | null;
   }
 ): Promise<void> {
   let cards = input.cards?.length ? input.cards : [];
@@ -433,15 +440,19 @@ export async function presentReadingToTelegram(
   }
 
   const chatUrl = input.sessionId ? buildSessionChatUrl(input.sessionId) : undefined;
+  const matrixSiteUrl = input.matrixSiteUrl?.trim() || undefined;
   const state: ReadingViewState = {
     pages,
     page: 0,
     chatUrl,
     footer: input.footer?.trim() || undefined,
+    matrixActions: Boolean(input.matrixActions),
+    matrixSiteUrl,
   };
 
   const html = pageHtml(state.pages, 0, state.footer);
-  const usePager = pages.length > 1 || Boolean(chatUrl);
+  const usePager =
+    pages.length > 1 || Boolean(chatUrl) || Boolean(input.matrixActions);
 
   if (usePager && tid) {
     setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
@@ -460,11 +471,13 @@ export async function presentReadingToTelegram(
   const markup =
     input.replyMarkup && isInlineKeyboard(input.replyMarkup)
       ? input.replyMarkup
-      : chatUrl
+      : chatUrl || input.matrixActions
         ? readingPagerKeyboard({
             page: 0,
             total: 1,
             chatUrl,
+            matrixActions: Boolean(input.matrixActions),
+            matrixSiteUrl,
           })
         : input.replyMarkup;
 
@@ -511,6 +524,9 @@ export async function handleReadingPagerCallback(
     page: Number.isFinite(page) ? page : 0,
     chatUrl: typeof flow.data.chatUrl === "string" ? flow.data.chatUrl : undefined,
     footer: typeof flow.data.footer === "string" ? flow.data.footer : undefined,
+    matrixActions: Boolean(flow.data.matrixActions),
+    matrixSiteUrl:
+      typeof flow.data.matrixSiteUrl === "string" ? flow.data.matrixSiteUrl : undefined,
   };
   if (!state.pages.length) {
     await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);

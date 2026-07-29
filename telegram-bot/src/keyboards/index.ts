@@ -230,6 +230,9 @@ export function readingPagerKeyboard(opts: {
   page: number;
   total: number;
   chatUrl?: string | null;
+  /** Destiny matrix actions on the same album keyboard (not a second bubble). */
+  matrixActions?: boolean;
+  matrixSiteUrl?: string | null;
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
   const total = Math.max(1, opts.total);
@@ -245,7 +248,14 @@ export function readingPagerKeyboard(opts: {
   }
 
   if (opts.chatUrl) {
-    kb.url(`🕯 ${copy.continueDiscussionOnSite}`, opts.chatUrl);
+    kb.url(`🕯 ${copy.continueDiscussionOnSite}`, opts.chatUrl).row();
+  }
+
+  if (opts.matrixActions) {
+    kb.text("🔮 Рассчитать матрицу", CB.mxCalc).text("🗑 Удалить", CB.mxDel);
+    if (opts.matrixSiteUrl) {
+      kb.row().url(`🕯 ${copy.continueOnSite}`, opts.matrixSiteUrl);
+    }
   }
   return kb;
 }

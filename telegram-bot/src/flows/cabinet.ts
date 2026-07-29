@@ -25,7 +25,6 @@ import {
   matrixDeleteConfirmKeyboard,
   matrixGetKeyboard,
   matrixListPagerKeyboard,
-  matrixOwnedKeyboard,
   modulesKeyboard,
   salonKeyboard,
   supportListKeyboard,
@@ -387,9 +386,8 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
         : data.charged
           ? `Списано ${data.charged}ᚢ`
           : undefined,
-    });
-    await ctx.reply("Действия с матрицей:", {
-      reply_markup: matrixOwnedKeyboard({ siteUrl: data.url }),
+      matrixActions: true,
+      matrixSiteUrl: data.url,
     });
   } catch (err) {
     console.error("[cabinet] matrix run", err);
@@ -422,12 +420,9 @@ export async function openMatrixReport(
       cardNames: [],
       question: "Матрица судьбы",
       sessionId: data.sessionId || undefined,
+      matrixActions: opts?.showActions !== false,
+      matrixSiteUrl: opts?.siteUrl || data.url,
     });
-    if (opts?.showActions !== false) {
-      await ctx.reply("Действия с матрицей:", {
-        reply_markup: matrixOwnedKeyboard({ siteUrl: opts?.siteUrl || data.url }),
-      });
-    }
   } catch (err) {
     console.error("[cabinet] matrix get", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
