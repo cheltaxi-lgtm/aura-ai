@@ -36,6 +36,21 @@ export const CB = {
   unsub: "unsub:yes",
   invite: "invite:switch",
   ctaResendPrefix: "cta:resend:",
+  modNatal: "mod:natal",
+  modMatrix: "mod:matrix",
+  modRituals: "mod:rituals",
+  modJoint: "mod:joint",
+  modDiary: "mod:diary",
+  modMemory: "mod:memory",
+  modPhoto: "mod:photo",
+  modSupport: "mod:support",
+  modCabinet: "mod:cabinet",
+  chatAskPrefix: "chat:ask:",
+  chatStop: "chat:stop",
+  supportNew: "sup:new",
+  supportReplyPrefix: "sup:reply:",
+  histOpenPrefix: "hist:open:",
+  histAskPrefix: "hist:ask:",
 } as const;
 
 export function salonKeyboard(): Keyboard {
@@ -94,6 +109,54 @@ export function resendCtaKeyboard(sessionId: string): InlineKeyboard {
 
 export function continueOnSiteKeyboard(url: string, label: string = copy.continueOnSite): InlineKeyboard {
   return new InlineKeyboard().url(`🕯 ${label}`, url);
+}
+
+export function modulesKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✨ Натал", CB.modNatal)
+    .text("📜 Матрица", CB.modMatrix)
+    .row()
+    .text("🕯 Обряды", CB.modRituals)
+    .text("🔗 Совместный", CB.modJoint)
+    .row()
+    .text("📝 Дневник", CB.modDiary)
+    .text("💬 Память", CB.modMemory)
+    .row()
+    .text("🃏 Фото", CB.modPhoto)
+    .text("✉️ Поддержка", CB.modSupport)
+    .row()
+    .text("📂 Кабинет", CB.modCabinet);
+}
+
+export function chatFollowUpKeyboard(sessionId: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("💬 Вопрос по раскладу", `${CB.chatAskPrefix}${sessionId}`)
+    .row()
+    .text("❌ Закончить диалог", CB.chatStop);
+}
+
+export function dialogStopKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("❌ Закончить диалог", CB.chatStop);
+}
+
+export function supportListKeyboard(
+  tickets: Array<{ id: string }>,
+  siteUrl?: string | null
+): InlineKeyboard {
+  const kb = new InlineKeyboard().text("✍️ Новое обращение", CB.supportNew);
+  for (const t of tickets.slice(0, 5)) {
+    kb.row().text(`💬 Ответить · ${t.id.slice(0, 8)}`, `${CB.supportReplyPrefix}${t.id}`);
+  }
+  if (siteUrl) {
+    kb.row().url(`🕯 ${copy.continueOnSite}`, siteUrl);
+  }
+  return kb;
+}
+
+export function historyItemKeyboard(sessionId: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📜 Открыть", `${CB.histOpenPrefix}${sessionId}`)
+    .text("💬 Вопрос", `${CB.histAskPrefix}${sessionId}`);
 }
 
 export function settingsKeyboard(): InlineKeyboard {

@@ -148,6 +148,125 @@ export async function siteReading(telegramUserId: number, sessionId: string) {
   });
 }
 
+export async function siteCabinet(telegramUserId: number) {
+  return siteFetch<{
+    ok: boolean;
+    runeBalance?: number;
+    natal?: {
+      hasChart: boolean;
+      bigThree: string[];
+      place: string | null;
+      url: string;
+    };
+    rituals?: {
+      stats: Record<string, number> | null;
+      recent: Array<{ id: string; title: string; status: string; characterKey: string }>;
+      url: string;
+    };
+    joint?: {
+      items: Array<{ token: string; status: string; url: string; createdAt: string }>;
+      url: string;
+    };
+    diary?: Array<{ id: string; characterKey: string; text: string; createdAt: string }>;
+    memory?: Array<{ id: string; fact: string; category: string | null }>;
+    support?: {
+      tickets: Array<{ id: string; subject: string; status: string; preview: string }>;
+      url: string;
+    };
+    numerology?: {
+      matrices: Array<{ id: string; birthDate: string; createdAt: string }>;
+      url: string;
+    };
+    photo?: {
+      items: Array<{ id?: string; createdAt?: string; master?: string }>;
+      url: string;
+    };
+    urls?: Record<string, string>;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/cabinet", { telegram_user_id: telegramUserId });
+}
+
+export async function siteNatal(telegramUserId: number) {
+  return siteFetch<{
+    ok: boolean;
+    natal?: {
+      hasChart: boolean;
+      bigThree: string[];
+      place: string | null;
+      url: string;
+    };
+    url?: string;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/natal", { telegram_user_id: telegramUserId });
+}
+
+export async function siteNumerology(telegramUserId: number) {
+  return siteFetch<{
+    ok: boolean;
+    birthDate?: string;
+    portrait?: string;
+    moneyInsight?: string;
+    loveInsight?: string;
+    yearInsight?: string;
+    keyArcana?: Array<{ role: string; number: number; title: string; shortMeaning: string }>;
+    savedReports?: number;
+    url?: string;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/numerology", { telegram_user_id: telegramUserId });
+}
+
+export async function siteSupport(
+  telegramUserId: number,
+  action: "list" | "create" | "reply",
+  extra: { subject?: string; message?: string; ticketId?: string } = {}
+) {
+  return siteFetch<{
+    ok: boolean;
+    tickets?: Array<{ id: string; subject: string; status: string; preview: string }>;
+    ticketId?: string;
+    autoReply?: string;
+    messageId?: string | null;
+    messages?: Array<{ role: string; content: string }>;
+    url?: string;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/support", {
+    telegram_user_id: telegramUserId,
+    action,
+    subject: extra.subject,
+    message: extra.message,
+    ticket_id: extra.ticketId,
+  });
+}
+
+export async function siteChat(telegramUserId: number, sessionId: string, message: string) {
+  return siteFetch<{
+    ok: boolean;
+    reply?: string;
+    sessionId?: string;
+    runeBalance?: number;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+    cost?: number;
+  }>(
+    "/api/internal/bot/chat",
+    {
+      telegram_user_id: telegramUserId,
+      session_id: sessionId,
+      message,
+    },
+    120_000
+  );
+}
+
 /** Split long reading into Telegram-safe chunks. */
 export function chunkTelegramText(text: string, max = 3500): string[] {
   const t = text.trim();

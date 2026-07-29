@@ -24,6 +24,11 @@
 | `POST /daily` | энергия дня (`getOrCreateDailyReading`) |
 | `POST /runes` | баланс + URL магазина |
 | `POST /modules` | каталог разделов (native + deep-link) |
+| `POST /cabinet` | обзор кабинета (натал, обряды, joint, дневник, память, support, photo) |
+| `POST /natal` | big three / статус натала |
+| `POST /numerology` | свободная матрица судьбы |
+| `POST /support` | list / create / reply обращений |
+| `POST /chat` | follow-up вопрос по sessionId (ChatOrchestrator + руны) |
 
 Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECRET`, `BOT_REQUIRE_SITE_ACCOUNT=true`.
 

@@ -35,6 +35,7 @@ import {
   ctaKeyboard,
   deleteConfirmKeyboard,
   deleteKeyboard,
+  historyItemKeyboard,
   inviteKeyboard,
   linkAccountKeyboard,
   salonKeyboard,
@@ -43,6 +44,14 @@ import {
 } from "../keyboards/index.js";
 import { isShareCardEnabled } from "../flags.js";
 import { renderShareCollage } from "../render/card-collage.js";
+import {
+  beginChatFollowUp,
+  beginSupportReply,
+  handleCabinetText,
+  openHistoryReading,
+  routeModuleCallback,
+  showModulesMenu,
+} from "./cabinet.js";
 import { handleDay } from "./day.js";
 import {
   beginSpread,
@@ -54,7 +63,7 @@ import {
 } from "./spread.js";
 import { ensureSiteLinked, syncSiteAccount } from "./site-account.js";
 import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
-import { siteHistory, siteModules, siteRunes } from "../domain/site-client.js";
+import { siteHistory, siteRunes } from "../domain/site-client.js";
 
 export function registerFlows(bot: Bot): void {
   bot.command("start", async (ctx) => {
@@ -319,6 +328,52 @@ export function registerFlows(bot: Bot): void {
     await ctx.reply(copy.deleteDone, { reply_markup: removeKeyboardMarkup() });
   });
 
+  bot.callbackQuery(/^mod:/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const data = ctx.callbackQuery.data;
+    if (!(await routeModuleCallback(ctx, data))) {
+      await ctx.reply(copy.modulesPick, { reply_markup: salonKeyboard() });
+    }
+  });
+
+  bot.callbackQuery(CB.chatStop, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await routeModuleCallback(ctx, CB.chatStop);
+  });
+
+  bot.callbackQuery(CB.supportNew, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await routeModuleCallback(ctx, CB.supportNew);
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.chatAskPrefix}(.+)$`), async (ctx) => {
+    const sessionId = ctx.match?.[1];
+    await ctx.answerCallbackQuery();
+    if (!sessionId) return;
+    await beginChatFollowUp(ctx, sessionId);
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.supportReplyPrefix}(.+)$`), async (ctx) => {
+    const ticketId = ctx.match?.[1];
+    await ctx.answerCallbackQuery();
+    if (!ticketId) return;
+    await beginSupportReply(ctx, ticketId);
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.histOpenPrefix}(.+)$`), async (ctx) => {
+    const sessionId = ctx.match?.[1];
+    await ctx.answerCallbackQuery();
+    if (!sessionId) return;
+    await openHistoryReading(ctx, sessionId);
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.histAskPrefix}(.+)$`), async (ctx) => {
+    const sessionId = ctx.match?.[1];
+    await ctx.answerCallbackQuery();
+    if (!sessionId) return;
+    await beginChatFollowUp(ctx, sessionId);
+  });
+
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return;
@@ -326,6 +381,7 @@ export function registerFlows(bot: Bot): void {
       await routeNav(ctx, text);
       return;
     }
+    if (await handleCabinetText(ctx, text)) return;
     const handled = await handleFreeTextQuestion(ctx, text);
     if (!handled && (await ensureOnboarded(ctx))) {
       await ctx.reply(copy.navHint, { reply_markup: salonKeyboard() });
@@ -351,7 +407,7 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
       await showRunes(ctx);
       return;
     case NAV.more:
-      await showModules(ctx);
+      await showModulesMenu(ctx);
       return;
     case NAV.settings:
       await showSettings(ctx);
@@ -415,12 +471,18 @@ async function showHistory(ctx: Context): Promise<void> {
       await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
       return;
     }
-    const blocks = data.items.map((r, i) => {
+    for (const [i, r] of data.items.entries()) {
       const cards = (r.cards ?? []).join(" · ");
       const preview = r.preview ? `\n${r.preview}` : "";
-      return `${i + 1}. ${r.topic || r.characterKey}\n${r.date.slice(0, 10)}${cards ? `\n${cards}` : ""}${preview}`;
-    });
-    await ctx.reply(blocks.join("\n\n").slice(0, 3500), { reply_markup: salonKeyboard() });
+      const body =
+        `${i + 1}. ${r.topic || r.characterKey}\n${r.date.slice(0, 10)}${cards ? `\n${cards}` : ""}${preview}`.slice(
+          0,
+          900
+        );
+      await ctx.reply(body, {
+        reply_markup: r.sessionId ? historyItemKeyboard(r.sessionId) : salonKeyboard(),
+      });
+    }
   } catch (err) {
     console.error("[history] site", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -443,33 +505,6 @@ async function showRunes(ctx: Context): Promise<void> {
     });
   } catch (err) {
     console.error("[runes] site", err);
-    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-  }
-}
-
-async function showModules(ctx: Context): Promise<void> {
-  const user = await ensureOnboarded(ctx);
-  if (!user) return;
-  try {
-    const { data } = await siteModules(user.telegram_user_id);
-    if (!data.ok || !data.modules?.length) {
-      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-      return;
-    }
-    const lines = [
-      copy.modulesTitle,
-      "",
-      ...data.modules.map((m) =>
-        m.native ? `• ${m.title} — в боте` : `• ${m.title} — на сайте`
-      ),
-    ];
-    await ctx.reply(lines.join("\n"), {
-      reply_markup: data.linkUrl
-        ? continueOnSiteKeyboard(data.linkUrl, copy.continueOnSite)
-        : salonKeyboard(),
-    });
-  } catch (err) {
-    console.error("[modules] site", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
   }
 }

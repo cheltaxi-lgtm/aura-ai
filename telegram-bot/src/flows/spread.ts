@@ -13,6 +13,7 @@ import {
 import { validateQuestion } from "../domain/question/validate.js";
 import { chunkTelegramText, siteSpread } from "../domain/site-client.js";
 import {
+  chatFollowUpKeyboard,
   ctaKeyboard,
   questionKeyboard,
   salonKeyboard,
@@ -155,8 +156,8 @@ async function runSiteSpread(
     data.runeBalance != null
       ? `\nБаланс: ${data.runeBalance} рун${data.charged ? ` (−${data.charged})` : ""}.`
       : "";
-  await ctx.reply(`${copy.fullReadingDone}${bal}`, {
-    reply_markup: salonKeyboard(),
+  await ctx.reply(`${copy.fullReadingDone}${bal}\n\n${copy.fullReadingAskMore}`, {
+    reply_markup: chatFollowUpKeyboard(data.sessionId),
   });
 
   track(user, "teaser_shown", {
