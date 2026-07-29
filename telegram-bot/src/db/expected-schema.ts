@@ -31,6 +31,7 @@ const BOT_USERS_PREMIUM: ExpectedColumn[] = [
   { name: "streak_grace_used", sqlType: "INTEGER NOT NULL DEFAULT 0", nullable: false },
   { name: "unsubscribed_at", sqlType: "TEXT", nullable: true },
   { name: "timezone_asked_at", sqlType: "TEXT", nullable: true },
+  { name: "link_welcomed_at", sqlType: "TEXT", nullable: true },
 ];
 
 const BOT_SESSIONS_PREMIUM: ExpectedColumn[] = [

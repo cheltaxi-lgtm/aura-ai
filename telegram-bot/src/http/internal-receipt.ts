@@ -9,6 +9,7 @@ import {
   GUEST_SYSTEM,
   toSiteGuestSymbols,
 } from "../domain/session/guest-contract.js";
+import { maybeSendLinkWelcome } from "../domain/link/welcome.js";
 import { hashSessionToken, isSessionToken } from "../domain/session/token.js";
 
 const hits = new Map<string, { n: number; reset: number }>();
@@ -242,6 +243,8 @@ export async function handleInternalReceipt(
     session_id: row.id,
     // never log token or question text
   });
+
+  void maybeSendLinkWelcome(row.telegram_user_id);
 
   const fresh = findSessionByTokenHash(hash)!;
   await settle(start);

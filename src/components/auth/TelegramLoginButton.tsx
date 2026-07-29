@@ -48,7 +48,8 @@ export default function TelegramLoginButton({
     "";
 
   useEffect(() => {
-    if (!username || !containerRef.current) return;
+    const container = containerRef.current;
+    if (!username || !container) return;
 
     const cbName = `__tgAuth_${Math.random().toString(36).slice(2)}`;
     (window as unknown as Record<string, unknown>)[cbName] = (user: TelegramWidgetUser) => {
@@ -64,12 +65,12 @@ export default function TelegramLoginButton({
     script.setAttribute("data-onauth", `${cbName}(user)`);
     if (requestAccess) script.setAttribute("data-request-access", "write");
 
-    containerRef.current.innerHTML = "";
-    containerRef.current.appendChild(script);
+    container.innerHTML = "";
+    container.appendChild(script);
 
     return () => {
       delete (window as unknown as Record<string, unknown>)[cbName];
-      if (containerRef.current) containerRef.current.innerHTML = "";
+      container.innerHTML = "";
     };
   }, [username, size, cornerRadius, requestAccess]);
 

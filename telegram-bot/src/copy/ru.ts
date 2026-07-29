@@ -54,9 +54,15 @@ const OWN = [
 ] as const;
 
 const TEASER_FOOTER = [
-  "Полный разбор этих карт — дальше, на сайте.",
-  "Эти же карты ждут полного разбора на сайте.",
-  "Чтобы увидеть разбор целиком — продолжение на сайте.",
+  "Привяжите аккаунт Zovus — история и эти же карты будут с вами на любом устройстве.",
+  "Сохраните расклад в аккаунте Zovus: баланс, история и продолжение без потери карт.",
+  "Чтобы не потерять эти карты — привяжите аккаунт Zovus. Можно с телефона или с компьютера.",
+] as const;
+
+const LINK_WELCOME = [
+  "Аккаунт Zovus привязан. Эти карты и история теперь с вами — можно открыть салон на сайте, когда удобно.",
+  "Готово: Telegram и Zovus связаны. Расклады из салона сохраняются в вашем аккаунте.",
+  "Привязка состоялась. Дальше можно продолжать и здесь, и на сайте — карты те же.",
 ] as const;
 
 const CRISIS = [
@@ -121,6 +127,11 @@ export const copy = {
   ownQuestion: (uid: number, n: number) => pick(uid, n, OWN),
   limitReached: (uid: number, n: number) => pick(uid, n, LIMIT),
   teaserFooter: (uid: number, n: number) => pick(uid, n, TEASER_FOOTER),
+  linkWelcome: (uid: number, n: number) => pick(uid, n, LINK_WELCOME),
+  ctaLinkButton: "Привязать аккаунт Zovus",
+  profileLinked: "Аккаунт Zovus: привязан",
+  profileNotLinked: "Аккаунт Zovus: не привязан",
+  profileLinkHint: "Привяжите аккаунт — история и баланс будут с вами на сайте и в боте.",
   llmQuiet: (uid: number, n: number) => pick(uid, n, LLM_QUIET),
   crisis: (uid: number, n: number) => pick(uid, n, CRISIS),
 
@@ -153,6 +164,7 @@ export const copy = {
     refLink: string;
     invites: number;
     timezone: string;
+    zovusLinked: boolean;
   }) =>
     [
       "Профиль",
@@ -164,6 +176,10 @@ export const copy = {
       `18+: ${p.age ? "да" : "нет"}`,
       `Согласия: ${p.consent ? "приняты" : "нет"}`,
       `Приглашено: ${p.invites}`,
+      p.zovusLinked ? "Аккаунт Zovus: привязан" : "Аккаунт Zovus: не привязан",
+      ...(p.zovusLinked
+        ? []
+        : ["", "Привяжите аккаунт — история и баланс будут с вами на сайте и в боте."]),
       "",
       `Ваша ссылка: ${p.refLink}`,
       "",
@@ -216,6 +232,10 @@ export function collectBodyCopySamples(): string[] {
     copy.ownQuestion(uid, 3),
     copy.limitReached(uid, 4),
     copy.teaserFooter(uid, 5),
+    copy.linkWelcome(uid, 0),
+    copy.profileLinked,
+    copy.profileNotLinked,
+    copy.profileLinkHint,
     copy.llmQuiet(uid, 6),
     copy.crisis(uid, 7),
     copy.rateSlow,

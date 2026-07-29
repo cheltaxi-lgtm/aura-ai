@@ -1,4 +1,5 @@
 import { InlineKeyboard, Keyboard } from "grammy";
+import { copy } from "../copy/ru.js";
 import { PAIN_CHIPS } from "../domain/question/validate.js";
 import { isShareCardEnabled } from "../flags.js";
 
@@ -67,11 +68,15 @@ export function questionKeyboard(): InlineKeyboard {
 }
 
 export function ctaKeyboard(url: string): InlineKeyboard {
-  const kb = new InlineKeyboard().url("🕯 Полный разбор этих карт", url);
+  const kb = new InlineKeyboard().url(`🕯 ${copy.ctaLinkButton}`, url);
   if (isShareCardEnabled()) {
     kb.row().text("📤 Поделиться раскладом", CB.share);
   }
   return kb;
+}
+
+export function linkAccountKeyboard(url: string): InlineKeyboard {
+  return new InlineKeyboard().url(`🔗 ${copy.ctaLinkButton}`, url);
 }
 
 export function settingsKeyboard(): InlineKeyboard {

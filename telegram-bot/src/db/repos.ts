@@ -41,6 +41,7 @@ export type BotUser = {
   last_active_at?: string | null;
   unsubscribed_at?: string | null;
   timezone_asked_at?: string | null;
+  link_welcomed_at?: string | null;
   created_at: string;
   updated_at: string;
 };

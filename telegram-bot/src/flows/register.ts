@@ -33,6 +33,7 @@ import {
   deleteConfirmKeyboard,
   deleteKeyboard,
   inviteKeyboard,
+  linkAccountKeyboard,
   salonKeyboard,
   settingsKeyboard,
   timezoneKeyboard,
@@ -347,6 +348,8 @@ async function showProfile(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
   const code = ensureRefCode(user.telegram_user_id);
+  const linked = Boolean(user.zovus_user_id);
+  const linkUrl = `${botConfig.siteUrl}/cabinet`;
   await ctx.reply(
     copy.profile({
       since: user.created_at.slice(0, 10),
@@ -357,8 +360,13 @@ async function showProfile(ctx: Context): Promise<void> {
       refLink: `https://t.me/${botConfig.botUsername}?start=ref_${code}`,
       invites: user.referral_count ?? 0,
       timezone: formatTimezoneLabel(user),
+      zovusLinked: linked,
     }),
-    { reply_markup: inviteKeyboard() }
+    {
+      reply_markup: linked
+        ? inviteKeyboard()
+        : linkAccountKeyboard(linkUrl),
+    }
   );
 }
 
