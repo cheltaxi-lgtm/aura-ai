@@ -51,6 +51,16 @@ export const CB = {
   supportReplyPrefix: "sup:reply:",
   histOpenPrefix: "hist:open:",
   histAskPrefix: "hist:ask:",
+  /** Spread catalog (site /rasklady parity). Keep payloads short — TG limit 64 bytes. */
+  catHome: "cat:home",
+  catFeat: "cat:feat",
+  catAll: "cat:all",
+  catOwn: "cat:own",
+  catRun: "cat:run",
+  catPrefix: "cat:",
+  catCategoryPrefix: "cat:c:",
+  catPagePrefix: "cat:pg:",
+  catItemPrefix: "cat:i:",
 } as const;
 
 export function salonKeyboard(): Keyboard {
@@ -85,6 +95,60 @@ export function questionKeyboard(): InlineKeyboard {
     kb.text(`💬 ${chip}`, `${CB.chipPrefix}${i}`).row();
   });
   kb.text("✍️ Свой вопрос", CB.ownQuestion);
+  return kb;
+}
+
+export function catalogHomeKeyboard(
+  categories: Array<{ id: string; title: string; count: number }>,
+  siteCatalogUrl?: string | null
+): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text(`⭐ ${copy.catalogFeatured}`, CB.catFeat)
+    .text(`📚 ${copy.catalogAll}`, CB.catAll)
+    .row();
+  for (const c of categories) {
+    const label = c.title.length > 28 ? `${c.title.slice(0, 26)}…` : c.title;
+    kb.text(`${label} (${c.count})`, `${CB.catCategoryPrefix}${c.id}`).row();
+  }
+  kb.text(`✍️ ${copy.catalogOwnQuestion}`, CB.catOwn);
+  if (siteCatalogUrl) {
+    kb.row().url(`🕯 ${copy.catalogOnSite}`, siteCatalogUrl);
+  }
+  return kb;
+}
+
+export function catalogListKeyboard(
+  items: Array<{ title: string }>,
+  page: number,
+  totalPages: number
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  items.forEach((item, i) => {
+    const label = item.title.length > 56 ? `${item.title.slice(0, 54)}…` : item.title;
+    kb.text(label, `${CB.catItemPrefix}${i}`).row();
+  });
+  if (totalPages > 1) {
+    const prev = page > 0 ? page - 1 : totalPages - 1;
+    const next = page + 1 < totalPages ? page + 1 : 0;
+    kb.text("‹", `${CB.catPagePrefix}${prev}`)
+      .text(`${page + 1}/${totalPages}`, CB.catHome)
+      .text("›", `${CB.catPagePrefix}${next}`)
+      .row();
+  }
+  kb.text(copy.catalogBack, CB.catHome);
+  return kb;
+}
+
+export function catalogItemKeyboard(opts: {
+  native: boolean;
+  url: string;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (opts.native) {
+    kb.text(`🔮 ${copy.catalogRunHere}`, CB.catRun).row();
+  }
+  kb.url(`🕯 ${copy.catalogOpenSite}`, opts.url).row();
+  kb.text(copy.catalogBack, CB.catHome);
   return kb;
 }
 

@@ -53,8 +53,8 @@ import {
   showModulesMenu,
 } from "./cabinet.js";
 import { handleDay } from "./day.js";
+import { beginCatalog, handleCatalogCallback } from "./catalog.js";
 import {
-  beginSpread,
   handleAgain,
   handleChip,
   handleCtaResend,
@@ -216,7 +216,7 @@ export function registerFlows(bot: Bot): void {
     await ctx.reply(copy.about, { reply_markup: salonKeyboard() });
   });
 
-  bot.command("spread", async (ctx) => beginSpread(ctx));
+  bot.command("spread", async (ctx) => beginCatalog(ctx));
   bot.command("again", async (ctx) => handleAgain(ctx));
   bot.command("day", async (ctx) => handleDay(ctx));
   bot.command("daily", async (ctx) => handleDay(ctx));
@@ -359,6 +359,13 @@ export function registerFlows(bot: Bot): void {
     await ctx.reply(copy.deleteDone, { reply_markup: removeKeyboardMarkup() });
   });
 
+  bot.callbackQuery(new RegExp(`^${CB.catPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handleCatalogCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
+  });
+
   bot.callbackQuery(/^mod:/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const data = ctx.callbackQuery.data;
@@ -423,7 +430,7 @@ export function registerFlows(bot: Bot): void {
 async function routeNav(ctx: Context, label: string): Promise<void> {
   switch (label) {
     case NAV.spread:
-      await beginSpread(ctx);
+      await beginCatalog(ctx);
       return;
     case NAV.day:
       await handleDay(ctx);

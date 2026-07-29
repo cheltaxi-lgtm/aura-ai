@@ -134,6 +134,58 @@ export async function siteModules(telegramUserId: number) {
   }>("/api/internal/bot/modules", { telegram_user_id: telegramUserId });
 }
 
+export type SiteCatalogItem = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  categoryLabel: string;
+  spreadId: string;
+  cardCount: number;
+  cost: number;
+  masterId: string;
+  questionTemplate: string;
+  positionsPreview: string[];
+  url: string;
+  seoUrl: string;
+  native: boolean;
+  requiresPartnerInfo: boolean;
+  isFeatured: boolean;
+};
+
+export async function siteCatalog(
+  telegramUserId: number,
+  body: {
+    action?: "summary" | "list" | "item";
+    category?: string | null;
+    q?: string | null;
+    page?: number;
+    page_size?: number;
+    slug?: string;
+    featured?: boolean;
+  } = {}
+) {
+  return siteFetch<{
+    ok: boolean;
+    linked?: boolean;
+    linkUrl?: string;
+    runeBalance?: number | null;
+    total?: number;
+    categories?: Array<{ id: string; title: string; count: number }>;
+    featured?: SiteCatalogItem[];
+    items?: SiteCatalogItem[];
+    item?: SiteCatalogItem;
+    page?: number;
+    pageSize?: number;
+    totalPages?: number;
+    category?: string | null;
+    error?: string;
+  }>("/api/internal/bot/catalog", {
+    telegram_user_id: telegramUserId,
+    ...body,
+  });
+}
+
 export async function siteReading(telegramUserId: number, sessionId: string) {
   return siteFetch<{
     ok: boolean;

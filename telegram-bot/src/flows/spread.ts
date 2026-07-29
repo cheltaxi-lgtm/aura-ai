@@ -28,7 +28,8 @@ import { ensureSiteLinked } from "./site-account.js";
 
 let copyCounter = 0;
 
-export async function beginSpread(ctx: Context): Promise<void> {
+/** Pain-chips / free-text entry (from catalog «Свой вопрос»). */
+export async function beginCustomQuestion(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
 
@@ -68,11 +69,20 @@ export async function handleFreeTextQuestion(ctx: Context, text: string): Promis
   return true;
 }
 
+export async function runSpreadQuestion(
+  ctx: Context,
+  user: BotUser,
+  rawQuestion: string,
+  source: "chip" | "free" | "catalog"
+): Promise<void> {
+  await runSiteSpread(ctx, user, rawQuestion, source);
+}
+
 async function runSiteSpread(
   ctx: Context,
   user: BotUser,
   rawQuestion: string,
-  source: "chip" | "free"
+  source: "chip" | "free" | "catalog"
 ): Promise<void> {
   const validated = validateQuestion(rawQuestion);
   if (!validated.ok) {
@@ -213,5 +223,6 @@ export async function handleCtaResend(ctx: Context, sessionId: string): Promise<
 }
 
 export async function handleAgain(ctx: Context): Promise<void> {
-  await beginSpread(ctx);
+  const { beginCatalog } = await import("./catalog.js");
+  await beginCatalog(ctx);
 }

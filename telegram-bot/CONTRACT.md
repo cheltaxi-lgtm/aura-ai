@@ -37,6 +37,7 @@
 | `POST /history` | общая история кабинета |
 | `POST /reading` | детали сессии |
 | `POST /spread` | полный триплет Вероники + биллинг рун как на сайте |
+| `POST /catalog` | полный каталог раскладов сайта (`/rasklady`: summary / list / item) |
 | `POST /daily` | энергия дня (`getOrCreateDailyReading`) |
 | `POST /runes` | баланс + URL магазина |
 | `POST /modules` | каталог разделов (native + deep-link) |
