@@ -261,13 +261,8 @@ mkdir -p /opt/aura-ai/backups
 DUMP="/opt/aura-ai/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
 docker exec auraai-postgres pg_dump -U auraai -Fc auraai > "$DUMP" || true
 ls -la "$DUMP" || true
-bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz
-# Telegram bot beside the site (see hosting/install-telegram-bot-on-server.sh)
-if [ -f /opt/aura-ai/hosting/install-telegram-bot-on-server.sh ]; then
-  sed -i 's/\r$//' /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
-  chmod +x /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
-  bash /opt/aura-ai/hosting/install-telegram-bot-on-server.sh || echo "WARN: telegram bot install failed"
-fi
+# </dev/null: vm_local_deploy (or children) must not consume the piped deploy script stdin.
+bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz </dev/null
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
 if ($SshKey) {
@@ -278,6 +273,24 @@ if ($SshKey) {
   }
 } else {
   Invoke-Remote $DeployCmd
+}
+
+Write-Host ">>> Install / restore Telegram bot..."
+$BotCmd = @'
+set -e
+sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
+chmod +x /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh
+bash /opt/aura-ai/hosting/install-telegram-bot-on-server.sh </dev/null
+'@
+$BotCmd = ($BotCmd -replace "`r`n", "`n" -replace "`r", "`n")
+if ($SshKey) {
+  $sshArgs = @(Get-SshBaseArgs) + @("${User}@${DeployHost}", "bash", "-s")
+  $BotCmd | & ssh.exe @sshArgs
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARN: telegram bot install failed with exit code $LASTEXITCODE"
+  }
+} else {
+  Invoke-Remote $BotCmd
 }
 
 Write-Host ">>> Health check..."
