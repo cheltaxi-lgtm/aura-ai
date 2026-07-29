@@ -14,7 +14,9 @@ import {
   findSessionById,
   getFlow,
   getUser,
+  markTeaserDelivered,
   needsSoftTimezonePrompt,
+  releaseFailedSpreadSlot,
   setFlow,
   touchStreak,
   trackEvent,
@@ -125,12 +127,25 @@ async function runSpread(
   track(user, "question_submitted", { source, question_len: validated.question.length });
   setFlow(user.telegram_user_id, "spread", "drawing", { question: validated.question, source });
 
-  const sessionId = randomUUID();
-  const claim = claimSpreadSlot(user.telegram_user_id, validated.question, sessionId, user);
+  let sessionId = randomUUID();
+  let claim = claimSpreadSlot(user.telegram_user_id, validated.question, sessionId, user);
+  if (!claim.claimed) {
+    // Stuck undelivered claim within 15m → release and retry once.
+    const rescued = releaseFailedSpreadSlot({
+      telegramUserId: user.telegram_user_id,
+      question: validated.question,
+      sessionId: claim.sessionId,
+      user,
+    });
+    if (rescued.released || rescued.reason === "already_failed") {
+      sessionId = randomUUID();
+      claim = claimSpreadSlot(user.telegram_user_id, validated.question, sessionId, user);
+    }
+  }
   if (!claim.claimed) {
     clearFlow(user.telegram_user_id);
     const existing = findSessionById(claim.sessionId);
-    if (existing?.teaser_text) {
+    if (existing?.teaser_text && existing.teaser_delivered_at) {
       await ctx.reply(existing.teaser_text, { reply_markup: salonKeyboard() });
       await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {
         reply_markup: salonKeyboard(),
@@ -143,80 +158,101 @@ async function runSpread(
     return;
   }
 
-  // Point of no return: claim reserved — do not release update_id on later errors.
+  // Point of no return for update_id: claim reserved — do not release update on later errors.
   markIrreversible(ctx);
 
-  await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
-  await ctx.replyWithChatAction("typing");
-  await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
-
-  const cards = deckProvider.drawTriplet();
-
+  let token = "";
+  let teaserText = "";
   try {
-    await ritualReveal(ctx, cards, sessionId, user.telegram_user_id);
+    await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
+    await ctx.replyWithChatAction("typing");
+    await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
+
+    const cards = deckProvider.drawTriplet();
+
+    try {
+      await ritualReveal(ctx, cards, sessionId, user.telegram_user_id);
+    } catch (err) {
+      console.error("[spread] ritual failed", err);
+      await ctx.reply(
+        cards.map((c) => copy.cardLine(c.positionLabel, c.name, c.reversed)).join("\n"),
+        { reply_markup: salonKeyboard() }
+      );
+    }
+
+    track(user, "cards_shown", {
+      session_id: sessionId,
+      cards: cards.map((c) => ({
+        id: c.id,
+        reversed: c.reversed,
+        position: c.position,
+        deck_id: botConfig.deckId,
+        spread_id: botConfig.spreadId,
+      })),
+    });
+
+    await ctx.replyWithChatAction("typing");
+    const teaser = await generateTeaser(validated.question, cards, user.telegram_user_id);
+    teaserText = teaser.text;
+
+    token = createSessionToken();
+    const symbols = toGuestSymbols(cards);
+    const usedBonus =
+      countTripletsToday(user.telegram_user_id, user) >= botConfig.tripletDailyLimit &&
+      (user.bonus_spreads ?? 0) > 0;
+
+    createGuestSession({
+      id: sessionId,
+      telegramUserId: user.telegram_user_id,
+      question: validated.question,
+      cards: symbols,
+      teaserText: teaser.text,
+      teaserPromptVersion: teaser.promptVersion,
+      teaserModel: teaser.model,
+      teaserSeed: teaser.seed,
+      tokenHash: hashSessionToken(token),
+      plainToken: token,
+      fingerprint: computeFingerprint(symbols),
+      questionSource: source,
+      collageCacheKey: sessionId,
+    });
+
+    if (usedBonus) consumeBonusSpread(user.telegram_user_id);
+
+    await ctx.reply(teaser.text, { reply_markup: salonKeyboard() });
+    markTeaserDelivered(sessionId);
+    track(user, "teaser_shown", {
+      source: teaser.source,
+      model: teaser.model,
+      session_id: sessionId,
+    });
   } catch (err) {
-    console.error("[spread] ritual failed", err);
-    await ctx.reply(
-      cards.map((c) => copy.cardLine(c.positionLabel, c.name, c.reversed)).join("\n"),
-      { reply_markup: salonKeyboard() }
-    );
+    console.error("[spread] failed before teaser delivery", err);
+    const released = releaseFailedSpreadSlot({
+      telegramUserId: user.telegram_user_id,
+      question: validated.question,
+      sessionId,
+      user,
+    });
+    clearFlow(user.telegram_user_id);
+    await ctx.reply(copy.spreadFailed, { reply_markup: salonKeyboard() });
+    if (!released.released) {
+      trackEvent("spread_failed_uncompensated", user.telegram_user_id, {
+        session_id: sessionId,
+        reason: released.reason,
+      });
+    }
+    return;
   }
 
-  track(user, "cards_shown", {
-    session_id: sessionId,
-    cards: cards.map((c) => ({
-      id: c.id,
-      reversed: c.reversed,
-      position: c.position,
-      deck_id: botConfig.deckId,
-      spread_id: botConfig.spreadId,
-    })),
-  });
-
-  await ctx.replyWithChatAction("typing");
-  const teaser = await generateTeaser(validated.question, cards, user.telegram_user_id);
-
-  const token = createSessionToken();
-  const symbols = toGuestSymbols(cards);
-  const usedBonus =
-    countTripletsToday(user.telegram_user_id, user) >= botConfig.tripletDailyLimit &&
-    (user.bonus_spreads ?? 0) > 0;
-
-  createGuestSession({
-    id: sessionId,
-    telegramUserId: user.telegram_user_id,
-    question: validated.question,
-    cards: symbols,
-    teaserText: teaser.text,
-    teaserPromptVersion: teaser.promptVersion,
-    teaserModel: teaser.model,
-    teaserSeed: teaser.seed,
-    tokenHash: hashSessionToken(token),
-    plainToken: token,
-    fingerprint: computeFingerprint(symbols),
-    questionSource: source,
-    collageCacheKey: sessionId,
-  });
-
-  if (usedBonus) consumeBonusSpread(user.telegram_user_id);
-
-  // Teaser as separate message
-  await ctx.reply(teaser.text, { reply_markup: salonKeyboard() });
-  track(user, "teaser_shown", {
-    source: teaser.source,
-    model: teaser.model,
-    session_id: sessionId,
-  });
-
-  // Voice (optional)
+  // After delivery: voice/CTA failures must NOT return the slot.
   const voiceMode = user.voice_mode ?? "text_voice";
   if (
     voiceMode === "text_voice" &&
     isTtsEnabled() &&
     consumeTtsQuota(user.telegram_user_id)
   ) {
-    const short =
-      teaser.text.length > 500 ? `${teaser.text.slice(0, 480)}…` : teaser.text;
+    const short = teaserText.length > 500 ? `${teaserText.slice(0, 480)}…` : teaserText;
     const voice = await ttsProvider.synthesize(short);
     if (voice.ok) {
       try {
@@ -233,7 +269,6 @@ async function runSpread(
     }
   }
 
-  // CTA after pause
   await new Promise((r) => setTimeout(r, botConfig.ritual.ctaPauseMs));
   const ctaUrl = buildTrackedCtaUrl(token);
   await ctx.reply(copy.teaserFooter(user.telegram_user_id, copyCounter++), {

@@ -63,6 +63,17 @@ Claim **не** является:
 | `teaser_text` + `teaser_prompt_version` + `teaser_model` + `teaser_seed` | teaser record |
 | `expired_at` | soft-expire marker (cron) |
 
+## Статус сессии и слот расклада
+
+| `status` | Смысл |
+|----------|--------|
+| `pending` | сессия создана, тизер ещё не доставлен в чат |
+| `ok` | тизер доставлен (`teaser_delivered_at` заполнен) |
+| `failed` | расклад не состоялся; слот освобождён; строка сохранена |
+| `NULL` | legacy; для квоты считается как `ok` |
+
+Уникальность повторной попытки: `bot_spread_claims PRIMARY KEY (telegram_user_id, question_hash, local_date)`. При `failed` в окне 15 минут claim удаляется — повторный INSERT по тому же вопросу разрешён. После успешной доставки тизера слот не возвращается.
+
 ## Профиль
 
 | Поле | Назначение |

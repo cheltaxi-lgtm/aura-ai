@@ -73,7 +73,13 @@ export type GuestSessionRow = {
   expires_at: string;
   claimed_at: string | null;
   quota_day?: string | null;
+  /** ok | failed | pending; NULL legacy rows count as ok */
+  status?: string | null;
+  teaser_delivered_at?: string | null;
 };
+
+/** Window to release undelivered spread claim (ms). */
+export const SPREAD_SLOT_RELEASE_WINDOW_MS = 15 * 60 * 1000;
 
 export function upsertUser(input: {
   telegramUserId: number;
@@ -319,7 +325,9 @@ export function countTripletsToday(telegramUserId: number, user?: BotUser | null
   const row = getDb()
     .prepare(
       `SELECT COUNT(*) AS c FROM bot_guest_sessions
-       WHERE telegram_user_id = ? AND COALESCE(quota_day, substr(created_at,1,10)) = ?`
+       WHERE telegram_user_id = ?
+         AND COALESCE(quota_day, substr(created_at,1,10)) = ?
+         AND COALESCE(status, 'ok') != 'failed'`
     )
     .get(telegramUserId, day) as { c: number };
   return row.c;
@@ -329,7 +337,9 @@ export function getLastGuestSession(telegramUserId: number): GuestSessionRow | n
   return (
     (getDb()
       .prepare(
-        `SELECT * FROM bot_guest_sessions WHERE telegram_user_id = ? ORDER BY created_at DESC LIMIT 1`
+        `SELECT * FROM bot_guest_sessions
+         WHERE telegram_user_id = ? AND COALESCE(status, 'ok') != 'failed'
+         ORDER BY created_at DESC LIMIT 1`
       )
       .get(telegramUserId) as GuestSessionRow | undefined) ?? null
   );
@@ -421,8 +431,8 @@ export function createGuestSession(input: {
         id, telegram_user_id, question, cards, master, system, spread_id, deck_id,
         teaser_text, teaser_prompt_version, teaser_model, teaser_seed,
         session_token_hash, plain_token_prefix, fingerprint, question_source, source, collage_cache_key,
-        created_at, expires_at, claimed_at, quota_day
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?)`
+        created_at, expires_at, claimed_at, quota_day, status, teaser_delivered_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?, 'pending', NULL)`
     )
     .run(
       id,
@@ -447,6 +457,115 @@ export function createGuestSession(input: {
       quotaDay
     );
   return getDb().prepare(`SELECT * FROM bot_guest_sessions WHERE id = ?`).get(id) as GuestSessionRow;
+}
+
+export function markTeaserDelivered(sessionId: string, at: string = nowIso()): void {
+  getDb()
+    .prepare(
+      `UPDATE bot_guest_sessions
+       SET teaser_delivered_at = ?, status = 'ok'
+       WHERE id = ? AND teaser_delivered_at IS NULL`
+    )
+    .run(at, sessionId);
+}
+
+export type ReleaseSlotResult =
+  | { released: true; reason: "released" }
+  | {
+      released: false;
+      reason: "teaser_delivered" | "window_elapsed" | "no_claim" | "already_failed";
+    };
+
+/**
+ * Release spread claim if teaser was never delivered and claim age < 15 minutes.
+ * Marks session failed (row kept). Does not delete user data.
+ */
+export function releaseFailedSpreadSlot(input: {
+  telegramUserId: number;
+  question: string;
+  sessionId: string;
+  user?: BotUser | null;
+  nowMs?: number;
+}): ReleaseSlotResult {
+  const u = input.user ?? getUser(input.telegramUserId);
+  const qHash = hashQuestion(input.question);
+  const day = localDateKey(u);
+  const now = input.nowMs ?? Date.now();
+
+  const sess = findSessionById(input.sessionId);
+  if (sess?.teaser_delivered_at) {
+    return { released: false, reason: "teaser_delivered" };
+  }
+  if (sess?.status === "failed") {
+    // Ensure claim is gone so retry can proceed
+    getDb()
+      .prepare(
+        `DELETE FROM bot_spread_claims
+         WHERE telegram_user_id = ? AND question_hash = ? AND local_date = ?`
+      )
+      .run(input.telegramUserId, qHash, day);
+    return { released: false, reason: "already_failed" };
+  }
+
+  const claim = getDb()
+    .prepare(
+      `SELECT session_id, created_at FROM bot_spread_claims
+       WHERE telegram_user_id = ? AND question_hash = ? AND local_date = ?`
+    )
+    .get(input.telegramUserId, qHash, day) as
+    | { session_id: string; created_at: string }
+    | undefined;
+
+  if (!claim) {
+    if (sess) {
+      getDb()
+        .prepare(`UPDATE bot_guest_sessions SET status = 'failed' WHERE id = ?`)
+        .run(input.sessionId);
+    }
+    return { released: false, reason: "no_claim" };
+  }
+
+  const ageMs = now - new Date(claim.created_at).getTime();
+  if (ageMs > SPREAD_SLOT_RELEASE_WINDOW_MS) {
+    return { released: false, reason: "window_elapsed" };
+  }
+
+  if (sess) {
+    getDb()
+      .prepare(`UPDATE bot_guest_sessions SET status = 'failed' WHERE id = ?`)
+      .run(input.sessionId);
+  }
+
+  getDb()
+    .prepare(
+      `DELETE FROM bot_spread_claims
+       WHERE telegram_user_id = ? AND question_hash = ? AND local_date = ?`
+    )
+    .run(input.telegramUserId, qHash, day);
+
+  trackEvent("spread_failed_slot_released", input.telegramUserId, {
+    session_id: input.sessionId,
+    question_hash: qHash,
+    local_date: day,
+    age_ms: ageMs,
+  });
+
+  return { released: true, reason: "released" };
+}
+
+export function hasSpreadClaim(
+  telegramUserId: number,
+  question: string,
+  user?: BotUser | null
+): boolean {
+  const u = user ?? getUser(telegramUserId);
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS ok FROM bot_spread_claims
+       WHERE telegram_user_id = ? AND question_hash = ? AND local_date = ?`
+    )
+    .get(telegramUserId, hashQuestion(question), localDateKey(u)) as { ok: number } | undefined;
+  return Boolean(row);
 }
 
 export function findSessionsByTokenPrefix(prefix: string, limit = 20): GuestSessionRow[] {
