@@ -381,7 +381,7 @@ export async function openHistoryReading(ctx: Context, sessionId: string): Promi
       reading: data.reading,
       cardNames: data.cards || [],
       question: data.intention,
-      replyMarkup: chatFollowUpKeyboard(sessionId),
+      sessionId,
     });
   } catch (err) {
     console.error("[cabinet] reading", err);

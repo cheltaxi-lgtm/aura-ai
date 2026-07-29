@@ -63,6 +63,10 @@ export const CB = {
   catCategoryPrefix: "cat:c:",
   catPagePrefix: "cat:pg:",
   catItemPrefix: "cat:i:",
+  /** Finished reading pager (one message, flip pages). */
+  rdPrefix: "rd:",
+  rdPagePrefix: "rd:p:",
+  rdNoop: "rd:noop",
 } as const;
 
 export function salonKeyboard(): Keyboard {
@@ -201,6 +205,35 @@ export function chatFollowUpKeyboard(sessionId: string): InlineKeyboard {
     .text("💬 Вопрос по раскладу", `${CB.chatAskPrefix}${sessionId}`)
     .row()
     .text("❌ Закончить диалог", CB.chatStop);
+}
+
+/** Premium reading album: flip pages in one message. */
+export function readingPagerKeyboard(opts: {
+  page: number;
+  total: number;
+  sessionId?: string | null;
+  /** Show follow-up actions (usually on the last page). */
+  showActions?: boolean;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const total = Math.max(1, opts.total);
+  const page = Math.min(Math.max(0, opts.page), total - 1);
+
+  if (total > 1) {
+    if (page > 0) kb.text("‹", `${CB.rdPagePrefix}${page - 1}`);
+    else kb.text("·", CB.rdNoop);
+    kb.text(`${page + 1} / ${total}`, CB.rdNoop);
+    if (page + 1 < total) kb.text("›", `${CB.rdPagePrefix}${page + 1}`);
+    else kb.text("·", CB.rdNoop);
+    kb.row();
+  }
+
+  if (opts.showActions && opts.sessionId) {
+    kb.text("💬 Вопрос по раскладу", `${CB.chatAskPrefix}${opts.sessionId}`)
+      .row()
+      .text("❌ Закончить диалог", CB.chatStop);
+  }
+  return kb;
 }
 
 export function dialogStopKeyboard(): InlineKeyboard {

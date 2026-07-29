@@ -54,6 +54,7 @@ import {
 } from "./cabinet.js";
 import { handleDay } from "./day.js";
 import { beginCatalog, handleCatalogCallback } from "./catalog.js";
+import { handleReadingPagerCallback } from "../domain/reading/present.js";
 import {
   handleAgain,
   handleChip,
@@ -357,6 +358,13 @@ export function registerFlows(bot: Bot): void {
     deleteUserData(ctx.from.id);
     await ctx.answerCallbackQuery();
     await ctx.reply(copy.deleteDone, { reply_markup: removeKeyboardMarkup() });
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.rdPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handleReadingPagerCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
   });
 
   bot.callbackQuery(new RegExp(`^${CB.catPrefix}`), async (ctx) => {

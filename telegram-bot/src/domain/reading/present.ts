@@ -1,9 +1,11 @@
-import { InputFile } from "grammy";
+import { InlineKeyboard, InputFile } from "grammy";
 import type { Context } from "grammy";
+import { setFlow, getFlow } from "../../db/repos.js";
 import { FULL_DECK, TRIPLET_POSITIONS } from "../deck/cards.js";
 import type { DrawnCard, TarotCardDef } from "../deck/types.js";
 import { chunkTelegramText } from "../site-client.js";
 import { renderDayCardImage, renderTripletCollage } from "../../render/card-collage.js";
+import { CB, readingPagerKeyboard } from "../../keyboards/index.js";
 
 type ReplyMarkup = NonNullable<Parameters<Context["reply"]>[1]>["reply_markup"];
 
@@ -17,6 +19,13 @@ const JUNK_QUESTION_RE =
 
 const SECTION_HEADERS =
   /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?(Простыми словами|Шаги(?:\s+на\s+\d+\s+дней)?|Что делать|Итог|Вывод|Совет\s+карт(?:ы)?|Практика(?:\s+на\s+(?:неделю|месяц|30\s+дней))?|Общий вывод|Ключевые выводы|Краткое резюме|Прошлое|Настоящее|Будущее|Карта\s+\d+|Позиция\s+\d+)\s*:?\s*(?=\S)/giu;
+
+type ReadingViewState = {
+  pages: string[];
+  page: number;
+  sessionId?: string;
+  footer?: string;
+};
 
 function normalizeCardName(raw: string): string {
   return raw
@@ -83,7 +92,6 @@ function proseToHtml(block: string): string {
     .trim();
   if (!t) return "";
 
-  // Air out long glued paragraphs.
   const aired =
     t.length > 220
       ? t.replace(/([.!?…])\s+(?=[А-ЯЁA-Z«"])/g, "$1\n\n")
@@ -178,7 +186,7 @@ function sectionToHtml(section: Section): string {
 }
 
 /**
- * Build short Telegram HTML messages (one section ≈ one bubble).
+ * Build short Telegram HTML pages for the reading album.
  * Bot-only — does not touch site rendering.
  */
 export function buildTelegramReadingMessages(raw: string, cards: DrawnCard[] = []): string[] {
@@ -188,7 +196,6 @@ export function buildTelegramReadingMessages(raw: string, cards: DrawnCard[] = [
   if (!text) return [];
 
   let sections = splitByHeaders(text);
-  // Split the leading untitled prose by card mentions; keep closing sections (Простыми словами / Шаги).
   if (cards.length >= 2 && sections[0] && !sections[0].title) {
     const byCards = splitByCardMentions(sections[0].body, cards);
     if (byCards && byCards.length >= 2) {
@@ -199,7 +206,6 @@ export function buildTelegramReadingMessages(raw: string, cards: DrawnCard[] = [
     if (byCards && byCards.length >= 2) sections = byCards;
   }
 
-  // Still one wall → split into short overview + rest paragraphs.
   if (sections.length === 1 && !sections[0]!.title) {
     const paras = sections[0]!.body
       .split(/\n{2,}/)
@@ -213,7 +219,6 @@ export function buildTelegramReadingMessages(raw: string, cards: DrawnCard[] = [
           body: p,
         })),
       ];
-      // Collapse untitled middles into fewer bubbles (max ~4 body bubbles).
       const head = sections[0]!;
       const rest = sections.slice(1);
       const merged: Section[] = [head];
@@ -232,12 +237,27 @@ export function buildTelegramReadingMessages(raw: string, cards: DrawnCard[] = [
     }
   }
 
-  const messages = sections
+  // Merge tiny slides so the album feels premium, not twitchy.
+  const coalesced: Section[] = [];
+  for (const s of sections) {
+    const prev = coalesced[coalesced.length - 1];
+    if (
+      prev &&
+      !s.title &&
+      prev.body.length + s.body.length < 850 &&
+      coalesced.length > 1
+    ) {
+      prev.body = `${prev.body}\n\n${s.body}`;
+      continue;
+    }
+    coalesced.push({ ...s });
+  }
+
+  const messages = coalesced
     .map(sectionToHtml)
     .map((m) => m.trim())
     .filter(Boolean);
 
-  // Hard safety: never send a single mega-bubble if we can chunk.
   const out: string[] = [];
   for (const msg of messages) {
     if (msg.length <= 1200) {
@@ -334,7 +354,44 @@ async function renderCardsImage(cards: DrawnCard[], question?: string | null): P
   });
 }
 
-/** Photo collage + structured HTML reading. Buttons only on the last text bubble. */
+function isInlineKeyboard(markup: ReplyMarkup | undefined): markup is InlineKeyboard {
+  return Boolean(markup && typeof markup === "object" && "inline_keyboard" in markup);
+}
+
+function pageHtml(
+  pages: string[],
+  page: number,
+  footer?: string
+): string {
+  const total = pages.length;
+  const idx = Math.min(Math.max(0, page), total - 1);
+  const body = pages[idx] || "";
+  const parts = [body];
+  if (footer && idx === total - 1) {
+    parts.push(`<i>${escapeHtml(footer)}</i>`);
+  }
+  if (total > 1) {
+    parts.push(`<i>· ${idx + 1} / ${total} ·</i>`);
+  }
+  return parts.join("\n\n").slice(0, 3900);
+}
+
+function pagerMarkup(state: ReadingViewState): InlineKeyboard {
+  const total = state.pages.length;
+  const page = state.page;
+  const last = page >= total - 1;
+  return readingPagerKeyboard({
+    page,
+    total,
+    sessionId: state.sessionId,
+    showActions: Boolean(state.sessionId) && (total === 1 || last),
+  });
+}
+
+/**
+ * Photo collage + one HTML album message with ‹ › pagination.
+ * Buttons / follow-up live on the album (last page), not as a bubble flood.
+ */
 export async function presentReadingToTelegram(
   ctx: Context,
   input: {
@@ -342,7 +399,10 @@ export async function presentReadingToTelegram(
     cards?: DrawnCard[];
     cardNames?: string[];
     question?: string | null;
+    /** @deprecated prefer sessionId — kept for day card reply keyboard path */
     replyMarkup?: ReplyMarkup;
+    sessionId?: string;
+    footer?: string;
   }
 ): Promise<void> {
   let cards = input.cards?.length ? input.cards : [];
@@ -354,7 +414,7 @@ export async function presentReadingToTelegram(
   }
 
   const question = cleanQuestion(input.question);
-  const markup = input.replyMarkup;
+  const tid = ctx.from?.id;
 
   if (cards.length > 0) {
     try {
@@ -368,24 +428,117 @@ export async function presentReadingToTelegram(
     }
   }
 
-  const messages = buildTelegramReadingMessages(input.reading, cards);
-  if (!messages.length) {
-    if (markup) await ctx.reply("Разбор сохранён в истории.", { reply_markup: markup });
+  const pages = buildTelegramReadingMessages(input.reading, cards);
+  if (!pages.length) {
+    if (input.replyMarkup) {
+      await ctx.reply("Разбор сохранён в истории.", { reply_markup: input.replyMarkup });
+    }
     return;
   }
 
-  for (let i = 0; i < messages.length; i++) {
-    const last = i === messages.length - 1;
+  const state: ReadingViewState = {
+    pages,
+    page: 0,
+    sessionId: input.sessionId,
+    footer: input.footer?.trim() || undefined,
+  };
+
+  const html = pageHtml(state.pages, 0, state.footer);
+  const usePager = pages.length > 1 || Boolean(input.sessionId);
+
+  if (usePager && tid) {
+    setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
     try {
-      await ctx.reply(messages[i]!, {
+      await ctx.reply(html, {
         parse_mode: "HTML",
-        reply_markup: last ? markup : undefined,
+        reply_markup: pagerMarkup(state),
       });
+      return;
     } catch (err) {
-      console.error("[present-reading] html send failed, plain fallback", err);
-      await ctx.reply(stripReadingForTelegram(messages[i]!), {
-        reply_markup: last ? markup : undefined,
-      });
+      console.error("[present-reading] album send failed", err);
     }
   }
+
+  // Fallback: single bubble or legacy markup.
+  const markup =
+    input.replyMarkup && isInlineKeyboard(input.replyMarkup)
+      ? input.replyMarkup
+      : input.sessionId
+        ? readingPagerKeyboard({
+            page: 0,
+            total: 1,
+            sessionId: input.sessionId,
+            showActions: true,
+          })
+        : input.replyMarkup;
+
+  try {
+    await ctx.reply(html, { parse_mode: "HTML", reply_markup: markup });
+  } catch (err) {
+    console.error("[present-reading] html send failed, plain fallback", err);
+    await ctx.reply(stripReadingForTelegram(pages.join("\n\n")), {
+      reply_markup: markup,
+    });
+  }
+}
+
+export async function handleReadingPagerCallback(
+  ctx: Context,
+  data: string
+): Promise<boolean> {
+  if (!data.startsWith(CB.rdPrefix)) return false;
+  const tid = ctx.from?.id;
+  if (!tid) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  if (data === CB.rdNoop) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  if (!data.startsWith(CB.rdPagePrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    return false;
+  }
+
+  const page = Number(data.slice(CB.rdPagePrefix.length));
+  const flow = getFlow(tid);
+  if (!flow || flow.flow !== "reading_view" || !Array.isArray(flow.data.pages)) {
+    await ctx.answerCallbackQuery({ text: "Расклад уже закрыт — откройте снова" }).catch(() => undefined);
+    return true;
+  }
+
+  const state: ReadingViewState = {
+    pages: flow.data.pages as string[],
+    page: Number.isFinite(page) ? page : 0,
+    sessionId: typeof flow.data.sessionId === "string" ? flow.data.sessionId : undefined,
+    footer: typeof flow.data.footer === "string" ? flow.data.footer : undefined,
+  };
+  if (!state.pages.length) {
+    await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);
+    return true;
+  }
+
+  state.page = Math.min(Math.max(0, state.page), state.pages.length - 1);
+  setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
+
+  const html = pageHtml(state.pages, state.page, state.footer);
+  try {
+    await ctx.editMessageText(html, {
+      parse_mode: "HTML",
+      reply_markup: pagerMarkup(state),
+    });
+    await ctx.answerCallbackQuery({ text: `${state.page + 1} / ${state.pages.length}` }).catch(() => undefined);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/message is not modified/i.test(msg)) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+      return true;
+    }
+    console.error("[reading-pager] edit failed", err);
+    await ctx.answerCallbackQuery({ text: "Не удалось перелистнуть" }).catch(() => undefined);
+  }
+  return true;
 }

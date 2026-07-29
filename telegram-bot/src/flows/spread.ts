@@ -17,7 +17,6 @@ import {
   presentReadingToTelegram,
 } from "../domain/reading/present.js";
 import {
-  chatFollowUpKeyboard,
   ctaKeyboard,
   questionKeyboard,
   salonKeyboard,
@@ -157,17 +156,17 @@ async function runSiteSpread(
   });
 
   await ctx.replyWithChatAction("upload_photo");
+  const footer =
+    data.runeBalance != null
+      ? `Баланс: ${data.runeBalance} рун${data.charged ? ` (−${data.charged})` : ""}.`
+      : undefined;
   await presentReadingToTelegram(ctx, {
     reading: data.reading,
     cards: drawn,
     question: validated.question,
-    replyMarkup: chatFollowUpKeyboard(data.sessionId),
+    sessionId: data.sessionId,
+    footer,
   });
-
-  if (data.runeBalance != null) {
-    const bal = `Баланс: ${data.runeBalance} рун${data.charged ? ` (−${data.charged})` : ""}.`;
-    await ctx.reply(bal, { reply_markup: chatFollowUpKeyboard(data.sessionId) });
-  }
 
   track(user, "teaser_shown", {
     source: "site_full_reading",
@@ -182,8 +181,7 @@ async function runSiteSpread(
   if ([3, 7, 30].includes(streak)) {
     await ctx.reply(copy.milestone(streak), { reply_markup: salonKeyboard() });
   }
-
-  clearFlow(user.telegram_user_id);
+  // reading_view flow kept for ‹ › album pager — do not clearFlow here.
 }
 
 /** Legacy CTA resend for pre-parity guest sessions still in SQLite. */
