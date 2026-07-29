@@ -61,6 +61,10 @@ if [ -f "$TARBALL" ]; then
     --exclude='.next-previous/' \
     --exclude='node_modules/' \
     --exclude='logs/' \
+    --exclude='telegram-bot/.env' \
+    --exclude='telegram-bot/data/' \
+    --exclude='telegram-bot/node_modules/' \
+    --exclude='telegram-bot/backups/' \
     "$STAGE/" /opt/aura-ai/
   # Windows tar often packs modes as 666/777 — harden before the app starts.
   echo ">>> Hardening /opt/aura-ai file modes..."
