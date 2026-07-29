@@ -32,7 +32,7 @@ const SUITS: Array<[string, string]> = [
   ["pentacles", "Пентаклей"],
 ];
 
-/** Rank slug must match files in public/decks/tarot-veronika (two-of-cups.webp, …). */
+/** Rank slug must match files in assets/decks/tarot-veronika (two-of-cups.webp, …). */
 const RANKS: Array<[string, string]> = [
   ["ace", "Туз"],
   ["two", "2"],

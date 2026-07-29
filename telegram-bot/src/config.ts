@@ -1,4 +1,4 @@
-import { config as loadEnv } from "dotenv";
+﻿import { config as loadEnv } from "dotenv";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,13 @@ mkdirSync(dataDir, { recursive: true });
 mkdirSync(resolve(dataDir, "collage-cache"), { recursive: true });
 mkdirSync(resolve(dataDir, "backups"), { recursive: true });
 
+function resolveDeckDir(): string {
+  const override =
+    process.env.BOT_DECK_PATH?.trim() || process.env.BOT_DECK_ASSETS?.trim() || "";
+  if (!override) return resolve(rootDir, "assets/decks/tarot-veronika");
+  return resolve(rootDir, override);
+}
+
 export const botConfig = {
   rootDir,
   repoRoot,
@@ -58,10 +65,8 @@ export const botConfig = {
   webhookPort: int("BOT_WEBHOOK_PORT", 8787),
   httpAlways: bool("BOT_HTTP_ALWAYS", true),
   dbPath: resolve(dataDir, process.env.BOT_DB_NAME?.trim() || "bot.sqlite"),
-  deckAssetsDir: resolve(
-    repoRoot,
-    process.env.BOT_DECK_ASSETS?.trim() || "public/decks/tarot-veronika"
-  ),
+  /** Deck images. Default: package-local assets. Override via BOT_DECK_PATH. */
+  deckAssetsDir: resolveDeckDir(),
   sessionTtlMs: int("BOT_SESSION_TTL_HOURS", 24) * 60 * 60 * 1000,
   tripletDailyLimit: int("BOT_TRIPLET_DAILY_LIMIT", 1),
   rateLimitPerMinute: int("BOT_RATE_LIMIT_PER_MIN", 20),
@@ -76,6 +81,8 @@ export const botConfig = {
   ttsDailyCap: int("BOT_TTS_DAILY_CAP", 10),
   adminChatId: int("BOT_ADMIN_CHAT_ID", 0),
   botUsername: process.env.BOT_USERNAME?.trim() || "zovus_card_bot",
+  plainTokenPrefixLen: int("BOT_PLAIN_TOKEN_PREFIX_LEN", 6),
+  skipAssetCheck: bool("BOT_SKIP_ASSET_CHECK", false),
   ritual: {
     pauseMsMin: int("BOT_RITUAL_PAUSE_MS_MIN", 2000),
     pauseMsMax: int("BOT_RITUAL_PAUSE_MS_MAX", 4000),

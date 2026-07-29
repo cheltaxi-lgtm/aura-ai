@@ -33,4 +33,4 @@ npm run admin -- export-csv
 
 - Один триплет в сутки на `telegram_user_id`
 - В БД: вопрос + карты + teaser + hash токена (`claimed_at` всегда null пока нет коннекта)
-- Ассеты карт: `../public/decks/tarot-veronika`
+- Ассеты карт: `assets/decks/tarot-veronika` (override: `BOT_DECK_PATH`)
