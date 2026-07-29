@@ -1,6 +1,6 @@
-# Контракт будущего коннекта Zovus ↔ Telegram bot
+# Контракт Zovus ↔ Telegram bot (этап 1)
 
-Автономный бот хранит гостевые расклады так, чтобы claim «те же карты» на сайте не требовал переписывания.
+Бот хранит гостевые расклады так, чтобы claim на сайте продолжал **те же карты**.
 
 ## Claim semantics (явно)
 
@@ -18,79 +18,89 @@ Claim **не** является:
 | Формат | `zg_` + base64url (32 байта энтропии) |
 | Алфавит | `A-Za-z0-9_-` после префикса |
 | Хранение | только `sha256(token)` hex в `session_token_hash` |
-| Debug prefix | `plain_token_prefix` = первые N символов тела после `zg_` (дефолт N=6, `BOT_PLAIN_TOKEN_PREFIX_LEN`); полный plain token в БД не хранится |
-| TTL | `expires_at` = created + 24h (конфиг `BOT_SESSION_TTL_HOURS`) |
-| One-time | после claim `claimed_at` заполняется; повторный claim отклоняется |
-| Пользователю | plain token не светится в чате; уходит в CTA `/r/:token` → 302 на сайт с `tg_receipt` |
+| Debug prefix | `plain_token_prefix` = первые N символов тела после `zg_` (дефолт N=6) |
+| TTL | `expires_at` = created + **7 суток** (дефолт `BOT_SESSION_TTL_HOURS=168`) |
+| One-time | после claim `claimed_at` заполняется атомарно; повтор → `already_claimed` |
+| Claimable | `claimable=1` и `schema_version=1` у новых сессий; legacy → `claimable=0` (неклеймабельные) |
+| Пользователю | plain token не в чате; CTA `/r/:token` → 302 с `tg_receipt` |
 
 ### Почему N=6 безопасно для отладки
 
-Тело токена — ~43 символа base64url от 32 байт (~256 бит). Префикс из 6 символов алфавита ~64 даёт порядка \(64^6 ≈ 2^{36}\) вариантов — это лишь малая доля пространства и **недостаточна** для восстановления полного токена или для online-brute-force claim (нужен полный `zg_…`). Поле служит для admin-поиска сессии и корреляции логов; старые строки без префикса остаются `NULL` (бэкфилл невозможен без plain token).
+Тело токена — ~43 символа base64url от 32 байт (~256 бит). Префикс из 6 символов алфавита ~64 даёт порядка \(64^6 ≈ 2^{36}\) вариантов — недостаточно для восстановления полного токена.
 
-## Словарь карт (cards JSON)
+## Словарь карт (совпадает с сайтом)
+
+Canonical IDs: major `0..21`, minor `22..77` (suits cups→wands→swords→pentacles × ace…king).
+
+Site claim shape (`GuestResumeSymbol`):
 
 ```json
 [
-  {
-    "id": 0,
-    "name": "Шут",
-    "position": 0,
-    "reversed": false,
-    "deck_id": "tarot-veronika",
-    "spread_id": "triplet",
-    "slug": "the-fool"
-  }
+  { "id": 0, "name": "Шут", "position": 0, "reversed": false },
+  { "id": 22, "name": "Туз Кубков", "position": 1, "reversed": true },
+  { "id": 55, "name": "5 Мечей", "position": 2, "reversed": false }
 ]
 ```
 
-Порядок позиций (`position` 0..2): **Прошлое → Настоящее → Будущее**.
+В SQLite бота могут храниться также `deck_id`, `spread_id`, `slug` — при claim/verify отдаются только site fields.
 
-`reversed`: bool (серверный draw, не всегда false).
+| Поле | Значение |
+|------|----------|
+| `system` / deck | `tarot-veronika` |
+| `master` | `veronika` |
+| `spread_id` | `triplet` |
+| Позиции `0..2` | **Прошлое → Настоящее → Будущее** |
+| `reversed` | bool |
+| Fingerprint | `sha256(system\|masterId\|spreadId\|id:pos:rev…)` — байт-в-байт как на сайте |
+
+## Коды ошибок internal receipt API
+
+| Код | HTTP | Смысл |
+|-----|------|--------|
+| `unauthorized` | 401 | неверный internal secret |
+| `invalid_token` | 400/404 | токен невалиден или сессия не найдена |
+| `expired` | 410 | `expires_at` прошёл |
+| `already_claimed` | 409 | `claimed_at` уже заполнен |
+| `unclaimable` | 409 | `claimable=0` (legacy) |
+| `ok` | 200 | verify / claim успех |
 
 ## bot_guest_sessions → guest resume
 
-| Бот | Сайт (цель) |
-|-----|-------------|
+| Бот | Сайт |
+|-----|------|
 | `question` | guest payload question |
-| `cards` JSON | `GuestResumeSymbol[]` (+ deck_id/spread_id) |
+| `cards` → site symbols | `GuestResumeSymbol[]` |
 | `master` = `veronika` | `character_key` |
-| `system` / `deck_id` = `tarot-veronika` | `DeckSystem` |
+| `system` = `tarot-veronika` | `DeckSystem` |
 | `spread_id` = `triplet` | guest spread id |
-| `session_token_hash` | `guest_resume_token_hash` |
+| `session_token_hash` | (бот — source of truth для tg token) |
 | `fingerprint` | `guest_resume_fingerprint` |
-| `expires_at` | `guest_resume_expires_at` |
-| `claimed_at` NULL | claimed timestamp / status |
-| `teaser_text` + `teaser_prompt_version` + `teaser_model` + `teaser_seed` | teaser record |
-| `expired_at` | soft-expire marker (cron) |
+| `expires_at` | TTL 7d |
+| `claimed_at` | one-time |
+| `claimable` / `schema_version` | eligibility |
 
 ## Статус сессии и слот расклада
 
 | `status` | Смысл |
 |----------|--------|
-| `pending` | сессия создана, тизер ещё не доставлен в чат |
-| `ok` | тизер доставлен (`teaser_delivered_at` заполнен) |
-| `failed` | расклад не состоялся; слот освобождён; строка сохранена |
-| `NULL` | legacy; для квоты считается как `ok` |
-
-Уникальность повторной попытки: `bot_spread_claims PRIMARY KEY (telegram_user_id, question_hash, local_date)`. При `failed` в окне 15 минут claim удаляется — повторный INSERT по тому же вопросу разрешён. После успешной доставки тизера слот не возвращается.
+| `pending` | сессия создана, тизер ещё не доставлен |
+| `ok` | тизер доставлен |
+| `failed` | расклад не состоялся; слот освобождён |
 
 ## Профиль
 
 | Поле | Назначение |
 |------|------------|
-| `zovus_user_id` | закладка линковки |
+| `zovus_user_id` | id профиля/аккаунта Zovus после link/claim |
 | `timezone_offset_minutes` | локальные напоминания |
 | `consent_version` | версия согласия |
-| `ref_code` | виральность `t.me/bot?start=ref_<code>` |
+| `ref_code` | виральность |
 
-## Провайдеры
+## Internal API (этап 1)
 
-- `DeckProvider` — local; позже HTTP API Zovus
-- `generateTeaser` — OpenRouter / fallback
-- `TtsProvider` — OpenRouter speech / silent fallback
+- `POST /internal/receipt/verify` — секрет в заголовке; возвращает данные сессии или код ошибки.
+- `POST /internal/receipt/claim` — атомарно ставит `claimed_at` + `zovus_user_id` на пользователе бота.
 
 ## Уведомления (типы)
 
 `day_card | abandoned | reading_ready | runes_credited | reactivation | digest`
-
-`reading_ready` и `runes_credited` — no-op до коннекта.

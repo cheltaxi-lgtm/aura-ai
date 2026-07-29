@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { botConfig } from "../config.js";
 import { hashQuestion } from "../domain/question/hash.js";
+import { GUEST_SCHEMA_VERSION } from "../domain/session/guest-contract.js";
 import { localDateKey } from "../domain/time/local-date.js";
 import type { DrawnCard, GuestSymbol } from "../domain/deck/types.js";
 import { getDb, nowIso, todayInTz } from "./client.js";
@@ -76,6 +77,9 @@ export type GuestSessionRow = {
   /** ok | failed | pending; NULL legacy rows count as ok */
   status?: string | null;
   teaser_delivered_at?: string | null;
+  schema_version?: number | null;
+  /** 1 = claimable on site; 0 = legacy / unclaimable */
+  claimable?: number | null;
 };
 
 /** Window to release undelivered spread claim (ms). */
@@ -431,8 +435,9 @@ export function createGuestSession(input: {
         id, telegram_user_id, question, cards, master, system, spread_id, deck_id,
         teaser_text, teaser_prompt_version, teaser_model, teaser_seed,
         session_token_hash, plain_token_prefix, fingerprint, question_source, source, collage_cache_key,
-        created_at, expires_at, claimed_at, quota_day, status, teaser_delivered_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?, 'pending', NULL)`
+        created_at, expires_at, claimed_at, quota_day, status, teaser_delivered_at,
+        schema_version, claimable
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, NULL, ?, 'pending', NULL, ?, 1)`
     )
     .run(
       id,
@@ -454,7 +459,8 @@ export function createGuestSession(input: {
       input.collageCacheKey ?? id,
       created,
       expires,
-      quotaDay
+      quotaDay,
+      GUEST_SCHEMA_VERSION
     );
   return getDb().prepare(`SELECT * FROM bot_guest_sessions WHERE id = ?`).get(id) as GuestSessionRow;
 }

@@ -1,6 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { GuestSymbol } from "../deck/types.js";
 import { botConfig } from "../../config.js";
+import {
+  GUEST_MASTER_ID,
+  GUEST_SPREAD_ID,
+  GUEST_SYSTEM,
+  toSiteGuestSymbols,
+  type SiteGuestSymbol,
+} from "./guest-contract.js";
 
 /** Format: zg_ + 32 bytes base64url. Hash: sha256 hex. */
 export function createSessionToken(): string {
@@ -15,12 +22,18 @@ export function isSessionToken(value: string): boolean {
   return /^zg_[A-Za-z0-9_-]{40,}$/.test(value);
 }
 
-export function computeFingerprint(symbols: GuestSymbol[]): string {
+/**
+ * Fingerprint must match site `computeGuestResumeFingerprint`:
+ * sha256(`${system}|${masterId}|${spreadId}|${id:pos:rev…}`)
+ */
+export function computeFingerprint(
+  symbols: Array<{ id: number; position: number; reversed: boolean }>
+): string {
   const ordered = [...symbols]
     .sort((a, b) => a.position - b.position)
     .map((s) => `${s.id}:${s.position}:${s.reversed ? 1 : 0}`)
     .join("|");
-  const payload = [botConfig.deckId, botConfig.masterId, botConfig.spreadId, ordered].join("|");
+  const payload = [GUEST_SYSTEM, GUEST_MASTER_ID, GUEST_SPREAD_ID, ordered].join("|");
   return createHash("sha256").update(payload, "utf8").digest("hex");
 }
 
@@ -32,11 +45,14 @@ export function toGuestSymbols(
     name: c.name,
     position: c.position,
     reversed: c.reversed,
-    deck_id: botConfig.deckId,
-    spread_id: botConfig.spreadId,
+    deck_id: GUEST_SYSTEM,
+    spread_id: GUEST_SPREAD_ID,
     slug: c.slug,
   }));
 }
+
+export { toSiteGuestSymbols };
+export type { SiteGuestSymbol };
 
 export function buildFinalCtaUrl(plainToken: string): string {
   const url = new URL(botConfig.ctaTargetUrl);

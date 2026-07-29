@@ -67,7 +67,8 @@ export const botConfig = {
   dbPath: resolve(dataDir, process.env.BOT_DB_NAME?.trim() || "bot.sqlite"),
   /** Deck images. Default: package-local assets. Override via BOT_DECK_PATH. */
   deckAssetsDir: resolveDeckDir(),
-  sessionTtlMs: int("BOT_SESSION_TTL_HOURS", 24) * 60 * 60 * 1000,
+  /** Guest session / tg_receipt TTL. Default 7 days (168h) for claim window. */
+  sessionTtlMs: int("BOT_SESSION_TTL_HOURS", 168) * 60 * 60 * 1000,
   tripletDailyLimit: int("BOT_TRIPLET_DAILY_LIMIT", 1),
   rateLimitPerMinute: int("BOT_RATE_LIMIT_PER_MIN", 20),
   abandonedHours: int("BOT_ABANDONED_HOURS", 3),
