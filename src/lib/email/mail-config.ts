@@ -58,7 +58,19 @@ export function getSiteUrl(): string {
 export function isDeliverableUserEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase();
   if (!normalized.includes("@")) return false;
-  return !normalized.endsWith("@oauth.zovus.local");
+  return (
+    !normalized.endsWith("@oauth.zovus.local") &&
+    !normalized.endsWith("@telegram.zovus.local")
+  );
+}
+
+/** Bot-offer / OAuth placeholder emails that are not real logins. */
+export function isSyntheticAccountEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  return (
+    normalized.endsWith("@telegram.zovus.local") ||
+    normalized.endsWith("@oauth.zovus.local")
+  );
 }
 
 export function resolveMailTransportMode(): MailTransportMode {

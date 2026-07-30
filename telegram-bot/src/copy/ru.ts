@@ -189,6 +189,8 @@ export const copy = {
   profileLinked: "Аккаунт Zovus: привязан",
   profileNotLinked: "Аккаунт Zovus: не привязан",
   profileLinkHint: "Привяжите аккаунт — история и баланс будут с вами на сайте и в боте.",
+  profileLoginMethodsHint:
+    "Чтобы зайти с компьютера без Telegram: Профиль → «Вход с сайта» → Яндекс, VK или почта.",
   profileContinueHint: "Есть незавершённый расклад — продолжите на сайте по кнопке ниже.",
   needSiteAccount:
     "Не удалось открыть салон. Попробуйте ещё раз через минуту — или привяжите аккаунт на сайте по кнопке ниже.",
@@ -464,6 +466,7 @@ export function collectBodyCopySamples(): string[] {
     copy.profileLinked,
     copy.profileNotLinked,
     copy.profileLinkHint,
+    copy.profileLoginMethodsHint,
     copy.profileContinueHint,
     copy.needSiteAccount,
     copy.needSiteOnboarding,

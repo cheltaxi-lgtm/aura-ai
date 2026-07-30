@@ -278,32 +278,110 @@ export async function upsertOAuthAccountWithClient(
   };
 }
 
+export type LinkOAuthResult =
+  | { ok: true; alreadyLinked: boolean; email: string; name: string }
+  | { ok: false; error: "provider_taken" | "account_missing" };
+
+/**
+ * Attach a provider identity to an existing account (cabinet / bot shell upgrade).
+ * Does not create accounts. Fails if the identity belongs to another account.
+ */
 export async function linkOAuthIdentityToAccount(
   accountId: string,
   provider: OAuthProvider,
   info: OAuthUserInfo
-): Promise<void> {
-  await query(
-    `INSERT INTO user_oauth_identities (
-       user_account_id, provider, provider_user_id, provider_email,
-       provider_email_verified, provider_gender, last_login_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
-     ON CONFLICT (provider, provider_user_id) DO UPDATE
-       SET provider_email = EXCLUDED.provider_email,
-           provider_email_verified = EXCLUDED.provider_email_verified,
-           provider_gender = EXCLUDED.provider_gender,
-           updated_at = NOW(),
-           last_login_at = NOW()
-     WHERE user_oauth_identities.user_account_id = EXCLUDED.user_account_id`,
-    [
-      accountId,
+): Promise<LinkOAuthResult> {
+  return withTransaction(async (client) => {
+    const account = await queryClient<{ id: string; email: string; name: string }>(
+      client,
+      `SELECT id, email, name FROM user_accounts WHERE id = $1 FOR UPDATE`,
+      [accountId]
+    );
+    const row = account.rows[0];
+    if (!row) return { ok: false, error: "account_missing" };
+
+    const existing = await findOAuthIdentityWithClient(
+      client,
       provider,
-      info.providerUserId,
-      info.email,
-      info.emailVerified,
-      info.gender ?? null,
-    ]
+      info.providerUserId
+    );
+    if (existing) {
+      if (existing.user_account_id !== accountId) {
+        return { ok: false, error: "provider_taken" };
+      }
+      await queryClient(
+        client,
+        `UPDATE user_oauth_identities
+         SET provider_email = $2, provider_email_verified = $3,
+             provider_gender = $4, updated_at = NOW(), last_login_at = NOW()
+         WHERE id = $1`,
+        [
+          existing.id,
+          info.email ? normalizeAuthEmail(info.email) : null,
+          info.emailVerified,
+          info.gender ?? null,
+        ]
+      );
+      return {
+        ok: true,
+        alreadyLinked: true,
+        email: row.email,
+        name: row.name,
+      };
+    }
+
+    const providerEmail = info.email ? normalizeAuthEmail(info.email) : null;
+    await queryClient(
+      client,
+      `INSERT INTO user_oauth_identities (
+         user_account_id, provider, provider_user_id, provider_email,
+         provider_email_verified, provider_gender, last_login_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [
+        accountId,
+        provider,
+        info.providerUserId,
+        providerEmail,
+        info.emailVerified,
+        info.gender ?? null,
+      ]
+    );
+
+    // Upgrade synthetic shell email when provider gives a free verified address.
+    let email = row.email;
+    if (
+      shouldUseVerifiedEmailForLinking(info) &&
+      providerEmail &&
+      (row.email.endsWith("@telegram.zovus.local") ||
+        row.email.endsWith("@oauth.zovus.local"))
+    ) {
+      const taken = await queryClient<{ id: string }>(
+        client,
+        `SELECT id FROM user_accounts WHERE lower(email) = $1 AND id <> $2 LIMIT 1`,
+        [providerEmail, accountId]
+      );
+      if (!taken.rows[0]) {
+        await queryClient(
+          client,
+          `UPDATE user_accounts SET email = $2 WHERE id = $1`,
+          [accountId, providerEmail]
+        );
+        email = providerEmail;
+      }
+    }
+
+    return { ok: true, alreadyLinked: false, email, name: row.name };
+  });
+}
+
+export async function listOAuthProvidersForAccount(
+  accountId: string
+): Promise<OAuthProvider[]> {
+  const { rows } = await query<{ provider: OAuthProvider }>(
+    `SELECT provider FROM user_oauth_identities WHERE user_account_id = $1`,
+    [accountId]
   );
+  return rows.map((r) => r.provider);
 }
 
 export async function getLatestOAuthGenderForAccount(

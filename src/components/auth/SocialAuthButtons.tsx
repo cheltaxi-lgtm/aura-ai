@@ -14,6 +14,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   consent_required: "Подтвердите согласие с условиями и возраст 18+ перед входом через соцсеть.",
   email_exists: "Email уже зарегистрирован. Войдите через email или используйте другой аккаунт.",
   provider_denied: "Вход через соцсеть отменён.",
+  provider_taken: "Этот Яндекс или VK уже привязан к другому аккаунту Zovus.",
+  auth_required: "Сначала откройте кабинет из бота, затем привяжите способ входа.",
   state_mismatch:
     "Сессия входа через соцсеть устарела. Если вы входили из приложения — попробуйте снова, не закрывая окно авторизации.",
   start_failed: "Не удалось начать вход через соцсеть.",
@@ -37,6 +39,11 @@ export function resolveOAuthErrorMessage(code: string | null | undefined): strin
 const CONTINUE_LABEL: Record<OAuthProvider, string> = {
   yandex: "Продолжить с Яндекс",
   vk: "Продолжить с VK",
+};
+
+const LINK_LABEL: Record<OAuthProvider, string> = {
+  yandex: "Привязать Яндекс",
+  vk: "Привязать VK",
 };
 
 interface SocialAuthButtonsProps {
@@ -219,14 +226,15 @@ export default function SocialAuthButtons({
             const brand = OAUTH_PROVIDER_BRAND[provider];
             const blocked = consentBlocked || disabled || Boolean(pendingProvider);
             const busy = pendingProvider === provider;
+            const labels = mode === "link" ? LINK_LABEL : CONTINUE_LABEL;
             return (
               <a
                 key={provider}
                 href={blocked ? "#" : startHref(provider)}
                 aria-disabled={blocked}
                 aria-busy={busy || undefined}
-                aria-label={CONTINUE_LABEL[provider] ?? brand.label}
-                title={CONTINUE_LABEL[provider] ?? brand.label}
+                aria-label={labels[provider] ?? brand.label}
+                title={labels[provider] ?? brand.label}
                 data-oauth-provider={provider}
                 onClick={handleOAuthClick(provider)}
                 className="auth-salon-oauth-btn"
@@ -235,7 +243,7 @@ export default function SocialAuthButtons({
                   <OAuthProviderIcon provider={provider} className="h-4 w-4" />
                 </span>
                 <span className="auth-salon-oauth-label">
-                  {busy ? "Открываем…" : CONTINUE_LABEL[provider] ?? brand.label}
+                  {busy ? "Открываем…" : labels[provider] ?? brand.label}
                 </span>
               </a>
             );

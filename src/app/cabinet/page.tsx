@@ -39,6 +39,7 @@ import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
 import CabinetTelegramLink from "@/components/cabinet/CabinetTelegramLink";
+import CabinetLoginMethods from "@/components/cabinet/CabinetLoginMethods";
 import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
 import { redirectHomeAfterAccountDeletion } from "@/lib/account-deleted";
 import CabinetDailyNotifications from "@/components/cabinet/CabinetDailyNotifications";
@@ -563,6 +564,7 @@ export default function CabinetPage() {
             ) : authUser?.email && profileLoading ? (
               <CabinetProfileHeaderSkeleton />
             ) : null}
+            <CabinetLoginMethods />
             <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}

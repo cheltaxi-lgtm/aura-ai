@@ -29,8 +29,9 @@ type TransactionRow = {
   accepted_terms: boolean;
   age_confirmed: boolean;
   marketing_consent: boolean;
-  mode: "login" | "register";
+  mode: "login" | "register" | "link";
   app_flow: boolean;
+  link_account_id: string | null;
   registration_attribution: unknown;
 };
 
@@ -42,10 +43,10 @@ export async function createOAuthTransaction(transaction: OAuthTransaction): Pro
   await query(
     `INSERT INTO oauth_transactions (
        code_hash, provider, code_verifier, redirect_uri, return_to, session_id, mode,
-       accepted_terms, age_confirmed, marketing_consent, app_flow,
+       link_account_id, accepted_terms, age_confirmed, marketing_consent, app_flow,
        registration_attribution, expires_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb,
-               NOW() + ($13 * INTERVAL '1 minute'))`,
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb,
+               NOW() + ($14 * INTERVAL '1 minute'))`,
     [
       hashOAuthOpaqueCode(code),
       transaction.provider,
@@ -54,6 +55,7 @@ export async function createOAuthTransaction(transaction: OAuthTransaction): Pro
       transaction.returnTo,
       transaction.sessionId,
       transaction.mode,
+      transaction.linkAccountId ?? null,
       transaction.acceptedTerms,
       transaction.ageConfirmed,
       transaction.marketingConsent,
@@ -77,6 +79,7 @@ function mapTransactionRow(row: TransactionRow): OAuthTransaction {
     marketingConsent: row.marketing_consent,
     mode: row.mode,
     appFlow: row.app_flow,
+    linkAccountId: row.link_account_id,
     registrationAttribution: mapAttribution(row.registration_attribution),
   };
 }
@@ -86,7 +89,7 @@ export async function getOAuthTransaction(code: string): Promise<OAuthTransactio
   if (!isOAuthOpaqueCode(code)) return null;
   const { rows } = await query<TransactionRow>(
     `SELECT provider, code_verifier, redirect_uri, return_to, session_id, mode,
-            accepted_terms, age_confirmed, marketing_consent, app_flow,
+            link_account_id, accepted_terms, age_confirmed, marketing_consent, app_flow,
             registration_attribution
      FROM oauth_transactions
      WHERE code_hash = $1 AND expires_at > NOW()
@@ -103,7 +106,7 @@ export async function consumeOAuthTransaction(code: string): Promise<OAuthTransa
     `DELETE FROM oauth_transactions
      WHERE code_hash = $1 AND expires_at > NOW()
      RETURNING provider, code_verifier, redirect_uri, return_to, session_id, mode,
-               accepted_terms, age_confirmed, marketing_consent, app_flow,
+               link_account_id, accepted_terms, age_confirmed, marketing_consent, app_flow,
                registration_attribution`,
     [hashOAuthOpaqueCode(code)]
   );

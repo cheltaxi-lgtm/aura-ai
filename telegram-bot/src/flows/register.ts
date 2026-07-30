@@ -664,6 +664,7 @@ async function showProfile(ctx: Context): Promise<void> {
   };
 
   let cabinetUrl = `${botConfig.siteUrl}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
+  let loginMethodsUrl = `${botConfig.siteUrl}/cabinet?loginMethods=1&utm_source=telegram&utm_medium=bot&utm_campaign=login_methods`;
 
   if (linked) {
     try {
@@ -690,7 +691,16 @@ async function showProfile(ctx: Context): Promise<void> {
           timezone,
           streak: user.streak_days,
         };
-        if (data.urls?.cabinet) cabinetUrl = data.urls.cabinet;
+        if (data.urls?.cabinet) {
+          cabinetUrl = data.urls.cabinet;
+          try {
+            const u = new URL(cabinetUrl);
+            u.searchParams.set("loginMethods", "1");
+            loginMethodsUrl = u.toString();
+          } catch {
+            loginMethodsUrl = `${cabinetUrl}${cabinetUrl.includes("?") ? "&" : "?"}loginMethods=1`;
+          }
+        }
       }
     } catch (err) {
       console.error("[profile] site cabinet", err);
@@ -704,6 +714,7 @@ async function showProfile(ctx: Context): Promise<void> {
       reply_markup: profileKeyboard({
         linked,
         cabinetUrl: linked ? cabinetUrl : null,
+        loginMethodsUrl: linked ? loginMethodsUrl : null,
         linkUrl: linked ? null : linkUrl,
         inviteUrl,
       }),
@@ -712,6 +723,8 @@ async function showProfile(ctx: Context): Promise<void> {
       await ctx.reply(copy.profileContinueHint, { reply_markup: ctaKeyboard(pending.cta_url) });
     } else if (!linked) {
       await ctx.reply(copy.profileLinkHint);
+    } else {
+      await ctx.reply(copy.profileLoginMethodsHint);
     }
   } catch (err) {
     console.error("[profile] render failed, text fallback", err);

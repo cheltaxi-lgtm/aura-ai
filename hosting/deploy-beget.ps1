@@ -85,6 +85,7 @@ $RequiredArtifacts = @(
   "scripts/migrations/088_migrate_ads_wordstat_history.sql",
   "scripts/migrations/089_migrate_telegram_identities.sql",
   "scripts/migrations/090_migrate_telegram_auth_bridge.sql",
+  "scripts/migrations/091_migrate_oauth_link_mode.sql",
   "src/app/api/auth/telegram/bridge/route.ts",
   "src/app/api/auth/telegram/link-code/route.ts",
   "src/app/api/auth/telegram/unlink/route.ts",

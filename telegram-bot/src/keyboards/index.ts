@@ -358,6 +358,7 @@ export function historyItemKeyboard(sessionId: string): InlineKeyboard {
 export function profileKeyboard(opts: {
   linked: boolean;
   cabinetUrl?: string | null;
+  loginMethodsUrl?: string | null;
   linkUrl?: string | null;
   inviteUrl?: string | null;
 }): InlineKeyboard {
@@ -366,6 +367,11 @@ export function profileKeyboard(opts: {
   kb.text("🪙 Руны", CB.profRunes).text("⚙️ Настройки", CB.profSettings).row();
   if (!opts.linked && opts.linkUrl) {
     webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, opts.linkUrl).row();
+  } else if (opts.loginMethodsUrl) {
+    webAppButton(kb, "🔑 Вход с сайта", opts.loginMethodsUrl).row();
+    if (opts.cabinetUrl) {
+      webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.cabinetUrl).row();
+    }
   } else if (opts.cabinetUrl) {
     webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.cabinetUrl).row();
   }
