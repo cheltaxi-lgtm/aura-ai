@@ -32,6 +32,7 @@ function CabinetLoginMethodsInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [unlinking, setUnlinking] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(
     linkedOk ? "Способ входа привязан. Можно заходить с компьютера без Telegram." : ""
@@ -101,6 +102,43 @@ function CabinetLoginMethodsInner() {
     }
   };
 
+  const unlinkProvider = async (provider: OAuthProvider) => {
+    if (unlinking || busy) return;
+    const label = PROVIDER_LABEL[provider];
+    if (
+      !window.confirm(
+        `Отвязать ${label} от аккаунта Zovus?\n\nВойти через ${label} станет нельзя, пока не привяжете снова.`
+      )
+    ) {
+      return;
+    }
+    setUnlinking(provider);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/auth/account/login-methods", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setError(data.message || "Не удалось отвязать.");
+        return;
+      }
+      setNotice(data.message || "Отвязано.");
+      await load();
+    } catch {
+      setError("Не удалось отвязать. Проверьте соединение.");
+    } finally {
+      setUnlinking(null);
+    }
+  };
+
   const needsSetup =
     !state ||
     state.syntheticEmail ||
@@ -122,11 +160,28 @@ function CabinetLoginMethodsInner() {
       </p>
 
       {state ? (
-        <ul className="mt-3 space-y-1 text-sm text-white/70">
+        <ul className="mt-3 space-y-2 text-sm text-white/70">
           {state.providers.map((p) => (
-            <li key={p}>✓ {PROVIDER_LABEL[p]} привязан</li>
+            <li
+              key={p}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2"
+            >
+              <span>✓ {PROVIDER_LABEL[p]} привязан</span>
+              <button
+                type="button"
+                disabled={Boolean(unlinking) || busy}
+                onClick={() => void unlinkProvider(p)}
+                className="rounded-lg border border-white/15 px-2.5 py-1 text-xs text-white/70 transition hover:border-white/30 hover:text-white disabled:opacity-50"
+              >
+                {unlinking === p ? "Отвязываем…" : "Отвязать"}
+              </button>
+            </li>
           ))}
-          {state.email && state.hasPassword ? <li>✓ Email: {state.email}</li> : null}
+          {state.email && state.hasPassword ? (
+            <li className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+              ✓ Email: {state.email}
+            </li>
+          ) : null}
           {!state.providers.length && !(state.email && state.hasPassword) ? (
             <li className="text-amber-200/80">Пока нет способа входа с компьютера</li>
           ) : null}

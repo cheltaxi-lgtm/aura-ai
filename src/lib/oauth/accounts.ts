@@ -384,6 +384,71 @@ export async function listOAuthProvidersForAccount(
   return rows.map((r) => r.provider);
 }
 
+export type UnlinkOAuthResult =
+  | { ok: true; provider: OAuthProvider }
+  | { ok: false; error: "not_linked" | "last_login_method" | "invalid_provider" };
+
+/**
+ * Detach a provider from the account. Keeps at least one site login method
+ * (password, another OAuth, or Telegram bind for Mini App).
+ */
+export async function unlinkOAuthFromAccount(
+  accountId: string,
+  provider: OAuthProvider
+): Promise<UnlinkOAuthResult> {
+  if (provider !== "yandex" && provider !== "vk") {
+    return { ok: false, error: "invalid_provider" };
+  }
+
+  return withTransaction(async (client) => {
+    const account = await queryClient<{
+      email: string;
+      password_hash: string | null;
+    }>(
+      client,
+      `SELECT email, password_hash FROM user_accounts WHERE id = $1 FOR UPDATE`,
+      [accountId]
+    );
+    if (!account.rows[0]) return { ok: false, error: "not_linked" };
+
+    const identity = await queryClient<{ id: string }>(
+      client,
+      `SELECT id FROM user_oauth_identities
+       WHERE user_account_id = $1 AND provider = $2
+       FOR UPDATE`,
+      [accountId, provider]
+    );
+    if (!identity.rows[0]) return { ok: false, error: "not_linked" };
+
+    const others = await queryClient<{ n: string }>(
+      client,
+      `SELECT COUNT(*)::text AS n FROM user_oauth_identities
+       WHERE user_account_id = $1 AND provider <> $2`,
+      [accountId, provider]
+    );
+    const otherOAuth = Number(others.rows[0]?.n || 0);
+    const hasPassword = Boolean(account.rows[0].password_hash);
+    const tg = await queryClient<{ n: string }>(
+      client,
+      `SELECT COUNT(*)::text AS n FROM user_telegram_identities
+       WHERE user_account_id = $1`,
+      [accountId]
+    );
+    const hasTelegram = Number(tg.rows[0]?.n || 0) > 0;
+
+    if (!hasPassword && otherOAuth === 0 && !hasTelegram) {
+      return { ok: false, error: "last_login_method" };
+    }
+
+    await queryClient(
+      client,
+      `DELETE FROM user_oauth_identities WHERE user_account_id = $1 AND provider = $2`,
+      [accountId, provider]
+    );
+    return { ok: true, provider };
+  });
+}
+
 export async function getLatestOAuthGenderForAccount(
   accountId: string
 ): Promise<"male" | "female" | null> {

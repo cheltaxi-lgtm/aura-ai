@@ -7,7 +7,11 @@ import {
   isDeliverableUserEmail,
   isSyntheticAccountEmail,
 } from "@/lib/email/mail-config";
-import { listOAuthProvidersForAccount } from "@/lib/oauth/accounts";
+import {
+  listOAuthProvidersForAccount,
+  unlinkOAuthFromAccount,
+} from "@/lib/oauth/accounts";
+import type { OAuthProvider } from "@/lib/oauth/types";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/api-guards";
 
@@ -142,5 +146,64 @@ export async function POST(request: NextRequest) {
     email,
     hasPassword: true,
     message: "Email и пароль сохранены. Теперь можно входить с компьютера.",
+  });
+}
+
+/** Unlink Yandex/VK from the current account. */
+export async function DELETE(request: NextRequest) {
+  const auth = await getAuth();
+  if (!auth || auth.role !== "user") {
+    return NextResponse.json({ error: "auth_required" }, { status: 401 });
+  }
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "unavailable" }, { status: 503 });
+  }
+
+  const ip = clientIp(request);
+  const rl = await checkRateLimit(
+    rateLimitKey("login_methods_unlink", auth.sub || ip),
+    20,
+    60 * 60 * 1000
+  );
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток. Попробуйте позже." },
+      { status: 429 }
+    );
+  }
+
+  let body: { provider?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const provider = body.provider === "yandex" || body.provider === "vk"
+    ? (body.provider as OAuthProvider)
+    : null;
+  if (!provider) {
+    return NextResponse.json(
+      { error: "invalid_provider", message: "Укажите yandex или vk." },
+      { status: 422 }
+    );
+  }
+
+  const result = await unlinkOAuthFromAccount(auth.sub, provider);
+  if (!result.ok) {
+    const message =
+      result.error === "last_login_method"
+        ? "Нельзя отвязать последний способ входа. Сначала добавьте другой."
+        : result.error === "not_linked"
+          ? "Эта соцсеть не привязана."
+          : "Не удалось отвязать.";
+    return NextResponse.json({ ok: false, error: result.error, message }, { status: 409 });
+  }
+
+  const label = provider === "yandex" ? "Яндекс" : "VK";
+  return NextResponse.json({
+    ok: true,
+    provider,
+    message: `${label} отвязан. Привязать снова можно ниже.`,
   });
 }
