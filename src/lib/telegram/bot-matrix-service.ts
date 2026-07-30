@@ -25,12 +25,55 @@ import {
   saveMatrixReport,
   toIsoBirthDate,
 } from "@/lib/services/numerology-report-service";
-import { createSession, updateSessionChatMeta } from "@/lib/session";
+import { query } from "@/lib/db";
+import {
+  createSession,
+  deleteConsultationSession,
+  getSession,
+  updateSessionChatMeta,
+} from "@/lib/session";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import { createHistoryEntry, getUserById } from "@/lib/users";
+
+/** Drop consultation sessions left behind after matrix report delete/replace. */
+async function purgeMatrixConsultationSessions(
+  profileUserId: string,
+  sessionIds: string[] = []
+): Promise<void> {
+  const wanted = new Set(sessionIds.filter((id) => Boolean(id?.trim())));
+
+  const { rows: orphans } = await query<{ id: string }>(
+    `SELECT s.id
+     FROM sessions s
+     WHERE s.user_id = $1
+       AND (
+         COALESCE(s.spread_id, '') = 'destiny_matrix'
+         OR COALESCE(s.intention, '') = 'destiny_matrix'
+       )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM numerology_report_history n
+         WHERE n.user_id = s.user_id
+           AND n.tool_id = 'destiny_matrix'
+           AND n.session_id = s.id
+           AND length(trim(n.content)) > 0
+       )`,
+    [profileUserId]
+  );
+  for (const row of orphans) wanted.add(row.id);
+
+  await Promise.all(
+    [...wanted].map((id) =>
+      deleteConsultationSession(id, profileUserId).catch((err) => {
+        console.warn("[bot-matrix] session purge failed", id, err);
+        return false;
+      })
+    )
+  );
+}
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
@@ -254,8 +297,22 @@ export async function botMatrixRun(
   const owned = await findOwnedMatrixReport(profileUserId, isoBirth);
   // Open existing only when not explicitly ordering a replacement.
   if (owned?.content?.trim() && !replace) {
-    const session = await createSession(undefined, profileUserId);
-    await updateSessionChatMeta(session.id, {
+    let sessionId = owned.sessionId?.trim() || "";
+    if (sessionId) {
+      const existing = await getSession(sessionId);
+      if (!existing || existing.user_id !== profileUserId) sessionId = "";
+    }
+    if (!sessionId) {
+      const session = await createSession(undefined, profileUserId);
+      sessionId = session.id;
+      await query(
+        `UPDATE numerology_report_history
+         SET session_id = $1, updated_at = NOW()
+         WHERE id = $2::uuid AND user_id = $3`,
+        [sessionId, owned.id, profileUserId]
+      );
+    }
+    await updateSessionChatMeta(sessionId, {
       characterKey: "numerolog",
       intention: "destiny_matrix",
       spreadType: "new",
@@ -263,7 +320,7 @@ export async function botMatrixRun(
       cards: [],
     });
     await ensureSpreadReadingInChatMessages({
-      sessionId: session.id,
+      sessionId,
       profileUserId,
       characterId: "numerolog",
       reading: owned.content,
@@ -273,12 +330,13 @@ export async function botMatrixRun(
       spreadId: "destiny_matrix",
       customQuestion: "Матрица судьбы",
     });
+    await purgeMatrixConsultationSessions(profileUserId, []);
     const runeBalance = await getRuneBalance(profileUserId);
     return {
       ok: true,
       action: "run",
       reportId: owned.id,
-      sessionId: session.id,
+      sessionId,
       content: owned.content,
       birthDate: isoBirth,
       runeBalance,
@@ -286,12 +344,13 @@ export async function botMatrixRun(
       reused: true,
       replaced: false,
       diagram,
-      url: `${siteBase()}/?chat_session=${encodeURIComponent(session.id)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
+      url: `${siteBase()}/?chat_session=${encodeURIComponent(sessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
   }
 
   if (replace && owned) {
-    await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
+    const wiped = await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
+    await purgeMatrixConsultationSessions(profileUserId, wiped.sessionIds);
   }
 
   const unlimited = await resolveUnlimitedAccess({
@@ -473,11 +532,21 @@ export async function botMatrixDelete(input: {
 
   const profileUserId = gate.resolved.profileUserId!;
   let deleted = 0;
+  let sessionIds: string[] = [];
   if (input.reportId?.trim()) {
-    deleted = (await deleteUserMatrixReport(profileUserId, input.reportId)) ? 1 : 0;
+    const one = await deleteUserMatrixReport(profileUserId, input.reportId);
+    deleted = one.deleted ? 1 : 0;
+    sessionIds = one.sessionIds;
   } else {
-    deleted = await deleteOwnedMatrixReportsForBirth(profileUserId, gate.user.birth_date);
+    const many = await deleteOwnedMatrixReportsForBirth(
+      profileUserId,
+      gate.user.birth_date
+    );
+    deleted = many.deleted;
+    sessionIds = many.sessionIds;
   }
+
+  await purgeMatrixConsultationSessions(profileUserId, sessionIds);
 
   if (deleted < 1) {
     return {

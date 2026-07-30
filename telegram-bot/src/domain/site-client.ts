@@ -63,6 +63,7 @@ export async function siteHistory(telegramUserId: number, limit = 8) {
     items?: Array<{
       sessionId: string;
       characterKey: string;
+      kind?: "matrix" | "photo" | "spread";
       date: string;
       topic: string;
       cards: string[];
@@ -72,7 +73,25 @@ export async function siteHistory(telegramUserId: number, limit = 8) {
     runeBalance?: number;
     error?: string;
     linkUrl?: string;
-  }>("/api/internal/bot/history", { telegram_user_id: telegramUserId, limit });
+  }>("/api/internal/bot/history", {
+    telegram_user_id: telegramUserId,
+    limit,
+    action: "list",
+  });
+}
+
+export async function siteHistoryDelete(telegramUserId: number, sessionId: string) {
+  return siteFetch<{
+    ok: boolean;
+    deleted?: boolean;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/history", {
+    telegram_user_id: telegramUserId,
+    action: "delete",
+    session_id: sessionId,
+  });
 }
 
 export async function siteSpread(telegramUserId: number, question: string) {
@@ -190,6 +209,7 @@ export async function siteReading(telegramUserId: number, sessionId: string) {
   return siteFetch<{
     ok: boolean;
     sessionId?: string;
+    characterKey?: string | null;
     reading?: string;
     cards?: string[];
     intention?: string | null;
@@ -204,6 +224,28 @@ export async function siteCabinet(telegramUserId: number) {
   return siteFetch<{
     ok: boolean;
     runeBalance?: number;
+    profile?: {
+      name: string;
+      email?: string | null;
+      zodiac?: string | null;
+      birthDate?: string | null;
+      memberSince?: string | null;
+      linked?: boolean;
+      unlimited?: boolean;
+    };
+    stats?: {
+      totalSessions: number;
+      totalCards: number;
+      daysWithUs: number;
+      favoriteMaster?: string | null;
+      favoriteMasterName?: string | null;
+      matrices: number;
+      photos: number;
+      rituals: number;
+      joints: number;
+      diary: number;
+      openTickets: number;
+    };
     natal?: {
       hasChart: boolean;
       bigThree: string[];
@@ -268,6 +310,96 @@ export type SiteMatrixDiagram = {
     arcanaName: string;
   }>;
 };
+
+export type SitePhotoRedrawSpread = {
+  system?: string;
+  deckType?: string;
+  spreadType?: string;
+  cards: Array<{
+    name: string;
+    originalName?: string;
+    reversed?: boolean;
+    position?: string;
+    imagePath?: string;
+    shortMeaning?: string;
+    placeholder?: boolean;
+    order?: number;
+    confidence?: string;
+  }>;
+};
+
+export async function sitePhoto(
+  telegramUserId: number,
+  action: "pricing" | "list" | "get" | "delete" | "recognize" | "interpret",
+  extra: {
+    historyId?: string;
+    imageBase64?: string;
+    mimeType?: string;
+    characterId?: string;
+    question?: string;
+    confirmedSpread?: SitePhotoRedrawSpread;
+    idempotencyKey?: string;
+    limit?: number;
+  } = {}
+) {
+  const timeoutMs =
+    action === "recognize" ? 90_000 : action === "interpret" ? 180_000 : 30_000;
+  return siteFetch<{
+    ok: boolean;
+    action?: string;
+    cost?: number;
+    baseCost?: number;
+    effectiveCost?: number;
+    firstPhotoDiscount?: boolean;
+    photoReadingsCount?: number;
+    runeBalance?: number;
+    items?: Array<{
+      id: string;
+      master: string;
+      date: string;
+      question: string;
+      preview: string;
+      cards: string[];
+      sessionId: string | null;
+    }>;
+    historyId?: string | null;
+    master?: string;
+    question?: string;
+    analysis?: string;
+    cards?: string[];
+    sessionId?: string | null;
+    redrawSpread?: SitePhotoRedrawSpread;
+    detectedCards?: string[];
+    deckType?: string;
+    spreadType?: string;
+    confidence?: string;
+    partial?: boolean;
+    truncated?: boolean;
+    characterId?: string;
+    charged?: number;
+    cached?: boolean;
+    url?: string;
+    linkUrl?: string;
+    shopUrl?: string;
+    error?: string;
+    message?: string;
+  }>(
+    "/api/internal/bot/photo",
+    {
+      telegram_user_id: telegramUserId,
+      action,
+      history_id: extra.historyId,
+      image_base64: extra.imageBase64,
+      mime_type: extra.mimeType,
+      character_id: extra.characterId,
+      question: extra.question,
+      confirmed_spread: extra.confirmedSpread,
+      idempotency_key: extra.idempotencyKey,
+      limit: extra.limit,
+    },
+    timeoutMs
+  );
+}
 
 export async function siteNumerology(
   telegramUserId: number,
@@ -400,6 +532,44 @@ export function buildSessionChatUrl(sessionId: string): string {
   url.searchParams.set("utm_medium", "bot");
   url.searchParams.set("utm_campaign", "continue_chat");
   return url.toString();
+}
+
+/** True for t.me / telegram.me invite links (must stay as ordinary .url()). */
+export function isTelegramInviteUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "t.me" || host === "telegram.me" || host.endsWith(".t.me");
+  } catch {
+    return /^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//i.test(url.trim());
+  }
+}
+
+/**
+ * Wrap a same-site path or absolute zovus URL as Mini App entry:
+ * https://zovus.ru/tg?to=<encoded path+query>
+ */
+export function siteWebAppUrl(pathOrUrl: string): string {
+  const base = botConfig.siteUrl.replace(/\/$/, "");
+  let to = (pathOrUrl || "/cabinet").trim();
+  if (!to) to = "/cabinet";
+
+  try {
+    if (/^https?:\/\//i.test(to)) {
+      const u = new URL(to);
+      const siteHost = new URL(base).hostname.replace(/^www\./, "");
+      const host = u.hostname.replace(/^www\./, "");
+      if (host !== siteHost && !host.endsWith(`.${siteHost}`)) {
+        // External — caller should use .url(); return as-is.
+        return to;
+      }
+      to = `${u.pathname}${u.search}${u.hash}` || "/cabinet";
+    }
+  } catch {
+    to = "/cabinet";
+  }
+
+  if (!to.startsWith("/") || to.startsWith("//")) to = "/cabinet";
+  return `${base}/tg?to=${encodeURIComponent(to)}`;
 }
 
 /** Split long reading into Telegram-safe chunks. */

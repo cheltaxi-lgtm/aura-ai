@@ -37,12 +37,15 @@ import {
   deleteKeyboard,
   inviteKeyboard,
   linkAccountKeyboard,
+  profileKeyboard,
   salonKeyboard,
   settingsKeyboard,
   timezoneKeyboard,
 } from "../keyboards/index.js";
 import { isShareCardEnabled } from "../flags.js";
 import { renderShareCollage } from "../render/card-collage.js";
+import { renderProfileCardImage } from "../render/profile-card.js";
+import { siteCabinet, siteHistory, siteRunes } from "../domain/site-client.js";
 import {
   beginChatFollowUp,
   beginSupportReply,
@@ -55,7 +58,10 @@ import {
   showModulesMenu,
   showPhoto,
 } from "./cabinet.js";
-import { siteHistory } from "../domain/site-client.js";
+import {
+  handlePhotoCallback,
+  handlePhotoMessage,
+} from "./photo.js";
 import { handleDay } from "./day.js";
 import { beginCatalog, handleCatalogCallback } from "./catalog.js";
 import { handleReadingPagerCallback } from "../domain/reading/present.js";
@@ -68,7 +74,6 @@ import {
 } from "./spread.js";
 import { ensureSiteLinked, issueSiteLinkUrl, syncSiteAccount } from "./site-account.js";
 import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
-import { siteRunes } from "../domain/site-client.js";
 
 export function registerFlows(bot: Bot): void {
   bot.command("start", async (ctx) => {
@@ -123,9 +128,7 @@ export function registerFlows(bot: Bot): void {
       return;
     }
 
-    const name = ctx.from.first_name?.trim() || "друг";
-    await ctx.reply(copy.greeting(name));
-
+    // No long welcome essay — just gates (if needed) and the salon keyboard.
     const fresh = getUser(ctx.from.id)!;
     if (!fresh.age_confirmed_at) {
       await ctx.reply(copy.ageAsk, { reply_markup: ageKeyboard() });
@@ -449,6 +452,17 @@ export function registerFlows(bot: Bot): void {
     }
   });
 
+  bot.callbackQuery(new RegExp(`^${CB.phPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handlePhotoCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
+  });
+
+  bot.on(["message:photo", "message:document"], async (ctx) => {
+    if (await handlePhotoMessage(ctx)) return;
+  });
+
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return;
@@ -505,55 +519,116 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
 async function showProfile(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
+
   let site;
   try {
     site = await syncSiteAccount(user);
   } catch {
     site = null;
   }
+
   const code = ensureRefCode(user.telegram_user_id);
+  const inviteUrl = `https://t.me/${botConfig.botUsername}?start=ref_${code}`;
   const linked = Boolean(site?.linked || user.zovus_user_id);
   const pending = findLatestUnclaimedCtaSession(user.telegram_user_id);
   let linkUrl = site?.linkUrl || pending?.cta_url || `${botConfig.siteUrl}/cabinet`;
   if (!linked) {
     linkUrl = (await issueSiteLinkUrl(ctx, user)) || linkUrl;
   }
-  const bal =
-    site?.runeBalance != null ? `\nРуны: ${site.runeBalance}` : "";
-  let spreads = countSessions(user.telegram_user_id);
+
+  const timezone = formatTimezoneLabel(user);
+  let card = {
+    name: user.first_name || "Гость",
+    linked,
+    unlimited: false,
+    zodiac: null as string | null,
+    birthDate: null as string | null,
+    memberSince: user.created_at,
+    runeBalance: site?.runeBalance ?? 0,
+    totalSessions: countSessions(user.telegram_user_id),
+    totalCards: 0,
+    daysWithUs: user.streak_days || 1,
+    favoriteMasterName: null as string | null,
+    natalLabel: null as string | null,
+    matrices: 0,
+    photos: 0,
+    rituals: 0,
+    timezone,
+    streak: user.streak_days,
+  };
+
+  let cabinetUrl = `${botConfig.siteUrl}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
+  let runesUrl = `${botConfig.siteUrl}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
+
   if (linked) {
     try {
-      const hist = await siteHistory(user.telegram_user_id, 1);
-      if (hist.data.ok && typeof hist.data.total === "number") {
-        spreads = hist.data.total;
+      const { data } = await siteCabinet(user.telegram_user_id);
+      if (data.ok) {
+        card = {
+          name: data.profile?.name || card.name,
+          linked: true,
+          unlimited: Boolean(data.profile?.unlimited),
+          zodiac: data.profile?.zodiac ?? null,
+          birthDate: data.profile?.birthDate ?? null,
+          memberSince: data.profile?.memberSince || card.memberSince,
+          runeBalance: data.runeBalance ?? card.runeBalance,
+          totalSessions: data.stats?.totalSessions ?? card.totalSessions,
+          totalCards: data.stats?.totalCards ?? 0,
+          daysWithUs: data.stats?.daysWithUs ?? card.daysWithUs,
+          favoriteMasterName: data.stats?.favoriteMasterName ?? null,
+          natalLabel: data.natal?.hasChart
+            ? (data.natal.bigThree || []).slice(0, 3).join(" · ") || "есть карта"
+            : "не построена",
+          matrices: data.stats?.matrices ?? data.numerology?.matrices?.length ?? 0,
+          photos: data.stats?.photos ?? data.photo?.items?.length ?? 0,
+          rituals: data.stats?.rituals ?? data.rituals?.recent?.length ?? 0,
+          timezone,
+          streak: user.streak_days,
+        };
+        if (data.urls?.cabinet) cabinetUrl = data.urls.cabinet;
+        if (data.urls?.runes) runesUrl = data.urls.runes;
       }
-    } catch {
-      /* keep local count */
+    } catch (err) {
+      console.error("[profile] site cabinet", err);
     }
   }
-  const body = copy.profile({
-    since: user.created_at.slice(0, 10),
-    streak: user.streak_days,
-    spreads,
-    age: Boolean(user.age_confirmed_at),
-    consent: Boolean(user.terms_accepted_at && user.privacy_accepted_at),
-    refLink: `https://t.me/${botConfig.botUsername}?start=ref_${code}`,
-    invites: user.referral_count ?? 0,
-    timezone: formatTimezoneLabel(user),
-    zovusLinked: linked,
-  });
-  const withHint =
-    pending && !linked
-      ? `${body}${bal}\n\n${copy.profileContinueHint}`
-      : `${body}${bal}`;
 
-  await ctx.reply(withHint, {
-    reply_markup: linked
-      ? continueOnSiteKeyboard(linkUrl, copy.continueOnSite)
-      : pending?.cta_url
-        ? ctaKeyboard(pending.cta_url)
+  try {
+    await ctx.replyWithChatAction("upload_photo");
+    const buf = await renderProfileCardImage(card);
+    await ctx.replyWithPhoto(new InputFile(buf, "profile.jpg"), {
+      reply_markup: profileKeyboard({
+        linked,
+        cabinetUrl: linked ? cabinetUrl : null,
+        runesUrl: linked ? runesUrl : null,
+        linkUrl: linked ? null : linkUrl,
+        inviteUrl,
+      }),
+    });
+    if (!linked && pending?.cta_url) {
+      await ctx.reply(copy.profileContinueHint, { reply_markup: ctaKeyboard(pending.cta_url) });
+    } else if (!linked) {
+      await ctx.reply(copy.profileLinkHint);
+    }
+  } catch (err) {
+    console.error("[profile] render failed, text fallback", err);
+    const body = copy.profile({
+      since: (card.memberSince || "").slice(0, 10),
+      streak: user.streak_days,
+      spreads: card.totalSessions,
+      age: Boolean(user.age_confirmed_at),
+      consent: Boolean(user.terms_accepted_at && user.privacy_accepted_at),
+      refLink: inviteUrl,
+      invites: user.referral_count ?? 0,
+      timezone,
+      zovusLinked: linked,
+    });
+    await ctx.reply(`${body}\nРуны: ${card.runeBalance}`, {
+      reply_markup: linked
+        ? continueOnSiteKeyboard(cabinetUrl, copy.continueOnSite)
         : linkAccountKeyboard(linkUrl),
-  });
+    });
+  }
 }
 
 async function showRunes(ctx: Context): Promise<void> {

@@ -1,3 +1,4 @@
+import { setDefaultResultOrder } from "node:dns";
 import { createBot } from "./bot.js";
 import { botConfig } from "./config.js";
 import { migrate } from "./db/client.js";
@@ -7,15 +8,27 @@ import {
   assertDeckAssetsOrExit,
   setAssetMissingAlerter,
 } from "./domain/deck/asset-check.js";
+import { installTelegramIpv4Networking } from "./domain/telegram-ipv4.js";
+import { siteWebAppUrl } from "./domain/site-client.js";
 import { startHttpServer } from "./http/server.js";
 import { runReminderTick } from "./jobs/reminders.js";
 import { acquirePollingLock, releasePollingLock } from "./ops/lock.js";
+import { warmRenderCaches } from "./render/canvas.js";
+
+// Beget/VPS often has broken IPv6 to api.telegram.org → ETIMEDOUT / frozen polling.
+try {
+  setDefaultResultOrder("ipv4first");
+} catch {
+  /* older Node */
+}
+installTelegramIpv4Networking();
 
 async function main(): Promise<void> {
   migrate();
   console.log("[migrate] up", migrateUp());
   ensureCriticalColumns();
   assertDeckAssetsOrExit();
+  void warmRenderCaches();
   setFlag("ritual_reveal_enabled", botConfig.flags.ritualRevealEnabled);
   setFlag("tts_enabled", botConfig.flags.ttsEnabled);
   setFlag("llm_enabled", botConfig.flags.llmEnabled);
@@ -36,6 +49,19 @@ async function main(): Promise<void> {
   }
   const me = await bot.api.getMe();
   console.log(`[bot] @${me.username} mode=${botConfig.mode}`);
+
+  try {
+    await bot.api.setChatMenuButton({
+      menu_button: {
+        type: "web_app",
+        text: "Кабинет",
+        web_app: { url: siteWebAppUrl("/cabinet") },
+      },
+    });
+    console.log("[bot] chat menu button → Mini App /cabinet");
+  } catch (err) {
+    console.error("[bot] setChatMenuButton failed (configure BotFather domain zovus.ru)", err);
+  }
 
   if (botConfig.httpAlways || botConfig.mode === "webhook") {
     startHttpServer(botConfig.mode === "webhook" ? bot : undefined);

@@ -5,6 +5,7 @@ import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
+import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 import { trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
@@ -126,6 +127,19 @@ export default function SocialAuthButtons({
     if (mode === "register") {
       trackRegistrationStarted(resolveRegistrationSource(`oauth_${provider}`));
     }
+
+    // Mini App WebView breaks OAuth redirects — open provider flow in system browser.
+    const inTelegramMiniApp =
+      typeof window !== "undefined" &&
+      (Boolean(window.Telegram?.WebApp?.initData) ||
+        document.documentElement.dataset.telegramWebApp === "1");
+    if (inTelegramMiniApp && !useNativeOAuth) {
+      e.preventDefault();
+      const abs = new URL(startHref(provider), window.location.origin).toString();
+      openTelegramExternalUrl(abs);
+      return;
+    }
+
     if (!useNativeOAuth) return;
 
     e.preventDefault();

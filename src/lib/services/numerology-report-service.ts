@@ -267,9 +267,20 @@ export async function getUserMatrixReportById(
 export async function deleteUserMatrixReport(
   userId: string,
   reportId: string
-): Promise<boolean> {
+): Promise<{ deleted: boolean; sessionIds: string[] }> {
   const id = reportId.trim();
-  if (!id) return false;
+  if (!id) return { deleted: false, sessionIds: [] };
+
+  const before = await query<{ session_id: string | null }>(
+    `SELECT session_id
+     FROM numerology_report_history
+     WHERE user_id = $1
+       AND id = $2::uuid
+       AND tool_id = $3`,
+    [userId, id, MATRIX_REPORT_TOOL_ID]
+  );
+  if (!before.rows[0]) return { deleted: false, sessionIds: [] };
+
   const { rowCount } = await query(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1
@@ -277,16 +288,36 @@ export async function deleteUserMatrixReport(
        AND tool_id = $3`,
     [userId, id, MATRIX_REPORT_TOOL_ID]
   );
-  return (rowCount ?? 0) > 0;
+  const sessionIds = before.rows
+    .map((r) => r.session_id)
+    .filter((s): s is string => Boolean(s?.trim()));
+  return { deleted: (rowCount ?? 0) > 0, sessionIds };
 }
 
 /** Delete all destiny-matrix reports for a birth date (user-initiated reset). */
 export async function deleteOwnedMatrixReportsForBirth(
   userId: string,
   birthDateRaw: string | null | undefined
-): Promise<number> {
+): Promise<{ deleted: number; sessionIds: string[] }> {
   const birthDate = toIsoBirthDate(birthDateRaw);
-  if (!birthDate) return 0;
+  if (!birthDate) return { deleted: 0, sessionIds: [] };
+
+  const before = await query<{ session_id: string | null }>(
+    `SELECT session_id
+     FROM numerology_report_history
+     WHERE user_id = $1
+       AND tool_id = $2
+       AND birth_date = $3::date`,
+    [userId, MATRIX_REPORT_TOOL_ID, birthDate]
+  );
+  const sessionIds = [
+    ...new Set(
+      before.rows
+        .map((r) => r.session_id)
+        .filter((s): s is string => Boolean(s?.trim()))
+    ),
+  ];
+
   const { rowCount } = await query(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1
@@ -294,5 +325,5 @@ export async function deleteOwnedMatrixReportsForBirth(
        AND birth_date = $3::date`,
     [userId, MATRIX_REPORT_TOOL_ID, birthDate]
   );
-  return rowCount ?? 0;
+  return { deleted: rowCount ?? 0, sessionIds };
 }

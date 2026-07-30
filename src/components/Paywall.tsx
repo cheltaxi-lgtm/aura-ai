@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { PaymentPlan } from "@/lib/yukassa";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
+import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
 interface PaywallProps {
   sessionId: string;
@@ -39,7 +40,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
       const data = await res.json();
 
       if (data.confirmationUrl) {
-        window.location.href = data.confirmationUrl;
+        openTelegramExternalUrl(data.confirmationUrl);
         return;
       }
       setError(data.error ?? data.message ?? "Не удалось создать платёж. Попробуйте позже.");

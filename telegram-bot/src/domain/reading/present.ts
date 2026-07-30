@@ -4,8 +4,23 @@ import { setFlow, getFlow } from "../../db/repos.js";
 import { FULL_DECK, TRIPLET_POSITIONS } from "../deck/cards.js";
 import type { DrawnCard, TarotCardDef } from "../deck/types.js";
 import { buildSessionChatUrl, chunkTelegramText } from "../site-client.js";
-import { renderDayCardImage, renderTripletCollage } from "../../render/card-collage.js";
+import {
+  MAX_COLLAGE_CARDS,
+  renderDayCardImage,
+  renderSpreadCollage,
+} from "../../render/card-collage.js";
+import {
+  expandReadingPagesForCanvas,
+  renderReadingPageImage,
+} from "../../render/reading-page.js";
+import {
+  bindReadingPageCache,
+  getReadingPageBuffer,
+  prefetchReadingPages,
+  putReadingPageBuffer,
+} from "../../render/reading-page-cache.js";
 import { CB, readingPagerKeyboard } from "../../keyboards/index.js";
+import { widenTelegramText } from "../telegram-width.js";
 
 type ReplyMarkup = NonNullable<Parameters<Context["reply"]>[1]>["reply_markup"];
 
@@ -27,6 +42,8 @@ type ReadingViewState = {
   footer?: string;
   matrixActions?: boolean;
   matrixSiteUrl?: string;
+  /** Pages sent as 1080px photos (same width as matrix diagram / collage). */
+  asPhoto?: boolean;
 };
 
 function normalizeCardName(raw: string): string {
@@ -260,15 +277,17 @@ export function buildTelegramReadingMessages(raw: string, cards: DrawnCard[] = [
     .map((m) => m.trim())
     .filter(Boolean);
 
+  // Soft HTML length cap (Telegram edit fallback), then split to canvas capacity
+  // so photo pages never hard-clip with "…".
   const out: string[] = [];
   for (const msg of messages) {
-    if (msg.length <= 1200) {
+    if (msg.length <= 1600) {
       out.push(msg);
       continue;
     }
-    for (const chunk of chunkTelegramText(msg, 1100)) out.push(chunk);
+    for (const chunk of chunkTelegramText(msg, 1400)) out.push(chunk);
   }
-  return out;
+  return expandReadingPagesForCanvas(out);
 }
 
 /** @deprecated prefer buildTelegramReadingMessages — kept for strip/chat helpers */
@@ -298,7 +317,7 @@ export function extractCardsFromReadingMarkdown(text: string): DrawnCard[] {
       deck_id: "tarot-veronika",
       spread_id: "triplet",
     });
-    if (out.length >= 3) break;
+    if (out.length >= MAX_COLLAGE_CARDS) break;
   }
   return out;
 }
@@ -314,19 +333,22 @@ export function drawnCardsFromSiteCards(
   }>
 ): DrawnCard[] {
   const out: DrawnCard[] = [];
-  for (let i = 0; i < cards.length && out.length < 3; i++) {
+  for (let i = 0; i < cards.length && out.length < MAX_COLLAGE_CARDS; i++) {
     const c = cards[i]!;
+    const rawName = (c.name || "").trim();
+    if (!rawName) continue;
     const def =
       (typeof c.id === "number" ? FULL_DECK.find((d) => d.id === c.id) : undefined) ||
-      findDefByName(c.name);
-    if (!def) continue;
+      findDefByName(rawName);
+    const reversed = parseReversed(rawName, c.reversed);
+    // Keep every slot even if art is missing — collage shows back + label.
     out.push({
-      id: def.id,
-      name: def.name,
-      meaning: c.meaning || def.meaning,
-      slug: def.slug,
+      id: def?.id ?? 9000 + i,
+      name: def?.name ?? (rawName.replace(REVERSED_RE, "").trim() || rawName),
+      meaning: c.meaning || def?.meaning || "",
+      slug: def?.slug ?? "_back",
       position: typeof c.position === "number" ? c.position : i,
-      reversed: parseReversed(c.name, c.reversed),
+      reversed,
       positionLabel: c.positionLabel || TRIPLET_POSITIONS[i] || `Карта ${i + 1}`,
       deck_id: "tarot-veronika",
       spread_id: "triplet",
@@ -341,8 +363,10 @@ export function drawnCardsFromNameList(names: string[]): DrawnCard[] {
 
 function captionFor(question?: string | null): string {
   const q = cleanQuestion(question);
-  if (q) return `✦ ${q.length > 180 ? `${q.slice(0, 177)}…` : q}`;
-  return "✦ Расклад Zovus";
+  const base = q
+    ? `✦ ${q.length > 180 ? `${q.slice(0, 177)}…` : q}`
+    : "✦ Расклад Zovus";
+  return widenTelegramText(base).slice(0, 1024);
 }
 
 async function renderCardsImage(cards: DrawnCard[], question?: string | null): Promise<Buffer> {
@@ -350,8 +374,8 @@ async function renderCardsImage(cards: DrawnCard[], question?: string | null): P
   if (cards.length === 1) {
     return renderDayCardImage(cards[0]!);
   }
-  return renderTripletCollage(cards.slice(0, 3), {
-    revealedCount: Math.min(3, cards.length),
+  return renderSpreadCollage(cards.slice(0, MAX_COLLAGE_CARDS), {
+    revealedCount: Math.min(MAX_COLLAGE_CARDS, cards.length),
     question: q || undefined,
   });
 }
@@ -360,22 +384,33 @@ function isInlineKeyboard(markup: ReplyMarkup | undefined): markup is InlineKeyb
   return Boolean(markup && typeof markup === "object" && "inline_keyboard" in markup);
 }
 
+function pageBody(
+  pages: string[],
+  page: number,
+  footer?: string
+): string {
+  const total = pages.length;
+  const idx = Math.min(Math.max(0, page), Math.max(0, total - 1));
+  const body = pages[idx] || "";
+  const parts = [body];
+  if (footer && idx === total - 1) {
+    parts.push(footer);
+  }
+  return parts.join("\n\n").trim();
+}
+
 function pageHtml(
   pages: string[],
   page: number,
   footer?: string
 ): string {
   const total = pages.length;
-  const idx = Math.min(Math.max(0, page), total - 1);
-  const body = pages[idx] || "";
-  const parts = [body];
-  if (footer && idx === total - 1) {
-    parts.push(`<i>${escapeHtml(footer)}</i>`);
-  }
+  const idx = Math.min(Math.max(0, page), Math.max(0, total - 1));
+  const parts = [pageBody(pages, page, footer)];
   if (total > 1) {
     parts.push(`<i>· ${idx + 1} / ${total} ·</i>`);
   }
-  return parts.join("\n\n").slice(0, 3900);
+  return widenTelegramText(parts.filter(Boolean).join("\n\n")).slice(0, 3900);
 }
 
 function pagerMarkup(state: ReadingViewState): InlineKeyboard {
@@ -419,26 +454,7 @@ export async function presentReadingToTelegram(
   const question = cleanQuestion(input.question);
   const tid = ctx.from?.id;
 
-  if (cards.length > 0) {
-    try {
-      const buf = await renderCardsImage(cards, question);
-      await ctx.replyWithPhoto(new InputFile(buf, "spread.jpg"), {
-        caption: captionFor(question),
-      });
-    } catch (err) {
-      console.error("[present-reading] collage failed", err);
-      await ctx.reply(captionFor(question));
-    }
-  }
-
   const pages = buildTelegramReadingMessages(input.reading, cards);
-  if (!pages.length) {
-    if (input.replyMarkup) {
-      await ctx.reply("Разбор сохранён в истории.", { reply_markup: input.replyMarkup });
-    }
-    return;
-  }
-
   const chatUrl = input.sessionId ? buildSessionChatUrl(input.sessionId) : undefined;
   const matrixSiteUrl = input.matrixSiteUrl?.trim() || undefined;
   const state: ReadingViewState = {
@@ -448,44 +464,88 @@ export async function presentReadingToTelegram(
     footer: input.footer?.trim() || undefined,
     matrixActions: Boolean(input.matrixActions),
     matrixSiteUrl,
+    asPhoto: true,
   };
 
-  const html = pageHtml(state.pages, 0, state.footer);
   const usePager =
     pages.length > 1 || Boolean(chatUrl) || Boolean(input.matrixActions);
-
-  if (usePager && tid) {
-    setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
-    try {
-      await ctx.reply(html, {
-        parse_mode: "HTML",
-        reply_markup: pagerMarkup(state),
-      });
-      return;
-    } catch (err) {
-      console.error("[present-reading] album send failed", err);
-    }
-  }
-
-  // Fallback: single bubble or legacy markup.
   const markup =
     input.replyMarkup && isInlineKeyboard(input.replyMarkup)
       ? input.replyMarkup
-      : chatUrl || input.matrixActions
-        ? readingPagerKeyboard({
-            page: 0,
-            total: 1,
-            chatUrl,
-            matrixActions: Boolean(input.matrixActions),
-            matrixSiteUrl,
-          })
+      : usePager
+        ? pagerMarkup(state)
         : input.replyMarkup;
 
+  if (tid && pages.length) {
+    bindReadingPageCache(tid, state.pages, state.footer);
+  }
+
+  // Text page is the slow feel — start it immediately; collage may run alongside.
+  const pageP = pages.length
+    ? renderReadingPageImage({
+        bodyHtmlOrText: pageBody(state.pages, 0, state.footer),
+        page: 0,
+        total: state.pages.length,
+      })
+        .then((buf) => {
+          if (tid) putReadingPageBuffer(tid, 0, buf);
+          return buf as Buffer | null;
+        })
+        .catch((err) => {
+          console.error("[present-reading] photo page failed, html fallback", err);
+          return null as Buffer | null;
+        })
+    : Promise.resolve(null as Buffer | null);
+
+  const collageP =
+    cards.length > 0
+      ? renderCardsImage(cards, question).catch((err) => {
+          console.error("[present-reading] collage failed", err);
+          return null as Buffer | null;
+        })
+      : Promise.resolve(null as Buffer | null);
+
+  const collageBuf = await collageP;
+  if (collageBuf) {
+    // Question is drawn on the collage; never use Telegram captions (narrow under photo).
+    await ctx.replyWithPhoto(new InputFile(collageBuf, "spread.jpg"));
+  } else if (cards.length > 0 && question) {
+    await ctx.reply(captionFor(question));
+  }
+
+  if (!pages.length) {
+    if (input.replyMarkup) {
+      await ctx.reply("Разбор сохранён в истории.", { reply_markup: input.replyMarkup });
+    }
+    return;
+  }
+
+  // Photo pages = same 1080px width as matrix diagram / card collage (text bubbles stay narrow).
+  const pageBuf = await pageP;
+  if (pageBuf) {
+    if (usePager && tid) {
+      setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
+      prefetchReadingPages(tid);
+    }
+    await ctx.replyWithPhoto(new InputFile(pageBuf, "reading-1.jpg"), {
+      reply_markup: markup,
+    });
+    return;
+  }
+
+  const html = pageHtml(state.pages, 0, state.footer);
+  state.asPhoto = false;
+  if (usePager && tid) {
+    setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
+  }
   try {
-    await ctx.reply(html, { parse_mode: "HTML", reply_markup: markup });
+    await ctx.reply(widenTelegramText(html), {
+      parse_mode: "HTML",
+      reply_markup: markup,
+    });
   } catch (err) {
     console.error("[present-reading] html send failed, plain fallback", err);
-    await ctx.reply(stripReadingForTelegram(pages.join("\n\n")), {
+    await ctx.reply(widenTelegramText(stripReadingForTelegram(pages.join("\n\n"))), {
       reply_markup: markup,
     });
   }
@@ -527,6 +587,7 @@ export async function handleReadingPagerCallback(
     matrixActions: Boolean(flow.data.matrixActions),
     matrixSiteUrl:
       typeof flow.data.matrixSiteUrl === "string" ? flow.data.matrixSiteUrl : undefined,
+    asPhoto: flow.data.asPhoto !== false,
   };
   if (!state.pages.length) {
     await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);
@@ -536,12 +597,38 @@ export async function handleReadingPagerCallback(
   state.page = Math.min(Math.max(0, state.page), state.pages.length - 1);
   setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
 
-  const html = pageHtml(state.pages, state.page, state.footer);
+  const hasPhoto = Boolean(
+    ctx.callbackQuery?.message && "photo" in ctx.callbackQuery.message
+  );
+
   try {
-    await ctx.editMessageText(html, {
-      parse_mode: "HTML",
-      reply_markup: pagerMarkup(state),
-    });
+    if (state.asPhoto || hasPhoto) {
+      bindReadingPageCache(tid, state.pages, state.footer);
+      let buf: Buffer;
+      try {
+        buf = await getReadingPageBuffer(tid, state.page);
+      } catch {
+        buf = await renderReadingPageImage({
+          bodyHtmlOrText: pageBody(state.pages, state.page, state.footer),
+          page: state.page,
+          total: state.pages.length,
+        });
+        putReadingPageBuffer(tid, state.page, buf);
+      }
+      prefetchReadingPages(tid);
+      await ctx.editMessageMedia(
+        {
+          type: "photo",
+          media: new InputFile(buf, `reading-${state.page + 1}.jpg`),
+        },
+        { reply_markup: pagerMarkup(state) }
+      );
+    } else {
+      await ctx.editMessageText(pageHtml(state.pages, state.page, state.footer), {
+        parse_mode: "HTML",
+        reply_markup: pagerMarkup(state),
+      });
+    }
     await ctx.answerCallbackQuery({ text: `${state.page + 1} / ${state.pages.length}` }).catch(() => undefined);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

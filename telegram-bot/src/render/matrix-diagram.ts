@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { BOT_CANVAS_HEIGHT, BOT_CANVAS_WIDTH, encodeBotJpeg } from "./canvas.js";
 
 export type MatrixDiagramSlot = {
   key: string;
@@ -148,5 +149,11 @@ export async function renderMatrixDiagramImage(input: MatrixDiagramInput): Promi
   <text x="50%" y="${height - 34}" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="rgba(255,255,255,0.38)">22 аркана · схема по дате рождения · zovus.ru</text>
 </svg>`);
 
-  return sharp(svg).jpeg({ quality: 93, mozjpeg: true }).toBuffer();
+  return encodeBotJpeg(
+    sharp(svg).resize(BOT_CANVAS_WIDTH, BOT_CANVAS_HEIGHT, {
+      fit: "contain",
+      background: { r: 14, g: 12, b: 11, alpha: 1 },
+      withoutEnlargement: false,
+    })
+  );
 }

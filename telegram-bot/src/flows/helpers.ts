@@ -12,6 +12,7 @@ export function requireUser(ctx: Context): BotUser | null {
 }
 
 export async function attachSalonBar(ctx: Context, text?: string): Promise<void> {
+  // Short plain text + keyboard — not a reading card image.
   await ctx.reply(text ?? copy.salonReady, { reply_markup: salonKeyboard() });
 }
 

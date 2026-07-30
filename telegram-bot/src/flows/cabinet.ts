@@ -8,6 +8,7 @@ import {
   type SiteMatrixDiagram,
   siteCabinet,
   siteHistory,
+  siteHistoryDelete,
   siteNatal,
   siteNumerology,
   siteReading,
@@ -15,12 +16,18 @@ import {
 } from "../domain/site-client.js";
 import { presentReadingToTelegram } from "../domain/reading/present.js";
 import { buildLocalMatrixDiagram } from "../domain/matrix/calc.js";
+import {
+  renderHistoryEntryImage,
+  type HistoryEntryKind,
+} from "../render/history-entry.js";
 import { renderMatrixDiagramImage } from "../render/matrix-diagram.js";
+import { showPhoto as showPhotoFlow } from "./photo.js";
 import {
   CB,
   chatFollowUpKeyboard,
   continueOnSiteKeyboard,
   dialogStopKeyboard,
+  historyDeleteConfirmKeyboard,
   historyPagerKeyboard,
   matrixDeleteConfirmKeyboard,
   matrixGetKeyboard,
@@ -39,6 +46,7 @@ import { ensureSiteLinked } from "./site-account.js";
 type HistoryItem = {
   sessionId: string;
   characterKey: string;
+  kind: HistoryEntryKind;
   date: string;
   topic: string;
   cards: string[];
@@ -68,7 +76,7 @@ function isNotModifiedError(err: unknown): boolean {
   return /message is not modified/i.test(msg);
 }
 
-async function renderHistoryMessage(
+async function editOrReplyText(
   ctx: Context,
   text: string,
   reply_markup: InlineKeyboard
@@ -79,29 +87,78 @@ async function renderHistoryMessage(
       return;
     } catch (err) {
       if (isNotModifiedError(err)) return;
-      console.warn("[history] edit failed, falling back to reply", err);
+      console.warn("[cabinet] edit failed, falling back to reply", err);
     }
   }
   await ctx.reply(text, { reply_markup });
 }
 
-function formatHistoryPage(item: HistoryItem, page: number, total: number): string {
-  const cards = (item.cards ?? []).filter(Boolean).join(" · ");
-  const preview = (item.preview || "").trim();
-  return [
-    `${copy.historyTitle}`,
-    `· ${page + 1} / ${total} ·`,
-    "",
-    item.topic || item.characterKey || "Расклад",
-    item.date ? item.date.slice(0, 10) : "",
-    cards,
-    preview ? `\n${preview}` : "",
-  ]
-    .filter((line) => line !== "")
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, 3500);
+async function renderHistoryAlbumPage(
+  ctx: Context,
+  item: HistoryItem,
+  page: number,
+  total: number
+): Promise<void> {
+  const markup = historyPagerKeyboard({
+    page,
+    total,
+    sessionId: item.sessionId || null,
+  });
+  await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
+  const buf = await renderHistoryEntryImage({
+    kind: item.kind,
+    topic: item.topic || item.characterKey || "Расклад",
+    date: item.date,
+    preview: item.preview,
+    cards: item.cards,
+    page,
+    total,
+  });
+  const file = new InputFile(buf, `history-${page + 1}.jpg`);
+  const hasPhoto = Boolean(
+    ctx.callbackQuery?.message && "photo" in ctx.callbackQuery.message
+  );
+  if (hasPhoto) {
+    try {
+      await ctx.editMessageMedia(
+        { type: "photo", media: file },
+        { reply_markup: markup }
+      );
+      return;
+    } catch (err) {
+      if (isNotModifiedError(err)) return;
+      console.warn("[history] edit media failed, falling back to reply", err);
+    }
+  } else if (ctx.callbackQuery?.message) {
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      /* ignore */
+    }
+  }
+  await ctx.replyWithPhoto(file, { reply_markup: markup });
+}
+
+function mapHistoryItems(
+  rows: Array<{
+    sessionId: string;
+    characterKey: string;
+    kind?: HistoryEntryKind;
+    date: string;
+    topic: string;
+    cards: string[];
+    preview: string;
+  }>
+): HistoryItem[] {
+  return rows.map((r) => ({
+    sessionId: r.sessionId,
+    characterKey: r.characterKey || "",
+    kind: r.kind || (r.characterKey === "numerolog" ? "matrix" : "spread"),
+    date: r.date || "",
+    topic: r.topic || "",
+    cards: r.cards ?? [],
+    preview: r.preview || "",
+  }));
 }
 
 function linkKb(url?: string | null) {
@@ -204,9 +261,8 @@ async function sendMatrixDiagram(
       birthDate: diagram.birthDate ?? opts.birthDate ?? undefined,
       slots: diagram.slots,
     });
-    await ctx.replyWithPhoto(new InputFile(buf, "matrix.jpg"), {
-      caption: opts.caption?.slice(0, 1024) || undefined,
-    });
+    // No caption — birth date is already on the diagram; captions render as a narrow strip.
+    await ctx.replyWithPhoto(new InputFile(buf, "matrix.jpg"));
     return true;
   } catch (err) {
     console.error("[cabinet] matrix diagram", err);
@@ -337,7 +393,7 @@ export async function showMatrixReports(ctx: Context): Promise<void> {
     const state: MatrixListState = { items, page: 0 };
     setFlow(linked.user.telegram_user_id, "matrix_list", "page", state as unknown as Record<string, unknown>);
     const item = items[0]!;
-    await renderHistoryMessage(
+    await editOrReplyText(
       ctx,
       formatMatrixListPage(item, 0, items.length),
       matrixListPagerKeyboard({ page: 0, total: items.length, reportId: item.id })
@@ -447,6 +503,7 @@ export async function deleteMatrixReport(ctx: Context): Promise<void> {
       });
       return;
     }
+    clearFlow(linked.user.telegram_user_id);
     const shopUrl = `${botConfig.siteUrl}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`;
     await ctx.reply("🗑 Матрица удалена. Можно рассчитать схему и получить новый разбор.", {
       reply_markup: matrixGetKeyboard({ cost: 20, shopUrl }),
@@ -556,7 +613,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
   setFlow(tid, "matrix_list", "page", { items, page: nextPage } as unknown as Record<string, unknown>);
   const item = items[nextPage]!;
   try {
-    await renderHistoryMessage(
+    await editOrReplyText(
       ctx,
       formatMatrixListPage(item, nextPage, items.length),
       matrixListPagerKeyboard({
@@ -696,38 +753,7 @@ export async function showMemory(ctx: Context): Promise<void> {
   }
 }
 
-export async function showPhoto(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
-  if (!linked) return;
-  try {
-    const { data } = await siteCabinet(linked.user.telegram_user_id);
-    if (!data.ok) {
-      await ctx.reply(data.message || copy.siteBridgeDown, {
-        reply_markup: linkKb(data.linkUrl),
-      });
-      return;
-    }
-    const items = data.photo?.items ?? [];
-    if (!items.length) {
-      await ctx.reply(`${copy.photoEmpty}\n\n${copy.photoNativeHint}`, {
-        reply_markup: linkKb(data.photo?.url),
-      });
-      return;
-    }
-    const lines = [
-      copy.photoNativeHint,
-      "",
-      ...items.map(
-        (p, i) =>
-          `${i + 1}. ${p.master || "мастер"} · ${String(p.createdAt || "").slice(0, 10)}`
-      ),
-    ];
-    await ctx.reply(lines.join("\n"), { reply_markup: linkKb(data.photo?.url) });
-  } catch (err) {
-    console.error("[cabinet] photo", err);
-    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-  }
-}
+export const showPhoto = showPhotoFlow;
 
 export async function showSupport(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
@@ -803,34 +829,24 @@ export async function showHistory(ctx: Context): Promise<void> {
   if (!linked) return;
 
   try {
-    const { data } = await siteHistory(linked.user.telegram_user_id, 30);
+    // Always refetch from site — never trust a stale local snapshot after deletes.
+    const { data } = await siteHistory(linked.user.telegram_user_id, 40);
     if (!data.ok || !data.items?.length) {
+      clearFlow(linked.user.telegram_user_id);
       await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
       return;
     }
 
-    const items: HistoryItem[] = data.items.map((r) => ({
-      sessionId: r.sessionId,
-      characterKey: r.characterKey || "",
-      date: r.date || "",
-      topic: r.topic || "",
-      cards: r.cards ?? [],
-      preview: r.preview || "",
-    }));
-
+    const items = mapHistoryItems(data.items);
     const state: HistoryViewState = { items, page: 0 };
-    setFlow(linked.user.telegram_user_id, "history_view", "page", state as unknown as Record<string, unknown>);
-
-    const item = items[0]!;
-    await renderHistoryMessage(
-      ctx,
-      formatHistoryPage(item, 0, items.length),
-      historyPagerKeyboard({
-        page: 0,
-        total: items.length,
-        sessionId: item.sessionId || null,
-      })
+    setFlow(
+      linked.user.telegram_user_id,
+      "history_view",
+      "page",
+      state as unknown as Record<string, unknown>
     );
+
+    await renderHistoryAlbumPage(ctx, items[0]!, 0, items.length);
   } catch (err) {
     console.error("[history] site", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -849,6 +865,10 @@ export async function handleHistoryCallback(ctx: Context, data: string): Promise
     await ctx.answerCallbackQuery().catch(() => undefined);
     return true;
   }
+  if (data === CB.histDelNo) {
+    await ctx.answerCallbackQuery({ text: "Оставила" }).catch(() => undefined);
+    return true;
+  }
 
   if (data.startsWith(CB.histOpenPrefix)) {
     await ctx.answerCallbackQuery().catch(() => undefined);
@@ -864,39 +884,47 @@ export async function handleHistoryCallback(ctx: Context, data: string): Promise
     return true;
   }
 
+  if (data.startsWith(CB.histDelYesPrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const sessionId = data.slice(CB.histDelYesPrefix.length);
+    if (sessionId) await deleteHistoryEntry(ctx, sessionId);
+    return true;
+  }
+
+  if (data.startsWith(CB.histDelPrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const sessionId = data.slice(CB.histDelPrefix.length);
+    if (sessionId) {
+      await ctx.reply("Удалить эту запись из истории Zovus?", {
+        reply_markup: historyDeleteConfirmKeyboard(sessionId),
+      });
+    }
+    return true;
+  }
+
   if (!data.startsWith(CB.histPagePrefix)) {
     return false;
   }
 
   const page = Number(data.slice(CB.histPagePrefix.length));
-  const flow = getFlow(tid);
-  if (!flow || flow.flow !== "history_view" || !Array.isArray(flow.data.items)) {
-    await ctx.answerCallbackQuery({ text: "Откройте историю снова" }).catch(() => undefined);
-    await showHistory(ctx);
-    return true;
-  }
-
-  const items = flow.data.items as HistoryItem[];
-  if (!items.length) {
-    await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);
-    return true;
-  }
-
-  const nextPage = Math.min(Math.max(0, Number.isFinite(page) ? page : 0), items.length - 1);
-  const state: HistoryViewState = { items, page: nextPage };
-  setFlow(tid, "history_view", "page", state as unknown as Record<string, unknown>);
-
-  const item = items[nextPage]!;
+  // Refetch so deleted site/bot items disappear without reopening /history.
   try {
-    await renderHistoryMessage(
-      ctx,
-      formatHistoryPage(item, nextPage, items.length),
-      historyPagerKeyboard({
-        page: nextPage,
-        total: items.length,
-        sessionId: item.sessionId || null,
-      })
-    );
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    const { data: hist } = await siteHistory(linked.user.telegram_user_id, 40);
+    if (!hist.ok || !hist.items?.length) {
+      clearFlow(tid);
+      await ctx.answerCallbackQuery({ text: "История пуста" }).catch(() => undefined);
+      await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
+      return true;
+    }
+    const items = mapHistoryItems(hist.items);
+    const nextPage = Math.min(Math.max(0, Number.isFinite(page) ? page : 0), items.length - 1);
+    setFlow(tid, "history_view", "page", {
+      items,
+      page: nextPage,
+    } as unknown as Record<string, unknown>);
+    await renderHistoryAlbumPage(ctx, items[nextPage]!, nextPage, items.length);
     await ctx
       .answerCallbackQuery({ text: `${nextPage + 1} / ${items.length}` })
       .catch(() => undefined);
@@ -907,16 +935,61 @@ export async function handleHistoryCallback(ctx: Context, data: string): Promise
   return true;
 }
 
+async function deleteHistoryEntry(ctx: Context, sessionId: string): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteHistoryDelete(linked.user.telegram_user_id, sessionId);
+    if (!data.ok) {
+      await ctx.reply(data.message || "Запись уже удалена.", {
+        reply_markup: salonKeyboard(),
+      });
+      await showHistory(ctx);
+      return;
+    }
+    clearFlow(linked.user.telegram_user_id);
+    await ctx.reply("🗑 Запись удалена из истории.", { reply_markup: salonKeyboard() });
+    await showHistory(ctx);
+  } catch (err) {
+    console.error("[history] delete", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
 export async function openHistoryReading(ctx: Context, sessionId: string): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
   try {
     const { data } = await siteReading(linked.user.telegram_user_id, sessionId);
     if (!data.ok || !data.reading) {
-      await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
+      await ctx.reply("Эта запись уже удалена.", { reply_markup: salonKeyboard() });
+      await showHistory(ctx);
       return;
     }
     await ctx.replyWithChatAction("upload_photo");
+    const isMatrix =
+      data.characterKey === "numerolog" ||
+      data.intention === "destiny_matrix";
+    if (isMatrix) {
+      try {
+        const { data: mx } = await siteNumerology(linked.user.telegram_user_id, "summary");
+        await sendMatrixDiagram(ctx, {
+          diagram: mx.diagram,
+          birthDate: mx.birthDate,
+          name: linked.user.first_name || null,
+        });
+      } catch {
+        /* diagram optional */
+      }
+      await presentReadingToTelegram(ctx, {
+        reading: formatMatrixReadingPremium(data.reading),
+        cardNames: [],
+        question: "Матрица судьбы",
+        sessionId,
+        matrixActions: true,
+      });
+      return;
+    }
     await presentReadingToTelegram(ctx, {
       reading: data.reading,
       cardNames: data.cards || [],
@@ -934,6 +1007,11 @@ export async function handleCabinetText(ctx: Context, text: string): Promise<boo
   if (!ctx.from) return false;
   const flow = getFlow(ctx.from.id);
   if (!flow) return false;
+
+  if (flow.flow === "photo") {
+    const { handlePhotoText } = await import("./photo.js");
+    if (await handlePhotoText(ctx, text)) return true;
+  }
 
   if (flow.flow === "chat" && flow.step === "await_message") {
     const sessionId = typeof flow.data.sessionId === "string" ? flow.data.sessionId : "";

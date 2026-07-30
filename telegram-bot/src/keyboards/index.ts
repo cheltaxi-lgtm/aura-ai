@@ -1,8 +1,20 @@
 import { InlineKeyboard, Keyboard } from "grammy";
 import { copy } from "../copy/ru.js";
 import { PAIN_CHIPS } from "../domain/question/validate.js";
-import { buildSessionChatUrl } from "../domain/site-client.js";
+import {
+  buildSessionChatUrl,
+  isTelegramInviteUrl,
+  siteWebAppUrl,
+} from "../domain/site-client.js";
 import { isShareCardEnabled } from "../flags.js";
+
+/** Site CTAs open as Telegram Mini App; t.me invites stay ordinary URLs. */
+function webAppButton(kb: InlineKeyboard, label: string, pathOrUrl: string): InlineKeyboard {
+  if (isTelegramInviteUrl(pathOrUrl)) {
+    return kb.url(label, pathOrUrl);
+  }
+  return kb.webApp(label, siteWebAppUrl(pathOrUrl));
+}
 
 /** Persistent bottom bar — emoji allowed on buttons only (not in message bodies). */
 export const NAV = {
@@ -70,7 +82,17 @@ export const CB = {
   histOpenPrefix: "hist:open:",
   histAskPrefix: "hist:ask:",
   histPagePrefix: "hist:pg:",
+  histDelPrefix: "hist:del:",
+  histDelYesPrefix: "hist:dely:",
+  histDelNo: "hist:deln",
   histNoop: "hist:noop",
+  /** Photo-rasklad native flow. Keep payloads short — TG limit 64 bytes. */
+  phPrefix: "ph:",
+  phNew: "ph:new",
+  phOk: "ph:ok",
+  phCancel: "ph:cancel",
+  phNoop: "ph:noop",
+  phOpenPrefix: "ph:o:",
   /** Spread catalog (site /rasklady parity). Keep payloads short — TG limit 64 bytes. */
   catHome: "cat:home",
   catBack: "cat:back",
@@ -141,7 +163,8 @@ export function catalogHomeKeyboard(
   }
   kb.text(`✍️ ${copy.catalogOwnQuestion}`, CB.catOwn);
   if (siteCatalogUrl) {
-    kb.row().url(`🕯 ${copy.catalogOnSite}`, siteCatalogUrl);
+    kb.row();
+    webAppButton(kb, `🕯 ${copy.catalogOnSite}`, siteCatalogUrl);
   }
   return kb;
 }
@@ -177,14 +200,15 @@ export function catalogItemKeyboard(opts: {
   if (opts.native !== false) {
     kb.text(`🔮 ${copy.catalogRunHere}`, CB.catRun).row();
   }
-  kb.url(`🕯 ${copy.catalogOpenSite}`, opts.url).row();
+  webAppButton(kb, `🕯 ${copy.catalogOpenSite}`, opts.url).row();
   // Back to the same list page (edit in place), not a new home message.
   kb.text(copy.catalogBack, CB.catBack);
   return kb;
 }
 
 export function ctaKeyboard(url: string): InlineKeyboard {
-  const kb = new InlineKeyboard().url(`🕯 ${copy.ctaLinkButton}`, url);
+  const kb = new InlineKeyboard();
+  webAppButton(kb, `🕯 ${copy.ctaLinkButton}`, url);
   if (isShareCardEnabled()) {
     kb.row().text("📤 Поделиться раскладом", CB.share);
   }
@@ -192,7 +216,8 @@ export function ctaKeyboard(url: string): InlineKeyboard {
 }
 
 export function linkAccountKeyboard(url: string): InlineKeyboard {
-  return new InlineKeyboard().url(`🔗 ${copy.ctaLinkButton}`, url);
+  const kb = new InlineKeyboard();
+  return webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, url);
 }
 
 export function resendCtaKeyboard(sessionId: string): InlineKeyboard {
@@ -203,7 +228,8 @@ export function resendCtaKeyboard(sessionId: string): InlineKeyboard {
 }
 
 export function continueOnSiteKeyboard(url: string, label: string = copy.continueOnSite): InlineKeyboard {
-  return new InlineKeyboard().url(`🕯 ${label}`, url);
+  const kb = new InlineKeyboard();
+  return webAppButton(kb, `🕯 ${label}`, url);
 }
 
 export function modulesKeyboard(): InlineKeyboard {
@@ -222,7 +248,9 @@ export function modulesKeyboard(): InlineKeyboard {
 
 /** Site deep-link only — follow-up chat in the bot is closed. */
 export function chatFollowUpKeyboard(sessionId: string): InlineKeyboard {
-  return new InlineKeyboard().url(
+  const kb = new InlineKeyboard();
+  return webAppButton(
+    kb,
     `🕯 ${copy.continueDiscussionOnSite}`,
     buildSessionChatUrl(sessionId)
   );
@@ -250,16 +278,16 @@ export function readingPagerKeyboard(opts: {
     kb.row();
   }
 
+  // One site CTA only — prefer session chat; otherwise matrix/cabinet URL.
   if (opts.chatUrl) {
-    kb.url(`🕯 ${copy.continueDiscussionOnSite}`, opts.chatUrl).row();
+    webAppButton(kb, `🕯 ${copy.continueDiscussionOnSite}`, opts.chatUrl).row();
+  } else if (opts.matrixSiteUrl) {
+    webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.matrixSiteUrl).row();
   }
 
   if (opts.matrixActions) {
-    kb.text("🔮 Рассчитать матрицу", CB.mxCalc).text("🗑 Удалить", CB.mxDel).row();
-    kb.text("✨ Новая матрица", CB.mxNew);
-    if (opts.matrixSiteUrl) {
-      kb.row().url(`🕯 ${copy.continueOnSite}`, opts.matrixSiteUrl);
-    }
+    // Owned full report: renew or delete — not "calculate" (that's the free teaser).
+    kb.text("✨ Новая матрица", CB.mxNew).text("🗑 Удалить", CB.mxDel);
   }
   return kb;
 }
@@ -277,16 +305,47 @@ export function supportListKeyboard(
     kb.row().text(`💬 Ответить · ${t.id.slice(0, 8)}`, `${CB.supportReplyPrefix}${t.id}`);
   }
   if (siteUrl) {
-    kb.row().url(`🕯 ${copy.continueOnSite}`, siteUrl);
+    kb.row();
+    webAppButton(kb, `🕯 ${copy.continueOnSite}`, siteUrl);
   }
   return kb;
 }
 
 export function historyItemKeyboard(sessionId: string): InlineKeyboard {
-  return new InlineKeyboard()
+  const kb = new InlineKeyboard()
     .text("📜 Открыть", `${CB.histOpenPrefix}${sessionId}`)
-    .row()
-    .url(`🕯 ${copy.continueDiscussionOnSite}`, buildSessionChatUrl(sessionId));
+    .row();
+  return webAppButton(
+    kb,
+    `🕯 ${copy.continueDiscussionOnSite}`,
+    buildSessionChatUrl(sessionId)
+  );
+}
+
+/** Premium profile album actions — site SoT. */
+export function profileKeyboard(opts: {
+  linked: boolean;
+  cabinetUrl?: string | null;
+  runesUrl?: string | null;
+  linkUrl?: string | null;
+  inviteUrl?: string | null;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (!opts.linked && opts.linkUrl) {
+    webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, opts.linkUrl).row();
+  }
+  if (opts.cabinetUrl) {
+    webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.cabinetUrl);
+    if (opts.runesUrl) webAppButton(kb, "🪙 Руны", opts.runesUrl);
+    kb.row();
+  } else if (opts.runesUrl) {
+    webAppButton(kb, "🪙 Руны", opts.runesUrl).row();
+  }
+  if (opts.inviteUrl) {
+    // t.me invites must stay .url(); webAppButton handles that.
+    webAppButton(kb, "✨ Пригласить", opts.inviteUrl).row();
+  }
+  return kb;
 }
 
 /** History album: one entry per page with ‹ ›. */
@@ -309,10 +368,22 @@ export function historyPagerKeyboard(opts: {
   }
 
   if (opts.sessionId) {
-    kb.text("📜 Открыть расклад", `${CB.histOpenPrefix}${opts.sessionId}`).row();
-    kb.url(`🕯 ${copy.continueDiscussionOnSite}`, buildSessionChatUrl(opts.sessionId));
+    kb.text("📜 Открыть", `${CB.histOpenPrefix}${opts.sessionId}`)
+      .text("🗑", `${CB.histDelPrefix}${opts.sessionId}`)
+      .row();
+    webAppButton(
+      kb,
+      `🕯 ${copy.continueDiscussionOnSite}`,
+      buildSessionChatUrl(opts.sessionId)
+    );
   }
   return kb;
+}
+
+export function historyDeleteConfirmKeyboard(sessionId: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🗑 Удалить", `${CB.histDelYesPrefix}${sessionId}`)
+    .text("Оставить", CB.histDelNo);
 }
 
 /** Not owned yet: get full matrix + recalculate free scheme. */
@@ -325,7 +396,8 @@ export function matrixGetKeyboard(opts: {
     .row()
     .text("🔮 Рассчитать матрицу", CB.mxCalc);
   if (opts.shopUrl) {
-    kb.row().url("🪙 Пополнить руны", opts.shopUrl);
+    kb.row();
+    webAppButton(kb, "🪙 Пополнить руны", opts.shopUrl);
   }
   return kb;
 }
@@ -333,10 +405,11 @@ export function matrixGetKeyboard(opts: {
 /** Owned full report actions. */
 export function matrixOwnedKeyboard(opts?: { siteUrl?: string | null }): InlineKeyboard {
   const kb = new InlineKeyboard()
-    .text("🔮 Рассчитать матрицу", CB.mxCalc)
+    .text("✨ Новая матрица", CB.mxNew)
     .text("🗑 Удалить", CB.mxDel);
   if (opts?.siteUrl) {
-    kb.row().url(`🕯 ${copy.continueOnSite}`, opts.siteUrl);
+    kb.row();
+    webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.siteUrl);
   }
   return kb;
 }

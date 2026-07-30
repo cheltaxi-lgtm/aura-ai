@@ -12,6 +12,7 @@ import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
 import { trackPaywallOpen } from "@/lib/seo/metrika";
 import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
+import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
 interface RunePackage {
   id: string;
@@ -135,7 +136,7 @@ export default function RuneShopModal({
       if (pkg) {
         pushEcommerceAdd({ id: pkg.id, name: pkg.name, price: pkg.price_rub, category: "runes" });
       }
-      window.location.href = data.paymentUrl;
+      openTelegramExternalUrl(data.paymentUrl);
     } catch {
       setError("Ошибка соединения");
       setPurchasingId(null);
@@ -168,7 +169,7 @@ export default function RuneShopModal({
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       pushEcommerceAdd({ id: "custom", name: "Произвольная сумма", price: amountRub, category: "runes" });
-      window.location.href = data.paymentUrl;
+      openTelegramExternalUrl(data.paymentUrl);
     } catch {
       setError("Ошибка соединения");
       setPurchasingId(null);

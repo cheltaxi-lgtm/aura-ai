@@ -14,7 +14,12 @@ import {
   BillingService,
   InsufficientFundsError,
 } from "@/lib/services/billing-service";
-import { createSession, unlockSingleSession, updateSessionChatMeta } from "@/lib/session";
+import {
+  createSession,
+  deleteConsultationSession,
+  unlockSingleSession,
+  updateSessionChatMeta,
+} from "@/lib/session";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { getCabinetSessions } from "@/lib/cabinet-data";
@@ -36,19 +41,54 @@ export type BotCard = {
   meaning: string;
 };
 
+function historyKind(s: {
+  characterKey: string;
+  intention?: string | null;
+  spreadId?: string | null;
+  spreadType?: string | null;
+}): "matrix" | "photo" | "spread" {
+  if (
+    s.spreadId === "destiny_matrix" ||
+    s.intention === "destiny_matrix" ||
+    s.characterKey === "numerolog"
+  ) {
+    return "matrix";
+  }
+  if (s.spreadType === "photo") return "photo";
+  return "spread";
+}
+
 export async function botHistory(profileUserId: string, limit = 8) {
   const { sessions, total } = await getCabinetSessions(profileUserId, limit, 0);
   return {
     total,
-    items: sessions.map((s) => ({
-      sessionId: s.sessionId ?? s.id,
-      characterKey: s.characterKey,
-      date: s.sessionDate,
-      topic: s.topicSummary,
-      cards: s.keyCards,
-      preview: (s.prediction || "").slice(0, 280),
-    })),
+    items: sessions.map((s) => {
+      const kind = historyKind(s);
+      const topic =
+        kind === "matrix"
+          ? "Матрица судьбы"
+          : kind === "photo"
+            ? s.topicSummary?.trim() || "Расклад по фото"
+            : s.topicSummary;
+      return {
+        sessionId: s.sessionId ?? s.id,
+        characterKey: s.characterKey,
+        kind,
+        date: s.sessionDate,
+        topic,
+        cards: s.keyCards,
+        preview: (s.prediction || "").slice(0, 280),
+      };
+    }),
   };
+}
+
+export async function botHistoryDelete(profileUserId: string, sessionId: string) {
+  const id = sessionId.trim();
+  if (!id) return { ok: false as const, error: "not_found" as const };
+  const ok = await deleteConsultationSession(id, profileUserId);
+  if (!ok) return { ok: false as const, error: "not_found" as const };
+  return { ok: true as const, deleted: true as const };
 }
 
 export async function botReadingDetail(profileUserId: string, sessionId: string) {

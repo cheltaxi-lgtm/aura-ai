@@ -7,6 +7,7 @@ import AppAwareSiteFooter from "@/components/AppAwareSiteFooter";
 import GlobalAppTopHeader from "@/components/GlobalAppTopHeader";
 import UtmCapture from "@/components/UtmCapture";
 import YandexMetrika from "@/components/YandexMetrika";
+import TelegramWebAppProvider from "@/components/telegram/TelegramWebAppProvider";
 import AdsBeaconServer from "@/modules/ads/beacon/AdsBeaconServer";
 import { getRootMetadata } from "@/lib/seo";
 import "../styles/tokens.css";
@@ -47,6 +48,7 @@ export default function RootLayout({
         </svg>
         <SalonBackground />
         <Providers>
+          <TelegramWebAppProvider />
           <GlobalAppTopHeader />
           {/*
             Do not put min-h-0 on the main column by default: it caps height to the

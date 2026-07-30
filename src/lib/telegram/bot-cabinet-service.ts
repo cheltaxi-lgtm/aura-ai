@@ -2,7 +2,15 @@
  * Cabinet modules for Telegram bot (read/list + light actions).
  * Heavy generation stays on site URLs when needed (photo upload, natal report pay).
  */
-import { getCabinetDiaryPreview, getCabinetPhotoSpreads } from "@/lib/cabinet-data";
+import { resolveUnlimitedAccess } from "@/lib/accounts";
+import {
+  getCabinetDiaryPreview,
+  getCabinetPhotoSpreads,
+  getCabinetProfile,
+  getCabinetStats,
+  getCabinetSessions,
+} from "@/lib/cabinet-data";
+import { CHARACTERS } from "@/lib/characters";
 import { listJointReadingsForUser, buildJointReadingUrl } from "@/lib/joint-reading-service";
 import { listFacts } from "@/lib/memory/user-facts";
 import { listUserMatrixReports } from "@/lib/services/numerology-report-service";
@@ -28,6 +36,14 @@ import {
   parseChatRequest,
 } from "@/lib/services/chat-orchestrator";
 import { query } from "@/lib/db";
+
+function masterDisplayName(key: string | null | undefined): string | null {
+  if (!key?.trim()) return null;
+  const id = key.trim().toLowerCase();
+  if (id === "numerolog") return "Эвелина";
+  const hit = CHARACTERS.find((c) => c.id === id);
+  return hit?.name ?? key;
+}
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
@@ -55,28 +71,76 @@ export async function botCabinetOverview(telegramUserId: number) {
   const site = siteBase();
   const utm = "utm_source=telegram&utm_medium=bot&utm_campaign=cabinet";
 
-  const [balance, natal, rituals, ritualStats, joints, diary, facts, tickets, matrices, photos] =
-    await Promise.all([
-      getRuneBalance(pid),
-      getStoredNatalChart(pid),
-      listUserRituals(pid).catch(() => []),
-      getCabinetRitualStats(pid).catch(() => null),
-      listJointReadingsForUser(pid, 5).catch(() => []),
-      getCabinetDiaryPreview(pid, 3).catch(() => []),
-      listFacts(pid, 5).catch(() => []),
-      listUserSupportTickets(aid).catch(() => []),
-      listUserMatrixReports(pid, 3).catch(() => []),
-      getCabinetPhotoSpreads(pid).catch(() => []),
-    ]);
+  const [
+    balance,
+    natal,
+    rituals,
+    ritualStats,
+    joints,
+    diary,
+    facts,
+    tickets,
+    matrices,
+    photos,
+    profile,
+    stats,
+    sessionsMeta,
+    unlimited,
+  ] = await Promise.all([
+    getRuneBalance(pid),
+    getStoredNatalChart(pid),
+    listUserRituals(pid).catch(() => []),
+    getCabinetRitualStats(pid).catch(() => null),
+    listJointReadingsForUser(pid, 5).catch(() => []),
+    getCabinetDiaryPreview(pid, 3).catch(() => []),
+    listFacts(pid, 5).catch(() => []),
+    listUserSupportTickets(aid).catch(() => []),
+    listUserMatrixReports(pid, 50).catch(() => []),
+    getCabinetPhotoSpreads(pid).catch(() => []),
+    getCabinetProfile(pid, resolved.email || "", resolved.name || "Гость").catch(() => null),
+    getCabinetStats(pid).catch(() => ({
+      totalSessions: 0,
+      favoriteMaster: null,
+      daysWithUs: 0,
+      totalCards: 0,
+    })),
+    getCabinetSessions(pid, 1, 0).catch(() => ({ sessions: [], total: 0 })),
+    resolveUnlimitedAccess({ accountId: aid, profileUserId: pid }).catch(() => false),
+  ]);
 
   const western = natal?.western ?? null;
   const timeKnown = Boolean(natal?.timeKnown);
   const natalSummary = western ? bigThree(western, timeKnown) : [];
   const placeLabel = natal?.place?.label || null;
+  const userRow = await getUserById(pid).catch(() => null);
 
   return {
     ok: true as const,
     runeBalance: balance,
+    profile: {
+      name: profile?.name || resolved.name || userRow?.name || "Гость",
+      email: profile?.email || resolved.email || null,
+      zodiac: profile?.zodiac || userRow?.zodiac || null,
+      birthDate: profile?.birthDate || userRow?.birth_date || null,
+      memberSince: profile?.createdAt || null,
+      linked: true,
+      unlimited: Boolean(unlimited),
+    },
+    stats: {
+      totalSessions: Math.max(stats.totalSessions, sessionsMeta.total),
+      totalCards: stats.totalCards,
+      daysWithUs: stats.daysWithUs,
+      favoriteMaster: stats.favoriteMaster,
+      favoriteMasterName: masterDisplayName(stats.favoriteMaster),
+      matrices: matrices.length,
+      photos: photos.length,
+      rituals: rituals.length,
+      joints: joints.length,
+      diary: diary.length,
+      openTickets: tickets.filter(
+        (t) => t.status !== "closed" && t.status !== "resolved"
+      ).length,
+    },
     natal: natal
       ? {
           hasChart: true,
@@ -133,7 +197,7 @@ export async function botCabinetOverview(telegramUserId: number) {
       url: `${site}/cabinet/support?${utm}`,
     },
     numerology: {
-      matrices: matrices.map((m) => ({
+      matrices: matrices.slice(0, 5).map((m) => ({
         id: m.id,
         birthDate: m.birthDate,
         createdAt: m.createdAt,
@@ -141,7 +205,7 @@ export async function botCabinetOverview(telegramUserId: number) {
       url: `${site}/cabinet?${utm}`,
     },
     photo: {
-      items: photos.slice(0, 3).map((p) => ({
+      items: photos.slice(0, 5).map((p) => ({
         id: p.id,
         createdAt: p.createdAt,
         master: p.characterName,

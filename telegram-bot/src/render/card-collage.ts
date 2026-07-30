@@ -4,11 +4,27 @@ import sharp from "sharp";
 import { botConfig } from "../config.js";
 import { reportAssetMissing, resolveAssetPath } from "../domain/deck/asset-check.js";
 import type { DrawnCard } from "../domain/deck/types.js";
+import {
+  BOT_CANVAS_HEIGHT,
+  BOT_CANVAS_WIDTH,
+  encodeBotJpeg,
+  getOrnatePlate,
+} from "./canvas.js";
 
 /** Classic tarot face ratio (width / height) — matches deck assets (~533×800). */
 const CARD_ASPECT = 2 / 3;
 const FACE_BG = { r: 14, g: 12, b: 11, alpha: 1 };
 const CANVAS_BG = { r: 14, g: 12, b: 11 };
+/** Site photo-rasklad max; keep collage readable in Telegram. */
+export const MAX_COLLAGE_CARDS = 12;
+
+type RawFace = {
+  input: Buffer;
+  raw: { width: number; height: number; channels: 3 | 4 };
+};
+
+const FACE_CACHE_MAX = 96;
+const faceCache = new Map<string, RawFace>();
 
 function resolveCardPath(slug: string): string | null {
   return resolveAssetPath(botConfig.deckAssetsDir, slug);
@@ -41,15 +57,27 @@ export function writeCachedCollage(sessionId: string, stage: number, buf: Buffer
   writeFileSync(cachePath(sessionId, stage), buf);
 }
 
-/**
- * Full card face inside the slot — never crop art (contain + dark pad).
- */
+function rememberFace(key: string, face: RawFace): RawFace {
+  if (faceCache.size >= FACE_CACHE_MAX) {
+    const oldest = faceCache.keys().next().value;
+    if (oldest) faceCache.delete(oldest);
+  }
+  faceCache.set(key, face);
+  return face;
+}
+
 async function cardFace(
   card: DrawnCard | null,
   faceUp: boolean,
   width: number,
   height: number
-): Promise<Buffer> {
+): Promise<RawFace> {
+  const slug = faceUp && card ? card.slug : "_back";
+  const reversed = Boolean(faceUp && card?.reversed);
+  const key = `${slug}|${width}x${height}|${reversed ? 1 : 0}|${faceUp ? 1 : 0}`;
+  const hit = faceCache.get(key);
+  if (hit) return hit;
+
   const back = resolveBackPath();
   const facePath = faceUp && card ? resolveCardPath(card.slug) : null;
   if (faceUp && card && !facePath) {
@@ -58,143 +86,199 @@ async function cardFace(
   }
   const path = faceUp ? facePath ?? back : back;
   if (!path) {
-    return sharp({
+    const { data, info } = await sharp({
       create: { width, height, channels: 3, background: CANVAS_BG },
     })
-      .png()
-      .toBuffer();
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    return rememberFace(key, {
+      input: data,
+      raw: { width: info.width, height: info.height, channels: info.channels as 3 | 4 },
+    });
   }
 
   let pipeline = sharp(path);
-  if (faceUp && card?.reversed && facePath) {
+  if (reversed && facePath) {
     pipeline = pipeline.rotate(180);
   }
 
-  return pipeline
+  const { data, info } = await pipeline
     .resize(width, height, {
       fit: "contain",
       background: FACE_BG,
       withoutEnlargement: false,
     })
-    .png()
-    .toBuffer();
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  return rememberFace(key, {
+    input: data,
+    raw: { width: info.width, height: info.height, channels: info.channels as 3 | 4 },
+  });
 }
 
 export type CollageOptions = {
-  revealedCount: number; // 0..3
+  revealedCount?: number;
   question?: string;
   watermark?: boolean;
   captionHint?: string;
 };
 
+function gridLayout(n: number): { cols: number; rows: number } {
+  const count = Math.max(1, Math.min(MAX_COLLAGE_CARDS, n));
+  if (count <= 3) return { cols: count, rows: 1 };
+  if (count === 4) return { cols: 2, rows: 2 };
+  if (count <= 6) return { cols: 3, rows: 2 };
+  if (count <= 9) return { cols: 3, rows: 3 };
+  return { cols: 4, rows: Math.ceil(count / 4) };
+}
+
 /**
- * Tight triplet collage sized to the cards (no giant empty canvas).
- * Card slots keep 2:3 so faces render fully — never cover-cropped.
+ * Spread collage laid out on the fixed 1080×1350 canvas (no shrink → larger type).
  */
-export async function renderTripletCollage(
+export async function renderSpreadCollage(
   cards: DrawnCard[],
-  options: CollageOptions = { revealedCount: 3 }
+  options: CollageOptions = {}
 ): Promise<Buffer> {
-  const padX = 40;
-  const padTop = 56;
-  const padBottom = 36;
-  const gap = 18;
-  const titleH = 28;
-  const qH = options.question ? 36 : 0;
-  const labelH = 48;
+  const list = cards.slice(0, MAX_COLLAGE_CARDS);
+  const n = Math.max(1, list.length);
+  const revealed = Math.min(n, options.revealedCount ?? n);
+  const { cols, rows } = gridLayout(n);
 
-  // Target Telegram-friendly width; height follows content.
-  const width = 1080;
+  const width = BOT_CANVAS_WIDTH;
+  const height = BOT_CANVAS_HEIGHT;
+  const padX = 56;
+  const padTop = 118;
+  const padBottom = 72;
+  const gap = n >= 7 ? 18 : 22;
+  const labelH = n >= 7 ? 52 : 58;
+  const qH = options.question ? 40 : 0;
+
   const innerW = width - padX * 2;
-  const cardW = Math.floor((innerW - gap * 2) / 3);
-  const cardH = Math.round(cardW / CARD_ASPECT);
-  const height = padTop + titleH + qH + 12 + cardH + labelH + padBottom;
-
-  const rowWidth = cardW * 3 + gap * 2;
-  const rowLeft = Math.floor((width - rowWidth) / 2);
-  const top = padTop + titleH + qH + 12;
-  const labelY1 = top + cardH + 20;
-  const labelY2 = labelY1 + 20;
-
-  const faces = await Promise.all(
-    [0, 1, 2].map((i) =>
-      cardFace(cards[i] ?? null, i < options.revealedCount, cardW, cardH)
-    )
+  const innerH = height - padTop - padBottom - qH - 8;
+  // Card slot = face + label under it
+  const slotH = Math.floor((innerH - gap * (rows - 1)) / rows);
+  const cardH = Math.min(
+    Math.round(slotH - labelH),
+    Math.round(((innerW - gap * (cols - 1)) / cols) / CARD_ASPECT)
   );
+  const cardW = Math.round(cardH * CARD_ASPECT);
 
-  const labels = [0, 1, 2].map((i) => {
-    const c = cards[i];
-    if (!c || i >= options.revealedCount) return "";
-    const rev = c.reversed ? " · перев." : "";
-    return `${c.positionLabel}\n${c.name}${rev}`;
-  });
+  const gridW = cols * cardW + (cols - 1) * gap;
+  const gridH = rows * (cardH + labelH) + (rows - 1) * gap;
+  const gridLeft = Math.floor((width - gridW) / 2);
+  const gridTop = padTop + qH + Math.floor((innerH - qH - gridH) / 2);
+
+  const nameSize = cardW >= 280 ? 20 : cardW >= 200 ? 17 : 14;
+  const posSize = Math.max(12, nameSize - 3);
+
+  const [plate, faces] = await Promise.all([
+    getOrnatePlate(),
+    Promise.all(
+      Array.from({ length: n }, (_, i) =>
+        cardFace(list[i] ?? null, i < revealed, cardW, cardH)
+      )
+    ),
+  ]);
 
   const qLine = options.question
-    ? escapeXml(options.question.length > 64 ? `${options.question.slice(0, 61)}…` : options.question)
+    ? escapeXml(
+        options.question.length > 52
+          ? `${options.question.slice(0, 49)}…`
+          : options.question
+      )
     : "";
 
-  const svg = Buffer.from(
-    `<svg width="${width}" height="${height}">
-      <defs>
-        <radialGradient id="g" cx="50%" cy="35%" r="75%">
-          <stop offset="0%" stop-color="#2A221C"/>
-          <stop offset="100%" stop-color="#0E0C0B"/>
-        </radialGradient>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#g)"/>
-      <rect x="14" y="14" width="${width - 28}" height="${height - 28}" fill="none" stroke="#C4A574" stroke-opacity="0.4" stroke-width="1"/>
-      <text x="50%" y="${padTop - 8}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#C4A574">Zovus</text>
+  const overlays: string[] = [];
+  const labelSvg = list
+    .map((c, i) => {
+      if (!c || i >= revealed) return "";
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const left = gridLeft + col * (cardW + gap);
+      const top = gridTop + row * (cardH + labelH + gap);
+      const cx = left + cardW / 2;
+      const y1 = top + cardH + 22;
+      const y2 = y1 + nameSize + 4;
+      const rev = c.reversed ? " · перев." : "";
+      const pos = c.positionLabel || `Карта ${i + 1}`;
+      const name = `${c.name}${rev}`;
+      overlays.push(
+        `<rect x="${left - 3}" y="${top - 3}" width="${cardW + 6}" height="${cardH + 6}"
+          fill="none" stroke="#C4A574" stroke-opacity="0.65" stroke-width="2" rx="4"/>`
+      );
+      return `<text x="${cx}" y="${y1}" text-anchor="middle" font-family="Georgia, serif" font-size="${posSize}" fill="#C4A574">${escapeXml(pos)}</text>
+      <text x="${cx}" y="${y2}" text-anchor="middle" font-family="Georgia, serif" font-size="${nameSize}" fill="#F5EDE3">${escapeXml(name)}</text>`;
+    })
+    .join("");
+
+  const overlaySvg = Buffer.from(
+    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       ${
         qLine
-          ? `<text x="50%" y="${padTop + titleH}" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#E8DFD4">${qLine}</text>`
+          ? `<text x="50%" y="${padTop - 8}" text-anchor="middle" font-family="Georgia, serif" font-size="24" fill="#E8D5A8">${qLine}</text>`
           : ""
       }
-      ${labels
-        .map((lab, i) => {
-          if (!lab) return "";
-          const [pos, name] = lab.split("\n");
-          const x = rowLeft + i * (cardW + gap) + cardW / 2;
-          return `<text x="${x}" y="${labelY1}" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="#C4A574">${escapeXml(pos || "")}</text>
-          <text x="${x}" y="${labelY2}" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#F2E8D8">${escapeXml(name || "")}</text>`;
-        })
-        .join("")}
+      ${overlays.join("\n")}
+      ${labelSvg}
       ${
         options.watermark
-          ? `<text x="${width - padX}" y="${height - 16}" text-anchor="end" font-family="Georgia, serif" font-size="13" fill="#8A7B68">zovus.ru</text>`
+          ? `<text x="${width - 56}" y="${height - 40}" text-anchor="end" font-family="Georgia, serif" font-size="16" fill="#8A7349">zovus.ru</text>`
           : ""
       }
     </svg>`
   );
 
-  const composites = faces.map((input, i) => ({
-    input,
-    left: rowLeft + i * (cardW + gap),
-    top,
-  }));
+  const composites = [
+    ...faces.map((face, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return {
+        input: face.input,
+        raw: face.raw,
+        left: gridLeft + col * (cardW + gap),
+        top: gridTop + row * (cardH + labelH + gap),
+      };
+    }),
+    { input: overlaySvg },
+  ];
 
-  return sharp(svg).composite(composites).jpeg({ quality: 92 }).toBuffer();
+  return encodeBotJpeg(sharp(plate).composite(composites));
+}
+
+export async function renderTripletCollage(
+  cards: DrawnCard[],
+  options: CollageOptions & { revealedCount?: number } = { revealedCount: 3 }
+): Promise<Buffer> {
+  return renderSpreadCollage(cards.slice(0, 3), {
+    ...options,
+    revealedCount: options.revealedCount ?? 3,
+  });
 }
 
 export async function renderDayCardImage(card: DrawnCard): Promise<Buffer> {
-  const width = 720;
-  const cardW = 420;
+  const width = BOT_CANVAS_WIDTH;
+  const height = BOT_CANVAS_HEIGHT;
+  const cardW = 520;
   const cardH = Math.round(cardW / CARD_ASPECT);
-  const padTop = 64;
-  const padBottom = 56;
-  const height = padTop + cardH + padBottom + 24;
-  const panel = await cardFace(card, true, cardW, cardH);
-  const svg = Buffer.from(
-    `<svg width="${width}" height="${height}">
-      <rect width="100%" height="100%" fill="#0E0C0B"/>
-      <rect x="14" y="14" width="${width - 28}" height="${height - 28}" fill="none" stroke="#C4A574" stroke-opacity="0.4" stroke-width="1"/>
-      <text x="50%" y="44" text-anchor="middle" font-family="Georgia, serif" font-size="20" fill="#C4A574">Карта дня</text>
-      <text x="50%" y="${height - 28}" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#F2E8D8">${escapeXml(card.name)}${card.reversed ? " · перевёрнута" : ""}</text>
+  const top = Math.floor((height - cardH) / 2) - 20;
+  const left = Math.floor((width - cardW) / 2);
+  const [plate, panel] = await Promise.all([getOrnatePlate(), cardFace(card, true, cardW, cardH)]);
+  const overlaySvg = Buffer.from(
+    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      <text x="50%" y="110" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#E8D5A8">Карта дня</text>
+      <rect x="${left - 4}" y="${top - 4}" width="${cardW + 8}" height="${cardH + 8}"
+        fill="none" stroke="#C4A574" stroke-opacity="0.7" stroke-width="2.5" rx="6"/>
+      <text x="50%" y="${height - 56}" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#F5EDE3">${escapeXml(card.name)}${card.reversed ? " · перевёрнута" : ""}</text>
     </svg>`
   );
-  return sharp(svg)
-    .composite([{ input: panel, left: Math.floor((width - cardW) / 2), top: padTop }])
-    .jpeg({ quality: 92 })
-    .toBuffer();
+  return encodeBotJpeg(
+    sharp(plate).composite([
+      { input: panel.input, raw: panel.raw, left, top },
+      { input: overlaySvg },
+    ])
+  );
 }
 
 export async function renderShareCollage(cards: DrawnCard[], question: string): Promise<Buffer> {
@@ -205,5 +289,5 @@ export async function renderShareCollage(cards: DrawnCard[], question: string): 
   });
 }
 
-export const COLLAGE_WIDTH = 1080;
-export const COLLAGE_HEIGHT = 900;
+export const COLLAGE_WIDTH = BOT_CANVAS_WIDTH;
+export const COLLAGE_HEIGHT = BOT_CANVAS_HEIGHT;
