@@ -9,7 +9,7 @@ import {
   setAssetMissingAlerter,
 } from "./domain/deck/asset-check.js";
 import { installTelegramIpv4Networking } from "./domain/telegram-ipv4.js";
-import { siteWebAppUrl } from "./domain/site-client.js";
+import { siteMiniAppShellUrl } from "./domain/site-client.js";
 import { startHttpServer } from "./http/server.js";
 import { runReminderTick } from "./jobs/reminders.js";
 import { acquirePollingLock, releasePollingLock } from "./ops/lock.js";
@@ -51,16 +51,17 @@ async function main(): Promise<void> {
   console.log(`[bot] @${me.username} mode=${botConfig.mode}`);
 
   try {
+    // Only web_app launcher — fixed shell URL so Telegram reuses one Mini App instance.
     await bot.api.setChatMenuButton({
       menu_button: {
         type: "web_app",
         text: "Кабинет",
-        web_app: { url: siteWebAppUrl("/cabinet") },
+        web_app: { url: siteMiniAppShellUrl() },
       },
     });
-    console.log("[bot] chat menu button → Mini App /cabinet");
+    console.log("[bot] chat menu button → single Mini App shell /tg");
   } catch (err) {
-    console.error("[bot] setChatMenuButton failed (configure BotFather domain zovus.ru)", err);
+    console.error("[bot] setChatMenuButton failed (BotFather: Main Mini App = https://zovus.ru/tg)", err);
   }
 
   if (botConfig.httpAlways || botConfig.mode === "webhook") {

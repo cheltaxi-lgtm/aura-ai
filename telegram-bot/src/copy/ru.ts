@@ -17,6 +17,24 @@ const SHUFFLE = [
   "Колода в движении.",
 ] as const;
 
+const DAY_PREP = [
+  "Мешаю карты и вытягиваю карту дня.",
+  "Секунду — собираю энергию дня.",
+  "Колода отвечает на сегодняшний день.",
+] as const;
+
+const MATRIX_PREP = [
+  "Секунду — открываю матрицу судьбы.",
+  "Считаю схему. Это займёт немного времени.",
+  "Собираю матрицу — подождите.",
+] as const;
+
+const CABINET_PREP = [
+  "Секунду, открываю…",
+  "Загружаю. Подождите немного.",
+  "Сейчас пришлю.",
+] as const;
+
 const LIMIT = [
   "На сегодня расклад уже был. Один в день — чтобы не размывать внимание. Завтра открою новый.",
   "Лимит дня исчерпан. Завтра снова можно спросить карты.",
@@ -125,6 +143,9 @@ export const copy = {
 
   pause: (uid: number, n: number) => pick(uid, n, PAUSE),
   shuffling: (uid: number, n: number) => pick(uid, n, SHUFFLE),
+  dayPreparing: (uid: number, n: number) => pick(uid, n, DAY_PREP),
+  matrixPreparing: (uid: number, n: number) => pick(uid, n, MATRIX_PREP),
+  cabinetPreparing: (uid: number, n: number) => pick(uid, n, CABINET_PREP),
   askQuestion: (uid: number, n: number) => pick(uid, n, ASK),
   ownQuestion: (uid: number, n: number) => pick(uid, n, OWN),
   limitReached: (uid: number, n: number) => pick(uid, n, LIMIT),
@@ -154,9 +175,23 @@ export const copy = {
   profileLinkHint: "Привяжите аккаунт — история и баланс будут с вами на сайте и в боте.",
   profileContinueHint: "Есть незавершённый расклад — продолжите на сайте по кнопке ниже.",
   needSiteAccount:
-    "Бот и сайт — один аккаунт Zovus. Войдите на сайте (email, Яндекс или VK) по кнопке ниже — ссылка привяжет Telegram к аккаунту. Вход через Telegram недоступен.",
+    "Не удалось открыть салон. Попробуйте ещё раз через минуту — или привяжите аккаунт на сайте по кнопке ниже.",
   needSiteOnboarding:
-    "Аккаунт привязан. Завершите профиль на сайте (дата рождения) — затем расклад откроется и здесь.",
+    "Осталось чуть-чуть: дата рождения для точных раскладов.",
+  profileDobAsk:
+    "Напишите дату рождения цифрами — день.месяц.год.\nНапример: 12.03.1990",
+  profileDobInvalid: "Не разобрала дату. Формат: 12.03.1990",
+  profileDobTooYoung: "Салон только для совершеннолетних.",
+  profileGenderAsk: "Как к вам обращаться в раскладах?",
+  profileReady: (runes: number) =>
+    [
+      "Салон готов — история и руны уже с вами.",
+      runes > 0 ? `На старте: ${runes} ᚢ.` : null,
+      "Можно делать расклад или пополнить баланс.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  accountOpened: "Аккаунт Zovus открыт. Можно пользоваться салоном в боте.",
   siteBridgeDown: "Связь с сайтом временно недоступна. Попробуйте через минуту.",
   linkCodeIssued:
     "Откройте ссылку ниже, войдите на zovus.ru (email, Яндекс или VK) — Telegram привяжется к аккаунту. Код действует несколько минут.",
@@ -167,7 +202,37 @@ export const copy = {
   insufficientRunes: "Недостаточно рун для полного разбора. Пополните баланс на сайте.",
   fullReadingDone: "Полный разбор сохранён в вашей истории Zovus — он же на сайте.",
   fullReadingAskMore: "Можно задать уточняющий вопрос по этому раскладу — как на сайте.",
-  runesBalance: (n: number) => `Баланс: ${n} рун.`,
+  miniAppOpenHint: "Откройте салон — один кабинет",
+  miniAppOpenBody:
+    "Салон откроется в одном окне. Если уже открыт — нажмите кнопку ниже или «Кабинет» в меню.",
+  runesBalance: (n: number) => `Баланс: ${n} ᚢ.`,
+  /** Fallback when shop card render fails — no price-list spam. */
+  runesShopIntro: (balance: number) =>
+    [
+      `Баланс: ${balance} ᚢ.`,
+      "",
+      "Выберите наполнение ниже.",
+      "Stars — здесь. Картой — в кабинете Zovus.",
+    ].join("\n"),
+  runesBuyOpening: (name: string, totalRunes: number) =>
+    `«${name}» — ${totalRunes} ᚢ.\nОткрываю счёт.`,
+  runesInvoiceTitle: (name: string) => `Zovus · ${name}`.slice(0, 32),
+  runesInvoiceDescription: (pkg: {
+    totalRunes: number;
+    runes: number;
+    bonusRunes: number;
+  }) =>
+    [
+      `${pkg.totalRunes} ᚢ на баланс Zovus`,
+      pkg.bonusRunes > 0 ? `из них ${pkg.bonusRunes} — дар салона` : null,
+    ]
+      .filter(Boolean)
+      .join(". ")
+      .slice(0, 255),
+  runesCredited: (added: number, name: string, balance: number, already: boolean) =>
+    already
+      ? `Эта оплата уже в балансе.\nСейчас у вас ${balance} ᚢ.`
+      : `«${name}» — ${added} ᚢ на счету.\nБаланс: ${balance} ᚢ.`,
   modulesTitle: "Разделы Zovus — в боте и на сайте:",
   modulesPick: "Выберите раздел. Часть ответов сразу здесь, полный кабинет — на сайте.",
   catalogTitle: "Каталог раскладов Zovus — тот же, что на сайте.",
@@ -345,6 +410,12 @@ export function collectBodyCopySamples(): string[] {
     copy.profileContinueHint,
     copy.needSiteAccount,
     copy.needSiteOnboarding,
+    copy.profileDobAsk,
+    copy.profileDobInvalid,
+    copy.profileDobTooYoung,
+    copy.profileGenderAsk,
+    copy.profileReady(30),
+    copy.accountOpened,
     copy.siteBridgeDown,
     copy.linkCodeIssued,
     copy.authBridgeRetired,

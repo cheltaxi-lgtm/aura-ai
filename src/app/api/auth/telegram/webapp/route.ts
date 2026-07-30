@@ -6,6 +6,7 @@ import { clientIp } from "@/lib/api-guards";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import { verifyTelegramWebAppInitData } from "@/lib/telegram/verify";
 import { sanitizeMiniAppPath } from "@/lib/telegram/mini-app";
+import { takeMiniAppPending } from "@/lib/telegram/miniapp-pending";
 
 export const runtime = "nodejs";
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
 
   const telegramUserId = verified.data.id;
   const resolved = await resolveBotUser(telegramUserId);
-  const to = sanitizeMiniAppPath(
+  const requested = sanitizeMiniAppPath(
     typeof body.to === "string" ? body.to : "/cabinet"
   );
 
@@ -58,8 +59,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: false,
       error: "needs_link",
-      to,
-      linkLoginUrl: `/auth/user/login?returnTo=${encodeURIComponent(to)}&utm_source=telegram&utm_medium=miniapp&utm_campaign=account_link`,
+      to: requested,
+      linkLoginUrl: `/auth/user/login?returnTo=${encodeURIComponent(requested)}&utm_source=telegram&utm_medium=miniapp&utm_campaign=account_link`,
       message: "Привяжите аккаунт Zovus, чтобы открыть кабинет внутри Telegram.",
     });
   }
@@ -78,6 +79,9 @@ export async function POST(request: NextRequest) {
     },
     request
   );
+
+  const pending = await takeMiniAppPending(telegramUserId);
+  const to = sanitizeMiniAppPath(pending || requested);
 
   return NextResponse.json({
     ok: true,

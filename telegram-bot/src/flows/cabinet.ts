@@ -41,7 +41,10 @@ import {
   formatMatrixPremiumTeaser,
   formatMatrixReadingPremium,
 } from "../domain/matrix/format.js";
+import { announceWorking } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
+
+let cabinetCopyCounter = 0;
 
 type HistoryItem = {
   sessionId: string;
@@ -270,10 +273,57 @@ async function sendMatrixDiagram(
   }
 }
 
+type MatrixSummaryData = Awaited<ReturnType<typeof siteNumerology>>["data"];
+
+async function renderMatrixTeaserFromSummary(
+  ctx: Context,
+  data: MatrixSummaryData
+): Promise<void> {
+  const caption = [
+    "🌌 Матрица судьбы",
+    data.name || data.diagram?.name || null,
+    data.birthDate || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  await sendMatrixDiagram(ctx, {
+    diagram: data.diagram,
+    birthDate: data.birthDate,
+    name: data.name || data.diagram?.name,
+    caption,
+  });
+
+  const body = formatMatrixPremiumTeaser({
+    name: data.name,
+    birthDate: data.birthDate,
+    portrait: data.portrait,
+    moneyInsight: data.moneyInsight,
+    loveInsight: data.loveInsight,
+    yearInsight: data.yearInsight,
+    keyArcana: data.keyArcana,
+    cost: data.cost ?? 20,
+    runeBalance: data.runeBalance,
+  });
+  const chunks = chunkTelegramText(body);
+  const kb = matrixGetKeyboard({
+    cost: data.cost ?? 20,
+    shopUrl: data.shopUrl,
+  });
+  for (let i = 0; i < chunks.length; i++) {
+    await ctx.reply(chunks[i]!, {
+      reply_markup: i === chunks.length - 1 ? kb : undefined,
+    });
+  }
+}
+
 /** Free diagram + premium teaser + Get / Calculate buttons. */
 export async function showMatrixTeaser(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
+  await announceWorking(
+    ctx,
+    copy.matrixPreparing(linked.user.telegram_user_id, cabinetCopyCounter++)
+  );
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
     if (!data.ok) {
@@ -287,41 +337,7 @@ export async function showMatrixTeaser(ctx: Context): Promise<void> {
       return;
     }
 
-    const caption = [
-      "🌌 Матрица судьбы",
-      data.name || data.diagram?.name || null,
-      data.birthDate || null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    await sendMatrixDiagram(ctx, {
-      diagram: data.diagram,
-      birthDate: data.birthDate,
-      name: data.name || data.diagram?.name,
-      caption,
-    });
-
-    const body = formatMatrixPremiumTeaser({
-      name: data.name,
-      birthDate: data.birthDate,
-      portrait: data.portrait,
-      moneyInsight: data.moneyInsight,
-      loveInsight: data.loveInsight,
-      yearInsight: data.yearInsight,
-      keyArcana: data.keyArcana,
-      cost: data.cost ?? 20,
-      runeBalance: data.runeBalance,
-    });
-    const chunks = chunkTelegramText(body);
-    const kb = matrixGetKeyboard({
-      cost: data.cost ?? 20,
-      shopUrl: data.shopUrl,
-    });
-    for (let i = 0; i < chunks.length; i++) {
-      await ctx.reply(chunks[i]!, {
-        reply_markup: i === chunks.length - 1 ? kb : undefined,
-      });
-    }
+    await renderMatrixTeaserFromSummary(ctx, data);
   } catch (err) {
     console.error("[cabinet] matrix teaser", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -331,6 +347,10 @@ export async function showMatrixTeaser(ctx: Context): Promise<void> {
 export async function showMatrix(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
+  await announceWorking(
+    ctx,
+    copy.matrixPreparing(linked.user.telegram_user_id, cabinetCopyCounter++)
+  );
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
     if (!data.ok) {
@@ -353,7 +373,8 @@ export async function showMatrix(ctx: Context): Promise<void> {
       return;
     }
 
-    await showMatrixTeaser(ctx);
+    // Teaser path: summary already loaded — render without a second "preparing" ping.
+    await renderMatrixTeaserFromSummary(ctx, data);
   } catch (err) {
     console.error("[cabinet] matrix", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -504,7 +525,7 @@ export async function deleteMatrixReport(ctx: Context): Promise<void> {
       return;
     }
     clearFlow(linked.user.telegram_user_id);
-    const shopUrl = `${botConfig.siteUrl}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`;
+    const shopUrl = `${botConfig.siteUrl}/cabinet?shop=1&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`;
     await ctx.reply("🗑 Матрица удалена. Можно рассчитать схему и получить новый разбор.", {
       reply_markup: matrixGetKeyboard({ cost: 20, shopUrl }),
     });
@@ -828,6 +849,10 @@ export async function showHistory(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
 
+  await announceWorking(
+    ctx,
+    copy.cabinetPreparing(linked.user.telegram_user_id, cabinetCopyCounter++)
+  );
   try {
     // Always refetch from site — never trust a stale local snapshot after deletes.
     const { data } = await siteHistory(linked.user.telegram_user_id, 40);

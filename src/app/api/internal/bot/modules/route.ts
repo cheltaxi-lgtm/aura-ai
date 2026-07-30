@@ -3,7 +3,7 @@ import {
   assertBotInternalAuth,
   parseTelegramUserId,
 } from "@/lib/telegram/bot-internal-auth";
-import { resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { botRunesShopUrl, resolveBotUser } from "@/lib/telegram/bot-resolve";
 
 export const runtime = "nodejs";
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         url: `${site}/?${utm}`,
         note: "deep-link в сессию сайта (?chat_session=)",
       },
-      { id: "runes", title: "Руны / баланс", native: true, url: `${site}/runy?${utm}` },
+      { id: "runes", title: "Руны / баланс", native: true, url: botRunesShopUrl("modules") },
       { id: "cabinet", title: "Кабинет", native: true, url: `${site}/cabinet?${utm}` },
       {
         id: "astrology",

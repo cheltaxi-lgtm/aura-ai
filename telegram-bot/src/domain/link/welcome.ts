@@ -1,7 +1,7 @@
 import { botConfig } from "../../config.js";
 import { getDb, nowIso } from "../../db/client.js";
 import { copy } from "../../copy/ru.js";
-import { siteWebAppUrl } from "../site-client.js";
+import { siteMiniAppShellUrl, siteSetMiniAppNav } from "../site-client.js";
 
 /** One-time salon message after Zovus account is linked (link-code or claim). */
 export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void> {
@@ -26,9 +26,8 @@ export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void
   if (updated.changes !== 1) return;
 
   const text = copy.linkWelcome(telegramUserId, 0);
-  const continueUrl = siteWebAppUrl(
-    `${botConfig.siteUrl}/?utm_source=telegram&utm_medium=bot&utm_campaign=link_welcome`
-  );
+  await siteSetMiniAppNav(telegramUserId, "/").catch(() => undefined);
+  const shell = siteMiniAppShellUrl();
   try {
     const res = await fetch(`https://api.telegram.org/bot${botConfig.token}/sendMessage`, {
       method: "POST",
@@ -38,7 +37,7 @@ export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void
         text,
         reply_markup: {
           inline_keyboard: [
-            [{ text: `🕯 ${copy.continueReading}`, web_app: { url: continueUrl } }],
+            [{ text: `🕯 ${copy.continueReading}`, web_app: { url: shell } }],
           ],
         },
       }),

@@ -19,6 +19,11 @@ const hits = new Map<number, { count: number; resetAt: number }>();
 let lastPrune = 0;
 
 export async function privateOnly(ctx: Context, next: NextFunction): Promise<void> {
+  // Stars pre-checkout has no chat — only from / invoice payload.
+  if (ctx.preCheckoutQuery) {
+    await next();
+    return;
+  }
   if (ctx.chat?.type !== "private") return;
   await next();
 }
@@ -50,6 +55,19 @@ export async function idempotent(ctx: Context, next: NextFunction): Promise<void
 }
 
 export async function ensureUser(ctx: Context, next: NextFunction): Promise<void> {
+  if (ctx.preCheckoutQuery) {
+    const from = ctx.preCheckoutQuery.from;
+    // Private chat id equals user id — enough for upsert continuity.
+    upsertUser({
+      telegramUserId: from.id,
+      chatId: from.id,
+      username: from.username,
+      firstName: from.first_name,
+      languageCode: from.language_code,
+    });
+    await next();
+    return;
+  }
   if (!ctx.from || !ctx.chat) return;
   upsertUser({
     telegramUserId: ctx.from.id,
@@ -84,11 +102,22 @@ export async function rateLimit(ctx: Context, next: NextFunction): Promise<void>
 
 export async function featureGate(ctx: Context, next: NextFunction): Promise<void> {
   if (!isBotEnabled()) {
+    if (ctx.preCheckoutQuery) {
+      await ctx
+        .answerPreCheckoutQuery(false, "Бот временно недоступен.")
+        .catch(() => undefined);
+      return;
+    }
     await ctx.reply(copy.botDisabled(ctx.from?.id ?? 1, disabledCounter++));
     return;
   }
-  const user = ctx.from ? getUser(ctx.from.id) : null;
+  const uid = ctx.from?.id ?? ctx.preCheckoutQuery?.from.id;
+  const user = uid ? getUser(uid) : null;
   if (user?.banned_at) {
+    if (ctx.preCheckoutQuery) {
+      await ctx.answerPreCheckoutQuery(false, "Доступ ограничен.").catch(() => undefined);
+      return;
+    }
     await ctx.reply(copy.banned);
     return;
   }

@@ -1,11 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
+import { query } from "@/lib/db";
 import {
   assertBotInternalAuth,
   parseTelegramUserId,
 } from "@/lib/telegram/bot-internal-auth";
-import { resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { botRunesShopUrl, resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { starsFromPriceRub, type StarsRunePackage } from "@/lib/telegram/stars-runes";
 
 export const runtime = "nodejs";
+
+async function listStarsPackages(): Promise<StarsRunePackage[]> {
+  const { rows } = await query<{
+    id: string;
+    name: string;
+    runes: number;
+    bonus_runes: number;
+    price_rub: number;
+    is_popular: boolean;
+  }>(
+    `SELECT id, name, runes, bonus_runes, price_rub, is_popular
+     FROM rune_packages
+     ORDER BY sort_order ASC`
+  );
+  return rows.map((r) => {
+    const runes = Number(r.runes) || 0;
+    const bonusRunes = Number(r.bonus_runes) || 0;
+    const priceRub = Number(r.price_rub) || 0;
+    return {
+      id: r.id,
+      name: r.name,
+      runes,
+      bonusRunes,
+      totalRunes: runes + bonusRunes,
+      priceRub,
+      stars: starsFromPriceRub(priceRub),
+      isPopular: Boolean(r.is_popular),
+    };
+  });
+}
 
 export async function POST(request: NextRequest) {
   const auth = assertBotInternalAuth(request);
@@ -33,11 +65,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const site = (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
+  const packages = await listStarsPackages();
+
   return NextResponse.json({
     ok: true,
     runeBalance: resolved.runeBalance ?? 0,
-    shopUrl: `${site}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=runes`,
+    shopUrl: botRunesShopUrl("runes"),
     cabinetUrl: resolved.linkUrl,
+    packages,
+    starsEnabled: true,
   });
 }

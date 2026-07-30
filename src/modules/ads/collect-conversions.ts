@@ -1,3 +1,4 @@
+import { testAccountEmailSql } from "@/lib/test-accounts";
 import { adsReadOnlyPublic } from "./db";
 import { recordServerConversion } from "./attribution";
 
@@ -26,6 +27,7 @@ export async function collectServerConversions(sinceDays = 7): Promise<{
   const regs = await adsReadOnlyPublic<{ id: string; created_at: Date }>(
     `SELECT id, created_at FROM user_accounts
      WHERE created_at >= NOW() - ($1::text || ' days')::interval
+       AND NOT ${testAccountEmailSql("email")}
      ORDER BY created_at ASC
      LIMIT 5000`,
     [String(sinceDays)]

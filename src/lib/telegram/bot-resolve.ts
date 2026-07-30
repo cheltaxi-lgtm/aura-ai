@@ -25,6 +25,17 @@ function siteBase(): string {
   );
 }
 
+/** YooKassa top-up opens cabinet paywall (not SEO /runy). */
+export function botRunesShopUrl(campaign = "runes"): string {
+  const utm = new URLSearchParams({
+    shop: "1",
+    utm_source: "telegram",
+    utm_medium: "bot",
+    utm_campaign: campaign,
+  });
+  return `${siteBase()}/cabinet?${utm.toString()}`;
+}
+
 export async function resolveBotUser(telegramUserId: number): Promise<BotResolveResult> {
   // Fallback only: real bind URL is bot-minted `/auth/telegram-link?code=…` after site auth.
   const linkUrl = `${siteBase()}/auth/user/login?returnTo=${encodeURIComponent("/cabinet")}&utm_source=telegram&utm_medium=bot&utm_campaign=account_link`;

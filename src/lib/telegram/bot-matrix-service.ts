@@ -35,6 +35,10 @@ import {
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
+import {
+  isUsableMatrixReading,
+  sanitizeReadingForClient,
+} from "@/lib/chat-reply-sanitize";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import { createHistoryEntry, getUserById } from "@/lib/users";
 
@@ -204,12 +208,13 @@ export async function botMatrixSummary(telegramUserId: number) {
     keyArcana: summary.keyArcana,
     diagram,
     savedReports: reports.length,
-    owned: Boolean(owned?.content?.trim()),
-    ownedReportId: owned?.id ?? null,
+    owned: Boolean(owned?.content?.trim() && isUsableMatrixReading(owned.content)),
+    ownedReportId:
+      owned?.content?.trim() && isUsableMatrixReading(owned.content) ? owned.id : null,
     cost,
     runeBalance,
     url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=numerology`,
-    shopUrl: `${siteBase()}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
+    shopUrl: `${siteBase()}/cabinet?shop=1&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
   };
 }
 
@@ -245,13 +250,20 @@ export async function botMatrixGet(telegramUserId: number, reportId: string) {
       message: "Отчёт не найден.",
     };
   }
+  if (!isUsableMatrixReading(report.content)) {
+    return {
+      ok: false as const,
+      error: "not_found" as const,
+      message: "Отчёт повреждён. Нажмите «Получить матрицу» — пересоберём бесплатно.",
+    };
+  }
 
   return {
     ok: true as const,
     action: "get" as const,
     reportId: report.id,
     birthDate: report.birthDate,
-    content: report.content,
+    content: sanitizeReadingForClient(report.content) || report.content,
     sessionId: report.sessionId,
     diagram: buildMatrixDiagram(
       report.birthDate,
@@ -295,8 +307,10 @@ export async function botMatrixRun(
   const replace = Boolean(opts?.replace);
 
   const owned = await findOwnedMatrixReport(profileUserId, isoBirth);
-  // Open existing only when not explicitly ordering a replacement.
-  if (owned?.content?.trim() && !replace) {
+  const ownedUsable = Boolean(owned?.content?.trim() && isUsableMatrixReading(owned.content));
+
+  // Open existing only when not explicitly ordering a replacement and content is client-safe.
+  if (ownedUsable && owned && !replace) {
     let sessionId = owned.sessionId?.trim() || "";
     if (sessionId) {
       const existing = await getSession(sessionId);
@@ -319,11 +333,12 @@ export async function botMatrixRun(
       spreadId: "destiny_matrix",
       cards: [],
     });
+    const safeOwned = sanitizeReadingForClient(owned.content) || owned.content;
     await ensureSpreadReadingInChatMessages({
       sessionId,
       profileUserId,
       characterId: "numerolog",
-      reading: owned.content,
+      reading: safeOwned,
       tarotCards: [],
       intention: "destiny_matrix",
       spreadType: "new",
@@ -337,7 +352,7 @@ export async function botMatrixRun(
       action: "run",
       reportId: owned.id,
       sessionId,
-      content: owned.content,
+      content: safeOwned,
       birthDate: isoBirth,
       runeBalance,
       charged: 0,
@@ -348,7 +363,10 @@ export async function botMatrixRun(
     };
   }
 
-  if (replace && owned) {
+  // Bad/leaked owned report (or explicit replace): wipe before regenerating.
+  // Regeneration after a leak is free — client already paid for unusable text.
+  const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
+  if ((replace || regenerateAfterLeak) && owned) {
     const wiped = await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
     await purgeMatrixConsultationSessions(profileUserId, wiped.sessionIds);
   }
@@ -364,7 +382,7 @@ export async function botMatrixRun(
   let runeBalance = await getRuneBalance(profileUserId);
   let charged = 0;
 
-  if (useRuneBilling) {
+  if (useRuneBilling && !regenerateAfterLeak) {
     try {
       billingCharge = await BillingService.chargeForSession({
         userId: profileUserId,
@@ -382,7 +400,7 @@ export async function botMatrixRun(
           message: `Недостаточно рун: нужно ${err.required}, на балансе ${err.balance}. Пополните на сайте.`,
           runeBalance: err.balance,
           cost: err.required,
-          linkUrl: `${siteBase()}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
+          linkUrl: `${siteBase()}/cabinet?shop=1&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
         };
       }
       throw err;
@@ -424,9 +442,10 @@ export async function botMatrixRun(
       spreadNumbers: [],
       memoryBlock: numerologMemoryBlock,
     });
-    let reading = sessionResult.reply?.trim() || "";
-    if (!reading) {
-      throw new Error("empty_matrix_reading");
+    const rawReading = sessionResult.reply?.trim() || "";
+    let reading = sanitizeReadingForClient(rawReading);
+    if (!isUsableMatrixReading(rawReading) || !reading) {
+      throw new Error("matrix_prompt_leak_or_empty");
     }
 
     const matrix = destinyMatrix(birthDate);

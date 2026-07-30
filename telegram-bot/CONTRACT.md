@@ -11,7 +11,9 @@
 
 Один аккаунт = строка в `user_telegram_identities` (`telegram_user_id` ↔ `user_account_id`). После link бот синхронизирует `bot_users.zovus_user_id = profileUserId`.
 
-**Инвариант (149-ФЗ ч.10 ст.8):** `telegram_user_id` сам по себе **не даёт** доступа к аккаунту. Первичная идентификация — только разрешённым способом на сайте; Telegram — вторичная привязка.
+**Инвариант (149-ФЗ ч.10 ст.8):** нет «Входа через Telegram» / Login Widget / session-from-TG HMAC.
+Аккаунт Zovus может быть создан **по оферте в боте** (age + terms) с синтетическим email и bind в `user_telegram_identities` — Telegram здесь канал договора, не заявленный способ авторизации.
+Апгрейд (email / Яндекс / VK) — опционально через link-code. Запрещены Widget и `POST /api/auth/telegram`.
 
 ## Привязка Telegram (link-code)
 
@@ -33,7 +35,9 @@
 | Endpoint | Назначение |
 |----------|------------|
 | `POST /resolve` | linked / accountId / profileUserId / runes / linkUrl |
-| `POST /link-code` | выдать одноразовый код привязки (`/start link`) |
+| `POST /ensure-account` | shell-аккаунт по оферте бота + TG bind |
+| `POST /profile` | дата рождения / пол для bot-offer аккаунта |
+| `POST /link-code` | выдать одноразовый код привязки / апгрейда (`/start link`) |
 | `POST /history` | общая история кабинета |
 | `POST /reading` | детали сессии |
 | `POST /spread` | полный триплет Вероники + биллинг рун как на сайте |

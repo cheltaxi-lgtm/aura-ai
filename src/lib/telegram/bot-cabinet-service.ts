@@ -214,7 +214,7 @@ export async function botCabinetOverview(telegramUserId: number) {
     },
     urls: {
       cabinet: `${site}/cabinet?${utm}`,
-      runes: `${site}/runy?${utm}`,
+      runes: `${site}/cabinet?shop=1&${utm}`,
       astrology: `${site}/cabinet/astrology?${utm}`,
       photo: `${site}/photo-rasklad?${utm}`,
       joint: `${site}/joint-reading?${utm}`,
@@ -406,7 +406,7 @@ export async function botChatFollowUp(input: {
         message: "Недостаточно рун для вопроса. Пополните баланс на сайте.",
         runeBalance: bal,
         cost,
-        linkUrl: `${siteBase()}/runy?utm_source=telegram&utm_medium=bot`,
+        linkUrl: `${siteBase()}/cabinet?shop=1&utm_source=telegram&utm_medium=bot`,
       };
     }
 

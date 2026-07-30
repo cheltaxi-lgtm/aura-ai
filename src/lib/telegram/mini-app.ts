@@ -1,4 +1,10 @@
 import { getAppUrl } from "@/lib/brand";
+import { encodeMiniAppStartParam } from "@/lib/telegram/mini-app-start-param";
+
+export {
+  decodeMiniAppStartParam,
+  encodeMiniAppStartParam,
+} from "@/lib/telegram/mini-app-start-param";
 
 const BLOCKED_PREFIXES = [
   "/api/",
@@ -58,8 +64,29 @@ export function sanitizeMiniAppPath(raw: string | null | undefined): string {
   return path;
 }
 
-export function buildMiniAppEntryUrl(pathOrUrl: string, baseUrl?: string): string {
+/** HTTPS shell used by the single menu-button web_app launcher. */
+export function buildMiniAppShellUrl(baseUrl?: string): string {
   const base = (baseUrl || getAppUrl()).replace(/\/$/, "");
-  const to = sanitizeMiniAppPath(pathOrUrl);
-  return `${base}/tg?to=${encodeURIComponent(to)}`;
+  return `${base}/tg`;
+}
+
+/**
+ * Deep link into the one Main Mini App (t.me?startapp=).
+ * Prefer this over /tg?to= for bot CTAs — avoids stacking WebViews.
+ */
+export function buildMiniAppEntryUrl(pathOrUrl: string, botUsername?: string): string {
+  const username = (
+    botUsername ||
+    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ||
+    process.env.TELEGRAM_BOT_USERNAME ||
+    "zovus_card_bot"
+  )
+    .trim()
+    .replace(/^@/, "");
+  const startapp = encodeMiniAppStartParam(sanitizeMiniAppPath(pathOrUrl));
+  const short = process.env.NEXT_PUBLIC_TELEGRAM_MINI_APP_SHORT_NAME?.trim();
+  if (short) {
+    return `https://t.me/${username}/${short}?startapp=${encodeURIComponent(startapp)}`;
+  }
+  return `https://t.me/${username}?startapp=${encodeURIComponent(startapp)}`;
 }

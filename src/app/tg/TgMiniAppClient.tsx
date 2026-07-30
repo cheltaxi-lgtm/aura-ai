@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
+import {
+  decodeMiniAppStartParam,
+  sanitizeMiniAppPath,
+} from "@/lib/telegram/mini-app";
+
 type Props = {
   to: string;
 };
@@ -16,39 +21,49 @@ type AuthFail = {
   to?: string;
 };
 
+function resolveDestination(fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const tg = window.Telegram?.WebApp;
+  const startParam =
+    tg?.initDataUnsafe?.start_param ||
+    new URLSearchParams(window.location.search).get("tgWebAppStartParam") ||
+    new URLSearchParams(window.location.search).get("startapp");
+  const fromStart = decodeMiniAppStartParam(startParam);
+  return sanitizeMiniAppPath(fromStart || fallback);
+}
+
 export default function TgMiniAppClient({ to }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<"loading" | "needs_link" | "error">("loading");
   const [message, setMessage] = useState("Открываю Zovus…");
+  const initialTo = useMemo(() => to || "/cabinet", [to]);
   const [loginUrl, setLoginUrl] = useState(
-    `/auth/user/login?returnTo=${encodeURIComponent(to)}&utm_source=telegram&utm_medium=miniapp`
+    `/auth/user/login?returnTo=${encodeURIComponent(initialTo)}&utm_source=telegram&utm_medium=miniapp`
   );
-
-  const safeTo = useMemo(() => to || "/cabinet", [to]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function bootstrap(initData: string) {
+    async function bootstrap(initData: string, dest: string) {
       try {
         const res = await fetch("/api/auth/telegram/webapp", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ initData, to: safeTo }),
+          body: JSON.stringify({ initData, to: dest }),
         });
         const data = (await res.json()) as AuthOk | AuthFail;
         if (cancelled) return;
 
         if (data.ok) {
-          router.replace(data.to || safeTo);
+          router.replace(data.to || dest);
           return;
         }
 
         if (data.error === "needs_link") {
           setLoginUrl(
             data.linkLoginUrl ||
-              `/auth/user/login?returnTo=${encodeURIComponent(safeTo)}&utm_source=telegram&utm_medium=miniapp`
+              `/auth/user/login?returnTo=${encodeURIComponent(dest)}&utm_source=telegram&utm_medium=miniapp`
           );
           setMessage(
             data.message ||
@@ -87,13 +102,14 @@ export default function TgMiniAppClient({ to }: Props) {
           /* ignore */
         }
       }
+      const dest = resolveDestination(initialTo);
       const initData = tg?.initData || "";
       if (!initData) {
         // Opened outside Telegram — send user to the destination directly.
-        router.replace(safeTo);
+        router.replace(dest);
         return;
       }
-      void bootstrap(initData);
+      void bootstrap(initData, dest);
     }
 
     // Script may load after first paint.
@@ -110,7 +126,7 @@ export default function TgMiniAppClient({ to }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [router, safeTo]);
+  }, [router, initialTo]);
 
   return (
     <>
@@ -143,7 +159,7 @@ export default function TgMiniAppClient({ to }: Props) {
             <button
               type="button"
               className="rounded-full border border-white/15 px-5 py-3 text-[#C9B8A4]"
-              onClick={() => router.replace(safeTo)}
+              onClick={() => router.replace(initialTo)}
             >
               Открыть без входа
             </button>

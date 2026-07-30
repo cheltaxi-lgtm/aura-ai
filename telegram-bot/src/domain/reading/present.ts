@@ -9,16 +9,6 @@ import {
   renderDayCardImage,
   renderSpreadCollage,
 } from "../../render/card-collage.js";
-import {
-  expandReadingPagesForCanvas,
-  renderReadingPageImage,
-} from "../../render/reading-page.js";
-import {
-  bindReadingPageCache,
-  getReadingPageBuffer,
-  prefetchReadingPages,
-  putReadingPageBuffer,
-} from "../../render/reading-page-cache.js";
 import { CB, readingPagerKeyboard } from "../../keyboards/index.js";
 import { widenTelegramText } from "../telegram-width.js";
 
@@ -42,8 +32,6 @@ type ReadingViewState = {
   footer?: string;
   matrixActions?: boolean;
   matrixSiteUrl?: string;
-  /** Pages sent as 1080px photos (same width as matrix diagram / collage). */
-  asPhoto?: boolean;
 };
 
 function normalizeCardName(raw: string): string {
@@ -277,17 +265,16 @@ export function buildTelegramReadingMessages(raw: string, cards: DrawnCard[] = [
     .map((m) => m.trim())
     .filter(Boolean);
 
-  // Soft HTML length cap (Telegram edit fallback), then split to canvas capacity
-  // so photo pages never hard-clip with "…".
+  // Telegram HTML album pages — keep readable length; width via widenTelegramText.
   const out: string[] = [];
   for (const msg of messages) {
-    if (msg.length <= 1600) {
+    if (msg.length <= 1200) {
       out.push(msg);
       continue;
     }
-    for (const chunk of chunkTelegramText(msg, 1400)) out.push(chunk);
+    for (const chunk of chunkTelegramText(msg, 1100)) out.push(chunk);
   }
-  return expandReadingPagesForCanvas(out);
+  return out;
 }
 
 /** @deprecated prefer buildTelegramReadingMessages — kept for strip/chat helpers */
@@ -424,8 +411,8 @@ function pagerMarkup(state: ReadingViewState): InlineKeyboard {
 }
 
 /**
- * Photo collage + one HTML album message with ‹ › pagination.
- * Buttons / follow-up live on the album (last page), not as a bubble flood.
+ * Photo collage (cards) + HTML reading album with ‹ › pagination.
+ * Body is text (widened), not rasterized pages — easier to read in chat.
  */
 export async function presentReadingToTelegram(
   ctx: Context,
@@ -464,7 +451,6 @@ export async function presentReadingToTelegram(
     footer: input.footer?.trim() || undefined,
     matrixActions: Boolean(input.matrixActions),
     matrixSiteUrl,
-    asPhoto: true,
   };
 
   const usePager =
@@ -476,40 +462,16 @@ export async function presentReadingToTelegram(
         ? pagerMarkup(state)
         : input.replyMarkup;
 
-  if (tid && pages.length) {
-    bindReadingPageCache(tid, state.pages, state.footer);
-  }
-
-  // Text page is the slow feel — start it immediately; collage may run alongside.
-  const pageP = pages.length
-    ? renderReadingPageImage({
-        bodyHtmlOrText: pageBody(state.pages, 0, state.footer),
-        page: 0,
-        total: state.pages.length,
-      })
-        .then((buf) => {
-          if (tid) putReadingPageBuffer(tid, 0, buf);
-          return buf as Buffer | null;
-        })
-        .catch((err) => {
-          console.error("[present-reading] photo page failed, html fallback", err);
-          return null as Buffer | null;
-        })
-    : Promise.resolve(null as Buffer | null);
-
-  const collageP =
-    cards.length > 0
-      ? renderCardsImage(cards, question).catch((err) => {
-          console.error("[present-reading] collage failed", err);
-          return null as Buffer | null;
-        })
-      : Promise.resolve(null as Buffer | null);
-
-  const collageBuf = await collageP;
-  if (collageBuf) {
-    // Question is drawn on the collage; never use Telegram captions (narrow under photo).
-    await ctx.replyWithPhoto(new InputFile(collageBuf, "spread.jpg"));
-  } else if (cards.length > 0 && question) {
+  // Card collage stays as photo; reading body is HTML text (easier to read) with width pad + pager.
+  if (cards.length > 0) {
+    try {
+      const collageBuf = await renderCardsImage(cards, question);
+      await ctx.replyWithPhoto(new InputFile(collageBuf, "spread.jpg"));
+    } catch (err) {
+      console.error("[present-reading] collage failed", err);
+      if (question) await ctx.reply(captionFor(question));
+    }
+  } else if (question) {
     await ctx.reply(captionFor(question));
   }
 
@@ -520,26 +482,13 @@ export async function presentReadingToTelegram(
     return;
   }
 
-  // Photo pages = same 1080px width as matrix diagram / card collage (text bubbles stay narrow).
-  const pageBuf = await pageP;
-  if (pageBuf) {
-    if (usePager && tid) {
-      setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
-      prefetchReadingPages(tid);
-    }
-    await ctx.replyWithPhoto(new InputFile(pageBuf, "reading-1.jpg"), {
-      reply_markup: markup,
-    });
-    return;
-  }
-
-  const html = pageHtml(state.pages, 0, state.footer);
-  state.asPhoto = false;
   if (usePager && tid) {
     setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
   }
+
+  const html = pageHtml(state.pages, 0, state.footer);
   try {
-    await ctx.reply(widenTelegramText(html), {
+    await ctx.reply(html, {
       parse_mode: "HTML",
       reply_markup: markup,
     });
@@ -587,7 +536,6 @@ export async function handleReadingPagerCallback(
     matrixActions: Boolean(flow.data.matrixActions),
     matrixSiteUrl:
       typeof flow.data.matrixSiteUrl === "string" ? flow.data.matrixSiteUrl : undefined,
-    asPhoto: flow.data.asPhoto !== false,
   };
   if (!state.pages.length) {
     await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);
@@ -597,36 +545,21 @@ export async function handleReadingPagerCallback(
   state.page = Math.min(Math.max(0, state.page), state.pages.length - 1);
   setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
 
+  const html = pageHtml(state.pages, state.page, state.footer);
+  const markup = pagerMarkup(state);
   const hasPhoto = Boolean(
     ctx.callbackQuery?.message && "photo" in ctx.callbackQuery.message
   );
 
   try {
-    if (state.asPhoto || hasPhoto) {
-      bindReadingPageCache(tid, state.pages, state.footer);
-      let buf: Buffer;
-      try {
-        buf = await getReadingPageBuffer(tid, state.page);
-      } catch {
-        buf = await renderReadingPageImage({
-          bodyHtmlOrText: pageBody(state.pages, state.page, state.footer),
-          page: state.page,
-          total: state.pages.length,
-        });
-        putReadingPageBuffer(tid, state.page, buf);
-      }
-      prefetchReadingPages(tid);
-      await ctx.editMessageMedia(
-        {
-          type: "photo",
-          media: new InputFile(buf, `reading-${state.page + 1}.jpg`),
-        },
-        { reply_markup: pagerMarkup(state) }
-      );
+    if (hasPhoto) {
+      // Migrate older photo-page albums to text on first flip.
+      await ctx.deleteMessage().catch(() => undefined);
+      await ctx.reply(html, { parse_mode: "HTML", reply_markup: markup });
     } else {
-      await ctx.editMessageText(pageHtml(state.pages, state.page, state.footer), {
+      await ctx.editMessageText(html, {
         parse_mode: "HTML",
-        reply_markup: pagerMarkup(state),
+        reply_markup: markup,
       });
     }
     await ctx.answerCallbackQuery({ text: `${state.page + 1} / ${state.pages.length}` }).catch(() => undefined);

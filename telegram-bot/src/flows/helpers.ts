@@ -57,3 +57,9 @@ export function track(user: BotUser, name: string, extra: Record<string, unknown
 export function removeKeyboardMarkup(): { remove_keyboard: true } {
   return { remove_keyboard: true };
 }
+
+/** Immediate text so a slow site call does not look like a hang. */
+export async function announceWorking(ctx: Context, text: string): Promise<void> {
+  await ctx.reply(text);
+  await ctx.replyWithChatAction("typing").catch(() => undefined);
+}

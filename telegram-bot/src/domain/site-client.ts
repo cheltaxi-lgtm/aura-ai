@@ -1,4 +1,7 @@
 import { botConfig } from "../config.js";
+import { siteMiniAppDirectUrl, siteMiniAppShellUrl } from "./mini-app-link.js";
+
+export { siteMiniAppDirectUrl, siteMiniAppShellUrl };
 
 export type SiteResolve = {
   ok: boolean;
@@ -44,6 +47,78 @@ export async function siteResolve(telegramUserId: number): Promise<SiteResolve> 
   const { data } = await siteFetch<SiteResolve & Json>("/api/internal/bot/resolve", {
     telegram_user_id: telegramUserId,
   });
+  return {
+    ok: Boolean(data.ok),
+    linked: Boolean(data.linked),
+    accountId: (data.accountId as string) ?? null,
+    profileUserId: (data.profileUserId as string) ?? null,
+    needsOnboarding: Boolean(data.needsOnboarding),
+    name: (data.name as string) ?? null,
+    runeBalance: typeof data.runeBalance === "number" ? data.runeBalance : null,
+    linkUrl: typeof data.linkUrl === "string" ? data.linkUrl : `${botConfig.siteUrl}/cabinet`,
+    error: typeof data.error === "string" ? data.error : undefined,
+  };
+}
+
+/** Create/bind Zovus shell account after bot age + offer consent. */
+export async function siteEnsureAccount(input: {
+  telegramUserId: number;
+  firstName?: string | null;
+  username?: string | null;
+  photoUrl?: string | null;
+  termsAcceptedAt: string;
+  ageConfirmedAt: string;
+  marketingConsent?: boolean;
+  attribution?: Record<string, string | null | undefined>;
+}): Promise<SiteResolve & { created?: boolean }> {
+  const attribution: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input.attribution || {})) {
+    if (typeof v === "string" && v.trim()) attribution[k] = v.trim();
+  }
+  const { data } = await siteFetch<SiteResolve & Json & { created?: boolean }>(
+    "/api/internal/bot/ensure-account",
+    {
+      telegram_user_id: input.telegramUserId,
+      first_name: input.firstName ?? undefined,
+      username: input.username ?? undefined,
+      photo_url: input.photoUrl ?? undefined,
+      terms_accepted_at: input.termsAcceptedAt,
+      age_confirmed_at: input.ageConfirmedAt,
+      marketing_consent: Boolean(input.marketingConsent),
+      attribution,
+    },
+    15_000
+  );
+  return {
+    ok: Boolean(data.ok),
+    linked: Boolean(data.linked),
+    accountId: (data.accountId as string) ?? null,
+    profileUserId: (data.profileUserId as string) ?? null,
+    needsOnboarding: Boolean(data.needsOnboarding),
+    name: (data.name as string) ?? null,
+    runeBalance: typeof data.runeBalance === "number" ? data.runeBalance : null,
+    linkUrl: typeof data.linkUrl === "string" ? data.linkUrl : `${botConfig.siteUrl}/cabinet`,
+    error: typeof data.error === "string" ? data.error : undefined,
+    created: Boolean(data.created),
+  };
+}
+
+export async function siteBotProfile(input: {
+  telegramUserId: number;
+  name?: string | null;
+  birthDate: string;
+  gender: "male" | "female";
+}): Promise<SiteResolve> {
+  const { data } = await siteFetch<SiteResolve & Json>(
+    "/api/internal/bot/profile",
+    {
+      telegram_user_id: input.telegramUserId,
+      name: input.name ?? undefined,
+      birth_date: input.birthDate,
+      gender: input.gender,
+    },
+    15_000
+  );
   return {
     ok: Boolean(data.ok),
     linked: Boolean(data.linked),
@@ -133,15 +208,73 @@ export async function siteDaily(telegramUserId: number) {
   }>("/api/internal/bot/daily", { telegram_user_id: telegramUserId }, 120_000);
 }
 
+export type SiteRunePackage = {
+  id: string;
+  name: string;
+  runes: number;
+  bonusRunes: number;
+  totalRunes: number;
+  priceRub: number;
+  stars: number;
+  isPopular: boolean;
+};
+
 export async function siteRunes(telegramUserId: number) {
   return siteFetch<{
     ok: boolean;
     runeBalance?: number;
     shopUrl?: string;
     cabinetUrl?: string;
+    packages?: SiteRunePackage[];
+    starsEnabled?: boolean;
     error?: string;
     linkUrl?: string;
   }>("/api/internal/bot/runes", { telegram_user_id: telegramUserId });
+}
+
+export async function siteStarsValidate(input: {
+  telegramUserId: number;
+  invoicePayload: string;
+  totalAmount: number;
+}) {
+  return siteFetch<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    packageId?: string;
+    stars?: number;
+  }>("/api/internal/bot/runes/stars-validate", {
+    telegram_user_id: input.telegramUserId,
+    invoice_payload: input.invoicePayload,
+    total_amount: input.totalAmount,
+  });
+}
+
+export async function siteStarsCredit(input: {
+  telegramUserId: number;
+  packageId: string;
+  telegramPaymentChargeId: string;
+  totalAmount: number;
+  invoicePayload: string;
+}) {
+  return siteFetch<{
+    ok: boolean;
+    credited?: boolean;
+    alreadyCredited?: boolean;
+    runeBalance?: number;
+    packageName?: string;
+    runesAdded?: number;
+    stars?: number;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/runes/stars-credit", {
+    telegram_user_id: input.telegramUserId,
+    package_id: input.packageId,
+    telegram_payment_charge_id: input.telegramPaymentChargeId,
+    total_amount: input.totalAmount,
+    invoice_payload: input.invoicePayload,
+  });
 }
 
 export async function siteModules(telegramUserId: number) {
@@ -544,32 +677,22 @@ export function isTelegramInviteUrl(url: string): boolean {
   }
 }
 
-/**
- * Wrap a same-site path or absolute zovus URL as Mini App entry:
- * https://zovus.ru/tg?to=<encoded path+query>
- */
-export function siteWebAppUrl(pathOrUrl: string): string {
-  const base = botConfig.siteUrl.replace(/\/$/, "");
-  let to = (pathOrUrl || "/cabinet").trim();
-  if (!to) to = "/cabinet";
+/** @deprecated Prefer siteMiniAppShellUrl + pending nav. */
+export function siteWebAppUrl(_pathOrUrl: string): string {
+  return siteMiniAppShellUrl();
+}
 
-  try {
-    if (/^https?:\/\//i.test(to)) {
-      const u = new URL(to);
-      const siteHost = new URL(base).hostname.replace(/^www\./, "");
-      const host = u.hostname.replace(/^www\./, "");
-      if (host !== siteHost && !host.endsWith(`.${siteHost}`)) {
-        // External — caller should use .url(); return as-is.
-        return to;
-      }
-      to = `${u.pathname}${u.search}${u.hash}` || "/cabinet";
-    }
-  } catch {
-    to = "/cabinet";
-  }
-
-  if (!to.startsWith("/") || to.startsWith("//")) to = "/cabinet";
-  return `${base}/tg?to=${encodeURIComponent(to)}`;
+/** Park destination for the single Mini App shell (consumed on open / poll). */
+export async function siteSetMiniAppNav(
+  telegramUserId: number,
+  pathOrUrl: string
+): Promise<boolean> {
+  const { data } = await siteFetch<{ ok?: boolean }>(
+    "/api/internal/bot/miniapp-nav",
+    { telegram_user_id: telegramUserId, path: pathOrUrl },
+    8_000
+  );
+  return Boolean(data.ok);
 }
 
 /** Split long reading into Telegram-safe chunks. */

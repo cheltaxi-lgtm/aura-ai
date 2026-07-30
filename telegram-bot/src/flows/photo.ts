@@ -11,17 +11,20 @@ import {
   buildSessionChatUrl,
   chunkTelegramText,
   sitePhoto,
-  siteWebAppUrl,
   type SitePhotoRedrawSpread,
 } from "../domain/site-client.js";
 import { presentReadingToTelegram } from "../domain/reading/present.js";
 import {
   CB,
+  webAppButton,
   continueOnSiteKeyboard,
   linkAccountKeyboard,
   salonKeyboard,
 } from "../keyboards/index.js";
+import { announceWorking } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
+
+let photoCopyCounter = 0;
 
 const MAX_PHOTO_BYTES = 4.5 * 1024 * 1024;
 
@@ -89,7 +92,7 @@ function photoHomeKeyboard(opts: {
     );
   }
   if (opts.url) {
-    kb.row().webApp("🕯 На сайте", siteWebAppUrl(opts.url));
+    webAppButton(kb.row(), "🕯 На сайте", opts.url);
   }
   return kb;
 }
@@ -102,14 +105,14 @@ function photoConfirmKeyboard(opts?: { siteUrl?: string | null; cost?: number })
     )
     .text("↩ Отмена", CB.phCancel);
   if (opts?.siteUrl) {
-    kb.row().webApp("🕯 Поправить на сайте", siteWebAppUrl(opts.siteUrl));
+    webAppButton(kb.row(), "🕯 Поправить на сайте", opts.siteUrl);
   }
   return kb;
 }
 
 function photoAwaitKeyboard(siteUrl?: string | null): InlineKeyboard {
   const kb = new InlineKeyboard().text("↩ Отмена", CB.phCancel);
-  if (siteUrl) kb.row().webApp("🕯 На сайте", siteWebAppUrl(siteUrl));
+  if (siteUrl) webAppButton(kb.row(), "🕯 На сайте", siteUrl);
   return kb;
 }
 
@@ -223,6 +226,10 @@ function formatRecognizePreview(data: {
 export async function showPhoto(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
+  await announceWorking(
+    ctx,
+    copy.cabinetPreparing(linked.user.telegram_user_id, photoCopyCounter++)
+  );
   try {
     const { data } = await sitePhoto(linked.user.telegram_user_id, "list", { limit: 8 });
     if (!data.ok) {
@@ -448,9 +455,10 @@ async function runInterpret(ctx: Context): Promise<void> {
 
     if (data.sessionId) {
       await ctx.reply(copy.photoSavedHint, {
-        reply_markup: new InlineKeyboard().webApp(
+        reply_markup: webAppButton(
+          new InlineKeyboard(),
           "🕯 Продолжить на сайте",
-          siteWebAppUrl(buildSessionChatUrl(data.sessionId))
+          buildSessionChatUrl(data.sessionId)
         ),
       });
     }

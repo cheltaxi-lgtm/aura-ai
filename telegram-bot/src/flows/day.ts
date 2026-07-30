@@ -9,8 +9,10 @@ import {
   stripReadingForTelegram,
 } from "../domain/reading/present.js";
 import { continueOnSiteKeyboard, salonKeyboard } from "../keyboards/index.js";
-import { track } from "./helpers.js";
+import { announceWorking, track } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
+
+let dayCopyCounter = 0;
 
 export async function handleDay(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
@@ -21,7 +23,10 @@ export async function handleDay(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.replyWithChatAction("typing");
+  await announceWorking(
+    ctx,
+    copy.dayPreparing(linked.user.telegram_user_id, dayCopyCounter++)
+  );
   let result: Awaited<ReturnType<typeof siteDaily>>;
   try {
     result = await siteDaily(linked.user.telegram_user_id);

@@ -12,9 +12,11 @@ import {
   catalogItemKeyboard,
   catalogListKeyboard,
 } from "../keyboards/index.js";
-import { ensureOnboarded } from "./helpers.js";
+import { announceWorking, ensureOnboarded } from "./helpers.js";
 import { beginCustomQuestion, runSpreadQuestion } from "./spread.js";
 import { ensureSiteLinked } from "./site-account.js";
+
+let catalogCopyCounter = 0;
 
 type CatalogMode = "featured" | "all" | "category";
 
@@ -141,6 +143,10 @@ async function showHome(ctx: Context, telegramUserId: number): Promise<void> {
 export async function beginCatalog(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
+  await announceWorking(
+    ctx,
+    copy.cabinetPreparing(user.telegram_user_id, catalogCopyCounter++)
+  );
   await showHome(ctx, user.telegram_user_id);
 }
 

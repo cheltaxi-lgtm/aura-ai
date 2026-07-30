@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import { sanitizeMiniAppPath } from "@/lib/telegram/mini-app";
+import {
+  decodeMiniAppStartParam,
+  sanitizeMiniAppPath,
+} from "@/lib/telegram/mini-app";
 import TgMiniAppClient from "./TgMiniAppClient";
 
 export const metadata: Metadata = {
@@ -8,14 +11,25 @@ export const metadata: Metadata = {
 };
 
 type TgPageProps = {
-  searchParams: Promise<{ to?: string | string[] }>;
+  searchParams: Promise<{
+    to?: string | string[];
+    tgWebAppStartParam?: string | string[];
+    startapp?: string | string[];
+  }>;
 };
+
+function firstParam(raw: string | string[] | undefined): string | undefined {
+  if (Array.isArray(raw)) return raw[0];
+  return raw;
+}
 
 export default async function TelegramMiniAppEntryPage({ searchParams }: TgPageProps) {
   const params = await searchParams;
-  const raw = params.to;
-  const toParam = Array.isArray(raw) ? raw[0] : raw;
-  const to = sanitizeMiniAppPath(toParam);
+  const startRaw =
+    firstParam(params.tgWebAppStartParam) || firstParam(params.startapp) || null;
+  const fromStart = decodeMiniAppStartParam(startRaw);
+  const fromTo = firstParam(params.to);
+  const to = sanitizeMiniAppPath(fromStart || fromTo || "/cabinet");
 
   return <TgMiniAppClient to={to} />;
 }

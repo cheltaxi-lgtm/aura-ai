@@ -2,9 +2,15 @@ import type { Context } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { setZovusUserId, type BotUser } from "../db/repos.js";
-import { siteLinkCode, siteResolve, type SiteResolve } from "../domain/site-client.js";
-import { continueOnSiteKeyboard, linkAccountKeyboard, salonKeyboard } from "../keyboards/index.js";
+import {
+  siteEnsureAccount,
+  siteLinkCode,
+  siteResolve,
+  type SiteResolve,
+} from "../domain/site-client.js";
+import { linkAccountKeyboard, salonKeyboard } from "../keyboards/index.js";
 import { ensureOnboarded } from "./helpers.js";
+import { beginProfileOnboarding } from "./profile-onboarding.js";
 
 export async function syncSiteAccount(user: BotUser): Promise<SiteResolve> {
   const resolved = await siteResolve(user.telegram_user_id);
@@ -16,7 +22,41 @@ export async function syncSiteAccount(user: BotUser): Promise<SiteResolve> {
   return resolved;
 }
 
-/** Mint post-auth bind URL (bot → site link-code). Never issues Telegram login. */
+/** Ensure shell Zovus account exists after bot age/offer gates. */
+export async function ensureBotOfferAccount(
+  ctx: Context,
+  user: BotUser
+): Promise<SiteResolve | null> {
+  if (!user.age_confirmed_at || !user.terms_accepted_at) return null;
+  try {
+    const site = await siteEnsureAccount({
+      telegramUserId: user.telegram_user_id,
+      firstName: ctx.from?.first_name ?? user.first_name ?? null,
+      username: ctx.from?.username ?? user.username ?? null,
+      photoUrl: null,
+      termsAcceptedAt: user.terms_accepted_at,
+      ageConfirmedAt: user.age_confirmed_at,
+      marketingConsent: false,
+      attribution: {
+        utm_source: user.utm_source,
+        utm_medium: user.utm_medium,
+        utm_campaign: user.utm_campaign,
+        ref: user.ref,
+      },
+    });
+    if (site.linked && site.profileUserId) {
+      setZovusUserId(user.telegram_user_id, site.profileUserId);
+    } else if (site.linked && site.accountId && !user.zovus_user_id) {
+      // Profile may be missing — still mark sync attempted via resolve later.
+    }
+    return site;
+  } catch (err) {
+    console.error("[site-account] ensure failed", err);
+    return null;
+  }
+}
+
+/** Mint post-auth bind URL for upgrading shell → email/Yandex/VK (optional). */
 export async function issueSiteLinkUrl(
   ctx: Context,
   user: BotUser
@@ -35,7 +75,7 @@ export async function issueSiteLinkUrl(
   return null;
 }
 
-/** Require linked Zovus account for product actions (site as source of truth). */
+/** Require Zovus account for product actions — auto-create via bot offer when needed. */
 export async function ensureSiteLinked(
   ctx: Context
 ): Promise<{ user: BotUser; site: SiteResolve } | null> {
@@ -61,17 +101,19 @@ export async function ensureSiteLinked(
   }
 
   if (!site.linked) {
-    const linkUrl = (await issueSiteLinkUrl(ctx, user)) || site.linkUrl;
-    await ctx.reply(copy.needSiteAccount, {
-      reply_markup: linkAccountKeyboard(linkUrl),
-    });
-    return null;
+    const ensured = await ensureBotOfferAccount(ctx, user);
+    if (!ensured?.linked) {
+      const linkUrl = (await issueSiteLinkUrl(ctx, user)) || site.linkUrl;
+      await ctx.reply(copy.needSiteAccount, {
+        reply_markup: linkAccountKeyboard(linkUrl),
+      });
+      return null;
+    }
+    site = ensured;
   }
 
   if (site.needsOnboarding) {
-    await ctx.reply(copy.needSiteOnboarding, {
-      reply_markup: continueOnSiteKeyboard(site.linkUrl, copy.continueOnSite),
-    });
+    await beginProfileOnboarding(ctx);
     return null;
   }
 

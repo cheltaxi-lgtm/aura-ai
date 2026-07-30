@@ -4,16 +4,30 @@ import { PAIN_CHIPS } from "../domain/question/validate.js";
 import {
   buildSessionChatUrl,
   isTelegramInviteUrl,
-  siteWebAppUrl,
+  siteMiniAppShellUrl,
 } from "../domain/site-client.js";
+import { encodeMiniAppStartParam } from "../domain/mini-app-link.js";
 import { isShareCardEnabled } from "../flags.js";
 
-/** Site CTAs open as Telegram Mini App; t.me invites stay ordinary URLs. */
-function webAppButton(kb: InlineKeyboard, label: string, pathOrUrl: string): InlineKeyboard {
+/**
+ * Site CTAs → callback that parks a path for the ONE Mini App shell.
+ * Never open a second web_app / startapp window from chat buttons.
+ */
+export function webAppButton(
+  kb: InlineKeyboard,
+  label: string,
+  pathOrUrl: string
+): InlineKeyboard {
   if (isTelegramInviteUrl(pathOrUrl)) {
     return kb.url(label, pathOrUrl);
   }
-  return kb.webApp(label, siteWebAppUrl(pathOrUrl));
+  const payload = encodeMiniAppStartParam(pathOrUrl).slice(0, 62);
+  return kb.text(label, `${CB.navPrefix}${payload}`);
+}
+
+/** Single fixed web_app launcher (same URL every time → Telegram reuses the panel). */
+export function openSalonKeyboard(label = "🕯 Открыть салон"): InlineKeyboard {
+  return new InlineKeyboard().webApp(label, siteMiniAppShellUrl());
 }
 
 /** Persistent bottom bar — emoji allowed on buttons only (not in message bodies). */
@@ -109,6 +123,14 @@ export const CB = {
   rdPrefix: "rd:",
   rdPagePrefix: "rd:p:",
   rdNoop: "rd:noop",
+  /** Rune shop — Stars invoice. Payload: rn:buy:<packageId> */
+  rnPrefix: "rn:",
+  rnBuyPrefix: "rn:buy:",
+  /** Park Mini App destination. Payload: n:<startapp-alias> */
+  navPrefix: "n:",
+  /** Bot-offer profile onboarding */
+  profPrefix: "prof:",
+  profGenderPrefix: "prof:g:",
 } as const;
 
 export function salonKeyboard(): Keyboard {
@@ -127,8 +149,9 @@ export function salonKeyboard(): Keyboard {
     .row()
     .text(NAV.settings)
     .text(NAV.about)
+    // resized only — do NOT use persistent(): it pins the bar so users cannot
+    // collapse the menu or swipe away from the bot chat comfortably.
     .resized()
-    .persistent()
     .placeholder("Выберите действие или напишите вопрос…");
 }
 
@@ -344,6 +367,29 @@ export function profileKeyboard(opts: {
   if (opts.inviteUrl) {
     // t.me invites must stay .url(); webAppButton handles that.
     webAppButton(kb, "✨ Пригласить", opts.inviteUrl).row();
+  }
+  return kb;
+}
+
+/** Rune shop: one package per row + cabinet card checkout. */
+export function runesShopKeyboard(opts: {
+  packages: Array<{
+    id: string;
+    name: string;
+    totalRunes: number;
+    stars: number;
+    isPopular?: boolean;
+  }>;
+  shopUrl?: string | null;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const p of opts.packages.slice(0, 4)) {
+    const mark = p.isPopular ? " · выбор" : "";
+    const label = `${p.name} · ${p.totalRunes}ᚢ${mark}`.slice(0, 64);
+    kb.text(label, `${CB.rnBuyPrefix}${p.id}`).row();
+  }
+  if (opts.shopUrl) {
+    webAppButton(kb, "🕯 Кабинет · картой", opts.shopUrl);
   }
   return kb;
 }

@@ -1,5 +1,6 @@
 import { query } from "./db";
 import { getSupportAdminStats } from "./support-service";
+import { testAccountEmailSql, testProfileNameSql } from "./test-accounts";
 
 export async function logAdminAction(
   adminId: string,
@@ -31,9 +32,16 @@ export async function getDashboardStats() {
     bloggers: string;
   }>(`
     SELECT
-      (SELECT COUNT(*) FROM user_accounts)::text AS users,
+      (SELECT COUNT(*) FROM user_accounts ua WHERE NOT ${testAccountEmailSql("ua.email")})::text AS users,
       (SELECT COUNT(*) FROM expert_accounts)::text AS experts,
-      (SELECT COUNT(*) FROM users)::text AS profiles,
+      (SELECT COUNT(*) FROM users u
+        WHERE NOT ${testProfileNameSql("u.name")}
+          AND NOT EXISTS (
+            SELECT 1 FROM user_accounts ua
+            WHERE ua.profile_user_id = u.id
+              AND ${testAccountEmailSql("ua.email")}
+          )
+      )::text AS profiles,
       (SELECT COUNT(*) FROM sessions)::text AS sessions,
       (SELECT COUNT(*) FROM chat_messages)::text AS messages,
       (SELECT COUNT(*) FROM payments WHERE status = 'succeeded')::text AS payments_ok,
@@ -77,7 +85,8 @@ export async function getDashboardStats() {
   };
 }
 
-export async function listUserAccounts(limit = 50, offset = 0) {
+export async function listUserAccounts(limit = 50, offset = 0, includeTest = false) {
+  const testFilter = includeTest ? "" : `WHERE NOT ${testAccountEmailSql("ua.email")}`;
   const { rows } = await query<{
     id: string;
     email: string;
@@ -109,13 +118,22 @@ export async function listUserAccounts(limit = 50, offset = 0) {
             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count
      FROM user_accounts ua
      LEFT JOIN users u ON u.id = ua.profile_user_id
+     ${testFilter}
      ORDER BY ua.created_at DESC LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
   return rows;
 }
 
-export async function listOnboardingProfiles(limit = 50, offset = 0) {
+export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest = false) {
+  const testFilter = includeTest
+    ? ""
+    : `WHERE NOT ${testProfileNameSql("u.name")}
+         AND NOT EXISTS (
+           SELECT 1 FROM user_accounts ua
+           WHERE ua.profile_user_id = u.id
+             AND ${testAccountEmailSql("ua.email")}
+         )`;
   const { rows } = await query<{
     id: string;
     name: string;
@@ -130,6 +148,7 @@ export async function listOnboardingProfiles(limit = 50, offset = 0) {
             u.rune_balance,
             (SELECT ua.email FROM user_accounts ua WHERE ua.profile_user_id = u.id LIMIT 1) AS account_email
      FROM users u
+     ${testFilter}
      ORDER BY u.created_at DESC LIMIT $1 OFFSET $2`,
     [limit, offset]
   );

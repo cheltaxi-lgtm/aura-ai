@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 type TelegramWebApp = {
   initData?: string;
+  initDataUnsafe?: { start_param?: string };
   ready?: () => void;
   expand?: () => void;
   setHeaderColor?: (color: string) => void;
@@ -46,13 +48,26 @@ export function useIsTelegramMiniApp(): boolean {
   return isTelegramWebApp() || document.documentElement.dataset.telegramWebApp === "1";
 }
 
+function sameDestination(to: string): boolean {
+  try {
+    const u = new URL(to, window.location.origin);
+    return u.pathname === window.location.pathname && u.search === window.location.search;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Activates when the page runs inside Telegram Mini App WebView.
  * - Marks document for CSS/app-shell tweaks
  * - Applies salon theme colors
  * - Routes OAuth/payment clicks through openLink
+ * - Pulls bot-parked navigation into THIS shell (no second Mini App window)
  */
 export default function TelegramWebAppProvider() {
+  const router = useRouter();
+  const pathname = usePathname();
+
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     if (!tg?.initData) return;
@@ -86,6 +101,38 @@ export default function TelegramWebAppProvider() {
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
   }, []);
+
+  useEffect(() => {
+    if (!isTelegramWebApp()) return;
+    // /tg bootstrap already consumes pending via webapp auth.
+    if (pathname === "/tg") return;
+
+    let cancelled = false;
+
+    async function pullNav() {
+      try {
+        const res = await fetch("/api/telegram/miniapp-nav", { credentials: "include" });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { ok?: boolean; to?: string | null };
+        if (!data.to || sameDestination(data.to)) return;
+        router.replace(data.to);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    void pullNav();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void pullNav();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const timer = window.setInterval(() => void pullNav(), 2500);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(timer);
+    };
+  }, [pathname, router]);
 
   return null;
 }

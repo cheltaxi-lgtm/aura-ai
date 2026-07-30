@@ -28,6 +28,7 @@ import { getRuneSettings } from "@/lib/rune-settings";
 import { sanitizeReadingForClient, stripMemoryLeakFromReply } from "@/lib/chat-sanitize";
 import { createHistoryEntry, getUserById } from "@/lib/users";
 import { query } from "@/lib/db";
+import { botRunesShopUrl } from "@/lib/telegram/bot-resolve";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 
 const POSITIONS = ["Прошлое", "Настоящее", "Будущее"] as const;
@@ -232,7 +233,7 @@ export async function botRunVeronikaSpread(input: {
           message: `Недостаточно рун: нужно ${err.required}, на балансе ${err.balance}. Пополните на сайте.`,
           runeBalance: err.balance,
           cost: err.required,
-          linkUrl: `${resolved.linkUrl.replace(/\/cabinet.*/, "")}/runy`,
+          linkUrl: botRunesShopUrl("product"),
         };
       }
       throw err;

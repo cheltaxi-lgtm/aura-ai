@@ -447,7 +447,7 @@ export async function botPhotoInterpret(input: {
             message: `Недостаточно рун: нужно ${err.required}, на балансе ${err.balance}.`,
             cost: err.required,
             runeBalance: err.balance,
-            linkUrl: `${siteBase()}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=photo`,
+            linkUrl: `${siteBase()}/cabinet?shop=1&utm_source=telegram&utm_medium=bot&utm_campaign=photo`,
           };
         }
         throw err;

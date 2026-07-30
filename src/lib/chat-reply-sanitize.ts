@@ -234,6 +234,16 @@ const PROMPT_LEAK_PATTERNS = [
   /Тема жизни:/,
   /служебные данные/i,
   /не включать в ответ/i,
+  // Destiny-matrix engine/prompt echo (model dumped instructions as the reading).
+  /КЛЮЧИ ДЛЯ РЕЗЮМЕ/i,
+  /не путать точки/i,
+  /Не подменяй его Отшельником/i,
+  /Структура ответа\s*\(/i,
+  /КРИТИЧНО:\s*даже при одинаковом аркане/i,
+  /КРИТИЧНО:\s*не копируй одну практику/i,
+  /Угол\s*[….]/i,
+  /ПОВТОРЫ АРКАНОВ\s*\(/i,
+  /ДАННЫЕ ДВИЖКА/i,
 ];
 
 const READING_CUT_MARKERS = [
@@ -259,6 +269,12 @@ const READING_CUT_MARKERS = [
   "УГЛЫ ТЕМЫ",
   "системного промпта",
   "служебные данные",
+  "КЛЮЧИ ДЛЯ РЕЗЮМЕ",
+  "Структура ответа (",
+  "КРИТИЧНО:",
+  "ПОВТОРЫ АРКАНОВ",
+  "ДАННЫЕ ДВИЖКА",
+  "Не подменяй его Отшельником",
   ...MEMORY_LEAK_MARKERS,
 ];
 
@@ -316,6 +332,12 @@ export function missingCardMentions(text: string, cardNames: string[]): string[]
     const relaxed = n.replace(/ё/g, "е");
     return !out.includes(n) && !out.includes(relaxed);
   });
+}
+
+/** Matrix report must be long client-safe prose (not a greeting + leaked instructions). */
+export function isUsableMatrixReading(text: string): boolean {
+  const cleaned = sanitizeReadingForClient(text || "");
+  return Boolean(cleaned && cleaned.length >= 400);
 }
 
 /** Client-safe reading text — strips leaks; returns empty if unusable. */

@@ -45,7 +45,7 @@ import {
 import { isShareCardEnabled } from "../flags.js";
 import { renderShareCollage } from "../render/card-collage.js";
 import { renderProfileCardImage } from "../render/profile-card.js";
-import { siteCabinet, siteHistory, siteRunes } from "../domain/site-client.js";
+import { siteCabinet, siteHistory } from "../domain/site-client.js";
 import {
   beginChatFollowUp,
   beginSupportReply,
@@ -66,16 +66,34 @@ import { handleDay } from "./day.js";
 import { beginCatalog, handleCatalogCallback } from "./catalog.js";
 import { handleReadingPagerCallback } from "../domain/reading/present.js";
 import {
+  handleRunesCallback,
+  registerRunePayments,
+  showRunes,
+} from "./runes.js";
+import { handleMiniAppNavCallback } from "./miniapp-nav.js";
+import {
   handleAgain,
   handleChip,
   handleCtaResend,
   handleFreeTextQuestion,
   handleOwnQuestionPrompt,
 } from "./spread.js";
-import { ensureSiteLinked, issueSiteLinkUrl, syncSiteAccount } from "./site-account.js";
+import {
+  ensureBotOfferAccount,
+  ensureSiteLinked,
+  issueSiteLinkUrl,
+  syncSiteAccount,
+} from "./site-account.js";
+import {
+  beginProfileOnboarding,
+  handleProfileCallback,
+  handleProfileFlowText,
+} from "./profile-onboarding.js";
 import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
 
 export function registerFlows(bot: Bot): void {
+  registerRunePayments(bot);
+
   bot.command("start", async (ctx) => {
     if (!ctx.from || !ctx.chat) return;
     const payload = typeof ctx.match === "string" ? ctx.match : "";
@@ -163,6 +181,14 @@ export function registerFlows(bot: Bot): void {
     track(user, "consent_given", {});
     await ctx.answerCallbackQuery();
     await ctx.editMessageText("Согласие принято.");
+    const ensured = await ensureBotOfferAccount(ctx, user);
+    if (ensured?.linked) {
+      await ctx.reply(copy.accountOpened, { reply_markup: salonKeyboard() });
+      if (ensured.needsOnboarding) {
+        await beginProfileOnboarding(ctx);
+        return;
+      }
+    }
     await attachSalonBar(ctx);
   });
 
@@ -459,6 +485,27 @@ export function registerFlows(bot: Bot): void {
     }
   });
 
+  bot.callbackQuery(new RegExp(`^${CB.rnPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handleRunesCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.navPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handleMiniAppNavCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.profPrefix}`), async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!(await handleProfileCallback(ctx, data))) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+    }
+  });
+
   bot.on(["message:photo", "message:document"], async (ctx) => {
     if (await handlePhotoMessage(ctx)) return;
   });
@@ -466,6 +513,7 @@ export function registerFlows(bot: Bot): void {
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return;
+    if (await handleProfileFlowText(ctx, text)) return;
     if (NAV_LABELS.has(text)) {
       await routeNav(ctx, text);
       return;
@@ -558,7 +606,7 @@ async function showProfile(ctx: Context): Promise<void> {
   };
 
   let cabinetUrl = `${botConfig.siteUrl}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
-  let runesUrl = `${botConfig.siteUrl}/runy?utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
+  let runesUrl = `${botConfig.siteUrl}/cabinet?shop=1&utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
 
   if (linked) {
     try {
@@ -628,26 +676,6 @@ async function showProfile(ctx: Context): Promise<void> {
         ? continueOnSiteKeyboard(cabinetUrl, copy.continueOnSite)
         : linkAccountKeyboard(linkUrl),
     });
-  }
-}
-
-async function showRunes(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
-  if (!linked) return;
-  try {
-    const { data } = await siteRunes(linked.user.telegram_user_id);
-    if (!data.ok) {
-      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-      return;
-    }
-    await ctx.reply(copy.runesBalance(data.runeBalance ?? 0), {
-      reply_markup: data.shopUrl
-        ? continueOnSiteKeyboard(data.shopUrl, "Пополнить руны")
-        : salonKeyboard(),
-    });
-  } catch (err) {
-    console.error("[runes] site", err);
-    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
   }
 }
 

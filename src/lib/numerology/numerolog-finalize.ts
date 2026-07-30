@@ -312,6 +312,16 @@ export async function generateNumerologMainReading(params: {
   if (params.topic === "spread_opening" && deniesHavingSpreadNumbers(trimmed)) {
     return params.allowEngineFallback ? params.fallback ?? null : null;
   }
+  if (params.topic === "destiny_matrix") {
+    const { isUsableMatrixReading, sanitizeReadingForClient } = await import(
+      "@/lib/chat-reply-sanitize"
+    );
+    const cleaned = sanitizeReadingForClient(trimmed);
+    if (!cleaned || !isUsableMatrixReading(trimmed)) {
+      return null;
+    }
+    return polishNumerologClientReply(cleaned);
+  }
   return polishNumerologClientReply(trimmed);
 }
 

@@ -139,6 +139,7 @@ export default function CabinetPage() {
   const [natalChartEnabled, setNatalChartEnabled] = useState(false);
   const [natalChartRefreshKey, setNatalChartRefreshKey] = useState(0);
   const sessionsOffset = useRef(0);
+  const shopDeepLinkOpened = useRef(false);
 
   const needsOnboarding =
     Boolean(data?.needsOnboarding) && !authUser?.profileUserId && !data?.profile?.birthDate;
@@ -229,6 +230,30 @@ export default function CabinetPage() {
     if (!data?.needsOnboarding) return;
     void fetchCabinet(0, false);
   }, [authLoading, authUser?.profileUserId, data?.needsOnboarding, fetchCabinet]);
+
+  /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
+  useEffect(() => {
+    if (loading || authLoading || !authUser || !data) return;
+    if (typeof window === "undefined" || shopDeepLinkOpened.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("shop") !== "1" && params.get("topup") !== "1") return;
+
+    shopDeepLinkOpened.current = true;
+    setActiveTab("runes");
+    openPaywall({
+      currentBalance: data.profile?.runeBalance ?? data.runes?.balance ?? 0,
+      onClose: async () => {
+        await fetchCabinet(0, false);
+        setBalancePulse(true);
+        setTimeout(() => setBalancePulse(false), 600);
+      },
+    });
+
+    params.delete("shop");
+    params.delete("topup");
+    const qs = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+  }, [loading, authLoading, authUser, data, openPaywall, fetchCabinet]);
 
   useEffect(() => {
     if (authLoading || !authUser) {
