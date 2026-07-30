@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
     name?: unknown;
     birth_date?: unknown;
     gender?: unknown;
+    birth_city?: unknown;
+    memory_choice?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -34,6 +36,12 @@ export async function POST(request: NextRequest) {
 
   const birthDate = typeof body.birth_date === "string" ? body.birth_date.trim() : "";
   const gender = normalizeUserGender(typeof body.gender === "string" ? body.gender : null);
+  const birthCity =
+    typeof body.birth_city === "string" ? body.birth_city.trim().slice(0, 160) : "";
+  const memoryChoice =
+    body.memory_choice === "enabled" || body.memory_choice === "disabled"
+      ? body.memory_choice
+      : null;
   if (!birthDate || !gender) {
     return NextResponse.json({ ok: false, error: "invalid_profile" }, { status: 400 });
   }
@@ -44,6 +52,8 @@ export async function POST(request: NextRequest) {
       name: typeof body.name === "string" ? body.name : null,
       birthDate,
       gender,
+      birthCity: birthCity || null,
+      memoryChoice,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

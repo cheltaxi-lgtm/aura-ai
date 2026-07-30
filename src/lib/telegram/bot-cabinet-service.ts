@@ -24,6 +24,7 @@ import {
   getSupportTicketMessages,
   getUserSupportTicket,
 } from "@/lib/support-service";
+import { emailSupportTicketCreated } from "@/lib/email/support-notify";
 import { getUserById } from "@/lib/users";
 import { getRuneBalance } from "@/lib/rune-service";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
@@ -259,12 +260,35 @@ export async function botSupportCreate(input: {
   const gate = await requireLinked(input.telegramUserId);
   if (!gate.ok) return gate;
   try {
+    const rawMessage = input.message.slice(0, 4000);
+    const rawSubject = input.subject.trim().slice(0, 100);
+    const subject =
+      rawSubject ||
+      `Telegram: ${rawMessage.replace(/\s+/g, " ").slice(0, 72)}` ||
+      "Вопрос из Telegram";
     const created = await createSupportTicket({
       userAccountId: gate.resolved.accountId!,
-      subject: input.subject.slice(0, 120) || "Вопрос из Telegram",
-      category: "other",
-      message: input.message.slice(0, 4000),
+      subject,
+      category: "general",
+      message: rawMessage,
     });
+
+    const { rows } = await query<{ email: string; name: string | null }>(
+      `SELECT email, name FROM user_accounts WHERE id = $1 LIMIT 1`,
+      [gate.resolved.accountId!]
+    );
+    const account = rows[0];
+    if (account?.email) {
+      void emailSupportTicketCreated({
+        userEmail: account.email,
+        userName: account.name?.trim() || account.email,
+        ticketId: created.ticket.id,
+        subject: created.ticket.subject,
+        category: created.ticket.category,
+        messagePreview: rawMessage.slice(0, 280),
+      });
+    }
+
     return {
       ok: true as const,
       ticketId: created.ticket.id,

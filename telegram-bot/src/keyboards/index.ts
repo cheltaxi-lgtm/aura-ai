@@ -58,6 +58,8 @@ export const CB = {
   voiceText: "voice:text",
   voiceBoth: "voice:both",
   tzPrefix: "tz:",
+  /** Opens first delete warning (same as /delete). */
+  delStart: "del:start",
   delAsk: "del:ask",
   delYes: "del:yes",
   delNo: "del:no",
@@ -107,6 +109,8 @@ export const CB = {
   phCancel: "ph:cancel",
   phNoop: "ph:noop",
   phOpenPrefix: "ph:o:",
+  /** Photo history album pager — ph:pg:<n> */
+  phPagePrefix: "ph:pg:",
   /** Spread catalog (site /rasklady parity). Keep payloads short — TG limit 64 bytes. */
   catHome: "cat:home",
   catBack: "cat:back",
@@ -128,9 +132,15 @@ export const CB = {
   rnBuyPrefix: "rn:buy:",
   /** Park Mini App destination. Payload: n:<startapp-alias> */
   navPrefix: "n:",
-  /** Bot-offer profile onboarding */
+  /** Bot-offer profile onboarding + profile hub actions */
   profPrefix: "prof:",
   profGenderPrefix: "prof:g:",
+  profCityPrefix: "prof:c:",
+  profMemOn: "prof:mem:on",
+  profMemOff: "prof:mem:off",
+  profHist: "prof:hist",
+  profRunes: "prof:runes",
+  profSettings: "prof:set",
 } as const;
 
 export function salonKeyboard(): Keyboard {
@@ -141,13 +151,9 @@ export function salonKeyboard(): Keyboard {
     .text(NAV.spread)
     .text(NAV.day)
     .row()
-    .text(NAV.history)
     .text(NAV.profile)
-    .row()
-    .text(NAV.runes)
     .text(NAV.more)
     .row()
-    .text(NAV.settings)
     .text(NAV.about)
     // resized only — do NOT use persistent(): it pins the bar so users cannot
     // collapse the menu or swipe away from the bot chat comfortably.
@@ -345,30 +351,58 @@ export function historyItemKeyboard(sessionId: string): InlineKeyboard {
   );
 }
 
-/** Premium profile album actions — site SoT. */
+/**
+ * Profile hub — buttons by demand:
+ * History → Runes → Settings → site → invite → support → delete.
+ */
 export function profileKeyboard(opts: {
   linked: boolean;
   cabinetUrl?: string | null;
-  runesUrl?: string | null;
   linkUrl?: string | null;
   inviteUrl?: string | null;
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
+  kb.text("📚 История", CB.profHist).row();
+  kb.text("🪙 Руны", CB.profRunes).text("⚙️ Настройки", CB.profSettings).row();
   if (!opts.linked && opts.linkUrl) {
     webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, opts.linkUrl).row();
-  }
-  if (opts.cabinetUrl) {
-    webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.cabinetUrl);
-    if (opts.runesUrl) webAppButton(kb, "🪙 Руны", opts.runesUrl);
-    kb.row();
-  } else if (opts.runesUrl) {
-    webAppButton(kb, "🪙 Руны", opts.runesUrl).row();
+  } else if (opts.cabinetUrl) {
+    webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.cabinetUrl).row();
   }
   if (opts.inviteUrl) {
-    // t.me invites must stay .url(); webAppButton handles that.
-    webAppButton(kb, "✨ Пригласить", opts.inviteUrl).row();
+    // Open Telegram share sheet (plain t.me/bot?start= only reopens own chat).
+    kb.url("✨ Пригласить", telegramShareUrl(opts.inviteUrl)).row();
+  }
+  kb.text("✉️ Поддержка", CB.modSupport).row();
+  kb.text("🗑 Удалить аккаунт", CB.delStart);
+  return kb;
+}
+
+/** Telegram native “Share” dialog with deep-link + short pitch. */
+export function telegramShareUrl(
+  inviteUrl: string,
+  text = "Zovus — приватный цифровой салон"
+): string {
+  const params = new URLSearchParams({ url: inviteUrl, text });
+  return `https://t.me/share/url?${params.toString()}`;
+}
+
+/** Birth-city suggestions during registration (index into flow.data.places). */
+export function birthCityKeyboard(places: Array<{ label: string }>): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (let i = 0; i < Math.min(places.length, 6); i++) {
+    const label = places[i]!.label.slice(0, 60);
+    kb.text(label, `${CB.profCityPrefix}${i}`).row();
   }
   return kb;
+}
+
+/** Personal memory first choice during registration. */
+export function memoryChoiceKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✨ С памятью", CB.profMemOn)
+    .row()
+    .text("Без памяти", CB.profMemOff);
 }
 
 /** Rune shop: one package per row + cabinet card checkout. */
@@ -390,6 +424,31 @@ export function runesShopKeyboard(opts: {
   }
   if (opts.shopUrl) {
     webAppButton(kb, "🕯 Кабинет · картой", opts.shopUrl);
+  }
+  return kb;
+}
+
+/** Photo history album: pager + single Open action. */
+export function photoPagerKeyboard(opts: {
+  page: number;
+  total: number;
+  historyId?: string | null;
+}): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const total = Math.max(1, opts.total);
+  const page = Math.min(Math.max(0, opts.page), total - 1);
+
+  if (total > 1) {
+    if (page > 0) kb.text("‹", `${CB.phPagePrefix}${page - 1}`);
+    else kb.text("·", CB.phNoop);
+    kb.text(`${page + 1} / ${total}`, CB.phNoop);
+    if (page + 1 < total) kb.text("›", `${CB.phPagePrefix}${page + 1}`);
+    else kb.text("·", CB.phNoop);
+    kb.row();
+  }
+
+  if (opts.historyId) {
+    kb.text("📜 Открыть", `${CB.phOpenPrefix}${opts.historyId}`);
   }
   return kb;
 }
@@ -519,7 +578,9 @@ export function settingsKeyboard(): InlineKeyboard {
     .text("📝 Только текст", CB.voiceText)
     .text("🎙 Текст и голос", CB.voiceBoth)
     .row()
-    .text("🌍 Часовой пояс", `${CB.tzPrefix}ask`);
+    .text("🌍 Часовой пояс", `${CB.tzPrefix}ask`)
+    .row()
+    .text("🗑 Удалить аккаунт", CB.delStart);
 }
 
 export function timezoneKeyboard(opts?: { allowSkip?: boolean }): InlineKeyboard {
@@ -542,17 +603,26 @@ export function timezoneKeyboard(opts?: { allowSkip?: boolean }): InlineKeyboard
 }
 
 export function deleteKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("🗑 Удалить данные", CB.delAsk);
+  return new InlineKeyboard().text("🗑 Удалить аккаунт Zovus", CB.delAsk);
 }
 
 export function deleteConfirmKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("🗑 Да, удалить", CB.delYes).text("↩ Отмена", CB.delNo);
+  return new InlineKeyboard()
+    .text("🗑 Да, удалить навсегда", CB.delYes)
+    .text("↩ Отмена", CB.delNo);
 }
 
 export function reactivationKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🔕 Больше не беспокоить", CB.unsub);
 }
 
-export function inviteKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().switchInline("✉️ Пригласить в салон", "Zovus — приватный цифровой салон");
+export function inviteKeyboard(inviteUrl?: string | null): InlineKeyboard {
+  if (inviteUrl) {
+    return new InlineKeyboard().url("✉️ Пригласить в салон", telegramShareUrl(inviteUrl));
+  }
+  // Fallback when ref link is unavailable — requires inline mode on the bot.
+  return new InlineKeyboard().switchInline(
+    "✉️ Пригласить в салон",
+    "Zovus — приватный цифровой салон"
+  );
 }

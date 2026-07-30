@@ -789,9 +789,8 @@ export async function showSupport(ctx: Context): Promise<void> {
     }
     const tickets = data.tickets ?? [];
     if (!tickets.length) {
-      await ctx.reply(copy.supportEmpty, {
-        reply_markup: supportListKeyboard([], data.url),
-      });
+      // From profile / modules — empty inbox goes straight into the ticket form.
+      await beginSupportCreate(ctx);
       return;
     }
     const lines = [

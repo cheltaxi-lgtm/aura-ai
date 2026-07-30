@@ -45,7 +45,7 @@ import {
 import { isShareCardEnabled } from "../flags.js";
 import { renderShareCollage } from "../render/card-collage.js";
 import { renderProfileCardImage } from "../render/profile-card.js";
-import { siteCabinet, siteHistory } from "../domain/site-client.js";
+import { siteCabinet, siteDeleteAccount, siteHistory } from "../domain/site-client.js";
 import {
   beginChatFollowUp,
   beginSupportReply,
@@ -86,10 +86,17 @@ import {
 } from "./site-account.js";
 import {
   beginProfileOnboarding,
+  continueProfileAfterTimezone,
   handleProfileCallback,
   handleProfileFlowText,
 } from "./profile-onboarding.js";
-import { attachSalonBar, ensureOnboarded, removeKeyboardMarkup, sendMenu, track } from "./helpers.js";
+import {
+  ensureOnboarded,
+  removeKeyboardMarkup,
+  sendMenu,
+  showSalonHome,
+  track,
+} from "./helpers.js";
 
 export function registerFlows(bot: Bot): void {
   registerRunePayments(bot);
@@ -142,11 +149,11 @@ export function registerFlows(bot: Bot): void {
         await ctx.reply(copy.consentAsk(botConfig.siteUrl), { reply_markup: consentKeyboard() });
         return;
       }
-      await attachSalonBar(ctx);
+      await showSalonHome(ctx, { name: freshAuth.first_name });
       return;
     }
 
-    // No long welcome essay — just gates (if needed) and the salon keyboard.
+    // Gates first, then premium salon home.
     const fresh = getUser(ctx.from.id)!;
     if (!fresh.age_confirmed_at) {
       await ctx.reply(copy.ageAsk, { reply_markup: ageKeyboard() });
@@ -156,7 +163,7 @@ export function registerFlows(bot: Bot): void {
       await ctx.reply(copy.consentAsk(botConfig.siteUrl), { reply_markup: consentKeyboard() });
       return;
     }
-    await attachSalonBar(ctx);
+    await showSalonHome(ctx, { name: fresh.first_name });
   });
 
   bot.callbackQuery(CB.ageYes, async (ctx) => {
@@ -189,7 +196,7 @@ export function registerFlows(bot: Bot): void {
         return;
       }
     }
-    await attachSalonBar(ctx);
+    await showSalonHome(ctx, { name: user.first_name });
   });
 
   bot.callbackQuery(/^tz:(.+)$/, async (ctx) => {
@@ -220,20 +227,24 @@ export function registerFlows(bot: Bot): void {
       return;
     }
     try {
-      setTimezoneOffset(ctx.from.id, minutes);
       await ctx.answerCallbackQuery({ text: "Сохранено" });
       try {
-        await ctx.editMessageText(`Часовой пояс выбран (UTC${minutes >= 0 ? "+" : ""}${minutes / 60}).`);
+        await ctx.editMessageText(
+          `Часовой пояс выбран (UTC${minutes >= 0 ? "+" : ""}${minutes / 60}).`
+        );
       } catch {
         // message may already be edited
       }
+      if (await continueProfileAfterTimezone(ctx, minutes)) return;
+      setTimezoneOffset(ctx.from.id, minutes);
       await ctx.reply(copy.timezoneSet, { reply_markup: salonKeyboard() });
     } catch (err) {
       console.error("[tz]", err);
       await ctx.answerCallbackQuery({ text: "Не удалось сохранить" });
-      await ctx.reply("Не удалось сохранить пояс. Откройте Настройки и выберите ещё раз.", {
-        reply_markup: salonKeyboard(),
-      });
+      await ctx.reply(
+        "Не удалось сохранить пояс. Откройте Профиль → Настройки и выберите ещё раз.",
+        { reply_markup: salonKeyboard() }
+      );
     }
   });
 
@@ -247,7 +258,9 @@ export function registerFlows(bot: Bot): void {
   });
 
   bot.command("about", async (ctx) => {
-    await ctx.reply(copy.about, { reply_markup: salonKeyboard() });
+    const user = await ensureOnboarded(ctx);
+    if (!user) return;
+    await showSalonHome(ctx, { name: user.first_name });
   });
 
   bot.command("spread", async (ctx) => beginCatalog(ctx));
@@ -380,13 +393,16 @@ export function registerFlows(bot: Bot): void {
     try {
       const img = await renderShareCollage(enriched as DrawnCard[], question);
       const code = ensureRefCode(user.telegram_user_id);
+      const inviteUrl = `https://t.me/${botConfig.botUsername}?start=ref_${code}`;
       await ctx.replyWithPhoto(new InputFile(img, "share.jpg"), {
         caption: `Zovus · t.me/${botConfig.botUsername}?start=ref_${code}`,
-        reply_markup: inviteKeyboard(),
+        reply_markup: inviteKeyboard(inviteUrl),
       });
     } catch (err) {
       console.error("[share]", err);
-      await ctx.reply(copy.shareHint, { reply_markup: inviteKeyboard() });
+      const code = ensureRefCode(user.telegram_user_id);
+      const inviteUrl = `https://t.me/${botConfig.botUsername}?start=ref_${code}`;
+      await ctx.reply(copy.shareHint, { reply_markup: inviteKeyboard(inviteUrl) });
     }
   });
 
@@ -402,6 +418,11 @@ export function registerFlows(bot: Bot): void {
     await ctx.reply(copy.deleteAsk, { reply_markup: deleteKeyboard() });
   });
 
+  bot.callbackQuery(CB.delStart, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!(await ensureOnboarded(ctx))) return;
+    await ctx.reply(copy.deleteAsk, { reply_markup: deleteKeyboard() });
+  });
   bot.callbackQuery(CB.delAsk, async (ctx) => {
     await ctx.answerCallbackQuery();
     await ctx.reply(copy.deleteConfirm, { reply_markup: deleteConfirmKeyboard() });
@@ -412,10 +433,29 @@ export function registerFlows(bot: Bot): void {
   });
   bot.callbackQuery(CB.delYes, async (ctx) => {
     if (!ctx.from) return;
-    trackEvent("deleted", ctx.from.id, {});
-    deleteUserData(ctx.from.id);
-    await ctx.answerCallbackQuery();
-    await ctx.reply(copy.deleteDone, { reply_markup: removeKeyboardMarkup() });
+    await ctx.answerCallbackQuery({ text: "Удаляю аккаунт…" }).catch(() => undefined);
+    const tid = ctx.from.id;
+    try {
+      const site = await siteDeleteAccount(tid);
+      if (!site.ok) {
+        if (site.error === "not_linked") {
+          trackEvent("deleted", tid, { scope: "bot_local_only" });
+          deleteUserData(tid);
+          await ctx.reply(copy.deleteLocalOnly, { reply_markup: removeKeyboardMarkup() });
+          return;
+        }
+        await ctx.reply(site.message || copy.deleteSiteFailed, {
+          reply_markup: salonKeyboard(),
+        });
+        return;
+      }
+      trackEvent("deleted", tid, { scope: "full_account" });
+      deleteUserData(tid);
+      await ctx.reply(copy.deleteDone, { reply_markup: removeKeyboardMarkup() });
+    } catch (err) {
+      console.error("[delete] site", err);
+      await ctx.reply(copy.deleteSiteFailed, { reply_markup: salonKeyboard() });
+    }
   });
 
   bot.callbackQuery(new RegExp(`^${CB.rdPrefix}`), async (ctx) => {
@@ -501,6 +541,21 @@ export function registerFlows(bot: Bot): void {
 
   bot.callbackQuery(new RegExp(`^${CB.profPrefix}`), async (ctx) => {
     const data = ctx.callbackQuery.data;
+    if (data === CB.profHist) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+      await showHistory(ctx);
+      return;
+    }
+    if (data === CB.profRunes) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+      await showRunes(ctx);
+      return;
+    }
+    if (data === CB.profSettings) {
+      await ctx.answerCallbackQuery().catch(() => undefined);
+      await showSettings(ctx);
+      return;
+    }
     if (!(await handleProfileCallback(ctx, data))) {
       await ctx.answerCallbackQuery().catch(() => undefined);
     }
@@ -556,8 +611,11 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
       await showSettings(ctx);
       return;
     case NAV.about:
-      if (!(await ensureOnboarded(ctx))) return;
-      await ctx.reply(copy.about, { reply_markup: salonKeyboard() });
+      {
+        const aboutUser = await ensureOnboarded(ctx);
+        if (!aboutUser) return;
+        await showSalonHome(ctx, { name: aboutUser.first_name });
+      }
       return;
     default:
       return;
@@ -606,7 +664,6 @@ async function showProfile(ctx: Context): Promise<void> {
   };
 
   let cabinetUrl = `${botConfig.siteUrl}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
-  let runesUrl = `${botConfig.siteUrl}/cabinet?shop=1&utm_source=telegram&utm_medium=bot&utm_campaign=profile`;
 
   if (linked) {
     try {
@@ -634,7 +691,6 @@ async function showProfile(ctx: Context): Promise<void> {
           streak: user.streak_days,
         };
         if (data.urls?.cabinet) cabinetUrl = data.urls.cabinet;
-        if (data.urls?.runes) runesUrl = data.urls.runes;
       }
     } catch (err) {
       console.error("[profile] site cabinet", err);
@@ -648,7 +704,6 @@ async function showProfile(ctx: Context): Promise<void> {
       reply_markup: profileKeyboard({
         linked,
         cabinetUrl: linked ? cabinetUrl : null,
-        runesUrl: linked ? runesUrl : null,
         linkUrl: linked ? null : linkUrl,
         inviteUrl,
       }),

@@ -1,9 +1,33 @@
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { copy } from "../copy/ru.js";
-import { clearFlow, getFlow, getUser, setFlow, setZovusUserId } from "../db/repos.js";
-import { siteBotProfile } from "../domain/site-client.js";
-import { CB, salonKeyboard } from "../keyboards/index.js";
+import {
+  clearFlow,
+  getFlow,
+  getUser,
+  setFlow,
+  setTimezoneOffset,
+  setZovusUserId,
+} from "../db/repos.js";
+import {
+  siteBotPlaces,
+  siteBotProfile,
+  type SiteBirthPlace,
+} from "../domain/site-client.js";
+import {
+  birthCityKeyboard,
+  CB,
+  memoryChoiceKeyboard,
+  salonKeyboard,
+  timezoneKeyboard,
+} from "../keyboards/index.js";
+
+type ProfileFlowData = {
+  birthDate?: string;
+  birthCity?: string;
+  gender?: "male" | "female";
+  places?: SiteBirthPlace[];
+};
 
 function parseBirthDateRu(raw: string): string | null {
   const m = /^(\d{1,2})[./](\d{1,2})[./](\d{2}|\d{4})$/.exec(raw.trim());
@@ -31,22 +55,152 @@ function ageFromIso(iso: string): number {
   return age;
 }
 
+function flowData(raw: Record<string, unknown> | null | undefined): ProfileFlowData {
+  return (raw || {}) as ProfileFlowData;
+}
+
 export function genderKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("Женский", `${CB.profGenderPrefix}female`)
     .text("Мужской", `${CB.profGenderPrefix}male`);
 }
 
+async function askBirthCity(ctx: Context, data: ProfileFlowData = {}): Promise<void> {
+  if (!ctx.from) return;
+  setFlow(ctx.from.id, "profile", "city", data as Record<string, unknown>);
+  await ctx.reply(copy.profileCityAsk, { reply_markup: salonKeyboard() });
+}
+
+async function askDob(ctx: Context, data: ProfileFlowData): Promise<void> {
+  if (!ctx.from) return;
+  setFlow(ctx.from.id, "profile", "dob", data as Record<string, unknown>);
+  await ctx.reply(copy.profileDobAsk, { reply_markup: salonKeyboard() });
+}
+
+async function askMemory(ctx: Context, data: ProfileFlowData): Promise<void> {
+  if (!ctx.from) return;
+  setFlow(ctx.from.id, "profile", "memory", data as Record<string, unknown>);
+  await ctx.reply(copy.profileMemoryAsk, { reply_markup: memoryChoiceKeyboard() });
+}
+
+async function finishProfile(
+  ctx: Context,
+  data: ProfileFlowData,
+  memoryChoice: "enabled" | "disabled"
+): Promise<void> {
+  if (!ctx.from) return;
+  const birthDate = typeof data.birthDate === "string" ? data.birthDate : "";
+  const birthCity = typeof data.birthCity === "string" ? data.birthCity : "";
+  const gender = data.gender === "male" || data.gender === "female" ? data.gender : null;
+  if (!birthDate) {
+    await askDob(ctx, data);
+    return;
+  }
+  if (!birthCity) {
+    await askBirthCity(ctx, data);
+    return;
+  }
+  if (!gender) {
+    setFlow(ctx.from.id, "profile", "gender", data as Record<string, unknown>);
+    await ctx.reply(copy.profileGenderAsk, { reply_markup: genderKeyboard() });
+    return;
+  }
+
+  const user = getUser(ctx.from.id);
+  try {
+    const site = await siteBotProfile({
+      telegramUserId: ctx.from.id,
+      name: ctx.from.first_name || user?.first_name || null,
+      birthDate,
+      gender,
+      birthCity,
+      memoryChoice,
+    });
+    if (!site.ok || site.needsOnboarding) {
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      return;
+    }
+    if (site.profileUserId) setZovusUserId(ctx.from.id, site.profileUserId);
+    clearFlow(ctx.from.id);
+    const bal = site.runeBalance ?? 0;
+    await ctx.reply(copy.profileReady(bal), { reply_markup: salonKeyboard() });
+  } catch (err) {
+    console.error("[profile] upsert", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+/** Registration / site onboarding: timezone → city → DOB → gender → memory. */
 export async function beginProfileOnboarding(ctx: Context): Promise<void> {
   if (!ctx.from) return;
-  setFlow(ctx.from.id, "profile", "dob", {});
-  await ctx.reply(copy.profileDobAsk, { reply_markup: salonKeyboard() });
+  const user = getUser(ctx.from.id);
+  if (user?.timezone_source !== "user") {
+    setFlow(ctx.from.id, "profile", "timezone", {});
+    await ctx.reply(copy.timezoneAsk, { reply_markup: timezoneKeyboard() });
+    return;
+  }
+  await askBirthCity(ctx);
+}
+
+/** Called from tz: callback when user is in registration timezone step. */
+export async function continueProfileAfterTimezone(
+  ctx: Context,
+  minutes: number
+): Promise<boolean> {
+  if (!ctx.from) return false;
+  const flow = getFlow(ctx.from.id);
+  if (!flow || flow.flow !== "profile" || flow.step !== "timezone") return false;
+  setTimezoneOffset(ctx.from.id, minutes);
+  await askBirthCity(ctx, flowData(flow.data));
+  return true;
 }
 
 export async function handleProfileFlowText(ctx: Context, text: string): Promise<boolean> {
   if (!ctx.from) return false;
   const flow = getFlow(ctx.from.id);
   if (!flow || flow.flow !== "profile") return false;
+  const data = flowData(flow.data);
+
+  if (flow.step === "timezone") {
+    await ctx.reply(copy.timezoneAsk, { reply_markup: timezoneKeyboard() });
+    return true;
+  }
+
+  if (flow.step === "memory") {
+    await ctx.reply(copy.profileMemoryAsk, { reply_markup: memoryChoiceKeyboard() });
+    return true;
+  }
+
+  if (flow.step === "gender") {
+    await ctx.reply(copy.profileGenderAsk, { reply_markup: genderKeyboard() });
+    return true;
+  }
+
+  if (flow.step === "city" || flow.step === "city_pick") {
+    const q = text.trim();
+    if (q.length < 2) {
+      await ctx.reply(copy.profileCityShort, { reply_markup: salonKeyboard() });
+      return true;
+    }
+    try {
+      const { places } = await siteBotPlaces(q, 6);
+      if (!places.length) {
+        await ctx.reply(copy.profileCityEmpty, { reply_markup: salonKeyboard() });
+        return true;
+      }
+      setFlow(ctx.from.id, "profile", "city_pick", {
+        ...data,
+        places,
+      } as unknown as Record<string, unknown>);
+      await ctx.reply(copy.profileCityPick, {
+        reply_markup: birthCityKeyboard(places),
+      });
+    } catch (err) {
+      console.error("[profile] places", err);
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+    }
+    return true;
+  }
 
   if (flow.step === "dob") {
     const iso = parseBirthDateRu(text);
@@ -63,7 +217,14 @@ export async function handleProfileFlowText(ctx: Context, text: string): Promise
       await ctx.reply(copy.profileDobInvalid, { reply_markup: salonKeyboard() });
       return true;
     }
-    setFlow(ctx.from.id, "profile", "gender", { birthDate: iso });
+    if (!data.birthCity) {
+      await askBirthCity(ctx, { ...data, birthDate: iso });
+      return true;
+    }
+    setFlow(ctx.from.id, "profile", "gender", {
+      ...data,
+      birthDate: iso,
+    } as unknown as Record<string, unknown>);
     await ctx.reply(copy.profileGenderAsk, { reply_markup: genderKeyboard() });
     return true;
   }
@@ -75,42 +236,77 @@ export async function handleProfileCallback(ctx: Context, data: string): Promise
   if (!data.startsWith(CB.profPrefix) || !ctx.from) return false;
   await ctx.answerCallbackQuery().catch(() => undefined);
 
+  if (data.startsWith(CB.profCityPrefix)) {
+    const idx = Number(data.slice(CB.profCityPrefix.length));
+    const flow = getFlow(ctx.from.id);
+    if (!flow || flow.flow !== "profile" || flow.step !== "city_pick") {
+      await askBirthCity(ctx);
+      return true;
+    }
+    const places = Array.isArray(flowData(flow.data).places)
+      ? flowData(flow.data).places!
+      : [];
+    const place = Number.isInteger(idx) ? places[idx] : undefined;
+    if (!place?.label) {
+      await askBirthCity(ctx, flowData(flow.data));
+      return true;
+    }
+    try {
+      await ctx.editMessageText(`Город: ${place.label}`);
+    } catch {
+      /* ignore */
+    }
+    const next = { ...flowData(flow.data), birthCity: place.label };
+    delete next.places;
+    if (next.birthDate) {
+      setFlow(ctx.from.id, "profile", "gender", next as unknown as Record<string, unknown>);
+      await ctx.reply(copy.profileGenderAsk, { reply_markup: genderKeyboard() });
+    } else {
+      await askDob(ctx, next);
+    }
+    return true;
+  }
+
+  if (data === CB.profMemOn || data === CB.profMemOff) {
+    const flow = getFlow(ctx.from.id);
+    if (!flow || flow.flow !== "profile" || flow.step !== "memory") {
+      await beginProfileOnboarding(ctx);
+      return true;
+    }
+    const choice = data === CB.profMemOn ? "enabled" : "disabled";
+    try {
+      await ctx.editMessageText(
+        choice === "enabled" ? "Память: включена" : "Память: без сохранения"
+      );
+    } catch {
+      /* ignore */
+    }
+    await finishProfile(ctx, flowData(flow.data), choice);
+    return true;
+  }
+
   if (!data.startsWith(CB.profGenderPrefix)) return true;
   const gender = data.slice(CB.profGenderPrefix.length);
   if (gender !== "male" && gender !== "female") return true;
 
   const flow = getFlow(ctx.from.id);
   if (!flow || flow.flow !== "profile" || flow.step !== "gender") {
-    await ctx.reply(copy.profileDobAsk, { reply_markup: salonKeyboard() });
+    await beginProfileOnboarding(ctx);
     return true;
   }
 
-  const birthDate = typeof flow.data?.birthDate === "string" ? flow.data.birthDate : "";
+  const pdata = flowData(flow.data);
+  const birthDate = typeof pdata.birthDate === "string" ? pdata.birthDate : "";
+  const birthCity = typeof pdata.birthCity === "string" ? pdata.birthCity : "";
   if (!birthDate) {
-    setFlow(ctx.from.id, "profile", "dob", {});
-    await ctx.reply(copy.profileDobAsk, { reply_markup: salonKeyboard() });
+    await askDob(ctx, pdata);
+    return true;
+  }
+  if (!birthCity) {
+    await askBirthCity(ctx, pdata);
     return true;
   }
 
-  const user = getUser(ctx.from.id);
-  try {
-    const site = await siteBotProfile({
-      telegramUserId: ctx.from.id,
-      name: ctx.from.first_name || user?.first_name || null,
-      birthDate,
-      gender,
-    });
-    if (!site.ok || site.needsOnboarding) {
-      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-      return true;
-    }
-    if (site.profileUserId) setZovusUserId(ctx.from.id, site.profileUserId);
-    clearFlow(ctx.from.id);
-    const bal = site.runeBalance ?? 0;
-    await ctx.reply(copy.profileReady(bal), { reply_markup: salonKeyboard() });
-  } catch (err) {
-    console.error("[profile] upsert", err);
-    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-  }
+  await askMemory(ctx, { ...pdata, gender });
   return true;
 }

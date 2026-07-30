@@ -1,8 +1,9 @@
-import type { Context } from "grammy";
+import { InputFile, type Context } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { getUser, hasGates, trackEvent, type BotUser } from "../db/repos.js";
 import { ageKeyboard, consentKeyboard, salonKeyboard } from "../keyboards/index.js";
+import { renderSalonHomeCardImage } from "../render/salon-home-card.js";
 
 let gateCounter = 0;
 
@@ -16,8 +17,27 @@ export async function attachSalonBar(ctx: Context, text?: string): Promise<void>
   await ctx.reply(text ?? copy.salonReady, { reply_markup: salonKeyboard() });
 }
 
+/** Premium home plate + selling caption + reply keyboard. */
+export async function showSalonHome(
+  ctx: Context,
+  opts?: { name?: string | null }
+): Promise<void> {
+  const caption = copy.homeHero(opts?.name).slice(0, 1024);
+  try {
+    const buf = await renderSalonHomeCardImage({ name: opts?.name });
+    await ctx.replyWithPhoto(new InputFile(buf, "zovus-salon.jpg"), {
+      caption,
+      reply_markup: salonKeyboard(),
+    });
+  } catch (err) {
+    console.error("[home] plate failed", err);
+    await ctx.reply(caption || copy.homePhotoFailed, { reply_markup: salonKeyboard() });
+  }
+}
+
 export async function sendMenu(ctx: Context): Promise<void> {
-  await attachSalonBar(ctx, copy.menuTitle);
+  const user = requireUser(ctx);
+  await showSalonHome(ctx, { name: user?.first_name });
 }
 
 export async function ensureOnboarded(ctx: Context): Promise<BotUser | null> {

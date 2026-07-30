@@ -36,6 +36,7 @@
 |----------|------------|
 | `POST /resolve` | linked / accountId / profileUserId / runes / linkUrl |
 | `POST /ensure-account` | shell-аккаунт по оферте бота + TG bind |
+| `POST /delete-account` | полное удаление аккаунта Zovus (152-ФЗ; `confirm: true`) |
 | `POST /profile` | дата рождения / пол для bot-offer аккаунта |
 | `POST /link-code` | выдать одноразовый код привязки / апгрейда (`/start link`) |
 | `POST /history` | общая история кабинета |
@@ -61,6 +62,7 @@ Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECR
 | `POST /internal/receipt/verify` | guest receipt (legacy/claim) |
 | `POST /internal/receipt/claim` | атомарный claim + `zovus_user_id` |
 | `POST /internal/account-linked` | sync после post-auth bind |
+| `POST /internal/support-reply` | ответ админа по обращению → push в Telegram |
 
 ## Claim (подмножество)
 

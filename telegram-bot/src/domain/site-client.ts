@@ -108,6 +108,8 @@ export async function siteBotProfile(input: {
   name?: string | null;
   birthDate: string;
   gender: "male" | "female";
+  birthCity?: string | null;
+  memoryChoice?: "enabled" | "disabled" | null;
 }): Promise<SiteResolve> {
   const { data } = await siteFetch<SiteResolve & Json>(
     "/api/internal/bot/profile",
@@ -116,6 +118,8 @@ export async function siteBotProfile(input: {
       name: input.name ?? undefined,
       birth_date: input.birthDate,
       gender: input.gender,
+      birth_city: input.birthCity ?? undefined,
+      memory_choice: input.memoryChoice ?? undefined,
     },
     15_000
   );
@@ -130,6 +134,40 @@ export async function siteBotProfile(input: {
     linkUrl: typeof data.linkUrl === "string" ? data.linkUrl : `${botConfig.siteUrl}/cabinet`,
     error: typeof data.error === "string" ? data.error : undefined,
   };
+}
+
+export type SiteBirthPlace = {
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+};
+
+export async function siteBotPlaces(
+  query: string,
+  limit = 6
+): Promise<{ ok: boolean; places: SiteBirthPlace[] }> {
+  const { data } = await siteFetch<{ ok?: boolean; places?: SiteBirthPlace[] } & Json>(
+    "/api/internal/bot/places",
+    { q: query, limit },
+    12_000
+  );
+  const places = Array.isArray(data.places)
+    ? data.places
+        .filter(
+          (p): p is SiteBirthPlace =>
+            Boolean(p) &&
+            typeof (p as SiteBirthPlace).label === "string" &&
+            (p as SiteBirthPlace).label.trim().length > 0
+        )
+        .map((p) => ({
+          label: String(p.label).trim().slice(0, 120),
+          latitude: Number(p.latitude) || 0,
+          longitude: Number(p.longitude) || 0,
+          timezone: typeof p.timezone === "string" ? p.timezone : "",
+        }))
+    : [];
+  return { ok: Boolean(data.ok), places };
 }
 
 export async function siteHistory(telegramUserId: number, limit = 8) {
@@ -693,6 +731,31 @@ export async function siteSetMiniAppNav(
     8_000
   );
   return Boolean(data.ok);
+}
+
+/** Full Zovus account erasure (152-FZ) — same as cabinet delete. */
+export async function siteDeleteAccount(telegramUserId: number): Promise<{
+  ok: boolean;
+  deleted?: boolean;
+  error?: string;
+  message?: string;
+}> {
+  const { data } = await siteFetch<{
+    ok?: boolean;
+    deleted?: boolean;
+    error?: string;
+    message?: string;
+  }>(
+    "/api/internal/bot/delete-account",
+    { telegram_user_id: telegramUserId, confirm: true },
+    60_000
+  );
+  return {
+    ok: Boolean(data.ok),
+    deleted: Boolean(data.deleted),
+    error: typeof data.error === "string" ? data.error : undefined,
+    message: typeof data.message === "string" ? data.message : undefined,
+  };
 }
 
 /** Split long reading into Telegram-safe chunks. */

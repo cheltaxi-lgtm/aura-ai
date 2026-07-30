@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import https from "node:https";
 import { URL } from "node:url";
 import sharp from "sharp";
 import type { Context } from "grammy";
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard, InputFile } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { clearFlow, getFlow, setFlow } from "../db/repos.js";
@@ -13,12 +13,19 @@ import {
   sitePhoto,
   type SitePhotoRedrawSpread,
 } from "../domain/site-client.js";
-import { presentReadingToTelegram } from "../domain/reading/present.js";
+import {
+  drawnCardsFromSiteCards,
+  presentReadingToTelegram,
+} from "../domain/reading/present.js";
+import { renderSpreadCollage } from "../render/card-collage.js";
+import { renderHistoryEntryImage } from "../render/history-entry.js";
+import { renderPhotoHomeCardImage } from "../render/photo-home-card.js";
 import {
   CB,
   webAppButton,
   continueOnSiteKeyboard,
   linkAccountKeyboard,
+  photoPagerKeyboard,
   salonKeyboard,
 } from "../keyboards/index.js";
 import { announceWorking } from "./helpers.js";
@@ -27,6 +34,28 @@ import { ensureSiteLinked } from "./site-account.js";
 let photoCopyCounter = 0;
 
 const MAX_PHOTO_BYTES = 4.5 * 1024 * 1024;
+
+type PhotoHistoryItem = {
+  id: string;
+  master: string;
+  date: string;
+  question: string;
+  preview: string;
+  cards: string[];
+  sessionId: string | null;
+};
+
+type PhotoHomeMeta = {
+  cost: number;
+  firstDiscount: boolean;
+  balance: number | null;
+  url: string | null;
+};
+
+function isNotModifiedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /message is not modified/i.test(msg);
+}
 
 /** IPv4-only HTTPS GET — avoids ETIMEDOUT when VPS IPv6 to api.telegram.org is broken. */
 function httpsGetBuffer(url: string, timeoutMs = 60_000): Promise<Buffer> {
@@ -75,21 +104,10 @@ function photoHomeKeyboard(opts: {
   cost: number;
   firstDiscount?: boolean;
   url?: string | null;
-  items?: Array<{ id: string; master: string; date: string }>;
 }): InlineKeyboard {
-  const kb = new InlineKeyboard().text(
-    `📷 Новый расклад · ${opts.cost}ᚢ`,
-    CB.phNew
-  );
+  const kb = new InlineKeyboard().text(`📷 Новый расклад · ${opts.cost}ᚢ`, CB.phNew);
   if (opts.firstDiscount) {
-    kb.row().text("Первая скидка 50%", CB.phNoop);
-  }
-  const items = (opts.items || []).slice(0, 5);
-  for (const item of items) {
-    kb.row().text(
-      `${item.date || "—"} · ${item.master || "мастер"}`.slice(0, 48),
-      `${CB.phOpenPrefix}${item.id}`
-    );
+    kb.row().text("✦ Первая скидка 50%", CB.phNoop);
   }
   if (opts.url) {
     webAppButton(kb.row(), "🕯 На сайте", opts.url);
@@ -117,7 +135,6 @@ function photoAwaitKeyboard(siteUrl?: string | null): InlineKeyboard {
 }
 
 async function downloadTelegramFile(ctx: Context, fileId: string): Promise<Buffer> {
-  // Use grammY client (same path as polling) for getFile metadata.
   const file = await ctx.api.getFile(fileId);
   const path = file.file_path;
   if (!path) {
@@ -148,9 +165,7 @@ async function compressPhotoForSite(buf: Buffer): Promise<{ base64: string; mime
   });
   let out = await pipeline.jpeg({ quality: 82, mozjpeg: false }).toBuffer();
   if (out.length > MAX_PHOTO_BYTES) {
-    out = await sharp(out)
-      .jpeg({ quality: 68, mozjpeg: false })
-      .toBuffer();
+    out = await sharp(out).jpeg({ quality: 68, mozjpeg: false }).toBuffer();
   }
   if (out.length > MAX_PHOTO_BYTES) {
     out = await sharp(out)
@@ -177,7 +192,6 @@ function confidenceRu(raw?: string): string | null {
   }
 }
 
-/** Prefer Aura RU display names from redrawSpread; fall back to raw vision labels. */
 function previewCardLines(
   redrawSpread?: SitePhotoRedrawSpread,
   detectedCards?: string[]
@@ -223,6 +237,52 @@ function formatRecognizePreview(data: {
   return lines.filter((l, i, arr) => !(l === "" && arr[i - 1] === "")).join("\n");
 }
 
+async function renderPhotoAlbumPage(
+  ctx: Context,
+  item: PhotoHistoryItem,
+  page: number,
+  total: number
+): Promise<void> {
+  const markup = photoPagerKeyboard({
+    page,
+    total,
+    historyId: item.id,
+  });
+  await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
+  const buf = await renderHistoryEntryImage({
+    kind: "photo",
+    topic: item.question || item.master || "Расклад по фото",
+    date: item.date,
+    preview: item.preview,
+    cards: item.cards,
+    page,
+    total,
+  });
+  const file = new InputFile(buf, `photo-history-${page + 1}.jpg`);
+  const hasPhoto = Boolean(
+    ctx.callbackQuery?.message && "photo" in ctx.callbackQuery.message
+  );
+  if (hasPhoto) {
+    try {
+      await ctx.editMessageMedia(
+        { type: "photo", media: file },
+        { reply_markup: markup }
+      );
+      return;
+    } catch (err) {
+      if (isNotModifiedError(err)) return;
+      console.warn("[photo] edit media failed, falling back to reply", err);
+    }
+  } else if (ctx.callbackQuery?.message) {
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      /* ignore */
+    }
+  }
+  await ctx.replyWithPhoto(file, { reply_markup: markup });
+}
+
 export async function showPhoto(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
@@ -231,7 +291,7 @@ export async function showPhoto(ctx: Context): Promise<void> {
     copy.cabinetPreparing(linked.user.telegram_user_id, photoCopyCounter++)
   );
   try {
-    const { data } = await sitePhoto(linked.user.telegram_user_id, "list", { limit: 8 });
+    const { data } = await sitePhoto(linked.user.telegram_user_id, "list", { limit: 30 });
     if (!data.ok) {
       await ctx.reply(data.message || copy.siteBridgeDown, {
         reply_markup: linkKb(data.linkUrl),
@@ -239,20 +299,48 @@ export async function showPhoto(ctx: Context): Promise<void> {
       return;
     }
     const cost = data.effectiveCost ?? data.cost ?? 30;
-    const items = data.items ?? [];
-    const header = [
-      copy.photoTitle,
-      copy.photoIntro(cost, data.firstPhotoDiscount === true, data.runeBalance ?? null),
-      "",
-      items.length ? copy.photoListHint : copy.photoEmpty,
-    ].join("\n");
+    const items: PhotoHistoryItem[] = (data.items ?? []).map((i) => ({
+      id: i.id,
+      master: i.master || "мастер",
+      date: i.date || "",
+      question: i.question || "",
+      preview: i.preview || "",
+      cards: i.cards ?? [],
+      sessionId: i.sessionId ?? null,
+    }));
+    const meta: PhotoHomeMeta = {
+      cost,
+      firstDiscount: data.firstPhotoDiscount === true,
+      balance: typeof data.runeBalance === "number" ? data.runeBalance : null,
+      url: data.url ?? null,
+    };
 
-    await ctx.reply(header, {
+    await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
+
+    // History first (if any), then the new-spread card.
+    if (items.length) {
+      setFlow(linked.user.telegram_user_id, "photo_history", "page", {
+        items,
+        page: 0,
+        meta,
+      } as unknown as Record<string, unknown>);
+      await renderPhotoAlbumPage(ctx, items[0]!, 0, items.length);
+    } else {
+      clearFlow(linked.user.telegram_user_id);
+    }
+
+    const homeBuf = await renderPhotoHomeCardImage({
+      cost,
+      balance: meta.balance,
+      firstDiscount: meta.firstDiscount,
+      historyCount: items.length,
+      mode: "home",
+    });
+    await ctx.replyWithPhoto(new InputFile(homeBuf, "photo-home.jpg"), {
       reply_markup: photoHomeKeyboard({
         cost,
-        firstDiscount: data.firstPhotoDiscount,
-        url: data.url,
-        items: items.map((i) => ({ id: i.id, master: i.master, date: i.date })),
+        firstDiscount: meta.firstDiscount,
+        url: meta.url,
       }),
     });
   } catch (err) {
@@ -266,11 +354,15 @@ export async function beginPhotoReading(ctx: Context): Promise<void> {
   if (!linked) return;
   let siteUrl: string | null = null;
   let cost = 30;
+  let balance: number | null = null;
+  let firstDiscount = false;
   try {
     const { data } = await sitePhoto(linked.user.telegram_user_id, "pricing");
     if (data.ok) {
       siteUrl = data.url ?? null;
       cost = data.effectiveCost ?? data.cost ?? cost;
+      balance = typeof data.runeBalance === "number" ? data.runeBalance : null;
+      firstDiscount = data.firstPhotoDiscount === true;
     }
   } catch {
     /* ignore */
@@ -278,10 +370,26 @@ export async function beginPhotoReading(ctx: Context): Promise<void> {
   setFlow(linked.user.telegram_user_id, "photo", "await_photo", {
     characterId: "veronika",
     cost,
+    siteUrl,
   });
-  await ctx.reply(copy.photoAskPhoto(cost), {
-    reply_markup: photoAwaitKeyboard(siteUrl),
-  });
+
+  try {
+    await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
+    const buf = await renderPhotoHomeCardImage({
+      cost,
+      balance,
+      firstDiscount,
+      mode: "await",
+    });
+    await ctx.replyWithPhoto(new InputFile(buf, "photo-await.jpg"), {
+      reply_markup: photoAwaitKeyboard(siteUrl),
+    });
+  } catch (err) {
+    console.error("[photo] await card", err);
+    await ctx.reply(copy.photoAskPhoto(cost), {
+      reply_markup: photoAwaitKeyboard(siteUrl),
+    });
+  }
 }
 
 async function openPhotoReading(ctx: Context, historyId: string): Promise<void> {
@@ -361,6 +469,34 @@ async function runRecognizeFromBuffer(
       siteUrl: data.url || null,
     });
 
+    const confirmKb = photoConfirmKeyboard({
+      siteUrl: data.url,
+      cost,
+    });
+    let sentCollage = false;
+    try {
+      const drawn = drawnCardsFromSiteCards(
+        data.redrawSpread.cards.map((c) => ({
+          name: c.name || c.originalName || "",
+          reversed: c.reversed,
+          positionLabel: c.position,
+        }))
+      );
+      if (drawn.length) {
+        await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
+        const collage = await renderSpreadCollage(drawn, {
+          revealedCount: drawn.length,
+          question: data.question || question || undefined,
+        });
+        await ctx.replyWithPhoto(new InputFile(collage, "photo-confirm.jpg"), {
+          reply_markup: confirmKb,
+        });
+        sentCollage = true;
+      }
+    } catch (err) {
+      console.error("[photo] confirm collage", err);
+    }
+
     const preview = formatRecognizePreview({
       detectedCards: data.detectedCards,
       redrawSpread: data.redrawSpread,
@@ -371,15 +507,17 @@ async function runRecognizeFromBuffer(
       message: data.message,
       question: data.question || question,
     });
-    for (const chunk of chunkTelegramText(preview)) {
-      await ctx.reply(chunk);
+    const chunks = chunkTelegramText(preview);
+    for (let i = 0; i < chunks.length; i++) {
+      const last = i === chunks.length - 1;
+      await ctx.reply(
+        chunks[i]!,
+        !sentCollage && last ? { reply_markup: confirmKb } : undefined
+      );
     }
-    await ctx.reply(copy.photoConfirmPrompt, {
-      reply_markup: photoConfirmKeyboard({
-        siteUrl: data.url,
-        cost,
-      }),
-    });
+    if (sentCollage) {
+      await ctx.reply(copy.photoConfirmPrompt);
+    }
   } catch (err) {
     console.error("[photo] recognize", err);
     clearFlow(linked.user.telegram_user_id);
@@ -469,7 +607,7 @@ async function runInterpret(ctx: Context): Promise<void> {
   }
 }
 
-/** Photo / image document while in photo flow (or opportunistic if caption looks like spread). */
+/** Photo / image document while in photo flow. */
 export async function handlePhotoMessage(ctx: Context): Promise<boolean> {
   if (!ctx.from) return false;
   const flow = getFlow(ctx.from.id);
@@ -496,7 +634,6 @@ export async function handlePhotoMessage(ctx: Context): Promise<boolean> {
     buf = await downloadTelegramFile(ctx, fileId);
   } catch (err) {
     console.error("[photo] download", err);
-    // Keep await_photo flow so the user can resend without restarting from menu.
     await ctx.reply(copy.photoDownloadFail, {
       reply_markup: photoAwaitKeyboard(
         typeof flow.data.siteUrl === "string" ? flow.data.siteUrl : null
@@ -573,6 +710,56 @@ export async function handlePhotoCallback(ctx: Context, data: string): Promise<b
     await ctx.answerCallbackQuery().catch(() => undefined);
     const historyId = data.slice(CB.phOpenPrefix.length);
     if (historyId) await openPhotoReading(ctx, historyId);
+    return true;
+  }
+
+  if (data.startsWith(CB.phPagePrefix)) {
+    const page = Number(data.slice(CB.phPagePrefix.length));
+    try {
+      const linked = await ensureSiteLinked(ctx);
+      if (!linked) return true;
+      const { data: list } = await sitePhoto(linked.user.telegram_user_id, "list", {
+        limit: 30,
+      });
+      if (!list.ok || !list.items?.length) {
+        clearFlow(tid);
+        await ctx.answerCallbackQuery({ text: "Архив пуст" }).catch(() => undefined);
+        await showPhoto(ctx);
+        return true;
+      }
+      const items: PhotoHistoryItem[] = list.items.map((i) => ({
+        id: i.id,
+        master: i.master || "мастер",
+        date: i.date || "",
+        question: i.question || "",
+        preview: i.preview || "",
+        cards: i.cards ?? [],
+        sessionId: i.sessionId ?? null,
+      }));
+      const cost = list.effectiveCost ?? list.cost ?? 30;
+      const meta: PhotoHomeMeta = {
+        cost,
+        firstDiscount: list.firstPhotoDiscount === true,
+        balance: typeof list.runeBalance === "number" ? list.runeBalance : null,
+        url: list.url ?? null,
+      };
+      const nextPage = Math.min(
+        Math.max(0, Number.isFinite(page) ? page : 0),
+        items.length - 1
+      );
+      setFlow(tid, "photo_history", "page", {
+        items,
+        page: nextPage,
+        meta,
+      } as unknown as Record<string, unknown>);
+      await renderPhotoAlbumPage(ctx, items[nextPage]!, nextPage, items.length);
+      await ctx
+        .answerCallbackQuery({ text: `${nextPage + 1} / ${items.length}` })
+        .catch(() => undefined);
+    } catch (err) {
+      console.error("[photo] page edit failed", err);
+      await ctx.answerCallbackQuery({ text: "Не удалось перелистнуть" }).catch(() => undefined);
+    }
     return true;
   }
 

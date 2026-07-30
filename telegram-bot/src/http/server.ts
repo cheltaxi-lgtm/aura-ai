@@ -11,6 +11,7 @@ import { buildFinalCtaUrl, hashSessionToken, isSessionToken } from "../domain/se
 import { pruneRateMap } from "../ops/rate-maps.js";
 import { handleAccountLinked } from "./account-linked.js";
 import { handleInternalReceipt } from "./internal-receipt.js";
+import { handleSupportReplyNotify } from "./support-reply.js";
 
 const redirectHits = new Map<string, { n: number; reset: number }>();
 let lastRedirectPrune = 0;
@@ -94,6 +95,10 @@ export function startHttpServer(bot?: Bot): void {
     }
 
     if (await handleAccountLinked(req, res, path)) {
+      return;
+    }
+
+    if (await handleSupportReplyNotify(req, res, path)) {
       return;
     }
 

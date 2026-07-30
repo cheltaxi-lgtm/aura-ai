@@ -13,6 +13,7 @@ import { createUserProfileForAccount, getUserById, updateUserProfile } from "@/l
 import { getZodiacFromDate } from "@/utils/zodiac";
 import { findTelegramIdentity } from "@/lib/telegram/accounts";
 import { resolveBotUser, type BotResolveResult } from "@/lib/telegram/bot-resolve";
+import { recordInitialMemoryChoice } from "@/lib/memory/preferences";
 
 function syntheticBotEmail(telegramUserId: number): string {
   return normalizeAuthEmail(`tg_${telegramUserId}@telegram.zovus.local`);
@@ -127,6 +128,9 @@ export type BotOfferProfileInput = {
   name?: string | null;
   birthDate: string;
   gender: BinaryGender;
+  birthCity?: string | null;
+  /** First personal-memory choice from bot registration. */
+  memoryChoice?: "enabled" | "disabled" | null;
 };
 
 /** Complete product profile (birth date) for a bot-offer account. */
@@ -150,6 +154,11 @@ export async function upsertBotOfferProfile(
   if (m < 0 || (m === 0 && now.getUTCDate() < birth.getUTCDate())) age -= 1;
   if (age < 18 || age > 120) throw new Error("AGE_GATE");
 
+  const birthCity =
+    typeof input.birthCity === "string" && input.birthCity.trim()
+      ? input.birthCity.trim().slice(0, 160)
+      : null;
+
   const account = await findUserById(identity.user_account_id);
   const name = normalizeStoredDisplayName(
     input.name || account?.name || "",
@@ -167,6 +176,7 @@ export async function upsertBotOfferProfile(
       gender,
       birthDate,
       zodiac,
+      birthCity: birthCity ?? undefined,
       astroMeta,
     });
     profileUserId = created.id;
@@ -180,7 +190,7 @@ export async function upsertBotOfferProfile(
         birthDate,
         zodiac,
         birthTime: current?.birth_time ?? undefined,
-        birthCity: current?.birth_city ?? undefined,
+        birthCity: birthCity ?? current?.birth_city ?? undefined,
         lifeFocus: (current?.life_focus as LifeFocus) || "general",
         mainQuestion: current?.main_question ?? undefined,
         astroMeta,
@@ -197,10 +207,32 @@ export async function upsertBotOfferProfile(
         birthDate: current.birth_date,
         zodiac: current.zodiac,
         birthTime: current.birth_time ?? undefined,
-        birthCity: current.birth_city ?? undefined,
+        birthCity: birthCity ?? current.birth_city ?? undefined,
         lifeFocus: (current.life_focus as LifeFocus) || "general",
         mainQuestion: current.main_question ?? undefined,
       });
+    } else if (birthCity && birthCity !== (current?.birth_city ?? "")) {
+      await updateUserProfile(profileUserId, {
+        name: current!.name,
+        gender: (normalizeUserGender(current!.gender) as BinaryGender) || gender,
+        birthDate: current!.birth_date!,
+        zodiac: current!.zodiac,
+        birthTime: current!.birth_time ?? undefined,
+        birthCity,
+        lifeFocus: (current!.life_focus as LifeFocus) || "general",
+        mainQuestion: current!.main_question ?? undefined,
+      });
+    }
+  }
+
+  if (
+    profileUserId &&
+    (input.memoryChoice === "enabled" || input.memoryChoice === "disabled")
+  ) {
+    try {
+      await recordInitialMemoryChoice(profileUserId, input.memoryChoice);
+    } catch (err) {
+      console.warn("[bot/profile] memory choice", err);
     }
   }
 

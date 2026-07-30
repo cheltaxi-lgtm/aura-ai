@@ -184,6 +184,88 @@ function dedupeTrailingChatHooks(text: string): string {
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/** Spaces around em/en dashes glued by the model: «настоящем—здесь» → «настоящем — здесь». */
+export function normalizeDashSpacing(text: string): string {
+  return text
+    .replace(/([^\s—–])([—–])/gu, "$1 $2")
+    .replace(/([—–])([^\s—–])/gu, "$1 $2");
+}
+
+const NUM_WORD_TO_RANK: Record<string, string> = {
+  два: "Двойка",
+  две: "Двойка",
+  три: "Тройка",
+  четыре: "Четвёрка",
+  пять: "Пятёрка",
+  шесть: "Шестёрка",
+  семь: "Семёрка",
+  восемь: "Восьмёрка",
+  девять: "Девятка",
+  десять: "Десятка",
+};
+
+const SUIT_TO_GENITIVE: Record<string, string> = {
+  кубки: "Кубков",
+  кубков: "Кубков",
+  жезлы: "Жезлов",
+  жезлов: "Жезлов",
+  мечи: "Мечей",
+  мечей: "Мечей",
+  пентакли: "Пентаклей",
+  пентаклей: "Пентаклей",
+  монеты: "Пентаклей",
+  монет: "Пентаклей",
+};
+
+/** JS \\b is ASCII-only — use unicode letter boundaries for Cyrillic. */
+const WB_L = "(?<![\\p{L}\\p{N}_])";
+const WB_R = "(?![\\p{L}\\p{N}_])";
+
+/**
+ * Fix spoken numeral+suit mistakes: «Три Кубки» / «Шесть Мечей» → «Тройка Кубков» / «Шестёрка Мечей».
+ * Leaves canonical deck labels like «3 Кубков» and already-correct «Тройка Кубков» alone.
+ */
+export function fixSpokenMinorArcanaNames(text: string): string {
+  const re = new RegExp(
+    `${WB_L}(два|две|три|четыре|пять|шесть|семь|восемь|девять|десять)\\s+(кубки|кубков|жезлы|жезлов|мечи|мечей|пентакли|пентаклей|монеты|монет)${WB_R}`,
+    "giu"
+  );
+  return text.replace(re, (full, numRaw: string, suitRaw: string) => {
+    const rank = NUM_WORD_TO_RANK[numRaw.toLowerCase()];
+    const suit = SUIT_TO_GENITIVE[suitRaw.toLowerCase()];
+    if (!rank || !suit) return full;
+    const titled =
+      full[0] && full[0] === full[0].toUpperCase() ? rank : rank.toLowerCase();
+    return `${titled} ${suit}`;
+  });
+}
+
+/** Keep ## Простыми словами on its own lines when the model glues it mid-paragraph. */
+function ensureSimplyHeadingBreaks(text: string): string {
+  return text
+    .replace(/([^\n])[ \t]*(##\s*Простыми словами)/giu, "$1\n\n$2")
+    .replace(/(##\s*Простыми словами)[ \t]+(?=\S)/giu, "$1\n\n");
+}
+
+/** Frequent LLM slips that make readings look illiterate. */
+function fixCommonReadingTypos(text: string): string {
+  const pairs: Array<[string, string]> = [
+    ["верталось", "возвращалось"],
+    ["вертался", "возвращался"],
+    ["верталась", "возвращалась"],
+    ["пресыть", "приесться"],
+  ];
+  let out = text;
+  for (const [from, to] of pairs) {
+    out = out.replace(new RegExp(`${WB_L}${from}${WB_R}`, "giu"), (m) =>
+      m[0] && m[0] === m[0].toUpperCase()
+        ? to[0]!.toUpperCase() + to.slice(1)
+        : to
+    );
+  }
+  return out;
+}
+
 /** Replace empty emphasis / orphan stars; optionally inject spread card names. */
 export function polishSpreadReadingText(text: string, cardNames?: string[]): string {
   let out = text.replace(/\r\n/g, "\n");
@@ -204,6 +286,10 @@ export function polishSpreadReadingText(text: string, cardNames?: string[]): str
   out = out.replace(/\*\*(?:\s|\u00a0)*\*\*/g, "");
 
   out = stripEnglishLeakageFromRussianText(out);
+  out = fixSpokenMinorArcanaNames(out);
+  out = normalizeDashSpacing(out);
+  out = ensureSimplyHeadingBreaks(out);
+  out = fixCommonReadingTypos(out);
   out = dedupeTrailingChatHooks(out);
 
   return out.replace(/  +/g, " ").trim();
