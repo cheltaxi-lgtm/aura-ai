@@ -46,6 +46,11 @@ const LINK_LABEL: Record<OAuthProvider, string> = {
   vk: "Привязать VK",
 };
 
+const PROVIDER_SHORT: Record<OAuthProvider, string> = {
+  yandex: "Яндекс",
+  vk: "VK",
+};
+
 interface SocialAuthButtonsProps {
   mode: OAuthMode;
   returnTo: string;
@@ -54,6 +59,8 @@ interface SocialAuthButtonsProps {
   ageConfirmed: boolean;
   marketingConsent: boolean;
   disabled?: boolean;
+  /** Providers already attached — buttons stay visible but inactive. */
+  linkedProviders?: OAuthProvider[];
   consentScrollTargetId?: string;
   showEmailDivider?: boolean;
   emailDividerLabel?: string;
@@ -80,6 +87,7 @@ export default function SocialAuthButtons({
   ageConfirmed,
   marketingConsent,
   disabled = false,
+  linkedProviders = [],
   consentScrollTargetId,
   showEmailDivider = true,
   emailDividerLabel = "или по email",
@@ -88,6 +96,7 @@ export default function SocialAuthButtons({
   const [nativeError, setNativeError] = useState("");
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const useNativeOAuth = isNativeCapacitorPlatform();
+  const linkedSet = useMemo(() => new Set(linkedProviders), [linkedProviders]);
 
   useEffect(() => {
     void fetch("/api/auth/oauth/providers")
@@ -121,9 +130,9 @@ export default function SocialAuthButtons({
   }, [mode, returnTo, acceptedTerms, ageConfirmed, marketingConsent]);
 
   const handleOAuthClick = (provider: OAuthProvider) => async (e: React.MouseEvent) => {
-    if (consentBlocked || disabled || pendingProvider) {
+    if (linkedSet.has(provider) || consentBlocked || disabled || pendingProvider) {
       e.preventDefault();
-      if (consentBlocked && consentScrollTargetId) {
+      if (consentBlocked && consentScrollTargetId && !linkedSet.has(provider)) {
         document.getElementById(consentScrollTargetId)?.scrollIntoView({
           behavior: "smooth",
           block: "center",
@@ -224,26 +233,32 @@ export default function SocialAuthButtons({
         <div className="auth-salon-oauth">
           {ordered.map((provider) => {
             const brand = OAUTH_PROVIDER_BRAND[provider];
-            const blocked = consentBlocked || disabled || Boolean(pendingProvider);
+            const alreadyLinked = linkedSet.has(provider);
+            const blocked =
+              alreadyLinked || consentBlocked || disabled || Boolean(pendingProvider);
             const busy = pendingProvider === provider;
             const labels = mode === "link" ? LINK_LABEL : CONTINUE_LABEL;
+            const label = alreadyLinked
+              ? `${PROVIDER_SHORT[provider]} привязан`
+              : labels[provider] ?? brand.label;
             return (
               <a
                 key={provider}
-                href={blocked ? "#" : startHref(provider)}
+                href={blocked ? undefined : startHref(provider)}
                 aria-disabled={blocked}
                 aria-busy={busy || undefined}
-                aria-label={labels[provider] ?? brand.label}
-                title={labels[provider] ?? brand.label}
+                aria-label={label}
+                title={alreadyLinked ? "Уже привязан к этому аккаунту" : label}
                 data-oauth-provider={provider}
                 onClick={handleOAuthClick(provider)}
-                className="auth-salon-oauth-btn"
+                className={`auth-salon-oauth-btn${alreadyLinked ? " opacity-45 pointer-events-none cursor-default" : ""}`}
+                tabIndex={alreadyLinked ? -1 : undefined}
               >
                 <span className={`auth-salon-oauth-icon ${brand.bg}`}>
                   <OAuthProviderIcon provider={provider} className="h-4 w-4" />
                 </span>
                 <span className="auth-salon-oauth-label">
-                  {busy ? "Открываем…" : labels[provider] ?? brand.label}
+                  {busy ? "Открываем…" : label}
                 </span>
               </a>
             );

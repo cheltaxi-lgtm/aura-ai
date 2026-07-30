@@ -160,6 +160,7 @@ function CabinetLoginMethodsInner() {
           acceptedTerms
           ageConfirmed
           marketingConsent={false}
+          linkedProviders={state?.providers ?? []}
           showEmailDivider={false}
         />
       </div>
