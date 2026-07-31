@@ -226,6 +226,16 @@ export function normalizeClientTyAddress(text: string): string {
   return out;
 }
 
+/** Soften shouty ALL-CAPS name tokens the model copies from engine dumps. */
+export function softenShoutyClientName(text: string, displayName: string): string {
+  const name = displayName.trim();
+  if (!name || name.length < 2) return text;
+  const upper = name.toUpperCase();
+  if (upper === name) return text;
+  const escaped = upper.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(?<!\\p{L})${escaped}(?!\\p{L})`, "gu"), name);
+}
+
 /** Ensure blank lines before card bold-heads and ## sections. */
 export function ensureReadingParagraphBreaks(text: string): string {
   let out = text.replace(/\r\n/g, "\n").trim();
@@ -266,7 +276,8 @@ export function ensureSimplyWordsSection(text: string): string {
 /** Strip scaffold openings, normalize address/paragraphs, ensure tarot finale. */
 export function normalizePaidReadingStructure(
   text: string,
-  characterId?: string | null
+  characterId?: string | null,
+  displayName?: string | null
 ): string {
   let out = text.trim();
   if (!out) return out;
@@ -278,6 +289,11 @@ export function normalizePaidReadingStructure(
 
   if (masterUsesTy(characterId)) {
     out = normalizeClientTyAddress(out);
+  }
+
+  const name = displayName?.trim();
+  if (name) {
+    out = softenShoutyClientName(out, name);
   }
 
   out = ensureReadingParagraphBreaks(out);

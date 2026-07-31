@@ -5,6 +5,7 @@ import {
   stripEnglishLeakageFromRussianText,
 } from "@/lib/reading-text-polish";
 import { ensureReadingParagraphBreaks } from "@/lib/reading-quality-gate";
+import { isCompleteMatrixReading } from "@/lib/numerology/matrix-completeness";
 
 /** Collapse runs of spaces/tabs only — never eat paragraph breaks. */
 function collapseHorizontalWhitespace(text: string): string {
@@ -221,7 +222,8 @@ const PROMPT_LEAK_PATTERNS = [
   /конкретика по картам/i,
   /Строго по структуре/i,
   /Строго 500/i,
-  /Без markdown/i,
+  // Zone system prompts say «Без markdown» — only treat whole-line echo as leak.
+  /^Без markdown\b/im,
   /не цитируй/i,
   /не выводи.*клиенту/i,
   /УГЛЫ ТЕМЫ/i,
@@ -258,7 +260,6 @@ const READING_CUT_MARKERS = [
   "ТРЕБОВАНИЯ:",
   "ВНУТРЕННИЕ ТРЕБОВАНИЯ",
   "--- КОНЕЦ ИНСТРУКЦИЙ ---",
-  "Без markdown",
   "Профиль клиента",
   "ПРОФИЛЬ КЛИЕНТА",
   "блок памяти",
@@ -334,10 +335,18 @@ export function missingCardMentions(text: string, cardNames: string[]): string[]
   });
 }
 
-/** Matrix report must be long client-safe prose (not a greeting + leaked instructions). */
+/** Matrix report must be full client-safe prose with required zones (not a short cutoff). */
 export function isUsableMatrixReading(text: string): boolean {
-  const cleaned = sanitizeReadingForClient(text || "");
-  return Boolean(cleaned && cleaned.length >= 400);
+  const trimmed = (text || "").trim();
+  if (!trimmed || trimmed.length < 400) return false;
+  // Completeness is the product gate. Full sanitize can false-positive on
+  // engine zone scaffolding (same practice sentence across many zones).
+  if (isCompleteMatrixReading(trimmed) && !isPromptLeakInReading(trimmed)) {
+    return true;
+  }
+  const cleaned = sanitizeReadingForClient(trimmed);
+  if (!cleaned || cleaned.length < 400) return false;
+  return isCompleteMatrixReading(cleaned);
 }
 
 /** Client-safe reading text — strips leaks; returns empty if unusable. */
@@ -358,7 +367,9 @@ export function sanitizeReadingForClient(
   }
 
   out = stripMemoryLeakFromReply(out);
-  if (!out || isDegenerateLlmOutput(out) || isPromptLeakInReading(out)) return "";
+  if (!out || isPromptLeakInReading(out)) return "";
+  // Engine matrix zones reuse scaffolding on purpose — do not wipe a complete report.
+  if (isDegenerateLlmOutput(out) && !isCompleteMatrixReading(out)) return "";
 
   if (cardNames?.length) {
     const numericSpread = cardNames.every((name) => /^\d+$/.test(name.trim()));
@@ -412,7 +423,8 @@ export function stripMemoryLeakFromReply(text: string): string {
     if (afterEcho.length >= 40) out = afterEcho;
   }
 
-  if (isDegenerateLlmOutput(out)) return "";
+  // Matrix zone scaffolding repeats by design; do not wipe a complete report.
+  if (isDegenerateLlmOutput(out) && !isCompleteMatrixReading(out)) return "";
 
   return out.trim();
 }

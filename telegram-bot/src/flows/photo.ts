@@ -17,6 +17,7 @@ import {
   drawnCardsFromSiteCards,
   presentReadingToTelegram,
 } from "../domain/reading/present.js";
+import { markIrreversible } from "../middleware/irreversible.js";
 import { renderSpreadCollage } from "../render/card-collage.js";
 import { renderHistoryEntryImage } from "../render/history-entry.js";
 import { renderPhotoHomeCardImage } from "../render/photo-home-card.js";
@@ -467,6 +468,8 @@ async function runRecognizeFromBuffer(
       detectedCards: data.detectedCards || [],
       cost,
       siteUrl: data.url || null,
+      /** Stable across confirm retries / double-taps — site dedupes by this key. */
+      idempotencyKey: randomUUID(),
     });
 
     const confirmKb = photoConfirmKeyboard({
@@ -528,15 +531,25 @@ async function runRecognizeFromBuffer(
 async function runInterpret(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
-  const flow = getFlow(linked.user.telegram_user_id);
-  if (!flow || flow.flow !== "photo" || flow.step !== "confirm") {
+  const tid = linked.user.telegram_user_id;
+  const flow = getFlow(tid);
+  if (!flow || flow.flow !== "photo") {
+    await ctx.reply(copy.photoStartOver, { reply_markup: salonKeyboard() });
+    return;
+  }
+  if (flow.step === "interpreting") {
+    const costBusy = typeof flow.data.cost === "number" ? flow.data.cost : 30;
+    await ctx.reply(copy.photoInterpreting(costBusy));
+    return;
+  }
+  if (flow.step !== "confirm") {
     await ctx.reply(copy.photoStartOver, { reply_markup: salonKeyboard() });
     return;
   }
 
   const redrawSpread = flow.data.redrawSpread as SitePhotoRedrawSpread | undefined;
   if (!redrawSpread?.cards?.length) {
-    clearFlow(linked.user.telegram_user_id);
+    clearFlow(tid);
     await ctx.reply(copy.photoStartOver, { reply_markup: salonKeyboard() });
     return;
   }
@@ -545,20 +558,35 @@ async function runInterpret(ctx: Context): Promise<void> {
     typeof flow.data.characterId === "string" ? flow.data.characterId : "veronika";
   const question = typeof flow.data.question === "string" ? flow.data.question : "";
   const cost = typeof flow.data.cost === "number" ? flow.data.cost : 30;
+  const idempotencyKey =
+    typeof flow.data.idempotencyKey === "string" && flow.data.idempotencyKey
+      ? flow.data.idempotencyKey
+      : randomUUID();
+
+  // Lock step before network — blocks double-tap ph:ok; keep same idempotency key.
+  setFlow(tid, "photo", "interpreting", {
+    ...flow.data,
+    characterId,
+    question,
+    redrawSpread,
+    cost,
+    idempotencyKey,
+  });
+  markIrreversible(ctx);
 
   await ctx.reply(copy.photoInterpreting(cost));
   await ctx.replyWithChatAction("typing");
 
   try {
-    const { data } = await sitePhoto(linked.user.telegram_user_id, "interpret", {
+    const { data } = await sitePhoto(tid, "interpret", {
       characterId,
       question,
       confirmedSpread: redrawSpread,
-      idempotencyKey: randomUUID(),
+      idempotencyKey,
     });
-    clearFlow(linked.user.telegram_user_id);
 
     if (!data.ok || !data.analysis) {
+      clearFlow(tid);
       if (data.error === "insufficient_runes") {
         await ctx.reply(
           copy.photoInsufficient(data.cost ?? cost, data.runeBalance ?? 0),
@@ -575,6 +603,8 @@ async function runInterpret(ctx: Context): Promise<void> {
       });
       return;
     }
+
+    clearFlow(tid);
 
     const footerParts = [
       data.charged && data.charged > 0 ? `Списано ${data.charged}ᚢ` : null,
@@ -602,7 +632,16 @@ async function runInterpret(ctx: Context): Promise<void> {
     }
   } catch (err) {
     console.error("[photo] interpret", err);
-    clearFlow(linked.user.telegram_user_id);
+    // Network blip: restore confirm with the same key so retry is idempotent.
+    setFlow(tid, "photo", "confirm", {
+      characterId,
+      question,
+      redrawSpread,
+      detectedCards: flow.data.detectedCards || [],
+      cost,
+      siteUrl: flow.data.siteUrl ?? null,
+      idempotencyKey,
+    });
     await ctx.reply(copy.photoInterpretFail, { reply_markup: salonKeyboard() });
   }
 }
@@ -717,7 +756,10 @@ export async function handlePhotoCallback(ctx: Context, data: string): Promise<b
     const page = Number(data.slice(CB.phPagePrefix.length));
     try {
       const linked = await ensureSiteLinked(ctx);
-      if (!linked) return true;
+      if (!linked) {
+        await ctx.answerCallbackQuery().catch(() => undefined);
+        return true;
+      }
       const { data: list } = await sitePhoto(linked.user.telegram_user_id, "list", {
         limit: 30,
       });

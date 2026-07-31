@@ -196,32 +196,32 @@ export async function upsertBotOfferProfile(
         astroMeta,
       });
       await grantStarterRunesIfNeeded(profileUserId);
-    } else if (name && name !== current.name) {
-      await query(`UPDATE user_accounts SET name = $2 WHERE id = $1`, [
-        identity.user_account_id,
-        name,
-      ]);
-      await updateUserProfile(profileUserId, {
-        name,
-        gender: (normalizeUserGender(current.gender) as BinaryGender) || gender,
-        birthDate: current.birth_date,
-        zodiac: current.zodiac,
-        birthTime: current.birth_time ?? undefined,
-        birthCity: birthCity ?? current.birth_city ?? undefined,
-        lifeFocus: (current.life_focus as LifeFocus) || "general",
-        mainQuestion: current.main_question ?? undefined,
-      });
-    } else if (birthCity && birthCity !== (current?.birth_city ?? "")) {
-      await updateUserProfile(profileUserId, {
-        name: current!.name,
-        gender: (normalizeUserGender(current!.gender) as BinaryGender) || gender,
-        birthDate: current!.birth_date!,
-        zodiac: current!.zodiac,
-        birthTime: current!.birth_time ?? undefined,
-        birthCity,
-        lifeFocus: (current!.life_focus as LifeFocus) || "general",
-        mainQuestion: current!.main_question ?? undefined,
-      });
+    } else {
+      const currentGender = normalizeUserGender(current.gender) as BinaryGender | null;
+      const nextGender = (gender || currentGender) as BinaryGender;
+      const nextCity = birthCity ?? current.birth_city ?? undefined;
+      const nameChanged = Boolean(name && name !== current.name);
+      const cityChanged = Boolean(birthCity && birthCity !== (current.birth_city ?? ""));
+      const genderChanged = Boolean(gender && gender !== currentGender);
+
+      if (nameChanged) {
+        await query(`UPDATE user_accounts SET name = $2 WHERE id = $1`, [
+          identity.user_account_id,
+          name,
+        ]);
+      }
+      if (nameChanged || cityChanged || genderChanged) {
+        await updateUserProfile(profileUserId, {
+          name: nameChanged ? name : current.name,
+          gender: nextGender,
+          birthDate: current.birth_date,
+          zodiac: current.zodiac,
+          birthTime: current.birth_time ?? undefined,
+          birthCity: nextCity,
+          lifeFocus: (current.life_focus as LifeFocus) || "general",
+          mainQuestion: current.main_question ?? undefined,
+        });
+      }
     }
   }
 

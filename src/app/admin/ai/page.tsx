@@ -165,6 +165,29 @@ export default function AdminAiPage() {
           />
         </div>
 
+        <div className="rounded-xl border border-violet-300/20 bg-violet-300/5 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-violet-100">Матрица судьбы</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              Отдельная модель для позонного разбора матрицы (~19 коротких вызовов).
+              Gemini 3.x жжёт токены на reasoning — лучше flash без thinking или deepseek-chat.
+              Пусто = deepseek-chat-v3 (не платная модель чата).
+            </p>
+          </div>
+          <ModelPicker
+            label="Модель для матрицы"
+            value={String(ai.matrixModel || "deepseek/deepseek-chat-v3-0324")}
+            onChange={(modelId) => setAi({ ...ai, matrixModel: modelId })}
+          />
+          <button
+            type="button"
+            onClick={() => setAi({ ...ai, matrixModel: "" })}
+            className="text-xs text-gray-400 underline-offset-2 hover:text-white hover:underline"
+          >
+            Сбросить → deepseek-chat-v3 (дефолт матрицы)
+          </button>
+        </div>
+
         <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
           <div>
             <p className="text-sm font-medium text-white">Цепочки fallback-моделей</p>
@@ -210,6 +233,30 @@ export default function AdminAiPage() {
                 })
               }
               placeholder="openai/gpt-4o-mini"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">
+              matrixFallbackModels (пусто = как fallbackModels чата)
+            </label>
+            <input
+              type="text"
+              value={
+                Array.isArray(ai.matrixFallbackModels)
+                  ? (ai.matrixFallbackModels as string[]).join(", ")
+                  : ""
+              }
+              onChange={(e) =>
+                setAi({
+                  ...ai,
+                  matrixFallbackModels: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+              placeholder="deepseek/deepseek-chat-v3-0324, openai/gpt-4o-mini"
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
           </div>

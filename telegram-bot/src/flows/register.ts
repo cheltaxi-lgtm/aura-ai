@@ -12,6 +12,7 @@ import {
   findLatestUnclaimedCtaSession,
   formatTimezoneLabel,
   getUser,
+  hasUserEvent,
   listSessions,
   needsUserTimezoneForReminders,
   setReminderMode,
@@ -45,7 +46,12 @@ import {
 import { isShareCardEnabled } from "../flags.js";
 import { renderShareCollage } from "../render/card-collage.js";
 import { renderProfileCardImage } from "../render/profile-card.js";
-import { siteCabinet, siteDeleteAccount, siteHistory } from "../domain/site-client.js";
+import {
+  isTelegramShellEmail,
+  siteCabinet,
+  siteDeleteAccount,
+  siteHistory,
+} from "../domain/site-client.js";
 import {
   beginChatFollowUp,
   beginSupportReply,
@@ -55,7 +61,6 @@ import {
   routeModuleCallback,
   showHistory,
   showMatrix,
-  showModulesMenu,
   showPhoto,
 } from "./cabinet.js";
 import {
@@ -67,6 +72,7 @@ import { beginCatalog, handleCatalogCallback } from "./catalog.js";
 import { handleReadingPagerCallback } from "../domain/reading/present.js";
 import {
   handleRunesCallback,
+  handleRunesText,
   registerRunePayments,
   showRunes,
 } from "./runes.js";
@@ -190,11 +196,11 @@ export function registerFlows(bot: Bot): void {
     await ctx.editMessageText("Согласие принято.");
     const ensured = await ensureBotOfferAccount(ctx, user);
     if (ensured?.linked) {
-      await ctx.reply(copy.accountOpened, { reply_markup: salonKeyboard() });
       if (ensured.needsOnboarding) {
         await beginProfileOnboarding(ctx);
         return;
       }
+      await ctx.reply(copy.accountOpened, { reply_markup: salonKeyboard() });
     }
     await showSalonHome(ctx, { name: user.first_name });
   });
@@ -226,8 +232,8 @@ export function registerFlows(bot: Bot): void {
       await ctx.answerCallbackQuery({ text: "Некорректный пояс" });
       return;
     }
+    await ctx.answerCallbackQuery({ text: "Сохранено" }).catch(() => undefined);
     try {
-      await ctx.answerCallbackQuery({ text: "Сохранено" });
       try {
         await ctx.editMessageText(
           `Часовой пояс выбран (UTC${minutes >= 0 ? "+" : ""}${minutes / 60}).`
@@ -240,7 +246,6 @@ export function registerFlows(bot: Bot): void {
       await ctx.reply(copy.timezoneSet, { reply_markup: salonKeyboard() });
     } catch (err) {
       console.error("[tz]", err);
-      await ctx.answerCallbackQuery({ text: "Не удалось сохранить" });
       await ctx.reply(
         "Не удалось сохранить пояс. Откройте Профиль → Настройки и выберите ещё раз.",
         { reply_markup: salonKeyboard() }
@@ -260,7 +265,7 @@ export function registerFlows(bot: Bot): void {
   bot.command("about", async (ctx) => {
     const user = await ensureOnboarded(ctx);
     if (!user) return;
-    await showSalonHome(ctx, { name: user.first_name });
+    await ctx.reply(copy.about, { reply_markup: salonKeyboard() });
   });
 
   bot.command("spread", async (ctx) => beginCatalog(ctx));
@@ -476,7 +481,7 @@ export function registerFlows(bot: Bot): void {
     await ctx.answerCallbackQuery();
     const data = ctx.callbackQuery.data;
     if (!(await routeModuleCallback(ctx, data))) {
-      await ctx.reply(copy.modulesPick, { reply_markup: salonKeyboard() });
+      await ctx.reply(copy.navHint, { reply_markup: salonKeyboard() });
     }
   });
 
@@ -569,6 +574,7 @@ export function registerFlows(bot: Bot): void {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return;
     if (await handleProfileFlowText(ctx, text)) return;
+    if (await handleRunesText(ctx, text)) return;
     if (NAV_LABELS.has(text)) {
       await routeNav(ctx, text);
       return;
@@ -604,9 +610,6 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
     case NAV.runes:
       await showRunes(ctx);
       return;
-    case NAV.more:
-      await showModulesMenu(ctx);
-      return;
     case NAV.settings:
       await showSettings(ctx);
       return;
@@ -614,7 +617,7 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
       {
         const aboutUser = await ensureOnboarded(ctx);
         if (!aboutUser) return;
-        await showSalonHome(ctx, { name: aboutUser.first_name });
+        await ctx.reply(copy.about, { reply_markup: salonKeyboard() });
       }
       return;
     default:
@@ -723,7 +726,11 @@ async function showProfile(ctx: Context): Promise<void> {
       await ctx.reply(copy.profileContinueHint, { reply_markup: ctaKeyboard(pending.cta_url) });
     } else if (!linked) {
       await ctx.reply(copy.profileLinkHint);
-    } else {
+    } else if (
+      isTelegramShellEmail(site?.email) &&
+      !hasUserEvent(user.telegram_user_id, "login_methods_hint_shown")
+    ) {
+      trackEvent("login_methods_hint_shown", user.telegram_user_id, {});
       await ctx.reply(copy.profileLoginMethodsHint);
     }
   } catch (err) {
@@ -740,11 +747,27 @@ async function showProfile(ctx: Context): Promise<void> {
       zovusLinked: linked,
     });
     await ctx.reply(`${body}\nРуны: ${card.runeBalance}`, {
-      reply_markup: linked
-        ? continueOnSiteKeyboard(cabinetUrl, copy.continueOnSite)
-        : linkAccountKeyboard(linkUrl),
+      reply_markup: profileKeyboard({
+        linked,
+        cabinetUrl: linked ? cabinetUrl : null,
+        loginMethodsUrl: linked ? loginMethodsUrl : null,
+        linkUrl: linked ? null : linkUrl,
+        inviteUrl,
+      }),
     });
   }
+}
+
+function reminderModeRu(mode: string | null | undefined): string {
+  if (mode === "morning") return "утро";
+  if (mode === "evening") return "вечер";
+  if (mode === "off") return "выкл";
+  return mode || "выкл";
+}
+
+function voiceModeRu(mode: string | null | undefined): string {
+  if (mode === "text") return "только текст";
+  return "текст и голос";
 }
 
 async function showSettings(ctx: Context): Promise<void> {
@@ -755,9 +778,9 @@ async function showSettings(ctx: Context): Promise<void> {
       copy.settingsTitle,
       "",
       copy.settingsHint,
-      `Сейчас: напоминания ${user.reminder_mode}, голос ${user.voice_mode ?? "text_voice"}.`,
+      `Сейчас: напоминания ${reminderModeRu(user.reminder_mode)}, голос ${voiceModeRu(user.voice_mode)}.`,
       `Часовой пояс: ${formatTimezoneLabel(user)}.`,
-      "Сменить пояс — кнопка ниже.",
+      "Сменить пояс — кнопка ниже. Удалить аккаунт — в Профиле.",
     ].join("\n"),
     { reply_markup: settingsKeyboard() }
   );

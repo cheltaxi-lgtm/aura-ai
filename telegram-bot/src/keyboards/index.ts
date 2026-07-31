@@ -39,7 +39,6 @@ export const NAV = {
   history: "📚 История",
   profile: "👤 Профиль",
   runes: "🪙 Руны",
-  more: "📂 Ещё",
   settings: "⚙️ Настройки",
   about: "✨ О салоне",
 } as const;
@@ -83,6 +82,9 @@ export const CB = {
   mxNewYes: "mx:new:yes",
   mxNewNo: "mx:new:no",
   mxCalc: "mx:calc",
+  mxPeriod: "mx:period",
+  mxZones: "mx:zones",
+  mxShare: "mx:share",
   mxDel: "mx:del",
   mxDelYes: "mx:del:yes",
   mxDelNo: "mx:del:no",
@@ -127,9 +129,10 @@ export const CB = {
   rdPrefix: "rd:",
   rdPagePrefix: "rd:p:",
   rdNoop: "rd:noop",
-  /** Rune shop — Stars invoice. Payload: rn:buy:<packageId> */
+  /** Rune shop — YooKassa. Payload: rn:buy:<packageId> | rn:custom */
   rnPrefix: "rn:",
   rnBuyPrefix: "rn:buy:",
+  rnCustom: "rn:custom",
   /** Park Mini App destination. Payload: n:<startapp-alias> */
   navPrefix: "n:",
   /** Bot-offer profile onboarding + profile hub actions */
@@ -145,18 +148,17 @@ export const CB = {
 
 export function salonKeyboard(): Keyboard {
   return new Keyboard()
-    .text(NAV.matrix)
-    .text(NAV.photo)
-    .row()
     .text(NAV.spread)
     .text(NAV.day)
     .row()
-    .text(NAV.profile)
-    .text(NAV.more)
+    .text(NAV.photo)
+    .text(NAV.matrix)
     .row()
+    .text(NAV.profile)
     .text(NAV.about)
     // resized only — do NOT use persistent(): it pins the bar so users cannot
     // collapse the menu or swipe away from the bot chat comfortably.
+    // История и Руны — в Профиле (inline), не в нижней панели.
     .resized()
     .placeholder("Выберите действие или напишите вопрос…");
 }
@@ -223,11 +225,15 @@ export function catalogListKeyboard(
 export function catalogItemKeyboard(opts: {
   native: boolean;
   url: string;
+  /** exact | site_only — controls in-bot button (approx = legacy alias for exact). */
+  runMode?: "exact" | "approx" | "site_only";
+  botCost?: number;
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
-  // Prefer in-bot run whenever API marks native (question-ready intents).
-  if (opts.native !== false) {
-    kb.text(`🔮 ${copy.catalogRunHere}`, CB.catRun).row();
+  const mode = opts.runMode ?? (opts.native !== false ? "exact" : "site_only");
+  const botCost = Math.max(0, Math.round(opts.botCost ?? 15));
+  if (mode === "exact" || mode === "approx") {
+    kb.text(`🔮 Сделать в боте · ${botCost}ᚢ`, CB.catRun).row();
   }
   webAppButton(kb, `🕯 ${copy.catalogOpenSite}`, opts.url).row();
   // Back to the same list page (edit in place), not a new home message.
@@ -259,20 +265,6 @@ export function resendCtaKeyboard(sessionId: string): InlineKeyboard {
 export function continueOnSiteKeyboard(url: string, label: string = copy.continueOnSite): InlineKeyboard {
   const kb = new InlineKeyboard();
   return webAppButton(kb, `🕯 ${label}`, url);
-}
-
-export function modulesKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("✨ Натал", CB.modNatal)
-    .text("🕯 Обряды", CB.modRituals)
-    .row()
-    .text("🔗 Совместный", CB.modJoint)
-    .text("📝 Дневник", CB.modDiary)
-    .row()
-    .text("💬 Память", CB.modMemory)
-    .text("✉️ Поддержка", CB.modSupport)
-    .row()
-    .text("📂 Кабинет", CB.modCabinet);
 }
 
 /** Site deep-link only — follow-up chat in the bot is closed. */
@@ -315,8 +307,15 @@ export function readingPagerKeyboard(opts: {
   }
 
   if (opts.matrixActions) {
-    // Owned full report: renew or delete — not "calculate" (that's the free teaser).
-    kb.text("✨ Новая матрица", CB.mxNew).text("🗑 Удалить", CB.mxDel);
+    // Living cycle: zones · period · share · replace · delete.
+    kb.text("🗺 Зоны", CB.mxZones)
+      .text("📅 Узел периода", CB.mxPeriod)
+      .row()
+      .text("📤 Карточка зоны", CB.mxShare)
+      .row()
+      .text("✨ Новая матрица", CB.mxNew)
+      .row()
+      .text("🗑 Удалить разбор", CB.mxDel);
   }
   return kb;
 }
@@ -368,7 +367,8 @@ export function profileKeyboard(opts: {
   if (!opts.linked && opts.linkUrl) {
     webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, opts.linkUrl).row();
   } else if (opts.loginMethodsUrl) {
-    webAppButton(kb, "🔑 Вход с сайта", opts.loginMethodsUrl).row();
+    // OAuth (Yandex/VK) needs a full browser — Mini App WebView often breaks it.
+    kb.url("🔑 Вход с сайта", opts.loginMethodsUrl).row();
     if (opts.cabinetUrl) {
       webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.cabinetUrl).row();
     }
@@ -411,27 +411,38 @@ export function memoryChoiceKeyboard(): InlineKeyboard {
     .text("Без памяти", CB.profMemOff);
 }
 
-/** Rune shop: one package per row + cabinet card checkout. */
+/** Rune shop: package → YooKassa (callback creates payment URL). */
 export function runesShopKeyboard(opts: {
   packages: Array<{
     id: string;
     name: string;
     totalRunes: number;
-    stars: number;
+    priceRub: number;
     isPopular?: boolean;
   }>;
   shopUrl?: string | null;
+  customAmount?: boolean;
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const p of opts.packages.slice(0, 4)) {
-    const mark = p.isPopular ? " · выбор" : "";
-    const label = `${p.name} · ${p.totalRunes}ᚢ${mark}`.slice(0, 64);
+    const mark = p.isPopular ? " · ⭐" : "";
+    const rub = Math.max(0, Math.round(p.priceRub || 0));
+    const label = `${p.name} · ${p.totalRunes}ᚢ · ${rub} ₽${mark}`.slice(0, 64);
     kb.text(label, `${CB.rnBuyPrefix}${p.id}`).row();
   }
+  if (opts.customAmount !== false) {
+    kb.text("✍️ Своя сумма", CB.rnCustom).row();
+  }
   if (opts.shopUrl) {
-    webAppButton(kb, "🕯 Кабинет · картой", opts.shopUrl);
+    kb.url("🕯 Кабинет · все пакеты", opts.shopUrl);
   }
   return kb;
+}
+
+/** One-shot pay button after YooKassa payment is created. */
+export function runesPayKeyboard(paymentUrl: string, priceRub: number): InlineKeyboard {
+  const rub = Math.max(0, Math.round(priceRub || 0));
+  return new InlineKeyboard().url(`💳 Оплатить · ${rub} ₽`, paymentUrl);
 }
 
 /** Photo history album: pager + single Open action. */
@@ -497,30 +508,44 @@ export function historyDeleteConfirmKeyboard(sessionId: string): InlineKeyboard 
     .text("Оставить", CB.histDelNo);
 }
 
-/** Not owned yet: get full matrix + recalculate free scheme. */
+/**
+ * Not owned yet: one primary CTA.
+ * «Пополнить» only when balance is known and below cost — иначе шум и дубль с меню «Руны».
+ */
 export function matrixGetKeyboard(opts: {
   cost: number;
   shopUrl?: string | null;
+  runeBalance?: number | null;
 }): InlineKeyboard {
+  const cost = Math.max(0, Math.round(opts.cost || 0));
   const kb = new InlineKeyboard()
-    .text(`✨ Получить матрицу · ${opts.cost}ᚢ`, CB.mxRun)
+    .text(`✨ Получить полный разбор · ${cost}ᚢ`, CB.mxRun)
     .row()
-    .text("🔮 Рассчитать матрицу", CB.mxCalc);
-  if (opts.shopUrl) {
+    .text("📅 Узел периода", CB.mxPeriod);
+  const bal = opts.runeBalance;
+  const needTopUp =
+    typeof bal === "number" && Number.isFinite(bal) && bal < cost && Boolean(opts.shopUrl);
+  if (needTopUp && opts.shopUrl) {
     kb.row();
     webAppButton(kb, "🪙 Пополнить руны", opts.shopUrl);
   }
   return kb;
 }
 
-/** Owned full report actions. */
+/** Owned full report actions (standalone; pager uses readingPagerKeyboard). */
 export function matrixOwnedKeyboard(opts?: { siteUrl?: string | null }): InlineKeyboard {
   const kb = new InlineKeyboard()
+    .text("🗺 Зоны", CB.mxZones)
+    .text("📅 Узел периода", CB.mxPeriod)
+    .row()
+    .text("📤 Карточка зоны", CB.mxShare)
+    .row()
     .text("✨ Новая матрица", CB.mxNew)
-    .text("🗑 Удалить", CB.mxDel);
+    .row()
+    .text("🗑 Удалить разбор", CB.mxDel);
   if (opts?.siteUrl) {
     kb.row();
-    webAppButton(kb, `🕯 ${copy.continueOnSite}`, opts.siteUrl);
+    webAppButton(kb, `🕯 ${copy.continueDiscussionOnSite}`, opts.siteUrl);
   }
   return kb;
 }
@@ -584,9 +609,7 @@ export function settingsKeyboard(): InlineKeyboard {
     .text("📝 Только текст", CB.voiceText)
     .text("🎙 Текст и голос", CB.voiceBoth)
     .row()
-    .text("🌍 Часовой пояс", `${CB.tzPrefix}ask`)
-    .row()
-    .text("🗑 Удалить аккаунт", CB.delStart);
+    .text("🌍 Часовой пояс", `${CB.tzPrefix}ask`);
 }
 
 export function timezoneKeyboard(opts?: { allowSkip?: boolean }): InlineKeyboard {

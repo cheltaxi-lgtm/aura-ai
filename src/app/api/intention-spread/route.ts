@@ -188,13 +188,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ found: false, reading: "" });
     }
 
+    const sessionId = request.nextUrl.searchParams.get("sessionId")?.trim() || null;
+    // Custom questions must never recover a previous consultation with the same cards.
+    // Topic spreads may still reuse by cards when sessionId is omitted (legacy).
+    const requireSessionId = intention === "custom" || Boolean(sessionId);
+    if (requireSessionId && !sessionId) {
+      return NextResponse.json({ found: false, reading: "" });
+    }
+
     const history = await getUserReadingHistory(authed.profileUserId);
     const cached = findCachedIntentionSpread(
       history,
       characterId,
       intention,
       cardNames.map((name) => ({ name })),
-      spreadId
+      spreadId,
+      { sessionId, requireSessionId }
     );
     const reusable = cached && isAiCacheReusable(cached);
     const reading =

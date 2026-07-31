@@ -1,5 +1,5 @@
 /**
- * Editorial dictionary for Матрица судьбы (matrix-v1).
+ * Editorial dictionary for Матрица судьбы (matrix-v2).
  * Separate from tarot MAJOR_ARCANA so reading decks and matrix meanings can evolve independently.
  */
 

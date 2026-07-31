@@ -2,7 +2,7 @@ import type { Context, InlineKeyboard } from "grammy";
 import { InputFile } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
-import { clearFlow, getFlow, setFlow } from "../db/repos.js";
+import { clearFlow, getFlow, setFlow, trackEvent } from "../db/repos.js";
 import {
   chunkTelegramText,
   type SiteMatrixDiagram,
@@ -14,13 +14,17 @@ import {
   siteReading,
   siteSupport,
 } from "../domain/site-client.js";
-import { presentReadingToTelegram } from "../domain/reading/present.js";
+import {
+  jumpReadingAlbumPage,
+  presentReadingToTelegram,
+} from "../domain/reading/present.js";
 import { buildLocalMatrixDiagram } from "../domain/matrix/calc.js";
 import {
   renderHistoryEntryImage,
   type HistoryEntryKind,
 } from "../render/history-entry.js";
 import { renderMatrixDiagramImage } from "../render/matrix-diagram.js";
+import { renderMatrixShareCardImage } from "../render/matrix-share-card.js";
 import { showPhoto as showPhotoFlow } from "./photo.js";
 import {
   CB,
@@ -33,14 +37,12 @@ import {
   matrixGetKeyboard,
   matrixListPagerKeyboard,
   matrixNewConfirmKeyboard,
-  modulesKeyboard,
+  matrixOwnedKeyboard,
   salonKeyboard,
   supportListKeyboard,
 } from "../keyboards/index.js";
-import {
-  formatMatrixPremiumTeaser,
-  formatMatrixReadingPremium,
-} from "../domain/matrix/format.js";
+import { formatMatrixPremiumTeaser } from "../domain/matrix/format.js";
+import { replyPhotoBudget } from "../domain/tg-send.js";
 import { announceWorking } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
 
@@ -168,12 +170,6 @@ function linkKb(url?: string | null) {
   return url ? continueOnSiteKeyboard(url) : salonKeyboard();
 }
 
-export async function showModulesMenu(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
-  if (!linked) return;
-  await ctx.reply(copy.modulesPick, { reply_markup: modulesKeyboard() });
-}
-
 export async function showCabinetOverview(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
@@ -203,7 +199,7 @@ export async function showCabinetOverview(ctx: Context): Promise<void> {
     await ctx.reply(lines.join("\n"), {
       reply_markup: data.urls?.cabinet
         ? continueOnSiteKeyboard(data.urls.cabinet)
-        : modulesKeyboard(),
+        : salonKeyboard(),
     });
   } catch (err) {
     console.error("[cabinet] overview", err);
@@ -248,6 +244,7 @@ async function sendMatrixDiagram(
     birthDate?: string | null;
     name?: string | null;
     caption?: string;
+    focusKey?: string | null;
   }
 ): Promise<boolean> {
   const diagram =
@@ -258,15 +255,15 @@ async function sendMatrixDiagram(
         : null;
   if (!diagram?.slots?.length) return false;
   try {
-    await ctx.replyWithChatAction("upload_photo");
+    await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
     const buf = await renderMatrixDiagramImage({
       name: diagram.name ?? opts.name,
       birthDate: diagram.birthDate ?? opts.birthDate ?? undefined,
       slots: diagram.slots,
+      focusKey: opts.focusKey ?? diagram.focusKey ?? null,
     });
     // No caption — birth date is already on the diagram; captions render as a narrow strip.
-    await ctx.replyWithPhoto(new InputFile(buf, "matrix.jpg"));
-    return true;
+    return replyPhotoBudget(ctx, buf, "matrix.jpg");
   } catch (err) {
     console.error("[cabinet] matrix diagram", err);
     return false;
@@ -279,6 +276,35 @@ async function renderMatrixTeaserFromSummary(
   ctx: Context,
   data: MatrixSummaryData
 ): Promise<void> {
+  const body = formatMatrixPremiumTeaser({
+    name: data.name,
+    birthDate: data.birthDate,
+    portrait: data.portrait,
+    moneyInsight: data.moneyInsight,
+    loveInsight: data.loveInsight,
+    yearInsight: data.yearInsight,
+    comfortInsight: data.comfortInsight,
+    karmicInsight: data.karmicInsight,
+    ageInsight: data.ageInsight,
+    periodTeaser: data.periodTeaser,
+    denseTeaser: data.denseTeaser,
+    keyArcana: data.keyArcana,
+    cost: data.cost ?? 20,
+    runeBalance: data.runeBalance,
+  });
+  const chunks = chunkTelegramText(body);
+  const kb = matrixGetKeyboard({
+    cost: data.cost ?? 20,
+    shopUrl: data.shopUrl,
+    runeBalance: data.runeBalance,
+  });
+  // Text first so a hung sendPhoto cannot strand the user on "Собираю матрицу".
+  for (let i = 0; i < chunks.length; i++) {
+    await ctx.reply(chunks[i]!, {
+      reply_markup: i === chunks.length - 1 ? kb : undefined,
+    });
+  }
+
   const caption = [
     "🌌 Матрица судьбы",
     data.name || data.diagram?.name || null,
@@ -291,39 +317,18 @@ async function renderMatrixTeaserFromSummary(
     birthDate: data.birthDate,
     name: data.name || data.diagram?.name,
     caption,
+    focusKey: data.focusKey ?? data.diagram?.focusKey,
   });
-
-  const body = formatMatrixPremiumTeaser({
-    name: data.name,
-    birthDate: data.birthDate,
-    portrait: data.portrait,
-    moneyInsight: data.moneyInsight,
-    loveInsight: data.loveInsight,
-    yearInsight: data.yearInsight,
-    keyArcana: data.keyArcana,
-    cost: data.cost ?? 20,
-    runeBalance: data.runeBalance,
-  });
-  const chunks = chunkTelegramText(body);
-  const kb = matrixGetKeyboard({
-    cost: data.cost ?? 20,
-    shopUrl: data.shopUrl,
-  });
-  for (let i = 0; i < chunks.length; i++) {
-    await ctx.reply(chunks[i]!, {
-      reply_markup: i === chunks.length - 1 ? kb : undefined,
-    });
-  }
 }
 
 /** Free diagram + premium teaser + Get / Calculate buttons. */
 export async function showMatrixTeaser(ctx: Context): Promise<void> {
+  const uid = ctx.from?.id;
+  if (uid) {
+    await announceWorking(ctx, copy.matrixPreparing(uid, cabinetCopyCounter++));
+  }
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
-  await announceWorking(
-    ctx,
-    copy.matrixPreparing(linked.user.telegram_user_id, cabinetCopyCounter++)
-  );
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
     if (!data.ok) {
@@ -345,12 +350,12 @@ export async function showMatrixTeaser(ctx: Context): Promise<void> {
 }
 
 export async function showMatrix(ctx: Context): Promise<void> {
+  const uid = ctx.from?.id;
+  if (uid) {
+    await announceWorking(ctx, copy.matrixPreparing(uid, cabinetCopyCounter++));
+  }
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
-  await announceWorking(
-    ctx,
-    copy.matrixPreparing(linked.user.telegram_user_id, cabinetCopyCounter++)
-  );
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
     if (!data.ok) {
@@ -452,11 +457,6 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
       });
       return;
     }
-    await sendMatrixDiagram(ctx, {
-      diagram: data.diagram,
-      birthDate: data.birthDate,
-      caption: data.birthDate ? `🌌 Матрица судьбы · ${data.birthDate}` : "🌌 Матрица судьбы",
-    });
     const footer = data.replaced
       ? data.charged
         ? `Новая матрица готова. Предыдущая заменена · списано ${data.charged}ᚢ`
@@ -465,17 +465,41 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
         ? `Списано ${data.charged}ᚢ`
         : undefined;
     await presentReadingToTelegram(ctx, {
-      reading: formatMatrixReadingPremium(data.content || ""),
+      reading: data.content || "",
       cardNames: [],
-      question: "Матрица судьбы",
       sessionId: data.sessionId,
       footer,
       matrixActions: true,
+      matrixPaging: true,
       matrixSiteUrl: data.url,
+    });
+    await sendMatrixDiagram(ctx, {
+      diagram: data.diagram,
+      birthDate: data.birthDate,
+      caption: data.birthDate ? `🌌 Матрица судьбы · ${data.birthDate}` : "🌌 Матрица судьбы",
+      focusKey: data.diagram?.focusKey ?? data.focusKey,
+    });
+    trackEvent("matrix_full_ready", linked.user.telegram_user_id, {
+      sessionId: data.sessionId ?? null,
+      charged: data.charged ?? 0,
     });
   } catch (err) {
     console.error("[cabinet] matrix run", err);
-    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+    // Server may finish after undici/headers timeout — try to pull a just-saved report.
+    try {
+      const owned = await siteNumerology(linked.user.telegram_user_id, "list");
+      const latest = owned.data.items?.[0];
+      if (owned.data.ok && latest?.id) {
+        const ageMs = Date.now() - new Date(latest.date).getTime();
+        if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60_000) {
+          await openMatrixReport(ctx, latest.id, { showActions: true });
+          return;
+        }
+      }
+    } catch (recoverErr) {
+      console.warn("[cabinet] matrix run recovery failed", recoverErr);
+    }
+    await ctx.reply(copy.matrixStillWorking, { reply_markup: salonKeyboard() });
   }
 }
 
@@ -494,18 +518,18 @@ export async function openMatrixReport(
       });
       return;
     }
+    await presentReadingToTelegram(ctx, {
+      reading: data.content,
+      cardNames: [],
+      sessionId: data.sessionId || undefined,
+      matrixActions: opts?.showActions !== false,
+      matrixPaging: true,
+      matrixSiteUrl: opts?.siteUrl || data.url,
+    });
     await sendMatrixDiagram(ctx, {
       diagram: data.diagram,
       birthDate: data.birthDate,
       caption: data.birthDate ? `🌌 Матрица судьбы · ${data.birthDate}` : "🌌 Матрица судьбы",
-    });
-    await presentReadingToTelegram(ctx, {
-      reading: formatMatrixReadingPremium(data.content),
-      cardNames: [],
-      question: "Матрица судьбы",
-      sessionId: data.sessionId || undefined,
-      matrixActions: opts?.showActions !== false,
-      matrixSiteUrl: opts?.siteUrl || data.url,
     });
   } catch (err) {
     console.error("[cabinet] matrix get", err);
@@ -525,9 +549,16 @@ export async function deleteMatrixReport(ctx: Context): Promise<void> {
       return;
     }
     clearFlow(linked.user.telegram_user_id);
+    const cost =
+      typeof data.cost === "number" && Number.isFinite(data.cost) ? data.cost : 20;
     const shopUrl = `${botConfig.siteUrl}/cabinet?shop=1&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`;
-    await ctx.reply("🗑 Матрица удалена. Можно рассчитать схему и получить новый разбор.", {
-      reply_markup: matrixGetKeyboard({ cost: 20, shopUrl }),
+    await ctx.reply("🗑 Матрица удалена. Можно получить новый полный разбор.", {
+      reply_markup: matrixGetKeyboard({
+        cost,
+        shopUrl,
+        runeBalance:
+          typeof data.runeBalance === "number" ? data.runeBalance : null,
+      }),
     });
   } catch (err) {
     console.error("[cabinet] matrix delete", err);
@@ -577,6 +608,172 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
   if (data === CB.mxCalc) {
     await ctx.answerCallbackQuery({ text: "Считаю схему…" }).catch(() => undefined);
     await showMatrixTeaser(ctx);
+    return true;
+  }
+
+  if (data === CB.mxPeriod) {
+    await ctx.answerCallbackQuery({ text: "Узел периода…" }).catch(() => undefined);
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    try {
+      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary");
+      if (!summary.ok) {
+        await ctx.reply(summary.message || copy.siteBridgeDown, {
+          reply_markup: linkKb(summary.linkUrl),
+        });
+        return true;
+      }
+      await sendMatrixDiagram(ctx, {
+        diagram: summary.diagram,
+        birthDate: summary.birthDate,
+        name: summary.name,
+        focusKey: summary.focusKey ?? summary.diagram?.focusKey,
+      });
+      const teaser =
+        summary.periodTeaser ||
+        [
+          summary.focusLabel ? `Фокус: ${summary.focusLabel}` : null,
+          summary.ageInsight,
+          summary.yearInsight,
+        ]
+          .filter(Boolean)
+          .join("\n");
+      const since = summary.sinceLast ? `\n\n${summary.sinceLast}` : "";
+      await ctx.reply(
+        ["📅 Узел периода (бесплатно)", teaser || "Откройте схему матрицы ещё раз.", since]
+          .filter(Boolean)
+          .join("\n\n"),
+        {
+          reply_markup: summary.owned
+            ? matrixOwnedKeyboard({ siteUrl: summary.url })
+            : matrixGetKeyboard({
+                cost: summary.cost ?? 20,
+                shopUrl: summary.shopUrl,
+                runeBalance: summary.runeBalance,
+              }),
+        }
+      );
+    } catch (err) {
+      console.error("[cabinet] matrix period", err);
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+    }
+    return true;
+  }
+
+  if (data === CB.mxZones) {
+    // Inside full-report album: jump to first zone page (‹ › already browse zones).
+    const flow = getFlow(tid);
+    if (
+      flow?.flow === "reading_view" &&
+      flow.data.matrixActions &&
+      Array.isArray(flow.data.pages) &&
+      flow.data.pages.length > 0
+    ) {
+      const ok = await jumpReadingAlbumPage(ctx, 0, "Зоны · 1 страница");
+      if (ok) return true;
+    }
+
+    await ctx.answerCallbackQuery({ text: "Зоны…" }).catch(() => undefined);
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    try {
+      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary");
+      if (!summary.ok) {
+        await ctx.reply(summary.message || copy.siteBridgeDown, {
+          reply_markup: linkKb(summary.linkUrl),
+        });
+        return true;
+      }
+      // Owned, album not open: open full report so ‹ › browse zones.
+      if (summary.owned && summary.ownedReportId) {
+        await openMatrixReport(ctx, summary.ownedReportId, { siteUrl: summary.url });
+        return true;
+      }
+
+      await sendMatrixDiagram(ctx, {
+        diagram: summary.diagram,
+        birthDate: summary.birthDate,
+        name: summary.name,
+        focusKey: summary.focusKey ?? summary.diagram?.focusKey,
+      });
+      const zones = [
+        summary.comfortInsight,
+        summary.karmicInsight,
+        summary.ageInsight,
+        summary.moneyInsight,
+        summary.loveInsight,
+        summary.yearInsight,
+        summary.periodTeaser,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      await ctx.reply(
+        [
+          "🗺 Зоны полной матрицы",
+          zones || summary.portrait || "",
+          "Схема и краткие зоны бесплатно. Полный разбор по зонам — после покупки.",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        {
+          reply_markup: matrixGetKeyboard({
+            cost: summary.cost ?? 20,
+            shopUrl: summary.shopUrl,
+            runeBalance: summary.runeBalance,
+          }),
+        }
+      );
+    } catch (err) {
+      console.error("[cabinet] matrix zones", err);
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+    }
+    return true;
+  }
+
+  if (data === CB.mxShare) {
+    await ctx.answerCallbackQuery({ text: "Карточка…" }).catch(() => undefined);
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    try {
+      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary");
+      if (!summary.ok) {
+        await ctx.reply(summary.message || copy.siteBridgeDown, {
+          reply_markup: linkKb(summary.linkUrl),
+        });
+        return true;
+      }
+      const focusNumber =
+        typeof summary.focusNumber === "number" && Number.isFinite(summary.focusNumber)
+          ? summary.focusNumber
+          : 0;
+      if (!focusNumber) {
+        await ctx.reply("Не удалось собрать карточку — откройте схему ещё раз.", {
+          reply_markup: salonKeyboard(),
+        });
+        return true;
+      }
+      await ctx.replyWithChatAction("upload_photo");
+      const buf = await renderMatrixShareCardImage({
+        focusLabel: summary.focusLabel || "Узел периода",
+        focusTitle: summary.focusTitle || `Аркан ${focusNumber}`,
+        focusNumber,
+        practice: summary.practiceSeed || summary.shareCard || "",
+        name: summary.name,
+      });
+      await ctx.replyWithPhoto(new InputFile(buf, "matrix-share.jpg"), {
+        caption: summary.shareCard || undefined,
+        reply_markup: summary.owned
+          ? matrixOwnedKeyboard({ siteUrl: summary.url })
+          : matrixGetKeyboard({
+              cost: summary.cost ?? 20,
+              shopUrl: summary.shopUrl,
+              runeBalance: summary.runeBalance,
+            }),
+      });
+    } catch (err) {
+      console.error("[cabinet] matrix share", err);
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+    }
     return true;
   }
 
@@ -1006,11 +1203,11 @@ export async function openHistoryReading(ctx: Context, sessionId: string): Promi
         /* diagram optional */
       }
       await presentReadingToTelegram(ctx, {
-        reading: formatMatrixReadingPremium(data.reading),
+        reading: data.reading,
         cardNames: [],
-        question: "Матрица судьбы",
         sessionId,
         matrixActions: true,
+        matrixPaging: true,
       });
       return;
     }

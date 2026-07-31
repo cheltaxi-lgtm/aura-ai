@@ -64,8 +64,8 @@ async function resolveModelChain(
   }
   if (family === "paid") {
     const primary = await getChatModel("paid");
-    // Prefer paid model, then shared model, then explicit fallbacks.
-    return uniqueModels([primary, ai.model, ...(ai.fallbackModels ?? [])]);
+    // Paid → explicit fallbacks → shared chat model (fast spare like gpt-4o-mini).
+    return uniqueModels([primary, ...(ai.fallbackModels ?? []), ai.model]);
   }
   if (family === "free") {
     const primary = await getChatModel("free");

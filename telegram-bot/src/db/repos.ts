@@ -326,6 +326,16 @@ export function trackEvent(
     .run(name, telegramUserId, JSON.stringify(payload), nowIso());
 }
 
+/** Whether this user already has at least one event with the given name. */
+export function hasUserEvent(telegramUserId: number, name: string): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS ok FROM bot_events WHERE telegram_user_id = ? AND name = ? LIMIT 1`
+    )
+    .get(telegramUserId, name) as { ok: number } | undefined;
+  return Boolean(row?.ok);
+}
+
 export function countTripletsToday(telegramUserId: number, user?: BotUser | null): number {
   const u = user ?? getUser(telegramUserId);
   const day = localDateKey(u);
@@ -810,6 +820,30 @@ export function usersForReminder(mode: "morning" | "evening"): BotUser[] {
     .all(mode) as BotUser[];
 }
 
+/**
+ * Users who purchased/opened full matrix ~7 days ago and haven't received
+ * the period follow-up yet (dedupe via bot_reminder_log kind matrix_period_d7).
+ */
+export function usersForMatrixPeriodFollowup(): BotUser[] {
+  const from = new Date(Date.now() - 8 * 86_400_000).toISOString();
+  const to = new Date(Date.now() - 6 * 86_400_000).toISOString();
+  return getDb()
+    .prepare(
+      `SELECT u.*
+       FROM bot_users u
+       JOIN bot_events e ON e.telegram_user_id = u.telegram_user_id
+       WHERE e.name = 'matrix_full_ready'
+         AND e.created_at >= ?
+         AND e.created_at < ?
+         AND u.blocked_at IS NULL
+         AND u.banned_at IS NULL
+         AND u.age_confirmed_at IS NOT NULL
+         AND (u.unsubscribed_at IS NULL OR u.unsubscribed_at = '')
+       GROUP BY u.telegram_user_id`
+    )
+    .all(from, to) as BotUser[];
+}
+
 export function abandonedFlows(olderThanMs: number): Array<{
   telegram_user_id: number;
   chat_id: number;
@@ -1015,13 +1049,21 @@ export function setTimezoneOffset(telegramUserId: number, minutes: number): void
 
 /** Soft-skip TZ prompt after first spread; keep default Moscow. */
 export function skipTimezonePrompt(telegramUserId: number): void {
+  markTimezonePromptShown(telegramUserId);
+  trackEvent("timezone_skip", telegramUserId, {});
+}
+
+/**
+ * Mark soft TZ as already shown so ignoring the keyboard does not re-prompt
+ * after every reading. User can still pick a zone later from Settings.
+ */
+export function markTimezonePromptShown(telegramUserId: number): void {
   getDb()
     .prepare(
       `UPDATE bot_users SET timezone_asked_at = COALESCE(timezone_asked_at, ?), updated_at = ?
        WHERE telegram_user_id = ?`
     )
     .run(nowIso(), nowIso(), telegramUserId);
-  trackEvent("timezone_skip", telegramUserId, {});
 }
 
 /** True when user still on default TZ and has not answered/skipped the soft prompt. */

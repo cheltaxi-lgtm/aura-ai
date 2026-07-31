@@ -80,7 +80,13 @@ export async function createPhotoInterpretationJson(params: {
     ],
   });
   if (outcome.ok) {
-    return { reply: outcome.content.trim(), llmFailed: false, provenance: outcome.provenance };
+    const { normalizeClientTyAddress, softenShoutyClientName } = await import(
+      "@/lib/reading-quality-gate"
+    );
+    let reply = outcome.content.trim();
+    reply = normalizeClientTyAddress(reply);
+    reply = softenShoutyClientName(reply, params.userName);
+    return { reply, llmFailed: false, provenance: outcome.provenance };
   }
   // Fail-closed: never substitute template prose for a failed photo reading.
   return { reply: "", llmFailed: true };

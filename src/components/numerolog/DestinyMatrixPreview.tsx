@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
-import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { buildMatrixFreeSummary, type MatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
+import { downloadMatrixShareCardSvg } from "@/lib/numerology/matrix-share-card-svg";
 import { parseBirthDate } from "@/lib/numerology/constants";
 import { readStoredProfile } from "@/lib/home-flow-storage";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
@@ -22,11 +22,11 @@ import { trackSeoEvent } from "@/lib/seo/metrika";
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
 
 const LOCKED_SECTIONS = [
-  "Полный разбор предназначения",
-  "Денежный канал и блоки",
-  "Отношения и сценарии близости",
-  "Кармический хвост",
-  "Родовые программы отца и матери",
+  "Полный разбор зоны комфорта и всех каналов",
+  "Кармический хвост: корень → середина → остриё",
+  "Точки возраста и ближайший переход",
+  "Узел периода + практика на 7 дней",
+  "Слой «Небо» (натал) при времени и городе",
   "Практика на 30 дней и вопросы Эвелине",
 ] as const;
 
@@ -50,6 +50,8 @@ export default function DestinyMatrixPreview() {
   const [summary, setSummary] = useState<MatrixFreeSummary | null>(null);
   const [revealed, setRevealed] = useState(0);
   const [ownedFull, setOwnedFull] = useState(false);
+  /** null = guest / unknown; false = missing time or city for «Небо». */
+  const [skyProfileComplete, setSkyProfileComplete] = useState<boolean | null>(null);
   const [pending, startTransition] = useTransition();
   const [ageReady, setAgeReady] = useState(false);
   const [ageConfirming, setAgeConfirming] = useState(false);
@@ -101,16 +103,26 @@ export default function DestinyMatrixPreview() {
           const res = await fetch("/api/profile", { credentials: "include" });
           if (res.ok) {
             const data = (await res.json()) as {
-              profile?: { name?: string; birthDate?: string } | null;
+              profile?: {
+                name?: string;
+                birthDate?: string;
+                birthTime?: string;
+                birthCity?: string;
+              } | null;
             };
             const profile = data.profile;
             if (profile?.name?.trim()) nextName = profile.name.trim();
             const serverDate = toDateInputValue(profile?.birthDate);
             if (serverDate) nextDate = serverDate;
+            setSkyProfileComplete(
+              Boolean(profile?.birthTime?.trim() && profile?.birthCity?.trim())
+            );
           }
         } catch {
           /* keep local fallback */
         }
+      } else {
+        setSkyProfileComplete(null);
       }
 
       if (cancelled) return;
@@ -286,36 +298,52 @@ export default function DestinyMatrixPreview() {
           <DestinyMatrixGrid
             matrix={summary.matrix}
             revealed={revealed}
-            hint="Авторский расчёт Zovus. Цифры фиксированы движком — наставник их не пересчитывает."
+            focusKey={summary.period.focusKey}
+            hint="Полная матрица Zovus (matrix-v2). Цифры фиксированы движком — наставник их не пересчитывает."
           />
 
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                downloadMatrixShareCardSvg({
+                  matrix: summary.matrix,
+                  name: name || undefined,
+                  birthDate: birthDate || undefined,
+                });
+                trackSeoEvent("matrix_share_card_download");
+              }}
+              className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white/85 transition hover:border-aura-gold/40 hover:text-white"
+            >
+              Скачать карточку для сторис
+            </button>
+          </div>
+
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">Короткий портрет</p>
-            <div className="mt-2">
-              <PremiumReadingBody content={summary.portrait} className="text-sm text-white/80" />
-            </div>
+            <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">Сводка матрицы</p>
+            <pre className="mt-3 whitespace-pre-wrap font-sans text-sm leading-relaxed text-white/85">
+              {summary.denseTeaser || summary.portrait}
+            </pre>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            {summary.keyArcana.map((item) => (
-              <div
-                key={item.role}
-                className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3"
-              >
-                <p className="text-[0.65rem] uppercase tracking-[0.12em] text-white/40">{item.role}</p>
-                <p className="mt-1 font-display text-lg text-white">
-                  {item.number} · {item.title}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-white/55">{item.shortMeaning}</p>
+          {isLoggedIn && skyProfileComplete === false ? (
+            <div className="rounded-2xl border border-sky-400/25 bg-sky-500/[0.06] p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-sky-200/80">Слой «Небо»</p>
+              <p className="mt-2 text-sm text-white/80">
+                Добавьте время и город рождения в профиле — в полном разборе откроется натальный
+                слой поверх матрицы (цифры арканов не меняются).
+              </p>
+              <div className="mt-4">
+                <SeoTrackedCta
+                  href="/cabinet?profile=1&utm_campaign=matrix_sky"
+                  trackGoal="matrix_cta_sky_profile"
+                  trackParams={{ source: "preview" }}
+                >
+                  Дозаполнить профиль
+                </SeoTrackedCta>
               </div>
-            ))}
-          </div>
-
-          <ul className="space-y-2 text-sm text-white/70">
-            <li>{summary.moneyInsight}</li>
-            <li>{summary.loveInsight}</li>
-            <li>{summary.yearInsight}</li>
-          </ul>
+            </div>
+          ) : null}
 
           <div className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
             <p className="text-sm font-medium text-aura-gold">
@@ -324,10 +352,45 @@ export default function DestinyMatrixPreview() {
                 : "Полный разбор пока скрыт в бесплатном расчёте"}
             </p>
             {ownedFull ? (
-              <p className="mt-3 text-sm text-white/65">
-                Разбор сохранён для этой даты рождения. Откройте с Эвелиной бесплатно — без
-                повторной оплаты за те же числа.
-              </p>
+              <div className="mt-3 space-y-3">
+                <p className="text-sm text-white/65">
+                  Разбор сохранён для этой даты рождения. Откройте с Эвелиной бесплатно — без
+                  повторной оплаты за те же числа.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      if (
+                        !window.confirm(
+                          "Удалить сохранённую матрицу безвозвратно? Исчезнет из кабинета и чата — разбор можно будет купить заново."
+                        )
+                      ) {
+                        return;
+                      }
+                      try {
+                        const res = await fetch("/api/numerology/matrix-report", {
+                          method: "DELETE",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ birthDate }),
+                        });
+                        if (!res.ok) {
+                          window.alert("Не удалось удалить матрицу. Попробуйте ещё раз.");
+                          return;
+                        }
+                        setOwnedFull(false);
+                        trackSeoEvent("matrix_report_deleted");
+                      } catch {
+                        window.alert("Не удалось удалить матрицу. Проверьте соединение.");
+                      }
+                    })();
+                  }}
+                  className="inline-flex items-center justify-center rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-200 transition hover:border-red-400/50 hover:bg-red-500/15"
+                >
+                  Удалить сохранённую матрицу
+                </button>
+              </div>
             ) : (
               <ul className="mt-3 space-y-1.5 text-sm text-white/55">
                 {LOCKED_SECTIONS.map((label) => (

@@ -1,4 +1,5 @@
 import { botConfig } from "../config.js";
+import { siteBridgeFetch } from "./telegram-ipv4.js";
 import { siteMiniAppDirectUrl, siteMiniAppShellUrl } from "./mini-app-link.js";
 
 export { siteMiniAppDirectUrl, siteMiniAppShellUrl };
@@ -10,17 +11,23 @@ export type SiteResolve = {
   profileUserId: string | null;
   needsOnboarding: boolean;
   name: string | null;
+  email: string | null;
   runeBalance: number | null;
   linkUrl: string;
   error?: string;
 };
+
+/** Shell accounts created by bot-offer — need Yandex/VK/email bind for PC login. */
+export function isTelegramShellEmail(email: string | null | undefined): boolean {
+  return Boolean(email && /@telegram\.zovus\.local$/i.test(email));
+}
 
 type Json = Record<string, unknown>;
 
 async function siteFetch<T extends Json>(
   path: string,
   body: Json,
-  timeoutMs = 90_000
+  timeoutMs = 25_000
 ): Promise<{ status: number; data: T }> {
   const base = botConfig.siteInternalBaseUrl;
   const secret = botConfig.internalSecret;
@@ -30,7 +37,7 @@ async function siteFetch<T extends Json>(
       data: { ok: false, error: "site_bridge_disabled" } as unknown as T,
     };
   }
-  const res = await fetch(`${base}${path}`, {
+  const res = await siteBridgeFetch(`${base}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -43,10 +50,7 @@ async function siteFetch<T extends Json>(
   return { status: res.status, data };
 }
 
-export async function siteResolve(telegramUserId: number): Promise<SiteResolve> {
-  const { data } = await siteFetch<SiteResolve & Json>("/api/internal/bot/resolve", {
-    telegram_user_id: telegramUserId,
-  });
+function mapSiteResolve(data: SiteResolve & Json): SiteResolve {
   return {
     ok: Boolean(data.ok),
     linked: Boolean(data.linked),
@@ -54,10 +58,20 @@ export async function siteResolve(telegramUserId: number): Promise<SiteResolve> 
     profileUserId: (data.profileUserId as string) ?? null,
     needsOnboarding: Boolean(data.needsOnboarding),
     name: (data.name as string) ?? null,
+    email: typeof data.email === "string" ? data.email : null,
     runeBalance: typeof data.runeBalance === "number" ? data.runeBalance : null,
     linkUrl: typeof data.linkUrl === "string" ? data.linkUrl : `${botConfig.siteUrl}/cabinet`,
     error: typeof data.error === "string" ? data.error : undefined,
   };
+}
+
+export async function siteResolve(telegramUserId: number): Promise<SiteResolve> {
+  const { data } = await siteFetch<SiteResolve & Json>(
+    "/api/internal/bot/resolve",
+    { telegram_user_id: telegramUserId },
+    10_000
+  );
+  return mapSiteResolve(data);
 }
 
 /** Create/bind Zovus shell account after bot age + offer consent. */
@@ -90,15 +104,7 @@ export async function siteEnsureAccount(input: {
     15_000
   );
   return {
-    ok: Boolean(data.ok),
-    linked: Boolean(data.linked),
-    accountId: (data.accountId as string) ?? null,
-    profileUserId: (data.profileUserId as string) ?? null,
-    needsOnboarding: Boolean(data.needsOnboarding),
-    name: (data.name as string) ?? null,
-    runeBalance: typeof data.runeBalance === "number" ? data.runeBalance : null,
-    linkUrl: typeof data.linkUrl === "string" ? data.linkUrl : `${botConfig.siteUrl}/cabinet`,
-    error: typeof data.error === "string" ? data.error : undefined,
+    ...mapSiteResolve(data),
     created: Boolean(data.created),
   };
 }
@@ -123,17 +129,7 @@ export async function siteBotProfile(input: {
     },
     15_000
   );
-  return {
-    ok: Boolean(data.ok),
-    linked: Boolean(data.linked),
-    accountId: (data.accountId as string) ?? null,
-    profileUserId: (data.profileUserId as string) ?? null,
-    needsOnboarding: Boolean(data.needsOnboarding),
-    name: (data.name as string) ?? null,
-    runeBalance: typeof data.runeBalance === "number" ? data.runeBalance : null,
-    linkUrl: typeof data.linkUrl === "string" ? data.linkUrl : `${botConfig.siteUrl}/cabinet`,
-    error: typeof data.error === "string" ? data.error : undefined,
-  };
+  return mapSiteResolve(data);
 }
 
 export type SiteBirthPlace = {
@@ -207,30 +203,45 @@ export async function siteHistoryDelete(telegramUserId: number, sessionId: strin
   });
 }
 
+type SiteSpreadOk = {
+  ok: boolean;
+  sessionId?: string;
+  cards?: Array<{
+    id: number;
+    name: string;
+    reversed: boolean;
+    position: number;
+    positionLabel: string;
+    meaning: string;
+  }>;
+  reading?: string;
+  runeBalance?: number;
+  charged?: number;
+  free?: boolean;
+  masterId?: string;
+  spreadId?: string;
+  intentSlug?: string;
+  error?: string;
+  message?: string;
+  linkUrl?: string;
+  cost?: number;
+};
+
+/** Free-text / chips: Veronika triplet, READING billing. */
 export async function siteSpread(telegramUserId: number, question: string) {
-  return siteFetch<{
-    ok: boolean;
-    sessionId?: string;
-    cards?: Array<{
-      id: number;
-      name: string;
-      reversed: boolean;
-      position: number;
-      positionLabel: string;
-      meaning: string;
-    }>;
-    reading?: string;
-    runeBalance?: number;
-    charged?: number;
-    free?: boolean;
-    error?: string;
-    message?: string;
-    linkUrl?: string;
-    cost?: number;
-  }>(
+  return siteFetch<SiteSpreadOk>(
     "/api/internal/bot/spread",
     { telegram_user_id: telegramUserId, question },
     120_000
+  );
+}
+
+/** Catalog intent: full site geometry + INTENTION_SPREAD pricing. */
+export async function siteCatalogSpread(telegramUserId: number, intentSlug: string) {
+  return siteFetch<SiteSpreadOk>(
+    "/api/internal/bot/spread",
+    { telegram_user_id: telegramUserId, intent_slug: intentSlug },
+    180_000
   );
 }
 
@@ -257,6 +268,13 @@ export type SiteRunePackage = {
   isPopular: boolean;
 };
 
+export type SiteRunesCustomAmount = {
+  enabled: boolean;
+  minRub: number;
+  maxRub: number;
+  rubPerRune: number;
+};
+
 export async function siteRunes(telegramUserId: number) {
   return siteFetch<{
     ok: boolean;
@@ -265,64 +283,39 @@ export async function siteRunes(telegramUserId: number) {
     cabinetUrl?: string;
     packages?: SiteRunePackage[];
     starsEnabled?: boolean;
+    customAmount?: SiteRunesCustomAmount;
     error?: string;
     linkUrl?: string;
   }>("/api/internal/bot/runes", { telegram_user_id: telegramUserId });
 }
 
-export async function siteStarsValidate(input: {
-  telegramUserId: number;
-  invoicePayload: string;
-  totalAmount: number;
-}) {
+/** Create YooKassa payment for a package or custom amount. */
+export async function siteRunesPurchase(
+  telegramUserId: number,
+  opts: { packageId?: string; customAmountRub?: number }
+) {
   return siteFetch<{
     ok: boolean;
-    error?: string;
-    message?: string;
+    paymentUrl?: string;
+    paymentId?: string;
     packageId?: string;
-    stars?: number;
-  }>("/api/internal/bot/runes/stars-validate", {
-    telegram_user_id: input.telegramUserId,
-    invoice_payload: input.invoicePayload,
-    total_amount: input.totalAmount,
-  });
-}
-
-export async function siteStarsCredit(input: {
-  telegramUserId: number;
-  packageId: string;
-  telegramPaymentChargeId: string;
-  totalAmount: number;
-  invoicePayload: string;
-}) {
-  return siteFetch<{
-    ok: boolean;
-    credited?: boolean;
-    alreadyCredited?: boolean;
-    runeBalance?: number;
     packageName?: string;
-    runesAdded?: number;
-    stars?: number;
+    priceRub?: number;
+    totalRunes?: number;
+    runeBalance?: number;
+    returnUrl?: string;
+    shopUrl?: string;
+    linkUrl?: string;
     error?: string;
     message?: string;
-    linkUrl?: string;
-  }>("/api/internal/bot/runes/stars-credit", {
-    telegram_user_id: input.telegramUserId,
-    package_id: input.packageId,
-    telegram_payment_charge_id: input.telegramPaymentChargeId,
-    total_amount: input.totalAmount,
-    invoice_payload: input.invoicePayload,
+  }>("/api/internal/bot/runes/purchase", {
+    telegram_user_id: telegramUserId,
+    package_id: opts.packageId,
+    custom_amount:
+      typeof opts.customAmountRub === "number" ? String(opts.customAmountRub) : undefined,
   });
 }
 
-export async function siteModules(telegramUserId: number) {
-  return siteFetch<{
-    ok: boolean;
-    linked?: boolean;
-    linkUrl?: string;
-    modules?: Array<{ id: string; title: string; native: boolean; url: string | null }>;
-  }>("/api/internal/bot/modules", { telegram_user_id: telegramUserId });
-}
 
 export type SiteCatalogItem = {
   id: string;
@@ -333,12 +326,14 @@ export type SiteCatalogItem = {
   spreadId: string;
   cardCount: number;
   cost: number;
+  botCost: number;
   masterId: string;
   questionTemplate: string;
   positionsPreview: string[];
   url: string;
   seoUrl: string;
   native: boolean;
+  runMode: "exact" | "approx" | "site_only";
   requiresPartnerInfo: boolean;
   isFeatured: boolean;
 };
@@ -472,6 +467,7 @@ export async function siteNatal(telegramUserId: number) {
 export type SiteMatrixDiagram = {
   name?: string | null;
   birthDate?: string;
+  focusKey?: string | null;
   slots: Array<{
     key: string;
     label: string;
@@ -587,6 +583,18 @@ export async function siteNumerology(
     moneyInsight?: string;
     loveInsight?: string;
     yearInsight?: string;
+    comfortInsight?: string;
+    karmicInsight?: string;
+    ageInsight?: string;
+    periodTeaser?: string;
+    focusLabel?: string;
+    focusKey?: string;
+    focusNumber?: number;
+    focusTitle?: string;
+    practiceSeed?: string;
+    denseTeaser?: string | null;
+    sinceLast?: string | null;
+    shareCard?: string | null;
     keyArcana?: Array<{ role: string; number: number; title: string; shortMeaning: string }>;
     diagram?: SiteMatrixDiagram | null;
     savedReports?: number;
@@ -622,7 +630,8 @@ export async function siteNumerology(
       report_id: reportId,
       replace: opts?.replace === true,
     },
-    action === "run" ? 180_000 : 30_000
+    // Full matrix = ~19 Gemini-3 zone calls (reasoning tax) — allow full budget.
+    action === "run" ? 420_000 : 30_000
   );
 }
 
@@ -671,27 +680,6 @@ export async function siteLinkCode(input: {
     first_name: input.firstName ?? undefined,
     photo_url: input.photoUrl ?? undefined,
   });
-}
-
-export async function siteChat(telegramUserId: number, sessionId: string, message: string) {
-  return siteFetch<{
-    ok: boolean;
-    reply?: string;
-    sessionId?: string;
-    runeBalance?: number;
-    error?: string;
-    message?: string;
-    linkUrl?: string;
-    cost?: number;
-  }>(
-    "/api/internal/bot/chat",
-    {
-      telegram_user_id: telegramUserId,
-      session_id: sessionId,
-      message,
-    },
-    120_000
-  );
 }
 
 /** Deep-link into the site chat for a specific consultation session. */

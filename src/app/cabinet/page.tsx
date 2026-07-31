@@ -142,8 +142,12 @@ export default function CabinetPage() {
   const sessionsOffset = useRef(0);
   const shopDeepLinkOpened = useRef(false);
 
-  const needsOnboarding =
-    Boolean(data?.needsOnboarding) && !authUser?.profileUserId && !data?.profile?.birthDate;
+  const needsOnboarding = Boolean(
+    data &&
+      (data.needsOnboarding ||
+        !data.profile?.birthDate ||
+        !(data.profile.birthCity || "").trim())
+  );
 
   const fetchCabinet = useCallback(async (offset = 0, append = false) => {
     const res = await fetchWithRetry(
@@ -323,8 +327,17 @@ export default function CabinetPage() {
   };
 
   const handleDeleteSession = async (memoryId: string) => {
+    const target = sessions.find((s) => s.id === memoryId);
+    const isMatrix =
+      target?.intention === "destiny_matrix" ||
+      target?.spreadId === "destiny_matrix" ||
+      target?.spreadId === "numerolog:destiny_matrix" ||
+      (typeof target?.spreadId === "string" &&
+        target.spreadId.startsWith("numerolog:destiny_matrix"));
     const confirmed = window.confirm(
-      "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
+      isMatrix
+        ? "Удалить матрицу судьбы безвозвратно? Пропадёт из кабинета и чата, покупка сбросится — разбор можно будет купить заново."
+        : "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
     );
     if (!confirmed) return;
 

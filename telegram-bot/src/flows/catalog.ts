@@ -13,7 +13,7 @@ import {
   catalogListKeyboard,
 } from "../keyboards/index.js";
 import { announceWorking, ensureOnboarded } from "./helpers.js";
-import { beginCustomQuestion, runSpreadQuestion } from "./spread.js";
+import { beginCustomQuestion, runCatalogIntent } from "./spread.js";
 import { ensureSiteLinked } from "./site-account.js";
 
 let catalogCopyCounter = 0;
@@ -28,8 +28,10 @@ type CatalogListState = {
     id: string;
     title: string;
     native: boolean;
+    runMode: "exact" | "approx" | "site_only";
     url: string;
     cost: number;
+    botCost: number;
     cardCount: number;
     questionTemplate: string;
   }>;
@@ -42,9 +44,11 @@ type CatalogDetailState = CatalogListState & {
   title: string;
   description: string;
   native: boolean;
+  runMode: "exact" | "approx" | "site_only";
   url: string;
   questionTemplate: string;
   cost: number;
+  botCost: number;
   cardCount: number;
   categoryLabel: string;
   positionsPreview: string[];
@@ -62,8 +66,10 @@ function compactItems(items: SiteCatalogItem[]) {
     id: i.id,
     title: i.title,
     native: i.native,
+    runMode: i.runMode ?? (i.native ? "exact" : "site_only"),
     url: i.url,
     cost: i.cost,
+    botCost: i.botCost ?? i.cost ?? 15,
     cardCount: i.cardCount,
     questionTemplate: i.questionTemplate,
   }));
@@ -253,15 +259,20 @@ async function showItem(
     return;
   }
 
+  const runMode =
+    item.runMode ?? (item.native ? "exact" : "site_only");
+  const botCost = item.botCost ?? item.cost ?? 15;
   const detail: CatalogDetailState = {
     ...listState,
     slug: item.id,
     title: item.title,
     description: item.description,
     native: item.native,
+    runMode,
     url: item.url,
     questionTemplate: item.questionTemplate,
     cost: item.cost,
+    botCost,
     cardCount: item.cardCount,
     categoryLabel: item.categoryLabel,
     positionsPreview: item.positionsPreview || [],
@@ -270,6 +281,7 @@ async function showItem(
   trackEvent("catalog_item_opened", telegramUserId, {
     slug: item.id,
     native: item.native,
+    run_mode: runMode,
     spread_id: item.spreadId,
   });
 
@@ -277,11 +289,12 @@ async function showItem(
     .slice(0, 5)
     .map((p) => `· ${p}`)
     .join("\n");
-  const where = item.requiresPartnerInfo
-    ? "В боте — короткий триплет Вероники по этому вопросу. Полный расклад с данными партнёра — на сайте."
-    : item.cardCount > 3
-      ? "В боте — триплет Вероники по этому вопросу. Полная схема карт — на сайте."
-      : "Можно сделать в боте или на сайте.";
+  const where =
+    runMode === "site_only"
+      ? item.requiresPartnerInfo
+        ? "Этот расклад с данными партнёра — только на сайте."
+        : "Этот расклад — только на сайте."
+      : `В боте: полный расклад (${item.cardCount} карт) · ${botCost}ᚢ — как на сайте.`;
 
   const text = [
     item.title,
@@ -289,8 +302,8 @@ async function showItem(
     "",
     item.description || "",
     "",
-    `На сайте: ${item.cardCount} карт · ориентир ~${item.cost} рун`,
-    positions ? `\nПозиции на сайте:\n${positions}` : "",
+    `${item.cardCount} карт · ${botCost} рун`,
+    positions ? `\nПозиции:\n${positions}` : "",
     "",
     where,
   ]
@@ -301,7 +314,12 @@ async function showItem(
   await renderCatalog(
     ctx,
     text.slice(0, 3500),
-    catalogItemKeyboard({ native: item.native, url: item.url })
+    catalogItemKeyboard({
+      native: item.native,
+      url: item.url,
+      runMode,
+      botCost,
+    })
   );
 }
 
@@ -404,13 +422,14 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
       return true;
     }
     const st = flow.data as unknown as CatalogDetailState;
-    if (!st.questionTemplate?.trim()) {
+    if (!st.questionTemplate?.trim() || st.runMode === "site_only") {
       await renderCatalog(
         ctx,
         "Этот расклад лучше открыть на сайте.",
         catalogItemKeyboard({
           native: false,
           url: st.url || siteCatalogUrl(),
+          runMode: "site_only",
         })
       );
       return true;
@@ -419,10 +438,15 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
     const linked = await ensureSiteLinked(ctx);
     if (!linked) return true;
 
-    trackEvent("catalog_native_run", tid, { slug: st.slug });
+    trackEvent("catalog_native_run", tid, {
+      slug: st.slug,
+      run_mode: st.runMode,
+      bot_cost: st.botCost,
+      card_count: st.cardCount,
+    });
     clearFlow(tid);
     // Reading output is a new conversation thread; leave catalog message as-is.
-    await runSpreadQuestion(ctx, linked.user, st.questionTemplate, "catalog");
+    await runCatalogIntent(ctx, linked.user, st.slug, st.questionTemplate);
     return true;
   }
 

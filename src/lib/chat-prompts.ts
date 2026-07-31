@@ -361,7 +361,7 @@ export async function generateReading(
         ? stripTheaterFromReply(raw)
         : raw;
     return ctx.isPaid
-      ? normalizePaidReadingStructure(theaterStripped, characterId)
+      ? normalizePaidReadingStructure(theaterStripped, characterId, ctx.userName)
       : theaterStripped;
   };
 
@@ -425,6 +425,7 @@ export async function generateReading(
         ? 3800
         : 2600;
 
+  const startedAt = Date.now();
   const { generateValidatedAiText } = await import("@/lib/validated-ai-generation");
   const { missingCardMentions } = await import("@/lib/chat-reply-sanitize");
   const validated = await generateValidatedAiText({
@@ -438,13 +439,17 @@ export async function generateReading(
     ],
     maxTokens,
     temperature: 0.85,
-    // MiMo / stronger paid models need headroom; short timeouts force useless repair chains.
-    timeoutMs: ctx.isPaid ? 110_000 : 75_000,
+    // Fail over / soft-ship instead of hanging on one slow primary+repair.
+    timeoutMs: ctx.isPaid ? 45_000 : 50_000,
     modelFamily: ctx.isPaid ? "paid" : "chat",
-    // One repair on primary, then failover to fallbackModels (DeepSeek) — faster than 2× MiMo.
-    maxRepairRounds: ctx.isPaid ? 1 : 1,
+    // Paid: no same-model repair (doubles latency). Next model in chain is faster spare.
+    maxRepairRounds: ctx.isPaid ? 0 : 1,
     allowReasoningFallback: ctx.isPaid,
-    chatOptions: { skipTemperatureRetry: true, isPaid: ctx.isPaid },
+    chatOptions: {
+      skipTemperatureRetry: true,
+      isPaid: ctx.isPaid,
+      maxAttempts: 1,
+    },
     validate: (text) => {
       const accepted = acceptReading(text);
       if (accepted) return { ok: true };
@@ -502,30 +507,58 @@ export async function generateReading(
     const accepted =
       acceptReading(validated.content) ?? softAcceptReading(validated.content);
     if (accepted) {
+      console.info("generateReading ok", {
+        characterId: ctx.characterId,
+        intention: ctx.intention,
+        cardCount,
+        ms: Date.now() - startedAt,
+        model: validated.provenance?.model,
+        maxTokens,
+      });
       return { text: accepted, fromLlm: true, provenance: validated.provenance };
     }
   }
 
-  // Bounded legacy continuation (2 passes) — enough for mini/flash, not the old multi-minute stack.
+  // Bounded legacy continuation — one pass, then one completion round.
   let text = await completeProseWithContinuation(baseMessages, {
     maxTokens,
     temperature: 0.85,
-    maxPasses: 2,
+    maxPasses: 1,
     cardNames,
     isPaid: ctx.isPaid,
   });
   if (text && !isPaidSpreadTextComplete(text, cardNames)) {
     text = await ensurePaidSpreadTextComplete(baseMessages, text, cardNames, {
-      maxTokens: Math.max(1800, Math.round(maxTokens * 0.5)),
+      maxTokens: Math.max(1400, Math.round(maxTokens * 0.4)),
       temperature: 0.85,
-      maxRounds: 2,
+      maxRounds: 1,
       isPaid: ctx.isPaid,
     });
   }
   const accepted = acceptReading(text) ?? softAcceptReading(text);
-  if (accepted) return { text: accepted, fromLlm: true };
+  if (accepted) {
+    console.info("generateReading ok-after-continuation", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      ms: Date.now() - startedAt,
+      maxTokens,
+    });
+    return { text: accepted, fromLlm: true };
+  }
 
   const bestDraft = (text || (validated.ok ? validated.content : "") || "").trim();
+  // Prefer shipping a dense draft over multi-minute rescue when quality floor is met.
+  const preRescueSoft = softAcceptReading(bestDraft);
+  if (preRescueSoft) {
+    console.warn("generateReading soft-shipped before rescue", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      ms: Date.now() - startedAt,
+    });
+    return { text: preRescueSoft, fromLlm: true };
+  }
 
   // Last-resort AI rescue: lean prompt across the whole model chain, then
   // AI-written blocks for skipped symbols. Still 100% model-authored.

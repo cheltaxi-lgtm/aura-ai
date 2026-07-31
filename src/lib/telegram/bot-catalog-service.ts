@@ -21,6 +21,14 @@ import {
 import { getSpread } from "@/lib/spreads/registry";
 import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
 
+/**
+ * How the bot can run this intent.
+ * `exact` = full site geometry + site price in-bot.
+ * `site_only` = partner / no question — open on site.
+ * (`approx` kept in the union for older bot clients; never emitted.)
+ */
+export type BotCatalogRunMode = "exact" | "approx" | "site_only";
+
 export type BotCatalogItem = {
   id: string;
   title: string;
@@ -29,14 +37,22 @@ export type BotCatalogItem = {
   categoryLabel: string;
   spreadId: string;
   cardCount: number;
+  /** Site-side estimated cost (INTENTION_SPREAD × multiplier). */
   cost: number;
+  /** In-bot charge — same as site `cost` for runnable intents. */
+  botCost: number;
   masterId: string;
   questionTemplate: string;
   positionsPreview: string[];
   url: string;
   seoUrl: string;
-  /** Bot can run this without partner forms (triplet geometry only for now). */
+  /**
+   * Legacy: true when bot can start a reading.
+   * Prefer `runMode` for copy/buttons.
+   */
   native: boolean;
+  /** exact = full geometry in-bot; site_only = open on site. */
+  runMode: BotCatalogRunMode;
   requiresPartnerInfo: boolean;
   isFeatured: boolean;
 };
@@ -71,10 +87,10 @@ function withUtm(path: string): string {
   return url.toString();
 }
 
-function isNativeInBot(intent: SpreadIntentDefinition): boolean {
-  // Bot thin client always runs Veronika triplet via /api/internal/bot/spread
-  // with the intent question (gender-adapted). Full geometry / partner forms stay on site.
-  return Boolean(intent.questionTemplate?.trim());
+function botRunMode(intent: SpreadIntentDefinition): BotCatalogRunMode {
+  if (!intent.questionTemplate?.trim()) return "site_only";
+  if (intent.requiresPartnerInfo) return "site_only";
+  return "exact";
 }
 
 function toItem(intent: SpreadIntentDefinition, userGender?: UserGender): BotCatalogItem {
@@ -89,6 +105,8 @@ function toItem(intent: SpreadIntentDefinition, userGender?: UserGender): BotCat
         userGender
       ).title
     : copy.title;
+  const runMode = botRunMode(intent);
+  const cost = estimateIntentRuneCost(intent.spreadId);
 
   return {
     id: intent.slug,
@@ -98,13 +116,15 @@ function toItem(intent: SpreadIntentDefinition, userGender?: UserGender): BotCat
     categoryLabel: SPREAD_INTENT_CATEGORY_LABELS[intent.category],
     spreadId: intent.spreadId,
     cardCount: spread.cardCount,
-    cost: estimateIntentRuneCost(intent.spreadId),
+    cost,
+    botCost: cost,
     masterId: resolveIntentMasterId(intent),
     questionTemplate: copy.questionTemplate,
     positionsPreview: intent.positionsPreview?.slice(0, 8) ?? [],
     url: withUtm(startPath),
     seoUrl: withUtm(buildIntentSeoUrl(intent)),
-    native: isNativeInBot(intent),
+    native: runMode !== "site_only",
+    runMode,
     requiresPartnerInfo: Boolean(intent.requiresPartnerInfo),
     isFeatured: Boolean(intent.isFeatured),
   };

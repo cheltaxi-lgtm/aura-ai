@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import {
@@ -9,12 +9,13 @@ import {
   markReminderSent,
   reminderAlreadySent,
   trackEvent,
+  usersForMatrixPeriodFollowup,
   usersForReactivation,
   usersForReminder,
   usersForWeeklyDigest,
 } from "../db/repos.js";
 import { isRemindersEnabled, isWeeklyDigestEnabled } from "../flags.js";
-import { reactivationKeyboard } from "../keyboards/index.js";
+import { CB, reactivationKeyboard } from "../keyboards/index.js";
 import { withBlockDetect } from "../middleware/stack.js";
 
 export async function runReminderTick(bot: Bot): Promise<void> {
@@ -59,6 +60,25 @@ export async function runReminderTick(bot: Bot): Promise<void> {
           trackEvent("reactivation_sent", u.telegram_user_id, { days: d });
         }, u.telegram_user_id);
       }
+    }
+
+    // Matrix period follow-up ~D7 after full report (free period node refresh).
+    for (const u of usersForMatrixPeriodFollowup()) {
+      const kind = "matrix_period_d7";
+      if (reminderAlreadySent(u.telegram_user_id, kind)) continue;
+      const kb = new InlineKeyboard()
+        .text("📅 Узел периода", CB.mxPeriod)
+        .row()
+        .text("🗺 Зоны", CB.mxZones);
+      await withBlockDetect(async () => {
+        await bot.api.sendMessage(
+          u.chat_id,
+          "Через неделю после полной матрицы — обновите узел периода. Это бесплатно: что в фокусе сейчас и короткая практика на 7 дней.",
+          { reply_markup: kb }
+        );
+        markReminderSent(u.telegram_user_id, kind);
+        trackEvent("reminder_sent", u.telegram_user_id, { kind });
+      }, u.telegram_user_id);
     }
   }
 

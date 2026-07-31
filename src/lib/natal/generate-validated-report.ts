@@ -16,6 +16,10 @@ import {
 } from "./report";
 import type { NatalTradition } from "./types";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
+import {
+  normalizeClientTyAddress,
+  softenShoutyClientName,
+} from "@/lib/reading-quality-gate";
 
 export type GenerateValidatedNatalReportParams = {
   baseMessages: ChatMessage[];
@@ -177,12 +181,16 @@ function sanitizeNatalText(text: string, clientName?: string): string {
   let output = text
     .replace(EVIDENCE_ID_PAREN_RE, "")
     .replace(EVIDENCE_ID_RE, "")
-    .replace(/\b(?:в|по)\s+(?:вашем\s+)?натальном раскладе\b/giu, "в вашей натальной карте")
-    .replace(/\bв вашем раскладе\b/giu, "в вашей натальной карте");
+    .replace(/\b(?:в|по)\s+(?:вашем\s+|твоём\s+)?натальном раскладе\b/giu, "в твоей натальной карте")
+    .replace(/\bв вашем раскладе\b/giu, "в твоей натальной карте")
+    .replace(/\bв вашей натальной карте\b/giu, "в твоей натальной карте");
   const rawName = clientName?.trim();
   if (rawName) {
     output = replaceClientNameForms(output, rawName);
+    const display = normalizePersonDisplayName(rawName) || rawName;
+    output = softenShoutyClientName(output, display);
   }
+  output = normalizeClientTyAddress(output);
   return output
     .replace(/\(\s*\)/g, "")
     .replace(/\s+([,.;:!?])/g, "$1")
@@ -611,6 +619,7 @@ async function editorialPass(
     "Не показывай технические evidence ID внутри поля text — они допустимы только в evidenceIds.",
     "Не используй слово «расклад»: это натальный отчёт или прогноз.",
     "Сделай русский язык естественным, редакторским, без канцелярита и универсальных советов.",
+    "Обращение к клиенту — строго на «ты» (ты/тебе/твой). Не используй «вы/вам/ваш».",
     traditionRule,
     nameRule,
     "",

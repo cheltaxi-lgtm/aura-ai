@@ -1120,8 +1120,12 @@ export class ChatOrchestrator {
     }
 
     const cleaned = text ? this.sanitizeChatReply(text) : "";
+    const displayName =
+      normalizePersonDisplayName(this.userProfile?.name) ||
+      this.userProfile?.name?.trim() ||
+      null;
     const prepared = cleaned
-      ? normalizePaidReadingStructure(cleaned, this.characterId)
+      ? normalizePaidReadingStructure(cleaned, this.characterId, displayName)
       : "";
     if (prepared && this.acceptPremiumSpreadText(prepared, cardNames)) return prepared;
     if (prepared && this.softAcceptPremiumSpreadText(prepared, cardNames)) {
@@ -1178,15 +1182,23 @@ export class ChatOrchestrator {
       previousDraft: draft,
       accept: (candidate) => {
         const clean = this.sanitizeChatReply(candidate);
+        const displayName =
+          normalizePersonDisplayName(this.userProfile?.name) ||
+          this.userProfile?.name?.trim() ||
+          null;
         const prepared = clean
-          ? normalizePaidReadingStructure(clean, this.characterId)
+          ? normalizePaidReadingStructure(clean, this.characterId, displayName)
           : "";
         return prepared && this.acceptPremiumSpreadText(prepared, cardNames) ? prepared : null;
       },
       softAccept: (candidate) => {
         const clean = this.sanitizeChatReply(candidate);
+        const displayName =
+          normalizePersonDisplayName(this.userProfile?.name) ||
+          this.userProfile?.name?.trim() ||
+          null;
         const prepared = clean
-          ? normalizePaidReadingStructure(clean, this.characterId)
+          ? normalizePaidReadingStructure(clean, this.characterId, displayName)
           : "";
         return prepared && this.softAcceptPremiumSpreadText(prepared, cardNames)
           ? prepared

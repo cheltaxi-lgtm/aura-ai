@@ -1,15 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import {
+  MAX_CUSTOM_RUNE_PURCHASE_RUB,
+  MIN_CUSTOM_RUNE_PURCHASE_RUB,
+} from "@/lib/rune-purchase-constants";
+import { getRuneSettings } from "@/lib/rune-settings";
+import {
   assertBotInternalAuth,
   parseTelegramUserId,
 } from "@/lib/telegram/bot-internal-auth";
 import { botRunesShopUrl, resolveBotUser } from "@/lib/telegram/bot-resolve";
-import { starsFromPriceRub, type StarsRunePackage } from "@/lib/telegram/stars-runes";
 
 export const runtime = "nodejs";
 
-async function listStarsPackages(): Promise<StarsRunePackage[]> {
+type BotRunePackage = {
+  id: string;
+  name: string;
+  runes: number;
+  bonusRunes: number;
+  totalRunes: number;
+  priceRub: number;
+  /** @deprecated Stars checkout removed — kept 0 for older bot builds. */
+  stars: number;
+  isPopular: boolean;
+};
+
+async function listRunePackages(): Promise<BotRunePackage[]> {
   const { rows } = await query<{
     id: string;
     name: string;
@@ -33,7 +49,7 @@ async function listStarsPackages(): Promise<StarsRunePackage[]> {
       bonusRunes,
       totalRunes: runes + bonusRunes,
       priceRub,
-      stars: starsFromPriceRub(priceRub),
+      stars: 0,
       isPopular: Boolean(r.is_popular),
     };
   });
@@ -65,7 +81,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const packages = await listStarsPackages();
+  const packages = await listRunePackages();
+  const settings = await getRuneSettings();
 
   return NextResponse.json({
     ok: true,
@@ -73,6 +90,12 @@ export async function POST(request: NextRequest) {
     shopUrl: botRunesShopUrl("runes"),
     cabinetUrl: resolved.linkUrl,
     packages,
-    starsEnabled: true,
+    starsEnabled: false,
+    customAmount: {
+      enabled: true,
+      minRub: MIN_CUSTOM_RUNE_PURCHASE_RUB,
+      maxRub: MAX_CUSTOM_RUNE_PURCHASE_RUB,
+      rubPerRune: settings.rubPerRune,
+    },
   });
 }

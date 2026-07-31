@@ -40,18 +40,30 @@ export async function sendMenu(ctx: Context): Promise<void> {
   await showSalonHome(ctx, { name: user?.first_name });
 }
 
+async function clearCallbackSpinner(ctx: Context): Promise<void> {
+  if (ctx.callbackQuery) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+  }
+}
+
 export async function ensureOnboarded(ctx: Context): Promise<BotUser | null> {
   const user = requireUser(ctx);
-  if (!user) return null;
+  if (!user) {
+    await clearCallbackSpinner(ctx);
+    return null;
+  }
   if (!user.age_confirmed_at) {
+    await clearCallbackSpinner(ctx);
     await ctx.reply(copy.ageAsk, { reply_markup: ageKeyboard() });
     return null;
   }
   if (!user.terms_accepted_at || !user.privacy_accepted_at) {
+    await clearCallbackSpinner(ctx);
     await ctx.reply(copy.consentAsk(botConfig.siteUrl), { reply_markup: consentKeyboard() });
     return null;
   }
   if (!hasGates(user)) {
+    await clearCallbackSpinner(ctx);
     await ctx.reply(copy.gateBlocked(user.telegram_user_id, gateCounter++));
     return null;
   }

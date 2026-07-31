@@ -7,9 +7,9 @@ const CANONICAL_PATH = "/numerology/destiny-matrix";
 
 export const metadata: Metadata = {
   ...buildSeoMetadata({
-    title: "Матрица судьбы по дате рождения",
+    title: "Полная матрица судьбы онлайн",
     description:
-      "Быстрый разбор личности, денег, отношений и предназначения по дате рождения — авторская матрица судьбы Zovus.",
+      "Полная матрица Zovus по дате рождения: комфорт, кармический хвост, каналы, возраст, узел периода — и живой разбор с ведением в Telegram.",
     path: CANONICAL_PATH,
   }),
   alternates: { canonical: `${getAppUrl()}${CANONICAL_PATH}` },

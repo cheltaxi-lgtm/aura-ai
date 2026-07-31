@@ -28,7 +28,9 @@ export interface PaidSpreadReadingExtrasOpts {
 /** Token budget for a paid full spread — scales with card count. */
 export function paidSpreadMaxTokens(cardCount: number): number {
   const n = Math.max(1, cardCount);
-  return Math.min(5000, Math.max(2800, 1800 + n * 350));
+  // Keep prose dense but finish sooner — long max_tokens = long DeepSeek waits.
+  // 5 cards → ~2200; 10 cards → ~2800.
+  return Math.min(2800, Math.max(1600, 1000 + n * 240));
 }
 
 /**

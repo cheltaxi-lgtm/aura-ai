@@ -15,7 +15,8 @@ export function createBot(): Bot {
     client: {
       // Pin Bot API calls to IPv4 — dual-stack fetch hangs on this VPS.
       fetch: telegramFetch as unknown as typeof fetch,
-      timeoutSeconds: 60,
+      // Fail faster than 60s — hung sendPhoto was freezing the whole bot UX.
+      timeoutSeconds: 25,
     },
   });
 

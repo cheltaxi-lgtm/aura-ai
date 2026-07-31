@@ -3,10 +3,13 @@ import {
   BOT_CANVAS_HEIGHT,
   BOT_CANVAS_WIDTH,
   encodeBotJpeg,
-  getOrnatePlate,
 } from "./canvas.js";
 
 const FONT = "DejaVu Serif, Georgia, 'Times New Roman', serif";
+
+/** Match salon-home honey plate margins. */
+const FRAME = 120;
+const CONTENT = 148;
 
 function escapeXml(s: string): string {
   return s
@@ -27,6 +30,22 @@ function trunc(s: string, n: number): string {
   const t = s.replace(/\s+/g, " ").trim();
   if (t.length <= n) return t;
   return `${t.slice(0, n - 1)}…`;
+}
+
+function goldFrame(width: number, height: number): string {
+  const o = FRAME;
+  const i = FRAME + 14;
+  const c = 40;
+  return `
+    <rect x="${o}" y="${o}" width="${width - o * 2}" height="${height - o * 2}"
+      fill="none" stroke="#6B3E14" stroke-opacity="0.55" stroke-width="3" rx="16"/>
+    <rect x="${i}" y="${i}" width="${width - i * 2}" height="${height - i * 2}"
+      fill="none" stroke="#8B5A22" stroke-opacity="0.35" stroke-width="1.5" rx="12"/>
+    <path d="M${o} ${o + c} V${o} H${o + c}" fill="none" stroke="#5A3210" stroke-width="5" stroke-linecap="square"/>
+    <path d="M${width - o - c} ${o} H${width - o} V${o + c}" fill="none" stroke="#5A3210" stroke-width="5" stroke-linecap="square"/>
+    <path d="M${o} ${height - o - c} V${height - o} H${o + c}" fill="none" stroke="#5A3210" stroke-width="5" stroke-linecap="square"/>
+    <path d="M${width - o - c} ${height - o} H${width - o} V${height - o - c}" fill="none" stroke="#5A3210" stroke-width="5" stroke-linecap="square"/>
+  `;
 }
 
 export type ProfileCardInput = {
@@ -50,7 +69,7 @@ export type ProfileCardInput = {
 };
 
 /**
- * Premium Zovus profile card — site-synced stats on the shared ornate canvas.
+ * Profile card — same honey field as salon home (brand parity).
  */
 export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffer> {
   const width = BOT_CANVAS_WIDTH;
@@ -87,90 +106,87 @@ export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffe
     details.push({ label: "Серия", value: `${p.streak} дн.` });
   }
 
-  const nodes: string[] = [];
-  let y = 118;
-
-  nodes.push(
-    `<text x="50%" y="${y}" text-anchor="middle"
-      font-family="${FONT}" font-size="18" letter-spacing="6" fill="#C4A574">ПРОФИЛЬ</text>`
-  );
-  y += 56;
-
-  nodes.push(
-    `<text x="50%" y="${y}" text-anchor="middle"
-      font-family="${FONT}" font-size="52" fill="#F5EDE3">${escapeXml(name)}</text>`
-  );
-  y += 48;
-
-  nodes.push(
-    `<text x="50%" y="${y}" text-anchor="middle"
-      font-family="${FONT}" font-size="20" letter-spacing="3" fill="#A89068">${escapeXml(
-      access
-    )}</text>`
-  );
-  y += 36;
-
-  nodes.push(
-    `<line x1="${width * 0.22}" y1="${y}" x2="${width * 0.78}" y2="${y}"
-      stroke="#C4A574" stroke-opacity="0.5" stroke-width="2"/>`
-  );
-  y += 48;
-
-  // Stat tiles — 2×2
-  const tileW = 400;
-  const tileH = 120;
-  const gapX = 36;
-  const gapY = 28;
+  const tileW = 360;
+  const tileH = 110;
+  const gapX = 28;
+  const gapY = 22;
   const gridW = tileW * 2 + gapX;
   const left0 = Math.floor((width - gridW) / 2);
+  const tilesTop = 420;
 
-  rows.forEach((row, i) => {
-    const col = i % 2;
-    const r = Math.floor(i / 2);
-    const x = left0 + col * (tileW + gapX);
-    const ty = y + r * (tileH + gapY);
-    nodes.push(
-      `<rect x="${x}" y="${ty}" width="${tileW}" height="${tileH}"
-        fill="#1A1512" stroke="#C4A574" stroke-opacity="0.35" stroke-width="1.5" rx="10"/>`,
-      `<text x="${x + tileW / 2}" y="${ty + 42}" text-anchor="middle"
-        font-family="${FONT}" font-size="18" letter-spacing="3" fill="#8A7349">${escapeXml(
-        row.label
-      )}</text>`,
-      `<text x="${x + tileW / 2}" y="${ty + 92}" text-anchor="middle"
-        font-family="${FONT}" font-size="44" fill="#F5EDE3">${escapeXml(row.value)}</text>`
-    );
-  });
+  const tileNodes = rows
+    .map((row, i) => {
+      const col = i % 2;
+      const r = Math.floor(i / 2);
+      const x = left0 + col * (tileW + gapX);
+      const ty = tilesTop + r * (tileH + gapY);
+      return `
+      <rect x="${x}" y="${ty}" width="${tileW}" height="${tileH}"
+        fill="url(#chipFill)" stroke="#5A3210" stroke-opacity="0.45" stroke-width="2" rx="16"/>
+      <text x="${x + tileW / 2}" y="${ty + 40}" text-anchor="middle"
+        font-family="${FONT}" font-size="18" fill="#5A3210">${escapeXml(row.label)}</text>
+      <text x="${x + tileW / 2}" y="${ty + 86}" text-anchor="middle"
+        font-family="${FONT}" font-size="40" fill="#1E1008">${escapeXml(row.value)}</text>`;
+    })
+    .join("\n");
 
-  y += 2 * (tileH + gapY) + 20;
+  let detailY = tilesTop + 2 * (tileH + gapY) + 36;
+  const detailNodes = details
+    .slice(0, 7)
+    .map((d) => {
+      const y = detailY;
+      detailY += 40;
+      if (y > height - 100) return "";
+      return `
+      <text x="${CONTENT}" y="${y}" text-anchor="start"
+        font-family="${FONT}" font-size="22" fill="#5A3210">${escapeXml(d.label)}</text>
+      <text x="${width - CONTENT}" y="${y}" text-anchor="end"
+        font-family="${FONT}" font-size="24" fill="#1E1008">${escapeXml(d.value)}</text>`;
+    })
+    .join("\n");
 
-  nodes.push(
-    `<line x1="${width * 0.28}" y1="${y}" x2="${width * 0.72}" y2="${y}"
-      stroke="#C4A574" stroke-opacity="0.35" stroke-width="1.5"/>`
-  );
-  y += 44;
+  const svg = Buffer.from(`
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="homeBg" cx="50%" cy="30%" r="92%">
+      <stop offset="0%" stop-color="#FFF6D8"/>
+      <stop offset="20%" stop-color="#F5D890"/>
+      <stop offset="48%" stop-color="#E0B060"/>
+      <stop offset="78%" stop-color="#C49048"/>
+      <stop offset="100%" stop-color="#A07030"/>
+    </radialGradient>
+    <radialGradient id="homeGlow" cx="50%" cy="24%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="40%" stop-color="#FFF4C8" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#F5D890" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="chipFill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFF8E8"/>
+      <stop offset="100%" stop-color="#F0C870"/>
+    </linearGradient>
+  </defs>
 
-  for (const d of details.slice(0, 8)) {
-    nodes.push(
-      `<text x="${width * 0.18}" y="${y}" text-anchor="start"
-        font-family="${FONT}" font-size="24" fill="#A89068">${escapeXml(d.label)}</text>`,
-      `<text x="${width * 0.82}" y="${y}" text-anchor="end"
-        font-family="${FONT}" font-size="26" fill="#F5EDE3">${escapeXml(d.value)}</text>`
-    );
-    y += 44;
-    if (y > height - 90) break;
-  }
+  <rect width="100%" height="100%" fill="url(#homeBg)"/>
+  <ellipse cx="${width / 2}" cy="280" rx="480" ry="320" fill="url(#homeGlow)"/>
+  ${goldFrame(width, height)}
 
-  nodes.push(
-    `<text x="50%" y="${height - 48}" text-anchor="middle"
-      font-family="${FONT}" font-size="18" letter-spacing="4" fill="#8A7349">zovus.ru</text>`
-  );
+  <text x="50%" y="196" text-anchor="middle"
+    font-family="${FONT}" font-size="28" fill="#5A3210">ПРОФИЛЬ</text>
+  <text x="50%" y="270" text-anchor="middle"
+    font-family="${FONT}" font-size="52" fill="#1E1008">${escapeXml(name)}</text>
+  <text x="50%" y="320" text-anchor="middle"
+    font-family="${FONT}" font-size="22" fill="#6B3E14">${escapeXml(access)}</text>
 
-  const overlaySvg = Buffer.from(
-    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      ${nodes.join("\n")}
-    </svg>`
-  );
+  <line x1="${width * 0.28}" y1="360" x2="${width * 0.72}" y2="360"
+    stroke="#5A3210" stroke-opacity="0.35" stroke-width="2"/>
 
-  const plate = await getOrnatePlate();
-  return encodeBotJpeg(sharp(plate).composite([{ input: overlaySvg }]));
+  ${tileNodes}
+  ${detailNodes}
+
+  <text x="50%" y="${height - 56}" text-anchor="middle"
+    font-family="${FONT}" font-size="20" fill="#5A3210">zovus.ru</text>
+</svg>`);
+
+  const png = await sharp(svg).png().toBuffer();
+  return encodeBotJpeg(sharp(png).resize(width, height, { fit: "fill" }));
 }

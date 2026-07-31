@@ -5,13 +5,16 @@ import {
   clearFlow,
   findSessionById,
   getFlow,
+  getUser,
+  markTimezonePromptShown,
+  needsSoftTimezonePrompt,
   setFlow,
   touchStreak,
   trackEvent,
   type BotUser,
 } from "../db/repos.js";
 import { validateQuestion } from "../domain/question/validate.js";
-import { siteSpread } from "../domain/site-client.js";
+import { siteCatalogSpread, siteSpread } from "../domain/site-client.js";
 import {
   drawnCardsFromSiteCards,
   presentReadingToTelegram,
@@ -20,6 +23,7 @@ import {
   ctaKeyboard,
   questionKeyboard,
   salonKeyboard,
+  timezoneKeyboard,
 } from "../keyboards/index.js";
 import { markIrreversible } from "../middleware/irreversible.js";
 import { ensureOnboarded, track } from "./helpers.js";
@@ -77,6 +81,52 @@ export async function runSpreadQuestion(
   await runSiteSpread(ctx, user, rawQuestion, source);
 }
 
+/** Catalog item: full geometry + site INTENTION_SPREAD price. */
+export async function runCatalogIntent(
+  ctx: Context,
+  user: BotUser,
+  intentSlug: string,
+  questionHint?: string
+): Promise<void> {
+  const slug = intentSlug.trim();
+  if (!slug) {
+    await ctx.reply(copy.spreadFailed, { reply_markup: salonKeyboard() });
+    return;
+  }
+
+  track(user, "question_submitted", {
+    source: "catalog",
+    intent_slug: slug,
+    channel: "site",
+  });
+  setFlow(user.telegram_user_id, "spread", "drawing", {
+    intentSlug: slug,
+    question: questionHint || "",
+    source: "catalog",
+  });
+  markIrreversible(ctx);
+
+  await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
+  await ctx.replyWithChatAction("typing");
+  await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
+
+  let result: Awaited<ReturnType<typeof siteCatalogSpread>>;
+  try {
+    result = await siteCatalogSpread(user.telegram_user_id, slug);
+  } catch (err) {
+    console.error("[spread] catalog intent failed", err);
+    clearFlow(user.telegram_user_id);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+    return;
+  }
+
+  await deliverSiteSpreadResult(ctx, user, result.data, {
+    source: "catalog",
+    question: questionHint || "",
+    spreadIdFallback: result.data.spreadId,
+  });
+}
+
 async function runSiteSpread(
   ctx: Context,
   user: BotUser,
@@ -121,14 +171,47 @@ async function runSiteSpread(
     return;
   }
 
-  const data = result.data;
+  await deliverSiteSpreadResult(ctx, user, result.data, {
+    source,
+    question: validated.question,
+  });
+}
+
+async function deliverSiteSpreadResult(
+  ctx: Context,
+  user: BotUser,
+  data: {
+    ok: boolean;
+    sessionId?: string;
+    cards?: Array<{
+      id: number;
+      name: string;
+      reversed: boolean;
+      position: number;
+      positionLabel: string;
+      meaning: string;
+    }>;
+    reading?: string;
+    runeBalance?: number;
+    charged?: number;
+    masterId?: string;
+    spreadId?: string;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+    cost?: number;
+  },
+  meta: {
+    source: string;
+    question: string;
+    spreadIdFallback?: string;
+  }
+): Promise<void> {
   if (!data.ok || !data.cards || !data.reading || !data.sessionId) {
     clearFlow(user.telegram_user_id);
     if (data.error === "insufficient_runes") {
       await ctx.reply(data.message || copy.insufficientRunes, {
-        reply_markup: data.linkUrl
-          ? ctaKeyboard(data.linkUrl)
-          : salonKeyboard(),
+        reply_markup: data.linkUrl ? ctaKeyboard(data.linkUrl) : salonKeyboard(),
       });
       return;
     }
@@ -143,6 +226,7 @@ async function runSiteSpread(
   }
 
   const drawn = drawnCardsFromSiteCards(data.cards);
+  const spreadId = data.spreadId || meta.spreadIdFallback || botConfig.spreadId;
   track(user, "cards_shown", {
     session_id: data.sessionId,
     source: "site",
@@ -151,8 +235,10 @@ async function runSiteSpread(
       reversed: c.reversed,
       position: c.position,
       deck_id: botConfig.deckId,
-      spread_id: botConfig.spreadId,
+      spread_id: spreadId,
     })),
+    master_id: data.masterId,
+    card_count: data.cards.length,
   });
 
   await ctx.replyWithChatAction("upload_photo");
@@ -163,7 +249,7 @@ async function runSiteSpread(
   await presentReadingToTelegram(ctx, {
     reading: data.reading,
     cards: drawn,
-    question: validated.question,
+    question: meta.question,
     sessionId: data.sessionId,
     footer,
   });
@@ -175,11 +261,23 @@ async function runSiteSpread(
   trackEvent("site_reading_delivered", user.telegram_user_id, {
     session_id: data.sessionId,
     charged: data.charged ?? 0,
+    source: meta.source,
+    spread_id: spreadId,
+    master_id: data.masterId,
   });
 
   const streak = touchStreak(user.telegram_user_id);
   if ([3, 7, 30].includes(streak)) {
     await ctx.reply(copy.milestone(streak), { reply_markup: salonKeyboard() });
+  }
+
+  const fresh = getUser(user.telegram_user_id) ?? user;
+  if (needsSoftTimezonePrompt(fresh)) {
+    // Persist "shown" immediately — ignore/skip must not re-prompt every spread.
+    markTimezonePromptShown(fresh.telegram_user_id);
+    await ctx.reply(copy.timezoneAskSoft, {
+      reply_markup: timezoneKeyboard({ allowSkip: true }),
+    });
   }
   // reading_view flow kept for ‹ › album pager — do not clearFlow here.
 }

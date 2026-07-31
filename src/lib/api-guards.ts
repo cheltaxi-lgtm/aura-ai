@@ -74,6 +74,7 @@ export const PAID_ROUTE_LIMITS = {
   natal_history: { max: 30, windowMs: 60_000 },
   natal_report_delete: { max: 5, windowMs: 60_000 },
   numerology_matrix_report: { max: 30, windowMs: 60_000 },
+  numerology_matrix_report_delete: { max: 10, windowMs: 60_000 },
   natal_forecast: { max: 3, windowMs: 60_000 },
   natal_ai_preferences: { max: 20, windowMs: 60_000 },
   natal_event_preferences: { max: 20, windowMs: 60_000 },

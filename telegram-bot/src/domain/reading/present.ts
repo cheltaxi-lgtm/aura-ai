@@ -1,4 +1,4 @@
-import { InlineKeyboard, InputFile } from "grammy";
+import { InlineKeyboard } from "grammy";
 import type { Context } from "grammy";
 import { setFlow, getFlow } from "../../db/repos.js";
 import { FULL_DECK, TRIPLET_POSITIONS } from "../deck/cards.js";
@@ -10,7 +10,9 @@ import {
   renderSpreadCollage,
 } from "../../render/card-collage.js";
 import { CB, readingPagerKeyboard } from "../../keyboards/index.js";
+import { buildMatrixTelegramPages } from "../matrix/format.js";
 import { widenTelegramText } from "../telegram-width.js";
+import { replyPhotoBudget } from "../tg-send.js";
 
 type ReplyMarkup = NonNullable<Parameters<Context["reply"]>[1]>["reply_markup"];
 
@@ -22,8 +24,9 @@ const REVERSED_RE = /\(перев[^)]*\)|\(rev(?:ersed)?\.?\)|перевёрну
 const JUNK_QUESTION_RE =
   /^(custom|null|undefined|default|test|n\/?a|none|unknown|intention|question|chip|guest|-|—|\.|…)$/i;
 
+/** Matrix point titles (with optional role emoji + "(18 — Луна)") + tarot finales. */
 const SECTION_HEADERS =
-  /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?(Простыми словами|Шаги(?:\s+на\s+\d+\s+дней)?|Что делать|Итог|Вывод|Совет\s+карт(?:ы)?|Практика(?:\s+на\s+(?:неделю|месяц|30\s+дней))?|Общий вывод|Ключевые выводы|Краткое резюме|Прошлое|Настоящее|Будущее|Карта\s+\d+|Позиция\s+\d+)\s*:?\s*(?=\S)/giu;
+  /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?((?:[✨⚡🜁🌳💎💞💰🕯🌙♻️📅🪴✦🌌]\s*)?(?:Предназначение|Зона\s+комфорта|Характер|Тело и характер|Небо(?:\s*\/\s*энергия)?|Энергия|Материя(?:\s*\/\s*год)?|Род и корни|Таланты|Денежный\s+канал|Деньги|Канал\s+отношений|Отношения|Род\s+(?:по\s+)?отц[ау]|Род\s+(?:по\s+)?матер[ии]|Кармический\s+хвост(?:\s*[·.]\s*(?:корень|середина|остри[её]))?|Карма|Точка\s+возраста(?:\s+сейчас)?|Ближайший\s+возрастной\s+переход|Аркан\s+(?:года|месяца)|Узел\s+периода|Небо|Духовный\s+полюс)(?:\s*\(\s*\d{1,2}\s*[—–\-]\s*[^)\n]+\))?|Простыми словами|Шаги(?:\s+на\s+\d+\s+дней)?|Что делать|Итог|Вывод|Совет\s+карт(?:ы)?|Практика(?:\s+на\s+(?:неделю|месяц|30\s+дней))?|Общий вывод|Ключевые выводы|Краткое резюме|Прошлое|Настоящее|Будущее|Карта\s+\d+|Позиция\s+\d+)\s*:?\s*(?=\S)/giu;
 
 type ReadingViewState = {
   pages: string[];
@@ -186,8 +189,12 @@ function splitByCardMentions(text: string, cards: DrawnCard[]): Section[] | null
 function sectionToHtml(section: Section): string {
   const body = proseToHtml(section.body);
   if (section.title) {
-    const head = `✦ <b>${escapeHtml(section.title)}</b>`;
-    return body ? `${head}\n\n${body}` : head;
+    const title = section.title.trim();
+    // Matrix titles already carry a role emoji — don't stack ✦ in front.
+    const headed = /^(?:[✨⚡🜁🌳💎💞💰🕯🌙♻️📅🪴✦🌌]|[\u{1F300}-\u{1FAFF}])/u.test(title)
+      ? `<b>${escapeHtml(title)}</b>`
+      : `✦ <b>${escapeHtml(title)}</b>`;
+    return body ? `${headed}\n\n${body}` : headed;
   }
   return body;
 }
@@ -401,11 +408,15 @@ function pageHtml(
 }
 
 function pagerMarkup(state: ReadingViewState): InlineKeyboard {
+  // Fat matrix action rows only on first/last page — mid-album flips stay light on mobile.
+  const showMatrixActions =
+    Boolean(state.matrixActions) &&
+    (state.page === 0 || state.page >= state.pages.length - 1);
   return readingPagerKeyboard({
     page: state.page,
     total: state.pages.length,
     chatUrl: state.chatUrl,
-    matrixActions: state.matrixActions,
+    matrixActions: showMatrixActions,
     matrixSiteUrl: state.matrixSiteUrl,
   });
 }
@@ -428,20 +439,27 @@ export async function presentReadingToTelegram(
     /** Put matrix calc/delete/site buttons on the same album keyboard. */
     matrixActions?: boolean;
     matrixSiteUrl?: string | null;
+    /** Matrix album: one message = one point with emoji (not tarot splitter). */
+    matrixPaging?: boolean;
   }
 ): Promise<void> {
+  const matrixPaging = Boolean(input.matrixPaging || input.matrixActions);
   let cards = input.cards?.length ? input.cards : [];
-  if (!cards.length && input.cardNames?.length) {
-    cards = drawnCardsFromNameList(input.cardNames);
-  }
-  if (!cards.length) {
-    cards = extractCardsFromReadingMarkdown(input.reading);
+  if (!matrixPaging) {
+    if (!cards.length && input.cardNames?.length) {
+      cards = drawnCardsFromNameList(input.cardNames);
+    }
+    if (!cards.length) {
+      cards = extractCardsFromReadingMarkdown(input.reading);
+    }
   }
 
-  const question = cleanQuestion(input.question);
+  const question = matrixPaging ? null : cleanQuestion(input.question);
   const tid = ctx.from?.id;
 
-  const pages = buildTelegramReadingMessages(input.reading, cards);
+  const pages = matrixPaging
+    ? buildMatrixTelegramPages(input.reading)
+    : buildTelegramReadingMessages(input.reading, cards);
   const chatUrl = input.sessionId ? buildSessionChatUrl(input.sessionId) : undefined;
   const matrixSiteUrl = input.matrixSiteUrl?.trim() || undefined;
   const state: ReadingViewState = {
@@ -462,42 +480,117 @@ export async function presentReadingToTelegram(
         ? pagerMarkup(state)
         : input.replyMarkup;
 
-  // Card collage stays as photo; reading body is HTML text (easier to read) with width pad + pager.
-  if (cards.length > 0) {
-    try {
-      const collageBuf = await renderCardsImage(cards, question);
-      await ctx.replyWithPhoto(new InputFile(collageBuf, "spread.jpg"));
-    } catch (err) {
-      console.error("[present-reading] collage failed", err);
-      if (question) await ctx.reply(captionFor(question));
-    }
-  } else if (question) {
-    await ctx.reply(captionFor(question));
-  }
-
-  if (!pages.length) {
+  if (!pages.length && !cards.length) {
+    if (question) await ctx.reply(captionFor(question));
     if (input.replyMarkup) {
       await ctx.reply("Разбор сохранён в истории.", { reply_markup: input.replyMarkup });
     }
     return;
   }
 
-  if (usePager && tid) {
+  if (usePager && tid && pages.length) {
     setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
   }
 
-  const html = pageHtml(state.pages, 0, state.footer);
-  try {
-    await ctx.reply(html, {
-      parse_mode: "HTML",
-      reply_markup: markup,
-    });
-  } catch (err) {
-    console.error("[present-reading] html send failed, plain fallback", err);
-    await ctx.reply(widenTelegramText(stripReadingForTelegram(pages.join("\n\n"))), {
-      reply_markup: markup,
-    });
+  // Text first — never block the reading on a hung sendPhoto (was up to 60s on this VPS).
+  if (pages.length) {
+    const html = pageHtml(state.pages, 0, state.footer);
+    try {
+      await ctx.reply(html, {
+        parse_mode: "HTML",
+        reply_markup: markup,
+      });
+    } catch (err) {
+      console.error("[present-reading] html send failed, plain fallback", err);
+      await ctx.reply(widenTelegramText(stripReadingForTelegram(pages.join("\n\n"))), {
+        reply_markup: markup,
+      });
+    }
+  } else if (question) {
+    await ctx.reply(captionFor(question), { reply_markup: markup });
   }
+
+  if (cards.length > 0) {
+    try {
+      const collageBuf = await renderCardsImage(cards, question);
+      const ok = await replyPhotoBudget(ctx, collageBuf, "spread.jpg");
+      if (!ok && question && !pages.length) {
+        await ctx.reply(captionFor(question));
+      }
+    } catch (err) {
+      console.error("[present-reading] collage failed", err);
+      if (question && !pages.length) await ctx.reply(captionFor(question));
+    }
+  }
+}
+
+/**
+ * Jump active reading_view album to a page (edits the callback message when possible).
+ * Returns false when there is no matrix/reading album in flow.
+ */
+export async function jumpReadingAlbumPage(
+  ctx: Context,
+  page: number,
+  answerText?: string
+): Promise<boolean> {
+  const tid = ctx.from?.id;
+  if (!tid) return false;
+  const flow = getFlow(tid);
+  if (!flow || flow.flow !== "reading_view" || !Array.isArray(flow.data.pages)) {
+    return false;
+  }
+  if (!flow.data.pages.length) return false;
+
+  const state: ReadingViewState = {
+    pages: flow.data.pages as string[],
+    page: Number.isFinite(page) ? page : 0,
+    chatUrl: typeof flow.data.chatUrl === "string" ? flow.data.chatUrl : undefined,
+    footer: typeof flow.data.footer === "string" ? flow.data.footer : undefined,
+    matrixActions: Boolean(flow.data.matrixActions),
+    matrixSiteUrl:
+      typeof flow.data.matrixSiteUrl === "string" ? flow.data.matrixSiteUrl : undefined,
+  };
+  state.page = Math.min(Math.max(0, state.page), state.pages.length - 1);
+  setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
+
+  const html = pageHtml(state.pages, state.page, state.footer);
+  const markup = pagerMarkup(state);
+  const hasPhoto = Boolean(
+    ctx.callbackQuery?.message && "photo" in ctx.callbackQuery.message
+  );
+  const toast =
+    answerText?.trim() || `${state.page + 1} / ${state.pages.length}`;
+
+  // Unlock the button immediately — waiting for editMessageText feels laggy on mobile.
+  await ctx.answerCallbackQuery({ text: toast }).catch(() => undefined);
+
+  try {
+    if (hasPhoto) {
+      await ctx.deleteMessage().catch(() => undefined);
+      await ctx.reply(html, { parse_mode: "HTML", reply_markup: markup });
+    } else if (ctx.callbackQuery?.message) {
+      await ctx.editMessageText(html, {
+        parse_mode: "HTML",
+        reply_markup: markup,
+      });
+    } else {
+      await ctx.reply(html, { parse_mode: "HTML", reply_markup: markup });
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/message is not modified/i.test(msg)) {
+      return true;
+    }
+    // Callback may be on another bubble (period/share) — send album page as new message.
+    try {
+      await ctx.reply(html, { parse_mode: "HTML", reply_markup: markup });
+      return true;
+    } catch (replyErr) {
+      console.error("[reading-pager] jump failed", replyErr || err);
+      return true;
+    }
+  }
+  return true;
 }
 
 export async function handleReadingPagerCallback(
@@ -528,49 +621,5 @@ export async function handleReadingPagerCallback(
     return true;
   }
 
-  const state: ReadingViewState = {
-    pages: flow.data.pages as string[],
-    page: Number.isFinite(page) ? page : 0,
-    chatUrl: typeof flow.data.chatUrl === "string" ? flow.data.chatUrl : undefined,
-    footer: typeof flow.data.footer === "string" ? flow.data.footer : undefined,
-    matrixActions: Boolean(flow.data.matrixActions),
-    matrixSiteUrl:
-      typeof flow.data.matrixSiteUrl === "string" ? flow.data.matrixSiteUrl : undefined,
-  };
-  if (!state.pages.length) {
-    await ctx.answerCallbackQuery({ text: "Пусто" }).catch(() => undefined);
-    return true;
-  }
-
-  state.page = Math.min(Math.max(0, state.page), state.pages.length - 1);
-  setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
-
-  const html = pageHtml(state.pages, state.page, state.footer);
-  const markup = pagerMarkup(state);
-  const hasPhoto = Boolean(
-    ctx.callbackQuery?.message && "photo" in ctx.callbackQuery.message
-  );
-
-  try {
-    if (hasPhoto) {
-      // Migrate older photo-page albums to text on first flip.
-      await ctx.deleteMessage().catch(() => undefined);
-      await ctx.reply(html, { parse_mode: "HTML", reply_markup: markup });
-    } else {
-      await ctx.editMessageText(html, {
-        parse_mode: "HTML",
-        reply_markup: markup,
-      });
-    }
-    await ctx.answerCallbackQuery({ text: `${state.page + 1} / ${state.pages.length}` }).catch(() => undefined);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/message is not modified/i.test(msg)) {
-      await ctx.answerCallbackQuery().catch(() => undefined);
-      return true;
-    }
-    console.error("[reading-pager] edit failed", err);
-    await ctx.answerCallbackQuery({ text: "Не удалось перелистнуть" }).catch(() => undefined);
-  }
-  return true;
+  return jumpReadingAlbumPage(ctx, Number.isFinite(page) ? page : 0);
 }

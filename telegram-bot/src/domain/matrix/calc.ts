@@ -1,7 +1,7 @@
 import { FULL_DECK } from "../deck/cards.js";
 import type { MatrixDiagramInput, MatrixDiagramSlot } from "../../render/matrix-diagram.js";
 
-/** Same reduce as site matrix-v1 (1–22; 0 → 22). */
+/** Same reduce as site matrix-v2 (1–22; 0 → 22). */
 function sumDigits(n: number): number {
   return String(Math.abs(Math.trunc(n)))
     .split("")
@@ -32,35 +32,54 @@ function arcanaName(n: number): string {
   return card?.name ?? `Аркан ${n}`;
 }
 
-/** Mapping matches site `destinyMatrix` matrix-v1. */
-const SLOTS: Array<{
+function yearsBetween(
+  birth: { day: number; month: number; year: number },
+  asOf: Date
+): number {
+  let age = asOf.getFullYear() - birth.year;
+  const beforeBirthday =
+    asOf.getMonth() + 1 < birth.month ||
+    (asOf.getMonth() + 1 === birth.month && asOf.getDate() < birth.day);
+  if (beforeBirthday) age -= 1;
+  return Math.max(0, age);
+}
+
+type SlotDef = {
   key: string;
   label: string;
   area: string;
   featured?: boolean;
   pick: (p: Record<string, number>) => number;
-}> = [
-  { key: "energy", label: "Энергия", area: "energy", pick: (p) => p.b! },
-  { key: "body", label: "Тело и характер", area: "body", pick: (p) => p.a! },
+};
+
+/** Mapping matches site DESTINY_MATRIX_DIAGRAM_SLOTS (matrix-v2). */
+const SLOTS: SlotDef[] = [
+  { key: "energy", label: "Небо / энергия", area: "energy", pick: (p) => p.b! },
+  { key: "skySpirit", label: "Дух", area: "sky", pick: (p) => p.sky! },
+  { key: "body", label: "Характер", area: "body", pick: (p) => p.a! },
   {
     key: "purpose",
-    label: "Предназначение",
+    label: "Зона комфорта",
     area: "purpose",
     featured: true,
-    pick: (p) => p.d!,
+    pick: (p) => p.x!,
   },
-  { key: "roots", label: "Род и корни", area: "roots", pick: (p) => p.c! },
-  { key: "talents", label: "Таланты", area: "talents", pick: (p) => p.talents! },
-  { key: "relationships", label: "Отношения", area: "rel", pick: (p) => p.e! },
-  { key: "money", label: "Деньги", area: "money", pick: (p) => p.f! },
+  { key: "roots", label: "Материя / год", area: "roots", pick: (p) => p.c! },
+  { key: "talents", label: "Таланты", area: "talents", pick: (p) => p.ab! },
+  { key: "relationships", label: "Отношения", area: "rel", pick: (p) => p.love! },
+  { key: "money", label: "Деньги", area: "money", pick: (p) => p.money! },
   { key: "paternal", label: "Род отца", area: "paternal", pick: (p) => p.paternal! },
   { key: "maternal", label: "Род матери", area: "maternal", pick: (p) => p.maternal! },
-  { key: "karma", label: "Карма", area: "karma", pick: (p) => p.g! },
+  { key: "karma", label: "Хвост · корень", area: "karma", pick: (p) => p.g! },
+  { key: "karmicMid", label: "Хвост · середина", area: "tailMid", pick: (p) => p.mid! },
+  { key: "karmicTip", label: "Хвост · остриё", area: "tailTip", pick: (p) => p.tip! },
+  { key: "ageCurrent", label: "Возраст сейчас", area: "age", pick: (p) => p.age! },
   { key: "yearArcana", label: "Аркан года", area: "year", pick: (p) => p.yearArcana! },
+  { key: "monthArcana", label: "Аркан месяца", area: "month", pick: (p) => p.monthArcana! },
 ];
 
 /**
- * Local fallback matching site `destinyMatrix` matrix-v1 when API omits `diagram`.
+ * Local fallback matching site destinyMatrix matrix-v2 when API omits `diagram`.
  */
 export function buildLocalMatrixDiagram(
   birthDate: string,
@@ -72,16 +91,61 @@ export function buildLocalMatrixDiagram(
   const a = reduceToArcanaNumber(parsed.day);
   const b = reduceToArcanaNumber(parsed.month);
   const c = reduceToArcanaNumber(sumDigits(parsed.year));
-  const d = reduceToArcanaNumber(a + b + c);
-  const e = reduceToArcanaNumber(a + d);
-  const f = reduceToArcanaNumber(b + d);
-  const g = reduceToArcanaNumber(c + d);
-  const talents = reduceToArcanaNumber(a + b);
+  const g = reduceToArcanaNumber(a + b + c);
+  const x = reduceToArcanaNumber(a + b + c + g);
+  const love = reduceToArcanaNumber(a + x);
+  const sky = reduceToArcanaNumber(b + x);
+  const money = reduceToArcanaNumber(c + x);
+  const mid = reduceToArcanaNumber(g + x);
+  const tip = reduceToArcanaNumber(g + mid);
+  const ab = reduceToArcanaNumber(a + b);
+  const bc = reduceToArcanaNumber(b + c);
+  const cg = reduceToArcanaNumber(c + g);
+  const ga = reduceToArcanaNumber(g + a);
   const paternal = reduceToArcanaNumber(a + c);
   const maternal = reduceToArcanaNumber(b + c);
-  const year = new Date().getFullYear();
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
   const yearArcana = reduceToArcanaNumber(a + b + sumDigits(year));
-  const points = { a, b, c, d, e, f, g, talents, paternal, maternal, yearArcana };
+  const monthArcana = reduceToArcanaNumber(yearArcana + month);
+
+  // Age belt: corners every 10y, midpoints every +5 — same as site.
+  const perimeter = [a, ab, b, bc, c, cg, g, ga];
+  const agePoints: Array<{ age: number; n: number }> = [];
+  for (let i = 0; i < 8; i++) {
+    agePoints.push({ age: i * 10, n: perimeter[i]! });
+    agePoints.push({
+      age: i * 10 + 5,
+      n: reduceToArcanaNumber(perimeter[i]! + perimeter[(i + 1) % 8]!),
+    });
+  }
+  agePoints.sort((p, q) => p.age - q.age);
+  const chronologicalAge = yearsBetween(parsed, now);
+  let age = agePoints[0]!.n;
+  for (const pt of agePoints) {
+    if (pt.age <= chronologicalAge) age = pt.n;
+    else break;
+  }
+
+  const points = {
+    a,
+    b,
+    c,
+    g,
+    x,
+    love,
+    sky,
+    money,
+    mid,
+    tip,
+    ab,
+    paternal,
+    maternal,
+    yearArcana,
+    monthArcana,
+    age,
+  };
 
   const slots: MatrixDiagramSlot[] = SLOTS.map((slot) => {
     const number = slot.pick(points);

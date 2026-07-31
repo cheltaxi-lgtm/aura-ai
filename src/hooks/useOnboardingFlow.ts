@@ -23,6 +23,7 @@ import {
   loadChatCacheEntry,
   loadChatCacheForMaster,
   saveChatCache,
+  clearChatCache,
   chatHasSpreadReading,
   appendSpreadReadingMessage,
   type CachedChatSpread,
@@ -41,7 +42,9 @@ import { buildSessionSpreadCards, resolveSpreadSymbols } from "@/lib/intention-d
 import { toSessionTopicId } from "@/lib/session-topics";
 import { navigateToSessionIntention } from "@/lib/session-intention-nav";
 import {
+  INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS,
   INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+  isIntentionSpreadWaitAborted,
   isTerminalIntentionSpreadError,
   pollIntentionSpreadReading,
   postIntentionSpreadRequest,
@@ -2020,6 +2023,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             chatSessionId = await beginNewSpreadSession(masterId);
           }
 
+          clearChatCache(masterId);
           deps.setMessages([]);
 
           let skipRitualFinally = false;
@@ -2083,6 +2087,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             emitRuneBalanceUpdate(data.runeBalance);
           }
 
+          if (typeof data.sessionId === "string" && data.sessionId) {
+            chatSessionId = data.sessionId;
+            deps.setConsultationSessionId(data.sessionId);
+            deps.consultationSessionIdRef.current = data.sessionId;
+            localStorage.setItem("aura_session_id", data.sessionId);
+          }
+
           let readingText = resolveClientReadingText(
             typeof data.reading === "string" ? data.reading : "",
             cards.map((c) => c.name)
@@ -2096,6 +2107,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 cardNames: cards.map((c) => c.name),
                 spreadId,
                 cardCount: cards.length,
+                sessionId: chatSessionId,
               },
               { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
             );
@@ -2240,6 +2252,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
           // Terminal AI fail already finished on server — do not spin a long dead poll.
           const terminal = isTerminalIntentionSpreadError(spreadErr);
+          const waitAborted = isIntentionSpreadWaitAborted(spreadErr);
           try {
             const cardNames =
               sessionSpreadMetaRef.current?.cardNames ??
@@ -2247,7 +2260,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               [];
             const recoverySpreadId =
               sessionSpreadMetaRef.current?.spreadId ?? resolveClientSpreadId();
-            if (!terminal && hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
+            if (
+              !terminal &&
+              chatSessionId &&
+              hasCompleteSpread(cardNames, recoverySpreadId, "new")
+            ) {
               const polled = await pollIntentionSpreadReading(
                 {
                   characterId: masterId,
@@ -2255,8 +2272,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                   cardNames,
                   spreadId: recoverySpreadId,
                   cardCount: requiredCardCount(recoverySpreadId, "new"),
+                  sessionId: chatSessionId,
                 },
-                { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+                {
+                  maxAttempts: waitAborted
+                    ? INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS
+                    : INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+                }
               );
               const recovered = polled
                 ? resolveClientReadingText(polled, cardNames)
@@ -3236,6 +3258,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setIntentionSpreadLoading(true);
       openSpreadReadingRitual();
       const ritualStartedAt = Date.now();
+      // Drop any same-card local thread so recovery cannot flash the previous consultation.
+      clearChatCache(characterKey);
       deps.setMessages([]);
       setStep("chat");
 
@@ -3357,6 +3381,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                   cardNames: cardNamesForClean,
                   spreadId,
                   cardCount: spreadCardCount,
+                  sessionId: chatSessionId,
                 },
                 { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
               );
@@ -3510,6 +3535,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           closeSpreadReadingRitual();
           setIntentionSpreadLoading(false);
           const terminal = isTerminalIntentionSpreadError(err);
+          const waitAborted = isIntentionSpreadWaitAborted(err);
           try {
             const cardNames =
               sessionSpreadMetaRef.current?.cardNames ??
@@ -3518,7 +3544,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 : (readIntentionSpreadForMaster(characterKey)?.cards.map((c) => c.name) ?? []));
             const recoverySpreadId =
               sessionSpreadMetaRef.current?.spreadId ?? spreadId;
-            if (!terminal && hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
+            if (
+              !terminal &&
+              chatSessionId &&
+              hasCompleteSpread(cardNames, recoverySpreadId, "new")
+            ) {
               const polled = await pollIntentionSpreadReading(
                 {
                   characterId: characterKey,
@@ -3526,8 +3556,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                   cardNames,
                   spreadId: recoverySpreadId,
                   cardCount: requiredCardCount(recoverySpreadId, "new"),
+                  sessionId: chatSessionId,
                 },
-                { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+                {
+                  maxAttempts: waitAborted
+                    ? INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS
+                    : INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+                }
               );
               const recovered = polled ? resolveClientReadingText(polled, cardNames) : "";
               if (recovered) {

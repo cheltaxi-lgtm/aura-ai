@@ -15,6 +15,10 @@ import { ensureSiteLinked } from "./site-account.js";
 let dayCopyCounter = 0;
 
 export async function handleDay(ctx: Context): Promise<void> {
+  const uid = ctx.from?.id;
+  if (uid) {
+    await announceWorking(ctx, copy.dayPreparing(uid, dayCopyCounter++));
+  }
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
 
@@ -22,11 +26,6 @@ export async function handleDay(ctx: Context): Promise<void> {
     await ctx.reply(copy.dayDisabled, { reply_markup: salonKeyboard() });
     return;
   }
-
-  await announceWorking(
-    ctx,
-    copy.dayPreparing(linked.user.telegram_user_id, dayCopyCounter++)
-  );
   let result: Awaited<ReturnType<typeof siteDaily>>;
   try {
     result = await siteDaily(linked.user.telegram_user_id);

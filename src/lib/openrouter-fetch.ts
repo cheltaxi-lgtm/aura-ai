@@ -65,6 +65,12 @@ export async function openRouterFetch(
     }
     await primary.body?.cancel();
   } catch (error) {
+    // Timeout/cancel already decided — do not retry with the same aborted signal
+    // (direct IPv4 also fails on this host, and AbortError is not a proxy outage).
+    const aborted =
+      init?.signal?.aborted === true ||
+      (error instanceof Error && error.name === "AbortError");
+    if (aborted) throw error;
     console.warn("[openrouter] primary proxy failed:", error);
   }
 

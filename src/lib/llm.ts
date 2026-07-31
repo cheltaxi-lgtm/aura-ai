@@ -56,14 +56,23 @@ function isReasoningCapableModel(model: string): boolean {
     id.includes("o1") ||
     id.includes("o3") ||
     id.includes("deepseek-r1") ||
-    id.includes("deepseek-v4")
+    id.includes("deepseek-v4") ||
+    // MiMo otherwise burns max_tokens on English CoT with content:null (finish:length).
+    id.includes("mimo") ||
+    // Gemini 3 thinks by default; paired with isMandatoryReasoningModel (effort:none → 400).
+    id.includes("gemini-3")
   );
 }
 
 /** Models that reject reasoning: { effort: "none" } — OpenRouter returns 400. */
 function isMandatoryReasoningModel(model: string): boolean {
   const id = model.toLowerCase();
-  return id.includes("deepseek-v4") || id.includes("deepseek-r1");
+  return (
+    id.includes("deepseek-v4") ||
+    id.includes("deepseek-r1") ||
+    // OpenRouter: "Reasoning is mandatory for this endpoint and cannot be disabled."
+    id.includes("gemini-3")
+  );
 }
 
 /** Models that often put the answer in `reasoning` with `content: null` (e.g. MiMo). */
@@ -379,6 +388,8 @@ function buildRequestBody(
     temperature: effectiveTemp,
     frequency_penalty: 0.35,
     presence_penalty: 0.2,
+    // Prefer lower-latency OpenRouter endpoints when several providers host the model.
+    provider: { sort: "latency" },
     ...(opts.stream ? { stream: true } : {}),
     ...(opts.jsonObject ? { response_format: { type: "json_object" } } : {}),
   };

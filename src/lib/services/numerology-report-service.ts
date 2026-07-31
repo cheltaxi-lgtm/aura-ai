@@ -221,6 +221,29 @@ export async function saveMatrixReport(params: {
       throw new Error("numerology_report_history_missing_after_insert");
     }
 
+    // Reopen / reuse: keep buy-once content but point at the active chat session.
+    if (!inserted.rows[0] && params.sessionId?.trim()) {
+      await queryClient(
+        client,
+        `UPDATE numerology_report_history
+         SET session_id = $4::uuid,
+             updated_at = NOW()
+         WHERE user_id = $1
+           AND tool_id = $2
+           AND birth_date = $3::date
+           AND calculation_version = $5
+           AND (session_id IS DISTINCT FROM $4::uuid)`,
+        [
+          params.userId,
+          toolId,
+          birthDate,
+          params.sessionId.trim(),
+          calculationVersion,
+        ]
+      );
+      existing.session_id = params.sessionId.trim();
+    }
+
     return {
       status: inserted.rows[0] ? "saved" : "already_saved",
       report: mapRow(existing),

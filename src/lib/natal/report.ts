@@ -1,4 +1,5 @@
 import { toParagraphs } from "@/lib/format-paragraphs";
+import { normalizeClientTyAddress } from "@/lib/reading-quality-gate";
 import type { NatalEvidence } from "./evidence";
 import type { NatalTradition } from "./types";
 
@@ -541,7 +542,7 @@ export function formatLegacyNatalProseForDisplay(raw: string): string {
   const input = (raw ?? "").replace(/\r\n/g, "\n").trim();
   if (!input) return raw;
   if ((input.match(/^#{1,3}\s/gm) ?? []).length >= 2) {
-    return input;
+    return normalizeClientTyAddress(input);
   }
 
   const paras = toParagraphs(input);
@@ -573,7 +574,7 @@ export function formatLegacyNatalProseForDisplay(raw: string): string {
     }
   });
 
-  return chunks.join("\n\n");
+  return normalizeClientTyAddress(chunks.join("\n\n"));
 }
 
 /** One report section as mystic markdown (same pipeline as spread readings). */
@@ -603,7 +604,7 @@ export function formatNatalReportForDisplay(report: NatalReport): string {
       : "",
     report.disclaimer.trim() ? `## Важно\n\n${report.disclaimer.trim()}` : "",
   ].filter(Boolean);
-  return [...sections, ...footer].join("\n\n---\n\n");
+  return normalizeClientTyAddress([...sections, ...footer].join("\n\n---\n\n"));
 }
 
 export function natalReportToPlainText(report: NatalReport): string {
@@ -639,8 +640,9 @@ ${NATAL_REPORT_SECTION_KEYS.map((key) => `{"key":"${key}","title":"локали�
 - ${totalDepth};
 - раскрывай причинно-следственную связь: конкретный рассчитанный фактор → его символическое значение → проявление в жизни → практический вывод;
 - называй конкретные планеты, знаки, дома, аспекты, даты или периоды только из переданных evidence; не заменяй их общими словами;
-- используй имя клиента из пользовательского сообщения естественно, но не в каждом разделе;
-- не пиши универсальные фразы вроде «у вас есть потенциал», «возможны изменения», «сосредоточьтесь на целях» без конкретного объяснения через evidence;
+- используй имя клиента из пользовательского сообщения естественно, но не в каждом разделе; имя — Title Case, не КАПСОМ;
+- обращайся к клиенту строго на «ты» (ты/тебе/твой/твоя/твои); запрещены «вы/вам/вас/ваш/ваша/ваши» в обращении к клиенту;
+- не пиши универсальные фразы вроде «у тебя есть потенциал», «возможны изменения», «сосредоточься на целях» без конкретного объяснения через evidence;
 - разделы не должны повторять друг друга по смыслу или формулировкам;
 - в каждом разделе минимум один непустой claim; у каждого claim один или несколько существующих evidenceIds;
 - не добавляй факты, которые прямо не поддержаны указанными evidence;

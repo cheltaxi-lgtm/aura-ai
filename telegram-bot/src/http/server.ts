@@ -10,6 +10,7 @@ import {
 import { buildFinalCtaUrl, hashSessionToken, isSessionToken } from "../domain/session/token.js";
 import { pruneRateMap } from "../ops/rate-maps.js";
 import { handleAccountLinked } from "./account-linked.js";
+import { handleAdminApi } from "./admin-api.js";
 import { handleInternalReceipt } from "./internal-receipt.js";
 import { handleSupportReplyNotify } from "./support-reply.js";
 
@@ -99,6 +100,10 @@ export function startHttpServer(bot?: Bot): void {
     }
 
     if (await handleSupportReplyNotify(req, res, path)) {
+      return;
+    }
+
+    if (await handleAdminApi(req, res, path)) {
       return;
     }
 

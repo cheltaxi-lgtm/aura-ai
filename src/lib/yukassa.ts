@@ -87,9 +87,12 @@ export async function createYukassaRunePayment(params: {
   totalRunes: number;
   userId: string;
   appUrl: string;
+  /** Optional override (e.g. bot deep-link). Default: /runes/success */
+  returnUrl?: string;
 }) {
   const idempotenceKey = `rune-${params.userId}-${params.packageId}-${Date.now()}`;
-  const returnUrl = `${params.appUrl.replace(/\/$/, "")}/runes/success`;
+  const returnUrl =
+    params.returnUrl || `${params.appUrl.replace(/\/$/, "")}/runes/success`;
 
   const response = await fetch(`${YUKASSA_API}/payments`, {
     method: "POST",
@@ -113,6 +116,7 @@ export async function createYukassaRunePayment(params: {
         runesAmount: String(params.totalRunes),
         runes_count: String(params.totalRunes),
         type: "rune_purchase",
+        source: "telegram_bot",
       },
     }),
   });

@@ -16,7 +16,8 @@ export async function handleMiniAppNavCallback(ctx: Context, data: string): Prom
     console.error("[miniapp-nav] set pending", err);
   }
 
-  await ctx.answerCallbackQuery({ text: copy.miniAppOpenHint }).catch(() => undefined);
+  // Reply with the launcher only — toast + message felt like a double-tap.
+  await ctx.answerCallbackQuery().catch(() => undefined);
 
   // Always the same web_app URL — Telegram reuses one panel instead of stacking.
   await ctx

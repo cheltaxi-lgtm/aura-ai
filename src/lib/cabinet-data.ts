@@ -30,6 +30,7 @@ export interface CabinetProfile {
   email: string;
   zodiac: string | null;
   birthDate: string | null;
+  birthCity: string | null;
   runeBalance: number;
   createdAt: string | null;
 }
@@ -266,6 +267,7 @@ export async function getCabinetProfile(
     email: accountEmail,
     zodiac: user?.zodiac ?? null,
     birthDate: user?.birth_date ?? null,
+    birthCity: user?.birth_city ?? null,
     runeBalance: balance,
     createdAt: user?.created_at
       ? user.created_at instanceof Date
@@ -347,17 +349,17 @@ export async function getCabinetSessions(
            AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
            AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''
          )
-         /* Matrix: hide sessions whose report was deleted */
+         /* Matrix: hide sessions when user has no owned matrix report left */
          AND NOT (
            (
-             COALESCE(s.spread_id, '') = 'destiny_matrix'
+             COALESCE(s.spread_id, '') IN ('destiny_matrix', 'numerolog:destiny_matrix')
+             OR COALESCE(s.spread_id, '') LIKE 'numerolog:destiny_matrix%'
              OR COALESCE(s.intention, '') = 'destiny_matrix'
            )
            AND NOT EXISTS (
              SELECT 1 FROM numerology_report_history n
              WHERE n.user_id = s.user_id
                AND n.tool_id = 'destiny_matrix'
-               AND n.session_id = s.id
                AND length(trim(n.content)) > 0
            )
          )
@@ -389,14 +391,14 @@ export async function getCabinetSessions(
          )
          AND NOT (
            (
-             COALESCE(s.spread_id, '') = 'destiny_matrix'
+             COALESCE(s.spread_id, '') IN ('destiny_matrix', 'numerolog:destiny_matrix')
+             OR COALESCE(s.spread_id, '') LIKE 'numerolog:destiny_matrix%'
              OR COALESCE(s.intention, '') = 'destiny_matrix'
            )
            AND NOT EXISTS (
              SELECT 1 FROM numerology_report_history n
              WHERE n.user_id = s.user_id
                AND n.tool_id = 'destiny_matrix'
-               AND n.session_id = s.id
                AND length(trim(n.content)) > 0
            )
          )
@@ -713,7 +715,39 @@ export async function updateSessionOutcomeRating(
   return Boolean(rows[0]);
 }
 
-/** Delete cabinet session entry with full sync (chat, sessions, history). */
+async function deleteSessionWithMatrixWipe(
+  userId: string,
+  sessionId: string
+): Promise<boolean> {
+  const session = await getSession(sessionId);
+  if (!session || session.user_id !== userId) return false;
+
+  const {
+    isDestinyMatrixSession,
+    wipeMatrixOwnershipForSession,
+    purgeMatrixConsultationSessions,
+  } = await import("@/lib/numerology/matrix-session-cleanup");
+
+  if (isDestinyMatrixSession(session)) {
+    const { rows: profileRows } = await query<{ birth_date: string | null }>(
+      `SELECT birth_date::text AS birth_date FROM users WHERE id = $1 LIMIT 1`,
+      [userId]
+    );
+    await wipeMatrixOwnershipForSession({
+      userId,
+      sessionId,
+      profileBirthDate: profileRows[0]?.birth_date ?? null,
+    });
+  }
+
+  const ok = await deleteConsultationSession(sessionId, userId);
+  if (isDestinyMatrixSession(session)) {
+    await purgeMatrixConsultationSessions(userId, [sessionId]);
+  }
+  return ok;
+}
+
+/** Delete cabinet session entry with full sync (chat, sessions, history, matrix ownership). */
 export async function deleteCabinetSessionEntry(
   userId: string,
   memoryId: string
@@ -725,7 +759,7 @@ export async function deleteCabinetSessionEntry(
   const row = rows[0];
 
   if (row?.session_id) {
-    const ok = await deleteConsultationSession(row.session_id, userId);
+    const ok = await deleteSessionWithMatrixWipe(userId, row.session_id);
     return { ok, characterKey: row.character_key };
   }
 
@@ -736,7 +770,7 @@ export async function deleteCabinetSessionEntry(
 
   const session = await getSession(memoryId);
   if (session?.user_id === userId && session.character_key) {
-    const ok = await deleteConsultationSession(memoryId, userId);
+    const ok = await deleteSessionWithMatrixWipe(userId, memoryId);
     return { ok, characterKey: session.character_key };
   }
 
@@ -770,6 +804,7 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
     const diaryRemoved = await run(`DELETE FROM diary_entries WHERE user_id = $1`, [userId]);
     const memoriesRemoved = await run(`DELETE FROM session_memories WHERE user_id = $1`, [userId]);
     const factsRemoved = await run(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
+    await run(`DELETE FROM numerology_report_history WHERE user_id = $1`, [userId]);
 
     await preserveUserRateLimitsBeforePurge(userId, client);
 

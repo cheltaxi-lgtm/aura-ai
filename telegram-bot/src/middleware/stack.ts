@@ -79,6 +79,16 @@ export async function ensureUser(ctx: Context, next: NextFunction): Promise<void
   await next();
 }
 
+async function replyOrAnswerCallback(ctx: Context, text: string, alert = false): Promise<void> {
+  if (ctx.callbackQuery) {
+    await ctx
+      .answerCallbackQuery({ text: text.slice(0, 200), show_alert: alert })
+      .catch(() => undefined);
+    return;
+  }
+  await ctx.reply(text);
+}
+
 export async function rateLimit(ctx: Context, next: NextFunction): Promise<void> {
   const uid = ctx.from?.id;
   if (!uid) return;
@@ -93,7 +103,7 @@ export async function rateLimit(ctx: Context, next: NextFunction): Promise<void>
   } else {
     slot.count += 1;
     if (slot.count > botConfig.rateLimitPerMinute) {
-      await ctx.reply(copy.rateSlow);
+      await replyOrAnswerCallback(ctx, copy.rateSlow, true);
       return;
     }
   }
@@ -108,7 +118,11 @@ export async function featureGate(ctx: Context, next: NextFunction): Promise<voi
         .catch(() => undefined);
       return;
     }
-    await ctx.reply(copy.botDisabled(ctx.from?.id ?? 1, disabledCounter++));
+    await replyOrAnswerCallback(
+      ctx,
+      copy.botDisabled(ctx.from?.id ?? 1, disabledCounter++),
+      true
+    );
     return;
   }
   const uid = ctx.from?.id ?? ctx.preCheckoutQuery?.from.id;
@@ -118,7 +132,7 @@ export async function featureGate(ctx: Context, next: NextFunction): Promise<voi
       await ctx.answerPreCheckoutQuery(false, "Доступ ограничен.").catch(() => undefined);
       return;
     }
-    await ctx.reply(copy.banned);
+    await replyOrAnswerCallback(ctx, copy.banned, true);
     return;
   }
   await next();

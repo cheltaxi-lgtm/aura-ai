@@ -13,3 +13,7 @@ export * from "./name-context";
 export * from "./engine-reply";
 export * from "./reading-narrative";
 export * from "./tools";
+export * from "./destiny-matrix";
+export * from "./matrix-period";
+export * from "./matrix-natal-bridge";
+export * from "./matrix-free-summary";

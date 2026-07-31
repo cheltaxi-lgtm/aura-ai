@@ -147,6 +147,21 @@ export async function claimAsyncJobForSave(jobId: string): Promise<boolean> {
   return rowCount === 1;
 }
 
+/** Merge progress / UI hints into period_metadata while job is running. */
+export async function mergeAsyncJobPeriodMetadata(
+  jobId: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  if (!jobId.trim() || !Object.keys(patch).length) return;
+  await query(
+    `UPDATE async_jobs
+     SET period_metadata = COALESCE(period_metadata, '{}'::jsonb) || $2::jsonb,
+         updated_at = NOW()
+     WHERE id = $1 AND status IN ('pending', 'running')`,
+    [jobId, JSON.stringify(patch)]
+  );
+}
+
 export async function getAsyncJobForUser(
   jobId: string,
   userId: string
@@ -526,6 +541,12 @@ export async function listActiveAsyncJobsForUser(
 
 export function asyncJobPollPayload(job: AsyncJobRow) {
   const refunded = job.billing_state === "refunded";
+  const meta = job.period_metadata ?? {};
+  const progressRaw = meta.progress;
+  const progress =
+    progressRaw && typeof progressRaw === "object" && !Array.isArray(progressRaw)
+      ? (progressRaw as Record<string, unknown>)
+      : undefined;
   return {
     jobId: job.id,
     kind: job.kind,
@@ -541,5 +562,14 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
     outputEntityTable: job.output_entity_table,
     provenance: job.provenance,
     dedupeKey: job.dedupe_key || undefined,
+    progress: progress
+      ? {
+          done: typeof progress.done === "number" ? progress.done : undefined,
+          total: typeof progress.total === "number" ? progress.total : undefined,
+          label: typeof progress.label === "string" ? progress.label : undefined,
+          message:
+            typeof progress.message === "string" ? progress.message : undefined,
+        }
+      : undefined,
   };
 }

@@ -5,11 +5,16 @@ import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { PRICING } from "@/lib/config/pricing";
 import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 import {
+  DESTINY_MATRIX_DIAGRAM_SLOTS,
   destinyMatrix,
   MATRIX_CALCULATION_VERSION,
-  type DestinyMatrixResult,
+  matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
-import { buildMatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
+import { diffMatrixStructured, formatMatrixDiffTeaser } from "@/lib/numerology/matrix-diff";
+import {
+  buildMatrixFreeSummary,
+  formatMatrixDenseTeaser,
+} from "@/lib/numerology/matrix-free-summary";
 import { getNumerologTool } from "@/lib/numerology/tools";
 import {
   BillingService,
@@ -17,8 +22,11 @@ import {
 } from "@/lib/services/billing-service";
 import { generateNumerologSessionReading } from "@/lib/services/numerology-service";
 import {
+  purgeMatrixConsultationSessions,
+  wipeUserMatrixReports,
+} from "@/lib/numerology/matrix-session-cleanup";
+import {
   deleteOwnedMatrixReportsForBirth,
-  deleteUserMatrixReport,
   findOwnedMatrixReport,
   getUserMatrixReportById,
   listUserMatrixReports,
@@ -28,7 +36,6 @@ import {
 import { query } from "@/lib/db";
 import {
   createSession,
-  deleteConsultationSession,
   getSession,
   updateSessionChatMeta,
 } from "@/lib/session";
@@ -39,45 +46,11 @@ import {
   isUsableMatrixReading,
   sanitizeReadingForClient,
 } from "@/lib/chat-reply-sanitize";
+import { forceFillMissingSections } from "@/lib/numerology/matrix-sectioned-reading";
+import { resolveClientGender } from "@/lib/russian-name-gender";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import { createHistoryEntry, getUserById } from "@/lib/users";
-
-/** Drop consultation sessions left behind after matrix report delete/replace. */
-async function purgeMatrixConsultationSessions(
-  profileUserId: string,
-  sessionIds: string[] = []
-): Promise<void> {
-  const wanted = new Set(sessionIds.filter((id) => Boolean(id?.trim())));
-
-  const { rows: orphans } = await query<{ id: string }>(
-    `SELECT s.id
-     FROM sessions s
-     WHERE s.user_id = $1
-       AND (
-         COALESCE(s.spread_id, '') = 'destiny_matrix'
-         OR COALESCE(s.intention, '') = 'destiny_matrix'
-       )
-       AND NOT EXISTS (
-         SELECT 1
-         FROM numerology_report_history n
-         WHERE n.user_id = s.user_id
-           AND n.tool_id = 'destiny_matrix'
-           AND n.session_id = s.id
-           AND length(trim(n.content)) > 0
-       )`,
-    [profileUserId]
-  );
-  for (const row of orphans) wanted.add(row.id);
-
-  await Promise.all(
-    [...wanted].map((id) =>
-      deleteConsultationSession(id, profileUserId).catch((err) => {
-        console.warn("[bot-matrix] session purge failed", id, err);
-        return false;
-      })
-    )
-  );
-}
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
@@ -97,26 +70,8 @@ export type BotMatrixDiagram = {
   name: string | null;
   birthDate: string;
   slots: BotMatrixDiagramSlot[];
+  focusKey?: string | null;
 };
-
-const DIAGRAM_SLOTS: Array<{
-  key: keyof DestinyMatrixResult;
-  label: string;
-  area: string;
-  featured?: boolean;
-}> = [
-  { key: "energy", label: "Энергия", area: "energy" },
-  { key: "body", label: "Тело и характер", area: "body" },
-  { key: "purpose", label: "Предназначение", area: "purpose", featured: true },
-  { key: "roots", label: "Род и корни", area: "roots" },
-  { key: "talents", label: "Таланты", area: "talents" },
-  { key: "relationships", label: "Отношения", area: "rel" },
-  { key: "money", label: "Деньги", area: "money" },
-  { key: "paternal", label: "Род отца", area: "paternal" },
-  { key: "maternal", label: "Род матери", area: "maternal" },
-  { key: "karma", label: "Карма", area: "karma" },
-  { key: "yearArcana", label: "Аркан года", area: "year" },
-];
 
 function buildMatrixDiagram(
   birthDate: string,
@@ -127,10 +82,11 @@ function buildMatrixDiagram(
   return {
     name: name?.trim() || null,
     birthDate,
-    slots: DIAGRAM_SLOTS.map((slot) => {
-      const point = matrix[slot.key];
+    focusKey: matrix.focusKey,
+    slots: DESTINY_MATRIX_DIAGRAM_SLOTS.map((slot) => {
+      const point = slot.pick(matrix);
       return {
-        key: slot.key,
+        key: String(slot.key),
         label: slot.label,
         area: slot.area,
         featured: Boolean(slot.featured),
@@ -195,6 +151,17 @@ export async function botMatrixSummary(telegramUserId: number) {
     gate.user.birth_date!,
     gate.user.name || gate.resolved.name
   );
+  const currentStructured = summary.matrix
+    ? matrixToStructuredData(summary.matrix)
+    : null;
+  const prevStructured =
+    owned?.structuredData && typeof owned.structuredData === "object"
+      ? (owned.structuredData as Record<string, unknown>)
+      : null;
+  const sinceLast =
+    currentStructured && prevStructured
+      ? formatMatrixDiffTeaser(diffMatrixStructured(prevStructured, currentStructured))
+      : null;
 
   return {
     ok: true as const,
@@ -205,6 +172,29 @@ export async function botMatrixSummary(telegramUserId: number) {
     moneyInsight: summary.moneyInsight.slice(0, 400),
     loveInsight: summary.loveInsight.slice(0, 400),
     yearInsight: summary.yearInsight.slice(0, 400),
+    comfortInsight: summary.comfortInsight.slice(0, 400),
+    karmicInsight: summary.karmicInsight.slice(0, 400),
+    ageInsight: summary.ageInsight.slice(0, 300),
+    periodTeaser: summary.period.teaser.slice(0, 500),
+    focusLabel: summary.period.focusLabel,
+    focusKey: summary.period.focusKey,
+    focusNumber: summary.period.focusNumber,
+    focusTitle: summary.period.focusTitle,
+    practiceSeed: summary.period.practiceSeed,
+    denseTeaser: formatMatrixDenseTeaser(summary, {
+      name: gate.user.name || gate.resolved.name,
+      birthDate: gate.user.birth_date,
+      withCta: false,
+    }).slice(0, 1600),
+    sinceLast,
+    shareCard: [
+      summary.period.focusLabel,
+      `${summary.period.focusTitle} (${summary.period.focusNumber})`,
+      summary.period.practiceSeed,
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, 280),
     keyArcana: summary.keyArcana,
     diagram,
     savedReports: reports.length,
@@ -302,7 +292,11 @@ export async function botMatrixRun(
   const birthDate = gate.user.birth_date!;
   const isoBirth = toIsoBirthDate(birthDate) ?? birthDate;
   const tool = getNumerologTool("destiny_matrix");
-  const userName = gate.user.name || gate.resolved.name || "друг";
+  const userName =
+    normalizePersonDisplayName(gate.user.name || gate.resolved.name) ||
+    gate.user.name ||
+    gate.resolved.name ||
+    "друг";
   const diagram = buildMatrixDiagram(isoBirth, userName);
   const replace = Boolean(opts?.replace);
 
@@ -441,14 +435,27 @@ export async function botMatrixRun(
       gender: gate.user.gender,
       spreadNumbers: [],
       memoryBlock: numerologMemoryBlock,
+      birthTime: gate.user.birth_time,
+      birthCity: gate.user.birth_city,
+      userId: profileUserId,
     });
     const rawReading = sessionResult.reply?.trim() || "";
-    let reading = sanitizeReadingForClient(rawReading);
-    if (!isUsableMatrixReading(rawReading) || !reading) {
+    let reading = sanitizeReadingForClient(rawReading) || rawReading;
+    const matrix = destinyMatrix(birthDate);
+    if (matrix && (!isUsableMatrixReading(reading) || !reading.trim())) {
+      const gender = resolveClientGender(gate.user.gender, userName);
+      reading = forceFillMissingSections(reading || "", matrix, userName, gender);
+      reading = sanitizeReadingForClient(reading) || reading;
+    }
+    if (!isUsableMatrixReading(reading) || !reading.trim()) {
       throw new Error("matrix_prompt_leak_or_empty");
     }
-
-    const matrix = destinyMatrix(birthDate);
+    const { matrixReadingToStructuredPayload } = await import(
+      "@/lib/numerology/matrix-reading-document"
+    );
+    const structuredBase = matrix
+      ? matrixToStructuredData(matrix)
+      : { version: MATRIX_CALCULATION_VERSION };
     const saved = await saveMatrixReport({
       userId: profileUserId,
       birthDateRaw: birthDate,
@@ -456,9 +463,12 @@ export async function botMatrixRun(
       runeCost: billingCharge?.spentRunes ?? tool.cost,
       chargeTransactionId: billingCharge?.transactionId,
       sessionId: session.id,
-      structuredData: matrix
-        ? { version: MATRIX_CALCULATION_VERSION, matrix }
-        : { version: MATRIX_CALCULATION_VERSION },
+      structuredData: {
+        ...structuredBase,
+        ...(sessionResult.matrixDocument
+          ? { reading: matrixReadingToStructuredPayload(sessionResult.matrixDocument) }
+          : {}),
+      },
       // New paid order always replaces any prior report for this birth date.
       overwrite: true,
     });
@@ -550,24 +560,13 @@ export async function botMatrixDelete(input: {
   if (!gate.ok) return gate;
 
   const profileUserId = gate.resolved.profileUserId!;
-  let deleted = 0;
-  let sessionIds: string[] = [];
-  if (input.reportId?.trim()) {
-    const one = await deleteUserMatrixReport(profileUserId, input.reportId);
-    deleted = one.deleted ? 1 : 0;
-    sessionIds = one.sessionIds;
-  } else {
-    const many = await deleteOwnedMatrixReportsForBirth(
-      profileUserId,
-      gate.user.birth_date
-    );
-    deleted = many.deleted;
-    sessionIds = many.sessionIds;
-  }
+  const wiped = await wipeUserMatrixReports({
+    userId: profileUserId,
+    reportId: input.reportId,
+    birthDate: input.reportId?.trim() ? null : gate.user.birth_date,
+  });
 
-  await purgeMatrixConsultationSessions(profileUserId, sessionIds);
-
-  if (deleted < 1) {
+  if (wiped.deletedReports < 1) {
     return {
       ok: false as const,
       error: "not_found" as const,
@@ -575,10 +574,15 @@ export async function botMatrixDelete(input: {
     };
   }
 
+  const cost = getNumerologTool("destiny_matrix").cost || PRICING.NUMEROLOGY_SESSION;
+  const runeBalance = await getRuneBalance(profileUserId);
+
   return {
     ok: true as const,
     action: "delete" as const,
-    deleted,
+    deleted: wiped.deletedReports,
+    cost,
+    runeBalance,
     message: "Матрица удалена. Можно рассчитать и получить разбор заново.",
   };
 }

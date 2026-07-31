@@ -82,6 +82,7 @@ const ALLOWED_LATIN_WORDS = new Set([
   "budha", "shukra",
   "rider", "waite", "lenormand", "tarot", "rws",
   "ace", "king", "queen", "knight", "page", "of", "wands", "cups", "swords", "pentacles",
+  "zovus", "aura",
 ]);
 
 /** Common English leaks from LLM → Russian replacements. */
@@ -163,11 +164,14 @@ export function stripEnglishLeakageFromRussianText(text: string): string {
     }
   );
 
+  // Collapse horizontal whitespace only — never fold newlines (matrix zone
+  // titles and paragraph breaks must stay line-anchored for completeness gates).
   return out
-    .replace(/\s+([.,!?;:—–-])/g, "$1")
-    .replace(/\s{2,}/g, " ")
+    .replace(/[^\S\n]+([.,!?;:—–-])/g, "$1")
+    .replace(/[^\S\n]{2,}/g, " ")
     .replace(/ \n/g, "\n")
     .replace(/\n /g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 

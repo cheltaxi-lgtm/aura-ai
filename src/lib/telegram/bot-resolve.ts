@@ -61,12 +61,16 @@ export async function resolveBotUser(telegramUserId: number): Promise<BotResolve
   const runeBalance = profileUserId ? await getRuneBalance(profileUserId) : null;
   const name = profile?.name ?? account?.name ?? null;
 
+  const birthCity = (profile?.birth_city || "").trim();
+  const needsOnboarding =
+    !profileUserId || !profile?.birth_date || !birthCity;
+
   return {
     linked: true,
     telegramUserId,
     accountId: identity.user_account_id,
     profileUserId,
-    needsOnboarding: !profileUserId || !profile?.birth_date,
+    needsOnboarding,
     name,
     email: account?.email ?? null,
     gender: resolveClientGender(profile?.gender, name),

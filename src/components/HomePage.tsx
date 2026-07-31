@@ -1356,7 +1356,7 @@ export default function HomePage({
     if (!selectedCharacter || !intentionSpread) return;
     if (intentionSpread.masterId !== selectedCharacter) return;
     if (sessionIntention === "life_death") return;
-    if (readingInFlightRef.current) return;
+    if (readingInFlightRef.current || pendingNewChatThreadRef.current) return;
     if (chatHasSpreadReading(messages)) return;
     if (
       !hasCompleteSpread(
@@ -1371,8 +1371,13 @@ export default function HomePage({
     const intention = sessionIntention ?? intentionSpread.intention;
     if (!intention) return;
 
+    // Never hydrate a previous same-card consultation into a fresh thread.
+    const boundSessionId =
+      consultationSessionIdRef.current ?? consultationSessionId ?? undefined;
+    if (!boundSessionId) return;
+
     const cardsKey = spreadKey(intentionSpread.cards);
-    const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}`;
+    const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}:${boundSessionId}`;
     if (onboarding.spreadReadingRecoveryKeyRef.current === recoveryKey) return;
     if (insufficientRunes) return;
     onboarding.spreadReadingRecoveryKeyRef.current = recoveryKey;
@@ -1390,13 +1395,16 @@ export default function HomePage({
           cardNames: intentionSpread.cards.map((c) => c.name),
           spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
           cardCount: intentionSpread.cards.length,
+          sessionId: boundSessionId,
         });
         if (cancelled || !raw) return;
+        if (pendingNewChatThreadRef.current || readingInFlightRef.current) return;
 
         const cardNames = intentionSpread.cards.map((c) => c.name);
         const readingText = resolveClientReadingText(raw, cardNames);
         if (!readingText || cancelled) return;
         setMessages((prev) => {
+          if (chatHasSpreadReading(prev)) return prev;
           const next = appendSpreadReadingMessage(prev, readingText);
           if (next === prev) return prev;
           saveChatCache(selectedCharacter, next, cardsKey, {
@@ -1428,6 +1436,9 @@ export default function HomePage({
     sessionIntention,
     messages,
     readingInFlightRef,
+    pendingNewChatThreadRef,
+    consultationSessionId,
+    consultationSessionIdRef,
     setMessages,
     onboarding.spreadReadingRecoveryKeyRef,
     setReadingRitualCountdownDone,
@@ -2033,9 +2044,13 @@ export default function HomePage({
     const masterId = selectedCharacter;
     const master = findShowcaseMaster(masterId, masters) ?? getCharacterById(masterId);
     const label = master?.name ?? "мастером";
+    const matrixTool =
+      sessionSpreadMetaRef.current?.numerologToolId === "destiny_matrix";
     if (
       !window.confirm(
-        `Удалить этот сеанс с ${label} безвозвратно? Переписка пропадёт из чата и личного кабинета.`
+        matrixTool
+          ? `Удалить матрицу судьбы с ${label} безвозвратно? Пропадёт из чата и кабинета, покупка сбросится.`
+          : `Удалить этот сеанс с ${label} безвозвратно? Переписка пропадёт из чата и личного кабинета.`
       )
     ) {
       return;

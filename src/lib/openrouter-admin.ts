@@ -2,7 +2,7 @@ import { openRouterAppHeaders } from "@/lib/brand";
 import { openRouterFetch } from "@/lib/openrouter-fetch";
 import { isOpenRouterConfigured } from "@/lib/llm";
 import { getLlmConcurrencyStats } from "@/lib/llm-concurrency";
-import { getAdminAiSettings } from "@/lib/ai-model";
+import { DEFAULT_MATRIX_MODEL, getAdminAiSettings } from "@/lib/ai-model";
 import { getSetting, setSetting } from "@/lib/settings";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
@@ -100,6 +100,8 @@ export type OpenRouterAdminSnapshot = {
     chat: string;
     freeChat: string;
     paidChat: string;
+    matrix: string;
+    natal: string;
     vision: string;
     tts: string;
     ttsFallback: string;
@@ -559,6 +561,8 @@ export async function getOpenRouterAdminSnapshot(force = false): Promise<OpenRou
       chat: ai.model,
       freeChat: ai.freeModel ?? ai.model,
       paidChat: ai.paidModel ?? ai.model,
+      matrix: ai.matrixModel?.trim() || DEFAULT_MATRIX_MODEL,
+      natal: ai.natalModel ?? ai.model,
       vision: ai.visionModel,
       tts: tts.model ?? process.env.OPENROUTER_TTS_MODEL ?? "google/gemini-3.1-flash-tts-preview",
       ttsFallback: tts.fallbackModel ?? "hexgrad/kokoro-82m",

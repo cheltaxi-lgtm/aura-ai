@@ -729,7 +729,13 @@ export function useChatActions(options: UseChatActionsOptions) {
         setIsLoading(true);
         const ritualStartedAt = Date.now();
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 120_000);
+        const isLongMatrix =
+          metaNumerologToolId === "destiny_matrix" ||
+          metaNumerologToolId === "matrix_compatibility";
+        const timeout = setTimeout(
+          () => controller.abort(),
+          isLongMatrix ? 420_000 : 120_000
+        );
 
         try {
           const res = await fetch("/api/reading", {
@@ -766,6 +772,8 @@ export function useChatActions(options: UseChatActionsOptions) {
                 jobId: data.jobId,
                 storageKey: "aura:reading-active-job",
                 signal: controller.signal,
+                maxAttempts: isLongMatrix ? 240 : 180,
+                pollIntervalMs: isLongMatrix ? 2_500 : 2_000,
               });
               status = 200;
             } catch (pollErr) {

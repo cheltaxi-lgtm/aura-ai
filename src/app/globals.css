@@ -8203,7 +8203,7 @@ body.cookie-banner-visible .auth-salon-page .auth-form {
   overflow: hidden;
 }
 
-/* ── Destiny matrix (22-arcana) reveal — matrix-v1 ── */
+/* ── Destiny matrix (22-arcana) reveal — matrix-v2 full ── */
 .destiny-matrix {
   display: grid;
   margin-top: 1rem;
@@ -8226,6 +8226,22 @@ body.cookie-banner-visible .auth-salon-page .auth-form {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
     gap: 0.55rem;
   }
+
+  .destiny-matrix--v2 {
+    grid-template-areas:
+      ". energy sky ."
+      "body purpose roots money"
+      "talents rel paternal maternal"
+      "karma tailMid tailTip age"
+      ". year month .";
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+}
+
+.destiny-matrix__cell--focus {
+  border-color: rgba(255, 180, 120, 0.55) !important;
+  box-shadow: 0 0 0 1px rgba(255, 180, 120, 0.35), 0 8px 22px rgba(0, 0, 0, 0.28);
 }
 
 .destiny-matrix__cell {

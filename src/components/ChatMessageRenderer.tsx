@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, type ReactNode } from "react";
+import { Fragment, memo, useMemo, type ReactNode } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
@@ -330,9 +330,25 @@ function ChatMessageRenderer({
   variant = "mystic",
 }: ChatMessageRendererProps) {
   const trimmed = (hideSpreadCardImages ? stripAllSpreadCardImages(content) : content).trim();
+  const isUser = role === "user";
+
+  const { imageBlock, body } = useMemo(
+    () => (trimmed && !isUser ? splitLeadingCardImages(trimmed) : { imageBlock: "", body: "" }),
+    [trimmed, isUser]
+  );
+  const cardNamesKey = useMemo(() => {
+    if (!trimmed || isUser || hideSpreadCardImages) return "";
+    return inferSpreadCardNames(imageBlock ? `${imageBlock}\n${body}` : trimmed).join("\0");
+  }, [trimmed, isUser, hideSpreadCardImages, imageBlock, body]);
+  const markdownSource = useMemo(() => {
+    if (!trimmed || isUser) return "";
+    const names = cardNamesKey ? cardNamesKey.split("\0") : undefined;
+    return normalizeMasterMarkdown(body || trimmed, names);
+  }, [trimmed, isUser, body, cardNamesKey]);
+
   if (!trimmed) return null;
 
-  if (role === "user") {
+  if (isUser) {
     return (
       <p className={`whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-white ${className}`}>
         {trimmed}
@@ -340,14 +356,6 @@ function ChatMessageRenderer({
     );
   }
 
-  const { imageBlock, body } = splitLeadingCardImages(trimmed);
-  const cardNames = hideSpreadCardImages
-    ? []
-    : inferSpreadCardNames(imageBlock ? `${imageBlock}\n${body}` : trimmed);
-  const markdownSource = normalizeMasterMarkdown(
-    body || trimmed,
-    cardNames.length ? cardNames : undefined
-  );
   const hasBlockMarkdown = /(^#{1,3}\s|^-\s|^---$|^\d+\.\s|!\[[^\]]*\]\([^)]+\))/m.test(
     markdownSource
   );

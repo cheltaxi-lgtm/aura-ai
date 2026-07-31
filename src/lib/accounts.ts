@@ -366,7 +366,16 @@ export function findCachedIntentionSpread(
   characterId: string,
   intention: string,
   cards: { name: string }[],
-  spreadId?: string | null
+  spreadId?: string | null,
+  options?: {
+    /** Only reuse a reading that belongs to this consultation session. */
+    sessionId?: string | null;
+    /**
+     * When true (default for custom polls), never return a cross-session hit.
+     * Same cards + same question must not surface a previous consultation.
+     */
+    requireSessionId?: boolean;
+  }
 ): {
   reading: string;
   tarotCards: { name: string; meaning?: string }[];
@@ -374,15 +383,25 @@ export function findCachedIntentionSpread(
   system?: string;
   source?: string;
   provenance?: unknown;
+  sessionId?: string;
 } | null {
   const key = tarotCardsKey(cards);
   if (!key) return null;
+
+  const sessionId = options?.sessionId?.trim() || null;
+  const requireSessionId = options?.requireSessionId === true || Boolean(sessionId);
+  if (requireSessionId && !sessionId) return null;
 
   const entry = history.find((r) => {
     if (r.character_name !== characterId) return false;
     const ctx = r.context_data;
     if (ctx?.type !== "intention_spread" || ctx.intention !== intention) return false;
     if (spreadId && ctx.spreadId && ctx.spreadId !== spreadId) return false;
+    if (sessionId) {
+      const storedSessionId =
+        typeof ctx.sessionId === "string" ? ctx.sessionId.trim() : "";
+      if (storedSessionId !== sessionId) return false;
+    }
     const reading = typeof ctx.reading === "string" ? ctx.reading.trim() : "";
     if (reading.length < 80) return false;
     const stored = ctx.tarotCards as { name: string }[] | undefined;
@@ -398,6 +417,7 @@ export function findCachedIntentionSpread(
     system: ctx.system as string | undefined,
     source: typeof ctx.source === "string" ? ctx.source : undefined,
     provenance: ctx.provenance,
+    sessionId: typeof ctx.sessionId === "string" ? ctx.sessionId : undefined,
   };
 }
 

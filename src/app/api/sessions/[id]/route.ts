@@ -98,9 +98,36 @@ export async function DELETE(
     return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   }
 
+  const session = await getSession(sessionId);
+  if (!session || session.user_id !== profileUserId) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  const {
+    isDestinyMatrixSession,
+    wipeMatrixOwnershipForSession,
+    purgeMatrixConsultationSessions,
+  } = await import("@/lib/numerology/matrix-session-cleanup");
+
+  if (isDestinyMatrixSession(session)) {
+    const { rows: profileRows } = await query<{ birth_date: string | null }>(
+      `SELECT birth_date::text AS birth_date FROM users WHERE id = $1 LIMIT 1`,
+      [profileUserId]
+    );
+    await wipeMatrixOwnershipForSession({
+      userId: profileUserId,
+      sessionId,
+      profileBirthDate: profileRows[0]?.birth_date ?? null,
+    });
+  }
+
   const ok = await deleteConsultationSession(sessionId, profileUserId);
   if (!ok) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  if (isDestinyMatrixSession(session)) {
+    await purgeMatrixConsultationSessions(profileUserId, [sessionId]);
   }
 
   return NextResponse.json({ ok: true });

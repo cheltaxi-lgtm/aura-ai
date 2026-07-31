@@ -9,10 +9,15 @@ import {
   DailyReadingLockedError,
   getOrCreateDailyReading,
 } from "@/lib/daily-energy";
-import { drawSpread, resolveMasterDeckSystem } from "@/lib/decks";
+import {
+  drawSpread,
+  resolveMasterDeckSystem,
+  resolveSpreadDeckSystem,
+} from "@/lib/decks";
 import {
   BillingService,
   InsufficientFundsError,
+  type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
   createSession,
@@ -26,10 +31,16 @@ import { getCabinetSessions } from "@/lib/cabinet-data";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { sanitizeReadingForClient, stripMemoryLeakFromReply } from "@/lib/chat-sanitize";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { createHistoryEntry, getUserById } from "@/lib/users";
 import { query } from "@/lib/db";
-import { botRunesShopUrl } from "@/lib/telegram/bot-resolve";
-import { resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { botRunesShopUrl, resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
+import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
+import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
+import { getSpread, resolveSpreadPositions } from "@/lib/spreads";
+import { resolveSpreadCost } from "@/lib/spreads/spread-pricing";
+import type { SessionTopicId } from "@/lib/session-topics";
 
 const POSITIONS = ["Прошлое", "Настоящее", "Будущее"] as const;
 
@@ -124,7 +135,8 @@ export async function botReadingDetail(profileUserId: string, sessionId: string)
 }
 
 function orientCards(
-  drawn: Array<{ id: number; name: string; meaning: string; reversed?: boolean }>
+  drawn: Array<{ id: number; name: string; meaning: string; reversed?: boolean }>,
+  positionLabels: string[] = [...POSITIONS]
 ): BotCard[] {
   return drawn.map((c, i) => {
     const reversed = c.reversed ?? Math.random() < 0.45;
@@ -133,7 +145,7 @@ function orientCards(
       name: c.name,
       reversed,
       position: i,
-      positionLabel: POSITIONS[i] ?? `Позиция ${i + 1}`,
+      positionLabel: positionLabels[i] ?? `Позиция ${i + 1}`,
       meaning: c.meaning,
     };
   });
@@ -148,15 +160,31 @@ export type BotSpreadResult =
       runeBalance: number;
       charged: number;
       free: boolean;
+      masterId?: string;
+      spreadId?: string;
+      cost?: number;
+      intentSlug?: string;
     }
   | {
       ok: false;
-      error: "needs_link" | "needs_onboarding" | "insufficient_runes" | "generation_failed" | "internal";
+      error:
+        | "needs_link"
+        | "needs_onboarding"
+        | "insufficient_runes"
+        | "generation_failed"
+        | "site_only"
+        | "not_found"
+        | "internal";
       message: string;
       runeBalance?: number;
       cost?: number;
       linkUrl?: string;
     };
+
+function intentTopicHint(category: string, spreadId: string): SessionTopicId | null {
+  if (spreadId === "triplet-love" || category === "love") return "love";
+  return null;
+}
 
 /** Full Veronika triplet on site (same billing rules as /api/reading). */
 export async function botRunVeronikaSpread(input: {
@@ -176,7 +204,7 @@ export async function botRunVeronikaSpread(input: {
     return {
       ok: false,
       error: "needs_onboarding",
-      message: "Завершите профиль на сайте (дата рождения) — откройте кабинет по кнопке.",
+      message: "Завершите профиль (город и дата рождения) — в боте или в кабинете на сайте.",
       linkUrl: resolved.linkUrl,
     };
   }
@@ -240,7 +268,10 @@ export async function botRunVeronikaSpread(input: {
     }
   }
 
-  const userName = user.name || resolved.name || "друг";
+  const userName = normalizePersonDisplayNameOr(
+    user.name || resolved.name,
+    "друг"
+  );
   const today = new Date().toLocaleDateString("ru-RU", {
     day: "numeric",
     month: "long",
@@ -344,6 +375,9 @@ export async function botRunVeronikaSpread(input: {
       runeBalance,
       charged,
       free: charged === 0,
+      masterId: "veronika",
+      spreadId: "triplet",
+      cost: charged || undefined,
     };
   } catch (err) {
     console.error("[bot-product] spread failed", err);
@@ -364,6 +398,263 @@ export async function botRunVeronikaSpread(input: {
       ok: false,
       error: "generation_failed",
       message: "Разбор не сложился. Попробуйте позже.",
+    };
+  }
+}
+
+/**
+ * Full catalog intent — site geometry, recommended master, INTENTION_SPREAD pricing.
+ * Partner-info intents are rejected (site_only).
+ */
+export async function botRunCatalogIntent(input: {
+  telegramUserId: number;
+  intentSlug: string;
+}): Promise<BotSpreadResult> {
+  const resolved = await resolveBotUser(input.telegramUserId);
+  if (!resolved.linked || !resolved.profileUserId) {
+    return {
+      ok: false,
+      error: "needs_link",
+      message: "Сначала привяжите аккаунт Zovus — тогда расклад и история будут общими с сайтом.",
+      linkUrl: resolved.linkUrl,
+    };
+  }
+  if (resolved.needsOnboarding) {
+    return {
+      ok: false,
+      error: "needs_onboarding",
+      message: "Завершите профиль (город и дата рождения) — в боте или в кабинете на сайте.",
+      linkUrl: resolved.linkUrl,
+    };
+  }
+
+  const intent = getSpreadIntentBySlug(input.intentSlug.trim());
+  if (!intent) {
+    return { ok: false, error: "not_found", message: "Расклад не найден в каталоге." };
+  }
+  if (intent.requiresPartnerInfo) {
+    return {
+      ok: false,
+      error: "site_only",
+      message: "Этот расклад с данными партнёра — откройте на сайте.",
+      linkUrl: resolved.linkUrl,
+    };
+  }
+
+  const copy = resolveIntentCopy(intent, resolved.gender);
+  const question = (copy.questionTemplate || intent.questionTemplate || "").trim().slice(0, 500);
+  if (question.length < 3) {
+    return {
+      ok: false,
+      error: "site_only",
+      message: "Этот расклад лучше открыть на сайте.",
+      linkUrl: resolved.linkUrl,
+    };
+  }
+
+  const profileUserId = resolved.profileUserId;
+  const user = await getUserById(profileUserId);
+  if (!user) {
+    return { ok: false, error: "internal", message: "Профиль не найден." };
+  }
+
+  const spreadId = intent.spreadId;
+  const spread = getSpread(spreadId);
+  const masterId = resolveIntentMasterId(intent);
+  const topicHint = intentTopicHint(intent.category, spreadId);
+  const positionLabels = resolveSpreadPositions(spreadId, topicHint).map((p) => p.label);
+  const cardCount = Math.max(1, spread.cardCount || positionLabels.length || 3);
+  const system = resolveSpreadDeckSystem(spreadId, masterId);
+  const cards = orientCards(drawSpread(system, cardCount), positionLabels);
+  const cardNames = cards.map((c) => formatReversedCardName(c.name, c.reversed));
+
+  const session = await createSession(undefined, profileUserId);
+  await updateSessionChatMeta(session.id, {
+    characterKey: masterId,
+    intention: "custom",
+    spreadType: "new",
+    spreadId,
+    cards: cardNames,
+  });
+
+  const unlimited = await resolveUnlimitedAccess({
+    accountId: resolved.accountId,
+    profileUserId,
+  });
+  const runeSettings = await getRuneSettings();
+  const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
+  const spreadCost = resolveSpreadCost(spreadId, runeSettings);
+
+  let billingCharge: BillingChargeResult | null = null;
+  let runeBalance = await getRuneBalance(profileUserId);
+  let charged = 0;
+
+  if (useRuneBilling) {
+    try {
+      billingCharge = await BillingService.chargeForSession({
+        userId: profileUserId,
+        cost: spreadCost,
+        actionType: "INTENTION_SPREAD",
+      });
+      runeBalance = billingCharge.newBalance;
+      charged = billingCharge.spentRunes;
+      await unlockSingleSession(session.id);
+    } catch (err) {
+      if (err instanceof InsufficientFundsError) {
+        return {
+          ok: false,
+          error: "insufficient_runes",
+          message: `Недостаточно рун: нужно ${err.required}, на балансе ${err.balance}. Пополните на сайте.`,
+          runeBalance: err.balance,
+          cost: err.required,
+          linkUrl: botRunesShopUrl("product"),
+        };
+      }
+      throw err;
+    }
+  }
+
+  const userName = normalizePersonDisplayNameOr(user.name || resolved.name, "друг");
+  const today = new Date().toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const isPaid = charged > 0 || !useRuneBilling;
+  const systemPrompt = buildCharacterPrompt(
+    masterId,
+    {
+      userName,
+      gender: user.gender || resolved.gender || "female",
+      zodiac: user.zodiac || "Овен",
+      birthDate: user.birth_date || "",
+      today,
+      tarotCards: cards.map((c) => ({ name: c.name, meaning: c.meaning })),
+      isPaid,
+      mainQuestion: question,
+    },
+    {
+      intention: "custom",
+      customQuestion: question,
+      spreadId,
+      spreadType: "new",
+      positionLabels,
+    }
+  );
+
+  try {
+    const generated = await generateReading(systemPrompt, {
+      userName,
+      tarotCards: cards.map((c) => ({ name: c.name, meaning: c.meaning })),
+      isPaid,
+      characterId: masterId,
+      intention: "custom",
+      spreadId,
+      positionLabels,
+      userMessage: `Вопрос клиента: ${question}`,
+    });
+
+    const reading = sanitizeReadingForClient(
+      stripMemoryLeakFromReply(generated.text) || generated.text,
+      cards.map((c) => c.name)
+    );
+
+    const ok =
+      generated.fromLlm &&
+      Boolean(reading?.trim()) &&
+      isPaidSpreadTextComplete(
+        reading,
+        cards.map((c) => c.name)
+      );
+
+    if (!ok) {
+      if (billingCharge) {
+        runeBalance = await BillingService.rollbackCharge({
+          userId: profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          actionType: "INTENTION_SPREAD",
+          transactionId: billingCharge.transactionId,
+        });
+      }
+      return {
+        ok: false,
+        error: "generation_failed",
+        message: "Разбор не сложился. Руны не списаны — попробуйте ещё раз.",
+        runeBalance,
+        cost: spreadCost,
+      };
+    }
+
+    await createHistoryEntry({
+      userId: profileUserId,
+      characterName: masterId,
+      isPaid: charged > 0,
+      contextData: {
+        type: "intention_spread",
+        intention: "custom",
+        spreadId,
+        customQuestion: question,
+        interpretation: reading,
+        reading,
+        cards: cardNames,
+        tarotCards: cards.map((c) => ({
+          name: c.name,
+          meaning: `${c.positionLabel}: ${c.meaning}`,
+        })),
+        deckSystem: system,
+        system,
+        sessionId: session.id,
+        source: "telegram_bot",
+        intentSlug: intent.slug,
+      },
+    });
+
+    await ensureSpreadReadingInChatMessages({
+      sessionId: session.id,
+      profileUserId,
+      characterId: masterId,
+      reading,
+      tarotCards: cards.map((c) => ({ name: c.name })),
+      intention: "custom",
+      spreadType: "new",
+      spreadId,
+      customQuestion: question,
+    });
+
+    return {
+      ok: true,
+      sessionId: session.id,
+      cards,
+      reading,
+      runeBalance,
+      charged,
+      free: charged === 0,
+      masterId,
+      spreadId,
+      cost: charged || spreadCost,
+      intentSlug: intent.slug,
+    };
+  } catch (err) {
+    console.error("[bot-product] catalog intent failed", err);
+    if (billingCharge) {
+      try {
+        await BillingService.rollbackCharge({
+          userId: profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          actionType: "INTENTION_SPREAD",
+          transactionId: billingCharge.transactionId,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+    return {
+      ok: false,
+      error: "generation_failed",
+      message: "Разбор не сложился. Руны не списаны — попробуйте позже.",
+      cost: spreadCost,
     };
   }
 }

@@ -679,11 +679,16 @@ export default function MasterSessionFlow({
       setDrawError(null);
       const startedAt = Date.now();
       try {
+        // Each consultation gets its own draw — never reopen the previous same-question cards
+        // (that made recovery hydrate the old reading before the new one arrived).
+        const salt =
+          opts?.reshuffleSaltOverride?.trim() ||
+          reshuffleSalt ||
+          `consult-${Date.now()}`;
+        if (salt !== reshuffleSalt) setReshuffleSalt(salt);
         const qs = buildSpreadQuery({
           sessionInit: "1",
-          ...(opts?.reshuffleSaltOverride
-            ? { reshuffleSalt: opts.reshuffleSaltOverride }
-            : {}),
+          reshuffleSalt: salt,
         });
         const res = await fetch(`/api/intention-spread?${qs}`, {
           credentials: "include",
@@ -774,6 +779,7 @@ export default function MasterSessionFlow({
       userFullName,
       buildSpreadQuery,
       selectedSpreadId,
+      reshuffleSalt,
     ]
   );
 

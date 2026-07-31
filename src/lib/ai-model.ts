@@ -39,6 +39,26 @@ export async function getNatalModel(): Promise<string> {
   return ai.model;
 }
 
+/**
+ * Default when admin left matrixModel empty.
+ * Prefer a non-heavy-reasoning chat model: Gemini 3.x burns zone budgets on reasoning_tokens.
+ */
+export const DEFAULT_MATRIX_MODEL = "deepseek/deepseek-chat-v3-0324";
+
+/**
+ * Destiny matrix zone assembly.
+ * matrixModel → DEFAULT_MATRIX_MODEL → paidModel → model.
+ */
+export async function getMatrixModel(): Promise<string> {
+  const ai = await getAdminAiSettings();
+  return (
+    ai.matrixModel?.trim() ||
+    DEFAULT_MATRIX_MODEL ||
+    ai.paidModel?.trim() ||
+    ai.model
+  );
+}
+
 /** Ordered chat/reading backup models from admin settings (may be empty). */
 export async function getChatFallbackModels(): Promise<string[]> {
   const ai = await getAdminAiSettings();
@@ -49,4 +69,26 @@ export async function getChatFallbackModels(): Promise<string[]> {
 export async function getNatalFallbackModels(): Promise<string[]> {
   const ai = await getAdminAiSettings();
   return (ai.natalFallbackModels ?? []).map((m) => m.trim()).filter(Boolean);
+}
+
+/**
+ * Matrix zone backups. If matrixFallbackModels is empty, reuse chat fallbackModels.
+ */
+export async function getMatrixFallbackModels(): Promise<string[]> {
+  const ai = await getAdminAiSettings();
+  const dedicated = (ai.matrixFallbackModels ?? []).map((m) => m.trim()).filter(Boolean);
+  if (dedicated.length) return dedicated;
+  return (ai.fallbackModels ?? []).map((m) => m.trim()).filter(Boolean);
+}
+
+/** Deduped chain for matrix sectioned reading: primary + backups. */
+export async function resolveMatrixModelChain(): Promise<string[]> {
+  const primary = await getMatrixModel();
+  const fallbacks = await getMatrixFallbackModels();
+  const out: string[] = [];
+  for (const raw of [primary, ...fallbacks]) {
+    const model = raw?.trim();
+    if (model && !out.includes(model)) out.push(model);
+  }
+  return out;
 }

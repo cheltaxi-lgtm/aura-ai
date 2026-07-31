@@ -9,6 +9,7 @@ import {
 } from "../src/lib/async-job-worker-auth-shared";
 import {
   endpointForJob,
+  getJobKindConfig,
   resolveWorkerKindsFromEnv,
 } from "../src/lib/async-job-registry";
 import {
@@ -31,19 +32,23 @@ const MEMORY_BATCH_SIZE = Math.min(
   10,
   Math.max(1, Number(process.env.MEMORY_JOB_BATCH_SIZE) || 3)
 );
-const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.ASYNC_JOB_CONCURRENCY) || 2));
+/** Default 4 — matrix/tarot jobs were queuing behind each other at 2. */
+const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.ASYNC_JOB_CONCURRENCY) || 4));
 /**
- * Stay under Next route maxDuration (300s). After abort we still wait TIMEOUT_GRACE
- * before refund so a late save_claimed can win.
+ * Default HTTP abort for short jobs. Long kinds (numerology_reading) use kind.timeoutMs.
+ * After abort we still wait TIMEOUT_GRACE before refund so a late save_claimed can win.
  */
 const REQUEST_TIMEOUT_MS = Math.max(
   60_000,
   Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 280_000
 );
-/** After deploy SIGKILL, requeue zombies in ~4 min (was 12 — spinner felt “hung”). */
+/**
+ * Requeue zombies after deploy SIGKILL. Must exceed longest kind timeout
+ * (numerology_reading 420s) or live matrix jobs get reaped mid-run.
+ */
 const STALE_RUNNING_MS = Math.max(
   60_000,
-  Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || 4 * 60_000
+  Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || 9 * 60_000
 );
 const ORPHAN_MIN_AGE_MS = Math.max(
   30_000,
@@ -114,8 +119,10 @@ async function runJob(job: AsyncJobRow): Promise<void> {
   const secret = process.env.ASYNC_JOB_WORKER_SECRET;
   if (!secret) throw new Error("ASYNC_JOB_WORKER_SECRET is not configured");
   const { path, body } = endpointForJob(job);
+  const kindTimeout = getJobKindConfig(job.kind).timeoutMs;
+  const requestTimeoutMs = Math.max(REQUEST_TIMEOUT_MS, kindTimeout + TIMEOUT_GRACE_MS);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       method: "POST",

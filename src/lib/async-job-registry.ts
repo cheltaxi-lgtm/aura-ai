@@ -99,7 +99,8 @@ const INTENTION_SPREAD: PaidJobKindConfig = {
   kind: "intention_spread",
   runeAction: "INTENTION_SPREAD",
   maxActivePerUser: 2,
-  timeoutMs: 180_000,
+  // generateReading can run primary + repair + rescue; keep under worker REQUEST_TIMEOUT (~280s).
+  timeoutMs: 240_000,
   workerPath: (job) => ({
     path: "/api/intention-spread",
     body: { ...job.input, async: false },
@@ -208,7 +209,8 @@ const JOINT_COMBINED: PaidJobKindConfig = {
 const NUMEROLOGY_READING: PaidJobKindConfig = {
   kind: "numerology_reading",
   maxActivePerUser: 2,
-  timeoutMs: 180_000,
+  /** Full matrix ≈ 19 zone LLM calls; align with bot siteNumerology 420s. */
+  timeoutMs: 420_000,
   workerPath: (job) => ({
     path: "/api/reading",
     body: { ...job.input, async: false, characterId: "numerolog" },
@@ -220,6 +222,8 @@ const NUMEROLOGY_READING: PaidJobKindConfig = {
       "numerology_reading",
       payload.numerologToolId,
       payload.numerologReadingCacheKey,
+      payload.birthDate,
+      payload.partnerDate,
     ]),
 };
 
@@ -258,6 +262,7 @@ export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "natal_forecast",
   "natal_compatibility",
   "reading",
+  "numerology_reading",
   "intention_spread",
   "daily_reading",
   "daily_extended",

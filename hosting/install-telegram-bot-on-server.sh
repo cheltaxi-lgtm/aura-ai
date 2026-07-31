@@ -28,6 +28,10 @@ cd "$BOT_DIR"
 mkdir -p /opt/aura-ai/.npm
 chown -R aura-ai:aura-ai /opt/aura-ai/.npm || true
 sudo -u aura-ai npm install --cache /opt/aura-ai/.npm
+# Deploy/tarball can strip +x from esbuild → tsx TransformError / frozen handlers.
+find "$BOT_DIR/node_modules/@esbuild" "$BOT_DIR/node_modules/esbuild" \
+  /opt/aura-ai/node_modules/@esbuild /opt/aura-ai/node_modules/esbuild \
+  -type f -name esbuild -exec chmod +x {} + 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable zovus-telegram-bot.service
 systemctl restart zovus-telegram-bot.service
