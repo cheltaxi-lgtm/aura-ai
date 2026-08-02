@@ -309,7 +309,8 @@ export default function DestinyMatrixPreview() {
                 downloadMatrixShareCardSvg({
                   matrix: summary.matrix,
                   name: name || undefined,
-                  birthDate: birthDate || undefined,
+                  // Birth date omitted by default — PII on share cards.
+                  includeBirthDate: false,
                 });
                 trackSeoEvent("matrix_share_card_download");
               }}
@@ -317,6 +318,23 @@ export default function DestinyMatrixPreview() {
             >
               Скачать карточку для сторис
             </button>
+          </div>
+
+          <div className="rounded-2xl border border-aura-gold/25 bg-aura-gold/[0.05] p-4">
+            <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/80">
+              Узел периода · 7 дней
+            </p>
+            <p className="mt-2 text-sm font-medium text-white">
+              {summary.period.focusLabel}: {summary.period.focusTitle} ({summary.period.focusNumber})
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-white/75">
+              Практика на 7 дней: {summary.period.practiceSeed}
+            </p>
+            <p className="mt-2 text-xs text-white/45">
+              Год {summary.period.yearArcana.number} · {summary.period.yearArcana.title}
+              {" · "}
+              Месяц {summary.period.monthArcana.number} · {summary.period.monthArcana.title}
+            </p>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -355,41 +373,77 @@ export default function DestinyMatrixPreview() {
               <div className="mt-3 space-y-3">
                 <p className="text-sm text-white/65">
                   Разбор сохранён для этой даты рождения. Откройте с Эвелиной бесплатно — без
-                  повторной оплаты за те же числа.
+                  повторной оплаты за те же числа. Или закажите новый полный разбор.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void (async () => {
-                      if (
-                        !window.confirm(
-                          "Удалить сохранённую матрицу безвозвратно? Исчезнет из кабинета и чата — разбор можно будет купить заново."
-                        )
-                      ) {
-                        return;
-                      }
-                      try {
-                        const res = await fetch("/api/numerology/matrix-report", {
-                          method: "DELETE",
-                          credentials: "include",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ birthDate }),
-                        });
-                        if (!res.ok) {
-                          window.alert("Не удалось удалить матрицу. Попробуйте ещё раз.");
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        if (
+                          !window.confirm(
+                            `Удалить текущий разбор и рассчитать новую матрицу за ${PRICING.NUMEROLOGY_SESSION} ᚢ? Старый текст исчезнет из кабинета и чата.`
+                          )
+                        ) {
                           return;
                         }
-                        setOwnedFull(false);
-                        trackSeoEvent("matrix_report_deleted");
-                      } catch {
-                        window.alert("Не удалось удалить матрицу. Проверьте соединение.");
-                      }
-                    })();
-                  }}
-                  className="inline-flex items-center justify-center rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-200 transition hover:border-red-400/50 hover:bg-red-500/15"
-                >
-                  Удалить сохранённую матрицу
-                </button>
+                        try {
+                          const res = await fetch("/api/numerology/matrix-report", {
+                            method: "DELETE",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ birthDate }),
+                          });
+                          if (!res.ok) {
+                            window.alert("Не удалось подготовить новую матрицу. Попробуйте ещё раз.");
+                            return;
+                          }
+                          setOwnedFull(false);
+                          trackSeoEvent("matrix_report_replaced");
+                          window.location.assign(`${FULL_HREF}&replace=1`);
+                        } catch {
+                          window.alert("Не удалось подготовить новую матрицу. Проверьте соединение.");
+                        }
+                      })();
+                    }}
+                    className="inline-flex items-center justify-center rounded-xl border border-aura-gold/40 bg-aura-gold/10 px-4 py-2.5 text-sm font-medium text-aura-gold transition hover:border-aura-gold/60 hover:bg-aura-gold/15"
+                  >
+                    Новая матрица · {PRICING.NUMEROLOGY_SESSION} ᚢ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        if (
+                          !window.confirm(
+                            "Удалить сохранённую матрицу безвозвратно? Исчезнет из кабинета и чата — разбор можно будет купить заново."
+                          )
+                        ) {
+                          return;
+                        }
+                        try {
+                          const res = await fetch("/api/numerology/matrix-report", {
+                            method: "DELETE",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ birthDate }),
+                          });
+                          if (!res.ok) {
+                            window.alert("Не удалось удалить матрицу. Попробуйте ещё раз.");
+                            return;
+                          }
+                          setOwnedFull(false);
+                          trackSeoEvent("matrix_report_deleted");
+                        } catch {
+                          window.alert("Не удалось удалить матрицу. Проверьте соединение.");
+                        }
+                      })();
+                    }}
+                    className="inline-flex items-center justify-center rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-200 transition hover:border-red-400/50 hover:bg-red-500/15"
+                  >
+                    Удалить
+                  </button>
+                </div>
               </div>
             ) : (
               <ul className="mt-3 space-y-1.5 text-sm text-white/55">

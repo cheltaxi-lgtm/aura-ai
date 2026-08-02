@@ -5,16 +5,40 @@ import { readAppShellFromDocument } from "@/lib/app-shell";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+/** App / auth / private surfaces keep the legal-only footer. */
+const MINIMAL_FOOTER_PREFIXES = [
+  "/admin",
+  "/cabinet",
+  "/auth",
+  "/expert",
+  "/session",
+  "/tg",
+  "/joint-reading/",
+  "/share/",
+  "/master/",
+  "/diary",
+  "/runes/success",
+  "/maintenance",
+] as const;
+
+function useMarketingFooter(pathname: string | null): boolean {
+  if (!pathname) return true;
+  if (pathname === "/") return true;
+  if (pathname === "/joint-reading") return true;
+  return !MINIMAL_FOOTER_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix)
+  );
+}
+
 /**
- * Site footer on the web; marketing variant on home; hidden only in the real
- * native/app shell (data-app-shell), not merely because sessionStorage once
- * saw ?app=1 during a prior visit in this tab.
+ * Site footer on the web. Marketing hub links on SEO pages (organic equity);
+ * minimal legal footer on app/auth shells. Hidden in native app shell.
  */
 export default function AppAwareSiteFooter() {
   const [inShell, setInShell] = useState(false);
   const pathname = usePathname();
-  const isHome = pathname === "/";
   const isAdmin = Boolean(pathname?.startsWith("/admin"));
+  const marketing = useMarketingFooter(pathname);
 
   useEffect(() => {
     const sync = () => setInShell(readAppShellFromDocument());
@@ -28,5 +52,5 @@ export default function AppAwareSiteFooter() {
   }, []);
 
   if (inShell || isAdmin) return null;
-  return <SiteFooter variant={isHome ? "marketing" : "minimal"} />;
+  return <SiteFooter variant={marketing ? "marketing" : "minimal"} />;
 }

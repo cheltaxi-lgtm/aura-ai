@@ -3265,12 +3265,6 @@ export default function HomePage({
           </div>
         ) : null}
 
-        {!bootstrapping && !showLanding && !(inPersonalFlow && step === "masters") ? (
-          <h1 className="sr-only">
-            Zovus — расклад Таро онлайн бесплатно, гадание и расшифровка по фото
-          </h1>
-        ) : null}
-
         {!bootstrapping && sessionListMaster ? (
           <>
             <SessionList

@@ -62,17 +62,17 @@ export function matrixMissingSections(text: string): string[] {
   if (!hasKarmicTailCoverage(raw)) {
     missing.push("Кармический хвост · корень/середина/остриё");
   }
+  // Finale may be `## Простыми словами` (structured) or `Простыми словами:`.
+  if (!/Простыми\s+словами/i.test(raw)) {
+    missing.push("Простыми словами");
+  }
   return missing;
 }
 
-/** Paid full matrix: all required zone headers present (+ sane length). */
+/** Paid full matrix: all required zone headers + finale (+ sane length). */
 export function isCompleteMatrixReading(text: string): boolean {
   const t = (text || "").trim();
   if (t.length < 2200) return false;
-  // Finale may be `## Простыми словами` (structured) or `Простыми словами:`.
-  if (/Простыми\s+словами/i.test(t) && matrixMissingSections(t).length > 0) {
-    return false;
-  }
   return matrixMissingSections(t).length === 0;
 }
 

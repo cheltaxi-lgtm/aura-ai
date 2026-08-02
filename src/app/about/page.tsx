@@ -39,6 +39,15 @@ export default function AboutPage() {
           .
         </p>
       </AboutSection>
+      <AboutSection title="Telegram-бот">
+        <p>
+          Официальный бот в мессенджере — расклады и матрица судьбы без отдельного приложения:{" "}
+          <Link href="/telegram" className="text-aura-gold hover:underline">
+            страница бота
+          </Link>
+          .
+        </p>
+      </AboutSection>
       <AboutSection title="Документы">
         <ul className="space-y-2">
           <li>

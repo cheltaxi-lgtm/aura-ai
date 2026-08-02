@@ -9,8 +9,11 @@ import {
   BRAND_DZEN_URL,
   BRAND_LOGO_FOOTER,
   BRAND_NAME,
+  BRAND_TELEGRAM_LABEL,
   BRAND_VK_LABEL,
   BRAND_VK_URL,
+  getBrandTelegramUrl,
+  getBrandTelegramUsername,
 } from "@/lib/brand";
 import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
 import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
@@ -70,6 +73,8 @@ export default function SiteFooter({
   const year = new Date().getFullYear();
   const { user, loading } = useAuth();
   const isLoggedIn = !loading && Boolean(user);
+  const telegramUrl = getBrandTelegramUrl();
+  const telegramUsername = getBrandTelegramUsername();
 
   if (variant === "minimal") {
     return (
@@ -119,6 +124,32 @@ export default function SiteFooter({
               </svg>
               <span>{BRAND_DZEN_LABEL}</span>
             </a>
+            <a
+              href="/telegram"
+              className="editorial-footer__social-btn editorial-footer__social-btn--telegram"
+              aria-label={`${BRAND_TELEGRAM_LABEL} @${telegramUsername}`}
+            >
+              <svg
+                className="editorial-footer__social-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  fill="currentColor"
+                  d="M11.9 2.1c-5.4 0-9.8 4.4-9.8 9.8s4.4 9.8 9.8 9.8 9.8-4.4 9.8-9.8-4.4-9.8-9.8-9.8Zm4.7 6.7-1.6 7.4c-.1.5-.4.6-.9.4l-2.4-1.8-1.2 1.1c-.1.1-.3.3-.5.3l.2-2.5 4.5-4.1c.2-.2 0-.3-.3-.1l-5.6 3.5-2.4-.7c-.5-.2-.5-.5.1-.7l9.3-3.6c.4-.2.8.1.8.8Z"
+                />
+              </svg>
+              <span>{BRAND_TELEGRAM_LABEL}</span>
+            </a>
+            <a
+              href={telegramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="sr-only"
+            >
+              @{telegramUsername} в Telegram
+            </a>
           </div>
         </div>
 
@@ -142,6 +173,9 @@ export default function SiteFooter({
                 );
               }
             )}
+            <Link href="/telegram" className="editorial-footer__link">
+              Telegram-бот
+            </Link>
             <Link href="/statyi" className="editorial-footer__link">
               Журнал
             </Link>

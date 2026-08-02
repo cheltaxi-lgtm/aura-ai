@@ -10,6 +10,7 @@ import {
 } from "@/lib/maintenance-mode";
 import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
+import { resolveBotHomeQueryRedirect } from "@/lib/seo/bot-query-redirect";
 
 const COOKIE = "aura_auth";
 
@@ -284,6 +285,19 @@ export async function middleware(request: NextRequest) {
 
   const legacyRedirect = legacyCyrillicRedirect(request, pathname);
   if (legacyRedirect) return legacyRedirect;
+
+  // Search bots on `/` with app deep-link params → clean canonical hubs (humans keep SPA entry).
+  if (pathname === "/" && isSearchEngineBot(request.headers.get("user-agent"))) {
+    const target = resolveBotHomeQueryRedirect(request.nextUrl.searchParams);
+    if (target && target !== "/") {
+      return NextResponse.redirect(publicUrl(request, target), 301);
+    }
+    if (target === "/") {
+      const clean = publicUrl(request, "/");
+      clean.search = "";
+      return NextResponse.redirect(clean, 301);
+    }
+  }
 
   const secretKey = resolveSecretKey();
   const natalWorkerRequest = isAuthenticatedNatalWorkerRequest(request, pathname);

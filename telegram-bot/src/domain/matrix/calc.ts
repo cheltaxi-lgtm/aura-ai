@@ -1,6 +1,12 @@
 import { FULL_DECK } from "../deck/cards.js";
 import type { MatrixDiagramInput, MatrixDiagramSlot } from "../../render/matrix-diagram.js";
 
+/**
+ * Must stay equal to site `MATRIX_CALCULATION_VERSION`.
+ * Drift is caught by `scripts/verify-matrix-calc-drift.mjs`.
+ */
+export const BOT_MATRIX_CALC_VERSION = "matrix-v2" as const;
+
 /** Same reduce as site matrix-v2 (1–22; 0 → 22). */
 function sumDigits(n: number): number {
   return String(Math.abs(Math.trunc(n)))

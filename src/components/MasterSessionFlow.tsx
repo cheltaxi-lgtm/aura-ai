@@ -308,27 +308,8 @@ export default function MasterSessionFlow({
     };
   }, [isOpen, numerologFlow, selectedNumerologTool, userBirthDate]);
 
-  /** If Full Matrix is already bought — skip picker CTA and open the saved report. */
-  const ownedMatrixAutoStartedRef = useRef(false);
-  useEffect(() => {
-    if (!isOpen) {
-      ownedMatrixAutoStartedRef.current = false;
-      return;
-    }
-    if (!matrixBuyOnceOwned || ownedMatrixAutoStartedRef.current || !master) return;
-    ownedMatrixAutoStartedRef.current = true;
-    onStart({
-      characterKey: master,
-      intention: null,
-      spreadType: "new",
-      cards: [],
-      cardsRevealed: true,
-      previewCards: [],
-      deckSystem,
-      numerologToolId: "destiny_matrix",
-      numerologToolParams,
-    });
-  }, [isOpen, matrixBuyOnceOwned, master, deckSystem, numerologToolParams, onStart]);
+  /** Owned matrix: do not auto-open — user chooses «open saved» vs «new matrix». */
+  const [matrixReplaceBusy, setMatrixReplaceBusy] = useState(false);
   const numerologPreselected = isNumerologMaster(preselectedMaster);
   const presetSpreadLocked = hasPresetSpread(initialSpreadId);
   const customQuestionReady = customQuestion.trim().length >= 8;
@@ -915,6 +896,44 @@ export default function MasterSessionFlow({
     });
   };
 
+  /** Wipe buy-once report and start a fresh paid full matrix. */
+  const startNewMatrixSession = async () => {
+    if (!master || matrixReplaceBusy) return;
+    const birthDate = userBirthDate?.trim();
+    if (!birthDate) {
+      setDrawError("Нужна дата рождения в профиле для новой матрицы.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Удалить текущий разбор и рассчитать новую матрицу за ${PRICING.NUMEROLOGY_SESSION} ᚢ?`
+      )
+    ) {
+      return;
+    }
+    setMatrixReplaceBusy(true);
+    setDrawError(null);
+    try {
+      const res = await fetch("/api/numerology/matrix-report", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ birthDate }),
+      });
+      if (!res.ok) {
+        throw new Error("delete_failed");
+      }
+      setMatrixOwned(false);
+      setFlipped(emptyFlipped(cardCount));
+      setNewCards([]);
+      goToRitualStep();
+    } catch {
+      setDrawError("Не удалось подготовить новую матрицу. Попробуйте ещё раз.");
+    } finally {
+      setMatrixReplaceBusy(false);
+    }
+  };
+
   const handleStartNew = async () => {
     if (!master) return;
     if (numerologFlow) {
@@ -1104,33 +1123,51 @@ export default function MasterSessionFlow({
             </div>
           );
         })()}
-        <button
-          type="button"
-          disabled={
-            !matrixBuyOnceOwned &&
-            !numerologCalculationReady(
-              selectedNumerologTool,
-              numerologToolParams,
-              userBirthDate,
-              userFullName
-            )
-          }
-          onClick={() => {
-            if (matrixBuyOnceOwned && selectedNumerologTool === "destiny_matrix") {
-              startOwnedMatrixSession();
-              return;
+        {matrixBuyOnceOwned && selectedNumerologTool === "destiny_matrix" ? (
+          <div className="flex w-full flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => startOwnedMatrixSession()}
+              className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1"
+            >
+              <span>Открыть сохранённый разбор</span>
+              <span className="text-xs text-black/70">0 ᚢ · без повторной оплаты</span>
+            </button>
+            <button
+              type="button"
+              disabled={matrixReplaceBusy}
+              onClick={() => void startNewMatrixSession()}
+              className="btn-ghost btn-luxe--md w-full disabled:opacity-50"
+            >
+              {matrixReplaceBusy
+                ? "Готовлю новую матрицу…"
+                : `Новая матрица · ${PRICING.NUMEROLOGY_SESSION} ᚢ`}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={
+              !numerologCalculationReady(
+                selectedNumerologTool,
+                numerologToolParams,
+                userBirthDate,
+                userFullName
+              )
             }
-            setFlipped(emptyFlipped(cardCount));
-            setNewCards([]);
-            goToRitualStep();
-          }}
-          className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
-        >
-          <span>{matrixBuyOnceOwned ? "Открыть разбор" : "Посчитать"}</span>
-          {!matrixBuyOnceOwned && runeConfig.enabled && spreadCost > 0 ? (
-            <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
-          ) : null}
-        </button>
+            onClick={() => {
+              setFlipped(emptyFlipped(cardCount));
+              setNewCards([]);
+              goToRitualStep();
+            }}
+            className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block flex flex-col items-center gap-1 disabled:opacity-50"
+          >
+            <span>Посчитать</span>
+            {runeConfig.enabled && spreadCost > 0 ? (
+              <RuneCost cost={spreadCost} enabled className="text-black/70 text-xs" />
+            ) : null}
+          </button>
+        )}
       </div>
     ) : step === "reveal" && numerologResult && numerologRevealReady ? (
       <button

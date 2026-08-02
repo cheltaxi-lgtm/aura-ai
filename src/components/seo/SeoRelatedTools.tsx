@@ -6,8 +6,14 @@ const DEFAULT_LINKS = [
   { href: "/gadanie", label: "Гадание онлайн" },
   { href: "/taro", label: "Таро онлайн" },
   { href: "/rasklady", label: "Каталог раскладов" },
+  { href: "/runy", label: "Гадание на рунах" },
+  { href: "/lenormand", label: "Ленорман" },
   { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
+  { href: "/prognoz", label: "Прогнозы" },
+  { href: "/statyi", label: "Статьи" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/telegram", label: "Telegram-бот" },
 ] as const;
 
 type RelatedLink = { href: string; label: string };

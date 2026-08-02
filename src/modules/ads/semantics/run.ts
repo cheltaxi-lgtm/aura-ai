@@ -26,7 +26,7 @@ export type ClusteredKeyword = {
 };
 
 const SLUG_LANDING: { slug: RegExp; landing: string; cluster: string }[] = [
-  { slug: /матриц[аы].*судьб|судьб.*матриц|цифров.*матриц/i, landing: "/matrix-destiny", cluster: "matrix-destiny" },
+  { slug: /матриц[аы].*судьб|судьб.*матриц|цифров.*матриц/i, landing: "/numerology/destiny-matrix", cluster: "matrix-destiny" },
   { slug: /рун[аые]?|старш.*рун/i, landing: "/runy", cluster: "runy" },
   { slug: /нумеролог|число судьб|квадрат пифагор/i, landing: "/numerology", cluster: "numerology" },
   { slug: /таро|аркан/i, landing: "/taro", cluster: "taro" },

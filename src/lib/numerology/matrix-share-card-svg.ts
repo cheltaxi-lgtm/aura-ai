@@ -15,6 +15,8 @@ export type MatrixShareCardSvgInput = {
   matrix: DestinyMatrixResult;
   name?: string | null;
   birthDate?: string | null;
+  /** Default false — do not put full DOB on share cards (PII). */
+  includeBirthDate?: boolean;
 };
 
 /** 1080×1350 share card SVG for stories / download. */
@@ -23,7 +25,10 @@ export function buildMatrixShareCardSvg(input: MatrixShareCardSvgInput): string 
   const height = 1350;
   const m = input.matrix;
   const name = input.name?.trim() || "";
-  const date = input.birthDate?.trim() || "";
+  const date =
+    input.includeBirthDate === true && input.birthDate?.trim()
+      ? input.birthDate.trim()
+      : "";
   const slots: Array<{ label: string; n: number; title: string }> = [
     { label: "Характер", n: m.body.number, title: m.body.arcanaName },
     { label: "Энергия", n: m.energy.number, title: m.energy.arcanaName },

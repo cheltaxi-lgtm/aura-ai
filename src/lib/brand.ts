@@ -13,6 +13,13 @@ export const BRAND_VK_LABEL = "Мы ВКонтакте";
 export const BRAND_DZEN_URL = "https://dzen.ru/id/6a50b97e363bf24ef269684e";
 export const BRAND_DZEN_LABEL = "Мы в Дзен";
 
+/** Public Telegram bot (SEO / footer). Username from env with safe default. */
+export {
+  BRAND_TELEGRAM_LABEL,
+  getPublicTelegramBotUrl as getBrandTelegramUrl,
+  getPublicTelegramBotUsername as getBrandTelegramUsername,
+} from "@/lib/telegram-public";
+
 /** Shared header lockup — mark + OVUS + beta. */
 export const BRAND_LOGO_HEADER = {
   linkToHome: true,

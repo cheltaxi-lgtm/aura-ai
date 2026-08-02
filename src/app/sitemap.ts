@@ -141,14 +141,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.65,
   }));
 
-  const zodiacMonthPages: MetadataRoute.Sitemap = getAllSeoZodiacSlugs().flatMap((sign) =>
-    FORECAST_MONTHS.map((month) => ({
-      url: `${base}/prognoz/znak/${sign}/${month.slug}`,
-      lastModified: now,
-      changeFrequency: "weekly" as const,
-      priority: 0.6,
-    }))
-  );
+  // Zodiac×month forecasts stay crawlable via hub links, but stay out of sitemap
+  // so Yandex crawl budget prefers hubs / commercial intents (~144 thin URLs).
+  const zodiacMonthPages: MetadataRoute.Sitemap = [];
 
   const landingPages: MetadataRoute.Sitemap = [
     staticPage("/taro", 0.95),
@@ -174,6 +169,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     staticPage("/cards/combinations", 0.5),
     staticPage("/statyi", 0.65),
     staticPage("/faq", 0.5, "monthly"),
+    staticPage("/telegram", 0.7, "weekly"),
+    staticPage("/partners", 0.4, "monthly"),
     ...ABOUT_PATHS.map((path) => staticPage(path, 0.45, "monthly")),
     ...LENORMAND_PATHS.map((path) => staticPage(path, 0.5, "monthly")),
   ];

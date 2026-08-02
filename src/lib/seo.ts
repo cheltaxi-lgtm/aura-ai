@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { BRAND_NAME, BRAND_URL } from "@/lib/brand";
+import { BRAND_DZEN_URL, BRAND_NAME, BRAND_URL, BRAND_VK_URL } from "@/lib/brand";
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 
 export const SEO_DEFAULT_TITLE =
@@ -110,6 +110,13 @@ export function getHomeStructuredData() {
           width: 512,
           height: 512,
         },
+        sameAs: [
+          BRAND_VK_URL,
+          BRAND_DZEN_URL,
+          // Public bot landing on-site + t.me profile for discovery.
+          `${BRAND_URL}/telegram`,
+          "https://t.me/zovus_card_bot",
+        ],
       },
       {
         "@type": "Service",

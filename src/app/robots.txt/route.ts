@@ -24,6 +24,10 @@ const DISALLOW = [
   "/master/",
   "/_next/",
   "/app",
+  "/session/",
+  "/joint-reading/",
+  "/tg",
+  "/diary/",
 ] as const;
 
 /** Query keys that do not change page meaning for crawlers (Yandex Clean-param). */

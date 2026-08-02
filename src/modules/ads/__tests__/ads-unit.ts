@@ -133,14 +133,14 @@ async function main() {
     const bad = validateCreative({
       title: "Гарантия результата",
       text: "предскажем судьбу",
-      href: "https://zovus.ru/matrix-destiny",
+      href: "https://zovus.ru/numerology/destiny-matrix",
     });
     assert.equal(bad.ok, false);
     const good = validateCreative({
       title: "Матрица судьбы онлайн",
       title2: "Разбор",
       text: `Спокойный разбор. ${DISCLAIMER_TAIL}`,
-      href: "https://zovus.ru/matrix-destiny",
+      href: "https://zovus.ru/numerology/destiny-matrix",
     });
     assert.equal(good.ok, true, good.issues.map((i) => i.message).join("; "));
     assert.equal(validateKeyword({ phrase: "матрица судьбы", freq: 50, mode: "discovery" }).ok, false);

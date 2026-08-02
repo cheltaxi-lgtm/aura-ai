@@ -41,7 +41,7 @@ async function main() {
     yclid: `test-${Date.now()}`,
     utm_source: "yandex",
     utm_medium: "cpc",
-    landing_path: "/matrix-destiny",
+    landing_path: "/numerology/destiny-matrix",
     visitor_hash: "vhash-test",
   });
   const m1 = await recordMicroConversion(clickId, "deck_view", "vhash-test");

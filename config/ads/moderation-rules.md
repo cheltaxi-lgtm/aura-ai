@@ -28,7 +28,7 @@ Sources are linked per point. This is an operational digest for Zovus, not a cop
 
 ## 3) Informational content vs fortune-telling service (key distinction)
 
-- **Informational content** (card meanings, articles, forecasts-as-editorial, numerology explainers): promote as knowledge / reading material on content hubs; avoid promising a paid personal ritual outcome in the ad itself. Prefer whitelist hubs (`/statyi/*`, `/taro`, `/runy`, `/numerology`, `/prognoz`, `/matrix-destiny`).  
+- **Informational content** (card meanings, articles, forecasts-as-editorial, numerology explainers): promote as knowledge / reading material on content hubs; avoid promising a paid personal ritual outcome in the ad itself. Prefer whitelist hubs (`/statyi/*`, `/taro`, `/runy`, `/numerology`, `/numerology/destiny-matrix`, `/prognoz`).  
   Operational rule for Autopilot (derived from category + ad-object rules): [Magic category](https://yandex.ru/support/direct/ru/moderation/categories/magic), [Ad rules](https://yandex.ru/support/direct/ru/moderation/ad-rules)
 - **Fortune-telling / reading service**: allowed in RU with limits — no guarantees, no “safe/effective” claims, no harm magic; geo-exclude BY; some banner formats unavailable for this topic.  
   Source: [Magic category](https://yandex.ru/support/direct/ru/moderation/categories/magic)

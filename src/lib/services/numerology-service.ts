@@ -8,7 +8,10 @@ import {
 } from "@/lib/numerology/matrix-natal-bridge";
 import { getOrComputeNatalChart } from "@/lib/services/natal-chart-service";
 import { buildMatrixPlainFinale } from "@/lib/numerology/matrix-point-prompt";
-import { generateFullMatrixSectionedReading } from "@/lib/numerology/matrix-sectioned-reading";
+import {
+  generateFullMatrixSectionedReading,
+  isMatrixQualityCanaryError,
+} from "@/lib/numerology/matrix-sectioned-reading";
 import type { MatrixReadingDocument } from "@/lib/numerology/matrix-reading-document";
 import { isUsableMatrixReading, sanitizeReadingForClient } from "@/lib/chat-reply-sanitize";
 import {
@@ -237,6 +240,8 @@ export async function generateNumerologStreamReply(
         birthDate: params.birthDate,
         name: firstName,
         gender: params.gender,
+        // Natal bridge + filtered memory — previously built then discarded.
+        contextFacts: engineFacts,
         useLlm: "all",
         onProgress: params.onMatrixProgress,
       });
@@ -262,6 +267,12 @@ export async function generateNumerologStreamReply(
         matrixDocument: sectioned.document,
       };
     } catch (err) {
+      if (isMatrixQualityCanaryError(err)) {
+        console.error("[numerolog] matrix AI canary failed — refuse paid delivery", err.meta);
+        // Paid path: never fall through to dictionary prose as a billed success.
+        if (!allowEngineFallback) throw err;
+        return null;
+      }
       console.error("[numerolog] sectioned matrix error", err);
       if (!allowEngineFallback) return null;
     }

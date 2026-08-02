@@ -24,9 +24,9 @@ export default function HomeSeoContent() {
 
   return (
     <section className="home-seo-panel" aria-label="Расклад Таро онлайн на Zovus">
-      <p className="font-display text-2xl font-medium text-[#ede6da]">
+      <h2 className="font-display text-2xl font-medium text-[#ede6da]">
         Расклад Таро онлайн бесплатно — с разбором под ваш вопрос
-      </p>
+      </h2>
       <p className="mt-4 leading-relaxed">
         Zovus — сервис раскладов Таро онлайн: вы формулируете вопрос о связи, решении, работе или
         будущем и получаете связный разбор, а не общий шаблон. На главной три карты открываются
@@ -40,6 +40,18 @@ export default function HomeSeoContent() {
         для расшифровки или начать с{" "}
         <Link href="/gadanie" className="text-aura-gold hover:underline">
           гадания онлайн
+        </Link>
+        . Есть{" "}
+        <Link href="/lenormand" className="text-aura-gold hover:underline">
+          Ленорман
+        </Link>
+        ,{" "}
+        <Link href="/telegram" className="text-aura-gold hover:underline">
+          Telegram-бот
+        </Link>
+        {" "}и раздел{" "}
+        <Link href="/faq" className="text-aura-gold hover:underline">
+          FAQ
         </Link>
         . Полные сессии, нумерология, натал и обряды — по тарифу в рунах ᚢ. Это не медицинская и не
         юридическая услуга:{" "}
@@ -160,6 +172,26 @@ export default function HomeSeoContent() {
         <li>
           <Link href="/statyi" className="text-aura-gold hover:underline">
             Статьи
+          </Link>
+        </li>
+        <li>
+          <Link href="/lenormand" className="text-aura-gold hover:underline">
+            Ленорман
+          </Link>
+        </li>
+        <li>
+          <Link href="/faq" className="text-aura-gold hover:underline">
+            FAQ
+          </Link>
+        </li>
+        <li>
+          <Link href="/about" className="text-aura-gold hover:underline">
+            О сервисе
+          </Link>
+        </li>
+        <li>
+          <Link href="/telegram" className="text-aura-gold hover:underline">
+            Telegram-бот
           </Link>
         </li>
       </ul>

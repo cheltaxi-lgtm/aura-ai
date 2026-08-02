@@ -7,9 +7,10 @@ base_url: https://zovus.ru
 paths:
   - /runy
   - /runy/fehu
-  - /matrix-destiny
   - /numerology
   - /numerology/destiny-matrix
+  # Legacy alias (permanentRedirect → destiny-matrix); keep for old creatives.
+  - /matrix-destiny
   - /taro
   - /prognoz
   - /statyi

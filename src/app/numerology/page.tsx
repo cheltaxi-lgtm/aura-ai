@@ -7,6 +7,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 
@@ -79,6 +80,12 @@ export default function NumerologyPage() {
   return (
     <SeoPageShell>
       <SeoPageTracker goal="numerology_hub_view" />
+      <SeoBreadcrumbs
+        items={[
+          { name: "Zovus", path: "/" },
+          { name: "Нумерология", path: "/numerology" },
+        ]}
+      />
       <p className="text-sm text-aura-gold/80">Нумерология</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Нумерология по дате рождения онлайн</h1>
       <p className="mt-4 text-white/70">

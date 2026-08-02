@@ -749,6 +749,15 @@ export async function POST(request: NextRequest) {
           reading = sessionResult.reply;
           numerologyUi = sessionResult.numerologyUi;
           matrixDocumentForSave = sessionResult.matrixDocument;
+          if (isDestinyMatrix && matrixDocumentForSave) {
+            const { MATRIX_AI_ZONES_CANARY_MIN } = await import(
+              "@/lib/numerology/matrix-sectioned-reading"
+            );
+            const aiZones = matrixDocumentForSave.meta?.aiZones;
+            if (typeof aiZones === "number" && aiZones < MATRIX_AI_ZONES_CANARY_MIN) {
+              throw new Error(`matrix_ai_canary: aiZones=${aiZones}`);
+            }
+          }
         } catch (genErr) {
           console.error("Numerolog session reading failed:", genErr);
           if (billingCharge) {

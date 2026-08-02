@@ -18,7 +18,7 @@ import { addKeywords } from "./direct/keywords";
 
 export type DiscoveryPlan = {
   cluster: "matrix-destiny";
-  landingPath: "/matrix-destiny";
+  landingPath: "/numerology/destiny-matrix";
   optimizationGoal: "registration";
   dailyBudgetRub: number;
   targetCpaRegRub: number;
@@ -58,7 +58,7 @@ export async function buildDiscoveryPlan(opts?: {
        FROM ads.keyword_candidate
        WHERE status IN ('pending', 'approved')
          AND cluster_key = 'matrix-destiny'
-         AND landing_path = '/matrix-destiny'
+         AND landing_path IN ('/numerology/destiny-matrix', '/matrix-destiny')
        ORDER BY created_at ASC
        LIMIT 50`
     );
@@ -89,7 +89,7 @@ export async function buildDiscoveryPlan(opts?: {
     title: title.slice(0, 56),
     title2: title2.slice(0, 30),
     text: text.slice(0, 81),
-    href: `${BASE_URL}/matrix-destiny`,
+    href: `${BASE_URL}/numerology/destiny-matrix`,
   };
   const cv = validateCreative(creative);
   if (!cv.ok) {
@@ -148,7 +148,7 @@ export async function buildDiscoveryPlan(opts?: {
 
   return {
     cluster: "matrix-destiny",
-    landingPath: "/matrix-destiny",
+    landingPath: "/numerology/destiny-matrix",
     optimizationGoal: "registration",
     dailyBudgetRub,
     targetCpaRegRub,

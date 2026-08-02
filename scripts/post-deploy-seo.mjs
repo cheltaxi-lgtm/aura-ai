@@ -52,6 +52,11 @@ const CORE_PRIORITY = [
   `${base}/rasklady/budushchee`,
   `${base}/rasklady/kariera`,
   `${base}/faq`,
+  `${base}/telegram`,
+  `${base}/about`,
+  `${base}/faq`,
+  `${base}/lenormand`,
+  `${base}/partners`,
   `${base}/cards`,
   `${base}/prognoz`,
   `${base}/statyi`,
@@ -62,6 +67,8 @@ const CORE_PRIORITY = [
 /** High-value pages for Yandex recovery — pillars first, then intent pages. */
 const RECRAWL_PRIORITY = [
   `${base}/`,
+  `${base}/telegram`,
+  `${base}/about`,
   `${base}/photo-rasklad`,
   `${base}/taro`,
   `${base}/gadanie`,
@@ -181,11 +188,16 @@ console.log(`=== Post-deploy SEO: ${base} ===\n`);
 
 await checkUrl(`/${INDEXNOW_KEY}.txt`, 200, INDEXNOW_KEY);
 const homeHtml = await checkUrl("/", 200);
-// Consent-gated: tag.js must NOT be in SSR HTML; loads only after «Принять аналитику».
+// Humans: tag.js must NOT be in SSR HTML; loads only after «Принять аналитику».
 ok(
-  "Metrika not in SSR HTML (consent-gated)",
+  "Metrika not in SSR HTML for humans (consent-gated)",
   !homeHtml.includes(`mc.yandex.ru/metrika/tag.js`),
   `id=${METRIKA_ID} loads client-side after consent`
+);
+ok(
+  "Metrika noscript watch pixel in SSR (Webmaster)",
+  homeHtml.includes("mc.yandex.ru/watch/110138367"),
+  "JS users still consent-gated via YandexMetrika"
 );
 ok(
   "Yandex Webmaster verification meta",
