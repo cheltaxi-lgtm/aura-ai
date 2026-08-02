@@ -2642,37 +2642,6 @@ export default function HomePage({
       consultationSessionIdRef.current = null;
     }
 
-    // #region agent log
-    {
-      const logPayload = {
-        sessionId: "5da396",
-        runId: "photo-new-session",
-        hypothesisId: "A",
-        location: "HomePage.tsx:handlePhotoConfirmSpread",
-        message: "photo_new_session",
-        data: {
-          masterId,
-          prevConsultationId,
-          newSessionId: newSessionId ?? null,
-          createdFresh: Boolean(newSessionId && newSessionId !== prevConsultationId),
-          cardCount: photoDeckCards.length,
-          ritualOpen: true,
-        },
-        timestamp: Date.now(),
-      };
-      fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5da396" },
-        body: JSON.stringify(logPayload),
-      }).catch(() => {});
-      fetch("/api/debug/client-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(logPayload),
-      }).catch(() => {});
-    }
-    // #endregion
-
     const interpretAbort = new AbortController();
     const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
 

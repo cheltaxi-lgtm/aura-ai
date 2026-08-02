@@ -49,7 +49,16 @@ export function sanitizeMiniAppPath(raw: string | null | undefined): string {
   }
 
   if (!path.startsWith("/") || path.startsWith("//")) return fallback;
+  if (path.includes("\\") || /%5c/i.test(path)) return fallback;
   if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return fallback;
+
+  try {
+    const origin = getAppUrl().replace(/\/$/, "");
+    const resolved = new URL(path, `${origin}/`);
+    if (resolved.origin !== new URL(`${origin}/`).origin) return fallback;
+  } catch {
+    return fallback;
+  }
 
   const pathOnly = path.split(/[?#]/)[0] || "/";
   for (const blocked of BLOCKED_PREFIXES) {

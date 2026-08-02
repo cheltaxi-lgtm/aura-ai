@@ -68,7 +68,8 @@ export default function AdsApprovalsPage() {
     setBusy(id);
     setError(null);
     try {
-      const res = await fetch("/api/ads/admin/approvals", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/ads/admin/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, decision, confirmAmount }),

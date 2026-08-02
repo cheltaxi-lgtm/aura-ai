@@ -1195,6 +1195,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(successPayload);
   } catch (error) {
     console.error("Reading error:", error);
+    const { reportError } = await import("@/lib/error-report");
+    reportError(error, { route: "reading", spentRunes });
     if (spentRunes > 0) {
       try {
         await BillingService.rollbackCharge({
@@ -1205,6 +1207,7 @@ export async function POST(request: NextRequest) {
         });
       } catch (refundErr) {
         console.error("Reading refund failed:", refundErr);
+        reportError(refundErr, { route: "reading", stage: "refund" });
       }
     }
     await trackWorkerJobFailed(request, "Reading generation failed", {

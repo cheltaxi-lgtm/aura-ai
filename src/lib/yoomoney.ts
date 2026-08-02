@@ -82,7 +82,13 @@ export function verifyYoomoneyNotification(data: YoomoneyNotification): boolean 
   ].join("&");
 
   const hash = crypto.createHash("sha1").update(payload).digest("hex");
-  return hash === data.sha1_hash;
+  try {
+    const a = Buffer.from(hash, "utf8");
+    const b = Buffer.from(String(data.sha1_hash || ""), "utf8");
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 export function parseYoomoneyLabel(label: string): { sessionId: string; plan: PaymentPlan } | null {

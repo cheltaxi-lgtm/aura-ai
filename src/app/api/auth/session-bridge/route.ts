@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { applyAuthCookie, getAuth, verifyToken } from "@/lib/auth";
+import { applyAuthCookie, getAuth } from "@/lib/auth";
 import { findUserById } from "@/lib/accounts";
 import { createOAuthHandoff, consumeOAuthHandoff } from "@/lib/oauth/handoff";
 import { resolveOAuthOrigin } from "@/lib/oauth/config";
@@ -7,7 +7,7 @@ import {
   checkOAuthRequestRateLimit,
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
-import { sanitizeReturnTo } from "@/lib/safe-redirect";
+import { sanitizeReturnToWithOrigin } from "@/lib/safe-redirect";
 
 const BRIDGE_HEADERS = {
   ...OAUTH_NO_STORE_HEADERS,
@@ -16,7 +16,11 @@ const BRIDGE_HEADERS = {
 
 function sessionBridgeLoginUrl(request: NextRequest, oauthError?: string): URL {
   const origin = resolveOAuthOrigin(request);
-  const to = sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/");
+  const to = sanitizeReturnToWithOrigin(
+    request.nextUrl.searchParams.get("to"),
+    origin,
+    "/"
+  );
   const destination = new URL(to, `${origin}/`);
   const mode = destination.searchParams.get("mode");
   const authBase =
@@ -56,8 +60,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cookieToken = request.cookies.get("aura_auth")?.value;
-    const auth = cookieToken ? await verifyToken(cookieToken) : await getAuth();
+    // Must use getAuth() (token_version check) — never bare verifyToken,
+    // or a post-reset stolen cookie can mint a fresh handoff session.
+    const auth = await getAuth();
     if (!auth || auth.role !== "user") {
       return NextResponse.json(
         { error: "unauthorized" },
@@ -79,8 +84,12 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const rate = await checkOAuthRequestRateLimit(request, "session-bridge", 30);
-    const to = sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/");
     const origin = resolveOAuthOrigin(request);
+    const to = sanitizeReturnToWithOrigin(
+      request.nextUrl.searchParams.get("to"),
+      origin,
+      "/"
+    );
     const destination = new URL(to, `${origin}/`);
 
     if (!rate.allowed) {

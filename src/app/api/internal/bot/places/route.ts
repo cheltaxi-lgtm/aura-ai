@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clientIp, enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { assertBotInternalAuth } from "@/lib/telegram/bot-internal-auth";
 import { searchBirthPlaces } from "@/lib/natal/geocode";
 
@@ -9,6 +10,14 @@ export async function POST(request: NextRequest) {
   const auth = assertBotInternalAuth(request);
   if (!auth.ok) {
     return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+  }
+
+  const limited = await enforcePaidRouteRateLimit(
+    `bot-places:${clientIp(request)}`,
+    "natal_places"
+  );
+  if (limited) {
+    return NextResponse.json({ ok: false, error: "rate_limit" }, { status: 429 });
   }
 
   let body: { q?: unknown; limit?: unknown };

@@ -16,6 +16,7 @@ import {
 } from "@/lib/guest-triplet-receipt";
 import { createIssuedGuestResumeSession } from "@/lib/guest-triplet-receipt-db";
 import { setSessionClaimCookie } from "@/lib/session-claim";
+import { assertTeaserRequestAllowed } from "@/lib/guest-triplet-teaser-service";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,13 @@ export async function POST(request: NextRequest) {
       { error: AGE_REQUIRED_ERROR, message: "Подтвердите возраст 18+" },
       { status: 403 }
     );
+  }
+
+  const antibot = assertTeaserRequestAllowed(request, {
+    allowCapacitorWithoutSession: true,
+  });
+  if (!antibot.ok) {
+    return NextResponse.json({ error: "forbidden", reason: antibot.reason }, { status: 403 });
   }
 
   const limited = await enforceGuestTripletCompleteRateLimit(clientIp(request));
@@ -74,6 +82,8 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error("[guest-triplet/complete] failed", err instanceof Error ? err.message : "error");
+    const { reportError } = await import("@/lib/error-report");
+    reportError(err, { route: "guest-triplet/complete" });
     return NextResponse.json({ error: "unavailable" }, { status: 500 });
   }
 }

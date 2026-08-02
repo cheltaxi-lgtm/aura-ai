@@ -1,30 +1,40 @@
-import { appendFile } from "fs/promises";
-import path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { clientIp } from "@/lib/api-guards";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
-const SESSION_ID = "5da396";
+const MAX_BODY_BYTES = 8_192;
 
+/**
+ * Dev-only diagnostic sink. Never writes to disk; never enabled in production
+ * even if DEBUG_CLIENT_LOG is set (use server logs / Sentry instead).
+ */
 export async function POST(request: NextRequest) {
-  const allow =
-    process.env.NODE_ENV !== "production" || process.env.DEBUG_CLIENT_LOG === "1";
-  if (!allow) {
+  if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const ip = clientIp(request);
+  const { allowed } = await checkRateLimit(rateLimitKey("debug_client_log", ip), 30, 60_000);
+  if (!allowed) {
+    return NextResponse.json({ error: "rate_limit" }, { status: 429 });
+  }
+
   try {
-    const body = (await request.json()) as Record<string, unknown>;
-    if (body.sessionId && body.sessionId !== SESSION_ID) {
-      return NextResponse.json({ ok: true });
+    const raw = await request.text();
+    if (raw.length > MAX_BODY_BYTES) {
+      return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
     }
-    const line =
+    const body = JSON.parse(raw) as Record<string, unknown>;
+    console.info(
       JSON.stringify({
-        sessionId: SESSION_ID,
-        ...body,
-        timestamp: typeof body.timestamp === "number" ? body.timestamp : Date.now(),
-      }) + "\n";
-    await appendFile(path.join(process.cwd(), `debug-${SESSION_ID}.log`), line, "utf8");
+        type: "debug_client_log",
+        ip,
+        keys: Object.keys(body).slice(0, 20),
+        ts: Date.now(),
+      })
+    );
   } catch {
-    // best-effort
+    /* best-effort */
   }
 
   return NextResponse.json({ ok: true });

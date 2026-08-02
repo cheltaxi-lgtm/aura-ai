@@ -42,6 +42,8 @@ const SCENES: ImageSceneType[] = [
 const SCENE_RUNE_ACTION: Partial<Record<ImageSceneType, RuneActionType>> = {
   destiny_card: "DESTINY_CARD",
   final_report: "FINAL_REPORT",
+  scene_illustration: "SCENE_ILLUSTRATION",
+  tarot_atmosphere: "TAROT_ATMOSPHERE",
 };
 
 function isSceneType(value: string): value is ImageSceneType {
@@ -204,6 +206,8 @@ export async function POST(request: NextRequest) {
           });
         } catch (refundErr) {
           console.error("Scene art refund failed:", refundErr);
+          const { reportError } = await import("@/lib/error-report");
+          reportError(refundErr, { route: "image/generate", stage: "refund" });
         }
       }
       await trackWorkerJobFailed(request, "Image generation failed", {
@@ -240,6 +244,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   } catch (error) {
     console.error("Image generate error:", error);
+    const { reportError } = await import("@/lib/error-report");
+    reportError(error, { route: "image/generate", scene });
     if (profileUserId && billingCharge) {
       try {
         await BillingService.rollbackCharge({
@@ -250,6 +256,7 @@ export async function POST(request: NextRequest) {
         });
       } catch (refundErr) {
         console.error("Scene art refund failed:", refundErr);
+        reportError(refundErr, { route: "image/generate", stage: "refund" });
       }
     }
     await trackWorkerJobFailed(request, "Image generation error", {

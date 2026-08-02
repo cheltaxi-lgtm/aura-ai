@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { query } from "@/lib/db";
 import { findUserByEmail } from "@/lib/accounts";
-import { hashPassword } from "@/lib/auth";
+import { bumpAccountTokenVersion, hashPassword } from "@/lib/auth";
 import {
   passwordResetEmailHtml,
   passwordChangedEmailHtml,
@@ -73,6 +73,7 @@ export async function completePasswordReset(
     row.user_account_id,
     passwordHash,
   ]);
+  await bumpAccountTokenVersion(row.user_account_id);
   await query(`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`, [row.id]);
 
   const accountRes = await query<{ email: string; name: string }>(

@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { RuneActionType } from "@/lib/rune-costs";
+import {
+  DEFAULT_RUNE_COSTS,
+  RUNE_ACTION_LABELS,
+  type RuneActionType,
+} from "@/lib/rune-costs";
 
 export interface RuneConfig {
   enabled: boolean;
@@ -17,34 +21,8 @@ const FALLBACK: RuneConfig = {
   rubPerRune: 2,
   starterRunes: 30,
   freeQuestions: 2,
-  costs: {
-    QUESTION: 10,
-    VISION_ANALYSIS: 30,
-    READING: 15,
-    INTENTION_SPREAD: 20,
-    DESTINY_CARD: 20,
-    JOINT_READING: 25,
-    DAILY_AMULET: 5,
-    DAILY_EXTENDED: 10,
-    FINAL_REPORT: 30,
-    NATAL_READING: 20,
-    FORECAST_REPORT: 20,
-    SYNASTRY_REPORT: 30,
-  },
-  labels: {
-    QUESTION: "Вопрос мастеру",
-    VISION_ANALYSIS: "Анализ расклада по фото",
-    READING: "Расшифровка расклада",
-    INTENTION_SPREAD: "Расклад на тему",
-    DESTINY_CARD: "Карта судьбы",
-    JOINT_READING: "Совместный расклад",
-    DAILY_AMULET: "Амулет дня",
-    DAILY_EXTENDED: "Расширенный день",
-    FINAL_REPORT: "Арт-отчёт сеанса",
-    NATAL_READING: "Полная натальная трактовка",
-    FORECAST_REPORT: "Персональный прогноз",
-    SYNASTRY_REPORT: "Отчёт о натальной совместимости",
-  },
+  costs: { ...DEFAULT_RUNE_COSTS },
+  labels: { ...RUNE_ACTION_LABELS },
 };
 
 let cached: RuneConfig | null = null;

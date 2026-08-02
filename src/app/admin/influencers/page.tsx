@@ -15,7 +15,8 @@ export default function AdminInfluencersPage() {
   useEffect(load, [tab]);
 
   const toggleBlogger = async (id: string, is_active: boolean) => {
-    await fetch("/api/admin/influencers", {
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    await adminFetch("/api/admin/influencers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ entity: "blogger", id, is_active: !is_active }),

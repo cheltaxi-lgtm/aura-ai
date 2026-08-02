@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { setConfigJson } from "@/modules/ads/config";
 import { writeAdsAdminAction } from "@/modules/ads/admin/log";
 import { safetyPauseAll } from "@/modules/ads/guard/pause-all";
@@ -11,11 +11,10 @@ export const dynamic = "force-dynamic";
  * B7 — emergency stop: pause all + ads.enabled=false.
  * Admin role only (403 without). Available even if ads.observe is off.
  */
-export async function POST() {
-  const auth = await requireAdmin();
-  if (!auth) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+export async function POST(request: NextRequest) {
+  const stepped = await requireAdminStepUp(request);
+  if (!stepped.ok) return stepped.response;
+  const auth = stepped.auth;
 
   let paused: number[] = [];
   let pauseError: string | null = null;

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isCronSecretValid } from "@/lib/cron-auth";
 import { ensureDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getGlobalUpcomingEvents } from "@/lib/memory/user-facts";
@@ -14,9 +15,7 @@ import { dispatchNotification } from "@/lib/notify";
 export async function GET(request: NextRequest) {
   await ensureDb();
 
-  const cronSecret = process.env.CRON_SECRET;
-  const headerSecret = request.headers.get("x-cron-secret");
-  const isInternal = cronSecret && headerSecret === cronSecret;
+  const isInternal = isCronSecretValid(request);
   const admin = await requireAdmin();
 
   if (!isInternal && !admin) {

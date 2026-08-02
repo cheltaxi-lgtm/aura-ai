@@ -62,25 +62,11 @@ const SIZE_CLASS = {
 } as const;
 
 function debugDeckFaceLog(
-  message: string,
-  data: Record<string, unknown>,
-  hypothesisId: string
+  _message: string,
+  _data: Record<string, unknown>,
+  _hypothesisId: string
 ) {
-  // #region agent log
-  fetch("/api/debug/client-log", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: "5da396",
-      runId: "face-preload",
-      hypothesisId,
-      location: "DeckCard.tsx:DeckFaceImage",
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
+  /* debug ingest removed */
 }
 
 function DeckFaceImage({

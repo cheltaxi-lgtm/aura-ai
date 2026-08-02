@@ -207,7 +207,8 @@ export default function AdminBotPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/bot", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/admin/bot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set_flag", key, enabled }),
@@ -228,7 +229,8 @@ export default function AdminBotPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/bot", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/admin/bot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

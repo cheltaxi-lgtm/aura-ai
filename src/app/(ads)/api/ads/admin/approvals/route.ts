@@ -58,7 +58,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const gate = await requireAdsAdmin();
+  const gate = await requireAdsAdmin({ stepUpRequest: req });
   if (!isAdsAdminAuth(gate)) return gate;
   const { auth } = gate;
 

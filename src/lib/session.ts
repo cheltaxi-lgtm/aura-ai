@@ -424,7 +424,11 @@ export async function unlockSingleSession(sessionId: string) {
   );
 }
 
-export async function unlockSubscription(sessionId: string, days = 30) {
+export async function unlockSubscription(
+  sessionId: string,
+  days = 30,
+  bonusPaymentId?: string
+) {
   await query(
     `UPDATE sessions SET paid_until = GREATEST(COALESCE(paid_until, NOW()), NOW()) + ($2 || ' days')::INTERVAL,
      has_single_unlock = TRUE, updated_at = NOW() WHERE id = $1`,
@@ -443,7 +447,8 @@ export async function unlockSubscription(sessionId: string, days = 30) {
           session.user_id,
           runeEquivalent,
           "bonus",
-          `Подписка ${days} дней — эквивалент рун`
+          `Подписка ${days} дней — эквивалент рун`,
+          bonusPaymentId
         );
       }
     }
@@ -549,8 +554,14 @@ export async function recordPayment(data: {
 
 export async function completePayment(
   yukassaPaymentId: string,
-  verifiedAmountRub?: number
+  verifiedAmountRub: number
 ) {
+  if (!Number.isFinite(verifiedAmountRub)) {
+    console.warn("[completePayment] verifiedAmountRub required", yukassaPaymentId);
+    return null;
+  }
+
+  // Amount must match before flipping status — otherwise retries never unlock.
   const { rows } = await query<{
     session_id: string;
     payment_type: "single" | "subscription";
@@ -560,46 +571,66 @@ export async function completePayment(
   }>(
     `UPDATE payments SET status = 'succeeded', updated_at = NOW()
      WHERE yukassa_payment_id = $1 AND status = 'pending'
+       AND ABS(amount - $2::numeric) < 0.01
      RETURNING session_id, payment_type, influencer_id, amount::text, blogger_split_percent`,
-    [yukassaPaymentId]
+    [yukassaPaymentId, verifiedAmountRub]
   );
   const payment = rows[0];
-  if (!payment) return null;
-
-  if (verifiedAmountRub !== undefined) {
-    const expected = parseFloat(payment.amount);
-    if (!Number.isFinite(expected) || Math.abs(expected - verifiedAmountRub) > 0.01) {
+  if (!payment) {
+    const pending = await query<{ amount: string }>(
+      `SELECT amount::text FROM payments
+       WHERE yukassa_payment_id = $1 AND status = 'pending' LIMIT 1`,
+      [yukassaPaymentId]
+    );
+    if (pending.rows[0]) {
       console.warn(
         "[completePayment] amount mismatch",
         yukassaPaymentId,
         "expected",
-        expected,
+        pending.rows[0].amount,
         "verified",
         verifiedAmountRub
       );
-      return null;
     }
+    return null;
   }
 
   if (payment.payment_type === "subscription") {
-    await unlockSubscription(payment.session_id);
+    await unlockSubscription(payment.session_id, 30, `sub-bonus:${yukassaPaymentId}`);
   } else {
     await unlockSingleSession(payment.session_id);
   }
   return payment;
 }
 
-export async function completePaymentByOrderId(orderId: string) {
-  const { rows } = await query<{ session_id: string; payment_type: "single" | "subscription" }>(
+/** Prefer completePayment(yukassaId, amount). Order-id path also requires amount binding. */
+export async function completePaymentByOrderId(
+  orderId: string,
+  verifiedAmountRub: number
+) {
+  if (!Number.isFinite(verifiedAmountRub)) {
+    console.warn("[completePaymentByOrderId] verifiedAmountRub required", orderId);
+    return null;
+  }
+
+  const { rows } = await query<{
+    session_id: string;
+    payment_type: "single" | "subscription";
+    yukassa_payment_id: string | null;
+  }>(
     `UPDATE payments SET status = 'succeeded', updated_at = NOW()
      WHERE order_id = $1 AND status = 'pending'
-     RETURNING session_id, payment_type`,
-    [orderId]
+       AND ABS(amount - $2::numeric) < 0.01
+     RETURNING session_id, payment_type, yukassa_payment_id`,
+    [orderId, verifiedAmountRub]
   );
   const payment = rows[0];
   if (!payment) return null;
+  const bonusKey = payment.yukassa_payment_id
+    ? `sub-bonus:${payment.yukassa_payment_id}`
+    : `sub-bonus:order:${orderId}`;
   if (payment.payment_type === "subscription") {
-    await unlockSubscription(payment.session_id);
+    await unlockSubscription(payment.session_id, 30, bonusKey);
   } else {
     await unlockSingleSession(payment.session_id);
   }
@@ -649,7 +680,7 @@ export async function completeYoomoneyPayment(data: {
   }
 
   if (payment.payment_type === "subscription") {
-    await unlockSubscription(data.sessionId);
+    await unlockSubscription(data.sessionId, 30, `sub-bonus:ym:${data.operationId}`);
   } else {
     await unlockSingleSession(data.sessionId);
   }

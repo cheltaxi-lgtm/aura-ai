@@ -1277,46 +1277,6 @@ export function useChatActions(options: UseChatActionsOptions) {
         pendingNewChatThreadRef.current ||
         readingInFlightRef.current ||
         skipNextReadingRef.current;
-      // #region agent log
-      fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5da396" },
-        body: JSON.stringify({
-          sessionId: "5da396",
-          runId: "photo-new-session",
-          hypothesisId: "C",
-          location: "useChatActions.ts:characterChange",
-          message: "character_change_preserve",
-          data: {
-            selectedCharacter,
-            preserveSessionStart,
-            pendingNew: pendingNewChatThreadRef.current,
-            readingInFlight: readingInFlightRef.current,
-            skipNext: skipNextReadingRef.current,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      fetch("/api/debug/client-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "5da396",
-          runId: "photo-new-session",
-          hypothesisId: "C",
-          location: "useChatActions.ts:characterChange",
-          message: "character_change_preserve",
-          data: {
-            selectedCharacter,
-            preserveSessionStart,
-            pendingNew: pendingNewChatThreadRef.current,
-            readingInFlight: readingInFlightRef.current,
-            skipNext: skipNextReadingRef.current,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       // Photo / new-spread handoff already seeded messages + ritual — do not wipe them.
       if (!preserveSessionStart) {
         chatLoadedForRef.current = null;
@@ -1366,34 +1326,6 @@ export function useChatActions(options: UseChatActionsOptions) {
     }
     // New paid spread from landing/session flow — do not hydrate an old consultation.
     if (pendingNewChatThreadRef.current || readingInFlightRef.current) {
-      // #region agent log
-      {
-        const payload = {
-          sessionId: "5da396",
-          runId: "photo-new-session",
-          hypothesisId: "B",
-          location: "useChatActions.ts:hydrateSkip",
-          message: "hydrate_skip_new_thread",
-          data: {
-            selectedCharacter,
-            pendingNew: pendingNewChatThreadRef.current,
-            readingInFlight: readingInFlightRef.current,
-            consultationId: consultationSessionIdRef.current,
-          },
-          timestamp: Date.now(),
-        };
-        fetch("http://127.0.0.1:7394/ingest/19b6b482-2a3a-42dc-852e-bc41c46f6a24", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5da396" },
-          body: JSON.stringify(payload),
-        }).catch(() => {});
-        fetch("/api/debug/client-log", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }).catch(() => {});
-      }
-      // #endregion
       // Mark loaded so a later dep change cannot hydrate an old thread after flags clear.
       chatLoadedForRef.current = selectedCharacter;
       setIsLoadingHistory(false);

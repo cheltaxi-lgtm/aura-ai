@@ -65,7 +65,9 @@ export async function fetchVkUserInfo(
     providerUserId: String(user.user_id),
     email: user.email?.trim().toLowerCase() ?? null,
     name,
-    emailVerified: Boolean(user.email),
+    // VK ID does not assert email verification in the userinfo payload.
+    // Never auto-link to an existing password account by email alone.
+    emailVerified: false,
     gender,
   };
 }

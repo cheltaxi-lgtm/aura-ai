@@ -16,7 +16,15 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ["image/avif", "image/webp"],
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
+    remotePatterns: [
+      { protocol: "https", hostname: "zovus.ru" },
+      { protocol: "https", hostname: "www.zovus.ru" },
+      { protocol: "https", hostname: "**.userapi.com" },
+      { protocol: "https", hostname: "avatars.yandex.net" },
+      { protocol: "https", hostname: "**.yandex.net" },
+      { protocol: "https", hostname: "mc.yandex.ru" },
+      { protocol: "https", hostname: "telegram.org" },
+    ],
   },
   async redirects() {
     return getCanonicalRedirects();
@@ -37,7 +45,7 @@ const nextConfig: NextConfig = {
           "base-uri 'self'",
           "frame-ancestors 'none'",
           "object-src 'none'",
-          "img-src 'self' data: blob: https:",
+          "img-src 'self' data: blob: https://zovus.ru https://www.zovus.ru https://*.userapi.com https://avatars.yandex.net https://*.yandex.net https://mc.yandex.ru https://telegram.org https://*.telegram.org",
           "font-src 'self' data: https://fonts.gstatic.com",
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
           // 'unsafe-inline' required for Next.js hydration + consent-gated Metrika/captcha bootstraps.

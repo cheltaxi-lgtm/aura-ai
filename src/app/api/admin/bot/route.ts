@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { query } from "@/lib/db";
 import {
   callBotAdmin,
@@ -63,16 +64,6 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  if (!isBotAdminConfigured()) {
-    return NextResponse.json(
-      { ok: false, error: "bot_not_configured" },
-      { status: 503 }
-    );
-  }
-
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -95,8 +86,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unknown_action" }, { status: 400 });
   }
 
+  let auth;
   if (MUTATING.has(action)) {
-    // Extra guard: only real admin session (already requireAdmin)
+    const stepped = await requireAdminStepUp(request);
+    if (!stepped.ok) return stepped.response;
+    auth = stepped.auth;
+  } else {
+    auth = await requireAdmin();
+    if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  if (!isBotAdminConfigured()) {
+    return NextResponse.json(
+      { ok: false, error: "bot_not_configured" },
+      { status: 503 }
+    );
   }
 
   const { action: _a, ...rest } = body;

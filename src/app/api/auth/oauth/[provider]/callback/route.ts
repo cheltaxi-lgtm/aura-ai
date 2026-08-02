@@ -148,6 +148,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           oauthAbsoluteUrl(request, oauthErrorRedirect("provider_taken", mode, returnTo))
         );
       }
+      if (
+        error instanceof Error &&
+        (error.message === "LINK_SESSION_REQUIRED" || error.message === "LINK_ACCOUNT_REQUIRED")
+      ) {
+        return redirectNoStore(
+          oauthAbsoluteUrl(request, oauthErrorRedirect("auth_required", mode, returnTo))
+        );
+      }
       if (error instanceof Error && error.message === "CONSENT_REQUIRED") {
         if (pending.mode === "link") {
           return redirectNoStore(

@@ -75,7 +75,8 @@ export default function AdsSettingsPage() {
           Object.entries(caps).map(([k, v]) => [k, Number(v)])
         ),
       };
-      const res = await fetch("/api/ads/admin/settings", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/ads/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -96,7 +97,8 @@ export default function AdsSettingsPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const res = await fetch("/api/ads/admin/emergency-stop", { method: "POST" });
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/ads/admin/emergency-stop", { method: "POST" });
       const d = await res.json().catch(() => ({}));
       setStopOpen(false);
       setNotice(

@@ -50,10 +50,8 @@ export async function POST(request: NextRequest) {
       );
     }
     if (!user.password_hash) {
-      return NextResponse.json(
-        { error: "Для этого аккаунта используйте вход через VK или Яндекс" },
-        { status: 401 }
-      );
+      // Same generic failure as unknown email — avoid OAuth-only enumeration.
+      return NextResponse.json({ error: LOGIN_FAILURE_MESSAGE }, { status: 401 });
     }
     if (!(await verifyPassword(password, user.password_hash))) {
       const hint = await resolveLoginHint(email, "user");

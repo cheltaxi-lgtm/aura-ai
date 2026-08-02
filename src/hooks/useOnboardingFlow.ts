@@ -2213,17 +2213,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             const jointRole = getJointReadingRole() ?? "initiator";
             let jointFailureMessage: string | undefined;
             if (readingText && !jointSaved) {
-              const positionLabels = resolveSpreadPositions(spreadId, intention as SessionTopicId).map(
-                (p) => p.label
-              );
               const fallback = await postJointReadingComplete(jointToken, {
-                reading: readingText,
-                cards: cards.map((c, i) => ({
-                  name: c.name,
-                  position: positionLabels[i] ?? c.name,
-                })),
-                sessionId: chatSessionId,
-                characterKey: masterId,
+                sessionId: chatSessionId ?? "",
                 role: jointRole,
               });
               if (!fallback.ok) {
@@ -3489,15 +3480,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           const jointRole = getJointReadingRole() ?? "initiator";
           let jointFailureMessage: string | undefined;
           if (readingText && !jointSaved) {
-            const positionLabels = resolveSpreadPositions(spreadId, intention).map((p) => p.label);
             const fallback = await postJointReadingComplete(jointToken, {
-              reading: readingText,
-              cards: spreadCards.map((c, i) => ({
-                name: c.name,
-                position: positionLabels[i] ?? c.name,
-              })),
-              sessionId: spreadSessionId ?? chatSessionId,
-              characterKey,
+              sessionId: spreadSessionId ?? chatSessionId ?? "",
               role: jointRole,
             });
             if (!fallback.ok) {

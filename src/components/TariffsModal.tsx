@@ -22,12 +22,15 @@ const PAID_ACTIONS: RuneActionType[] = [
   "VISION_ANALYSIS",
   "DAILY_EXTENDED",
   "DESTINY_CARD",
+  "SCENE_ILLUSTRATION",
+  "TAROT_ATMOSPHERE",
   "JOINT_READING",
   "DAILY_AMULET",
   "FINAL_REPORT",
   "NATAL_READING",
   "FORECAST_REPORT",
   "SYNASTRY_REPORT",
+  "VOICE_TTS",
 ];
 
 export default function TariffsModal({

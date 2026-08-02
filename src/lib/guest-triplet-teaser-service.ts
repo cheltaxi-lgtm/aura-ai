@@ -345,14 +345,18 @@ export function assertReceiptAgeForTeaser(
 }
 
 export function assertTeaserRequestAllowed(
-  request: NextRequest
+  request: NextRequest,
+  opts?: {
+    hasBoundGuestSession?: boolean;
+    /** Guest complete mints the receipt — Capacitor may omit Sec-Fetch-*. */
+    allowCapacitorWithoutSession?: boolean;
+  }
 ): { ok: true } | { ok: false; reason: string } {
   const ua = request.headers.get("user-agent") ?? "";
   if (!ua.trim() || BOT_UA_RE.test(ua)) {
     return { ok: false, reason: "bot_ua" };
   }
   const referer = request.headers.get("referer") ?? "";
-  const origin = request.headers.get("origin") ?? "";
   const secFetchSite = request.headers.get("sec-fetch-site") ?? "";
   const hostOk = (value: string) => {
     try {
@@ -367,11 +371,14 @@ export function assertTeaserRequestAllowed(
       return false;
     }
   };
+  // Capacitor WebViews often omit Sec-Fetch-*.
   const capacitor = /capacitor|wv\)|android.*zovus|zovus.*android/i.test(ua);
-  if (capacitor) return { ok: true };
+  if (capacitor && (opts?.hasBoundGuestSession || opts?.allowCapacitorWithoutSession)) {
+    return { ok: true };
+  }
+  // Prefer browser fetch metadata — Origin alone is trivial to spoof via curl.
   if (secFetchSite === "same-origin" || secFetchSite === "same-site") return { ok: true };
   if (referer && hostOk(referer)) return { ok: true };
-  if (origin && hostOk(origin)) return { ok: true };
   if (process.env.NODE_ENV !== "production") return { ok: true };
   return { ok: false, reason: "missing_referer" };
 }
@@ -500,7 +507,7 @@ export async function resolveGuestTeaser(input: {
     return returnFallback("disabled");
   }
 
-  const antibot = assertTeaserRequestAllowed(request);
+  const antibot = assertTeaserRequestAllowed(request, { hasBoundGuestSession: true });
   if (!antibot.ok) {
     bump("teaser_rate_limited");
     return returnFallback("antibot");

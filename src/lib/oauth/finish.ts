@@ -1,4 +1,4 @@
-import { setAuthCookie, type CookieRequestContext } from "@/lib/auth";
+import { getAuth, setAuthCookie, type CookieRequestContext } from "@/lib/auth";
 import {
   findUserById,
   getAccountConsentSnapshot,
@@ -41,6 +41,12 @@ export async function finishOAuthLink(opts: {
 }): Promise<OAuthFinishResult> {
   const accountId = opts.pending.linkAccountId?.trim();
   if (!accountId) throw new Error("LINK_ACCOUNT_REQUIRED");
+
+  // Re-check live session — stolen OAuth state must not bind without the owner cookie.
+  const live = await getAuth();
+  if (!live || live.role !== "user" || live.sub !== accountId) {
+    throw new Error("LINK_SESSION_REQUIRED");
+  }
 
   const linked = await linkOAuthIdentityToAccount(accountId, opts.provider, opts.info);
   if (!linked.ok) {

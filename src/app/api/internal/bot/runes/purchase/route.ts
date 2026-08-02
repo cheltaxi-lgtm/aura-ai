@@ -8,6 +8,7 @@ import {
 } from "@/lib/rune-purchase-constants";
 import { buildRunePurchaseReturnUrl } from "@/lib/rune-purchase-client";
 import { getRuneSettings } from "@/lib/rune-settings";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import {
   assertBotInternalAuth,
   parseTelegramUserId,
@@ -48,6 +49,15 @@ export async function POST(request: NextRequest) {
   }
 
   const telegramUserId = parseTelegramUserId(body.telegram_user_id);
+  if (telegramUserId != null) {
+    const limited = await enforcePaidRouteRateLimit(
+      `tg:${telegramUserId}`,
+      "rune_purchase"
+    );
+    if (limited) {
+      return NextResponse.json({ ok: false, error: "rate_limit" }, { status: 429 });
+    }
+  }
   if (telegramUserId == null) {
     return NextResponse.json({ ok: false, error: "invalid_telegram_user_id" }, { status: 400 });
   }

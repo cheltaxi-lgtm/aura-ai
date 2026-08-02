@@ -40,6 +40,10 @@
     "mobile",
     "scripts",
     "telegram-bot",
-    "_verify"
+    "_verify",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ]
 }

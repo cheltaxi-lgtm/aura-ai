@@ -32,26 +32,25 @@ export default function AdminAiPage() {
   }, []);
 
   const save = async () => {
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "ai", values: ai }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "prompts", values: prompts }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "tts", values: tts }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "visual", values: visual }),
-    });
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    const patches = [
+      { section: "ai", values: ai },
+      { section: "prompts", values: prompts },
+      { section: "tts", values: tts },
+      { section: "visual", values: visual },
+    ];
+    for (const patch of patches) {
+      const res = await adminFetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        alert(data.error ?? `Не удалось сохранить ${patch.section}`);
+        return;
+      }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

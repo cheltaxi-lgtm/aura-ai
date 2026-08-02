@@ -209,6 +209,7 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   name TEXT NOT NULL,
   profile_user_id UUID REFERENCES users(id),
   is_unlimited BOOLEAN NOT NULL DEFAULT FALSE,
+  token_version INTEGER NOT NULL DEFAULT 0,
   terms_accepted_at TIMESTAMPTZ,
   age_confirmed_at TIMESTAMPTZ,
   marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
@@ -422,6 +423,10 @@ CREATE INDEX IF NOT EXISTS idx_rune_transactions_user
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_payment_purchase
   ON rune_transactions (payment_id)
   WHERE type = 'purchase' AND payment_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_bonus_payment_id
+  ON rune_transactions (payment_id)
+  WHERE type = 'bonus' AND payment_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_refund_once
   ON rune_transactions (refund_of_transaction_id)
@@ -1151,3 +1156,470 @@ CREATE TABLE IF NOT EXISTS natal_event_delivery_log (
 
 CREATE INDEX IF NOT EXISTS idx_natal_event_delivery_log_delivered
   ON natal_event_delivery_log(delivered_at);
+
+-- === Synced from migrations 083�090 (fresh install parity) ===
+
+
+-- from scripts/migrations/083_migrate_partner_leads.sql
+
+-- Partnership inbound leads (separate from support tickets).
+
+CREATE TABLE IF NOT EXISTS partner_leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT NOT NULL,
+  company TEXT NOT NULL,
+  website TEXT,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new',
+  admin_note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT partner_leads_status_check
+    CHECK (status IN ('new', 'in_progress', 'done', 'spam'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_partner_leads_created
+  ON partner_leads (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_partner_leads_status_created
+  ON partner_leads (status, created_at DESC);
+
+
+-- from scripts/migrations/084_migrate_ads_schema.sql
+
+-- Ads Autopilot isolated schema. Rollback: DROP SCHEMA ads CASCADE;
+CREATE SCHEMA IF NOT EXISTS ads;
+
+CREATE TABLE IF NOT EXISTS ads.click (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  yclid TEXT,
+  utm_source TEXT,
+  utm_medium TEXT,
+  utm_campaign TEXT,
+  utm_content TEXT,
+  utm_term TEXT,
+  landing_path TEXT NOT NULL DEFAULT '/',
+  visitor_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ads_click_created_at_idx ON ads.click (created_at);
+CREATE INDEX IF NOT EXISTS ads_click_yclid_idx ON ads.click (yclid) WHERE yclid IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ads.click_user (
+  click_id UUID NOT NULL REFERENCES ads.click(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL,
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (click_id, user_id),
+  UNIQUE (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS ads.conversion (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID,
+  click_id UUID REFERENCES ads.click(id) ON DELETE SET NULL,
+  visitor_hash TEXT,
+  type TEXT NOT NULL CHECK (type IN (
+    'deck_view','card_pick','spread_submit','teaser_view','registration','claim',
+    'first_rune_spend','first_payment','repeat_payment'
+  )),
+  amount_rub NUMERIC(12,2),
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  uploaded_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ads_conversion_user_type_uidx
+  ON ads.conversion (user_id, type)
+  WHERE user_id IS NOT NULL AND type IN (
+    'registration','claim','first_rune_spend','first_payment'
+  );
+-- timestamptz::date is not IMMUTABLE (session TZ). UTC wrapper is required for the index.
+CREATE OR REPLACE FUNCTION ads.utc_date(ts timestamptz)
+RETURNS date
+LANGUAGE sql
+IMMUTABLE
+AS $$ SELECT ($1 AT TIME ZONE 'UTC')::date $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ads_conversion_micro_day_uidx
+  ON ads.conversion (click_id, type, ads.utc_date(occurred_at))
+  WHERE click_id IS NOT NULL AND type IN (
+    'deck_view','card_pick','spread_submit','teaser_view'
+  );
+CREATE INDEX IF NOT EXISTS ads_conversion_occurred_at_idx ON ads.conversion (occurred_at);
+
+CREATE TABLE IF NOT EXISTS ads.daily_stats (
+  date DATE NOT NULL,
+  campaign_id BIGINT NOT NULL DEFAULT 0,
+  adgroup_id BIGINT NOT NULL DEFAULT 0,
+  criterion_id BIGINT NOT NULL DEFAULT 0,
+  impressions BIGINT NOT NULL DEFAULT 0,
+  clicks BIGINT NOT NULL DEFAULT 0,
+  cost_rub NUMERIC(12,2) NOT NULL DEFAULT 0,
+  PRIMARY KEY (date, campaign_id, adgroup_id, criterion_id)
+);
+
+CREATE TABLE IF NOT EXISTS ads.entity_snapshot (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  level TEXT NOT NULL CHECK (level IN ('campaign','adgroup','ad','keyword')),
+  external_id TEXT NOT NULL,
+  parent_id TEXT,
+  name TEXT,
+  status TEXT,
+  moderation_status TEXT,
+  daily_budget_rub NUMERIC(12,2),
+  bid_rub NUMERIC(12,2),
+  strategy_mode TEXT,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (level, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS ads.keyword_candidate (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phrase TEXT NOT NULL,
+  normalized TEXT NOT NULL,
+  source TEXT NOT NULL,
+  cluster_key TEXT,
+  landing_path TEXT,
+  freq_exact INTEGER,
+  freq_phrase INTEGER,
+  forecast_cpc_rub NUMERIC(12,2),
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','approved','rejected','pushed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ads_keyword_candidate_norm_idx ON ads.keyword_candidate (normalized);
+
+CREATE TABLE IF NOT EXISTS ads.keyword_stat (
+  phrase TEXT NOT NULL,
+  region INTEGER NOT NULL DEFAULT 225,
+  freq_exact INTEGER,
+  freq_phrase INTEGER,
+  seasonality_json JSONB,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (phrase, region)
+);
+
+CREATE TABLE IF NOT EXISTS ads.negative_keyword (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phrase TEXT NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'account'
+    CHECK (scope IN ('account','campaign','adgroup')),
+  scope_id TEXT,
+  reason TEXT,
+  auto BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ads.search_query (
+  date DATE NOT NULL,
+  campaign_id BIGINT NOT NULL DEFAULT 0,
+  adgroup_id BIGINT NOT NULL DEFAULT 0,
+  query TEXT NOT NULL,
+  matched_keyword TEXT,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  cost_rub NUMERIC(12,2) NOT NULL DEFAULT 0,
+  deck_views INTEGER NOT NULL DEFAULT 0,
+  spread_submits INTEGER NOT NULL DEFAULT 0,
+  registrations INTEGER NOT NULL DEFAULT 0,
+  decision TEXT,
+  decided_at TIMESTAMPTZ,
+  PRIMARY KEY (date, campaign_id, adgroup_id, query)
+);
+
+CREATE TABLE IF NOT EXISTS ads.funnel_daily (
+  date DATE NOT NULL,
+  campaign_id BIGINT NOT NULL DEFAULT 0,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  deck_views INTEGER NOT NULL DEFAULT 0,
+  spread_submits INTEGER NOT NULL DEFAULT 0,
+  teaser_views INTEGER NOT NULL DEFAULT 0,
+  registrations INTEGER NOT NULL DEFAULT 0,
+  claims INTEGER NOT NULL DEFAULT 0,
+  first_payments INTEGER NOT NULL DEFAULT 0,
+  revenue_rub NUMERIC(12,2) NOT NULL DEFAULT 0,
+  PRIMARY KEY (date, campaign_id)
+);
+
+CREATE TABLE IF NOT EXISTS ads.economics_snapshot (
+  date DATE NOT NULL,
+  cohort_days INTEGER NOT NULL DEFAULT 30,
+  registrations INTEGER NOT NULL DEFAULT 0,
+  payers INTEGER NOT NULL DEFAULT 0,
+  revenue_rub NUMERIC(12,2) NOT NULL DEFAULT 0,
+  arpu_per_registration_rub NUMERIC(12,2),
+  cr_reg_to_payer NUMERIC(12,6),
+  avg_check_rub NUMERIC(12,2),
+  max_allowed_cpa_reg_rub NUMERIC(12,2),
+  sample_size INTEGER NOT NULL DEFAULT 0,
+  confidence TEXT NOT NULL DEFAULT 'low'
+    CHECK (confidence IN ('low','medium','high')),
+  PRIMARY KEY (date, cohort_days)
+);
+
+CREATE TABLE IF NOT EXISTS ads.rule_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rule TEXT NOT NULL,
+  target_level TEXT,
+  target_id TEXT,
+  decision TEXT NOT NULL,
+  reason_json JSONB,
+  applied BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ads.approval_request (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind TEXT NOT NULL CHECK (kind IN (
+    'budget_increase','bid_increase','global_cap_increase','new_landing',
+    'new_cluster','mode_switch','optimization_goal_switch'
+  )),
+  target_level TEXT,
+  target_id TEXT,
+  current_value JSONB,
+  proposed_value JSONB,
+  rationale_json JSONB,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','approved','rejected','expired')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  decided_by UUID,
+  decided_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS ads.action_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  payload_json JSONB,
+  result_json JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ads.config (
+  key TEXT PRIMARY KEY,
+  value_json JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ads.alert (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  severity TEXT NOT NULL CHECK (severity IN ('info','warning','critical')),
+  code TEXT NOT NULL,
+  message TEXT NOT NULL,
+  payload_json JSONB,
+  acknowledged_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Feature flags + discovery budget seed (source of truth also in config/ads/budget.yaml)
+INSERT INTO ads.config (key, value_json, updated_by) VALUES
+  ('ads.enabled', 'false'::jsonb, 'migration084'),
+  ('ads.rules.enabled', 'false'::jsonb, 'migration084'),
+  ('ads.autopilot.write', 'false'::jsonb, 'migration084'),
+  ('budget', '{
+    "mode":"discovery",
+    "target_romi":3,
+    "discovery_daily_cap_rub":300,
+    "discovery_total_budget_rub":9000,
+    "discovery_target_cpa_reg_rub":150,
+    "discovery_max_cpa_reg_rub":400,
+    "discovery_target_registrations":100,
+    "discovery_freq_min":100,
+    "discovery_freq_max":5000,
+    "global_daily_cap_rub":300,
+    "campaign_daily_budget_rub":300,
+    "negative_min_clicks":30,
+    "rules_window_days":3,
+    "min_clicks_per_entity":30,
+    "approval_ttl_hours":48,
+    "ctr_min":0.005,
+    "cpa_start_kill_rub":100,
+    "cpa_reg_kill_rub":250,
+    "cpa_rune_kill_rub":500
+  }'::jsonb, 'migration084')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- from scripts/migrations/085_migrate_ads_source_snapshots.sql
+
+-- Ads Autopilot: cached read-only snapshots from Direct / Metrika / Webmaster.
+-- No FK to public. Rollback pieces: DROP TABLE ads.source_snapshot, ads.metrika_goal_stat, ads.webmaster_query_daily;
+
+CREATE TABLE IF NOT EXISTS ads.source_snapshot (
+  source TEXT PRIMARY KEY CHECK (source IN ('direct','metrika','webmaster','health')),
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ok BOOLEAN NOT NULL DEFAULT FALSE,
+  error TEXT,
+  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS ads.metrika_goal_stat (
+  date DATE NOT NULL,
+  goal_id BIGINT NOT NULL,
+  goal_name TEXT,
+  reaches INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (date, goal_id)
+);
+CREATE INDEX IF NOT EXISTS ads_metrika_goal_stat_date_idx ON ads.metrika_goal_stat (date);
+
+CREATE TABLE IF NOT EXISTS ads.webmaster_query_daily (
+  date DATE NOT NULL,
+  query TEXT NOT NULL,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  shows INTEGER NOT NULL DEFAULT 0,
+  position NUMERIC(8,2),
+  PRIMARY KEY (date, query)
+);
+CREATE INDEX IF NOT EXISTS ads_webmaster_query_daily_date_idx ON ads.webmaster_query_daily (date);
+
+-- Observe mode: admin UI + source sync without spending (beacon still needs ads.enabled)
+INSERT INTO ads.config (key, value_json, updated_by) VALUES
+  ('ads.observe', 'true'::jsonb, 'migration085')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- from scripts/migrations/086_migrate_ads_budget_guards.sql
+
+-- Ads Autopilot budget protection layer (B1–B7).
+-- Rollback: DROP TABLE ads.budget_ledger; DROP TABLE ads.health_check;
+--           DELETE FROM ads.config WHERE key LIKE 'hard_%' OR key LIKE 'budget_warn%'
+--             OR key LIKE 'stats_stale%' OR key LIKE 'discovery_max_days%'
+--             OR key LIKE 'landing_timeout%' OR key LIKE 'guard.%';
+--           ALTER TABLE ads.entity_snapshot DROP COLUMN IF EXISTS pause_reason;
+
+CREATE TABLE IF NOT EXISTS ads.budget_ledger (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE NOT NULL,
+  campaign_id BIGINT NOT NULL DEFAULT 0,
+  cost_rub NUMERIC(12,2) NOT NULL DEFAULT 0,
+  source TEXT NOT NULL CHECK (source IN ('direct_report','realtime_estimate')),
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ads_budget_ledger_date_idx ON ads.budget_ledger (date);
+CREATE INDEX IF NOT EXISTS ads_budget_ledger_recorded_idx ON ads.budget_ledger (recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS ads.health_check (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  target TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('landing','api_direct','api_metrika','cron_freshness')),
+  status_code INTEGER,
+  latency_ms INTEGER,
+  ok BOOLEAN NOT NULL DEFAULT FALSE,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  detail_json JSONB
+);
+CREATE INDEX IF NOT EXISTS ads_health_check_kind_checked_idx
+  ON ads.health_check (kind, checked_at DESC);
+CREATE INDEX IF NOT EXISTS ads_health_check_target_idx ON ads.health_check (target);
+
+ALTER TABLE ads.entity_snapshot
+  ADD COLUMN IF NOT EXISTS pause_reason TEXT;
+
+INSERT INTO ads.config (key, value_json, updated_by) VALUES
+  ('hard_total_budget_rub', '9000'::jsonb, 'migration086'),
+  ('budget_warn_pct', '90'::jsonb, 'migration086'),
+  ('stats_stale_warn_hours', '24'::jsonb, 'migration086'),
+  ('stats_stale_stop_hours', '48'::jsonb, 'migration086'),
+  ('discovery_max_days', '45'::jsonb, 'migration086'),
+  ('landing_timeout_ms', '5000'::jsonb, 'migration086'),
+  ('guard.sync_stats_fail_streak', '0'::jsonb, 'migration086'),
+  ('guard.landing_paused_ids', '[]'::jsonb, 'migration086'),
+  ('guard.cpa_paused_ids', '[]'::jsonb, 'migration086'),
+  ('guard.protection_status', '{}'::jsonb, 'migration086')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- from scripts/migrations/087_migrate_ads_wordstat_source.sql
+
+-- Allow Wordstat snapshots in ads.source_snapshot.
+-- Rollback: recreate check without 'wordstat'.
+
+ALTER TABLE ads.source_snapshot DROP CONSTRAINT IF EXISTS source_snapshot_source_check;
+ALTER TABLE ads.source_snapshot
+  ADD CONSTRAINT source_snapshot_source_check
+  CHECK (source IN ('direct','metrika','webmaster','health','wordstat'));
+
+
+-- from scripts/migrations/088_migrate_ads_wordstat_history.sql
+
+-- Wordstat run history + per-phrase points (append-only).
+-- Rollback: DROP TABLE ads.wordstat_phrase_point; DROP TABLE ads.wordstat_run;
+
+CREATE TABLE IF NOT EXISTS ads.wordstat_run (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ok BOOLEAN NOT NULL DEFAULT FALSE,
+  error TEXT,
+  region INTEGER NOT NULL DEFAULT 225,
+  seeds TEXT[] NOT NULL DEFAULT '{}',
+  phrase_count INTEGER NOT NULL DEFAULT 0,
+  in_theme_count INTEGER NOT NULL DEFAULT 0,
+  in_band_count INTEGER NOT NULL DEFAULT 0,
+  new_count INTEGER NOT NULL DEFAULT 0,
+  risen_count INTEGER NOT NULL DEFAULT 0,
+  fallen_count INTEGER NOT NULL DEFAULT 0,
+  lost_count INTEGER NOT NULL DEFAULT 0,
+  median_shows_theme INTEGER,
+  max_shows INTEGER NOT NULL DEFAULT 0,
+  diff_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  meta_json JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS ads_wordstat_run_fetched_idx
+  ON ads.wordstat_run (fetched_at DESC);
+
+CREATE INDEX IF NOT EXISTS ads_wordstat_run_ok_fetched_idx
+  ON ads.wordstat_run (ok, fetched_at DESC);
+
+CREATE TABLE IF NOT EXISTS ads.wordstat_phrase_point (
+  run_id UUID NOT NULL REFERENCES ads.wordstat_run (id) ON DELETE CASCADE,
+  phrase_norm TEXT NOT NULL,
+  phrase TEXT NOT NULL,
+  shows INTEGER NOT NULL,
+  seeds TEXT[] NOT NULL DEFAULT '{}',
+  bucket TEXT NOT NULL DEFAULT 'with'
+    CHECK (bucket IN ('with', 'also')),
+  in_theme BOOLEAN NOT NULL DEFAULT FALSE,
+  in_band BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (run_id, phrase_norm)
+);
+
+CREATE INDEX IF NOT EXISTS ads_wordstat_phrase_point_theme_idx
+  ON ads.wordstat_phrase_point (run_id, in_theme, shows DESC);
+
+
+-- from scripts/migrations/090_migrate_telegram_auth_bridge.sql
+
+-- Telegram login/link via bot deep-link (BotFather Login Widget domain optional).
+CREATE TABLE IF NOT EXISTS telegram_auth_challenges (
+  token TEXT PRIMARY KEY,
+  purpose TEXT NOT NULL CHECK (purpose IN ('login', 'register', 'link')),
+  user_account_id UUID NULL REFERENCES user_accounts(id) ON DELETE CASCADE,
+  accepted_terms BOOLEAN NOT NULL DEFAULT FALSE,
+  age_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+  marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'confirmed', 'consumed', 'expired')),
+  telegram_user_id BIGINT NULL,
+  telegram_username TEXT NULL,
+  telegram_first_name TEXT NULL,
+  telegram_photo_url TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  confirmed_at TIMESTAMPTZ NULL,
+  consumed_at TIMESTAMPTZ NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_auth_challenges_status_expires
+  ON telegram_auth_challenges (status, expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_auth_challenges_account
+  ON telegram_auth_challenges (user_account_id)
+  WHERE user_account_id IS NOT NULL;
+
+
+CREATE INDEX IF NOT EXISTS idx_oauth_transactions_link_account
+  ON oauth_transactions(link_account_id)
+  WHERE link_account_id IS NOT NULL;
+

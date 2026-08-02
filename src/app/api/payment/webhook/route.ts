@@ -3,6 +3,7 @@ import {
   completeYoomoneyPayment,
 } from "@/lib/session";
 import { creditInfluencerBalance } from "@/lib/influencers";
+import { reportError } from "@/lib/error-report";
 import {
   parseYoomoneyLabel,
   verifyYoomoneyNotification,
@@ -13,15 +14,23 @@ import { processYukassaWebhook } from "@/lib/yukassa-webhook";
 async function handleYukassaWebhook(body: Record<string, unknown>) {
   const result = await processYukassaWebhook(body);
   if (!result.ok) {
-    console.error("[payment/webhook] yukassa rejected", result.paymentId, result.kind);
+    reportError(new Error("yukassa_webhook_rejected"), {
+      route: "payment/webhook",
+      paymentId: result.paymentId,
+      kind: result.kind,
+    });
     return NextResponse.json({ error: "Webhook rejected" }, { status: 400 });
   }
-  return NextResponse.json({ ok: true, kind: result.kind, paymentId: result.paymentId });
+  return NextResponse.json({ ok: true });
 }
 
-async function handleYoomoneyWebhook(data: YoomoneyNotification) {
+async function handleYoomoneyWebhook(data: YoomoneyNotification & { test_notification?: string }) {
   if (!verifyYoomoneyNotification(data)) {
     return NextResponse.json({ error: "Invalid sha1 hash" }, { status: 403 });
+  }
+
+  if (data.test_notification === "true" || data.test_notification === "1") {
+    return NextResponse.json({ ok: true, skipped: true });
   }
 
   if (data.notification_type !== "p2p-incoming" && data.notification_type !== "card-incoming") {
@@ -44,7 +53,12 @@ async function handleYoomoneyWebhook(data: YoomoneyNotification) {
     amount: parseFloat(data.amount),
   });
 
-  if (result?.influencer_id && result.amount) {
+  if (!result) {
+    // Keep pending unlock retryable — do not ACK a failed match.
+    return NextResponse.json({ error: "Payment not completed" }, { status: 409 });
+  }
+
+  if (result.influencer_id && result.amount) {
     await creditInfluencerBalance(
       result.influencer_id,
       Number(result.amount),
@@ -65,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
-    const notification: YoomoneyNotification = {
+    const notification: YoomoneyNotification & { test_notification?: string } = {
       notification_type: String(formData.get("notification_type") ?? ""),
       operation_id: String(formData.get("operation_id") ?? ""),
       amount: String(formData.get("amount") ?? ""),
@@ -75,11 +89,12 @@ export async function POST(request: NextRequest) {
       codepro: String(formData.get("codepro") ?? "false"),
       label: String(formData.get("label") ?? ""),
       sha1_hash: String(formData.get("sha1_hash") ?? ""),
+      test_notification: String(formData.get("test_notification") ?? ""),
     };
 
     return handleYoomoneyWebhook(notification);
   } catch (error) {
-    console.error("Webhook error:", error);
+    reportError(error, { route: "payment/webhook" });
     return NextResponse.json({ error: "Webhook failed" }, { status: 500 });
   }
 }

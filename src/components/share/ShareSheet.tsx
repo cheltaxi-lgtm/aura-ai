@@ -85,6 +85,7 @@ export default function ShareSheet({ payload, onClose, channels = DEFAULT_CHANNE
 
     fetch("/api/share", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(nextPayload),
       signal: controller.signal,

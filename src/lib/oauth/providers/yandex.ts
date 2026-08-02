@@ -90,11 +90,14 @@ export async function exchangeYandexCode(
 
   const gender = user.sex === "male" || user.sex === "female" ? user.sex : undefined;
 
+  // Only Yandex primary default_email is treated as verified for account linking.
+  // Secondary emails[] entries are not auto-link signals.
+  const primary = user.default_email?.trim().toLowerCase() || null;
   return {
     providerUserId: String(user.id),
-    email: email?.trim().toLowerCase() ?? null,
+    email: primary ?? email?.trim().toLowerCase() ?? null,
     name,
-    emailVerified: Boolean(email),
+    emailVerified: Boolean(primary),
     gender,
   };
 }

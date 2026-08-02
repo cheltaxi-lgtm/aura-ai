@@ -44,7 +44,8 @@ export default function AdsCampaignPage() {
   const act = async (action: "pause" | "resume", id?: string) => {
     setBusy(`${action}:${id || "all"}`);
     try {
-      const res = await fetch("/api/ads/admin/campaign", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/ads/admin/campaign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ids: id ? [id] : undefined }),

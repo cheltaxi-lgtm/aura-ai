@@ -63,7 +63,22 @@ export function hasFiredRunePurchaseGoal(paymentId: string): boolean {
   }
 }
 
-export function buildRunePurchaseReturnUrl(appUrl: string, paymentId: string): string {
+export function buildRunePurchaseReturnUrl(
+  appUrl: string,
+  paymentId?: string,
+  orderId?: string
+): string {
   const base = appUrl.replace(/\/$/, "");
-  return `${base}/runes/success?paymentId=${encodeURIComponent(paymentId)}`;
+  const params = new URLSearchParams();
+  if (paymentId) params.set("paymentId", paymentId);
+  if (orderId) params.set("orderId", orderId);
+  const qs = params.toString();
+  return qs ? `${base}/runes/success?${qs}` : `${base}/runes/success`;
+}
+
+export function readPendingRuneOrderId(searchParams?: URLSearchParams): string | null {
+  if (typeof window === "undefined") return null;
+  const fromUrl = searchParams?.get("orderId")?.trim();
+  if (fromUrl) return fromUrl;
+  return null;
 }

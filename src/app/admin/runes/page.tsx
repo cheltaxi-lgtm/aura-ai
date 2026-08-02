@@ -71,7 +71,8 @@ export default function AdminRunesPage() {
 
   const save = async () => {
     if (!settings) return;
-    const res = await fetch("/api/admin/runes", {
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    const res = await adminFetch("/api/admin/runes", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ settings, packages }),

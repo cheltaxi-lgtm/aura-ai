@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminStepUp } from "@/lib/admin-stepup";
 import {
   countEmailLogForPurge,
   deleteEmailLog,
@@ -153,11 +154,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   await ensureDb();
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
   const body = await request.json().catch(() => ({}));
   const action = typeof body.action === "string" ? body.action : "test";
+
+  // Preview is read-only; mutating mail actions need password step-up.
+  const stepped =
+    action === "preview"
+      ? null
+      : await requireAdminStepUp(request);
+  if (stepped && !stepped.ok) return stepped.response;
+  const auth =
+    stepped?.ok
+      ? stepped.auth
+      : await requireAdmin();
+  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (action === "preview") {
     const templateId = typeof body.templateId === "string" ? body.templateId : "";
@@ -217,8 +227,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   await ensureDb();
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const stepped = await requireAdminStepUp(request);
+  if (!stepped.ok) return stepped.response;
 
   const body = await request.json().catch(() => ({}));
   const params = parsePurgeParams(body as Record<string, unknown>);

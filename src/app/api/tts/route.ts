@@ -5,10 +5,22 @@ import { isTtsConfigured, isTtsEnabled, synthesizeSpeech } from "@/lib/tts";
 import { getSetting } from "@/lib/settings";
 import { resolveApiCharacterId } from "@/lib/chat-sanitize";
 import { isCharacterTtsEnabled } from "@/lib/voice-config";
+import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
+import {
+  BillingService,
+  InsufficientFundsError,
+  insufficientFundsResponse,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
+import { isRuneBillingActive } from "@/lib/rune-service";
+import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
+import { voiceTtsRuneCost } from "@/lib/rune-costs";
+import { reportError } from "@/lib/error-report";
 
 export const maxDuration = 300;
 
-const MAX_REQUEST_CHARS = 50000;
+/** Hard cap — keeps provider spend bounded even with rune billing. */
+const MAX_REQUEST_CHARS = 4000;
 
 export async function GET() {
   const tts = await getSetting("tts");
@@ -64,12 +76,55 @@ export async function POST(request: NextRequest) {
   }
 
   if (text.length > MAX_REQUEST_CHARS) {
-    return NextResponse.json({ error: "Текст слишком длинный для озвучки" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: `Текст слишком длинный для озвучки (макс. ${MAX_REQUEST_CHARS} символов)`,
+        code: "text_too_long",
+        maxChars: MAX_REQUEST_CHARS,
+      },
+      { status: 400 }
+    );
+  }
+
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  const unlimited = await resolveUnlimitedAccess({
+    accountId: auth.sub,
+    profileUserId,
+  });
+  const runeSettings = await getRuneSettings();
+  const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
+
+  let billingCharge: BillingChargeResult | null = null;
+
+  if (useRuneBilling && profileUserId) {
+    const unit = runeCostFromSettings(runeSettings, "VOICE_TTS");
+    const cost = voiceTtsRuneCost(text.length, unit);
+    try {
+      billingCharge = await BillingService.chargeForSession({
+        userId: profileUserId,
+        cost,
+        actionType: "VOICE_TTS",
+      });
+    } catch (err) {
+      if (err instanceof InsufficientFundsError) {
+        return insufficientFundsResponse(err);
+      }
+      throw err;
+    }
   }
 
   try {
     const result = await synthesizeSpeech(text, characterId);
     if (!result) {
+      if (billingCharge?.spentRunes) {
+        await BillingService.rollbackCharge({
+          userId: profileUserId!,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: false,
+          actionType: "VOICE_TTS",
+          transactionId: billingCharge.transactionId,
+        });
+      }
       return NextResponse.json(
         { error: "Не удалось озвучить ответ", code: "browser_fallback" },
         { status: 502 }
@@ -81,6 +136,9 @@ export async function POST(request: NextRequest) {
       "X-TTS-Provider": result.provider,
       ...(result.model ? { "X-TTS-Model": result.model } : {}),
       ...(result.chunks && result.chunks > 1 ? { "X-TTS-Chunks": String(result.chunks) } : {}),
+      ...(billingCharge?.spentRunes
+        ? { "X-TTS-Runes-Spent": String(billingCharge.spentRunes) }
+        : {}),
     };
 
     if (result.parts && result.parts.length > 1) {
@@ -105,6 +163,20 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("TTS error:", error);
+    reportError(error, { route: "tts", characterId, chars: text.length });
+    if (billingCharge?.spentRunes && profileUserId) {
+      try {
+        await BillingService.rollbackCharge({
+          userId: profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: false,
+          actionType: "VOICE_TTS",
+          transactionId: billingCharge.transactionId,
+        });
+      } catch (refundErr) {
+        console.error("TTS refund failed:", refundErr);
+      }
+    }
     return NextResponse.json(
       { error: "Озвучка временно недоступна", code: "browser_fallback" },
       { status: 500 }
