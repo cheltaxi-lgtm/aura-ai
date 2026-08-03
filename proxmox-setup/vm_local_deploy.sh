@@ -103,15 +103,28 @@ if [ -f "$TARBALL" ]; then
   echo ">>> Hardening /opt/aura-ai file modes..."
   find /opt/aura-ai -type d -exec chmod 755 {} +
   find /opt/aura-ai -type f -exec chmod 644 {} +
-  # The blanket 644 above would expose secrets: .env.async-jobs now survives rsync,
-  # so it reaches this step as an existing file instead of being recreated at 600.
-  for secret_file in /opt/aura-ai/.env.local /opt/aura-ai/.env.async-jobs; do
+  # The blanket 644 above would expose secrets. .env.local, telegram-bot/.env and
+  # .env.async-jobs are all excluded from rsync, so they reach this step as existing
+  # files and keep whatever mode chmod just gave them. systemd reads every one of
+  # these as root before dropping to the aura-ai user, so 600 root:root is safe.
+  for secret_file in \
+    /opt/aura-ai/.env.local \
+    /opt/aura-ai/.env.async-jobs \
+    /opt/aura-ai/telegram-bot/.env; do
     if [ -f "$secret_file" ]; then
       chmod 600 "$secret_file"
     fi
   done
   find /opt/aura-ai/proxmox-setup -type f -name '*.sh' -exec chmod 750 {} +
   find /opt/aura-ai/hosting -type f \( -name '*.sh' -o -name '*.ps1' \) -exec chmod 750 {} + 2>/dev/null || true
+  # The bot runs as aura-ai and writes its SQLite (plus -wal/-shm) in place. The
+  # blanket chmod above strips that write access and puts the bot in a restart loop
+  # with "attempt to write a readonly database", so give the data dir back.
+  if [ -d /opt/aura-ai/telegram-bot/data ]; then
+    chown -R aura-ai:aura-ai /opt/aura-ai/telegram-bot/data
+    find /opt/aura-ai/telegram-bot/data -type d -exec chmod 750 {} +
+    find /opt/aura-ai/telegram-bot/data -type f -exec chmod 640 {} +
+  fi
   echo ">>> Verifying installed GeoNames index after rsync..."
   verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
   echo ">>> Rsync complete ($(test -f /opt/aura-ai/deploy-sha.txt && tr -d '\r\n' < /opt/aura-ai/deploy-sha.txt || echo no-sha))"

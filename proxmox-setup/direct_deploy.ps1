@@ -30,7 +30,9 @@ try {
 } catch {
   "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
 }
-tar -czf $Tarball -C $ProjectRoot --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local --exclude=.cursor .
+# The bot's token and SQLite state live in the working tree locally; shipping them
+# would overwrite production with a developer's (often test-generated) copy.
+tar -czf $Tarball -C $ProjectRoot --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local --exclude=.cursor --exclude=telegram-bot/.env --exclude=telegram-bot/data .
 Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 Write-Host "    $((Get-Item $Tarball).Length) bytes"
 
@@ -51,16 +53,24 @@ if [ -d "/opt/aura-ai/public/releases" ]; then
   cp -a /opt/aura-ai/public/releases/. "$RELEASES_BACKUP/"
 fi
 echo ">>> Bootstrap rsync from tarball..."
+# Exclude list must stay in sync with vm_local_deploy.sh. This rsync runs FIRST, so
+# anything missing here is already destroyed by --delete before the safer rsync gets
+# a chance to protect it (bot database, bot token, generated scene art).
 rsync -a --delete --ignore-times \
   --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
   --exclude='.env.local' \
   --exclude='.env.async-jobs' \
   --exclude='public/releases/' \
+  --exclude='public/scene-art/' \
   --exclude='.next/' \
   --exclude='.next-candidate/' \
   --exclude='.next-previous/' \
   --exclude='node_modules/' \
   --exclude='logs/' \
+  --exclude='telegram-bot/.env' \
+  --exclude='telegram-bot/data/' \
+  --exclude='telegram-bot/node_modules/' \
+  --exclude='telegram-bot/backups/' \
   "$STAGE/" /opt/aura-ai/
 if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
   mkdir -p /opt/aura-ai/public/releases

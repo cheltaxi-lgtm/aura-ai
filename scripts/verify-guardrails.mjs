@@ -785,6 +785,41 @@ function checkNatalDeploySafety() {
   }
 }
 
+function rsyncExcludes(content) {
+  return new Set(
+    [...content.matchAll(/--exclude=(?:'([^']+)'|([^\s\\]+))/g)].map(
+      (match) => match[1] ?? match[2]
+    )
+  );
+}
+
+// direct_deploy.ps1 rsyncs into /opt/aura-ai before vm_local_deploy.sh runs, so any
+// path it forgets to exclude is already gone by the time the safer rsync protects it.
+// A drift between the two lists once shipped a developer's bot database to production.
+function checkDeployExcludeParity() {
+  const direct = fs.readFileSync(path.join(ROOT, "proxmox-setup/direct_deploy.ps1"), "utf8");
+  const vm = fs.readFileSync(path.join(ROOT, "proxmox-setup/vm_local_deploy.sh"), "utf8");
+  const directExcludes = rsyncExcludes(direct);
+  const missing = [...rsyncExcludes(vm)].filter((entry) => !directExcludes.has(entry));
+  if (missing.length > 0) {
+    fail(
+      `deploy rsync: direct_deploy.ps1 runs first and must exclude everything vm_local_deploy.sh does — missing ${missing.join(", ")}`
+    );
+    return;
+  }
+  for (const runtimeState of ["telegram-bot/data/", "telegram-bot/.env"]) {
+    if (!directExcludes.has(runtimeState)) {
+      fail(`deploy rsync: bootstrap rsync would overwrite production ${runtimeState}`);
+      return;
+    }
+  }
+  if (!/--exclude=telegram-bot\/data\b/.test(direct)) {
+    fail("deploy tarball: must not ship telegram-bot/data to the server");
+    return;
+  }
+  ok("deploy rsync: bootstrap excludes cover every path the VM rsync protects");
+}
+
 function main() {
   console.log("verify-guardrails\n");
 
@@ -796,6 +831,7 @@ function main() {
   checkNatalEvidenceAi();
   checkNatalShareAndNotificationConsent();
   checkNatalDeploySafety();
+  checkDeployExcludeParity();
 
   console.log(`\n--- summary ---`);
   console.log(`passed: ${passes.length}`);
