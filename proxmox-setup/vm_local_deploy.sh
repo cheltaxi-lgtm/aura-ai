@@ -161,6 +161,12 @@ if [ -f "$TARBALL" ]; then
       chmod 600 "$secret_file"
     fi
   done
+  # Database dumps are excluded from rsync but the blanket chmod still walks them,
+  # which would leave a full copy of production readable by any local user.
+  if [ -d /opt/aura-ai/backups ]; then
+    find /opt/aura-ai/backups -type d -exec chmod 700 {} +
+    find /opt/aura-ai/backups -type f -exec chmod 600 {} +
+  fi
   # The bot runs as aura-ai and writes its SQLite (plus -wal/-shm) in place. Losing
   # that write access puts it in a restart loop on "attempt to write a readonly
   # database", so hand the data directory back.
