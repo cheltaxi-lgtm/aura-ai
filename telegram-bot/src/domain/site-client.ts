@@ -570,9 +570,9 @@ export async function sitePhoto(
 
 export async function siteNumerology(
   telegramUserId: number,
-  action: "summary" | "list" | "get" | "run" | "delete" = "summary",
+  action: "summary" | "list" | "get" | "run" | "delete" | "subjects" | "subjects.list" | "subjects.create" | "subjects.delete" = "summary",
   reportId?: string,
-  opts?: { replace?: boolean }
+  opts?: { replace?: boolean; subjectId?: string; kind?: string; displayName?: string; birthDate?: string }
 ) {
   return siteFetch<{
     ok: boolean;
@@ -611,6 +611,8 @@ export async function siteNumerology(
       sessionId: string | null;
       runeCost: number | null;
     }>;
+    subject?: { id: string; kind: string; displayName: string | null; birthDate: string };
+    subjects?: Array<{ id: string; kind: string; displayName: string | null; birthDate: string }>;
     reportId?: string;
     content?: string;
     sessionId?: string;
@@ -629,6 +631,10 @@ export async function siteNumerology(
       action,
       report_id: reportId,
       replace: opts?.replace === true,
+      subject_id: opts?.subjectId,
+      kind: opts?.kind,
+      display_name: opts?.displayName,
+      birth_date: opts?.birthDate,
     },
     // Full matrix = ~19 Gemini-3 zone calls (reasoning tax) — allow full budget.
     action === "run" ? 420_000 : 30_000

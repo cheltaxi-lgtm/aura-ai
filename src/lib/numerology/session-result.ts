@@ -11,6 +11,7 @@ import {
   type NumerologToolParams,
 } from "./tools";
 import { personalYearForecast } from "./forecast";
+import { matrixYearForecast } from "./matrix-year-forecast";
 import { parseBirthDate } from "./constants";
 
 export interface NumerologSessionPosition {
@@ -106,12 +107,12 @@ export function buildNumerologSessionResult(input: {
         pythagorasSquare: square,
       };
     }
-    if (input.toolId === "destiny_matrix") {
+    if (input.toolId === "destiny_matrix" || input.toolId === "child_matrix") {
       const parsed = parseBirthDate(input.birthDate ?? "");
       if (!parsed) return null;
       const matrix = destinyMatrix(input.birthDate!);
       if (!matrix) return null;
-      const points = listMatrixZones(matrix)
+      const points = listMatrixZones(matrix, input.toolId)
         .filter((z) => z.number != null && z.arcanaName)
         .map((z) => ({
           label: z.label,
@@ -129,6 +130,26 @@ export function buildNumerologSessionResult(input: {
         positions: points,
         cardNames: points.map((p) => `${p.number} — ${p.value}`),
         destinyMatrix: matrix,
+      };
+    }
+    if (input.toolId === "matrix_year_forecast") {
+      const forecast = matrixYearForecast(input.birthDate ?? "");
+      if (!forecast) return null;
+      const points = forecast.months.map((month) => ({
+        label: month.label,
+        value: `${month.number} — ${month.title}`,
+        detail: forecast.opportunityMonths.includes(forecast.months.indexOf(month))
+          ? "Окно возможностей"
+          : forecast.cautionMonths.includes(forecast.months.indexOf(month))
+            ? "Месяц внимательности"
+            : undefined,
+      }));
+      return {
+        toolId: input.toolId,
+        title: tool.label,
+        subtitle: `Аркан года: ${forecast.yearArcana.number} — ${forecast.yearArcana.title}`,
+        positions: points,
+        cardNames: points.map((point) => `${point.label}: ${point.value}`),
       };
     }
     if (input.toolId === "matrix_compatibility") {

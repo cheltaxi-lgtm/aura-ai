@@ -937,10 +937,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_natal_report_history_charge
 CREATE INDEX IF NOT EXISTS idx_natal_report_history_user_created
   ON natal_report_history(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS matrix_subjects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('self', 'child', 'partner', 'other')),
+  display_name TEXT,
+  birth_date DATE NOT NULL,
+  birth_time TIME,
+  birth_city TEXT,
+  birth_lat DOUBLE PRECISION,
+  birth_lon DOUBLE PRECISION,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matrix_subjects_self
+  ON matrix_subjects (user_id) WHERE kind = 'self';
+
+CREATE INDEX IF NOT EXISTS idx_matrix_subjects_user
+  ON matrix_subjects (user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS numerology_report_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   tool_id TEXT NOT NULL,
+  subject_id UUID NOT NULL REFERENCES matrix_subjects(id) ON DELETE CASCADE,
   birth_date DATE NOT NULL,
   calculation_version TEXT NOT NULL DEFAULT 'matrix-v1',
   content TEXT NOT NULL CHECK (length(btrim(content)) > 0),
@@ -953,7 +974,7 @@ CREATE TABLE IF NOT EXISTS numerology_report_history (
   CONSTRAINT numerology_report_history_version_unique UNIQUE (
     user_id,
     tool_id,
-    birth_date,
+    subject_id,
     calculation_version
   )
 );
@@ -967,6 +988,9 @@ CREATE INDEX IF NOT EXISTS idx_numerology_report_history_user_created
 
 CREATE INDEX IF NOT EXISTS idx_numerology_report_history_user_tool_birth
   ON numerology_report_history(user_id, tool_id, birth_date);
+
+CREATE INDEX IF NOT EXISTS idx_numerology_report_history_subject
+  ON numerology_report_history(subject_id);
 
 CREATE TABLE IF NOT EXISTS natal_compatibility_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

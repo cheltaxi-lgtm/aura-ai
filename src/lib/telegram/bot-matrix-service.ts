@@ -27,7 +27,9 @@ import {
 } from "@/lib/numerology/matrix-session-cleanup";
 import {
   deleteOwnedMatrixReportsForBirth,
+  deleteOwnedMatrixReportsForSubject,
   findOwnedMatrixReport,
+  findOwnedMatrixReportBySubject,
   getUserMatrixReportById,
   listUserMatrixReports,
   saveMatrixReport,
@@ -51,6 +53,14 @@ import { resolveClientGender } from "@/lib/russian-name-gender";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import { createHistoryEntry, getUserById } from "@/lib/users";
+import {
+  deleteMatrixSubject,
+  ensureSelfSubject,
+  getMatrixSubject,
+  isMatrixSubjectKind,
+  listMatrixSubjects,
+  upsertMatrixSubject,
+} from "@/lib/services/matrix-subject-service";
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
@@ -128,11 +138,16 @@ async function requireMatrixUser(telegramUserId: number) {
   return { ok: true as const, resolved, user };
 }
 
-export async function botMatrixSummary(telegramUserId: number) {
+export async function botMatrixSummary(telegramUserId: number, subjectId?: string) {
   const gate = await requireMatrixUser(telegramUserId);
   if (!gate.ok) return gate;
 
-  const summary = buildMatrixFreeSummary(gate.user.birth_date!, {
+  const subject = subjectId
+    ? await getMatrixSubject(gate.resolved.profileUserId!, subjectId)
+    : await ensureSelfSubject(gate.resolved.profileUserId!);
+  if (subjectId && !subject) return { ok: false as const, error: "not_found" as const, message: "Субъект матрицы не найден." };
+  const subjectBirthDate = subject?.birthDate ?? gate.user.birth_date!;
+  const summary = buildMatrixFreeSummary(subjectBirthDate, {
     name: gate.user.name || undefined,
   });
   if (!summary) {
@@ -208,7 +223,7 @@ export async function botMatrixSummary(telegramUserId: number) {
   };
 }
 
-export async function botMatrixList(telegramUserId: number) {
+export async function botMatrixList(telegramUserId: number, _subjectId?: string) {
   const gate = await requireMatrixUser(telegramUserId);
   if (!gate.ok) return gate;
 
@@ -231,7 +246,7 @@ export async function botMatrixList(telegramUserId: number) {
   };
 }
 
-export async function botMatrixGet(telegramUserId: number, reportId: string) {
+export async function botMatrixGet(telegramUserId: number, reportId: string, _subjectId?: string) {
   const gate = await requireMatrixUser(telegramUserId);
   if (!gate.ok) return gate;
 
@@ -270,7 +285,7 @@ export async function botMatrixGet(telegramUserId: number, reportId: string) {
 
 export async function botMatrixRun(
   telegramUserId: number,
-  opts?: { replace?: boolean }
+  opts?: { replace?: boolean; subjectId?: string }
 ): Promise<
   | {
       ok: true;
@@ -292,18 +307,36 @@ export async function botMatrixRun(
   if (!gate.ok) return gate;
 
   const profileUserId = gate.resolved.profileUserId!;
-  const birthDate = gate.user.birth_date!;
+  const subject = opts?.subjectId
+    ? await getMatrixSubject(profileUserId, opts.subjectId)
+    : await ensureSelfSubject(profileUserId);
+  if (opts?.subjectId && !subject) {
+    return { ok: false, error: "not_found" as const, message: "Субъект матрицы не найден." };
+  }
+  const birthDate = subject?.birthDate ?? gate.user.birth_date!;
   const isoBirth = toIsoBirthDate(birthDate) ?? birthDate;
-  const tool = getNumerologTool("destiny_matrix");
+  const toolId = subject?.kind === "child" ? "child_matrix" : "destiny_matrix";
+  const tool = getNumerologTool(toolId);
+  const chargeAction =
+    toolId === "child_matrix"
+      ? "CHILD_MATRIX_REPORT"
+      : subject && subject.kind !== "self"
+        ? "MATRIX_SUBJECT_REPORT"
+        : "NUMEROLOGY_SESSION";
   const userName =
-    normalizePersonDisplayName(gate.user.name || gate.resolved.name) ||
+    normalizePersonDisplayName(
+      subject?.displayName || gate.user.name || gate.resolved.name
+    ) ||
+    subject?.displayName ||
     gate.user.name ||
     gate.resolved.name ||
     "друг";
   const diagram = buildMatrixDiagram(isoBirth, userName);
   const replace = Boolean(opts?.replace);
 
-  const owned = await findOwnedMatrixReport(profileUserId, isoBirth);
+  const owned = subject?.id
+    ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
+    : await findOwnedMatrixReport(profileUserId, isoBirth, { toolId });
   const ownedUsable = Boolean(owned?.content?.trim() && isUsableMatrixReading(owned.content));
 
   // Open existing only when not explicitly ordering a replacement and content is client-safe.
@@ -364,7 +397,11 @@ export async function botMatrixRun(
   // Regeneration after a leak is free — client already paid for unusable text.
   const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
   if ((replace || regenerateAfterLeak) && owned) {
-    const wiped = await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
+    const wiped = subject?.id
+      ? await deleteOwnedMatrixReportsForSubject(profileUserId, subject.id, {
+          toolId,
+        })
+      : await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
     await purgeMatrixConsultationSessions(profileUserId, wiped.sessionIds);
   }
 
@@ -384,8 +421,8 @@ export async function botMatrixRun(
       billingCharge = await BillingService.chargeForSession({
         userId: profileUserId,
         cost: tool.cost,
-        actionType: "NUMEROLOGY_SESSION",
-        description: "Матрица судьбы — полный разбор Эвелины",
+        actionType: chargeAction,
+        description: `${subject?.kind === "child" ? "Детская" : "Полная"} матрица — разбор Эвелины`,
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
@@ -431,7 +468,7 @@ export async function botMatrixRun(
       undefined;
 
     const sessionResult = await generateNumerologSessionReading({
-      toolId: "destiny_matrix",
+      toolId,
       userName,
       birthDate,
       fullName: userName,
@@ -472,6 +509,7 @@ export async function botMatrixRun(
           ? { reading: matrixReadingToStructuredPayload(sessionResult.matrixDocument) }
           : {}),
       },
+      subjectId: subject?.id,
       // New paid order always replaces any prior report for this birth date.
       overwrite: true,
     });
@@ -483,7 +521,7 @@ export async function botMatrixRun(
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: false,
-          actionType: "NUMEROLOGY_SESSION",
+          actionType: chargeAction,
           transactionId: billingCharge.transactionId,
         });
         charged = 0;
@@ -502,7 +540,14 @@ export async function botMatrixRun(
         question: "Матрица судьбы",
         sessionId: session.id,
         source: "telegram_bot",
-        numerologToolId: "destiny_matrix",
+        numerologToolId: toolId,
+        ...(subject
+          ? {
+              matrixSubjectId: subject.id,
+              subjectKind: subject.kind,
+              subjectName: subject.displayName,
+            }
+          : {}),
       },
     });
 
@@ -540,7 +585,7 @@ export async function botMatrixRun(
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: false,
-          actionType: "NUMEROLOGY_SESSION",
+          actionType: chargeAction,
           transactionId: billingCharge.transactionId,
         });
       } catch {
@@ -592,17 +637,50 @@ export async function botMatrixDelete(input: {
 
 export async function botMatrixAction(input: {
   telegramUserId: number;
-  action: "summary" | "list" | "get" | "run" | "delete";
+  action: "summary" | "list" | "get" | "run" | "delete" | "subjects" | "subjects.list" | "subjects.create" | "subjects.delete";
   reportId?: string;
   replace?: boolean;
+  subjectId?: string;
+  kind?: string;
+  displayName?: string;
+  birthDate?: string;
 }) {
   switch (input.action) {
+    case "subjects":
+    case "subjects.list": {
+      const gate = await requireMatrixUser(input.telegramUserId);
+      if (!gate.ok) return gate;
+      await ensureSelfSubject(gate.resolved.profileUserId!);
+      return { ok: true as const, action: "subjects", subjects: await listMatrixSubjects(gate.resolved.profileUserId!) };
+    }
+    case "subjects.create": {
+      const gate = await requireMatrixUser(input.telegramUserId);
+      if (!gate.ok) return gate;
+      if (!input.kind || !isMatrixSubjectKind(input.kind) || !input.birthDate) {
+        return { ok: false as const, error: "internal" as const, message: "Укажите вид, имя и дату рождения." };
+      }
+      try {
+        const subject = await upsertMatrixSubject({ userId: gate.resolved.profileUserId!, kind: input.kind, displayName: input.displayName, birthDate: input.birthDate });
+        return { ok: true as const, action: "subjects.create", subject };
+      } catch (error) {
+        return { ok: false as const, error: "internal" as const, message: error instanceof Error && error.message === "invalid_birth_date" ? "Некорректная дата рождения." : "Не удалось сохранить субъекта." };
+      }
+    }
+    case "subjects.delete": {
+      const gate = await requireMatrixUser(input.telegramUserId);
+      if (!gate.ok) return gate;
+      if (!input.subjectId) return { ok: false as const, error: "not_found" as const, message: "Субъект не выбран." };
+      const result = await deleteMatrixSubject(gate.resolved.profileUserId!, input.subjectId);
+      return result.deleted
+        ? { ok: true as const, action: "subjects.delete", ...result }
+        : { ok: false as const, error: "not_found" as const, message: "Субъект не найден." };
+    }
     case "list":
-      return botMatrixList(input.telegramUserId);
+      return botMatrixList(input.telegramUserId, input.subjectId);
     case "get":
-      return botMatrixGet(input.telegramUserId, input.reportId || "");
+      return botMatrixGet(input.telegramUserId, input.reportId || "", input.subjectId);
     case "run":
-      return botMatrixRun(input.telegramUserId, { replace: input.replace });
+      return botMatrixRun(input.telegramUserId, { replace: input.replace, subjectId: input.subjectId });
     case "delete":
       return botMatrixDelete({
         telegramUserId: input.telegramUserId,
@@ -610,6 +688,6 @@ export async function botMatrixAction(input: {
       });
     case "summary":
     default:
-      return botMatrixSummary(input.telegramUserId);
+      return botMatrixSummary(input.telegramUserId, input.subjectId);
   }
 }

@@ -24,7 +24,11 @@ export type MatrixZoneId =
   | "month"
   | "period"
   | "sky_spirit"
-  | "steps";
+  | "steps"
+  | "child_purpose"
+  | "parent_role"
+  | "child_learning"
+  | "child_support";
 
 export type MatrixZoneDef = {
   id: MatrixZoneId;
@@ -173,6 +177,44 @@ export const MATRIX_ZONE_DEFS: MatrixZoneDef[] = [
   },
 ];
 
+const CHILD_MATRIX_ZONE_DEFS: MatrixZoneDef[] = [
+  ...MATRIX_ZONE_DEFS.filter((zone) =>
+    ["character", "sky_energy", "comfort", "talents", "father", "mother", "year", "steps"].includes(zone.id)
+  ),
+  {
+    id: "child_purpose",
+    label: "Для чего дан ребёнок",
+    role: "purpose",
+    required: true,
+    titleCore: String.raw`Для\s+чего\s+дан\s+реб[её]нок`,
+  },
+  {
+    id: "parent_role",
+    label: "Какой я родитель",
+    role: "body",
+    required: true,
+    titleCore: String.raw`Какой\s+я\s+родитель`,
+  },
+  {
+    id: "child_learning",
+    label: "Как учится и мотивируется",
+    role: "talents",
+    required: true,
+    titleCore: String.raw`Как\s+учится\s+и\s+мотивируется`,
+  },
+  {
+    id: "child_support",
+    label: "Что поддерживать",
+    role: "purpose",
+    required: true,
+    titleCore: String.raw`Что\s+поддерживать`,
+  },
+];
+
+export function matrixZoneDefsFor(toolId?: string): MatrixZoneDef[] {
+  return toolId === "child_matrix" ? CHILD_MATRIX_ZONE_DEFS : MATRIX_ZONE_DEFS;
+}
+
 export type MatrixZoneInstance = {
   id: MatrixZoneId;
   label: string;
@@ -185,7 +227,7 @@ export type MatrixZoneInstance = {
 };
 
 /** Build concrete zones for a calculated matrix (skips optional when data missing). */
-export function listMatrixZones(matrix: DestinyMatrixResult): MatrixZoneInstance[] {
+export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): MatrixZoneInstance[] {
   const out: MatrixZoneInstance[] = [];
 
   const pushPoint = (
@@ -205,7 +247,7 @@ export function listMatrixZones(matrix: DestinyMatrixResult): MatrixZoneInstance
     });
   };
 
-  for (const def of MATRIX_ZONE_DEFS) {
+  for (const def of matrixZoneDefsFor(toolId)) {
     switch (def.id) {
       case "character":
         pushPoint(def, matrix.body);
@@ -314,12 +356,24 @@ export function listMatrixZones(matrix: DestinyMatrixResult): MatrixZoneInstance
           focusLabel: matrix.focusLabel,
         });
         break;
+      case "child_purpose":
+        pushPoint(def, matrix.purpose);
+        break;
+      case "parent_role":
+        pushPoint(def, matrix.body);
+        break;
+      case "child_learning":
+        pushPoint(def, matrix.talents);
+        break;
+      case "child_support":
+        pushPoint(def, matrix.comfort);
+        break;
     }
   }
 
   return out;
 }
 
-export function requiredMatrixZoneLabels(): string[] {
-  return MATRIX_ZONE_DEFS.filter((z) => z.required).map((z) => z.label);
+export function requiredMatrixZoneLabels(toolId?: string): string[] {
+  return matrixZoneDefsFor(toolId).filter((z) => z.required).map((z) => z.label);
 }

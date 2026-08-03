@@ -3,10 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { PRICING } from "@/lib/config/pricing";
-import { wipeUserMatrixReports } from "@/lib/numerology/matrix-session-cleanup";
 import {
+  purgeMatrixConsultationSessions,
+  wipeUserMatrixReports,
+} from "@/lib/numerology/matrix-session-cleanup";
+import {
+  deleteOwnedMatrixReportsForSubject,
   listUserMatrixReportSummaries,
   lookupOwnedMatrixReport,
+  lookupOwnedMatrixReportBySubject,
   toIsoBirthDate,
 } from "@/lib/services/numerology-report-service";
 
@@ -23,6 +28,7 @@ export async function GET(request: NextRequest) {
   if (limited) return limited;
 
   const birthDateParam = request.nextUrl.searchParams.get("birthDate");
+  const subjectId = request.nextUrl.searchParams.get("subjectId")?.trim() || null;
   const list = request.nextUrl.searchParams.get("list") === "1";
 
   try {
@@ -36,14 +42,16 @@ export async function GET(request: NextRequest) {
     }
 
     const birthDate = toIsoBirthDate(birthDateParam);
-    if (!birthDate) {
+    if (!subjectId && !birthDate) {
       return NextResponse.json(
-        { error: "birthDate required (YYYY-MM-DD or ДД.ММ.ГГГГ)" },
+        { error: "subjectId or birthDate required (YYYY-MM-DD or ДД.ММ.ГГГГ)" },
         { status: 400 }
       );
     }
 
-    const lookup = await lookupOwnedMatrixReport(auth.profileUserId, birthDate);
+    const lookup = subjectId
+      ? await lookupOwnedMatrixReportBySubject(auth.profileUserId, subjectId)
+      : await lookupOwnedMatrixReport(auth.profileUserId, birthDate);
     const owned = lookup.usable;
     const report = lookup.report;
     return NextResponse.json({
@@ -52,6 +60,7 @@ export async function GET(request: NextRequest) {
       report: owned && report
         ? {
             id: report.id,
+            subjectId: report.subjectId,
             birthDate: report.birthDate,
             calculationVersion: report.calculationVersion,
             createdAt: report.createdAt,
@@ -90,6 +99,8 @@ export async function DELETE(request: NextRequest) {
     request.nextUrl.searchParams.get("reportId")?.trim() || null;
   let birthDateRaw: string | null =
     request.nextUrl.searchParams.get("birthDate")?.trim() || null;
+  let subjectId: string | null =
+    request.nextUrl.searchParams.get("subjectId")?.trim() || null;
 
   try {
     const body = (await request.json().catch(() => null)) as Record<
@@ -103,19 +114,45 @@ export async function DELETE(request: NextRequest) {
       if (!birthDateRaw && typeof body.birthDate === "string") {
         birthDateRaw = body.birthDate.trim() || null;
       }
+      if (!subjectId && typeof body.subjectId === "string") {
+        subjectId = body.subjectId.trim() || null;
+      }
     }
   } catch {
     /* empty body ok */
   }
 
-  if (!reportId && !toIsoBirthDate(birthDateRaw)) {
+  if (!reportId && !subjectId && !toIsoBirthDate(birthDateRaw)) {
     return NextResponse.json(
-      { error: "Укажите reportId или birthDate для удаления." },
+      { error: "Укажите reportId, subjectId или birthDate для удаления." },
       { status: 400 }
     );
   }
 
   try {
+    if (subjectId) {
+      const deleted = await deleteOwnedMatrixReportsForSubject(
+        auth.profileUserId,
+        subjectId
+      );
+      const purgedSessions = await purgeMatrixConsultationSessions(
+        auth.profileUserId,
+        deleted.sessionIds
+      );
+      if (deleted.deleted < 1) {
+        return NextResponse.json(
+          { error: "Сохранённая матрица не найдена.", deleted: 0 },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        deleted: deleted.deleted,
+        purgedSessions,
+        message: "Матрица удалена. Можно рассчитать и получить разбор заново.",
+      });
+    }
+
     const wiped = await wipeUserMatrixReports({
       userId: auth.profileUserId,
       reportId,

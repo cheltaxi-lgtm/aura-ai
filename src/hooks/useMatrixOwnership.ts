@@ -15,6 +15,7 @@ type MatrixOwnershipState = {
   loading: boolean;
   owned: boolean;
   birthDate: string | null;
+  subjectId: string | null;
   reportId: string | null;
   refetch: () => void;
 };
@@ -27,9 +28,12 @@ export function useMatrixOwnership(options?: {
   enabled?: boolean;
   /** When set, skip profile fetch and use this birth date. */
   birthDate?: string | null;
+  /** Look up ownership for a saved matrix subject. */
+  subjectId?: string | null;
 }): MatrixOwnershipState {
   const enabled = options?.enabled !== false;
   const birthOverride = options?.birthDate;
+  const subjectId = options?.subjectId?.trim() || null;
   const [tick, setTick] = useState(0);
   const [loading, setLoading] = useState(Boolean(enabled));
   const [owned, setOwned] = useState(false);
@@ -70,9 +74,11 @@ export function useMatrixOwnership(options?: {
       setBirthDate(birth);
 
       try {
-        if (birth) {
+        if (subjectId || birth) {
           const res = await fetch(
-            `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birth)}`,
+            subjectId
+              ? `/api/numerology/matrix-report?subjectId=${encodeURIComponent(subjectId)}`
+              : `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birth!)}`,
             { credentials: "include" }
           );
           if (res.ok) {
@@ -105,6 +111,7 @@ export function useMatrixOwnership(options?: {
           reports?: Array<{
             id?: string;
             birthDate?: string;
+            subjectId?: string;
             hasContent?: boolean;
             content?: string;
           }>;
@@ -114,6 +121,7 @@ export function useMatrixOwnership(options?: {
           const has =
             r.hasContent === true || Boolean(String(r.content ?? "").trim());
           if (!has) return false;
+          if (subjectId) return false;
           if (!birthKey) return true;
           return r.birthDate === birthKey || r.birthDate === birth;
         });
@@ -134,7 +142,7 @@ export function useMatrixOwnership(options?: {
     return () => {
       cancelled = true;
     };
-  }, [enabled, birthOverride, tick]);
+  }, [enabled, birthOverride, subjectId, tick]);
 
-  return { loading, owned, birthDate, reportId, refetch };
+  return { loading, owned, birthDate, subjectId, reportId, refetch };
 }

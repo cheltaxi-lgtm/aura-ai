@@ -7,6 +7,7 @@ export const MATRIX_REPORT_TOOL_ID = "destiny_matrix" as const;
 export type NumerologyReportHistoryItem = {
   id: string;
   toolId: string;
+  subjectId: string | null;
   birthDate: string;
   calculationVersion: string;
   content: string;
@@ -20,6 +21,7 @@ export type NumerologyReportHistoryItem = {
 type NumerologyReportHistoryRow = {
   id: string;
   tool_id: string;
+  subject_id: string | null;
   birth_date: Date | string;
   calculation_version: string;
   content: string;
@@ -54,6 +56,7 @@ function mapRow(row: NumerologyReportHistoryRow): NumerologyReportHistoryItem {
   return {
     id: row.id,
     toolId: row.tool_id,
+    subjectId: row.subject_id,
     birthDate: formatBirthDate(row.birth_date),
     calculationVersion: row.calculation_version,
     content: row.content,
@@ -72,7 +75,7 @@ function mapRow(row: NumerologyReportHistoryRow): NumerologyReportHistoryItem {
 }
 
 const SELECT_COLS = `
-  id, tool_id, birth_date, calculation_version, content, structured_data,
+  id, tool_id, subject_id, birth_date, calculation_version, content, structured_data,
   rune_cost, session_id, created_at, updated_at
 `;
 
@@ -114,6 +117,40 @@ export async function findOwnedMatrixReport(
   return anyVersion.rows[0] ? mapRow(anyVersion.rows[0]) : null;
 }
 
+export async function findOwnedMatrixReportBySubject(
+  userId: string,
+  subjectId: string,
+  options?: { calculationVersion?: string; toolId?: string }
+): Promise<NumerologyReportHistoryItem | null> {
+  const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
+  const calculationVersion = options?.calculationVersion ?? MATRIX_CALCULATION_VERSION;
+  const exact = await query<NumerologyReportHistoryRow>(
+    `SELECT ${SELECT_COLS}
+     FROM numerology_report_history
+     WHERE user_id = $1
+       AND tool_id = $2
+       AND subject_id = $3::uuid
+       AND calculation_version = $4
+       AND length(trim(content)) > 0
+     LIMIT 1`,
+    [userId, toolId, subjectId.trim(), calculationVersion]
+  );
+  if (exact.rows[0]) return mapRow(exact.rows[0]);
+
+  const anyVersion = await query<NumerologyReportHistoryRow>(
+    `SELECT ${SELECT_COLS}
+     FROM numerology_report_history
+     WHERE user_id = $1
+       AND tool_id = $2
+       AND subject_id = $3::uuid
+       AND length(trim(content)) > 0
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, toolId, subjectId.trim()]
+  );
+  return anyVersion.rows[0] ? mapRow(anyVersion.rows[0]) : null;
+}
+
 export type OwnedMatrixLookup = {
   report: NumerologyReportHistoryItem | null;
   /** Content passes client-safety + completeness gate (site/bot parity). */
@@ -137,6 +174,20 @@ export async function lookupOwnedMatrixReport(
   return { report, usable, unusable: !usable };
 }
 
+export async function lookupOwnedMatrixReportBySubject(
+  userId: string,
+  subjectId: string,
+  options?: { calculationVersion?: string; toolId?: string }
+): Promise<OwnedMatrixLookup> {
+  const report = await findOwnedMatrixReportBySubject(userId, subjectId, options);
+  if (!report?.content?.trim()) {
+    return { report: null, usable: false, unusable: false };
+  }
+  const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
+  const usable = isUsableMatrixReading(report.content);
+  return { report, usable, unusable: !usable };
+}
+
 export async function findUsableOwnedMatrixReport(
   userId: string,
   birthDateRaw: string | null | undefined,
@@ -145,6 +196,19 @@ export async function findUsableOwnedMatrixReport(
   const { report, usable } = await lookupOwnedMatrixReport(
     userId,
     birthDateRaw,
+    options
+  );
+  return usable ? report : null;
+}
+
+export async function findUsableOwnedMatrixReportBySubject(
+  userId: string,
+  subjectId: string,
+  options?: { calculationVersion?: string; toolId?: string }
+): Promise<NumerologyReportHistoryItem | null> {
+  const { report, usable } = await lookupOwnedMatrixReportBySubject(
+    userId,
+    subjectId,
     options
   );
   return usable ? report : null;
@@ -165,6 +229,9 @@ export async function listUserMatrixReportSummaries(
 ): Promise<
   Array<{
     id: string;
+    subjectId: string | null;
+    subjectKind: string | null;
+    subjectName: string | null;
     birthDate: string;
     calculationVersion: string;
     hasContent: boolean;
@@ -173,16 +240,35 @@ export async function listUserMatrixReportSummaries(
     updatedAt: string;
   }>
 > {
-  const reports = await listUserMatrixReports(userId, limit);
-  return reports.map((r) => ({
-    id: r.id,
-    birthDate: r.birthDate,
-    calculationVersion: r.calculationVersion,
-    hasContent: Boolean(r.content?.trim()),
-    sessionId: r.sessionId,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-  }));
+  const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+  const { rows } = await query<
+    NumerologyReportHistoryRow & { subject_kind: string | null; subject_name: string | null }
+  >(
+    `SELECT n.id, n.tool_id, n.subject_id, n.birth_date, n.calculation_version,
+            n.content, n.structured_data, n.rune_cost, n.session_id, n.created_at, n.updated_at,
+            s.kind AS subject_kind, s.display_name AS subject_name
+     FROM numerology_report_history n
+     LEFT JOIN matrix_subjects s ON s.id = n.subject_id
+     WHERE n.user_id = $1 AND n.tool_id = $2
+     ORDER BY n.created_at DESC
+     LIMIT $3`,
+    [userId, MATRIX_REPORT_TOOL_ID, safeLimit]
+  );
+  return rows.map((row) => {
+    const report = mapRow(row);
+    return {
+      id: report.id,
+      subjectId: report.subjectId,
+      subjectKind: row.subject_kind,
+      subjectName: row.subject_name,
+      birthDate: report.birthDate,
+      calculationVersion: report.calculationVersion,
+      hasContent: Boolean(report.content?.trim()),
+      sessionId: report.sessionId,
+      createdAt: report.createdAt,
+      updatedAt: report.updatedAt,
+    };
+  });
 }
 
 export type SaveMatrixReportResult =
@@ -200,6 +286,7 @@ export async function saveMatrixReport(params: {
   structuredData?: Record<string, unknown> | null;
   calculationVersion?: string;
   toolId?: string;
+  subjectId?: string;
   /** When true, replace existing row for this birth date/version (new order). */
   overwrite?: boolean;
 }): Promise<SaveMatrixReportResult> {
@@ -214,43 +301,65 @@ export async function saveMatrixReport(params: {
     throw new Error("empty_matrix_report_content");
   }
   const overwrite = Boolean(params.overwrite);
+  let subjectId = params.subjectId?.trim() || null;
+
+  if (!subjectId) {
+    const { ensureSelfSubject } = await import("@/lib/services/matrix-subject-service");
+    const self = await ensureSelfSubject(params.userId);
+    if (!self || self.birthDate !== birthDate) {
+      throw new Error("matrix_subject_required");
+    }
+    subjectId = self.id;
+  }
 
   return withTransaction(async (client) => {
+    const ownedSubject = await queryClient<{ birth_date: Date | string }>(
+      client,
+      `SELECT birth_date FROM matrix_subjects
+       WHERE id = $1::uuid AND user_id = $2
+       LIMIT 1`,
+      [subjectId, params.userId]
+    );
+    if (!ownedSubject.rows[0] || formatBirthDate(ownedSubject.rows[0].birth_date) !== birthDate) {
+      throw new Error("invalid_matrix_subject");
+    }
+
     if (overwrite) {
-      // Wipe any prior destiny-matrix rows for this birth date (all calculation versions).
+      // Wipe any prior destiny-matrix rows for this subject (all calculation versions).
       await queryClient(
         client,
         `DELETE FROM numerology_report_history
          WHERE user_id = $1
            AND tool_id = $2
-           AND birth_date = $3::date`,
-        [params.userId, toolId, birthDate]
+           AND subject_id = $3::uuid`,
+        [params.userId, toolId, subjectId]
       );
     }
 
     const conflictSql = overwrite
-      ? `ON CONFLICT (user_id, tool_id, birth_date, calculation_version) DO UPDATE SET
+      ? `ON CONFLICT (user_id, tool_id, subject_id, calculation_version) DO UPDATE SET
            content = EXCLUDED.content,
            structured_data = EXCLUDED.structured_data,
            rune_cost = EXCLUDED.rune_cost,
            charge_transaction_id = EXCLUDED.charge_transaction_id,
            session_id = EXCLUDED.session_id,
            updated_at = NOW()`
-      : `ON CONFLICT (user_id, tool_id, birth_date, calculation_version) DO NOTHING`;
+      : `ON CONFLICT (user_id, tool_id, subject_id, calculation_version) DO NOTHING`;
 
     const inserted = await queryClient<NumerologyReportHistoryRow>(
       client,
       `INSERT INTO numerology_report_history (
-         user_id, tool_id, birth_date, calculation_version, content,
+         user_id, tool_id, subject_id, birth_date, calculation_version, content,
          structured_data, rune_cost, charge_transaction_id, session_id
        ) VALUES (
-         $1, $2, $3::date, $4, $5, $6::jsonb, $7, $8, $9
+         $1, $2, $3::uuid, $4::date, $5, $6, $7::jsonb, $8, $9, $10
        )
        ${conflictSql}
        RETURNING ${SELECT_COLS}`,
       [
         params.userId,
         toolId,
+        subjectId,
         birthDate,
         calculationVersion,
         content,
@@ -274,9 +383,9 @@ export async function saveMatrixReport(params: {
            FROM numerology_report_history
            WHERE user_id = $1
              AND tool_id = $2
-             AND birth_date = $3::date
+             AND subject_id = $3::uuid
              AND calculation_version = $4`,
-          [params.userId, toolId, birthDate, calculationVersion]
+          [params.userId, toolId, subjectId, calculationVersion]
         )
       ).rows[0];
 
@@ -293,13 +402,13 @@ export async function saveMatrixReport(params: {
              updated_at = NOW()
          WHERE user_id = $1
            AND tool_id = $2
-           AND birth_date = $3::date
+           AND subject_id = $3::uuid
            AND calculation_version = $5
            AND (session_id IS DISTINCT FROM $4::uuid)`,
         [
           params.userId,
           toolId,
-          birthDate,
+          subjectId,
           params.sessionId.trim(),
           calculationVersion,
         ]
@@ -342,9 +451,9 @@ export async function getUserMatrixReportById(
      FROM numerology_report_history
      WHERE user_id = $1
        AND id = $2::uuid
-       AND tool_id = $3
+       AND tool_id IN ('destiny_matrix', 'child_matrix', 'matrix_year_forecast', 'matrix_compatibility')
      LIMIT 1`,
-    [userId, id, MATRIX_REPORT_TOOL_ID]
+    [userId, id]
   );
   return rows[0] ? mapRow(rows[0]) : null;
 }
@@ -383,10 +492,12 @@ export async function deleteUserMatrixReport(
 /** Delete all destiny-matrix reports for a birth date (user-initiated reset). */
 export async function deleteOwnedMatrixReportsForBirth(
   userId: string,
-  birthDateRaw: string | null | undefined
+  birthDateRaw: string | null | undefined,
+  options?: { toolId?: string }
 ): Promise<{ deleted: number; sessionIds: string[] }> {
   const birthDate = toIsoBirthDate(birthDateRaw);
   if (!birthDate) return { deleted: 0, sessionIds: [] };
+  const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
 
   const before = await query<{ session_id: string | null }>(
     `SELECT session_id
@@ -394,7 +505,7 @@ export async function deleteOwnedMatrixReportsForBirth(
      WHERE user_id = $1
        AND tool_id = $2
        AND birth_date = $3::date`,
-    [userId, MATRIX_REPORT_TOOL_ID, birthDate]
+    [userId, toolId, birthDate]
   );
   const sessionIds = [
     ...new Set(
@@ -409,7 +520,36 @@ export async function deleteOwnedMatrixReportsForBirth(
      WHERE user_id = $1
        AND tool_id = $2
        AND birth_date = $3::date`,
-    [userId, MATRIX_REPORT_TOOL_ID, birthDate]
+    [userId, toolId, birthDate]
   );
   return { deleted: rowCount ?? 0, sessionIds };
+}
+
+export async function deleteOwnedMatrixReportsForSubject(
+  userId: string,
+  subjectId: string,
+  options?: { toolId?: string }
+): Promise<{ deleted: number; sessionIds: string[] }> {
+  const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
+  const before = await query<{ session_id: string | null }>(
+    `SELECT session_id
+     FROM numerology_report_history
+     WHERE user_id = $1 AND tool_id = $2 AND subject_id = $3::uuid`,
+    [userId, toolId, subjectId.trim()]
+  );
+  const { rowCount } = await query(
+    `DELETE FROM numerology_report_history
+     WHERE user_id = $1 AND tool_id = $2 AND subject_id = $3::uuid`,
+    [userId, toolId, subjectId.trim()]
+  );
+  return {
+    deleted: rowCount ?? 0,
+    sessionIds: [
+      ...new Set(
+        before.rows
+          .map((row) => row.session_id)
+          .filter((id): id is string => Boolean(id?.trim()))
+      ),
+    ],
+  };
 }

@@ -4,6 +4,11 @@ import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 export const PRICING = {
   /** Полная расшифровка «Три числа» у Эвелины. */
   NUMEROLOGY_SESSION: 20,
+  MATRIX_SUBJECT_REPORT: 20,
+  CHILD_MATRIX_REPORT: 25,
+  MATRIX_PAIR_REPORT: 30,
+  MATRIX_YEAR_FORECAST: 20,
+  MATRIX_SUBJECT_LIMIT: 10,
   /**
    * Вопросы в чате, включённые в разовую покупку Full Matrix.
    * После лимита — обычный тариф QUESTION.

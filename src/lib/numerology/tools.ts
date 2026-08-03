@@ -11,7 +11,9 @@ export type NumerologToolId =
   | "period_month"
   | "pythagoras"
   | "destiny_matrix"
+  | "child_matrix"
   | "matrix_compatibility"
+  | "matrix_year_forecast"
   | "personal_year"
   | "forecast_9y"
   | "favorable_dates"
@@ -126,12 +128,25 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     buildMessage: () => "Построй мою матрицу судьбы",
   },
   {
+    id: "child_matrix",
+    emoji: "🧸",
+    label: "Детская матрица",
+    topic: "destiny_matrix",
+    group: "session",
+    cost: PRICING.CHILD_MATRIX_REPORT,
+    drawCount: 0,
+    positions: [],
+    tagline: "Ресурсы ребёнка, обучение и бережная поддержка",
+    description: "Матрица ребёнка по дате рождения: характер, таланты и опоры для родителя.",
+    buildMessage: () => "Сделай детскую матрицу по дате рождения",
+  },
+  {
     id: "matrix_compatibility",
     emoji: "💫",
     label: "Совместимость матриц",
     topic: "matrix_compatibility",
     group: "form",
-    cost: SESSION_COST,
+    cost: PRICING.MATRIX_PAIR_REPORT,
     drawCount: 0,
     positions: [],
     needsForm: "compat",
@@ -143,6 +158,19 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
       const name = params?.partnerName?.trim() || "партнёр";
       return `Совместимость матриц судьбы с ${name}, дата рождения ${date}`;
     },
+  },
+  {
+    id: "matrix_year_forecast",
+    emoji: "🗓️",
+    label: "Прогноз матрицы на год",
+    topic: "personal_cycle",
+    group: "session",
+    cost: PRICING.MATRIX_YEAR_FORECAST,
+    drawCount: 0,
+    positions: [],
+    tagline: "12 месяцев и арканы возможностей",
+    description: "Годовой прогноз матрицы: ритм каждого месяца, окна возможностей и осторожности.",
+    buildMessage: () => "Сделай годовой прогноз по моей матрице",
   },
   {
     id: "personal_year",
@@ -302,12 +330,14 @@ export function numerologReadingCacheKey(input: {
   birthDate?: string | null;
   cardNames: string[];
   params?: NumerologToolParams | null;
+  matrixSubjectId?: string | null;
 }): string {
   return [
     "numerolog",
     input.characterId,
     input.toolId,
     input.birthDate?.trim() || "no-birth",
+    input.matrixSubjectId?.trim() || "self-subject",
     input.cardNames.join("|") || "no-draw",
     JSON.stringify(input.params ?? {}),
   ].join(":");
@@ -377,7 +407,9 @@ export const NUMEROLOG_BIRTH_DATE_TOOLS = new Set<NumerologToolId>([
   "spread_three_numbers",
   "pythagoras",
   "destiny_matrix",
+  "child_matrix",
   "matrix_compatibility",
+  "matrix_year_forecast",
   "personal_year",
   "forecast_9y",
   "favorable_dates",

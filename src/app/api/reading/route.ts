@@ -91,13 +91,22 @@ import {
   matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
 import {
+  deleteOwnedMatrixReportsForSubject,
   deleteOwnedMatrixReportsForBirth,
+  findUsableOwnedMatrixReportBySubject,
   findUsableOwnedMatrixReport,
+  lookupOwnedMatrixReportBySubject,
   lookupOwnedMatrixReport,
   MATRIX_REPORT_TOOL_ID,
   saveMatrixReport,
   toIsoBirthDate as toIsoBirthDateShared,
 } from "@/lib/services/numerology-report-service";
+import {
+  ensureSelfSubject,
+  getMatrixSubject,
+  type MatrixSubject,
+} from "@/lib/services/matrix-subject-service";
+import type { RuneActionType } from "@/lib/rune-costs";
 import { purgeMatrixConsultationSessions } from "@/lib/numerology/matrix-session-cleanup";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import {
@@ -214,6 +223,17 @@ async function respondWithExistingSpreadReading(input: {
 /** Matrix zone assembly (numerology_reading worker) can run ~7 min. */
 export const maxDuration = 420;
 
+function matrixRuneAction(
+  toolId: string,
+  subjectKind: MatrixSubject["kind"] | undefined
+): RuneActionType {
+  if (toolId === "child_matrix") return "CHILD_MATRIX_REPORT";
+  if (toolId === "matrix_year_forecast") return "MATRIX_YEAR_FORECAST";
+  if (toolId === "matrix_compatibility") return "MATRIX_PAIR_REPORT";
+  if (subjectKind && subjectKind !== "self") return "MATRIX_SUBJECT_REPORT";
+  return "NUMEROLOGY_SESSION";
+}
+
 export async function POST(request: NextRequest) {
   let characterId = "ragnar";
   let userName = "друг";
@@ -241,6 +261,7 @@ export async function POST(request: NextRequest) {
   let spreadIdRaw = "";
   let numerologToolIdRaw = "";
   let numerologToolParams: NumerologToolParams = {};
+  let matrixSubjectId: string | undefined;
   let asyncRequested = false;
   let rawBody: Record<string, unknown> = {};
 
@@ -267,6 +288,11 @@ export async function POST(request: NextRequest) {
     forceRegenerate = body.forceRegenerate === true;
     readingScope = sanitizeTextField(body.readingScope, 10) ?? "";
     numerologToolIdRaw = sanitizeTextField(body.numerologToolId, 40) ?? "";
+    const sanitizedSubjectId = sanitizeTextField(body.matrixSubjectId, 40);
+    matrixSubjectId =
+      sanitizedSubjectId && /^[0-9a-f-]{1,40}$/i.test(sanitizedSubjectId)
+        ? sanitizedSubjectId
+        : undefined;
     if (body.numerologToolParams && typeof body.numerologToolParams === "object") {
       const raw = body.numerologToolParams as Record<string, unknown>;
       numerologToolParams = {
@@ -333,6 +359,44 @@ export async function POST(request: NextRequest) {
     astroMeta = serverProfile.astro_meta as import("@/lib/astro-profile").AstroMeta;
   }
 
+  const isMatrixSubjectTool =
+    isNumerologMaster(characterId) &&
+    (requestNumerologToolId === MATRIX_REPORT_TOOL_ID ||
+      requestNumerologToolId === "matrix_compatibility" ||
+      requestNumerologToolId === "child_matrix" ||
+      requestNumerologToolId === "matrix_year_forecast");
+  const isMatrixBuyOnceTool =
+    isMatrixSubjectTool &&
+    (requestNumerologToolId === MATRIX_REPORT_TOOL_ID ||
+      requestNumerologToolId === "child_matrix" ||
+      requestNumerologToolId === "matrix_year_forecast");
+  let resolvedMatrixSubject: MatrixSubject | null = null;
+  if (isMatrixSubjectTool) {
+    if (matrixSubjectId) {
+      resolvedMatrixSubject = await getMatrixSubject(
+        authed.profileUserId,
+        matrixSubjectId
+      );
+      if (!resolvedMatrixSubject) {
+        return NextResponse.json(
+          { error: "Субъект матрицы не найден.", code: "matrix_subject_forbidden" },
+          { status: 403 }
+        );
+      }
+    } else if (isMatrixBuyOnceTool) {
+      resolvedMatrixSubject = await ensureSelfSubject(authed.profileUserId);
+    }
+
+    if (resolvedMatrixSubject) {
+      birthDate = resolvedMatrixSubject.birthDate;
+      birthTime = resolvedMatrixSubject.birthTime ?? undefined;
+      birthCity = resolvedMatrixSubject.birthCity ?? undefined;
+      if (resolvedMatrixSubject.displayName?.trim()) {
+        userName = resolvedMatrixSubject.displayName.trim();
+      }
+    }
+  }
+
   if (!workerUserId) {
     const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "reading");
     if (rateLimited) return rateLimited;
@@ -345,16 +409,21 @@ export async function POST(request: NextRequest) {
     !forceRegenerate &&
     !workerUserId &&
     isNumerologMaster(characterId) &&
-    requestNumerologToolId === MATRIX_REPORT_TOOL_ID &&
+    isMatrixBuyOnceTool &&
     (await ensureDb())
   ) {
     const isoBirth =
       toIsoBirthDateShared(birthDate) ??
       toIsoBirthDateShared(String(birthDate).slice(0, 10));
-    const owned = await findUsableOwnedMatrixReport(
-      authed.profileUserId,
-      isoBirth ?? birthDate
-    );
+    const owned = resolvedMatrixSubject
+      ? await findUsableOwnedMatrixReportBySubject(
+          authed.profileUserId,
+          resolvedMatrixSubject.id,
+          { toolId: requestNumerologToolId ?? undefined }
+        )
+      : await findUsableOwnedMatrixReport(authed.profileUserId, isoBirth ?? birthDate, {
+          toolId: requestNumerologToolId ?? undefined,
+        });
     if (owned?.content?.trim()) {
       const reading = owned.content.trim();
       let historyId: string | undefined;
@@ -369,7 +438,7 @@ export async function POST(request: NextRequest) {
             tarotCards,
             intention: intention || undefined,
             spreadType: spreadType === "daily" ? "daily" : "new",
-            spreadId: encodeNumerologSpreadId(MATRIX_REPORT_TOOL_ID),
+            spreadId: encodeNumerologSpreadId(requestNumerologToolId),
           });
         } catch (err) {
           console.warn("Owned matrix reading chat save failed:", err);
@@ -386,9 +455,16 @@ export async function POST(request: NextRequest) {
             deckSystem: resolveMasterDeckSystem(characterId),
             userName,
             birthDate: isoBirth ?? birthDate,
-            numerologToolId: MATRIX_REPORT_TOOL_ID,
+            numerologToolId: requestNumerologToolId,
             matrixOwned: true,
             reportId: owned.id,
+            ...(resolvedMatrixSubject
+              ? {
+                  matrixSubjectId: resolvedMatrixSubject.id,
+                  subjectKind: resolvedMatrixSubject.kind,
+                  subjectName: resolvedMatrixSubject.displayName,
+                }
+              : {}),
             ...(sessionId ? { sessionId } : {}),
           },
           isPaid: true,
@@ -405,6 +481,13 @@ export async function POST(request: NextRequest) {
         reused: true,
         matrixOwned: true,
         createdAt: owned.createdAt || new Date().toISOString(),
+        ...(resolvedMatrixSubject
+          ? {
+              matrixSubjectId: resolvedMatrixSubject.id,
+              subjectKind: resolvedMatrixSubject.kind,
+              subjectName: resolvedMatrixSubject.displayName,
+            }
+          : {}),
       });
     }
   }
@@ -413,7 +496,9 @@ export async function POST(request: NextRequest) {
     const longNumerology =
       isNumerologMaster(characterId) &&
       (requestNumerologToolId === "destiny_matrix" ||
-        requestNumerologToolId === "matrix_compatibility");
+        requestNumerologToolId === "matrix_compatibility" ||
+        requestNumerologToolId === "child_matrix" ||
+        requestNumerologToolId === "matrix_year_forecast");
     const isoBirthForJob =
       toIsoBirthDateShared(birthDate) ??
       toIsoBirthDateShared(String(birthDate ?? "").slice(0, 10));
@@ -424,6 +509,7 @@ export async function POST(request: NextRequest) {
         ...rawBody,
         async: false,
         ...(isoBirthForJob ? { birthDate: isoBirthForJob } : {}),
+        ...(resolvedMatrixSubject ? { matrixSubjectId: resolvedMatrixSubject.id } : {}),
       },
       bypassDeliveryGate: true,
     });
@@ -576,12 +662,13 @@ export async function POST(request: NextRequest) {
             birthDate,
             cardNames: tarotCards.map((c) => c.name),
             params: numerologToolParams,
+            matrixSubjectId: resolvedMatrixSubject?.id,
           })
         : tarotCardsKey(tarotCards));
     // Full Matrix buy-once lives in numerology_report_history only.
     // History cache reused the old watery report even after report rows were deleted.
     const skipHistoryCacheForMatrix =
-      isNumerologMaster(characterId) && requestNumerologToolId === MATRIX_REPORT_TOOL_ID;
+      isNumerologMaster(characterId) && isMatrixBuyOnceTool;
 
     // Durable reading reference — return before name-keyed cache / generation.
     if (guestResume?.readingId && !forceRegenerate && (await ensureDb())) {
@@ -701,7 +788,10 @@ export async function POST(request: NextRequest) {
           return { kind: "failed" as const };
         }
 
-        const isDestinyMatrix = toolId === MATRIX_REPORT_TOOL_ID;
+        const isMatrixBuyOnceTool =
+          toolId === MATRIX_REPORT_TOOL_ID ||
+          toolId === "child_matrix" ||
+          toolId === "matrix_year_forecast";
         let runeBalance: number | undefined;
         let numerologyUi:
           | { pythagorasSquare?: import("@/lib/numerology/pythagoras-square").PythagorasSquareResult }
@@ -713,14 +803,19 @@ export async function POST(request: NextRequest) {
         // Buy-once Full Matrix: reopen usable saved AI report for THIS birth date only.
         // forceRegenerate / unusable (leaked) content must not short-circuit.
         let matrixRegenerateAfterLeak = false;
-        if (isDestinyMatrix && !forceRegenerate && (await ensureDb())) {
+        if (isMatrixBuyOnceTool && !forceRegenerate && (await ensureDb())) {
           const isoBirth =
             toIsoBirthDateShared(birthDate) ??
             toIsoBirthDateShared(String(birthDate).slice(0, 10));
-          const lookup = await lookupOwnedMatrixReport(
-            authed.profileUserId,
-            isoBirth ?? birthDate
-          );
+          const lookup = resolvedMatrixSubject
+            ? await lookupOwnedMatrixReportBySubject(
+                authed.profileUserId,
+                resolvedMatrixSubject.id,
+                { toolId }
+              )
+            : await lookupOwnedMatrixReport(authed.profileUserId, isoBirth ?? birthDate, {
+                toolId,
+              });
           if (lookup.usable && lookup.report?.content?.trim()) {
             const owned = lookup.report;
             reading = owned.content;
@@ -755,6 +850,13 @@ export async function POST(request: NextRequest) {
                   numerologToolId: toolId,
                   matrixOwned: true,
                   reportId: owned.id,
+                  ...(resolvedMatrixSubject
+                    ? {
+                        matrixSubjectId: resolvedMatrixSubject.id,
+                        subjectKind: resolvedMatrixSubject.kind,
+                        subjectName: resolvedMatrixSubject.displayName,
+                      }
+                    : {}),
                   ...(sessionId ? { sessionId } : {}),
                 },
                 isPaid: true,
@@ -773,15 +875,29 @@ export async function POST(request: NextRequest) {
               numerologyUi,
               reused: true,
               matrixOwned: true,
+              ...(resolvedMatrixSubject
+                ? {
+                    matrixSubjectId: resolvedMatrixSubject.id,
+                    subjectKind: resolvedMatrixSubject.kind,
+                    subjectName: resolvedMatrixSubject.displayName,
+                  }
+                : {}),
             };
           }
           // Bad/leaked owned report: wipe once, then regenerate free (bot parity).
           if (lookup.unusable && lookup.report) {
             matrixRegenerateAfterLeak = true;
-            const wiped = await deleteOwnedMatrixReportsForBirth(
-              authed.profileUserId,
-              isoBirth ?? birthDate
-            );
+            const wiped = resolvedMatrixSubject
+              ? await deleteOwnedMatrixReportsForSubject(
+                  authed.profileUserId,
+                  resolvedMatrixSubject.id,
+                  { toolId }
+                )
+              : await deleteOwnedMatrixReportsForBirth(
+                  authed.profileUserId,
+                  isoBirth ?? birthDate,
+                  { toolId }
+                );
             await purgeMatrixConsultationSessions(
               authed.profileUserId,
               wiped.sessionIds
@@ -801,7 +917,9 @@ export async function POST(request: NextRequest) {
             const charge = await chargeRuneActionForWorkerJob({
               request,
               userId: authed.profileUserId,
-              action: "NUMEROLOGY_SESSION",
+              action: isMatrixSubjectTool
+                ? matrixRuneAction(toolId, resolvedMatrixSubject?.kind)
+                : "NUMEROLOGY_SESSION",
             });
             billingCharge = charge;
             runeBalance = charge.newBalance;
@@ -818,7 +936,7 @@ export async function POST(request: NextRequest) {
           }
           isPaid = true;
           // Matrix: 3 included chat questions via freeLimit, not unlimited unlock.
-          if (sessionId && !isDestinyMatrix) {
+          if (sessionId && !isMatrixBuyOnceTool) {
             await unlockSingleSession(sessionId);
           }
         }
@@ -862,7 +980,7 @@ export async function POST(request: NextRequest) {
           reading = sessionResult.reply;
           numerologyUi = sessionResult.numerologyUi;
           matrixDocumentForSave = sessionResult.matrixDocument;
-          if (isDestinyMatrix && matrixDocumentForSave) {
+          if (isMatrixBuyOnceTool && matrixDocumentForSave) {
             const { MATRIX_AI_ZONES_CANARY_MIN } = await import(
               "@/lib/numerology/matrix-sectioned-reading"
             );
@@ -878,7 +996,7 @@ export async function POST(request: NextRequest) {
               userId: authed.profileUserId,
               cost: billingCharge.spentRunes,
               wasFreeQuestion: false,
-              actionType: "NUMEROLOGY_SESSION",
+              actionType: billingCharge.actionType,
               transactionId: billingCharge.transactionId,
             });
             await trackWorkerJobRefunded(request);
@@ -888,7 +1006,7 @@ export async function POST(request: NextRequest) {
           return { kind: "failed" as const };
         }
 
-        if (isDestinyMatrix && (await ensureDb())) {
+        if (isMatrixBuyOnceTool && (await ensureDb())) {
           try {
             if (!(await beginWorkerJobSave(request))) {
               if (billingCharge) {
@@ -896,7 +1014,7 @@ export async function POST(request: NextRequest) {
                   userId: authed.profileUserId,
                   cost: billingCharge.spentRunes,
                   wasFreeQuestion: false,
-                  actionType: "NUMEROLOGY_SESSION",
+                  actionType: billingCharge.actionType,
                   transactionId: billingCharge.transactionId,
                 });
                 await trackWorkerJobRefunded(request);
@@ -937,6 +1055,8 @@ export async function POST(request: NextRequest) {
             const saved = await saveMatrixReport({
               userId: authed.profileUserId,
               birthDateRaw: birthDate,
+              subjectId: resolvedMatrixSubject?.id,
+              toolId,
               content: reading,
               runeCost: billingCharge?.spentRunes ?? tool.cost,
               chargeTransactionId: billingCharge?.transactionId,
@@ -955,7 +1075,7 @@ export async function POST(request: NextRequest) {
                   userId: authed.profileUserId,
                   cost: billingCharge.spentRunes,
                   wasFreeQuestion: false,
-                  actionType: "NUMEROLOGY_SESSION",
+                  actionType: billingCharge.actionType,
                   transactionId: billingCharge.transactionId,
                 });
                 await trackWorkerJobRefunded(request);
@@ -972,7 +1092,7 @@ export async function POST(request: NextRequest) {
                 userId: authed.profileUserId,
                 cost: billingCharge.spentRunes,
                 wasFreeQuestion: false,
-                actionType: "NUMEROLOGY_SESSION",
+                actionType: billingCharge.actionType,
                 transactionId: billingCharge.transactionId,
               });
               await trackWorkerJobRefunded(request);
@@ -998,6 +1118,13 @@ export async function POST(request: NextRequest) {
               gender,
               birthDate,
               numerologToolId: toolId,
+              ...(resolvedMatrixSubject
+                ? {
+                    matrixSubjectId: resolvedMatrixSubject.id,
+                    subjectKind: resolvedMatrixSubject.kind,
+                    subjectName: resolvedMatrixSubject.displayName,
+                  }
+                : {}),
               ...(sessionId ? { sessionId } : {}),
               ...(numerologToolParams.partnerName ||
               numerologToolParams.partnerDate ||
@@ -1320,6 +1447,13 @@ export async function POST(request: NextRequest) {
       ...("reused" in lockedResult && lockedResult.reused ? { reused: true } : {}),
       ...("matrixOwned" in lockedResult && lockedResult.matrixOwned
         ? { matrixOwned: true }
+        : {}),
+      ...(resolvedMatrixSubject
+        ? {
+            matrixSubjectId: resolvedMatrixSubject.id,
+            subjectKind: resolvedMatrixSubject.kind,
+            subjectName: resolvedMatrixSubject.displayName,
+          }
         : {}),
       ...("numerologyUi" in lockedResult && lockedResult.numerologyUi
         ? { numerologyUi: lockedResult.numerologyUi }

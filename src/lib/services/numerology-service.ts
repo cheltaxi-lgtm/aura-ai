@@ -14,6 +14,8 @@ import {
 } from "@/lib/numerology/matrix-sectioned-reading";
 import type { MatrixReadingDocument } from "@/lib/numerology/matrix-reading-document";
 import { isUsableMatrixReading, sanitizeReadingForClient } from "@/lib/chat-reply-sanitize";
+import { isCompleteMatrixReading } from "@/lib/numerology/matrix-completeness";
+import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import {
   appendNumerologFinale,
   generateNumerologFinale,
@@ -61,6 +63,7 @@ export interface NumerologEngineParams {
   birthCity?: string | null;
   /** When set, matrix paid path can load natal chart snapshot for «Небо». */
   userId?: string | null;
+  toolId?: NumerologToolId;
 }
 
 /** Keep only matrix-safe memory lines (drop Pythagorean / life-path leaks). */
@@ -234,11 +237,16 @@ export async function generateNumerologStreamReply(
   const fallback = engineResult.reply;
 
   // Paid/full matrix: zone assembly (never one monolithic LLM blob).
-  if (engineResult.primaryTopic === "destiny_matrix" && params.birthDate) {
+  if (
+    engineResult.primaryTopic === "destiny_matrix" &&
+    params.birthDate &&
+    (params.toolId === "destiny_matrix" || params.toolId === "child_matrix")
+  ) {
     try {
       const sectioned = await generateFullMatrixSectionedReading({
         birthDate: params.birthDate,
         name: firstName,
+        toolId: params.toolId,
         gender: params.gender,
         // Natal bridge + filtered memory — previously built then discarded.
         contextFacts: engineFacts,
@@ -247,7 +255,7 @@ export async function generateNumerologStreamReply(
       });
       const safe =
         sanitizeReadingForClient(sectioned.reading) || sectioned.reading;
-      if (!isUsableMatrixReading(safe) && !allowEngineFallback) {
+      if (!isCompleteMatrixReading(safe, params.toolId) && !allowEngineFallback) {
         // Sectioned path force-fills; if still unusable, fail paid path.
         const { matrixMissingSections } = await import(
           "@/lib/numerology/matrix-completeness"
@@ -256,7 +264,7 @@ export async function generateNumerologStreamReply(
           rawLen: sectioned.reading.length,
           safeLen: safe.length,
           meta: sectioned.meta,
-          missing: matrixMissingSections(safe),
+          missing: matrixMissingSections(safe, params.toolId),
         });
         return null;
       }
@@ -417,7 +425,22 @@ export async function generateNumerologSessionReading(input: {
     };
   }
 
-  const message = buildNumerologToolMessage(input.toolId, input.toolParams);
+  const forecastContext =
+    input.toolId === "matrix_year_forecast" && input.birthDate
+      ? matrixYearForecast(input.birthDate)
+      : null;
+  const message = [
+    buildNumerologToolMessage(input.toolId, input.toolParams),
+    forecastContext
+      ? [
+          `Аркан года: ${forecastContext.yearArcana.number} — ${forecastContext.yearArcana.title}.`,
+          "Месяцы (не пересчитывай):",
+          ...forecastContext.months.map((m) => `${m.label}: ${m.number} — ${m.title}`),
+          `Возможности: ${forecastContext.opportunityMonths.map((i) => forecastContext.months[i]!.label).join(", ")}.`,
+          `Осторожность: ${forecastContext.cautionMonths.map((i) => forecastContext.months[i]!.label).join(", ")}.`,
+        ].join("\n")
+      : "",
+  ].filter(Boolean).join("\n\n");
   const streamed = await generateNumerologStreamReply({
     characterId: "numerolog",
     userName: input.userName,
@@ -432,6 +455,7 @@ export async function generateNumerologSessionReading(input: {
     birthTime: input.birthTime,
     birthCity: input.birthCity,
     userId: input.userId,
+    toolId: input.toolId,
     // Paid session: AI-only. completeNumerologProse walks paid → fallbackModels.
     allowEngineFallback: false,
   });
