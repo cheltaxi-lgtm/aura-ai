@@ -89,14 +89,18 @@ export async function findOwnedMatrixReport(
   const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
   const calculationVersion = options?.calculationVersion ?? MATRIX_CALCULATION_VERSION;
 
+  // Multi-subject safe: birth-date lookup only matches the user's `self` subject
+  // (plus legacy null subject_id). Never return another person's report by date.
   const exact = await query<NumerologyReportHistoryRow>(
     `SELECT ${SELECT_COLS}
-     FROM numerology_report_history
-     WHERE user_id = $1
-       AND tool_id = $2
-       AND birth_date = $3::date
-       AND calculation_version = $4
-       AND length(trim(content)) > 0
+     FROM numerology_report_history n
+     LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
+     WHERE n.user_id = $1
+       AND n.tool_id = $2
+       AND n.birth_date = $3::date
+       AND n.calculation_version = $4
+       AND length(trim(n.content)) > 0
+       AND (n.subject_id IS NULL OR ms.kind = 'self')
      LIMIT 1`,
     [userId, toolId, birthDate, calculationVersion]
   );
@@ -105,12 +109,14 @@ export async function findOwnedMatrixReport(
   // Buy-once unlock survives calculation-version bumps: any non-empty saved row for this date.
   const anyVersion = await query<NumerologyReportHistoryRow>(
     `SELECT ${SELECT_COLS}
-     FROM numerology_report_history
-     WHERE user_id = $1
-       AND tool_id = $2
-       AND birth_date = $3::date
-       AND length(trim(content)) > 0
-     ORDER BY created_at DESC
+     FROM numerology_report_history n
+     LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
+     WHERE n.user_id = $1
+       AND n.tool_id = $2
+       AND n.birth_date = $3::date
+       AND length(trim(n.content)) > 0
+       AND (n.subject_id IS NULL OR ms.kind = 'self')
+     ORDER BY n.created_at DESC
      LIMIT 1`,
     [userId, toolId, birthDate]
   );

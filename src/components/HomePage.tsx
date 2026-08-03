@@ -947,10 +947,11 @@ export default function HomePage({
   }, [openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster, isLoggedIn, setStep]);
 
   const openNumerologSessionFlow = useCallback(
-    (tool?: NumerologToolId | null) => {
+    (tool?: NumerologToolId | null, matrixSubjectId?: string | null) => {
       setSessionFlowPreselectedMaster("numerolog");
       setEnergyFlowMasterId("numerolog");
       setSessionFlowInitialNumerologTool(tool ?? null);
+      setSessionFlowInitialMatrixSubjectId(matrixSubjectId?.trim() || null);
       // Avoid leftover Tarot topic/question from a previous SEO spread flow.
       setSessionFlowInitialTopic(null);
       setSessionFlowInitialQuestion(null);
@@ -1004,8 +1005,7 @@ export default function HomePage({
     const toolRaw = params.get("tool")?.trim();
     const tool =
       toolRaw && isNumerologSessionToolId(toolRaw) ? toolRaw : null;
-    setSessionFlowInitialMatrixSubjectId(params.get("subjectId")?.trim() || null);
-    openNumerologSessionFlow(tool);
+    openNumerologSessionFlow(tool, params.get("subjectId")?.trim() || null);
 
     const url = new URL(window.location.href);
     url.searchParams.delete("numerolog");
@@ -3783,14 +3783,9 @@ export default function HomePage({
                   onOpenOwnedDestinyMatrixReport={
                     isLoggedIn
                       ? () => {
-                          void openChatWithSessionParams({
-                            characterKey: "numerolog",
-                            intention: null,
-                            spreadType: "new",
-                            cards: [],
-                            cardsRevealed: true,
-                            numerologToolId: "destiny_matrix",
-                          });
+                          // Open the session picker so the correct subject is chosen —
+                          // never start a reading without matrixSubjectId (API rejects it).
+                          openNumerologSessionFlow("destiny_matrix");
                         }
                       : undefined
                   }

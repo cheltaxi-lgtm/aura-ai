@@ -670,9 +670,30 @@ export function useChatActions(options: UseChatActionsOptions) {
           isUnlimited: session?.isUnlimited,
         });
         let matrixAlreadyOwned = false;
+        const matrixSubjectIdForReading =
+          sessionSpreadMetaRef.current?.matrixSubjectId?.trim() || "";
+        if (
+          isLoggedIn &&
+          (metaNumerologToolId === "destiny_matrix" ||
+            metaNumerologToolId === "child_matrix" ||
+            metaNumerologToolId === "matrix_year_forecast") &&
+          !matrixSubjectIdForReading
+        ) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateId(),
+              role: "assistant",
+              content:
+                "Не выбран человек для матрицы. Откройте расчёт заново и выберите, чью матрицу считать.",
+              timestamp: new Date(),
+            },
+          ]);
+          return;
+        }
         if (billingActive && isLoggedIn && metaNumerologToolId === "destiny_matrix") {
           try {
-            const subjectId = sessionSpreadMetaRef.current?.matrixSubjectId?.trim();
+            const subjectId = matrixSubjectIdForReading;
             const birthRaw = activeProfile.birthDate?.trim();
             if (subjectId || birthRaw) {
               const ownedRes = await fetch(
@@ -778,8 +799,8 @@ export function useChatActions(options: UseChatActionsOptions) {
                 metaNumerologToolId,
                 sessionSpreadMetaRef.current?.numerologToolParams
               ),
-              ...(sessionSpreadMetaRef.current?.matrixSubjectId
-                ? { matrixSubjectId: sessionSpreadMetaRef.current.matrixSubjectId }
+              ...(matrixSubjectIdForReading
+                ? { matrixSubjectId: matrixSubjectIdForReading }
                 : {}),
             }),
           });
@@ -1132,6 +1153,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         cards?: string[] | null;
         numerologToolId?: import("@/lib/numerology/tools").NumerologToolId | null;
         numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
+        matrixSubjectId?: string | null;
         spread?:
           | {
               cards: { name: string; meaning?: string }[];
@@ -1212,6 +1234,9 @@ export function useChatActions(options: UseChatActionsOptions) {
               ? {
                   numerologToolId,
                   numerologToolParams,
+                  matrixSubjectId:
+                    data.matrixSubjectId ??
+                    sessionSpreadMetaRef.current?.matrixSubjectId,
                 }
               : {}),
           };
@@ -1228,6 +1253,8 @@ export function useChatActions(options: UseChatActionsOptions) {
           cardNames: [],
           numerologToolId,
           numerologToolParams,
+          matrixSubjectId:
+            data.matrixSubjectId ?? sessionSpreadMetaRef.current?.matrixSubjectId,
         };
       } else if (!readingInFlightRef.current) {
         sessionSpreadMetaRef.current = null;

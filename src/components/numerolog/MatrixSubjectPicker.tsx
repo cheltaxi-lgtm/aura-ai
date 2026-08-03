@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MatrixSubject } from "@/lib/services/matrix-subject-service";
 import type { MatrixSubjectInput } from "@/hooks/useMatrixSubjects";
 
@@ -39,10 +39,19 @@ export default function MatrixSubjectPicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Default to «Я» only when still unselected after parent effects flush.
+  // Parent initializeFlow used to set another person, then this effect overwrote
+  // it with «Я» in the same paint — defer so deep-linked subjectId wins.
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   useEffect(() => {
-    if (selectedId || disabled) return;
-    const self = subjects.find((subject) => subject.kind === "self");
-    if (self) onSelect(self.id);
+    if (selectedId || disabled || subjects.length === 0) return;
+    const timer = window.setTimeout(() => {
+      if (selectedIdRef.current) return;
+      const self = subjects.find((subject) => subject.kind === "self");
+      if (self) onSelect(self.id);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [disabled, onSelect, selectedId, subjects]);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {

@@ -230,7 +230,11 @@ export default function MasterSessionFlow({
     DEFAULT_NUMEROLOG_SESSION_TOOL
   );
   const [numerologToolParams, setNumerologToolParams] = useState<NumerologToolParams>({});
-  const [matrixSubjectId, setMatrixSubjectId] = useState<string | null>(null);
+  // Seed from deep-link subjectId on first paint so MatrixSubjectPicker cannot
+  // auto-select «Я» in the same effect flush and overwrite another person.
+  const [matrixSubjectId, setMatrixSubjectId] = useState<string | null>(
+    () => initialMatrixSubjectId ?? null
+  );
 
   useEffect(() => {
     if (!isOpen || !initialPartnerInfo) return;
@@ -841,6 +845,10 @@ export default function MasterSessionFlow({
   /** Open saved Full Matrix without ritual / redraw / second charge. */
   const startOwnedMatrixSession = () => {
     if (!master) return;
+    if (!matrixSubjectId) {
+      setDrawError("Выберите человека, чью матрицу открыть.");
+      return;
+    }
     onStart({
       characterKey: master,
       intention: null,
@@ -895,6 +903,15 @@ export default function MasterSessionFlow({
   const handleStartNew = async () => {
     if (!master) return;
     if (numerologFlow) {
+      if (
+        (selectedNumerologTool === "destiny_matrix" ||
+          selectedNumerologTool === "child_matrix" ||
+          selectedNumerologTool === "matrix_year_forecast") &&
+        !matrixSubjectId
+      ) {
+        setDrawError("Выберите человека, чью матрицу рассчитать.");
+        return;
+      }
       if (matrixBuyOnceOwned && selectedNumerologTool === "destiny_matrix") {
         startOwnedMatrixSession();
         return;

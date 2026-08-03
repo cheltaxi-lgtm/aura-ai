@@ -384,7 +384,15 @@ export async function POST(request: NextRequest) {
         );
       }
     } else if (isMatrixBuyOnceTool) {
-      resolvedMatrixSubject = await ensureSelfSubject(authed.profileUserId);
+      // Never silently fall back to «Я» — that reopened the user's own matrix
+      // when the client lost matrixSubjectId for another person.
+      return NextResponse.json(
+        {
+          error: "Выберите, чью матрицу открыть.",
+          code: "matrix_subject_required",
+        },
+        { status: 400 }
+      );
     }
 
     if (resolvedMatrixSubject) {
