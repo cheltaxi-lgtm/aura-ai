@@ -14,7 +14,10 @@ fi
 
 value_of() {
   local key="$1"
-  grep -E "^${key}=" "$SRC" | tail -n1 | cut -d= -f2-
+  # An absent key is normal for the optional tuning vars below. Without `|| true`,
+  # set -e + pipefail abort the script on the first missing one — before the chown
+  # and chmod 600 at the end, leaving the secrets file at whatever mode it had.
+  grep -E "^${key}=" "$SRC" | tail -n1 | cut -d= -f2- || true
 }
 
 umask 077

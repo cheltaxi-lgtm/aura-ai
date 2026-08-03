@@ -74,7 +74,10 @@ bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz
 echo "=== DEPLOYED ===" && test -f /opt/aura-ai/src/app/app/page.tsx && echo module_a_app_page=ok
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
-$sshArgs = @(Get-SshBaseArgs) + @($VmHost, "bash", "-s")
+# Fold remote stderr into stdout on the VM: `next build` prints warnings there, and
+# with ErrorActionPreference=Stop a native stderr write aborts this script mid-deploy,
+# killing the remote build with services already stopped. Exit code still gates success.
+$sshArgs = @(Get-SshBaseArgs) + @($VmHost, "bash -s 2>&1")
 $DeployCmd | & ssh.exe @sshArgs
 if ($LASTEXITCODE -ne 0) {
   throw "Remote deploy failed with exit code $LASTEXITCODE"

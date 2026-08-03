@@ -103,9 +103,13 @@ if [ -f "$TARBALL" ]; then
   echo ">>> Hardening /opt/aura-ai file modes..."
   find /opt/aura-ai -type d -exec chmod 755 {} +
   find /opt/aura-ai -type f -exec chmod 644 {} +
-  if [ -f /opt/aura-ai/.env.local ]; then
-    chmod 600 /opt/aura-ai/.env.local
-  fi
+  # The blanket 644 above would expose secrets: .env.async-jobs now survives rsync,
+  # so it reaches this step as an existing file instead of being recreated at 600.
+  for secret_file in /opt/aura-ai/.env.local /opt/aura-ai/.env.async-jobs; do
+    if [ -f "$secret_file" ]; then
+      chmod 600 "$secret_file"
+    fi
+  done
   find /opt/aura-ai/proxmox-setup -type f -name '*.sh' -exec chmod 750 {} +
   find /opt/aura-ai/hosting -type f \( -name '*.sh' -o -name '*.ps1' \) -exec chmod 750 {} + 2>/dev/null || true
   echo ">>> Verifying installed GeoNames index after rsync..."
