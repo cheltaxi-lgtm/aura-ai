@@ -6,7 +6,7 @@ import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
-import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
+import NatalLandingCtas from "@/components/seo/NatalLandingCtas";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
 const PATH = "/natalnaya-karta";
@@ -115,8 +115,6 @@ const RELATED = [
 
 export default function NatalnayaKartaPage() {
   const master = getCharacterById("shri-raj");
-  const startHref = `/auth/user/register?returnTo=${encodeURIComponent("/cabinet/astrology")}`;
-  const loginHref = `/auth/user/login?returnTo=${encodeURIComponent("/cabinet/astrology")}`;
 
   const structuredData = buildForecastStructuredData({
     title: "Натальная карта онлайн — расчёт и расшифровка",
@@ -167,18 +165,7 @@ export default function NatalnayaKartaPage() {
         {RUNE_ACTION_LABELS.NATAL_READING} · от {DEFAULT_RUNE_COSTS.NATAL_READING} ᚢ
       </p>
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href={startHref} trackGoal="natal_landing_cta_click">
-          Рассчитать натальную карту
-        </SeoTrackedCta>
-        <SeoTrackedCta
-          href={loginHref}
-          variant="ghost"
-          trackGoal="natal_landing_login_click"
-        >
-          Уже есть аккаунт
-        </SeoTrackedCta>
-      </div>
+      <NatalLandingCtas placement="hero" />
 
       <SeoSection title="Что вы получите">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -265,11 +252,7 @@ export default function NatalnayaKartaPage() {
         </ul>
       </SeoSection>
 
-      <div className="mt-10 flex flex-wrap gap-3">
-        <SeoTrackedCta href={startHref} trackGoal="natal_landing_cta_click">
-          Открыть астрологию в кабинете
-        </SeoTrackedCta>
-      </div>
+      <NatalLandingCtas placement="footer" />
     </SeoPageShell>
   );
 }

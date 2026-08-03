@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AuthForm from "@/components/AuthForm";
 import AuthShell, { AuthSalonHeader } from "@/components/auth/AuthShell";
+import AuthSessionResume from "@/components/auth/AuthSessionResume";
 
 export default function UserRegisterPage() {
   return (
@@ -9,6 +10,7 @@ export default function UserRegisterPage() {
         <Link href="/auth">← Выбор аккаунта</Link>
       }
     >
+      <AuthSessionResume role="user" fallback="/cabinet" />
       <AuthSalonHeader
         overline="Приватный цифровой салон"
         title="Добро пожаловать в салон"

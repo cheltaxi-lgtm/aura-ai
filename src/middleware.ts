@@ -8,7 +8,7 @@ import {
   MAINTENANCE_BOT_RETRY_AFTER_SEC,
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
-import { fetchUserTokenVersionOk } from "@/lib/token-version-gate";
+import { fetchUserTokenVersionStatus } from "@/lib/token-version-gate";
 import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
 import { resolveBotHomeQueryRedirect } from "@/lib/seo/bot-query-redirect";
@@ -201,8 +201,9 @@ async function enforceUserTokenVersion(
   forApi: boolean
 ): Promise<NextResponse | null> {
   if (auth.role !== "user") return null;
-  const ok = await fetchUserTokenVersionOk(request, auth.sub, auth.tv);
-  if (ok) return null;
+  const status = await fetchUserTokenVersionStatus(request, auth.sub, auth.tv);
+  // Infra/DB blip: keep the cookie; route handlers still re-check getAuth().
+  if (status === "ok" || status === "unavailable") return null;
   if (forApi) {
     return clearAuthCookie(unauthorizedApiResponse(), request);
   }

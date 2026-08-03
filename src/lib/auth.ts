@@ -133,7 +133,7 @@ export async function verifyTokenWithVersion(token: string): Promise<AuthPayload
   if (payload.role === "user") {
     const tv = await getAccountTokenVersion(payload.sub);
     if (tv === null) return null;
-    if ((payload.tv ?? 0) !== tv) return null;
+    if ((Number(payload.tv ?? 0) || 0) !== tv) return null;
   }
   return payload;
 }
@@ -205,7 +205,7 @@ export async function getAuth(): Promise<AuthPayload | null> {
   if (payload.role === "user") {
     const tv = await getAccountTokenVersion(payload.sub);
     if (tv === null) return null;
-    if ((payload.tv ?? 0) !== tv) return null;
+    if ((Number(payload.tv ?? 0) || 0) !== tv) return null;
   }
 
   return payload;
