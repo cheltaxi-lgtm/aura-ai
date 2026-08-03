@@ -54,6 +54,7 @@ echo ">>> Bootstrap rsync from tarball..."
 rsync -a --delete --ignore-times \
   --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
   --exclude='.env.local' \
+  --exclude='.env.async-jobs' \
   --exclude='public/releases/' \
   --exclude='.next/' \
   --exclude='.next-candidate/' \
