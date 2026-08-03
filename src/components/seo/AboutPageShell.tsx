@@ -39,6 +39,9 @@ export default function AboutPageShell({
         <Link href="/faq" className="text-aura-gold hover:underline">
           FAQ
         </Link>
+        <Link href="/telegram" className="text-aura-gold hover:underline">
+          Telegram-бот
+        </Link>
         <Link href="/rasklady" className="text-aura-gold hover:underline">
           Расклады
         </Link>

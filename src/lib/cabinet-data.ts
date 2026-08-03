@@ -30,6 +30,7 @@ export interface CabinetProfile {
   email: string;
   zodiac: string | null;
   birthDate: string | null;
+  birthCity: string | null;
   runeBalance: number;
   createdAt: string | null;
 }
@@ -48,6 +49,9 @@ export interface CabinetSessionRow {
   sessionDate: string;
   createdAt: string;
   topicSummary: string;
+  intention?: string | null;
+  spreadId?: string | null;
+  spreadType?: string | null;
   keyCards: string[];
   prediction: string;
   mood: string | null;
@@ -242,36 +246,9 @@ export async function deleteCabinetPhotoSpread(
   );
   if ((result.rowCount ?? 0) === 0) return { ok: false };
 
+  // Full session wipe — bot/site history both read from `sessions`.
   if (options?.deleteLinkedChat !== false && sessionId) {
-    const analysis =
-      typeof row.context_data?.analysis === "string"
-        ? row.context_data.analysis.trim().slice(0, 240)
-        : "";
-    if (analysis) {
-      await query(
-        `DELETE FROM chat_messages
-         WHERE session_id = $1
-           AND (
-             content LIKE '[Фото-расклад]%'
-             OR LEFT(TRIM(content), 240) = $2
-           )`,
-        [sessionId, analysis]
-      );
-    } else {
-      await query(
-        `DELETE FROM chat_messages
-         WHERE session_id = $1 AND content LIKE '[Фото-расклад]%'`,
-        [sessionId]
-      );
-    }
-    await query(
-      `UPDATE sessions
-       SET spread_type = NULL,
-           cards = NULL,
-           updated_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND spread_type = 'photo'`,
-      [sessionId, userId]
-    );
+    await deleteConsultationSession(sessionId, userId);
   }
 
   return { ok: true, characterName: row.character_name, sessionId };
@@ -290,6 +267,7 @@ export async function getCabinetProfile(
     email: accountEmail,
     zodiac: user?.zodiac ?? null,
     birthDate: user?.birth_date ?? null,
+    birthCity: user?.birth_city ?? null,
     runeBalance: balance,
     createdAt: user?.created_at
       ? user.created_at instanceof Date
@@ -323,6 +301,8 @@ export async function getCabinetSessions(
       session_date: Date;
       topic_summary: string | null;
       intention: string | null;
+      spread_id: string | null;
+      spread_type: string | null;
       key_cards: string[] | null;
       session_cards: string[] | null;
       prediction: string | null;
@@ -348,6 +328,8 @@ export async function getCabinetSessions(
          COALESCE(sm.session_date, s.updated_at, s.created_at) AS session_date,
          sm.topic_summary,
          s.intention,
+         s.spread_id,
+         s.spread_type,
          sm.key_cards,
          s.cards AS session_cards,
          sm.prediction,
@@ -367,6 +349,30 @@ export async function getCabinetSessions(
            AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
            AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''
          )
+         /* Matrix: hide sessions when user has no owned matrix report left */
+         AND NOT (
+           (
+             COALESCE(s.spread_id, '') IN ('destiny_matrix', 'numerolog:destiny_matrix')
+             OR COALESCE(s.spread_id, '') LIKE 'numerolog:destiny_matrix%'
+             OR COALESCE(s.intention, '') = 'destiny_matrix'
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM numerology_report_history n
+             WHERE n.user_id = s.user_id
+               AND n.tool_id = 'destiny_matrix'
+               AND length(trim(n.content)) > 0
+           )
+         )
+         /* Photo: hide sessions whose photo_reading history row is gone */
+         AND NOT (
+           COALESCE(s.spread_type, '') = 'photo'
+           AND NOT EXISTS (
+             SELECT 1 FROM history h
+             WHERE h.user_id = s.user_id
+               AND h.context_data->>'type' = 'photo_reading'
+               AND h.context_data->>'sessionId' = s.id::text
+           )
+         )
        ORDER BY COALESCE(sm.session_date, s.updated_at, s.created_at) DESC
        LIMIT $2 OFFSET $3`,
       [userId, limit, offset]
@@ -382,6 +388,28 @@ export async function getCabinetSessions(
            COALESCE(s.message_count, 0) = 0
            AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
            AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''
+         )
+         AND NOT (
+           (
+             COALESCE(s.spread_id, '') IN ('destiny_matrix', 'numerolog:destiny_matrix')
+             OR COALESCE(s.spread_id, '') LIKE 'numerolog:destiny_matrix%'
+             OR COALESCE(s.intention, '') = 'destiny_matrix'
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM numerology_report_history n
+             WHERE n.user_id = s.user_id
+               AND n.tool_id = 'destiny_matrix'
+               AND length(trim(n.content)) > 0
+           )
+         )
+         AND NOT (
+           COALESCE(s.spread_type, '') = 'photo'
+           AND NOT EXISTS (
+             SELECT 1 FROM history h
+             WHERE h.user_id = s.user_id
+               AND h.context_data->>'type' = 'photo_reading'
+               AND h.context_data->>'sessionId' = s.id::text
+           )
          )`,
       [userId]
     ),
@@ -392,8 +420,11 @@ export async function getCabinetSessions(
       r.intention && r.intention.trim()
         ? topicLabel(r.intention as SessionTopicId)
         : "Сеанс";
+    // Prefer the fuller list — session_memories.key_cards is often capped at 3.
+    const memCards = r.key_cards?.filter(Boolean) ?? [];
+    const sessionCards = r.session_cards?.filter(Boolean) ?? [];
     const keyCards =
-      (r.key_cards?.length ? r.key_cards : r.session_cards) ?? [];
+      sessionCards.length >= memCards.length ? sessionCards : memCards;
     const stubPrediction = r.prediction?.trim() === "Сеанс в процессе";
     const prediction =
       r.status === "active"
@@ -413,6 +444,9 @@ export async function getCabinetSessions(
       sessionDate: r.session_date.toISOString(),
       createdAt: r.created_at.toISOString(),
       topicSummary: r.topic_summary?.trim() || topicFromIntention,
+      intention: r.intention,
+      spreadId: r.spread_id,
+      spreadType: r.spread_type,
       keyCards,
       prediction,
       mood: r.mood,
@@ -681,7 +715,39 @@ export async function updateSessionOutcomeRating(
   return Boolean(rows[0]);
 }
 
-/** Delete cabinet session entry with full sync (chat, sessions, history). */
+async function deleteSessionWithMatrixWipe(
+  userId: string,
+  sessionId: string
+): Promise<boolean> {
+  const session = await getSession(sessionId);
+  if (!session || session.user_id !== userId) return false;
+
+  const {
+    isDestinyMatrixSession,
+    wipeMatrixOwnershipForSession,
+    purgeMatrixConsultationSessions,
+  } = await import("@/lib/numerology/matrix-session-cleanup");
+
+  if (isDestinyMatrixSession(session)) {
+    const { rows: profileRows } = await query<{ birth_date: string | null }>(
+      `SELECT birth_date::text AS birth_date FROM users WHERE id = $1 LIMIT 1`,
+      [userId]
+    );
+    await wipeMatrixOwnershipForSession({
+      userId,
+      sessionId,
+      profileBirthDate: profileRows[0]?.birth_date ?? null,
+    });
+  }
+
+  const ok = await deleteConsultationSession(sessionId, userId);
+  if (isDestinyMatrixSession(session)) {
+    await purgeMatrixConsultationSessions(userId, [sessionId]);
+  }
+  return ok;
+}
+
+/** Delete cabinet session entry with full sync (chat, sessions, history, matrix ownership). */
 export async function deleteCabinetSessionEntry(
   userId: string,
   memoryId: string
@@ -693,7 +759,7 @@ export async function deleteCabinetSessionEntry(
   const row = rows[0];
 
   if (row?.session_id) {
-    const ok = await deleteConsultationSession(row.session_id, userId);
+    const ok = await deleteSessionWithMatrixWipe(userId, row.session_id);
     return { ok, characterKey: row.character_key };
   }
 
@@ -704,7 +770,7 @@ export async function deleteCabinetSessionEntry(
 
   const session = await getSession(memoryId);
   if (session?.user_id === userId && session.character_key) {
-    const ok = await deleteConsultationSession(memoryId, userId);
+    const ok = await deleteSessionWithMatrixWipe(userId, memoryId);
     return { ok, characterKey: session.character_key };
   }
 
@@ -738,6 +804,7 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
     const diaryRemoved = await run(`DELETE FROM diary_entries WHERE user_id = $1`, [userId]);
     const memoriesRemoved = await run(`DELETE FROM session_memories WHERE user_id = $1`, [userId]);
     const factsRemoved = await run(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
+    await run(`DELETE FROM numerology_report_history WHERE user_id = $1`, [userId]);
 
     await preserveUserRateLimitsBeforePurge(userId, client);
 

@@ -8,6 +8,8 @@ import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { clearSessionClaimCookie } from "@/lib/session-claim";
 import { deleteUserAccountCompletely, deleteUserAccountOnly } from "@/lib/user-deletion";
 
+const CONFIRM_PHRASE = "УДАЛИТЬ";
+
 export async function DELETE(request: NextRequest) {
   const auth = await requireUserAuth();
   if (!auth) {
@@ -16,6 +18,24 @@ export async function DELETE(request: NextRequest) {
 
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
+
+  let confirmPhrase = "";
+  try {
+    const body = (await request.json()) as { confirmPhrase?: string };
+    confirmPhrase = typeof body.confirmPhrase === "string" ? body.confirmPhrase.trim() : "";
+  } catch {
+    confirmPhrase = "";
+  }
+
+  if (confirmPhrase !== CONFIRM_PHRASE) {
+    return NextResponse.json(
+      {
+        error: "confirm_required",
+        message: `Для удаления введите слово ${CONFIRM_PHRASE}`,
+      },
+      { status: 400 }
+    );
   }
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);

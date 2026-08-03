@@ -113,7 +113,8 @@ export default function AdminEmailPage() {
   }, [load]);
 
   const post = async (body: Record<string, unknown>) => {
-    const res = await fetch("/api/admin/email", {
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    const res = await adminFetch("/api/admin/email", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

@@ -32,26 +32,25 @@ export default function AdminAiPage() {
   }, []);
 
   const save = async () => {
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "ai", values: ai }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "prompts", values: prompts }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "tts", values: tts }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "visual", values: visual }),
-    });
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    const patches = [
+      { section: "ai", values: ai },
+      { section: "prompts", values: prompts },
+      { section: "tts", values: tts },
+      { section: "visual", values: visual },
+    ];
+    for (const patch of patches) {
+      const res = await adminFetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        alert(data.error ?? `Не удалось сохранить ${patch.section}`);
+        return;
+      }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -121,22 +120,26 @@ export default function AdminAiPage() {
         </button>
 
         <ModelPicker
-          label="Модель для чата и раскладов (fallback)"
+          label="Общая модель (fallback, если платная/бесплатная не заданы)"
           value={String(ai.model ?? "")}
           onChange={(modelId) => setAi({ ...ai, model: modelId })}
         />
 
         <ModelPicker
-          label="Бесплатный чат (первые N вопросов — та же модель, что и платный, если не задана отдельно)"
+          label="Бесплатный чат (первые N вопросов)"
           value={String(ai.freeModel ?? ai.paidModel ?? ai.model ?? "")}
           onChange={(modelId) => setAi({ ...ai, freeModel: modelId })}
         />
 
         <ModelPicker
-          label="Платный чат (руны / подписка)"
+          label="Платный чат и расклады (руны / подписка)"
           value={String(ai.paidModel ?? ai.model ?? "")}
           onChange={(modelId) => setAi({ ...ai, paidModel: modelId })}
         />
+        <p className="text-[10px] text-gray-500 -mt-2">
+          Расклады идут через эту модель. Reasoning-модели (deepseek-v4-pro, r1) дают 30–90+ сек на один
+          вызов — для скорости лучше flash / gpt-4o-mini / kimi без thinking.
+        </p>
 
         <ModelPicker
           label="Модель для расклада по фото"
@@ -159,6 +162,29 @@ export default function AdminAiPage() {
             value={String(ai.natalModel ?? ai.model ?? "openai/gpt-4o-mini")}
             onChange={(modelId) => setAi({ ...ai, natalModel: modelId })}
           />
+        </div>
+
+        <div className="rounded-xl border border-violet-300/20 bg-violet-300/5 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-violet-100">Матрица судьбы</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              Отдельная модель для позонного разбора матрицы (~19 коротких вызовов).
+              Gemini 3.x жжёт токены на reasoning — лучше flash без thinking или deepseek-chat.
+              Пусто = deepseek-chat-v3 (не платная модель чата).
+            </p>
+          </div>
+          <ModelPicker
+            label="Модель для матрицы"
+            value={String(ai.matrixModel || "deepseek/deepseek-chat-v3-0324")}
+            onChange={(modelId) => setAi({ ...ai, matrixModel: modelId })}
+          />
+          <button
+            type="button"
+            onClick={() => setAi({ ...ai, matrixModel: "" })}
+            className="text-xs text-gray-400 underline-offset-2 hover:text-white hover:underline"
+          >
+            Сбросить → deepseek-chat-v3 (дефолт матрицы)
+          </button>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
@@ -206,6 +232,30 @@ export default function AdminAiPage() {
                 })
               }
               placeholder="openai/gpt-4o-mini"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">
+              matrixFallbackModels (пусто = как fallbackModels чата)
+            </label>
+            <input
+              type="text"
+              value={
+                Array.isArray(ai.matrixFallbackModels)
+                  ? (ai.matrixFallbackModels as string[]).join(", ")
+                  : ""
+              }
+              onChange={(e) =>
+                setAi({
+                  ...ai,
+                  matrixFallbackModels: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+              placeholder="deepseek/deepseek-chat-v3-0324, openai/gpt-4o-mini"
               className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
             />
           </div>

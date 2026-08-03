@@ -5,7 +5,9 @@ import { dispatchNotification } from "@/lib/notify";
 import { normalizeSpreadId, type SpreadId } from "@/lib/spreads";
 import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
 import { buildPaidSpreadReadingExtras } from "@/lib/prompts/premium-reading";
-import { CARD_GROUNDED_READING_RULES } from "@/lib/prompts/format";
+import { isTarotRuneMasterId } from "@/lib/prompts/tarot-rune-format";
+import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
+import { sanitizeReadingForClient } from "@/lib/chat-reply-sanitize";
 import {
   sendEmail,
   jointReadingCompletedEmailHtml,
@@ -724,8 +726,9 @@ function stripMarkdownForSynthesis(text: string): string {
     .trim();
 }
 
-function polishCombinedReading(text: string): string {
-  let out = stripMarkdownForSynthesis(text);
+function polishCombinedReading(text: string, keepMarkdown = false): string {
+  // Tarot-rune synthesis keeps **names** and «## Простыми словами»; plain masters stay markdown-free.
+  let out = keepMarkdown ? text.replace(/\r\n/g, "\n").trim() : stripMarkdownForSynthesis(text);
   out = out.replace(/\(\s*\)/g, "");
   out = out.replace(/,\s*\./g, ".");
   out = out.replace(/\s+\./g, ".");
@@ -783,21 +786,32 @@ async function generateCombinedReading(
     const allCards = [...initiatorCards, ...partnerCards];
     const cardCount = Math.max(3, allCards.length || 3);
 
-    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов и карт обоих.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
+    const tarotRune = isTarotRuneMasterId(masterId);
+    const formatRules = tarotRune
+      ? `- Markdown: названия карт **жирным**; в конце обязателен блок «## Простыми словами» (5–7 предложений, первая фраза — вердикт).
+- Первая фраза всего ответа — вердикт по союзу (жёстко / в плюс / смешанно).`
+      : `- Чистый текст без markdown и без заголовков.
+- В конце — финальный блок выводов сплошным текстом (вердикт + синтез + действия при рычаге).`;
 
-${CARD_GROUNDED_READING_RULES}
+    const systemPrompt = `Ты — мастер Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов и карт обоих.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
 
-${buildPaidSpreadReadingExtras({ cardCount, masterId, includeFinalConclusion: true })}
+${buildPaidSpreadReadingExtras({
+      cardCount,
+      masterId,
+      includeFinalConclusion: !tarotRune,
+      includeDepthBlocks: true,
+    })}
 
 Правила синтеза:
 - Пиши по-русски, тепло, связной прозой — премиальная глубина, не краткий пересказ.
-- Без markdown, без заголовков, без списков и без «**».
+${formatRules}
 - Не оставляй пустых скобок, обрывков вроде «твои .» или «()» — каждое предложение должно быть законченным.
 - Не повторяй один и тот же абзац или мысль дважды.
 - Не цитируй тексты дословно — синтезируй смысл обоих раскладов через карты.
 - Не используй романтические формулировки, если это не пара — перед тобой ${relation}.
 - Если символы показывают тень в союзе — называй прямо, без смягчения.
-- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива, финальный вывод.`;
+- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива, финальный вывод.
+- Назови по имени карты обоих сторон, которые реально вошли в синтез.`;
 
     const userMessage = [
       `${initiatorLabel} (инициатор), карты: ${formatJointCardsForPrompt(row.initiator_cards, masterId)}`,
@@ -812,6 +826,7 @@ ${buildPaidSpreadReadingExtras({ cardCount, masterId, includeFinalConclusion: tr
       .filter(Boolean)
       .join("\n");
 
+    const cardNames = allCards.map((c) => c.name).filter(Boolean);
     const generated = await generateReading(systemPrompt, {
       userName: initiatorLabel,
       tarotCards: allCards.length ? allCards : [{ name: "Союз", meaning: "связь двух раскладов" }],
@@ -820,8 +835,15 @@ ${buildPaidSpreadReadingExtras({ cardCount, masterId, includeFinalConclusion: tr
       userMessage,
       intention: "love",
     });
-    if (generated.fromLlm && generated.text?.trim()) {
-      return polishCombinedReading(generated.text);
+    const raw = generated.text?.trim() ?? "";
+    if (generated.fromLlm && raw) {
+      const cleaned = sanitizeReadingForClient(raw, cardNames.length ? cardNames : undefined);
+      const deliverable =
+        cleaned &&
+        (!cardNames.length || isPaidSpreadTextComplete(cleaned, cardNames))
+          ? cleaned
+          : raw;
+      if (deliverable.trim()) return polishCombinedReading(deliverable, tarotRune);
     }
     throw new Error("joint_combined_ai_failed");
   } catch (err) {

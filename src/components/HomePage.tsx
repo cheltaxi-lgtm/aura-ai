@@ -40,8 +40,18 @@ import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding"
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
-import type { PhotoReadingChatPayload, PhotoReadingEntryMode } from "@/components/PhotoReadingFlow";
-import { buildPhotoReadingChatMessages, mergePhotoReadingIntoChat } from "@/lib/photo-chat";
+import type {
+  PhotoReadingChatPayload,
+  PhotoReadingConfirmPayload,
+  PhotoReadingEntryMode,
+} from "@/components/PhotoReadingFlow";
+import {
+  buildPhotoReadingChatMessages,
+  buildPhotoReadingPendingMessages,
+  mergePhotoReadingIntoChat,
+} from "@/lib/photo-chat";
+import { pickUserFacingError } from "@/lib/user-facing-error";
+import { trackPhotoReadingPhase } from "@/lib/photo-reading-analytics";
 
 const RitualFlow = dynamic(() => import("@/components/ritual/RitualFlow"), { ssr: false });
 const MasterDecksModal = dynamic(() => import("@/components/MasterDecksModal"), { ssr: false });
@@ -129,6 +139,11 @@ import {
   isGuestResumeBannerPhase,
   loadGuestResumeUiCache,
 } from "@/lib/guest-resume-ui-cache";
+import {
+  claimTgReceiptClient,
+  stashTgReceipt,
+  takeStashedTgReceipt,
+} from "@/lib/telegram/tg-receipt-client";
 import {
   GUEST_RESUME_TRANSITION_SUBTITLE,
 } from "@/lib/guest-triplet-resume";
@@ -224,6 +239,7 @@ export default function HomePage({
   const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
+  const chatSessionDeepLinkParsedRef = useRef(false);
   const numerologDeepLinkParsedRef = useRef(false);
   const masterAutoOpenParsedRef = useRef(false);
   const autoAskOpenedRef = useRef(false);
@@ -659,6 +675,39 @@ export default function HomePage({
     },
     [isLoggedIn, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
+
+  // Telegram bot CTA: ?tg_receipt=zg_… — stash for login, claim when authenticated.
+  useEffect(() => {
+    if (typeof window === "undefined" || authLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("tg_receipt")?.trim() || "";
+    if (fromUrl.startsWith("zg_")) {
+      stashTgReceipt(fromUrl);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("tg_receipt");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    if (!isLoggedIn) return;
+    const token = takeStashedTgReceipt() || (fromUrl.startsWith("zg_") ? fromUrl : "");
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await claimTgReceiptClient(token);
+      if (cancelled) return;
+      if (!result.ok) {
+        setTripletNotice(result.message);
+        return;
+      }
+      setTripletNotice(
+        result.alreadyClaimed
+          ? "Расклад из Telegram уже в вашем кабинете."
+          : "Расклад из Telegram перенесён — те же карты ждут вас."
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isLoggedIn, setTripletNotice]);
 
   useEffect(() => {
     if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
@@ -1163,6 +1212,7 @@ export default function HomePage({
     isLoading,
     sendingRef,
     readingInFlightRef,
+    pendingNewChatThreadRef,
     sessionOffline: session?.offline,
     onApplyRestoredSpread,
   });
@@ -1306,7 +1356,7 @@ export default function HomePage({
     if (!selectedCharacter || !intentionSpread) return;
     if (intentionSpread.masterId !== selectedCharacter) return;
     if (sessionIntention === "life_death") return;
-    if (readingInFlightRef.current) return;
+    if (readingInFlightRef.current || pendingNewChatThreadRef.current) return;
     if (chatHasSpreadReading(messages)) return;
     if (
       !hasCompleteSpread(
@@ -1321,8 +1371,13 @@ export default function HomePage({
     const intention = sessionIntention ?? intentionSpread.intention;
     if (!intention) return;
 
+    // Never hydrate a previous same-card consultation into a fresh thread.
+    const boundSessionId =
+      consultationSessionIdRef.current ?? consultationSessionId ?? undefined;
+    if (!boundSessionId) return;
+
     const cardsKey = spreadKey(intentionSpread.cards);
-    const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}`;
+    const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}:${boundSessionId}`;
     if (onboarding.spreadReadingRecoveryKeyRef.current === recoveryKey) return;
     if (insufficientRunes) return;
     onboarding.spreadReadingRecoveryKeyRef.current = recoveryKey;
@@ -1340,13 +1395,16 @@ export default function HomePage({
           cardNames: intentionSpread.cards.map((c) => c.name),
           spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
           cardCount: intentionSpread.cards.length,
+          sessionId: boundSessionId,
         });
         if (cancelled || !raw) return;
+        if (pendingNewChatThreadRef.current || readingInFlightRef.current) return;
 
         const cardNames = intentionSpread.cards.map((c) => c.name);
         const readingText = resolveClientReadingText(raw, cardNames);
         if (!readingText || cancelled) return;
         setMessages((prev) => {
+          if (chatHasSpreadReading(prev)) return prev;
           const next = appendSpreadReadingMessage(prev, readingText);
           if (next === prev) return prev;
           saveChatCache(selectedCharacter, next, cardsKey, {
@@ -1378,6 +1436,9 @@ export default function HomePage({
     sessionIntention,
     messages,
     readingInFlightRef,
+    pendingNewChatThreadRef,
+    consultationSessionId,
+    consultationSessionIdRef,
     setMessages,
     onboarding.spreadReadingRecoveryKeyRef,
     setReadingRitualCountdownDone,
@@ -1983,9 +2044,13 @@ export default function HomePage({
     const masterId = selectedCharacter;
     const master = findShowcaseMaster(masterId, masters) ?? getCharacterById(masterId);
     const label = master?.name ?? "мастером";
+    const matrixTool =
+      sessionSpreadMetaRef.current?.numerologToolId === "destiny_matrix";
     if (
       !window.confirm(
-        `Удалить этот сеанс с ${label} безвозвратно? Переписка пропадёт из чата и личного кабинета.`
+        matrixTool
+          ? `Удалить матрицу судьбы с ${label} безвозвратно? Пропадёт из чата и кабинета, покупка сбросится.`
+          : `Удалить этот сеанс с ${label} безвозвратно? Переписка пропадёт из чата и личного кабинета.`
       )
     ) {
       return;
@@ -2285,6 +2350,96 @@ export default function HomePage({
     ]
   );
 
+  // Telegram bot: ?chat_session=<uuid> → open that consultation chat.
+  useEffect(() => {
+    if (typeof window === "undefined" || authLoading) return;
+    if (chatSessionDeepLinkParsedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get("chat_session")?.trim() || "";
+    if (!sid) return;
+
+    if (!isLoggedIn) {
+      chatSessionDeepLinkParsedRef.current = true;
+      const returnTo = `/?chat_session=${encodeURIComponent(sid)}`;
+      window.location.replace(
+        `/auth/user/login?returnTo=${encodeURIComponent(returnTo)}`
+      );
+      return;
+    }
+
+    chatSessionDeepLinkParsedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}`, {
+          credentials: "include",
+        });
+        if (!res.ok || cancelled) {
+          if (!cancelled) {
+            setTripletNotice("Не удалось открыть сеанс из Telegram. Найдите его в кабинете.");
+          }
+          return;
+        }
+        const data = (await res.json()) as {
+          id: string;
+          characterKey?: string | null;
+          intention?: string | null;
+          spreadType?: string | null;
+          spreadId?: string | null;
+          cards?: string[] | null;
+          status?: string | null;
+          messageCount?: number;
+          createdAt?: string;
+          updatedAt?: string;
+          topicSummary?: string | null;
+          keyCards?: string[] | null;
+          prediction?: string | null;
+        };
+        if (cancelled || !data.id) return;
+
+        const masterId = (data.characterKey || "veronika").trim() || "veronika";
+        const item: SessionListItem = {
+          id: data.id,
+          intention: data.intention ?? null,
+          spreadType: data.spreadType ?? null,
+          spreadId: data.spreadId ?? null,
+          cards: data.cards ?? null,
+          status: data.status || "active",
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          messageCount: typeof data.messageCount === "number" ? data.messageCount : 1,
+          topicSummary: data.topicSummary ?? null,
+          keyCards: data.keyCards ?? null,
+          prediction: data.prediction ?? null,
+        };
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete("chat_session");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+
+        if ((data.status || "active") === "completed") {
+          await handleOpenArchiveSession(masterId, item);
+        } else {
+          await handleContinueListedSession(masterId, item);
+        }
+      } catch {
+        if (!cancelled) {
+          setTripletNotice("Не удалось открыть сеанс из Telegram. Попробуйте из кабинета.");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authLoading,
+    isLoggedIn,
+    handleContinueListedSession,
+    handleOpenArchiveSession,
+    setTripletNotice,
+  ]);
+
   const resetChatSessionState = () => {
     pendingNewChatThreadRef.current = false;
     if (selectedCharacter && messages.length) {
@@ -2312,6 +2467,7 @@ export default function HomePage({
     }
     setSelectedCharacter(null);
     setConsultationSessionId(null);
+    consultationSessionIdRef.current = null;
     setConsultationReadOnly(false);
     archiveSessionIdRef.current = null;
     chatLoadedForRef.current = null;
@@ -2393,6 +2549,254 @@ export default function HomePage({
     setShowDecksModal(true);
     setPendingNav(null);
   }, [pendingNav, selectedCharacter, sessionListMaster, step]);
+
+  const handlePhotoConfirmSpread = async (
+    masterId: string,
+    payload: PhotoReadingConfirmPayload
+  ) => {
+    if (!isLoggedIn) return;
+
+    const photoDeckCards = redrawSpreadToDeckCards(payload.redrawSpread);
+    const photoSystem = payload.redrawSpread.system;
+    const prevConsultationId = consultationSessionIdRef.current;
+
+    // Fresh consultation — never append a photo spread into an existing master chat.
+    pendingNewChatThreadRef.current = true;
+    readingInFlightRef.current = true;
+    skipNextReadingRef.current = true;
+    chatLoadedForRef.current = masterId;
+    archiveSessionIdRef.current = null;
+    setConsultationReadOnly(false);
+    // Detach old thread immediately so hydrate cannot restore it while we wait on the network.
+    setConsultationSessionId(null);
+    consultationSessionIdRef.current = null;
+
+    setPhotoChatSpread({ masterId, cards: photoDeckCards, system: photoSystem });
+    setChatSessionSpread(null);
+    setIntentionSpread(null);
+    setSessionIntention(null);
+    setHideChatSpread(false);
+    sessionSpreadMetaRef.current = {
+      spreadType: "photo",
+      cardNames: payload.detectedCards,
+    };
+    setChatHeaderImage(null);
+
+    const pendingMessages = buildPhotoReadingPendingMessages(
+      payload.question ?? "",
+      payload.detectedCards
+    );
+    const photoCacheKey = tarotCardsKey(redrawSpreadToTarotCards(payload.redrawSpread));
+
+    // Open chat + timer first (before session create / LLM), so old messages never linger.
+    setMessages(pendingMessages);
+    saveChatCache(masterId, pendingMessages, photoCacheKey, {
+      cards: photoDeckCards,
+      system: photoSystem,
+      variant: "photo",
+    });
+
+    setPhotoReadingOpen(false);
+    setSessionOnlyChat(false);
+    setLastMasterId(masterId);
+    localStorage.setItem(LAST_MASTER_KEY, masterId);
+    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    setStep("chat");
+    setHistoryHasMore(false);
+    setIsLoadingHistory(false);
+    setSelectedCharacter(masterId);
+
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+    setReadingRitualCountdownDone(false);
+    setSpreadRitual({ active: false });
+
+    const ritualStartedAt = Date.now();
+
+    let newSessionId: string | undefined;
+    try {
+      newSessionId = await beginNewSpreadSession(masterId);
+    } catch {
+      newSessionId = undefined;
+    }
+    // Re-assert after await — beginNewSpreadSession / effects must not resurrect the old thread.
+    pendingNewChatThreadRef.current = true;
+    readingInFlightRef.current = true;
+    skipNextReadingRef.current = true;
+    chatLoadedForRef.current = masterId;
+    setMessages(pendingMessages);
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+
+    if (newSessionId) {
+      setConsultationSessionId(newSessionId);
+      consultationSessionIdRef.current = newSessionId;
+      try {
+        localStorage.setItem("aura_session_id", newSessionId);
+      } catch {
+        /* ignore */
+      }
+      void bindSessionToMaster(masterId, newSessionId);
+    } else {
+      setConsultationSessionId(null);
+      consultationSessionIdRef.current = null;
+    }
+
+    const interpretAbort = new AbortController();
+    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
+
+    try {
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data } = await postWithAsyncJob({
+        url: "/api/photo-reading/stream",
+        storageKey: "aura:photo-reading-active-job",
+        signal: interpretAbort.signal,
+        headers: { "Idempotency-Key": payload.idempotencyKey },
+        body: {
+          characterId: masterId,
+          question: payload.question,
+          sessionId: newSessionId,
+          confirmedSpread: payload.redrawSpread,
+          idempotencyKey: payload.idempotencyKey,
+        },
+      });
+
+      if (resStatus === 429) {
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            "Слишком много фото-чтений. Подождите минуту и подтвердите расклад снова."
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (resStatus === 402) {
+        const parsed = parseInsufficientRunes(data);
+        if (parsed) {
+          setInsufficientRunes({ balance: parsed.balance, required: parsed.required });
+          handleOpenPaywall({
+            balance: parsed.balance,
+            requiredRunes: parsed.required,
+            shortage: parsed.shortage,
+          });
+        }
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            pickUserFacingError(data, "Недостаточно рун для расшифровки фото-расклада.")
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (resStatus >= 400 || data.code === "generation_failed" || data.llmFailed) {
+        if (typeof data.runeBalance === "number") {
+          setRuneBalance(data.runeBalance as number);
+          emitRuneBalanceUpdate(data.runeBalance as number);
+        }
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            pickUserFacingError(
+              data,
+              "Не удалось получить трактовку. Руны возвращены — откройте фото-расклад и подтвердите снова."
+            )
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      const analysis = String(data.analysis ?? data.reply ?? "").trim();
+      if (!analysis) {
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            "Не удалось получить трактовку. Откройте фото-расклад и подтвердите снова."
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (typeof data.runeBalance === "number") {
+        setRuneBalance(data.runeBalance as number);
+        emitRuneBalanceUpdate(data.runeBalance as number);
+      }
+
+      const detectedCards =
+        (Array.isArray(data.detectedCards) ? (data.detectedCards as string[]) : null) ??
+        payload.detectedCards;
+
+      const photoMessages = buildPhotoReadingChatMessages(
+        analysis,
+        payload.question ?? "",
+        detectedCards
+      );
+
+      setMessages((prev) => {
+        const withoutShortAssistant = prev.filter(
+          (m) => !(m.role === "assistant" && (m.content?.trim().length ?? 0) < 80)
+        );
+        const next = mergePhotoReadingIntoChat(withoutShortAssistant, photoMessages);
+        saveChatCache(masterId, next, photoCacheKey, {
+          cards: photoDeckCards,
+          system: photoSystem,
+          variant: "photo",
+        });
+        return next;
+      });
+
+      const resolvedSessionId =
+        (typeof data.sessionId === "string" && data.sessionId) || newSessionId;
+      if (resolvedSessionId) {
+        setConsultationSessionId(resolvedSessionId);
+        setConsultationReadOnly(false);
+        archiveSessionIdRef.current = null;
+        try {
+          localStorage.setItem("aura_session_id", resolvedSessionId);
+        } catch {
+          /* ignore */
+        }
+        void bindSessionToMaster(masterId, resolvedSessionId);
+      }
+
+      if (data.saved || data.historyId) void refreshSavedReadings();
+      trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
+    } catch (err) {
+      const aborted =
+        interpretAbort.signal.aborted ||
+        (err instanceof Error && /отменен|cancelled|abort/i.test(err.message));
+      setMessages((prev) =>
+        appendSpreadReadingMessage(
+          prev,
+          aborted
+            ? "Расшифровка занимает слишком долго. Обновите страницу или откройте кабинет — расклад мог уже сохраниться."
+            : err instanceof Error && err.message
+              ? err.message
+              : "Ошибка сети. Откройте фото-расклад и подтвердите снова."
+        )
+      );
+      trackPhotoReadingPhase("interpret_fail");
+    } finally {
+      window.clearTimeout(interpretWatchdog);
+      try {
+        const { ensureMinSpreadRitualDisplay } = await import("@/lib/spread-reading-ritual");
+        await ensureMinSpreadRitualDisplay(ritualStartedAt);
+      } catch {
+        /* ignore */
+      }
+      setSpreadReadingRitualOpen(false);
+      setReadingRitualActive(false);
+      setReadingRitualCountdownDone(true);
+      readingInFlightRef.current = false;
+      pendingNewChatThreadRef.current = false;
+      setSpreadRitual({ active: false });
+    }
+  };
 
   const handlePhotoContinueChat = async (masterId: string, payload: PhotoReadingChatPayload) => {
     if (!isLoggedIn) return;
@@ -2531,6 +2935,9 @@ export default function HomePage({
     } finally {
       readingInFlightRef.current = false;
       setSpreadRitual({ active: false });
+      setSpreadReadingRitualOpen(false);
+      setReadingRitualActive(false);
+      setReadingRitualCountdownDone(true);
       // Always surface the reading even if session bind hung.
       setPhotoReadingOpen(false);
     }
@@ -2827,12 +3234,6 @@ export default function HomePage({
           </div>
         ) : null}
 
-        {!bootstrapping && !showLanding && !(inPersonalFlow && step === "masters") ? (
-          <h1 className="sr-only">
-            Zovus — приватный цифровой салон: расклады Таро, числа и астрология
-          </h1>
-        ) : null}
-
         {!bootstrapping && sessionListMaster ? (
           <>
             <SessionList
@@ -2912,6 +3313,11 @@ export default function HomePage({
                 setShowSessionFlow(false);
                 sessionListBackMasterRef.current = sessionListMaster;
                 setSessionListMaster(null);
+                pendingNewChatThreadRef.current = true;
+                setConsultationSessionId(null);
+                consultationSessionIdRef.current = null;
+                setConsultationReadOnly(false);
+                archiveSessionIdRef.current = null;
                 void openChatWithSessionParams(params);
               }}
             />
@@ -3282,6 +3688,11 @@ export default function HomePage({
                       onStart={(params) => {
                         setShowSessionFlow(false);
                         setEnergyFlowMasterId(null);
+                        pendingNewChatThreadRef.current = true;
+                        setConsultationSessionId(null);
+                        consultationSessionIdRef.current = null;
+                        setConsultationReadOnly(false);
+                        archiveSessionIdRef.current = null;
                         void openChatWithSessionParams(params);
                       }}
                     />
@@ -3502,6 +3913,12 @@ export default function HomePage({
             setDeepLinkSpreadId(null);
             setEnergyFlowMasterId(null);
             setSessionFlowInitialQuestion(null);
+            // Same guarantees as personal MasterSessionFlow: never bind/restore an old thread.
+            pendingNewChatThreadRef.current = true;
+            setConsultationSessionId(null);
+            consultationSessionIdRef.current = null;
+            setConsultationReadOnly(false);
+            archiveSessionIdRef.current = null;
             void openChatWithSessionParams(params);
           }}
         />
@@ -3525,6 +3942,7 @@ export default function HomePage({
           });
         }}
         onSpreadRitualEnd={() => setSpreadRitual({ active: false })}
+        onConfirmSpread={handlePhotoConfirmSpread}
         onRuneBalanceChange={(balance) => {
           setRuneBalance(balance);
           emitRuneBalanceUpdate(balance);

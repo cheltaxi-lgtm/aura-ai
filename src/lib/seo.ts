@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { BRAND_NAME, BRAND_URL } from "@/lib/brand";
+import { BRAND_DZEN_URL, BRAND_NAME, BRAND_URL, BRAND_VK_URL } from "@/lib/brand";
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 
 export const SEO_DEFAULT_TITLE =
-  "Zovus — ИИ-наставники и персональные эзотерические консультации";
+  "Расклад Таро онлайн бесплатно — гадание на картах | Zovus";
 
 export const SEO_DEFAULT_DESCRIPTION =
-  "Zovus — сервис персональных эзотерических консультаций с ИИ-наставниками в художественных образах. Таро, руны, астрология и нумерология онлайн.";
+  "Расклад Таро онлайн бесплатно: три карты до регистрации, каталог вопросов, расшифровка по фото. Таро, руны, нумерология и натал с наставником в чате — Zovus.";
 
 export const SEO_KEYWORDS = [
   "Zovus",
@@ -110,12 +110,19 @@ export function getHomeStructuredData() {
           width: 512,
           height: 512,
         },
+        sameAs: [
+          BRAND_VK_URL,
+          BRAND_DZEN_URL,
+          // Public bot landing on-site + t.me profile for discovery.
+          `${BRAND_URL}/telegram`,
+          "https://t.me/zovus_card_bot",
+        ],
       },
       {
         "@type": "Service",
         "@id": `${BRAND_URL}/#service`,
-        name: "Персональные эзотерические консультации",
-        serviceType: "Онлайн-консультации",
+        name: "Расклад Таро онлайн бесплатно",
+        serviceType: "Онлайн-гадание на картах Таро",
         provider: { "@id": `${BRAND_URL}/#organization` },
         areaServed: {
           "@type": "Country",
@@ -123,7 +130,14 @@ export function getHomeStructuredData() {
         },
         url: BRAND_URL,
         description:
-          "Онлайн-сервис персональных эзотерических консультаций и духовных практик с выбором наставника.",
+          "Расклад Таро онлайн бесплатно: три карты без регистрации, каталог вопросов и расшифровка расклада по фото с наставником в чате.",
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "RUB",
+          description: "Три карты бесплатно до регистрации",
+          url: `${BRAND_URL}/?spread=triplet`,
+        },
       },
       {
         "@type": "FAQPage",

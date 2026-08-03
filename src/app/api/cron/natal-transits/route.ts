@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isCronSecretValid } from "@/lib/cron-auth";
 import { ensureDb, query } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
@@ -26,9 +27,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: "feature_disabled" });
   }
 
-  const cronSecret = process.env.CRON_SECRET;
-  const headerSecret = request.headers.get("x-cron-secret");
-  const isInternal = cronSecret && headerSecret === cronSecret;
+  const isInternal = isCronSecretValid(request);
   const admin = await requireAdmin();
   if (!isInternal && !admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

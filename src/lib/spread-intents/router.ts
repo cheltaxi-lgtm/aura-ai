@@ -25,6 +25,12 @@ export function buildSpreadStartUrl(
   return `/?${params.toString()}`;
 }
 
+/** Indexable landing for an intent (crawlable; not the in-app deep link). */
+export function buildIntentSeoUrl(intent: SpreadIntentDefinition | string): string {
+  const slug = typeof intent === "string" ? intent : intent.slug;
+  return `/rasklady/${slug}`;
+}
+
 export function buildMasterAskUrl(intent: SpreadIntentDefinition): string {
   return buildAskUrl(intent.questionTemplate, resolveIntentMasterId(intent));
 }

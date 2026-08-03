@@ -66,8 +66,26 @@ assert.match(adminAi, /natalFallbackModels/);
 
 const chat = read("src/lib/services/chat-orchestrator.ts");
 assert.doesNotMatch(chat, /using card-aware chat fallback/);
-assert.match(chat, /fail-closed/);
+assert.doesNotMatch(chat, /buildCardAwareFallbackReading/);
+assert.match(chat, /Fail-closed on templates/);
+assert.match(chat, /rescueSpreadReplyWithAi/);
 assert.match(chat, /Technical refusals are UI error-state/);
+
+// Paid readings escalate across models instead of dying on the first validation miss.
+const readingRescue = read("src/lib/reading-ai-rescue.ts");
+assert.match(readingRescue, /resolveReadingModelChain/);
+assert.match(readingRescue, /rescueReadingWithAi/);
+assert.doesNotMatch(readingRescue, /buildCardAwareFallbackReading/);
+
+const chatPrompts = read("src/lib/chat-prompts.ts");
+assert.match(chatPrompts, /rescueReadingWithAi/);
+assert.match(chatPrompts, /evaluatePaidReadingQuality/);
+assert.doesNotMatch(chatPrompts, /buildCardAwareFallbackReading/);
+
+const qualityGate = read("src/lib/reading-quality-gate.ts");
+assert.match(qualityGate, /missing_simply_words/);
+assert.match(qualityGate, /mixed_address/);
+assert.match(qualityGate, /buildQualityRepairHint/);
 
 const photoStream = read("src/lib/photo-reading-stream.ts");
 assert.doesNotMatch(photoStream, /photoReadingFallback/);

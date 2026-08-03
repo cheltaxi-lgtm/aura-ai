@@ -5,7 +5,7 @@ import ShareCardFrame from "@/components/share/ShareCardFrame";
 import type { ShareCardAspect } from "@/lib/share/card-layout";
 import type { SharePayload } from "@/lib/share/types";
 import { DEFAULT_DECK_SYSTEM, type DeckSystem } from "@/lib/decks";
-import { getDeckPositions } from "@/lib/decks";
+import { getDeckPositionsForUi } from "@/lib/decks";
 
 interface Props {
   payload: SharePayload;
@@ -15,7 +15,7 @@ interface Props {
 export default function ShareCardTriplet({ payload, aspect }: Props) {
   const system = (payload.deckSystem as DeckSystem | undefined) ?? DEFAULT_DECK_SYSTEM;
   const cards = payload.cards ?? [];
-  const positions = getDeckPositions(system);
+  const positions = getDeckPositionsForUi(system);
 
   return (
     <ShareCardFrame aspect={aspect}>

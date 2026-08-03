@@ -1,0 +1,14 @@
+cluster: matrix-destiny
+landing_path: /numerology/destiny-matrix
+optimization_goal: registration
+seed_keywords:
+  - phrase: матрица судьбы
+    freq: 1200
+  - phrase: матрица судьбы онлайн
+    freq: 800
+  - phrase: рассчитать матрицу судьбы
+    freq: 600
+creative:
+  title: Полная матрица судьбы
+  title2: Комфорт, хвост, период
+  text_body: Схема бесплатно. Живой разбор и ведение в Telegram.

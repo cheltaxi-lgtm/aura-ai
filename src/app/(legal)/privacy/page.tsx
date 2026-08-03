@@ -3,11 +3,13 @@ import LegalDocumentLayout from "@/components/legal/LegalDocumentLayout";
 import LegalOperatorBlock from "@/components/legal/LegalOperatorBlock";
 import { LEGAL_OPERATOR } from "@/lib/legal-operator";
 import { BRAND_NAME, BRAND_URL } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
-  title: `Политика обработки персональных данных — ${BRAND_NAME}`,
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Политика обработки персональных данных",
   description: `Политика обработки персональных данных платформы ${BRAND_NAME}. Сбор, хранение и удаление данных пользователей в соответствии с 152-ФЗ.`,
-};
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (

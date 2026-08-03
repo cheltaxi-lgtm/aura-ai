@@ -54,6 +54,7 @@ const ENGINE_REPLY_TOPICS = new Set<NumerologyTopic>([
   "chaldean",
   "object_number",
   "compatibility",
+  "matrix_compatibility",
   "destiny_matrix",
 ]);
 
@@ -196,6 +197,7 @@ function extractEngineFacts(prompt: string, topic: NumerologyTopic): string {
     chaldean: "ХАЛДЕЙСКАЯ СИСТЕМА",
     object_number: "ЧИСЛО ОБЪЕКТА",
     compatibility: "СОВМЕСТИМОСТЬ",
+    matrix_compatibility: "СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ",
     destiny_matrix: "МАТРИЦА СУДЬБЫ",
   };
   const marker = markers[topic];
@@ -432,6 +434,7 @@ function pickPrimaryTopic(topics: NumerologyTopic[]): NumerologyTopic | null {
     "personal_cycle",
     "forecast_timeline",
     "favorable_dates",
+    "matrix_compatibility",
     "compatibility",
     "chaldean",
     "object_number",
@@ -736,6 +739,12 @@ function formatFromContextBlock(
     const block = prompt.split("\n\n").find((p) => p.startsWith("ЧИСЛО ОБЪЕКТА") || p.includes("ЧИСЛО"));
     if (block) return `${name}, ${block.trim()}`;
   }
+  if (topics.includes("matrix_compatibility")) {
+    const block = prompt
+      .split("\n\n")
+      .find((p) => p.startsWith("СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ"));
+    if (block) return `${name}, ${block.trim()}`;
+  }
   if (topics.includes("compatibility")) {
     const block = prompt.split("\n\n").find((p) => p.startsWith("СОВМЕСТИМОСТЬ") || p.includes("score"));
     if (block) return `${name}, ${block.trim()}`;
@@ -857,9 +866,14 @@ export function buildNumerologEngineReply(
       reply = buildPersonalCycleNarrativeReading({ name, birthDate });
     }
   } else if (
-    ["favorable_dates", "chaldean", "object_number", "compatibility", "destiny_matrix"].includes(
-      primary
-    )
+    [
+      "favorable_dates",
+      "chaldean",
+      "object_number",
+      "compatibility",
+      "matrix_compatibility",
+      "destiny_matrix",
+    ].includes(primary)
   ) {
     reply = formatFromContextBlock(name, topicsToUse, ctx.prompt, clarify);
   }

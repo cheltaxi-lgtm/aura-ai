@@ -114,6 +114,28 @@ export function getDeckPositions(system: DeckSystem): readonly string[] {
   return DECK_REGISTRY[system].positions;
 }
 
+/**
+ * Classic 3-card time labels — same canon as prompts / getDeckPositions.
+ * Topic-specific UI (love/life_death) uses resolveSpreadPositions in spread layouts.
+ */
+export const TRIPLET_UI_POSITIONS = [
+  "Прошлое",
+  "Настоящее",
+  "Будущее",
+] as const;
+
+/** Display labels for deck UI — aligned with prompt position canon for triplet decks. */
+export function getDeckPositionsForUi(system: DeckSystem): readonly string[] {
+  if (
+    system === "tarot-veronika" ||
+    system === "tarot-marina" ||
+    system === "slavic"
+  ) {
+    return TRIPLET_UI_POSITIONS;
+  }
+  return getDeckPositions(system);
+}
+
 export function drawSpread(
   system: DeckSystem,
   count = 3,

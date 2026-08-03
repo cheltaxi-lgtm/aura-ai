@@ -304,7 +304,8 @@
     },
     {
       "id": "ritual_step",
-      "group": "ritual"
+      "group": "ritual",
+      "metrikaGoalId": 591835994
     },
     {
       "id": "numerology_hub_view",
@@ -358,75 +359,93 @@
     },
     {
       "id": "memory_consent_prompt_shown",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591835997
     },
     {
       "id": "memory_consent_choice_enabled",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591835999
     },
     {
       "id": "memory_consent_choice_disabled",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836000
     },
     {
       "id": "memory_settings_changed",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836001
     },
     {
       "id": "memory_fact_captured",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836002
     },
     {
       "id": "memory_fact_confirmed",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836004
     },
     {
       "id": "memory_fact_feedback_positive",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836005
     },
     {
       "id": "memory_fact_feedback_negative",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836006
     },
     {
       "id": "memory_moments_mode_changed",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836007
     },
     {
       "id": "memory_fresh_session_started",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836008
     },
     {
       "id": "memory_injected",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836009
     },
     {
       "id": "memory_fact_draft_captured",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836010
     },
     {
       "id": "memory_fact_changed",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836011
     },
     {
       "id": "memory_fact_forgotten",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836012
     },
     {
       "id": "memory_fact_dismissed",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836013
     },
     {
       "id": "memory_anchor_included",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836014
     },
     {
       "id": "memory_anchor_excluded",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836015
     },
     {
       "id": "memory_purged",
-      "group": "memory"
+      "group": "memory",
+      "metrikaGoalId": 591836016
     }
   ]
 }

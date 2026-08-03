@@ -188,13 +188,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ found: false, reading: "" });
     }
 
+    const sessionId = request.nextUrl.searchParams.get("sessionId")?.trim() || null;
+    // Custom questions must never recover a previous consultation with the same cards.
+    // Topic spreads may still reuse by cards when sessionId is omitted (legacy).
+    const requireSessionId = intention === "custom" || Boolean(sessionId);
+    if (requireSessionId && !sessionId) {
+      return NextResponse.json({ found: false, reading: "" });
+    }
+
     const history = await getUserReadingHistory(authed.profileUserId);
     const cached = findCachedIntentionSpread(
       history,
       characterId,
       intention,
       cardNames.map((name) => ({ name })),
-      spreadId
+      spreadId,
+      { sessionId, requireSessionId }
     );
     const reusable = cached && isAiCacheReusable(cached);
     const reading =
@@ -769,9 +778,16 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Crisis/war questions: omit textbook glosses («романтик», «ухаживание») — they hijack the plot.
+  const { isCrisisSurvivalQuestion } = await import("@/lib/crisis-question");
+  const crisisQ = isCrisisSurvivalQuestion(
+    intention === "custom" ? customQuestion : intention
+  );
   const tarotCards = drawn.map((c, i) => ({
     name: c.name,
-    meaning: `${positionLabels[i] ?? `Позиция ${i + 1}`}: ${c.meaning}`,
+    meaning: crisisQ
+      ? `${positionLabels[i] ?? `Позиция ${i + 1}`}`
+      : `${positionLabels[i] ?? `Позиция ${i + 1}`}: ${c.meaning}`,
   }));
 
   const today = new Date().toLocaleDateString("ru-RU", {
@@ -858,7 +874,9 @@ export async function POST(request: NextRequest) {
       zodiac,
       astroMeta: astroMeta as Record<string, unknown> | undefined,
     });
-    const cardsForContext = enrichCardsForSpreadContext(system, tarotCards, positionLabels);
+    const cardsForContext = enrichCardsForSpreadContext(system, tarotCards, positionLabels, {
+      omitTextbookMeanings: crisisQ,
+    });
     const userMessage = buildSpreadUserMessage({
       user: userForContext,
       cards: cardsForContext,

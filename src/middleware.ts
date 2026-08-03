@@ -4,14 +4,24 @@ import { jwtVerify } from "jose";
 import {
   fetchMaintenanceModeActive,
   isMaintenanceBypassPath,
+  isSearchEngineBot,
+  MAINTENANCE_BOT_RETRY_AFTER_SEC,
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
+import { fetchUserTokenVersionOk } from "@/lib/token-version-gate";
 import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
+import { resolveBotHomeQueryRedirect } from "@/lib/seo/bot-query-redirect";
 
 const COOKIE = "aura_auth";
 
 type AuthRole = "user" | "expert" | "admin";
+
+type VerifiedAuth = {
+  role: AuthRole;
+  sub: string;
+  tv: number;
+};
 
 /** API routes reachable without a valid JWT (handlers may still enforce their own rules). */
 const PUBLIC_API_EXACT = new Set([
@@ -27,6 +37,10 @@ const PUBLIC_API_EXACT = new Set([
   "/api/age-gate/confirm",
   "/api/session",
   "/api/guest-triplet/complete",
+  "/api/guest-triplet/teaser",
+  "/api/guest-triplet/status",
+  "/api/guest-triplet/claim",
+  "/api/guest-triplet/telegram-claim",
   "/api/debug/client-log",
   // Diagnostic breadcrumb only (camera/upload failures) — must not depend on
   // login state, otherwise failures from logged-out users vanish silently.
@@ -36,7 +50,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/payment/webhook",
   "/api/payments/webhook",
   "/api/runes/webhook",
-  "/api/share",
+  // POST /api/share requires auth (handler + middleware). GET /api/share/* stays public via prefix.
   // Background jobs authenticate via x-cron-secret inside the route handler.
   "/api/ritual/remind",
   "/api/ritual/recover-stuck",
@@ -51,11 +65,29 @@ const PUBLIC_API_PREFIXES = [
   // rate limits in the handler. Keep this narrower than the /api/public namespace.
   "/api/public/reports/",
   "/api/cron/",
-  // GET /api/joint-reading/[token] must be reachable by a guest partner who hasn't
-  // logged in yet (the page shows a login gate) — create/complete/mine still enforce
-  // their own requireProfileUserId() check inside the handler.
-  "/api/joint-reading/",
+  // Telegram bot → site thin client (auth via X-Bot-Internal-Secret in handler).
+  "/api/internal/bot/",
+  // Ads Autopilot beacon (guest): click capture + micro-conversions only.
+  // /api/ads/link stays auth-gated. Handlers return 404 when ads.enabled=false.
+  "/api/ads/t",
+  "/api/ads/e",
 ] as const;
+
+/** Public joint-reading GETs only — mutating routes require JWT at middleware. */
+function isPublicJointReadingRoute(pathname: string, method: string): boolean {
+  if (!pathname.startsWith("/api/joint-reading/")) return false;
+  if (method !== "GET" && method !== "HEAD") return false;
+  if (
+    pathname === "/api/joint-reading/mine" ||
+    pathname === "/api/joint-reading/create" ||
+    pathname.endsWith("/complete") ||
+    pathname.endsWith("/combine") ||
+    pathname.endsWith("/reattach")
+  ) {
+    return false;
+  }
+  return true;
+}
 
 function resolveSecretKey(): Uint8Array | null {
   const secret = process.env.AUTH_SECRET;
@@ -68,8 +100,9 @@ function resolveSecretKey(): Uint8Array | null {
   return new TextEncoder().encode(secret);
 }
 
-function isPublicApiRoute(pathname: string): boolean {
+function isPublicApiRoute(pathname: string, method = "GET"): boolean {
   if (PUBLIC_API_EXACT.has(pathname)) return true;
+  if (isPublicJointReadingRoute(pathname, method)) return true;
   return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
@@ -128,15 +161,52 @@ function publicUrl(request: NextRequest, pathname: string): URL {
   return url;
 }
 
-async function verifyRole(token: string, secretKey: Uint8Array): Promise<AuthRole | null> {
+async function verifyAuth(token: string, secretKey: Uint8Array): Promise<VerifiedAuth | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey);
     const role = payload.role as AuthRole;
-    if (role === "user" || role === "expert" || role === "admin") return role;
-    return null;
+    if (role !== "user" && role !== "expert" && role !== "admin") return null;
+    const sub = typeof payload.sub === "string" ? payload.sub : "";
+    if (!sub) return null;
+    const tv = typeof payload.tv === "number" && Number.isFinite(payload.tv) ? payload.tv : 0;
+    return { role, sub, tv };
   } catch {
     return null;
   }
+}
+
+async function verifyRole(token: string, secretKey: Uint8Array): Promise<AuthRole | null> {
+  const auth = await verifyAuth(token, secretKey);
+  return auth?.role ?? null;
+}
+
+function clearAuthCookie(response: NextResponse, request: NextRequest): NextResponse {
+  const secure =
+    process.env.NODE_ENV === "production" ||
+    request.nextUrl.protocol === "https:" ||
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+  response.cookies.set(COOKIE, "", {
+    httpOnly: true,
+    secure,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  return response;
+}
+
+async function enforceUserTokenVersion(
+  request: NextRequest,
+  auth: VerifiedAuth,
+  forApi: boolean
+): Promise<NextResponse | null> {
+  if (auth.role !== "user") return null;
+  const ok = await fetchUserTokenVersionOk(request, auth.sub, auth.tv);
+  if (ok) return null;
+  if (forApi) {
+    return clearAuthCookie(unauthorizedApiResponse(), request);
+  }
+  return clearAuthCookie(redirectToLogin(request, "user"), request);
 }
 
 async function isAdminSession(request: NextRequest, secretKey: Uint8Array | null): Promise<boolean> {
@@ -177,7 +247,23 @@ function maintenanceApiResponse() {
       maintenanceMode: true,
       message: "Сервис временно на обслуживании",
     },
-    { status: 503 }
+    { status: 503, headers: { "Retry-After": String(MAINTENANCE_BOT_RETRY_AFTER_SEC) } }
+  );
+}
+
+/** Bots must not follow a soft-redirect to /maintenance (Yandex drops URLs as noindex). */
+function maintenanceBotHtmlResponse() {
+  return withNoStore(
+    new NextResponse(
+      "<!doctype html><title>Service Unavailable</title><h1>Service temporarily unavailable</h1>",
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Retry-After": String(MAINTENANCE_BOT_RETRY_AFTER_SEC),
+        },
+      }
+    )
   );
 }
 
@@ -221,6 +307,10 @@ async function enforceMaintenanceMode(
   }
 
   if (pathname !== MAINTENANCE_PAGE_PATH) {
+    // Humans → friendly page. Crawlers → 503 (never 302 to noindex /maintenance).
+    if (isSearchEngineBot(request.headers.get("user-agent"))) {
+      return maintenanceBotHtmlResponse();
+    }
     return withNoStore(NextResponse.redirect(publicUrl(request, MAINTENANCE_PAGE_PATH)));
   }
 
@@ -253,6 +343,19 @@ export async function middleware(request: NextRequest) {
   const legacyRedirect = legacyCyrillicRedirect(request, pathname);
   if (legacyRedirect) return legacyRedirect;
 
+  // Search bots on `/` with app deep-link params → clean canonical hubs (humans keep SPA entry).
+  if (pathname === "/" && isSearchEngineBot(request.headers.get("user-agent"))) {
+    const target = resolveBotHomeQueryRedirect(request.nextUrl.searchParams);
+    if (target && target !== "/") {
+      return NextResponse.redirect(publicUrl(request, target), 301);
+    }
+    if (target === "/") {
+      const clean = publicUrl(request, "/");
+      clean.search = "";
+      return NextResponse.redirect(clean, 301);
+    }
+  }
+
   const secretKey = resolveSecretKey();
   const natalWorkerRequest = isAuthenticatedNatalWorkerRequest(request, pathname);
 
@@ -273,7 +376,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/")) {
-    if (isPublicApiRoute(pathname)) {
+    if (isPublicApiRoute(pathname, request.method)) {
       return NextResponse.next();
     }
     if (natalWorkerRequest) {
@@ -285,14 +388,19 @@ export async function middleware(request: NextRequest) {
       return unauthorizedApiResponse();
     }
 
-    const role = await verifyRole(token, secretKey);
-    if (!role) {
+    const auth = await verifyAuth(token, secretKey);
+    if (!auth) {
       return unauthorizedApiResponse();
     }
 
     const apiRole = requiredApiRole(pathname);
-    if (apiRole && role !== apiRole) {
+    if (apiRole && auth.role !== apiRole) {
       return forbiddenApiResponse();
+    }
+
+    if (auth.role === "user") {
+      const revoked = await enforceUserTokenVersion(request, auth, true);
+      if (revoked) return revoked;
     }
 
     return NextResponse.next();
@@ -310,9 +418,14 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE)?.value;
   if (!token || !secretKey) return redirectToLogin(request, requiredRole);
 
-  const role = await verifyRole(token, secretKey);
-  if (!role || role !== requiredRole) {
+  const auth = await verifyAuth(token, secretKey);
+  if (!auth || auth.role !== requiredRole) {
     return redirectToLogin(request, requiredRole);
+  }
+
+  if (auth.role === "user") {
+    const revoked = await enforceUserTokenVersion(request, auth, false);
+    if (revoked) return revoked;
   }
 
   return NextResponse.next();

@@ -1,0 +1,50 @@
+# Seed phrases for thematic Wordstat (Russia / region 225).
+# Keep ≤10 seeds — one Direct v4 report per batch. Avoid nested seeds
+# (e.g. do not pair "гадание таро" with "гадание таро онлайн").
+version: 2
+region_ids: [225]
+clusters:
+  taro:
+    - гадание таро онлайн
+    - расклад таро
+    - расшифровка таро по фото
+  runes:
+    - руны онлайн
+    - значение рун
+  matrix:
+    - матрица судьбы
+  numerology:
+    - нумерология онлайн
+  relations:
+    - гадание на отношения
+  lenormand:
+    - ленорман
+# Flat list derived from clusters (order preserved, max 10 used at fetch).
+seeds:
+  - гадание таро онлайн
+  - расклад таро
+  - расшифровка таро по фото
+  - руны онлайн
+  - значение рун
+  - матрица судьбы
+  - нумерология онлайн
+  - гадание на отношения
+  - ленорман
+# Phrases must contain at least one stem to stay "in theme"
+# (filters noisy SearchedAlso like «официальный сайт»).
+theme_stems:
+  - таро
+  - рун
+  - гадан
+  - расклад
+  - ленорман
+  - матриц
+  - нумеролог
+  - гороскоп
+  - астролог
+  - аркан
+  - судьб
+  - прогноз
+  - эзотерик
+  - оракул
+  - расшифр

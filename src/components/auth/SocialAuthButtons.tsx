@@ -5,6 +5,7 @@ import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
+import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 import { trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
@@ -13,6 +14,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   consent_required: "Подтвердите согласие с условиями и возраст 18+ перед входом через соцсеть.",
   email_exists: "Email уже зарегистрирован. Войдите через email или используйте другой аккаунт.",
   provider_denied: "Вход через соцсеть отменён.",
+  provider_taken: "Этот Яндекс или VK уже привязан к другому аккаунту Zovus.",
+  auth_required: "Сначала откройте кабинет из бота, затем привяжите способ входа.",
   state_mismatch:
     "Сессия входа через соцсеть устарела. Если вы входили из приложения — попробуйте снова, не закрывая окно авторизации.",
   start_failed: "Не удалось начать вход через соцсеть.",
@@ -38,6 +41,16 @@ const CONTINUE_LABEL: Record<OAuthProvider, string> = {
   vk: "Продолжить с VK",
 };
 
+const LINK_LABEL: Record<OAuthProvider, string> = {
+  yandex: "Привязать Яндекс",
+  vk: "Привязать VK",
+};
+
+const PROVIDER_SHORT: Record<OAuthProvider, string> = {
+  yandex: "Яндекс",
+  vk: "VK",
+};
+
 interface SocialAuthButtonsProps {
   mode: OAuthMode;
   returnTo: string;
@@ -46,6 +59,8 @@ interface SocialAuthButtonsProps {
   ageConfirmed: boolean;
   marketingConsent: boolean;
   disabled?: boolean;
+  /** Providers already attached — buttons stay visible but inactive. */
+  linkedProviders?: OAuthProvider[];
   consentScrollTargetId?: string;
   showEmailDivider?: boolean;
   emailDividerLabel?: string;
@@ -72,6 +87,7 @@ export default function SocialAuthButtons({
   ageConfirmed,
   marketingConsent,
   disabled = false,
+  linkedProviders = [],
   consentScrollTargetId,
   showEmailDivider = true,
   emailDividerLabel = "или по email",
@@ -80,6 +96,7 @@ export default function SocialAuthButtons({
   const [nativeError, setNativeError] = useState("");
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const useNativeOAuth = isNativeCapacitorPlatform();
+  const linkedSet = useMemo(() => new Set(linkedProviders), [linkedProviders]);
 
   useEffect(() => {
     void fetch("/api/auth/oauth/providers")
@@ -113,9 +130,9 @@ export default function SocialAuthButtons({
   }, [mode, returnTo, acceptedTerms, ageConfirmed, marketingConsent]);
 
   const handleOAuthClick = (provider: OAuthProvider) => async (e: React.MouseEvent) => {
-    if (consentBlocked || disabled || pendingProvider) {
+    if (linkedSet.has(provider) || consentBlocked || disabled || pendingProvider) {
       e.preventDefault();
-      if (consentBlocked && consentScrollTargetId) {
+      if (consentBlocked && consentScrollTargetId && !linkedSet.has(provider)) {
         document.getElementById(consentScrollTargetId)?.scrollIntoView({
           behavior: "smooth",
           block: "center",
@@ -126,6 +143,19 @@ export default function SocialAuthButtons({
     if (mode === "register") {
       trackRegistrationStarted(resolveRegistrationSource(`oauth_${provider}`));
     }
+
+    // Mini App WebView breaks OAuth redirects — open provider flow in system browser.
+    const inTelegramMiniApp =
+      typeof window !== "undefined" &&
+      (Boolean(window.Telegram?.WebApp?.initData) ||
+        document.documentElement.dataset.telegramWebApp === "1");
+    if (inTelegramMiniApp && !useNativeOAuth) {
+      e.preventDefault();
+      const abs = new URL(startHref(provider), window.location.origin).toString();
+      openTelegramExternalUrl(abs);
+      return;
+    }
+
     if (!useNativeOAuth) return;
 
     e.preventDefault();
@@ -191,8 +221,6 @@ export default function SocialAuthButtons({
     }
   };
 
-  if (providers.length === 0) return null;
-
   // Prefer Yandex then VK for a stable visual order when both are enabled.
   const ordered = [...providers].sort((a, b) => {
     const rank = (p: OAuthProvider) => (p === "yandex" ? 0 : p === "vk" ? 1 : 2);
@@ -201,33 +229,42 @@ export default function SocialAuthButtons({
 
   return (
     <div className="oauth-provider-buttons space-y-3">
-      <div className="auth-salon-oauth">
-        {ordered.map((provider) => {
-          const brand = OAUTH_PROVIDER_BRAND[provider];
-          const blocked = consentBlocked || disabled || Boolean(pendingProvider);
-          const busy = pendingProvider === provider;
-          return (
-            <a
-              key={provider}
-              href={blocked ? "#" : startHref(provider)}
-              aria-disabled={blocked}
-              aria-busy={busy || undefined}
-              aria-label={CONTINUE_LABEL[provider] ?? brand.label}
-              title={CONTINUE_LABEL[provider] ?? brand.label}
-              data-oauth-provider={provider}
-              onClick={handleOAuthClick(provider)}
-              className="auth-salon-oauth-btn"
-            >
-              <span className={`auth-salon-oauth-icon ${brand.bg}`}>
-                <OAuthProviderIcon provider={provider} className="h-4 w-4" />
-              </span>
-              <span className="auth-salon-oauth-label">
-                {busy ? "Открываем…" : CONTINUE_LABEL[provider] ?? brand.label}
-              </span>
-            </a>
-          );
-        })}
-      </div>
+      {ordered.length > 0 ? (
+        <div className="auth-salon-oauth">
+          {ordered.map((provider) => {
+            const brand = OAUTH_PROVIDER_BRAND[provider];
+            const alreadyLinked = linkedSet.has(provider);
+            const blocked =
+              alreadyLinked || consentBlocked || disabled || Boolean(pendingProvider);
+            const busy = pendingProvider === provider;
+            const labels = mode === "link" ? LINK_LABEL : CONTINUE_LABEL;
+            const label = alreadyLinked
+              ? `${PROVIDER_SHORT[provider]} привязан`
+              : labels[provider] ?? brand.label;
+            return (
+              <a
+                key={provider}
+                href={blocked ? undefined : startHref(provider)}
+                aria-disabled={blocked}
+                aria-busy={busy || undefined}
+                aria-label={label}
+                title={alreadyLinked ? "Уже привязан к этому аккаунту" : label}
+                data-oauth-provider={provider}
+                onClick={handleOAuthClick(provider)}
+                className={`auth-salon-oauth-btn${alreadyLinked ? " opacity-45 pointer-events-none cursor-default" : ""}`}
+                tabIndex={alreadyLinked ? -1 : undefined}
+              >
+                <span className={`auth-salon-oauth-icon ${brand.bg}`}>
+                  <OAuthProviderIcon provider={provider} className="h-4 w-4" />
+                </span>
+                <span className="auth-salon-oauth-label">
+                  {busy ? "Открываем…" : label}
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
 
       {consentBlocked ? (
         <p className="auth-salon-hint text-center">

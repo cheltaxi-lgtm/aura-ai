@@ -475,20 +475,32 @@ function checkRuneCredit() {
   }
 
   const content = fs.readFileSync(runeServicePath, "utf8");
-  const fnBody = extractFunctionBody(content, "creditRunesFromPayment");
-  if (!fnBody) {
+  const wrapperBody = extractFunctionBody(content, "creditRunesFromPayment");
+  const detailedBody = extractFunctionBody(content, "creditRunesFromPaymentDetailed");
+  if (!wrapperBody) {
     fail("creditRunesFromPayment function body not found");
     return;
   }
+  if (!detailedBody) {
+    fail("creditRunesFromPaymentDetailed function body not found");
+    return;
+  }
+  if (!/creditRunesFromPaymentDetailed\s*\(/.test(wrapperBody)) {
+    fail("creditRunesFromPayment must delegate to creditRunesFromPaymentDetailed");
+  }
 
-  if (!/rune_packages/i.test(fnBody)) {
-    fail("creditRunesFromPayment must query rune_packages");
+  // Package lookup lives in the detailed path (wrapper is a thin boolean adapter).
+  if (!/rune_packages/i.test(detailedBody)) {
+    fail("creditRunesFromPaymentDetailed must query rune_packages");
   }
-  if (/\brunesAmount\b/.test(fnBody)) {
-    fail("creditRunesFromPayment must not reference runesAmount in body");
+  if (/\brunesAmount\b/.test(wrapperBody) || /\brunesAmount\b/.test(detailedBody)) {
+    fail("creditRunesFromPayment* must not reference runesAmount in body");
   }
-  if (/metadata\.(runesAmount|amount)/.test(fnBody)) {
-    fail("creditRunesFromPayment must not read metadata.runesAmount or metadata.amount");
+  if (
+    /metadata\.(runesAmount|amount)/.test(wrapperBody) ||
+    /metadata\.(runesAmount|amount)/.test(detailedBody)
+  ) {
+    fail("creditRunesFromPayment* must not read metadata.runesAmount or metadata.amount");
   }
 
   for (const webhookPath of [paymentWebhook, runesWebhook]) {

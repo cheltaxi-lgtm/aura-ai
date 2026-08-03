@@ -61,6 +61,10 @@ if [ -f "$TARBALL" ]; then
     --exclude='.next-previous/' \
     --exclude='node_modules/' \
     --exclude='logs/' \
+    --exclude='telegram-bot/.env' \
+    --exclude='telegram-bot/data/' \
+    --exclude='telegram-bot/node_modules/' \
+    --exclude='telegram-bot/backups/' \
     "$STAGE/" /opt/aura-ai/
   # Windows tar often packs modes as 666/777 — harden before the app starts.
   echo ">>> Hardening /opt/aura-ai file modes..."
@@ -239,6 +243,15 @@ rm -f \
   src/components/numerolog/NumerologToolResultModal.tsx \
   src/app/api/photo-reading/route.ts
 
+# Stop the app for npm ci + candidate build. On this host, a live `next start`
+# reading node_modules while webpack builds corrupts the Next package tree
+# (missing css-loader/utils, headers.js, etc.). Caddy retries briefly (lb_try_duration).
+echo ">>> Refreshing node_modules + candidate build (services stopped)..."
+sudo systemctl stop aura-ai-async-jobs || true
+sudo systemctl stop aura-ai || true
+# Kill leftover next-server if systemd left orphans (seen after TimeoutStop).
+pkill -f 'next-server|next start' 2>/dev/null || true
+rm -rf node_modules
 npm ci --legacy-peer-deps
 echo ">>> Verifying packaged GeoNames index..."
 verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
@@ -333,7 +346,8 @@ if ! sudo systemctl restart aura-ai; then
 fi
 
 HEALTHY=0
-for _ in $(seq 1 20); do
+# Longer window: Next cold-start after .next swap often exceeds 20s under load.
+for _ in $(seq 1 45); do
   if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
     HEALTHY=1
     break
@@ -361,19 +375,26 @@ set +e
 sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai.service hosting/aura-ai-async-jobs.service 2>/dev/null || true
 sudo bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
 _WORKER_ENSURE=$?
+_PREV_UNIT_HASH="$(sha256sum /etc/systemd/system/aura-ai.service 2>/dev/null | awk '{print $1}')"
 sudo install -D -m 0644 hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 sudo install -D -m 0644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 sudo mkdir -p /var/log/aura-ai
 sudo chown aura-ai:aura-ai /var/log/aura-ai
 sudo systemctl daemon-reload
-# Restart app first so loopback bind is active before worker polls 127.0.0.1:3000.
-sudo systemctl restart aura-ai
-for _ in $(seq 1 20); do
-  if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
+_NEW_UNIT_HASH="$(sha256sum /etc/systemd/system/aura-ai.service 2>/dev/null | awk '{print $1}')"
+# Skip second app restart when unit file unchanged — halves deploy 502 window for crawlers.
+if [ -n "$_PREV_UNIT_HASH" ] && [ "$_PREV_UNIT_HASH" = "$_NEW_UNIT_HASH" ] \
+  && curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+  echo "App already healthy; unit unchanged — skip second aura-ai restart"
+else
+  sudo systemctl restart aura-ai
+  for _ in $(seq 1 45); do
+    if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+fi
 curl -fsS http://127.0.0.1:3000/api/health >/dev/null
 sudo systemctl enable aura-ai-async-jobs
 sudo systemctl restart aura-ai-async-jobs
@@ -381,7 +402,7 @@ systemctl is-active aura-ai aura-ai-async-jobs
 if [ "${_WORKER_ENSURE}" -ne 0 ]; then
   echo "WARN: ensure-async-jobs-user exited ${_WORKER_ENSURE} — app remains active"
 fi
-unset _WORKER_ENSURE
+unset _WORKER_ENSURE _PREV_UNIT_HASH _NEW_UNIT_HASH
 set -e
 
 echo ">>> Installing background crons (memory maintenance + proactive reminders)..."

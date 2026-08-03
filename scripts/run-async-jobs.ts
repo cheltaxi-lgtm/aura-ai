@@ -1,3 +1,4 @@
+import { appendFileSync, mkdirSync } from "node:fs";
 import { hostname } from "node:os";
 
 import {
@@ -8,6 +9,7 @@ import {
 } from "../src/lib/async-job-worker-auth-shared";
 import {
   endpointForJob,
+  getJobKindConfig,
   resolveWorkerKindsFromEnv,
 } from "../src/lib/async-job-registry";
 import {
@@ -15,6 +17,7 @@ import {
   completeAsyncJob,
   failAsyncJobAndRefundIfCharged,
   getAsyncJobById,
+  reapOrphanedRunningAsyncJobs,
   reapStaleRunningAsyncJobs,
   type AsyncJobRow,
 } from "../src/lib/async-jobs";
@@ -29,19 +32,56 @@ const MEMORY_BATCH_SIZE = Math.min(
   10,
   Math.max(1, Number(process.env.MEMORY_JOB_BATCH_SIZE) || 3)
 );
-const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.ASYNC_JOB_CONCURRENCY) || 2));
+/** Default 4 — matrix/tarot jobs were queuing behind each other at 2. */
+const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.ASYNC_JOB_CONCURRENCY) || 4));
 /**
- * Stay under Next route maxDuration (300s). After abort we still wait TIMEOUT_GRACE
- * before refund so a late save_claimed can win.
+ * Default HTTP abort for short jobs. Long kinds (numerology_reading) use kind.timeoutMs.
+ * After abort we still wait TIMEOUT_GRACE before refund so a late save_claimed can win.
  */
 const REQUEST_TIMEOUT_MS = Math.max(
   60_000,
   Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 280_000
 );
+/**
+ * Requeue zombies after deploy SIGKILL. Must exceed longest kind timeout
+ * (numerology_reading 420s) or live matrix jobs get reaped mid-run.
+ */
 const STALE_RUNNING_MS = Math.max(
   60_000,
-  Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || 12 * 60_000
+  Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || 9 * 60_000
 );
+const ORPHAN_MIN_AGE_MS = Math.max(
+  30_000,
+  Number(process.env.ASYNC_JOB_ORPHAN_MIN_AGE_MS) || 90_000
+);
+
+// #region agent log
+const DEBUG_LOG = "/opt/aura-ai/logs/debug-5da396.log";
+function agentLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>
+): void {
+  try {
+    mkdirSync("/opt/aura-ai/logs", { recursive: true });
+    appendFileSync(
+      DEBUG_LOG,
+      JSON.stringify({
+        sessionId: "5da396",
+        hypothesisId,
+        location,
+        message,
+        data,
+        timestamp: Date.now(),
+        runId: process.env.DEBUG_RUN_ID || "worker",
+      }) + "\n"
+    );
+  } catch {
+    /* ignore */
+  }
+}
+// #endregion
 const TIMEOUT_GRACE_MS = Math.max(
   5_000,
   Number(process.env.ASYNC_JOB_TIMEOUT_GRACE_MS) || 20_000
@@ -79,8 +119,10 @@ async function runJob(job: AsyncJobRow): Promise<void> {
   const secret = process.env.ASYNC_JOB_WORKER_SECRET;
   if (!secret) throw new Error("ASYNC_JOB_WORKER_SECRET is not configured");
   const { path, body } = endpointForJob(job);
+  const kindTimeout = getJobKindConfig(job.kind).timeoutMs;
+  const requestTimeoutMs = Math.max(REQUEST_TIMEOUT_MS, kindTimeout + TIMEOUT_GRACE_MS);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       method: "POST",
@@ -167,19 +209,39 @@ async function main(): Promise<void> {
   console.log(
     `[async-jobs] worker ${workerId} polling ${baseUrl} kinds=${WORKER_KINDS.join(",")}`
   );
+  // #region agent log
+  agentLog("E", "run-async-jobs.ts:main", "worker_start", {
+    workerId,
+    staleRunningMs: STALE_RUNNING_MS,
+    orphanMinAgeMs: ORPHAN_MIN_AGE_MS,
+  });
+  // #endregion
   const memoryTimer = setInterval(scheduleMemoryDrain, MEMORY_POLL_INTERVAL_MS);
   memoryTimer.unref();
   scheduleMemoryDrain();
   while (!stopping) {
     try {
+      const orphans = await reapOrphanedRunningAsyncJobs({
+        currentWorkerId: workerId,
+        minAgeMs: ORPHAN_MIN_AGE_MS,
+        kinds: [...WORKER_KINDS],
+      });
       const reaped = await reapStaleRunningAsyncJobs({
         staleAfterMs: STALE_RUNNING_MS,
         kinds: [...WORKER_KINDS],
       });
-      if (reaped.requeued || reaped.failed) {
+      if (orphans || reaped.requeued || reaped.failed) {
         console.warn(
-          `[async-jobs] reaper requeued=${reaped.requeued} failed=${reaped.failed}`
+          `[async-jobs] reaper orphans=${orphans} requeued=${reaped.requeued} failed=${reaped.failed}`
         );
+        // #region agent log
+        agentLog("E", "run-async-jobs.ts:reaper", "reaper_tick", {
+          workerId,
+          orphans,
+          requeued: reaped.requeued,
+          failed: reaped.failed,
+        });
+        // #endregion
       }
     } catch (error) {
       console.error("[async-jobs] reaper failed:", error);
@@ -194,6 +256,13 @@ async function main(): Promise<void> {
       await sleep(POLL_INTERVAL_MS);
       continue;
     }
+    // #region agent log
+    agentLog("A", "run-async-jobs.ts:claim", "claimed_jobs", {
+      workerId,
+      ids: jobs.map((j) => j.id),
+      kinds: jobs.map((j) => j.kind),
+    });
+    // #endregion
     await Promise.all(jobs.map((job) => track(runJob(job))));
   }
 

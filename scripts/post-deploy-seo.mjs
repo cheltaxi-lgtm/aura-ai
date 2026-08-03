@@ -43,22 +43,73 @@ const CORE_PRIORITY = [
   `${base}/photo-rasklad`,
   `${base}/numerology`,
   `${base}/numerology/destiny-matrix`,
+  `${base}/numerology/name-compatibility`,
   `${base}/natalnaya-karta`,
   `${base}/rasklady`,
+  `${base}/rasklady/lyubov`,
+  `${base}/rasklady/vernost-i-doverie`,
+  `${base}/rasklady/chuvstva-i-myisli`,
+  `${base}/rasklady/budushchee`,
+  `${base}/rasklady/kariera`,
+  `${base}/faq`,
+  `${base}/telegram`,
+  `${base}/about`,
+  `${base}/faq`,
+  `${base}/lenormand`,
+  `${base}/partners`,
+  `${base}/cards`,
   `${base}/prognoz`,
   `${base}/statyi`,
   `${base}/terms`,
   `${base}/privacy`,
 ];
 
+/** High-value pages for Yandex recovery — pillars first, then intent pages. */
+const RECRAWL_PRIORITY = [
+  `${base}/`,
+  `${base}/telegram`,
+  `${base}/about`,
+  `${base}/photo-rasklad`,
+  `${base}/taro`,
+  `${base}/gadanie`,
+  `${base}/rasklady`,
+  `${base}/rasklady/lyubov`,
+  `${base}/rasklady/vernost-i-doverie`,
+  `${base}/rasklady/chto-meshaet-otnosheniyam`,
+  `${base}/rasklady/na-vernost`,
+  `${base}/rasklady/zhdat-ili-zabyt`,
+  `${base}/rasklady/nuzhna-li-ya-emu`,
+  `${base}/rasklady/situatsiya-na-rabote`,
+  `${base}/rasklady/lyubov-pochemu-on-molchit`,
+  `${base}/rasklady/partner-po-biznesu`,
+  `${base}/rasklady/kak-naladit-otnosheniya-s-papoy`,
+  `${base}/rasklady/prognoz-na-nedelyu`,
+  `${base}/rasklady/chto-on-delaet-nochyu`,
+  `${base}/rasklady/chto-on-chuvstvuet`,
+  `${base}/rasklady/vernyotsya-li-on`,
+  `${base}/rasklady/lyubit-li-on-menya`,
+  `${base}/rasklady/est-li-izmena`,
+  `${base}/rasklady/chto-on-skryvaet`,
+  `${base}/rasklady/pochemu-on-molchit`,
+  `${base}/cards/6-mechey`,
+  `${base}/cards/koroleva-zhezlov`,
+  `${base}/cards/tuz-mechey`,
+  `${base}/cards/pazh-zhezlov`,
+  `${base}/cards/ierofant`,
+  `${base}/cards`,
+];
+
 /** Wave-1 organic + natal/matrix pillars for IndexNow / checks. */
 const ARTICLE_PRIORITY_SLUGS = [
   "rasshifrovka-taro-po-foto",
+  "rasshifrovka-taro-po-foto-besplatno",
+  "besplatnyy-rasklad-taro-online",
+  "kak-fotografirovat-rasklad-taro",
+  "foto-rasklad-ili-klassicheskoe-taro",
   "zhdat-ili-otpustit-taro",
   "svoboden-li-on-gadanie",
   "znachenie-kart-lenormand",
   "sochetaniya-lenormand",
-  "foto-rasklad-ili-klassicheskoe-taro",
   "ascendent-v-natalnoy-karte",
   "matrica-sudby-dengi",
   "matrica-sudby-otnosheniya",
@@ -82,7 +133,7 @@ function loadAllArticleUrls() {
   return [...new Set(urls)];
 }
 
-const PRIORITY_URLS = [...CORE_PRIORITY, ...loadAllArticleUrls()];
+const PRIORITY_URLS = [...new Set([...CORE_PRIORITY, ...RECRAWL_PRIORITY, ...loadAllArticleUrls()])];
 
 let failed = 0;
 
@@ -137,11 +188,16 @@ console.log(`=== Post-deploy SEO: ${base} ===\n`);
 
 await checkUrl(`/${INDEXNOW_KEY}.txt`, 200, INDEXNOW_KEY);
 const homeHtml = await checkUrl("/", 200);
-// Consent-gated: tag.js must NOT be in SSR HTML; loads only after «Принять аналитику».
+// Humans: tag.js must NOT be in SSR HTML; loads only after «Принять аналитику».
 ok(
-  "Metrika not in SSR HTML (consent-gated)",
+  "Metrika not in SSR HTML for humans (consent-gated)",
   !homeHtml.includes(`mc.yandex.ru/metrika/tag.js`),
   `id=${METRIKA_ID} loads client-side after consent`
+);
+ok(
+  "Metrika noscript watch pixel in SSR (Webmaster)",
+  homeHtml.includes("mc.yandex.ru/watch/110138367"),
+  "JS users still consent-gated via YandexMetrika"
 );
 ok(
   "Yandex Webmaster verification meta",

@@ -16,7 +16,15 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ["image/avif", "image/webp"],
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
+    remotePatterns: [
+      { protocol: "https", hostname: "zovus.ru" },
+      { protocol: "https", hostname: "www.zovus.ru" },
+      { protocol: "https", hostname: "**.userapi.com" },
+      { protocol: "https", hostname: "avatars.yandex.net" },
+      { protocol: "https", hostname: "**.yandex.net" },
+      { protocol: "https", hostname: "mc.yandex.ru" },
+      { protocol: "https", hostname: "telegram.org" },
+    ],
   },
   async redirects() {
     return getCanonicalRedirects();
@@ -37,15 +45,16 @@ const nextConfig: NextConfig = {
           "base-uri 'self'",
           "frame-ancestors 'none'",
           "object-src 'none'",
-          "img-src 'self' data: blob: https:",
+          "img-src 'self' data: blob: https://zovus.ru https://www.zovus.ru https://*.userapi.com https://avatars.yandex.net https://*.yandex.net https://mc.yandex.ru https://telegram.org https://*.telegram.org",
           "font-src 'self' data: https://fonts.gstatic.com",
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
           // 'unsafe-inline' required for Next.js hydration + consent-gated Metrika/captcha bootstraps.
           // script-src-attr blocks inline on* handlers (XSS hardening without breaking Next).
-          `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} https://mc.yandex.ru https://yastatic.net https://www.google.com https://www.gstatic.com https://smartcaptcha.yandexcloud.net`,
+          // telegram.org / oauth.telegram.org — official Login Widget (cabinet bind + auth).
+          `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} https://mc.yandex.ru https://yastatic.net https://www.google.com https://www.gstatic.com https://smartcaptcha.yandexcloud.net https://telegram.org`,
           "script-src-attr 'none'",
-          "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru https://yandex.ru https://www.google.com https://www.gstatic.com https://smartcaptcha.yandexcloud.net https://api.yookassa.ru https://yoomoney.ru https://openrouter.ai https://api.openai.com https://api.deepseek.com",
-          "frame-src 'self' https://www.google.com https://smartcaptcha.yandexcloud.net https://yoomoney.ru https://yookassa.ru",
+          "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru https://yandex.ru https://www.google.com https://www.gstatic.com https://smartcaptcha.yandexcloud.net https://api.yookassa.ru https://yoomoney.ru https://openrouter.ai https://api.openai.com https://api.deepseek.com https://*.ingest.sentry.io https://*.ingest.de.sentry.io",
+          "frame-src 'self' https://www.google.com https://smartcaptcha.yandexcloud.net https://yoomoney.ru https://yookassa.ru https://oauth.telegram.org https://telegram.org",
           "media-src 'self' blob:",
           "worker-src 'self' blob:",
           "upgrade-insecure-requests",
@@ -63,6 +72,17 @@ const nextConfig: NextConfig = {
           {
             key: "Service-Worker-Allowed",
             value: "/",
+          },
+          ...securityHeaders,
+        ],
+      },
+      {
+        // Immutable deck art — photo/chat faces must paint from disk cache, not re-download.
+        source: "/decks/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
           },
           ...securityHeaders,
         ],

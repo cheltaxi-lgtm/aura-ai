@@ -56,7 +56,8 @@ export default function AdminRitualsPage() {
 
   const save = async () => {
     if (!settings) return;
-    const res = await fetch("/api/admin/rituals", {
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    const res = await adminFetch("/api/admin/rituals", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ settings }),

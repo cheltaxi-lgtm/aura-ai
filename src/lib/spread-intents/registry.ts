@@ -53,7 +53,9 @@ function buildIntent(seed: IntentSeed): SpreadIntentDefinition {
   return {
     slug: seed.slug,
     title: seed.title,
-    description: seed.intro,
+    description: meta?.whenFits?.length
+      ? meta.whenFits.join(" ")
+      : seed.intro,
     category: seed.category,
     spreadId: seed.spreadId,
     recommendedMasterId: master,
@@ -63,7 +65,7 @@ function buildIntent(seed: IntentSeed): SpreadIntentDefinition {
       meta?.seoDescription ??
       `${seed.intro} Персональный расклад с ИИ-наставником Zovus: память сессии, чат и расшифровка.`,
     h1: meta?.h1 ?? seed.title,
-    intro: seed.intro,
+    intro: meta?.intro ?? seed.intro,
     positionsPreview: [...seed.positions],
     relatedSlugs: seed.related ?? [],
     runeAction: "INTENTION_SPREAD",

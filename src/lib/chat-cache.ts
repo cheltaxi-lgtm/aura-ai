@@ -211,9 +211,10 @@ export function saveChatCache(
     cache[characterId] = {
       cardsKey: cardsKey || prev.cardsKey,
       spread: spread ?? prev.spread,
+      // Empty means empty — never keep a prior reading under the same cards key.
       messages: messages.length
         ? (serializeMessages(messages) as unknown as Message[])
-        : prev.messages ?? [],
+        : [],
     };
     localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(cache));
     notifyChatCacheUpdated(characterId);

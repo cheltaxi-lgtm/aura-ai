@@ -42,7 +42,7 @@ export default function FaqPage() {
           </Link>
           {" · "}
           <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
-            Матрица судьбы
+            Полная матрица судьбы + ведение
           </Link>
           {" · "}
           <Link href="/about/how-readings-work" className="text-aura-gold hover:underline">

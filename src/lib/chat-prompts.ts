@@ -6,6 +6,15 @@ import {
   ensurePaidSpreadTextComplete,
   isPaidSpreadTextComplete,
 } from "@/lib/spread-reading-complete";
+import {
+  buildQualityRepairHint,
+  evaluatePaidReadingQuality,
+  listPaidReadingQualityIssues,
+  meetsPaidDensityFloor,
+  normalizePaidReadingStructure,
+  type ReadingQualityIssue,
+} from "@/lib/reading-quality-gate";
+import { paidSpreadMaxTokens } from "@/lib/prompts/premium-reading";
 import { sanitizeChatHistory, LLM_CONTEXT_MESSAGES, type ChatHistoryMessage } from "@/lib/chat-sanitize";
 import {
   sanitizeReadingForClient,
@@ -14,7 +23,7 @@ import {
   stripTheaterFromReply,
 } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, fromLegacyContext } from "@/lib/prompts";
-import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
+import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
@@ -187,7 +196,11 @@ export function buildHumanChatPrompt(
   ctx: Partial<UserContext>,
   knowledge?: string
 ): string {
-  const parts = [buildHumanMasterPersona(blogger, knowledge), CARD_GROUNDED_READING_RULES];
+  const parts = [
+    buildHumanMasterPersona(blogger, knowledge),
+    CARD_GROUNDED_READING_RULES,
+    CHAT_CLARIFYING_QUESTION_RULE,
+  ];
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
 
   if (ctx.userName) {
@@ -320,25 +333,76 @@ export async function generateReading(
 
   const cardWord = cardCount === 1 ? "карту" : cardCount < 5 ? "карты" : "символы";
 
+  const { isCrisisSurvivalQuestion } = await import("@/lib/crisis-question");
+  const crisisQ = isCrisisSurvivalQuestion(ctx.userMessage ?? ctx.intention);
+  const crisisRule = crisisQ
+    ? "\n\nВАЖНО: вопрос о жизни/войне/выживании — ответь на буквальный запрос по доминанте символов. Словарные ярлыки («романтика», «ухаживание», «предложение») не сюжет. Не смягчай Башню/пятёрки/десятки мечей утешительной поэзией."
+    : "";
+
   const userContent =
-    ctx.userMessage?.trim() ||
-    (thematic
-      ? `Расшифруй оплаченный расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Тема «${topicLabel}» — только линза. Все символы: ${cardsDetailed}. Раскрой КАЖДУЮ позицию. В конце — финальный блок выводов по всему раскладу с действиями.`
-      : `Расшифруй расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Символы: ${cardsDetailed}. Раскрой каждую позицию. В конце — финальный блок выводов по всему раскладу с действиями.`);
+    (ctx.userMessage?.trim()
+      ? ctx.userMessage.trim()
+      : thematic
+        ? `Расшифруй оплаченный расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Тема «${topicLabel}» — только линза. Все символы: ${cardsDetailed}. Раскрой КАЖДУЮ позицию. В конце — финальный блок выводов по всему раскладу с действиями.`
+        : `Расшифруй расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Символы: ${cardsDetailed}. Раскрой каждую позицию. В конце — финальный блок выводов по всему раскладу с действиями.`) +
+    crisisRule;
 
   const cardNames = ctx.tarotCards.map((c) => c.name);
+  const characterId = ctx.characterId ?? "ragnar";
+
+  const passesPremiumQuality = (candidate: string): boolean => {
+    if (!ctx.isPaid) return true;
+    return evaluatePaidReadingQuality(candidate, { cardCount, characterId }).ok;
+  };
+
+  const prepareReadingCandidate = (raw: string): string => {
+    const theaterStripped =
+      isTarotRuneMasterId(characterId) && characterId !== "numerolog"
+        ? stripTheaterFromReply(raw)
+        : raw;
+    return ctx.isPaid
+      ? normalizePaidReadingStructure(theaterStripped, characterId, ctx.userName)
+      : theaterStripped;
+  };
 
   const acceptReading = (raw: string | null): string | null => {
     if (!raw?.trim()) return null;
     if (isProseLikelyTruncated(raw)) return null;
-    const id = ctx.characterId ?? "ragnar";
-    const theaterStripped =
-      isTarotRuneMasterId(id) && id !== "numerolog" ? stripTheaterFromReply(raw) : raw;
-    const cleaned = sanitizeReadingForClient(theaterStripped, cardNames);
-    if (cleaned.length >= 120 && isPaidSpreadTextComplete(cleaned, cardNames)) return cleaned;
-    const stripped = stripMemoryLeakFromReply(theaterStripped);
+    const prepared = prepareReadingCandidate(raw);
+    const cleaned = sanitizeReadingForClient(prepared, cardNames);
+    if (cleaned.length >= 120 && isPaidSpreadTextComplete(cleaned, cardNames) && passesPremiumQuality(cleaned)) {
+      return cleaned;
+    }
+    const stripped = stripMemoryLeakFromReply(prepared);
     if (
       stripped.length >= 120 &&
+      !isDegenerateLlmOutput(stripped) &&
+      isPaidSpreadTextComplete(stripped, cardNames) &&
+      passesPremiumQuality(stripped)
+    ) {
+      return stripped;
+    }
+    return null;
+  };
+
+  /** Prefer imperfect complete AI prose over empty paid delivery / refund. */
+  const softAcceptReading = (raw: string | null): string | null => {
+    if (!ctx.isPaid || !raw?.trim()) return null;
+    if (isProseLikelyTruncated(raw)) return null;
+    const prepared = prepareReadingCandidate(raw);
+    const cleaned = sanitizeReadingForClient(prepared, cardNames);
+    if (
+      cleaned.length >= 200 &&
+      meetsPaidDensityFloor(cleaned, cardCount) &&
+      !isDegenerateLlmOutput(cleaned) &&
+      isPaidSpreadTextComplete(cleaned, cardNames)
+    ) {
+      return cleaned;
+    }
+    const stripped = stripMemoryLeakFromReply(prepared);
+    if (
+      stripped.length >= 200 &&
+      meetsPaidDensityFloor(stripped, cardCount) &&
       !isDegenerateLlmOutput(stripped) &&
       isPaidSpreadTextComplete(stripped, cardNames)
     ) {
@@ -352,9 +416,18 @@ export async function generateReading(
     { role: "user", content: userContent },
   ];
 
-  const maxTokens = cardCount > 5 ? 5000 : cardCount > 3 ? 4200 : 2800;
+  // Same budget as chat/daily/photo — one formula for every paid full spread.
+  const maxTokens = ctx.isPaid
+    ? paidSpreadMaxTokens(cardCount)
+    : cardCount > 5
+      ? 4500
+      : cardCount > 3
+        ? 3800
+        : 2600;
 
+  const startedAt = Date.now();
   const { generateValidatedAiText } = await import("@/lib/validated-ai-generation");
+  const { missingCardMentions } = await import("@/lib/chat-reply-sanitize");
   const validated = await generateValidatedAiText({
     messages: baseMessages,
     inputParts: [
@@ -366,49 +439,179 @@ export async function generateReading(
     ],
     maxTokens,
     temperature: 0.85,
-    timeoutMs: 120_000,
+    // Fail over / soft-ship instead of hanging on one slow primary+repair.
+    timeoutMs: ctx.isPaid ? 45_000 : 50_000,
+    modelFamily: ctx.isPaid ? "paid" : "chat",
+    // Paid: no same-model repair (doubles latency). Next model in chain is faster spare.
+    maxRepairRounds: ctx.isPaid ? 0 : 1,
+    allowReasoningFallback: ctx.isPaid,
+    chatOptions: {
+      skipTemperatureRetry: true,
+      isPaid: ctx.isPaid,
+      maxAttempts: 1,
+    },
     validate: (text) => {
       const accepted = acceptReading(text);
-      return accepted
-        ? { ok: true }
-        : { ok: false, code: "validation_failed", detail: "incomplete_or_truncated" };
+      if (accepted) return { ok: true };
+      const prepared = ctx.isPaid ? prepareReadingCandidate(text) : text;
+      const missing = missingCardMentions(prepared, cardNames);
+      if (missing.length) {
+        return {
+          ok: false,
+          code: "validation_failed",
+          detail: `missing_cards:${missing.join("|")}`,
+        };
+      }
+      if (ctx.isPaid) {
+        const issues = listPaidReadingQualityIssues(prepared, { cardCount, characterId });
+        if (issues.length) {
+          return {
+            ok: false,
+            code: "validation_failed",
+            detail: `quality:${issues.join("|")}`,
+          };
+        }
+      }
+      return { ok: false, code: "validation_failed", detail: "incomplete_or_truncated" };
     },
-    buildRepairMessages: (failedText) => [
-      ...baseMessages,
-      { role: "assistant", content: failedText },
-      {
-        role: "user",
-        content:
-          "Допиши расклад целиком: раскрой каждую позицию по имени символа и заверши полным финальным блоком выводов. Без удержания.",
-      },
-    ],
+    buildRepairMessages: (failedText, detail) => {
+      const prepared = ctx.isPaid ? prepareReadingCandidate(failedText) : failedText;
+      const missing =
+        detail?.startsWith("missing_cards:")
+          ? detail.slice("missing_cards:".length).split("|").filter(Boolean)
+          : missingCardMentions(prepared, cardNames);
+      const qualityFromDetail = detail?.startsWith("quality:")
+        ? (detail.slice("quality:".length).split("|").filter(Boolean) as ReadingQualityIssue[])
+        : null;
+      const qualityIssues: ReadingQualityIssue[] =
+        qualityFromDetail ?? listPaidReadingQualityIssues(prepared, { cardCount, characterId });
+      const missingLine = missing.length
+        ? `Обязательно назови по имени и раскрой: ${missing.map((n) => `«${n}»`).join(", ")}.`
+        : "Раскрой каждую позицию по имени символа.";
+      const qualityLine = qualityIssues.length ? ` ${buildQualityRepairHint(qualityIssues)}` : "";
+      const crisisLine = isCrisisSurvivalQuestion(ctx.userMessage ?? ctx.intention)
+        ? " Вопрос о жизни/войне — ответь по доминанте символов прямо, без романтических ярлыков и без отказа от темы."
+        : "";
+      return [
+        ...baseMessages,
+        { role: "assistant", content: prepared || failedText },
+        {
+          role: "user",
+          content: `Перепиши расклад целиком премиально и плотно, без воды. ${missingLine}${qualityLine}${crisisLine} В конце — полный финальный блок выводов. Без удержания и без шаблонных отказов.`,
+        },
+      ];
+    },
   });
 
   if (validated.ok) {
-    const accepted = acceptReading(validated.content) ?? validated.content.trim();
+    const accepted =
+      acceptReading(validated.content) ?? softAcceptReading(validated.content);
     if (accepted) {
+      console.info("generateReading ok", {
+        characterId: ctx.characterId,
+        intention: ctx.intention,
+        cardCount,
+        ms: Date.now() - startedAt,
+        model: validated.provenance?.model,
+        maxTokens,
+      });
       return { text: accepted, fromLlm: true, provenance: validated.provenance };
     }
   }
 
-  // Legacy continuation path as last AI-only attempt before fail-closed.
+  // Bounded legacy continuation — one pass, then one completion round.
   let text = await completeProseWithContinuation(baseMessages, {
     maxTokens,
     temperature: 0.85,
-    maxPasses: cardCount > 5 ? 4 : 3,
+    maxPasses: 1,
     cardNames,
+    isPaid: ctx.isPaid,
   });
   if (text && !isPaidSpreadTextComplete(text, cardNames)) {
     text = await ensurePaidSpreadTextComplete(baseMessages, text, cardNames, {
-      maxTokens: Math.max(2200, Math.round(maxTokens * 0.5)),
+      maxTokens: Math.max(1400, Math.round(maxTokens * 0.4)),
       temperature: 0.85,
-      maxRounds: 4,
+      maxRounds: 1,
+      isPaid: ctx.isPaid,
     });
   }
-  const accepted = acceptReading(text);
-  if (accepted) return { text: accepted, fromLlm: true };
+  const accepted = acceptReading(text) ?? softAcceptReading(text);
+  if (accepted) {
+    console.info("generateReading ok-after-continuation", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      ms: Date.now() - startedAt,
+      maxTokens,
+    });
+    return { text: accepted, fromLlm: true };
+  }
 
-  // Fail-closed: never synthesize template prose as a paid reading success.
+  const bestDraft = (text || (validated.ok ? validated.content : "") || "").trim();
+  // Prefer shipping a dense draft over multi-minute rescue when quality floor is met.
+  const preRescueSoft = softAcceptReading(bestDraft);
+  if (preRescueSoft) {
+    console.warn("generateReading soft-shipped before rescue", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      ms: Date.now() - startedAt,
+    });
+    return { text: preRescueSoft, fromLlm: true };
+  }
+
+  // Last-resort AI rescue: lean prompt across the whole model chain, then
+  // AI-written blocks for skipped symbols. Still 100% model-authored.
+  const { rescueReadingWithAi } = await import("@/lib/reading-ai-rescue");
+  const rescued = await rescueReadingWithAi({
+    characterId: ctx.characterId ?? "veronika",
+    userName: ctx.userName,
+    question:
+      ctx.userMessage?.trim() ||
+      (topicLabel ? `Расклад на тему «${topicLabel}»` : `Расклад «${spread.label}»`),
+    cards: ctx.tarotCards.map((c, i) => ({
+      name: c.name,
+      position: positions[i] ?? `Позиция ${i + 1}`,
+      meaning: c.meaning,
+    })),
+    maxTokens,
+    previousDraft: bestDraft,
+    accept: acceptReading,
+    softAccept: softAcceptReading,
+  });
+
+  if (rescued) {
+    console.warn("generateReading rescued by fallback AI pass", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      validatedDetail: validated.ok ? null : validated.detail,
+    });
+    return { text: rescued, fromLlm: true };
+  }
+
+  const softShipped = softAcceptReading(bestDraft);
+  if (softShipped) {
+    console.warn("generateReading soft-shipped after quality/rescue exhaustion", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      validatedDetail: validated.ok ? null : validated.detail,
+      issues: listPaidReadingQualityIssues(softShipped, { cardCount, characterId }),
+    });
+    return { text: softShipped, fromLlm: true };
+  }
+
+  console.error("generateReading: all AI attempts failed", {
+    characterId: ctx.characterId,
+    intention: ctx.intention,
+    cardCount,
+    missing: missingCardMentions(bestDraft, cardNames),
+    validatedOk: validated.ok,
+    validatedDetail: validated.ok ? null : validated.detail,
+  });
+
+  // Only a total provider outage reaches this point — never template prose.
   return { text: "", fromLlm: false };
 }
 

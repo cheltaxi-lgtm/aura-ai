@@ -43,13 +43,16 @@ function leaveToHomeAfterAccountDeletion(): void {
 export default function CabinetDeleteAccount({ onDeleted }: Props) {
   const [open, setOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [confirmPhrase, setConfirmPhrase] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = acknowledged && !deleting;
+  const canSubmit =
+    acknowledged && confirmPhrase.trim() === "УДАЛИТЬ" && !deleting;
 
   const resetForm = useCallback(() => {
     setAcknowledged(false);
+    setConfirmPhrase("");
     setError(null);
   }, []);
 
@@ -82,6 +85,8 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
       const res = await fetch("/api/user/delete", {
         method: "DELETE",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmPhrase: confirmPhrase.trim() }),
       });
       const payload = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -187,6 +192,21 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
                       className="mt-1 h-4 w-4 rounded border-red-400/50 bg-transparent"
                     />
                     <span>Я понимаю, что восстановить аккаунт и данные будет невозможно.</span>
+                  </label>
+
+                  <label className="block space-y-1.5 text-sm text-red-100/90">
+                    <span>
+                      Введите <span className="font-semibold tracking-wide">УДАЛИТЬ</span> для
+                      подтверждения
+                    </span>
+                    <input
+                      type="text"
+                      value={confirmPhrase}
+                      onChange={(e) => setConfirmPhrase(e.target.value)}
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-red-500/30 bg-black/30 px-3 py-2 text-sm text-red-50 outline-none focus:border-red-400/60"
+                      placeholder="УДАЛИТЬ"
+                    />
                   </label>
 
                   {error ? (

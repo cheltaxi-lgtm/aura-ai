@@ -329,9 +329,55 @@ export async function creditRunesToUser(
   userId: string,
   amount: number,
   type: "purchase" | "bonus" | "achievement" | "daily_bonus",
-  description: string
+  description: string,
+  paymentId?: string
 ): Promise<number> {
-  return addRunes(userId, amount, type, description);
+  if (paymentId && type === "bonus") {
+    try {
+      return await withTransaction(async (client) => {
+        const { rows: claimed } = await queryClient<{ id: string }>(
+          client,
+          `INSERT INTO rune_transactions
+             (user_id, type, amount, balance_after, description, payment_id)
+           VALUES ($1, 'bonus', 0, 0, $3, $2)
+           ON CONFLICT (payment_id) WHERE type = 'bonus' AND payment_id IS NOT NULL
+           DO NOTHING
+           RETURNING id`,
+          [userId, paymentId, description]
+        );
+        if (!claimed[0]) {
+          const { rows: bal } = await queryClient<{ rune_balance: number }>(
+            client,
+            `SELECT rune_balance FROM users WHERE id = $1`,
+            [userId]
+          );
+          return bal[0]?.rune_balance ?? 0;
+        }
+        const { rows: updated } = await queryClient<{ rune_balance: number }>(
+          client,
+          `UPDATE users SET rune_balance = rune_balance + $2 WHERE id = $1
+           RETURNING rune_balance`,
+          [userId, amount]
+        );
+        const newBalance = updated[0]?.rune_balance ?? 0;
+        await queryClient(
+          client,
+          `UPDATE rune_transactions SET amount = $2, balance_after = $3 WHERE id = $1`,
+          [claimed[0].id, amount, newBalance]
+        );
+        return newBalance;
+      });
+    } catch (err) {
+      // Never fall back to non-idempotent addRunes — that can double-credit.
+      console.error("creditRunesToUser bonus claim failed:", err);
+      const { rows: bal } = await query<{ rune_balance: number }>(
+        `SELECT rune_balance FROM users WHERE id = $1`,
+        [userId]
+      );
+      return bal[0]?.rune_balance ?? 0;
+    }
+  }
+  return addRunes(userId, amount, type, description, paymentId);
 }
 
 export type RuneReceiptTransaction = {
@@ -424,15 +470,30 @@ export async function adminGrantRunes(
   });
 }
 
+export type CreditRunesResult = "credited" | "duplicate" | "rejected";
+
 /** Idempotent credit after YooKassa payment.succeeded — package totals from DB; custom from paid amount. */
 export async function creditRunesFromPayment(payment: {
   userId: string;
   packageId: string;
   paymentId: string;
   amountRub?: number;
+  /** Snapshot price from payment metadata at create time (survives admin price edits). */
+  expectedPriceRub?: number;
 }): Promise<boolean> {
+  const result = await creditRunesFromPaymentDetailed(payment);
+  return result === "credited";
+}
+
+export async function creditRunesFromPaymentDetailed(payment: {
+  userId: string;
+  packageId: string;
+  paymentId: string;
+  amountRub?: number;
+  expectedPriceRub?: number;
+}): Promise<CreditRunesResult> {
   if (!payment.userId || !payment.packageId || !payment.paymentId) {
-    return false;
+    return "rejected";
   }
 
   let amount: number;
@@ -441,13 +502,13 @@ export async function creditRunesFromPayment(payment: {
   if (payment.packageId === "custom") {
     if (!payment.amountRub || payment.amountRub <= 0) {
       console.warn("creditRunesFromPayment: custom payment missing amountRub");
-      return false;
+      return "rejected";
     }
     const settings = await getRuneSettings();
     amount = runesFromRubAmount(payment.amountRub, settings.rubPerRune);
     if (amount <= 0) {
       console.warn("creditRunesFromPayment: custom payment yields zero runes");
-      return false;
+      return "rejected";
     }
     description = `Пополнение на ${Math.round(payment.amountRub)} ₽: ${amount} ᚢ`;
   } else {
@@ -463,25 +524,31 @@ export async function creditRunesFromPayment(payment: {
     const pkg = pkgRows[0];
     if (!pkg) {
       console.warn("creditRunesFromPayment: package not found:", payment.packageId);
-      return false;
+      return "rejected";
     }
 
-    if (payment.amountRub !== undefined) {
-      if (Math.abs(payment.amountRub - Number(pkg.price_rub)) > 0.01) {
-        console.warn(
-          "creditRunesFromPayment: amount mismatch",
-          payment.paymentId,
-          payment.amountRub,
-          pkg.price_rub
-        );
-        return false;
-      }
+    if (payment.amountRub === undefined || !Number.isFinite(payment.amountRub)) {
+      console.warn("creditRunesFromPayment: amountRub required", payment.paymentId);
+      return "rejected";
+    }
+    const expected =
+      payment.expectedPriceRub !== undefined && Number.isFinite(payment.expectedPriceRub)
+        ? Number(payment.expectedPriceRub)
+        : Number(pkg.price_rub);
+    if (Math.abs(payment.amountRub - expected) > 0.01) {
+      console.warn(
+        "creditRunesFromPayment: amount mismatch",
+        payment.paymentId,
+        payment.amountRub,
+        expected
+      );
+      return "rejected";
     }
 
     amount = pkg.runes + pkg.bonus_runes;
     if (amount <= 0) {
       console.warn("creditRunesFromPayment: invalid package rune total:", payment.packageId);
-      return false;
+      return "rejected";
     }
 
     description = `Пакет рун «${pkg.name}»: ${amount} ᚢ`;
@@ -499,7 +566,7 @@ export async function creditRunesFromPayment(payment: {
          RETURNING id`,
         [payment.userId, payment.paymentId, description]
       );
-      if (!claimed[0]) return false;
+      if (!claimed[0]) return "duplicate";
 
       const { rows: updated } = await queryClient<{ rune_balance: number }>(
         client,
@@ -523,11 +590,11 @@ export async function creditRunesFromPayment(payment: {
         [claimed[0].id, amount, updated[0].rune_balance]
       );
 
-      return true;
+      return "credited";
     });
   } catch (err) {
     console.error("creditRunesFromPayment failed:", err);
-    return false;
+    return "rejected";
   }
 }
 

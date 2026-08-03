@@ -4,22 +4,29 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: "Гадание онлайн бесплатно: Таро, руны, нумерология | Zovus",
+  title: "Гадание онлайн бесплатно — Таро, руны, нумерология",
   description:
-    "Гадание онлайн на выбор: Таро, руны, нумерология и Ленорман. Короткий ответ да/нет или подробный разбор ситуации с ИИ-наставником в чате.",
+    "Гадание онлайн бесплатно: выберите Таро, руны, Ленорман или нумерологию. Три карты без регистрации, быстрый ответ да/нет и расшифровка расклада по фото — Zovus.",
   path: "/gadanie",
 });
 
 const METHODS = [
   {
     title: "Таро онлайн",
-    text: "Классические расклады на связь, решение и будущее — с Вероникой или Мариной.",
+    text: "Классические расклады на связь, решение и будущее — с разбором в чате. Три карты бесплатно на старте.",
     href: "/taro",
     cta: "Открыть расклад Таро",
+  },
+  {
+    title: "Расшифровка по фото",
+    text: "Сфотографируйте домашний расклад — распознаем карты и дадим персональную трактовку.",
+    href: "/photo-rasklad",
+    cta: "Загрузить фото",
   },
   {
     title: "Гадание на рунах",
@@ -60,17 +67,21 @@ const faq = [
   },
   {
     q: "Можно ли гадать онлайн бесплатно?",
-    a: "На главной три карты открываются бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки. Полные сессии с развёрнутым разбором и продолжением в чате — за руны по тарифу сервиса.",
+    a: "Да. На главной три карты открываются бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки. Полные сессии с развёрнутым разбором и продолжением в чате — за руны по тарифу сервиса.",
   },
   {
     q: "Гадание да или нет — какой метод выбрать?",
     a: "Быстрее всего — одна карта Таро или одна руна: см. страницу «Гадание да или нет». Ответ «да», «нет» или «не сейчас» с коротким пояснением.",
   },
+  {
+    q: "Можно ли расшифровать свой расклад по фото?",
+    a: "Да — загрузите снимок на странице «Расшифровка Таро по фото». Сервис распознает карты, вы подтвердите позиции и получите персональный разбор.",
+  },
 ];
 
 export default function GadaniePage() {
   const structuredData = buildForecastStructuredData({
-    title: "Гадание онлайн",
+    title: "Гадание онлайн бесплатно",
     description:
       "Гадание онлайн: Таро, руны, нумерология и Ленорман — выбор метода и разбор с ИИ-наставником в чате.",
     path: "/gadanie",
@@ -80,12 +91,18 @@ export default function GadaniePage() {
   return (
     <SeoPageShell backHref="/" backLabel="На главную">
       <SeoPageTracker goal="gadanie_hub_view" />
+      <SeoBreadcrumbs
+        items={[
+          { name: "Zovus", path: "/" },
+          { name: "Гадание онлайн", path: "/gadanie" },
+        ]}
+      />
       <p className="text-sm text-aura-gold/80">Гадание онлайн</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Гадание онлайн</h1>
+      <h1 className="mt-2 font-display text-3xl font-bold">Гадание онлайн бесплатно</h1>
       <p className="mt-4 text-white/70">
-        Несколько способов в одном пространстве: Таро, руны, нумерология и Ленорман. Выберите метод
-        под вопрос — ИИ-наставник в образе традиции разберёт ситуацию в чате, а не выдаст общий
-        шаблон.
+        Несколько способов в одном пространстве: Таро, фото-расклад, руны, нумерология и Ленорман.
+        Выберите метод под вопрос — наставник разберёт ситуацию в чате, а не выдаст общий шаблон.
+        Бесплатный старт — три карты на главной без регистрации.
       </p>
 
       <SeoSection title="Выберите способ">
@@ -105,11 +122,14 @@ export default function GadaniePage() {
       </SeoSection>
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href="/gadanie/da-net" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "da-net" }}>
+        <SeoTrackedCta href="/?spread=triplet" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "free" }}>
+          Три карты бесплатно
+        </SeoTrackedCta>
+        <SeoTrackedCta href="/gadanie/da-net" variant="ghost" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "da-net" }}>
           Быстрый ответ да / нет
         </SeoTrackedCta>
-        <SeoTrackedCta href="/taro" variant="ghost" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "taro" }}>
-          Все расклады Таро
+        <SeoTrackedCta href="/photo-rasklad" variant="ghost" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "photo" }}>
+          Расшифровка по фото
         </SeoTrackedCta>
       </div>
 
@@ -122,7 +142,7 @@ export default function GadaniePage() {
         ))}
       </SeoSection>
 
-      <SeoRelatedTools excludeHrefs={["/taro"]} />
+      <SeoRelatedTools excludeHrefs={["/gadanie", "/taro"]} />
 
       <script
         type="application/ld+json"

@@ -22,10 +22,14 @@ export interface AiSettings {
   visionModel: string;
   /** Fast structured JSON model for natal reports and synastry (not reasoning). */
   natalModel?: string;
+  /** Destiny-matrix zone assembly (sectioned reading). Falls back to paidModel → model. */
+  matrixModel?: string;
   /** Ordered AI backup models for chat/reading generation (admin-configured). */
   fallbackModels?: string[];
   /** Ordered AI backup models for natal JSON reports. */
   natalFallbackModels?: string[];
+  /** Ordered backups for matrix zones; empty → use fallbackModels. */
+  matrixFallbackModels?: string[];
   temperature: number;
   maxTokens: number;
   maxReadingTokens: number;
@@ -153,8 +157,11 @@ const DEFAULTS = {
     freeModel: "openai/gpt-4o-mini",
     visionModel: "google/gemini-2.0-flash-001",
     natalModel: "openai/gpt-4o-mini",
+    /** Empty at runtime → DEFAULT_MATRIX_MODEL (see ai-model.ts), not paid chat. */
+    matrixModel: "deepseek/deepseek-chat-v3-0324",
     fallbackModels: [] as string[],
     natalFallbackModels: [] as string[],
+    matrixFallbackModels: ["moonshotai/kimi-k2.5", "openai/gpt-4o-mini"] as string[],
     temperature: 0.85,
     maxTokens: 800,
     maxReadingTokens: 900,

@@ -53,14 +53,21 @@ const FIXTURES = [
       body: 14,
       energy: 3,
       roots: 6,
-      purpose: 5,
-      relationships: 19,
-      money: 8,
-      karma: 11,
+      purpose: 10,
+      relationships: 6,
+      money: 16,
+      karma: 5,
       talents: 17,
       paternal: 20,
       maternal: 9,
       yearArcana: 9,
+    },
+    zones: {
+      karmicTail: [5, 15, 20],
+      age0: 14,
+      age40: 6,
+      moneyChannel: [13, 10, 16, 15],
+      loveChannel: [14, 6, 10, 16],
     },
   },
   {
@@ -70,14 +77,21 @@ const FIXTURES = [
       body: 1,
       energy: 1,
       roots: 2,
-      purpose: 4,
-      relationships: 5,
-      money: 5,
-      karma: 6,
+      purpose: 8,
+      relationships: 9,
+      money: 10,
+      karma: 4,
       talents: 2,
       paternal: 3,
       maternal: 3,
       yearArcana: 12,
+    },
+    zones: {
+      karmicTail: [4, 12, 16],
+      age0: 1,
+      age40: 2,
+      moneyChannel: [9, 8, 10, 12],
+      loveChannel: [1, 9, 8, 10],
     },
   },
   {
@@ -87,10 +101,10 @@ const FIXTURES = [
       body: 4,
       energy: 12,
       roots: 8,
-      purpose: 6,
-      relationships: 10,
-      money: 18,
-      karma: 14,
+      purpose: 3,
+      relationships: 7,
+      money: 11,
+      karma: 6,
       talents: 16,
       paternal: 12,
       maternal: 20,
@@ -106,8 +120,8 @@ const FIXTURES = [
       roots: 22,
       purpose: 9,
       relationships: 16,
-      money: 16,
-      karma: 4,
+      money: 4,
+      karma: 9,
       talents: 14,
       paternal: 11,
       maternal: 11,
@@ -121,10 +135,10 @@ const FIXTURES = [
       body: 15,
       energy: 6,
       roots: 3,
-      purpose: 6,
-      relationships: 21,
-      money: 12,
-      karma: 9,
+      purpose: 3,
+      relationships: 18,
+      money: 6,
+      karma: 6,
       talents: 21,
       paternal: 18,
       maternal: 9,
@@ -138,10 +152,10 @@ const FIXTURES = [
       body: 22,
       energy: 11,
       roots: 20,
-      purpose: 8,
-      relationships: 3,
-      money: 19,
-      karma: 10,
+      purpose: 7,
+      relationships: 11,
+      money: 9,
+      karma: 8,
       talents: 6,
       paternal: 6,
       maternal: 4,
@@ -155,10 +169,10 @@ const FIXTURES = [
       body: 9,
       energy: 9,
       roots: 10,
-      purpose: 10,
-      relationships: 19,
-      money: 19,
-      karma: 20,
+      purpose: 11,
+      relationships: 20,
+      money: 21,
+      karma: 10,
       talents: 18,
       paternal: 19,
       maternal: 19,
@@ -172,20 +186,46 @@ const FIXTURES = [
       body: 11,
       energy: 2,
       roots: 18,
-      purpose: 4,
-      relationships: 15,
-      money: 6,
-      karma: 22,
+      purpose: 8,
+      relationships: 19,
+      money: 8,
+      karma: 4,
       talents: 13,
       paternal: 11,
       maternal: 20,
       yearArcana: 5,
     },
   },
+  {
+    // Classic public example 15.08.1985 — A=15 B=8 C=5 G=10 comfort=11
+    date: "1985-08-15",
+    asOfYear: 2026,
+    expect: {
+      body: 15,
+      energy: 8,
+      roots: 5,
+      purpose: 11,
+      relationships: 8,
+      money: 16,
+      karma: 10,
+      talents: 5,
+      paternal: 20,
+      maternal: 13,
+      yearArcana: 6,
+    },
+    // Full-matrix zones (etalon after calibration)
+    zones: {
+      karmicTail: [10, 21, 4],
+      age0: 15,
+      age40: 5,
+      moneyChannel: [19, 11, 16, 21],
+      loveChannel: [15, 8, 11, 16],
+    },
+  },
 ];
 
-assert(MATRIX_CALCULATION_VERSION === "matrix-v1", "version must be matrix-v1");
-assert(DESTINY_MATRIX_POINT_KEYS.length === 11, "expected 11 matrix-v1 point keys");
+assert(MATRIX_CALCULATION_VERSION === "matrix-v2", "version must be matrix-v2");
+assert(DESTINY_MATRIX_POINT_KEYS.length === 11, "expected 11 core point keys");
 
 for (const [n, expected] of [
   [0, 22],
@@ -223,6 +263,35 @@ for (const fixture of FIXTURES) {
     assert(actual >= 1 && actual <= 22, `${fixture.date}.${key} out of 1–22`);
     assert(matrix[key].arcanaName.length > 0, `${fixture.date}.${key} missing name`);
   }
+  assert(matrix.comfort.number === matrix.purpose.number, `${fixture.date}: comfort===purpose`);
+  assert(matrix.karmicTail?.length === 3, `${fixture.date}: karmic tail 3`);
+  assert(matrix.agePoints?.length === 16, `${fixture.date}: 16 age points`);
+  assert(matrix.channels?.length === 5, `${fixture.date}: 5 channels`);
+  assert(matrix.monthArcana?.number >= 1, `${fixture.date}: month arcana`);
+  assert(matrix.focusLabel?.length > 0, `${fixture.date}: focus label`);
+
+  if (fixture.zones) {
+    const z = fixture.zones;
+    const tail = matrix.karmicTail.map((p) => p.number);
+    assert(
+      JSON.stringify(tail) === JSON.stringify(z.karmicTail),
+      `${fixture.date}: karmicTail expected ${z.karmicTail}, got ${tail}`
+    );
+    const age0 = matrix.agePoints.find((p) => p.age === 0)?.number;
+    const age40 = matrix.agePoints.find((p) => p.age === 40)?.number;
+    assert(age0 === z.age0, `${fixture.date}: age0 expected ${z.age0}, got ${age0}`);
+    assert(age40 === z.age40, `${fixture.date}: age40 expected ${z.age40}, got ${age40}`);
+    const moneyCh = matrix.channels.find((c) => c.id === "money")?.points.map((p) => p.number);
+    const loveCh = matrix.channels.find((c) => c.id === "love")?.points.map((p) => p.number);
+    assert(
+      JSON.stringify(moneyCh) === JSON.stringify(z.moneyChannel),
+      `${fixture.date}: moneyChannel expected ${z.moneyChannel}, got ${moneyCh}`
+    );
+    assert(
+      JSON.stringify(loveCh) === JSON.stringify(z.loveChannel),
+      `${fixture.date}: loveChannel expected ${z.loveChannel}, got ${loveCh}`
+    );
+  }
 
   const summary = buildMatrixFreeSummary(fixture.date, {
     asOfYear: fixture.asOfYear,
@@ -231,6 +300,7 @@ for (const fixture of FIXTURES) {
   assert(!!summary, `${fixture.date}: free summary`);
   assert(summary?.keyArcana?.length === 3, `${fixture.date}: 3 key arcana`);
   assert(summary?.portrait?.includes("Тест"), `${fixture.date}: portrait uses name`);
+  assert(summary?.period?.teaser?.length > 0, `${fixture.date}: period teaser`);
 }
 
 // Prompt isolation: full matrix session must not leak Pythagorean LP/soul into engine facts.
@@ -269,19 +339,16 @@ for (const fixture of FIXTURES) {
   assert(!/КВАДРАТ ПИФАГОРА/i.test(facts), "rich facts exclude Pythagoras");
   assert(/нельзя объединять/i.test(facts), "anti-collapse rule in facts");
 
-  // Same birth as the watery sample (energy=talents=9, roots=purpose=relationships=8).
+  // matrix-v2 sample: repeats still possible across roles — prose must stay distinct.
   const gennady = destinyMatrix("1979-09-18", { asOfYear: 2026 });
   assert(!!gennady, "1979-09-18 matrix");
   assert(gennady?.body.number === 18, "1979-09-18 body=18 Moon");
   assert(gennady?.energy.number === 9 && gennady?.talents.number === 9, "energy/talents both 9");
-  assert(
-    gennady?.roots.number === 8 &&
-      gennady?.purpose.number === 8 &&
-      gennady?.relationships.number === 8,
-    "roots/purpose/relationships all 8 — must stay separate in prose"
-  );
-  assert(gennady?.money.number === 17, "1979-09-18 money=17 Star");
+  assert(gennady?.roots.number === 8 && gennady?.karma.number === 8, "roots/karma both 8");
+  assert(gennady?.purpose.number === 7, "1979-09-18 comfort/purpose=7");
+  assert(gennady?.money.number === 15, "1979-09-18 money=15 Devil");
   assert(gennady?.yearArcana.number === 10, "1979-09-18 year=10 Wheel");
+  assert(gennady?.karmicTail[0].number === 8, "tail root=8");
 
   const strength = getArcanaEntry(8);
   assert(!!strength, "arcana 8 entry");
@@ -328,14 +395,15 @@ for (const fixture of FIXTURES) {
   const plain = buildMatrixPlainFinale("Геннадий", gennady);
   assert(/Аркан этого года — Колесо Фортуны \(10\)/i.test(plain), "plain finale year=10");
   assert(!/аркан этого года — Отшельник/i.test(plain), "plain finale must not call year Hermit");
-  assert(/Предназначение — Сила \(8\)/i.test(plain), "plain finale purpose=8");
-  assert(/Деньги — через Звезда/i.test(plain), "plain finale money=Star");
+  assert(/Зона комфорта — Колесница \(7\)/i.test(plain), "plain finale comfort=7");
+  assert(/Деньги — через Дьявол/i.test(plain), "plain finale money=Devil");
   assert(plain.includes("\n"), "plain finale uses line breaks");
 
   const wall = [
-    "Геннадий, вот твой разбор матрицы судьбы по 22 арканам. Точка тела и характера (18 — Луна)",
-    "Ты чувствителен к настроениям. Практика: записывай сны. Точка энергии (9 — Отшельник)",
-    "Ты восстанавливаешься в тишине.",
+    "Геннадий, вот твой разбор матрицы судьбы по 22 арканам. Характер (18 — Луна)",
+    "Ты чувствителен к настроениям. Практика: записывай сны. Зона комфорта (7 — Колесница)",
+    "Ты восстанавливаешься в движении. Кармический хвост · корень (8 — Сила)",
+    "Узел периода требует внимания.",
     "Шаги на 30 дней:",
     "1) Записывай сны 7 дней. 2) День уединения раз в неделю. 3) Честный разговор.",
     "Простыми словами:",
@@ -343,13 +411,65 @@ for (const fixture of FIXTURES) {
   ].join(" ");
   assert(looksLikeDestinyMatrixReading(wall), "detect matrix wall-of-text");
   const pretty = formatDestinyMatrixReadingForDisplay(wall);
-  assert(/^### Точка тела и характера/m.test(pretty), "matrix point becomes h3");
+  assert(/^### Характер/m.test(pretty), "matrix point becomes h3");
   assert(/^## Шаги на 30 дней/m.test(pretty), "steps section becomes h2");
   assert(/^## Простыми словами/m.test(pretty), "finale section becomes h2");
+
+  // Structured document path: headings authored from zone objects.
+  {
+    const {
+      renderMatrixReadingMarkdown,
+      parseZoneBlock,
+      MATRIX_READING_SCHEMA_VERSION,
+    } = await import("../src/lib/numerology/matrix-reading-document.ts");
+    const { listMatrixZones } = await import("../src/lib/numerology/matrix-zones.ts");
+    const zones = listMatrixZones(gennady);
+    const structuredMd = renderMatrixReadingMarkdown({
+      schemaVersion: MATRIX_READING_SCHEMA_VERSION,
+      intro: "Геннадий, вот твоя матрица судьбы по 22 арканам.",
+      zones: zones.map((z) =>
+        parseZoneBlock(
+          `${z.label}\n${"Текст зоны про ресурс, риск и опору для жизни. ".repeat(5)}\nПрактика: сделай один шаг.`,
+          z,
+          "engine"
+        )
+      ),
+      finale: "Зона комфорта — опора.\nДеньги — канал.",
+      meta: { aiZones: 0, engineZones: zones.length, totalZones: zones.length },
+    });
+    assert(/^### /m.test(structuredMd), "structured doc emits ### zone headings");
+    const display = formatDestinyMatrixReadingForDisplay(
+      `${structuredMd}\n\nРиск — мечтами, а отношения или дела — неудовлетворёнными.`
+    );
+    assert(
+      !/^###\s*Отношения\s*$/m.test(display),
+      "structured markdown path must not invent bare Отношения heading"
+    );
+  }
   assert(/^1\.\s/m.test(pretty) && /^2\.\s/m.test(pretty) && /^3\.\s/m.test(pretty), "numbered steps on own lines");
   assert(
     breakNumberedSteps("Сделай так. 1) Первый шаг 2) Второй шаг").includes("\n1. "),
     "breakNumberedSteps splits glued 1) 2)"
+  );
+
+  // Regression: mid-sentence «отношения» must not become a gold heading.
+  const midSentence = formatDestinyMatrixReadingForDisplay(
+    [
+      "Матрица судьбы — полный разбор.",
+      "Точка возраста сейчас (6 — Влюблённые, 45 лет)",
+      "Риск — застрять в полумерах, где желания остаются мечтами, а отношения или дела — неудовлетворёнными.",
+      "Практика: сделай один шаг.",
+      "Ближайший возрастной переход (16 — Башня)",
+      "Геннадий, сейчас ты на пороге важного перехода.",
+    ].join("\n\n")
+  );
+  assert(
+    !/^###\s*Отношения\s*$/m.test(midSentence) && !/^##\s*Отношения\s*$/m.test(midSentence),
+    "must not promote mid-sentence «отношения» to a heading"
+  );
+  assert(
+    /мечтами,\s*а отношения или дела/i.test(midSentence),
+    "mid-sentence «а отношения или дела» stays intact"
   );
 
   const tarotWall =

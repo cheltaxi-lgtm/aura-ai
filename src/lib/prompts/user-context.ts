@@ -182,13 +182,26 @@ export function userContextFromProfile(profile: {
 export function enrichCardsForSpreadContext(
   system: DeckSystem,
   cards: { name: string; meaning?: string }[],
-  positions?: readonly string[]
+  positions?: readonly string[],
+  opts?: { omitTextbookMeanings?: boolean }
 ): CardContextInput[] {
   const pos = positions ?? getDeckPositions(system);
   return cards.map((c, i) => {
     const { reversed } = parseCardOrientation(c.name);
     const sym = findSymbolByName(system, c.name);
-    const rawMeaning = c.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? sym?.meaning ?? "";
+    const stripped = c.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? "";
+    // Position-only labels ("Ситуация") are not textbook meanings — don't fall back to deck romance glosses.
+    const looksLikePositionOnly =
+      !stripped ||
+      stripped === (pos[i] ?? "") ||
+      /^(позиция\s*\d+|ситуация|препятствие|корень|совет|итог|прошлое|настоящее|будущее)$/i.test(
+        stripped
+      );
+    const rawMeaning = opts?.omitTextbookMeanings
+      ? ""
+      : looksLikePositionOnly
+        ? ""
+        : stripped || sym?.meaning || "";
     const displayName = sym?.name ?? parseCardOrientation(c.name).name;
     return {
       name: displayName,

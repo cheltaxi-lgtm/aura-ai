@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminAction } from "@/lib/admin";
 import { addAdminSupportMessage, getAdminSupportTicket } from "@/lib/support-service";
 import { emailSupportReplyToUser } from "@/lib/email/support-notify";
+import { getTelegramStatusForAccount } from "@/lib/telegram/accounts";
+import { notifyBotSupportReply } from "@/lib/telegram/notify-bot-support";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -34,6 +36,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
         ticketId: id,
         subject: ticket.subject,
         replyPreview: message.content,
+      });
+    }
+
+    if (ticket?.user_account_id) {
+      void getTelegramStatusForAccount(ticket.user_account_id).then((tg) => {
+        if (!tg.linked || !tg.telegramUserId) return;
+        const telegramUserId = Number(tg.telegramUserId);
+        if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) return;
+        void notifyBotSupportReply({
+          telegramUserId,
+          ticketId: id,
+          subject: ticket.subject,
+          preview: message.content,
+        });
       });
     }
 

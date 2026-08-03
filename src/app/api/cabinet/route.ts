@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
         email: auth.email,
         zodiac: null,
         birthDate: null,
+        birthCity: null,
         runeBalance: 0,
         createdAt: null,
       },
@@ -129,6 +130,7 @@ export async function GET(request: NextRequest) {
         email: auth.email,
         zodiac: null,
         birthDate: null,
+        birthCity: null,
         runeBalance: 0,
         createdAt: null,
       },
@@ -164,7 +166,11 @@ export async function GET(request: NextRequest) {
     safe("dailyReadings", () => getCabinetDailyReadings(profileUserId), [], errors),
   ]);
 
+  const needsOnboarding =
+    !profile.birthDate || !(profile.birthCity || "").trim();
+
   return NextResponse.json({
+    needsOnboarding,
     profile,
     stats,
     achievements,

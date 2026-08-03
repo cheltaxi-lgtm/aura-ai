@@ -24,6 +24,13 @@ jobs:
       - name: Guardrails
         run: npm run verify:guardrails
 
+      - name: Security verifies
+        run: |
+          npm run verify:oauth
+          npm run verify:account-deleted
+          npm run verify:guest-teaser-quality
+          npm run test:recaptcha
+
       - name: Verify GeoNames artifact
         run: test -s data/geonames/cities.min.json
 

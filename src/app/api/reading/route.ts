@@ -9,6 +9,7 @@ import {
   resolveProfileUserContext,
 } from "@/lib/require-auth";
 import {
+  getAsyncJobIdFromRequest,
   getAsyncJobWorkerUserId,
   isAsyncJobWorkerConfigured,
 } from "@/lib/async-job-worker-auth";
@@ -18,6 +19,7 @@ import {
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
+import { mergeAsyncJobPeriodMetadata } from "@/lib/async-jobs";
 import {
   buildAiProvenance,
   fingerprintAiInput,
@@ -42,6 +44,7 @@ import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { resolveIsDailyFreeReading } from "@/lib/daily-spread-billing";
 import { resolveGuestResumeFreeReading } from "@/lib/guest-resume-billing";
 import { setGuestResumeReadingId } from "@/lib/guest-triplet-receipt-db";
+import { buildTeaserContinuityPromptBlock } from "@/lib/guest-triplet-teaser-service";
 import {
   findSpreadReadingEntry,
   withSpreadReadingLock,
@@ -64,6 +67,7 @@ import {
   stripMemoryLeakFromReply,
   sanitizeReadingForClient,
 } from "@/lib/chat-sanitize";
+import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import { INTENTION_OPTIONS, intentionPromptBlock, intentionReadingPromptBlock } from "@/lib/intention";
 import {
@@ -79,7 +83,11 @@ import {
   validateNumerologToolParams,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
-import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
+import {
+  destinyMatrix,
+  MATRIX_CALCULATION_VERSION,
+  matrixToStructuredData,
+} from "@/lib/numerology/destiny-matrix";
 import {
   findOwnedMatrixReport,
   MATRIX_REPORT_TOOL_ID,
@@ -91,7 +99,6 @@ import {
   periodSpreadTaskLabel,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
-import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
 async function persistReadingToSession(input: {
@@ -198,7 +205,8 @@ async function respondWithExistingSpreadReading(input: {
   });
 }
 
-export const maxDuration = 180;
+/** Matrix zone assembly (numerology_reading worker) can run ~7 min. */
+export const maxDuration = 420;
 
 export async function POST(request: NextRequest) {
   let characterId = "ragnar";
@@ -325,9 +333,13 @@ export async function POST(request: NextRequest) {
   }
 
   if (asyncRequested && isAsyncJobWorkerConfigured()) {
+    const longNumerology =
+      isNumerologMaster(characterId) &&
+      (requestNumerologToolId === "destiny_matrix" ||
+        requestNumerologToolId === "matrix_compatibility");
     return enqueuePaidAsyncJob({
       userId: authed.profileUserId,
-      kind: "reading",
+      kind: longNumerology ? "numerology_reading" : "reading",
       payload: { ...rawBody, async: false },
       bypassDeliveryGate: true,
     });
@@ -468,6 +480,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (guestResume?.teaserText) {
+      systemPrompt += buildTeaserContinuityPromptBlock(guestResume.teaserText);
+    }
+
     const cardsKey = guestResume?.fingerprint ??
       (isNumerologMaster(characterId) && requestNumerologToolId
         ? numerologReadingCacheKey({
@@ -606,6 +622,9 @@ export async function POST(request: NextRequest) {
         let numerologyUi:
           | { pythagorasSquare?: import("@/lib/numerology/pythagoras-square").PythagorasSquareResult }
           | undefined;
+        let matrixDocumentForSave:
+          | import("@/lib/numerology/matrix-reading-document").MatrixReadingDocument
+          | undefined;
 
         // Buy-once Full Matrix: reopen saved AI report for THIS birth date only.
         if (isDestinyMatrix && (await ensureDb())) {
@@ -707,6 +726,7 @@ export async function POST(request: NextRequest) {
           const numerologMemoryBlock =
             `${numerologMemoryCtx.clientBlock}${numerologMemoryCtx.pastSessionsBlock}${numerologMemoryCtx.factsBlock}`.trim() ||
             undefined;
+          const workerJobId = getAsyncJobIdFromRequest(request);
           const sessionResult = await generateNumerologSessionReading({
             toolId,
             toolParams: numerologToolParams,
@@ -716,9 +736,28 @@ export async function POST(request: NextRequest) {
             gender,
             spreadNumbers,
             memoryBlock: numerologMemoryBlock,
+            birthTime,
+            birthCity,
+            userId: authed.profileUserId,
+            onMatrixProgress:
+              workerJobId && toolId === "destiny_matrix"
+                ? async (progress) => {
+                    await mergeAsyncJobPeriodMetadata(workerJobId, { progress });
+                  }
+                : undefined,
           });
           reading = sessionResult.reply;
           numerologyUi = sessionResult.numerologyUi;
+          matrixDocumentForSave = sessionResult.matrixDocument;
+          if (isDestinyMatrix && matrixDocumentForSave) {
+            const { MATRIX_AI_ZONES_CANARY_MIN } = await import(
+              "@/lib/numerology/matrix-sectioned-reading"
+            );
+            const aiZones = matrixDocumentForSave.meta?.aiZones;
+            if (typeof aiZones === "number" && aiZones < MATRIX_AI_ZONES_CANARY_MIN) {
+              throw new Error(`matrix_ai_canary: aiZones=${aiZones}`);
+            }
+          }
         } catch (genErr) {
           console.error("Numerolog session reading failed:", genErr);
           if (billingCharge) {
@@ -738,6 +777,34 @@ export async function POST(request: NextRequest) {
         if (isDestinyMatrix && (await ensureDb())) {
           try {
             const matrix = birthDate ? destinyMatrix(birthDate) : null;
+            const {
+              isUsableMatrixReading,
+              sanitizeReadingForClient,
+            } = await import("@/lib/chat-reply-sanitize");
+            const { matrixReadingToStructuredPayload } = await import(
+              "@/lib/numerology/matrix-reading-document"
+            );
+            let matrixContent = sanitizeReadingForClient(reading) || reading;
+            if (matrix && !isUsableMatrixReading(matrixContent)) {
+              const { forceFillMissingSections } = await import(
+                "@/lib/numerology/matrix-sectioned-reading"
+              );
+              const { resolveClientGender } = await import("@/lib/russian-name-gender");
+              matrixContent = forceFillMissingSections(
+                matrixContent,
+                matrix,
+                userName,
+                resolveClientGender(gender, userName)
+              );
+              matrixContent = sanitizeReadingForClient(matrixContent) || matrixContent;
+            }
+            if (!isUsableMatrixReading(matrixContent)) {
+              throw new Error("matrix_incomplete_after_fill");
+            }
+            reading = matrixContent;
+            const structuredBase = matrix
+              ? matrixToStructuredData(matrix)
+              : { version: MATRIX_CALCULATION_VERSION };
             const saved = await saveMatrixReport({
               userId: authed.profileUserId,
               birthDateRaw: birthDate,
@@ -745,12 +812,12 @@ export async function POST(request: NextRequest) {
               runeCost: billingCharge?.spentRunes ?? tool.cost,
               chargeTransactionId: billingCharge?.transactionId,
               sessionId,
-              structuredData: matrix
-                ? {
-                    version: MATRIX_CALCULATION_VERSION,
-                    matrix,
-                  }
-                : { version: MATRIX_CALCULATION_VERSION },
+              structuredData: {
+                ...structuredBase,
+                ...(matrixDocumentForSave
+                  ? { reading: matrixReadingToStructuredPayload(matrixDocumentForSave) }
+                  : {}),
+              },
             });
             if (saved.status === "already_saved") {
               reading = saved.report.content;
@@ -1128,6 +1195,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(successPayload);
   } catch (error) {
     console.error("Reading error:", error);
+    const { reportError } = await import("@/lib/error-report");
+    reportError(error, { route: "reading", spentRunes });
     if (spentRunes > 0) {
       try {
         await BillingService.rollbackCharge({
@@ -1138,6 +1207,7 @@ export async function POST(request: NextRequest) {
         });
       } catch (refundErr) {
         console.error("Reading refund failed:", refundErr);
+        reportError(refundErr, { route: "reading", stage: "refund" });
       }
     }
     await trackWorkerJobFailed(request, "Reading generation failed", {

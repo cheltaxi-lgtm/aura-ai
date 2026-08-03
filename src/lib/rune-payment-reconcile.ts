@@ -33,11 +33,13 @@ export async function reconcileAllRecentRunePurchases(
 
     result.checked += 1;
     const amountRub = payment.amount?.value ? Number(payment.amount.value) : undefined;
+    const expectedPriceRub = metadata.priceRub ? Number(metadata.priceRub) : undefined;
     const credited = await creditRunesFromPayment({
       userId: metadata.userId,
       packageId: metadata.packageId,
       paymentId: payment.id,
       amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
+      expectedPriceRub: Number.isFinite(expectedPriceRub) ? expectedPriceRub : undefined,
     });
 
     if (credited) {

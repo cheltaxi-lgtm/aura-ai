@@ -7,6 +7,9 @@ import AppAwareSiteFooter from "@/components/AppAwareSiteFooter";
 import GlobalAppTopHeader from "@/components/GlobalAppTopHeader";
 import UtmCapture from "@/components/UtmCapture";
 import YandexMetrika from "@/components/YandexMetrika";
+import BotMetrikaSnippet from "@/components/seo/BotMetrikaSnippet";
+import TelegramWebAppProvider from "@/components/telegram/TelegramWebAppProvider";
+import AdsBeaconServer from "@/modules/ads/beacon/AdsBeaconServer";
 import { getRootMetadata } from "@/lib/seo";
 import "../styles/tokens.css";
 import "./globals.css";
@@ -46,6 +49,7 @@ export default function RootLayout({
         </svg>
         <SalonBackground />
         <Providers>
+          <TelegramWebAppProvider />
           <GlobalAppTopHeader />
           {/*
             Do not put min-h-0 on the main column by default: it caps height to the
@@ -56,8 +60,21 @@ export default function RootLayout({
           <AppAwareSiteFooter />
         </Providers>
         <UtmCapture />
+        <AdsBeaconServer />
         <AppAwareCookieBanner />
+        <BotMetrikaSnippet />
         <YandexMetrika />
+        {/* SSR marker for Webmaster (NO_METRIKA_COUNTER): noscript only; JS users unaffected. */}
+        <noscript>
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://mc.yandex.ru/watch/110138367"
+              style={{ position: "absolute", left: "-9999px" }}
+              alt=""
+            />
+          </div>
+        </noscript>
       </body>
     </html>
   );

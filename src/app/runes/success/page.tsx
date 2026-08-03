@@ -7,6 +7,7 @@ import {
   clearPendingRunePurchase,
   hasFiredRunePurchaseGoal,
   markRunePurchaseGoalFired,
+  readPendingRuneOrderId,
   readPendingRunePaymentId,
   RUNE_BALANCE_BEFORE_KEY,
 } from "@/lib/rune-purchase-client";
@@ -46,7 +47,9 @@ async function firePurchaseAnalytics(paymentId: string | null): Promise<void> {
 
 export default function RunePurchaseSuccessPage() {
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
-  const [status, setStatus] = useState<"polling" | "ready" | "timeout" | "cancelled">("polling");
+  const [status, setStatus] = useState<
+    "polling" | "ready" | "timeout" | "cancelled" | "rejected"
+  >("polling");
 
   useEffect(() => {
     let masterId: string | null = null;
@@ -70,7 +73,9 @@ export default function RunePurchaseSuccessPage() {
 
     const expectedRaw = localStorage.getItem(RUNE_BALANCE_BEFORE_KEY);
     const expected = expectedRaw !== null ? Number(expectedRaw) : null;
-    const pendingPaymentId = readPendingRunePaymentId(new URLSearchParams(window.location.search));
+    const search = new URLSearchParams(window.location.search);
+    const pendingPaymentId = readPendingRunePaymentId(search);
+    const pendingOrderId = readPendingRuneOrderId(search);
     let attempts = 0;
     const maxAttempts = 20;
     let cancelledTracked = false;
@@ -99,10 +104,20 @@ export default function RunePurchaseSuccessPage() {
         const confirmRes = await fetch("/api/runes/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(pendingPaymentId ? { paymentId: pendingPaymentId } : {}),
+          body: JSON.stringify(
+            pendingPaymentId
+              ? { paymentId: pendingPaymentId }
+              : pendingOrderId
+                ? { orderId: pendingOrderId }
+                : {}
+          ),
         });
+        const confirmData = await confirmRes.json().catch(() => ({}));
+        if (confirmRes.status === 422 || confirmData.status === "rejected") {
+          setStatus("rejected");
+          return;
+        }
         if (confirmRes.ok) {
-          const confirmData = await confirmRes.json();
           if (confirmData.cancelled || confirmData.status === "cancelled") {
             markCancelled();
             return;
@@ -168,18 +183,24 @@ export default function RunePurchaseSuccessPage() {
   const title =
     status === "cancelled"
       ? "Оплата не завершена"
-      : status === "timeout"
-        ? "Ожидаем подтверждение"
-        : "Руны получены!";
+      : status === "rejected"
+        ? "Нужна проверка платежа"
+        : status === "timeout"
+          ? "Ожидаем подтверждение"
+          : status === "ready"
+            ? "Руны получены!"
+            : "Подтверждаем оплату";
 
   const message =
     status === "polling"
       ? "Подтверждаем оплату и обновляем баланс…"
       : status === "cancelled"
         ? "Платёж отменён или не был завершён. Вы можете вернуться и попробовать снова — баланс не изменился."
-        : status === "timeout"
-          ? "Оплата обрабатывается дольше обычного. Обновите страницу через минуту — руны начислятся автоматически."
-          : "Баланс пополнен. Сейчас вернём вас к мастеру.";
+        : status === "rejected"
+          ? "Оплата прошла, но начисление не подтверждено автоматически. Напишите в поддержку — мы проверим платёж вручную."
+          : status === "timeout"
+            ? "Оплата обрабатывается дольше обычного. Обновите страницу через минуту — руны начислятся автоматически."
+            : "Баланс пополнен. Сейчас вернём вас к мастеру.";
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">

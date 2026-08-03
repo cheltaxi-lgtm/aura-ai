@@ -188,7 +188,7 @@ function buildDailySystem(charKey: CharacterKey, spreadId: SpreadId = DEFAULT_SP
 
 ЗАДАЧА: ${taskHint}
 
-${buildPaidSpreadReadingExtras({ cardCount: n, masterId: charKey })}
+${buildPaidSpreadReadingExtras({ cardCount: n, masterId: charKey, includeDepthBlocks: true })}
 
 СТРОГИЕ ПРАВИЛА ФОРМАТА:
 - Цельный связный текст от первого лица, голосом мастера. Полная глубина по всем символам — не краткий тизер.

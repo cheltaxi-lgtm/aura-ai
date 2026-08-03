@@ -40,6 +40,8 @@ import { canAffordRunes } from "@/lib/rune-afford-client";
 import { compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
+import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
+import { prefetchDeckFaces } from "@/lib/prefetch-deck-faces";
 import PhotoReadingGuide from "@/components/PhotoReadingGuide";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import MasterAvatar from "@/components/MasterAvatar";
@@ -95,6 +97,15 @@ const FLOW_STEPS: { id: FlowStep; label: string }[] = [
   { id: "result", label: "Расшифровка" },
 ];
 
+const CONFIRM_FACE_LOAD_PHRASES = [
+  "Идёт распознавание ваших карт…",
+  "Сверяю символы с колодой…",
+  "Проявляю рисунки расклада…",
+] as const;
+
+/** Safety unlock so Confirm is never stuck if a face never reports ready. */
+const CONFIRM_FACES_READY_TIMEOUT_MS = 12_000;
+
 function PhotoFlowSteps({ step }: { step: FlowStep }) {
   const order: FlowStep[] = ["upload", "confirm", "result"];
   const currentIdx = order.indexOf(step);
@@ -126,6 +137,14 @@ export interface PhotoReadingChatPayload {
   historyId?: string;
 }
 
+/** Fired on Confirm — parent opens chat + timer immediately, then runs interpret. */
+export interface PhotoReadingConfirmPayload {
+  question?: string;
+  detectedCards: string[];
+  redrawSpread: RedrawSpread;
+  idempotencyKey: string;
+}
+
 interface PhotoReadingFlowProps {
   open: boolean;
   onClose: () => void;
@@ -137,6 +156,8 @@ interface PhotoReadingFlowProps {
   onSpreadRitualStart?: (spread: RedrawSpread) => void;
   onSpreadRitualEnd?: () => void;
   onRuneBalanceChange?: (balance: number) => void;
+  /** Immediate handoff: chat with spread + ritual timer; parent runs LLM. */
+  onConfirmSpread?: (masterId: string, payload: PhotoReadingConfirmPayload) => void | Promise<void>;
   onContinueChat?: (masterId: string, payload: PhotoReadingChatPayload) => void | Promise<void>;
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
   onSaved?: () => void;
@@ -288,6 +309,7 @@ export default function PhotoReadingFlow({
   onSpreadRitualStart,
   onSpreadRitualEnd,
   onRuneBalanceChange,
+  onConfirmSpread,
   onContinueChat,
   onInsufficientRunes,
   onSaved,
@@ -323,6 +345,7 @@ export default function PhotoReadingFlow({
     typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
 
   const [step, setStep] = useState<FlowStep>("upload");
+  const [confirmFacesReady, setConfirmFacesReady] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageData, setImageData] = useState<{ base64: string; mimeType: string; blob: Blob } | null>(null);
   const [imageSource, setImageSource] = useState<"camera" | "gallery">("gallery");
@@ -477,8 +500,28 @@ export default function PhotoReadingFlow({
   useEffect(() => {
     if (step !== "confirm") {
       spreadMasterRef.current = null;
+      setConfirmFacesReady(false);
     }
   }, [step]);
+
+  const confirmSpreadKey = useMemo(() => {
+    if (!redrawSpread?.cards.length) return "";
+    return redrawSpread.cards
+      .map((c) => `${c.name}:${c.imagePath ?? ""}:${c.reversed ? "r" : "u"}`)
+      .join("|");
+  }, [redrawSpread]);
+
+  useEffect(() => {
+    if (step !== "confirm" || !confirmSpreadKey) {
+      setConfirmFacesReady(false);
+      return;
+    }
+    setConfirmFacesReady(false);
+    const unlock = window.setTimeout(() => {
+      setConfirmFacesReady(true);
+    }, CONFIRM_FACES_READY_TIMEOUT_MS);
+    return () => window.clearTimeout(unlock);
+  }, [step, confirmSpreadKey]);
 
   useEffect(() => {
     if (!redrawSpread || step !== "confirm") return;
@@ -576,6 +619,8 @@ export default function PhotoReadingFlow({
       recognizeCacheKey?: string;
     }
   ) => {
+    // Warm faces before React commits confirm UI.
+    prefetchDeckFaces(spread.cards.map((c) => c.imagePath));
     setRedrawSpread(spread);
     setRecognitionConfidence(opts?.confidence ?? "unknown");
     setManualMode(Boolean(opts?.manual));
@@ -1040,21 +1085,50 @@ export default function PhotoReadingFlow({
       return;
     }
 
-    setLoading(true);
-    setError("");
-    setStreamingAnalysis("");
-    setStep("result");
-    trackPhotoReadingPhase("interpret_start");
-    let ritualActive = false;
-    const interpretAbort = new AbortController();
-    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
-
     const idempotencyKey =
       interpretIdempotencyKeyRef.current ??
       (typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     interpretIdempotencyKeyRef.current = idempotencyKey;
+
+    const detectedCards = redrawSpread.cards.map((c) =>
+      c.reversed ? `${c.name} (перев.)` : c.name
+    );
+    const questionText = question.trim() || undefined;
+
+    setError("");
+    trackPhotoReadingPhase("interpret_start");
+
+    // Prefer immediate chat handoff (spread + timer). Fall back to legacy in-modal wait.
+    if (onConfirmSpread) {
+      setLoading(true);
+      try {
+        await onConfirmSpread(masterId, {
+          question: questionText,
+          detectedCards,
+          redrawSpread,
+          idempotencyKey,
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Не удалось открыть чат. Попробуйте ещё раз."
+        );
+        trackPhotoReadingPhase("interpret_fail");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    setLoading(true);
+    setStreamingAnalysis("");
+    setStep("result");
+    let ritualActive = false;
+    const interpretAbort = new AbortController();
+    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
 
     try {
       onSpreadRitualStart?.(redrawSpread);
@@ -1068,7 +1142,7 @@ export default function PhotoReadingFlow({
         headers: { "Idempotency-Key": idempotencyKey },
         body: {
           characterId: masterId,
-          question: question.trim() || undefined,
+          question: questionText,
           sessionId,
           confirmedSpread: redrawSpread,
           idempotencyKey,
@@ -1131,7 +1205,7 @@ export default function PhotoReadingFlow({
 
       const nextResult = {
         analysis,
-        detectedCards: (data.detectedCards as string[]) ?? [],
+        detectedCards: (data.detectedCards as string[]) ?? detectedCards,
         deckType: data.deckType as string | undefined,
         spreadType: data.spreadType as string | undefined,
         saved: Boolean(data.saved),
@@ -1139,7 +1213,6 @@ export default function PhotoReadingFlow({
       };
       setResult(nextResult);
       setStreamingAnalysis(analysis);
-      // Unlock UI as soon as text is ready — chat handoff must not keep the spinner forever.
       setLoading(false);
 
       if (typeof data.runeBalance === "number") {
@@ -1162,7 +1235,7 @@ export default function PhotoReadingFlow({
           await Promise.race([
             onContinueChat(masterId, {
               analysis,
-              question: question.trim() || undefined,
+              question: questionText,
               detectedCards: nextResult.detectedCards,
               redrawSpread: redrawSpread ?? undefined,
               sessionId: data.sessionId as string | undefined,
@@ -1543,17 +1616,37 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
-                  <PhotoSpreadPreview
-                    spread={redrawSpread}
-                    masterId={masterId}
-                    onChange={setRedrawSpread}
-                    confidence={recognitionConfidence}
-                    manualMode={manualMode}
-                    recognitionFailed={recognitionFailed}
-                    hideStatusLine
-                  />
+                  <div className="photo-flow-confirm-faces">
+                    {!confirmFacesReady ? (
+                      <div className="photo-flow-confirm-faces__ritual">
+                        <SpreadReadingRitualPanel
+                          active
+                          phrases={CONFIRM_FACE_LOAD_PHRASES}
+                        />
+                      </div>
+                    ) : null}
+                    <div
+                      className={
+                        confirmFacesReady
+                          ? "photo-flow-confirm-faces__preview"
+                          : "photo-flow-confirm-faces__preview photo-flow-confirm-faces__preview--loading"
+                      }
+                      aria-hidden={!confirmFacesReady}
+                    >
+                      <PhotoSpreadPreview
+                        spread={redrawSpread}
+                        masterId={masterId}
+                        onChange={setRedrawSpread}
+                        confidence={recognitionConfidence}
+                        manualMode={manualMode}
+                        recognitionFailed={recognitionFailed}
+                        hideStatusLine
+                        onFacesReadyChange={setConfirmFacesReady}
+                      />
+                    </div>
+                  </div>
 
-                  {redrawSpread.cards.length < MAX_PHOTO_CARDS_LIMIT && (
+                  {confirmFacesReady && redrawSpread.cards.length < MAX_PHOTO_CARDS_LIMIT && (
                     <div className="mt-3 text-center">
                       <button
                         type="button"
@@ -1761,12 +1854,19 @@ export default function PhotoReadingFlow({
                   <button
                     type="button"
                     onClick={() => void interpret()}
-                    disabled={!isPhotoSpreadComplete(redrawSpread) || loading || runesBlocked}
+                    disabled={
+                      !isPhotoSpreadComplete(redrawSpread) ||
+                      loading ||
+                      runesBlocked ||
+                      !confirmFacesReady
+                    }
                     className="btn-luxe btn-luxe--md btn-luxe--gold flex-1 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <span className="flex items-center justify-center gap-2">
                       {loading ? (
                         <><Loader2 className="h-4 w-4 animate-spin" />Расшифровывает… {loadingElapsedLabel}</>
+                      ) : !confirmFacesReady ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" />Проявляем карты…</>
                       ) : (
                         <>Подтвердить<ArrowRight className="h-4 w-4" /></>
                       )}

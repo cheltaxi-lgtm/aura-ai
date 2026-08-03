@@ -139,6 +139,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(payload);
   } catch (err) {
     console.error("Joint combined failed:", err);
+    const { reportError } = await import("@/lib/error-report");
+    reportError(err, { route: "joint-reading/combine" });
     await trackWorkerJobFailed(request, "Joint combined generation failed", {
       errorCode: "generation_failed",
     });

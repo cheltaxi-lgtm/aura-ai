@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { query } from "@/lib/db";
 import { ensureDb } from "@/lib/db";
 import { logAdminAction } from "@/lib/admin";
@@ -23,8 +24,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const stepped = await requireAdminStepUp(request);
+  if (!stepped.ok) return stepped.response;
+  const auth = stepped.auth;
 
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });

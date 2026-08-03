@@ -11,7 +11,9 @@ import {
 } from "./calculator";
 import { compatibility } from "./compatibility";
 import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
+import { buildMatrixCompatibilityPromptBlock } from "./matrix-compatibility";
 import { getArcanaEntry } from "./arcana-dictionary";
+import { periodFromMatrix } from "./matrix-period";
 import {
   formatMatrixFinaleKeys,
   formatMatrixPointDictLine,
@@ -48,6 +50,7 @@ export type NumerologyTopic =
   | "karma"
   | "pythagoras_square"
   | "destiny_matrix"
+  | "matrix_compatibility"
   | "sphere_health"
   | "sphere_finance"
   | "sphere_relations"
@@ -121,7 +124,9 @@ const TOPIC_PATTERNS: Record<NumerologyTopic, RegExp> = {
   pythagoras_square:
     /квадрат\s+пифагора|психоматриц|\bматриц(а|у|ы)\b(?!\s*судьб)|матриц(а|у|ы)\s*(личност|рожден)|сильн(ые|ых)\s+сторон|слаб(ые|ых)\s+сторон|мои\s+цифр|(?:ещё|еще)\s+раз\s+вывед|попробуй.*вывед/i,
   destiny_matrix:
-    /матриц(а|у|ы)\s*судьб|матрица\s+предназначен|22\s*аркан|таро.?нумеролог/i,
+    /матриц(а|у|ы)\s*судьб(?!\s*с)|матрица\s+предназначен|22\s*аркан|таро.?нумеролог/i,
+  matrix_compatibility:
+    /совместимост\w*\s+матриц|матриц\w*\s+судьб\w*\s+с|две\s+матриц|парн\w*\s+матриц/i,
   sphere_health:
     /(?:^|[\s,.!?])(?:давай|разбер[её]м|про|по|моё|моё\s+)?(?:с\s+)?здоров(?:ье|ья|ью|и|ьем|ьём)(?:[\s,.!?]|$)|самочувств|иммунитет|болезн|тахикард|аритми|сердц|давлен|гипертон|беспокоит/i,
   sphere_finance:
@@ -447,35 +452,60 @@ function buildTopicBlock(
       }
       const matrix = destinyMatrix(birthDate);
       if (!matrix) return { text: "МАТРИЦА СУДЬБЫ: не удалось построить по дате." };
+      const period = periodFromMatrix(matrix);
       const points: MatrixPointPromptLine[] = [
-        { role: "body", label: "1. Точка тела и характера", number: matrix.body.number },
-        { role: "energy", label: "2. Точка энергии", number: matrix.energy.number },
-        { role: "roots", label: "3. Точка рода и корней", number: matrix.roots.number },
-        { role: "purpose", label: "4. Ось предназначения (центр)", number: matrix.purpose.number },
-        { role: "talents", label: "5. Точка талантов", number: matrix.talents.number },
-        { role: "money", label: "6. Точка денег и ресурса", number: matrix.money.number },
-        { role: "love", label: "7. Точка отношений", number: matrix.relationships.number },
-        { role: "paternal", label: "8. Род по отцу", number: matrix.paternal.number },
-        { role: "maternal", label: "9. Род по матери", number: matrix.maternal.number },
-        { role: "karma", label: "10. Точка кармы и задачи", number: matrix.karma.number },
+        { role: "body", label: "1. Характер (визитка)", number: matrix.body.number },
+        { role: "energy", label: "2. Небо / энергия", number: matrix.energy.number },
+        { role: "roots", label: "3. Материя / год рождения", number: matrix.roots.number },
+        { role: "purpose", label: "4. Зона комфорта (центр)", number: matrix.comfort.number },
+        { role: "sky", label: "5. Духовный полюс", number: matrix.skySpirit.number },
+        { role: "talents", label: "6. Таланты", number: matrix.talents.number },
+        { role: "money", label: "7. Денежный канал", number: matrix.money.number },
+        { role: "love", label: "8. Канал отношений", number: matrix.relationships.number },
+        { role: "paternal", label: "9. Род по отцу", number: matrix.paternal.number },
+        { role: "maternal", label: "10. Род по матери", number: matrix.maternal.number },
+        { role: "karma", label: "11. Кармический хвост · корень", number: matrix.karmicTail[0].number },
+        { role: "karmicMid", label: "12. Кармический хвост · середина", number: matrix.karmicTail[1].number },
+        { role: "karmicTip", label: "13. Кармический хвост · остриё", number: matrix.karmicTail[2].number },
+        {
+          role: "age",
+          label: `14. Точка возраста сейчас (${matrix.ageCurrent.age})`,
+          number: matrix.ageCurrent.number,
+        },
+        ...(matrix.ageNext
+          ? [
+              {
+                role: "age" as const,
+                label: `15. Ближайший возрастной переход (${matrix.ageNext.age})`,
+                number: matrix.ageNext.number,
+              },
+            ]
+          : []),
         {
           role: "year",
-          label: "11. Аркан текущего года (1–22, не путать с личным годом 1–9)",
+          label: "16. Аркан текущего года (1–22, не путать с личным годом 1–9)",
           number: matrix.yearArcana.number,
+        },
+        { role: "month", label: "17. Аркан месяца", number: matrix.monthArcana.number },
+        {
+          role: "period",
+          label: `18. Узел периода — ${matrix.focusLabel}`,
+          number: period.focusNumber,
         },
       ];
       const repeatNote = formatMatrixRepeatArcanaNote(points);
       return {
         text: [
-          `МАТРИЦА СУДЬБЫ / 22 АРКАНА (${MATRIX_CALCULATION_VERSION}, реальный расчёт, авторская адаптация Zovus):`,
+          `МАТРИЦА СУДЬБЫ / ПОЛНАЯ (${MATRIX_CALCULATION_VERSION}, 22 аркана, авторский расчёт Zovus):`,
           formatMatrixFinaleKeys(matrix),
-          "Структура ответа (по абзацу на пункт, без схлопывания точек): тело → энергия → род/корни → предназначение → таланты → деньги → отношения → род отца → род матери → карма → аркан года → 3–5 шагов на 30 дней.",
-          "КРИТИЧНО: даже при одинаковом аркане у разных точек пиши РАЗНЫЕ смыслы по роли точки. Нельзя объединять «энергия и таланты» или «род + отношения + предназначение».",
-          "КРИТИЧНО: не копируй одну практику/фразу на несколько точек. У каждой точки свой угол из поля «Угол …» ниже.",
-          "ЗАПРЕЩЕНО в этом разборе: пифагорейский портрет (путь/душа/личность/зрелость), психоматрица, личный цикл 1–9.",
-          "Запрещено: обещать результат, ставить диагнозы, говорить о смерти/болезнях, формулировки «вам суждено», манипулятивный тон, пустые метафоры без действия, markdown-маркеры вроде ✦.",
+          `Каналы: деньги [${matrix.channels.find((c) => c.id === "money")?.points.map((p) => p.number).join(", ")}]; отношения [${matrix.channels.find((c) => c.id === "love")?.points.map((p) => p.number).join(", ")}].`,
+          "Структура: характер → небо → материя → комфорт → таланты → деньги → отношения → род отца → род матери → хвост (3) → возраст сейчас → ближайший переход возраста → год → месяц → узел периода → (небо-натал если есть) → шаги на 30 дней.",
+          "КРИТИЧНО: даже при одинаковом аркане у разных точек пиши РАЗНЫЕ смыслы по роли. Нельзя объединять «энергия и таланты» или «хвост + комфорт» в одну тему.",
+          "КРИТИЧНО: не копируй одну практику/фразу на несколько точек.",
+          "ЗАПРЕЩЕНО: пифагорейский портрет, психоматрица, личный цикл 1–9.",
+          "Запрещено: обещать результат, диагнозы, «вам суждено», markdown ✦.",
           "Числа и названия арканов бери ТОЛЬКО из этого блока. Не пересчитывай матрицу.",
-          "Это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы» — инструмент рефлексии, не научный факт.",
+          "Это полная матрица Zovus по мотивам популярного 22-арканного метода — инструмент рефлексии, не научный факт и не «официальная Ладини».",
           ...(repeatNote ? [repeatNote] : []),
           ...points.map((p) => formatMatrixPointDictLine(p, getArcanaEntry(p.number))),
         ].join("\n"),
@@ -582,6 +612,32 @@ function buildTopicBlock(
           partner.dateB,
           partner.nameB
         ),
+      };
+    }
+
+    case "matrix_compatibility": {
+      if (!parseBirthDate(birthDate)) {
+        return {
+          text: "СОВМЕСТИМОСТЬ МАТРИЦ: нужна твоя дата рождения и дата партнёра.",
+        };
+      }
+      const partner = extractPartnerFromMessage(message, birthDate);
+      if (!partner) {
+        return {
+          text: "СОВМЕСТИМОСТЬ МАТРИЦ: попроси дату рождения партнёра (и имя) — сравним комфорт, любовь, деньги, хвост и год.",
+        };
+      }
+      const nameA = fullName.split(/\s+/)[0] || fullName || "клиент";
+      const block = buildMatrixCompatibilityPromptBlock(
+        birthDate,
+        partner.dateB,
+        nameA,
+        partner.nameB
+      );
+      return {
+        text:
+          block ??
+          "СОВМЕСТИМОСТЬ МАТРИЦ: не удалось построить по датам — проверь формат ДД.ММ.ГГГГ.",
       };
     }
 

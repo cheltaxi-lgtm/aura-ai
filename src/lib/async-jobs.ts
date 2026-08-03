@@ -147,6 +147,21 @@ export async function claimAsyncJobForSave(jobId: string): Promise<boolean> {
   return rowCount === 1;
 }
 
+/** Merge progress / UI hints into period_metadata while job is running. */
+export async function mergeAsyncJobPeriodMetadata(
+  jobId: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  if (!jobId.trim() || !Object.keys(patch).length) return;
+  await query(
+    `UPDATE async_jobs
+     SET period_metadata = COALESCE(period_metadata, '{}'::jsonb) || $2::jsonb,
+         updated_at = NOW()
+     WHERE id = $1 AND status IN ('pending', 'running')`,
+    [jobId, JSON.stringify(patch)]
+  );
+}
+
 export async function getAsyncJobForUser(
   jobId: string,
   userId: string
@@ -213,6 +228,37 @@ export async function claimAsyncJobs(input: {
 }
 
 /**
+ * Requeue jobs left `running` by a dead worker (SIGKILL / deploy restart).
+ * Single-host worker: any other worker_id is orphaned after restart.
+ */
+export async function reapOrphanedRunningAsyncJobs(input: {
+  currentWorkerId: string;
+  /** Ignore brand-new claims (another worker may still be alive). */
+  minAgeMs?: number;
+  kinds?: AsyncJobKind[];
+}): Promise<number> {
+  const minAgeMs = Math.max(30_000, input.minAgeMs ?? 90_000);
+  const kinds = input.kinds ?? [];
+  const ageSeconds = Math.floor(minAgeMs / 1000);
+  const { rows } = await query<{ id: string }>(
+    `UPDATE async_jobs
+     SET status = 'pending',
+         worker_id = NULL,
+         locked_at = NULL,
+         updated_at = NOW()
+     WHERE status = 'running'
+       AND locked_at IS NOT NULL
+       AND locked_at < NOW() - make_interval(secs => $1)
+       AND worker_id IS DISTINCT FROM $2
+       AND expires_at > NOW()
+       AND (cardinality($3::text[]) = 0 OR kind = ANY($3::text[]))
+     RETURNING id`,
+    [ageSeconds, input.currentWorkerId, kinds]
+  );
+  return rows.length;
+}
+
+/**
  * Reset or fail jobs stuck in `running` after a worker crash / hard kill.
  * Fresh stale jobs return to `pending` (up to maxAttempts); older ones fail.
  * Requeue preserves billing_state=charged — natal routes must reuse the ledger
@@ -223,7 +269,8 @@ export async function reapStaleRunningAsyncJobs(input?: {
   maxAttempts?: number;
   kinds?: AsyncJobKind[];
 }): Promise<{ requeued: number; failed: number }> {
-  const staleAfterMs = Math.max(60_000, input?.staleAfterMs ?? 12 * 60_000);
+  // Default 4 min — must beat SIGKILL zombies sooner than the old 12 min spinner.
+  const staleAfterMs = Math.max(60_000, input?.staleAfterMs ?? 4 * 60_000);
   const maxAttempts = Math.max(1, input?.maxAttempts ?? 3);
   const kinds = input?.kinds ?? [];
   const staleSeconds = Math.floor(staleAfterMs / 1000);
@@ -494,6 +541,12 @@ export async function listActiveAsyncJobsForUser(
 
 export function asyncJobPollPayload(job: AsyncJobRow) {
   const refunded = job.billing_state === "refunded";
+  const meta = job.period_metadata ?? {};
+  const progressRaw = meta.progress;
+  const progress =
+    progressRaw && typeof progressRaw === "object" && !Array.isArray(progressRaw)
+      ? (progressRaw as Record<string, unknown>)
+      : undefined;
   return {
     jobId: job.id,
     kind: job.kind,
@@ -509,5 +562,14 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
     outputEntityTable: job.output_entity_table,
     provenance: job.provenance,
     dedupeKey: job.dedupe_key || undefined,
+    progress: progress
+      ? {
+          done: typeof progress.done === "number" ? progress.done : undefined,
+          total: typeof progress.total === "number" ? progress.total : undefined,
+          label: typeof progress.label === "string" ? progress.label : undefined,
+          message:
+            typeof progress.message === "string" ? progress.message : undefined,
+        }
+      : undefined,
   };
 }

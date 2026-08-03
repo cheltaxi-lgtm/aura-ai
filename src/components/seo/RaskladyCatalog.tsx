@@ -18,7 +18,7 @@ import {
 import { resolveIntentCopy, type UserGender } from "@/lib/spread-intents/gender-copy";
 
 import { estimateIntentRuneCost } from "@/lib/spread-intents/router";
-import { buildPhotoMarkUrl, buildPhotoReadingUrl, buildSpreadStartUrl, navigateToUrl } from "@/lib/spread-intents/router";
+import { buildIntentSeoUrl, navigateToUrl } from "@/lib/spread-intents/router";
 
 import { getSpread } from "@/lib/spreads";
 
@@ -80,7 +80,7 @@ function IntentCard({
   const master = getCharacterById(intent.recommendedMasterId);
 
   const spread = getSpread(intent.spreadId);
-  const href = buildSpreadStartUrl(intent);
+  const href = buildIntentSeoUrl(intent);
 
   return (
     <a
@@ -196,7 +196,7 @@ export default function RaskladyCatalog() {
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {heroIntents.map((intent) => {
-              const href = buildSpreadStartUrl(intent);
+              const href = buildIntentSeoUrl(intent);
               return (
               <a
                 key={intent.slug}
@@ -300,17 +300,9 @@ export default function RaskladyCatalog() {
 
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
 
-          <Link href={buildPhotoReadingUrl()} className="text-aura-gold hover:underline">
+          <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
 
-            Фото-расклад
-
-          </Link>
-
-          <span className="text-white/20">·</span>
-
-          <Link href={buildPhotoMarkUrl()} className="text-aura-gold hover:underline">
-
-            Отметить карты
+            Фото-расклад / расшифровка по фото
 
           </Link>
 

@@ -1,6 +1,8 @@
 import type { PythagorasSquareResult } from "./pythagoras-square";
 import { pythagorasSquare } from "./pythagoras-square";
 import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
+import { matrixCompatibility } from "./matrix-compatibility";
+import { listMatrixZones } from "./matrix-zones";
 import { drawNumerologSessionSpread } from "./session-draw";
 import {
   getNumerologTool,
@@ -109,74 +111,17 @@ export function buildNumerologSessionResult(input: {
       if (!parsed) return null;
       const matrix = destinyMatrix(input.birthDate!);
       if (!matrix) return null;
-      const points: { label: string; value: string; detail: string; number: number }[] = [
-        {
-          label: "Тело и характер",
-          value: matrix.body.arcanaName,
-          detail: matrix.body.arcanaMeaning,
-          number: matrix.body.number,
-        },
-        {
-          label: "Энергия",
-          value: matrix.energy.arcanaName,
-          detail: matrix.energy.arcanaMeaning,
-          number: matrix.energy.number,
-        },
-        {
-          label: "Род и корни",
-          value: matrix.roots.arcanaName,
-          detail: matrix.roots.arcanaMeaning,
-          number: matrix.roots.number,
-        },
-        {
-          label: "Предназначение",
-          value: matrix.purpose.arcanaName,
-          detail: matrix.purpose.arcanaMeaning,
-          number: matrix.purpose.number,
-        },
-        {
-          label: "Таланты",
-          value: matrix.talents.arcanaName,
-          detail: matrix.talents.arcanaMeaning,
-          number: matrix.talents.number,
-        },
-        {
-          label: "Отношения",
-          value: matrix.relationships.arcanaName,
-          detail: matrix.relationships.arcanaMeaning,
-          number: matrix.relationships.number,
-        },
-        {
-          label: "Деньги",
-          value: matrix.money.arcanaName,
-          detail: matrix.money.arcanaMeaning,
-          number: matrix.money.number,
-        },
-        {
-          label: "Род отца",
-          value: matrix.paternal.arcanaName,
-          detail: matrix.paternal.arcanaMeaning,
-          number: matrix.paternal.number,
-        },
-        {
-          label: "Род матери",
-          value: matrix.maternal.arcanaName,
-          detail: matrix.maternal.arcanaMeaning,
-          number: matrix.maternal.number,
-        },
-        {
-          label: "Карма",
-          value: matrix.karma.arcanaName,
-          detail: matrix.karma.arcanaMeaning,
-          number: matrix.karma.number,
-        },
-        {
-          label: "Аркан года",
-          value: matrix.yearArcana.arcanaName,
-          detail: matrix.yearArcana.arcanaMeaning,
-          number: matrix.yearArcana.number,
-        },
-      ];
+      const points = listMatrixZones(matrix)
+        .filter((z) => z.number != null && z.arcanaName)
+        .map((z) => ({
+          label: z.label,
+          value: z.arcanaName!,
+          detail:
+            z.id === "age" && z.age != null
+              ? `${z.age} лет`
+              : z.focusLabel ?? undefined,
+          number: z.number!,
+        }));
       return {
         toolId: input.toolId,
         title: tool.label,
@@ -184,6 +129,35 @@ export function buildNumerologSessionResult(input: {
         positions: points,
         cardNames: points.map((p) => `${p.number} — ${p.value}`),
         destinyMatrix: matrix,
+      };
+    }
+    if (input.toolId === "matrix_compatibility") {
+      const partnerDate = input.params?.partnerDate?.trim() ?? "";
+      if (!parseBirthDate(input.birthDate ?? "") || !parseBirthDate(partnerDate)) {
+        return null;
+      }
+      const compat = matrixCompatibility(input.birthDate!, partnerDate);
+      if (!compat) return null;
+      const partnerName = input.params?.partnerName?.trim() || "Партнёр";
+      const points = [
+        {
+          label: "Общий score",
+          value: `${compat.score}/100`,
+          detail: compat.summary,
+        },
+        ...compat.keys.map((k) => ({
+          label: k.label,
+          value: `${k.numberA} × ${k.numberB}`,
+          detail: `${k.titleA} / ${k.titleB} · ${k.score}/100`,
+        })),
+      ];
+      return {
+        toolId: input.toolId,
+        title: tool.label,
+        subtitle: `Вы × ${partnerName}`,
+        positions: points,
+        cardNames: points.map((p) => `${p.label}: ${p.value}`),
+        destinyMatrix: compat.matrixA,
       };
     }
     return null;

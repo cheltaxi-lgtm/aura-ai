@@ -38,6 +38,8 @@ import CabinetDailySpreads from "@/components/cabinet/CabinetDailySpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
+import CabinetTelegramLink from "@/components/cabinet/CabinetTelegramLink";
+import CabinetLoginMethods from "@/components/cabinet/CabinetLoginMethods";
 import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
 import { redirectHomeAfterAccountDeletion } from "@/lib/account-deleted";
 import CabinetDailyNotifications from "@/components/cabinet/CabinetDailyNotifications";
@@ -138,9 +140,14 @@ export default function CabinetPage() {
   const [natalChartEnabled, setNatalChartEnabled] = useState(false);
   const [natalChartRefreshKey, setNatalChartRefreshKey] = useState(0);
   const sessionsOffset = useRef(0);
+  const shopDeepLinkOpened = useRef(false);
 
-  const needsOnboarding =
-    Boolean(data?.needsOnboarding) && !authUser?.profileUserId && !data?.profile?.birthDate;
+  const needsOnboarding = Boolean(
+    data &&
+      (data.needsOnboarding ||
+        !data.profile?.birthDate ||
+        !(data.profile.birthCity || "").trim())
+  );
 
   const fetchCabinet = useCallback(async (offset = 0, append = false) => {
     const res = await fetchWithRetry(
@@ -229,6 +236,30 @@ export default function CabinetPage() {
     void fetchCabinet(0, false);
   }, [authLoading, authUser?.profileUserId, data?.needsOnboarding, fetchCabinet]);
 
+  /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
+  useEffect(() => {
+    if (loading || authLoading || !authUser || !data) return;
+    if (typeof window === "undefined" || shopDeepLinkOpened.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("shop") !== "1" && params.get("topup") !== "1") return;
+
+    shopDeepLinkOpened.current = true;
+    setActiveTab("runes");
+    openPaywall({
+      currentBalance: data.profile?.runeBalance ?? data.runes?.balance ?? 0,
+      onClose: async () => {
+        await fetchCabinet(0, false);
+        setBalancePulse(true);
+        setTimeout(() => setBalancePulse(false), 600);
+      },
+    });
+
+    params.delete("shop");
+    params.delete("topup");
+    const qs = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+  }, [loading, authLoading, authUser, data, openPaywall, fetchCabinet]);
+
   useEffect(() => {
     if (authLoading || !authUser) {
       setProfileLoading(authLoading);
@@ -296,8 +327,17 @@ export default function CabinetPage() {
   };
 
   const handleDeleteSession = async (memoryId: string) => {
+    const target = sessions.find((s) => s.id === memoryId);
+    const isMatrix =
+      target?.intention === "destiny_matrix" ||
+      target?.spreadId === "destiny_matrix" ||
+      target?.spreadId === "numerolog:destiny_matrix" ||
+      (typeof target?.spreadId === "string" &&
+        target.spreadId.startsWith("numerolog:destiny_matrix"));
     const confirmed = window.confirm(
-      "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
+      isMatrix
+        ? "Удалить матрицу судьбы безвозвратно? Пропадёт из кабинета и чата, покупка сбросится — разбор можно будет купить заново."
+        : "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
     );
     if (!confirmed) return;
 
@@ -537,6 +577,8 @@ export default function CabinetPage() {
             ) : authUser?.email && profileLoading ? (
               <CabinetProfileHeaderSkeleton />
             ) : null}
+            <CabinetLoginMethods />
+            <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}
             {achievements ? (

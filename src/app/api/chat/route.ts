@@ -54,6 +54,8 @@ export async function POST(request: NextRequest) {
     return await prep.orchestrator.run();
   } catch (error) {
     console.error("Chat API error:", error);
+    const { reportError } = await import("@/lib/error-report");
+    reportError(error, { route: "chat" });
 
     if (billingHandle) {
       await billingHandle.rollbackOnError();

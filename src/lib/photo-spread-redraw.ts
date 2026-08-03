@@ -238,10 +238,16 @@ export function mapDetectedToRedrawSpread(params: {
     });
     const symbol = findSymbolByName(art.artSystem, art.displayName);
     const desc = getSymbolDescription(art.artSystem, symbol?.name ?? art.displayName);
-    const imagePath = getDeckImagePath(system, art.displayName);
+    // Prefer art from the system that actually matched — not always primary.
+    const imagePath =
+      art.imagePath ||
+      getDeckImagePath(art.artSystem, art.displayName) ||
+      getDeckImagePath(system, art.displayName);
     const placeholder =
-      imagePath === DECK_BACK_PATHS[system] &&
-      !findSymbolByName(system, art.displayName);
+      art.placeholder ||
+      !imagePath ||
+      imagePath === DECK_BACK_PATHS[art.artSystem] ||
+      imagePath === DECK_BACK_PATHS[system];
 
     return {
       name: art.displayName,

@@ -1,0 +1,80 @@
+import { findUserById, getProfileUserIdForAccount } from "@/lib/accounts";
+import { resolveClientGender, type BinaryGender } from "@/lib/russian-name-gender";
+import { getRuneBalance } from "@/lib/rune-service";
+import { getUserById } from "@/lib/users";
+import { findTelegramIdentity } from "@/lib/telegram/accounts";
+
+export type BotResolveResult = {
+  linked: boolean;
+  telegramUserId: number;
+  accountId: string | null;
+  profileUserId: string | null;
+  needsOnboarding: boolean;
+  name: string | null;
+  email: string | null;
+  /** Profile gender (or inferred from name) — same source as /rasklady copy. */
+  gender: BinaryGender | null;
+  runeBalance: number | null;
+  linkUrl: string;
+};
+
+function siteBase(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "https://zovus.ru").replace(
+    /\/$/,
+    ""
+  );
+}
+
+/** YooKassa top-up opens cabinet paywall (not SEO /runy). */
+export function botRunesShopUrl(campaign = "runes"): string {
+  const utm = new URLSearchParams({
+    shop: "1",
+    utm_source: "telegram",
+    utm_medium: "bot",
+    utm_campaign: campaign,
+  });
+  return `${siteBase()}/cabinet?${utm.toString()}`;
+}
+
+export async function resolveBotUser(telegramUserId: number): Promise<BotResolveResult> {
+  // Fallback only: real bind URL is bot-minted `/auth/telegram-link?code=…` after site auth.
+  const linkUrl = `${siteBase()}/auth/user/login?returnTo=${encodeURIComponent("/cabinet")}&utm_source=telegram&utm_medium=bot&utm_campaign=account_link`;
+  const identity = await findTelegramIdentity(telegramUserId);
+  if (!identity) {
+    return {
+      linked: false,
+      telegramUserId,
+      accountId: null,
+      profileUserId: null,
+      needsOnboarding: true,
+      name: null,
+      email: null,
+      gender: null,
+      runeBalance: null,
+      linkUrl,
+    };
+  }
+
+  const account = await findUserById(identity.user_account_id);
+  const profileUserId = await getProfileUserIdForAccount(identity.user_account_id);
+  const profile = profileUserId ? await getUserById(profileUserId) : null;
+  const runeBalance = profileUserId ? await getRuneBalance(profileUserId) : null;
+  const name = profile?.name ?? account?.name ?? null;
+
+  const birthCity = (profile?.birth_city || "").trim();
+  const needsOnboarding =
+    !profileUserId || !profile?.birth_date || !birthCity;
+
+  return {
+    linked: true,
+    telegramUserId,
+    accountId: identity.user_account_id,
+    profileUserId,
+    needsOnboarding,
+    name,
+    email: account?.email ?? null,
+    gender: resolveClientGender(profile?.gender, name),
+    runeBalance,
+    linkUrl: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=cabinet`,
+  };
+}

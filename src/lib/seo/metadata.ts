@@ -9,18 +9,25 @@ import { BRAND_NAME, getAppUrl } from "@/lib/brand";
  * producing duplicated branding in the actual <title> tag.
  */
 function stripBrandSuffix(title: string): string {
-  const suffix = new RegExp(`\\s*[|·-]\\s*${BRAND_NAME}\\s*$`, "i");
-  return title.replace(suffix, "").trim();
+  // Match "| Zovus", "— Zovus", "– Zovus", "- Zovus" (ASCII / en / em dash).
+  const suffix = new RegExp(`\\s*[|·\\-–—]\\s*${BRAND_NAME}\\s*$`, "i");
+  let clean = title.replace(suffix, "").trim();
+  // Collapse accidental double brand left by older absolute titles.
+  clean = clean.replace(suffix, "").trim();
+  return clean;
 }
 
 export function buildSeoMetadata({
   title,
   description,
   path,
+  noIndex = false,
 }: {
   title: string;
   description: string;
   path?: string;
+  /** Keep page usable, but out of search (thin / duplicate templates). */
+  noIndex?: boolean;
 }): Metadata {
   const url = path ? `${getAppUrl()}${path}` : getAppUrl();
   const cleanTitle = stripBrandSuffix(title);
@@ -28,11 +35,14 @@ export function buildSeoMetadata({
   return {
     title: cleanTitle,
     description,
+    ...(noIndex
+      ? { robots: { index: false, follow: true, googleBot: { index: false, follow: true } } }
+      : {}),
     alternates: {
       canonical: url,
     },
     openGraph: {
-      title,
+      title: cleanTitle,
       description,
       url,
       type: "website",
@@ -41,7 +51,7 @@ export function buildSeoMetadata({
     },
     twitter: {
       card: "summary_large_image",
-      title,
+      title: cleanTitle,
       description,
       images: [ogImageUrl],
     },

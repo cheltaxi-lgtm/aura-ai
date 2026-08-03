@@ -7,6 +7,7 @@ import { getAllSpreadIntents } from "@/lib/spread-intents";
 import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
 import { getAllSeoArticleSlugs } from "@/lib/seo/articles";
 import { getAllSpreadHubSlugs } from "@/lib/seo/hubs";
+import { isSearchIndexableIntentSlug } from "@/lib/seo/indexability";
 import {
   FORECAST_MONTHS,
   FORECAST_YEARS,
@@ -52,12 +53,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.6,
     }));
 
-  const intentPages: MetadataRoute.Sitemap = getAllSpreadIntents().map((intent) => ({
-    url: `${base}/rasklady/${intent.slug}`,
-    lastModified: now,
-    changeFrequency: "monthly" as const,
-    priority: 0.75,
-  }));
+  const intentPages: MetadataRoute.Sitemap = getAllSpreadIntents()
+    .filter((intent) => isSearchIndexableIntentSlug(intent.slug))
+    .map((intent) => ({
+      url: `${base}/rasklady/${intent.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.75,
+    }));
 
   const hubPages: MetadataRoute.Sitemap = getAllSpreadHubSlugs().map((slug) => ({
     url: `${base}/rasklady/${slug}`,
@@ -138,14 +141,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.65,
   }));
 
-  const zodiacMonthPages: MetadataRoute.Sitemap = getAllSeoZodiacSlugs().flatMap((sign) =>
-    FORECAST_MONTHS.map((month) => ({
-      url: `${base}/prognoz/znak/${sign}/${month.slug}`,
-      lastModified: now,
-      changeFrequency: "weekly" as const,
-      priority: 0.6,
-    }))
-  );
+  // Zodiac×month forecasts stay crawlable via hub links, but stay out of sitemap
+  // so Yandex crawl budget prefers hubs / commercial intents (~144 thin URLs).
+  const zodiacMonthPages: MetadataRoute.Sitemap = [];
 
   const landingPages: MetadataRoute.Sitemap = [
     staticPage("/taro", 0.95),
@@ -171,6 +169,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     staticPage("/cards/combinations", 0.5),
     staticPage("/statyi", 0.65),
     staticPage("/faq", 0.5, "monthly"),
+    staticPage("/telegram", 0.7, "weekly"),
+    staticPage("/partners", 0.4, "monthly"),
     ...ABOUT_PATHS.map((path) => staticPage(path, 0.45, "monthly")),
     ...LENORMAND_PATHS.map((path) => staticPage(path, 0.5, "monthly")),
   ];

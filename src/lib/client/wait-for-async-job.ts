@@ -204,7 +204,10 @@ export async function postWithAsyncJob(params: {
   url: string;
   body: Record<string, unknown>;
   storageKey: string;
+  /** Abort for the initial enqueue POST only. */
   signal?: AbortSignal;
+  /** Abort for job polling; defaults to `signal` when omitted. */
+  pollSignal?: AbortSignal;
   headers?: Record<string, string>;
 }): Promise<{ status: number; data: Record<string, unknown> }> {
   const res = await fetch(params.url, {
@@ -223,7 +226,7 @@ export async function postWithAsyncJob(params: {
     const result = await waitForAsyncJob({
       jobId: data.jobId,
       storageKey: params.storageKey,
-      signal: params.signal,
+      signal: params.pollSignal ?? params.signal,
     });
     return { status: 200, data: result };
   }

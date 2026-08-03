@@ -27,9 +27,14 @@ function redirectNoStore(url: string | URL) {
 
 function completePathFor(
   returnTo: string,
-  mode: "login" | "register",
+  mode: "login" | "register" | "link",
   flags?: { isNewUser?: boolean; needsProfile?: boolean; hasProfile?: boolean }
 ): string {
+  if (mode === "link") {
+    const dest = returnTo.startsWith("/cabinet") ? returnTo.split("#")[0]! : "/cabinet";
+    const params = new URLSearchParams({ loginMethods: "1", linked: "1" });
+    return `${dest}${dest.includes("?") ? "&" : "?"}${params.toString()}`;
+  }
   const completeParams = new URLSearchParams({
     returnTo,
     mode,
@@ -42,7 +47,7 @@ function completePathFor(
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const fallbackReturn = "/";
-  let mode: "login" | "register" = "login";
+  let mode: "login" | "register" | "link" = "login";
   let returnTo = fallbackReturn;
 
   try {
@@ -138,7 +143,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         request,
       });
     } catch (error) {
+      if (error instanceof Error && error.message === "PROVIDER_TAKEN") {
+        return redirectNoStore(
+          oauthAbsoluteUrl(request, oauthErrorRedirect("provider_taken", mode, returnTo))
+        );
+      }
+      if (
+        error instanceof Error &&
+        (error.message === "LINK_SESSION_REQUIRED" || error.message === "LINK_ACCOUNT_REQUIRED")
+      ) {
+        return redirectNoStore(
+          oauthAbsoluteUrl(request, oauthErrorRedirect("auth_required", mode, returnTo))
+        );
+      }
       if (error instanceof Error && error.message === "CONSENT_REQUIRED") {
+        if (pending.mode === "link") {
+          return redirectNoStore(
+            oauthAbsoluteUrl(request, oauthErrorRedirect("consent_required", mode, returnTo))
+          );
+        }
         const registration = await createPendingOAuthRegistration({
           provider,
           info,

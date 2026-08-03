@@ -16,11 +16,28 @@ export type GuestResumeSymbol = {
   reversed: boolean;
 };
 
+/** LLM teaser persisted inside sessions.cards JSON (no schema migration). */
+export type GuestResumeTeaserRecord = {
+  text: string;
+  promptVersion: string;
+  model: string;
+  createdAt: string;
+  cacheKey?: string;
+};
+
 export type GuestResumeCardsPayload = {
   kind: typeof GUEST_RESUME_CARDS_KIND;
   question: string;
   system: DeckSystem;
   symbols: GuestResumeSymbol[];
+  /** Successful LLM (or cache) teaser — never stores keyword fallback. */
+  teaser?: GuestResumeTeaserRecord | null;
+  /** Failed LLM attempts for this receipt (max 2 before teaserFailed). */
+  teaserAttempts?: number;
+  /** After 2 unsuccessful LLM tries — always keyword fallback, no more calls. */
+  teaserFailed?: boolean;
+  /** Prompt version under which teaserFailed was set — allows retry after prompt bump. */
+  teaserFailPromptVersion?: string;
 };
 
 export type GuestCompleteInput = {
@@ -92,11 +109,44 @@ export function parseGuestResumeCardsPayload(raw: unknown): GuestResumeCardsPayl
     });
   }
   if (positions.size !== 3) return null;
+
+  let teaser: GuestResumeTeaserRecord | null | undefined;
+  if (obj.teaser && typeof obj.teaser === "object" && !Array.isArray(obj.teaser)) {
+    const t = obj.teaser as Record<string, unknown>;
+    const text = typeof t.text === "string" ? t.text.trim() : "";
+    const promptVersion = typeof t.promptVersion === "string" ? t.promptVersion : "";
+    const model = typeof t.model === "string" ? t.model : "";
+    const createdAt = typeof t.createdAt === "string" ? t.createdAt : "";
+    if (text && promptVersion && model && createdAt) {
+      teaser = {
+        text,
+        promptVersion,
+        model,
+        createdAt,
+        cacheKey: typeof t.cacheKey === "string" ? t.cacheKey : undefined,
+      };
+    }
+  }
+
+  const teaserAttempts =
+    typeof obj.teaserAttempts === "number" && Number.isFinite(obj.teaserAttempts)
+      ? Math.max(0, Math.floor(obj.teaserAttempts))
+      : undefined;
+  const teaserFailed = obj.teaserFailed === true ? true : undefined;
+  const teaserFailPromptVersion =
+    typeof obj.teaserFailPromptVersion === "string" && obj.teaserFailPromptVersion.trim()
+      ? obj.teaserFailPromptVersion.trim()
+      : undefined;
+
   return {
     kind: GUEST_RESUME_CARDS_KIND,
     question: typeof obj.question === "string" ? obj.question : "",
     system: obj.system as DeckSystem,
     symbols,
+    ...(teaser ? { teaser } : {}),
+    ...(teaserAttempts != null ? { teaserAttempts } : {}),
+    ...(teaserFailed ? { teaserFailed } : {}),
+    ...(teaserFailPromptVersion ? { teaserFailPromptVersion } : {}),
   };
 }
 

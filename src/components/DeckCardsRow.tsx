@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { DeckSystem } from "@/lib/decks/types";
-import { getDeckPositions } from "@/lib/decks";
+import { getDeckPositionsForUi, TRIPLET_UI_POSITIONS } from "@/lib/decks";
 import { resolveDeckCard, type DeckCardInput } from "@/lib/deck-card-utils";
 import DeckCard from "@/components/DeckCard";
 import CardDetailModal from "@/components/CardDetailModal";
@@ -34,7 +34,7 @@ export default function DeckCardsRow({
 
   const positions =
     positionsOverride ??
-    (system ? getDeckPositions(system) : ["Прошлое", "Настоящее", "Будущее"]);
+    (system ? getDeckPositionsForUi(system) : TRIPLET_UI_POSITIONS);
 
   const resolvedSpread = useMemo(
     () => (system ? cards.map((c) => resolveDeckCard(system, c)) : []),

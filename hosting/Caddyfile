@@ -17,7 +17,10 @@ zovus.ru {
 	}
 	# Preserve public host for Next redirects (otherwise Location becomes localhost:3000
 	# and the Android WebView opens the system browser).
+	# Brief retry while Next restarts after deploy — fewer crawler 502s.
 	reverse_proxy 127.0.0.1:3000 {
+		lb_try_duration 8s
+		lb_try_interval 250ms
 		header_up Host {host}
 		header_up X-Forwarded-Host {host}
 		header_up X-Forwarded-Proto {scheme}

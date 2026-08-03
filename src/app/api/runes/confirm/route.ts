@@ -13,14 +13,20 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   let paymentId: string | undefined;
+  let orderId: string | undefined;
   try {
     const body = await request.json();
     paymentId = typeof body.paymentId === "string" ? body.paymentId.trim() : undefined;
+    orderId = typeof body.orderId === "string" ? body.orderId.trim() : undefined;
   } catch {
     /* allow empty body — reconcile recent */
   }
 
-  const result = await confirmOrReconcileRunePurchase(authed.profileUserId, paymentId);
+  const result = await confirmOrReconcileRunePurchase(
+    authed.profileUserId,
+    paymentId,
+    orderId
+  );
 
   if (result.status === "forbidden") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -28,6 +34,24 @@ export async function POST(request: NextRequest) {
 
   if (result.status === "invalid") {
     return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+  }
+
+  if (result.status === "rejected") {
+    return NextResponse.json(
+      {
+        ok: false,
+        status: "rejected",
+        balance: result.balance,
+        paymentId: result.paymentId,
+        credited: false,
+        alreadyCredited: false,
+        amountRub: result.amountRub,
+        packageId: result.packageId,
+        packageName: result.packageName,
+        error: "credit_rejected",
+      },
+      { status: 422 }
+    );
   }
 
   return NextResponse.json({

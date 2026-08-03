@@ -3,6 +3,7 @@
 import Link from "next/link";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { BRAND_NAME } from "@/lib/brand";
 import { EDITORIAL_HERO } from "@/lib/editorial-landing-content";
 import { GUEST_HERO_PAIN_CHIPS } from "@/lib/landing-offer";
@@ -29,8 +30,14 @@ export default function EditorialHeroSection({
   onPainChip,
   conversionHero = false,
 }: EditorialHeroSectionProps) {
+  const { ref, className } = useScrollReveal<HTMLElement>({ immediate: true });
+
   return (
-    <section className="editorial-hero" aria-labelledby="editorial-hero-title">
+    <section
+      ref={ref}
+      className={`editorial-hero ${className}`}
+      aria-labelledby="editorial-hero-title"
+    >
       <div className="editorial-hero__media">
         <EditorialImage src="/landing/hero.jpg" alt="" priority className="editorial-hero__img" />
         <div className="editorial-hero__overlay" aria-hidden />

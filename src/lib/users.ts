@@ -432,12 +432,21 @@ export function serializeUserProfile(user: UserRow) {
 }
 export function canPersistSceneUrl(url: string): boolean {
   const trimmed = url.trim();
-  return (
-    trimmed.startsWith("http://") ||
-    trimmed.startsWith("https://") ||
-    trimmed.startsWith("/api/scene-art/") ||
-    trimmed.startsWith("/scene-art/")
-  );
+  if (trimmed.startsWith("/api/scene-art/") || trimmed.startsWith("/scene-art/")) {
+    return true;
+  }
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "https:") return false;
+    const host = u.hostname.toLowerCase();
+    return (
+      host === "zovus.ru" ||
+      host === "www.zovus.ru" ||
+      host.endsWith(".zovus.ru")
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function persistSceneArtForSpread(

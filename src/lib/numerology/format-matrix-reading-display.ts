@@ -4,16 +4,21 @@
  */
 
 const MATRIX_READING_HINT_RE =
-  /матриц[аы]\s+судьбы|точка\s+тела\s+и\s+характера|ось\s+предназначения|простыми\s+словами/i;
+  /матриц[аы]\s+судьбы|зона\s+комфорта|кармическ(?:ий|ого)\s+хвост|узел\s+периода|простыми\s+словами/i;
 
-/** Section titles the model uses for Full Matrix reports. */
+/**
+ * Section titles the model uses for Full Matrix reports.
+ * Anchor: start of text / line / after sentence end — never mid-clause
+ * («а отношения или дела» must NOT become a heading).
+ * Short ambiguous titles require `(N — Name)` parenthetical.
+ */
 const MATRIX_SECTION_RE =
-  /(?:Точка\s+(?:тела\s+и\s+характера|энергии|рода\s+и\s+корней|талантов|денег|отношений|кармы)|Ось\s+предназначения|Род\s+по\s+(?:отцу|матери)|Аркан\s+года)(?:\s*\([^)]{1,48}\))?|Шаги\s+на\s+30\s+дней|Простыми\s+словами/giu;
+  /(?:^|\n|(?<=[.!?…»"”])\s+)(?:#{1,3}\s*)?(?:✦\s*)?(?:Зона\s+комфорта|Небо\s*\/\s*энергия|Материя(?:\s*\/\s*год)?|Денежный\s+канал|Канал\s+отношений|Род\s+(?:по\s+)?отц[ау]|Род\s+(?:по\s+)?матер[ии]|Кармический\s+хвост(?:\s*[·.]\s*(?:корень|середина|остри[её]))?|Точка\s+возраста(?:\s+сейчас)?|Ближайший\s+возрастной\s+переход|Аркан\s+(?:года|месяца)|Узел\s+периода|Духовный\s+полюс|Шаги\s+на\s+30\s+дней|Простыми\s+словами|(?:Характер|Небо|Материя|Таланты|Деньги|Отношения)(?=\s*\())(?:\s*\([^)]{1,80}\))?/giu;
 
-const MAJOR_SECTION_RE = /^(Шаги\s+на\s+30\s+дней|Простыми\s+словами)$/i;
+const MAJOR_SECTION_RE = /^(Шаги\s+на\s+30\s+дней|Простыми\s+словами|Узел\s+периода|Небо)$/i;
 
 const FINALE_LINE_RE =
-  /(?=(?:Предназначение|Деньги|Аркан\s+этого\s+года)\s+[—–-])/gu;
+  /(?=(?:Зона\s+комфорта|Предназначение|Кармический\s+хвост|Деньги|Узел\s+периода|Аркан\s+этого\s+года)\s+[—–-])/gu;
 
 export function looksLikeDestinyMatrixReading(text: string): boolean {
   const t = text.trim();
@@ -83,9 +88,14 @@ export function formatDestinyMatrixReadingForDisplay(raw: string): string {
   const input = raw.replace(/\r\n/g, "\n").trim();
   if (!input || !looksLikeDestinyMatrixReading(input)) return raw;
 
-  // Already structured by a previous pass / prompt — still normalize steps.
+  // Structured assembly (matrix-reading-document) already emitted ### / ## headings.
+  // Never re-scan prose for bare words like «Отношения» — that caused mid-sentence headings.
   if (/^#{2,3}\s/m.test(input)) {
-    return breakNumberedSteps(input).replace(/\n{3,}/g, "\n\n").trim();
+    return breakNumberedSteps(input)
+      .replace(/\s+(?=Практика\s*:)/gu, "\n\n")
+      .replace(/(^|\n)(Практика\s*:)/gu, "$1**$2**")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   }
 
   const matches = [...input.matchAll(MATRIX_SECTION_RE)];

@@ -24,6 +24,13 @@ const DISALLOW = [
   "/master/",
   "/_next/",
   "/app",
+  "/session/",
+  "/joint-reading/",
+  "/tg",
+  "/diary/",
+  "/maintenance",
+  "/reports/",
+  "/photo-rasklad/result",
 ] as const;
 
 /** Query keys that do not change page meaning for crawlers (Yandex Clean-param). */
@@ -50,6 +57,22 @@ const CLEAN_PARAMS = [
   "step",
   "spread",
   "page",
+  "ask",
+  "master",
+  "daily",
+  "joint",
+  "jointRole",
+  "jointPartnerName",
+  "jointInvite",
+  "runeShop",
+  "tab",
+  "invite",
+  "to",
+  "_bridged",
+  "oauthError",
+  "_restart",
+  "_auth",
+  "welcome",
 ] as const;
 
 export function GET() {

@@ -35,4 +35,9 @@ export const PHOTO_READING_GUIDE_STEPS: PhotoReadingGuideStep[] = [
   },
 ];
 
-export const PHOTO_SPREAD_LAYOUT_LABELS = ["Прошлое", "Настоящее", "Будущее"] as const;
+/** UI-only position labels — keep prompt/backend time keys elsewhere. */
+export const PHOTO_SPREAD_LAYOUT_LABELS = [
+  "Прошлое",
+  "Настоящее",
+  "Будущее",
+] as const;

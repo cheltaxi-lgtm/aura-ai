@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { DeckSystem } from "@/lib/decks/types";
 import { deckBackPath, resolveDeckCard, resolveDeckSystem, DECK_ACCENT_CLASS } from "@/lib/deck-card-utils";
 import { getDeckImagePath } from "@/data/decks";
+import { deckImageSources } from "@/lib/deck-image-url";
+import { isDeckFaceVerified, markDeckFaceVerified } from "@/lib/deck-face-loader";
 import { parseCardOrientation } from "@/lib/card-orientation";
 import {
   symbolCornerLabel,
@@ -40,6 +43,10 @@ export interface DeckCardProps {
   /** Opens detail modal — gallery & daily spread */
   onClick?: () => void;
   interactive?: boolean;
+  /** Eager-load face (photo confirm / above-the-fold) */
+  priority?: boolean;
+  /** Fires once when the face is painted or reaches a terminal placeholder. */
+  onFaceReady?: () => void;
 }
 
 const DECK_IMAGE_SIZES = {
@@ -53,6 +60,157 @@ const SIZE_CLASS = {
   md: "lux-deck-card--md",
   lg: "lux-deck-card--lg",
 } as const;
+
+function debugDeckFaceLog(
+  _message: string,
+  _data: Record<string, unknown>,
+  _hypothesisId: string
+) {
+  /* debug ingest removed */
+}
+
+function DeckFaceImage({
+  imageSrc,
+  alt,
+  size,
+  imageFitClass,
+  priority = false,
+  onFaceReady,
+}: {
+  imageSrc: string;
+  alt: string;
+  size: "sm" | "md" | "lg";
+  imageFitClass: string;
+  priority?: boolean;
+  onFaceReady?: () => void;
+}) {
+  const { webp, fallback } = deckImageSources(imageSrc);
+  const isDeckAsset = imageSrc.startsWith("/decks/") || webp.endsWith(".svg");
+  const [src, setSrc] = useState(webp);
+  const [failed, setFailed] = useState(false);
+  const startedAtRef = useRef(performance.now());
+  /** Bumps on src identity change / unmount — stale abort onError must not escalate to ✦. */
+  const genRef = useRef(0);
+  const attemptRef = useRef(0);
+  const readySentRef = useRef(false);
+  const onFaceReadyRef = useRef(onFaceReady);
+  onFaceReadyRef.current = onFaceReady;
+
+  const emitReady = () => {
+    if (readySentRef.current) return;
+    readySentRef.current = true;
+    onFaceReadyRef.current?.();
+  };
+
+  useEffect(() => {
+    genRef.current += 1;
+    const gen = genRef.current;
+    attemptRef.current = 0;
+    readySentRef.current = false;
+    startedAtRef.current = performance.now();
+    setSrc(webp);
+    setFailed(false);
+    return () => {
+      // Invalidate deferred onError from this mount (abort-on-unmount).
+      if (genRef.current === gen) genRef.current += 1;
+    };
+  }, [webp, fallback]);
+
+  useEffect(() => {
+    if (failed) emitReady();
+  }, [failed]);
+
+  if (!isDeckAsset) {
+    return (
+      <Image
+        src={webp}
+        alt={alt}
+        fill
+        sizes={DECK_IMAGE_SIZES[size]}
+        className={imageFitClass}
+        priority={priority}
+        {...(priority ? {} : { loading: "lazy" as const })}
+        onLoad={() => emitReady()}
+        onError={() => {
+          setFailed(true);
+          emitReady();
+        }}
+      />
+    );
+  }
+
+  if (failed) {
+    return (
+      <div className="lux-detected-card-face" aria-label={alt}>
+        <span className="lux-detected-card-face__glyph" aria-hidden>
+          ✦
+        </span>
+        <span className="lux-detected-card-face__name">{alt}</span>
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className={`${imageFitClass} absolute inset-0 h-full w-full`}
+      decoding="async"
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "auto"}
+      onLoad={(e) => {
+        markDeckFaceVerified(webp);
+        debugDeckFaceLog(
+          "img_ok",
+          {
+            alt,
+            src,
+            attempt: attemptRef.current,
+            ms: Math.round(performance.now() - startedAtRef.current),
+            naturalW: e.currentTarget.naturalWidth,
+            naturalH: e.currentTarget.naturalHeight,
+          },
+          "A"
+        );
+        emitReady();
+      }}
+      onError={() => {
+        const gen = genRef.current;
+        const from = src;
+        // Defer: remount aborts fire sync and all at once (2nd confirm). Real failures persist.
+        window.setTimeout(() => {
+          if (gen !== genRef.current) {
+            debugDeckFaceLog("img_error_stale", { alt, from }, "C");
+            return;
+          }
+          const attempt = attemptRef.current;
+          // Already painted this session — re-point at webp from HTTP cache, never ✦.
+          if (isDeckFaceVerified(webp)) {
+            debugDeckFaceLog("img_error_recover", { alt, from, attempt }, "C");
+            attemptRef.current = attempt + 1;
+            setSrc(`${webp}${webp.includes("?") ? "&" : "?"}r=${Date.now()}`);
+            return;
+          }
+          if (attempt === 0 && fallback !== webp) {
+            debugDeckFaceLog("img_fallback_png", { alt, from, to: fallback }, "E");
+            attemptRef.current = 1;
+            setSrc(fallback);
+            return;
+          }
+          if (attempt <= 2) {
+            debugDeckFaceLog("img_retry_webp", { alt, from, attempt }, "E");
+            attemptRef.current = attempt + 1;
+            setSrc(`${webp}${webp.includes("?") ? "&" : "?"}r=${Date.now()}`);
+            return;
+          }
+          debugDeckFaceLog("img_failed", { alt, from, attempt }, "E");
+          setFailed(true);
+        }, 80);
+      }}
+    />
+  );
+}
 
 export default function DeckCard({
   card,
@@ -70,8 +228,17 @@ export default function DeckCard({
   originalName,
   onClick,
   interactive = false,
+  priority = false,
+  onFaceReady,
 }: DeckCardProps) {
   const system = resolveDeckSystem(systemProp, masterId);
+  const onFaceReadyRef = useRef(onFaceReady);
+  onFaceReadyRef.current = onFaceReady;
+  const symbolicReadySentRef = useRef(false);
+
+  useEffect(() => {
+    symbolicReadySentRef.current = false;
+  }, [imagePathProp, card.imagePath, card.name, detectedOnly, faceDown]);
   const resolved = resolveDeckCard(system, card);
   const effectiveSystem = resolved.system;
   const spreadSymbol = resolved.symbol;
@@ -97,9 +264,8 @@ export default function DeckCard({
   const imageSrc = faceDown
     ? backPath
     : pickArtPath(imagePathProp, card.imagePath, resolved.imagePath, deckFallback);
-  const isSvgFace = Boolean(imageSrc && imageSrc.endsWith(".svg"));
   const imageFitClass =
-    effectiveSystem === "lenormand" || isSvgFace
+    effectiveSystem === "lenormand" || Boolean(imageSrc?.endsWith(".svg"))
       ? "lux-tarot-card__image object-contain"
       : "lux-tarot-card__image object-cover";
   const faceLabel = originalName?.trim() || resolved.originalName?.trim() || spreadSymbol.name;
@@ -113,6 +279,24 @@ export default function DeckCard({
 
   const isClickable = Boolean(onClick) || interactive;
   const meaning = resolved.shortMeaning || spreadSymbol.meaning;
+
+  const emitSymbolicReady = () => {
+    if (symbolicReadySentRef.current) return;
+    symbolicReadySentRef.current = true;
+    onFaceReadyRef.current?.();
+  };
+
+  useEffect(() => {
+    if (showDetectedFace || showNumerologyFace || showLenormandFace || (!imageSrc && !faceDown)) {
+      emitSymbolicReady();
+    }
+  }, [
+    showDetectedFace,
+    showNumerologyFace,
+    showLenormandFace,
+    imageSrc,
+    faceDown,
+  ]);
 
   const cardInner = (
     <>
@@ -161,23 +345,14 @@ export default function DeckCard({
               </div>
             ) : imageSrc ? (
               <>
-                {isSvgFace ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={imageSrc}
-                    alt={faceDown ? "Рубашка" : resolved.name}
-                    className={`${imageFitClass} absolute inset-0 h-full w-full`}
-                  />
-                ) : (
-                  <Image
-                    src={imageSrc}
-                    alt={faceDown ? "Рубашка" : resolved.name}
-                    fill
-                    unoptimized={imageSrc.startsWith("/decks/")}
-                    sizes={DECK_IMAGE_SIZES[size]}
-                    className={imageFitClass}
-                  />
-                )}
+                <DeckFaceImage
+                  imageSrc={imageSrc}
+                  alt={faceDown ? "Рубашка" : resolved.name}
+                  size={size}
+                  imageFitClass={imageFitClass}
+                  priority={priority}
+                  onFaceReady={() => onFaceReadyRef.current?.()}
+                />
                 <div className="lux-tarot-card__image-vignette" aria-hidden />
               </>
             ) : (

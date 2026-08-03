@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { isAllowedAppHost } from "@/lib/allowed-hosts";
 import type { OAuthProvider } from "./types";
 
 export interface OAuthProviderConfig {
@@ -47,26 +48,37 @@ function isLocalOrigin(origin: string): boolean {
 
 export function resolveOAuthOrigin(request?: NextRequest): string {
   const envBase = (process.env.NEXT_PUBLIC_APP_URL ?? "https://zovus.ru").replace(/\/$/, "");
-  let origin = envBase;
 
-  if (request) {
-    const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-    const host = forwardedHost || request.headers.get("host")?.trim();
-    if (host) {
-      const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-      const proto =
-        forwardedProto ||
-        (request.nextUrl.protocol === "https:" ? "https" : "http");
-      origin = `${proto}://${host}`.replace(/\/$/, "");
-    } else {
-      origin = request.nextUrl.origin.replace(/\/$/, "");
+  if (!request) return envBase;
+
+  // Prefer configured public URL. Only accept Host / X-Forwarded-Host when
+  // the hostname is on the app allowlist (blocks open redirect / redirect_uri poison).
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const hostHeader = forwardedHost || request.headers.get("host")?.trim();
+  const hostname = hostHeader?.split(":")[0]?.toLowerCase() ?? "";
+
+  if (hostname && (isAllowedAppHost(hostname) || isLocalOrigin(`http://${hostname}`))) {
+    const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const proto =
+      process.env.NODE_ENV === "production"
+        ? "https"
+        : forwardedProto ||
+          (request.nextUrl.protocol === "https:" ? "https" : "http");
+    const origin = `${proto}://${hostHeader}`.replace(/\/$/, "");
+    if (process.env.NODE_ENV === "production" && isLocalOrigin(origin)) {
+      return envBase;
     }
+    return origin;
   }
 
-  if (process.env.NODE_ENV === "production" && isLocalOrigin(origin)) {
+  if (process.env.NODE_ENV === "production" && isLocalOrigin(request.nextUrl.origin)) {
     return envBase;
   }
-  return origin;
+  // Dev fallback: nextUrl.origin when host is not allowlisted (local tooling).
+  if (process.env.NODE_ENV !== "production") {
+    return request.nextUrl.origin.replace(/\/$/, "");
+  }
+  return envBase;
 }
 
 /** Build absolute app URLs for OAuth redirects (never use raw request.url behind a proxy). */

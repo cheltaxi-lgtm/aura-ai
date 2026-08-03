@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuth } from "@/lib/auth";
+import { getAccountConsentSnapshot } from "@/lib/accounts";
 import { finishOAuthLogin } from "@/lib/oauth/finish";
 import { fetchVkUserInfo } from "@/lib/oauth/providers/vk";
 import { createOAuthHandoff } from "@/lib/oauth/handoff";
@@ -42,9 +44,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const mode: OAuthMode = body.mode === "register" ? "register" : "login";
-    const returnTo = sanitizeReturnTo(body.returnTo, "/");
-    if (body.acceptedTerms !== true || body.ageConfirmed !== true) {
+    const mode: OAuthMode =
+      body.mode === "register" ? "register" : body.mode === "link" ? "link" : "login";
+    let returnTo = sanitizeReturnTo(body.returnTo, mode === "link" ? "/cabinet" : "/");
+    let acceptedTerms = body.acceptedTerms === true;
+    let ageConfirmed = body.ageConfirmed === true;
+    let linkAccountId: string | null = null;
+    if (mode === "link") {
+      const auth = await getAuth();
+      if (!auth || auth.role !== "user") {
+        return NextResponse.json(
+          { error: "auth_required", code: "auth_required" },
+          { status: 401, headers: OAUTH_NO_STORE_HEADERS }
+        );
+      }
+      linkAccountId = auth.sub;
+      const consent = await getAccountConsentSnapshot(auth.sub);
+      if (consent?.ageConfirmedAt && consent?.termsAcceptedAt) {
+        acceptedTerms = true;
+        ageConfirmed = true;
+      }
+      if (!returnTo.startsWith("/cabinet")) returnTo = "/cabinet?loginMethods=1";
+    }
+    if (!acceptedTerms || !ageConfirmed) {
       return NextResponse.json(
         { error: "consent_required", code: "consent_required" },
         { status: 400, headers: OAUTH_NO_STORE_HEADERS }
@@ -63,7 +85,11 @@ export async function POST(request: NextRequest) {
       marketingConsent: body.marketingConsent === true,
       mode,
       appFlow: true,
-      registrationAttribution: registrationAttribution as Record<string, string> | null,
+      linkAccountId,
+      registrationAttribution:
+        mode === "link"
+          ? null
+          : (registrationAttribution as Record<string, string> | null),
     };
 
     try {

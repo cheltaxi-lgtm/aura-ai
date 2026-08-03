@@ -14,6 +14,7 @@ import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
 import { trackPaywallOpen } from "@/lib/seo/metrika";
+import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
 export interface RunePackage {
   id: string;
@@ -166,7 +167,7 @@ function RuneShopView({
       if (pkg) {
         pushEcommerceAdd({ id: pkg.id, name: pkg.name, price: pkg.price_rub, category: "runes" });
       }
-      window.location.href = data.paymentUrl;
+      openTelegramExternalUrl(data.paymentUrl);
     } catch {
       setError("Ошибка соединения");
       setPurchasingId(null);
@@ -204,7 +205,7 @@ function RuneShopView({
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       pushEcommerceAdd({ id: "custom", name: "Произвольная сумма", price: amountRub, category: "runes" });
-      window.location.href = data.paymentUrl;
+      openTelegramExternalUrl(data.paymentUrl);
     } catch {
       setError("Ошибка соединения");
       setPurchasingId(null);
@@ -214,8 +215,8 @@ function RuneShopView({
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
-        <h2 id="paywall-title" className="text-lg font-bold text-white">
-          ᚢ Пополнить руны
+        <h2 id="paywall-title" className="font-serif text-2xl text-[#F5EDE3]">
+          Наполнение
         </h2>
         <button
           type="button"
@@ -256,11 +257,11 @@ function RuneShopView({
               <div className="text-left">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-white">{pkg.name}</span>
-                  {pkg.is_popular && (
-                    <span className="text-xs" aria-hidden>
-                      🔥
+                  {pkg.is_popular ? (
+                    <span className="text-[10px] tracking-[0.18em] text-[#8A7349] uppercase">
+                      выбор
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 <p className="mt-0.5 text-xs text-gray-400">
                   {pkg.runes}
@@ -320,7 +321,7 @@ function RuneShopView({
       )}
 
       <p className="mt-4 text-center text-xs text-gray-600">
-        Безопасная оплата ЮKassa · Руны без срока действия
+        Оплата картой · руны без срока
       </p>
     </>
   );
@@ -366,7 +367,7 @@ function LegacyPaywallView({
       });
       const data = await res.json();
       if (data.confirmationUrl) {
-        window.location.href = data.confirmationUrl;
+        openTelegramExternalUrl(data.confirmationUrl);
         return;
       }
       setError(data.error ?? "Не удалось создать платёж");

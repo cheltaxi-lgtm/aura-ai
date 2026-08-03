@@ -4,8 +4,17 @@ import Link from "next/link";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import BrandLogo from "@/components/BrandLogo";
 import OAuthProviderIcon from "@/components/auth/OAuthProviderIcon";
-import { BRAND_LOGO_FOOTER, BRAND_NAME, BRAND_VK_LABEL, BRAND_VK_URL } from "@/lib/brand";
-import { navigateToSpreadCatalog } from "@/lib/app-shell-nav";
+import {
+  BRAND_DZEN_LABEL,
+  BRAND_DZEN_URL,
+  BRAND_LOGO_FOOTER,
+  BRAND_NAME,
+  BRAND_TELEGRAM_LABEL,
+  BRAND_VK_LABEL,
+  BRAND_VK_URL,
+  getBrandTelegramUrl,
+  getBrandTelegramUsername,
+} from "@/lib/brand";
 import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
 import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
 import { EDITORIAL_FOOTER_TAGLINE, EDITORIAL_NAV } from "@/lib/editorial-landing-content";
@@ -64,6 +73,8 @@ export default function SiteFooter({
   const year = new Date().getFullYear();
   const { user, loading } = useAuth();
   const isLoggedIn = !loading && Boolean(user);
+  const telegramUrl = getBrandTelegramUrl();
+  const telegramUsername = getBrandTelegramUsername();
 
   if (variant === "minimal") {
     return (
@@ -81,16 +92,65 @@ export default function SiteFooter({
           <BrandLogo {...BRAND_LOGO_FOOTER} />
           <p className="editorial-footer__tagline">{EDITORIAL_FOOTER_TAGLINE}</p>
           <p className="editorial-footer__service-line">18+ · Развлекательный сервис</p>
-          <a
-            href={BRAND_VK_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="editorial-footer__vk"
-            aria-label={`${BRAND_VK_LABEL} — группа Zovus`}
-          >
-            <OAuthProviderIcon provider="vk" className="editorial-footer__vk-icon" />
-            <span>{BRAND_VK_LABEL}</span>
-          </a>
+          <div className="editorial-footer__social" aria-label="Мы в соцсетях">
+            <a
+              href={BRAND_VK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="editorial-footer__social-btn editorial-footer__social-btn--vk"
+              aria-label={`${BRAND_VK_LABEL} — группа Zovus`}
+            >
+              <OAuthProviderIcon provider="vk" className="editorial-footer__social-icon" />
+              <span>{BRAND_VK_LABEL}</span>
+            </a>
+            <a
+              href={BRAND_DZEN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="editorial-footer__social-btn editorial-footer__social-btn--dzen"
+              aria-label={`${BRAND_DZEN_LABEL} — канал Zovus`}
+            >
+              <svg
+                className="editorial-footer__social-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle cx="12" cy="12" r="11" fill="currentColor" opacity="0.18" />
+                <path
+                  fill="currentColor"
+                  d="M7.2 6.4h3.1c2.9 0 4.7 1.6 4.7 4.1 0 1.7-.8 3-2.1 3.6L16.8 17.6h-3.3l-3.5-3.3H10.3v3.3H7.2V6.4Zm3.1 5.7c1.2 0 1.9-.7 1.9-1.7s-.7-1.7-1.9-1.7H10.3v3.4h-.0Z"
+                />
+              </svg>
+              <span>{BRAND_DZEN_LABEL}</span>
+            </a>
+            <a
+              href="/telegram"
+              className="editorial-footer__social-btn editorial-footer__social-btn--telegram"
+              aria-label={`${BRAND_TELEGRAM_LABEL} @${telegramUsername}`}
+            >
+              <svg
+                className="editorial-footer__social-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  fill="currentColor"
+                  d="M11.9 2.1c-5.4 0-9.8 4.4-9.8 9.8s4.4 9.8 9.8 9.8 9.8-4.4 9.8-9.8-4.4-9.8-9.8-9.8Zm4.7 6.7-1.6 7.4c-.1.5-.4.6-.9.4l-2.4-1.8-1.2 1.1c-.1.1-.3.3-.5.3l.2-2.5 4.5-4.1c.2-.2 0-.3-.3-.1l-5.6 3.5-2.4-.7c-.5-.2-.5-.5.1-.7l9.3-3.6c.4-.2.8.1.8.8Z"
+                />
+              </svg>
+              <span>{BRAND_TELEGRAM_LABEL}</span>
+            </a>
+            <a
+              href={telegramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="sr-only"
+            >
+              @{telegramUsername} в Telegram
+            </a>
+          </div>
         </div>
 
         <div className="editorial-footer__columns">
@@ -113,6 +173,9 @@ export default function SiteFooter({
                 );
               }
             )}
+            <Link href="/telegram" className="editorial-footer__link">
+              Telegram-бот
+            </Link>
             <Link href="/statyi" className="editorial-footer__link">
               Журнал
             </Link>
@@ -135,13 +198,6 @@ export default function SiteFooter({
                 </Link>,
               ];
             })}
-            <button
-              type="button"
-              className="editorial-footer__link"
-              onClick={() => navigateToSpreadCatalog()}
-            >
-              Расклады
-            </button>
           </nav>
 
           <nav className="editorial-footer__col" aria-label="Документы">

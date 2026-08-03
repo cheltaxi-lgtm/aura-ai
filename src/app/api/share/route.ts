@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
-import { requireUserAuth } from "@/lib/require-auth";
-import { clientIp, enforceShareCreateRateLimit } from "@/lib/api-guards";
-import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
+import { requireProfileUserId, authRequiredResponse } from "@/lib/require-auth";
+import { enforceShareCreateRateLimit } from "@/lib/api-guards";
 import { createShareSnapshot, isShareEnabled, type ShareKind, type SharePayload } from "@/lib/share";
 
 const VALID_KINDS = new Set<ShareKind>([
@@ -39,10 +37,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "share_disabled" }, { status: 403 });
   }
 
-  const auth = await requireUserAuth();
-  const profileUserId = auth ? await getProfileUserIdForAccount(auth.sub) : null;
-  const rateKey = profileUserId ?? clientIp(request);
-  const limited = await enforceShareCreateRateLimit(rateKey);
+  // Auth-only: prevents branded phishing landings from anonymous share create.
+  const authed = await requireProfileUserId();
+  if (!authed) return authRequiredResponse();
+
+  const limited = await enforceShareCreateRateLimit(authed.profileUserId);
   if (limited) return limited;
 
   let body: unknown;
@@ -56,16 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
-  if (!auth) {
-    const recaptchaToken =
-      typeof (body as { recaptchaToken?: unknown }).recaptchaToken === "string"
-        ? (body as { recaptchaToken?: string }).recaptchaToken
-        : undefined;
-    const captchaBlock = await enforceRecaptchaScope("share", recaptchaToken, request);
-    if (captchaBlock) return captchaBlock;
-  }
-
-  const result = await createShareSnapshot(body, profileUserId);
+  const result = await createShareSnapshot(body, authed.profileUserId);
   if (!result) {
     return NextResponse.json({ error: "share_disabled" }, { status: 403 });
   }

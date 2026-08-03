@@ -4,6 +4,13 @@ import {
   polishSpreadReadingText,
   stripEnglishLeakageFromRussianText,
 } from "@/lib/reading-text-polish";
+import { ensureReadingParagraphBreaks } from "@/lib/reading-quality-gate";
+import { isCompleteMatrixReading } from "@/lib/numerology/matrix-completeness";
+
+/** Collapse runs of spaces/tabs only — never eat paragraph breaks. */
+function collapseHorizontalWhitespace(text: string): string {
+  return text.replace(/[^\S\n]{2,}/g, " ");
+}
 
 /** Remove theater / voice stage directions like «(Голос низкий, хриплый…)». */
 export function stripStageDirections(text: string): string {
@@ -13,7 +20,7 @@ export function stripStageDirections(text: string): string {
   for (let i = 0; i < 4; i++) {
     const lead = out.match(/^\([^)]{3,220}\)\s*(?:\/|\||[-–—])?\s*/u);
     if (!lead) break;
-    out = out.slice(lead[0].length).trim();
+    out = out.slice(lead[0].length).trimStart();
   }
 
   out = out.replace(
@@ -21,15 +28,16 @@ export function stripStageDirections(text: string): string {
     ""
   );
 
-  out = out.replace(/^\s*[/\-–—|]\s*/, "").replace(/\s{2,}/g, " ").trim();
-  return out;
+  out = out.replace(/^[^\S\n]*[/\-–—|]\s*/, "");
+  return collapseHorizontalWhitespace(out).replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Strip stage directions in parentheses, asterisks, and bracketed asides. */
 export function stripTheaterFromReply(text: string): string {
   let out = stripStageDirections(text);
 
-  out = out.replace(/\*[^*\n]{2,120}\*/g, " ");
+  // Single-asterisk asides (*вздыхает*) only — never touch **markdown bold** card names.
+  out = out.replace(/(?<!\*)\*([^*\n]{2,120})\*(?!\*)/g, " ");
   out = out.replace(/(?<!!)\[[^\]\n]{2,120}\]/g, " ");
   out = out.replace(
     /\([^)]{2,160}(?:вздых|смотр|шепч|пауз|голос|задум|усмех|медлен|интонац|тяжел|хрип|тихо|громко|задумч)[^)]{0,120}\)/giu,
@@ -37,7 +45,7 @@ export function stripTheaterFromReply(text: string): string {
   );
 
   return stripEnglishLeakageFromRussianText(
-    out.replace(/\n{3,}/g, "\n\n").replace(/  +/g, " ").trim()
+    collapseHorizontalWhitespace(out.replace(/\n{3,}/g, "\n\n")).trim()
   );
 }
 
@@ -214,7 +222,8 @@ const PROMPT_LEAK_PATTERNS = [
   /конкретика по картам/i,
   /Строго по структуре/i,
   /Строго 500/i,
-  /Без markdown/i,
+  // Zone system prompts say «Без markdown» — only treat whole-line echo as leak.
+  /^Без markdown\b/im,
   /не цитируй/i,
   /не выводи.*клиенту/i,
   /УГЛЫ ТЕМЫ/i,
@@ -227,6 +236,16 @@ const PROMPT_LEAK_PATTERNS = [
   /Тема жизни:/,
   /служебные данные/i,
   /не включать в ответ/i,
+  // Destiny-matrix engine/prompt echo (model dumped instructions as the reading).
+  /КЛЮЧИ ДЛЯ РЕЗЮМЕ/i,
+  /не путать точки/i,
+  /Не подменяй его Отшельником/i,
+  /Структура ответа\s*\(/i,
+  /КРИТИЧНО:\s*даже при одинаковом аркане/i,
+  /КРИТИЧНО:\s*не копируй одну практику/i,
+  /Угол\s*[….]/i,
+  /ПОВТОРЫ АРКАНОВ\s*\(/i,
+  /ДАННЫЕ ДВИЖКА/i,
 ];
 
 const READING_CUT_MARKERS = [
@@ -241,7 +260,6 @@ const READING_CUT_MARKERS = [
   "ТРЕБОВАНИЯ:",
   "ВНУТРЕННИЕ ТРЕБОВАНИЯ",
   "--- КОНЕЦ ИНСТРУКЦИЙ ---",
-  "Без markdown",
   "Профиль клиента",
   "ПРОФИЛЬ КЛИЕНТА",
   "блок памяти",
@@ -252,6 +270,12 @@ const READING_CUT_MARKERS = [
   "УГЛЫ ТЕМЫ",
   "системного промпта",
   "служебные данные",
+  "КЛЮЧИ ДЛЯ РЕЗЮМЕ",
+  "Структура ответа (",
+  "КРИТИЧНО:",
+  "ПОВТОРЫ АРКАНОВ",
+  "ДАННЫЕ ДВИЖКА",
+  "Не подменяй его Отшельником",
   ...MEMORY_LEAK_MARKERS,
 ];
 
@@ -273,8 +297,12 @@ export function stripTrailingPromptChecklist(text: string): string {
     out = out.slice(0, -trailingParen[0].length).trim();
   }
 
-  const lines = out.split(/\n+/);
+  // Keep blank paragraph breaks — never split on /\n+/ (that collapses \n\n → \n).
+  const lines = out.split("\n");
   while (lines.length > 1) {
+    while (lines.length > 1 && !(lines[lines.length - 1]?.trim())) {
+      lines.pop();
+    }
     const last = lines[lines.length - 1]?.trim() ?? "";
     if (
       /^[\(\[][^)\]]{6,280}[\)\]]$/u.test(last) &&
@@ -286,7 +314,7 @@ export function stripTrailingPromptChecklist(text: string): string {
     break;
   }
 
-  return lines.join("\n").trim();
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Minimum card name mentions required for a reading to pass validation. */
@@ -307,6 +335,20 @@ export function missingCardMentions(text: string, cardNames: string[]): string[]
   });
 }
 
+/** Matrix report must be full client-safe prose with required zones (not a short cutoff). */
+export function isUsableMatrixReading(text: string): boolean {
+  const trimmed = (text || "").trim();
+  if (!trimmed || trimmed.length < 400) return false;
+  // Completeness is the product gate. Full sanitize can false-positive on
+  // engine zone scaffolding (same practice sentence across many zones).
+  if (isCompleteMatrixReading(trimmed) && !isPromptLeakInReading(trimmed)) {
+    return true;
+  }
+  const cleaned = sanitizeReadingForClient(trimmed);
+  if (!cleaned || cleaned.length < 400) return false;
+  return isCompleteMatrixReading(cleaned);
+}
+
 /** Client-safe reading text — strips leaks; returns empty if unusable. */
 export function sanitizeReadingForClient(
   text: string,
@@ -325,7 +367,9 @@ export function sanitizeReadingForClient(
   }
 
   out = stripMemoryLeakFromReply(out);
-  if (!out || isDegenerateLlmOutput(out) || isPromptLeakInReading(out)) return "";
+  if (!out || isPromptLeakInReading(out)) return "";
+  // Engine matrix zones reuse scaffolding on purpose — do not wipe a complete report.
+  if (isDegenerateLlmOutput(out) && !isCompleteMatrixReading(out)) return "";
 
   if (cardNames?.length) {
     const numericSpread = cardNames.every((name) => /^\d+$/.test(name.trim()));
@@ -333,6 +377,8 @@ export function sanitizeReadingForClient(
       const missing = missingCardMentions(out, cardNames);
       if (missing.length > 0) return "";
     }
+    // Restore premium paragraph rhythm after checklist/polish passes.
+    out = ensureReadingParagraphBreaks(out);
   }
 
   return out.trim();
@@ -377,7 +423,8 @@ export function stripMemoryLeakFromReply(text: string): string {
     if (afterEcho.length >= 40) out = afterEcho;
   }
 
-  if (isDegenerateLlmOutput(out)) return "";
+  // Matrix zone scaffolding repeats by design; do not wipe a complete report.
+  if (isDegenerateLlmOutput(out) && !isCompleteMatrixReading(out)) return "";
 
   return out.trim();
 }

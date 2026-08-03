@@ -729,7 +729,13 @@ export function useChatActions(options: UseChatActionsOptions) {
         setIsLoading(true);
         const ritualStartedAt = Date.now();
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 120_000);
+        const isLongMatrix =
+          metaNumerologToolId === "destiny_matrix" ||
+          metaNumerologToolId === "matrix_compatibility";
+        const timeout = setTimeout(
+          () => controller.abort(),
+          isLongMatrix ? 420_000 : 120_000
+        );
 
         try {
           const res = await fetch("/api/reading", {
@@ -766,6 +772,8 @@ export function useChatActions(options: UseChatActionsOptions) {
                 jobId: data.jobId,
                 storageKey: "aura:reading-active-job",
                 signal: controller.signal,
+                maxAttempts: isLongMatrix ? 240 : 180,
+                pollIntervalMs: isLongMatrix ? 2_500 : 2_000,
               });
               status = 200;
             } catch (pollErr) {
@@ -1262,19 +1270,20 @@ export function useChatActions(options: UseChatActionsOptions) {
     }
     if (prevSelectedCharacterRef.current !== selectedCharacter) {
       prevSelectedCharacterRef.current = selectedCharacter;
-      chatLoadedForRef.current = null;
       loadReadingAttemptKeyRef.current = null;
       loadReadingInFlightKeyRef.current = null;
-      setSpreadReadingRitualOpen(false);
-      setMessages([]);
-      setHistoryHasMore(false);
-      setIsLoadingHistory(true);
 
       const preserveSessionStart =
         pendingNewChatThreadRef.current ||
         readingInFlightRef.current ||
         skipNextReadingRef.current;
+      // Photo / new-spread handoff already seeded messages + ritual — do not wipe them.
       if (!preserveSessionStart) {
+        chatLoadedForRef.current = null;
+        setSpreadReadingRitualOpen(false);
+        setMessages([]);
+        setHistoryHasMore(false);
+        setIsLoadingHistory(true);
         setSessionIntention(null);
         setIntentionSpread(null);
         setIntentionHighlight(false);
@@ -1282,6 +1291,10 @@ export function useChatActions(options: UseChatActionsOptions) {
         setSessionOnlyChat(false);
         setHideChatSpread(false);
         setSpreadFlipped(spreadFlippedState(3, false));
+      } else {
+        chatLoadedForRef.current = selectedCharacter;
+        setHistoryHasMore(false);
+        setIsLoadingHistory(false);
       }
     }
   }, [
@@ -1311,7 +1324,13 @@ export function useChatActions(options: UseChatActionsOptions) {
       setIsLoadingHistory(false);
       return;
     }
-    if (readingInFlightRef.current) return;
+    // New paid spread from landing/session flow — do not hydrate an old consultation.
+    if (pendingNewChatThreadRef.current || readingInFlightRef.current) {
+      // Mark loaded so a later dep change cannot hydrate an old thread after flags clear.
+      chatLoadedForRef.current = selectedCharacter;
+      setIsLoadingHistory(false);
+      return;
+    }
 
     const skipSpreadLoad = skipNextReadingRef.current;
     const keepGuestResumeSkip =
@@ -1324,17 +1343,41 @@ export function useChatActions(options: UseChatActionsOptions) {
     setIsLoadingHistory(true);
     void (async () => {
       try {
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
+        const boundHint =
+          archiveSessionIdRef.current ??
+          consultationSessionIdRef.current ??
+          undefined;
         const boundSessionId = await resolveConsultationSessionId(
           selectedCharacter,
-          archiveSessionIdRef.current ??
-            consultationSessionIdRef.current ??
-            undefined
+          boundHint
         );
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
         const restored = await restoreChatForCharacter(selectedCharacter, {
           archiveSessionId: archiveSessionIdRef.current ?? undefined,
           sessionId: boundSessionId ?? undefined,
         });
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
         chatLoadedForRef.current = selectedCharacter;
+
+        // Ignore history from a different consultation than the one we just bound.
+        const expectedSessionId = consultationSessionIdRef.current;
+        if (
+          expectedSessionId &&
+          restored?.sessionId &&
+          restored.sessionId !== expectedSessionId
+        ) {
+          return;
+        }
 
         if (restored?.sessionId) setConsultationSessionId(restored.sessionId);
         if (restored?.status === "completed") setConsultationReadOnly(true);
@@ -1354,6 +1397,7 @@ export function useChatActions(options: UseChatActionsOptions) {
           setHistoryHasMore(restored.hasMore);
           const archiveId = archiveSessionIdRef.current;
           if (restored.messages.length > 0) {
+            if (pendingNewChatThreadRef.current) return;
             setMessages(restored.messages);
             if (sessionOnlyChat || chatHasSpreadReading(restored.messages)) return;
           } else if (archiveId && restored.sessionId) {

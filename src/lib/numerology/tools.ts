@@ -11,6 +11,7 @@ export type NumerologToolId =
   | "period_month"
   | "pythagoras"
   | "destiny_matrix"
+  | "matrix_compatibility"
   | "personal_year"
   | "forecast_9y"
   | "favorable_dates"
@@ -119,10 +120,29 @@ export const NUMEROLOG_TOOLS: NumerologToolDef[] = [
     cost: SESSION_COST,
     drawCount: 0,
     positions: [],
-    tagline: "22 аркана: ядро, ресурс, отношения, род, аркан года",
+    tagline: "Полная матрица: комфорт, хвост, каналы, возраст, узел периода",
     description:
-      "Матрица судьбы Zovus: схема бесплатна, полный разбор Эвелины — разовая покупка с сохранением и вопросами в чате.",
+      "Полная матрица судьбы Zovus: схема бесплатна, живой разбор Эвелины — разовая покупка с сохранением, узлом периода и вопросами в чате.",
     buildMessage: () => "Построй мою матрицу судьбы",
+  },
+  {
+    id: "matrix_compatibility",
+    emoji: "💫",
+    label: "Совместимость матриц",
+    topic: "matrix_compatibility",
+    group: "form",
+    cost: SESSION_COST,
+    drawCount: 0,
+    positions: [],
+    needsForm: "compat",
+    tagline: "Две матрицы: комфорт, любовь, деньги, хвост, год",
+    description:
+      "Сравнение двух матриц судьбы по ключевым точкам — нужны ваша дата и дата партнёра.",
+    buildMessage: (params) => {
+      const date = params?.partnerDate?.trim() ?? "";
+      const name = params?.partnerName?.trim() || "партнёр";
+      return `Совместимость матриц судьбы с ${name}, дата рождения ${date}`;
+    },
   },
   {
     id: "personal_year",
@@ -357,6 +377,7 @@ export const NUMEROLOG_BIRTH_DATE_TOOLS = new Set<NumerologToolId>([
   "spread_three_numbers",
   "pythagoras",
   "destiny_matrix",
+  "matrix_compatibility",
   "personal_year",
   "forecast_9y",
   "favorable_dates",
