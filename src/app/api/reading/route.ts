@@ -332,6 +332,53 @@ export async function POST(request: NextRequest) {
     if (rateLimited) return rateLimited;
   }
 
+  // Buy-once Full Matrix reopen MUST stay sync and run before async enqueue.
+  // Otherwise every reopen sits in numerology_reading for minutes while the grid
+  // already shows — users report this as "матрица зависает".
+  if (
+    !forceRegenerate &&
+    !workerUserId &&
+    isNumerologMaster(characterId) &&
+    requestNumerologToolId === MATRIX_REPORT_TOOL_ID &&
+    (await ensureDb())
+  ) {
+    const { toIsoBirthDate } = await import("@/lib/services/numerology-report-service");
+    const isoBirth =
+      toIsoBirthDate(birthDate) ?? toIsoBirthDate(String(birthDate).slice(0, 10));
+    const owned = await findOwnedMatrixReport(
+      authed.profileUserId,
+      isoBirth ?? birthDate
+    );
+    if (owned?.content?.trim()) {
+      const reading = owned.content.trim();
+      if (sessionId) {
+        try {
+          await persistReadingToSession({
+            sessionId,
+            profileUserId: authed.profileUserId,
+            characterId,
+            customQuestion: customQuestion || undefined,
+            reading,
+            tarotCards,
+            intention: intention || undefined,
+            spreadType: spreadType === "daily" ? "daily" : "new",
+            spreadId: encodeNumerologSpreadId(MATRIX_REPORT_TOOL_ID),
+          });
+        } catch (err) {
+          console.warn("Owned matrix reading chat save failed:", err);
+        }
+      }
+      return NextResponse.json({
+        reading,
+        isPaid: true,
+        historyId: owned.id,
+        reused: true,
+        matrixOwned: true,
+        createdAt: owned.createdAt || new Date().toISOString(),
+      });
+    }
+  }
+
   if (asyncRequested && isAsyncJobWorkerConfigured()) {
     const longNumerology =
       isNumerologMaster(characterId) &&

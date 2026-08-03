@@ -135,10 +135,13 @@ export function useChatReadingLoading() {
 
   useEffect(() => {
     if (!isLoading) return;
+    // Must cover Full Matrix / matrix_compatibility async (client abort 420s).
+    // The old 130s unlock cleared isLoading while polling continued → frozen chat
+    // or re-entrant loadReading loops.
     const timer = window.setTimeout(() => {
       setIsLoading(false);
       readingInFlightRef.current = false;
-    }, 130_000);
+    }, 420_000);
     return () => window.clearTimeout(timer);
   }, [isLoading]);
 
@@ -895,7 +898,12 @@ export function useChatActions(options: UseChatActionsOptions) {
             pendingReadingMasterRef.current = null;
             const readingMsgId = generateId();
             const readingTs = data.createdAt ? new Date(String(data.createdAt)) : new Date();
-            const cleanedReading = coerceSpreadReadingText(readingText, cardNames);
+            // Matrix reports are zone prose, not tarot card coverage — don't coerce via cardNames.
+            const cleanedReading =
+              metaNumerologToolId === "destiny_matrix" ||
+              metaNumerologToolId === "matrix_compatibility"
+                ? coerceSpreadReadingText(readingText) || readingText.trim()
+                : coerceSpreadReadingText(readingText, cardNames);
             if (!cleanedReading) {
               setMessages([
                 {
