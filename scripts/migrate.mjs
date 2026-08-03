@@ -55,7 +55,8 @@ function listMigrationFiles() {
   }
   return fs
     .readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".sql"))
+    // Rollback companions (*.down.sql) are manual only — never auto-apply.
+    .filter((f) => f.endsWith(".sql") && !f.endsWith(".down.sql"))
     .sort((a, b) => a.localeCompare(b, "en"));
 }
 
