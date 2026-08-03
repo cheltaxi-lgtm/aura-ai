@@ -156,6 +156,7 @@ export async function DELETE(request: NextRequest) {
     const wiped = await wipeUserMatrixReports({
       userId: auth.profileUserId,
       reportId,
+      subjectId,
       birthDate: birthDateRaw,
     });
 

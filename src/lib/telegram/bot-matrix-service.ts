@@ -395,10 +395,12 @@ export async function botMatrixRun(
 
   // Bad/leaked owned report (or explicit replace): wipe before regenerating.
   // Regeneration after a leak is free — client already paid for unusable text.
+  // Always subject-scoped — never wipe every report sharing a birth date.
   const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
   if ((replace || regenerateAfterLeak) && owned) {
-    const wiped = subject?.id
-      ? await deleteOwnedMatrixReportsForSubject(profileUserId, subject.id, {
+    const subjectForWipe = subject ?? (await ensureSelfSubject(profileUserId));
+    const wiped = subjectForWipe?.id
+      ? await deleteOwnedMatrixReportsForSubject(profileUserId, subjectForWipe.id, {
           toolId,
         })
       : await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
@@ -603,15 +605,23 @@ export async function botMatrixRun(
 export async function botMatrixDelete(input: {
   telegramUserId: number;
   reportId?: string;
+  subjectId?: string;
 }) {
   const gate = await requireMatrixUser(input.telegramUserId);
   if (!gate.ok) return gate;
 
   const profileUserId = gate.resolved.profileUserId!;
+  const subject =
+    (input.subjectId?.trim()
+      ? await getMatrixSubject(profileUserId, input.subjectId.trim())
+      : null) ??
+    (!input.reportId?.trim() ? await ensureSelfSubject(profileUserId) : null);
   const wiped = await wipeUserMatrixReports({
     userId: profileUserId,
     reportId: input.reportId,
-    birthDate: input.reportId?.trim() ? null : gate.user.birth_date,
+    subjectId: subject?.id ?? input.subjectId ?? null,
+    // Never wipe by profile birth alone — that erased self when deleting another person.
+    birthDate: null,
   });
 
   if (wiped.deletedReports < 1) {
@@ -685,6 +695,7 @@ export async function botMatrixAction(input: {
       return botMatrixDelete({
         telegramUserId: input.telegramUserId,
         reportId: input.reportId,
+        subjectId: input.subjectId,
       });
     case "summary":
     default:

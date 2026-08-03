@@ -885,12 +885,16 @@ export async function POST(request: NextRequest) {
             };
           }
           // Bad/leaked owned report: wipe once, then regenerate free (bot parity).
+          // Always subject-scoped — birth-date wipe used to erase other people too.
           if (lookup.unusable && lookup.report) {
             matrixRegenerateAfterLeak = true;
-            const wiped = resolvedMatrixSubject
+            const subjectForWipe =
+              resolvedMatrixSubject ??
+              (await ensureSelfSubject(authed.profileUserId).catch(() => null));
+            const wiped = subjectForWipe
               ? await deleteOwnedMatrixReportsForSubject(
                   authed.profileUserId,
-                  resolvedMatrixSubject.id,
+                  subjectForWipe.id,
                   { toolId }
                 )
               : await deleteOwnedMatrixReportsForBirth(
