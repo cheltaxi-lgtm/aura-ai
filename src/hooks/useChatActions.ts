@@ -686,7 +686,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                 );
               }
             }
-            // Fallback: same birth date only — never treat another date as owned.
+            // Metadata fallback (no full bodies) — same birth date only.
             if (!matrixAlreadyOwned && birthRaw) {
               const listRes = await fetch(
                 `/api/numerology/matrix-report?list=1`,
@@ -694,15 +694,23 @@ export function useChatActions(options: UseChatActionsOptions) {
               );
               if (listRes.ok) {
                 const listData = (await listRes.json()) as {
-                  reports?: Array<{ birthDate?: string; content?: string }>;
+                  reports?: Array<{
+                    birthDate?: string;
+                    hasContent?: boolean;
+                    content?: string;
+                  }>;
                 };
                 const birthKey = birthRaw.slice(0, 10);
                 matrixAlreadyOwned = Boolean(
-                  listData.reports?.some(
-                    (r) =>
-                      Boolean(String(r.content ?? "").trim()) &&
+                  listData.reports?.some((r) => {
+                    const has =
+                      r.hasContent === true ||
+                      Boolean(String(r.content ?? "").trim());
+                    return (
+                      has &&
                       (r.birthDate === birthKey || r.birthDate === birthRaw)
-                  )
+                    );
+                  })
                 );
               }
             }
@@ -966,11 +974,21 @@ export function useChatActions(options: UseChatActionsOptions) {
         console.error("loadReading failed:", err);
         closeSpreadReadingRitual();
         loadReadingInFlightKeyRef.current = null;
+        const aborted =
+          (err instanceof DOMException && err.name === "AbortError") ||
+          (err instanceof Error && err.name === "AbortError");
+        const meta = sessionSpreadMetaRef.current;
+        const matrixTimedOut =
+          aborted &&
+          (meta?.numerologToolId === "destiny_matrix" ||
+            String(meta?.spreadId || "").includes("destiny_matrix"));
         setMessages([
           {
             id: generateId(),
             role: "assistant",
-            content: "Мастер на связи. Задайте ваш вопрос.",
+            content: matrixTimedOut
+              ? "Разбор матрицы занял слишком много времени. Напишите «повторить разбор» или откройте матрицу заново — если списание прошло, отчёт откроется без повторной оплаты."
+              : "Мастер на связи. Задайте ваш вопрос.",
             timestamp: new Date(),
           },
         ]);

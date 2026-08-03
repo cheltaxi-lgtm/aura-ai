@@ -1,4 +1,3 @@
-import { appendFileSync, mkdirSync } from "node:fs";
 import { hostname } from "node:os";
 
 import {
@@ -55,33 +54,6 @@ const ORPHAN_MIN_AGE_MS = Math.max(
   Number(process.env.ASYNC_JOB_ORPHAN_MIN_AGE_MS) || 90_000
 );
 
-// #region agent log
-const DEBUG_LOG = "/opt/aura-ai/logs/debug-5da396.log";
-function agentLog(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>
-): void {
-  try {
-    mkdirSync("/opt/aura-ai/logs", { recursive: true });
-    appendFileSync(
-      DEBUG_LOG,
-      JSON.stringify({
-        sessionId: "5da396",
-        hypothesisId,
-        location,
-        message,
-        data,
-        timestamp: Date.now(),
-        runId: process.env.DEBUG_RUN_ID || "worker",
-      }) + "\n"
-    );
-  } catch {
-    /* ignore */
-  }
-}
-// #endregion
 const TIMEOUT_GRACE_MS = Math.max(
   5_000,
   Number(process.env.ASYNC_JOB_TIMEOUT_GRACE_MS) || 20_000
@@ -209,13 +181,6 @@ async function main(): Promise<void> {
   console.log(
     `[async-jobs] worker ${workerId} polling ${baseUrl} kinds=${WORKER_KINDS.join(",")}`
   );
-  // #region agent log
-  agentLog("E", "run-async-jobs.ts:main", "worker_start", {
-    workerId,
-    staleRunningMs: STALE_RUNNING_MS,
-    orphanMinAgeMs: ORPHAN_MIN_AGE_MS,
-  });
-  // #endregion
   const memoryTimer = setInterval(scheduleMemoryDrain, MEMORY_POLL_INTERVAL_MS);
   memoryTimer.unref();
   scheduleMemoryDrain();
@@ -234,14 +199,6 @@ async function main(): Promise<void> {
         console.warn(
           `[async-jobs] reaper orphans=${orphans} requeued=${reaped.requeued} failed=${reaped.failed}`
         );
-        // #region agent log
-        agentLog("E", "run-async-jobs.ts:reaper", "reaper_tick", {
-          workerId,
-          orphans,
-          requeued: reaped.requeued,
-          failed: reaped.failed,
-        });
-        // #endregion
       }
     } catch (error) {
       console.error("[async-jobs] reaper failed:", error);
@@ -256,13 +213,6 @@ async function main(): Promise<void> {
       await sleep(POLL_INTERVAL_MS);
       continue;
     }
-    // #region agent log
-    agentLog("A", "run-async-jobs.ts:claim", "claimed_jobs", {
-      workerId,
-      ids: jobs.map((j) => j.id),
-      kinds: jobs.map((j) => j.kind),
-    });
-    // #endregion
     await Promise.all(jobs.map((job) => track(runJob(job))));
   }
 

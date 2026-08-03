@@ -1256,7 +1256,7 @@ export default function ChatWindow({
             ))}
           </div>
         ) : null}
-        {isNumerologChat ? (
+        {isNumerologChat && numerologSessionToolId !== "destiny_matrix" ? (
           <NumerologQuickChips
             disabled={quickChipsDisabled}
             onSend={(text) => {

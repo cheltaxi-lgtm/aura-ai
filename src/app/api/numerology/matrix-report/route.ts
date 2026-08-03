@@ -5,8 +5,8 @@ import { requireProfileUserId } from "@/lib/require-auth";
 import { PRICING } from "@/lib/config/pricing";
 import { wipeUserMatrixReports } from "@/lib/numerology/matrix-session-cleanup";
 import {
-  findOwnedMatrixReport,
-  listUserMatrixReports,
+  listUserMatrixReportSummaries,
+  lookupOwnedMatrixReport,
   toIsoBirthDate,
 } from "@/lib/services/numerology-report-service";
 
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
   try {
     if (list) {
-      const reports = await listUserMatrixReports(auth.profileUserId, 20);
+      const reports = await listUserMatrixReportSummaries(auth.profileUserId, 20);
       return NextResponse.json({
         reports,
         includedQuestions: PRICING.MATRIX_INCLUDED_QUESTIONS,
@@ -43,11 +43,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const report = await findOwnedMatrixReport(auth.profileUserId, birthDate);
-    const hasContent = Boolean(report?.content?.trim());
+    const lookup = await lookupOwnedMatrixReport(auth.profileUserId, birthDate);
+    const owned = lookup.usable;
+    const report = lookup.report;
     return NextResponse.json({
-      owned: hasContent,
-      report: hasContent && report
+      owned,
+      unusable: lookup.unusable,
+      report: owned && report
         ? {
             id: report.id,
             birthDate: report.birthDate,

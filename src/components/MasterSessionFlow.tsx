@@ -56,6 +56,7 @@ import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import { PRICING } from "@/lib/config/pricing";
 import { formatSpreadUnitRu } from "@/lib/spread-ritual-copy";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
+import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 import DeckShuffleAnimation from "@/components/DeckShuffleAnimation";
 
 /** Minimum time for a full riffle shuffle ritual (split → riffle → square). */
@@ -236,12 +237,17 @@ export default function MasterSessionFlow({
   }, [isOpen, initialPartnerInfo?.partnerName, initialPartnerInfo?.partnerDate]);
   const [numerologResult, setNumerologResult] = useState<NumerologSessionResult | null>(null);
   const [numerologRevealReady, setNumerologRevealReady] = useState(false);
-  const [matrixOwned, setMatrixOwned] = useState(false);
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
   const numerologFlow = isNumerologMaster(master);
   const spreadDef = getSpread(selectedSpreadId);
   const numerologTool = numerologFlow ? getNumerologTool(selectedNumerologTool) : null;
   const cardCount = numerologFlow ? (numerologTool?.drawCount ?? 3) : spreadDef.cardCount;
+  const matrixOwnership = useMatrixOwnership({
+    enabled:
+      isOpen && numerologFlow && selectedNumerologTool === "destiny_matrix",
+    birthDate: userBirthDate,
+  });
+  const matrixOwned = matrixOwnership.owned;
   const matrixBuyOnceOwned =
     numerologFlow && selectedNumerologTool === "destiny_matrix" && matrixOwned;
   const spreadCost = matrixBuyOnceOwned
@@ -249,64 +255,6 @@ export default function MasterSessionFlow({
     : numerologFlow
       ? (numerologTool?.cost ?? PRICING.NUMEROLOGY_SESSION)
       : Math.max(1, Math.round(runeCost("INTENTION_SPREAD") * spreadDef.costMultiplier));
-
-  useEffect(() => {
-    if (!isOpen || !numerologFlow || selectedNumerologTool !== "destiny_matrix") {
-      setMatrixOwned(false);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const birthDate = userBirthDate?.trim();
-        if (birthDate) {
-          const res = await fetch(
-            `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
-            { credentials: "include" }
-          );
-          if (res.ok) {
-            const data = (await res.json()) as { owned?: boolean };
-            if (!cancelled && data.owned) {
-              setMatrixOwned(true);
-              return;
-            }
-          }
-        }
-        // Fallback: only match this birth date (ISO or dotted) — never unlock other dates.
-        if (!birthDate) {
-          if (!cancelled) setMatrixOwned(false);
-          return;
-        }
-        const listRes = await fetch(`/api/numerology/matrix-report?list=1`, {
-          credentials: "include",
-        });
-        if (!listRes.ok || cancelled) {
-          if (!cancelled) setMatrixOwned(false);
-          return;
-        }
-        const listData = (await listRes.json()) as {
-          reports?: Array<{ content?: string; birthDate?: string }>;
-        };
-        const birthKey = birthDate.slice(0, 10);
-        if (!cancelled) {
-          setMatrixOwned(
-            Boolean(
-              listData.reports?.some(
-                (r) =>
-                  Boolean(String(r.content ?? "").trim()) &&
-                  (r.birthDate === birthKey || r.birthDate === birthDate)
-              )
-            )
-          );
-        }
-      } catch {
-        if (!cancelled) setMatrixOwned(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, numerologFlow, selectedNumerologTool, userBirthDate]);
 
   /** Owned matrix: do not auto-open — user chooses «open saved» vs «new matrix». */
   const [matrixReplaceBusy, setMatrixReplaceBusy] = useState(false);
@@ -923,7 +871,7 @@ export default function MasterSessionFlow({
       if (!res.ok) {
         throw new Error("delete_failed");
       }
-      setMatrixOwned(false);
+      matrixOwnership.refetch();
       setFlipped(emptyFlipped(cardCount));
       setNewCards([]);
       goToRitualStep();

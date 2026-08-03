@@ -114,12 +114,75 @@ export async function findOwnedMatrixReport(
   return anyVersion.rows[0] ? mapRow(anyVersion.rows[0]) : null;
 }
 
+export type OwnedMatrixLookup = {
+  report: NumerologyReportHistoryItem | null;
+  /** Content passes client-safety + completeness gate (site/bot parity). */
+  usable: boolean;
+  /** Non-empty row exists but fails the usability gate (leak / truncated). */
+  unusable: boolean;
+};
+
+/** Owned report + usability — mirror Telegram botMatrixService gates. */
+export async function lookupOwnedMatrixReport(
+  userId: string,
+  birthDateRaw: string | null | undefined,
+  options?: { calculationVersion?: string; toolId?: string }
+): Promise<OwnedMatrixLookup> {
+  const report = await findOwnedMatrixReport(userId, birthDateRaw, options);
+  if (!report?.content?.trim()) {
+    return { report: null, usable: false, unusable: false };
+  }
+  const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
+  const usable = isUsableMatrixReading(report.content);
+  return { report, usable, unusable: !usable };
+}
+
+export async function findUsableOwnedMatrixReport(
+  userId: string,
+  birthDateRaw: string | null | undefined,
+  options?: { calculationVersion?: string; toolId?: string }
+): Promise<NumerologyReportHistoryItem | null> {
+  const { report, usable } = await lookupOwnedMatrixReport(
+    userId,
+    birthDateRaw,
+    options
+  );
+  return usable ? report : null;
+}
+
 export async function userOwnsMatrixReport(
   userId: string,
   birthDateRaw: string | null | undefined
 ): Promise<boolean> {
-  const owned = await findOwnedMatrixReport(userId, birthDateRaw);
-  return Boolean(owned?.content?.trim());
+  const owned = await findUsableOwnedMatrixReport(userId, birthDateRaw);
+  return Boolean(owned);
+}
+
+/** List metadata without full LLM bodies (browser ownership / cabinet chips). */
+export async function listUserMatrixReportSummaries(
+  userId: string,
+  limit = 20
+): Promise<
+  Array<{
+    id: string;
+    birthDate: string;
+    calculationVersion: string;
+    hasContent: boolean;
+    sessionId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>
+> {
+  const reports = await listUserMatrixReports(userId, limit);
+  return reports.map((r) => ({
+    id: r.id,
+    birthDate: r.birthDate,
+    calculationVersion: r.calculationVersion,
+    hasContent: Boolean(r.content?.trim()),
+    sessionId: r.sessionId,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  }));
 }
 
 export type SaveMatrixReportResult =

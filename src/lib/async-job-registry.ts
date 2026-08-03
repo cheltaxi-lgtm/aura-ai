@@ -208,6 +208,7 @@ const JOINT_COMBINED: PaidJobKindConfig = {
 
 const NUMEROLOGY_READING: PaidJobKindConfig = {
   kind: "numerology_reading",
+  runeAction: "NUMEROLOGY_SESSION",
   maxActivePerUser: 2,
   /** Full matrix ≈ 19 zone LLM calls; align with bot siteNumerology 420s. */
   timeoutMs: 420_000,
@@ -216,15 +217,31 @@ const NUMEROLOGY_READING: PaidJobKindConfig = {
     body: { ...job.input, async: false, characterId: "numerolog" },
   }),
   matchesWorkerPath: (pathname) => pathname === "/api/reading",
-  buildDedupeKey: (userId, payload) =>
-    hashDedupeParts([
+  buildDedupeKey: (userId, payload) => {
+    const birthRaw = typeof payload.birthDate === "string" ? payload.birthDate : "";
+    // Prefer ISO YYYY-MM-DD so dotted/ISO client variants share one active job.
+    const birthKey = /^\d{4}-\d{2}-\d{2}/.test(birthRaw.trim())
+      ? birthRaw.trim().slice(0, 10)
+      : birthRaw.trim();
+    const partnerRaw =
+      typeof payload.partnerDate === "string"
+        ? payload.partnerDate
+        : typeof (payload.numerologToolParams as { partnerDate?: string } | undefined)
+              ?.partnerDate === "string"
+          ? (payload.numerologToolParams as { partnerDate: string }).partnerDate
+          : "";
+    const partnerKey = /^\d{4}-\d{2}-\d{2}/.test(partnerRaw.trim())
+      ? partnerRaw.trim().slice(0, 10)
+      : partnerRaw.trim();
+    return hashDedupeParts([
       userId,
       "numerology_reading",
       payload.numerologToolId,
       payload.numerologReadingCacheKey,
-      payload.birthDate,
-      payload.partnerDate,
-    ]),
+      birthKey,
+      partnerKey,
+    ]);
+  },
 };
 
 const IMAGE_GENERATE: PaidJobKindConfig = {

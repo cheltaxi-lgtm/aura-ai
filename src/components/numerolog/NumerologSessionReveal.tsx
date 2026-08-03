@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { NumerologSessionResult } from "@/lib/numerology/session-result";
+import {
+  DESTINY_MATRIX_UI_SLOT_COUNT,
+} from "@/lib/numerology/destiny-matrix";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
 import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
 
@@ -12,7 +15,13 @@ interface NumerologSessionRevealProps {
 }
 
 export default function NumerologSessionReveal({ result, onAllRevealed }: NumerologSessionRevealProps) {
-  const totalSteps = result.pythagorasSquare ? 1 : result.positions.length;
+  const isMatrix = result.toolId === "destiny_matrix" && Boolean(result.destinyMatrix);
+  // Matrix grid has 16 slots — don't animate 18 zone-list steps (~80s). Match SEO preview pace.
+  const totalSteps = result.pythagorasSquare
+    ? 1
+    : isMatrix
+      ? DESTINY_MATRIX_UI_SLOT_COUNT
+      : result.positions.length;
   const [revealed, setRevealed] = useState(0);
   const onAllRevealedRef = useRef(onAllRevealed);
   onAllRevealedRef.current = onAllRevealed;
@@ -30,14 +39,21 @@ export default function NumerologSessionReveal({ result, onAllRevealed }: Numero
       onAllRevealedRef.current?.();
       return;
     }
-    const delay = result.pythagorasSquare ? 600 : revealed === 0 ? 120 : 480 + revealed * 520;
+    const delay = result.pythagorasSquare
+      ? 600
+      : isMatrix
+        ? revealed === 0
+          ? 90
+          : 90
+        : revealed === 0
+          ? 120
+          : 480 + revealed * 520;
     const timer = window.setTimeout(() => setRevealed((n) => n + 1), delay);
     return () => window.clearTimeout(timer);
-  }, [revealed, totalSteps, result.pythagorasSquare, result.toolId]);
+  }, [revealed, totalSteps, result.pythagorasSquare, result.toolId, isMatrix]);
 
   const isForecast = result.toolId === "forecast_9y";
   const isCompat = result.toolId === "compatibility";
-  const isMatrix = result.toolId === "destiny_matrix" && result.destinyMatrix;
 
   if (!result.pythagorasSquare && result.positions.length === 0) {
     return (
