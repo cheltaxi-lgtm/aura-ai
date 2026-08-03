@@ -20,16 +20,21 @@ import {
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MastersShowcase from "@/components/MastersShowcase";
 import LandingHeroVisual from "@/components/seo/LandingHeroVisual";
+import BodyPortal from "@/components/BodyPortal";
 import GuestTripletDraw from "@/components/GuestTripletDraw";
+import RegisterGate from "@/components/RegisterGate";
 import QuickQuestions from "@/components/seo/QuickQuestions";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import OfflineSpreadBlock from "@/components/seo/OfflineSpreadBlock";
 import AndroidDownloadBlock from "@/components/seo/AndroidDownloadBlock";
 import LandingSeoHub from "@/components/seo/LandingSeoHub";
+import LandingPartnersSection from "@/components/seo/LandingPartnersSection";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
+import LandingDemoSection from "@/components/seo/LandingDemoSection";
+import LandingHonestSection from "@/components/seo/LandingHonestSection";
+import LandingClosingBand from "@/components/seo/LandingClosingBand";
 import {
   buildLandingOfferCopy,
-  GUEST_SPREAD_START_EVENT,
   LANDING_QUESTION_KEY,
   resolveLandingHeroVariant,
   type GuestSpreadStartDetail,
@@ -37,7 +42,11 @@ import {
 } from "@/lib/landing-offer";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
-import { trackLandingView, trackLandingPrimaryCtaClick } from "@/lib/seo/metrika";
+import {
+  trackLandingView,
+  trackLandingPrimaryCtaClick,
+  trackRegistrationGateView,
+} from "@/lib/seo/metrika";
 import {
   buildLoginHref,
   buildRegisterHref,
@@ -46,6 +55,15 @@ import {
 import LandingSocialProofStats, {
   useLandingSocialProofVisible,
 } from "@/components/seo/LandingSocialProofStats";
+import EditorialHeroSection from "@/components/editorial/EditorialHeroSection";
+import EditorialTopicsSection from "@/components/editorial/EditorialTopicsSection";
+import EditorialSessionStepsSection from "@/components/editorial/EditorialSessionStepsSection";
+import EditorialStarterPackSection from "@/components/editorial/EditorialStarterPackSection";
+import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
+import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
+import HomeDestinyMatrixBanner from "@/components/editorial/HomeDestinyMatrixBanner";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
+import { trackQuickQuestionClick } from "@/lib/seo/metrika";
 
 const BENEFITS = [
   {
@@ -64,8 +82,8 @@ const BENEFITS = [
     icon: Zap,
   },
   {
-    title: "Премиальный опыт",
-    text: "Тёмная эстетика, золотые акценты и глубокая расшифровка — как закрытый эзотерический клуб.",
+    title: "Приватный темп",
+    text: "Без очереди и без спешки: вопрос, символы и разбор — в своём ритме, с сохранением в кабинете.",
     icon: Moon,
   },
 ] as const;
@@ -83,7 +101,7 @@ const STEPS = [
   },
   {
     num: "03",
-    title: "Получите расшифровку",
+    title: "Получите трактовку",
     text: "Увидите краткий ориентир по символам, затем зарегистрируйтесь для полной трактовки и чата с мастером.",
   },
 ] as const;
@@ -135,29 +153,29 @@ const COMPARISON_ROWS = [
   {
     title: "Честная цена",
     them: "«Бесплатно» — пока не дойдёте до полной расшифровки или подписки",
-    us: "Стоимость видна заранее в рублях, платите только за то, что открываете",
+    us: "Цена в рунах ᚢ видна до списания — платите только за то, что открываете",
   },
   {
     title: "Доступ без ожидания",
     them: "Живой таролог — запись, очередь, оплата по минутам",
-    us: "Мастер на связи 24/7, ответ за секунды",
+    us: "Наставник доступен сразу — без записи и ожидания",
   },
   {
     title: "Все традиции в одном месте",
     them: "Один сайт — одна система: либо Таро, либо гороскопы",
-    us: "Таро, руны, астрология, нумерология, славянские обряды — в одном окне",
+    us: "Таро, руны, астрология, нумерология, персональные обряды — в одном окне",
   },
   {
-    title: "Честно об ИИ",
-    them: "Либо скрывают, что отвечает бот, либо безликий генератор без характера",
-    us: "Открыто: с вами говорит ИИ-наставник в живом образе — без обмана",
+    title: "Честно о формате",
+    them: "Скрывают, кто отвечает, или дают безликий шаблон",
+    us: "Наставники в образах — с характером, традицией и прозрачными правилами",
   },
 ] as const;
 
 const TRUST_POINTS = [
   {
-    title: "ИИ-мастера в образах",
-    text: "Наставники — художественные персонажи Zovus. Мы честно обозначаем это до начала сеанса.",
+    title: "Наставники в образах",
+    text: "Каждый мастер ведёт в своей традиции — Таро, руны, астрология, нумерология.",
     icon: Sparkles,
   },
   {
@@ -197,10 +215,20 @@ export interface AuraSellingLandingProps {
   photoNavLabel?: string;
   /** Explicit "get a ritual" CTA — shown right under quick questions, no scrolling needed. */
   onOpenRitual?: () => void;
+  /** Logged-in: open Эвелина session with Матрица судьбы preselected. */
+  onOpenDestinyMatrixSession?: () => void;
+  /** Logged-in: open already-purchased Full Matrix report (skip tool picker). */
+  onOpenOwnedDestinyMatrixReport?: () => void;
   /** Logged-in home: open spread flow from the custom question field (hero is hidden). */
   onCustomQuestionSubmit?: (question: string) => void;
   /** Logged-in home: start the selected catalog spread from quick question chips. */
   onQuickQuestionSelect?: (question: string, intentSlug?: string) => void;
+  /** Display name for logged-in welcome banner. */
+  homeUserName?: string | null;
+  /** When false, parent renders LoggedInHomeBanner (e.g. above ReadingRecap). */
+  showLoggedInHomeBanner?: boolean;
+  /** Classic mystic shell or editorial mockup shell — same blocks and handlers. */
+  layout?: "classic" | "editorial";
 }
 
 export default function AuraSellingLanding({
@@ -225,23 +253,63 @@ export default function AuraSellingLanding({
   onOpenMarkCards,
   photoNavLabel,
   onOpenRitual,
+  onOpenDestinyMatrixSession,
+  onOpenOwnedDestinyMatrixReport,
   onCustomQuestionSubmit,
   onQuickQuestionSelect,
+  homeUserName,
+  showLoggedInHomeBanner = true,
+  layout = "classic",
 }: AuraSellingLandingProps) {
+  const isEditorial = layout === "editorial";
+  const isGuestEditorial = isEditorial && !isLoggedIn;
+  const showLoggedInHome = isLoggedIn && !showHero && showLoggedInHomeBanner;
+  const showQuickQuestionsBlock =
+    !isGuestEditorial && (showHero || Boolean(afterQuickQuestions) || showLoggedInHome);
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
+  const [guestSpreadRequest, setGuestSpreadRequest] = useState<{
+    id: number;
+    detail: GuestSpreadStartDetail;
+  } | null>(null);
+  const [topicAuthSlug, setTopicAuthSlug] = useState<string | null>(null);
   const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub, heroVariant);
-  useLandingSocialProofVisible(showSellingSections || (showHero && !isLoggedIn));
+  useLandingSocialProofVisible(
+    !isGuestEditorial && (showSellingSections || (showHero && !isLoggedIn))
+  );
 
   useEffect(() => {
     const variant = resolveLandingHeroVariant();
     setHeroVariant(variant);
-    if (showHero && !isLoggedIn) trackLandingView({ hero_variant: variant });
-  }, [showHero, isLoggedIn]);
+    if (showHero && !isLoggedIn) {
+      trackLandingView({ hero_variant: isEditorial ? "editorial" : variant });
+    }
+  }, [showHero, isLoggedIn, isEditorial]);
+
+  useEffect(() => {
+    if (!topicAuthSlug) return;
+    trackRegistrationGateView("editorial_topic");
+  }, [topicAuthSlug]);
 
   const scrollToMasters = () => {
     document.getElementById("наставники")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const scrollToSession = () => {
+    document.getElementById("как-проходит-сеанс")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleTopic = (intentSlug: string) => {
+    const intent = getSpreadIntentBySlug(intentSlug);
+    if (!intent) return;
+    trackQuickQuestionClick(intentSlug);
+    if (isLoggedIn && onQuickQuestionSelect) {
+      onQuickQuestionSelect(intent.questionTemplate, intentSlug);
+      return;
+    }
+    // Guest topic cards → login/register, then resume intent after auth.
+    setTopicAuthSlug(intentSlug);
   };
 
   const startGuestSpread = (question?: string, masterId?: string) => {
@@ -253,7 +321,10 @@ export default function AuraSellingLanding({
       question: normalizedQuestion,
       masterId,
     };
-    window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+    setGuestSpreadRequest((current) => ({
+      id: (current?.id ?? 0) + 1,
+      detail,
+    }));
   };
 
   const handlePrimaryCta = (placement: "hero" | "sticky" | "final") => {
@@ -268,7 +339,7 @@ export default function AuraSellingLanding({
   };
 
   const handleSecondaryCta = () => {
-    scrollToMasters();
+    scrollToSession();
   };
 
   const handleDirection = (filter: (typeof DIRECTIONS)[number]["filter"]) => {
@@ -281,8 +352,8 @@ export default function AuraSellingLanding({
       scrollToMasters();
       return;
     }
-    if (filter === "astrology" && isLoggedIn) {
-      window.location.assign("/cabinet/astrology");
+    if (filter === "astrology") {
+      window.location.assign(isLoggedIn ? "/cabinet/astrology" : "/natalnaya-karta");
       return;
     }
     const match =
@@ -290,9 +361,7 @@ export default function AuraSellingLanding({
         ? masters.find((m) => m.system?.includes("tarot") || /таро/i.test(m.title))
         : filter === "runes"
           ? masters.find((m) => m.system === "runes")
-          : filter === "astrology"
-            ? masters.find((m) => m.system === "astrology")
-            : masters.find((m) => m.system === "slavic");
+          : masters.find((m) => m.system === "slavic");
     if (match) {
       onSelectMaster(match.id);
     } else {
@@ -300,22 +369,139 @@ export default function AuraSellingLanding({
     }
   };
 
+  const topicAuthReturnTo = topicAuthSlug
+    ? resolveRegistrationReturnTo({ intentSlug: topicAuthSlug })
+    : null;
+
+  const topicAuthPortal = (
+    <BodyPortal active={Boolean(topicAuthSlug)}>
+      {topicAuthSlug && topicAuthReturnTo ? (
+        <div className="fixed inset-0 z-[7000] flex items-end justify-center sm:items-center">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={() => setTopicAuthSlug(null)}
+            aria-label="Закрыть"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="topic-auth-title"
+            className="relative z-10 flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0a0612] shadow-2xl sm:mx-4 sm:rounded-2xl"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-400/70">Zovus</p>
+                <h2 id="topic-auth-title" className="font-display text-lg font-bold text-white">
+                  Войти или зарегистрироваться
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTopicAuthSlug(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+                aria-label="Закрыть"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="lux-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
+              <RegisterGate
+                compact
+                title="Продолжите выбранную тему"
+                description="После входа откроем расклад по этой теме — вопрос и мастер уже будут подставлены."
+                returnTo={topicAuthReturnTo}
+                source="editorial_topic"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </BodyPortal>
+  );
+
+  if (isGuestEditorial) {
+    return (
+      <div className="editorial-landing editorial-landing--guest-conversion">
+        {topicAuthPortal}
+        <EditorialHeroSection
+          isLoggedIn={false}
+          conversionHero
+          pricingLine={undefined}
+          onPrimaryCta={() => handlePrimaryCta("hero")}
+          onSecondaryCta={scrollToSession}
+          onQuestionSubmit={(question) => startGuestSpread(question)}
+          onPainChip={(question, intentSlug) => {
+            const intent = getSpreadIntentBySlug(intentSlug);
+            startGuestSpread(question, intent?.recommendedMasterId);
+          }}
+        />
+        {/* Same guest-receipt flow; mounted under hero (no full navigation). Idle = null. */}
+        <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
+        <LandingDemoSection onOpenCards={() => handlePrimaryCta("final")} />
+        <EditorialSessionStepsSection />
+        <LandingHonestSection />
+        <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
+        {showMasters ? (
+          <MastersShowcase
+            masters={masters}
+            onSelect={onSelectMaster}
+            onBrowseDeck={onBrowseDeck}
+            recommendedId={recommendedId}
+            continueMasterIds={continueMasterIds}
+            spreadReadingDone={spreadReadingDone}
+            runesEnabled={false}
+            enforceBalance={false}
+            layout="grid"
+            guestLanding
+            showExpertCta={false}
+            showDisclaimer={false}
+            title="Выберите наставника"
+            subtitle="Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
+            className="aura-landing-masters"
+          />
+        ) : null}
+        <EditorialPracticesSection isLoggedIn={false} />
+        <LandingClosingBand onOpenCards={() => handlePrimaryCta("final")} />
+        {showTariffs ? (
+          <LandingSeoHub
+            rubPerRune={config.rubPerRune}
+            readingCost={ready && config.enabled ? cost("READING") : undefined}
+            compact
+            hideFaq
+          />
+        ) : null}
+        <LandingStickyCta label="Открыть 3 карты" onClick={() => handlePrimaryCta("sticky")} />
+      </div>
+    );
+  }
+
   return (
-    <div className="aura-landing">
+    <div className={isEditorial ? "editorial-landing" : "aura-landing"}>
+      {topicAuthPortal}
+
       {!showHero ? (
         <h1 className="sr-only">
-          Zovus — персональные эзотерические консультации, расклады на таро и рунах
+          Zovus — приватный цифровой салон: расклады Таро, числа и астрология
         </h1>
       ) : null}
-      {showHero ? (
+      {showHero && isEditorial ? (
+        <EditorialHeroSection
+          isLoggedIn={isLoggedIn}
+          pricingLine={undefined}
+          onPrimaryCta={() => handlePrimaryCta("hero")}
+          onSecondaryCta={scrollToSession}
+          onQuestionSubmit={(question) =>
+            isLoggedIn && onCustomQuestionSubmit
+              ? onCustomQuestionSubmit(question)
+              : startGuestSpread(question)
+          }
+        />
+      ) : null}
+      {showHero && !isEditorial ? (
         <section className="aura-landing-hero">
           <div className="aura-landing-hero__grid mx-auto max-w-6xl">
-            <motion.div
-              className="aura-landing-hero__copy"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            >
+            <div className="aura-landing-hero__copy">
               <p className="aura-landing-hero__eyebrow">{offer.heroEyebrow}</p>
               <h1 className="font-mystic-display aura-landing-hero__title">{offer.heroTitle}</h1>
               <p className="aura-landing-hero__subtitle">{offer.heroSubtitle}</p>
@@ -335,30 +521,34 @@ export default function AuraSellingLanding({
               <p className="aura-landing-hero__trust aura-landing-hero__trust--prominent">{offer.heroMicrocopy}</p>
               {ready ? <p className="aura-landing-hero__pricing">{offer.pricingLine}</p> : null}
               {!isLoggedIn ? <LandingSocialProofStats variant="hero" className="mt-5" /> : null}
-            </motion.div>
+            </div>
 
-            <motion.div
-              className="aura-landing-hero__visual"
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-              aria-hidden
-            >
+            <div className="aura-landing-hero__visual" aria-hidden>
               <LandingHeroVisual masters={masters} />
-            </motion.div>
+            </div>
           </div>
         </section>
       ) : null}
 
-      {!isLoggedIn ? <GuestTripletDraw /> : null}
+      {showLoggedInHome ? (
+        <LoggedInHomeBanner
+          userName={homeUserName}
+          onQuestionSubmit={onCustomQuestionSubmit ?? onQuickQuestionSelect}
+          onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
+          onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
+        />
+      ) : null}
 
-      {showHero || afterQuickQuestions ? (
+      {showQuickQuestionsBlock ? (
         <QuickQuestions
-          showQuestionField={!showHero}
+          showQuestionField={!isLoggedIn && !showHero && !showLoggedInHome}
           onQuestionSelect={
-            !isLoggedIn
-              ? (question) => startGuestSpread(question)
-              : onQuickQuestionSelect
+            isLoggedIn && onQuickQuestionSelect
+              ? onQuickQuestionSelect
+              : (question, intentSlug) => {
+                  const intent = intentSlug ? getSpreadIntentBySlug(intentSlug) : null;
+                  startGuestSpread(question, intent?.recommendedMasterId);
+                }
           }
           onCustomQuestionSubmit={
             isLoggedIn
@@ -367,6 +557,26 @@ export default function AuraSellingLanding({
                 ? (question) => startGuestSpread(question)
                 : undefined
           }
+        />
+      ) : null}
+
+      {showSellingSections && isEditorial && !isLoggedIn ? (
+        <EditorialTopicsSection onTopic={handleTopic} />
+      ) : null}
+
+      {!isLoggedIn ? <GuestTripletDraw startRequest={guestSpreadRequest} /> : null}
+
+      {showSellingSections && isEditorial ? <EditorialSessionStepsSection /> : null}
+
+      {!isLoggedIn ? (
+        <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
+      ) : null}
+
+      {showQuickQuestionsBlock || (showSellingSections && isEditorial) ? (
+        <HomeDestinyMatrixBanner
+          isLoggedIn={isLoggedIn}
+          onOpenWithEvelina={isLoggedIn ? onOpenDestinyMatrixSession : undefined}
+          onOpenOwnedReport={isLoggedIn ? onOpenOwnedDestinyMatrixReport : undefined}
         />
       ) : null}
 
@@ -420,30 +630,35 @@ export default function AuraSellingLanding({
             onOpenPaywall?.();
           }}
           layout="grid"
-          title="Выберите своего проводника"
-          subtitle="Каждый мастер работает в своей системе — от классического Таро до рун и астрологии."
+          rowVariant="default"
+          title="Выберите наставника"
+          subtitle="Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
           showExpertCta={expertRegistrationEnabled}
           showDisclaimer={false}
           className="aura-landing-masters"
         />
       ) : null}
 
-      {showSellingSections ? (
-        <section className="aura-landing-section">
+      {showSellingSections && isEditorial ? (
+        <EditorialPracticesSection isLoggedIn={isLoggedIn} />
+      ) : null}
+
+      {showSellingSections && !isEditorial ? (
+        <section id="как-проходит-сеанс" className="aura-landing-section scroll-mt-24">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
-              <h2 className="font-mystic-display aura-landing-section__title">Как это работает</h2>
-              <p className="aura-landing-section__subtitle">Три шага от вопроса до ясности</p>
+              <h2 className="font-mystic-display aura-landing-section__title">Как проходит сеанс</h2>
+              <p className="aura-landing-section__subtitle">От вопроса к ясности — в три шага</p>
             </div>
             <div className="aura-landing-steps">
               {STEPS.map((step, i) => (
                 <motion.div
                   key={step.num}
                   className="aura-landing-step glass-panel"
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1, duration: 0.45 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.08, duration: 0.4 }}
                 >
                   <span className="aura-landing-step__num">{step.num}</span>
                   <h3 className="font-display aura-landing-step__title">{step.title}</h3>
@@ -463,13 +678,13 @@ export default function AuraSellingLanding({
         />
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Почему Zovus</h2>
               <p className="aura-landing-section__subtitle">
-                Меньше шаблонов, больше внимания к вашему вопросу, картам и продолжению диалога.
+                Внимание к вашему вопросу, картам и продолжению диалога — без общего шаблона.
               </p>
             </div>
             <div className="aura-landing-benefits">
@@ -477,10 +692,10 @@ export default function AuraSellingLanding({
                 <motion.article
                   key={item.title}
                   className="aura-landing-benefit glass-panel"
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.08, duration: 0.45 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.06, duration: 0.4 }}
                 >
                   <div className="aura-landing-benefit__icon">
                     <item.icon className="h-5 w-5 text-aura-champagne" strokeWidth={1.5} />
@@ -494,15 +709,15 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section aura-landing-section--compare">
           <div className="mx-auto max-w-4xl">
             <div className="aura-landing-section__head">
               <span className="aura-landing-compare__eyebrow">Сравнение</span>
-              <h2 className="font-mystic-display aura-landing-section__title">Zovus устроен иначе</h2>
+              <h2 className="font-mystic-display aura-landing-section__title">Чем отличается Zovus</h2>
               <p className="aura-landing-section__subtitle">
-                Мы изучили, как обычно работают боты-гадалки, шаблонные сайты и платные консультации —
-                и сделали по-другому.
+                Не шаблонный бот и не запись к тарологу на неделю — вопрос, символы и разбор в одном
+                спокойном сеансе.
               </p>
             </div>
             <div className="aura-landing-compare glass-panel">
@@ -518,10 +733,10 @@ export default function AuraSellingLanding({
                 <motion.div
                   key={row.title}
                   className="aura-landing-compare__row"
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.06, duration: 0.4 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.05, duration: 0.35 }}
                 >
                   <h3 className="aura-landing-compare__row-title">{row.title}</h3>
                   <div className="aura-landing-compare__cell aura-landing-compare__cell--them">
@@ -539,13 +754,13 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section aura-landing-section--trust">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Доверие и прозрачность</h2>
               <p className="aura-landing-section__subtitle">
-                Тысячи людей уже открыли карты сегодня — присоединяйтесь, пока мастера онлайн.
+                Честно о формате, приватности и оплате — без срочности и фальшивых счётчиков.
               </p>
             </div>
             <div className="aura-landing-trust">
@@ -566,7 +781,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section">
           <div className="mx-auto max-w-6xl">
             <div className="aura-landing-section__head">
@@ -582,10 +797,10 @@ export default function AuraSellingLanding({
                   type="button"
                   onClick={() => handleDirection(dir.filter)}
                   className="aura-landing-direction glass-panel text-left"
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.06, duration: 0.4 }}
+                  initial={false}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ delay: i * 0.05, duration: 0.35 }}
                 >
                   <dir.icon className="mb-3 h-5 w-5 text-aura-champagne/80" strokeWidth={1.5} />
                   <h3 className="font-display text-base font-semibold text-white">{dir.title}</h3>
@@ -611,17 +826,13 @@ export default function AuraSellingLanding({
         />
       ) : null}
 
-      {showSellingSections ? <AndroidDownloadBlock /> : null}
+      {!isLoggedIn && (showSellingSections || showHero) ? <LandingPartnersSection /> : null}
 
-      {showSellingSections ? (
+      {showSellingSections && !isEditorial ? <AndroidDownloadBlock /> : null}
+
+      {showSellingSections && !isEditorial ? (
         <section className="aura-landing-section aura-landing-section--final px-4 sm:px-0">
-          <motion.div
-            className="aura-landing-final__panel mx-auto max-w-3xl text-center"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-          >
+          <div className="aura-landing-final__panel mx-auto max-w-3xl text-center">
             <h2 className="font-mystic-display aura-landing-final__title">
               Откройте карты — и получите свой ответ
             </h2>
@@ -652,12 +863,15 @@ export default function AuraSellingLanding({
                 </Link>
               </p>
             ) : null}
-          </motion.div>
+          </div>
         </section>
       ) : null}
 
       {!isLoggedIn ? (
-        <LandingStickyCta label={offer.primaryCta} onClick={() => handlePrimaryCta("sticky")} />
+        <LandingStickyCta
+          label={isEditorial ? "Открыть 3 карты" : offer.primaryCta}
+          onClick={() => handlePrimaryCta("sticky")}
+        />
       ) : null}
     </div>
   );

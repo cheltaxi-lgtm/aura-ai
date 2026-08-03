@@ -1,0 +1,23 @@
+[Unit]
+Description=Zovus natal async job worker
+After=network.target aura-ai.service
+Requires=aura-ai.service
+
+[Service]
+Type=simple
+User=aura-ai
+Group=aura-ai
+WorkingDirectory=/opt/aura-ai
+Environment=NODE_ENV=production
+# Minimal secrets only (see hosting/sync-async-jobs-env.sh)
+EnvironmentFile=/opt/aura-ai/.env.async-jobs
+ExecStart=/usr/bin/npm run worker:async-jobs
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=360
+StandardOutput=append:/var/log/aura-ai/async-jobs.log
+StandardError=append:/var/log/aura-ai/async-jobs.log
+
+[Install]
+WantedBy=multi-user.target

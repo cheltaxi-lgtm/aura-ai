@@ -66,7 +66,20 @@ assert.ok(
   "landscape multi-card clears false reversed flags"
 );
 
-const portraitKeeps = sanitizeLandscapeReversedGuesses(
+const landscapeTriplet = sanitizeLandscapeReversedGuesses(
+  [
+    { name: "Сила", reversed: false, confidence: "high" },
+    { name: "Солнце", reversed: true, confidence: "high" },
+    { name: "Луна", reversed: false, confidence: "high" },
+  ],
+  { landscapePhoto: true }
+);
+assert.ok(
+  landscapeTriplet.every((card) => !card.reversed),
+  "landscape 3-card also clears false reversed"
+);
+
+const portraitPartialClears = sanitizeLandscapeReversedGuesses(
   [
     { name: "Сила", reversed: false, confidence: "high" },
     { name: "Солнце", reversed: true, confidence: "high" },
@@ -74,7 +87,41 @@ const portraitKeeps = sanitizeLandscapeReversedGuesses(
   ],
   { landscapePhoto: false }
 );
-assert.equal(portraitKeeps[1].reversed, true, "portrait keeps real reversed card");
+assert.ok(
+  portraitPartialClears.every((card) => !card.reversed),
+  "portrait multi-card with partial reverses clears (row artifact)"
+);
+
+const portraitPairKeepsOne = sanitizeLandscapeReversedGuesses(
+  [
+    { name: "Сила", reversed: false, confidence: "high" },
+    { name: "Солнце", reversed: true, confidence: "high" },
+  ],
+  { landscapePhoto: false }
+);
+assert.equal(
+  portraitPairKeepsOne[1].reversed,
+  true,
+  "portrait 2-card keeps a single real reversed card"
+);
+
+const portraitSingleKeeps = sanitizeLandscapeReversedGuesses(
+  [{ name: "Солнце", reversed: true, confidence: "high" }],
+  { landscapePhoto: false }
+);
+assert.equal(portraitSingleKeeps[0].reversed, true, "single portrait card keeps reversed");
+
+const portraitAllReversedKeeps = sanitizeLandscapeReversedGuesses(
+  [
+    { name: "Сила", reversed: true, confidence: "high" },
+    { name: "Солнце", reversed: true, confidence: "high" },
+  ],
+  { landscapePhoto: false, horizontalRowSuspect: false }
+);
+assert.ok(
+  portraitAllReversedKeeps.every((card) => card.reversed),
+  "portrait all-reversed 2-card keeps when not row-suspect"
+);
 
 const landscapeParsed = parsePhotoReadingResponse(
   `КОЛОДА: Rider-Waite · уверенность: высокая

@@ -93,6 +93,31 @@ export default function JointReadingPage() {
 
       </SeoSection>
 
+      <SeoSection title="Также на Zovus">
+        <ul className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+          <li>
+            <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+              Натальная карта
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+              Матрица судьбы
+            </Link>
+          </li>
+          <li>
+            <Link href="/sovmestimost-znakov-zodiaka" className="text-aura-gold hover:underline">
+              Совместимость знаков
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/compatibility" className="text-aura-gold hover:underline">
+              Совместимость по дате
+            </Link>
+          </li>
+        </ul>
+      </SeoSection>
+
 
 
       <p className="mt-10">

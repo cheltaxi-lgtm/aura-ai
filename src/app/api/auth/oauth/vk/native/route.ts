@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuth } from "@/lib/auth";
+import { getAccountConsentSnapshot } from "@/lib/accounts";
 import { finishOAuthLogin } from "@/lib/oauth/finish";
 import { fetchVkUserInfo } from "@/lib/oauth/providers/vk";
+import { createOAuthHandoff } from "@/lib/oauth/handoff";
 import { createPendingOAuthRegistration } from "@/lib/oauth/storage";
 import {
   checkOAuthRequestRateLimit,
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
+import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import type { OAuthMode, OAuthTransaction } from "@/lib/oauth/types";
 
@@ -17,6 +21,7 @@ type NativeVkBody = {
   acceptedTerms?: boolean;
   ageConfirmed?: boolean;
   marketingConsent?: boolean;
+  attribution?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -39,20 +44,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const mode: OAuthMode = body.mode === "register" ? "register" : "login";
-    const returnTo = sanitizeReturnTo(body.returnTo, "/");
+    const mode: OAuthMode =
+      body.mode === "register" ? "register" : body.mode === "link" ? "link" : "login";
+    let returnTo = sanitizeReturnTo(body.returnTo, mode === "link" ? "/cabinet" : "/");
+    let acceptedTerms = body.acceptedTerms === true;
+    let ageConfirmed = body.ageConfirmed === true;
+    let linkAccountId: string | null = null;
+    if (mode === "link") {
+      const auth = await getAuth();
+      if (!auth || auth.role !== "user") {
+        return NextResponse.json(
+          { error: "auth_required", code: "auth_required" },
+          { status: 401, headers: OAUTH_NO_STORE_HEADERS }
+        );
+      }
+      linkAccountId = auth.sub;
+      const consent = await getAccountConsentSnapshot(auth.sub);
+      if (consent?.ageConfirmedAt && consent?.termsAcceptedAt) {
+        acceptedTerms = true;
+        ageConfirmed = true;
+      }
+      if (!returnTo.startsWith("/cabinet")) returnTo = "/cabinet?loginMethods=1";
+    }
+    if (!acceptedTerms || !ageConfirmed) {
+      return NextResponse.json(
+        { error: "consent_required", code: "consent_required" },
+        { status: 400, headers: OAUTH_NO_STORE_HEADERS }
+      );
+    }
     const info = await fetchVkUserInfo(accessToken, clientId);
+    const registrationAttribution = sanitizeRegistrationAttribution(body.attribution);
     const pending: OAuthTransaction = {
       provider: "vk",
       codeVerifier: "",
       redirectUri: "",
       returnTo,
       sessionId: body.sessionId?.trim() || null,
-      acceptedTerms: body.acceptedTerms === true,
-      ageConfirmed: body.ageConfirmed === true,
+      acceptedTerms: true,
+      ageConfirmed: true,
       marketingConsent: body.marketingConsent === true,
       mode,
       appFlow: true,
+      linkAccountId,
+      registrationAttribution:
+        mode === "link"
+          ? null
+          : (registrationAttribution as Record<string, string> | null),
     };
 
     try {
@@ -62,6 +99,8 @@ export async function POST(request: NextRequest) {
         pending,
         request,
       });
+      // Handoff fallback when WebView cookie from Set-Cookie is not visible yet.
+      const handoff = await createOAuthHandoff(result.account.id);
       return NextResponse.json(
         {
           ok: true,
@@ -70,6 +109,7 @@ export async function POST(request: NextRequest) {
           isNewUser: result.isNewUser,
           needsProfile: result.needsProfile,
           hasProfile: Boolean(result.profile),
+          handoff,
         },
         { headers: OAUTH_NO_STORE_HEADERS }
       );
@@ -81,6 +121,7 @@ export async function POST(request: NextRequest) {
         returnTo,
         sessionId: pending.sessionId,
         appFlow: true,
+        registrationAttribution: pending.registrationAttribution ?? null,
       });
       return NextResponse.json(
         { ok: true, registration },

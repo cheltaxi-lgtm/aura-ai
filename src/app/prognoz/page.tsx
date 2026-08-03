@@ -9,6 +9,9 @@ import {
   getCurrentForecastYear,
 } from "@/lib/seo/seasonal";
 import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
+import SeoPageTracker from "@/components/seo/SeoPageTracker";
+import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Прогноз Таро — по месяцам и знакам зодиака | Zovus",
@@ -17,12 +20,31 @@ export const metadata: Metadata = buildSeoMetadata({
   path: "/prognoz",
 });
 
+const faq = [
+  {
+    q: "Чем прогноз Таро отличается от натальной карты?",
+    a: "Прогноз Таро — обзор периода по картам. Натальная карта показывает ваш базовый портрет по дате рождения. Оба подхода можно сочетать: сначала карта, затем прогноз на месяц.",
+  },
+  {
+    q: "Можно ли смотреть и матрицу судьбы, и прогноз?",
+    a: "Да. Матрица даёт числовой каркас года и предназначения, прогноз Таро — динамику месяца. Начните с /numerology/destiny-matrix или /natalnaya-karta, затем вернитесь к прогнозу.",
+  },
+];
+
 export default function PrognozIndexPage() {
   const year = getCurrentForecastYear();
   const month = getCurrentForecastMonth();
+  const structuredData = buildForecastStructuredData({
+    title: "Прогноз Таро",
+    description:
+      "Прогнозы Таро на год и месяц, расклады по знакам зодиака. Актуальные периоды — онлайн на Zovus.",
+    path: "/prognoz",
+    faq,
+  });
 
   return (
     <SeoPageShell backHref="/taro" backLabel="Таро онлайн">
+      <SeoPageTracker goal="prognoz_hub_view" />
       <p className="text-sm text-aura-gold/80">Прогнозы</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Прогноз Таро</h1>
       <p className="mt-4 text-white/70">
@@ -89,6 +111,22 @@ export default function PrognozIndexPage() {
           ))}
         </ul>
       </SeoSection>
+
+      <SeoSection title="Частые вопросы">
+        {faq.map((item) => (
+          <div key={item.q}>
+            <h3 className="font-medium text-white">{item.q}</h3>
+            <p className="mt-1">{item.a}</p>
+          </div>
+        ))}
+      </SeoSection>
+
+      <SeoRelatedTools />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
     </SeoPageShell>
   );
 }

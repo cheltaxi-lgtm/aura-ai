@@ -35,6 +35,9 @@ export function buildYandexAuthorizeUrl(
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
     scope: "login:info login:email",
+    // Avoid Yandex's silent re-authorization path, which can remain on an
+    // endless blank spinner for accounts that previously granted access.
+    force_confirm: "yes",
   });
   return `https://oauth.yandex.ru/authorize?${params.toString()}`;
 }
@@ -44,6 +47,9 @@ export async function exchangeYandexCode(
   codeVerifier: string,
   redirectUri: string
 ): Promise<OAuthUserInfo> {
+  if (!codeVerifier.trim()) {
+    throw new Error("yandex_code_verifier_required");
+  }
   const { clientId, clientSecret } = requireOAuthProviderConfig("yandex");
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -51,7 +57,7 @@ export async function exchangeYandexCode(
     client_id: clientId,
     client_secret: clientSecret,
     redirect_uri: redirectUri,
-    code_verifier: codeVerifier,
+    code_verifier: codeVerifier.trim(),
   });
 
   const tokenRes = await fetch("https://oauth.yandex.ru/token", {
@@ -80,15 +86,18 @@ export async function exchangeYandexCode(
     user.display_name?.trim() ||
     [user.first_name, user.last_name].filter(Boolean).join(" ").trim() ||
     user.login?.trim() ||
-    "Искатель";
+    "Гость";
 
   const gender = user.sex === "male" || user.sex === "female" ? user.sex : undefined;
 
+  // Only Yandex primary default_email is treated as verified for account linking.
+  // Secondary emails[] entries are not auto-link signals.
+  const primary = user.default_email?.trim().toLowerCase() || null;
   return {
     providerUserId: String(user.id),
-    email: email?.trim().toLowerCase() ?? null,
+    email: primary ?? email?.trim().toLowerCase() ?? null,
     name,
-    emailVerified: Boolean(email),
+    emailVerified: Boolean(primary),
     gender,
   };
 }

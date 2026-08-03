@@ -10,6 +10,9 @@ import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
+import { trackPaywallOpen } from "@/lib/seo/metrika";
+import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
+import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
 interface RunePackage {
   id: string;
@@ -66,6 +69,7 @@ export default function RuneShopModal({
       .then((d) => {
         const loaded: RunePackage[] = d.packages ?? [];
         setPackages(loaded);
+        trackPaywallOpen("rune_shop_modal");
         pushEcommerceDetail(
           loaded.map((pkg) => ({
             id: pkg.id,
@@ -132,7 +136,7 @@ export default function RuneShopModal({
       if (pkg) {
         pushEcommerceAdd({ id: pkg.id, name: pkg.name, price: pkg.price_rub, category: "runes" });
       }
-      window.location.href = data.paymentUrl;
+      openTelegramExternalUrl(data.paymentUrl);
     } catch {
       setError("Ошибка соединения");
       setPurchasingId(null);
@@ -165,7 +169,7 @@ export default function RuneShopModal({
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       pushEcommerceAdd({ id: "custom", name: "Произвольная сумма", price: amountRub, category: "runes" });
-      window.location.href = data.paymentUrl;
+      openTelegramExternalUrl(data.paymentUrl);
     } catch {
       setError("Ошибка соединения");
       setPurchasingId(null);
@@ -191,7 +195,7 @@ export default function RuneShopModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="rune-shop-title"
-            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90dvh] max-w-lg overflow-y-auto rounded-t-3xl border-t border-white/10 bg-[#12101a] p-6"
+            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90dvh] max-w-lg overflow-y-auto rounded-t-3xl border-t border-[rgba(201,162,74,0.2)] bg-[#141210] p-6"
           >
             <div className="mb-4 flex items-center justify-between">
               <div className="flex-1" />
@@ -318,7 +322,8 @@ export default function RuneShopModal({
               </p>
             )}
 
-            <p className="mt-4 text-center text-xs text-gray-600">
+            <LegalOfferNotice className="mt-4" />
+            <p className="mt-2 text-center text-xs text-gray-600">
               Руны не имеют срока действия · Безопасная оплата ЮKassa
             </p>
           </motion.div>

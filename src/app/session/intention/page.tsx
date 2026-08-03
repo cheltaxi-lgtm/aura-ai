@@ -6,6 +6,7 @@ export const metadata = buildSeoMetadata({
   title: "Намерение сеанса | Zovus",
   description: "Выберите тему расклада перед началом чата с мастером.",
   path: "/session/intention",
+  noIndex: true,
 });
 
 export default function SessionIntentionPage() {

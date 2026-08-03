@@ -1,6 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("natal public and authentication boundaries", () => {
+  test("main site uses the same standard header as natal", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(page.locator("header.app-top-header")).toBeVisible();
+    await expect(page.locator("header.editorial-header")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Получить расклад" })).toBeVisible();
+  });
+
   test("cabinet astrology preserves a safe return path", async ({ page }) => {
     await page.goto("/cabinet/astrology");
 

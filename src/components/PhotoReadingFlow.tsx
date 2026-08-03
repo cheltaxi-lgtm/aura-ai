@@ -17,6 +17,7 @@ import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import { findShowcaseMaster } from "@/lib/showcase-masters";
 import MessageAudioPlayer from "@/components/MessageAudioPlayer";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
+import { pickUserFacingError } from "@/lib/user-facing-error";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import {
   PHOTO_MIN_CARD_COUNT,
@@ -39,6 +40,8 @@ import { canAffordRunes } from "@/lib/rune-afford-client";
 import { compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
+import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
+import { prefetchDeckFaces } from "@/lib/prefetch-deck-faces";
 import PhotoReadingGuide from "@/components/PhotoReadingGuide";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import MasterAvatar from "@/components/MasterAvatar";
@@ -94,6 +97,15 @@ const FLOW_STEPS: { id: FlowStep; label: string }[] = [
   { id: "result", label: "Расшифровка" },
 ];
 
+const CONFIRM_FACE_LOAD_PHRASES = [
+  "Идёт распознавание ваших карт…",
+  "Сверяю символы с колодой…",
+  "Проявляю рисунки расклада…",
+] as const;
+
+/** Safety unlock so Confirm is never stuck if a face never reports ready. */
+const CONFIRM_FACES_READY_TIMEOUT_MS = 12_000;
+
 function PhotoFlowSteps({ step }: { step: FlowStep }) {
   const order: FlowStep[] = ["upload", "confirm", "result"];
   const currentIdx = order.indexOf(step);
@@ -125,6 +137,14 @@ export interface PhotoReadingChatPayload {
   historyId?: string;
 }
 
+/** Fired on Confirm — parent opens chat + timer immediately, then runs interpret. */
+export interface PhotoReadingConfirmPayload {
+  question?: string;
+  detectedCards: string[];
+  redrawSpread: RedrawSpread;
+  idempotencyKey: string;
+}
+
 interface PhotoReadingFlowProps {
   open: boolean;
   onClose: () => void;
@@ -136,6 +156,8 @@ interface PhotoReadingFlowProps {
   onSpreadRitualStart?: (spread: RedrawSpread) => void;
   onSpreadRitualEnd?: () => void;
   onRuneBalanceChange?: (balance: number) => void;
+  /** Immediate handoff: chat with spread + ritual timer; parent runs LLM. */
+  onConfirmSpread?: (masterId: string, payload: PhotoReadingConfirmPayload) => void | Promise<void>;
   onContinueChat?: (masterId: string, payload: PhotoReadingChatPayload) => void | Promise<void>;
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
   onSaved?: () => void;
@@ -277,42 +299,6 @@ function imageCacheKey(data: { base64: string; mimeType: string }): string {
   return `${data.mimeType}:${data.base64.length}:${data.base64.slice(0, 64)}`;
 }
 
-async function readPhotoStream(
-  response: Response,
-  onToken: (token: string) => void
-): Promise<Record<string, unknown>> {
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("No stream body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let donePayload: Record<string, unknown> | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const data = line.slice(6).trim();
-      if (data === "[DONE]") continue;
-      try {
-        const json = JSON.parse(data) as Record<string, unknown>;
-        if (typeof json.token === "string") onToken(json.token);
-        if (json.type === "done") donePayload = json;
-      } catch {
-        /* skip malformed chunk */
-      }
-    }
-  }
-
-  if (!donePayload) throw new Error("Stream ended without done payload");
-  return donePayload;
-}
-
 export default function PhotoReadingFlow({
   open,
   onClose,
@@ -323,6 +309,7 @@ export default function PhotoReadingFlow({
   onSpreadRitualStart,
   onSpreadRitualEnd,
   onRuneBalanceChange,
+  onConfirmSpread,
   onContinueChat,
   onInsufficientRunes,
   onSaved,
@@ -358,6 +345,7 @@ export default function PhotoReadingFlow({
     typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
 
   const [step, setStep] = useState<FlowStep>("upload");
+  const [confirmFacesReady, setConfirmFacesReady] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageData, setImageData] = useState<{ base64: string; mimeType: string; blob: Blob } | null>(null);
   const [imageSource, setImageSource] = useState<"camera" | "gallery">("gallery");
@@ -366,6 +354,7 @@ export default function PhotoReadingFlow({
   const [question, setQuestion] = useState("");
   const questionInputSyncRef = useNativeInputSync<HTMLTextAreaElement>(setQuestion);
   const [loading, setLoading] = useState(false);
+  const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
   const [preparingImage, setPreparingImage] = useState(false);
   const [recognizeAttempt, setRecognizeAttempt] = useState(0);
   const [error, setError] = useState("");
@@ -418,6 +407,44 @@ export default function PhotoReadingFlow({
 
   useEffect(() => {
     if (!open || !isLoggedIn) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { resumeStoredOrActiveAsyncJob } = await import(
+          "@/lib/client/wait-for-async-job"
+        );
+        const data = await resumeStoredOrActiveAsyncJob({
+          storageKey: "aura:photo-reading-active-job",
+          kind: "photo_reading",
+        });
+        if (cancelled || !data) return;
+        const analysis = String(data.analysis ?? data.reply ?? "");
+        if (!analysis.trim()) return;
+        setStep("result");
+        setStreamingAnalysis(analysis);
+        setResult({
+          analysis,
+          detectedCards: (data.detectedCards as string[]) ?? [],
+          deckType: data.deckType as string | undefined,
+          spreadType: data.spreadType as string | undefined,
+          saved: Boolean(data.saved),
+          historyId: data.historyId as string | undefined,
+        });
+        if (typeof data.runeBalance === "number") {
+          onRuneBalanceChange?.(data.runeBalance as number);
+        }
+        if (data.saved || data.historyId) onSaved?.();
+      } catch {
+        /* keep UI on current step */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isLoggedIn, onRuneBalanceChange, onSaved]);
+
+  useEffect(() => {
+    if (!open || !isLoggedIn) return;
     void fetch("/api/photo-reading/pricing")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -451,13 +478,50 @@ export default function PhotoReadingFlow({
     if (open) setMasterId(defaultMasterId);
   }, [open, defaultMasterId]);
 
+  useEffect(() => {
+    if (!loading && !preparingImage) {
+      setLoadingElapsedSec(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setLoadingElapsedSec(0);
+    const t = window.setInterval(() => {
+      setLoadingElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [loading, preparingImage]);
+
+  const loadingElapsedLabel = `${Math.floor(loadingElapsedSec / 60)}:${String(
+    loadingElapsedSec % 60
+  ).padStart(2, "0")}`;
+
   const spreadMasterRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (step !== "confirm") {
       spreadMasterRef.current = null;
+      setConfirmFacesReady(false);
     }
   }, [step]);
+
+  const confirmSpreadKey = useMemo(() => {
+    if (!redrawSpread?.cards.length) return "";
+    return redrawSpread.cards
+      .map((c) => `${c.name}:${c.imagePath ?? ""}:${c.reversed ? "r" : "u"}`)
+      .join("|");
+  }, [redrawSpread]);
+
+  useEffect(() => {
+    if (step !== "confirm" || !confirmSpreadKey) {
+      setConfirmFacesReady(false);
+      return;
+    }
+    setConfirmFacesReady(false);
+    const unlock = window.setTimeout(() => {
+      setConfirmFacesReady(true);
+    }, CONFIRM_FACES_READY_TIMEOUT_MS);
+    return () => window.clearTimeout(unlock);
+  }, [step, confirmSpreadKey]);
 
   useEffect(() => {
     if (!redrawSpread || step !== "confirm") return;
@@ -555,6 +619,8 @@ export default function PhotoReadingFlow({
       recognizeCacheKey?: string;
     }
   ) => {
+    // Warm faces before React commits confirm UI.
+    prefetchDeckFaces(spread.cards.map((c) => c.imagePath));
     setRedrawSpread(spread);
     setRecognitionConfidence(opts?.confidence ?? "unknown");
     setManualMode(Boolean(opts?.manual));
@@ -934,9 +1000,7 @@ export default function PhotoReadingFlow({
 
       if (response.status < 200 || response.status >= 300) {
         setError(
-          (typeof data.message === "string" && data.message) ||
-            (typeof data.error === "string" && data.error) ||
-            "Не удалось распознать расклад"
+          pickUserFacingError(data, "Не удалось распознать расклад. Проверьте фото и попробуйте снова.")
         );
         return;
       }
@@ -1021,13 +1085,6 @@ export default function PhotoReadingFlow({
       return;
     }
 
-    setLoading(true);
-    setError("");
-    setStreamingAnalysis("");
-    setStep("result");
-    trackPhotoReadingPhase("interpret_start");
-    let ritualActive = false;
-
     const idempotencyKey =
       interpretIdempotencyKeyRef.current ??
       (typeof crypto !== "undefined" && crypto.randomUUID
@@ -1035,116 +1092,120 @@ export default function PhotoReadingFlow({
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     interpretIdempotencyKeyRef.current = idempotencyKey;
 
+    const detectedCards = redrawSpread.cards.map((c) =>
+      c.reversed ? `${c.name} (перев.)` : c.name
+    );
+    const questionText = question.trim() || undefined;
+
+    setError("");
+    trackPhotoReadingPhase("interpret_start");
+
+    // Prefer immediate chat handoff (spread + timer). Fall back to legacy in-modal wait.
+    if (onConfirmSpread) {
+      setLoading(true);
+      try {
+        await onConfirmSpread(masterId, {
+          question: questionText,
+          detectedCards,
+          redrawSpread,
+          idempotencyKey,
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Не удалось открыть чат. Попробуйте ещё раз."
+        );
+        trackPhotoReadingPhase("interpret_fail");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    setLoading(true);
+    setStreamingAnalysis("");
+    setStep("result");
+    let ritualActive = false;
+    const interpretAbort = new AbortController();
+    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
+
     try {
       onSpreadRitualStart?.(redrawSpread);
       ritualActive = true;
 
-      const res = await fetch(PHOTO_STREAM_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify({
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data } = await postWithAsyncJob({
+        url: PHOTO_STREAM_URL,
+        storageKey: "aura:photo-reading-active-job",
+        signal: interpretAbort.signal,
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: {
           characterId: masterId,
-          question: question.trim() || undefined,
+          question: questionText,
           sessionId,
           confirmedSpread: redrawSpread,
           idempotencyKey,
-        }),
+        },
       });
 
-      const contentType = res.headers.get("content-type") ?? "";
-      if (contentType.includes("application/json")) {
-        const data = await res.json();
-
-        if (res.status === 429) {
-          setStep("confirm");
-          setError("Слишком много фото-чтений. Подождите минуту.");
-          return;
-        }
-
-        if (res.status === 402) {
-          setStep("confirm");
-          const parsed = parseInsufficientRunes(data);
-          if (parsed) {
-            onInsufficientRunes?.({ balance: parsed.balance, required: parsed.required });
-            onOpenPaywall?.();
-            setError(`Недостаточно рун. Не хватает ${parsed.shortage} ᚢ.`);
-            return;
-          }
-        }
-
-        if (res.status === 422 && data.error === "INCOMPLETE_SPREAD") {
-          setStep("confirm");
-          setError(data.message ?? "Добавьте хотя бы один символ в расклад.");
-          return;
-        }
-
-        if (!res.ok) {
-          setStep("confirm");
-          setError(data.message ?? data.error ?? "Не удалось расшифровать расклад");
-          return;
-        }
-
-        const nextResult = {
-          analysis: String(data.analysis ?? ""),
-          detectedCards: (data.detectedCards as string[]) ?? [],
-          deckType: data.deckType as string | undefined,
-          spreadType: data.spreadType as string | undefined,
-          saved: Boolean(data.saved),
-          historyId: data.historyId as string | undefined,
-        };
-        setResult(nextResult);
-        setStreamingAnalysis(nextResult.analysis);
-
-        if (typeof data.runeBalance === "number") {
-          onRuneBalanceChange?.(data.runeBalance);
-        }
-        if (data.firstPhotoDiscount) {
-          setPhotoPricing((prev) =>
-            prev ? { ...prev, firstPhotoDiscount: false, effectiveCost: prev.baseCost } : prev
-          );
-        }
-        if (data.saved || data.historyId) onSaved?.();
-        trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
-
-        if (onContinueChat && nextResult.analysis && !data.cached) {
-          if (ritualActive) {
-            onSpreadRitualEnd?.();
-            ritualActive = false;
-          }
-          await onContinueChat(masterId, {
-            analysis: nextResult.analysis,
-            question: question.trim() || undefined,
-            detectedCards: nextResult.detectedCards,
-            redrawSpread: redrawSpread ?? undefined,
-            sessionId: data.sessionId as string | undefined,
-            historyId: nextResult.historyId,
-          });
-          return;
-        }
+      if (resStatus === 429) {
+        setStep("confirm");
+        setError("Слишком много фото-чтений. Подождите минуту.");
         return;
       }
 
-      if (!res.ok) {
+      if (resStatus === 402) {
         setStep("confirm");
-        setError("Не удалось расшифровать расклад");
+        const parsed = parseInsufficientRunes(data);
+        if (parsed) {
+          onInsufficientRunes?.({ balance: parsed.balance, required: parsed.required });
+          onOpenPaywall?.();
+          setError(`Недостаточно рун. Не хватает ${parsed.shortage} ᚢ.`);
+          return;
+        }
+      }
+
+      if (resStatus === 422 && data.error === "INCOMPLETE_SPREAD") {
+        setStep("confirm");
+        setError(pickUserFacingError(data, "Добавьте хотя бы один символ в расклад."));
+        return;
+      }
+
+      if (resStatus >= 500 || data.code === "generation_failed" || data.llmFailed) {
+        setStep("confirm");
+        setStreamingAnalysis("");
+        setError(
+          pickUserFacingError(
+            data,
+            "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+          )
+        );
+        if (typeof data.runeBalance === "number") {
+          onRuneBalanceChange?.(data.runeBalance as number);
+        }
         trackPhotoReadingPhase("interpret_fail");
         return;
       }
 
-      trackPhotoReadingPhase("interpret_stream");
-      let streamedText = "";
-      const data = await readPhotoStream(res, (token) => {
-        streamedText += token;
-        setStreamingAnalysis(streamedText);
-      });
+      if (resStatus >= 400) {
+        setStep("confirm");
+        setError(pickUserFacingError(data, "Не удалось расшифровать расклад"));
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
 
-      const analysis = String(data.reply ?? data.analysis ?? streamedText);
+      const analysis = String(data.analysis ?? data.reply ?? "");
+      if (!analysis.trim()) {
+        setStep("confirm");
+        setError("Не удалось получить трактовку. Попробуйте ещё раз.");
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
       const nextResult = {
         analysis,
-        detectedCards: (data.detectedCards as string[]) ?? [],
+        detectedCards: (data.detectedCards as string[]) ?? detectedCards,
         deckType: data.deckType as string | undefined,
         spreadType: data.spreadType as string | undefined,
         saved: Boolean(data.saved),
@@ -1152,6 +1213,7 @@ export default function PhotoReadingFlow({
       };
       setResult(nextResult);
       setStreamingAnalysis(analysis);
+      setLoading(false);
 
       if (typeof data.runeBalance === "number") {
         onRuneBalanceChange?.(data.runeBalance as number);
@@ -1162,28 +1224,47 @@ export default function PhotoReadingFlow({
         );
       }
       if (data.saved || data.historyId) onSaved?.();
-      trackPhotoReadingPhase("interpret_done", { streamed: true });
+      trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
 
-      if (onContinueChat && analysis) {
+      if (onContinueChat && analysis && !data.cached) {
         if (ritualActive) {
           onSpreadRitualEnd?.();
           ritualActive = false;
         }
-        await onContinueChat(masterId, {
-          analysis,
-          question: question.trim() || undefined,
-          detectedCards: nextResult.detectedCards,
-          redrawSpread: redrawSpread ?? undefined,
-          sessionId: data.sessionId as string | undefined,
-          historyId: nextResult.historyId,
-        });
+        try {
+          await Promise.race([
+            onContinueChat(masterId, {
+              analysis,
+              question: questionText,
+              detectedCards: nextResult.detectedCards,
+              redrawSpread: redrawSpread ?? undefined,
+              sessionId: data.sessionId as string | undefined,
+              historyId: nextResult.historyId,
+            }),
+            new Promise<void>((_, reject) =>
+              window.setTimeout(() => reject(new Error("chat_handoff_timeout")), 20_000)
+            ),
+          ]);
+        } catch {
+          // Analysis already shown/saved — handoff is best-effort.
+        }
         return;
       }
-    } catch {
+    } catch (err) {
+      const aborted =
+        interpretAbort.signal.aborted ||
+        (err instanceof Error && /отменен|cancelled|abort/i.test(err.message));
       setStep("confirm");
-      setError("Ошибка сети. Попробуйте ещё раз.");
+      setError(
+        aborted
+          ? "Расшифровка занимает слишком долго. Обновите страницу или откройте кабинет — расклад мог уже сохраниться."
+          : err instanceof Error && err.message
+            ? err.message
+            : "Ошибка сети. Попробуйте ещё раз."
+      );
       trackPhotoReadingPhase("interpret_fail");
     } finally {
+      window.clearTimeout(interpretWatchdog);
       setLoading(false);
       if (ritualActive) {
         onSpreadRitualEnd?.();
@@ -1340,10 +1421,10 @@ export default function PhotoReadingFlow({
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin text-aura-gold" />
                   <span>
                     {step === "result" || step === "confirm"
-                      ? `${masterDisplayName} расшифровывает…`
+                      ? `${masterDisplayName} расшифровывает… ${loadingElapsedLabel}`
                       : recognizeAttempt > 1
-                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})…`
-                        : "Распознаём и перерисовываем…"}
+                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})… ${loadingElapsedLabel}`
+                        : `Распознаём и перерисовываем… ${loadingElapsedLabel}`}
                   </span>
                 </motion.div>
               )}
@@ -1535,17 +1616,37 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
-                  <PhotoSpreadPreview
-                    spread={redrawSpread}
-                    masterId={masterId}
-                    onChange={setRedrawSpread}
-                    confidence={recognitionConfidence}
-                    manualMode={manualMode}
-                    recognitionFailed={recognitionFailed}
-                    hideStatusLine
-                  />
+                  <div className="photo-flow-confirm-faces">
+                    {!confirmFacesReady ? (
+                      <div className="photo-flow-confirm-faces__ritual">
+                        <SpreadReadingRitualPanel
+                          active
+                          phrases={CONFIRM_FACE_LOAD_PHRASES}
+                        />
+                      </div>
+                    ) : null}
+                    <div
+                      className={
+                        confirmFacesReady
+                          ? "photo-flow-confirm-faces__preview"
+                          : "photo-flow-confirm-faces__preview photo-flow-confirm-faces__preview--loading"
+                      }
+                      aria-hidden={!confirmFacesReady}
+                    >
+                      <PhotoSpreadPreview
+                        spread={redrawSpread}
+                        masterId={masterId}
+                        onChange={setRedrawSpread}
+                        confidence={recognitionConfidence}
+                        manualMode={manualMode}
+                        recognitionFailed={recognitionFailed}
+                        hideStatusLine
+                        onFacesReadyChange={setConfirmFacesReady}
+                      />
+                    </div>
+                  </div>
 
-                  {redrawSpread.cards.length < MAX_PHOTO_CARDS_LIMIT && (
+                  {confirmFacesReady && redrawSpread.cards.length < MAX_PHOTO_CARDS_LIMIT && (
                     <div className="mt-3 text-center">
                       <button
                         type="button"
@@ -1589,7 +1690,14 @@ export default function PhotoReadingFlow({
                         ) : null}
                       </>
                     ) : (
-                      <p className="text-sm text-gray-400">Мастер готовит расшифровку…</p>
+                      <p className="text-sm text-gray-400">
+                        Мастер готовит расшифровку… {loadingElapsedLabel}
+                        {loadingElapsedSec >= 60 ? (
+                          <span className="mt-1 block text-xs text-white/40">
+                            Обычно 30–90 сек. Если дольше двух минут — откройте кабинет, расклад мог уже сохраниться.
+                          </span>
+                        ) : null}
+                      </p>
                     )}
                   </div>
 
@@ -1729,11 +1837,11 @@ export default function PhotoReadingFlow({
                       <Sparkles className="h-4 w-4" />
                     )}
                     {preparingImage
-                      ? "Подготавливаем фото…"
+                      ? `Подготавливаем фото… ${loadingElapsedLabel}`
                       : loading
                       ? recognizeAttempt > 1
-                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})…`
-                        : "Распознаём и перерисовываем…"
+                        ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})… ${loadingElapsedLabel}`
+                        : `Распознаём и перерисовываем… ${loadingElapsedLabel}`
                       : runeConfig.enabled
                         ? `Начать фото-расклад · ${formatRunes(photoCost)}`
                         : "Начать фото-расклад"}
@@ -1746,12 +1854,19 @@ export default function PhotoReadingFlow({
                   <button
                     type="button"
                     onClick={() => void interpret()}
-                    disabled={!isPhotoSpreadComplete(redrawSpread) || loading || runesBlocked}
+                    disabled={
+                      !isPhotoSpreadComplete(redrawSpread) ||
+                      loading ||
+                      runesBlocked ||
+                      !confirmFacesReady
+                    }
                     className="btn-luxe btn-luxe--md btn-luxe--gold flex-1 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <span className="flex items-center justify-center gap-2">
                       {loading ? (
-                        <><Loader2 className="h-4 w-4 animate-spin" />Расшифровывает…</>
+                        <><Loader2 className="h-4 w-4 animate-spin" />Расшифровывает… {loadingElapsedLabel}</>
+                      ) : !confirmFacesReady ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" />Проявляем карты…</>
                       ) : (
                         <>Подтвердить<ArrowRight className="h-4 w-4" /></>
                       )}

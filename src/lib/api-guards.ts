@@ -19,15 +19,20 @@ export async function enforceChatRateLimit(accountId: string): Promise<NextRespo
   return null;
 }
 
+/**
+ * Client IP for rate limits. Prefer the left-most X-Forwarded-For hop only when
+ * TRUST_PROXY / production (Caddy overwrites these). Never prefer a bare
+ * client-supplied X-Real-Ip ahead of the proxy chain — spoofable if Node is exposed.
+ */
 export function clientIp(request: NextRequest): string {
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
-
   const trustForwarded =
     process.env.TRUST_PROXY === "true" || process.env.NODE_ENV === "production";
+
   if (trustForwarded) {
     const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
     if (forwarded) return forwarded;
+    const realIp = request.headers.get("x-real-ip")?.trim();
+    if (realIp) return realIp;
   }
 
   return "unknown";
@@ -45,16 +50,23 @@ export const PAID_ROUTE_LIMITS = {
   reading: { max: 10, windowMs: 60_000 },
   numerolog_tool: { max: 12, windowMs: 60_000 },
   photo_reading: { max: 5, windowMs: 60_000 },
-  /** Vision recognition is free (no rune charge), so it needs its own tighter cap to stop it being used as a free OpenRouter vision proxy. */
-  photo_recognize: { max: 10, windowMs: 60_000 },
+  /** Vision recognize is unbilled until interpret; tight caps + balance gate in the route. */
+  photo_recognize: { max: 3, windowMs: 60_000 },
+  photo_recognize_daily: { max: 24, windowMs: 86_400_000 },
   intention_spread: { max: 10, windowMs: 60_000 },
   image_generate: { max: IMAGE_GEN_LIMIT, windowMs: IMAGE_GEN_WINDOW_MS },
   daily_bonus: { max: 1, windowMs: 86_400_000 },
   rune_purchase: { max: 10, windowMs: 3_600_000 },
+  /** Confirm/reconcile after YooKassa return — tighter than purchase create. */
+  rune_confirm: { max: 30, windowMs: 60_000 },
+  registration_attribution: { max: 10, windowMs: 60_000 },
   spread_metrics: { max: 120, windowMs: 60_000 },
   cabinet_notes: { max: 20, windowMs: 60_000 },
   ritual_create: { max: 10, windowMs: 60_000 },
   ritual_pay: { max: 10, windowMs: 60_000 },
+  ritual_regenerate: { max: 8, windowMs: 60_000 },
+  ritual_answer: { max: 30, windowMs: 60_000 },
+  ritual_review: { max: 10, windowMs: 60_000 },
   joint_reading_create: { max: 10, windowMs: 60_000 },
   joint_reading_complete: { max: 10, windowMs: 60_000 },
   joint_reading_mine: { max: 30, windowMs: 60_000 },
@@ -67,6 +79,8 @@ export const PAID_ROUTE_LIMITS = {
   natal_timing: { max: 6, windowMs: 60_000 },
   natal_history: { max: 30, windowMs: 60_000 },
   natal_report_delete: { max: 5, windowMs: 60_000 },
+  numerology_matrix_report: { max: 30, windowMs: 60_000 },
+  numerology_matrix_report_delete: { max: 10, windowMs: 60_000 },
   natal_forecast: { max: 3, windowMs: 60_000 },
   natal_ai_preferences: { max: 20, windowMs: 60_000 },
   natal_event_preferences: { max: 20, windowMs: 60_000 },
@@ -76,6 +90,8 @@ export const PAID_ROUTE_LIMITS = {
   natal_compatibility_generate: { max: 3, windowMs: 60_000 },
   natal_compatibility_delete: { max: 10, windowMs: 60_000 },
   report_share_public: { max: 60, windowMs: 60_000 },
+  /** Unauthenticated share-landing API (reading excerpts). */
+  share_public: { max: 60, windowMs: 60_000 },
   report_share_manage: { max: 20, windowMs: 60_000 },
 } as const;
 
@@ -228,7 +244,7 @@ export async function enforceInfluencerRegisterRateLimit(ip: string): Promise<Ne
   return null;
 }
 
-const TTS_LIMIT = 30;
+const TTS_LIMIT = 15;
 const TTS_WINDOW_MS = 60 * 60 * 1000;
 
 export async function enforceTtsRateLimit(accountId: string): Promise<NextResponse | null> {
@@ -294,6 +310,81 @@ export async function enforceLoginRateLimit(ip: string): Promise<NextResponse | 
     return NextResponse.json(
       { error: "rate_limit", message: "Слишком много попыток входа. Попробуйте позже." },
       { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 900) } }
+    );
+  }
+  return null;
+}
+
+const SESSION_CREATE_LIMIT = 20;
+const SESSION_CREATE_WINDOW_MS = 60 * 60 * 1000;
+
+export async function enforceSessionCreateRateLimit(ip: string): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("session_create", ip),
+    SESSION_CREATE_LIMIT,
+    SESSION_CREATE_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много сессий. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
+
+const GUEST_TRIPLET_COMPLETE_LIMIT = 8;
+const GUEST_TRIPLET_COMPLETE_WINDOW_MS = 60 * 60 * 1000;
+const GUEST_TRIPLET_CLAIM_LIMIT = 20;
+const GUEST_TRIPLET_CLAIM_WINDOW_MS = 60 * 60 * 1000;
+
+export async function enforceGuestTripletCompleteRateLimit(
+  ip: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("guest_triplet_complete", ip),
+    GUEST_TRIPLET_COMPLETE_LIMIT,
+    GUEST_TRIPLET_COMPLETE_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
+
+/** Guard against client boot loops hammering status (was taking down prod). */
+export async function enforceGuestTripletStatusRateLimit(
+  accountId: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("guest_triplet_status", accountId),
+    20,
+    60_000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много запросов. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 60) } }
+    );
+  }
+  return null;
+}
+
+export async function enforceGuestTripletClaimRateLimit(
+  accountId: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("guest_triplet_claim", accountId),
+    GUEST_TRIPLET_CLAIM_LIMIT,
+    GUEST_TRIPLET_CLAIM_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
     );
   }
   return null;

@@ -4,13 +4,24 @@ import { jwtVerify } from "jose";
 import {
   fetchMaintenanceModeActive,
   isMaintenanceBypassPath,
+  isSearchEngineBot,
+  MAINTENANCE_BOT_RETRY_AFTER_SEC,
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
+import { fetchUserTokenVersionStatus } from "@/lib/token-version-gate";
+import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
+import { resolveBotHomeQueryRedirect } from "@/lib/seo/bot-query-redirect";
 
 const COOKIE = "aura_auth";
 
 type AuthRole = "user" | "expert" | "admin";
+
+type VerifiedAuth = {
+  role: AuthRole;
+  sub: string;
+  tv: number;
+};
 
 /** API routes reachable without a valid JWT (handlers may still enforce their own rules). */
 const PUBLIC_API_EXACT = new Set([
@@ -25,6 +36,11 @@ const PUBLIC_API_EXACT = new Set([
   "/api/ritual/config",
   "/api/age-gate/confirm",
   "/api/session",
+  "/api/guest-triplet/complete",
+  "/api/guest-triplet/teaser",
+  "/api/guest-triplet/status",
+  "/api/guest-triplet/claim",
+  "/api/guest-triplet/telegram-claim",
   "/api/debug/client-log",
   // Diagnostic breadcrumb only (camera/upload failures) — must not depend on
   // login state, otherwise failures from logged-out users vanish silently.
@@ -34,7 +50,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/payment/webhook",
   "/api/payments/webhook",
   "/api/runes/webhook",
-  "/api/share",
+  // POST /api/share requires auth (handler + middleware). GET /api/share/* stays public via prefix.
   // Background jobs authenticate via x-cron-secret inside the route handler.
   "/api/ritual/remind",
   "/api/ritual/recover-stuck",
@@ -49,11 +65,29 @@ const PUBLIC_API_PREFIXES = [
   // rate limits in the handler. Keep this narrower than the /api/public namespace.
   "/api/public/reports/",
   "/api/cron/",
-  // GET /api/joint-reading/[token] must be reachable by a guest partner who hasn't
-  // logged in yet (the page shows a login gate) — create/complete/mine still enforce
-  // their own requireProfileUserId() check inside the handler.
-  "/api/joint-reading/",
+  // Telegram bot → site thin client (auth via X-Bot-Internal-Secret in handler).
+  "/api/internal/bot/",
+  // Ads Autopilot beacon (guest): click capture + micro-conversions only.
+  // /api/ads/link stays auth-gated. Handlers return 404 when ads.enabled=false.
+  "/api/ads/t",
+  "/api/ads/e",
 ] as const;
+
+/** Public joint-reading GETs only — mutating routes require JWT at middleware. */
+function isPublicJointReadingRoute(pathname: string, method: string): boolean {
+  if (!pathname.startsWith("/api/joint-reading/")) return false;
+  if (method !== "GET" && method !== "HEAD") return false;
+  if (
+    pathname === "/api/joint-reading/mine" ||
+    pathname === "/api/joint-reading/create" ||
+    pathname.endsWith("/complete") ||
+    pathname.endsWith("/combine") ||
+    pathname.endsWith("/reattach")
+  ) {
+    return false;
+  }
+  return true;
+}
 
 function resolveSecretKey(): Uint8Array | null {
   const secret = process.env.AUTH_SECRET;
@@ -66,8 +100,9 @@ function resolveSecretKey(): Uint8Array | null {
   return new TextEncoder().encode(secret);
 }
 
-function isPublicApiRoute(pathname: string): boolean {
+function isPublicApiRoute(pathname: string, method = "GET"): boolean {
   if (PUBLIC_API_EXACT.has(pathname)) return true;
+  if (isPublicJointReadingRoute(pathname, method)) return true;
   return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
@@ -77,15 +112,102 @@ function loginPathForRole(role: AuthRole): string {
   return "/auth/user/login";
 }
 
-async function verifyRole(token: string, secretKey: Uint8Array): Promise<AuthRole | null> {
+function isLoopbackHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h === "localhost" ||
+    h.startsWith("localhost:") ||
+    h === "127.0.0.1" ||
+    h.startsWith("127.0.0.1:") ||
+    h === "[::1]" ||
+    h.startsWith("[::1]:")
+  );
+}
+
+/**
+ * Public site origin for redirects. Next binds to 127.0.0.1:3000 behind Caddy,
+ * so request.nextUrl / request.url are often http(s)://localhost:3000 — that
+ * must never leak into Location headers (Capacitor then opens the system browser).
+ */
+function resolvePublicOrigin(request: NextRequest): string {
+  const env = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim().replace(/\/$/, "");
+  if (env) {
+    try {
+      const u = new URL(env.includes("://") ? env : `https://${env}`);
+      if (!isLoopbackHost(u.host)) return u.origin;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || request.headers.get("host")?.trim() || "";
+  if (host && !isLoopbackHost(host)) {
+    const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const proto =
+      forwardedProto === "http" || forwardedProto === "https"
+        ? forwardedProto
+        : host.includes("zovus.ru")
+          ? "https"
+          : request.nextUrl.protocol.replace(":", "") || "https";
+    return `${proto}://${host}`;
+  }
+
+  return "https://zovus.ru";
+}
+
+function publicUrl(request: NextRequest, pathname: string): URL {
+  const url = new URL(pathname, `${resolvePublicOrigin(request)}/`);
+  return url;
+}
+
+async function verifyAuth(token: string, secretKey: Uint8Array): Promise<VerifiedAuth | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey);
     const role = payload.role as AuthRole;
-    if (role === "user" || role === "expert" || role === "admin") return role;
-    return null;
+    if (role !== "user" && role !== "expert" && role !== "admin") return null;
+    const sub = typeof payload.sub === "string" ? payload.sub : "";
+    if (!sub) return null;
+    const tv = typeof payload.tv === "number" && Number.isFinite(payload.tv) ? payload.tv : 0;
+    return { role, sub, tv };
   } catch {
     return null;
   }
+}
+
+async function verifyRole(token: string, secretKey: Uint8Array): Promise<AuthRole | null> {
+  const auth = await verifyAuth(token, secretKey);
+  return auth?.role ?? null;
+}
+
+function clearAuthCookie(response: NextResponse, request: NextRequest): NextResponse {
+  const secure =
+    process.env.NODE_ENV === "production" ||
+    request.nextUrl.protocol === "https:" ||
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+  response.cookies.set(COOKIE, "", {
+    httpOnly: true,
+    secure,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  return response;
+}
+
+async function enforceUserTokenVersion(
+  request: NextRequest,
+  auth: VerifiedAuth,
+  forApi: boolean
+): Promise<NextResponse | null> {
+  if (auth.role !== "user") return null;
+  const status = await fetchUserTokenVersionStatus(request, auth.sub, auth.tv);
+  // Infra/DB blip: keep the cookie; route handlers still re-check getAuth().
+  if (status === "ok" || status === "unavailable") return null;
+  if (forApi) {
+    return clearAuthCookie(unauthorizedApiResponse(), request);
+  }
+  return clearAuthCookie(redirectToLogin(request, "user"), request);
 }
 
 async function isAdminSession(request: NextRequest, secretKey: Uint8Array | null): Promise<boolean> {
@@ -97,8 +219,9 @@ async function isAdminSession(request: NextRequest, secretKey: Uint8Array | null
 }
 
 function redirectToLogin(request: NextRequest, role: AuthRole) {
-  const url = request.nextUrl.clone();
-  url.pathname = loginPathForRole(role);
+  const url = publicUrl(request, loginPathForRole(role));
+  const app = request.nextUrl.searchParams.get("app");
+  if (app) url.searchParams.set("app", app);
   url.searchParams.set("returnTo", request.nextUrl.pathname + request.nextUrl.search);
   return NextResponse.redirect(url);
 }
@@ -125,7 +248,23 @@ function maintenanceApiResponse() {
       maintenanceMode: true,
       message: "Сервис временно на обслуживании",
     },
-    { status: 503 }
+    { status: 503, headers: { "Retry-After": String(MAINTENANCE_BOT_RETRY_AFTER_SEC) } }
+  );
+}
+
+/** Bots must not follow a soft-redirect to /maintenance (Yandex drops URLs as noindex). */
+function maintenanceBotHtmlResponse() {
+  return withNoStore(
+    new NextResponse(
+      "<!doctype html><title>Service Unavailable</title><h1>Service temporarily unavailable</h1>",
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Retry-After": String(MAINTENANCE_BOT_RETRY_AFTER_SEC),
+        },
+      }
+    )
   );
 }
 
@@ -157,7 +296,7 @@ async function enforceMaintenanceMode(
 
   if (!active) {
     if (pathname === MAINTENANCE_PAGE_PATH) {
-      return withNoStore(NextResponse.redirect(new URL("/", request.url)));
+      return withNoStore(NextResponse.redirect(publicUrl(request, "/")));
     }
     return null;
   }
@@ -169,10 +308,11 @@ async function enforceMaintenanceMode(
   }
 
   if (pathname !== MAINTENANCE_PAGE_PATH) {
-    const url = request.nextUrl.clone();
-    url.pathname = MAINTENANCE_PAGE_PATH;
-    url.search = "";
-    return withNoStore(NextResponse.redirect(url));
+    // Humans → friendly page. Crawlers → 503 (never 302 to noindex /maintenance).
+    if (isSearchEngineBot(request.headers.get("user-agent"))) {
+      return maintenanceBotHtmlResponse();
+    }
+    return withNoStore(NextResponse.redirect(publicUrl(request, MAINTENANCE_PAGE_PATH)));
   }
 
   return null;
@@ -189,8 +329,8 @@ function legacyCyrillicRedirect(request: NextRequest, pathname: string): NextRes
   }
   const target = LEGACY_CYRILLIC_REDIRECTS[decoded] ?? LEGACY_CYRILLIC_REDIRECTS[pathname];
   if (!target) return null;
-  const url = request.nextUrl.clone();
-  url.pathname = target;
+  const url = publicUrl(request, target);
+  url.search = request.nextUrl.search;
   return NextResponse.redirect(url, 308);
 }
 
@@ -204,10 +344,27 @@ export async function middleware(request: NextRequest) {
   const legacyRedirect = legacyCyrillicRedirect(request, pathname);
   if (legacyRedirect) return legacyRedirect;
 
-  const secretKey = resolveSecretKey();
+  // Search bots on `/` with app deep-link params → clean canonical hubs (humans keep SPA entry).
+  if (pathname === "/" && isSearchEngineBot(request.headers.get("user-agent"))) {
+    const target = resolveBotHomeQueryRedirect(request.nextUrl.searchParams);
+    if (target && target !== "/") {
+      return NextResponse.redirect(publicUrl(request, target), 301);
+    }
+    if (target === "/") {
+      const clean = publicUrl(request, "/");
+      clean.search = "";
+      return NextResponse.redirect(clean, 301);
+    }
+  }
 
-  const maintenanceResponse = await enforceMaintenanceMode(request, pathname, secretKey);
-  if (maintenanceResponse) return maintenanceResponse;
+  const secretKey = resolveSecretKey();
+  const natalWorkerRequest = isAuthenticatedNatalWorkerRequest(request, pathname);
+
+  // Local async worker must finish in-flight paid jobs during maintenance.
+  if (!natalWorkerRequest) {
+    const maintenanceResponse = await enforceMaintenanceMode(request, pathname, secretKey);
+    if (maintenanceResponse) return maintenanceResponse;
+  }
 
   const needsAuthSecret =
     pathname.startsWith("/api/") ||
@@ -220,7 +377,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/")) {
-    if (isPublicApiRoute(pathname)) {
+    if (isPublicApiRoute(pathname, request.method)) {
+      return NextResponse.next();
+    }
+    if (natalWorkerRequest) {
       return NextResponse.next();
     }
 
@@ -229,14 +389,19 @@ export async function middleware(request: NextRequest) {
       return unauthorizedApiResponse();
     }
 
-    const role = await verifyRole(token, secretKey);
-    if (!role) {
+    const auth = await verifyAuth(token, secretKey);
+    if (!auth) {
       return unauthorizedApiResponse();
     }
 
     const apiRole = requiredApiRole(pathname);
-    if (apiRole && role !== apiRole) {
+    if (apiRole && auth.role !== apiRole) {
       return forbiddenApiResponse();
+    }
+
+    if (auth.role === "user") {
+      const revoked = await enforceUserTokenVersion(request, auth, true);
+      if (revoked) return revoked;
     }
 
     return NextResponse.next();
@@ -254,9 +419,14 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE)?.value;
   if (!token || !secretKey) return redirectToLogin(request, requiredRole);
 
-  const role = await verifyRole(token, secretKey);
-  if (!role || role !== requiredRole) {
+  const auth = await verifyAuth(token, secretKey);
+  if (!auth || auth.role !== requiredRole) {
     return redirectToLogin(request, requiredRole);
+  }
+
+  if (auth.role === "user") {
+    const revoked = await enforceUserTokenVersion(request, auth, false);
+    if (revoked) return revoked;
   }
 
   return NextResponse.next();

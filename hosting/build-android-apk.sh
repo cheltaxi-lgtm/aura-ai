@@ -133,6 +133,15 @@ upsert_env "ANDROID_REINSTALL_BELOW_CODE" "${ANDROID_REINSTALL_BELOW_CODE:-13}"
 
 cd "${APP_ROOT}/mobile"
 npm ci
+# Never bake localhost into a release APK (cabinet/OAuth would leave the WebView).
+export CAPACITOR_SERVER_URL="${CAPACITOR_SERVER_URL:-https://zovus.ru}"
+export NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-https://zovus.ru}"
+case "${NEXT_PUBLIC_APP_URL}" in
+  *localhost*|*127.0.0.1*) export NEXT_PUBLIC_APP_URL="https://zovus.ru" ;;
+esac
+case "${CAPACITOR_SERVER_URL}" in
+  *localhost*|*127.0.0.1*) export CAPACITOR_SERVER_URL="https://zovus.ru" ;;
+esac
 npx cap sync android
 
 cd android
@@ -174,6 +183,7 @@ fi
 mkdir -p "${APP_ROOT}/public/releases"
 cp -f "${APK_SRC}" "${APK_OUT}"
 node "${APP_ROOT}/scripts/write-android-release-manifest.mjs"
+node "${APP_ROOT}/scripts/verify-android-release.mjs"
 ls -lh "${APK_OUT}"
 echo "APK ready: ${APK_OUT}"
 

@@ -17,6 +17,14 @@ export async function findAdminByEmail(email: string): Promise<AdminAccount | nu
   return rows[0] ?? null;
 }
 
+export async function findAdminById(id: string): Promise<AdminAccount | null> {
+  const { rows } = await query<AdminAccount>(
+    "SELECT id, email, name, password_hash, is_active FROM admin_accounts WHERE id = $1",
+    [id]
+  );
+  return rows[0] ?? null;
+}
+
 export async function verifyAdminPassword(password: string, hash: string) {
   return verifyPassword(password, hash);
 }

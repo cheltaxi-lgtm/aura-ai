@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { logAdminAction } from "@/lib/admin";
 import { ensureDb, query } from "@/lib/db";
 import { purgeAllUserMemory } from "@/lib/memory/user-facts";
@@ -11,13 +11,14 @@ async function ensureUser(userId: string): Promise<boolean> {
 
 /** Purge all AI memory for a user. Admin cannot read memory content (152-FZ minimization). */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const stepped = await requireAdminStepUp(request);
+  if (!stepped.ok) return stepped.response;
+  const auth = stepped.auth;
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const { userId } = await params;

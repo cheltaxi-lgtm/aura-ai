@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
 import { isAgeGateConfirmed } from "@/lib/age-gate";
 import {
@@ -16,8 +17,16 @@ import { APP_SHELL_HEADER, shouldUseAppShellClient } from "@/lib/app-shell";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import { preloadRecaptchaScript } from "@/lib/useRecaptcha";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
+import { commitAuthSession } from "@/lib/client-auth-commit";
+import { markAuthPending, withAppShellAuthParams } from "@/lib/auth-pending";
 import { clearClientAuthState } from "@/lib/client-logout";
-import { clearGuestTriplet, loadGuestTriplet, syncGuestSpreadToServer } from "@/lib/guest-triplet";
+import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
+import { pickUserFacingError } from "@/lib/user-facing-error";
+import { loadGuestTriplet } from "@/lib/guest-triplet";
+import {
+  hasActiveGuestResumeIntent,
+  loadGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
 import {
   clearNeedsServerProfile,
   clearPendingMasterResume,
@@ -39,6 +48,7 @@ import {
   clearShareRegistrationAttribution,
   resolveRegistrationSource,
 } from "@/lib/share/registration-attribution";
+import { readUtmAttribution } from "@/lib/utm/attribution";
 import {
   trackRegistrationAccountCreated,
   trackRegistrationCompleted,
@@ -74,6 +84,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [returnTo, setReturnTo] = useState("/");
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
@@ -94,7 +105,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     const safe = sanitizeReturnTo(raw, fallback);
     setReturnTo(safe);
     captureReturnToFromUrl(window.location.search, fallback);
-    if (isUserRegister && isAgeGateConfirmed()) {
+    if (role === "user" && isAgeGateConfirmed()) {
       setAgeConfirmed(true);
     }
     const oauthErr = params.get("oauthError");
@@ -116,7 +127,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     if (params.get("method") === "email") {
       setShowEmailRegister(true);
     }
-  }, [isExpert, isUserRegister]);
+  }, [isExpert, isUserRegister, role]);
 
   useEffect(() => {
     document.body.classList.add("auth-recaptcha-hidden");
@@ -138,8 +149,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const canSubmit =
     featuresLoaded &&
     !loading &&
-    (!requiresLegalConsent || acceptedTerms) &&
-    (!isUserRegister && !isExpertRegister || ageConfirmed);
+    (!requiresLegalConsent || (acceptedTerms && ageConfirmed)) &&
+    (!isExpertRegister || ageConfirmed);
   const showRegisterLink =
     mode === "login" && (role !== "expert" || expertRegistrationEnabled);
   const endpoint = `/api/auth/${role}/${mode === "login" ? "login" : "register"}`;
@@ -159,6 +170,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
     const body: Record<string, unknown> = { email: email.trim(), password };
 
+    if (role === "user") {
+      body.ageConfirmed = ageConfirmed;
+      body.acceptedTerms = acceptedTerms;
+    }
+
     if (mode === "register") {
       body.name = name;
       if (isExpert) {
@@ -172,8 +188,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       if (isUserRegister) {
         body.sessionId = localStorage.getItem("aura_session_id") ?? undefined;
         body.marketingConsent = marketingConsent;
-        body.ageConfirmed = ageConfirmed;
-        body.acceptedTerms = acceptedTerms;
+        const attribution = readUtmAttribution();
+        if (attribution) body.attribution = attribution;
         if (optionalBirthDate.trim()) {
           body.gender = optionalGender;
           body.birthDate = optionalBirthDate.trim();
@@ -214,6 +230,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         method: "POST",
         headers,
         credentials: "include",
+        cache: "no-store",
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -224,16 +241,20 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           return;
         }
         if (data.error === "rate_limit") {
-          setError(data.message ?? "Слишком много попыток. Подождите и попробуйте снова.");
+          setError(
+            pickUserFacingError(data, "Слишком много попыток. Подождите и попробуйте снова.")
+          );
         } else if (data.code === "recaptcha_failed") {
           setRecaptchaFailed(true);
           setError(
-            data.error ??
+            pickUserFacingError(
+              data,
               "Проверка безопасности не прошла. Нажмите «Повторить» или обновите страницу."
+            )
           );
           if (isUserRegister) trackRegistrationError("recaptcha_failed");
         } else {
-          setError(data.message ?? data.error ?? "Ошибка");
+          setError(pickUserFacingError(data, "Не удалось войти. Попробуйте снова."));
         }
         if (isUserRegister && data.code !== "recaptcha_failed") {
           trackRegistrationError(String(data.error ?? "unknown"));
@@ -257,8 +278,15 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         const regSource = resolveRegistrationSource("auth_form");
         trackRegistrationAccountCreated(regSource);
         const guest = loadGuestTriplet();
-        const guestMasterId = resolveGuestSpreadMasterId(guest?.masterId);
-        const hasGuestCards = Boolean(guest?.tarotCards?.length);
+        const uiCache = hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null;
+        const guestMasterId = resolveGuestSpreadMasterId(
+          guest?.masterId || uiCache?.masterId
+        );
+        const guestCards =
+          guest?.tarotCards?.length
+            ? guest.tarotCards
+            : uiCache?.cards?.map((c) => ({ id: c.id, name: c.name, meaning: "" })) ?? [];
+        const hasGuestCards = guestCards.length >= 3;
         guestRegisterMasterId = guestMasterId;
         guestRegisterHasCards = hasGuestCards;
 
@@ -268,10 +296,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           clearNeedsServerProfile();
           const mergedProfile = {
             ...data.profile,
-            tarotCards: guest?.tarotCards ?? data.profile.tarotCards ?? [],
-            deckSystem: guest?.deckSystem ?? data.profile.deckSystem,
-            teaser: guest?.teaser ?? data.profile.teaser,
-            mainQuestion: guest?.question || data.profile.mainQuestion,
+            tarotCards: guestCards.length ? guestCards : data.profile.tarotCards ?? [],
+            deckSystem: guest?.deckSystem ?? uiCache?.system ?? data.profile.deckSystem,
+            teaser: guest?.teaser ?? uiCache?.teaser ?? data.profile.teaser,
+            mainQuestion:
+              guest?.question || uiCache?.question || data.profile.mainQuestion,
             tripletMasterId: guestMasterId,
           };
           localStorage.setItem("aura_profile", JSON.stringify(mergedProfile));
@@ -292,10 +321,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               gender: "female",
               birthDate: "",
               zodiac: "",
-              tarotCards: guest?.tarotCards ?? [],
-              deckSystem: guest?.deckSystem,
-              teaser: guest?.teaser,
-              mainQuestion: guest?.question,
+              tarotCards: guestCards,
+              deckSystem: guest?.deckSystem ?? uiCache?.system,
+              teaser: guest?.teaser ?? uiCache?.teaser,
+              mainQuestion: guest?.question || uiCache?.question,
               tripletMasterId: guestMasterId,
             })
           );
@@ -311,27 +340,20 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
       if (typeof window !== "undefined" && isUserRegister && guestRegisterHasCards) {
         const guest = loadGuestTriplet();
-        const guestMasterId = guestRegisterMasterId ?? resolveGuestSpreadMasterId(guest?.masterId);
+        const uiCache = loadGuestResumeUiCache();
+        const guestMasterId =
+          guestRegisterMasterId ??
+          resolveGuestSpreadMasterId(guest?.masterId || uiCache?.masterId);
         destination = resolveRegistrationReturnTo({
           guestSpread: true,
           guestMasterId,
-          guestQuestion: guest?.question,
+          guestQuestion: guest?.question || uiCache?.question,
         });
-        if (guest?.question?.trim()) {
-          persistPendingGuestQuestion(guest.question);
+        const q = guest?.question?.trim() || uiCache?.question?.trim();
+        if (q) {
+          persistPendingGuestQuestion(q);
         }
-        if (data.profile) {
-          try {
-            const raw = localStorage.getItem("aura_profile");
-            const mergedProfile = raw ? JSON.parse(raw) : null;
-            if (mergedProfile) {
-              await syncGuestSpreadToServer(mergedProfile, guest);
-            }
-          } catch {
-            /* reading can still load from local profile */
-          }
-          clearGuestTriplet();
-        }
+        // Guest resume: server receipt + cookies are authoritative. Do not clear UI cache here.
       }
 
       if (typeof window !== "undefined" && isUserRegister && !data.profile) {
@@ -361,31 +383,60 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       }
 
       if (typeof window !== "undefined" && mode === "login" && role === "user") {
-        const meRes = await fetch("/api/auth/me", { credentials: "include" });
-        const me = meRes.ok ? await meRes.json() : null;
-        const needsProfile = Boolean(me?.needsProfile || !me?.user?.profileUserId);
-        if (needsProfile) {
-          markNeedsServerProfile();
-          persistPostAuthReturnTo(destination);
-          localStorage.setItem(
-            "aura_profile",
-            JSON.stringify({
-              name: me?.user?.name ?? "",
-              gender: "female",
-              birthDate: "",
-              zodiac: "",
-              tarotCards: [],
-            })
-          );
-          localStorage.setItem("aura_flow_step", "onboarding");
-          window.location.assign(onboardingRedirectUrl());
-          return;
+        const handoff =
+          typeof data.handoff === "string" ? data.handoff : null;
+        // Keep handoff for document bridge — do not consume it in XHR commit.
+        const me = await commitAuthSession(
+          shouldUseSessionBridge() ? undefined : { handoff }
+        );
+        // Only trust needsProfile when cookie is confirmed. If WebView lags,
+        // still hard-navigate — document load commits Set-Cookie from login.
+        if (me?.authenticated) {
+          const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
+          if (needsProfile) {
+            markNeedsServerProfile();
+            persistPostAuthReturnTo(destination);
+            localStorage.setItem(
+              "aura_profile",
+              JSON.stringify({
+                name: me.user?.name ?? "",
+                gender: "female",
+                birthDate: "",
+                zodiac: "",
+                tarotCards: [],
+              })
+            );
+            localStorage.setItem("aura_flow_step", "onboarding");
+            const onboarding = onboardingRedirectUrl();
+            if (
+              shouldUseSessionBridge() &&
+              (await navigateViaSessionBridge(onboarding, handoff))
+            ) {
+              return;
+            }
+            window.location.assign(onboarding);
+            return;
+          }
         }
         clearClientAuthState();
         clearNeedsServerProfile();
+        markAuthPending();
         const landing = new URL(destination, window.location.origin);
         landing.searchParams.delete("step");
-        destination = `${landing.pathname}${landing.search}${landing.hash}`;
+        destination = withAppShellAuthParams(
+          `${landing.pathname}${landing.search}${landing.hash}`
+        );
+        window.dispatchEvent(new CustomEvent("aura:login"));
+        if (
+          shouldUseSessionBridge() &&
+          (await navigateViaSessionBridge(destination, handoff))
+        ) {
+          return;
+        }
+        // Brief pause so WebView can flush Set-Cookie before document navigation.
+        if (!me?.authenticated) {
+          await new Promise((resolve) => window.setTimeout(resolve, 450));
+        }
         window.location.assign(destination);
         return;
       }
@@ -403,11 +454,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     requiresLegalConsent ? (
       <div
         id="oauth-consent-block"
-        className={`rounded-xl border bg-white/[0.02] p-4 ${
+        className={
           oauthError === "consent_required"
-            ? "border-amber-400/40 ring-1 ring-amber-400/20"
-            : "border-white/8"
-        }`}
+            ? "rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-3.5"
+            : ""
+        }
       >
         <OAuthConsentFields
           acceptedTerms={acceptedTerms}
@@ -427,17 +478,29 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           termsId="legal-terms-consent"
           ageId="legal-age-consent"
         />
-        {mode === "register" && (!acceptedTerms || !ageConfirmed) ? (
-          <p className="mt-3 text-center text-xs text-amber-200/80">
-            Отметьте согласие с условиями и подтвердите возраст 18+.
+        {!acceptedTerms || !ageConfirmed ? (
+          <p className="auth-salon-hint mt-3 text-center">
+            Подтвердите возраст и согласие с условиями, чтобы продолжить
           </p>
         ) : null}
       </div>
     ) : null;
 
+  const isUserLogin = mode === "login" && role === "user";
+  const fieldClass = isUserLogin || isUserRegister
+    ? "auth-salon-field"
+    : "w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white";
+  const labelClass = isUserLogin || isUserRegister
+    ? "auth-salon-label"
+    : "mb-1 block text-xs text-gray-500";
+  const formShellClass =
+    isUserLogin || isUserRegister
+      ? "auth-form space-y-5"
+      : "auth-form glass-panel mx-auto max-w-lg space-y-5 p-8";
+
   if (isUserRegister && !showEmailRegister) {
     return (
-      <div className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
+      <div className={formShellClass}>
         <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
         {legalConsentFields}
         <SocialAuthButtons
@@ -454,13 +517,16 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         <button
           type="button"
           onClick={() => setShowEmailRegister(true)}
-          className="btn-luxe btn-luxe--md btn-luxe--ghost w-full py-3 text-sm"
+          className="btn-ghost w-full py-3 text-sm"
         >
           Регистрация по email
         </button>
-        <p className="text-center text-xs text-gray-600">
+        <p className="text-center text-sm text-aura-ivory/55">
           Уже есть аккаунт?{" "}
-          <Link href={loginHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+          <Link
+            href={loginHref}
+            className="font-medium text-aura-champagne underline-offset-2 hover:underline"
+          >
             Войти
           </Link>
         </p>
@@ -469,38 +535,40 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="auth-form glass-panel mx-auto max-w-lg space-y-5 p-8">
+    <form onSubmit={handleSubmit} className={formShellClass}>
       {isUserRegister ? (
         <button
           type="button"
           onClick={() => setShowEmailRegister(false)}
-          className="text-xs text-gray-500 transition hover:text-aura-champagne"
+          className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
         >
-          ← Войти через VK или Яндекс
+          ← Назад к Яндекс, VK или email
         </button>
       ) : null}
       {role === "user" && !isUserRegister ? (
         <>
           <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
+          {legalConsentFields}
           <SocialAuthButtons
             mode={mode as OAuthMode}
             returnTo={returnTo}
-            requireConsent={false}
+            requireConsent
             acceptedTerms={acceptedTerms}
             ageConfirmed={ageConfirmed}
             marketingConsent={marketingConsent}
             disabled={loading}
             consentScrollTargetId="oauth-consent-block"
+            emailDividerLabel="или по email"
           />
         </>
       ) : null}
       {isUserRegister ? (
-        <p className="text-center text-sm text-gray-400">Создайте аккаунт по email</p>
+        <p className="text-center text-sm text-aura-ivory/60">Создайте аккаунт по email</p>
       ) : null}
       {mode === "register" && !isUserRegister ? (
         <>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Имя *</label>
+            <label className={labelClass}>Имя *</label>
             <input
               type="text"
               required
@@ -508,29 +576,29 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className={fieldClass}
             />
           </div>
           {isExpert && (
             <>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Slug страницы</label>
+                <label className={labelClass}>Адрес страницы</label>
                 <input
                   type="text"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="gadalka_marina"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                  className={fieldClass}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Специализация</label>
+                <label className={labelClass}>Специализация</label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Таро · Расклады"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                  className={fieldClass}
                 />
               </div>
             </>
@@ -541,7 +609,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       {mode === "register" && isUserRegister ? (
         <>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Имя *</label>
+            <label className={labelClass}>Имя *</label>
             <input
               type="text"
               required
@@ -549,7 +617,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className={fieldClass}
             />
           </div>
           {legalConsentFields}
@@ -557,12 +625,14 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       ) : null}
 
       <div className={isUserRegister ? "border-t border-white/10 pt-5" : ""}>
-        <p className={isUserRegister ? "mb-4 text-center text-xs text-gray-500" : "hidden"}>
+        <p className={isUserRegister ? "mb-4 text-center text-xs text-aura-ivory/45" : "hidden"}>
           Аккаунт для сохранения истории
         </p>
         <div className="space-y-4">
           <div>
-            <label htmlFor={`${role}-${mode}-email`} className="mb-1 block text-xs text-gray-500">Email *</label>
+            <label htmlFor={`${role}-${mode}-email`} className={labelClass}>
+              Email *
+            </label>
             <input
               id={`${role}-${mode}-email`}
               type="email"
@@ -570,25 +640,47 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className={fieldClass}
             />
           </div>
 
           <div>
-            <label htmlFor={`${role}-${mode}-password`} className="mb-1 block text-xs text-gray-500">Пароль *</label>
-            <input
-              id={`${role}-${mode}-password`}
-              type="password"
-              required
-              minLength={mode === "register" ? MIN_PASSWORD_LENGTH : undefined}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "register" ? "new-password" : "current-password"}
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
-            />
+            <div className="mb-1 flex items-end justify-between gap-3">
+              <label htmlFor={`${role}-${mode}-password`} className={`${labelClass} mb-0`}>
+                Пароль *
+              </label>
+              {mode === "login" && role === "user" ? (
+                <Link
+                  href="/auth/user/forgot-password"
+                  className="shrink-0 text-xs text-aura-champagne/85 hover:text-aura-champagne hover:underline"
+                >
+                  Забыли пароль?
+                </Link>
+              ) : null}
+            </div>
+            <div className="auth-salon-password-wrap">
+              <input
+                id={`${role}-${mode}-password`}
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={mode === "register" ? MIN_PASSWORD_LENGTH : undefined}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                className={fieldClass}
+              />
+              <button
+                type="button"
+                className="auth-salon-password-toggle"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {mode === "register" ? (
               <div className="mt-2 space-y-1">
-                <p className="text-xs text-gray-500">Минимум {MIN_PASSWORD_LENGTH} символов</p>
+                <p className="text-xs text-aura-ivory/45">Минимум {MIN_PASSWORD_LENGTH} символов</p>
                 {password.length > 0 && passwordStrength ? (
                   <p className={`text-xs ${PASSWORD_STRENGTH_COLORS[passwordStrength]}`}>
                     Надёжность: {PASSWORD_STRENGTH_LABELS[passwordStrength]}
@@ -596,45 +688,35 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
                 ) : null}
               </div>
             ) : null}
-            {mode === "login" && role === "user" ? (
-              <p className="mt-2 text-right">
-                <Link
-                  href="/auth/user/forgot-password"
-                  className="text-xs text-aura-champagne/80 hover:text-aura-champagne hover:underline"
-                >
-                  Забыли пароль?
-                </Link>
-              </p>
-            ) : null}
           </div>
         </div>
       </div>
 
       {isUserRegister ? (
         <details className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-          <summary className="cursor-pointer text-sm text-gray-400">
+          <summary className="cursor-pointer text-sm text-aura-ivory/55">
             Дата рождения (необязательно) — пропустить отдельный шаг
           </summary>
           <div className="mt-4 space-y-3">
-            <p className="text-xs leading-relaxed text-gray-500">
+            <p className="text-xs leading-relaxed text-aura-ivory/45">
               Если укажете сейчас, сразу откроем кабинет и начислим стартовые руны. Иначе спросим на
               следующем экране.
             </p>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Дата рождения</label>
+              <label className={labelClass}>Дата рождения</label>
               <input
                 type="date"
                 value={optionalBirthDate}
                 onChange={(e) => setOptionalBirthDate(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                className={fieldClass}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Пол</label>
+              <label className={labelClass}>Пол</label>
               <select
                 value={optionalGender}
                 onChange={(e) => setOptionalGender(e.target.value as "male" | "female")}
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                className={fieldClass}
               >
                 <option value="female">Женский</option>
                 <option value="male">Мужской</option>
@@ -644,59 +726,77 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         </details>
       ) : null}
 
-      {emailExists ? (
-        <p className="text-center text-sm text-amber-300/90">
-          Этот email уже зарегистрирован.{" "}
-          <Link href={loginHref} className="text-aura-champagne underline underline-offset-2">
-            Войти в аккаунт
-          </Link>
-        </p>
-      ) : error ? (
-        <div className="space-y-2 text-center">
-          <p className="text-sm text-red-400">{error}</p>
-          {recaptchaFailed ? (
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              className="text-sm text-aura-champagne underline underline-offset-2 hover:text-white"
-            >
-              Повторить проверку
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="auth-salon-error-slot space-y-2 text-center" aria-live="polite">
+        {emailExists ? (
+          <p className="text-sm text-amber-200/90">
+            Этот email уже зарегистрирован.{" "}
+            <Link href={loginHref} className="text-aura-champagne underline underline-offset-2">
+              Войти в аккаунт
+            </Link>
+          </p>
+        ) : error ? (
+          <div className="space-y-2">
+            <p className="text-sm text-red-300">{error}</p>
+            {recaptchaFailed ? (
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                className="text-sm text-aura-champagne underline underline-offset-2 hover:text-white"
+              >
+                Повторить проверку
+              </button>
+            ) : null}
+            {mode === "login" ? (
+              <ul className="space-y-1 text-xs leading-relaxed text-aura-ivory/45">
+                {getLoginFormHints(role).map((hint) => (
+                  <li key={hint}>• {hint}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
-      {mode === "login" ? legalConsentFields : null}
-
-      {mode === "login" ? (
-        <ul className="space-y-1 text-xs leading-relaxed text-gray-500">
-          {getLoginFormHints(role).map((hint) => (
-            <li key={hint}>• {hint}</li>
-          ))}
-        </ul>
-      ) : null}
+      {mode === "login" && role !== "user" ? legalConsentFields : null}
 
       <button
         type="submit"
         disabled={!canSubmit}
-        className="btn-neon w-full py-3 text-sm disabled:opacity-50"
+        className="btn-primary w-full py-3.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
       >
-        {loading ? "Сохраняем…" : mode === "login" ? "Войти" : "Создать аккаунт и продолжить"}
+        {loading
+          ? mode === "login"
+            ? "Входим…"
+            : "Сохраняем…"
+          : mode === "login"
+            ? "Войти"
+            : "Создать аккаунт и продолжить"}
       </button>
+      {!canSubmit && requiresLegalConsent && (!acceptedTerms || !ageConfirmed) && !loading ? (
+        <p className="auth-salon-hint -mt-2 text-center">
+          Подтвердите возраст и согласие с условиями, чтобы продолжить
+        </p>
+      ) : null}
 
       {(mode === "login" && showRegisterLink) || mode === "register" ? (
-        <p className="text-center text-xs text-gray-600">
+        <p className="text-center text-sm text-aura-ivory/55">
           {mode === "login" ? (
             <>
-              Нет аккаунта?{" "}
-              <Link href={registerHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
-                Регистрация
+              Впервые в Zovus?{" "}
+              <Link
+                href={registerHref}
+                className="font-medium text-aura-champagne underline-offset-2 hover:underline"
+              >
+                Создать аккаунт
               </Link>
             </>
           ) : (
             <>
               Уже есть аккаунт?{" "}
-              <Link href={loginHref} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+              <Link
+                href={loginHref}
+                className="font-medium text-aura-champagne underline-offset-2 hover:underline"
+              >
                 Войти
               </Link>
             </>

@@ -500,6 +500,134 @@ export type NatalInterpretationClaimResult =
   | { status: "unavailable" };
 
 /**
+ * Removes empty paid-report placeholders and expired in-flight claims so OAuth /
+ * partial-profile users can retry generation after a failed attempt.
+ */
+export async function clearStaleNatalInterpretationBlocks(
+  userId: string,
+  tradition: NatalTradition,
+  expectedBirthFingerprint: string,
+  expectedEngineVersion: string,
+  expectedEphemeris: string,
+  options?: { reportType?: string; claimKey?: string }
+): Promise<void> {
+  const reportType = options?.reportType ?? "interpretation";
+  const claimKey = options?.claimKey ?? tradition;
+
+  await query(
+    `DELETE FROM natal_report_history
+     WHERE user_id = $1
+       AND birth_fingerprint = $2
+       AND engine_version = $3
+       AND ephemeris = $4
+       AND tradition = $5
+       AND report_type = $6
+       AND NULLIF(BTRIM(content), '') IS NULL`,
+    [userId, expectedBirthFingerprint, expectedEngineVersion, expectedEphemeris, tradition, reportType]
+  );
+
+  await query(
+    `UPDATE natal_charts
+     SET chart_data = jsonb_set(
+           chart_data,
+           '{interpretationClaims}',
+           (
+             SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb)
+             FROM jsonb_each(COALESCE(chart_data->'interpretationClaims', '{}'::jsonb)) AS claims(key, value)
+             WHERE key <> $5::text
+                OR CASE
+                     WHEN value #>> '{claimedAtEpoch}' ~ '^[0-9]+([.][0-9]+)?$'
+                     THEN (value #>> '{claimedAtEpoch}')::numeric
+                     ELSE 0
+                   END < EXTRACT(EPOCH FROM NOW() - INTERVAL '10 minutes')
+           ),
+           true
+         ),
+         updated_at = NOW()
+     WHERE user_id = $1
+       AND chart_data->>'birthFingerprint' = $2
+       AND engine_version = $3
+       AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $4`,
+    [userId, expectedBirthFingerprint, expectedEngineVersion, expectedEphemeris, claimKey]
+  );
+}
+
+async function forceClearNatalInterpretationClaimKey(
+  userId: string,
+  expectedBirthFingerprint: string,
+  expectedEngineVersion: string,
+  expectedEphemeris: string,
+  claimKey: string
+): Promise<void> {
+  await query(
+    `UPDATE natal_charts
+     SET chart_data = jsonb_set(
+           chart_data,
+           '{interpretationClaims}',
+           COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $5::text,
+           true
+         ),
+         updated_at = NOW()
+     WHERE user_id = $1
+       AND chart_data->>'birthFingerprint' = $2
+       AND engine_version = $3
+       AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $4`,
+    [userId, expectedBirthFingerprint, expectedEngineVersion, expectedEphemeris, claimKey]
+  );
+}
+
+export async function claimNatalInterpretationResilient(
+  userId: string,
+  tradition: NatalTradition,
+  expectedBirthFingerprint: string,
+  expectedEngineVersion: string,
+  expectedEphemeris: string,
+  options?: { reportType?: string; claimKey?: string }
+): Promise<NatalInterpretationClaimResult> {
+  const claimKey = options?.claimKey ?? tradition;
+  await clearStaleNatalInterpretationBlocks(
+    userId,
+    tradition,
+    expectedBirthFingerprint,
+    expectedEngineVersion,
+    expectedEphemeris,
+    options
+  );
+  const first = await claimNatalInterpretation(
+    userId,
+    tradition,
+    expectedBirthFingerprint,
+    expectedEngineVersion,
+    expectedEphemeris,
+    options
+  ).catch(() => ({ status: "busy" } as const));
+  if (first.status !== "busy") return first;
+
+  await clearStaleNatalInterpretationBlocks(
+    userId,
+    tradition,
+    expectedBirthFingerprint,
+    expectedEngineVersion,
+    expectedEphemeris,
+    options
+  );
+  const second = await claimNatalInterpretation(
+    userId,
+    tradition,
+    expectedBirthFingerprint,
+    expectedEngineVersion,
+    expectedEphemeris,
+    options
+  ).catch(() => ({ status: "busy" } as const));
+  if (second.status !== "busy") return second;
+
+  // An active claim must never be stolen: the original request may already
+  // have charged runes and be about to persist its report. Stale claims are
+  // reclaimed by clearStaleNatalInterpretationBlocks above (10 minute TTL).
+  return second;
+}
+
+/**
  * Atomically reserves generation for one user/tradition. Claims carry only an
  * opaque token and timestamp, and stale reservations can be replaced.
  */
@@ -551,6 +679,7 @@ export async function claimNatalInterpretation(
            AND history.ephemeris = $5
            AND history.tradition = $2
            AND history.report_type = $6
+           AND NULLIF(BTRIM(history.content), '') IS NOT NULL
        )
        AND (
          chart_data #> ARRAY['interpretationClaims', $7::text] IS NULL

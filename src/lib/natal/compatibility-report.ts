@@ -67,7 +67,7 @@ export function compatibilityReportJsonInstructions(): string {
   return `Верни только JSON:
 {"version":"1.0","sections":[{"key":"summary","title":"Итог","claims":[{"text":"...","evidenceIds":["aspect-id"]}]}],"disclaimer":"..."}
 Обязательные sections ровно по одному и в этом порядке: ${COMPATIBILITY_REPORT_SECTION_KEYS.join(", ")}.
-В каждом разделе 1–5 claims. Каждый claim содержит непустой text и evidenceIds.
+В каждом разделе 1–5 claims, суммарно не менее 300 знаков содержательного текста. Каждый claim содержит непустой text и evidenceIds.
 Для summary/recommendations допустимы ID аспектов и dimension:<key>; для тематических разделов используй evidence соответствующего dimension.
 Не добавляй факты, которых нет в evidence. Не делай фаталистичных утверждений.`;
 }
@@ -101,6 +101,13 @@ export function validateCompatibilityReport(
     ...evidence.dimensions.map((item) => `dimension:${item.key}`),
   ]);
   const sections: CompatibilityReportSection[] = [];
+  const seenTexts = new Set<string>();
+  const evidenceByDimension = new Map(
+    evidence.dimensions.map((dimension) => [
+      dimension.key,
+      new Set([`dimension:${dimension.key}`, ...dimension.supportingAspectIds]),
+    ])
+  );
 
   for (const [index, expectedKey] of COMPATIBILITY_REPORT_SECTION_KEYS.entries()) {
     const raw = asRecord(root.sections[index]);
@@ -113,18 +120,38 @@ export function validateCompatibilityReport(
       errors.push(`${expectedKey}: claims count must be 1..5`);
     }
     const claims: CompatibilityReportClaim[] = [];
+    let sectionTextLength = 0;
     for (const rawClaim of rawClaims.slice(0, 5)) {
       const claim = asRecord(rawClaim);
       const text = typeof claim?.text === "string" ? claim.text.trim().slice(0, 3000) : "";
-      const evidenceIds = Array.isArray(claim?.evidenceIds)
-        ? [...new Set(claim.evidenceIds.filter(
-            (id): id is string => typeof id === "string" && allowedEvidence.has(id)
-          ))].slice(0, 8)
+      const suppliedEvidenceIds = Array.isArray(claim?.evidenceIds)
+        ? [...new Set(claim.evidenceIds.filter((id): id is string => typeof id === "string"))].slice(0, 8)
         : [];
+      const evidenceIds = suppliedEvidenceIds.filter((id) => allowedEvidence.has(id));
       if (!text) errors.push(`${expectedKey}: empty claim`);
+      if (suppliedEvidenceIds.length !== evidenceIds.length) {
+        errors.push(`${expectedKey}: claim contains unknown evidence`);
+      }
       if (!evidenceIds.length) errors.push(`${expectedKey}: claim has no valid evidence`);
+      const normalizedText = text.toLocaleLowerCase("ru").replace(/\s+/g, " ").replace(/[^\p{L}\p{N} ]/gu, "");
+      if (normalizedText.length > 40 && seenTexts.has(normalizedText)) {
+        errors.push(`${expectedKey}: repeated claim text`);
+      }
+      seenTexts.add(normalizedText);
+      if (/ключевой вывод|у вас есть потенциал|возможны изменения|сосредоточьтесь на своих целях/i.test(text)) {
+        errors.push(`${expectedKey}: placeholder or generic claim`);
+      }
+      if (
+        expectedKey !== "summary" &&
+        expectedKey !== "recommendations" &&
+        !evidenceIds.some((id) => evidenceByDimension.get(expectedKey)?.has(id))
+      ) {
+        errors.push(`${expectedKey}: claim evidence does not match section dimension`);
+      }
+      sectionTextLength += text.length;
       claims.push({ text, evidenceIds });
     }
+    if (sectionTextLength < 300) errors.push(`${expectedKey}: section is too short`);
     sections.push({
       key: expectedKey,
       title:

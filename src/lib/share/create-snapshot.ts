@@ -7,7 +7,7 @@ import type { CreateShareResult, SharePayload, ShareSnapshotPayload } from "./ty
 import { buildSharePageUrl } from "./build-url";
 
 function generateShareToken(): string {
-  return randomBytes(8).toString("base64url").slice(0, 10);
+  return randomBytes(16).toString("base64url");
 }
 
 export async function createShareSnapshot(

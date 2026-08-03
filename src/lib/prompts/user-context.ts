@@ -6,6 +6,7 @@ import {
   type DeckSystem,
 } from "@/lib/decks";
 import { isThirdPartyCustomQuestion } from "@/lib/custom-question-scope";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { getSessionTopic } from "@/lib/session-topics";
 
 export type UserContextInput = {
@@ -46,8 +47,9 @@ function resolveAge(user: UserContextInput): number | null {
 
 export function buildUserContext(user: UserContextInput): string {
   const lines: string[] = [];
+  const displayName = normalizePersonDisplayNameOr(user.name, user.name);
 
-  lines.push(`Имя: ${user.name}`);
+  lines.push(`Имя: ${displayName}`);
 
   if (user.gender) {
     const genderText =
@@ -118,18 +120,19 @@ export function buildSpreadUserMessage(params: {
   const intention = params.intention?.trim() || "Общий расклад";
   const scopeSuffix = params.readingScopeLabel?.trim();
   const thirdParty = isThirdPartyCustomQuestion(intention);
+  const displayName = normalizePersonDisplayNameOr(params.user.name, params.user.name);
 
   const taskLines = thirdParty
     ? [
         `Дай подробный расклад по вопросу: «${intention}».`,
-        `Обращайся к ${params.user.name} по имени как к спрашивающему.`,
+        `Обращайся к ${displayName} по имени как к спрашивающему.`,
         "Каждая карта описывает субъект из вопроса (другого человека или ситуацию), не внутренний путь клиента.",
         "Не выводи клиенту служебные требования, чеклисты и структуру промпта.",
       ]
     : [
         `Дай подробный персонализированный расклад${scopeSuffix ? ` ${scopeSuffix}` : ""} следуя инструкциям из системного промпта.`,
         "Читай каждую карту/руну по её позиции в раскладе.",
-        `Обращайся к ${params.user.name} по имени.`,
+        `Обращайся к ${displayName} по имени.`,
         "Не выводи клиенту служебные требования, чеклисты и структуру промпта.",
       ];
 
@@ -167,7 +170,7 @@ export function userContextFromProfile(profile: {
   const birthDate = profile.birth_date ?? profile.birthDate ?? null;
   const meta = (profile.astro_meta ?? profile.astroMeta) as Record<string, unknown> | null;
   return {
-    name: profile.name,
+    name: normalizePersonDisplayNameOr(profile.name, profile.name),
     gender: profile.gender ?? null,
     birth_date: birthDate,
     zodiac: profile.zodiac ?? null,
@@ -179,13 +182,26 @@ export function userContextFromProfile(profile: {
 export function enrichCardsForSpreadContext(
   system: DeckSystem,
   cards: { name: string; meaning?: string }[],
-  positions?: readonly string[]
+  positions?: readonly string[],
+  opts?: { omitTextbookMeanings?: boolean }
 ): CardContextInput[] {
   const pos = positions ?? getDeckPositions(system);
   return cards.map((c, i) => {
     const { reversed } = parseCardOrientation(c.name);
     const sym = findSymbolByName(system, c.name);
-    const rawMeaning = c.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? sym?.meaning ?? "";
+    const stripped = c.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? "";
+    // Position-only labels ("Ситуация") are not textbook meanings — don't fall back to deck romance glosses.
+    const looksLikePositionOnly =
+      !stripped ||
+      stripped === (pos[i] ?? "") ||
+      /^(позиция\s*\d+|ситуация|препятствие|корень|совет|итог|прошлое|настоящее|будущее)$/i.test(
+        stripped
+      );
+    const rawMeaning = opts?.omitTextbookMeanings
+      ? ""
+      : looksLikePositionOnly
+        ? ""
+        : stripped || sym?.meaning || "";
     const displayName = sym?.name ?? parseCardOrientation(c.name).name;
     return {
       name: displayName,

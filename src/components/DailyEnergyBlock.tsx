@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 
 interface DailyEnergyBlockProps {
   characterKey?: string;
@@ -45,7 +46,9 @@ export default function DailyEnergyBlock({ characterKey = "veronika", onTalkToMa
       className="mb-8 rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-900/15 to-black/40 p-6"
     >
       <p className="text-[10px] uppercase tracking-widest text-amber-400/80">Энергия дня</p>
-      <p className="mt-3 text-sm leading-relaxed text-gray-200">{text}</p>
+      <div className="mt-3">
+        <PremiumReadingBody content={text} className="text-sm text-gray-200" />
+      </div>
       {onTalkToMaster && (
         <button
           type="button"

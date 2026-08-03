@@ -1,6 +1,5 @@
 "use client";
 
-import BrandLogo from "@/components/BrandLogo";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -120,15 +119,11 @@ export default function AuthPortalPage() {
         transition={{ duration: 0.5 }}
         className="relative mb-10 text-center"
       >
-        <Link href="/" className="mb-6 inline-block transition-opacity hover:opacity-80">
-          <BrandLogo titleClassName="font-display text-2xl font-bold tracking-[0.2em] text-white" />
-        </Link>
-
         <h1 className="font-display lux-heading mb-3 text-3xl font-bold sm:text-4xl">
           Добро пожаловать
         </h1>
         <p className="mx-auto max-w-sm text-sm text-aura-ivory/50">
-          Мы помогаем найти ответы — выберите, как вы хотите войти
+          Выберите, как войти в пространство Zovus
         </p>
       </motion.div>
 
@@ -143,8 +138,8 @@ export default function AuthPortalPage() {
       >
         <RoleCard
           icon={Compass}
-          title="Искатель"
-          description="Расклады, мастера и личный кабинет — путь к подсказкам и ясности"
+          title="Гость салона"
+          description="Расклады, наставники и личный кабинет — ваше пространство для практики"
           accent="violet"
           loginHref={userLoginHref}
           registerHref={userRegisterHref}
@@ -154,7 +149,7 @@ export default function AuthPortalPage() {
           <RoleCard
             icon={Sparkles}
             title="Мастер"
-            description="Своя страница, white-label и доход 80% — делитесь знанием с миром"
+            description="Своя витрина, свой бренд и доход 80% — делитесь практикой с аудиторией"
             accent="gold"
             loginHref={expertLoginHref}
             registerHref={expertRegisterHref}

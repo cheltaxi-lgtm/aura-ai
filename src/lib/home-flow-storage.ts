@@ -103,6 +103,10 @@ export function needsBirthProfileCompletion(): boolean {
 
 /** Pick home flow step before navigating to `/` from cabinet or app shell. */
 export function primeHomeFlowStep(): FlowStep {
+  if (typeof window !== "undefined" && !localStorage.getItem(ACCOUNT_KEY)) {
+    persistStep("intro");
+    return "intro";
+  }
   const step: FlowStep = needsBirthProfileCompletion() ? "onboarding" : "masters";
   persistStep(step);
   return step;

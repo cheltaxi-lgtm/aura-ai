@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import LegalDocumentLayout from "@/components/legal/LegalDocumentLayout";
 import { LEGAL_OPERATOR } from "@/lib/legal-operator";
 import { BRAND_NAME, BRAND_URL } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
-  title: `Отказ от ответственности — ${BRAND_NAME}`,
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Отказ от ответственности",
   description: `Отказ от ответственности платформы ${BRAND_NAME}. Развлекательный характер сервиса, ограничения ИИ-консультаций.`,
-};
+  path: "/disclaimer",
+});
 
 export default function DisclaimerPage() {
   return (

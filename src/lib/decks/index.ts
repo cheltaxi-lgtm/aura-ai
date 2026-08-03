@@ -95,12 +95,14 @@ export function resolveMasterDeckSystem(masterId?: string | null): DeckSystem {
   return MASTER_DECK_SYSTEM[masterId] ?? DEFAULT_DECK_SYSTEM;
 }
 
-/** Deck for a spread session — Lenormand line uses the Lenormand oracle, not tarot. */
+/** Deck for a spread session — Lenormand / runes-yes-no force their oracle. */
 export function resolveSpreadDeckSystem(
   spreadId: SpreadId | string | null | undefined,
   masterId?: string | null
 ): DeckSystem {
-  if (normalizeSpreadId(spreadId) === "lenormand-line") return "lenormand";
+  const id = normalizeSpreadId(spreadId);
+  if (id === "lenormand-line") return "lenormand";
+  if (id === "runes-yes-no") return "runes";
   return resolveMasterDeckSystem(masterId);
 }
 
@@ -110,6 +112,28 @@ export function getDeckDefinition(system: DeckSystem): DeckDefinition {
 
 export function getDeckPositions(system: DeckSystem): readonly string[] {
   return DECK_REGISTRY[system].positions;
+}
+
+/**
+ * Classic 3-card time labels — same canon as prompts / getDeckPositions.
+ * Topic-specific UI (love/life_death) uses resolveSpreadPositions in spread layouts.
+ */
+export const TRIPLET_UI_POSITIONS = [
+  "Прошлое",
+  "Настоящее",
+  "Будущее",
+] as const;
+
+/** Display labels for deck UI — aligned with prompt position canon for triplet decks. */
+export function getDeckPositionsForUi(system: DeckSystem): readonly string[] {
+  if (
+    system === "tarot-veronika" ||
+    system === "tarot-marina" ||
+    system === "slavic"
+  ) {
+    return TRIPLET_UI_POSITIONS;
+  }
+  return getDeckPositions(system);
 }
 
 export function drawSpread(

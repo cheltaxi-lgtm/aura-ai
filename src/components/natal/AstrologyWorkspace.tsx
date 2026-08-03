@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import BrandLogo from "@/components/BrandLogo";
 import { BRAND_NAME } from "@/lib/brand";
 import {
   AlertTriangle, Archive, CalendarClock, CheckCircle2, Compass,
@@ -15,8 +14,13 @@ import NatalSettings from "./NatalSettings";
 import { VedicChartPair, VimshottariTimeline } from "./VedicCharts";
 import { AstrologyGuide, ExplainTerm, PanelBlock, PersonalMeaning, SectionIntroduction } from "./AstrologyGuide";
 import { usePaywall } from "@/contexts/PaywallContext";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
+import { buildLoginHref } from "@/lib/post-auth-return";
 import { useRuneConfig } from "@/lib/useRuneConfig";
-import { toParagraphs } from "@/lib/format-paragraphs";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
+import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
+import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   aspectRows, bigThree, methodology, midpointRows, patternRows,
   positionRows, matchesCurrentChart, type NatalChartPayload,
@@ -28,7 +32,11 @@ import {
 } from "@/lib/natal/labels";
 import type { NatalTradition } from "@/lib/natal/types";
 import type { NatalEvidence } from "@/lib/natal/evidence";
-import { isNatalReport, type NatalReport } from "@/lib/natal/report";
+import {
+  formatLegacyNatalProseForDisplay,
+  isNatalReport,
+  type NatalReport,
+} from "@/lib/natal/report";
 import type { VedicChart } from "@/lib/natal/vedic";
 import type {
   PersonalTimingResult, TimingCategory, TimingEvent, TimingHorizon,
@@ -46,6 +54,32 @@ type Report = {
   evidenceRefs: NatalEvidence[] | null;
   birthFingerprint: string;
 };
+type FreshReport = {
+  text: string;
+  report: NatalReport | null;
+  evidence: NatalEvidence[];
+};
+
+// Section-wise forecast generation (8 parallel LLM calls) needs headroom beyond a single shot.
+const NATAL_MUTATION_TIMEOUT_MS = 300_000;
+
+type NatalMutationError = {
+  error?: string;
+  code?: string;
+  balance?: number;
+  cost?: number;
+  requiredRunes?: number;
+  action?: string;
+  retryAfter?: number;
+  retryAfterSec?: number;
+};
+
+function isAbortError(reason: unknown): boolean {
+  return (
+    (reason instanceof DOMException && reason.name === "AbortError") ||
+    (reason instanceof Error && reason.name === "AbortError")
+  );
+}
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Star }> = [
   { id: "overview", label: "Обзор", icon: Star },
@@ -60,6 +94,15 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Star }> = [
 async function responseJson<T>(response: Response): Promise<T> {
   try { return await response.json() as T; }
   catch { throw new Error(`Сервер вернул некорректный ответ (${response.status})`); }
+}
+
+async function waitForNatalJob(jobId: string): Promise<Record<string, unknown>> {
+  const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+  return waitForAsyncJob({
+    jobId,
+    storageKey: "aura:natal-active-job",
+    startedAtKey: "aura:natal-active-job-started",
+  });
 }
 
 async function fetchRobust(input: RequestInfo | URL, init?: RequestInit, retries = 2): Promise<Response> {
@@ -87,6 +130,18 @@ async function fetchRobust(input: RequestInfo | URL, init?: RequestInit, retries
   throw lastError instanceof Error ? lastError : new Error("Сеть недоступна");
 }
 
+function isNatalAuthRequired(status: number, data: { code?: string; error?: string }): boolean {
+  if (status !== 401) return false;
+  if (data.code === "NEEDS_PROFILE") return false;
+  if (data.code === "AUTH_REQUIRED") return true;
+  return /unauthorized|auth_required/i.test(String(data.error ?? ""));
+}
+
+function redirectNatalLogin(): void {
+  const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  window.location.assign(buildLoginHref(returnTo, "/cabinet/astrology"));
+}
+
 export default function AstrologyWorkspace() {
   const { openPaywall, showRateLimit } = usePaywall();
   const { cost } = useRuneConfig();
@@ -102,14 +157,23 @@ export default function AstrologyWorkspace() {
   const [historyError, setHistoryError] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-  const [freshReports, setFreshReports] = useState<Partial<Record<NatalTradition, {
-    text: string; report: NatalReport | null; evidence: NatalEvidence[];
-  }>>>({});
+  const [freshReports, setFreshReports] = useState<Partial<Record<NatalTradition, FreshReport>>>({});
 
   const selectTab = useCallback((nextTab: Tab) => {
     setTab(nextTab);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", nextTab);
+    if (nextTab !== "reports") url.searchParams.delete("report");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  const openReportArchive = useCallback((reportId?: string) => {
+    setTab("reports");
+    setSelectedReportId(reportId ?? null);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", "reports");
+    if (reportId) url.searchParams.set("report", reportId);
+    else url.searchParams.delete("report");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
@@ -119,7 +183,9 @@ export default function AstrologyWorkspace() {
     try {
       const response = await fetchRobust("/api/natal-chart/history?limit=100", { credentials: "include" });
       const data = await responseJson<{ reports?: Report[]; error?: string }>(response);
-      if (!response.ok) throw new Error(data.error || "Не удалось загрузить историю");
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось загрузить историю"));
+      }
       const nextReports = data.reports ?? [];
       setReports(nextReports);
       return nextReports;
@@ -141,8 +207,24 @@ export default function AstrologyWorkspace() {
         { method: recompute ? "POST" : "GET", credentials: "include" },
         recompute ? 0 : 2
       );
-      const data = await responseJson<{ enabled?: boolean; chart?: NatalChartPayload | null; error?: string }>(response);
-      if (!response.ok) throw new Error(data.error || "Не удалось загрузить карту рождения");
+      const data = await responseJson<{
+        enabled?: boolean;
+        chart?: NatalChartPayload | null;
+        error?: string;
+        code?: string;
+      }>(response);
+      if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        setEnabled(true);
+        setChart(null);
+        setError(data.error || "Завершите профиль: укажите дату и город рождения.");
+        return;
+      }
+      if (isNatalAuthRequired(response.status, data)) {
+        throw new Error(toUserFacingError(data.error, "Войдите, чтобы продолжить."));
+      }
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось загрузить карту рождения"));
+      }
       setEnabled(data.enabled !== false);
       setChart(data.chart ?? null);
       if (recompute) {
@@ -150,7 +232,12 @@ export default function AstrologyWorkspace() {
         void loadHistory();
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
     } finally {
       setLoading(false);
       setBusy(null);
@@ -163,9 +250,47 @@ export default function AstrologyWorkspace() {
     const search = new URLSearchParams(window.location.search);
     const rawRequested = search.get("tab");
     const requested = (rawRequested === "relationships" ? "compatibility" : rawRequested) as Tab | null;
+    const requestedReport = search.get("report");
     if (requested && TABS.some((item) => item.id === requested)) setTab(requested);
-    setSelectedReportId(search.get("report"));
+    else if (requestedReport) setTab("reports");
+    setSelectedReportId(requestedReport);
   }, [loadChart, loadHistory]);
+
+  useEffect(() => {
+    const pendingJobId = window.localStorage.getItem("aura:natal-active-job");
+    if (!pendingJobId) return;
+    let active = true;
+    setNotice("Восстанавливаем генерацию, начатую до обновления страницы…");
+    void waitForNatalJob(pendingJobId)
+      .then(async (result) => {
+        if (!active) return;
+        const nextReports = await loadHistory().catch(() => [] as Report[]);
+        if (!active) return;
+        const reportId = typeof result.reportId === "string" ? result.reportId : null;
+        const saved = reportId
+          ? nextReports.find((report) => report.id === reportId)
+          : nextReports[0];
+        if (saved?.reportType.startsWith("forecast:")) selectTab("timing");
+        else if (saved?.tradition === "vedic") selectTab("jyotish");
+        else if (saved) selectTab("western");
+        setSelectedReportId(saved?.id ?? null);
+        setError("");
+        setNotice("Генерация завершена. Результат показан в соответствующем разделе.");
+      })
+      .catch((reason) => {
+        if (!active) return;
+        setNotice("");
+        setError(
+          toUserFacingError(
+            reason instanceof Error ? reason.message : reason,
+            "Не удалось восстановить генерацию."
+          )
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadHistory, selectTab]);
 
   const focusEvidence = useCallback((target: string) => {
     const url = new URL(target, window.location.origin);
@@ -180,18 +305,40 @@ export default function AstrologyWorkspace() {
   }, [selectTab]);
 
   const requestInterpretation = async (tradition: NatalTradition) => {
+    if (!chart?.[tradition]) {
+      setError("Сначала укажите дату и город рождения в настройках карты.");
+      selectTab("settings");
+      return;
+    }
     setBusy(tradition);
     setError("");
+    setNotice("");
+    let enqueuedJob = false;
     try {
-      const response = await fetch("/api/natal-chart/interpretation", {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tradition, aiDataUseAcknowledged: true }),
+      const response = await fetchWithTimeout("/api/natal-chart/interpretation", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tradition, aiDataUseAcknowledged: true, async: true }),
+        timeoutMs: NATAL_MUTATION_TIMEOUT_MS,
       });
-      const data = await responseJson<{
+      let data = await responseJson<NatalMutationError & {
         interpretation?: string; report?: NatalReport | null; evidence?: NatalEvidence[];
-        error?: string; balance?: number; cost?: number; requiredRunes?: number;
-        action?: string; retryAfter?: number; retryAfterSec?: number;
+        jobId?: string;
       }>(response);
+      if (response.status === 202 && data.jobId) {
+        enqueuedJob = true;
+        setNotice("Отчёт поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
+        data = await waitForNatalJob(data.jobId) as typeof data;
+      } else if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        // Stay in astrology: hard-nav to home/onboarding looks like a login wall in app shell.
+        setError(data.error || "Завершите профиль: укажите дату и город рождения.");
+        selectTab("settings");
+        return;
+      } else if (isNatalAuthRequired(response.status, data)) {
+        redirectNatalLogin();
+        return;
+      }
       if (response.status === 402) {
         openPaywall({
           currentBalance: data.balance ?? 0,
@@ -209,50 +356,127 @@ export default function AstrologyWorkspace() {
         if (stale) {
           setError(data.error || "Карта изменилась. Загружаем актуальный расчёт.");
           await loadChart();
+        } else if (data.code === "CLAIM_BUSY") {
+          setError(data.error || "Не удалось начать отчёт. Обновите страницу и попробуйте снова.");
         } else {
           setNotice(data.error || "Отчёт уже создаётся. Повторите попытку немного позже.");
         }
         return;
       }
-      if (!response.ok) throw new Error(data.error || "Не удалось получить трактовку");
-      if (data.interpretation) {
-        const nextEvidence = Array.isArray(data.evidence) ? data.evidence : [];
-        setChart((previous) => previous ? {
-          ...previous, interpretations: { ...previous.interpretations, [tradition]: data.interpretation },
-        } : previous);
-        setFreshReports((previous) => ({
-          ...previous,
-          [tradition]: {
-            text: data.interpretation!,
-            report: isNatalReport(data.report) ? data.report : null,
-            evidence: nextEvidence,
-          },
-        }));
-        setNotice(`${tradition === "western" ? "Западный" : "Ведический"} отчёт готов.`);
-        void loadHistory();
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось получить трактовку"));
+      }
+      if (!data.interpretation?.trim()) {
+        throw new Error("Сервер не вернул текст отчёта. Оставайтесь в этой вкладке и повторите попытку.");
+      }
+      const nextEvidence = Array.isArray(data.evidence) ? data.evidence : [];
+      setChart((previous) => previous ? {
+        ...previous, interpretations: { ...previous.interpretations, [tradition]: data.interpretation },
+      } : previous);
+      setFreshReports((previous) => ({
+        ...previous,
+        [tradition]: {
+          text: data.interpretation!,
+          report: isNatalReport(data.report) ? data.report : null,
+          evidence: nextEvidence,
+        },
+      }));
+      setNotice(`${tradition === "western" ? "Западный" : "Ведический"} отчёт готов.`);
+      setError("");
+      try {
+        const nextReports = await loadHistory();
+        const saved = chart
+          ? nextReports.find((report) =>
+              report.tradition === tradition &&
+              report.reportType === "interpretation" &&
+              matchesCurrentChart(report, chart)
+            )
+          : undefined;
+        if (saved) {
+          setSelectedReportId(saved.id);
+          selectTab(tradition === "western" ? "western" : "jyotish");
+        }
+      } catch {
+        /* report already shown above; history is best-effort */
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      if (isAbortError(reason)) {
+        const nextReports = await loadHistory().catch(() => [] as Report[]);
+        const saved = chart
+          ? nextReports.find((report) =>
+              report.tradition === tradition &&
+              report.reportType === "interpretation" &&
+              matchesCurrentChart(report, chart)
+            )
+          : undefined;
+        if (saved) {
+          setNotice(`${tradition === "western" ? "Западный" : "Ведический"} отчёт готов и показан в этой вкладке.`);
+          setSelectedReportId(saved.id);
+          selectTab(tradition === "western" ? "western" : "jyotish");
+          return;
+        }
+        setError("Генерация заняла слишком много времени. Оставайтесь в этой вкладке или повторите попытку позже.");
+      } else {
+        const raw = reason instanceof Error ? reason.message : reason;
+        // After enqueue the session is known-good; never bounce to login on poll glitches.
+        if (!enqueuedJob && isNatalAuthRequired(401, { error: String(raw ?? "") })) {
+          redirectNatalLogin();
+          return;
+        }
+        setNotice("");
+        const message = toUserFacingError(
+          raw,
+          "Сеть недоступна. Проверьте соединение."
+        );
+        if (/недостаточно рун/i.test(message)) {
+          openPaywall({
+            currentBalance: 0,
+            requiredRunes: cost("NATAL_READING"),
+            onClose: () => void loadChart(),
+          });
+          return;
+        }
+        setError(message);
+      }
     } finally {
       setBusy(null);
     }
   };
 
   const requestForecast = async (horizon: TimingHorizon) => {
+    if (!chart?.western) {
+      setError("Сначала укажите дату и город рождения в настройках карты.");
+      selectTab("settings");
+      return;
+    }
     setBusy("forecast");
     setError("");
     setNotice("");
+    let enqueuedJob = false;
     try {
-      const response = await fetch("/api/natal-chart/forecast", {
+      const response = await fetchWithTimeout("/api/natal-chart/forecast", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ horizon, aiDataUseAcknowledged: true }),
+        body: JSON.stringify({ horizon, aiDataUseAcknowledged: true, async: true }),
+        timeoutMs: NATAL_MUTATION_TIMEOUT_MS,
       });
-      const data = await responseJson<{
-        forecast?: string; error?: string; balance?: number; cost?: number; requiredRunes?: number;
-        action?: string; retryAfter?: number; retryAfterSec?: number; reportId?: string;
+      let data = await responseJson<NatalMutationError & {
+        forecast?: string; reportId?: string;
+        jobId?: string;
       }>(response);
+      if (response.status === 202 && data.jobId) {
+        enqueuedJob = true;
+        setNotice("Прогноз поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
+        data = await waitForNatalJob(data.jobId) as typeof data;
+      } else if (response.status === 401 && data.code === "NEEDS_PROFILE") {
+        setError(data.error || "Завершите профиль: укажите дату и город рождения.");
+        selectTab("settings");
+        return;
+      } else if (isNatalAuthRequired(response.status, data)) {
+        redirectNatalLogin();
+        return;
+      }
       if (response.status === 402) {
         openPaywall({
           currentBalance: data.balance ?? 0,
@@ -265,24 +489,62 @@ export default function AstrologyWorkspace() {
         return;
       }
       if (response.status === 409) {
-        setNotice(data.error || "Прогноз уже создаётся. Повторите попытку немного позже.");
+        const stale = /измени|обновите|пересчитайте|неполн/i.test(data.error ?? "");
+        if (stale) {
+          setError(data.error || "Карта изменилась. Загружаем актуальный расчёт.");
+          await loadChart();
+        } else if (data.code === "CLAIM_BUSY") {
+          setError(data.error || "Не удалось начать прогноз. Обновите страницу и попробуйте снова.");
+        } else {
+          setNotice(data.error || "Прогноз уже создаётся. Повторите попытку немного позже.");
+        }
         return;
       }
-      if (!response.ok) throw new Error(data.error || "Не удалось получить прогноз");
-      setNotice(`Персональный прогноз на ${horizon === 365 ? "1 год" : `${horizon} дней`} готов и сохранён в отчётах.`);
-      const nextReports = await loadHistory();
-      const reportId = data.reportId ?? (chart ? nextReports.find((report) =>
-        report.reportType === `forecast:${horizon}` && matchesCurrentChart(report, chart)
-      )?.id : undefined);
-      setSelectedReportId(reportId ?? null);
-      selectTab("reports");
-      if (reportId) {
-        const url = new URL(window.location.href);
-        url.searchParams.set("report", reportId);
-        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось получить прогноз"));
+      }
+      if (!data.forecast?.trim() && !data.reportId) {
+        throw new Error("Сервер не вернул прогноз. Оставайтесь во вкладке «Периоды» и повторите попытку.");
+      }
+      setNotice(`Персональный прогноз на ${horizon === 365 ? "1 год" : `${horizon} дней`} готов и показан ниже.`);
+      setError("");
+      try {
+        const nextReports = await loadHistory();
+        const reportId = data.reportId ?? (chart ? nextReports.find((report) =>
+          report.reportType.startsWith(`forecast:${horizon}:`) && matchesCurrentChart(report, chart)
+        )?.id : undefined);
+        setSelectedReportId(reportId ?? null);
+        selectTab("timing");
+      } catch {
+        selectTab("timing");
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      if (isAbortError(reason)) {
+        const nextReports = await loadHistory().catch(() => [] as Report[]);
+        const saved = chart
+          ? nextReports.find((report) =>
+              report.reportType.startsWith(`forecast:${horizon}:`) &&
+              matchesCurrentChart(report, chart)
+            )
+          : undefined;
+        if (saved) {
+          setNotice(`Прогноз на ${horizon === 365 ? "1 год" : `${horizon} дней`} готов и показан в этой вкладке.`);
+          setSelectedReportId(saved.id);
+          selectTab("timing");
+          return;
+        }
+        setError("Генерация заняла слишком много времени. Оставайтесь в этой вкладке или повторите попытку позже.");
+      } else {
+        const raw = reason instanceof Error ? reason.message : reason;
+        if (!enqueuedJob && isNatalAuthRequired(401, { error: String(raw ?? "") })) {
+          redirectNatalLogin();
+          return;
+        }
+        setNotice("");
+        setError(
+          toUserFacingError(raw, "Сеть недоступна. Проверьте соединение.")
+        );
+      }
     } finally {
       setBusy(null);
     }
@@ -308,7 +570,9 @@ export default function AstrologyWorkspace() {
         showRateLimit("natal_report_delete", Number(response.headers.get("retry-after")) || undefined);
         return;
       }
-      if (!response.ok || !data.deleted) throw new Error(data.error || "Не удалось удалить отчёт");
+      if (!response.ok || !data.deleted) {
+        throw new Error(toUserFacingError(data.error, "Не удалось удалить отчёт"));
+      }
       if (report.reportType === "interpretation") {
         setFreshReports((previous) => {
           const next = { ...previous };
@@ -318,9 +582,20 @@ export default function AstrologyWorkspace() {
         await loadChart();
       }
       await loadHistory();
+      if (selectedReportId === report.id) {
+        setSelectedReportId(null);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("report");
+        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      }
       setNotice("Отчёт удалён без возврата рун. Теперь можно заказать новую версию.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
     } finally {
       setDeletingReportId(null);
     }
@@ -328,11 +603,21 @@ export default function AstrologyWorkspace() {
 
   if (loading) return <StateCard icon={Loader2} spin title="Строим астрологическое пространство" text="Загружаем карту, методологию и сохранённые отчёты…" />;
   if (enabled === false) return <StateCard icon={Star} title="Астрология временно недоступна" text="Раздел выключен в настройках платформы. Ваши профильные данные не изменены." />;
-  if (!chart) return <StateCard icon={Compass} title="Данных для расчёта пока нет" text="Добавьте дату, город и, по возможности, точное время рождения в профиле." action={<Link href="/cabinet" className="btn-neon inline-flex px-4 py-2 text-sm">Перейти в профиль</Link>} />;
+  if (!chart) return <StateCard icon={Compass} title="Данных для расчёта пока нет" text="Добавьте дату, город и, по возможности, точное время рождения в профиле." action={<button type="button" onClick={navigateToBirthProfileOnboarding} className="btn-neon inline-flex px-4 py-2 text-sm">Заполнить профиль</button>} />;
 
   const western = chart.western;
   const westernReport = chart.interpretations?.western ?? chart.interpretation;
   const vedicReport = chart.interpretations?.vedic;
+  const currentWesternReport = reports.find((report) =>
+    report.tradition === "western" &&
+    report.reportType === "interpretation" &&
+    matchesCurrentChart(report, chart)
+  );
+  const currentVedicReport = reports.find((report) =>
+    report.tradition === "vedic" &&
+    report.reportType === "interpretation" &&
+    matchesCurrentChart(report, chart)
+  );
 
   return (
     <main className="relative text-white">
@@ -340,10 +625,8 @@ export default function AstrologyWorkspace() {
       <div className="relative mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
         <header className="rounded-3xl border border-amber-300/15 bg-black/35 p-5 backdrop-blur-xl sm:p-7">
           <nav className="flex flex-wrap items-center gap-2 text-xs text-white/50" aria-label="Навигация по сайту">
-            <BrandLogo linkToHome showTagline={false} showBeta={false} markSize={24} titleClassName="font-display text-sm font-bold tracking-wider text-white sm:text-base" />
-            <span aria-hidden>·</span>
             <Link href="/cabinet" className="transition hover:text-amber-100">
-              Кабинет
+              ← Кабинет
             </Link>
             <span aria-hidden>·</span>
             <span className="text-amber-100/75">Натальная карта</span>
@@ -385,11 +668,11 @@ export default function AstrologyWorkspace() {
 
         <div className="mt-5">
           {tab === "overview" && <Overview chart={chart} reports={reports} onTab={selectTab} />}
-          {tab === "western" && (western ? <Western chart={chart} western={western} /> : <Unavailable title="Западный расчёт отсутствует" />)}
-          {tab === "jyotish" && (chart.vedic ? <Jyotish chart={chart} vedic={chart.vedic} /> : <Unavailable title="Расчёт джйотиш отсутствует" />)}
-          {tab === "timing" && <Timing chart={chart} reports={reports} busy={busy} forecastCost={cost("FORECAST_REPORT")} onRequestForecast={requestForecast} onOpenReports={() => selectTab("reports")} />}
+          {tab === "western" && (western ? <Western chart={chart} western={western} savedReport={currentWesternReport} freshReport={freshReports.western} fallbackText={westernReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} onEvidence={focusEvidence} onOpenArchive={() => openReportArchive(currentWesternReport?.id)} /> : <Unavailable title="Западный расчёт отсутствует" />)}
+          {tab === "jyotish" && (chart.vedic ? <Jyotish chart={chart} vedic={chart.vedic} savedReport={currentVedicReport} freshReport={freshReports.vedic} fallbackText={vedicReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} onEvidence={focusEvidence} onOpenArchive={() => openReportArchive(currentVedicReport?.id)} /> : <Unavailable title="Расчёт джйотиш отсутствует" />)}
+          {tab === "timing" && <Timing chart={chart} reports={reports} busy={busy} forecastCost={cost("FORECAST_REPORT")} onRequestForecast={requestForecast} onEvidence={focusEvidence} onOpenArchive={openReportArchive} />}
           {tab === "compatibility" && <NatalCompatibility />}
-          {tab === "reports" && <Reports chart={chart} reports={reports} freshReports={freshReports} loading={historyLoading} error={historyError} western={westernReport} vedic={vedicReport} busy={busy} deletingReportId={deletingReportId} cost={cost("NATAL_READING")} forecastCost={cost("FORECAST_REPORT")} onRequest={requestInterpretation} onDelete={deleteReport} onReload={loadHistory} onEvidence={focusEvidence} selectedReportId={selectedReportId} onSelectReport={setSelectedReportId} />}
+          {tab === "reports" && <Reports chart={chart} reports={reports} loading={historyLoading} error={historyError} deletingReportId={deletingReportId} onDelete={deleteReport} onReload={loadHistory} onEvidence={focusEvidence} selectedReportId={selectedReportId} onSelectReport={setSelectedReportId} />}
           {tab === "settings" && <NatalSettings />}
         </div>
       </div>
@@ -402,7 +685,7 @@ function Overview({ chart, reports, onTab }: { chart: NatalChartPayload; reports
   return <div className="grid gap-6 lg:grid-cols-3">
     <AstrologyGuide guide={NATAL_GUIDES.overview} className="lg:col-span-3" />
     <Panel className="lg:col-span-2" title="Ключевые положения" eyebrow="Западная карта">
-      <SectionIntroduction title="Большая тройка">Солнце, Луна и ASC — удобная отправная точка. ASC показывается только при известном времени рождения.</SectionIntroduction>
+      <SectionIntroduction title="Большая тройка">Солнце, Луна и асцендент — удобная отправная точка. Асцендент показывается только при известном времени рождения.</SectionIntroduction>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {positions.slice(0, 12).map((position) => <button key={position.key} type="button" onClick={() => onTab("western")} className="rounded-xl border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-amber-300/20">
           <span className="text-lg text-amber-200">{position.glyph}</span>
@@ -428,7 +711,18 @@ function Overview({ chart, reports, onTab }: { chart: NatalChartPayload; reports
   </div>;
 }
 
-function Western({ chart, western }: { chart: NatalChartPayload; western: Record<string, unknown> }) {
+function Western({ chart, western, savedReport, freshReport, fallbackText, busy, cost, onRequest, onEvidence, onOpenArchive }: {
+  chart: NatalChartPayload;
+  western: Record<string, unknown>;
+  savedReport?: Report;
+  freshReport?: FreshReport;
+  fallbackText?: string;
+  busy: string | null;
+  cost: number;
+  onRequest: (tradition: NatalTradition) => void;
+  onEvidence: (target: string) => void;
+  onOpenArchive: () => void;
+}) {
   const positions = positionRows(western, chart.timeKnown);
   const aspects = aspectRows(western);
   const patterns = patternRows(western);
@@ -436,6 +730,19 @@ function Western({ chart, western }: { chart: NatalChartPayload; western: Record
   const method = methodology(western, chart.engineVersion);
   return <div className="space-y-6">
     <AstrologyGuide guide={NATAL_GUIDES.western} />
+    <ReportCard
+      tradition="western"
+      title="Персональный западный отчёт"
+      text={savedReport?.content ?? freshReport?.text ?? fallbackText}
+      report={savedReport?.structuredData ?? freshReport?.report}
+      evidence={savedReport?.evidenceRefs ?? freshReport?.evidence}
+      savedReport={savedReport}
+      busy={busy}
+      cost={cost}
+      onRequest={onRequest}
+      onEvidence={onEvidence}
+      onOpenArchive={onOpenArchive}
+    />
     <Panel title="Интерактивное колесо" eyebrow="Западная карта">
       <SectionIntroduction title="Колесо">Круг разделён на 12 знаков; при известном времени также видны дома. Линии между объектами — <ExplainTerm term="аспекты">геометрические углы между положениями; они не предсказывают результат.</ExplainTerm>.</SectionIntroduction>
       <div><NatalChartWheel western={western} timeKnown={chart.timeKnown} /></div>
@@ -451,7 +758,7 @@ function Western({ chart, western }: { chart: NatalChartPayload; western: Record
     <div className="grid gap-6 lg:grid-cols-2">
       <Panel title="Аспекты" eyebrow={`${aspects.length} рассчитано`}>
         <SectionIntroduction title="Аспекты и орб">Орб — отклонение от точного угла: это мера геометрии, а не силы характера.</SectionIntroduction>
-        {aspects.length ? <ul className="max-h-[32rem] space-y-2 overflow-auto pr-1">{aspects.map((aspect) => {
+        {aspects.length ? <ul className="lux-scroll max-h-[32rem] space-y-2 overflow-auto pr-1">{aspects.map((aspect) => {
           const stableKey = `${[aspect.firstKey, aspect.secondKey].sort().join(`-${aspect.type}-`)}`.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "-");
           return <li id={evidenceAnchorId("aspect", stableKey)} tabIndex={-1} key={aspect.id} className="rounded-lg bg-white/[0.025] px-3 py-2 text-xs focus:ring-2 focus:ring-amber-300/50"><details><summary className="flex cursor-pointer justify-between gap-3"><span>{aspect.first} — <b className="font-medium text-amber-200/75">{aspect.label}</b> — {aspect.second}</span><span className="shrink-0 text-white/35">{aspect.nature} · {aspect.orb == null ? "орб —" : `${aspect.orb.toFixed(2)}°`}</span></summary><PersonalMeaning>{explainAspect(aspect)}</PersonalMeaning></details></li>;
         })}</ul> : <Empty text="Движок не вернул аспекты." />}
@@ -469,11 +776,35 @@ function Western({ chart, western }: { chart: NatalChartPayload; western: Record
   </div>;
 }
 
-function Jyotish({ chart, vedic }: { chart: NatalChartPayload; vedic: VedicChart }) {
+function Jyotish({ chart, vedic, savedReport, freshReport, fallbackText, busy, cost, onRequest, onEvidence, onOpenArchive }: {
+  chart: NatalChartPayload;
+  vedic: VedicChart;
+  savedReport?: Report;
+  freshReport?: FreshReport;
+  fallbackText?: string;
+  busy: string | null;
+  cost: number;
+  onRequest: (tradition: NatalTradition) => void;
+  onEvidence: (target: string) => void;
+  onOpenArchive: () => void;
+}) {
   const moon = vedic.moonSign;
   return <div className="space-y-6">
     <AstrologyGuide guide={NATAL_GUIDES.jyotish} />
-    <Panel title="Джйотиш" eyebrow="Сидерический зодиак · Lahiri (Chitrapaksha)">
+    <ReportCard
+      tradition="vedic"
+      title="Персональный отчёт джйотиш"
+      text={savedReport?.content ?? freshReport?.text ?? fallbackText}
+      report={savedReport?.structuredData ?? freshReport?.report}
+      evidence={savedReport?.evidenceRefs ?? freshReport?.evidence}
+      savedReport={savedReport}
+      busy={busy}
+      cost={cost}
+      onRequest={onRequest}
+      onEvidence={onEvidence}
+      onOpenArchive={onOpenArchive}
+    />
+    <Panel title="Джйотиш" eyebrow="Сидерический зодиак · аянамша Лахири">
       <SectionIntroduction title="Основа джйотиш">Это другой способ разметить те же астрономические положения: используется сидерический зодиак. Термины ниже раскрываются по одному, чтобы не нужно было знать традицию заранее.</SectionIntroduction>
       <PanelBlock>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -483,11 +814,11 @@ function Jyotish({ chart, vedic }: { chart: NatalChartPayload; vedic: VedicChart
         <Metric label="Накшатра Луны" value={`${moon.nakshatra.name} · пада ${moon.nakshatra.pada} · ${russianGrahaLabel(moon.nakshatra.lord)}`} />
       </div>
       <p className="text-xs leading-5 text-white/45">
-        D1 — основная карта. D9 (Навамша) — производная карта: знак делится на девять равных частей. Здесь показан только этот расчёт, без йог, достоинств и оценок силы планет.
+        Основная карта раши — полный круг знаков. Навамша — производная карта: знак делится на девять равных частей. Здесь показан только этот расчёт, без йог, достоинств и оценок силы планет.
       </p>
       <p className="text-xs leading-5 text-amber-100/55">
         Астрологические выводы не являются научным прогнозом. Точность зависит от даты, часового пояса,
-        координат и времени рождения. {chart.timeKnown ? "Лагна рассчитана по указанному времени." : "Без точного времени лагна, дома и асцендент D9 исключены."}
+        координат и времени рождения. {chart.timeKnown ? "Лагна рассчитана по указанному времени." : "Без точного времени лагна, дома и асцендент навамши исключены."}
       </p>
       </PanelBlock>
     </Panel>
@@ -504,21 +835,34 @@ function Jyotish({ chart, vedic }: { chart: NatalChartPayload; vedic: VedicChart
       </PanelBlock>
     </Panel>
     <VedicChartPair chart={vedic} />
-    <Panel title="D1, D9 и текущая даша" eyebrow="Дополнительный контекст">
-      <SectionIntroduction title="D1 и D9">D1 — основная карта раши; D9/Навамша получается делением каждого раши на девять частей. Без точного времени дома и лагна не выводятся, а асцендент D9 исключён.</SectionIntroduction>
+    <Panel title="Раши, навамша и текущая даша" eyebrow="Дополнительный контекст">
+      <SectionIntroduction title="Раши и навамша">Основная карта раши; навамша получается делением каждого раши на девять частей. Без точного времени дома и лагна не выводятся, а асцендент навамши исключён.</SectionIntroduction>
       <PersonalMeaning>{explainDasha(vedic)}</PersonalMeaning>
     </Panel>
     <VimshottariTimeline chart={vedic} />
   </div>;
 }
 
-function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenReports }: {
+function formatRuDate(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
+  if (!match) return isoDate;
+  const date = new Date(`${isoDate}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function formatRuDateRange(start: string, end: string): string {
+  return `${formatRuDate(start)} — ${formatRuDate(end)}`;
+}
+
+function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvidence, onOpenArchive }: {
   chart: NatalChartPayload;
   reports: Report[];
   busy: string | null;
   forecastCost: number;
   onRequestForecast: (horizon: TimingHorizon) => void;
-  onOpenReports: () => void;
+  onEvidence: (target: string) => void;
+  onOpenArchive: (reportId?: string) => void;
 }) {
   const [horizon, setHorizon] = useState<TimingHorizon>(30);
   const [timing, setTiming] = useState<PersonalTimingResult | null>(null);
@@ -537,11 +881,18 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenR
       credentials: "include", signal: controller.signal,
     }).then(async (response) => {
       const data = await responseJson<{ timing?: PersonalTimingResult; error?: string }>(response);
-      if (!response.ok) throw new Error(data.error || "Не удалось загрузить периоды");
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось загрузить периоды"));
+      }
       setTiming(data.timing ?? null);
     }).catch((reason) => {
       if ((reason as Error).name !== "AbortError") {
-        setError(reason instanceof Error ? reason.message : "Ошибка сети");
+        setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
       }
     }).finally(() => {
       if (!controller.signal.aborted) setLoading(false);
@@ -564,30 +915,93 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenR
     conjunction: "соединение", sextile: "секстиль", square: "квадрат",
     trine: "трин", opposition: "оппозиция",
   };
-  const currentForecast = reports.find((report) =>
-    report.reportType === `forecast:${horizon}` && matchesCurrentChart(report, chart)
-  );
+  const forecastPrefix = `forecast:${horizon}:`;
+  const currentForecastType = timing ? `${forecastPrefix}${timing.windowStart}` : null;
+  const currentForecast = currentForecastType
+    ? reports.find((report) =>
+        report.reportType === currentForecastType && matchesCurrentChart(report, chart)
+      )
+    : undefined;
+  const previousForecast = !currentForecast
+    ? reports
+        .filter((report) =>
+          report.reportType.startsWith(forecastPrefix) && matchesCurrentChart(report, chart)
+        )
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+    : undefined;
+  const horizonLabel = horizon === 365 ? "1 год" : `${horizon} дней`;
+  const windowLabel = timing ? formatRuDateRange(timing.windowStart, timing.windowEnd) : null;
 
   return <div className="space-y-6" aria-busy={loading}>
     <AstrologyGuide guide={NATAL_GUIDES.timing} />
     {!chart.timeKnown ? <UnknownTimeWarning context="Периоды, солнечное возвращение и прогрессии" /> : null}
-    <Panel title="Персональный прогноз" eyebrow="FORECAST_REPORT · отдельная покупка">
-      <SectionIntroduction title={`Текстовый прогноз на ${horizon === 365 ? "1 год" : `${horizon} дней`}`}>
-        Расчёт событий ниже остаётся бесплатным. Платный отчёт превращает выбранный горизонт в связный текст с датами, возможностями, рисками и практическими рекомендациями, привязанными к проверяемым расчётам.
+    <Panel title="Персональный прогноз" eyebrow="Отдельная покупка">
+      <SectionIntroduction title={`Текстовый прогноз на ${horizonLabel}`}>
+        Расчёт событий ниже остаётся бесплатным. Платный отчёт строится по текущей шкале транзитов
+        {windowLabel ? ` (${windowLabel})` : ""}: даты окна, положения планет и события на выбранный горизонт.
+        Когда окно обновляется (обычно со сменой дня), можно заказать новый прогноз — предыдущие остаются в архиве.
       </SectionIntroduction>
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Горизонт прогноза">
+        {([7, 30, 90, 365] as TimingHorizon[]).map((days) => <button key={days} type="button"
+          onClick={() => setHorizon(days)} aria-pressed={horizon === days}
+          className={`min-h-11 rounded-xl px-4 text-sm ${horizon === days ? "bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/25" : "bg-white/[0.04] text-white/55"}`}>
+          {days === 365 ? "1 год" : `${days} дней`}
+        </button>)}
+      </div>
       {currentForecast ? <PanelBlock>
-        <p className="text-sm leading-6 text-emerald-100/70">Прогноз для этого горизонта уже куплен и сохранён в истории.</p>
-        <button type="button" onClick={onOpenReports} className="min-h-11 self-start rounded-xl border border-emerald-300/20 px-4 text-sm text-emerald-100">Открыть в отчётах</button>
+        <p className="text-xs text-emerald-100/60">
+          Готов · {reportLabel(currentForecast)} · {new Date(currentForecast.createdAt).toLocaleString("ru-RU")} · сохранён в архиве
+        </p>
+        {isNatalReport(currentForecast.structuredData)
+          ? <StructuredReport report={currentForecast.structuredData} evidence={currentForecast.evidenceRefs ?? []} onEvidence={onEvidence} />
+          : <Interpretation text={currentForecast.content} />}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href={`/cabinet/astrology/reports/${currentForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
+          <button type="button" onClick={() => onOpenArchive(currentForecast.id)} className="text-xs text-white/50 transition hover:text-white/75">
+            Открыть в архиве
+          </button>
+        </div>
+        <ReportShareControls reportKind="natal" reportId={currentForecast.id} />
       </PanelBlock> : <PanelBlock>
-        <p className="text-xs leading-5 text-amber-100/60">После подтверждения будет списано {forecastCost} ᚢ. Внешней языковой модели передаются только рассчитанные положения и периоды без даты, времени, города и координат рождения.</p>
+        {previousForecast ? (
+          <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="space-y-1">
+              <p className="text-xs text-emerald-100/60">
+                Предыдущий прогноз · {reportLabel(previousForecast)} ·{" "}
+                {new Date(previousForecast.createdAt).toLocaleString("ru-RU")}
+              </p>
+              <p className="text-xs text-white/45">
+                Ниже — сохранённый текст. Для актуального окна дат закажите новый прогноз.
+              </p>
+            </div>
+            {isNatalReport(previousForecast.structuredData)
+              ? <StructuredReport report={previousForecast.structuredData} evidence={previousForecast.evidenceRefs ?? []} onEvidence={onEvidence} />
+              : <Interpretation text={previousForecast.content} />}
+            <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-3">
+              <Link href={`/cabinet/astrology/reports/${previousForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
+              <button type="button" onClick={() => onOpenArchive(previousForecast.id)} className="text-xs text-amber-200">
+                Открыть в архиве
+              </button>
+            </div>
+            <ReportShareControls reportKind="natal" reportId={previousForecast.id} />
+          </div>
+        ) : null}
+        <p className="text-xs leading-5 text-amber-100/60">После подтверждения будет списано {forecastCost} ᚢ.</p>
+        <p className="rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">
+          Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Дата, время, город и координаты рождения не передаются.
+        </p>
         <button type="button" disabled={!timing || busy !== null} onClick={() => onRequestForecast(horizon)}
           className="btn-neon flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50">
           {busy === "forecast" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          Подтвердить и получить прогноз · {forecastCost} ᚢ
+          {!timing
+            ? "Готовим расчёт периода…"
+            : previousForecast
+              ? `Новый прогноз на ${formatRuDateRange(timing.windowStart, timing.windowEnd)} · ${forecastCost} ᚢ`
+              : `Подтвердить и получить прогноз · ${forecastCost} ᚢ`}
         </button>
       </PanelBlock>}
     </Panel>
-    <Panel title="Персональная шкала" eyebrow={timing ? `${timing.windowStart} — ${timing.windowEnd}` : "Транзиты"}>
+    <Panel title="Персональная шкала" eyebrow={timing ? formatRuDateRange(timing.windowStart, timing.windowEnd) : "Транзиты"}>
       <SectionIntroduction title="Шкала и фильтры">
         <p>Категории помогают сузить список тем, но не меняют расчёт.</p>
         <p className="text-xs leading-6 text-white/55">
@@ -599,12 +1013,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenR
         </p>
       </SectionIntroduction>
       <PanelBlock>
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Горизонт расчёта">
-        {([7, 30, 90, 365] as TimingHorizon[]).map((days) => <button key={days} type="button"
-          onClick={() => setHorizon(days)} aria-pressed={horizon === days}
-          className={`min-h-11 rounded-xl px-4 text-sm ${horizon === days ? "bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/25" : "bg-white/[0.04] text-white/55"}`}>
-          {days === 365 ? "1 год" : `${days} дней`}
-        </button>)}
+      <div className="flex flex-wrap items-center gap-2">
         {loading ? <button type="button" onClick={() => setRequestId((value) => value + 1)}
           className="min-h-11 rounded-xl border border-white/10 px-4 text-sm text-white/55">
           Отменить и перезапустить
@@ -672,7 +1081,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenR
           <section className="rounded-xl border border-amber-300/10 bg-amber-300/[0.025] p-4">
             <h3 className="text-sm font-medium text-amber-100/85">Дома солнечного возвращения</h3>
             <p className="mt-1 text-xs leading-5 text-white/45">
-              Система: {timing.solarReturn.houses.system}. ASC — {russianSignLabel(timing.solarReturn.houses.ascendant.sign)} {timing.solarReturn.houses.ascendant.degree.toFixed(2)}°; MC — {russianSignLabel(timing.solarReturn.houses.midheaven.sign)} {timing.solarReturn.houses.midheaven.degree.toFixed(2)}°.
+              Система домов: {timing.solarReturn.houses.system}. Асцендент — {russianSignLabel(timing.solarReturn.houses.ascendant.sign)} {timing.solarReturn.houses.ascendant.degree.toFixed(2)}°; середина неба — {russianSignLabel(timing.solarReturn.houses.midheaven.sign)} {timing.solarReturn.houses.midheaven.degree.toFixed(2)}°.
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {timing.solarReturn.houses.cusps.map((cusp) => <article key={cusp.house} className="rounded-lg border border-white/8 bg-black/20 px-3 py-2">
@@ -695,7 +1104,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenR
         {timing?.progressions ? <PanelBlock>
           <Metric label="Символическая дата" value={timing.progressions.progressedAtUtc.slice(0, 10)} />
           <p className="text-xs text-white/45">Возраст: {timing.progressions.exactAgeYears.toFixed(6)} года · аспектов к наталу: {timing.progressions.aspectsToNatal.length}</p>
-          <div className="max-h-48 space-y-1 overflow-auto">
+          <div className="lux-scroll max-h-48 space-y-1 overflow-auto">
             {timing.progressions.aspectsToNatal.slice(0, 12).map((aspect) => <p key={`${aspect.progressedKey}-${aspect.natalKey}-${aspect.aspect}`} className="text-xs text-white/55">
               {russianPlanetLabel(aspect.progressedKey)} {aspectLabels[aspect.aspect ?? ""] ?? "аспект"} {russianPlanetLabel(aspect.natalKey)} · {aspect.orb.toFixed(3)}°
             </p>)}
@@ -717,25 +1126,20 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenR
   </div>;
 }
 
-function Reports({ chart, reports, freshReports, loading, error, western, vedic, busy, deletingReportId, cost, forecastCost, onRequest, onDelete, onReload, onEvidence, selectedReportId, onSelectReport }: {
+function Reports({ chart, reports, loading, error, deletingReportId, onDelete, onReload, onEvidence, selectedReportId, onSelectReport }: {
   chart: NatalChartPayload; reports: Report[];
-  freshReports: Partial<Record<NatalTradition, { text: string; report: NatalReport | null; evidence: NatalEvidence[] }>>;
-  loading: boolean; error: string; western?: string; vedic?: string; busy: string | null;
+  loading: boolean; error: string;
   deletingReportId: string | null;
-  cost: number; forecastCost: number; onRequest: (tradition: NatalTradition) => void; onReload: () => void;
+  onReload: () => void;
   onDelete: (report: Report) => void;
   onEvidence: (target: string) => void; selectedReportId: string | null;
   onSelectReport: (reportId: string | null) => void;
 }) {
   const [filter, setFilter] = useState<"all" | "natal" | "forecast">("all");
-  const currentWestern = reports.find((report) =>
-    report.tradition === "western" && report.reportType === "interpretation" && matchesCurrentChart(report, chart));
-  const currentVedic = reports.find((report) =>
-    report.tradition === "vedic" && report.reportType === "interpretation" && matchesCurrentChart(report, chart));
   const currentIds = new Set<string>();
   const currentKeys = new Set<string>();
   for (const report of reports) {
-    if (!matchesCurrentChart(report, chart)) continue;
+    if (!isCurrentReport(report, chart)) continue;
     const key = `${report.tradition}:${report.reportType}`;
     if (!currentKeys.has(key)) {
       currentKeys.add(key);
@@ -758,7 +1162,10 @@ function Reports({ chart, reports, freshReports, loading, error, western, vedic,
   };
   return <div className="space-y-6">
     <AstrologyGuide guide={NATAL_GUIDES.reports} />
-    <Panel title="Центр премиальных отчётов" eyebrow="Текущие отчёты и прогнозы">
+    <Panel title="Архив отчётов и прогнозов" eyebrow="Сохранённые версии">
+      <SectionIntroduction title="Здесь хранятся готовые материалы">
+        Новые отчёты создаются в разделах «Западная», «Джйотиш» и «Периоды». Архив нужен для просмотра прошлых версий, печати, отправки ссылки и удаления.
+      </SectionIntroduction>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Фильтр отчётов">
         {([["all", "Все"], ["natal", "Натальные"], ["forecast", "Прогнозы"]] as const).map(([value, label]) =>
           <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}
@@ -779,7 +1186,7 @@ function Reports({ chart, reports, freshReports, loading, error, western, vedic,
       <p className="text-xs text-white/35">{new Date(selected.createdAt).toLocaleString("ru-RU")} · сохранённая версия расчёта</p>
       {isNatalReport(selected.structuredData) ? <StructuredReport report={selected.structuredData} evidence={selected.evidenceRefs ?? []} onEvidence={onEvidence} /> : <Interpretation text={selected.content} />}
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/cabinet/astrology/reports/${selected.id}/print`} className="text-xs text-amber-200">Печать / PDF</Link>
+        <Link href={`/cabinet/astrology/reports/${selected.id}/print`} className="text-xs text-amber-200">Печать</Link>
         <button type="button" disabled={deletingReportId !== null} onClick={() => onDelete(selected)}
           className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-rose-300/15 px-3 text-xs text-rose-200/70 disabled:opacity-50">
           {deletingReportId === selected.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Удалить
@@ -787,18 +1194,6 @@ function Reports({ chart, reports, freshReports, loading, error, western, vedic,
       </div>
       <ReportShareControls reportKind="natal" reportId={selected.id} />
     </Panel> : null}
-    {(!currentWestern || !currentVedic) ? <div className="grid gap-6 lg:grid-cols-2">
-      {!currentWestern ? <ReportCard tradition="western" title="Западная трактовка" text={freshReports.western?.text ?? western} report={freshReports.western?.report} evidence={freshReports.western?.evidence} busy={busy} cost={cost} onRequest={onRequest} onEvidence={onEvidence} /> : null}
-      {!currentVedic ? <ReportCard tradition="vedic" title="Трактовка джйотиш" text={freshReports.vedic?.text ?? vedic} report={freshReports.vedic?.report} evidence={freshReports.vedic?.evidence} busy={busy} cost={cost} onRequest={onRequest} onEvidence={onEvidence} /> : null}
-    </div> : null}
-    <Panel title="Прозрачные цены" eyebrow="Действие и область одной покупки">
-      <SectionIntroduction title="Цена и область">Сумма относится к указанному виду отчёта и текущей версии карты. Покупка одного отчёта не включает другой формат или будущий прогноз.</SectionIntroduction>
-      <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="Западный отчёт" value={`${cost} ᚢ · одна интерпретация текущей версии карты`} />
-        <Metric label="Отчёт джйотиш" value={`${cost} ᚢ · одна интерпретация текущей версии карты`} />
-        <Metric label="Отчёт о периодах" value={`${forecastCost} ᚢ · один выбранный горизонт: 7, 30, 90 дней или 1 год`} />
-      </div>
-    </Panel>
     {archivedReports.length ? <Panel title="Архив заменённых версий" eyebrow="Удаление без возврата">
       <div className="flex flex-col gap-3">{archivedReports.map((report) =>
         <button key={report.id} type="button" onClick={() => selectReport(report.id)} className="rounded-xl border border-white/10 bg-black/20 p-4 text-left">
@@ -809,51 +1204,85 @@ function Reports({ chart, reports, freshReports, loading, error, western, vedic,
   </div>;
 }
 
+function isCurrentReport(report: Report, chart: NatalChartPayload): boolean {
+  if (!matchesCurrentChart(report, chart)) return false;
+  if (!report.reportType.startsWith("forecast:")) return true;
+  const [, rawHorizon, windowStart] = report.reportType.split(":");
+  const horizon = Number(rawHorizon);
+  if (!windowStart || !Number.isFinite(horizon)) return false;
+  const start = new Date(`${windowStart}T00:00:00Z`);
+  if (Number.isNaN(start.getTime())) return false;
+  const end = new Date(start.getTime() + horizon * 86_400_000);
+  const now = Date.now();
+  return now >= start.getTime() && now < end.getTime();
+}
+
 function reportLabel(report: Report): string {
   if (report.reportType.startsWith("forecast:")) {
-    const horizon = report.reportType.split(":")[1];
-    return `Прогноз · ${horizon === "365" ? "1 год" : `${horizon} дней`}`;
+    const [, horizon, windowStart] = report.reportType.split(":");
+    const horizonLabel = horizon === "365" ? "1 год" : `${horizon} дней`;
+    if (windowStart) {
+      const horizonDays = Number(horizon);
+      if (Number.isFinite(horizonDays) && horizonDays > 0) {
+        const start = new Date(`${windowStart}T00:00:00Z`);
+        if (!Number.isNaN(start.getTime())) {
+          const end = new Date(start.getTime() + horizonDays * 86_400_000);
+          const endIso = end.toISOString().slice(0, 10);
+          return `Прогноз · ${horizonLabel} · ${formatRuDateRange(windowStart, endIso)}`;
+        }
+      }
+      return `Прогноз · ${horizonLabel} · с ${formatRuDate(windowStart)}`;
+    }
+    return `Прогноз · ${horizonLabel}`;
   }
   return report.tradition === "western" ? "Западная трактовка" : "Трактовка джйотиш";
 }
 
-function ReportCard({ tradition, title, text, report, evidence, busy, cost, onRequest, onEvidence }: { tradition: NatalTradition; title: string; text?: string; report?: NatalReport | null; evidence?: NatalEvidence[] | null; busy: string | null; cost: number; onRequest: (tradition: NatalTradition) => void; onEvidence: (target: string) => void }) {
-  return <Panel title={title} eyebrow={text ? "Готов" : "Отдельная покупка"}>
-    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся отдельно для этой традиции и сохраняется в истории.</p><p className="mt-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.05] p-3 text-xs leading-5 text-amber-100/65">Это разовое явное подтверждение для платного отчёта. Внешней языковой модели передаются только рассчитанные положения и периоды с идентификаторами расчёта; дата, время, город и координаты рождения исключены. Настройки чата и Таро не используются и не меняются. После подтверждения будет списано {cost} ᚢ.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-neon mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+function ReportCard({ tradition, title, text, report, evidence, savedReport, busy, cost, onRequest, onEvidence, onOpenArchive }: {
+  tradition: NatalTradition;
+  title: string;
+  text?: string;
+  report?: NatalReport | null;
+  evidence?: NatalEvidence[] | null;
+  savedReport?: Report;
+  busy: string | null;
+  cost: number;
+  onRequest: (tradition: NatalTradition) => void;
+  onEvidence: (target: string) => void;
+  onOpenArchive: () => void;
+}) {
+  return <Panel title={title} eyebrow={text ? "Готов · сохранён в архиве" : "Отдельная покупка"}>
+    {savedReport ? <p className="text-xs text-emerald-100/60">Создан {new Date(savedReport.createdAt).toLocaleString("ru-RU")} · {savedReport.runeCost ?? "—"} ᚢ</p> : null}
+    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-neon mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+    {text ? <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-4">
+      {savedReport ? <Link href={`/cabinet/astrology/reports/${savedReport.id}/print`} className="text-xs text-amber-200">Печать</Link> : null}
+      <button type="button" onClick={onOpenArchive} className="text-xs text-white/50 transition hover:text-white/75">Открыть архив версий →</button>
+    </div> : null}
+    {savedReport ? <ReportShareControls reportKind="natal" reportId={savedReport.id} /> : null}
   </Panel>;
 }
 
 function StructuredReport({ report, evidence, onEvidence }: { report: NatalReport; evidence: NatalEvidence[]; onEvidence: (target: string) => void }) {
-  const byId = new Map(evidence.map((item) => [item.id, item]));
-  return <div className="min-w-0 space-y-5">
-    {report.sections.map((section) => <section key={section.key} className="min-w-0 rounded-xl border border-white/8 bg-black/15 p-4">
-      <h3 className="font-display text-lg text-amber-50">{section.title}</h3>
-      <div className="mt-3 space-y-4">{section.claims.map((claim, index) => <article key={`${section.key}-${index}`}>
-        <p className="text-sm leading-7 text-white/70">{claim.text}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5"><span className="text-[10px] uppercase tracking-wide text-white/30">Основано на</span>
-          {claim.evidenceIds.map((id) => {
-            const item = byId.get(id);
-            if (!item) return null;
-            return <button type="button" key={id} title={`${item.value}${item.uncertainty ? ` · ${item.uncertainty}` : ""}`}
-              onClick={() => onEvidence(item.deepLink)}
-              className="rounded-full border border-amber-300/20 bg-amber-300/[0.07] px-2.5 py-1 text-[11px] text-amber-100/75 transition hover:bg-amber-300/[0.13]">
-              Показать расчёт: {item.label} · {item.confidence === "high" ? "полнота высокая" : item.confidence === "medium" ? "полнота средняя" : "полнота ограничена"}
-            </button>;
-          })}
-        </div>
-      </article>)}</div>
-    </section>)}
-    <aside className="rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-4 text-xs leading-5 text-white/45">
-      <p><span className="text-cyan-100/65">Методология:</span> {report.methodology}</p>
-      <p className="mt-2">Метка полноты показывает, насколько полны исходные данные и расчёт; она не подтверждает истинность интерпретации.</p>
-      <p className="mt-2"><span className="text-amber-100/65">Ограничения:</span> {report.disclaimer}</p>
-      {evidence.some((item) => item.uncertainty) ? <details className="mt-2"><summary className="cursor-pointer text-white/55">Ограничения расчёта</summary><ul className="mt-2 space-y-1">{evidence.filter((item) => item.uncertainty).slice(0, 12).map((item) => <li key={item.id}>• {item.label}: {item.uncertainty}</li>)}</ul></details> : null}
-    </aside>
-  </div>;
+  return (
+    <NatalStructuredReportView
+      sections={report.sections}
+      evidence={evidence}
+      onEvidence={onEvidence}
+      methodology={report.methodology}
+      disclaimer={report.disclaimer}
+    />
+  );
 }
 
-function Interpretation({ text }: { text: string }) { return <div className="space-y-3">{toParagraphs(text).map((paragraph, index) => <p key={index} className="text-sm leading-7 text-white/70">{paragraph}</p>)}</div>; }
-function UnknownTimeWarning({ context }: { context?: string }) { return <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.07] p-4 text-sm text-amber-50"><p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Ограниченная точность без времени рождения</p><p className="mt-1 text-xs leading-5 text-amber-100/60">{context ? `${context}: ` : ""}ASC, MC, дома и лагна скрыты; асцендент D9 также исключён. Положения быстрых объектов и привязка периодов могут иметь дополнительную неопределённость.</p></div>; }
+function Interpretation({ text }: { text: string }) {
+  const markdown = formatLegacyNatalProseForDisplay(text);
+  return (
+    <div className="master-message-bubble natal-structured-report__body rounded-2xl border border-amber-300/15 bg-gradient-to-b from-white/[0.04] to-transparent px-4 py-5 sm:px-5 sm:py-6">
+      <PremiumReadingBody content={markdown} />
+    </div>
+  );
+}
+function UnknownTimeWarning({ context }: { context?: string }) { return <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.07] p-4 text-sm text-amber-50"><p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Ограниченная точность без времени рождения</p><p className="mt-1 text-xs leading-5 text-amber-100/60">{context ? `${context}: ` : ""}Асцендент, середина неба, дома и лагна скрыты; асцендент девятой карты (навамша) также исключён. Положения быстрых объектов и привязка периодов могут иметь дополнительную неопределённость.</p></div>; }
 function Panel({ title, eyebrow, className = "", children }: { title: string; eyebrow: string; className?: string; children: React.ReactNode }) {
   return (
     <section className={`isolate overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] shadow-[0_12px_36px_rgba(0,0,0,.12)] ${className}`}>

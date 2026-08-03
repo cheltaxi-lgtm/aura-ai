@@ -5,6 +5,7 @@ export const RECAPTCHA_SCOPES = [
   "expertLogin",
   "adminLogin",
   "support",
+  "partners",
   "chat",
   "payments",
   "share",
@@ -23,6 +24,7 @@ export const DEFAULT_RECAPTCHA_SCOPES: RecaptchaScopeSettings = {
   // prevent a low score from locking every admin out with no way back in.
   adminLogin: false,
   support: true,
+  partners: true,
   chat: true,
   payments: true,
   share: false,
@@ -35,6 +37,7 @@ export const RECAPTCHA_SCOPE_LABELS: Record<RecaptchaScope, string> = {
   expertLogin: "Вход эзотерика",
   adminLogin: "Вход в админку (защита от самоблокировки)",
   support: "Техподдержка (сообщения)",
+  partners: "Заявка на партнёрство (лендинг)",
   chat: "Чат с мастером",
   payments: "Оплата и покупка рун",
   share: "Создание публичной ссылки (гость)",

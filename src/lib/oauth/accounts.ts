@@ -1,6 +1,25 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { normalizeAuthEmail } from "@/lib/auth";
+import {
+  displayNameNeedsNormalization,
+  normalizeStoredDisplayName,
+} from "@/lib/normalize-person-name";
 import type { OAuthProvider, OAuthUserInfo } from "./types";
+
+async function maybeNormalizeAccountName(
+  client: PoolClient,
+  accountId: string,
+  currentName: string
+): Promise<string> {
+  if (!displayNameNeedsNormalization(currentName)) return currentName;
+  const cleaned = normalizeStoredDisplayName(currentName);
+  if (cleaned === currentName) return currentName;
+  await queryClient(client, "UPDATE user_accounts SET name = $2 WHERE id = $1", [
+    accountId,
+    cleaned,
+  ]);
+  return cleaned;
+}
 
 export interface OAuthIdentityRow {
   id: string;
@@ -65,6 +84,7 @@ export async function upsertOAuthAccount(opts: {
   provider: OAuthProvider;
   info: OAuthUserInfo;
   consent?: OAuthAccountConsent | null;
+  registrationAttribution?: Record<string, string> | null;
 }): Promise<{ accountId: string; email: string; name: string; isNewUser: boolean }> {
   return withTransaction((client) => upsertOAuthAccountWithClient(client, opts));
 }
@@ -75,6 +95,7 @@ export async function upsertOAuthAccountWithClient(
     provider: OAuthProvider;
     info: OAuthUserInfo;
     consent?: OAuthAccountConsent | null;
+    registrationAttribution?: Record<string, string> | null;
   }
 ): Promise<{ accountId: string; email: string; name: string; isNewUser: boolean }> {
   // Serialize all attempts for one provider identity, including first-time inserts.
@@ -111,10 +132,36 @@ export async function upsertOAuthAccountWithClient(
         opts.info.gender ?? null,
       ]
     );
+    if (opts.consent) {
+      await queryClient(
+        client,
+        `UPDATE user_accounts SET
+           terms_accepted_at = COALESCE(terms_accepted_at, $2::timestamptz),
+           age_confirmed_at = COALESCE(age_confirmed_at, $3::timestamptz),
+           marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
+           marketing_consent_at = CASE
+             WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
+             ELSE marketing_consent_at
+           END
+         WHERE id = $1`,
+        [
+          existingIdentity.user_account_id,
+          opts.consent.termsAcceptedAt,
+          opts.consent.ageConfirmedAt,
+          opts.consent.marketingConsent,
+          opts.consent.marketingConsentAt,
+        ]
+      );
+    }
+    const accountName = await maybeNormalizeAccountName(
+      client,
+      existingIdentity.user_account_id,
+      existingIdentity.account_name
+    );
     return {
       accountId: existingIdentity.user_account_id,
       email: existingIdentity.account_email,
-      name: existingIdentity.account_name,
+      name: accountName,
       isNewUser: false,
     };
   }
@@ -145,10 +192,32 @@ export async function upsertOAuthAccountWithClient(
           opts.info.gender ?? null,
         ]
       );
+      if (opts.consent) {
+        await queryClient(
+          client,
+          `UPDATE user_accounts SET
+             terms_accepted_at = COALESCE(terms_accepted_at, $2::timestamptz),
+             age_confirmed_at = COALESCE(age_confirmed_at, $3::timestamptz),
+             marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
+             marketing_consent_at = CASE
+               WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
+               ELSE marketing_consent_at
+             END
+           WHERE id = $1`,
+          [
+            account.id,
+            opts.consent.termsAcceptedAt,
+            opts.consent.ageConfirmedAt,
+            opts.consent.marketingConsent,
+            opts.consent.marketingConsentAt,
+          ]
+        );
+      }
+      const accountName = await maybeNormalizeAccountName(client, account.id, account.name);
       return {
         accountId: account.id,
         email: account.email,
-        name: account.name,
+        name: accountName,
         isNewUser: false,
       };
     }
@@ -158,15 +227,19 @@ export async function upsertOAuthAccountWithClient(
     throw new Error("CONSENT_REQUIRED");
   }
 
-  const trimmedName = opts.info.name.trim().slice(0, 80) || "Искатель";
+  const trimmedName = normalizeStoredDisplayName(opts.info.name, "Гость");
 
+  const attributionJson = opts.registrationAttribution
+    ? JSON.stringify(opts.registrationAttribution)
+    : null;
   const accountResult = await queryClient<{ id: string; email: string; name: string }>(
     client,
     `INSERT INTO user_accounts (
        email, password_hash, name,
-       terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at
+       terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at,
+       registration_attribution
      )
-     VALUES ($1, NULL, $2, $3::timestamptz, $4::timestamptz, $5, $6::timestamptz)
+     VALUES ($1, NULL, $2, $3::timestamptz, $4::timestamptz, $5, $6::timestamptz, $7::jsonb)
      RETURNING id, email, name`,
     [
       email,
@@ -175,6 +248,7 @@ export async function upsertOAuthAccountWithClient(
       opts.consent.ageConfirmedAt,
       opts.consent.marketingConsent,
       opts.consent.marketingConsentAt,
+      attributionJson,
     ]
   );
   const account = accountResult.rows[0];
@@ -204,32 +278,175 @@ export async function upsertOAuthAccountWithClient(
   };
 }
 
+export type LinkOAuthResult =
+  | { ok: true; alreadyLinked: boolean; email: string; name: string }
+  | { ok: false; error: "provider_taken" | "account_missing" };
+
+/**
+ * Attach a provider identity to an existing account (cabinet / bot shell upgrade).
+ * Does not create accounts. Fails if the identity belongs to another account.
+ */
 export async function linkOAuthIdentityToAccount(
   accountId: string,
   provider: OAuthProvider,
   info: OAuthUserInfo
-): Promise<void> {
-  await query(
-    `INSERT INTO user_oauth_identities (
-       user_account_id, provider, provider_user_id, provider_email,
-       provider_email_verified, provider_gender, last_login_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
-     ON CONFLICT (provider, provider_user_id) DO UPDATE
-       SET provider_email = EXCLUDED.provider_email,
-           provider_email_verified = EXCLUDED.provider_email_verified,
-           provider_gender = EXCLUDED.provider_gender,
-           updated_at = NOW(),
-           last_login_at = NOW()
-     WHERE user_oauth_identities.user_account_id = EXCLUDED.user_account_id`,
-    [
-      accountId,
+): Promise<LinkOAuthResult> {
+  return withTransaction(async (client) => {
+    const account = await queryClient<{ id: string; email: string; name: string }>(
+      client,
+      `SELECT id, email, name FROM user_accounts WHERE id = $1 FOR UPDATE`,
+      [accountId]
+    );
+    const row = account.rows[0];
+    if (!row) return { ok: false, error: "account_missing" };
+
+    const existing = await findOAuthIdentityWithClient(
+      client,
       provider,
-      info.providerUserId,
-      info.email,
-      info.emailVerified,
-      info.gender ?? null,
-    ]
+      info.providerUserId
+    );
+    if (existing) {
+      if (existing.user_account_id !== accountId) {
+        return { ok: false, error: "provider_taken" };
+      }
+      await queryClient(
+        client,
+        `UPDATE user_oauth_identities
+         SET provider_email = $2, provider_email_verified = $3,
+             provider_gender = $4, updated_at = NOW(), last_login_at = NOW()
+         WHERE id = $1`,
+        [
+          existing.id,
+          info.email ? normalizeAuthEmail(info.email) : null,
+          info.emailVerified,
+          info.gender ?? null,
+        ]
+      );
+      return {
+        ok: true,
+        alreadyLinked: true,
+        email: row.email,
+        name: row.name,
+      };
+    }
+
+    const providerEmail = info.email ? normalizeAuthEmail(info.email) : null;
+    await queryClient(
+      client,
+      `INSERT INTO user_oauth_identities (
+         user_account_id, provider, provider_user_id, provider_email,
+         provider_email_verified, provider_gender, last_login_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [
+        accountId,
+        provider,
+        info.providerUserId,
+        providerEmail,
+        info.emailVerified,
+        info.gender ?? null,
+      ]
+    );
+
+    // Upgrade synthetic shell email when provider gives a free verified address.
+    let email = row.email;
+    if (
+      shouldUseVerifiedEmailForLinking(info) &&
+      providerEmail &&
+      (row.email.endsWith("@telegram.zovus.local") ||
+        row.email.endsWith("@oauth.zovus.local"))
+    ) {
+      const taken = await queryClient<{ id: string }>(
+        client,
+        `SELECT id FROM user_accounts WHERE lower(email) = $1 AND id <> $2 LIMIT 1`,
+        [providerEmail, accountId]
+      );
+      if (!taken.rows[0]) {
+        await queryClient(
+          client,
+          `UPDATE user_accounts SET email = $2 WHERE id = $1`,
+          [accountId, providerEmail]
+        );
+        email = providerEmail;
+      }
+    }
+
+    return { ok: true, alreadyLinked: false, email, name: row.name };
+  });
+}
+
+export async function listOAuthProvidersForAccount(
+  accountId: string
+): Promise<OAuthProvider[]> {
+  const { rows } = await query<{ provider: OAuthProvider }>(
+    `SELECT provider FROM user_oauth_identities WHERE user_account_id = $1`,
+    [accountId]
   );
+  return rows.map((r) => r.provider);
+}
+
+export type UnlinkOAuthResult =
+  | { ok: true; provider: OAuthProvider }
+  | { ok: false; error: "not_linked" | "last_login_method" | "invalid_provider" };
+
+/**
+ * Detach a provider from the account. Keeps at least one site login method
+ * (password, another OAuth, or Telegram bind for Mini App).
+ */
+export async function unlinkOAuthFromAccount(
+  accountId: string,
+  provider: OAuthProvider
+): Promise<UnlinkOAuthResult> {
+  if (provider !== "yandex" && provider !== "vk") {
+    return { ok: false, error: "invalid_provider" };
+  }
+
+  return withTransaction(async (client) => {
+    const account = await queryClient<{
+      email: string;
+      password_hash: string | null;
+    }>(
+      client,
+      `SELECT email, password_hash FROM user_accounts WHERE id = $1 FOR UPDATE`,
+      [accountId]
+    );
+    if (!account.rows[0]) return { ok: false, error: "not_linked" };
+
+    const identity = await queryClient<{ id: string }>(
+      client,
+      `SELECT id FROM user_oauth_identities
+       WHERE user_account_id = $1 AND provider = $2
+       FOR UPDATE`,
+      [accountId, provider]
+    );
+    if (!identity.rows[0]) return { ok: false, error: "not_linked" };
+
+    const others = await queryClient<{ n: string }>(
+      client,
+      `SELECT COUNT(*)::text AS n FROM user_oauth_identities
+       WHERE user_account_id = $1 AND provider <> $2`,
+      [accountId, provider]
+    );
+    const otherOAuth = Number(others.rows[0]?.n || 0);
+    const hasPassword = Boolean(account.rows[0].password_hash);
+    const tg = await queryClient<{ n: string }>(
+      client,
+      `SELECT COUNT(*)::text AS n FROM user_telegram_identities
+       WHERE user_account_id = $1`,
+      [accountId]
+    );
+    const hasTelegram = Number(tg.rows[0]?.n || 0) > 0;
+
+    if (!hasPassword && otherOAuth === 0 && !hasTelegram) {
+      return { ok: false, error: "last_login_method" };
+    }
+
+    await queryClient(
+      client,
+      `DELETE FROM user_oauth_identities WHERE user_account_id = $1 AND provider = $2`,
+      [accountId, provider]
+    );
+    return { ok: true, provider };
+  });
 }
 
 export async function getLatestOAuthGenderForAccount(

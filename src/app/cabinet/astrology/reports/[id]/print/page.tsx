@@ -54,5 +54,6 @@ export default async function NatalReportPrintPage({ params }: { params: Promise
     methodology={typeof report.structured_data?.methodology === "string" ? report.structured_data.methodology : "Legacy report: сохранённый текст исходной интерпретации."}
     disclaimer={typeof report.structured_data?.disclaimer === "string" ? report.structured_data.disclaimer : "Астрологическая интерпретация не является научным прогнозом."}
     evidence={evidence}
+    returnHref={`/cabinet/astrology?tab=reports&report=${encodeURIComponent(id)}`}
   />;
 }

@@ -10,7 +10,16 @@ import {
   personalityNumber,
 } from "./calculator";
 import { compatibility } from "./compatibility";
-import { destinyMatrix } from "./destiny-matrix";
+import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
+import { buildMatrixCompatibilityPromptBlock } from "./matrix-compatibility";
+import { getArcanaEntry } from "./arcana-dictionary";
+import { periodFromMatrix } from "./matrix-period";
+import {
+  formatMatrixFinaleKeys,
+  formatMatrixPointDictLine,
+  formatMatrixRepeatArcanaNote,
+  type MatrixPointPromptLine,
+} from "./matrix-point-prompt";
 import { favorableDates } from "./favorable-dates";
 import { personalYearForecast } from "./forecast";
 import { fullProfile, type FullNumerologyProfile } from "./profile";
@@ -24,6 +33,11 @@ import type { NumerologySystem } from "./constants";
 import { parseBirthDate } from "./constants";
 import { NUMEROLOG_ANTI_HALLUCINATION_RULE } from "./anti-hallucination";
 import {
+  buildClientGenderInstruction,
+  genderLabelRu,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
+import {
   extractFullNameFromMessage,
   nameTopicsNeedFullFio,
   resolveNumerologyName,
@@ -36,6 +50,7 @@ export type NumerologyTopic =
   | "karma"
   | "pythagoras_square"
   | "destiny_matrix"
+  | "matrix_compatibility"
   | "sphere_health"
   | "sphere_finance"
   | "sphere_relations"
@@ -53,6 +68,43 @@ export interface NumerologyChatContextInput {
   birthDate?: string;
   profileName?: string;
   lastUserMessage?: string;
+  /** Profile gender: male|female|мужчина|женщина — used for address grammar. */
+  gender?: string | null;
+  /** Session topic from UX (SessionTopicId) — seeds calc topics when message is vague. */
+  intention?: string | null;
+}
+
+/** Map session UX topic → numerology calc topics (parallel taxonomy, not TopicKey). */
+export function sessionTopicToNumerologyTopics(
+  intention?: string | null
+): NumerologyTopic[] {
+  const id = (intention ?? "").trim();
+  switch (id) {
+    case "love":
+    case "Любовь":
+      return ["sphere_relations"];
+    case "money":
+    case "Деньги":
+      return ["sphere_finance"];
+    case "health":
+    case "Здоровье":
+      return ["sphere_health"];
+    case "path":
+    case "Мой путь":
+      return ["life_path"];
+    case "enemies":
+    case "Враги":
+      return ["karma"];
+    case "sign":
+    case "Знак свыше":
+      return ["life_path", "karma"];
+    case "custom":
+      return [];
+    case "life_death":
+      return [];
+    default:
+      return [];
+  }
 }
 
 export interface NumerologyChatContextResult {
@@ -72,7 +124,9 @@ const TOPIC_PATTERNS: Record<NumerologyTopic, RegExp> = {
   pythagoras_square:
     /квадрат\s+пифагора|психоматриц|\bматриц(а|у|ы)\b(?!\s*судьб)|матриц(а|у|ы)\s*(личност|рожден)|сильн(ые|ых)\s+сторон|слаб(ые|ых)\s+сторон|мои\s+цифр|(?:ещё|еще)\s+раз\s+вывед|попробуй.*вывед/i,
   destiny_matrix:
-    /матриц(а|у|ы)\s*судьб|матрица\s+предназначен|22\s*аркан|таро.?нумеролог/i,
+    /матриц(а|у|ы)\s*судьб(?!\s*с)|матрица\s+предназначен|22\s*аркан|таро.?нумеролог/i,
+  matrix_compatibility:
+    /совместимост\w*\s+матриц|матриц\w*\s+судьб\w*\s+с|две\s+матриц|парн\w*\s+матриц/i,
   sphere_health:
     /(?:^|[\s,.!?])(?:давай|разбер[её]м|про|по|моё|моё\s+)?(?:с\s+)?здоров(?:ье|ья|ью|и|ьем|ьём)(?:[\s,.!?]|$)|самочувств|иммунитет|болезн|тахикард|аритми|сердц|давлен|гипертон|беспокоит/i,
   sphere_finance:
@@ -398,17 +452,62 @@ function buildTopicBlock(
       }
       const matrix = destinyMatrix(birthDate);
       if (!matrix) return { text: "МАТРИЦА СУДЬБЫ: не удалось построить по дате." };
+      const period = periodFromMatrix(matrix);
+      const points: MatrixPointPromptLine[] = [
+        { role: "body", label: "1. Характер (визитка)", number: matrix.body.number },
+        { role: "energy", label: "2. Небо / энергия", number: matrix.energy.number },
+        { role: "roots", label: "3. Материя / год рождения", number: matrix.roots.number },
+        { role: "purpose", label: "4. Зона комфорта (центр)", number: matrix.comfort.number },
+        { role: "sky", label: "5. Духовный полюс", number: matrix.skySpirit.number },
+        { role: "talents", label: "6. Таланты", number: matrix.talents.number },
+        { role: "money", label: "7. Денежный канал", number: matrix.money.number },
+        { role: "love", label: "8. Канал отношений", number: matrix.relationships.number },
+        { role: "paternal", label: "9. Род по отцу", number: matrix.paternal.number },
+        { role: "maternal", label: "10. Род по матери", number: matrix.maternal.number },
+        { role: "karma", label: "11. Кармический хвост · корень", number: matrix.karmicTail[0].number },
+        { role: "karmicMid", label: "12. Кармический хвост · середина", number: matrix.karmicTail[1].number },
+        { role: "karmicTip", label: "13. Кармический хвост · остриё", number: matrix.karmicTail[2].number },
+        {
+          role: "age",
+          label: `14. Точка возраста сейчас (${matrix.ageCurrent.age})`,
+          number: matrix.ageCurrent.number,
+        },
+        ...(matrix.ageNext
+          ? [
+              {
+                role: "age" as const,
+                label: `15. Ближайший возрастной переход (${matrix.ageNext.age})`,
+                number: matrix.ageNext.number,
+              },
+            ]
+          : []),
+        {
+          role: "year",
+          label: "16. Аркан текущего года (1–22, не путать с личным годом 1–9)",
+          number: matrix.yearArcana.number,
+        },
+        { role: "month", label: "17. Аркан месяца", number: matrix.monthArcana.number },
+        {
+          role: "period",
+          label: `18. Узел периода — ${matrix.focusLabel}`,
+          number: period.focusNumber,
+        },
+      ];
+      const repeatNote = formatMatrixRepeatArcanaNote(points);
       return {
         text: [
-          "МАТРИЦА СУДЬБЫ / 22 АРКАНА (реальный расчёт, авторская адаптация Zovus):",
-          `Точка тела и характера: ${matrix.body.number} — ${matrix.body.arcanaName} (${matrix.body.arcanaMeaning}).`,
-          `Точка энергии: ${matrix.energy.number} — ${matrix.energy.arcanaName} (${matrix.energy.arcanaMeaning}).`,
-          `Точка рода и корней: ${matrix.roots.number} — ${matrix.roots.arcanaName} (${matrix.roots.arcanaMeaning}).`,
-          `Ось предназначения (главное число матрицы): ${matrix.purpose.number} — ${matrix.purpose.arcanaName} (${matrix.purpose.arcanaMeaning}).`,
-          `Точка отношений: ${matrix.relationships.number} — ${matrix.relationships.arcanaName} (${matrix.relationships.arcanaMeaning}).`,
-          `Точка денег и ресурса: ${matrix.money.number} — ${matrix.money.arcanaName} (${matrix.money.arcanaMeaning}).`,
-          `Точка кармы и задачи: ${matrix.karma.number} — ${matrix.karma.arcanaName} (${matrix.karma.arcanaMeaning}).`,
-          "Подчеркни, что это авторский расчёт Zovus по мотивам популярного метода «Матрица судьбы» (таро-нумерология на основе 22 арканов), а не научный факт — используй его как психологический инструмент для рефлексии.",
+          `МАТРИЦА СУДЬБЫ / ПОЛНАЯ (${MATRIX_CALCULATION_VERSION}, 22 аркана, авторский расчёт Zovus):`,
+          formatMatrixFinaleKeys(matrix),
+          `Каналы: деньги [${matrix.channels.find((c) => c.id === "money")?.points.map((p) => p.number).join(", ")}]; отношения [${matrix.channels.find((c) => c.id === "love")?.points.map((p) => p.number).join(", ")}].`,
+          "Структура: характер → небо → материя → комфорт → таланты → деньги → отношения → род отца → род матери → хвост (3) → возраст сейчас → ближайший переход возраста → год → месяц → узел периода → (небо-натал если есть) → шаги на 30 дней.",
+          "КРИТИЧНО: даже при одинаковом аркане у разных точек пиши РАЗНЫЕ смыслы по роли. Нельзя объединять «энергия и таланты» или «хвост + комфорт» в одну тему.",
+          "КРИТИЧНО: не копируй одну практику/фразу на несколько точек.",
+          "ЗАПРЕЩЕНО: пифагорейский портрет, психоматрица, личный цикл 1–9.",
+          "Запрещено: обещать результат, диагнозы, «вам суждено», markdown ✦.",
+          "Числа и названия арканов бери ТОЛЬКО из этого блока. Не пересчитывай матрицу.",
+          "Это полная матрица Zovus по мотивам популярного 22-арканного метода — инструмент рефлексии, не научный факт и не «официальная Ладини».",
+          ...(repeatNote ? [repeatNote] : []),
+          ...points.map((p) => formatMatrixPointDictLine(p, getArcanaEntry(p.number))),
         ].join("\n"),
       };
     }
@@ -516,6 +615,32 @@ function buildTopicBlock(
       };
     }
 
+    case "matrix_compatibility": {
+      if (!parseBirthDate(birthDate)) {
+        return {
+          text: "СОВМЕСТИМОСТЬ МАТРИЦ: нужна твоя дата рождения и дата партнёра.",
+        };
+      }
+      const partner = extractPartnerFromMessage(message, birthDate);
+      if (!partner) {
+        return {
+          text: "СОВМЕСТИМОСТЬ МАТРИЦ: попроси дату рождения партнёра (и имя) — сравним комфорт, любовь, деньги, хвост и год.",
+        };
+      }
+      const nameA = fullName.split(/\s+/)[0] || fullName || "клиент";
+      const block = buildMatrixCompatibilityPromptBlock(
+        birthDate,
+        partner.dateB,
+        nameA,
+        partner.nameB
+      );
+      return {
+        text:
+          block ??
+          "СОВМЕСТИМОСТЬ МАТРИЦ: не удалось построить по датам — проверь формат ДД.ММ.ГГГГ.",
+      };
+    }
+
     case "chaldean": {
       if (!fullName.trim()) {
         return {
@@ -546,7 +671,14 @@ export function buildNumerologyChatContext(
 ): NumerologyChatContextResult {
   const message = input.lastUserMessage?.trim() ?? "";
   const resolvedName = resolveNumerologyName(input.profileName, message);
-  const topics = detectNumerologyTopics(message);
+  const fromMessage = detectNumerologyTopics(message);
+  const fromIntention = sessionTopicToNumerologyTopics(input.intention);
+  const topics =
+    fromMessage.length > 0
+      ? [...new Set([...fromMessage, ...fromIntention])]
+      : fromIntention.length > 0
+        ? fromIntention
+        : [];
   const system: NumerologySystem = topics.includes("chaldean")
     ? "chaldean"
     : "pythagorean";
@@ -567,13 +699,41 @@ export function buildNumerologyChatContext(
   }
 
   const profile = fullProfile(birthDate, resolvedName.fullName, system);
-  parts.push(formatBaseProfile(profile));
+  // Full Matrix sessions must not receive Pythagorean LP/soul/destiny — models mash systems.
+  const matrixIsolated =
+    topics.includes("destiny_matrix") &&
+    topics.every((t) => t === "destiny_matrix");
 
-  if (resolvedName.needsFullFio && nameTopicsNeedFullFio(topics)) {
+  if (matrixIsolated) {
+    // Prefer profile name: free-form matrix CTA text must not become "ФИО".
+    const who =
+      (input.profileName?.trim().split(/\s+/)[0] ||
+        (resolvedName.fromMessage ? "" : resolvedName.fullName.trim()) ||
+        "друг").trim() || "друг";
+    const gender = resolveClientGender(input.gender, who);
+    parts.push(
+      [
+        "КЛИЕНТ ДЛЯ МАТРИЦЫ СУДЬБЫ:",
+        `Имя для обращения (именительный падеж): ${who}.`,
+        gender
+          ? `Пол клиента: ${genderLabelRu(gender)} — весь разбор только в ${
+              gender === "female" ? "женском" : "мужском"
+            } роде.`
+          : "Пол клиента не указан — пиши нейтрально на «ты» без жёсткого рода.",
+        buildClientGenderInstruction({ gender, firstName: who }),
+        hasBirth ? `Дата рождения: ${birthDate}.` : "Дата рождения не передана.",
+        "ЗАПРЕТ СМЕШЕНИЯ: не подмешивай пифагорейский портрет (путь/душа/личность/зрелость), личный цикл 1–9 и психоматрицу. Только блок МАТРИЦА СУДЬБЫ ниже.",
+      ].join("\n")
+    );
+  } else {
+    parts.push(formatBaseProfile(profile));
+  }
+
+  if (!matrixIsolated && resolvedName.needsFullFio && nameTopicsNeedFullFio(topics)) {
     parts.push(
       "ПОЛНОТА ФИО: для точного расчёта по имени нужно полное ФИО (минимум имя и фамилия). Попроси мягко; если клиент назвал ФИО в сообщении — используй его."
     );
-  } else if (resolvedName.fromMessage) {
+  } else if (!matrixIsolated && resolvedName.fromMessage) {
     parts.push(`ФИО из сообщения клиента: ${resolvedName.fullName}.`);
   }
 

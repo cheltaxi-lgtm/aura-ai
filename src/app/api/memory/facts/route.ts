@@ -5,7 +5,19 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { sanitizeTextField } from "@/lib/chat-sanitize";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { validateUserSubmittedFact } from "@/lib/memory/user-fact-input";
-import { deleteFact, listFacts, searchFacts, upsertFact, MAX_FACTS_PER_USER } from "@/lib/memory/user-facts";
+import {
+  deleteFact,
+  listFactTimeline,
+  listFacts,
+  searchFacts,
+  updateFact,
+  upsertFact,
+  MAX_FACTS_PER_USER,
+} from "@/lib/memory/user-facts";
+import {
+  needsMemoryInitialChoice,
+  updateMemoryPreferences,
+} from "@/lib/memory/preferences";
 
 /**
  * Cap for user-submitted (manually entered) facts specifically, distinct from
@@ -20,6 +32,15 @@ function mapFact(f: {
   eventDate: string | null;
   salience: number;
   sourceCharacter: string | null;
+  status?: string;
+  predicateKey?: string | null;
+  sourceType?: string | null;
+  sourceEntityId?: string | null;
+  evidenceQuote?: string | null;
+  sourceCapturedAt?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  confirmationCount?: number;
 }) {
   return {
     id: f.id,
@@ -30,17 +51,26 @@ function mapFact(f: {
     // "user" = added by hand in the cabinet; anything else (a character id, or
     // null for older rows) was picked up automatically from a chat/reading.
     addedByUser: f.sourceCharacter === "user",
+    status: f.status ?? "active",
+    predicateKey: f.predicateKey ?? null,
+    sourceType: f.sourceType ?? null,
+    sourceEntityId: f.sourceEntityId ?? null,
+    evidenceQuote: f.evidenceQuote ?? null,
+    sourceCapturedAt: f.sourceCapturedAt ?? null,
+    validFrom: f.validFrom ?? null,
+    validTo: f.validTo ?? null,
+    confirmationCount: f.confirmationCount ?? 0,
   };
 }
 
 /** List, add, or delete the authenticated user's long-term memory facts. */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireUserAuth();
   if (!auth) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 });
   }
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
@@ -64,7 +94,10 @@ export async function GET() {
 
   // Show everything the system knows for this user, not just the manual-entry
   // cap — auto-extracted facts are just as relevant for the user to review/delete.
-  const facts = await listFacts(profileUserId, MAX_FACTS_PER_USER);
+  const timeline = request.nextUrl.searchParams.get("view") === "timeline";
+  const facts = timeline
+    ? await listFactTimeline(profileUserId, MAX_FACTS_PER_USER)
+    : await listFacts(profileUserId, MAX_FACTS_PER_USER);
   return NextResponse.json({
     facts: facts.map(mapFact),
     count: facts.length,
@@ -77,12 +110,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 });
   }
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
     return NextResponse.json({ error: "profile_required" }, { status: 400 });
+  }
+  if (await needsMemoryInitialChoice(profileUserId)) {
+    return NextResponse.json(
+      {
+        error: "memory_choice_required",
+        message: "Сначала выберите настройку персональной памяти.",
+      },
+      { status: 409 }
+    );
   }
 
   const { allowed, retryAfterSec } = await checkRateLimit(
@@ -147,7 +189,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await upsertFact(profileUserId, input);
+  // Manual add implies the user wants memory usable; enable read without auto-capture.
+  await updateMemoryPreferences(profileUserId, { memoryEnabled: true }).catch(() => undefined);
+
+  await upsertFact(profileUserId, {
+    ...input,
+    sourceType: "user",
+    allowSensitive: true,
+  });
 
   const matched = await searchFacts(profileUserId, input.fact, { topK: 1 });
   const created = matched[0] ?? existing.find((f) => f.fact === input.fact);
@@ -158,13 +207,78 @@ export async function POST(request: NextRequest) {
   });
 }
 
+export async function PATCH(request: NextRequest) {
+  const auth = await requireUserAuth();
+  if (!auth) {
+    return NextResponse.json({ error: "auth_required" }, { status: 401 });
+  }
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
+
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (!profileUserId) {
+    return NextResponse.json({ error: "profile_required" }, { status: 400 });
+  }
+
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("memory_fact_patch", auth.sub),
+    40,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", retryAfterSec, message: "Слишком много изменений. Попробуйте позже." },
+      { status: 429 }
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const factId = typeof body.factId === "string" ? body.factId.trim() : "";
+  if (!factId) {
+    return NextResponse.json({ error: "factId_required" }, { status: 400 });
+  }
+
+  const factText = sanitizeTextField(body.fact, 400);
+  if (!factText || factText.length < 6) {
+    return NextResponse.json(
+      { error: "invalid_fact", message: "Напишите факт подробнее (от 6 символов)." },
+      { status: 422 }
+    );
+  }
+
+  const category = sanitizeTextField(body.category, 20) ?? null;
+  const eventDate = sanitizeTextField(body.eventDate, 10) ?? null;
+  const input = validateUserSubmittedFact(factText, category, eventDate);
+  if (!input) {
+    return NextResponse.json(
+      {
+        error: "invalid_fact",
+        message:
+          "Не удалось сохранить: нужен факт о вашей жизни по-русски, без карт/гаданий и общих фраз.",
+      },
+      { status: 422 }
+    );
+  }
+
+  const updated = await updateFact(profileUserId, factId, {
+    ...input,
+    allowSensitive: true,
+    sourceType: "user",
+  });
+  if (!updated) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, fact: mapFact(updated) });
+}
+
 export async function DELETE(request: NextRequest) {
   const auth = await requireUserAuth();
   if (!auth) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 });
   }
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);

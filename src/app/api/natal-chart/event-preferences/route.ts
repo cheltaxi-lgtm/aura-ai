@@ -5,6 +5,7 @@ import {
   getNatalEventPreferences,
   updateNatalEventPreferences,
 } from "@/lib/services/natal-timing-service";
+import { isNatalChartEnabled } from "@/lib/settings";
 
 async function authenticate() {
   const auth = await requireProfileUserId();
@@ -14,6 +15,9 @@ async function authenticate() {
 }
 
 export async function GET() {
+  if (!(await isNatalChartEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
   const auth = await authenticate();
   if ("response" in auth) return auth.response;
   try {
@@ -24,6 +28,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!(await isNatalChartEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
   const auth = await authenticate();
   if ("response" in auth) return auth.response;
   let body: unknown;

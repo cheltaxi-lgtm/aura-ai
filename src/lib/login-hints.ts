@@ -13,7 +13,7 @@ export function getLoginFormHints(role: "user" | "expert"): string[] {
     "Пароль чувствителен к регистру.",
   ];
   if (role === "user") {
-    base.push("Нет аккаунта — зарегистрируйтесь на соседней вкладке.");
+    base.push("Нет аккаунта — создайте его по ссылке «Регистрация».");
   }
   return base;
 }

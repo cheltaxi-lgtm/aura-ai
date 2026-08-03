@@ -187,3 +187,38 @@ export function historyReadingToSharePayload(input: {
     input.historyId
   );
 }
+
+/** Share one matrix zone + practice (uses reading kind → numerology OG). */
+export function matrixPeriodToSharePayload(input: {
+  focusLabel: string;
+  focusTitle: string;
+  focusNumber: number;
+  practice: string;
+  userName?: string;
+  date?: string;
+}): SharePayload {
+  return withSource(
+    {
+      kind: "reading",
+      title: `Узел периода · ${input.focusLabel}`,
+      excerpt: `${input.focusTitle} (${input.focusNumber}). Практика: ${input.practice}`.slice(
+        0,
+        280
+      ),
+      masterKey: "numerolog",
+      masterName: "Эвелина",
+      userName: input.userName,
+      date: input.date,
+      spreadType: "destiny_matrix",
+      cards: [
+        {
+          name: `${input.focusNumber} · ${input.focusTitle}`,
+          meaning: input.focusLabel,
+          position: "Узел периода",
+        },
+      ],
+    },
+    "inline",
+    `matrix-period-${input.focusNumber}`
+  );
+}

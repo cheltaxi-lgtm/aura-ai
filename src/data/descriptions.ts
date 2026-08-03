@@ -32,7 +32,7 @@ const SYSTEM_INTRO: Record<DeckSystem, string> = {
   numerology:
     "В нумерологии это число несёт вибрацию судьбы — ресурс, урок или совет периода.",
   lenormand:
-    "В оракуле Ленорман этот символ даёт короткий, предметный ответ — без лишних образов.",
+    "В колоде Ленорман этот символ даёт короткий, предметный ответ — без лишних образов.",
 };
 
 /** Hand-written elaboration per graha / rashi — real Jyotish attributions (rulership, exaltation). */

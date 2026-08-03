@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { getAllSettings, setSetting } from "@/lib/settings";
 import { invalidateMaintenanceModeCache } from "@/lib/maintenance-mode";
 import { logAdminAction } from "@/lib/admin";
+import { validateAdminSettingsPatch } from "@/lib/admin-settings-validate";
 
 const NATAL_EPHEMERIS_BACKENDS = new Set(["celestine", "natalengine"]);
 
@@ -27,11 +29,27 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const stepped = await requireAdminStepUp(request);
+  if (!stepped.ok) return stepped.response;
+  const auth = stepped.auth;
 
   const { section, values } = await request.json();
-  if (!section || !values || !["ai", "pricing", "features", "prompts", "tts", "visual", "runes", "share", "natalChart"].includes(section)) {
+  if (
+    !section ||
+    !values ||
+    ![
+      "ai",
+      "aiDelivery",
+      "pricing",
+      "features",
+      "prompts",
+      "tts",
+      "visual",
+      "runes",
+      "share",
+      "natalChart",
+    ].includes(section)
+  ) {
     return NextResponse.json({ error: "Invalid section" }, { status: 400 });
   }
   if (section === "natalChart" && !isValidNatalChartSettings(values)) {
@@ -44,10 +62,15 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const updated = await setSetting(section, values, auth.sub);
+  const validated = validateAdminSettingsPatch(section, values);
+  if (!validated.ok) {
+    return NextResponse.json({ error: validated.error }, { status: 400 });
+  }
+
+  const updated = await setSetting(section, validated.values, auth.sub);
   if (section === "features") {
     invalidateMaintenanceModeCache();
   }
-  await logAdminAction(auth.sub, "update_settings", section, section, values);
+  await logAdminAction(auth.sub, "update_settings", section, section, validated.values);
   return NextResponse.json({ ok: true, [section]: updated });
 }

@@ -1,5 +1,7 @@
 /** Persist share-landing attribution through registration funnel. */
 
+import { resolveUtmRegistrationSource } from "@/lib/utm/attribution";
+
 export const SHARE_REGISTRATION_ATTRIBUTION_KEY = "zovus_share_reg_attribution";
 
 export type ShareRegistrationAttribution = {
@@ -41,6 +43,8 @@ export function clearShareRegistrationAttribution(): void {
   }
 }
 
+/** Share landing wins; else first-touch UTM / click-id; else default. */
 export function resolveRegistrationSource(defaultSource: string): string {
-  return readShareRegistrationAttribution() ? "share_landing" : defaultSource;
+  if (readShareRegistrationAttribution()) return "share_landing";
+  return resolveUtmRegistrationSource(defaultSource);
 }

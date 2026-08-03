@@ -1,6 +1,5 @@
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import type { ReactNode } from "react";
-import { BRAND_NAME } from "@/lib/brand";
 
 interface LegalDocumentLayoutProps {
   title: string;
@@ -14,7 +13,7 @@ export default function LegalDocumentLayout({
   children,
 }: LegalDocumentLayoutProps) {
   return (
-    <div className="legal-page mx-auto min-h-screen max-w-3xl px-6 py-16 pb-28">
+    <div className="legal-page page-with-site-header mx-auto min-h-screen max-w-3xl px-6 py-10 pb-28 sm:py-16">
       <LegalDocLink
         href="/"
         className="mb-10 inline-flex min-h-[44px] items-center text-sm text-aura-ivory/45 transition-colors hover:text-aura-champagne"
@@ -23,7 +22,6 @@ export default function LegalDocumentLayout({
       </LegalDocLink>
 
       <header className="mb-10 border-b border-aura-champagne/15 pb-8">
-        <p className="lux-label mb-3 text-aura-champagne/70">{BRAND_NAME}</p>
         <h1 className="font-display lux-heading text-3xl text-white sm:text-4xl">{title}</h1>
         <p className="mt-3 text-sm text-aura-ivory/40">Редакция от {updatedAt}</p>
       </header>

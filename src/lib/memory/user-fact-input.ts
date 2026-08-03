@@ -1,4 +1,5 @@
 import type { FactInput } from "@/lib/memory/user-facts";
+import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
 import { normalizeUserFactPhrase } from "@/lib/memory/user-fact-display";
 
 export const USER_FACT_CATEGORIES = [
@@ -35,6 +36,7 @@ export function isQualityMemoryFact(fact: string): boolean {
   if (f.length < 6 || f.length > 600) return false;
   if (!CYRILLIC_RE.test(f)) return false;
   if (META_FACT_RE.test(f)) return false;
+  if (isInstructionLikeFact(f)) return false;
   return true;
 }
 
@@ -47,11 +49,23 @@ export function validateUserSubmittedFact(
   const fact = normalizeUserFactPhrase(raw);
   if (!isQualityMemoryFact(fact)) return null;
 
-  const cat =
-    category && VALID_CATEGORIES.has(category) ? category : ("other" as UserFactCategory);
+  const cat: UserFactCategory =
+    category && VALID_CATEGORIES.has(category)
+      ? (category as UserFactCategory)
+      : "other";
 
   const date =
     eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : null;
+
+  const predicateKey = inferManualPredicate(fact, cat);
+  const multi = [
+    "family.child",
+    "family.spouse",
+    "health.condition",
+    "health.procedure",
+    "finance.debt",
+    "event.upcoming",
+  ].includes(predicateKey);
 
   return {
     fact: fact.slice(0, 600),
@@ -59,7 +73,33 @@ export function validateUserSubmittedFact(
     eventDate: date,
     salience: boostFactSalience(fact, 4),
     sourceCharacter: "user",
+    sourceType: "user",
+    predicateKey,
+    operation: multi ? "add" : "replace",
+    subjectKey: "client",
+    allowSensitive: true,
   };
+}
+
+function inferManualPredicate(fact: string, cat: UserFactCategory): string {
+  const f = fact.toLowerCase();
+  if (cat === "work") {
+    if (/ищу\s+работ|в\s+поиске\s+работ|безработ|хочу\s+смен/i.test(f)) {
+      return "employment.searching";
+    }
+    return "employment.current";
+  }
+  if (cat === "family") {
+    if (/муж|жена|супруг|партн[её]р/i.test(f)) return "family.spouse";
+    if (/сын|доч|реб[её]н|дети|внук/i.test(f)) return "family.child";
+    return "family.child";
+  }
+  if (cat === "relationship") return "relationship.status";
+  if (cat === "goal") return "goal.current";
+  if (cat === "event") return "event.upcoming";
+  if (cat === "health") return "health.condition";
+  if (cat === "money") return "finance.debt";
+  return "other";
 }
 
 export function isValidFactCategory(category: string): boolean {

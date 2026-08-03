@@ -103,7 +103,7 @@ node scripts/sync-metrika-goals.mjs
 Новые goal id для проверки в браузере (`ym(110138367,'reachGoal',...)`):
 
 - `rasklady_hub_view`, `lenormand_hub_view`, `taro_hub_view`, `cards_hub_view`
-- `photo_landing_view`, `ritual_catalog_view`
+- `photo_landing_view`, `ritual_catalog_view`, `ritual_step` (params: `phase`)
 - `numerology_hub_view`, `numerology_topic_view`, `lenormand_combo_view`
 - `share_channel` (params: `channel`, `kind`)
 

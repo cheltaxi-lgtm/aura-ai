@@ -11,7 +11,7 @@ import {
 } from "@/lib/joint-reading-storage";
 import { buildJointSpreadStartPath } from "@/lib/joint-reading-nav";
 import { withAppShellIfNeeded } from "@/lib/post-auth-return";
-import { toParagraphs } from "@/lib/format-paragraphs";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { getSpread } from "@/lib/spreads";
 import { estimateJointSpreadCostPerPerson } from "@/lib/joint-reading-pricing";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
@@ -40,6 +40,8 @@ type JointPayload = {
   hasInitiatorReading: boolean;
   hasPartnerReading: boolean;
   combinedReading: string | null;
+  combinedPending?: boolean;
+  combinedJobId?: string | null;
   initiatorReading: string | null;
   partnerReading: string | null;
   viewerRole: "initiator" | "partner" | "guest" | null;
@@ -133,6 +135,27 @@ export default function JointReadingTokenPage() {
       if (pollRef.current) window.clearInterval(pollRef.current);
     };
   }, [data, load]);
+
+  useEffect(() => {
+    if (!token || !data?.combinedJobId || data.combinedReading) return;
+    let cancelled = false;
+    const storageKey = `aura:joint-combined-job:${token}`;
+    void (async () => {
+      try {
+        const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+        await waitForAsyncJob({
+          jobId: data.combinedJobId!,
+          storageKey,
+        });
+      } catch {
+        /* GET polling below still covers completion */
+      }
+      if (!cancelled) await load();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, data?.combinedJobId, data?.combinedReading, load]);
 
   const inviteUrl = useMemo(() => {
     if (typeof window === "undefined") return `/joint-reading/${token}`;
@@ -338,10 +361,8 @@ export default function JointReadingTokenPage() {
       {data.initiatorReading && (data.viewerRole === "initiator" || data.status === "completed") ? (
         <article className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
           <h2 className="font-display text-base text-white">Расклад — {labelA}</h2>
-          <div className="mt-3 space-y-3 text-sm leading-relaxed text-white/75">
-            {toParagraphs(data.initiatorReading).map((p, i) => (
-              <p key={`i-${i}`}>{p}</p>
-            ))}
+          <div className="mt-3">
+            <PremiumReadingBody content={data.initiatorReading} className="text-sm text-white/75" />
           </div>
         </article>
       ) : null}
@@ -349,12 +370,29 @@ export default function JointReadingTokenPage() {
       {data.partnerReading && (data.viewerRole === "partner" || data.status === "completed") ? (
         <article className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
           <h2 className="font-display text-base text-white">Расклад — {labelB}</h2>
-          <div className="mt-3 space-y-3 text-sm leading-relaxed text-white/75">
-            {toParagraphs(data.partnerReading).map((p, i) => (
-              <p key={`p-${i}`}>{p}</p>
-            ))}
+          <div className="mt-3">
+            <PremiumReadingBody content={data.partnerReading} className="text-sm text-white/75" />
           </div>
         </article>
+      ) : null}
+
+      {!data.combinedReading &&
+      data.hasInitiatorReading &&
+      data.hasPartnerReading ? (
+        <div
+          role="status"
+          className="mt-8 rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-xs leading-relaxed text-amber-50/90"
+        >
+          <p className="font-medium text-amber-100">
+            {data.combinedPending
+              ? "Собираем общую интерпретацию"
+              : "Оба расклада готовы — готовим общий синтез"}
+          </p>
+          <p className="mt-1 text-amber-50/70">
+            Можно закрыть страницу — результат сохранится. Страница обновится
+            автоматически.
+          </p>
+        </div>
       ) : null}
 
       {data.combinedReading ? (
@@ -425,10 +463,8 @@ export default function JointReadingTokenPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/80">
-            {toParagraphs(data.combinedReading).map((p, i) => (
-              <p key={i}>{p}</p>
-            ))}
+          <div className="mt-4">
+            <PremiumReadingBody content={data.combinedReading} className="text-sm text-white/80" />
           </div>
           <Link href={`/joint-reading/${encodeURIComponent(token)}/print`} className="mt-5 inline-flex text-xs text-amber-200">
             Печатная версия / PDF

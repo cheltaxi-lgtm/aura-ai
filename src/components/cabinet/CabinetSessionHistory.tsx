@@ -266,9 +266,9 @@ export default function CabinetSessionHistory({
       {filtered.length === 0 ? (
         <div className="cabinet-empty-state">
           <p className="text-white/60">
-            Твоя история сеансов пуста.
+            Ваша история сеансов пуста.
             <br />
-            Начни первый сеанс — и всё что покажут символы останется здесь навсегда.
+            Начните первый сеанс — и всё, что покажут символы, останется здесь.
           </p>
           <Link href="/" className="cabinet-btn cabinet-btn--primary mt-6">
             Начать первый сеанс

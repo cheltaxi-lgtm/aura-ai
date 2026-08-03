@@ -1,5 +1,5 @@
 /* Zovus app-shell service worker — native WebView only. Network-first HTML; cache decks/fonts offline. */
-const CACHE = "zovus-shell-v7";
+const CACHE = "zovus-shell-v10";
 const OFFLINE_URL = "/offline.html";
 
 function isSameOrigin(url) {
@@ -86,19 +86,21 @@ self.addEventListener("fetch", (event) => {
 
   if (!isOfflineAsset(url)) return;
 
+  /* Deck art is immutable (long Cache-Control). Cache-first avoids black/placeholder
+     faces when a transient network error would otherwise become Response.error(). */
   event.respondWith(
-    fetch(request)
-      .then((response) => {
+    caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      try {
+        const response = await fetch(request);
         if (response.ok) {
-          const copy = response.clone();
-          void caches.open(CACHE).then((cache) => cache.put(request, copy));
+          void cache.put(request, response.clone());
         }
         return response;
-      })
-      .catch(async () => {
-        const cached = await caches.open(CACHE).then((cache) => cache.match(request));
-        if (cached) return cached;
+      } catch {
         return Response.error();
-      })
+      }
+    })
   );
 });

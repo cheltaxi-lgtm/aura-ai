@@ -1,0 +1,37 @@
+/**
+ * Zovus Editorial / Private Salon — design tokens
+ * Warm charcoal + brass. Product surfaces should prefer these over purple neon.
+ */
+:root {
+  --color-bg: #0a0908;
+  --color-surface: #141210;
+  --color-surface-raised: #1a1816;
+  --color-text: #ede6da;
+  --color-text-muted: rgba(237, 230, 218, 0.62);
+  --color-text-faint: rgba(237, 230, 218, 0.45);
+  --color-accent: #c9a24a;
+  --color-accent-light: #e8c77e;
+  --color-border: rgba(201, 162, 74, 0.2);
+  --color-border-strong: rgba(201, 162, 74, 0.35);
+  --color-overlay: rgba(8, 6, 4, 0.72);
+  --color-focus: rgba(201, 162, 74, 0.55);
+  --color-danger: #f0a8a8;
+  /* Premium scrollbars — thin brass on dark surfaces (mirrors globals.css :root) */
+  --scrollbar-size: 5px;
+  --scrollbar-thumb: rgba(201, 162, 74, 0.28);
+  --scrollbar-thumb-hover: rgba(232, 199, 126, 0.5);
+  --scrollbar-track: rgba(8, 6, 4, 0.35);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --editorial-max: 75rem;
+  --editorial-section-y: 2rem;
+  /* Alias for product CSS that still reads --font-display */
+  --font-display: var(--font-mystic-display);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --editorial-section-y: 2.5rem;
+  }
+}

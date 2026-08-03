@@ -2,10 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Premium scrollbars (site-wide: web, SEO, cabinet, app shell) ──
+   Unlayered + defined before use so html/body viewport and every overflow
+   panel share one thin brass thumb. */
+:root {
+  --scrollbar-size: 5px;
+  --scrollbar-thumb: rgba(201, 162, 74, 0.28);
+  --scrollbar-thumb-hover: rgba(232, 199, 126, 0.5);
+  --scrollbar-track: rgba(8, 6, 4, 0.35);
+  color-scheme: dark;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @layer base {
   html {
-    scroll-behavior: smooth;
-    background-color: #05010d;
+    /* Do not set scroll-behavior: smooth on html — it breaks App Router
+       scroll-to-top on soft navigation (lands mid/end of the next page). */
+    background-color: #080604;
   }
 
   body {
@@ -109,19 +169,19 @@
   /* ── Glass panels ── */
   .glass-panel {
     @apply rounded-2xl backdrop-blur-xl;
-    border: 1px solid rgba(232, 199, 126, 0.1);
+    border: 1px solid rgba(201, 162, 74, 0.14);
     background: linear-gradient(
       145deg,
-      rgba(18, 16, 42, 0.72) 0%,
-      rgba(12, 10, 26, 0.55) 100%
+      rgba(26, 24, 22, 0.88) 0%,
+      rgba(14, 12, 10, 0.78) 100%
     );
     box-shadow: var(--shadow-lux);
   }
 
   .flow-panel {
     @apply rounded-3xl p-8 backdrop-blur-2xl md:p-12;
-    border: 1px solid rgba(232, 199, 126, 0.08);
-    background: linear-gradient(160deg, rgba(18, 14, 36, 0.65), rgba(8, 6, 18, 0.5));
+    border: 1px solid rgba(201, 162, 74, 0.12);
+    background: linear-gradient(160deg, rgba(26, 22, 18, 0.72), rgba(10, 9, 8, 0.62));
     box-shadow: var(--shadow-lux);
   }
 
@@ -1598,6 +1658,14 @@
     object-position: center center;
   }
 
+  .lux-tarot-card__image-wrap > img.lux-tarot-card__image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
   .lux-deck-card--sm .lux-tarot-card__image-wrap {
     aspect-ratio: 533 / 800;
   }
@@ -1840,10 +1908,8 @@
   @apply h-3 w-3 cursor-pointer appearance-none rounded-full bg-aura-purple;
 }
 
-/* Chat message list scroll */
+/* Chat message list scroll — inherits global brass scrollbar */
 .chat-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(168, 85, 247, 0.45) transparent;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   overscroll-behavior-y: contain;
@@ -1895,51 +1961,9 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   }
 }
 
-.chat-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-scroll::-webkit-scrollbar-track {
-  margin: 8px 0;
-  background: transparent;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    rgba(168, 85, 247, 0.55),
-    rgba(16, 185, 129, 0.35)
-  );
-}
-
-.chat-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.75);
-}
-
-/* Dark amber scroll — modals, ritual flow, panels */
+/* Panel / modal scroll — same brass thumb as global */
 .lux-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(232, 199, 126, 0.35) transparent;
   overscroll-behavior-y: contain;
-}
-
-.lux-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.lux-scroll::-webkit-scrollbar-track {
-  margin: 8px 0;
-  background: transparent;
-}
-
-.lux-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(232, 199, 126, 0.32);
-}
-
-.lux-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(232, 199, 126, 0.52);
 }
 
 /* Breathing room above pinned modal footers (master session, photo flow, etc.) */
@@ -2540,6 +2564,45 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   color: rgba(255, 255, 255, 0.78);
 }
 
+.photo-flow-confirm-faces {
+  position: relative;
+  min-height: 16rem;
+}
+
+.photo-flow-confirm-faces__ritual {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  min-height: 16rem;
+  padding: 1.25rem 0.5rem 0.75rem;
+}
+
+/* Keep full layout under the ritual so eager faces still decode. */
+.photo-flow-confirm-faces__preview--loading {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.photo-flow-confirm-faces__preview:not(.photo-flow-confirm-faces__preview--loading) {
+  animation: photo-flow-faces-reveal 0.45s ease-out;
+}
+
+@keyframes photo-flow-faces-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .photo-flow-field label {
   display: block;
   margin-bottom: 0.375rem;
@@ -2647,18 +2710,50 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 .photo-spread-preview__item {
   width: 100%;
   max-width: 148px;
-  padding: 0.5rem;
-  border-radius: 0.875rem;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.18);
+  padding: 0.4rem 0.35rem 0.55rem;
+  border-radius: 1rem;
+  border: 1px solid transparent;
+  background: transparent;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.photo-spread-preview__tools {
+.photo-spread-preview__item--active {
+  border-color: rgba(232, 199, 126, 0.35);
+  background: rgba(232, 199, 126, 0.06);
+  box-shadow: 0 0 0 1px rgba(232, 199, 126, 0.08);
+}
+
+.photo-spread-preview__card-hit {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 0.75rem;
+}
+
+.photo-spread-preview__card-hit:focus-visible {
+  outline: 1px solid rgba(232, 199, 126, 0.55);
+  outline-offset: 3px;
+}
+
+.photo-spread-preview__toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: 0.35rem;
-  margin-top: 0.65rem;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+  padding: 0.3rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+  background: rgba(12, 10, 18, 0.72);
+  backdrop-filter: blur(8px);
 }
 
 .photo-spread-preview__add {
@@ -2715,10 +2810,6 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   color: rgba(232, 199, 126, 0.95);
 }
 
-.photo-spread-preview__card .lux-tarot-card__image {
-  object-fit: contain !important;
-}
-
 .photo-spread-preview__card .lux-deck-card {
   width: 100%;
   max-width: 148px;
@@ -2726,6 +2817,30 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 .photo-spread-preview__card {
   position: relative;
+}
+
+/* flex-1 + aspect-ratio was collapsing the face box to ~0px height in Firefox
+   while img onLoad still fired (images “loaded” but invisible). */
+.photo-spread-preview__card .lux-tarot-card__image-wrap {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 9.5rem;
+  aspect-ratio: 533 / 800;
+  background: #120c1c;
+}
+
+.photo-spread-preview__card .lux-tarot-card__image-wrap > img.lux-tarot-card__image {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  opacity: 1 !important;
+  z-index: 1;
+}
+
+.photo-spread-preview__card .lux-tarot-card__image-vignette {
+  z-index: 2;
 }
 
 .photo-spread-preview__face {
@@ -2811,29 +2926,15 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .photo-spread-preview__tool {
-  @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/55 transition-colors hover:border-aura-gold/30 hover:bg-aura-gold/10 hover:text-aura-champagne disabled:opacity-30;
+  @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent text-aura-champagne/70 transition-colors hover:bg-aura-gold/15 hover:text-aura-champagne disabled:opacity-25;
 }
 
 .photo-spread-preview__tool--danger {
-  @apply hover:border-red-400/35 hover:bg-red-500/10 hover:text-red-200;
+  @apply hover:bg-red-500/15 hover:text-red-200;
 }
 
 .photo-spread-preview__tool--active {
-  @apply border-aura-gold/60 bg-aura-gold/15 text-aura-champagne;
-}
-
-.photo-spread-preview__tool--labeled span {
-  @apply sr-only;
-}
-
-@media (min-width: 640px) {
-  .photo-spread-preview__tool--labeled {
-    @apply h-auto min-w-[4.25rem] flex-col gap-0.5 px-2 py-1.5 text-[9px] uppercase tracking-wide;
-  }
-
-  .photo-spread-preview__tool--labeled span {
-    @apply not-sr-only;
-  }
+  @apply bg-aura-gold/20 text-aura-champagne;
 }
 
 .photo-reading-steps {
@@ -3464,6 +3565,26 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   @apply mt-2 text-xs text-white/40;
 }
 
+.hero-question--landing .hero-question__row {
+  @apply w-full;
+}
+
+@media (min-width: 768px) {
+  .hero-question--landing .hero-question__input {
+    min-width: 420px;
+  }
+}
+
+.hero-question--hint-scrim .hero-question__hint {
+  display: inline-block;
+  margin-top: 0.65rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.5rem;
+  background: rgba(6, 4, 2, 0.72);
+  color: rgba(255, 248, 235, 0.78);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
 .hero-question--compact {
   @apply relative flex flex-col gap-2 rounded-full border p-1.5 sm:flex-row sm:items-center;
   border-color: rgba(232, 199, 126, 0.28);
@@ -3742,6 +3863,10 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   @apply mt-2 sm:mt-4;
 }
 
+.editorial-landing:not(:has(.editorial-hero)) .quick-questions {
+  @apply mt-2 sm:mt-4;
+}
+
 .quick-questions__halo {
   position: absolute;
   inset: -3rem 1rem auto;
@@ -3946,7 +4071,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 }
 
 .ritual-cta-banner__btn {
-  @apply w-full shrink-0 sm:w-auto;
+  @apply w-full shrink-0 justify-center sm:w-44 sm:min-w-44;
 }
 
 .rasklady-filters__chip {
@@ -3961,7 +4086,17 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
   @apply border-aura-gold/35 bg-aura-gold/10 text-aura-gold;
 }
 
-/* SSR SEO block: in DOM for crawlers, never intercepts clicks */
+/* SSR SEO block on home — crawlable; keep visually hidden so it doesn't inflate the page end */
+.home-seo-panel:not(.seo-crawl-only) {
+  @apply mx-auto max-w-3xl px-4 py-12 text-[rgba(237,230,218,0.72)];
+  border-top: 1px solid rgba(201, 162, 74, 0.14);
+}
+
+.home-seo-panel:not(.seo-crawl-only) a {
+  @apply text-aura-gold;
+}
+
+/* Keep legacy class for any remaining crawl-only usages */
 .seo-crawl-only {
   position: absolute;
   width: 1px;
@@ -4828,10 +4963,22 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 .app-top-header__brand {
   overflow: visible;
+  flex: 0 0 auto;
+}
+
+.brand-logo__mark {
+  display: block;
+  flex-shrink: 0;
 }
 
 .app-top-header__mobile {
   flex-shrink: 0;
+  max-width: min(100%, 22rem);
+}
+
+/* Public pages under the fixed site header (set by GlobalAppTopHeader). */
+body.has-site-header .page-with-site-header {
+  padding-top: var(--app-header-h, 3.25rem);
 }
 
 /* Shared premium pill styling for the desktop header action row (download,
@@ -5169,7 +5316,8 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 .brand-logo__lockup {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.35rem;
+  overflow: visible;
 }
 
 .brand-logo__wordmark {
@@ -5179,7 +5327,7 @@ body.chat-session-active.cookie-banner-visible .chat-stage .chat-stage__input {
 
 @media (min-width: 640px) {
   .brand-logo__lockup {
-    gap: 0.28rem;
+    gap: 0.45rem;
   }
 
   .brand-logo__wordmark {
@@ -5258,6 +5406,12 @@ body.chat-session-active .site-legal-footer {
   display: none;
 }
 
+/* Visible home SEO must leave the flex flow during chat — otherwise it
+ * steals height and collapses .chat-stage__body to 0. */
+body.chat-session-active .home-seo-panel {
+  display: none !important;
+}
+
 body.chat-session-active {
   height: 100dvh;
   max-height: 100dvh;
@@ -5267,11 +5421,20 @@ body.chat-session-active {
 }
 
 body.chat-session-active .app-main-column {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-height: 0;
   height: 100%;
   max-height: 100dvh;
   overflow: hidden;
+}
+
+/* Keep the marketing/legal footer after page content, never under a capped shell. */
+body:not(.chat-session-active):not(.flow-overlay-open) .site-legal-footer {
+  display: block;
+  position: relative;
+  z-index: 20;
 }
 
 /*
@@ -5410,6 +5573,68 @@ body.chat-session-active .app-main-column {
   text-shadow: 0 0 24px rgba(232, 199, 126, 0.25);
 }
 
+.spread-ritual-loader__timer {
+  @apply mt-3 text-center font-mono text-sm tabular-nums text-white/70;
+}
+
+.spread-ritual-loader__timer-hint {
+  @apply font-sans text-xs text-white/40;
+}
+
+/* Inline deck shuffle (ritual step — «Перемешать ещё раз») */
+.deck-shuffle {
+  @apply mx-auto mt-6 flex w-full max-w-sm flex-col items-center gap-3;
+}
+
+.deck-shuffle--idle {
+  @apply mt-5;
+}
+
+.deck-shuffle--idle .deck-shuffle__stage {
+  height: 120px;
+}
+
+.deck-shuffle--idle .deck-shuffle__card {
+  width: 56px;
+  height: 84px;
+}
+
+.deck-shuffle__stage {
+  @apply relative flex h-[180px] w-full items-center justify-center;
+  perspective: 1000px;
+}
+
+.deck-shuffle__card {
+  @apply absolute;
+  width: 74px;
+  height: 112px;
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5));
+  will-change: transform;
+}
+
+.deck-shuffle__deck-card {
+  @apply h-full w-full;
+}
+
+.deck-shuffle__deck-card .lux-tarot-card {
+  @apply h-full max-w-none;
+}
+
+.deck-shuffle__phrase {
+  @apply text-center font-display text-base font-medium tracking-wide text-aura-champagne sm:text-lg;
+  text-shadow: 0 0 20px rgba(232, 199, 126, 0.28);
+  min-height: 1.5em;
+}
+
+.deck-shuffle__topic {
+  @apply text-center text-[11px] uppercase tracking-[0.18em] text-amber-400/70;
+}
+
+.deck-shuffle-btn {
+  @apply mx-auto mt-5 flex w-full max-w-xs flex-col items-center;
+}
+
 .spread-reading-ritual {
   @apply mt-4 flex flex-col items-center gap-3 border-t border-white/5 pt-5;
 }
@@ -5510,20 +5735,20 @@ body.chat-session-active .app-main-column {
   align-items: center;
   justify-content: center;
   min-height: 12rem;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(201, 162, 74, 0.14);
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(20, 18, 16, 0.55);
   padding: 2rem 1.5rem;
   text-align: center;
-  color: rgba(209, 213, 219, 0.65);
+  color: rgba(237, 230, 218, 0.55);
 }
 
 .cabinet-profile-header {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.15);
+  border: 1px solid rgba(201, 162, 74, 0.18);
   border-radius: 1rem;
-  background: linear-gradient(165deg, rgba(28, 22, 48, 0.92), rgba(12, 10, 26, 0.88));
+  background: linear-gradient(165deg, rgba(26, 22, 18, 0.94), rgba(12, 10, 8, 0.9));
   padding: 1.5rem;
 }
 
@@ -5656,25 +5881,26 @@ body.chat-session-active .app-main-column {
 @media (hover: hover) and (pointer: fine) {
   .cabinet-achievements__scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(232, 199, 126, 0.35) transparent;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar {
     display: block;
-    height: 6px;
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--scrollbar-track);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: rgba(232, 199, 126, 0.32);
+    background: var(--scrollbar-thumb);
   }
 
   .cabinet-achievements__scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(232, 199, 126, 0.52);
+    background: var(--scrollbar-thumb-hover);
   }
 }
 
@@ -5952,6 +6178,11 @@ body.chat-session-active .app-main-column {
   height: 1.25rem;
 }
 
+/* Lift page content so tabs stay visible above the cookie consent strip. */
+body.cookie-banner-visible .cabinet-page {
+  padding-bottom: calc(6.5rem + var(--cookie-banner-offset, 0px));
+}
+
 /* ── Legal documents (prose) ── */
 .legal-prose {
   font-family: var(--font-body), system-ui, sans-serif;
@@ -6039,69 +6270,135 @@ body.chat-session-active.cookie-banner-visible {
   padding-bottom: 0;
 }
 
-.site-legal-footer__tagline {
-  max-width: 48rem;
+.site-legal-footer--minimal {
+  padding: 0.875rem 1rem calc(0.875rem + env(safe-area-inset-bottom, 0px));
+}
+
+.site-legal-footer__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: 68rem;
   margin: 0 auto;
-  padding: 0.375rem 0.75rem 0.5rem;
+  color: rgba(237, 230, 218, 0.42);
+}
+
+.site-legal-footer--minimal .site-legal-footer__meta {
+  align-items: center;
   text-align: center;
-  font-size: 10px;
-  line-height: 1.45;
+}
+
+.site-legal-footer__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.site-legal-footer--minimal .site-legal-footer__identity {
+  align-items: center;
+}
+
+.site-legal-footer__brand {
+  color: rgba(237, 230, 218, 0.55);
+}
+
+.site-legal-footer__operator {
+  font-size: 0.6875rem;
   color: rgba(237, 230, 218, 0.38);
 }
 
-.site-legal-footer__links {
+.site-legal-footer__email {
+  color: rgba(237, 230, 218, 0.5);
+  text-decoration: none;
+}
+
+.site-legal-footer__docs {
   display: flex;
-  max-width: 64rem;
-  margin: 0 auto;
   flex-wrap: wrap;
   align-items: center;
+  gap: 0.35rem 0.85rem;
+  font-size: 0.75rem;
+}
+
+.site-legal-footer--minimal .site-legal-footer__docs {
   justify-content: center;
-  gap: 0.25rem 0.625rem;
-  padding: 0.5rem 0.75rem 0;
+}
+
+.site-legal-footer__docs a {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(237, 230, 218, 0.48);
+  text-decoration: none;
+}
+
+.site-legal-footer__tagline {
+  max-width: 42rem;
+  margin: 0.65rem auto 0;
+  padding: 0;
+  text-align: center;
   font-size: 0.6875rem;
-  color: rgba(237, 230, 218, 0.4);
+  line-height: 1.45;
+  color: rgba(237, 230, 218, 0.36);
 }
 
-.site-legal-footer__operator,
-.site-legal-footer__email {
-  display: none;
+.site-legal-footer__more {
+  color: rgba(237, 230, 218, 0.52);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
 }
 
-@media (min-width: 640px) {
-  .site-legal-footer__operator,
-  .site-legal-footer__email {
-    display: inline;
-  }
-
-  .site-legal-footer__links {
-    gap: 0.375rem 0.875rem;
-    padding: 0.625rem 1rem 0;
-    font-size: 0.75rem;
-  }
-
-  .site-legal-footer__tagline {
-    padding: 0.375rem 1rem 0.625rem;
-    font-size: 11px;
-  }
+.site-legal-footer__more:hover {
+  color: var(--aura-champagne);
 }
 
-.site-legal-footer__links a,
+.site-legal-footer__docs a,
+.site-legal-footer__email,
 .legal-doc-link {
   touch-action: manipulation;
   -webkit-tap-highlight-color: rgba(232, 199, 126, 0.2);
   transition: color 0.2s;
 }
 
-.site-legal-footer__links a {
-  display: inline-flex;
-  min-height: auto;
-  align-items: center;
-  padding: 0.125rem 0;
-}
-
-.site-legal-footer__links a:hover,
+.site-legal-footer__docs a:hover,
+.site-legal-footer__email:hover,
 .legal-doc-link:hover {
   color: var(--aura-champagne);
+}
+
+@media (min-width: 640px) {
+  .site-legal-footer__meta {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+  }
+
+  .site-legal-footer--minimal .site-legal-footer__meta {
+    justify-content: center;
+  }
+
+  .site-legal-footer__identity {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.75rem;
+  }
+
+  .site-legal-footer__operator::before,
+  .site-legal-footer__email::before {
+    content: "·";
+    margin-right: 0.75rem;
+    color: rgba(237, 230, 218, 0.28);
+  }
+
+  .site-legal-footer__tagline {
+    font-size: 0.75rem;
+  }
 }
 
 .legal-page-nav .legal-doc-link {
@@ -6130,12 +6427,318 @@ body.chat-session-active.cookie-banner-visible {
 }
 
 body.cookie-banner-visible .legal-page,
-body.cookie-banner-visible .auth-page {
+body.cookie-banner-visible .auth-page,
+body.cookie-banner-visible .auth-salon-page {
   padding-bottom: calc(5rem + var(--cookie-banner-offset, 0px) + env(safe-area-inset-bottom, 0px));
 }
 
-body.cookie-banner-visible .auth-page .auth-form {
+body.cookie-banner-visible .auth-page .auth-form,
+body.cookie-banner-visible .auth-salon-page .auth-form {
   margin-bottom: 0.5rem;
+}
+
+/* ── User auth salon (login / register card) ── */
+.auth-salon-page {
+  position: relative;
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow-x: hidden;
+  padding:
+    calc(1.25rem + env(safe-area-inset-top, 0px))
+    1.25rem
+    calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.auth-salon-vignette {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 55% 50% at 50% 42%, rgba(20, 16, 12, 0.15) 0%, transparent 62%),
+    radial-gradient(ellipse 90% 80% at 50% 50%, transparent 28%, rgba(6, 5, 4, 0.72) 100%);
+}
+
+.auth-salon-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: min(100%, 28rem);
+}
+
+.auth-salon-back {
+  margin-bottom: 0.85rem;
+}
+
+.auth-salon-back a {
+  font-size: 0.8125rem;
+  color: rgba(237, 230, 218, 0.5);
+  transition: color 0.2s ease;
+}
+
+.auth-salon-back a:hover {
+  color: rgba(232, 199, 126, 0.9);
+}
+
+.auth-salon-card {
+  width: 100%;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(201, 162, 74, 0.18);
+  background:
+    linear-gradient(165deg, rgba(26, 22, 18, 0.94) 0%, rgba(10, 9, 8, 0.92) 100%);
+  box-shadow:
+    0 24px 64px -28px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(232, 199, 126, 0.06);
+  padding: 1.75rem 1.35rem 1.5rem;
+}
+
+@media (min-width: 480px) {
+  .auth-salon-card {
+    padding: 2rem 1.75rem 1.75rem;
+  }
+}
+
+.auth-salon-header {
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.auth-salon-overline {
+  margin-bottom: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.72);
+}
+
+.auth-salon-title {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(1.65rem, 4vw, 1.9rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #ede6da;
+  line-height: 1.2;
+}
+
+.auth-salon-subtitle {
+  margin-top: 0.55rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(237, 230, 218, 0.62);
+}
+
+.auth-salon-card .auth-form {
+  /* Nested form inside shell card — no second frame */
+  margin: 0;
+  max-width: none;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  backdrop-filter: none;
+}
+
+.auth-salon-field {
+  display: block;
+  width: 100%;
+  min-height: 3.125rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  color: #ede6da;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.auth-salon-field:focus {
+  outline: none;
+  border-color: rgba(201, 162, 74, 0.55);
+  box-shadow: 0 0 0 3px rgba(201, 162, 74, 0.18);
+}
+
+.auth-salon-field::placeholder {
+  color: rgba(237, 230, 218, 0.35);
+}
+
+.auth-salon-label {
+  margin-bottom: 0.4rem;
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(237, 230, 218, 0.72);
+}
+
+.auth-salon-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.auth-salon-oauth-btn {
+  display: flex;
+  min-height: 3.125rem;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.65rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #ede6da;
+  text-decoration: none;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+.auth-salon-oauth-btn:hover:not([aria-disabled="true"]) {
+  border-color: rgba(232, 199, 126, 0.35);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.auth-salon-oauth-btn:focus-visible {
+  outline: 2px solid rgba(201, 162, 74, 0.55);
+  outline-offset: 2px;
+}
+
+.auth-salon-oauth-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.auth-salon-oauth-icon {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #fff;
+}
+
+.auth-salon-oauth-label {
+  flex: 1;
+  text-align: left;
+}
+
+.auth-salon-divider {
+  position: relative;
+  margin: 0.35rem 0 0.15rem;
+  padding: 0.35rem 0;
+}
+
+.auth-salon-divider::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.auth-salon-divider span {
+  position: relative;
+  display: block;
+  width: fit-content;
+  margin-inline: auto;
+  padding: 0 0.75rem;
+  background-color: #0a0908;
+  font-size: 0.75rem;
+  color: rgba(237, 230, 218, 0.55);
+}
+
+.auth-salon-card .auth-salon-divider span {
+  background: linear-gradient(165deg, rgba(26, 22, 18, 0.98) 0%, rgba(10, 9, 8, 0.98) 100%);
+}
+
+.auth-salon-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.auth-salon-consent label {
+  display: flex;
+  cursor: pointer;
+  align-items: flex-start;
+  gap: 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(237, 230, 218, 0.68);
+}
+
+.auth-salon-consent input[type="checkbox"] {
+  margin-top: 0.15rem;
+  height: 1.125rem;
+  width: 1.125rem;
+  flex-shrink: 0;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.35);
+  accent-color: #c9a24a;
+}
+
+.auth-salon-consent a {
+  color: rgba(232, 199, 126, 0.92);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-salon-consent a:hover {
+  color: #e8c77e;
+}
+
+.auth-salon-hint {
+  margin-top: 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(232, 199, 126, 0.78);
+}
+
+.auth-salon-error-slot {
+  min-height: 1.25rem;
+}
+
+.auth-salon-password-wrap {
+  position: relative;
+}
+
+.auth-salon-password-wrap .auth-salon-field {
+  padding-right: 3rem;
+}
+
+.auth-salon-password-toggle {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  display: flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: rgba(237, 230, 218, 0.55);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.auth-salon-password-toggle:hover {
+  color: rgba(232, 199, 126, 0.95);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.auth-salon-password-toggle:focus-visible {
+  outline: 2px solid rgba(201, 162, 74, 0.55);
+  outline-offset: 1px;
 }
 
 .cookie-banner__docs {
@@ -6206,6 +6809,14 @@ body.cookie-banner-visible .auth-page .auth-form {
 .cookie-banner__text a:hover,
 .cookie-banner__link:hover {
   color: var(--aura-gold);
+}
+
+.cookie-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 /* === Share system === */
@@ -7118,7 +7729,6 @@ body.cookie-banner-visible .auth-page .auth-form {
   font-size: 0.9375rem;
   line-height: 1.7;
   color: rgba(255, 255, 255, 0.88);
-  white-space: pre-wrap;
   word-break: break-word;
   text-align: left;
   overflow: visible;
@@ -7187,6 +7797,16 @@ body.cookie-banner-visible .auth-page .auth-form {
   color: #ede6da;
 }
 
+/* Guest landing spread: keep site header (logo / menu) clickable above the table */
+.deck-pick.deck-pick--under-site-header {
+  z-index: 40;
+  top: var(--app-header-h, 3.25rem);
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: auto;
+}
+
 .deck-pick--runes { --dp-glow: rgba(180, 200, 220, 0.35); --dp-accent: #b8c8d8; }
 .deck-pick--slavic { --dp-glow: rgba(200, 90, 60, 0.32); --dp-accent: #d4845c; }
 .deck-pick--astrology { --dp-glow: rgba(120, 140, 255, 0.35); --dp-accent: #9aacff; }
@@ -7219,9 +7839,12 @@ body.cookie-banner-visible .auth-page .auth-form {
 
 .deck-pick__back {
   font-size: 0.8125rem;
-  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
   transition: color 0.2s;
   padding-top: 0.35rem;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .deck-pick__back:hover { color: var(--dp-accent); }
@@ -7294,25 +7917,22 @@ body.cookie-banner-visible .auth-page .auth-form {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
-  padding: 1rem 0.85rem 0.5rem;
+  padding: 0.75rem 0.65rem 1.5rem;
 }
 
-.deck-pick__body::-webkit-scrollbar { width: 6px; }
-.deck-pick__body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 9999px;
-}
+/* deck-pick body uses global brass scrollbar */
 
 .deck-pick__grid {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.5rem;
   max-width: 960px;
   margin: 0 auto;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.75rem;
+  justify-items: center;
 }
 
 @media (min-width: 640px) {
-  .deck-pick__grid { gap: 0.85rem; }
+  .deck-pick__grid { gap: 0.65rem; }
 }
 
 .deck-pick__grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -7333,25 +7953,35 @@ body.cookie-banner-visible .auth-page .auth-form {
 
 .deck-pick__slot {
   position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 108px;
+  justify-content: center;
   border: none;
-  padding: 0.2rem;
+  padding: 0;
   background: transparent;
   cursor: pointer;
-  border-radius: 0.75rem;
-  transition: filter 0.2s;
+  border-radius: 0.65rem;
+  transition: filter 0.2s, transform 0.15s;
+}
+
+.deck-pick__card-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 0.65rem;
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .deck-pick__slot--picked {
-  filter: brightness(1.08);
+  filter: brightness(1.06);
 }
 
-.deck-pick__slot--picked::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 0.75rem;
-  box-shadow: 0 0 0 2px var(--dp-accent), 0 0 24px var(--dp-glow);
-  pointer-events: none;
+/* Ring hugs the card face — not the empty grid cell */
+.deck-pick__slot--picked .deck-pick__card-wrap {
+  box-shadow:
+    0 0 0 2px var(--dp-accent),
+    0 0 16px var(--dp-glow);
 }
 
 .deck-pick__slot--dim {
@@ -7364,26 +7994,26 @@ body.cookie-banner-visible .auth-page .auth-form {
 }
 
 .deck-pick__card {
-  max-width: 108px;
+  max-width: none;
 }
 
-.deck-pick__grid--8 .deck-pick__card,
-.deck-pick__grid--6 .deck-pick__card {
-  max-width: 92px;
+.deck-pick__grid--8 .deck-pick__slot,
+.deck-pick__grid--6 .deck-pick__slot {
+  max-width: 84px;
 }
 
 @media (min-width: 768px) {
-  .deck-pick__grid--8 .deck-pick__card { max-width: 88px; }
+  .deck-pick__grid--8 .deck-pick__slot { max-width: 80px; }
 }
 
 .deck-pick__badge {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: -0.3rem;
+  right: -0.3rem;
   z-index: 3;
   display: flex;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.35rem;
+  height: 1.35rem;
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
@@ -7573,12 +8203,25 @@ body.cookie-banner-visible .auth-page .auth-form {
   overflow: hidden;
 }
 
-/* ── Destiny matrix (22-arcana) reveal ── */
+/* ── Destiny matrix (22-arcana) reveal — matrix-v2 full ── */
 .destiny-matrix {
   display: grid;
   margin-top: 1rem;
-  gap: 0.5rem;
-  grid-template-columns: minmax(0, 1fr);
+  gap: 0.45rem;
+  /* Compact 2-col stack on narrow phones (avoid 16-row scroll). */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.destiny-matrix--v2 {
+  grid-template-areas:
+    "energy sky"
+    "body purpose"
+    "roots money"
+    "talents rel"
+    "paternal maternal"
+    "karma tailMid"
+    "tailTip age"
+    "year month";
 }
 
 .destiny-matrix__slot {
@@ -7590,10 +8233,28 @@ body.cookie-banner-visible .auth-page .auth-form {
     grid-template-areas:
       ". energy ."
       "body purpose roots"
-      "rel money karma";
+      "talents money rel"
+      "paternal maternal karma"
+      ". year .";
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
     gap: 0.55rem;
   }
+
+  .destiny-matrix--v2 {
+    grid-template-areas:
+      ". energy sky ."
+      "body purpose roots money"
+      "talents rel paternal maternal"
+      "karma tailMid tailTip age"
+      ". year month .";
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+}
+
+.destiny-matrix__cell--focus {
+  border-color: rgba(255, 180, 120, 0.55) !important;
+  box-shadow: 0 0 0 1px rgba(255, 180, 120, 0.35), 0 8px 22px rgba(0, 0, 0, 0.28);
 }
 
 .destiny-matrix__cell {

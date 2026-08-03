@@ -1,9 +1,23 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-const appUrl =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-  process.env.CAPACITOR_SERVER_URL?.replace(/\/$/, "") ||
-  "https://zovus.ru";
+function resolveCapacitorAppUrl(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+    process.env.CAPACITOR_SERVER_URL?.replace(/\/$/, "") ||
+    "https://zovus.ru";
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    // Never bake a local dev origin into a release APK — cabinet/OAuth then open localhost.
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      return "https://zovus.ru";
+    }
+    return url.origin;
+  } catch {
+    return "https://zovus.ru";
+  }
+}
+
+const appUrl = resolveCapacitorAppUrl();
 
 const config: CapacitorConfig = {
   appId: "ru.zovus.app",

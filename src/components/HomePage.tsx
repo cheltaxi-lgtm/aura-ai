@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
+import { flushSync } from "react-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -13,12 +13,13 @@ import MasterSelect from "@/components/MasterSelect";
 import ChatWindow from "@/components/ChatWindow";
 import SessionList, { type SessionListItem } from "@/components/SessionList";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
-import AppTopHeader from "@/components/AppTopHeader";
 import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
+import PersonalMemoryChoice from "@/components/PersonalMemoryChoice";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { parseInsufficientRunes } from "@/lib/api-errors";
+import { consumeAccountDeletedHomeArrival } from "@/lib/account-deleted";
 import IntentionPicker from "@/components/IntentionPicker";
 import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
@@ -31,14 +32,26 @@ import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
 import {
   resolveRitualMasterKey,
   resolveRitualMasterForType,
+  isRitualType,
   type RitualType,
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
-import AuraSellingLanding from "@/components/AuraSellingLanding";
+import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
+import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
-import type { PhotoReadingChatPayload, PhotoReadingEntryMode } from "@/components/PhotoReadingFlow";
-import { buildPhotoReadingChatMessages, mergePhotoReadingIntoChat } from "@/lib/photo-chat";
+import type {
+  PhotoReadingChatPayload,
+  PhotoReadingConfirmPayload,
+  PhotoReadingEntryMode,
+} from "@/components/PhotoReadingFlow";
+import {
+  buildPhotoReadingChatMessages,
+  buildPhotoReadingPendingMessages,
+  mergePhotoReadingIntoChat,
+} from "@/lib/photo-chat";
+import { pickUserFacingError } from "@/lib/user-facing-error";
+import { trackPhotoReadingPhase } from "@/lib/photo-reading-analytics";
 
 const RitualFlow = dynamic(() => import("@/components/ritual/RitualFlow"), { ssr: false });
 const MasterDecksModal = dynamic(() => import("@/components/MasterDecksModal"), { ssr: false });
@@ -54,11 +67,12 @@ import {
 import { getCharacterById } from "@/lib/characters";
 import {
   APP_SHELL_HOME_EVENT,
-  APP_SHELL_SECTIONS,
   consumeOpenDecksModalFlag,
   consumeOpenRitualFlowFlag,
+  consumeOpenRitualTypeFlag,
   navigateToDecksModal,
   navigateToPhotoReading as navigateToPhotoReadingHard,
+  persistOpenRitualIntent,
 } from "@/lib/app-shell-nav";
 import { registerAppShellHomeNavHandlers } from "@/lib/app-shell-nav-bus";
 import RegisterGate from "@/components/RegisterGate";
@@ -73,6 +87,7 @@ import {
 } from "@/lib/intention";
 import { pollIntentionSpreadReading } from "@/lib/intention-spread-client";
 import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
+import { resetWindowScrollSoon } from "@/lib/reset-window-scroll";
 import { generateId } from "@/lib/id";
 import {
   loadChatCache,
@@ -115,17 +130,42 @@ import {
   FLOW_STEP_KEY,
   LAST_MASTER_KEY,
   PENDING_MASTER_KEY,
+  hasPendingServerProfile,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
+import { resetGuestSpreadFlow } from "@/lib/guest-spread-reset";
+import {
+  hasActiveGuestResumeIntent,
+  isGuestResumeBannerPhase,
+  loadGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
+import {
+  claimTgReceiptClient,
+  stashTgReceipt,
+  takeStashedTgReceipt,
+} from "@/lib/telegram/tg-receipt-client";
+import {
+  GUEST_RESUME_TRANSITION_SUBTITLE,
+} from "@/lib/guest-triplet-resume";
 import {
   consumePendingGuestQuestion,
   persistPendingIntent,
   buildRegisterHref,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
-import { OPEN_RITUAL_FLOW_KEY } from "@/lib/app-shell-nav";
-import { trackFirstChatOpened } from "@/lib/seo/metrika";
+import {
+  GUEST_SPREAD_PICKER_ID,
+  GUEST_SPREAD_START_EVENT,
+  GUEST_TRIPLET_MASTER_ID,
+  LANDING_QUESTION_KEY,
+  type GuestSpreadStartDetail,
+} from "@/lib/landing-offer";
+import { GUEST_TRIPLET_SUGGESTED_REPLIES } from "@/lib/guest-chat-suggestions";
+import {
+  trackFirstChatOpened,
+  trackGuestChatContinue,
+  trackGuestTripletRedrawPrevented,
+} from "@/lib/seo/metrika";
 import {
   decodeNumerologSpreadId,
   isNumerologSessionToolId,
@@ -169,6 +209,10 @@ export default function HomePage({
   const { isLoggedIn, loading: authLoading, user: authUser, refresh: refreshAuth } = useAuth();
   const { openPaywall, showRateLimit } = usePaywall();
 
+  useEffect(() => {
+    consumeAccountDeletedHomeArrival();
+  }, []);
+
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [lastMasterId, setLastMasterId] = useState<string | null>(null);
   const [photoChatSpread, setPhotoChatSpread] = useState<{
@@ -187,6 +231,8 @@ export default function HomePage({
   const [sessionFlowRequiresPartnerInfo, setSessionFlowRequiresPartnerInfo] = useState(false);
   const [sessionFlowInitialNumerologTool, setSessionFlowInitialNumerologTool] =
     useState<NumerologToolId | null>(null);
+  const [sessionFlowInitialMatrixSubjectId, setSessionFlowInitialMatrixSubjectId] =
+    useState<string | null>(null);
   const [sessionFlowInitialPartnerInfo, setSessionFlowInitialPartnerInfo] = useState<{
     partnerName?: string;
     partnerDate?: string;
@@ -195,6 +241,7 @@ export default function HomePage({
   const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
+  const chatSessionDeepLinkParsedRef = useRef(false);
   const numerologDeepLinkParsedRef = useRef(false);
   const masterAutoOpenParsedRef = useRef(false);
   const autoAskOpenedRef = useRef(false);
@@ -453,6 +500,8 @@ export default function HomePage({
     newTripletDraft,
     tripletNotice,
     setTripletNotice,
+    guestResumeCanRetry,
+    retryGuestTripletResume,
     tripletCooldown,
     spreadRitual,
     setSpreadRitual,
@@ -529,6 +578,19 @@ export default function HomePage({
     handleSpreadReadingRitualComplete,
   } = onboarding;
 
+  // Transition banner only while resume is actively claiming/loading — never
+  // leave "готовит трактовку" sticky on a normal homepage without that phase.
+  const visibleTripletNotice = useMemo(() => {
+    if (!tripletNotice) return null;
+    const isTransition =
+      tripletNotice.includes(GUEST_RESUME_TRANSITION_SUBTITLE);
+    if (!isTransition) return tripletNotice;
+    // Transition copy only while claim/reading is actively in flight — never
+    // keep "готовит трактовку" sticky after recoverable_error / idle.
+    const phase = loadGuestResumeUiCache()?.phase;
+    return isGuestResumeBannerPhase(phase) ? tripletNotice : null;
+  }, [tripletNotice, guestResumeCanRetry]);
+
   const openSpreadIntentFlow = useCallback(
     (
       intent: NonNullable<ReturnType<typeof getSpreadIntentBySlug>>,
@@ -593,7 +655,9 @@ export default function HomePage({
   const handleLandingQuickQuestion = useCallback(
     (question: string, intentSlug?: string) => {
       const q = question.trim();
-      if (!q || !isLoggedIn) return;
+      if (!q) return;
+      // Guests use GuestTriplet on the editorial landing — never open paid session init.
+      if (!isLoggedIn) return;
       const matched =
         (intentSlug ? getSpreadIntentBySlug(intentSlug) : null) ??
         matchSpreadIntentFromQuestion(q);
@@ -613,6 +677,39 @@ export default function HomePage({
     },
     [isLoggedIn, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
+
+  // Telegram bot CTA: ?tg_receipt=zg_… — stash for login, claim when authenticated.
+  useEffect(() => {
+    if (typeof window === "undefined" || authLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("tg_receipt")?.trim() || "";
+    if (fromUrl.startsWith("zg_")) {
+      stashTgReceipt(fromUrl);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("tg_receipt");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    if (!isLoggedIn) return;
+    const token = takeStashedTgReceipt() || (fromUrl.startsWith("zg_") ? fromUrl : "");
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await claimTgReceiptClient(token);
+      if (cancelled) return;
+      if (!result.ok) {
+        setTripletNotice(result.message);
+        return;
+      }
+      setTripletNotice(
+        result.alreadyClaimed
+          ? "Расклад из Telegram уже в вашем кабинете."
+          : "Расклад из Telegram перенесён — те же карты ждут вас."
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isLoggedIn, setTripletNotice]);
 
   useEffect(() => {
     if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
@@ -654,11 +751,52 @@ export default function HomePage({
     if (askParam) {
       deepLinkSpreadParsedRef.current = true;
       autoAskParsedRef.current = true;
+
+      // Active guest receipt/UI: never start a new pick (SEO deep-link ≠ redraw).
+      const guestUi = loadGuestResumeUiCache();
+      if (hasActiveGuestResumeIntent() || (isLoggedIn && guestUi)) {
+        trackGuestTripletRedrawPrevented({
+          had_ask_params: true,
+          master_id: guestUi?.masterId || params.get("master")?.trim() || "veronika",
+        });
+        const url = new URL(window.location.href);
+        url.searchParams.delete("ask");
+        url.searchParams.delete("master");
+        url.searchParams.delete("spread");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        return;
+      }
+
+      // Guest SEO/deep-link → GuestTriplet (server-issued receipt), not paid session wall.
+      if (!isLoggedIn) {
+        try {
+          sessionStorage.setItem(LANDING_QUESTION_KEY, askParam);
+        } catch {
+          /* private mode */
+        }
+        const detail: GuestSpreadStartDetail = {
+          question: askParam,
+          masterId: params.get("master")?.trim() || GUEST_TRIPLET_MASTER_ID,
+        };
+        window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+        requestAnimationFrame(() => {
+          document
+            .getElementById(GUEST_SPREAD_PICKER_ID)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        const url = new URL(window.location.href);
+        url.searchParams.delete("ask");
+        url.searchParams.delete("master");
+        url.searchParams.delete("spread");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        return;
+      }
+
       const spreadFromHero = params.get("spread") === "1";
       const matched = matchSpreadIntentFromQuestion(askParam);
       if (matched) {
         openSpreadIntentFlow(matched, { customQuestion: askParam });
-      } else if (spreadFromHero || !isLoggedIn) {
+      } else if (spreadFromHero) {
         consumePendingGuestQuestion();
         setDeepLinkSpreadId(null);
         setSeoFlowIntentSlug(null);
@@ -754,6 +892,34 @@ export default function HomePage({
 
     if (!spreadParam) return;
     deepLinkSpreadParsedRef.current = true;
+
+    // Bare /?ask&spread=1 (empty ask) and /?spread=1 — guest SEO entry.
+    if (!isLoggedIn && (spreadParam === "1" || spreadParam === "triplet")) {
+      const guestUi = loadGuestResumeUiCache();
+      if (hasActiveGuestResumeIntent()) {
+        trackGuestTripletRedrawPrevented({
+          had_ask_params: Boolean(params.get("ask") != null),
+          master_id: guestUi?.masterId || params.get("master")?.trim() || "veronika",
+        });
+      } else {
+        const detail: GuestSpreadStartDetail = {
+          masterId: params.get("master")?.trim() || GUEST_TRIPLET_MASTER_ID,
+        };
+        window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+        requestAnimationFrame(() => {
+          document
+            .getElementById(GUEST_SPREAD_PICKER_ID)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.delete("ask");
+      url.searchParams.delete("master");
+      url.searchParams.delete("spread");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      return;
+    }
+
     if (spreadParam === "love-7") {
       const compatIntent = getSpreadIntentBySlug("sovmestimost-pary");
       if (compatIntent) {
@@ -764,10 +930,13 @@ export default function HomePage({
         return;
       }
     }
-    setDeepLinkSpreadId(normalizeSpreadId(spreadParam));
+    const normalizedSpread = normalizeSpreadId(spreadParam);
+    setDeepLinkSpreadId(normalizedSpread);
     setSeoFlowIntentSlug(null);
     setSessionFlowRequiresPartnerInfo(false);
-    setSessionFlowPreselectedMaster("veronika");
+    setSessionFlowPreselectedMaster(
+      normalizedSpread === "runes-yes-no" ? "ragnar" : "veronika"
+    );
     setSessionFlowInitialTopic("path");
     setSessionFlowInitialQuestion(null);
     setSeoFlowOpen(true);
@@ -782,6 +951,11 @@ export default function HomePage({
       setSessionFlowPreselectedMaster("numerolog");
       setEnergyFlowMasterId("numerolog");
       setSessionFlowInitialNumerologTool(tool ?? null);
+      // Avoid leftover Tarot topic/question from a previous SEO spread flow.
+      setSessionFlowInitialTopic(null);
+      setSessionFlowInitialQuestion(null);
+      setSessionFlowRequiresPartnerInfo(false);
+      setSessionFlowInitialPartnerInfo(null);
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },
@@ -790,6 +964,7 @@ export default function HomePage({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (authLoading) return;
 
     if (autoOpenMasterId && !masterAutoOpenParsedRef.current) {
       const character = getCharacterById(autoOpenMasterId);
@@ -797,6 +972,11 @@ export default function HomePage({
       masterAutoOpenParsedRef.current = true;
 
       if (autoOpenRitualType) {
+        if (!isLoggedIn) {
+          persistOpenRitualIntent(autoOpenRitualType);
+          window.location.href = buildRegisterHref(resolveRegistrationReturnTo());
+          return;
+        }
         setRitualFlowMaster(resolveRitualMasterForType(autoOpenRitualType, autoOpenMasterId));
         setPendingRitualType(autoOpenRitualType);
         setShowRitualFlow(true);
@@ -824,15 +1004,21 @@ export default function HomePage({
     const toolRaw = params.get("tool")?.trim();
     const tool =
       toolRaw && isNumerologSessionToolId(toolRaw) ? toolRaw : null;
+    setSessionFlowInitialMatrixSubjectId(params.get("subjectId")?.trim() || null);
     openNumerologSessionFlow(tool);
 
     const url = new URL(window.location.href);
     url.searchParams.delete("numerolog");
     url.searchParams.delete("tool");
+    url.searchParams.delete("subjectId");
+    // Legacy replace=1 from SEO preview after DELETE — wipe already done; strip leftover.
+    url.searchParams.delete("replace");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
   }, [
     autoOpenMasterId,
     autoOpenRitualType,
+    authLoading,
+    isLoggedIn,
     openNumerologSessionFlow,
     setSessionFlowPreselectedMaster,
     setShowSessionFlow,
@@ -852,7 +1038,14 @@ export default function HomePage({
       window.location.href = `/?app=1#${encodeURIComponent(sectionId)}`;
       return;
     }
-    exitToLandingForNavRef.current?.();
+    const needsFlowExit =
+      Boolean(selectedCharacter) ||
+      photoReadingOpen ||
+      seoFlowOpen ||
+      showRitualFlow;
+    if (needsFlowExit) {
+      exitToLandingForNavRef.current?.();
+    }
     setPendingNav({ type: "section", id: sectionId });
     window.requestAnimationFrame(() => {
       window.setTimeout(() => {
@@ -861,9 +1054,9 @@ export default function HomePage({
         el.scrollIntoView({ behavior: "smooth", block: "start" });
         window.history.replaceState(null, "", `#${sectionId}`);
         setPendingNav(null);
-      }, 80);
+      }, needsFlowExit ? 80 : 0);
     });
-  }, []);
+  }, [selectedCharacter, photoReadingOpen, seoFlowOpen, showRitualFlow]);
 
   const openPhotoReading = useCallback(
     (options?: { masterOverride?: string; mode?: PhotoReadingEntryMode }) => {
@@ -946,18 +1139,20 @@ export default function HomePage({
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
   }, []);
 
+  // Scroll to hash only once when the target exists — re-running on every
+  // auth/step change was yanking logged-in home to mid-page after remounts.
+  const hashScrolledRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined" || !window.location.hash) return;
+    if (hashScrolledRef.current) return;
 
-    const scrollToHash = () => {
-      const id = decodeURIComponent(window.location.hash.slice(1));
-      if (id === "фото-расклад") return;
-      const el = document.getElementById(id);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (!id || id === "фото-расклад") return;
+    const el = document.getElementById(id);
+    if (!el) return;
 
-    const timer = window.setTimeout(scrollToHash, 150);
-    return () => window.clearTimeout(timer);
+    hashScrolledRef.current = true;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [step, selectedCharacter, isLoggedIn]);
 
   useEffect(() => {
@@ -1023,6 +1218,7 @@ export default function HomePage({
     isLoading,
     sendingRef,
     readingInFlightRef,
+    pendingNewChatThreadRef,
     sessionOffline: session?.offline,
     onApplyRestoredSpread,
   });
@@ -1074,6 +1270,16 @@ export default function HomePage({
     if (typeof window !== "undefined") {
       const savedStep = localStorage.getItem(FLOW_STEP_KEY);
       const urlStep = new URLSearchParams(window.location.search).get("step");
+      // Only force anketa when profile is still incomplete — never after birthDate
+      // was just saved (profileUserId may lag a tick behind refreshAuth).
+      const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
+      const needsAnketa =
+        hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth);
+      if (needsAnketa) {
+        setStep("onboarding");
+        localStorage.setItem(FLOW_STEP_KEY, "onboarding");
+        return;
+      }
       if (
         (savedStep && savedStep !== "intro") ||
         (urlStep && urlStep !== "intro")
@@ -1081,7 +1287,8 @@ export default function HomePage({
         return;
       }
     }
-    if (!authUser?.profileUserId) {
+    const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
+    if (hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth)) {
       setStep("onboarding");
       return;
     }
@@ -1096,6 +1303,18 @@ export default function HomePage({
   useEffect(() => {
     if (authLoading || !flowBootstrapped || !isLoggedIn) return;
     if (sessionListMaster) return;
+    const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
+    const needsAnketa =
+      hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth);
+    // Do NOT clear an in-flight guest-resume chat while profileUserId is catching up.
+    if (needsAnketa) {
+      if (selectedCharacter) setSelectedCharacter(null);
+      if (step !== "onboarding") {
+        setStep("onboarding");
+        localStorage.setItem(FLOW_STEP_KEY, "onboarding");
+      }
+      return;
+    }
     if (step !== "chat" || selectedCharacter) return;
     if (pendingChatOptsRef.current) return;
     if (readingInFlightRef.current) return;
@@ -1126,11 +1345,13 @@ export default function HomePage({
     authLoading,
     flowBootstrapped,
     isLoggedIn,
+    authUser?.profileUserId,
     step,
     selectedCharacter,
     lastMasterId,
     sessionListMaster,
     setStep,
+    setSelectedCharacter,
     pendingChatOptsRef,
     setLastMasterId,
     bindSessionToMaster,
@@ -1141,7 +1362,7 @@ export default function HomePage({
     if (!selectedCharacter || !intentionSpread) return;
     if (intentionSpread.masterId !== selectedCharacter) return;
     if (sessionIntention === "life_death") return;
-    if (readingInFlightRef.current) return;
+    if (readingInFlightRef.current || pendingNewChatThreadRef.current) return;
     if (chatHasSpreadReading(messages)) return;
     if (
       !hasCompleteSpread(
@@ -1156,8 +1377,13 @@ export default function HomePage({
     const intention = sessionIntention ?? intentionSpread.intention;
     if (!intention) return;
 
+    // Never hydrate a previous same-card consultation into a fresh thread.
+    const boundSessionId =
+      consultationSessionIdRef.current ?? consultationSessionId ?? undefined;
+    if (!boundSessionId) return;
+
     const cardsKey = spreadKey(intentionSpread.cards);
-    const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}`;
+    const recoveryKey = `${selectedCharacter}:${intention}:${cardsKey}:${boundSessionId}`;
     if (onboarding.spreadReadingRecoveryKeyRef.current === recoveryKey) return;
     if (insufficientRunes) return;
     onboarding.spreadReadingRecoveryKeyRef.current = recoveryKey;
@@ -1175,13 +1401,16 @@ export default function HomePage({
           cardNames: intentionSpread.cards.map((c) => c.name),
           spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
           cardCount: intentionSpread.cards.length,
+          sessionId: boundSessionId,
         });
         if (cancelled || !raw) return;
+        if (pendingNewChatThreadRef.current || readingInFlightRef.current) return;
 
         const cardNames = intentionSpread.cards.map((c) => c.name);
         const readingText = resolveClientReadingText(raw, cardNames);
         if (!readingText || cancelled) return;
         setMessages((prev) => {
+          if (chatHasSpreadReading(prev)) return prev;
           const next = appendSpreadReadingMessage(prev, readingText);
           if (next === prev) return prev;
           saveChatCache(selectedCharacter, next, cardsKey, {
@@ -1213,6 +1442,9 @@ export default function HomePage({
     sessionIntention,
     messages,
     readingInFlightRef,
+    pendingNewChatThreadRef,
+    consultationSessionId,
+    consultationSessionIdRef,
     setMessages,
     onboarding.spreadReadingRecoveryKeyRef,
     setReadingRitualCountdownDone,
@@ -1341,6 +1573,11 @@ export default function HomePage({
 
   useEffect(() => {
     if (!selectedCharacter || !activeSpreadCardsKey) return;
+    // Numerolog Full Matrix uses DestinyMatrixGrid — never restore AI «карта судьбы» art.
+    if (selectedCharacter === "numerolog") {
+      setChatHeaderImage(null);
+      return;
+    }
 
     const firstAssistant = messages.find((m) => m.role === "assistant");
     if (firstAssistant?.sceneImageUrl) {
@@ -1444,6 +1681,14 @@ export default function HomePage({
   useEffect(() => {
     if (sessionOnlyChat) return;
     if (!selectedCharacter || !activeSpreadCardsKey) return;
+    // Full Matrix / Pythagoras show computed grids — do not generate AI destiny-card art.
+    if (
+      selectedCharacter === "numerolog" ||
+      chatDisplaySpread?.source === "numerolog" ||
+      chatDisplaySpread?.computedOnly
+    ) {
+      return;
+    }
     if (
       hasCompleteSpread(
         chatDisplaySpread?.cards?.map((c) => c.name),
@@ -1805,9 +2050,13 @@ export default function HomePage({
     const masterId = selectedCharacter;
     const master = findShowcaseMaster(masterId, masters) ?? getCharacterById(masterId);
     const label = master?.name ?? "мастером";
+    const matrixTool =
+      sessionSpreadMetaRef.current?.numerologToolId === "destiny_matrix";
     if (
       !window.confirm(
-        `Удалить этот сеанс с ${label} безвозвратно? Переписка пропадёт из чата и личного кабинета.`
+        matrixTool
+          ? `Удалить матрицу судьбы с ${label} безвозвратно? Пропадёт из чата и кабинета, покупка сбросится.`
+          : `Удалить этот сеанс с ${label} безвозвратно? Переписка пропадёт из чата и личного кабинета.`
       )
     ) {
       return;
@@ -2107,6 +2356,96 @@ export default function HomePage({
     ]
   );
 
+  // Telegram bot: ?chat_session=<uuid> → open that consultation chat.
+  useEffect(() => {
+    if (typeof window === "undefined" || authLoading) return;
+    if (chatSessionDeepLinkParsedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get("chat_session")?.trim() || "";
+    if (!sid) return;
+
+    if (!isLoggedIn) {
+      chatSessionDeepLinkParsedRef.current = true;
+      const returnTo = `/?chat_session=${encodeURIComponent(sid)}`;
+      window.location.replace(
+        `/auth/user/login?returnTo=${encodeURIComponent(returnTo)}`
+      );
+      return;
+    }
+
+    chatSessionDeepLinkParsedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}`, {
+          credentials: "include",
+        });
+        if (!res.ok || cancelled) {
+          if (!cancelled) {
+            setTripletNotice("Не удалось открыть сеанс из Telegram. Найдите его в кабинете.");
+          }
+          return;
+        }
+        const data = (await res.json()) as {
+          id: string;
+          characterKey?: string | null;
+          intention?: string | null;
+          spreadType?: string | null;
+          spreadId?: string | null;
+          cards?: string[] | null;
+          status?: string | null;
+          messageCount?: number;
+          createdAt?: string;
+          updatedAt?: string;
+          topicSummary?: string | null;
+          keyCards?: string[] | null;
+          prediction?: string | null;
+        };
+        if (cancelled || !data.id) return;
+
+        const masterId = (data.characterKey || "veronika").trim() || "veronika";
+        const item: SessionListItem = {
+          id: data.id,
+          intention: data.intention ?? null,
+          spreadType: data.spreadType ?? null,
+          spreadId: data.spreadId ?? null,
+          cards: data.cards ?? null,
+          status: data.status || "active",
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          messageCount: typeof data.messageCount === "number" ? data.messageCount : 1,
+          topicSummary: data.topicSummary ?? null,
+          keyCards: data.keyCards ?? null,
+          prediction: data.prediction ?? null,
+        };
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete("chat_session");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+
+        if ((data.status || "active") === "completed") {
+          await handleOpenArchiveSession(masterId, item);
+        } else {
+          await handleContinueListedSession(masterId, item);
+        }
+      } catch {
+        if (!cancelled) {
+          setTripletNotice("Не удалось открыть сеанс из Telegram. Попробуйте из кабинета.");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authLoading,
+    isLoggedIn,
+    handleContinueListedSession,
+    handleOpenArchiveSession,
+    setTripletNotice,
+  ]);
+
   const resetChatSessionState = () => {
     pendingNewChatThreadRef.current = false;
     if (selectedCharacter && messages.length) {
@@ -2134,6 +2473,7 @@ export default function HomePage({
     }
     setSelectedCharacter(null);
     setConsultationSessionId(null);
+    consultationSessionIdRef.current = null;
     setConsultationReadOnly(false);
     archiveSessionIdRef.current = null;
     chatLoadedForRef.current = null;
@@ -2155,6 +2495,12 @@ export default function HomePage({
     refreshSavedReadings();
   };
 
+  // Soft-nav into a master's session list keeps the previous window scroll.
+  useLayoutEffect(() => {
+    if (!sessionListMaster) return;
+    resetWindowScrollSoon();
+  }, [sessionListMaster]);
+
   const exitToLandingForNav = useCallback(() => {
     if (selectedCharacter) {
       resetChatSessionState();
@@ -2165,6 +2511,14 @@ export default function HomePage({
     setShowSessionFlow(false);
     setShowRitualFlow(false);
     setPhotoReadingOpen(false);
+    setSeoFlowOpen(false);
+    setSeoFlowIntentSlug(null);
+    setDeepLinkSpreadId(null);
+    if (!isLoggedIn) {
+      resetGuestSpreadFlow({ keepCompletedTriplet: true });
+      setStep("intro");
+      return;
+    }
     const nextStep = !authUser?.profileUserId ? "onboarding" : "masters";
     setStep(nextStep);
     localStorage.setItem(FLOW_STEP_KEY, nextStep);
@@ -2177,6 +2531,7 @@ export default function HomePage({
     setStep,
     setSessionListMaster,
     authUser?.profileUserId,
+    isLoggedIn,
   ]);
 
   useEffect(() => {
@@ -2201,16 +2556,267 @@ export default function HomePage({
     setPendingNav(null);
   }, [pendingNav, selectedCharacter, sessionListMaster, step]);
 
+  const handlePhotoConfirmSpread = async (
+    masterId: string,
+    payload: PhotoReadingConfirmPayload
+  ) => {
+    if (!isLoggedIn) return;
+
+    const photoDeckCards = redrawSpreadToDeckCards(payload.redrawSpread);
+    const photoSystem = payload.redrawSpread.system;
+    const prevConsultationId = consultationSessionIdRef.current;
+
+    // Fresh consultation — never append a photo spread into an existing master chat.
+    pendingNewChatThreadRef.current = true;
+    readingInFlightRef.current = true;
+    skipNextReadingRef.current = true;
+    chatLoadedForRef.current = masterId;
+    archiveSessionIdRef.current = null;
+    setConsultationReadOnly(false);
+    // Detach old thread immediately so hydrate cannot restore it while we wait on the network.
+    setConsultationSessionId(null);
+    consultationSessionIdRef.current = null;
+
+    setPhotoChatSpread({ masterId, cards: photoDeckCards, system: photoSystem });
+    setChatSessionSpread(null);
+    setIntentionSpread(null);
+    setSessionIntention(null);
+    setHideChatSpread(false);
+    sessionSpreadMetaRef.current = {
+      spreadType: "photo",
+      cardNames: payload.detectedCards,
+    };
+    setChatHeaderImage(null);
+
+    const pendingMessages = buildPhotoReadingPendingMessages(
+      payload.question ?? "",
+      payload.detectedCards
+    );
+    const photoCacheKey = tarotCardsKey(redrawSpreadToTarotCards(payload.redrawSpread));
+
+    // Open chat + timer first (before session create / LLM), so old messages never linger.
+    setMessages(pendingMessages);
+    saveChatCache(masterId, pendingMessages, photoCacheKey, {
+      cards: photoDeckCards,
+      system: photoSystem,
+      variant: "photo",
+    });
+
+    setPhotoReadingOpen(false);
+    setSessionOnlyChat(false);
+    setLastMasterId(masterId);
+    localStorage.setItem(LAST_MASTER_KEY, masterId);
+    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    setStep("chat");
+    setHistoryHasMore(false);
+    setIsLoadingHistory(false);
+    setSelectedCharacter(masterId);
+
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+    setReadingRitualCountdownDone(false);
+    setSpreadRitual({ active: false });
+
+    const ritualStartedAt = Date.now();
+
+    let newSessionId: string | undefined;
+    try {
+      newSessionId = await beginNewSpreadSession(masterId);
+    } catch {
+      newSessionId = undefined;
+    }
+    // Re-assert after await — beginNewSpreadSession / effects must not resurrect the old thread.
+    pendingNewChatThreadRef.current = true;
+    readingInFlightRef.current = true;
+    skipNextReadingRef.current = true;
+    chatLoadedForRef.current = masterId;
+    setMessages(pendingMessages);
+    setSpreadReadingRitualOpen(true);
+    setReadingRitualActive(true);
+
+    if (newSessionId) {
+      setConsultationSessionId(newSessionId);
+      consultationSessionIdRef.current = newSessionId;
+      try {
+        localStorage.setItem("aura_session_id", newSessionId);
+      } catch {
+        /* ignore */
+      }
+      void bindSessionToMaster(masterId, newSessionId);
+    } else {
+      setConsultationSessionId(null);
+      consultationSessionIdRef.current = null;
+    }
+
+    const interpretAbort = new AbortController();
+    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
+
+    try {
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data } = await postWithAsyncJob({
+        url: "/api/photo-reading/stream",
+        storageKey: "aura:photo-reading-active-job",
+        signal: interpretAbort.signal,
+        headers: { "Idempotency-Key": payload.idempotencyKey },
+        body: {
+          characterId: masterId,
+          question: payload.question,
+          sessionId: newSessionId,
+          confirmedSpread: payload.redrawSpread,
+          idempotencyKey: payload.idempotencyKey,
+        },
+      });
+
+      if (resStatus === 429) {
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            "Слишком много фото-чтений. Подождите минуту и подтвердите расклад снова."
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (resStatus === 402) {
+        const parsed = parseInsufficientRunes(data);
+        if (parsed) {
+          setInsufficientRunes({ balance: parsed.balance, required: parsed.required });
+          handleOpenPaywall({
+            balance: parsed.balance,
+            requiredRunes: parsed.required,
+            shortage: parsed.shortage,
+          });
+        }
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            pickUserFacingError(data, "Недостаточно рун для расшифровки фото-расклада.")
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (resStatus >= 400 || data.code === "generation_failed" || data.llmFailed) {
+        if (typeof data.runeBalance === "number") {
+          setRuneBalance(data.runeBalance as number);
+          emitRuneBalanceUpdate(data.runeBalance as number);
+        }
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            pickUserFacingError(
+              data,
+              "Не удалось получить трактовку. Руны возвращены — откройте фото-расклад и подтвердите снова."
+            )
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      const analysis = String(data.analysis ?? data.reply ?? "").trim();
+      if (!analysis) {
+        setMessages((prev) =>
+          appendSpreadReadingMessage(
+            prev,
+            "Не удалось получить трактовку. Откройте фото-расклад и подтвердите снова."
+          )
+        );
+        trackPhotoReadingPhase("interpret_fail");
+        return;
+      }
+
+      if (typeof data.runeBalance === "number") {
+        setRuneBalance(data.runeBalance as number);
+        emitRuneBalanceUpdate(data.runeBalance as number);
+      }
+
+      const detectedCards =
+        (Array.isArray(data.detectedCards) ? (data.detectedCards as string[]) : null) ??
+        payload.detectedCards;
+
+      const photoMessages = buildPhotoReadingChatMessages(
+        analysis,
+        payload.question ?? "",
+        detectedCards
+      );
+
+      setMessages((prev) => {
+        const withoutShortAssistant = prev.filter(
+          (m) => !(m.role === "assistant" && (m.content?.trim().length ?? 0) < 80)
+        );
+        const next = mergePhotoReadingIntoChat(withoutShortAssistant, photoMessages);
+        saveChatCache(masterId, next, photoCacheKey, {
+          cards: photoDeckCards,
+          system: photoSystem,
+          variant: "photo",
+        });
+        return next;
+      });
+
+      const resolvedSessionId =
+        (typeof data.sessionId === "string" && data.sessionId) || newSessionId;
+      if (resolvedSessionId) {
+        setConsultationSessionId(resolvedSessionId);
+        setConsultationReadOnly(false);
+        archiveSessionIdRef.current = null;
+        try {
+          localStorage.setItem("aura_session_id", resolvedSessionId);
+        } catch {
+          /* ignore */
+        }
+        void bindSessionToMaster(masterId, resolvedSessionId);
+      }
+
+      if (data.saved || data.historyId) void refreshSavedReadings();
+      trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
+    } catch (err) {
+      const aborted =
+        interpretAbort.signal.aborted ||
+        (err instanceof Error && /отменен|cancelled|abort/i.test(err.message));
+      setMessages((prev) =>
+        appendSpreadReadingMessage(
+          prev,
+          aborted
+            ? "Расшифровка занимает слишком долго. Обновите страницу или откройте кабинет — расклад мог уже сохраниться."
+            : err instanceof Error && err.message
+              ? err.message
+              : "Ошибка сети. Откройте фото-расклад и подтвердите снова."
+        )
+      );
+      trackPhotoReadingPhase("interpret_fail");
+    } finally {
+      window.clearTimeout(interpretWatchdog);
+      try {
+        const { ensureMinSpreadRitualDisplay } = await import("@/lib/spread-reading-ritual");
+        await ensureMinSpreadRitualDisplay(ritualStartedAt);
+      } catch {
+        /* ignore */
+      }
+      setSpreadReadingRitualOpen(false);
+      setReadingRitualActive(false);
+      setReadingRitualCountdownDone(true);
+      readingInFlightRef.current = false;
+      pendingNewChatThreadRef.current = false;
+      setSpreadRitual({ active: false });
+    }
+  };
+
   const handlePhotoContinueChat = async (masterId: string, payload: PhotoReadingChatPayload) => {
     if (!isLoggedIn) return;
 
-    const merged = mergeActiveProfile(profile, readStoredProfileSpread());
-    const displayName = merged?.name || authUser?.name;
-    if (!displayName) return;
-
     if (!payload.sessionId) {
-      const syncedId = await syncPhotoSessionForMaster(masterId, payload.historyId);
-      if (syncedId) payload.sessionId = syncedId;
+      try {
+        const syncedId = await Promise.race([
+          syncPhotoSessionForMaster(masterId, payload.historyId),
+          new Promise<undefined>((resolve) => window.setTimeout(() => resolve(undefined), 8_000)),
+        ]);
+        if (syncedId) payload.sessionId = syncedId;
+      } catch {
+        /* best-effort */
+      }
     }
 
     let photoSpreadSymbols: DeckCardInput[] | null = null;
@@ -2242,14 +2848,25 @@ export default function HomePage({
     readingInFlightRef.current = true;
     skipNextReadingRef.current = true;
 
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | undefined> => {
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<undefined>((resolve) => window.setTimeout(() => resolve(undefined), ms)),
+        ]);
+      } catch {
+        return undefined;
+      }
+    };
+
     try {
       if (resolvedSessionId) {
-        await bindSessionToMaster(masterId, resolvedSessionId);
+        await withTimeout(bindSessionToMaster(masterId, resolvedSessionId), 10_000);
         setConsultationSessionId(resolvedSessionId);
         setConsultationReadOnly(false);
         archiveSessionIdRef.current = null;
       } else {
-        await bindSessionToMaster(masterId);
+        await withTimeout(bindSessionToMaster(masterId), 10_000);
       }
 
       // Always start with an empty history — each photo spread is a new conversation.
@@ -2259,8 +2876,11 @@ export default function HomePage({
         try {
           const params = new URLSearchParams({ characterId: masterId });
           params.set("sessionId", resolvedSessionId);
-          const res = await fetch(`/api/chat/history?${params}`);
-          if (res.ok) {
+          const res = await Promise.race([
+            fetch(`/api/chat/history?${params}`),
+            new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 8_000)),
+          ]);
+          if (res?.ok) {
             const data = await res.json();
             if (data.messages?.length) {
               const serverMessages: Message[] = data.messages.map(
@@ -2321,11 +2941,18 @@ export default function HomePage({
     } finally {
       readingInFlightRef.current = false;
       setSpreadRitual({ active: false });
+      setSpreadReadingRitualOpen(false);
+      setReadingRitualActive(false);
+      setReadingRitualCountdownDone(true);
+      // Always surface the reading even if session bind hung.
+      setPhotoReadingOpen(false);
     }
   };
 
   const handleDailyStartRitual = (ritualType: RitualType) => {
-    setRitualFlowMaster(resolveRitualMasterKey(dailyEnergyMasterId));
+    setRitualFlowMaster(
+      resolveRitualMasterForType(ritualType, dailyEnergyMasterId)
+    );
     setOpenRitualId(null);
     setPendingRitualType(ritualType);
     setShowRitualFlow(true);
@@ -2389,8 +3016,17 @@ export default function HomePage({
     step !== "chat";
   /** Marketing landing — guests only; never blocked by session bootstrap. */
   /** Guests always get intro landing when step=intro; deep-link ?step= must not hide it. */
-  const showSeoLanding = !isLoggedIn && showLanding;
+  // Recover from a bad local step=onboarding left by guest-resume cache (empty page).
+  const showSeoLanding = !isLoggedIn && (showLanding || step === "onboarding");
   const showSalonHome = showSeoLanding || (!bootstrapping && step === "masters" && !selectedCharacter);
+  /** Logged-in home: show salon as soon as flow is bootstrapped (don't wait on session spinner). */
+  const showPersonalSalon =
+    isLoggedIn &&
+    !selectedCharacter &&
+    !sessionListMaster &&
+    (step === "masters" || (step === "intro" && flowBootstrapped));
+  const showPersonalSalonContent =
+    showPersonalSalon && (step === "intro" || !bootstrapping || flowBootstrapped);
   const landingMasters = masters.length > 0 ? masters : getAiMasters();
 
   useEffect(() => {
@@ -2414,11 +3050,7 @@ export default function HomePage({
 
   const handleNavRitual = useCallback(() => {
     if (!isLoggedIn) {
-      try {
-        sessionStorage.setItem(OPEN_RITUAL_FLOW_KEY, "1");
-      } catch {
-        /* private mode */
-      }
+      persistOpenRitualIntent(null);
       window.location.href = buildRegisterHref(resolveRegistrationReturnTo());
       return;
     }
@@ -2432,8 +3064,14 @@ export default function HomePage({
   useEffect(() => {
     if (bootstrapping || !isLoggedIn) return;
     if (!consumeOpenRitualFlowFlag()) return;
-    handleNavRitual();
-  }, [bootstrapping, isLoggedIn, handleNavRitual]);
+    const typeRaw = consumeOpenRitualTypeFlag();
+    const type = typeRaw && isRitualType(typeRaw) ? typeRaw : null;
+    exitToLandingForNav();
+    setRitualFlowMaster(type ? resolveRitualMasterForType(type, null) : null);
+    setOpenRitualId(null);
+    setPendingRitualType(type);
+    setShowRitualFlow(true);
+  }, [bootstrapping, isLoggedIn, exitToLandingForNav]);
 
   // In-app nav bus: bottom bar calls plain functions; when already on "/" they invoke
   // these handlers directly (no reload). Cross-route still uses location.assign.
@@ -2441,6 +3079,9 @@ export default function HomePage({
     return registerAppShellHomeNavHandlers({
       goHome: () => {
         exitToLandingForNav();
+      },
+      startReading: () => {
+        handleStartReadingFromHeader();
       },
       openPhotoReading: () => {
         openPhotoReading();
@@ -2455,7 +3096,14 @@ export default function HomePage({
         scrollToSection(sectionId);
       },
     });
-  }, [exitToLandingForNav, openPhotoReading, openDecksModal, handleNavRitual, scrollToSection]);
+  }, [
+    exitToLandingForNav,
+    handleStartReadingFromHeader,
+    openPhotoReading,
+    openDecksModal,
+    handleNavRitual,
+    scrollToSection,
+  ]);
 
   const landingInsufficientRunes = (payload: { balance: number; required: number }) => {
     setInsufficientRunes(payload);
@@ -2467,7 +3115,7 @@ export default function HomePage({
   };
 
   const seoLanding = (
-    <AuraSellingLanding
+    <ZovusEditorialLanding
       isLoggedIn={isLoggedIn}
       masters={landingMasters}
       onStartReading={() => void startPersonalFlow()}
@@ -2486,6 +3134,8 @@ export default function HomePage({
       onOpenPhotoReading={() => openPhotoReading()}
       onOpenMarkCards={openMarkCards}
       photoNavLabel={photoNavLabel}
+      onCustomQuestionSubmit={isLoggedIn ? handleLandingCustomQuestion : undefined}
+      onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}
     />
   );
 
@@ -2501,28 +3151,35 @@ export default function HomePage({
     return () => window.clearTimeout(timer);
   }, [spreadRitual.active, setSpreadRitual]);
 
-  const [headerMounted, setHeaderMounted] = useState(false);
-  useEffect(() => {
-    setHeaderMounted(true);
-  }, []);
-
-  const topHeader = (
-    <AppTopHeader
-      photoNavLabel={photoNavLabel}
-      isLoggedIn={isLoggedIn}
-      authUser={authUser}
-      authLoading={authLoading}
-      onOpenPaywall={() => handleOpenPaywall()}
-      onNavMasters={() => scrollToSection(APP_SHELL_SECTIONS.masters)}
-      onNavTariffs={() => scrollToSection(APP_SHELL_SECTIONS.tariffs)}
-      onNavPhoto={() => openPhotoReading()}
-      onNavDecks={openDecksModal}
-      onNavRitual={handleNavRitual}
-      onStartReading={handleStartReadingFromHeader}
-    />
-  );
-
   const inActiveChat = step === "chat" || Boolean(selectedCharacter);
+
+  const guestResumeChatAssist = useMemo(() => {
+    // Ref is read on message-driven re-renders after guest resume sets chat.
+    const isGuestResume = sessionSpreadMetaRef.current?.spreadType === "guest_resume";
+    if (!isGuestResume || !selectedCharacter) {
+      return {
+        showContinue: false,
+        replies: undefined as undefined | { label: string; message: string }[],
+      };
+    }
+    const hasReading = messages.some(
+      (m) =>
+        m.role === "assistant" &&
+        Boolean(m.content?.trim()) &&
+        (m.content?.trim().length ?? 0) >= MIN_SPREAD_READING_CHARS
+    );
+    const hasUserFollowUp = messages.some((m) => m.role === "user");
+    if (!hasReading) {
+      return { showContinue: false, replies: undefined };
+    }
+    return {
+      showContinue: !hasUserFollowUp,
+      replies: GUEST_TRIPLET_SUGGESTED_REPLIES.map((r) => ({
+        label: r.label,
+        message: r.message,
+      })),
+    };
+  }, [selectedCharacter, messages, sessionSpreadMetaRef]);
 
   useEffect(() => {
     const onAppHomeNav = () => {
@@ -2542,16 +3199,18 @@ export default function HomePage({
       className={
         inActiveChat
           ? "home-active-chat relative z-10 flex min-h-0 flex-1 flex-col"
-          : "relative min-h-screen pt-[var(--app-header-h,3.25rem)]"
+          : showSeoLanding
+            ? "relative min-h-screen"
+            : "relative min-h-screen pt-[var(--app-header-h,3.25rem)]"
       }
     >
-      {headerMounted ? createPortal(topHeader, document.body) : null}
-
       <main
         className={
           inActiveChat
             ? "relative z-10 mx-auto flex h-full min-h-0 flex-1 max-w-none flex-col overflow-hidden px-0 py-0"
-            : `relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12${showSalonHome ? " home-salon-shell" : ""}`
+            : showSeoLanding || showSalonHome || showPersonalSalon
+              ? "relative z-10 mx-auto max-w-none px-0 py-0 home-salon-shell"
+              : "relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12"
         }
       >
         {paymentNotice && (
@@ -2579,12 +3238,6 @@ export default function HomePage({
           >
             <AppBootstrapScreen embedded />
           </div>
-        ) : null}
-
-        {!bootstrapping && !showLanding && !(inPersonalFlow && step === "masters") ? (
-          <h1 className="sr-only">
-            Zovus — персональные эзотерические консультации, расклады на таро и рунах
-          </h1>
         ) : null}
 
         {!bootstrapping && sessionListMaster ? (
@@ -2666,6 +3319,11 @@ export default function HomePage({
                 setShowSessionFlow(false);
                 sessionListBackMasterRef.current = sessionListMaster;
                 setSessionListMaster(null);
+                pendingNewChatThreadRef.current = true;
+                setConsultationSessionId(null);
+                consultationSessionIdRef.current = null;
+                setConsultationReadOnly(false);
+                archiveSessionIdRef.current = null;
                 void openChatWithSessionParams(params);
               }}
             />
@@ -2731,6 +3389,7 @@ export default function HomePage({
                 ? (decodeNumerologSpreadId(chatDisplaySpread.spreadId) ?? null)
                 : null
             }
+            onOpenNumerologTool={(toolId) => openNumerologSessionFlow(toolId)}
             spreadInteractiveFlip={
               needsSpreadFlip &&
               !chatHasSpreadReading(messages) &&
@@ -2782,6 +3441,10 @@ export default function HomePage({
                 : undefined
             }
             sessionId={consultationSessionId ?? session?.sessionId ?? undefined}
+            suggestedReplies={guestResumeChatAssist.replies}
+            showContinueInChat={guestResumeChatAssist.showContinue}
+            onContinueInChat={() => trackGuestChatContinue("prompt")}
+            onSuggestedReplySend={() => trackGuestChatContinue("suggested_reply")}
           />
           <MasterSessionFlow
             isOpen={showSessionFlow}
@@ -2819,6 +3482,13 @@ export default function HomePage({
           />
           </>
         ) : inPersonalFlow ? (
+          <>
+            {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
+              <LoggedInHomeBanner
+                userName={effectiveProfile.name || authUser?.name}
+                onQuestionSubmit={handleLandingCustomQuestion}
+              />
+            ) : null}
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
             {step === "onboarding" && (
@@ -2858,9 +3528,18 @@ export default function HomePage({
                     />
                   ) : null}
                 </div>
-                {tripletNotice ? (
+                {visibleTripletNotice ? (
                   <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
-                    {tripletNotice}
+                    <p>{visibleTripletNotice}</p>
+                    {guestResumeCanRetry ? (
+                      <button
+                        type="button"
+                        onClick={retryGuestTripletResume}
+                        className="btn-neon mt-3 px-5 py-2 text-sm"
+                      >
+                        Повторить
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 {tripletCooldown && !tripletCooldown.allowed ? (
@@ -2955,7 +3634,7 @@ export default function HomePage({
               </section>
             )}
 
-            {step === "masters" && !bootstrapping && (
+            {showPersonalSalonContent ? (
               <>
                 {isLoggedIn && hasActiveSpread && recapContinueMasterId ? (
                   <ReadingRecap
@@ -3015,6 +3694,11 @@ export default function HomePage({
                       onStart={(params) => {
                         setShowSessionFlow(false);
                         setEnergyFlowMasterId(null);
+                        pendingNewChatThreadRef.current = true;
+                        setConsultationSessionId(null);
+                        consultationSessionIdRef.current = null;
+                        setConsultationReadOnly(false);
+                        archiveSessionIdRef.current = null;
                         void openChatWithSessionParams(params);
                       }}
                     />
@@ -3031,9 +3715,18 @@ export default function HomePage({
                     }}
                   />
                 ) : null}
-                {tripletNotice ? (
+                {visibleTripletNotice ? (
                   <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
-                    {tripletNotice}
+                    <p>{visibleTripletNotice}</p>
+                    {guestResumeCanRetry ? (
+                      <button
+                        type="button"
+                        onClick={retryGuestTripletResume}
+                        className="btn-neon mt-3 px-5 py-2 text-sm"
+                      >
+                        Повторить
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 {deckGalleryOpen && (profile || browseDeckMaster) && (
@@ -3068,7 +3761,7 @@ export default function HomePage({
                   />
                 )}
 
-                <AuraSellingLanding
+                <ZovusEditorialLanding
                   isLoggedIn={isLoggedIn}
                   masters={landingMasters}
                   onStartReading={() => void startPersonalFlow()}
@@ -3079,15 +3772,36 @@ export default function HomePage({
                   spreadReadingDone={spreadReadingDone}
                   showHero={!isLoggedIn}
                   showSellingSections={!isLoggedIn}
+                  showLoggedInHomeBanner={false}
+                  showMasters
                   showTariffs
+                  homeUserName={effectiveProfile.name || authUser?.name}
                   onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
-                  onCustomQuestionSubmit={
-                    isLoggedIn ? handleLandingCustomQuestion : undefined
+                  onOpenDestinyMatrixSession={
+                    isLoggedIn ? () => openNumerologSessionFlow("destiny_matrix") : undefined
                   }
+                  onOpenOwnedDestinyMatrixReport={
+                    isLoggedIn
+                      ? () => {
+                          void openChatWithSessionParams({
+                            characterKey: "numerolog",
+                            intention: null,
+                            spreadType: "new",
+                            cards: [],
+                            cardsRevealed: true,
+                            numerologToolId: "destiny_matrix",
+                          });
+                        }
+                      : undefined
+                  }
+                  onCustomQuestionSubmit={isLoggedIn ? handleLandingCustomQuestion : undefined}
                   onQuickQuestionSelect={isLoggedIn ? handleLandingQuickQuestion : undefined}
+                  onOpenPhotoReading={() => openPhotoReading()}
+                  onOpenMarkCards={openMarkCards}
+                  photoNavLabel={photoNavLabel}
                   afterQuickQuestions={
                     isLoggedIn ? (
-                      <div className="space-y-6">
+                      <div className="home-feature-banners">
                         <CabinetNatalChart />
                         <PremiumEnergyBlock
                           characterKey={dailyEnergyMasterId}
@@ -3097,6 +3811,7 @@ export default function HomePage({
                           onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
                           onInsufficientRunes={landingInsufficientRunes}
                           onStartRitual={handleDailyStartRitual}
+                          isUnlimited={Boolean(session?.isUnlimited)}
                           onTalkToMaster={(masterId) => {
                             setEnergyFlowMasterId(masterId);
                             setShowSessionFlow(true);
@@ -3115,8 +3830,9 @@ export default function HomePage({
                   onInsufficientRunes={landingInsufficientRunes}
                 />
               </>
-            )}
+            ) : null}
           </div>
+          </>
         ) : !bootstrapping && showLanding && deckGalleryOpen && browseDeckMaster ? (
           <DeckGallery
             system={
@@ -3147,6 +3863,7 @@ export default function HomePage({
             setSessionFlowInitialQuestion(null);
             setSessionFlowRequiresPartnerInfo(false);
             setSessionFlowInitialNumerologTool(null);
+            setSessionFlowInitialMatrixSubjectId(null);
             setSessionFlowInitialPartnerInfo(null);
             setSessionFlowPreselectedMaster(null);
           }}
@@ -3168,6 +3885,7 @@ export default function HomePage({
           }
           requiresPartnerInfo={sessionFlowRequiresPartnerInfo}
           initialNumerologTool={sessionFlowInitialNumerologTool ?? undefined}
+          initialMatrixSubjectId={sessionFlowInitialMatrixSubjectId}
           initialPartnerInfo={sessionFlowInitialPartnerInfo ?? undefined}
           spreadIntentSlug={seoFlowIntentSlug}
           masters={masters}
@@ -3203,6 +3921,12 @@ export default function HomePage({
             setDeepLinkSpreadId(null);
             setEnergyFlowMasterId(null);
             setSessionFlowInitialQuestion(null);
+            // Same guarantees as personal MasterSessionFlow: never bind/restore an old thread.
+            pendingNewChatThreadRef.current = true;
+            setConsultationSessionId(null);
+            consultationSessionIdRef.current = null;
+            setConsultationReadOnly(false);
+            archiveSessionIdRef.current = null;
             void openChatWithSessionParams(params);
           }}
         />
@@ -3226,6 +3950,7 @@ export default function HomePage({
           });
         }}
         onSpreadRitualEnd={() => setSpreadRitual({ active: false })}
+        onConfirmSpread={handlePhotoConfirmSpread}
         onRuneBalanceChange={(balance) => {
           setRuneBalance(balance);
           emitRuneBalanceUpdate(balance);
@@ -3255,6 +3980,9 @@ export default function HomePage({
 
       <DailyBonusClaimer
         enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}
+      />
+      <PersonalMemoryChoice
+        enabled={!authLoading && isLoggedIn && Boolean(authUser?.profileUserId)}
       />
 
       <SpreadRitualLoader

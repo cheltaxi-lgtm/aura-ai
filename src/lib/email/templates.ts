@@ -33,10 +33,36 @@ export function welcomeEmailHtml(name: string, opts?: { needsOnboarding?: boolea
     : `<p style="font-size:14px;color:#555">Сохраните это письмо — здесь всегда можно вернуться на сайт.</p>`;
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
-     <p>Добро пожаловать в ${BRAND_NAME} — ваш персональный оракул: таро, руны, мастера и расклады на каждый день.</p>
+     <p>Добро пожаловать в ${BRAND_NAME} — ваш приватный салон: таро, руны, наставники и расклады на каждый день.</p>
      ${cta(ctaUrl, ctaLabel)}
      ${extra}`,
     `Регистрация в ${BRAND_NAME}. Если вы не создавали аккаунт — проигнорируйте письмо.`
+  );
+}
+
+export function memoryChoiceEnabledEmailHtml(name: string, siteUrl?: string): string {
+  const url = siteUrl || getSiteUrl();
+  const safeName = name.trim() || "друг";
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Персональная память включена. Следующие консультации смогут учитывать только активные сведения, которые относятся к вашему новому вопросу.</p>
+     <p style="font-size:14px;color:#555">В кабинете можно проверить и исправить сведения, начать отдельный свежий сеанс без памяти или в любой момент отключить и очистить её.</p>
+     ${cta(`${url}/cabinet`, "Управлять памятью")}
+     <p style="font-size:13px"><a href="${url}/about/personal-memory" style="color:#8b6914">Как работает персональная память</a></p>`,
+    `Служебное подтверждение выбора персональной памяти в ${BRAND_NAME}.`
+  );
+}
+
+export function memoryChoiceDisabledEmailHtml(name: string, siteUrl?: string): string {
+  const url = siteUrl || getSiteUrl();
+  const safeName = name.trim() || "друг";
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Персональная память отключена. Новые консультации не будут использовать сохранённые сведения о вашем жизненном контексте.</p>
+     <p style="font-size:14px;color:#555">История сеансов управляется отдельно. Если вы захотите вернуть последовательный контекст, выбор можно изменить в кабинете.</p>
+     ${cta(`${url}/cabinet`, "Открыть настройки памяти")}
+     <p style="font-size:13px"><a href="${url}/about/personal-memory" style="color:#8b6914">Подробнее о памяти</a></p>`,
+    `Служебное подтверждение выбора персональной памяти в ${BRAND_NAME}.`
   );
 }
 
@@ -90,7 +116,7 @@ export function inactiveUserEmailHtml(
     inactiveDays <= 7
       ? `<p>Вы давно не заходили — а карты уже готовы к <strong>бесплатному</strong> раскладу на сегодня.</p>
          <p style="font-size:14px;color:#555">Один клик — и вы снова в потоке: суточный расклад, бонусные руны и ваши сохранённые сессии.</p>`
-      : `<p>Мы скучаем! Прошло уже две недели — за это время накопилось много нового: расклады, бонусы и персональные подсказки.</p>
+      : `<p>Мы скучаем! Прошло уже две недели — за это время накопилось много нового: расклады, бонусы и персональные разборы.</p>
          <p style="font-size:14px;color:#555">Вернитесь на минуту: бесплатный расклад на сутки и ежедневные руны ждут вас.</p>`;
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
@@ -191,5 +217,32 @@ export function supportAutoReplyEmailHtml(name: string, subject: string, ticketU
     `<p>Здравствуйте, ${safeName}!</p>
      <p>Ваше обращение «${subject.slice(0, 120)}» принято. Мы ответим в ближайшее рабочее время.</p>
      ${cta(ticketUrl, "Открыть обращение")}`
+  );
+}
+
+export function partnerLeadAdminEmailHtml(params: {
+  contactName: string;
+  phone: string;
+  email: string;
+  company: string;
+  website: string | null;
+  preview: string;
+  adminUrl: string;
+}): string {
+  const websiteLine = params.website
+    ? `<li><strong>Сайт:</strong> ${params.website.slice(0, 200)}</li>`
+    : "";
+  return shell(
+    `<p>Новая заявка на партнёрство ${BRAND_NAME}.</p>
+     <ul style="font-size:14px;line-height:1.7">
+       <li><strong>Имя:</strong> ${params.contactName.slice(0, 120)}</li>
+       <li><strong>Телефон:</strong> ${params.phone.slice(0, 40)}</li>
+       <li><strong>Email:</strong> ${params.email.slice(0, 200)}</li>
+       <li><strong>Компания:</strong> ${params.company.slice(0, 200)}</li>
+       ${websiteLine}
+     </ul>
+     <p style="font-size:14px;color:#444">${params.preview.slice(0, 600).replace(/\n/g, "<br/>")}</p>
+     ${cta(params.adminUrl, "Открыть в админке")}`,
+    "Уведомление о партнёрской заявке."
   );
 }

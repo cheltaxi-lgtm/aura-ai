@@ -1,22 +1,25 @@
 "use client";
 
+import { utmParamsForMetrika } from "@/lib/utm/attribution";
+
 const YANDEX_METRIKA_ID = 110138367;
 
 declare global {
   interface Window {
-    ym?: (
-      id: number,
-      method: string,
-      goal: string,
-      params?: Record<string, string | number>
-    ) => void;
+    ym?: (id: number, method: string, ...args: unknown[]) => void;
   }
 }
 
 export function trackSeoEvent(goal: string, params?: Record<string, string | number>): void {
   if (typeof window === "undefined" || !window.ym) return;
   try {
-    window.ym(YANDEX_METRIKA_ID, "reachGoal", goal, params);
+    const withUtm = { ...utmParamsForMetrika(), ...params };
+    window.ym(
+      YANDEX_METRIKA_ID,
+      "reachGoal",
+      goal,
+      Object.keys(withUtm).length ? withUtm : undefined
+    );
   } catch {
     /* analytics optional */
   }
@@ -102,6 +105,49 @@ export function trackGuestSpreadCompleted(): void {
   trackLandingEvent("guest_spread_completed");
 }
 
+export function trackGuestTeaserView(): void {
+  trackLandingEvent("guest_teaser_view");
+}
+
+export function trackGuestTeaserCta(): void {
+  trackLandingEvent("guest_teaser_cta");
+}
+
+/** Auth step of guest funnel (gate / OAuth / email start). */
+export function trackGuestAuth(source: string): void {
+  trackLandingEvent("guest_auth", { source });
+}
+
+/** Claim/resume of the same guest receipt after auth. */
+export function trackGuestClaim(props: {
+  master_id: string;
+  cards_count: number;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_claim", {
+    master_id: props.master_id,
+    cards_count: props.cards_count,
+    has_question: props.has_question ? 1 : 0,
+  });
+}
+
+/** Full reading delivered after claim/resume. */
+export function trackGuestFull(props: {
+  master_id: string;
+  reading_mode: string;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_full", {
+    master_id: props.master_id,
+    reading_mode: props.reading_mode,
+    has_question: props.has_question ? 1 : 0,
+  });
+}
+
+export function trackGuestChatContinue(source: string): void {
+  trackLandingEvent("guest_chat_continue", { source });
+}
+
 export function trackRegistrationGateView(source: string): void {
   trackLandingEvent("registration_gate_view", { source });
 }
@@ -133,6 +179,14 @@ export function trackRegistrationStarted(source: string): void {
   trackLandingEvent("registration_started", { source });
 }
 
+export function trackPaywallOpen(source: string): void {
+  trackLandingEvent("paywall_open", { source });
+}
+
+export function trackPaymentCancelled(source: string): void {
+  trackLandingEvent("payment_cancelled", { source });
+}
+
 /** Account row created (before birth-date profile). */
 export function trackRegistrationAccountCreated(source: string): void {
   trackLandingEvent("registration_account_created", { source });
@@ -146,6 +200,62 @@ export function trackRegistrationError(errorType: string): void {
   trackLandingEvent("registration_error", { error_type: errorType });
 }
 
+export function trackGuestTripletResumeDetected(props: {
+  has_question: boolean;
+  master_id: string;
+  cards_count: number;
+  auth_method?: string;
+}): void {
+  trackLandingEvent("guest_triplet_resume_detected", {
+    has_question: props.has_question ? 1 : 0,
+    master_id: props.master_id,
+    cards_count: props.cards_count,
+    ...(props.auth_method ? { auth_method: props.auth_method } : {}),
+  });
+}
+
+export function trackGuestTripletResumeStarted(props: {
+  master_id: string;
+  cards_count: number;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_triplet_resume_started", {
+    master_id: props.master_id,
+    cards_count: props.cards_count,
+    has_question: props.has_question ? 1 : 0,
+  });
+  trackGuestClaim(props);
+}
+
+export function trackGuestTripletResumeCompleted(props: {
+  master_id: string;
+  reading_mode: string;
+  has_question: boolean;
+}): void {
+  trackLandingEvent("guest_triplet_resume_completed", {
+    master_id: props.master_id,
+    reading_mode: props.reading_mode,
+    has_question: props.has_question ? 1 : 0,
+  });
+  trackGuestFull(props);
+}
+
+export function trackGuestTripletResumeFailed(
+  stage: "receipt" | "claim" | "session" | "reading" | "expired" | "storage" | "sync"
+): void {
+  trackLandingEvent("guest_triplet_resume_failed", { stage });
+}
+
+export function trackGuestTripletRedrawPrevented(props: {
+  had_ask_params: boolean;
+  master_id: string;
+}): void {
+  trackLandingEvent("guest_triplet_redraw_prevented", {
+    had_ask_params: props.had_ask_params ? 1 : 0,
+    master_id: props.master_id,
+  });
+}
+
 export function trackRunePurchase(amountRub: number, packageId?: string): void {
   if (typeof window === "undefined" || !window.ym || !Number.isFinite(amountRub)) return;
   try {
@@ -153,6 +263,7 @@ export function trackRunePurchase(amountRub: number, packageId?: string): void {
       order_price: amountRub,
       currency: "RUB",
       ...(packageId ? { packageId } : {}),
+      ...utmParamsForMetrika(),
     });
   } catch {
     /* analytics optional */

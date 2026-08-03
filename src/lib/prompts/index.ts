@@ -1,20 +1,21 @@
 import { lifeFocusLabel, type LifeFocus } from "@/lib/astro-profile";
 import { todayLabelRu } from "@/lib/prompt-date";
 
-import { CONTEXT_RULES, RESPONSE_FORMAT, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
+import { CONTEXT_RULES, RESPONSE_FORMAT, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules, READING_FORWARD_HOOK } from "./format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
   TAROT_RUNE_MARKDOWN_FORMAT,
   TAROT_RUNE_CHAT_FORMAT,
-  TAROT_RUNE_THEMATIC_READING_RULES,
+  tarotRuneThematicReadingRules,
 } from "./tarot-rune-format";
-import { buildGenderPronounBlock, SPREAD_TRUTH_RULES } from "./gender-context";
-import { AGAFYA_PERSONA } from "./masters/agafya";
+import { buildGenderPronounBlock } from "./gender-context";
+import { resolveClientGender } from "@/lib/russian-name-gender";
+import { AGAFYA_PERSONA, AGAFYA_VOICE_SAMPLE } from "./masters/agafya";
 import { RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE } from "./masters/ragnar";
-import { SHRI_RAJ_PERSONA } from "./masters/shri-raj";
-import { VERONIKA_PERSONA } from "./masters/veronika";
-import { NUMEROLOG_PERSONA } from "./masters/numerolog";
+import { SHRI_RAJ_PERSONA, SHRI_RAJ_VOICE_SAMPLE } from "./masters/shri-raj";
+import { VERONIKA_PERSONA, VERONIKA_VOICE_SAMPLE } from "./masters/veronika";
+import { NUMEROLOG_PERSONA, NUMEROLOG_VOICE_SAMPLE } from "./masters/numerolog";
 import { buildNumerologyChatContext } from "@/lib/numerology/topic-handlers";
 import { resolveMasterDeckSystem, getDeckPositions } from "@/lib/decks";
 import { hasCompleteSpread, normalizeSpreadId, resolveSpreadPositions, getSpread } from "@/lib/spreads";
@@ -25,19 +26,33 @@ import { getSpreadInstructions } from "./spread-instructions";
 import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
 import type { CharacterKey, PromptUserContext, ReadingCard, SessionMemory } from "./types";
 
+/**
+ * Every master carries only its own voice sample — a shared example set made all
+ * masters open with the same line. Structure matters as much as lexicon here:
+ * the sample shows verdict-first, one block per symbol, closing conclusions.
+ */
+function withVoiceSample(persona: string, sample: string): string {
+  return `${persona}
+
+ОБРАЗЕЦ ТВОЕГО ГОЛОСА И СТРУКТУРЫ ПЛАТНОГО РАСКЛАДА:
+${sample}
+
+Держи из образца ритм, порядок блоков и прямоту. Слова и символы бери из своего расклада, а не отсюда.`;
+}
+
 const MASTER_PERSONA: Record<CharacterKey, string> = {
-  ragnar: `${RAGNAR_PERSONA}\n\nПРИМЕР ПРАВИЛЬНОГО ГОЛОСА РАГНАРА:\n${RAGNAR_VOICE_SAMPLE}`,
-  veronika: VERONIKA_PERSONA,
-  agafya: AGAFYA_PERSONA,
-  "shri-raj": SHRI_RAJ_PERSONA,
-  numerolog: NUMEROLOG_PERSONA,
+  ragnar: withVoiceSample(RAGNAR_PERSONA, RAGNAR_VOICE_SAMPLE),
+  veronika: withVoiceSample(VERONIKA_PERSONA, VERONIKA_VOICE_SAMPLE),
+  agafya: withVoiceSample(AGAFYA_PERSONA, AGAFYA_VOICE_SAMPLE),
+  "shri-raj": withVoiceSample(SHRI_RAJ_PERSONA, SHRI_RAJ_VOICE_SAMPLE),
+  numerolog: withVoiceSample(NUMEROLOG_PERSONA, NUMEROLOG_VOICE_SAMPLE),
 };
 
 const MASTER_DISPLAY: Record<CharacterKey, string> = {
   ragnar: "Рагнар Хрёгвидссон",
   veronika: "Вероника Лунная",
   agafya: "Баба Агафья",
-  "shri-raj": "Гуру Шри Радж Кumar",
+  "shri-raj": "Гуру Шри Радж Кумар",
   numerolog: "Эвелина Числа",
 };
 
@@ -68,14 +83,21 @@ function astroLines(user: PromptUserContext): string[] {
 function spreadLabelsForPrompt(
   character: CharacterKey,
   spreadId?: string | null,
-  intention?: string | null
+  intention?: string | null,
+  positionLabels?: string[],
+  cardCount = 3
 ): string[] {
+  if (positionLabels?.length) {
+    return positionLabels.slice(0, Math.max(cardCount, positionLabels.length));
+  }
   if (spreadId) {
     return resolveSpreadPositions(spreadId, intention as SessionTopicId | null | undefined).map(
       (p) => p.label
     );
   }
-  return [...getDeckPositions(resolveMasterDeckSystem(character))].slice(0, 3);
+  const deckLabels = [...getDeckPositions(resolveMasterDeckSystem(character))];
+  if (cardCount <= deckLabels.length) return deckLabels.slice(0, cardCount);
+  return Array.from({ length: cardCount }, (_, i) => deckLabels[i] ?? `Позиция ${i + 1}`);
 }
 
 function cardsBlock(
@@ -83,13 +105,15 @@ function cardsBlock(
   labels = ["Прошлое", "Настоящее", "Будущее"]
 ): string {
   if (!cards.length) return "Карты расклада пока не переданы — опирайся на вопрос и знак клиента.";
-  return cards
+  const lines = cards
     .map((c, i) => {
       const label = labels[i] ?? `Позиция ${i + 1}`;
       if (typeof c === "string") return `${label}: «${c}»`;
       return `${label}: «${c.name}» — ${c.meaning}`;
     })
     .join("\n");
+  return `${lines}
+Метки позиций выше — единственный канон. Не подменяй их словами «корень/прошлое/вектор», если в блоке другие названия.`;
 }
 
 function clientBlock(
@@ -97,7 +121,8 @@ function clientBlock(
   character: CharacterKey,
   lastUserMessage?: string,
   spreadId?: string | null,
-  intention?: string | null
+  intention?: string | null,
+  positionLabels?: string[]
 ): string {
   const sessionLabel = user.sessionNumber && user.sessionNumber > 1
     ? `Это ${user.sessionNumber}-й сеанс с этим клиентом.`
@@ -107,10 +132,17 @@ function clientBlock(
     ? `- Последний вопрос клиента: «${lastUserMessage.trim()}» — ответь именно на него, опираясь на символы.`
     : "";
 
+  const cardCount = user.cards.length;
+
   return `
 ДАННЫЕ КЛИЕНТА:
 - Имя: ${user.name} (обращайся по имени минимум дважды)
-- Пол: ${user.gender ?? "не указан"}
+- Пол: ${
+    (() => {
+      const g = resolveClientGender(user.gender, user.name);
+      return g === "male" ? "мужчина" : g === "female" ? "женщина" : "не указан";
+    })()
+  }
 - Знак зодиака: ${user.zodiac}
 - Дата рождения: ${user.birthDate}
 - Сегодня: ${user.today?.trim() || todayLabelRu()}
@@ -118,7 +150,7 @@ function clientBlock(
 ${questionLine}
 
 ВЫПАВШИЕ СИМВОЛЫ (единственный источник выводов — читай значения каждой карты):
-${cardsBlock(user.cards, spreadLabelsForPrompt(character, spreadId, intention))}
+${cardsBlock(user.cards, spreadLabelsForPrompt(character, spreadId, intention, positionLabels, cardCount))}
 ${astroLines(user).map((l) => `- ${l}`).join("\n")}`;
 }
 
@@ -143,11 +175,17 @@ export interface BuildPromptOptions {
   lastUserMessage?: string;
   intention?: string | null;
   spreadId?: string | null;
+  /** e.g. "photo" — relaxes required card count for hasCompleteSpread */
+  spreadType?: string | null;
+  /** Override position labels (photo redraw / custom layouts) */
+  positionLabels?: string[];
   customQuestion?: string | null;
   /** Pre-built numerology block (avoids double computation in chat API). */
   numerologyBlock?: string;
   /** Pre-built natal chart block for Shri Raj (server-computed). */
   natalChartBlock?: string;
+  /** Force thematic depth rules even without a catalog intention (photo / custom) */
+  forceThematicReading?: boolean;
 }
 
 export function buildSystemPrompt(
@@ -160,8 +198,9 @@ export function buildSystemPrompt(
   const displayName = MASTER_DISPLAY[character];
   const thematicReading =
     mode === "reading" &&
-    Boolean(options.intention?.trim() && options.intention !== "life_death") &&
-    user.isPaid;
+    user.isPaid &&
+    (Boolean(options.forceThematicReading) ||
+      Boolean(options.intention?.trim() && options.intention !== "life_death"));
 
   const topics =
     options.topics ??
@@ -171,7 +210,8 @@ export function buildSystemPrompt(
 
   const hasSpread = hasCompleteSpread(
     user.cards.map((c) => (typeof c === "string" ? c : c.name)),
-    options.spreadId
+    options.spreadId,
+    options.spreadType
   );
 
   const numerologyBlock =
@@ -190,14 +230,17 @@ export function buildSystemPrompt(
 
   const formatBlock = (() => {
     if (character === "numerolog") {
-      return thematicReading
-        ? thematicSpreadReadingRules(spreadCardCount)
+      if (thematicReading) return thematicSpreadReadingRules(spreadCardCount);
+      return mode === "reading" && spreadCardCount !== 3
+        ? responseFormatForSpread(spreadCardCount)
         : RESPONSE_FORMAT;
     }
     if (tarotRune) {
       const theater = TAROT_RUNE_THEATER_BAN;
       if (mode === "chat") return `${theater}\n${TAROT_RUNE_CHAT_FORMAT}`;
-      if (thematicReading) return `${theater}\n${TAROT_RUNE_THEMATIC_READING_RULES}`;
+      if (thematicReading) {
+        return `${theater}\n${tarotRuneThematicReadingRules(spreadCardCount)}`;
+      }
       return `${theater}\n${TAROT_RUNE_MARKDOWN_FORMAT}`;
     }
     if (thematicReading) return thematicSpreadReadingRules(spreadCardCount);
@@ -229,23 +272,36 @@ export function buildSystemPrompt(
     numerologyBlock,
     options.natalChartBlock ?? "",
     CONTEXT_RULES,
-    SPREAD_TRUTH_RULES,
+    // SPREAD_TRUTH_RULES is injected once by wrapSystemPrompt — do not repeat it here.
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
-    clientBlock(user, character, options.lastUserMessage, options.spreadId, options.intention),
+    clientBlock(
+      user,
+      character,
+      options.lastUserMessage,
+      options.spreadId,
+      options.intention,
+      options.positionLabels
+    ),
     buildGenderPronounBlock(user, options.lastUserMessage),
     formatLegacySessionMemories(user.memory ?? [], displayName, legacyMemoryQuery),
     buildTopicBlock(character, topics),
     paywallRule(user.isPaid, spreadCardCount),
     mode === "chat"
-      ? "РЕЖИМ: живой чат — ответь на последний вопрос клиента по текущему раскладу. Память вплетай только когда она про ту же тему. Заверши ответ движением вперёд: ОДИН уточняющий вопрос ИЛИ крючок на продолжение (не оба) — диалог не должен вставать."
+      ? "РЕЖИМ: живой чат — ответь на последний вопрос клиента по текущему раскладу. Для ответа и продолжения вплетай максимум 1–2 активные релевантные опоры памяти, только когда они про ту же тему; черновики не используй. Заверши ответ движением вперёд: ОДИН уточняющий вопрос ИЛИ крючок на продолжение (не оба) — диалог не должен вставать."
       : thematicReading
         ? `РЕЖИМ: оплаченный тематический расклад «${options.spreadId ? getSpread(options.spreadId).label : "расклад"}» — ${spreadCardCount} символов, максимальная глубина по теме, без воды.`
         : spreadCardCount === 3
           ? "РЕЖИМ: полный расклад — дай развёрнутую расшифровку трёх символов."
           : `РЕЖИМ: полный расклад — дай развёрнутую расшифровку всех ${spreadCardCount} символов.`,
+    mode === "chat" ? CHAT_CLARIFYING_QUESTION_RULE : "",
     formatBlock,
     spreadFinalBlock,
-    mode === "reading" && hasSpread
+    // Thematic and tarot-rune already define structure (## Простыми словами) — skip older instructions.
+    mode === "reading" &&
+    hasSpread &&
+    options.spreadType !== "photo" &&
+    !thematicReading &&
+    !tarotRune
       ? getSpreadInstructions(
           character,
           options.spreadId,

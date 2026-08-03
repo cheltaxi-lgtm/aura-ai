@@ -27,6 +27,9 @@ export function readAppShellFromDocument(): boolean {
 export function markAppShellOnDocument(): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.appShell = "android";
+  if (isNativeCapacitorPlatform()) {
+    document.documentElement.dataset.nativeApp = "1";
+  }
   try {
     sessionStorage.setItem("zovus_app_shell", "1");
   } catch {
@@ -34,12 +37,51 @@ export function markAppShellOnDocument(): void {
   }
 }
 
+export function clearAppShellFromDocument(): void {
+  if (typeof document === "undefined") return;
+  delete document.documentElement.dataset.appShell;
+  delete document.documentElement.dataset.motionLite;
+}
+
+/**
+ * Desktop browsers (Windows/macOS/Linux) must not keep sticky app-shell from a
+ * past `?app=1` or cabinet visit — that hides the legal/VK footer site-wide.
+ * Phones, tablets, and Capacitor keep the sticky flag.
+ */
+export function isDesktopBrowserWithoutAppShell(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (isNativeCapacitorPlatform()) return false;
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPod|Mobile|webOS/i.test(ua)) return false;
+  // iPadOS 13+ may report Macintosh with touch points.
+  if (/iPad/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(ua))) {
+    return false;
+  }
+  return /Windows NT|Macintosh|X11;|CrOS|Linux/i.test(ua);
+}
+
+/** Drop desktop leftovers that incorrectly activate native-shell chrome. */
+export function clearStaleDesktopAppShell(): void {
+  if (typeof window === "undefined") return;
+  if (!isDesktopBrowserWithoutAppShell()) return;
+  if (isAppShellSearchParam(window.location.search)) return;
+  try {
+    sessionStorage.removeItem("zovus_app_shell");
+  } catch {
+    /* private mode */
+  }
+  clearAppShellFromDocument();
+}
+
 export function shouldUseAppShellClient(): boolean {
   if (typeof window === "undefined") return false;
   if (isNativeCapacitorPlatform()) return true;
   if (isAppShellSearchParam(window.location.search)) return true;
   try {
-    return sessionStorage.getItem("zovus_app_shell") === "1";
+    if (sessionStorage.getItem("zovus_app_shell") !== "1") return false;
+    // Stray sticky flag on desktop must not enable app chrome / hide legal footer.
+    if (isDesktopBrowserWithoutAppShell()) return false;
+    return true;
   } catch {
     return false;
   }
@@ -69,4 +111,39 @@ export function markAppShellSplashDone(): void {
 export function appShellStartUrl(baseUrl?: string): string {
   const base = (baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://zovus.ru").replace(/\/$/, "");
   return `${base}/?${APP_SHELL_QUERY}=${APP_SHELL_VALUE}`;
+}
+
+/** Production canonical origin — never localhost. */
+export function appShellCanonicalOrigin(): string {
+  const raw = (process.env.NEXT_PUBLIC_APP_URL ?? "https://zovus.ru").trim().replace(/\/$/, "");
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      return "https://zovus.ru";
+    }
+    return url.origin;
+  } catch {
+    return "https://zovus.ru";
+  }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+/**
+ * Base origin for in-app navigation / OAuth.
+ * Native shell must never resolve relative URLs against a baked localhost origin.
+ */
+export function appShellNavigationOrigin(): string {
+  if (typeof window === "undefined") return appShellCanonicalOrigin();
+  try {
+    const { hostname, origin } = window.location;
+    if (isNativeCapacitorPlatform() && isLoopbackHostname(hostname)) {
+      return appShellCanonicalOrigin();
+    }
+    return origin;
+  } catch {
+    return appShellCanonicalOrigin();
+  }
 }

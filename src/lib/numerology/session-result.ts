@@ -1,6 +1,8 @@
 import type { PythagorasSquareResult } from "./pythagoras-square";
 import { pythagorasSquare } from "./pythagoras-square";
 import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
+import { matrixCompatibility } from "./matrix-compatibility";
+import { listMatrixZones } from "./matrix-zones";
 import { drawNumerologSessionSpread } from "./session-draw";
 import {
   getNumerologTool,
@@ -9,6 +11,7 @@ import {
   type NumerologToolParams,
 } from "./tools";
 import { personalYearForecast } from "./forecast";
+import { matrixYearForecast } from "./matrix-year-forecast";
 import { parseBirthDate } from "./constants";
 
 export interface NumerologSessionPosition {
@@ -104,55 +107,22 @@ export function buildNumerologSessionResult(input: {
         pythagorasSquare: square,
       };
     }
-    if (input.toolId === "destiny_matrix") {
+    if (input.toolId === "destiny_matrix" || input.toolId === "child_matrix") {
       const parsed = parseBirthDate(input.birthDate ?? "");
       if (!parsed) return null;
       const matrix = destinyMatrix(input.birthDate!);
       if (!matrix) return null;
-      const points: { label: string; value: string; detail: string; number: number }[] = [
-        {
-          label: "Тело и характер",
-          value: matrix.body.arcanaName,
-          detail: matrix.body.arcanaMeaning,
-          number: matrix.body.number,
-        },
-        {
-          label: "Энергия",
-          value: matrix.energy.arcanaName,
-          detail: matrix.energy.arcanaMeaning,
-          number: matrix.energy.number,
-        },
-        {
-          label: "Род и корни",
-          value: matrix.roots.arcanaName,
-          detail: matrix.roots.arcanaMeaning,
-          number: matrix.roots.number,
-        },
-        {
-          label: "Предназначение",
-          value: matrix.purpose.arcanaName,
-          detail: matrix.purpose.arcanaMeaning,
-          number: matrix.purpose.number,
-        },
-        {
-          label: "Отношения",
-          value: matrix.relationships.arcanaName,
-          detail: matrix.relationships.arcanaMeaning,
-          number: matrix.relationships.number,
-        },
-        {
-          label: "Деньги",
-          value: matrix.money.arcanaName,
-          detail: matrix.money.arcanaMeaning,
-          number: matrix.money.number,
-        },
-        {
-          label: "Карма",
-          value: matrix.karma.arcanaName,
-          detail: matrix.karma.arcanaMeaning,
-          number: matrix.karma.number,
-        },
-      ];
+      const points = listMatrixZones(matrix, input.toolId)
+        .filter((z) => z.number != null && z.arcanaName)
+        .map((z) => ({
+          label: z.label,
+          value: z.arcanaName!,
+          detail:
+            z.id === "age" && z.age != null
+              ? `${z.age} лет`
+              : z.focusLabel ?? undefined,
+          number: z.number!,
+        }));
       return {
         toolId: input.toolId,
         title: tool.label,
@@ -160,6 +130,55 @@ export function buildNumerologSessionResult(input: {
         positions: points,
         cardNames: points.map((p) => `${p.number} — ${p.value}`),
         destinyMatrix: matrix,
+      };
+    }
+    if (input.toolId === "matrix_year_forecast") {
+      const forecast = matrixYearForecast(input.birthDate ?? "");
+      if (!forecast) return null;
+      const points = forecast.months.map((month) => ({
+        label: month.label,
+        value: `${month.number} — ${month.title}`,
+        detail: forecast.opportunityMonths.includes(forecast.months.indexOf(month))
+          ? "Окно возможностей"
+          : forecast.cautionMonths.includes(forecast.months.indexOf(month))
+            ? "Месяц внимательности"
+            : undefined,
+      }));
+      return {
+        toolId: input.toolId,
+        title: tool.label,
+        subtitle: `Аркан года: ${forecast.yearArcana.number} — ${forecast.yearArcana.title}`,
+        positions: points,
+        cardNames: points.map((point) => `${point.label}: ${point.value}`),
+      };
+    }
+    if (input.toolId === "matrix_compatibility") {
+      const partnerDate = input.params?.partnerDate?.trim() ?? "";
+      if (!parseBirthDate(input.birthDate ?? "") || !parseBirthDate(partnerDate)) {
+        return null;
+      }
+      const compat = matrixCompatibility(input.birthDate!, partnerDate);
+      if (!compat) return null;
+      const partnerName = input.params?.partnerName?.trim() || "Партнёр";
+      const points = [
+        {
+          label: "Общий score",
+          value: `${compat.score}/100`,
+          detail: compat.summary,
+        },
+        ...compat.keys.map((k) => ({
+          label: k.label,
+          value: `${k.numberA} × ${k.numberB}`,
+          detail: `${k.titleA} / ${k.titleB} · ${k.score}/100`,
+        })),
+      ];
+      return {
+        toolId: input.toolId,
+        title: tool.label,
+        subtitle: `Вы × ${partnerName}`,
+        positions: points,
+        cardNames: points.map((p) => `${p.label}: ${p.value}`),
+        destinyMatrix: compat.matrixA,
       };
     }
     return null;

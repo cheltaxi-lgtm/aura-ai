@@ -23,6 +23,7 @@ export default function RitualReview({
   const [rating, setRating] = useState(0);
   const [sharePublicly, setSharePublicly] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const master = getCharacterById(characterKey);
   const masterName = master?.name ?? "Мастер";
@@ -30,13 +31,24 @@ export default function RitualReview({
   const submit = async () => {
     if (rating < 1 || submitting) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await fetch(`/api/ritual/${ritualId}/review`, {
+      const res = await fetch(`/api/ritual/${ritualId}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outcomeText, outcomeRating: rating, sharePublicly }),
+        body: JSON.stringify({
+          outcomeText: outcomeText.slice(0, 500),
+          outcomeRating: rating,
+          sharePublicly,
+        }),
       });
+      if (!res.ok) {
+        setSubmitError("Не удалось сохранить отзыв. Попробуйте ещё раз.");
+        return;
+      }
       onComplete();
+    } catch {
+      setSubmitError("Не удалось сохранить отзыв. Попробуйте ещё раз.");
     } finally {
       setSubmitting(false);
     }
@@ -49,7 +61,7 @@ export default function RitualReview({
           {masterName} ждёт. Прошло 7 дней.
         </p>
         <p className="mt-2 text-sm text-white/60">
-          Были знаки которые он называл?
+          Были знаки, которые мастер называл?
         </p>
         <div className="mt-8 space-y-3">
           <button
@@ -89,6 +101,7 @@ export default function RitualReview({
         onChange={(e) => setOutcomeText(e.target.value)}
         placeholder="Что произошло? (необязательно)"
         rows={4}
+        maxLength={500}
         className="w-full touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
       />
 
@@ -116,6 +129,10 @@ export default function RitualReview({
         />
         Поделиться анонимно с другими
       </label>
+
+      {submitError ? (
+        <p className="mt-3 text-center text-sm text-red-200/90">{submitError}</p>
+      ) : null}
 
       <button
         type="button"

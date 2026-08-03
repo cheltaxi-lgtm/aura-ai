@@ -5,6 +5,7 @@ import AppHeaderMenu from "@/components/AppHeaderMenu";
 import AppTopHeaderAccount from "@/components/AppTopHeaderAccount";
 import AppTopHeaderNav from "@/components/AppTopHeaderNav";
 import BrandLogo from "@/components/BrandLogo";
+import { BRAND_LOGO_HEADER } from "@/lib/brand";
 import NotificationBell, {
   NOTIFICATION_COUNT_EVENT,
   OPEN_NOTIFICATIONS_EVENT,
@@ -124,19 +125,14 @@ export default function AppTopHeader({
       ref={headerRef}
       className="app-top-header fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md max-md:bg-[#080512] max-md:backdrop-blur-none"
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
-        <div className="app-top-header__brand flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-          <BrandLogo
-            linkToHome
-            showTagline={false}
-            markSize={32}
-            titleClassName="font-display text-lg font-bold tracking-wider text-white neon-text sm:text-2xl"
-          />
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+        <div className="app-top-header__brand flex shrink-0 items-center">
+          <BrandLogo {...BRAND_LOGO_HEADER} />
         </div>
 
-        {/* Desktop: three premium pills — Меню · CTA · Аккаунт */}
+        {/* Desktop: Меню (logged-in) · CTA · Аккаунт */}
         <div className="app-top-header__actions hidden min-w-0 flex-1 items-center justify-end gap-2 md:flex md:gap-2.5">
-          <AppTopHeaderNav {...navCallbacks} />
+          {isLoggedIn ? <AppTopHeaderNav {...navCallbacks} isLoggedIn /> : null}
           <button
             type="button"
             onClick={onStartReading}
@@ -157,21 +153,39 @@ export default function AppTopHeader({
           ) : null}
         </div>
 
-        {/* Mobile: runes + menu (notifications inside account section of sheet) */}
+        {/* Mobile: CTA + login (guests) / runes + menu (logged-in) */}
         <div className="app-top-header__mobile flex shrink-0 items-center gap-1.5 md:hidden">
           {isLoggedIn ? <RuneBalance compact onBuyClick={onOpenPaywall} /> : null}
-          <AppHeaderMenu
-            photoNavLabel={photoNavLabel}
-            isLoggedIn={isLoggedIn}
-            authUser={authUser}
-            authLoading={authLoading}
-            onNavMasters={onNavMasters}
-            onNavDecks={onNavDecks}
-            onNavPhoto={onNavPhoto}
-            onNavTariffs={openTariffs}
-            onNavRitual={onNavRitual}
-            onStartReading={onStartReading}
-          />
+          <button
+            type="button"
+            onClick={onStartReading}
+            className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
+          >
+            Расклад
+          </button>
+          {!isLoggedIn ? (
+            <AppTopHeaderAccount
+              user={authUser}
+              loading={authLoading}
+              runeBalance={null}
+              notificationCount={0}
+              onBuyRunes={onOpenPaywall}
+              onOpenNotifications={openNotifications}
+            />
+          ) : (
+            <AppHeaderMenu
+              photoNavLabel={photoNavLabel}
+              isLoggedIn={isLoggedIn}
+              authUser={authUser}
+              authLoading={authLoading}
+              onNavMasters={onNavMasters}
+              onNavDecks={onNavDecks}
+              onNavPhoto={onNavPhoto}
+              onNavTariffs={openTariffs}
+              onNavRitual={onNavRitual}
+              onStartReading={onStartReading}
+            />
+          )}
           {isLoggedIn && authUser?.role === "user" ? (
             <NotificationBell hiddenTrigger />
           ) : null}

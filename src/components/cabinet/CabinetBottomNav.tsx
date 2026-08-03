@@ -52,7 +52,7 @@ export default function CabinetBottomNav({
 
   return (
     <nav
-      className="cabinet-bottom-nav fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-black/85 backdrop-blur-xl"
+      className="cabinet-bottom-nav fixed bottom-[var(--cookie-banner-offset,0px)] left-0 right-0 z-40 border-t border-white/10 bg-black/85 backdrop-blur-xl"
       aria-label="Навигация кабинета"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />

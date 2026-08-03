@@ -1,5 +1,6 @@
 import { CHARACTERS, getCharacterById } from "@/lib/characters";
 import type { CabinetSessionRow } from "@/lib/cabinet-data";
+import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import {
   MARKDOWN_IMAGE_LINE_PATTERN,
   MARKDOWN_IMAGE_PATTERN,
@@ -133,14 +134,10 @@ export function sanitizeCabinetDisplayText(text: string): string {
 }
 
 export function formatCabinetDisplayName(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((part) => {
-      if (!part) return part;
-      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-    })
-    .join(" ");
+  const trimmed = name.trim().replace(/\s+/g, " ");
+  if (!trimmed) return "";
+  // Show registration/OAuth name as stored; known Latin singles still map to RU.
+  return normalizeStoredDisplayName(trimmed, trimmed);
 }
 
 export function sessionMastersFromList(sessions: { characterKey: string }[]): typeof CHARACTERS {

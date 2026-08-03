@@ -10,6 +10,7 @@ import {
   Camera,
   Loader2,
   Trash2,
+  Brain,
 } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { normalizeMessageText } from "@/components/MessageContent";
@@ -24,13 +25,21 @@ import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import type { SessionIntention } from "@/lib/intention";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import SessionFeedback from "@/components/SessionFeedback";
+import MemoryMoments from "@/components/MemoryMoments";
+import MemoryAnchorSuggestion from "@/components/MemoryAnchorSuggestion";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
 import { CHAT_SESSION_DISCLAIMER } from "@/lib/master-disclosure";
 import PythagorasSquareGrid from "@/components/PythagorasSquareGrid";
-import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
+import DestinyMatrixGrid, {
+  DESTINY_MATRIX_UI_SLOT_COUNT,
+} from "@/components/numerolog/DestinyMatrixGrid";
+import MatrixReportUpsell from "@/components/numerolog/MatrixReportUpsell";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
-import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
+import {
+  destinyMatrix,
+  type DestinyMatrixResult,
+} from "@/lib/numerology/destiny-matrix";
 import type { NumerologToolId } from "@/lib/numerology/tools";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
 import MasterQuickChips from "@/components/MasterQuickChips";
@@ -65,6 +74,7 @@ import { chatSpreadToSharePayload } from "@/lib/share/payload-builders";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
+import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
 
 interface MasterDisplay {
   name: string;
@@ -101,6 +111,8 @@ interface ChatWindowProps {
   spreadPythagorasSquare?: PythagorasSquareResult | null;
   spreadDestinyMatrix?: DestinyMatrixResult | null;
   numerologSessionToolId?: NumerologToolId | null;
+  /** Open another numerolog tool (matrix upsell). */
+  onOpenNumerologTool?: (toolId: NumerologToolId) => void;
   spreadInteractiveFlip?: boolean;
   spreadFlipped?: boolean[];
   onSpreadFlip?: (index: number) => void;
@@ -136,6 +148,12 @@ interface ChatWindowProps {
   userBirthDate?: string;
   /** Active consultation session id (share / persistence hooks). */
   sessionId?: string;
+  /** Guest-resume follow-ups: static chips after full reading (click → send). */
+  suggestedReplies?: { label: string; message: string }[];
+  /** Soft prompt to continue in chat when reading is ready and no user follow-up yet. */
+  showContinueInChat?: boolean;
+  onContinueInChat?: () => void;
+  onSuggestedReplySend?: (message: string) => void;
 }
 
 export default function ChatWindow({
@@ -162,6 +180,7 @@ export default function ChatWindow({
   spreadPythagorasSquare = null,
   spreadDestinyMatrix = null,
   numerologSessionToolId = null,
+  onOpenNumerologTool,
   spreadInteractiveFlip = false,
   spreadFlipped = spreadFlippedState(3, true),
   onSpreadFlip,
@@ -195,6 +214,10 @@ export default function ChatWindow({
   startingNewSession = false,
   userBirthDate,
   sessionId,
+  suggestedReplies,
+  showContinueInChat = false,
+  onContinueInChat,
+  onSuggestedReplySend,
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
@@ -203,15 +226,69 @@ export default function ChatWindow({
     setInput("");
     const el = textInputRef.current;
     if (el) el.value = "";
-  }, []);
+  }, [textInputRef]);
 
   useEffect(() => {
     const el = textInputRef.current;
     if (!el || el.value === input) return;
     el.value = input;
-  }, [input]);
+  }, [input, textInputRef]);
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
+  const [memoryFresh, setMemoryFresh] = useState(false);
+  const [memoryModeBusy, setMemoryModeBusy] = useState(false);
+  const memoryAnchorQuery = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") return messages[index].content;
+    }
+    return "";
+  }, [messages]);
+  useEffect(() => {
+    if (!sessionId || readOnly) return;
+    void fetch(`/api/session?id=${encodeURIComponent(sessionId)}`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((data) => setMemoryFresh(data?.memoryReadMode === "fresh"))
+      .catch(() => undefined);
+  }, [readOnly, sessionId]);
+  const toggleMemoryMode = useCallback(async () => {
+    if (!sessionId || memoryModeBusy) return;
+    const next = memoryFresh ? "default" : "fresh";
+    setMemoryModeBusy(true);
+    try {
+      const res = await fetch("/api/session", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, memoryReadMode: next }),
+      });
+      if (res.ok) {
+        setMemoryFresh(next === "fresh");
+        if (next === "fresh") {
+          trackMemoryProductEvent({
+            event: "fresh_session_started",
+            sessionId,
+            sourceType: "chat",
+          });
+        }
+      }
+    } finally {
+      setMemoryModeBusy(false);
+    }
+  }, [memoryFresh, memoryModeBusy, sessionId]);
   const isNumerologChat = characterId === "numerolog" && !readOnly;
+  /** Matrix diagram from props, or recompute from birth date when reopen skipped UI payload. */
+  const resolvedDestinyMatrix = useMemo((): DestinyMatrixResult | null => {
+    if (spreadDestinyMatrix) return spreadDestinyMatrix;
+    if (numerologSessionToolId !== "destiny_matrix") return null;
+    const birth = userBirthDate?.trim();
+    if (!birth) return null;
+    return destinyMatrix(birth);
+  }, [spreadDestinyMatrix, numerologSessionToolId, userBirthDate]);
+  const hideDestinyCardArt =
+    isNumerologMaster(characterId) &&
+    (numerologSessionToolId === "destiny_matrix" || Boolean(resolvedDestinyMatrix));
   const [statusText, setStatusText] = useState("Считывает энергетику...");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -348,10 +425,10 @@ export default function ChatWindow({
     if (isLoading) {
       const name = character?.name ?? "Мастер";
       const statuses = [
-        `${name} вглядывается…`,
-        "Считывает энергетику…",
-        "Соединяется с астральным планом…",
-        "Расшифровывает знаки…",
+        `${name} смотрит в карты…`,
+        "Собирает смысл символов…",
+        "Соединяемся с наставником…",
+        "Готовит ответ…",
       ];
       setStatusText(statuses[0]!);
 
@@ -573,7 +650,7 @@ export default function ChatWindow({
         <button
           onClick={onClose}
           aria-label={closeAriaLabel}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple touch-manipulation"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/60 touch-manipulation"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -606,6 +683,27 @@ export default function ChatWindow({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {sessionId && !readOnly ? (
+            <button
+              type="button"
+              onClick={() => void toggleMemoryMode()}
+              disabled={memoryModeBusy}
+              title={memoryFresh ? "Включить персональную память" : "Начать без прошлой памяти"}
+              aria-pressed={memoryFresh}
+              className={`flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] transition-colors disabled:opacity-40 ${
+                memoryFresh
+                  ? "border-violet-300/35 bg-violet-400/10 text-violet-200"
+                  : "border-white/10 text-gray-400"
+              }`}
+            >
+              {memoryModeBusy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Brain className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">{memoryFresh ? "Чистый лист" : "С памятью"}</span>
+            </button>
+          ) : null}
           {onCompleteSession && !readOnly && messages.length > 0 && !isLoadingHistory && (
             <button
               type="button"
@@ -624,7 +722,7 @@ export default function ChatWindow({
               disabled={isLoading}
               title="Очистить переписку"
               aria-label="Очистить переписку"
-              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-red-400/40 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-40 touch-manipulation"
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-red-400/40 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/60 disabled:opacity-40 touch-manipulation"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -681,6 +779,7 @@ export default function ChatWindow({
       )}
 
       {headerSceneUrl &&
+        !hideDestinyCardArt &&
         !spreadCards?.length &&
         !messages.some((m) => m.role === "assistant" && m.sceneImageUrl) && (
         <SceneImage
@@ -719,7 +818,7 @@ export default function ChatWindow({
               : spreadVariant === "numerolog"
                 ? spreadComputedOnly && spreadPythagorasSquare
                   ? "Квадрат Пифагора"
-                  : spreadComputedOnly && spreadDestinyMatrix
+                  : spreadComputedOnly && resolvedDestinyMatrix
                     ? "Матрица судьбы"
                     : "Ваши числа"
                 : spreadVariant === "intention"
@@ -730,8 +829,11 @@ export default function ChatWindow({
           </p>
           {spreadComputedOnly && spreadPythagorasSquare ? (
             <PythagorasSquareGrid square={spreadPythagorasSquare} />
-          ) : spreadComputedOnly && spreadDestinyMatrix ? (
-            <DestinyMatrixGrid matrix={spreadDestinyMatrix} revealed={7} />
+          ) : spreadComputedOnly && resolvedDestinyMatrix ? (
+            <DestinyMatrixGrid
+              matrix={resolvedDestinyMatrix}
+              revealed={DESTINY_MATRIX_UI_SLOT_COUNT}
+            />
           ) : spreadInteractiveFlip &&
           (spreadVariant === "triplet" || spreadVariant === "intention") ? (
             spreadVariant === "intention" && spreadId ? (
@@ -846,13 +948,17 @@ export default function ChatWindow({
                 >
                   <MasterAvatar masterId={characterId} masterName={character.name} size="xl" className="mb-4" />
                   {isNumerologMaster(characterId) ? (
-                    <p className="max-w-md whitespace-pre-wrap text-sm leading-relaxed">
-                      {buildNumerologWelcomeMessage({
-                        userName: readStoredProfileForWelcome().name || "друг",
-                        birthDate: userBirthDate || readStoredProfileForWelcome().birthDate,
-                        fullName: readStoredProfileForWelcome().name,
-                      })}
-                    </p>
+                    <div className="max-w-md text-left">
+                      <ChatMessageRenderer
+                        content={buildNumerologWelcomeMessage({
+                          userName: readStoredProfileForWelcome().name || "друг",
+                          birthDate: userBirthDate || readStoredProfileForWelcome().birthDate,
+                          fullName: readStoredProfileForWelcome().name,
+                        })}
+                        role="assistant"
+                        className="text-sm"
+                      />
+                    </div>
                   ) : (
                     <p className="text-sm">
                       {character.name} готов к сеансу.
@@ -909,6 +1015,7 @@ export default function ChatWindow({
                   ) : (
                     <>
                       {msg.sceneImageUrl &&
+                        !(hideDestinyCardArt && msgIndex === 0) &&
                         !(spreadCards?.length && msgIndex === 0) && (
                         <SceneImage
                           imageUrl={msg.sceneImageUrl}
@@ -920,6 +1027,17 @@ export default function ChatWindow({
                           className="mb-3"
                         />
                       )}
+                      {msgIndex ===
+                        messages.findIndex(
+                          (m) => m.role === "assistant" && Boolean(m.content?.trim())
+                        ) &&
+                      resolvedDestinyMatrix &&
+                      !(spreadComputedOnly && resolvedDestinyMatrix) ? (
+                        <DestinyMatrixGrid
+                          matrix={resolvedDestinyMatrix}
+                          revealed={DESTINY_MATRIX_UI_SLOT_COUNT}
+                        />
+                      ) : null}
                       <ChatMessageRenderer
                         content={assistantContent}
                         role="assistant"
@@ -930,6 +1048,14 @@ export default function ChatWindow({
                           square={pythagorasSquare}
                           className="mt-3"
                         />
+                      ) : null}
+                      {msg.role === "assistant" &&
+                      numerologSessionToolId === "destiny_matrix" &&
+                      msgIndex ===
+                        messages.findIndex(
+                          (m) => m.role === "assistant" && Boolean(m.content?.trim())
+                        ) ? (
+                        <MatrixReportUpsell onOpenTool={onOpenNumerologTool} />
                       ) : null}
                     </>
                   )}
@@ -985,16 +1111,16 @@ export default function ChatWindow({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-2 rounded-xl border border-aura-purple/30 bg-aura-purple/10 p-3 text-center"
+          className="mb-2 rounded-xl border border-aura-gold/25 bg-aura-gold/8 p-3 text-center"
         >
-          <p className="text-sm text-gray-200">Бесплатные вопросы закончились.</p>
+          <p className="text-sm text-[#ede6da]/90">Бесплатные вопросы закончились.</p>
           {onOpenPaywall && (
             <button
               type="button"
               onClick={onOpenPaywall}
-              className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-aura-neon underline touch-manipulation"
+              className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-aura-champagne underline touch-manipulation"
             >
-              Получить полный доступ →
+              Открыть полный разбор →
             </button>
           )}
         </motion.div>
@@ -1004,18 +1130,21 @@ export default function ChatWindow({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-2 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/15 p-3"
+          className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-aura-gold/25 bg-[rgba(201,162,74,0.08)] p-3"
         >
-          <p className="text-xs text-amber-300">
-            Не хватает {Math.max(0, insufficientRunes.required - insufficientRunes.balance)} ᚢ
-            (нужно {insufficientRunes.required}, у вас {insufficientRunes.balance})
+          <p className="text-xs leading-relaxed text-[rgba(237,230,218,0.7)]">
+            Для продолжения нужно ещё{" "}
+            {Math.max(0, insufficientRunes.required - insufficientRunes.balance)} ᚢ
+            <span className="mt-0.5 block text-white/40">
+              Сейчас {insufficientRunes.balance} ᚢ · требуется {insufficientRunes.required} ᚢ
+            </span>
           </p>
           <button
             type="button"
             onClick={onOpenPaywall}
             className="btn-luxe btn-luxe--sm btn-luxe--gold shrink-0"
           >
-            Пополнить →
+            Пополнить
           </button>
         </motion.div>
       )}
@@ -1038,6 +1167,12 @@ export default function ChatWindow({
         </motion.div>
       )}
 
+      <MemoryAnchorSuggestion
+        sessionId={sessionId}
+        queryText={memoryAnchorQuery}
+        active={!readOnly && !memoryFresh && !isLoading}
+      />
+      <MemoryMoments sessionId={sessionId} active={!readOnly} />
       <SessionFeedback characterId={characterId} visible={showSessionFeedback && !readOnly} />
 
       {readOnly ? (
@@ -1081,7 +1216,47 @@ export default function ChatWindow({
             {sessionQuestionsRemaining === 1 ? "вопрос" : "вопроса"} из {SESSION_CHAT_QUESTION_LIMIT}.
           </p>
         ) : null}
-        {isNumerologChat ? (
+        {showContinueInChat && !readOnly ? (
+          <div className="rounded-xl border border-aura-gold/25 bg-aura-gold/10 px-3 py-2.5">
+            <p className="text-xs font-medium text-aura-champagne">Продолжить в чате</p>
+            <p className="mt-0.5 text-[11px] leading-snug text-aura-ivory/65">
+              Задайте уточнение по картам — или выберите подсказку ниже.
+            </p>
+            {onContinueInChat ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onContinueInChat();
+                  textInputRef.current?.focus();
+                }}
+                className="mt-2 text-[11px] font-medium text-aura-gold underline-offset-2 hover:underline"
+              >
+                К полю ввода
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {suggestedReplies && suggestedReplies.length > 0 && !readOnly ? (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Подсказки для продолжения">
+            {suggestedReplies.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                disabled={quickChipsDisabled}
+                onClick={() => {
+                  if (quickChipsDisabled) return;
+                  pinnedToBottomRef.current = true;
+                  onSuggestedReplySend?.(chip.message);
+                  onSendMessage(chip.message);
+                }}
+                className="rounded-xl border border-white/[0.08] bg-[rgba(20,18,16,0.9)] px-3 py-2 text-[11px] font-medium text-aura-champagne/95 transition-colors hover:border-aura-gold/35 disabled:opacity-40"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {isNumerologChat && numerologSessionToolId !== "destiny_matrix" ? (
           <NumerologQuickChips
             disabled={quickChipsDisabled}
             onSend={(text) => {
@@ -1089,7 +1264,7 @@ export default function ChatWindow({
               onSendMessage(text);
             }}
           />
-        ) : hasMasterQuickChips(characterId) && !readOnly ? (
+        ) : hasMasterQuickChips(characterId) && !readOnly && !suggestedReplies?.length ? (
           <MasterQuickChips
             masterId={characterId}
             disabled={quickChipsDisabled}
@@ -1125,7 +1300,7 @@ export default function ChatWindow({
           }}
           disabled={inputBlocked || (usesRuneBilling && !canAffordVision && !onOpenPhotoReading)}
           aria-label="Загрузить фото расклада"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-aura-emerald/50 hover:text-aura-emerald focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-gray-400 transition-colors hover:border-aura-gold/45 hover:text-aura-champagne focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/60 disabled:opacity-30"
           title={
             usesRuneBilling && !canAffordVision && !onOpenPhotoReading
               ? `Нужно ${visionCost} ᚢ для анализа фото`
@@ -1148,12 +1323,12 @@ export default function ChatWindow({
                 ? "Остановить запись голоса"
                 : "Голосовой ввод"
           }
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30 touch-manipulation ${
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/60 disabled:opacity-30 touch-manipulation ${
             isRecording
               ? "border-red-500/50 bg-red-500/10 text-red-400"
               : voicePhase === "transcribing"
-                ? "border-aura-purple/40 bg-aura-purple/10 text-aura-purple"
-                : "border-white/10 text-gray-400 hover:border-aura-purple/50 hover:text-aura-purple"
+                ? "border-aura-gold/40 bg-aura-gold/10 text-aura-champagne"
+                : "border-white/10 text-gray-400 hover:border-aura-gold/45 hover:text-aura-champagne"
           }`}
           title={
             voicePhase === "transcribing"
@@ -1198,7 +1373,7 @@ export default function ChatWindow({
           type="submit"
           disabled={!input.trim() || inputBlocked}
           aria-label="Отправить сообщение"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-aura-purple/30 text-aura-neon transition-all hover:bg-aura-purple/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple disabled:opacity-30 touch-manipulation"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[rgba(201,162,74,0.22)] text-aura-champagne transition-all hover:bg-[rgba(201,162,74,0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/60 disabled:opacity-30 touch-manipulation"
         >
           <Send className="h-5 w-5" />
         </button>

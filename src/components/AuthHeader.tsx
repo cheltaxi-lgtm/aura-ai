@@ -4,6 +4,8 @@ import Link from "next/link";
 import { LogIn, LogOut, User, Sparkles } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
 import NotificationBell from "@/components/NotificationBell";
+import { navigateToCabinet } from "@/lib/app-shell-nav";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import type { AuthUser } from "@/lib/useAuth";
 
 export const NAVIGATE_CABINET_EVENT = "aura:navigate-cabinet";
@@ -26,12 +28,7 @@ export default function AuthHeader({
 
   const openCabinet = () => {
     window.dispatchEvent(new CustomEvent(NAVIGATE_CABINET_EVENT));
-    const inAppShell =
-      typeof window !== "undefined" &&
-      (document.documentElement.dataset.appShell === "android" ||
-        sessionStorage.getItem("zovus_app_shell") === "1" ||
-        /(?:^|[?&])app=1(?:&|$)/.test(window.location.search));
-    window.location.assign(inAppShell ? "/cabinet?app=1" : "/cabinet");
+    navigateToCabinet();
   };
 
   const btnClass = compact
@@ -49,7 +46,7 @@ export default function AuthHeader({
         <button type="button" onClick={openCabinet} className={btnClass} title="Личный кабинет">
           <User className="h-4 w-4 shrink-0" aria-hidden />
           <span className={compact ? "hidden sm:inline" : undefined}>
-            {user.name.split(" ")[0]}
+            {normalizePersonDisplayNameOr(user.name, user.name.split(" ")[0])}
           </span>
         </button>
         <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { GUEST_SPREAD_SECTION_ID } from "@/lib/landing-offer";
+import { GUEST_SPREAD_PICKER_ID, GUEST_SPREAD_SECTION_ID } from "@/lib/landing-offer";
 
 type LandingStickyCtaProps = {
   label: string;
@@ -13,17 +13,34 @@ const VISIBILITY_DEBOUNCE_MS = 140;
 
 const INLINE_CTA_SELECTORS = [
   `#${GUEST_SPREAD_SECTION_ID}`,
+  `#${GUEST_SPREAD_PICKER_ID}`,
   ".aura-landing-hero__actions",
+  ".editorial-hero__actions",
   ".aura-landing-section--final",
+  "#guest-teaser-auth",
 ] as const;
 
 export default function LandingStickyCta({ label, onClick, hidden }: LandingStickyCtaProps) {
   const [visible, setVisible] = useState(false);
+  const [guestSpreadActive, setGuestSpreadActive] = useState(false);
   const obscuredRef = useRef(new Set<Element>());
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (hidden) {
+    const syncGuest = () => {
+      setGuestSpreadActive(document.documentElement.dataset.guestSpreadActive === "1");
+    };
+    syncGuest();
+    const obs = new MutationObserver(syncGuest);
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-guest-spread-active"],
+    });
+    return () => obs.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (hidden || guestSpreadActive) {
       setVisible(false);
       return;
     }
@@ -79,9 +96,9 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
         debounceRef.current = null;
       }
     };
-  }, [hidden]);
+  }, [hidden, guestSpreadActive]);
 
-  if (hidden) return null;
+  if (hidden || guestSpreadActive) return null;
 
   return (
     <div

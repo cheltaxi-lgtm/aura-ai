@@ -3,13 +3,15 @@ import Link from "next/link";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import RaskladyCatalog from "@/components/seo/RaskladyCatalog";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: `Расклады Таро онлайн — каталог вопросов | ${BRAND_NAME}`,
+  title: `Каталог раскладов Таро — готовые вопросы онлайн | ${BRAND_NAME}`,
   description:
-    "Выберите готовый вопрос — Zovus подберёт мастера, схему расклада и персональную расшифровку с памятью сессии.",
+    "Каталог раскладов Таро онлайн: любовь, верность, будущее, работа. Выберите готовый вопрос — Zovus подберёт схему и разбор с наставником.",
   path: "/rasklady",
 });
 
@@ -17,11 +19,22 @@ export default function RaskladyCatalogPage() {
   return (
     <SeoPageShell backHref="/" backLabel="На главную">
       <SeoPageTracker goal="rasklady_hub_view" />
+      <SeoBreadcrumbs
+        items={[
+          { name: "Zovus", path: "/" },
+          { name: "Каталог раскладов", path: "/rasklady" },
+        ]}
+      />
       <p className="text-sm text-aura-gold/80">Каталог раскладов</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Расклады Zovus</h1>
+      <h1 className="mt-2 font-display text-3xl font-bold">Каталог раскладов Таро онлайн</h1>
       <p className="mt-4 text-white/70">
-        Выберите вопрос — мы подберём мастера и схему. Любовные формулировки подстраиваются под
-        пол из анкеты: для мужчин «она», для женщин «он».
+        Выберите готовый вопрос — откроем подходящую схему и разбор. Формулировки про партнёра
+        подстраиваются под пол из анкеты: для мужчин «она», для женщин «он». Уже разложили карты
+        дома —{" "}
+        <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
+          расшифруйте фото расклада
+        </Link>
+        .
       </p>
 
       <RaskladyCatalog />
@@ -48,8 +61,11 @@ export default function RaskladyCatalogPage() {
         <Link href="/numerology" className="text-sm text-aura-gold hover:underline">
           Нумерология
         </Link>
-        <Link href="/cabinet/astrology" className="text-sm text-aura-gold hover:underline">
+        <Link href="/natalnaya-karta" className="text-sm text-aura-gold hover:underline">
           Натальная карта
+        </Link>
+        <Link href="/numerology/destiny-matrix" className="text-sm text-aura-gold hover:underline">
+          Матрица судьбы
         </Link>
         <Link href="/cards" className="text-sm text-aura-gold hover:underline">
           Значения карт
@@ -61,6 +77,10 @@ export default function RaskladyCatalogPage() {
           Прогнозы
         </Link>
       </section>
+
+      <div className="mt-10">
+        <SeoRelatedTools excludeHrefs={["/rasklady"]} />
+      </div>
     </SeoPageShell>
   );
 }

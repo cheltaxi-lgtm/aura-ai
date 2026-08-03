@@ -10,6 +10,8 @@ import {
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
 import RuneCost from "@/components/RuneCost";
+import MatrixSubjectPicker from "@/components/numerolog/MatrixSubjectPicker";
+import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 
 interface NumerologCalculationPickerProps {
   selectedId: NumerologToolId;
@@ -22,6 +24,8 @@ interface NumerologCalculationPickerProps {
   userFullName?: string;
   /** Summary block is rendered in the modal footer — hide duplicate panel here. */
   hideSummaryPanel?: boolean;
+  matrixSubjectId?: string | null;
+  onMatrixSubjectIdChange?: (id: string | null) => void;
 }
 
 function drawMeta(tool: NumerologToolDef): string {
@@ -47,9 +51,16 @@ export default function NumerologCalculationPicker({
   userBirthDate,
   userFullName,
   hideSummaryPanel = false,
+  matrixSubjectId = null,
+  onMatrixSubjectIdChange,
 }: NumerologCalculationPickerProps) {
   const [partnerDateError, setPartnerDateError] = useState("");
   const selected = getNumerologTool(selectedId);
+  const showSubjectPicker =
+    selectedId === "destiny_matrix" || selectedId === "child_matrix";
+  const matrixSubjects = useMatrixSubjects({
+    enabled: showSubjectPicker,
+  });
   const sessionError = validateNumerologSessionReady(
     selectedId,
     params,
@@ -71,6 +82,21 @@ export default function NumerologCalculationPicker({
 
   return (
     <div className="numerolog-calc-picker space-y-4">
+      {showSubjectPicker ? (
+        <MatrixSubjectPicker
+          subjects={matrixSubjects.subjects}
+          selectedId={matrixSubjectId}
+          disabled={matrixSubjects.loading}
+          costs={matrixSubjects.costs}
+          allowKinds={
+            selectedId === "child_matrix" ? ["child"] : ["child", "partner", "other"]
+          }
+          onSelect={(id) => onMatrixSubjectIdChange?.(id)}
+          onCreate={matrixSubjects.create}
+          onCreated={(subject) => onMatrixSubjectIdChange?.(subject.id)}
+        />
+      ) : null}
+
       <div className="numerolog-calc-picker__grid grid grid-cols-2 gap-2">
         {NUMEROLOG_SESSION_TOOLS.map((tool) => {
           const active = tool.id === selectedId;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Plus, CheckCircle2, Circle, Archive, Trash2 } from "lucide-react";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import { formatCabinetPredictionPreview, stripMarkdownText, truncate } from "@/lib/cabinet-utils";
@@ -17,6 +17,7 @@ import {
   type RitualType,
 } from "@/lib/ritual-config";
 import type { RitualClientData } from "@/components/ritual/RitualCard";
+import { resetWindowScroll, resetWindowScrollSoon } from "@/lib/reset-window-scroll";
 
 export type SessionListItem = {
   id: string;
@@ -89,6 +90,7 @@ function sessionPreviewText(item: SessionListItem): string {
 }
 
 function sessionSpreadLabel(item: SessionListItem): string | null {
+  if (item.spreadType === "guest_resume") return null;
   if (item.spreadType === "daily") return "Карты дня";
   if (!item.spreadId || item.spreadType === "photo") return null;
   const numerologToolId = decodeNumerologSpreadId(item.spreadId);
@@ -191,6 +193,7 @@ export default function SessionList({
   const showRituals = (RITUAL_MASTERS as readonly string[]).includes(masterId);
   const [rituals, setRituals] = useState<RitualClientData[]>([]);
   const [deletingRitualId, setDeletingRitualId] = useState<string | null>(null);
+  const topRef = useRef<HTMLDivElement>(null);
 
   const fetchRituals = async () => {
     try {
@@ -211,6 +214,18 @@ export default function SessionList({
     if (!showRituals) return;
     void fetchRituals();
   }, [masterId, showRituals]);
+
+  // Soft-nav from the masters salon keeps window scroll. Reset on open and
+  // again after sessions/rituals paint (list growth used to leave you at the bottom).
+  useLayoutEffect(() => {
+    resetWindowScroll();
+    topRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+  }, [masterId]);
+
+  useEffect(() => {
+    resetWindowScrollSoon();
+    topRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+  }, [masterId, loading, active?.id, completed.length, rituals.length]);
 
   const handleDeleteRitual = async (ritualId: string) => {
     const confirmed = window.confirm(
@@ -235,7 +250,11 @@ export default function SessionList({
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div
+      ref={topRef}
+      className="mx-auto max-w-2xl px-4 pb-10 pt-2 sm:px-6"
+      style={{ overflowAnchor: "none" }}
+    >
       <div className="glass-panel mb-6 flex items-center gap-4 p-4">
         <button
           type="button"

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { performClientLogout } from "@/lib/client-logout";
-import BrandLogo from "@/components/BrandLogo";
 import { motion } from "framer-motion";
 import { Sparkles, Upload, Link2, BarChart3, LogOut } from "lucide-react";
 
@@ -85,13 +84,14 @@ export default function ExpertCabinetPage() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen px-6 py-12">
+    <div className="page-with-site-header min-h-screen px-6 py-12">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-8 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-gray-500 hover:text-aura-neon">
-            <BrandLogo showTagline={false} markSize={22} titleClassName="font-display text-lg font-bold text-white" />
-          </Link>
-          <button onClick={logout} className="flex items-center gap-1 text-sm text-gray-500 hover:text-white">
+        <div className="mb-8 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={logout}
+            className="btn-luxe btn-luxe--sm btn-luxe--ghost inline-flex items-center gap-1"
+          >
             <LogOut className="h-4 w-4" /> Выйти
           </button>
         </div>
@@ -107,7 +107,7 @@ export default function ExpertCabinetPage() {
             <div className="glass-panel p-6">
               <div className="mb-3 flex items-center gap-2 text-aura-neon">
                 <Link2 className="h-5 w-5" />
-                <h2 className="font-medium">White-Label страница</h2>
+                <h2 className="font-medium">Ваша страница мастера</h2>
               </div>
               <p className="break-all rounded-xl bg-black/40 px-4 py-3 text-sm text-aura-emerald">
                 {whiteLabelUrl}

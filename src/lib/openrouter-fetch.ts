@@ -42,7 +42,7 @@ async function fetchDirectIpv4(
 }
 
 /**
- * OpenRouter requests: primary via OPENROUTER_HTTPS_PROXY (Latvia),
+ * OpenRouter requests: primary via OPENROUTER_HTTPS_PROXY (Sweden),
  * fallback without proxy (wg-foxdpi split routes on prod when configured).
  */
 export async function openRouterFetch(
@@ -65,6 +65,12 @@ export async function openRouterFetch(
     }
     await primary.body?.cancel();
   } catch (error) {
+    // Timeout/cancel already decided — do not retry with the same aborted signal
+    // (direct IPv4 also fails on this host, and AbortError is not a proxy outage).
+    const aborted =
+      init?.signal?.aborted === true ||
+      (error instanceof Error && error.name === "AbortError");
+    if (aborted) throw error;
     console.warn("[openrouter] primary proxy failed:", error);
   }
 

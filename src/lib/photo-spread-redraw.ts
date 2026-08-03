@@ -238,10 +238,16 @@ export function mapDetectedToRedrawSpread(params: {
     });
     const symbol = findSymbolByName(art.artSystem, art.displayName);
     const desc = getSymbolDescription(art.artSystem, symbol?.name ?? art.displayName);
-    const imagePath = getDeckImagePath(system, art.displayName);
+    // Prefer art from the system that actually matched — not always primary.
+    const imagePath =
+      art.imagePath ||
+      getDeckImagePath(art.artSystem, art.displayName) ||
+      getDeckImagePath(system, art.displayName);
     const placeholder =
-      imagePath === DECK_BACK_PATHS[system] &&
-      !findSymbolByName(system, art.displayName);
+      art.placeholder ||
+      !imagePath ||
+      imagePath === DECK_BACK_PATHS[art.artSystem] ||
+      imagePath === DECK_BACK_PATHS[system];
 
     return {
       name: art.displayName,
@@ -300,7 +306,8 @@ export function buildSpreadSummaryForLlm(spread: RedrawSpread): string {
       c.originalName !== c.name
         ? `«${c.originalName}» (на фото) → Zovus: «${c.name}»`
         : `«${c.name}»`;
-    return `${i + 1}. ${c.position}: ${label}${c.reversed ? " (перевёрнутая)" : ""}${
+    const meaning = c.shortMeaning?.trim() ? ` — ${c.shortMeaning.trim()}` : "";
+    return `${i + 1}. ${c.position}: ${label}${c.reversed ? " (перевёрнутая)" : ""}${meaning}${
       c.placeholder ? " [нет арта Zovus — трактуй по названию с фото]" : ""
     }`;
   });
@@ -308,7 +315,7 @@ export function buildSpreadSummaryForLlm(spread: RedrawSpread): string {
     `Система Zovus: ${spread.system}`,
     spread.deckType ? `Колода на фото: ${spread.deckType}` : "",
     spread.spreadType ? `Схема: ${spread.spreadType}` : "",
-    `Подтверждённые символы (${spread.cards.length}):`,
+    `Подтверждённые символы (${spread.cards.length}) — читай каждое значение ниже как источник фактов:`,
     ...lines,
   ]
     .filter(Boolean)
@@ -361,5 +368,5 @@ export const DECK_SYSTEM_DISPLAY: Record<DeckSystem, string> = {
   slavic: "Славянское ведовство",
   astrology: "Джйотиш / Астрология",
   numerology: "Нумерология",
-  lenormand: "Оракул Ленорман",
+  lenormand: "Ленорман",
 };

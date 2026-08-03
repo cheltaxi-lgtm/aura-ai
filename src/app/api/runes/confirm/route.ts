@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { confirmOrReconcileRunePurchase } from "@/lib/rune-payment-confirm";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 
 export async function POST(request: NextRequest) {
   const authed = await requireProfileUserId();
@@ -8,15 +9,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const limited = await enforcePaidRouteRateLimit(authed.profileUserId, "rune_confirm");
+  if (limited) return limited;
+
   let paymentId: string | undefined;
+  let orderId: string | undefined;
   try {
     const body = await request.json();
     paymentId = typeof body.paymentId === "string" ? body.paymentId.trim() : undefined;
+    orderId = typeof body.orderId === "string" ? body.orderId.trim() : undefined;
   } catch {
     /* allow empty body — reconcile recent */
   }
 
-  const result = await confirmOrReconcileRunePurchase(authed.profileUserId, paymentId);
+  const result = await confirmOrReconcileRunePurchase(
+    authed.profileUserId,
+    paymentId,
+    orderId
+  );
 
   if (result.status === "forbidden") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -26,6 +36,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payment not found" }, { status: 404 });
   }
 
+  if (result.status === "rejected") {
+    return NextResponse.json(
+      {
+        ok: false,
+        status: "rejected",
+        balance: result.balance,
+        paymentId: result.paymentId,
+        credited: false,
+        alreadyCredited: false,
+        amountRub: result.amountRub,
+        packageId: result.packageId,
+        packageName: result.packageName,
+        error: "credit_rejected",
+      },
+      { status: 422 }
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     status: result.status,
@@ -33,6 +61,7 @@ export async function POST(request: NextRequest) {
     paymentId: result.paymentId,
     credited: result.status === "credited",
     pending: result.status === "pending",
+    cancelled: result.status === "cancelled",
     alreadyCredited: result.status === "already_credited",
     amountRub: result.amountRub,
     packageId: result.packageId,

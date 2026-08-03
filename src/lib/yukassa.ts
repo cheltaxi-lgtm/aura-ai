@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { getSetting } from "@/lib/settings";
+import { buildRunePurchaseReturnUrl } from "@/lib/rune-purchase-client";
 
 const YUKASSA_API = "https://api.yookassa.ru/v3";
 
@@ -87,9 +89,15 @@ export async function createYukassaRunePayment(params: {
   totalRunes: number;
   userId: string;
   appUrl: string;
+  /** Optional override (e.g. bot deep-link). Default includes orderId. */
+  returnUrl?: string;
+  /** Attribution source for analytics. */
+  source?: string;
 }) {
-  const idempotenceKey = `rune-${params.userId}-${params.packageId}-${Date.now()}`;
-  const returnUrl = `${params.appUrl.replace(/\/$/, "")}/runes/success`;
+  const orderId = randomUUID();
+  const idempotenceKey = `rune-${params.userId}-${params.packageId}-${orderId}`;
+  const returnUrl =
+    params.returnUrl || buildRunePurchaseReturnUrl(params.appUrl, undefined, orderId);
 
   const response = await fetch(`${YUKASSA_API}/payments`, {
     method: "POST",
@@ -112,7 +120,10 @@ export async function createYukassaRunePayment(params: {
         packageName: params.packageName,
         runesAmount: String(params.totalRunes),
         runes_count: String(params.totalRunes),
+        priceRub: String(params.priceRub),
+        orderId,
         type: "rune_purchase",
+        source: params.source ?? "site",
       },
     }),
   });
@@ -122,11 +133,12 @@ export async function createYukassaRunePayment(params: {
     throw new Error(`YooKassa error: ${err}`);
   }
 
-  return response.json() as Promise<{
+  const payment = (await response.json()) as {
     id: string;
     status: string;
     confirmation?: { confirmation_url?: string };
-  }>;
+  };
+  return { ...payment, orderId };
 }
 
 export async function fetchYukassaPayment(paymentId: string): Promise<{
@@ -151,7 +163,7 @@ export async function fetchYukassaPayment(paymentId: string): Promise<{
   }
 }
 
-export async function listRecentYukassaPayments(sinceIso: string, limit = 20): Promise<
+export async function listRecentYukassaPayments(sinceIso: string, limit = 100): Promise<
   Array<{
     id: string;
     status: string;
@@ -162,27 +174,46 @@ export async function listRecentYukassaPayments(sinceIso: string, limit = 20): P
 > {
   if (!isYukassaConfigured()) return [];
 
+  type Item = {
+    id: string;
+    status: string;
+    amount?: { value: string; currency: string };
+    metadata?: Record<string, string>;
+    created_at?: string;
+  };
+
+  const items: Item[] = [];
+  let cursor: string | undefined;
+
   try {
-    const response = await fetch(
-      `${YUKASSA_API}/payments?created_at.gte=${encodeURIComponent(sinceIso)}&limit=${limit}`,
-      {
+    while (items.length < limit) {
+      const pageSize = Math.min(100, limit - items.length);
+      const params = new URLSearchParams({
+        "created_at.gte": sinceIso,
+        limit: String(pageSize),
+      });
+      if (cursor) params.set("cursor", cursor);
+
+      const response = await fetch(`${YUKASSA_API}/payments?${params.toString()}`, {
         headers: {
           Authorization: authHeader(),
           "Content-Type": "application/json",
         },
-      }
-    );
-    if (!response.ok) return [];
-    const data = (await response.json()) as { items?: Array<Record<string, unknown>> };
-    return (data.items ?? []) as Array<{
-      id: string;
-      status: string;
-      amount?: { value: string; currency: string };
-      metadata?: Record<string, string>;
-      created_at?: string;
-    }>;
+      });
+      if (!response.ok) break;
+
+      const data = (await response.json()) as {
+        items?: Item[];
+        next_cursor?: string;
+      };
+      const page = data.items ?? [];
+      items.push(...page);
+      cursor = data.next_cursor;
+      if (!cursor || page.length === 0) break;
+    }
+    return items;
   } catch {
-    return [];
+    return items;
   }
 }
 

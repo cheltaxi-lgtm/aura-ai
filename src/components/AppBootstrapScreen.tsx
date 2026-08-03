@@ -15,8 +15,8 @@ interface AppBootstrapScreenProps {
 }
 
 export default function AppBootstrapScreen({
-  title = "Настраиваем канал",
-  subtitle = "Подключаем мастеров, колоды и ваш астральный профиль",
+  title = "Открываем пространство",
+  subtitle = "Подключаем мастеров, колоды и ваш профиль",
   hint = "Это займёт несколько секунд",
   showRetryAfterMs = 12_000,
   embedded = false,
@@ -42,7 +42,7 @@ export default function AppBootstrapScreen({
       >
         <div className="mb-3 inline-flex items-center gap-2">
           <BrandMark size={28} />
-          <span className="font-display text-3xl font-bold tracking-[0.2em] text-white neon-text">
+          <span className="font-display text-3xl font-semibold tracking-[0.16em] text-[#ede6da]">
             {BRAND_NAME.toUpperCase()}
           </span>
         </div>

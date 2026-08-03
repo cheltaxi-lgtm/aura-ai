@@ -1,4 +1,5 @@
 import type { CharacterVisualKey } from "@/lib/image-prompts";
+import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import {
   findShowcaseMaster,
@@ -260,7 +261,10 @@ export function buildOnboardingPostBody(
   const birthCity = base.birthCity?.trim();
   return {
     name: base.name?.trim() || "",
-    gender: base.gender === "male" || base.gender === "female" ? base.gender : "female",
+    gender:
+      base.gender === "male" || base.gender === "female"
+        ? base.gender
+        : inferGenderFromFirstName(base.name) ?? "female",
     birthDate: base.birthDate || "",
     zodiac: base.zodiac || "",
     ...(birthTime ? { birthTime } : {}),
@@ -296,7 +300,7 @@ export function onboardingErrorMessage(data: {
     const fields = data.missing?.length ? ` (${data.missing.join(", ")})` : "";
     return `Заполните профиль${fields}. Вернитесь к анкете.`;
   }
-  if (data.error === "Database unavailable") {
+  if (data.error === "Сервис временно недоступен. Попробуйте позже.") {
     return "Сервер временно недоступен. Попробуйте через минуту.";
   }
   if (data.detail) {

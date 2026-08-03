@@ -64,6 +64,7 @@ export function serializeRuneConfig(settings: RuneSettings) {
   return {
     enabled: settings.enabled,
     rubPerRune: settings.rubPerRune,
+    starterRunes: settings.starterRunes,
     freeQuestions: settings.freeQuestions,
     costs: settings.costs,
     labels: RUNE_ACTION_LABELS,

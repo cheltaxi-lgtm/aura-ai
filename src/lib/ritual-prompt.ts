@@ -11,6 +11,11 @@ import {
   type RitualSchedule,
 } from "@/lib/ritual-timing";
 import { buildDateAnchorBlock } from "@/lib/prompt-date";
+import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
+import {
+  buildClientGenderInstruction,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
 
 export { formatRitualCalendarDate } from "@/lib/ritual-timing";
 
@@ -19,8 +24,9 @@ export function buildRitualPrompt(params: {
   ritualType: RitualType;
   userName: string;
   userZodiac: string;
+  userGender?: string | null;
   answers: string[];
-  cards: Array<{ name: string; position: string }>;
+  cards: Array<{ name: string; position: string; meaning?: string }>;
   moonPhase: string;
   moonSign: string;
   referenceDate?: Date;
@@ -56,6 +62,11 @@ ${buildDateAnchorBlock(today)}
 — Луна при заказе: ${params.moonPhase}, в ${params.moonSign}
 — Сегодня: ${todayLabel}
 
+${buildClientGenderInstruction({
+  gender: resolveClientGender(params.userGender, params.userName),
+  firstName: params.userName,
+})}
+
 РИТУАЛЬНОЕ ВРЕМЯ (рассчитано системой по луне и типу обряда — НЕ МЕНЯТЬ):
 — ${schedule.label}
 — ${schedule.factors.join("; ")}
@@ -69,9 +80,28 @@ ${params.answers
   .join("\n")}
 
 РАСКЛАД (5 карт):
-${params.cards.map((c) => `— ${c.position}: ${c.name}`).join("\n")}
+${(() => {
+  const system = resolveDeckSystem(undefined, params.characterKey);
+  return params.cards
+    .map((c) => {
+      const resolved = resolveDeckCard(system, { name: c.name, meaning: c.meaning });
+      const meaning = c.meaning?.trim() || resolved.shortMeaning || "";
+      return meaning
+        ? `— ${c.position}: «${resolved.name || c.name}» — ${meaning}`
+        : `— ${c.position}: «${c.name}»`;
+    })
+    .join("\n");
+})()}
 
 СОСТАВЬ РИТУАЛ. Отвечай СТРОГО в этом JSON формате:
+
+ПЕРСОНАЛЬНАЯ ТРАЕКТОРИЯ:
+— Если служебная память содержит активный факт или итог прошлого обряда/его отзыва по этой же
+  теме, используй не более 1–2 таких опор: покажи, что изменилось и как нынешний ритуал продолжает
+  путь пользователя.
+— Не упоминай память, служебный контекст или статус факта.
+— Никогда не используй черновики и не притягивай нерелевантные сведения.
+— Ответы пользователя и карты текущего расклада важнее памяти.
 
 {
   "ritual_time_reason": "1-2 предложения ПОЧЕМУ именно это время подходит —
@@ -192,24 +222,102 @@ function extractJsonObject(raw: string): string | null {
   }
 }
 
-function normalizeRitualPayload(parsed: RitualLlmPayload): RitualLlmPayload | null {
+const SILENCE_FORBID_RE = /молч|не говор|не рассказ|не обсужд|хранить\s+в\s+секрет/i;
+
+function asTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeItems(
+  raw: unknown
+): Array<{ item: string; reason: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const item = asTrimmedString((entry as { item?: unknown }).item);
+      const reason = asTrimmedString((entry as { reason?: unknown }).reason);
+      if (!item) return null;
+      return { item, reason: reason || item };
+    })
+    .filter((x): x is { item: string; reason: string } => Boolean(x))
+    .slice(0, 4);
+}
+
+function normalizeStringList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v) => asTrimmedString(v)).filter(Boolean);
+}
+
+/** Strict schema check used by parse + soft-retry loop. */
+export function ritualPayloadIssues(parsed: RitualLlmPayload): string[] {
+  const issues: string[] = [];
+  const place = asTrimmedString(parsed.ritual_place);
+  if (!place) issues.push("ritual_place пустой");
+
   const steps = Array.isArray(parsed.ritual_steps)
     ? parsed.ritual_steps.filter(
         (s) => s && typeof s.step === "string" && typeof s.description === "string"
       )
     : [];
-  const place =
-    typeof parsed.ritual_place === "string" ? parsed.ritual_place.trim() : "";
-  if (!steps.length || !place) return null;
+  if (steps.length < 3) issues.push("нужно ровно 3 ritual_steps");
+  if (steps.length > 3) issues.push("не больше 3 ritual_steps");
 
-  return {
+  const items = normalizeItems(parsed.ritual_items);
+  if (items.length < 1) issues.push("нужен хотя бы 1 ritual_item");
+  if (items.length > 4) issues.push("не больше 4 ritual_items");
+
+  if (!asTrimmedString(parsed.ritual_words)) issues.push("ritual_words пустой");
+  if (!asTrimmedString(parsed.ritual_word_of_power)) {
+    issues.push("ritual_word_of_power пустой");
+  }
+
+  const forbids = normalizeStringList(parsed.ritual_forbids);
+  if (forbids.length < 2) issues.push("нужно минимум 2 ritual_forbids");
+  if (!forbids.some((f) => SILENCE_FORBID_RE.test(f))) {
+    issues.push("один forbid должен быть про молчание");
+  }
+
+  const signs = normalizeStringList(parsed.ritual_signs);
+  if (signs.length < 3) issues.push("нужно минимум 3 ritual_signs");
+
+  return issues;
+}
+
+function normalizeRitualPayload(parsed: RitualLlmPayload): RitualLlmPayload | null {
+  const steps = Array.isArray(parsed.ritual_steps)
+    ? parsed.ritual_steps.filter(
+        (s) =>
+          s &&
+          typeof s.step === "string" &&
+          typeof s.description === "string" &&
+          s.step.trim() &&
+          s.description.trim()
+      )
+    : [];
+  const place = asTrimmedString(parsed.ritual_place);
+  const items = normalizeItems(parsed.ritual_items);
+  const forbids = normalizeStringList(parsed.ritual_forbids);
+  const signs = normalizeStringList(parsed.ritual_signs);
+  const words = asTrimmedString(parsed.ritual_words);
+  const wordOfPower = asTrimmedString(parsed.ritual_word_of_power);
+
+  const normalized: RitualLlmPayload = {
     ...parsed,
     ritual_place: place,
-    ritual_steps: steps,
-    ritual_items: Array.isArray(parsed.ritual_items) ? parsed.ritual_items : [],
-    ritual_forbids: Array.isArray(parsed.ritual_forbids) ? parsed.ritual_forbids : [],
-    ritual_signs: Array.isArray(parsed.ritual_signs) ? parsed.ritual_signs : [],
+    ritual_steps: steps.slice(0, 3),
+    ritual_items: items,
+    ritual_forbids: forbids,
+    ritual_signs: signs.slice(0, 5),
+    ritual_words: words,
+    ritual_word_of_power: wordOfPower,
+    ritual_word_of_power_transcription: asTrimmedString(
+      parsed.ritual_word_of_power_transcription
+    ),
   };
+
+  if (ritualPayloadIssues(normalized).length) return null;
+  return normalized;
 }
 
 export function parseRitualJson(
@@ -224,7 +332,13 @@ export function parseRitualJson(
 
   try {
     const parsed = normalizeRitualPayload(JSON.parse(jsonText) as RitualLlmPayload);
-    if (!parsed) return null;
+    if (!parsed) {
+      console.warn(
+        "Ritual JSON schema failed:",
+        ritualPayloadIssues(JSON.parse(jsonText) as RitualLlmPayload).join("; ")
+      );
+      return null;
+    }
 
     const reason = parsed.ritual_time_reason?.trim() || null;
     const ritual_time = buildRitualTimeString(schedule, reason);
@@ -245,4 +359,19 @@ export function parseRitualJson(
     console.warn("Ritual JSON parse failed:", error, jsonText.slice(0, 200));
     return null;
   }
+}
+
+/** Hint for a soft LLM retry after schema validation failed. */
+export function buildRitualSchemaRetryHint(raw: string): string {
+  let issues = ["вернуть валидный JSON по схеме"];
+  const jsonText = extractJsonObject(raw);
+  if (jsonText) {
+    try {
+      issues = ritualPayloadIssues(JSON.parse(jsonText) as RitualLlmPayload);
+    } catch {
+      /* keep default */
+    }
+  }
+  return `Предыдущий ответ не прошёл проверку: ${issues.join("; ")}.
+Верни ТОЛЬКО исправленный JSON: ровно 3 шага, 1–4 атрибута, непустые ritual_words и ritual_word_of_power, ≥2 forbids (один про молчание), ≥3 знака.`;
 }

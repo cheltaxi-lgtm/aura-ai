@@ -5,7 +5,8 @@ import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import { buildArticleStructuredData } from "@/lib/seo/structured-data";
+import { buildForecastStructuredData } from "@/lib/seo/structured-data";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Гадание да или нет онлайн бесплатно | Zovus",
@@ -22,29 +23,26 @@ const breadcrumbs = [
 
 const faq = [
   {
-    question: "Как работает гадание да или нет?",
-    answer:
-      "Вы формулируете один чёткий вопрос («да/нет»-вопрос, не открытый), вытягиваете одну карту Таро или руну, и мастер переводит её значение в прямой ответ с коротким пояснением нюансов.",
+    q: "Как работает гадание да или нет?",
+    a: "Вы формулируете один чёткий вопрос («да/нет»-вопрос, не открытый), вытягиваете одну карту Таро или руну, и мастер переводит её значение в прямой ответ с коротким пояснением нюансов.",
   },
   {
-    question: "Какой метод точнее — Таро или руны?",
-    answer:
-      "Оба метода одинаково символичны: Таро даёт немного больше эмоциональных оттенков (78 карт), руны — более лаконичный и прямой ответ (24 символа). Выбирайте по личному отклику.",
+    q: "Какой метод точнее — Таро или руны?",
+    a: "Оба метода одинаково символичны: Таро даёт немного больше эмоциональных оттенков (78 карт), руны — более лаконичный и прямой ответ (24 символа). Выбирайте по личному отклику.",
   },
   {
-    question: "Что делать, если ответ получился спорным?",
-    answer:
-      "Если карта или руна неоднозначна, или вопрос оказался шире, чем «да/нет», — уточните его в расширенном раскладе на три карты либо обсудите ситуацию с мастером в чате.",
+    q: "Что делать, если ответ получился спорным?",
+    a: "Если карта или руна неоднозначна, или вопрос оказался шире, чем «да/нет», — уточните его в расширенном раскладе на три карты либо обсудите ситуацию с мастером в чате.",
   },
 ];
 
 export default function GadanieDaNetPage() {
-  const structuredData = buildArticleStructuredData({
+  const structuredData = buildForecastStructuredData({
     title: "Гадание да или нет онлайн",
     description:
       "Гадание да или нет онлайн: одна карта Таро или одна руна — прямой ответ на ваш вопрос.",
     path: "/gadanie/da-net",
-    bodyText: faq.map((f) => `${f.question} ${f.answer}`).join(" "),
+    faq,
   });
 
   return (
@@ -103,12 +101,21 @@ export default function GadanieDaNetPage() {
 
       <SeoSection title="Частые вопросы">
         {faq.map((item) => (
-          <div key={item.question}>
-            <h3 className="font-medium text-white">{item.question}</h3>
-            <p className="mt-1">{item.answer}</p>
+          <div key={item.q}>
+            <h3 className="font-medium text-white">{item.q}</h3>
+            <p className="mt-1">{item.a}</p>
           </div>
         ))}
       </SeoSection>
+
+      <SeoRelatedTools
+        links={[
+          { href: "/natalnaya-karta", label: "Натальная карта" },
+          { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
+          { href: "/runy", label: "Гадание на рунах" },
+          { href: "/taro", label: "Таро онлайн" },
+        ]}
+      />
 
       <script
         type="application/ld+json"

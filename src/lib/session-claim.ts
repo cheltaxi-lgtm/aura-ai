@@ -39,6 +39,32 @@ export async function setSessionClaimCookie(
   sessionId: string,
   request?: CookieRequestContext
 ): Promise<void> {
+  // Do not overwrite a pending guest-resume binding. After OAuth, /api/session
+  // mints a fresh session and used to clobber aura_session_claim — claim then
+  // failed forever while the guest receipt stayed "issued".
+  try {
+    const existing = await readSessionClaimCookie();
+    if (existing) {
+      const existingSessionId = await verifySessionClaim(existing);
+      if (existingSessionId && existingSessionId !== sessionId) {
+        const { getGuestResumeSessionById } = await import(
+          "@/lib/guest-triplet-receipt-db"
+        );
+        const guest = await getGuestResumeSessionById(existingSessionId);
+        if (
+          guest &&
+          (guest.guest_resume_status === "issued" ||
+            guest.guest_resume_status === "claimed") &&
+          !guest.guest_resume_reading_id
+        ) {
+          return;
+        }
+      }
+    }
+  } catch {
+    /* fall through and set the new claim */
+  }
+
   const token = await signSessionClaim(sessionId);
   const jar = await cookies();
   jar.set(SESSION_CLAIM_COOKIE, token, {
@@ -53,6 +79,25 @@ export async function setSessionClaimCookie(
 export async function readSessionClaimCookie(): Promise<string | null> {
   const jar = await cookies();
   return jar.get(SESSION_CLAIM_COOKIE)?.value ?? null;
+}
+
+/** Clear guest session claim with matching cookie attributes (WebView-safe). */
+export async function clearSessionClaimCookie(
+  request?: CookieRequestContext
+): Promise<void> {
+  const jar = await cookies();
+  jar.set(SESSION_CLAIM_COOKIE, "", {
+    httpOnly: true,
+    secure: resolveCookieSecure(request),
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  try {
+    jar.delete(SESSION_CLAIM_COOKIE);
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function verifySessionClaimForId(

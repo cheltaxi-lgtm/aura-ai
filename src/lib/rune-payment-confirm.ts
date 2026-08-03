@@ -1,11 +1,32 @@
-import { creditRunesFromPayment, getRuneBalance } from "@/lib/rune-service";
-import { fetchYukassaPayment, isYukassaConfigured, listRecentYukassaPayments } from "@/lib/yukassa";
+import {
+  creditRunesFromPaymentDetailed,
+  getRuneBalance,
+} from "@/lib/rune-service";
+import {
+  fetchYukassaPayment,
+  isYukassaConfigured,
+  listRecentYukassaPayments,
+} from "@/lib/yukassa";
+
+function parseExpectedPrice(metadata: Record<string, string> | undefined): number | undefined {
+  const raw = metadata?.priceRub ?? metadata?.expectedPriceRub;
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export async function confirmRunePurchaseForUser(
   paymentId: string,
   profileUserId: string
 ): Promise<{
-  status: "credited" | "already_credited" | "pending" | "invalid" | "forbidden";
+  status:
+    | "credited"
+    | "already_credited"
+    | "rejected"
+    | "pending"
+    | "cancelled"
+    | "invalid"
+    | "forbidden";
   balance: number;
   amountRub?: number;
   packageId?: string;
@@ -26,6 +47,10 @@ export async function confirmRunePurchaseForUser(
     return { status: "invalid", balance };
   }
 
+  if (payment.status === "canceled") {
+    return { status: "cancelled", balance };
+  }
+
   if (payment.status !== "succeeded") {
     return { status: "pending", balance };
   }
@@ -40,16 +65,24 @@ export async function confirmRunePurchaseForUser(
   }
 
   const amountRub = payment.amount?.value ? Number(payment.amount.value) : undefined;
-  const credited = await creditRunesFromPayment({
+  const result = await creditRunesFromPaymentDetailed({
     userId: profileUserId,
     packageId: metadata.packageId,
     paymentId: payment.id,
     amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
+    expectedPriceRub: parseExpectedPrice(metadata),
   });
 
   const newBalance = await getRuneBalance(profileUserId);
+  const status =
+    result === "credited"
+      ? "credited"
+      : result === "duplicate"
+        ? "already_credited"
+        : "rejected";
+
   return {
-    status: credited ? "credited" : "already_credited",
+    status,
     balance: newBalance,
     amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
     packageId: metadata.packageId,
@@ -72,7 +105,8 @@ export async function reconcileRecentRunePurchasesForUser(profileUserId: string)
   }
 
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const payments = await listRecentYukassaPayments(since, 30);
+  // Paginate shop-wide list so a busy merchant window does not hide this user.
+  const payments = await listRecentYukassaPayments(since, 300);
 
   for (const payment of payments) {
     const metadata = payment.metadata ?? {};
@@ -82,13 +116,14 @@ export async function reconcileRecentRunePurchasesForUser(profileUserId: string)
     if (!metadata.packageId) continue;
 
     const amountRub = payment.amount?.value ? Number(payment.amount.value) : undefined;
-    const credited = await creditRunesFromPayment({
+    const result = await creditRunesFromPaymentDetailed({
       userId: profileUserId,
       packageId: metadata.packageId,
       paymentId: payment.id,
       amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
+      expectedPriceRub: parseExpectedPrice(metadata),
     });
-    if (credited) {
+    if (result === "credited") {
       return {
         credited: true,
         balance: await getRuneBalance(profileUserId),
@@ -103,11 +138,59 @@ export async function reconcileRecentRunePurchasesForUser(profileUserId: string)
   return { credited: false, balance };
 }
 
+export async function confirmRunePurchaseByOrderId(
+  orderId: string,
+  profileUserId: string
+): Promise<{
+  status:
+    | "credited"
+    | "already_credited"
+    | "rejected"
+    | "pending"
+    | "cancelled"
+    | "invalid"
+    | "forbidden"
+    | "none";
+  balance: number;
+  paymentId?: string;
+  amountRub?: number;
+  packageId?: string;
+  packageName?: string;
+}> {
+  const balance = await getRuneBalance(profileUserId);
+  if (!orderId.trim() || !isYukassaConfigured()) {
+    return { status: "invalid", balance };
+  }
+
+  const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const payments = await listRecentYukassaPayments(since, 300);
+  const match = payments.find(
+    (p) =>
+      p.metadata?.orderId === orderId.trim() &&
+      p.metadata?.type === "rune_purchase" &&
+      p.metadata?.userId === profileUserId
+  );
+  if (!match) {
+    return { status: "none", balance };
+  }
+  const direct = await confirmRunePurchaseForUser(match.id, profileUserId);
+  return { ...direct, paymentId: match.id };
+}
+
 export async function confirmOrReconcileRunePurchase(
   profileUserId: string,
-  paymentId?: string | null
+  paymentId?: string | null,
+  orderId?: string | null
 ): Promise<{
-  status: "credited" | "already_credited" | "pending" | "invalid" | "forbidden" | "none";
+  status:
+    | "credited"
+    | "already_credited"
+    | "rejected"
+    | "pending"
+    | "cancelled"
+    | "invalid"
+    | "forbidden"
+    | "none";
   balance: number;
   paymentId?: string;
   amountRub?: number;
@@ -117,6 +200,10 @@ export async function confirmOrReconcileRunePurchase(
   if (paymentId?.trim()) {
     const direct = await confirmRunePurchaseForUser(paymentId.trim(), profileUserId);
     return { ...direct, paymentId: paymentId.trim() };
+  }
+
+  if (orderId?.trim()) {
+    return confirmRunePurchaseByOrderId(orderId.trim(), profileUserId);
   }
 
   const reconciled = await reconcileRecentRunePurchasesForUser(profileUserId);

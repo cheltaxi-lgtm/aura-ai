@@ -81,6 +81,7 @@ npm run migrate
 # или: node scripts/migrate.mjs --status
 ```
 
+Staging (guest triplet resume P0): see [`docs/staging-guest-triplet-resume.md`](docs/staging-guest-triplet-resume.md). Do not use production Beget deploy for staging migrate.
 ## Админка
 
 `/admin/login` — панель управления порталом (пользователи, платежи, промпты, тарифы).

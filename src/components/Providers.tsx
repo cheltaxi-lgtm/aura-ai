@@ -4,6 +4,7 @@ import AppShellServiceWorker from "@/components/AppShellServiceWorker";
 import AppShellBridge from "@/components/AppShellBridge";
 import AppShellErrorBoundary from "@/components/AppShellErrorBoundary";
 import AppMotionConfig from "@/components/AppMotionConfig";
+import ScrollToTopOnNavigate from "@/components/ScrollToTopOnNavigate";
 import { PaywallProvider } from "@/contexts/PaywallContext";
 import { ShareProvider } from "@/contexts/ShareContext";
 
@@ -15,6 +16,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <AppShellErrorBoundary>
             <AppShellServiceWorker />
             <AppShellBridge />
+            <ScrollToTopOnNavigate />
           </AppShellErrorBoundary>
           {children}
         </AppMotionConfig>

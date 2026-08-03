@@ -92,7 +92,8 @@ export default function AdminUsersPage() {
 
   const deleteUser = async (id: string) => {
     if (!confirm("Удалить аккаунт?")) return;
-    await fetch("/api/admin/users", {
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    await adminFetch("/api/admin/users", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -103,7 +104,8 @@ export default function AdminUsersPage() {
   const toggleUnlimited = async (id: string, next: boolean) => {
     setBusyId(id);
     try {
-      await fetch("/api/admin/users", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      await adminFetch("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, isUnlimited: next }),
@@ -124,7 +126,8 @@ export default function AdminUsersPage() {
     }
     setTripletBusyId(profileUserId);
     try {
-      const res = await fetch(`/api/admin/users/${profileUserId}/triplet-cooldown`, {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch(`/api/admin/users/${profileUserId}/triplet-cooldown`, {
         method: "POST",
         credentials: "include",
       });
@@ -154,7 +157,8 @@ export default function AdminUsersPage() {
     }
     setMemoryPurgeBusyId(profileUserId);
     try {
-      const res = await fetch(`/api/admin/users/${profileUserId}/memory`, { method: "DELETE" });
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch(`/api/admin/users/${profileUserId}/memory`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setGrantNotice(
@@ -182,7 +186,8 @@ export default function AdminUsersPage() {
 
     setGrantBusy(true);
     try {
-      const res = await fetch(`/api/admin/users/${grantModal.profileUserId}/runes`, {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch(`/api/admin/users/${grantModal.profileUserId}/runes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount, reason: grantReason.trim() }),
@@ -328,7 +333,7 @@ export default function AdminUsersPage() {
             return [
               String(u.name),
               String(u.account_email ?? "—"),
-              u.gender === "male" ? "М" : "Ж",
+              u.gender === "male" ? "М" : u.gender === "female" ? "Ж" : "—",
               String(u.birth_date),
               String(u.zodiac),
               renderRunesCell(profileUserId, label, u.rune_balance),

@@ -23,12 +23,14 @@ import {
   loadChatCacheEntry,
   loadChatCacheForMaster,
   saveChatCache,
+  clearChatCache,
   chatHasSpreadReading,
   appendSpreadReadingMessage,
   type CachedChatSpread,
 } from "@/lib/chat-cache";
 import { resolveClientReadingText } from "@/lib/chat-reply-sanitize";
 import {
+  buildIntentionOpening,
   persistSessionIntention,
   persistSessionCustomQuestion,
   persistIntentionSpreadState,
@@ -39,7 +41,14 @@ import {
 import { buildSessionSpreadCards, resolveSpreadSymbols } from "@/lib/intention-draw";
 import { toSessionTopicId } from "@/lib/session-topics";
 import { navigateToSessionIntention } from "@/lib/session-intention-nav";
-import { pollIntentionSpreadReading, postIntentionSpreadRequest } from "@/lib/intention-spread-client";
+import {
+  INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS,
+  INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+  isIntentionSpreadWaitAborted,
+  isTerminalIntentionSpreadError,
+  pollIntentionSpreadReading,
+  postIntentionSpreadRequest,
+} from "@/lib/intention-spread-client";
 import { getJointReadingRole, clearJointReadingToken, resolveJointReadingToken } from "@/lib/joint-reading-storage";
 import { postJointReadingComplete } from "@/lib/joint-reading-client";
 import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
@@ -65,6 +74,7 @@ import {
 } from "@/lib/photo-chat";
 import {
   getSpreadForSystem,
+  reconcileSpreadDeck,
   resolveMasterSpread,
   resolveTripletDisplaySpread,
   resolveRecapSpread,
@@ -93,7 +103,21 @@ import {
 import { pythagorasSquare } from "@/lib/numerology/pythagoras-square";
 import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet, loadGuestTriplet } from "@/lib/guest-triplet";
-import { GUEST_SPREAD_SECTION_ID, GUEST_SPREAD_START_EVENT, GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
+import {
+  clearGuestResumeUiCache,
+  loadGuestResumeUiCache,
+  patchGuestResumeUiCache,
+  saveGuestResumeUiCache,
+} from "@/lib/guest-resume-ui-cache";
+import {
+  GUEST_RESUME_ALREADY_USED,
+  GUEST_RESUME_CAPACITOR_RECOVERY,
+  GUEST_RESUME_RETRY_TITLE,
+  GUEST_RESUME_TRANSITION_SUBTITLE,
+  GUEST_RESUME_TRANSITION_TITLE,
+  runGuestTripletResume,
+} from "@/lib/guest-triplet-resume";
+import { GUEST_SPREAD_PICKER_ID, GUEST_SPREAD_START_EVENT, GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import {
   formatTripletCooldownRu,
   tripletCooldownFromLastDraw,
@@ -115,6 +139,7 @@ import {
   clearNeedsServerProfile,
   clearOnboardingUrlParams,
   hasPendingServerProfile,
+  markNeedsServerProfile,
   persistStep,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
@@ -273,7 +298,7 @@ export interface UseOnboardingFlowOptions {
   referrerSlug?: string;
   isLoggedIn: boolean;
   authLoading: boolean;
-  authUser: { name?: string | null } | null | undefined;
+  authUser: { name?: string | null; profileUserId?: string | null } | null | undefined;
   step: FlowStep;
   setStep: (step: FlowStep) => void;
   setStepState: Dispatch<SetStateAction<FlowStep>>;
@@ -372,6 +397,32 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [tripletCooldown, setTripletCooldown] = useState<TripletCooldownStatus | null>(null);
   const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
   const [tripletNotice, setTripletNotice] = useState<string | null>(null);
+  const [guestResumeCanRetry, setGuestResumeCanRetry] = useState(false);
+
+  /** Leave chat/salon and show birth profile form — never leave selectedCharacter set. */
+  const forceProfileOnboarding = useCallback(() => {
+    markNeedsServerProfile();
+    patchGuestResumeUiCache({ phase: "onboarding_required" });
+    const deps = chat();
+    if (deps) {
+      deps.setSelectedCharacter(null);
+      deps.setMessages([]);
+      deps.setConsultationSessionId(null);
+      if (deps.consultationSessionIdRef) {
+        deps.consultationSessionIdRef.current = null;
+      }
+      deps.chatLoadedForRef.current = null;
+      deps.setIsLoadingHistory(false);
+    } else {
+      setSelectedCharacter(null);
+    }
+    readingInFlightRef.current = false;
+    setGuestResumeCanRetry(false);
+    setTripletNotice(null);
+    setStepState("onboarding");
+    persistStep("onboarding");
+  }, [setSelectedCharacter, setStepState, readingInFlightRef]);
+
   const [serverContinueIds, setServerContinueIds] = useState<string[]>([]);
   const [newTripletDraft, setNewTripletDraft] = useState(false);
   const [spreadRitual, setSpreadRitual] = useState<{
@@ -426,19 +477,40 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const autoResumeDoneRef = useRef(false);
   const newTripletInProgressRef = useRef(false);
   const pendingReadingResumeRef = useRef<string | null>(null);
+  const profileSaveAuthorityRef = useRef<{
+    profileUserId: string;
+    expiresAt: number;
+  } | null>(null);
   const sessionSpreadMetaRef = useRef<{
-    spreadType?: "daily" | "new" | "photo";
+    spreadType?: "daily" | "new" | "photo" | "guest_resume";
     spreadId?: SpreadId | string;
     cardNames?: string[];
     periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: import("@/lib/numerology/tools").NumerologToolId;
     numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams;
+    matrixSubjectId?: string | null;
   } | null>(null);
   const tripletPendingRef = useRef<{ cards: SpreadSymbol[]; teaser: string } | null>(null);
   const tripletDrawnAtRef = useRef(0);
   const bindSessionToMasterRef = useRef<(masterId: string, overrideSessionId?: string) => Promise<void>>(
     async () => {}
   );
+  type GuestResumeLoadArgs = {
+    sessionId: string;
+    masterId: string;
+    question: string;
+    cards: Array<{ id: number; name: string; position: number; reversed: boolean }>;
+    profileBase?: StoredProfile | null;
+    questionFallback?: string;
+    teaserFallback?: string;
+    deckSystem?: StoredProfile["deckSystem"];
+  };
+  const loadGuestResumeReadingRef = useRef<
+    (args: GuestResumeLoadArgs) => Promise<"full" | "existing" | "failed">
+  >(async () => "failed");
+  const guestResumeBootRef = useRef(false);
+  /** Prevents stampeding /api/guest-triplet/status when effect deps churn. */
+  const guestResumeHydrateAttemptedRef = useRef(false);
   const sessionListBackMasterRef = useRef<string | null>(null);
   const pendingChatOptsRef = useRef<{ masterId: string; skipReading: boolean } | null>(null);
   const openChatWithSessionParamsRef = useRef<
@@ -489,9 +561,20 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         const local = resolveRecapSpread(profile, tripletSystem);
         return local.cards.length >= 3 ? local.cards : [];
       }
-      if (!hasServerTripletSpread(savedReadings)) return [];
-      const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
-      return latest.cards.length >= 3 ? latest.cards : [];
+      if (hasServerTripletSpread(savedReadings)) {
+        const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
+        return latest.cards.length >= 3 ? latest.cards : [];
+      }
+      // Guest resume / post-anketa: keep cards visible until server history lands.
+      const local = resolveRecapSpread(profile, tripletSystem);
+      if (local.cards.length >= 3) return local.cards;
+      const uiCache = loadGuestResumeUiCache();
+      if (uiCache?.cards?.length === 3) {
+        const system = (uiCache.system as DeckSystem) || tripletSystem;
+        const ordered = [...uiCache.cards].sort((a, b) => a.position - b.position);
+        return reconcileSpreadDeck(system, ordered).cards;
+      }
+      return [];
     }
     const latest = resolveTripletDisplaySpread(savedReadings, profile, tripletSystem);
     return latest.cards.length >= 3 ? latest.cards : [];
@@ -505,9 +588,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         const local = resolveRecapSpread(profile, tripletSystem);
         return local.cards.length >= 3 ? local.system : (profile?.deckSystem ?? tripletSystem);
       }
-      if (!hasServerTripletSpread(savedReadings)) return profile?.deckSystem ?? tripletSystem;
-      const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
-      return latest.cards.length >= 3 ? latest.system : (profile?.deckSystem ?? tripletSystem);
+      if (hasServerTripletSpread(savedReadings)) {
+        const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
+        return latest.cards.length >= 3 ? latest.system : (profile?.deckSystem ?? tripletSystem);
+      }
+      const local = resolveRecapSpread(profile, tripletSystem);
+      if (local.cards.length >= 3) return local.system;
+      const uiCache = loadGuestResumeUiCache();
+      if (uiCache?.system) return (uiCache.system as DeckSystem) || tripletSystem;
+      return profile?.deckSystem ?? tripletSystem;
     }
     const latest = resolveTripletDisplaySpread(savedReadings, profile, tripletSystem);
     return latest.cards.length >= 3 ? latest.system : (profile?.deckSystem ?? tripletSystem);
@@ -690,6 +779,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   useEffect(() => {
     if (!isLoggedIn || newTripletDraft || step === "triplet" || step === "onboarding") return;
+    // Never wipe local cards while guest resume is in progress / awaiting reading.
+    if (loadGuestResumeUiCache()) return;
+    if (sessionSpreadMetaRef.current?.spreadType === "guest_resume") return;
     if (hasServerTripletSpread(savedReadings)) return;
     setProfile((prev) => {
       if (!prev) return prev;
@@ -798,7 +890,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const displayTeaser = useMemo(() => {
     const useLocalProfile = !isLoggedIn || newTripletDraft || step === "triplet";
     if (isLoggedIn && !useLocalProfile && !hasServerTripletSpread(savedReadings)) {
-      return undefined;
+      // Keep guest teaser while resume/history catch up after anketa.
+      const uiCache = loadGuestResumeUiCache();
+      return profile?.teaser ?? uiCache?.teaser ?? undefined;
     }
     const triplet = savedReadings
       .filter((r) => r.characterName === "triplet")
@@ -1557,14 +1651,25 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     };
 
     const guestDraft = loadGuestTriplet();
+    const uiCacheEarly = loadGuestResumeUiCache();
     const existingCards =
       (profile?.tarotCards?.length ?? 0) >= 3
         ? profile!.tarotCards!
         : (guestDraft?.tarotCards?.length ?? 0) >= 3
           ? guestDraft!.tarotCards
-          : [];
-    let savedUserId = profile?.userId;
-    const hasGuestSpread = existingCards.length >= 3;
+          : uiCacheEarly
+            ? [...uiCacheEarly.cards]
+                .sort((a, b) => a.position - b.position)
+                .map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  meaning: "",
+                  reversed: c.reversed,
+                }))
+            : [];
+    let savedUserId: string | undefined;
+    // Server receipt is authoritative for guest resume — do not create a new triplet via /api/onboarding.
+    const hasGuestSpread = existingCards.length >= 3 && !uiCacheEarly;
     const endpoint = hasGuestSpread ? "/api/onboarding" : "/api/profile";
     const payload = hasGuestSpread
       ? {
@@ -1602,8 +1707,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         responseData.message || responseData.error || "Не удалось сохранить профиль."
       );
     }
-    if (responseData.userId || responseData.profileUserId) {
-      savedUserId = responseData.userId || responseData.profileUserId;
+    if (typeof responseData.profileUserId === "string" && responseData.profileUserId) {
+      savedUserId = responseData.profileUserId;
+    } else if (typeof responseData.userId === "string" && responseData.userId) {
+      // Legacy /api/onboarding response; both IDs are server-issued profile IDs.
+      savedUserId = responseData.userId;
+    }
+    if (savedUserId) {
+      // Bridge only the short auth-store propagation window with the ID returned
+      // by the profile API itself; never infer profile ownership from local data.
+      profileSaveAuthorityRef.current = {
+        profileUserId: savedUserId,
+        expiresAt: Date.now() + 3_000,
+      };
     }
 
     const savedProfile: StoredProfile = {
@@ -1618,10 +1734,54 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     clearNeedsServerProfile();
     persistProfile(savedProfile);
     clearOnboardingUrlParams();
+    // Keep guest UI cache until resume coordinator acknowledges (do not clearGuestTriplet early).
     if (hasGuestSpread) clearGuestTriplet();
     await refreshAuth?.();
 
-    if (responseData.cooldownBlocked) {
+    const uiCacheForResume = loadGuestResumeUiCache();
+    const shouldGuestResume =
+      Boolean(uiCacheForResume) && existingCards.length >= 3;
+
+    // Claim/reading need profileUserId on the server — client authUser may lag.
+    // Profile PATCH already returned userId/profileUserId when linked.
+    if (shouldGuestResume) {
+      if (!savedUserId) {
+        for (let i = 0; i < 6; i += 1) {
+          await refreshAuth?.();
+          await new Promise((r) => window.setTimeout(r, 250));
+          // Re-check local flag from latest /me via a lightweight probe.
+          try {
+            const me = await fetch("/api/auth/me", {
+              credentials: "include",
+              cache: "no-store",
+            });
+            const body = (await me.json().catch(() => ({}))) as {
+              user?: { profileUserId?: string | null };
+            };
+            if (body.user?.profileUserId) {
+              savedUserId = body.user.profileUserId;
+              profileSaveAuthorityRef.current = {
+                profileUserId: savedUserId,
+                expiresAt: Date.now() + 3_000,
+              };
+              break;
+            }
+          } catch {
+            /* retry */
+          }
+        }
+      }
+      if (!savedUserId) {
+        patchGuestResumeUiCache({ phase: "onboarding_required" });
+        setGuestResumeCanRetry(true);
+        setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+        void finishProfileOnboarding("masters");
+        return;
+      }
+    }
+
+    // Claim/resume must not be blocked by daily triplet cooldown (AC).
+    if (responseData.cooldownBlocked && !shouldGuestResume) {
       persistProfile({
         ...savedProfile,
         teaser: profile?.teaser ?? guestDraft?.teaser,
@@ -1635,32 +1795,97 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       return;
     }
 
-    if (effectiveTripletCooldown && !effectiveTripletCooldown.allowed) {
+    if (
+      effectiveTripletCooldown &&
+      !effectiveTripletCooldown.allowed &&
+      !shouldGuestResume
+    ) {
       refreshSavedReadings();
       void finishProfileOnboarding("masters");
       return;
     }
     refreshSavedReadings();
     if (existingCards.length >= 3) {
-      const guestQuestion = (data.mainQuestion || profile?.mainQuestion)?.trim();
-      if (guestQuestion && guestQuestion.length >= 8) {
+      const uiCache = uiCacheForResume;
+      if (uiCache) {
+        setGuestResumeCanRetry(false);
+        setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
+        guestResumeBootRef.current = true;
+        const resumeResult = await runGuestTripletResume({
+          authMethod: "onboarding",
+          loadReading: (args) =>
+            loadGuestResumeReadingRef.current({
+              ...args,
+              profileBase: savedProfile,
+              questionFallback: data.mainQuestion || profile?.mainQuestion,
+              teaserFallback: uiCache.teaser || savedProfile.teaser,
+              deckSystem: uiCache.system as StoredProfile["deckSystem"],
+            }),
+        });
+
+        if (!resumeResult.ok) {
+          guestResumeBootRef.current = false;
+          if (resumeResult.phase === "onboarding_required") {
+            // Profile was just saved — refresh auth and retry once before failing.
+            await refreshAuth?.();
+            const retryResult = await runGuestTripletResume({
+              authMethod: "onboarding_retry",
+              loadReading: (args) =>
+                loadGuestResumeReadingRef.current({
+                  ...args,
+                  profileBase: savedProfile,
+                  questionFallback: data.mainQuestion || profile?.mainQuestion,
+                  teaserFallback: uiCache.teaser || savedProfile.teaser,
+                  deckSystem: uiCache.system as StoredProfile["deckSystem"],
+                }),
+            });
+            if (retryResult.ok) {
+              setGuestResumeCanRetry(false);
+              clearGuestTriplet();
+              setTripletNotice(null);
+              trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
+              clearShareRegistrationAttribution();
+              clearOnboardingUrlParams();
+              return;
+            }
+            setGuestResumeCanRetry(true);
+            setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+            void finishProfileOnboarding("masters");
+            return;
+          }
+          if (resumeResult.capacitorRecovery || resumeResult.phase === "safe_recovery") {
+            setGuestResumeCanRetry(false);
+            setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+            void finishProfileOnboarding("masters");
+            return;
+          }
+          if (resumeResult.stage === "already_used") {
+            setGuestResumeCanRetry(false);
+            clearGuestTriplet();
+            clearGuestResumeUiCache();
+            setTripletNotice(GUEST_RESUME_ALREADY_USED);
+            void finishProfileOnboarding("masters");
+            return;
+          }
+          if (resumeResult.stage === "expired" || resumeResult.phase === "idle") {
+            setGuestResumeCanRetry(false);
+            setTripletNotice(null);
+            void finishProfileOnboarding("masters");
+            return;
+          }
+          setGuestResumeCanRetry(true);
+          setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+          // Keep UI cache for retry; stay on masters with notice.
+          void finishProfileOnboarding("masters");
+          return;
+        }
+
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
+        setTripletNotice(null);
         trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
         clearShareRegistrationAttribution();
-        const masterId = resolveTripletChatMasterId(
-          masters,
-          profile?.deckSystem ?? tripletSystem,
-          profile?.tripletMasterId ||
-            localStorage.getItem(PENDING_MASTER_KEY) ||
-            undefined
-        );
-        const destination = resolveRegistrationReturnTo({
-          guestSpread: true,
-          guestMasterId: masterId,
-          guestQuestion,
-        });
-        if (typeof window !== "undefined") {
-          window.location.assign(destination);
-        }
+        clearOnboardingUrlParams();
         return;
       }
 
@@ -1799,6 +2024,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             chatSessionId = await beginNewSpreadSession(masterId);
           }
 
+          clearChatCache(masterId);
           deps.setMessages([]);
 
           let skipRitualFinally = false;
@@ -1862,19 +2088,30 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             emitRuneBalanceUpdate(data.runeBalance);
           }
 
+          if (typeof data.sessionId === "string" && data.sessionId) {
+            chatSessionId = data.sessionId;
+            deps.setConsultationSessionId(data.sessionId);
+            deps.consultationSessionIdRef.current = data.sessionId;
+            localStorage.setItem("aura_session_id", data.sessionId);
+          }
+
           let readingText = resolveClientReadingText(
             typeof data.reading === "string" ? data.reading : "",
             cards.map((c) => c.name)
           );
 
           if (intention !== "life_death" && !readingText) {
-            const polled = await pollIntentionSpreadReading({
-              characterId: masterId,
-              intention,
-              cardNames: cards.map((c) => c.name),
-              spreadId,
-              cardCount: cards.length,
-            });
+            const polled = await pollIntentionSpreadReading(
+              {
+                characterId: masterId,
+                intention,
+                cardNames: cards.map((c) => c.name),
+                spreadId,
+                cardCount: cards.length,
+                sessionId: chatSessionId,
+              },
+              { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+            );
             readingText = polled
               ? resolveClientReadingText(polled, cards.map((c) => c.name))
               : "";
@@ -1910,8 +2147,22 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           const { readingText, cards, system, intentionCardsKey, jointSaved, jointError } = spreadResult;
 
           if (intention !== "life_death" && !readingText) {
+            // Paid intention failed to return text — exit immediately, never hang on loadReading.
             skipRitualFinally = true;
-            await loadReadingRef.current(masterId);
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            setTripletNotice(
+              "Не удалось получить трактовку. Руны не списаны или возвращены — попробуйте ещё раз."
+            );
+            deps.setMessages([
+              {
+                id: generateId(),
+                role: "assistant",
+                content:
+                  "Расклад не удалось завершить. Попробуйте ещё раз — если руны списались, они вернутся на баланс.",
+                timestamp: new Date(),
+              },
+            ]);
           } else if (intention !== "life_death" && readingText) {
             readingDelivered = true;
             spreadReadingRecoveryKeyRef.current = `${masterId}:${intention}:${intentionCardsKey}`;
@@ -1926,11 +2177,35 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               return next;
             });
           } else if (intention === "life_death") {
-            saveChatCache(masterId, [], intentionCardsKey, {
-              cards,
-              system,
-              variant: "intention",
-            });
+            const opening = buildIntentionOpening(
+              masterId,
+              "life_death",
+              profile?.name
+            );
+            const openingMsgs = opening
+              ? [
+                  {
+                    id: generateId(),
+                    role: "assistant" as const,
+                    content: opening,
+                    timestamp: new Date(),
+                  },
+                ]
+              : [];
+            if (openingMsgs.length) {
+              deps.setMessages(openingMsgs);
+              saveChatCache(masterId, openingMsgs, intentionCardsKey, {
+                cards,
+                system,
+                variant: "intention",
+              });
+            } else {
+              saveChatCache(masterId, [], intentionCardsKey, {
+                cards,
+                system,
+                variant: "intention",
+              });
+            }
           }
           void refreshSavedReadings();
 
@@ -1939,17 +2214,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             const jointRole = getJointReadingRole() ?? "initiator";
             let jointFailureMessage: string | undefined;
             if (readingText && !jointSaved) {
-              const positionLabels = resolveSpreadPositions(spreadId, intention as SessionTopicId).map(
-                (p) => p.label
-              );
               const fallback = await postJointReadingComplete(jointToken, {
-                reading: readingText,
-                cards: cards.map((c, i) => ({
-                  name: c.name,
-                  position: positionLabels[i] ?? c.name,
-                })),
-                sessionId: chatSessionId,
-                characterKey: masterId,
+                sessionId: chatSessionId ?? "",
                 role: jointRole,
               });
               if (!fallback.ok) {
@@ -1971,7 +2237,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             window.location.assign(jointRedirect);
             return;
           }
-        } catch {
+        } catch (spreadErr) {
+          skipRitualFinally = true;
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+
+          // Terminal AI fail already finished on server — do not spin a long dead poll.
+          const terminal = isTerminalIntentionSpreadError(spreadErr);
+          const waitAborted = isIntentionSpreadWaitAborted(spreadErr);
           try {
             const cardNames =
               sessionSpreadMetaRef.current?.cardNames ??
@@ -1979,14 +2252,26 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               [];
             const recoverySpreadId =
               sessionSpreadMetaRef.current?.spreadId ?? resolveClientSpreadId();
-            if (hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
-              const polled = await pollIntentionSpreadReading({
-                characterId: masterId,
-                intention,
-                cardNames,
-                spreadId: recoverySpreadId,
-                cardCount: requiredCardCount(recoverySpreadId, "new"),
-              });
+            if (
+              !terminal &&
+              chatSessionId &&
+              hasCompleteSpread(cardNames, recoverySpreadId, "new")
+            ) {
+              const polled = await pollIntentionSpreadReading(
+                {
+                  characterId: masterId,
+                  intention,
+                  cardNames,
+                  spreadId: recoverySpreadId,
+                  cardCount: requiredCardCount(recoverySpreadId, "new"),
+                  sessionId: chatSessionId,
+                },
+                {
+                  maxAttempts: waitAborted
+                    ? INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS
+                    : INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+                }
+              );
               const recovered = polled
                 ? resolveClientReadingText(polled, cardNames)
                 : "";
@@ -2004,16 +2289,26 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                   });
                   return next;
                 });
-              } else {
-                skipRitualFinally = true;
-                await loadReadingRef.current(masterId);
               }
-            } else {
-              skipRitualFinally = true;
-              await loadReadingRef.current(masterId);
             }
           } catch {
-            /* loadReading shows its own fallback message */
+            /* show explicit error below */
+          }
+
+          if (!readingDelivered) {
+            const msg =
+              spreadErr instanceof Error && spreadErr.message.trim()
+                ? spreadErr.message.trim()
+                : "Не удалось завершить трактовку. Попробуйте ещё раз.";
+            setTripletNotice(msg);
+            deps.setMessages([
+              {
+                id: generateId(),
+                role: "assistant",
+                content: msg,
+                timestamp: new Date(),
+              },
+            ]);
           }
         } finally {
           if (!skipRitualFinally) {
@@ -2095,7 +2390,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       } finally {
         readingInFlightRef.current = false;
         deps.setIsLoadingHistory(false);
-        deps.skipNextReadingRef.current = false;
+        // Keep skip when caller (guest resume) will POST /api/reading itself —
+        // clearing it races ChatWindow into a blank daily loadReading.
+        deps.skipNextReadingRef.current = Boolean(opts?.skipReading);
       }
     },
     [
@@ -2118,6 +2415,141 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       handleOpenPaywallRef,
     ]
   );
+
+  loadGuestResumeReadingRef.current = async ({
+    sessionId,
+    masterId,
+    question,
+    cards,
+    profileBase,
+    questionFallback,
+    teaserFallback,
+    deckSystem,
+  }) => {
+    // Prefer the claimed guest master (Veronika) — remapping can break
+    // resolveGuestResumeFreeReading fingerprint / character_key checks.
+    const masterToBind =
+      (masterId && String(masterId).trim()) ||
+      resolveTripletChatMasterId(
+        masters,
+        deckSystem ?? profile?.deckSystem ?? tripletSystem,
+        profileBase?.tripletMasterId ||
+          profile?.tripletMasterId ||
+          localStorage.getItem(PENDING_MASTER_KEY) ||
+          undefined
+      );
+    if (!masterToBind) return "failed";
+
+    const ordered = [...cards].sort((a, b) => a.position - b.position);
+    const cardNames = ordered.map((c) =>
+      c.reversed ? `${c.name} (перевёрнутая)` : c.name
+    );
+    const base = profileBase ?? getActiveProfile();
+    if (base) {
+      persistProfile({
+        ...base,
+        tarotCards: ordered.map((c) => ({
+          id: c.id,
+          name: c.name,
+          meaning: "",
+          reversed: c.reversed,
+        })),
+        ...(deckSystem ? { deckSystem } : {}),
+        mainQuestion: question || questionFallback || base.mainQuestion,
+        tripletMasterId: masterToBind,
+        teaser: teaserFallback || base.teaser,
+      });
+    }
+    applyTripletMaster(masterToBind);
+    sessionSpreadMetaRef.current = { spreadType: "guest_resume", cardNames };
+    setSessionIntention(null);
+    persistSessionIntention(masterToBind, null);
+    setIntentionSpread(null);
+    persistIntentionSpreadState(masterToBind, null);
+    setSpreadFlipped(spreadFlippedState(ordered.length, true));
+
+    // Fetch reading BEFORE opening chat so a 401/NEEDS_PROFILE never lands
+    // the user in chat with the guest "нужна регистрация" stub.
+    let readingText = "";
+    try {
+      const readingRes = await fetch("/api/reading", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterId: masterToBind,
+          sessionId,
+          tarotCards: ordered.map((c) => ({
+            id: c.id,
+            name: c.name,
+            meaning: "",
+            reversed: c.reversed,
+          })),
+          customQuestion: question || undefined,
+          spreadType: "guest_resume",
+          spreadId: "triplet",
+          async: true,
+        }),
+      });
+      let data = (await readingRes.json().catch(() => ({}))) as {
+        reading?: string;
+        cached?: boolean;
+        jobId?: string;
+        code?: string;
+        error?: string;
+      };
+      if (readingRes.status === 401 || readingRes.status === 403) {
+        const code = String(data.code ?? "").toUpperCase();
+        if (code === "NEEDS_PROFILE") {
+          patchGuestResumeUiCache({ phase: "onboarding_required" });
+        }
+        return "failed";
+      }
+      if (readingRes.status === 202 && typeof data.jobId === "string") {
+        const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+        data = (await waitForAsyncJob({
+          jobId: data.jobId,
+          storageKey: "aura:guest-resume-active-job",
+        })) as typeof data;
+      } else if (!readingRes.ok) {
+        return "failed";
+      }
+      readingText = typeof data.reading === "string" ? data.reading.trim() : "";
+      if (!readingText) return "failed";
+    } catch {
+      return "failed";
+    }
+
+    const deps = chat();
+    if (!deps) return "failed";
+    deps.setSessionListMaster(null);
+    deps.setSessionOnlyChat(false);
+    deps.setConsultationSessionId(sessionId);
+    if (deps.consultationSessionIdRef) {
+      deps.consultationSessionIdRef.current = sessionId;
+    }
+    deps.archiveSessionIdRef.current = null;
+    deps.skipNextReadingRef.current = true;
+    // Mark loaded before selecting character so ChatWindow won't restore blank history.
+    deps.chatLoadedForRef.current = masterToBind;
+    deps.setSelectedCharacter(masterToBind);
+    deps.setIsLoadingHistory(false);
+    deps.setMessages([
+      {
+        id: generateId(),
+        role: "assistant",
+        content: readingText,
+        timestamp: new Date(),
+      },
+    ]);
+    await bindSessionToMasterRef.current(masterToBind, sessionId);
+    localStorage.setItem(LAST_MASTER_KEY, masterToBind);
+    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    setLastMasterId(masterToBind);
+    persistStep("chat");
+    setStep("chat");
+    return "full";
+  };
 
   const handleTripletComplete = async (cards: SpreadSymbol[], teaser: string) => {
     if (!isLoggedIn) {
@@ -2450,13 +2882,27 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (step !== "onboarding" || !tripletCooldownReady || !tripletCooldown || tripletCooldown.allowed) {
       return;
     }
+    // Incomplete profile must stay on the anketa — never bounce to masters/chat
+    // just because guest already drew today's triplet (cooldown active).
+    if (!authUser?.profileUserId || hasPendingServerProfile()) return;
+    if (!getActiveProfile()?.birthDate && !profile?.birthDate) return;
+    if (loadGuestResumeUiCache()?.phase === "onboarding_required") return;
     if (displayTarotCards.length < 3) return;
     const hint = tripletCooldown.nextAvailableAt
       ? `Новый расклад из 3 карт ${formatTripletCooldownRu(tripletCooldown.nextAvailableAt)}`
       : "Новый расклад из 3 карт доступен один раз в сутки";
     setTripletNotice(hint);
     setStep("masters");
-  }, [step, tripletCooldownReady, tripletCooldown, displayTarotCards.length, setStep]);
+  }, [
+    step,
+    tripletCooldownReady,
+    tripletCooldown,
+    displayTarotCards.length,
+    setStep,
+    authUser?.profileUserId,
+    profile?.birthDate,
+    getActiveProfile,
+  ]);
 
   useEffect(() => {
     if (step !== "triplet" || !tripletCooldownReady) return;
@@ -2473,7 +2919,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (!isLoggedIn) {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT));
-        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        requestAnimationFrame(() => {
+          document.getElementById(GUEST_SPREAD_PICKER_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
       return;
     }
@@ -2521,6 +2969,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         customQuestion,
         numerologToolId,
         numerologToolParams,
+        matrixSubjectId,
       } = params;
       const numerologTool = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
       const isNumerologSessionStart =
@@ -2544,11 +2993,18 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         cardNames: cards,
         numerologToolId,
         numerologToolParams,
+        matrixSubjectId,
       };
       setChatSessionSpread(null);
       readingInFlightRef.current = true;
       deps.skipNextReadingRef.current = true;
+      deps.pendingNewChatThreadRef.current = true;
       deps.chatLoadedForRef.current = null;
+      // Drop any prior consultation binding before history/restore can latch onto it.
+      deps.setConsultationSessionId(null);
+      deps.consultationSessionIdRef.current = null;
+      deps.setConsultationReadOnly(false);
+      deps.archiveSessionIdRef.current = null;
 
       setSessionIntention(sessionIntentionValue);
       persistSessionIntention(characterKey, sessionIntentionValue);
@@ -2657,9 +3113,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         deps.setSessionListMaster(null);
 
         try {
-          let chatSessionId = session?.offline ? undefined : session?.sessionId;
+          let chatSessionId: string | undefined;
           if (!session?.offline) {
             chatSessionId = await beginNewSpreadSession(characterKey);
+            if (!chatSessionId) throw new Error("failed_to_create_consultation_session");
           }
           await bindSessionToMaster(characterKey, chatSessionId);
           await deps.persistSessionMetaToServer(chatSessionId, {
@@ -2674,8 +3131,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             deps.consultationSessionIdRef.current = chatSessionId;
             deps.setConsultationReadOnly(false);
             deps.archiveSessionIdRef.current = null;
-          } else if (characterKey) {
-            void deps.resolveConsultationSessionId(characterKey);
           }
           if (sessionIntentionValue !== "life_death") {
             await loadReadingRef.current(characterKey, undefined, { sessionId: chatSessionId });
@@ -2752,9 +3207,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setStep("chat");
 
         try {
-          let chatSessionId = session?.offline ? undefined : session?.sessionId;
+          let chatSessionId: string | undefined;
           if (!session?.offline) {
             chatSessionId = await beginNewSpreadSession(characterKey);
+            if (!chatSessionId) throw new Error("failed_to_create_consultation_session");
           }
           await bindSessionToMaster(characterKey, chatSessionId);
           await deps.persistSessionMetaToServer(chatSessionId, {
@@ -2770,8 +3226,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             deps.consultationSessionIdRef.current = chatSessionId;
             deps.setConsultationReadOnly(false);
             deps.archiveSessionIdRef.current = null;
-          } else if (characterKey) {
-            void deps.resolveConsultationSessionId(characterKey);
           }
           await loadReadingRef.current(characterKey, mergedProfile ?? undefined, {
             sessionId: chatSessionId,
@@ -2798,16 +3252,22 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setIntentionSpreadLoading(true);
       openSpreadReadingRitual();
       const ritualStartedAt = Date.now();
+      // Drop any same-card local thread so recovery cannot flash the previous consultation.
+      clearChatCache(characterKey);
       deps.setMessages([]);
       setStep("chat");
 
-      let chatSessionId = session?.offline ? undefined : session?.sessionId;
+      // Never fall back to the global/old session id — that reopens the previous chat.
+      let chatSessionId: string | undefined;
       let skipRitualFinally = false;
       let readingDelivered = false;
 
       try {
         if (!session?.offline) {
           chatSessionId = await beginNewSpreadSession(characterKey);
+          if (!chatSessionId) {
+            throw new Error("failed_to_create_consultation_session");
+          }
         }
 
         await bindSessionToMaster(characterKey, chatSessionId);
@@ -2908,13 +3368,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             }
 
             if (intention !== "life_death" && !readingText) {
-              const polled = await pollIntentionSpreadReading({
-                characterId: characterKey,
-                intention,
-                cardNames: cardNamesForClean,
-                spreadId,
-                cardCount: spreadCardCount,
-              });
+              const polled = await pollIntentionSpreadReading(
+                {
+                  characterId: characterKey,
+                  intention,
+                  cardNames: cardNamesForClean,
+                  spreadId,
+                  cardCount: spreadCardCount,
+                  sessionId: chatSessionId,
+                },
+                { maxAttempts: INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS }
+              );
               readingText = polled ? resolveClientReadingText(polled, cardNamesForClean) : "";
             }
 
@@ -2951,29 +3415,65 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
         if (intention !== "life_death" && !readingText) {
           skipRitualFinally = true;
-          await loadReadingRef.current(characterKey, undefined, {
-            sessionId: spreadSessionId ?? chatSessionId,
-            spreadCardsOverride: spreadCards,
-          });
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+          setTripletNotice(
+            "Не удалось получить трактовку. Руны не списаны или возвращены — попробуйте ещё раз."
+          );
+          deps.setMessages([
+            {
+              id: generateId(),
+              role: "assistant",
+              content:
+                "Расклад не удалось завершить. Попробуйте ещё раз — если руны списались, они вернутся на баланс.",
+              timestamp: new Date(),
+            },
+          ]);
         } else if (intention !== "life_death" && readingText) {
           readingDelivered = true;
           spreadReadingRecoveryKeyRef.current = `${characterKey}:${intention}:${intentionCardsKey}`;
-          deps.setMessages((prev) => {
-            const next = appendSpreadReadingMessage(prev, readingText);
-            if (next === prev) return prev;
-            saveChatCache(characterKey, next, intentionCardsKey, {
+          // Fresh consultation: replace thread (append can no-op if stale messages raced in).
+          deps.setMessages(() => {
+            const next = appendSpreadReadingMessage([], readingText);
+            if (next.length) {
+              saveChatCache(characterKey, next, intentionCardsKey, {
+                cards: spreadCards,
+                system,
+                variant: "intention",
+              });
+            }
+            return next;
+          });
+        } else if (intention === "life_death") {
+          const opening = buildIntentionOpening(
+            characterKey,
+            "life_death",
+            profile?.name
+          );
+          const openingMsgs = opening
+            ? [
+                {
+                  id: generateId(),
+                  role: "assistant" as const,
+                  content: opening,
+                  timestamp: new Date(),
+                },
+              ]
+            : [];
+          if (openingMsgs.length) {
+            deps.setMessages(openingMsgs);
+            saveChatCache(characterKey, openingMsgs, intentionCardsKey, {
               cards: spreadCards,
               system,
               variant: "intention",
             });
-            return next;
-          });
-        } else if (intention === "life_death") {
-          saveChatCache(characterKey, [], intentionCardsKey, {
-            cards: spreadCards,
-            system,
-            variant: "intention",
-          });
+          } else {
+            saveChatCache(characterKey, [], intentionCardsKey, {
+              cards: spreadCards,
+              system,
+              variant: "intention",
+            });
+          }
         }
         void refreshSavedReadings();
         void deps.refreshSessionsList(characterKey);
@@ -2983,15 +3483,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           const jointRole = getJointReadingRole() ?? "initiator";
           let jointFailureMessage: string | undefined;
           if (readingText && !jointSaved) {
-            const positionLabels = resolveSpreadPositions(spreadId, intention).map((p) => p.label);
             const fallback = await postJointReadingComplete(jointToken, {
-              reading: readingText,
-              cards: spreadCards.map((c, i) => ({
-                name: c.name,
-                position: positionLabels[i] ?? c.name,
-              })),
-              sessionId: spreadSessionId ?? chatSessionId,
-              characterKey,
+              sessionId: spreadSessionId ?? chatSessionId ?? "",
               role: jointRole,
             });
             if (!fallback.ok) {
@@ -3013,56 +3506,95 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           window.location.assign(jointRedirect);
           return;
         }
-      } catch {
-        try {
-          const cardNames =
-            sessionSpreadMetaRef.current?.cardNames ??
-            (cards.length
-              ? cards
-              : (readIntentionSpreadForMaster(characterKey)?.cards.map((c) => c.name) ?? []));
-          const recoverySpreadId =
-            sessionSpreadMetaRef.current?.spreadId ?? spreadId;
-          if (hasCompleteSpread(cardNames, recoverySpreadId, "new")) {
-            const polled = await pollIntentionSpreadReading({
-              characterId: characterKey,
-              intention,
-              cardNames,
-              spreadId: recoverySpreadId,
-              cardCount: requiredCardCount(recoverySpreadId, "new"),
-            });
-            const recovered = polled ? resolveClientReadingText(polled, cardNames) : "";
-            if (recovered) {
-              const spreadCardsRecovered =
-                readIntentionSpreadForMaster(characterKey)?.cards ??
-                cardNames.map((name, i) => ({ id: i, name, meaning: "" }));
-              const systemRecovered =
-                readIntentionSpreadForMaster(characterKey)?.system ??
-                previewDeckSystem ??
-                resolveMasterDeckSystem(characterKey);
-              const intentionCardsKeyRecovered = spreadKey(spreadCardsRecovered);
-              readingDelivered = true;
-              spreadReadingRecoveryKeyRef.current = `${characterKey}:${intention}:${intentionCardsKeyRecovered}`;
-              setReadingRitualCountdownDone(true);
-              deps.setMessages((prev) => {
-                const next = appendSpreadReadingMessage(prev, recovered);
-                if (next === prev) return prev;
-                saveChatCache(characterKey, next, intentionCardsKeyRecovered, {
-                  cards: spreadCardsRecovered,
-                  system: systemRecovered,
-                  variant: "intention",
+      } catch (err) {
+        const sessionCreateFailed =
+          err instanceof Error && err.message === "failed_to_create_consultation_session";
+        if (sessionCreateFailed) {
+          skipRitualFinally = true;
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+          deps.setMessages([]);
+          deps.setSelectedCharacter(null);
+          deps.chatLoadedForRef.current = null;
+          setStep("masters");
+        } else {
+          skipRitualFinally = true;
+          closeSpreadReadingRitual();
+          setIntentionSpreadLoading(false);
+          const terminal = isTerminalIntentionSpreadError(err);
+          const waitAborted = isIntentionSpreadWaitAborted(err);
+          try {
+            const cardNames =
+              sessionSpreadMetaRef.current?.cardNames ??
+              (cards.length
+                ? cards
+                : (readIntentionSpreadForMaster(characterKey)?.cards.map((c) => c.name) ?? []));
+            const recoverySpreadId =
+              sessionSpreadMetaRef.current?.spreadId ?? spreadId;
+            if (
+              !terminal &&
+              chatSessionId &&
+              hasCompleteSpread(cardNames, recoverySpreadId, "new")
+            ) {
+              const polled = await pollIntentionSpreadReading(
+                {
+                  characterId: characterKey,
+                  intention,
+                  cardNames,
+                  spreadId: recoverySpreadId,
+                  cardCount: requiredCardCount(recoverySpreadId, "new"),
+                  sessionId: chatSessionId,
+                },
+                {
+                  maxAttempts: waitAborted
+                    ? INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS
+                    : INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+                }
+              );
+              const recovered = polled ? resolveClientReadingText(polled, cardNames) : "";
+              if (recovered) {
+                const spreadCardsRecovered =
+                  readIntentionSpreadForMaster(characterKey)?.cards ??
+                  cardNames.map((name, i) => ({ id: i, name, meaning: "" }));
+                const systemRecovered =
+                  readIntentionSpreadForMaster(characterKey)?.system ??
+                  previewDeckSystem ??
+                  resolveMasterDeckSystem(characterKey);
+                const intentionCardsKeyRecovered = spreadKey(spreadCardsRecovered);
+                readingDelivered = true;
+                spreadReadingRecoveryKeyRef.current = `${characterKey}:${intention}:${intentionCardsKeyRecovered}`;
+                setReadingRitualCountdownDone(true);
+                deps.setMessages(() => {
+                  const next = appendSpreadReadingMessage([], recovered);
+                  if (next.length) {
+                    saveChatCache(characterKey, next, intentionCardsKeyRecovered, {
+                      cards: spreadCardsRecovered,
+                      system: systemRecovered,
+                      variant: "intention",
+                    });
+                  }
+                  return next;
                 });
-                return next;
-              });
-            } else {
-              skipRitualFinally = true;
-              await loadReadingRef.current(characterKey);
+              }
             }
-          } else {
-            skipRitualFinally = true;
-            await loadReadingRef.current(characterKey);
+          } catch {
+            /* show explicit error below */
           }
-        } catch {
-          /* loadReading shows its own fallback message */
+          if (!readingDelivered) {
+            const msg =
+              err instanceof Error && err.message.trim()
+                ? err.message.trim()
+                : "Не удалось завершить трактовку. Попробуйте ещё раз.";
+            setTripletNotice(msg);
+            deps.setMessages([
+              {
+                id: generateId(),
+                role: "assistant",
+                content: msg,
+                timestamp: new Date(),
+              },
+            ]);
+          }
         }
       } finally {
         if (!skipRitualFinally) {
@@ -3129,7 +3661,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             detail: { masterId: GUEST_TRIPLET_MASTER_ID },
           })
         );
-        document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        requestAnimationFrame(() => {
+          document.getElementById(GUEST_SPREAD_PICKER_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
       return;
     }
@@ -3144,8 +3678,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     const activeProfile = getActiveProfile();
-    if (!activeProfile?.birthDate && !profile?.birthDate) {
-      setStep("onboarding");
+    const localBirth = Boolean(
+      String(activeProfile?.birthDate ?? profile?.birthDate ?? "").trim()
+    );
+    if (hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth)) {
+      forceProfileOnboarding();
+      return;
+    }
+    if (!localBirth) {
+      forceProfileOnboarding();
       return;
     }
 
@@ -3240,8 +3781,26 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     if (!options?.forceIntention && deps) {
-      deps.setSessionsListData({ active: null, completed: [] });
-      deps.setSessionsListLoading(true);
+      const openSessionListShell = () => {
+        // Leave the scrolled masters salon before the fetch finishes.
+        deps.setSelectedCharacter(null);
+        deps.setConsultationSessionId(null);
+        deps.setConsultationReadOnly(false);
+        deps.archiveSessionIdRef.current = null;
+        deps.setSessionsListData({ active: null, completed: [] });
+        deps.setSessionsListLoading(true);
+        deps.setSessionListMaster(masterId);
+        setStep("masters");
+        localStorage.setItem(FLOW_STEP_KEY, "masters");
+      };
+
+      if (!options?.continueSession) {
+        openSessionListShell();
+      } else {
+        deps.setSessionsListData({ active: null, completed: [] });
+        deps.setSessionsListLoading(true);
+      }
+
       try {
         const sessionsRes = await fetch(
           `/api/sessions?characterKey=${encodeURIComponent(masterId)}`
@@ -3276,15 +3835,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               }
             }
           }
-          deps.setSelectedCharacter(null);
-          deps.setConsultationSessionId(null);
-          deps.setConsultationReadOnly(false);
-          deps.archiveSessionIdRef.current = null;
-          deps.setSessionListMaster(masterId);
           deps.setSessionsListLoading(false);
           deps.setSessionsListData({ active, completed });
-          setStep("masters");
-          localStorage.setItem(FLOW_STEP_KEY, "masters");
           clearPendingMasterResume();
           return;
         }
@@ -3459,8 +4011,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (isNumerologMaster(masterId) && deps) {
       clearPendingMasterResume();
       setTripletNotice(null);
+      deps.setSelectedCharacter(null);
+      deps.setConsultationSessionId(null);
+      deps.setConsultationReadOnly(false);
+      deps.archiveSessionIdRef.current = null;
       deps.setSessionsListData({ active: null, completed: [] });
       deps.setSessionsListLoading(true);
+      deps.setSessionListMaster(masterId);
+      setStep("masters");
+      localStorage.setItem(FLOW_STEP_KEY, "masters");
       try {
         const sessionsRes = await fetch(
           `/api/sessions?characterKey=${encodeURIComponent(masterId)}`
@@ -3471,17 +4030,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               completed: SessionListItem[];
             })
           : { active: null, completed: [] };
-        deps.setSelectedCharacter(null);
-        deps.setConsultationSessionId(null);
-        deps.setConsultationReadOnly(false);
-        deps.archiveSessionIdRef.current = null;
-        deps.setSessionListMaster(masterId);
         deps.setSessionsListData({
           active: sessionsData.active,
           completed: sessionsData.completed ?? [],
         });
-        setStep("masters");
-        localStorage.setItem(FLOW_STEP_KEY, "masters");
         return;
       } catch {
         /* fall through to generic session-only chat */
@@ -3505,6 +4057,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   useEffect(() => {
     if (authLoading || sessionLoading || !isLoggedIn || autoResumeDoneRef.current) return;
     if (hasPendingGuestQuestion()) return;
+    // Never auto-open chat before birth profile exists on the server.
+    if (!authUser?.profileUserId || hasPendingServerProfile()) return;
+    // Stale onboarding_required is fine once profile exists — guest bootstrap owns resume.
 
     const params = new URLSearchParams(window.location.search);
     const resumeChat =
@@ -3606,6 +4161,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     authLoading,
     sessionLoading,
     isLoggedIn,
+    authUser?.profileUserId,
     selectedCharacter,
     beginChatAfterIntention,
     getActiveProfile,
@@ -3763,6 +4319,225 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     });
   }, [setStep, readingInFlightRef, chatDepsRef]);
 
+  const applyGuestResumeResultNotice = useCallback(
+    (result: Awaited<ReturnType<typeof runGuestTripletResume>>) => {
+      if (result.ok) {
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
+        setTripletNotice(null);
+        return;
+      }
+      if (result.phase === "onboarding_required") {
+        forceProfileOnboarding();
+        return;
+      }
+      if (result.capacitorRecovery || result.phase === "safe_recovery") {
+        setGuestResumeCanRetry(false);
+        setTripletNotice(GUEST_RESUME_CAPACITOR_RECOVERY);
+        return;
+      }
+      if (result.stage === "already_used") {
+        setGuestResumeCanRetry(false);
+        clearGuestTriplet();
+        clearGuestResumeUiCache();
+        setTripletNotice(GUEST_RESUME_ALREADY_USED);
+        return;
+      }
+      if (result.stage === "expired" || result.phase === "idle") {
+        setGuestResumeCanRetry(false);
+        setTripletNotice(null);
+        return;
+      }
+      setGuestResumeCanRetry(true);
+      setTripletNotice(GUEST_RESUME_RETRY_TITLE);
+    },
+    [forceProfileOnboarding]
+  );
+
+  const retryGuestTripletResume = useCallback(() => {
+    const cache = loadGuestResumeUiCache();
+    if (!cache || !isLoggedIn) return;
+    setGuestResumeCanRetry(false);
+    setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
+    guestResumeBootRef.current = true;
+    void runGuestTripletResume({
+      authMethod: "retry",
+      loadReading: (args) =>
+        loadGuestResumeReadingRef.current({
+          ...args,
+          profileBase: getActiveProfile(),
+          questionFallback: getActiveProfile()?.mainQuestion,
+          teaserFallback: cache.teaser,
+          deckSystem: cache.system as StoredProfile["deckSystem"],
+        }),
+    }).then((result) => {
+      applyGuestResumeResultNotice(result);
+      if (!result.ok) guestResumeBootRef.current = false;
+    });
+  }, [isLoggedIn, getActiveProfile, applyGuestResumeResultNotice]);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      guestResumeHydrateAttemptedRef.current = false;
+      return;
+    }
+    if (guestResumeBootRef.current) return;
+    if (step === "intro") return;
+    if (authLoading) return;
+
+    const active = getActiveProfile();
+    const hasBirth = Boolean(String(active?.birthDate ?? "").trim());
+    const savedProfileAuthority = profileSaveAuthorityRef.current;
+    const hasServerProfile = Boolean(
+      authUser?.profileUserId ||
+        (savedProfileAuthority && savedProfileAuthority.expiresAt > Date.now())
+    );
+
+    let cache = loadGuestResumeUiCache();
+    if (!cache && !(hasBirth && hasServerProfile)) {
+      setTripletNotice((prev) =>
+        prev &&
+        (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
+          prev === GUEST_RESUME_RETRY_TITLE)
+          ? null
+          : prev
+      );
+      return;
+    }
+
+    // Lock before any await — unstable deps used to stampede /api/guest-triplet/status.
+    guestResumeBootRef.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      // Cookie/localStorage loss after re-register: hydrate from latest owned claim (once).
+      if (!cache && hasBirth && hasServerProfile) {
+        if (guestResumeHydrateAttemptedRef.current) {
+          guestResumeBootRef.current = false;
+          return;
+        }
+        guestResumeHydrateAttemptedRef.current = true;
+        try {
+          const res = await fetch("/api/guest-triplet/status", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          });
+          const owned = (await res.json().catch(() => null)) as {
+            ok?: boolean;
+            status?: string;
+            sessionId?: string;
+            masterId?: string;
+            question?: string;
+            system?: string;
+            cards?: Array<{
+              id: number;
+              name: string;
+              position: number;
+              reversed: boolean;
+            }>;
+            readingId?: string | null;
+          } | null;
+          const cardsOk =
+            Array.isArray(owned?.cards) && (owned?.cards.length ?? 0) === 3;
+          if (
+            !cancelled &&
+            owned?.ok &&
+            owned.sessionId &&
+            cardsOk &&
+            (owned.status === "claimed" ||
+              (owned.status === "reading_consumed" && owned.readingId))
+          ) {
+            cache = {
+              version: 1,
+              origin: "guest",
+              masterId: owned.masterId || "veronika",
+              system: owned.system || "tarot-veronika",
+              spreadId: "triplet",
+              question: owned.question ?? "",
+              teaser: "",
+              cards: owned.cards!,
+              completedAt: new Date().toISOString(),
+              claimedSessionId: owned.sessionId,
+              phase: "resuming_reading",
+            };
+            saveGuestResumeUiCache(cache);
+          }
+        } catch {
+          /* ignore — fall through */
+        }
+      }
+
+      if (cancelled) {
+        guestResumeBootRef.current = false;
+        return;
+      }
+
+      if (!cache) {
+        setTripletNotice((prev) =>
+          prev &&
+          (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
+            prev === GUEST_RESUME_RETRY_TITLE)
+            ? null
+            : prev
+        );
+        guestResumeBootRef.current = false;
+        return;
+      }
+
+      if (!hasBirth || !hasServerProfile) {
+        if (step !== "onboarding" || selectedCharacter) {
+          forceProfileOnboarding();
+        } else {
+          patchGuestResumeUiCache({ phase: "onboarding_required" });
+          setTripletNotice(null);
+        }
+        guestResumeBootRef.current = false;
+        return;
+      }
+
+      // Profile is ready — resume even if the form step is still "onboarding".
+      setGuestResumeCanRetry(false);
+      setTripletNotice(
+        `${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`
+      );
+
+      const result = await runGuestTripletResume({
+        authMethod: "bootstrap",
+        loadReading: (args) =>
+          loadGuestResumeReadingRef.current({
+            ...args,
+            profileBase: active,
+            questionFallback: active?.mainQuestion,
+            teaserFallback: cache!.teaser,
+            deckSystem: cache!.system as StoredProfile["deckSystem"],
+          }),
+      });
+      if (cancelled) {
+        guestResumeBootRef.current = false;
+        return;
+      }
+      applyGuestResumeResultNotice(result);
+      if (!result.ok) guestResumeBootRef.current = false;
+    })();
+
+    return () => {
+      cancelled = true;
+      // Remount (Strict Mode) may retry resume; hydrateAttemptedRef blocks status storms.
+      guestResumeBootRef.current = false;
+    };
+  }, [
+    isLoggedIn,
+    authLoading,
+    authUser?.profileUserId,
+    step,
+    profile?.birthDate,
+    applyGuestResumeResultNotice,
+    forceProfileOnboarding,
+    selectedCharacter,
+    getActiveProfile,
+  ]);
+
   return {
     masters,
     tripletSystem,
@@ -3773,6 +4548,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setNewTripletDraft,
     tripletNotice,
     setTripletNotice,
+    guestResumeCanRetry,
+    retryGuestTripletResume,
     tripletCooldown,
     tripletCooldownReady,
     spreadRitual,

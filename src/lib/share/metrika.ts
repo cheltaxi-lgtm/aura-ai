@@ -1,22 +1,19 @@
 "use client";
 
-const YANDEX_METRIKA_ID = 110138367;
+import { utmParamsForMetrika } from "@/lib/utm/attribution";
 
-declare global {
-  interface Window {
-    ym?: (
-      id: number,
-      method: string,
-      goal: string,
-      params?: Record<string, string | number>
-    ) => void;
-  }
-}
+const YANDEX_METRIKA_ID = 110138367;
 
 export function trackShareEvent(goal: string, params?: Record<string, string | number>): void {
   if (typeof window === "undefined" || !window.ym) return;
   try {
-    window.ym(YANDEX_METRIKA_ID, "reachGoal", goal, params);
+    const withUtm = { ...utmParamsForMetrika(), ...params };
+    window.ym(
+      YANDEX_METRIKA_ID,
+      "reachGoal",
+      goal,
+      Object.keys(withUtm).length ? withUtm : undefined
+    );
   } catch {
     /* analytics optional */
   }

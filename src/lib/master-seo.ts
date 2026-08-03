@@ -55,13 +55,13 @@ export function getMasterShareDescription(slug: string): string {
   if (!character) {
     return `Персональные эзотерические консультации с мастером ${slug} на платформе ${BRAND_NAME}.`;
   }
-  return `${character.name} — ${character.title}. ${character.specialty}. ${masterTagline(character.id, character.title)}. ИИ-наставник Zovus в художественном образе. Онлайн на ${BRAND_NAME}.`;
+  return `${character.name} — ${character.title}. ${character.specialty}. ${masterTagline(character.id, character.title)}. Проводник Zovus в художественном образе. Приватный сеанс на ${BRAND_NAME}.`;
 }
 
 export function buildMasterMetadata(slug: string): Metadata {
   const character = getCharacterById(slug);
   const name = character?.name ?? slug;
-  const ogTitle = `ИИ-наставник ${name} | ${BRAND_NAME}`;
+  const ogTitle = `${name} — наставник | ${BRAND_NAME}`;
   const ogDescription = getMasterShareDescription(slug);
   const pageTitle = character ? `${name} — ${character.title}` : `${slug} — мастер`;
   const pageUrl = `${BRAND_URL}/master/${slug}`;

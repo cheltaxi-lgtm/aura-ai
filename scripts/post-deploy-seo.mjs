@@ -30,7 +30,7 @@ loadEnvFile(join(__dir, "..", ".env.local"));
 
 const goalsDoc = JSON.parse(readFileSync(join(__dir, "metrika-goals.json"), "utf8"));
 
-const PRIORITY_URLS = [
+const CORE_PRIORITY = [
   `${base}/`,
   `${base}/sitemap.xml`,
   `${base}/robots.txt`,
@@ -38,14 +38,102 @@ const PRIORITY_URLS = [
   `${base}/gadanie`,
   `${base}/gadanie/da-net`,
   `${base}/runy`,
+  `${base}/lenormand`,
   `${base}/sovmestimost-znakov-zodiaka`,
   `${base}/photo-rasklad`,
   `${base}/numerology`,
+  `${base}/numerology/destiny-matrix`,
+  `${base}/numerology/name-compatibility`,
+  `${base}/natalnaya-karta`,
   `${base}/rasklady`,
+  `${base}/rasklady/lyubov`,
+  `${base}/rasklady/vernost-i-doverie`,
+  `${base}/rasklady/chuvstva-i-myisli`,
+  `${base}/rasklady/budushchee`,
+  `${base}/rasklady/kariera`,
+  `${base}/faq`,
+  `${base}/telegram`,
+  `${base}/about`,
+  `${base}/faq`,
+  `${base}/lenormand`,
+  `${base}/partners`,
+  `${base}/cards`,
   `${base}/prognoz`,
+  `${base}/statyi`,
   `${base}/terms`,
   `${base}/privacy`,
 ];
+
+/** High-value pages for Yandex recovery — pillars first, then intent pages. */
+const RECRAWL_PRIORITY = [
+  `${base}/`,
+  `${base}/telegram`,
+  `${base}/about`,
+  `${base}/photo-rasklad`,
+  `${base}/taro`,
+  `${base}/gadanie`,
+  `${base}/rasklady`,
+  `${base}/rasklady/lyubov`,
+  `${base}/rasklady/vernost-i-doverie`,
+  `${base}/rasklady/chto-meshaet-otnosheniyam`,
+  `${base}/rasklady/na-vernost`,
+  `${base}/rasklady/zhdat-ili-zabyt`,
+  `${base}/rasklady/nuzhna-li-ya-emu`,
+  `${base}/rasklady/situatsiya-na-rabote`,
+  `${base}/rasklady/lyubov-pochemu-on-molchit`,
+  `${base}/rasklady/partner-po-biznesu`,
+  `${base}/rasklady/kak-naladit-otnosheniya-s-papoy`,
+  `${base}/rasklady/prognoz-na-nedelyu`,
+  `${base}/rasklady/chto-on-delaet-nochyu`,
+  `${base}/rasklady/chto-on-chuvstvuet`,
+  `${base}/rasklady/vernyotsya-li-on`,
+  `${base}/rasklady/lyubit-li-on-menya`,
+  `${base}/rasklady/est-li-izmena`,
+  `${base}/rasklady/chto-on-skryvaet`,
+  `${base}/rasklady/pochemu-on-molchit`,
+  `${base}/cards/6-mechey`,
+  `${base}/cards/koroleva-zhezlov`,
+  `${base}/cards/tuz-mechey`,
+  `${base}/cards/pazh-zhezlov`,
+  `${base}/cards/ierofant`,
+  `${base}/cards`,
+];
+
+/** Wave-1 organic + natal/matrix pillars for IndexNow / checks. */
+const ARTICLE_PRIORITY_SLUGS = [
+  "rasshifrovka-taro-po-foto",
+  "rasshifrovka-taro-po-foto-besplatno",
+  "besplatnyy-rasklad-taro-online",
+  "kak-fotografirovat-rasklad-taro",
+  "foto-rasklad-ili-klassicheskoe-taro",
+  "zhdat-ili-otpustit-taro",
+  "svoboden-li-on-gadanie",
+  "znachenie-kart-lenormand",
+  "sochetaniya-lenormand",
+  "ascendent-v-natalnoy-karte",
+  "matrica-sudby-dengi",
+  "matrica-sudby-otnosheniya",
+  "numerologiya-i-natalnaya-karta",
+  "natalnaya-karta-po-date-rozhdeniya",
+  "chto-takoe-matrica-sudby",
+  "matrica-sudby-po-date-rozhdeniya",
+  "natal-ili-matrica-chto-vybrat",
+];
+
+function loadAllArticleUrls() {
+  const urls = ARTICLE_PRIORITY_SLUGS.map((slug) => `${base}/statyi/${slug}`);
+  try {
+    const extra = JSON.parse(readFileSync(join(__dir, "seo-article-extra-slugs.json"), "utf8"));
+    if (Array.isArray(extra)) {
+      for (const slug of extra) urls.push(`${base}/statyi/${slug}`);
+    }
+  } catch {
+    /* optional */
+  }
+  return [...new Set(urls)];
+}
+
+const PRIORITY_URLS = [...new Set([...CORE_PRIORITY, ...RECRAWL_PRIORITY, ...loadAllArticleUrls()])];
 
 let failed = 0;
 
@@ -72,28 +160,44 @@ async function pingYandexSitemap() {
 }
 
 async function submitIndexNow() {
-  const payload = {
-    host: new URL(base).host,
-    key: INDEXNOW_KEY,
-    keyLocation: `${base}/${INDEXNOW_KEY}.txt`,
-    urlList: PRIORITY_URLS.filter((u) => !u.endsWith(".xml") && !u.endsWith(".txt")),
-  };
-  const res = await fetch("https://yandex.com/indexnow", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify(payload),
-  });
-  ok("Yandex IndexNow submit", res.ok || res.status === 202, `status=${res.status}`);
+  const all = PRIORITY_URLS.filter((u) => !u.endsWith(".xml") && !u.endsWith(".txt"));
+  const chunkSize = 100;
+  let submitted = 0;
+  for (let i = 0; i < all.length; i += chunkSize) {
+    const urlList = all.slice(i, i + chunkSize);
+    const payload = {
+      host: new URL(base).host,
+      key: INDEXNOW_KEY,
+      keyLocation: `${base}/${INDEXNOW_KEY}.txt`,
+      urlList,
+    };
+    const res = await fetch("https://yandex.com/indexnow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+    const pass = res.ok || res.status === 202;
+    ok(`Yandex IndexNow batch ${i / chunkSize + 1}`, pass, `status=${res.status} urls=${urlList.length}`);
+    if (pass) submitted += urlList.length;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  console.log(`IndexNow total submitted URLs: ${submitted}`);
 }
 
 console.log(`=== Post-deploy SEO: ${base} ===\n`);
 
 await checkUrl(`/${INDEXNOW_KEY}.txt`, 200, INDEXNOW_KEY);
 const homeHtml = await checkUrl("/", 200);
+// Humans: tag.js must NOT be in SSR HTML; loads only after «Принять аналитику».
 ok(
-  "Metrika counter in HTML",
-  homeHtml.includes(`mc.yandex.ru/metrika/tag.js`) && homeHtml.includes(String(METRIKA_ID)),
-  `id=${METRIKA_ID}`
+  "Metrika not in SSR HTML for humans (consent-gated)",
+  !homeHtml.includes(`mc.yandex.ru/metrika/tag.js`),
+  `id=${METRIKA_ID} loads client-side after consent`
+);
+ok(
+  "Metrika noscript watch pixel in SSR (Webmaster)",
+  homeHtml.includes("mc.yandex.ru/watch/110138367"),
+  "JS users still consent-gated via YandexMetrika"
 );
 ok(
   "Yandex Webmaster verification meta",

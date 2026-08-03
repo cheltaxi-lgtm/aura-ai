@@ -3,11 +3,13 @@ import LegalDocumentLayout from "@/components/legal/LegalDocumentLayout";
 import LegalOperatorBlock from "@/components/legal/LegalOperatorBlock";
 import { LEGAL_OPERATOR } from "@/lib/legal-operator";
 import { BRAND_NAME, BRAND_URL } from "@/lib/brand";
+import { buildSeoMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
-  title: `Публичная оферта — ${BRAND_NAME}`,
+export const metadata: Metadata = buildSeoMetadata({
+  title: "Публичная оферта",
   description: `Условия покупки внутренней валюты «руны» на платформе ${BRAND_NAME}. Оплата через ЮKassa.`,
-};
+  path: "/offer",
+});
 
 export default function OfferPage() {
   return (

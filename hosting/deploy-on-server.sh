@@ -50,7 +50,14 @@ fi
 
 grep -q '^NEXT_PUBLIC_APP_URL=' .env.local 2>/dev/null || echo 'NEXT_PUBLIC_APP_URL=https://zovus.ru' >> .env.local
 grep -q '^COOKIE_SECURE=' .env.local 2>/dev/null || echo 'COOKIE_SECURE=true' >> .env.local
-grep -q '^DATABASE_URL=' .env.local 2>/dev/null || echo 'DATABASE_URL=postgresql://auraai:auraai_secret@localhost:5432/auraai' >> .env.local
+if ! grep -q '^DATABASE_URL=' .env.local 2>/dev/null; then
+  echo "ERROR: DATABASE_URL missing in .env.local — refuse to bootstrap with default password" >&2
+  exit 1
+fi
+if grep -qE 'auraai_secret' .env.local 2>/dev/null; then
+  echo "ERROR: DATABASE_URL still uses default password auraai_secret — rotate before deploy" >&2
+  exit 1
+fi
 
 grep -q '^YANDEX_OAUTH_CLIENT_ID=' .env.local 2>/dev/null || echo 'YANDEX_OAUTH_CLIENT_ID=' >> .env.local
 grep -q '^YANDEX_OAUTH_CLIENT_SECRET=' .env.local 2>/dev/null || echo 'YANDEX_OAUTH_CLIENT_SECRET=' >> .env.local
@@ -88,10 +95,15 @@ source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|MEMORY_EMBED_MODEL)=' .env.l
 set +a
 node scripts/migrate.mjs
 
+sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh 2>/dev/null || true
+bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
 cp hosting/aura-ai.service /etc/systemd/system/aura-ai.service
+cp hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 systemctl daemon-reload
 systemctl enable aura-ai
 systemctl restart aura-ai
+systemctl enable aura-ai-async-jobs
+systemctl restart aura-ai-async-jobs
 
 cp hosting/Caddyfile /etc/caddy/Caddyfile
 systemctl enable caddy

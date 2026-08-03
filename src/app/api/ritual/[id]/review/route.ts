@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { submitRitualReview, getRitualById } from "@/lib/ritual-service";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -13,11 +14,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const rateLimited = await enforcePaidRouteRateLimit(
+    authed.auth.sub,
+    "ritual_review"
+  );
+  if (rateLimited) return rateLimited;
+
   const { id } = await context.params;
   const ritual = await getRitualById(id);
 
   if (!ritual || ritual.user_id !== authed.profileUserId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (ritual.status !== "completed" && ritual.status !== "reviewed") {
+    return NextResponse.json(
+      { error: "Review available only after the ritual is completed" },
+      { status: 400 }
+    );
   }
 
   let body: {

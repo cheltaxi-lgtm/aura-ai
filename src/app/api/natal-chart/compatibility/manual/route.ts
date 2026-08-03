@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     if (code === "chart_unavailable" || code === "partner_chart_unavailable") {
       return NextResponse.json({ error: code }, { status: 409 });
     }
-    console.warn("[natal-compatibility] manual creation failed");
+    console.warn("[natal-compatibility] manual creation failed:", code.slice(0, 160));
     return NextResponse.json({ error: "compatibility_create_failed" }, { status: 500 });
   }
 }

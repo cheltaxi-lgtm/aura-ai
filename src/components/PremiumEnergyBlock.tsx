@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, X, Moon, Users } from "lucide-react";
-import { getCharacterById } from "@/lib/characters";
 import { isAiMasterId, type ShowcaseMaster } from "@/lib/showcase-masters";
 import { resolveMasterDeckSystem, DECK_REGISTRY } from "@/lib/decks";
 import { DECK_SYSTEM_DISPLAY } from "@/lib/photo-spread-redraw";
@@ -12,7 +11,7 @@ import type { DeckSystem } from "@/lib/decks/types";
 import DeckCard from "@/components/DeckCard";
 import BodyPortal from "@/components/BodyPortal";
 import MasterAvatar from "@/components/MasterAvatar";
-import { toParagraphs } from "@/lib/format-paragraphs";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { DEFAULT_SPREAD_ID, getSpread, type SpreadId } from "@/lib/spreads";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import RuneCost from "@/components/RuneCost";
@@ -22,6 +21,7 @@ import {
   showDailyJointReading,
 } from "@/lib/daily-retention";
 import type { RitualType } from "@/lib/ritual-config";
+import AsyncJobProgressNotice from "@/components/AsyncJobProgressNotice";
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const GOLD_GRADIENT = "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)";
@@ -54,6 +54,8 @@ export interface PremiumEnergyBlockProps {
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
   /** Open in-app ritual flow with recommended type from daily reading. */
   onStartRitual?: (ritualType: RitualType) => void;
+  /** Unlimited accounts skip DAILY_EXTENDED charge — hide fake price. */
+  isUnlimited?: boolean;
   /** @deprecated Footer only closes modal — kept for call-site compatibility. */
   onTalkToMaster?: (masterId: string) => void;
   /** @deprecated Footer only closes modal — kept for call-site compatibility. */
@@ -77,44 +79,8 @@ function parseDailyEnergyText(text: string): { body: string; quote: string | nul
   return { body, quote };
 }
 
-function renderBodyWithMasterHighlight(body: string, masterLabel: string) {
-  const firstName = masterLabel.trim().split(/\s+/)[0];
-  const paragraphs = toParagraphs(body);
-  const re =
-    firstName && firstName.length >= 2
-      ? new RegExp(`(${firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "i")
-      : null;
-
-  return (
-    <div className="space-y-3.5">
-      {paragraphs.map((para, pIndex) => {
-        if (!re) {
-          return (
-            <p key={`daily-p-${pIndex}`} className="text-[15px] leading-[1.85] text-gray-200">
-              {para}
-            </p>
-          );
-        }
-        const parts = para.split(re);
-        return (
-          <p key={`daily-p-${pIndex}`} className="text-[15px] leading-[1.85] text-gray-200">
-            {parts.map((part, i) =>
-              re.test(part) ? (
-                <span
-                  key={`${pIndex}-${i}`}
-                  className="font-display text-lg text-amber-100 drop-shadow-[0_0_12px_rgba(251,191,36,0.35)]"
-                >
-                  {part}
-                </span>
-              ) : (
-                <span key={`${pIndex}-${i}`}>{part}</span>
-              )
-            )}
-          </p>
-        );
-      })}
-    </div>
-  );
+function renderDailyReadingBody(body: string) {
+  return <PremiumReadingBody content={body} className="text-gray-200" />;
 }
 
 export default function PremiumEnergyBlock({
@@ -125,9 +91,11 @@ export default function PremiumEnergyBlock({
   onAutoOpenHandled,
   onInsufficientRunes,
   onStartRitual,
+  isUnlimited = false,
 }: PremiumEnergyBlockProps) {
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
-  const extendedCost = runeCost("DAILY_EXTENDED");
+  const extendedCost = isUnlimited ? 0 : runeCost("DAILY_EXTENDED");
+  const showExtendedPrice = runeConfig.enabled && !isUnlimited;
   const [loaded, setLoaded] = useState(false);
   const [drawnToday, setDrawnToday] = useState(false);
   const [lockedToday, setLockedToday] = useState(false);
@@ -161,7 +129,6 @@ export default function PremiumEnergyBlock({
     () => DECK_REGISTRY[pickSystem]?.symbols[0]?.name ?? "",
     [pickSystem]
   );
-  const masterLabel = useMemo(() => getCharacterById(master)?.name ?? master, [master]);
   const selectedMaster = useMemo(
     () => pickMasters.find((m) => m.id === master),
     [pickMasters, master]
@@ -219,6 +186,35 @@ export default function PremiumEnergyBlock({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { resumeStoredOrActiveAsyncJob } = await import(
+          "@/lib/client/wait-for-async-job"
+        );
+        const data = await resumeStoredOrActiveAsyncJob({
+          storageKey: "aura:daily-reading-active-job",
+          kind: "daily_reading,daily_extended",
+        });
+        if (cancelled || !data?.text || !Array.isArray(data.cards) || !data.cards.length) {
+          return;
+        }
+        setText(String(data.text));
+        setCards(data.cards as DailyCard[]);
+        setSystem((data.system as DeckSystem | null) ?? null);
+        setSpreadId(data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
+        setRevealed((data.cards as DailyCard[]).length);
+        setDrawnToday(true);
+      } catch {
+        /* ignore resume errors */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !drawing) setOpen(false);
@@ -242,17 +238,17 @@ export default function PremiumEnergyBlock({
     setDrawing(true);
     setErrorMessage(null);
     try {
-      const res = await fetch("/api/daily-reading", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+      const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+      const { status: resStatus, data } = await postWithAsyncJob({
+        url: "/api/daily-reading",
+        body: {
           characterKey: master,
           localDate: localDateStr(),
           spreadId: activeSpreadId,
-        }),
+        },
+        storageKey: "aura:daily-reading-active-job",
       });
-      const data = (await res.json()) as {
+      const typed = data as {
         text?: string;
         cards?: DailyCard[];
         system?: DeckSystem | null;
@@ -262,39 +258,50 @@ export default function PremiumEnergyBlock({
         message?: string;
         balance?: number;
         required?: number;
+        code?: string;
       };
-      if (res.status === 402 && data.error === "insufficient_runes") {
+      if (resStatus === 402 && typed.error === "insufficient_runes") {
         if (
           onInsufficientRunes &&
-          typeof data.balance === "number" &&
-          typeof data.required === "number"
+          typeof typed.balance === "number" &&
+          typeof typed.required === "number"
         ) {
-          onInsufficientRunes({ balance: data.balance, required: data.required });
+          onInsufficientRunes({ balance: typed.balance, required: typed.required });
         } else {
           setErrorMessage("Недостаточно рун для расширенного расклада.");
         }
         return;
       }
-      if (res.status === 403 && data.error === "daily_reading_locked") {
+      if (resStatus === 403 && typed.error === "daily_reading_locked") {
         setLockedToday(true);
         setDrawnToday(true);
-        setOpen(false);
+        setErrorMessage(typed.message ?? "Расклад на сегодня уже был — новый будет доступен завтра.");
         return;
       }
-      if (data.drawn && data.text && Array.isArray(data.cards) && data.cards.length) {
-        setText(data.text);
-        setCards(data.cards);
-        setSystem(data.system ?? pickSystem);
-        setSpreadId(data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
+      if (resStatus >= 500 || typed.code === "generation_failed") {
+        setErrorMessage(
+          typed.error ?? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+        );
+        return;
+      }
+      if (typed.drawn && typed.text && Array.isArray(typed.cards) && typed.cards.length) {
+        setText(typed.text);
+        setCards(typed.cards);
+        setSystem(typed.system ?? pickSystem);
+        setSpreadId(typed.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
         setRevealed(0);
         setDrawnToday(true);
-      } else if (data.message) {
-        setErrorMessage(data.message);
+      } else if (typed.message) {
+        setErrorMessage(typed.message);
       } else {
         setErrorMessage("Не удалось разложить карты. Попробуйте ещё раз.");
       }
-    } catch {
-      setErrorMessage("Не удалось разложить карты. Попробуйте ещё раз.");
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error && err.message
+          ? err.message
+          : "Не удалось разложить карты. Попробуйте ещё раз."
+      );
     } finally {
       setDrawing(false);
     }
@@ -325,53 +332,56 @@ export default function PremiumEnergyBlock({
   // ─────────────────────────── TRIGGER CARD ───────────────────────────
   if (!loaded) {
     return (
-      <div className="mb-8 rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md">
-        <div className="h-4 w-32 rounded bg-white/10 max-md:animate-none animate-pulse" />
-        <div className="mt-4 h-12 rounded bg-white/5 max-md:animate-none animate-pulse" />
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <motion.section
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative mb-8 scroll-mt-[calc(var(--app-header-h,3.25rem)+0.75rem)] overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-purple-950/40 to-slate-900/60 p-6 shadow-2xl max-md:from-purple-950/95 max-md:to-slate-900/95 max-md:backdrop-blur-none backdrop-blur-md sm:p-7"
-      >
-        <div
-          className="pointer-events-none absolute -right-16 -top-16 hidden h-48 w-48 rounded-full bg-amber-500/10 blur-3xl md:block"
-          aria-hidden
-        />
-        <div className="relative flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10">
-            <Moon className="h-6 w-6 text-amber-300" aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1">
+      <section className="ritual-cta-banner" aria-hidden>
+        <div className="ritual-cta-banner__inner">
+          <span className="ritual-cta-banner__icon">
+            <Moon className="h-6 w-6 text-amber-200" aria-hidden />
+          </span>
+          <div className="ritual-cta-banner__copy">
             <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
               Бесплатно · раз в сутки
             </p>
-            <h3 className="font-display text-lg font-semibold text-white">Расклад на сутки</h3>
-            <p className="mt-0.5 text-xs text-gray-400">
-              {lockedToday
-                ? "Расклад на сегодня уже был — новый завтра"
-                : drawnToday
-                ? spreadId === "daily-extended"
-                  ? "Расширенный расклад на сегодня готов"
-                  : "Ваш расклад на сегодня готов"
-                : `Выберите мастера и откройте ${cardsLabelRu(spread.cardCount)}`}
+            <h3 className="ritual-cta-banner__title">Расклад на сутки</h3>
+            <p className="ritual-cta-banner__text">Загружаем статус…</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const statusText = lockedToday
+    ? "Расклад на сегодня уже был — новый завтра"
+    : drawnToday
+      ? spreadId === "daily-extended"
+        ? "Расширенный расклад на сегодня готов"
+        : "Ваш расклад на сегодня готов"
+      : `Выберите мастера и откройте ${cardsLabelRu(spread.cardCount)}`;
+
+  return (
+    <>
+      <section className="ritual-cta-banner" aria-labelledby="daily-energy-banner-title">
+        <div className="ritual-cta-banner__inner">
+          <span className="ritual-cta-banner__icon" aria-hidden>
+            <Moon className="h-6 w-6 text-amber-200" strokeWidth={1.5} />
+          </span>
+          <div className="ritual-cta-banner__copy">
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
+              Бесплатно · раз в сутки
             </p>
+            <h3 id="daily-energy-banner-title" className="ritual-cta-banner__title">
+              Расклад на сутки
+            </h3>
+            <p className="ritual-cta-banner__text">{statusText}</p>
           </div>
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-transform hover:scale-[1.03] active:scale-95"
-            style={{ background: GOLD_GRADIENT, color: "#1a0f00", boxShadow: "0 4px 20px rgba(212,175,55,0.3)" }}
+            className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn"
           >
             {lockedToday ? "Завтра" : drawnToday ? "Смотреть" : "Разложить"}
           </button>
         </div>
-      </motion.section>
+      </section>
       <BodyPortal active={open}>
         <AnimatePresence>
           {open && (
@@ -394,6 +404,8 @@ export default function PremiumEnergyBlock({
                 className={`relative z-10 flex w-full max-h-[min(90dvh,calc(100dvh-2rem))] flex-col overflow-hidden rounded-t-3xl border border-amber-500/15 sm:rounded-3xl ${
                   spreadId === "daily-extended" ? "max-w-xl" : "max-w-md"
                 }`}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   background: "linear-gradient(160deg, #0d0a1a 0%, #120e24 60%, #0a0814 100%)",
                   boxShadow:
@@ -468,7 +480,9 @@ export default function PremiumEnergyBlock({
                         <span className="block font-medium">Расширенный</span>
                         <span className="mt-0.5 block text-[10px] opacity-80">
                           7 сфер ·{" "}
-                          {runeConfig.enabled ? (
+                          {isUnlimited ? (
+                            "без списания"
+                          ) : showExtendedPrice ? (
                             <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />
                           ) : (
                             "10 рун"
@@ -530,7 +544,9 @@ export default function PremiumEnergyBlock({
                       className="mt-2 w-full rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/15 disabled:opacity-50"
                     >
                       Расширить до 7 карт
-                      {runeConfig.enabled ? (
+                      {isUnlimited ? (
+                        " · без списания"
+                      ) : showExtendedPrice ? (
                         <>
                           {" · "}
                           <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />
@@ -606,6 +622,13 @@ export default function PremiumEnergyBlock({
                   </p>
                 )}
 
+                <div className="mt-3">
+                  <AsyncJobProgressNotice
+                    active={drawing}
+                    label="Мастер готовит энергию дня"
+                  />
+                </div>
+
                 {errorMessage && (
                   <p className="mt-3 text-center text-xs text-red-400">{errorMessage}</p>
                 )}
@@ -622,7 +645,7 @@ export default function PremiumEnergyBlock({
                         {spreadId === "daily-extended" ? spread.label : "Энергия дня"}
                       </p>
                       <div className="mt-3 space-y-3">
-                        {renderBodyWithMasterHighlight(body, masterLabel)}
+                        {renderDailyReadingBody(body)}
                         {quote ? (
                           <blockquote className="my-2 border-l-2 border-amber-500/40 pl-4 text-sm italic text-amber-200/80">
                             {quote}

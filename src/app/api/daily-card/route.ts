@@ -8,6 +8,9 @@ import { enforceDailyCardRateLimit } from "@/lib/api-guards";
 import { stripControlChars, resolveApiCharacterId } from "@/lib/chat-sanitize";
 import { stripStageDirections } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, isCharacterKey } from "@/lib/prompts";
+import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getUserById } from "@/lib/users";
+import { genderLabelOrUndefined } from "@/lib/russian-name-gender";
 
 export async function POST(request: NextRequest) {
   const auth = await requireUserAuth();
@@ -26,18 +29,33 @@ export async function POST(request: NextRequest) {
   const resolved = await resolveApiCharacterId(rawMaster);
   const characterKey = isCharacterKey(resolved) ? resolved : "veronika";
 
+  const profileUserId = await getProfileUserIdForAccount(auth.sub).catch(() => null);
+  const profile = profileUserId ? await getUserById(profileUserId).catch(() => null) : null;
+
   const userName =
     typeof body.userName === "string" && body.userName.trim()
       ? stripControlChars(body.userName).trim().slice(0, 80)
-      : "странник";
+      : profile?.name?.trim() || "странник";
+
+  const gender =
+    genderLabelOrUndefined(
+      typeof body.gender === "string" ? body.gender : profile?.gender
+    ) ?? undefined;
 
   try {
     const personaPrompt = buildSystemPrompt(
       characterKey,
       {
         name: userName,
-        zodiac: typeof body.zodiac === "string" ? body.zodiac.slice(0, 40) : "не указан",
-        birthDate: typeof body.birthDate === "string" ? body.birthDate.slice(0, 20) : "не указана",
+        gender,
+        zodiac:
+          typeof body.zodiac === "string"
+            ? body.zodiac.slice(0, 40)
+            : profile?.zodiac ?? "не указан",
+        birthDate:
+          typeof body.birthDate === "string"
+            ? body.birthDate.slice(0, 20)
+            : profile?.birth_date ?? "не указана",
         cards: [card.name],
         isPaid: true,
       },
@@ -66,12 +84,28 @@ export async function POST(request: NextRequest) {
       isPaid: false,
     });
 
+    const text = stripStageDirections(prediction ?? "").trim();
+    if (!text) {
+      return NextResponse.json(
+        {
+          error: "Не удалось получить предсказание. Попробуйте ещё раз.",
+          code: "generation_failed",
+        },
+        { status: 502 }
+      );
+    }
     return NextResponse.json({
-      prediction: stripStageDirections(prediction ?? "") || card.meaning,
+      prediction: text,
       characterId: characterKey,
       cardName: card.name,
     });
   } catch {
-    return NextResponse.json({ prediction: card.meaning, characterId: characterKey, cardName: card.name });
+    return NextResponse.json(
+      {
+        error: "Не удалось получить предсказание. Попробуйте ещё раз.",
+        code: "generation_failed",
+      },
+      { status: 502 }
+    );
   }
 }

@@ -35,7 +35,7 @@ export default function RuneMeaningTemplate({
       <p className="mt-4 text-lg text-white/80">{rune.general}</p>
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href="/master/ragnar" trackGoal="rune_meaning_cta_click">
+        <SeoTrackedCta href="/rasklad/runy-da-net" trackGoal="rune_meaning_cta_click">
           Разобрать мой случай с Рагнаром
         </SeoTrackedCta>
         <SeoTrackedCta href="/?spread=runes-yes-no" variant="ghost" trackGoal="rune_meaning_cta_click">

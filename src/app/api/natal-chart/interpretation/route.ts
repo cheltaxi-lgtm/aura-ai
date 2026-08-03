@@ -1,26 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireProfileUserId } from "@/lib/require-auth";
+import {
+  profileAuthFailureResponse,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
+import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { buildNatalEvidence, formatEvidencePrompt } from "@/lib/natal/evidence";
 import {
   buildNatalReportJsonInstructions,
-  extractJsonObject,
   natalReportToPlainText,
-  validateNatalReport,
 } from "@/lib/natal/report";
+import { generateValidatedNatalReport } from "@/lib/natal/generate-validated-report";
 import {
-  claimNatalInterpretation,
+  claimNatalInterpretationResilient,
   getOrComputeNatalChart,
   releaseNatalInterpretationClaim,
   saveCurrentNatalInterpretation,
 } from "@/lib/services/natal-chart-service";
-import { BillingService, InsufficientFundsError } from "@/lib/services/billing-service";
+import {
+  BillingService,
+  InsufficientFundsError,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
 import { getUserById } from "@/lib/users";
+import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import type { NatalTradition } from "@/lib/natal/types";
 import { getCachedPersonalTiming } from "@/lib/services/natal-timing-service";
-import { completeChat, type ChatMessage } from "@/lib/llm";
+import type { ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
+import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import {
+  beginWorkerJobSave,
+  chargeRuneActionForWorkerJob,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/natal/async-job-lifecycle";
+import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
 
@@ -28,31 +46,54 @@ function isInvalidBirthDateError(error: unknown): boolean {
   return error instanceof Error && error.message === "INVALID_BIRTH_DATE";
 }
 
+const INTERPRETATION_METADATA_DEFAULTS = {
+  disclaimer:
+    "Астрологическая трактовка является символической интерпретацией и не заменяет профессиональную консультацию.",
+  methodology:
+    "Отчёт построен по рассчитанным натальным положениям и аспектам. Каждый вывод связан с указанными evidence.",
+};
+
 export async function POST(request: NextRequest) {
   if (!(await isNatalChartEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
 
-  const ctx = await requireProfileUserId();
-  if (!ctx) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let ctx: { profileUserId: string };
+  if (workerUserId) {
+    ctx = { profileUserId: workerUserId };
+  } else {
+    const resolved = await resolveProfileUserContext();
+    if (!resolved.ok) return profileAuthFailureResponse(resolved.reason);
+    ctx = { profileUserId: resolved.profileUserId };
   }
 
-  const rateLimited = await enforcePaidRouteRateLimit(
-    ctx.profileUserId,
-    "natal_chart_interpretation"
-  );
-  if (rateLimited) return rateLimited;
+  if (!workerUserId) {
+    const rateLimited = await enforcePaidRouteRateLimit(
+      ctx.profileUserId,
+      "natal_chart_interpretation"
+    );
+    if (rateLimited) return rateLimited;
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     tradition?: unknown;
     aiDataUseAcknowledged?: unknown;
+    async?: unknown;
   };
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных натальных evidence внешней языковой модели." },
       { status: 400 }
     );
+  }
+  // Prefer async queue when worker is configured; otherwise generate inline.
+  if (body.async === true && isAsyncJobWorkerConfigured()) {
+    return enqueueNatalAsyncJob({
+      userId: ctx.profileUserId,
+      kind: "natal_interpretation",
+      payload: { tradition: body.tradition, aiDataUseAcknowledged: true },
+    });
   }
   const tradition: NatalTradition =
     body.tradition === "vedic" ? "vedic" : body.tradition === "western" ? "western" : "western";
@@ -94,6 +135,7 @@ export async function POST(request: NextRequest) {
   }
   const evidence = buildNatalEvidence(chart, { tradition, timing });
   const evidenceBlock = formatEvidencePrompt(evidence);
+  const evidenceIds = evidence.map((item) => item.id);
   if (!expectedBirthFingerprint || !expectedEngineVersion || !evidenceBlock.trim()) {
     return NextResponse.json(
       { error: "Данные натальной карты неполны. Пересчитайте карту и попробуйте снова." },
@@ -108,32 +150,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Не удалось подготовить трактовку." }, { status: 500 });
   }
 
-  const claim = await claimNatalInterpretation(
+  const claim = await claimNatalInterpretationResilient(
     ctx.profileUserId,
     tradition,
     expectedBirthFingerprint,
     expectedEngineVersion,
     expectedEphemeris
-  ).catch(() => null);
-  if (!claim) {
-    return NextResponse.json({ error: "Не удалось начать трактовку." }, { status: 500 });
-  }
+  );
   if (claim.status === "cached") {
-    return NextResponse.json({
+    const payload = {
       interpretation: claim.interpretation,
       report: claim.structuredData,
       evidence: claim.evidenceRefs,
       tradition,
       cached: true,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   }
   if (claim.status === "busy") {
+    await trackWorkerJobFailed(
+      request,
+      "Не удалось начать трактовку. Обновите страницу и попробуйте снова.",
+      { errorCode: "CLAIM_BUSY" }
+    );
     return NextResponse.json(
-      { error: "Трактовка уже создаётся. Подождите немного и попробуйте снова." },
+      { error: "Не удалось начать трактовку. Обновите страницу и попробуйте снова.", code: "CLAIM_BUSY" },
       { status: 409 }
     );
   }
   if (claim.status === "unavailable") {
+    await trackWorkerJobFailed(
+      request,
+      "Натальная карта изменилась. Обновите страницу и попробуйте снова.",
+      { errorCode: "chart_changed" }
+    );
     return NextResponse.json(
       { error: "Натальная карта изменилась. Обновите страницу и попробуйте снова." },
       { status: 409 }
@@ -141,16 +192,24 @@ export async function POST(request: NextRequest) {
   }
 
   const traditionLabel = tradition === "western" ? "западную тропическую" : "ведическую сидерическую";
-  const systemPrompt = await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Составь доказуемую ${traditionLabel} натальную трактовку на русском языке.
+  const clientDisplayName = normalizePersonDisplayName(user?.name) || null;
+  const systemPrompt = await appendNatalPersonalizationLens(
+    await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Составь доказуемую ${traditionLabel} натальную трактовку на русском языке.
 Опирайся ТОЛЬКО на evidence ниже. Нельзя выдумывать положения, дома, даты или evidence ID.
 ${buildNatalReportJsonInstructions(tradition)}
 ${chart.timeKnown ? "" : "Время рождения неизвестно: не заявляй дома, ASC, MC или лагну; явно отрази неопределённость."}
 Координаты рождения не переданы и не нужны.
+${clientDisplayName ? `Имя клиента в тексте: «${clientDisplayName}» — только кириллица, без латиницы и смешанных написаний.` : ""}
 
 EVIDENCE:
-${evidenceBlock}`);
+${evidenceBlock}
 
-  let charge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | undefined;
+VALID EVIDENCE ID:
+${evidenceIds.join("\n")}`),
+    { profileUserId: ctx.profileUserId, user }
+  );
+
+  let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
@@ -163,69 +222,60 @@ ${evidenceBlock}`);
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
+    await trackWorkerJobRefunded(request);
   };
 
   try {
-    charge = await BillingService.chargeRuneAction({
+    charge = await chargeRuneActionForWorkerJob({
+      request,
       userId: ctx.profileUserId,
       action: "NATAL_READING",
     });
 
     const baseMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Создай отчёт для ${user?.name ?? "клиента"}. Верни только JSON.` },
+      { role: "user", content: `Создай отчёт для ${clientDisplayName ?? "клиента"}. Верни только JSON.` },
     ];
-    let raw = await completeChat({
-      messages: baseMessages,
-      maxTokens: 5200,
-      temperature: 0.35,
-      timeoutMs: 170_000,
-      maxAttempts: 1,
-      jsonObject: true,
-      allowReasoningFallback: true,
-      skipTemperatureRetry: true,
+    const generated = await generateValidatedNatalReport({
+      baseMessages,
+      evidence,
+      tradition,
+      reportType: "interpretation",
+      metadataDefaults: INTERPRETATION_METADATA_DEFAULTS,
+      evidenceIdsHint: evidenceIds,
+      repairHint: "Используй только ID из списка VALID EVIDENCE ID.",
+      clientName: clientDisplayName ?? undefined,
     });
-    let validation = (() => {
-      try {
-        return validateNatalReport(extractJsonObject(raw ?? ""), evidence, tradition);
-      } catch (error) {
-        return { ok: false as const, errors: [error instanceof Error ? error.message : "Некорректный JSON."] };
-      }
-    })();
-    if (!validation.ok) {
-      const repairMessages: ChatMessage[] = [
-        ...baseMessages,
-        { role: "assistant", content: raw ?? "{}" },
-        {
-          role: "user",
-          content: `Исправь JSON и верни полный объект заново. Ошибки валидации:\n- ${validation.errors.join("\n- ")}`,
-        },
-      ];
-      raw = await completeChat({
-        messages: repairMessages,
-        maxTokens: 5200,
-        temperature: 0.15,
-        timeoutMs: 90_000,
-        maxAttempts: 1,
-        jsonObject: true,
-        allowReasoningFallback: true,
-        skipTemperatureRetry: true,
-      });
-      try {
-        validation = validateNatalReport(extractJsonObject(raw ?? ""), evidence, tradition);
-      } catch (error) {
-        validation = { ok: false, errors: [error instanceof Error ? error.message : "Некорректный JSON."] };
-      }
-    }
-    if (!validation.ok) {
+    if (!generated.ok) {
+      console.warn(
+        "[natal-chart] interpretation validation failed:",
+        generated.errors.slice(0, 12),
+        `evidence=${evidence.length}`
+      );
       await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Модель не смогла создать проверяемый отчёт. Оплата возвращена.",
+        { refunded: true, errorCode: "invalid_model_report" }
+      );
       return NextResponse.json(
-        { error: "Модель не смогла создать проверяемый отчёт. Оплата возвращена." },
+        { error: "Модель не смогла создать проверяемый отчёт. Оплата возвращена.", refunded: true },
         { status: 502 }
       );
     }
-    const report = validation.report;
+    const report = generated.report;
     const interpretation = natalReportToPlainText(report);
+
+    if (!(await beginWorkerJobSave(request))) {
+      await rollback();
+      return NextResponse.json(
+        {
+          error: "Генерация была отменена по таймауту. Оплата возвращена.",
+          refunded: true,
+        },
+        { status: 409 }
+      );
+    }
 
     const saved = await saveCurrentNatalInterpretation({
       userId: ctx.profileUserId,
@@ -242,41 +292,72 @@ ${evidenceBlock}`);
     });
     if (saved.status === "stale") {
       await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Натальная карта изменилась. Оплата возвращена, попробуйте снова.",
+        { refunded: true, errorCode: "chart_stale" }
+      );
       return NextResponse.json(
-        { error: "Натальная карта изменилась. Оплата возвращена, попробуйте снова." },
+        {
+          error: "Натальная карта изменилась. Оплата возвращена, попробуйте снова.",
+          refunded: true,
+        },
         { status: 409 }
       );
     }
     if (saved.status === "already_saved") {
       await rollback();
-      return NextResponse.json({
+      const payload = {
         interpretation: saved.report.content,
         report: saved.report.structuredData,
         evidence: saved.report.evidenceRefs,
         tradition,
         cached: true,
-      });
+        refunded: true,
+      };
+      await trackWorkerJobCompleted(request, payload);
+      return NextResponse.json(payload);
     }
 
-    return NextResponse.json({
+    const payload = {
       interpretation: saved.report.content,
       report: saved.report.structuredData,
       evidence: saved.report.evidenceRefs,
       tradition,
       runeBalance: charge.newBalance,
-    });
+      reportId: saved.report.id,
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[natal-chart] billing rollback failed");
     });
     if (error instanceof InsufficientFundsError) {
+      await trackWorkerJobFailed(request, "Недостаточно рун для этого действия.", {
+        errorCode: "insufficient_runes",
+      });
       return NextResponse.json(
-        { error: "insufficient", balance: error.balance, cost: error.required },
+        {
+          error: "insufficient_runes",
+          message: "Недостаточно рун для этого действия.",
+          balance: error.balance,
+          required: error.required,
+          cost: error.required,
+        },
         { status: 402 }
       );
     }
     console.warn("[natal-chart] interpretation failed");
-    return NextResponse.json({ error: "Ошибка генерации трактовки." }, { status: 502 });
+    await trackWorkerJobFailed(
+      request,
+      "Ошибка генерации трактовки.",
+      { refunded: rollbackAttempted, errorCode: "generation_failed" }
+    );
+    return NextResponse.json(
+      { error: "Ошибка генерации трактовки.", refunded: rollbackAttempted },
+      { status: 502 }
+    );
   } finally {
     await releaseNatalInterpretationClaim(
       ctx.profileUserId,

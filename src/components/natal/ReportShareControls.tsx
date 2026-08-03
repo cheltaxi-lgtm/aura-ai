@@ -61,7 +61,9 @@ export default function ReportShareControls({
       });
       const data = await response.json().catch(() => ({})) as { share?: { url: string }; error?: string };
       if (!response.ok || !data.share) throw new Error(data.error || "Не удалось создать ссылку.");
-      const url = new URL(data.share.url, window.location.origin).toString();
+      const shareUrl = new URL(data.share.url, window.location.origin);
+      if (shareUrl.origin !== window.location.origin) throw new Error("Сервер вернул некорректную приватную ссылку.");
+      const url = `${shareUrl.origin}${shareUrl.pathname}`;
       try {
         await navigator.clipboard.writeText(url);
         setNotice("Приватная ссылка создана и скопирована.");
@@ -125,5 +127,6 @@ export default function ReportShareControls({
       <span className="flex gap-3"><button type="button" disabled={busy} onClick={() => void copy(share.token)} className="min-h-9 text-amber-200 disabled:opacity-50">Копировать</button>
         <button type="button" disabled={busy} onClick={() => void revoke(share.id)} className="min-h-9 text-rose-300 disabled:opacity-50">Отозвать</button></span>
     </div>)}
+    {!loading && !shares.some((share) => !share.revokedAt) ? <p className="mt-3 text-white/40">Активных приватных ссылок пока нет.</p> : null}
   </details>;
 }

@@ -57,6 +57,8 @@ export interface UseChatSessionOptions {
   isLoading: boolean;
   sendingRef: MutableRefObject<boolean>;
   readingInFlightRef: MutableRefObject<boolean>;
+  /** When true, never hydrate/replace the thread from history/cache sync. */
+  pendingNewChatThreadRef?: MutableRefObject<boolean>;
   sessionOffline?: boolean;
   onApplyRestoredSpread?: (
     spread: RestoreChatResult["spread"],
@@ -75,6 +77,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     isLoading,
     sendingRef,
     readingInFlightRef,
+    pendingNewChatThreadRef,
     sessionOffline,
     onApplyRestoredSpread,
   } = options;
@@ -429,10 +432,13 @@ export function useChatSession(options: UseChatSessionOptions) {
     if (!isLoadingHistory) return;
     const timer = window.setTimeout(() => {
       setIsLoadingHistory(false);
-      readingInFlightRef.current = false;
+      // Never clear an in-flight new-spread generation — that lets history hydrate an old chat.
+      if (!pendingNewChatThreadRef?.current) {
+        readingInFlightRef.current = false;
+      }
     }, 130_000);
     return () => window.clearTimeout(timer);
-  }, [isLoadingHistory, readingInFlightRef]);
+  }, [isLoadingHistory, readingInFlightRef, pendingNewChatThreadRef]);
 
   useEffect(() => {
     if (!selectedCharacter || !messages.length || isLoggedIn) return;
@@ -451,11 +457,23 @@ export function useChatSession(options: UseChatSessionOptions) {
     return subscribeChatCacheUpdates((characterId) => {
       if (exitingToSessionListRef.current) return;
       if (characterId !== selectedCharacter) return;
-      if (sendingRef.current || isLoading || readingInFlightRef.current) return;
+      if (
+        sendingRef.current ||
+        isLoading ||
+        readingInFlightRef.current ||
+        pendingNewChatThreadRef?.current
+      ) {
+        return;
+      }
+      const boundSessionId = consultationSessionIdRef.current ?? undefined;
       void restoreChatForCharacter(characterId, {
         archiveSessionId: archiveSessionIdRef.current ?? undefined,
+        sessionId: boundSessionId,
       }).then((restored) => {
         if (!restored) return;
+        if (pendingNewChatThreadRef?.current || readingInFlightRef.current) return;
+        const bound = consultationSessionIdRef.current;
+        if (bound && restored.sessionId && restored.sessionId !== bound) return;
         if (restored.spread) {
           onApplyRestoredSpread?.(restored.spread, characterId);
         }
@@ -486,6 +504,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     onApplyRestoredSpread,
     sendingRef,
     readingInFlightRef,
+    pendingNewChatThreadRef,
   ]);
 
   const buildSessionOnlyWelcome = useCallback(

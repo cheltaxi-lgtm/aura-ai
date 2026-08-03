@@ -475,20 +475,32 @@ function checkRuneCredit() {
   }
 
   const content = fs.readFileSync(runeServicePath, "utf8");
-  const fnBody = extractFunctionBody(content, "creditRunesFromPayment");
-  if (!fnBody) {
+  const wrapperBody = extractFunctionBody(content, "creditRunesFromPayment");
+  const detailedBody = extractFunctionBody(content, "creditRunesFromPaymentDetailed");
+  if (!wrapperBody) {
     fail("creditRunesFromPayment function body not found");
     return;
   }
+  if (!detailedBody) {
+    fail("creditRunesFromPaymentDetailed function body not found");
+    return;
+  }
+  if (!/creditRunesFromPaymentDetailed\s*\(/.test(wrapperBody)) {
+    fail("creditRunesFromPayment must delegate to creditRunesFromPaymentDetailed");
+  }
 
-  if (!/rune_packages/i.test(fnBody)) {
-    fail("creditRunesFromPayment must query rune_packages");
+  // Package lookup lives in the detailed path (wrapper is a thin boolean adapter).
+  if (!/rune_packages/i.test(detailedBody)) {
+    fail("creditRunesFromPaymentDetailed must query rune_packages");
   }
-  if (/\brunesAmount\b/.test(fnBody)) {
-    fail("creditRunesFromPayment must not reference runesAmount in body");
+  if (/\brunesAmount\b/.test(wrapperBody) || /\brunesAmount\b/.test(detailedBody)) {
+    fail("creditRunesFromPayment* must not reference runesAmount in body");
   }
-  if (/metadata\.(runesAmount|amount)/.test(fnBody)) {
-    fail("creditRunesFromPayment must not read metadata.runesAmount or metadata.amount");
+  if (
+    /metadata\.(runesAmount|amount)/.test(wrapperBody) ||
+    /metadata\.(runesAmount|amount)/.test(detailedBody)
+  ) {
+    fail("creditRunesFromPayment* must not read metadata.runesAmount or metadata.amount");
   }
 
   for (const webhookPath of [paymentWebhook, runesWebhook]) {
@@ -522,18 +534,25 @@ function checkNatalEvidenceAi() {
   if (failures.some((item) => item.startsWith("natal evidence guardrail missing"))) return;
 
   const route = fs.readFileSync(routePath, "utf8");
-  const firstValidation = route.indexOf("validateNatalReport(");
-  const repair = route.indexOf("Исправь JSON");
-  const rollback = route.indexOf("await rollback();", repair);
+  const generatorPath = path.join(ROOT, "src/lib/natal/generate-validated-report.ts");
+  const generator = fs.existsSync(generatorPath) ? fs.readFileSync(generatorPath, "utf8") : "";
+  const validationFailed = route.indexOf("!generated.ok");
+  const rollback = route.indexOf("await rollback();", validationFailed);
   const release = route.indexOf("releaseNatalInterpretationClaim");
-  if (!(firstValidation >= 0 && repair > firstValidation && rollback > repair)) {
+  if (!(route.includes("generateValidatedNatalReport") && validationFailed >= 0 && rollback > validationFailed)) {
     fail("natal report: validate, one repair pass, then rollback ordering is missing");
   }
   if (!(release >= 0 && /finally\s*\{[\s\S]*releaseNatalInterpretationClaim/.test(route))) {
     fail("natal report: claim must be released in finally");
   }
-  if (!route.includes("jsonObject: true") || !route.includes("evidenceRefs: evidence")) {
-    fail("natal report: strict JSON and evidence snapshot persistence required");
+  if (
+    (!generator.includes("jsonObject: true") && !generator.includes("completeChatDetailed")) ||
+    !generator.includes("getNatalModel") ||
+    generator.includes('fallback: "minimal"') ||
+    generator.includes('fallback: "salvage"') ||
+    !route.includes("evidenceRefs: evidence")
+  ) {
+    fail("natal report: natal model, strict JSON, no salvage/minimal success path required");
   }
 
   const context = fs.readFileSync(contextPath, "utf8");
@@ -568,12 +587,19 @@ function checkNatalEvidenceAi() {
   ) {
     fail("natal AI context: migration must keep chat and tarot consent default-off");
   }
+  const ackIdx = route.indexOf("body.aiDataUseAcknowledged !== true");
+  // Prefer call-site markers so import lines do not precede the acknowledgment guard.
+  const chargeIdx = Math.max(
+    route.indexOf("await BillingService.chargeRuneAction("),
+    route.indexOf("await chargeRuneActionForWorkerJob(")
+  );
   if (
     !settings.includes("aiContextEnabled") ||
     !settings.includes("tarotContextEnabled") ||
     !workspace.includes("aiDataUseAcknowledged: true") ||
-    !route.includes("body.aiDataUseAcknowledged !== true") ||
-    route.indexOf("body.aiDataUseAcknowledged !== true") > route.indexOf("BillingService.chargeRuneAction(")
+    ackIdx < 0 ||
+    chargeIdx < 0 ||
+    ackIdx > chargeIdx
   ) {
     fail("natal AI context: separate controls and paid-report disclosure acknowledgment required");
   }

@@ -24,6 +24,10 @@ export const SITE_FOOTER_LEGAL_LINE =
 export const MASTER_SECTION_SUBTITLE =
   "Персональные наставники в таро, рунах, астрологии и славянских практиках";
 
+/** Публичный бейдж на карточках витрины (без повтора «ИИ» — раскрытие в FAQ/футере). */
+export const MASTER_SHOWCASE_BADGE = "Наставник";
+
+/** Техническая метка там, где нужна явная оговорка (чат, списки, legal). */
 export const MASTER_PUBLIC_BADGE = "ИИ-наставник";
 
 /** Однократный disclaimer в шапке диалога (не в каждом сообщении). */

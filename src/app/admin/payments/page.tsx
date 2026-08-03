@@ -44,7 +44,8 @@ export default function AdminPaymentsPage() {
     setReconcileBusy(true);
     setReconcileNotice(null);
     try {
-      const res = await fetch("/api/admin/runes/reconcile", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/admin/runes/reconcile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paymentId: id }),

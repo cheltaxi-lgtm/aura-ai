@@ -4,5 +4,26 @@ www.zovus.ru {
 
 zovus.ru {
 	encode gzip
-	reverse_proxy 127.0.0.1:3000
+	# Google Search Console HTML-file ownership verification.
+	handle /googlea07e95e8199f7e09.html {
+		root * /opt/aura-ai/public
+		file_server
+	}
+	# HSTS only at the TLS edge. XFO / nosniff / Referrer / CSP come from Next
+	# (avoids duplicate response headers).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+	# Preserve public host for Next redirects (otherwise Location becomes localhost:3000
+	# and the Android WebView opens the system browser).
+	# Brief retry while Next restarts after deploy — fewer crawler 502s.
+	reverse_proxy 127.0.0.1:3000 {
+		lb_try_duration 8s
+		lb_try_interval 250ms
+		header_up Host {host}
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+	}
 }

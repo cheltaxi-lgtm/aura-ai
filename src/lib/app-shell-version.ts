@@ -8,6 +8,9 @@ export type AndroidReleaseInfo = {
   updateChannel?: "auto" | "play" | "apk";
   releaseCertSha256?: string;
   reinstallBelowVersionCode?: number;
+  /** When false, APK on server does not match advertised metadata — skip prompts. */
+  releaseConsistent?: boolean;
+  releaseIntegrity?: string;
 };
 
 const FETCH_RETRIES = 3;

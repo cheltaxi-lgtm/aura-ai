@@ -32,6 +32,7 @@ export default function NatalSettings() {
   const [events, setEvents] = useState<EventPreferences | null>(null);
   const [saving, setSaving] = useState<"ai" | "events" | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,6 +62,7 @@ export default function NatalSettings() {
   const saveAi = async (patch: Partial<AiPreferences>) => {
     setSaving("ai");
     setError("");
+    setNotice("");
     try {
       const response = await fetch("/api/natal-chart/ai-preferences", {
         method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
@@ -69,6 +71,7 @@ export default function NatalSettings() {
       const data = await json<{ preferences?: AiPreferences; error?: string }>(response);
       if (!response.ok || !data.preferences) throw new Error(data.error || "Не удалось сохранить настройку");
       setAi(data.preferences);
+      setNotice("Настройка контекста сохранена.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Ошибка сети");
     } finally {
@@ -79,6 +82,7 @@ export default function NatalSettings() {
   const saveEvents = async (patch: Partial<EventPreferences>) => {
     setSaving("events");
     setError("");
+    setNotice("");
     try {
       const response = await fetch("/api/natal-chart/event-preferences", {
         method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
@@ -87,6 +91,7 @@ export default function NatalSettings() {
       const data = await json<{ preferences?: EventPreferences; error?: string }>(response);
       if (!response.ok || !data.preferences) throw new Error(data.error || "Не удалось сохранить уведомления");
       setEvents(data.preferences);
+      setNotice("Настройки уведомлений сохранены.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Ошибка сети");
     } finally {
@@ -102,14 +107,14 @@ export default function NatalSettings() {
       </header>
       <div className="space-y-6 p-5">
         {error ? <p className="rounded-xl border border-rose-400/25 bg-rose-400/[0.07] p-3 text-sm text-rose-200" role="alert">{error}</p> : null}
+        {notice ? <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] p-3 text-sm text-emerald-200/80" role="status">{notice}</p> : null}
         {!ai || !events ? <p className="flex items-center gap-2 text-sm text-white/45" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Загружаем настройки…</p> : null}
         {ai ? <section aria-labelledby="ai-context-title">
           <h3 id="ai-context-title" className="font-display text-lg text-amber-50">Контекст для Shri Raj</h3>
-          <p className="mt-2 text-xs leading-5 text-white/45">Эти согласия независимы от разового подтверждения платного отчёта и по умолчанию выключены.</p>
+          <p className="mt-2 text-xs leading-5 text-white/45">По умолчанию выключены.</p>
           <div className="mt-4 space-y-3">
             <PreferenceCheckbox checked={ai.aiContextEnabled} disabled={saving === "ai"} onChange={(value) => void saveAi({ aiContextEnabled: value })}
-              label="Разрешить натальный контекст в обычном чате с Shri Raj"
-              description="Передаются только рассчитанные положения и периоды; дата, время, город и координаты рождения не передаются." />
+              label="Разрешить натальный контекст в обычном чате с Shri Raj" />
             <PreferenceCheckbox checked={ai.tarotContextEnabled} disabled={saving === "ai"} onChange={(value) => void saveAi({ tarotContextEnabled: value })}
               label="Отдельно разрешить натальный контекст в раскладах Таро Shri Raj"
               description="Настройка не зависит от обычного чата. Карты Таро остаются главным источником расклада." />

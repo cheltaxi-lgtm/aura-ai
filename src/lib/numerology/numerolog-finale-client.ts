@@ -1,5 +1,7 @@
 /** Client-safe helpers for numerolog finale text (no server/LLM imports). */
 
+import { normalizeClientTyAddress } from "@/lib/reading-quality-gate";
+
 const CJK_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
 const LLM_REFUSAL_RE = [
@@ -83,6 +85,8 @@ export function polishNumerologClientReply(text: string): string {
     /(Совет чисел — \d+\.[\s\S]*?)(?=Совет чисел — \d+\.)/g,
     ""
   );
+
+  out = normalizeClientTyAddress(out);
 
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }

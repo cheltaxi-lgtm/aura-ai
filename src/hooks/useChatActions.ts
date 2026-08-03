@@ -11,8 +11,13 @@ import {
 } from "react";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
+import {
+  resumeStoredOrActiveAsyncJob,
+  waitForAsyncJob,
+} from "@/lib/client/wait-for-async-job";
 import { isProseLikelyTruncated } from "@/lib/prose-truncation";
 import { rateLimitMessage } from "@/lib/rate-limit-messages";
+import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   loadChatCacheForMaster,
   loadChatCacheAny,
@@ -84,7 +89,8 @@ import {
   hasActivePeriodSpread,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
-import { FLOW_STEP_KEY, LAST_MASTER_KEY } from "@/lib/home-flow-storage";
+import { FLOW_STEP_KEY, LAST_MASTER_KEY, markNeedsServerProfile } from "@/lib/home-flow-storage";
+import { patchGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import type { StoredProfile } from "@/types/stored-profile";
 import type { Message } from "@/types";
 import type { StoredReadingRow } from "@/lib/reading-progress";
@@ -129,10 +135,13 @@ export function useChatReadingLoading() {
 
   useEffect(() => {
     if (!isLoading) return;
+    // Must cover Full Matrix / matrix_compatibility async (client abort 420s).
+    // The old 130s unlock cleared isLoading while polling continued → frozen chat
+    // or re-entrant loadReading loops.
     const timer = window.setTimeout(() => {
       setIsLoading(false);
       readingInFlightRef.current = false;
-    }, 130_000);
+    }, 420_000);
     return () => window.clearTimeout(timer);
   }, [isLoading]);
 
@@ -263,12 +272,13 @@ export interface UseChatActionsOptions {
   pendingNewChatThreadRef: MutableRefObject<boolean>;
   pendingReadingMasterRef: MutableRefObject<string | null>;
   sessionSpreadMetaRef: MutableRefObject<{
-    spreadType?: "daily" | "new" | "photo";
+    spreadType?: "daily" | "new" | "photo" | "guest_resume";
     spreadId?: string;
     cardNames?: string[];
     periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: NumerologToolId;
     numerologToolParams?: NumerologToolParams;
+    matrixSubjectId?: string | null;
   } | null>;
   sendingRef: MutableRefObject<boolean>;
   archiveSessionIdRef: MutableRefObject<string | null>;
@@ -546,6 +556,7 @@ export function useChatActions(options: UseChatActionsOptions) {
               birthDate: activeProfile.birthDate,
               cardNames,
               params: sessionSpreadMetaRef.current?.numerologToolParams,
+              matrixSubjectId: sessionSpreadMetaRef.current?.matrixSubjectId,
             })
           : spreadKey(cardsForMaster) || spreadCardsKey;
         const loadAttemptKey = `${characterId}:${cardsKey}`;
@@ -576,8 +587,11 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
         }
 
+        // Full Matrix reuse is server-side (numerology_report_history) only.
+        // Client savedReadings cache kept serving stale watery reports after DB purge.
+        const skipClientReadingCache = metaNumerologToolId === "destiny_matrix";
         const cachedReading =
-          loadOptions?.force
+          loadOptions?.force || skipClientReadingCache
             ? undefined
             : findSavedSpreadReading(savedReadings, characterId, cardsKey);
 
@@ -655,10 +669,64 @@ export function useChatActions(options: UseChatActionsOptions) {
           sessionOffline: session?.offline,
           isUnlimited: session?.isUnlimited,
         });
+        let matrixAlreadyOwned = false;
+        if (billingActive && isLoggedIn && metaNumerologToolId === "destiny_matrix") {
+          try {
+            const subjectId = sessionSpreadMetaRef.current?.matrixSubjectId?.trim();
+            const birthRaw = activeProfile.birthDate?.trim();
+            if (subjectId || birthRaw) {
+              const ownedRes = await fetch(
+                subjectId
+                  ? `/api/numerology/matrix-report?subjectId=${encodeURIComponent(subjectId)}`
+                  : `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthRaw!)}`,
+                { credentials: "include" }
+              );
+              if (ownedRes.ok) {
+                const ownedData = (await ownedRes.json()) as {
+                  owned?: boolean;
+                  report?: { hasContent?: boolean } | null;
+                };
+                matrixAlreadyOwned = Boolean(
+                  ownedData.owned && (ownedData.report?.hasContent !== false)
+                );
+              }
+            }
+            // Metadata fallback (no full bodies) — same birth date only.
+            if (!matrixAlreadyOwned && birthRaw && !subjectId) {
+              const listRes = await fetch(
+                `/api/numerology/matrix-report?list=1`,
+                { credentials: "include" }
+              );
+              if (listRes.ok) {
+                const listData = (await listRes.json()) as {
+                  reports?: Array<{
+                    birthDate?: string;
+                    hasContent?: boolean;
+                    content?: string;
+                  }>;
+                };
+                const birthKey = birthRaw.slice(0, 10);
+                matrixAlreadyOwned = Boolean(
+                  listData.reports?.some((r) => {
+                    const has =
+                      r.hasContent === true ||
+                      Boolean(String(r.content ?? "").trim());
+                    return (
+                      has &&
+                      (r.birthDate === birthKey || r.birthDate === birthRaw)
+                    );
+                  })
+                );
+              }
+            }
+          } catch {
+            matrixAlreadyOwned = false;
+          }
+        }
         const affordGate = gateSpreadReadingRunes({
-          billingActive,
+          billingActive: billingActive && !matrixAlreadyOwned,
           balance: runeBalance,
-          cost: requiredReadingCost,
+          cost: matrixAlreadyOwned ? 0 : requiredReadingCost,
         });
         if (affordGate.blocked) {
           loadReadingAttemptKeyRef.current = loadAttemptKey;
@@ -677,7 +745,13 @@ export function useChatActions(options: UseChatActionsOptions) {
         setIsLoading(true);
         const ritualStartedAt = Date.now();
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 120_000);
+        const isLongMatrix =
+          metaNumerologToolId === "destiny_matrix" ||
+          metaNumerologToolId === "matrix_compatibility";
+        const timeout = setTimeout(
+          () => controller.abort(),
+          isLongMatrix ? 420_000 : 120_000
+        );
 
         try {
           const res = await fetch("/api/reading", {
@@ -693,6 +767,7 @@ export function useChatActions(options: UseChatActionsOptions) {
               forceRegenerate: loadOptions?.force ?? false,
               spreadType: effectiveSpreadType,
               readingScope: loadOptions?.readingScope,
+              async: true,
               ...readingPayloadForMaster(
                 activeProfile,
                 characterId,
@@ -703,22 +778,75 @@ export function useChatActions(options: UseChatActionsOptions) {
                 metaNumerologToolId,
                 sessionSpreadMetaRef.current?.numerologToolParams
               ),
+              ...(sessionSpreadMetaRef.current?.matrixSubjectId
+                ? { matrixSubjectId: sessionSpreadMetaRef.current.matrixSubjectId }
+                : {}),
             }),
           });
-          const data = await res.json();
-          if (res.status === 401) {
+          let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          let status = res.status;
+          if (status === 202 && typeof data.jobId === "string") {
+            try {
+              data = await waitForAsyncJob({
+                jobId: data.jobId,
+                storageKey: "aura:reading-active-job",
+                signal: controller.signal,
+                maxAttempts: isLongMatrix ? 240 : 180,
+                pollIntervalMs: isLongMatrix ? 2_500 : 2_000,
+              });
+              status = 200;
+            } catch (pollErr) {
+              status = 502;
+              data = {
+                error:
+                  pollErr instanceof Error
+                    ? pollErr.message
+                    : "Не удалось получить трактовку. Попробуйте ещё раз.",
+                code: "generation_failed",
+              };
+            }
+          }
+          if (status === 401) {
             closeSpreadReadingRitual();
+            const code =
+              typeof data?.code === "string" ? String(data.code).toUpperCase() : "";
+            const isGuestResume =
+              sessionSpreadMetaRef.current?.spreadType === "guest_resume";
+            if (isLoggedIn && code === "NEEDS_PROFILE") {
+              // Never leave the user in chat with a stub — show the anketa.
+              markNeedsServerProfile();
+              patchGuestResumeUiCache({ phase: "onboarding_required" });
+              setSelectedCharacter(null);
+              chatLoadedForRef.current = null;
+              setMessages([]);
+              setStep("onboarding");
+              localStorage.setItem(FLOW_STEP_KEY, "onboarding");
+              return;
+            }
+            let content: string;
+            if (isLoggedIn) {
+              if (isGuestResume) {
+                content =
+                  "Не удалось подтвердить сессию для сохранённого расклада. Нажмите «Повторить» или обновите страницу — карты не сгорят.";
+              } else {
+                content =
+                  "Не удалось подтвердить вход. Обновите страницу или войдите снова — ваш расклад сохранён.";
+              }
+            } else {
+              content =
+                "Для расшифровки нужна регистрация. Создайте аккаунт и начните расклад заново.";
+            }
             setMessages([
               {
                 id: generateId(),
                 role: "assistant",
-                content: "Для расшифровки нужна регистрация. Создайте аккаунт и начните расклад заново.",
+                content,
                 timestamp: new Date(),
               },
             ]);
             return;
           }
-          if (res.status === 429) {
+          if (status === 429) {
             const rl = getRateLimitPayload(data);
             showRateLimit(rl?.action ?? "reading", rl?.retryAfter);
             const base = rateLimitMessage(rl?.action ?? "reading");
@@ -736,7 +864,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             ]);
             return;
           }
-          if (res.status === 402) {
+          if (status === 402) {
             const parsed = parseInsufficientRunes(data);
             if (parsed) {
               const required = parsed.required || runeCost("READING");
@@ -766,17 +894,44 @@ export function useChatActions(options: UseChatActionsOptions) {
           if (typeof data.runeBalance === "number") {
             setRuneBalance(data.runeBalance);
             emitRuneBalanceUpdate(data.runeBalance);
-            if (session?.sessionId && !session.offline) {
-              void refresh(session.sessionId);
-            }
           }
-          if (res.ok && data.reading) {
+          // Refresh free-question allowance after Full Matrix purchase / reopen.
+          if (
+            status >= 200 &&
+            status < 300 &&
+            session?.sessionId &&
+            !session.offline &&
+            (typeof data.runeBalance === "number" ||
+              data.matrixOwned === true ||
+              metaNumerologToolId === "destiny_matrix")
+          ) {
+            void refresh(session.sessionId);
+          }
+          const readingText =
+            typeof data.reading === "string" ? data.reading : "";
+          if (status >= 200 && status < 300 && readingText.trim()) {
             clearPendingReading();
             pendingReadingMasterRef.current = null;
             const readingMsgId = generateId();
-            const readingTs = data.createdAt ? new Date(data.createdAt) : new Date();
+            const readingTs = data.createdAt ? new Date(String(data.createdAt)) : new Date();
+            // Matrix reports are zone prose, not tarot card coverage — don't coerce via cardNames.
             const cleanedReading =
-              coerceSpreadReadingText(data.reading, cardNames) || buildTeaser(activeProfile);
+              metaNumerologToolId === "destiny_matrix" ||
+              metaNumerologToolId === "matrix_compatibility"
+                ? coerceSpreadReadingText(readingText) || readingText.trim()
+                : coerceSpreadReadingText(readingText, cardNames);
+            if (!cleanedReading) {
+              setMessages([
+                {
+                  id: generateId(),
+                  role: "assistant",
+                  content:
+                    "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+                  timestamp: new Date(),
+                },
+              ]);
+              return;
+            }
             const readingMsg: Message = {
               id: readingMsgId,
               role: "assistant",
@@ -800,7 +955,10 @@ export function useChatActions(options: UseChatActionsOptions) {
               {
                 id: generateId(),
                 role: "assistant",
-                content: buildTeaser(activeProfile),
+                content: toUserFacingError(
+                  data.error ?? data.message ?? data.code,
+                  "Не удалось получить трактовку. Попробуйте ещё раз."
+                ),
                 timestamp: new Date(),
               },
             ]);
@@ -824,11 +982,21 @@ export function useChatActions(options: UseChatActionsOptions) {
         console.error("loadReading failed:", err);
         closeSpreadReadingRitual();
         loadReadingInFlightKeyRef.current = null;
+        const aborted =
+          (err instanceof DOMException && err.name === "AbortError") ||
+          (err instanceof Error && err.name === "AbortError");
+        const meta = sessionSpreadMetaRef.current;
+        const matrixTimedOut =
+          aborted &&
+          (meta?.numerologToolId === "destiny_matrix" ||
+            String(meta?.spreadId || "").includes("destiny_matrix"));
         setMessages([
           {
             id: generateId(),
             role: "assistant",
-            content: "Мастер на связи. Задайте ваш вопрос.",
+            content: matrixTimedOut
+              ? "Разбор матрицы занял слишком много времени. Напишите «повторить разбор» или откройте матрицу заново — если списание прошло, отчёт откроется без повторной оплаты."
+              : "Мастер на связи. Задайте ваш вопрос.",
             timestamp: new Date(),
           },
         ]);
@@ -852,6 +1020,9 @@ export function useChatActions(options: UseChatActionsOptions) {
       masters,
       sessionIntention,
       setMessages,
+      setStep,
+      setSelectedCharacter,
+      chatLoadedForRef,
       setIntentionSpread,
       setSpreadFlipped,
       setIsLoading,
@@ -1133,19 +1304,20 @@ export function useChatActions(options: UseChatActionsOptions) {
     }
     if (prevSelectedCharacterRef.current !== selectedCharacter) {
       prevSelectedCharacterRef.current = selectedCharacter;
-      chatLoadedForRef.current = null;
       loadReadingAttemptKeyRef.current = null;
       loadReadingInFlightKeyRef.current = null;
-      setSpreadReadingRitualOpen(false);
-      setMessages([]);
-      setHistoryHasMore(false);
-      setIsLoadingHistory(true);
 
       const preserveSessionStart =
         pendingNewChatThreadRef.current ||
         readingInFlightRef.current ||
         skipNextReadingRef.current;
+      // Photo / new-spread handoff already seeded messages + ritual — do not wipe them.
       if (!preserveSessionStart) {
+        chatLoadedForRef.current = null;
+        setSpreadReadingRitualOpen(false);
+        setMessages([]);
+        setHistoryHasMore(false);
+        setIsLoadingHistory(true);
         setSessionIntention(null);
         setIntentionSpread(null);
         setIntentionHighlight(false);
@@ -1153,6 +1325,10 @@ export function useChatActions(options: UseChatActionsOptions) {
         setSessionOnlyChat(false);
         setHideChatSpread(false);
         setSpreadFlipped(spreadFlippedState(3, false));
+      } else {
+        chatLoadedForRef.current = selectedCharacter;
+        setHistoryHasMore(false);
+        setIsLoadingHistory(false);
       }
     }
   }, [
@@ -1182,10 +1358,18 @@ export function useChatActions(options: UseChatActionsOptions) {
       setIsLoadingHistory(false);
       return;
     }
-    if (readingInFlightRef.current) return;
+    // New paid spread from landing/session flow — do not hydrate an old consultation.
+    if (pendingNewChatThreadRef.current || readingInFlightRef.current) {
+      // Mark loaded so a later dep change cannot hydrate an old thread after flags clear.
+      chatLoadedForRef.current = selectedCharacter;
+      setIsLoadingHistory(false);
+      return;
+    }
 
     const skipSpreadLoad = skipNextReadingRef.current;
-    if (skipNextReadingRef.current) {
+    const keepGuestResumeSkip =
+      sessionSpreadMetaRef.current?.spreadType === "guest_resume";
+    if (skipNextReadingRef.current && !keepGuestResumeSkip) {
       skipNextReadingRef.current = false;
     }
 
@@ -1193,17 +1377,41 @@ export function useChatActions(options: UseChatActionsOptions) {
     setIsLoadingHistory(true);
     void (async () => {
       try {
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
+        const boundHint =
+          archiveSessionIdRef.current ??
+          consultationSessionIdRef.current ??
+          undefined;
         const boundSessionId = await resolveConsultationSessionId(
           selectedCharacter,
-          archiveSessionIdRef.current ??
-            consultationSessionIdRef.current ??
-            undefined
+          boundHint
         );
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
         const restored = await restoreChatForCharacter(selectedCharacter, {
           archiveSessionId: archiveSessionIdRef.current ?? undefined,
           sessionId: boundSessionId ?? undefined,
         });
+        if (pendingNewChatThreadRef.current) {
+          chatLoadedForRef.current = selectedCharacter;
+          return;
+        }
         chatLoadedForRef.current = selectedCharacter;
+
+        // Ignore history from a different consultation than the one we just bound.
+        const expectedSessionId = consultationSessionIdRef.current;
+        if (
+          expectedSessionId &&
+          restored?.sessionId &&
+          restored.sessionId !== expectedSessionId
+        ) {
+          return;
+        }
 
         if (restored?.sessionId) setConsultationSessionId(restored.sessionId);
         if (restored?.status === "completed") setConsultationReadOnly(true);
@@ -1223,6 +1431,7 @@ export function useChatActions(options: UseChatActionsOptions) {
           setHistoryHasMore(restored.hasMore);
           const archiveId = archiveSessionIdRef.current;
           if (restored.messages.length > 0) {
+            if (pendingNewChatThreadRef.current) return;
             setMessages(restored.messages);
             if (sessionOnlyChat || chatHasSpreadReading(restored.messages)) return;
           } else if (archiveId && restored.sessionId) {
@@ -1303,6 +1512,48 @@ export function useChatActions(options: UseChatActionsOptions) {
   ]);
 
   useEffect(() => {
+    if (!isLoggedIn || authLoading || sessionLoading) return;
+    if (readingInFlightRef.current || isLoading) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await resumeStoredOrActiveAsyncJob({
+          storageKey: "aura:reading-active-job",
+          kind: "reading",
+        });
+        if (cancelled || !data) return;
+        const readingText =
+          typeof data.reading === "string" ? data.reading.trim() : "";
+        if (readingText.length < MIN_SPREAD_READING_CHARS) return;
+        readingInFlightRef.current = true;
+        setIsLoading(true);
+        setMessages((prev) => appendSpreadReadingMessage(prev, readingText));
+        if (typeof data.runeBalance === "number") {
+          emitRuneBalanceUpdate(data.runeBalance);
+        }
+      } catch {
+        /* keep chat as-is */
+      } finally {
+        if (!cancelled) {
+          readingInFlightRef.current = false;
+          setIsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isLoggedIn,
+    authLoading,
+    sessionLoading,
+    isLoading,
+    setIsLoading,
+    setMessages,
+    readingInFlightRef,
+  ]);
+
+  useEffect(() => {
     if (!selectedCharacter || !isNumerologMaster(selectedCharacter)) return;
     if (sessionOnlyChat || isLoadingHistory) return;
     if (chatHasSpreadReading(messages)) return;
@@ -1380,6 +1631,12 @@ export function useChatActions(options: UseChatActionsOptions) {
     const activeProfile = getActiveProfile();
     if (!activeProfile) return;
 
+    const meta = sessionSpreadMetaRef.current;
+    const numerologToolId = isNumerologMaster(selectedCharacter)
+      ? resolveNumerologToolId(meta?.spreadId, meta?.numerologToolId)
+      : null;
+    if (numerologToolId === "destiny_matrix") return;
+
     const cardsForMaster = resolveSpreadCardsForReading({
       profile: activeProfile,
       characterId: selectedCharacter,
@@ -1389,7 +1646,6 @@ export function useChatActions(options: UseChatActionsOptions) {
       chatSessionSpread,
       chatDisplaySpread,
     });
-    const meta = sessionSpreadMetaRef.current;
     const spreadId = meta?.spreadId ?? DEFAULT_SPREAD_ID;
     const spreadType = meta?.spreadType ?? "new";
     if (
@@ -1780,7 +2036,12 @@ export function useChatActions(options: UseChatActionsOptions) {
             userProfile: activeProfile
               ? {
                   name: activeProfile.name,
-                  gender: activeProfile.gender === "male" ? "Мужской" : "Женский",
+                  gender:
+                    activeProfile.gender === "male"
+                      ? "Мужской"
+                      : activeProfile.gender === "female"
+                        ? "Женский"
+                        : undefined,
                   zodiac: activeProfile.zodiac,
                   birthDate: activeProfile.birthDate,
                   birthTime: activeProfile.birthTime,
@@ -1832,7 +2093,9 @@ export function useChatActions(options: UseChatActionsOptions) {
             {
               id: generateId(),
               role: "assistant",
-              content: "Для чата с мастером нужна регистрация. Войдите или создайте аккаунт.",
+              content: isLoggedIn
+                ? "Не удалось подтвердить вход. Обновите страницу или войдите снова."
+                : "Для чата с мастером нужна регистрация. Войдите или создайте аккаунт.",
               timestamp: new Date(),
             },
           ]);
@@ -2110,7 +2373,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             role: "assistant",
             content: aborted
               ? "Мастер думал слишком долго — повторите вопрос."
-              : "Связь с астральным планом прервана. Нажмите «Отправить снова».",
+              : "Связь прервалась. Нажмите «Отправить снова».",
             timestamp: new Date(),
           },
         ]);

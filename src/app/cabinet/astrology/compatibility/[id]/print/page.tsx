@@ -53,6 +53,7 @@ export default async function CompatibilityPrintPage({
       methodology="Индексы основаны на рассчитанных межкартных аспектах; композит построен по круговым мидпойнтам. Исходные данные рождения и координаты в отчёт не включены."
       disclaimer={record.report.disclaimer}
       evidence={evidence}
+      returnHref="/cabinet/astrology?tab=compatibility"
     />
   );
 }

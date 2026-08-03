@@ -33,7 +33,12 @@ export default function AppMotionConfig({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <MotionConfig reducedMotion={lite ? "always" : "user"} transition={{ duration: 0 }}>
+    <MotionConfig
+      reducedMotion={lite ? "always" : "user"}
+      // Only force zero-duration in motion-lite / reduced shells — a global
+      // duration:0 made desktop transitions pop and feel jumpy.
+      {...(lite ? { transition: { duration: 0 } } : {})}
+    >
       {children}
     </MotionConfig>
   );

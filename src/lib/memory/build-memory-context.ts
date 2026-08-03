@@ -21,11 +21,17 @@ import {
 } from "@/lib/user-memory";
 import { loadClientMemoryBlock } from "@/lib/memory/client-memory";
 import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
+import { canReadMemory } from "@/lib/memory/preferences";
+import { canSessionReadLongTermMemory } from "@/lib/session";
+import { recordMemoryProductEvent } from "@/lib/memory/product-analytics";
 
 export interface MemoryContextParams {
   userId?: string | null;
   characterId: string;
-  /** Needed for past-session lookups and the current-session anchor. */
+  /**
+   * Current session id — used to exclude the active session from past memories
+   * and to build the live session anchor. Past sessions load even when this is missing.
+   */
   sessionId?: string | null;
   profile?: ClientProfile | null;
   lastUserMessage?: string | null;
@@ -35,7 +41,7 @@ export interface MemoryContextParams {
   /** Live "what we've already covered this session" anchor — chat flow only. */
   sessionAnchorFallback?: SessionAnchorFallback;
   includeSessionAnchor?: boolean;
-  /** Default true (when sessionId is set) — chat's period-spread mode turns this off. */
+  /** Default true — chat's period-spread mode turns this off. */
   includePastSessions?: boolean;
 }
 
@@ -62,11 +68,22 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
 
   const userId = params.userId ?? "";
   const includePastSessions = params.includePastSessions ?? true;
+  const consentOn = userId ? await canReadMemory(userId).catch(() => false) : false;
+  const sessionAllowsLongTerm =
+    !params.sessionId ||
+    (userId
+      ? await canSessionReadLongTermMemory(params.sessionId, userId).catch(() => false)
+      : false);
+  const memoryOn = consentOn && sessionAllowsLongTerm;
+
   const [factsBlock, pastSessionsBlock, sessionAnchorBlock] = await Promise.all([
-    userId ? loadClientMemoryBlock({ userId, queryText }) : Promise.resolve(""),
-    userId && params.sessionId && includePastSessions
-      ? buildMemoryBlock(userId, params.characterId, params.sessionId, queryText)
+    memoryOn
+      ? loadClientMemoryBlock({ userId, queryText, sessionId: params.sessionId })
       : Promise.resolve(""),
+    memoryOn && includePastSessions
+      ? buildMemoryBlock(userId, params.characterId, params.sessionId ?? null, queryText)
+      : Promise.resolve(""),
+    // Live session anchor is operational context, not long-term memory storage.
     userId && params.sessionId && params.includeSessionAnchor
       ? buildCurrentSessionAnchorBlock(
           userId,
@@ -78,7 +95,18 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
       : Promise.resolve(""),
   ]);
 
+  // Profile identity fields stay available; thematic fields remain relevance-gated.
   const clientBlock = params.profile ? buildClientBlock(params.profile, queryText) : "";
+
+  if (userId && (factsBlock || pastSessionsBlock)) {
+    void recordMemoryProductEvent({
+      event: "memory_injected",
+      userId,
+      sessionId: params.sessionId ?? null,
+      sourceType: "chat",
+      memoryEnabled: true,
+    });
+  }
 
   return { queryText, clientBlock, pastSessionsBlock, sessionAnchorBlock, factsBlock };
 }

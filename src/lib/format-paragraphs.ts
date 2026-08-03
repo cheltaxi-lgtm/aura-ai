@@ -6,6 +6,8 @@
  * it into readable, well-spaced paragraphs for a premium feel.
  */
 
+import { breakNumberedSteps } from "@/lib/numerology/format-matrix-reading-display";
+
 /**
  * Break a single run-on block into readable 1–2 sentence paragraphs.
  * Short blocks are returned untouched.
@@ -50,14 +52,23 @@ export function splitWallOfText(text: string): string[] {
  * breaks, and softens any block that is itself a wall of text.
  */
 export function toParagraphs(text: string): string[] {
-  const blocks = text
+  const normalized = breakNumberedSteps(text.replace(/\r\n/g, "\n"));
+  const blocks = normalized
     .split(/\n{2,}/)
     .map((b) => b.trim())
     .filter(Boolean);
 
   if (blocks.length > 1) {
-    return blocks.flatMap((block) => (block.includes("\n") ? [block] : splitWallOfText(block)));
+    return blocks.flatMap((block) => {
+      // Keep author line-breaks for numbered/bulleted blocks.
+      if (/^\d+\.\s|^-\s/m.test(block) || block.includes("\n")) {
+        return [block];
+      }
+      return splitWallOfText(block);
+    });
   }
 
-  return splitWallOfText(blocks[0] ?? text);
+  const only = blocks[0] ?? normalized;
+  if (/^\d+\.\s/m.test(only) && only.includes("\n")) return [only];
+  return splitWallOfText(only);
 }

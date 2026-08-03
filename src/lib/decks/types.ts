@@ -11,6 +11,7 @@ export interface SpreadSymbol {
   id: number;
   name: string;
   meaning: string;
+  reversed?: boolean;
   slug?: string;
   arcana?: "major" | "minor";
   suit?: "cups" | "wands" | "swords" | "pentacles";

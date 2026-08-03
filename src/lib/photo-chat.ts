@@ -18,6 +18,20 @@ export function buildPhotoReadingUserMessage(
   return "[Фото-расклад] Разбор расклада по фото";
 }
 
+export function buildPhotoReadingPendingMessages(
+  question: string,
+  detectedCards: string[]
+): Message[] {
+  return [
+    {
+      id: generateId(),
+      role: "user",
+      content: buildPhotoReadingUserMessage(question, detectedCards),
+      timestamp: new Date(),
+    },
+  ];
+}
+
 export function buildPhotoReadingChatMessages(
   analysis: string,
   question: string,

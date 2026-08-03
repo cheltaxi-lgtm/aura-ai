@@ -7,10 +7,11 @@ import {
   clearPendingRunePurchase,
   hasFiredRunePurchaseGoal,
   markRunePurchaseGoalFired,
+  readPendingRuneOrderId,
   readPendingRunePaymentId,
   RUNE_BALANCE_BEFORE_KEY,
 } from "@/lib/rune-purchase-client";
-import { trackRunePurchase } from "@/lib/seo/metrika";
+import { trackPaymentCancelled, trackRunePurchase } from "@/lib/seo/metrika";
 import { pushEcommercePurchase } from "@/lib/seo/ecommerce";
 
 const LAST_MASTER_KEY = "aura_last_master";
@@ -46,7 +47,9 @@ async function firePurchaseAnalytics(paymentId: string | null): Promise<void> {
 
 export default function RunePurchaseSuccessPage() {
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
-  const [status, setStatus] = useState<"polling" | "ready" | "timeout">("polling");
+  const [status, setStatus] = useState<
+    "polling" | "ready" | "timeout" | "cancelled" | "rejected"
+  >("polling");
 
   useEffect(() => {
     let masterId: string | null = null;
@@ -70,9 +73,12 @@ export default function RunePurchaseSuccessPage() {
 
     const expectedRaw = localStorage.getItem(RUNE_BALANCE_BEFORE_KEY);
     const expected = expectedRaw !== null ? Number(expectedRaw) : null;
-    const pendingPaymentId = readPendingRunePaymentId(new URLSearchParams(window.location.search));
+    const search = new URLSearchParams(window.location.search);
+    const pendingPaymentId = readPendingRunePaymentId(search);
+    const pendingOrderId = readPendingRuneOrderId(search);
     let attempts = 0;
     const maxAttempts = 20;
+    let cancelledTracked = false;
 
     const markReady = async (balance: number) => {
       await firePurchaseAnalytics(pendingPaymentId);
@@ -84,15 +90,38 @@ export default function RunePurchaseSuccessPage() {
       }, 1200);
     };
 
+    const markCancelled = () => {
+      if (!cancelledTracked) {
+        cancelledTracked = true;
+        trackPaymentCancelled("runes_success_return");
+      }
+      clearPendingRunePurchase();
+      setStatus("cancelled");
+    };
+
     const poll = async () => {
       try {
         const confirmRes = await fetch("/api/runes/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(pendingPaymentId ? { paymentId: pendingPaymentId } : {}),
+          body: JSON.stringify(
+            pendingPaymentId
+              ? { paymentId: pendingPaymentId }
+              : pendingOrderId
+                ? { orderId: pendingOrderId }
+                : {}
+          ),
         });
+        const confirmData = await confirmRes.json().catch(() => ({}));
+        if (confirmRes.status === 422 || confirmData.status === "rejected") {
+          setStatus("rejected");
+          return;
+        }
         if (confirmRes.ok) {
-          const confirmData = await confirmRes.json();
+          if (confirmData.cancelled || confirmData.status === "cancelled") {
+            markCancelled();
+            return;
+          }
           if (typeof confirmData.balance === "number") {
             if (confirmData.credited || confirmData.alreadyCredited || confirmData.status === "already_credited") {
               const goalPaymentId =
@@ -151,25 +180,36 @@ export default function RunePurchaseSuccessPage() {
     return () => window.clearInterval(interval);
   }, []);
 
+  const title =
+    status === "cancelled"
+      ? "Оплата не завершена"
+      : status === "rejected"
+        ? "Нужна проверка платежа"
+        : status === "timeout"
+          ? "Ожидаем подтверждение"
+          : status === "ready"
+            ? "Руны получены!"
+            : "Подтверждаем оплату";
+
+  const message =
+    status === "polling"
+      ? "Подтверждаем оплату и обновляем баланс…"
+      : status === "cancelled"
+        ? "Платёж отменён или не был завершён. Вы можете вернуться и попробовать снова — баланс не изменился."
+        : status === "rejected"
+          ? "Оплата прошла, но начисление не подтверждено автоматически. Напишите в поддержку — мы проверим платёж вручную."
+          : status === "timeout"
+            ? "Оплата обрабатывается дольше обычного. Обновите страницу через минуту — руны начислятся автоматически."
+            : "Баланс пополнен. Сейчас вернём вас к мастеру.";
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="max-w-sm text-center">
         <div className="mb-4 text-6xl">ᚢ</div>
-        <h1 className="font-display mb-2 text-2xl font-bold text-white">
-          {status === "timeout" ? "Ожидаем подтверждение" : "Руны получены!"}
-        </h1>
-        <p className="mb-6 text-sm text-gray-400">
-          {status === "polling"
-            ? "Подтверждаем оплату и обновляем баланс…"
-            : status === "timeout"
-              ? "Оплата обрабатывается дольше обычного. Обновите страницу через минуту — руны начислятся автоматически."
-              : "Баланс пополнен. Сейчас вернём вас к мастеру."}
-        </p>
-        <Link
-          href={redirectTo ?? "/"}
-          className="btn-luxe btn-luxe--md btn-luxe--gold"
-        >
-          Вернуться к мастеру →
+        <h1 className="font-display mb-2 text-2xl font-bold text-white">{title}</h1>
+        <p className="mb-6 text-sm text-gray-400">{message}</p>
+        <Link href={redirectTo ?? "/"} className="btn-luxe btn-luxe--md btn-luxe--gold">
+          {status === "cancelled" ? "Вернуться и попробовать снова →" : "Вернуться к мастеру →"}
         </Link>
       </div>
     </div>

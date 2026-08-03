@@ -71,6 +71,8 @@ const DISPLAY_NAMES = {
   zodiac_compat_cta_click: "Зодиак — совместимость CTA",
   lenormand_combo_cta: "Ленорман — combo CTA",
   rune_purchase: "Покупка рун (доход)",
+  paywall_open: "Paywall / магазин рун — открытие",
+  payment_cancelled: "Оплата рун — отмена",
   share_open: "Открытие шеринга",
   share_create_success: "Шеринг — создание OK",
   share_create_fail: "Шеринг — создание fail",
@@ -86,9 +88,17 @@ const DISPLAY_NAMES = {
   cards_hub_view: "Карты hub — view",
   photo_landing_view: "Фото-лендинг — view",
   ritual_catalog_view: "Каталог обрядов — view",
+  ritual_step: "Обряд — шаг воронки",
   numerology_hub_view: "Нумерология hub — view",
   numerology_topic_view: "Нумерология тема — view",
   lenormand_combo_view: "Ленорман сочетание — view",
+  matrix_landing_view: "Матрица судьбы — просмотр лендинга",
+  matrix_preview_start: "Матрица судьбы — старт расчёта",
+  matrix_preview_complete: "Матрица судьбы — расчёт готов",
+  natal_landing_view: "Натальная карта — просмотр лендинга",
+  natal_landing_cta_click: "Натальная карта — CTA",
+  natal_landing_login_click: "Натальная карта — вход",
+  prognoz_hub_view: "Прогноз hub — view",
 };
 
 function displayName(id) {

@@ -9,7 +9,7 @@ import {
 
 export async function GET() {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const authed = await requireProfileUserId();
@@ -23,7 +23,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const authed = await requireProfileUserId();

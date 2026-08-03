@@ -20,7 +20,7 @@ export function plainTextFromMarkdown(text: string): string {
 export function sanitizeDisplayName(name?: string | null): string | undefined {
   if (!name?.trim()) return undefined;
   const first = name.trim().split(/\s+/)[0] ?? "";
-  if (!first || first.length > 32) return "Искатель";
+  if (!first || first.length > 32) return "Гость";
   return first;
 }
 

@@ -1,11 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { X, Sparkles, CreditCard, Smartphone, Loader2 } from "lucide-react";
+import { X, CreditCard, Smartphone, Loader2 } from "lucide-react";
 import { useState } from "react";
 import type { PaymentPlan } from "@/lib/yukassa";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
+import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
 interface PaywallProps {
   sessionId: string;
@@ -14,7 +15,7 @@ interface PaywallProps {
   onUnlocked: () => void;
 }
 
-export default function Paywall({ sessionId, userName, onClose, onUnlocked }: PaywallProps) {
+export default function Paywall({ sessionId, userName, onClose }: PaywallProps) {
   const [loading, setLoading] = useState<PaymentPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +40,7 @@ export default function Paywall({ sessionId, userName, onClose, onUnlocked }: Pa
       const data = await res.json();
 
       if (data.confirmationUrl) {
-        window.location.href = data.confirmationUrl;
+        openTelegramExternalUrl(data.confirmationUrl);
         return;
       }
       setError(data.error ?? data.message ?? "Не удалось создать платёж. Попробуйте позже.");
@@ -52,75 +53,74 @@ export default function Paywall({ sessionId, userName, onClose, onUnlocked }: Pa
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(8,6,4,0.82)] p-4 backdrop-blur-sm"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="paywall-title"
     >
       <motion.div
-        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-aura-purple/30 bg-aura-bg shadow-neon"
-        initial={{ scale: 0.9, y: 20 }}
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[rgba(201,162,74,0.28)] bg-[#141210] shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
+        initial={{ scale: 0.96, y: 12 }}
         animate={{ scale: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute -left-20 -top-20 h-40 w-40 rounded-full bg-aura-purple/20 blur-[60px]" />
-
         <button
           onClick={onClose}
           aria-label="Закрыть окно оплаты"
-          className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 text-gray-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple"
+          className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 text-white/55 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(201,162,74,0.55)]"
         >
           <X className="h-4 w-4" />
         </button>
 
         <div className="relative p-8">
-          <div className="mb-6 flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full border border-aura-gold/40 bg-aura-gold/10">
-              <Sparkles className="h-8 w-8 text-aura-gold" />
-            </div>
-          </div>
+          <p className="mb-3 text-center text-[11px] font-medium uppercase tracking-[0.18em] text-[rgba(201,162,74,0.75)]">
+            Продолжение сеанса
+          </p>
 
-          <h2 className="font-display mb-2 text-center text-2xl font-bold text-white">
-            {userName ? `${userName}, мастер готов` : "Мастер готов"}
-            <span className="mt-1 block text-lg text-aura-gold">раскрыть 2-ю и 3-ю карту</span>
+          <h2 id="paywall-title" className="font-display mb-2 text-center text-2xl font-medium text-[#ede6da]">
+            {userName ? `${userName}, открыть полный разбор` : "Открыть полный разбор"}
           </h2>
-          <p className="mb-6 text-center text-sm text-gray-400">
-            Бесплатные вопросы использованы. Полный разбор откроет смысл всего расклада.
+          <p className="mb-6 text-center text-sm leading-relaxed text-[rgba(237,230,218,0.55)]">
+            Бесплатные вопросы использованы. Полный доступ раскроет 2-ю и 3-ю карту и смысл всего
+            расклада.
           </p>
 
           <button
             type="button"
             onClick={onClose}
-            className="mb-6 w-full rounded-xl border border-white/10 py-2.5 text-sm text-gray-400 transition-colors hover:border-white/20 hover:text-white"
+            className="mb-6 w-full rounded-xl border border-white/10 py-2.5 text-sm text-white/45 transition-colors hover:border-white/20 hover:text-white"
           >
-            Продолжить с первой картой
+            Остаться с первой картой
           </button>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <button
               onClick={() => handlePay("single")}
               disabled={loading !== null}
-              className="group flex w-full items-center gap-4 rounded-xl border border-aura-purple/40 bg-aura-purple/10 p-4 text-left hover:border-aura-purple hover:shadow-neon disabled:opacity-50"
+              className="group flex w-full items-center gap-4 rounded-xl border border-[rgba(201,162,74,0.28)] bg-[rgba(201,162,74,0.06)] p-4 text-left transition-colors hover:border-[rgba(201,162,74,0.5)] disabled:opacity-50"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-aura-purple/20">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[rgba(201,162,74,0.25)] bg-[rgba(201,162,74,0.1)]">
                 {loading === "single" ? (
-                  <Loader2 className="h-6 w-6 animate-spin text-aura-neon" />
+                  <Loader2 className="h-6 w-6 animate-spin text-aura-gold" />
                 ) : (
-                  <Smartphone className="h-6 w-6 text-aura-neon" />
+                  <Smartphone className="h-6 w-6 text-aura-champagne" />
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-medium text-white">Детальный разбор</p>
-                <p className="text-xs text-gray-400">СБП · карты · ЮMoney</p>
+                <p className="font-medium text-[#ede6da]">Детальный разбор</p>
+                <p className="text-xs text-white/40">СБП · карты · ЮMoney</p>
               </div>
-              <span className="font-display text-xl font-bold text-aura-gold">199 ₽</span>
+              <span className="font-display text-xl font-semibold text-aura-gold">за руны ᚢ</span>
             </button>
 
             <button
               onClick={() => handlePay("subscription")}
               disabled={loading !== null}
-              className="group flex w-full items-center gap-4 rounded-xl border border-aura-gold/40 bg-aura-gold/5 p-4 text-left hover:border-aura-gold hover:shadow-neon-gold disabled:opacity-50"
+              className="group flex w-full items-center gap-4 rounded-xl border border-[rgba(201,162,74,0.4)] bg-[rgba(201,162,74,0.1)] p-4 text-left transition-colors hover:border-aura-gold disabled:opacity-50"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-aura-gold/20">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-aura-gold/15">
                 {loading === "subscription" ? (
                   <Loader2 className="h-6 w-6 animate-spin text-aura-gold" />
                 ) : (
@@ -128,20 +128,20 @@ export default function Paywall({ sessionId, userName, onClose, onUnlocked }: Pa
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-medium text-white">Подписка Zovus+</p>
-                <p className="text-xs text-gray-400">Безлимит на месяц · все наставники</p>
+                <p className="font-medium text-[#ede6da]">Подписка Zovus+</p>
+                <p className="text-xs text-white/40">Безлимит на месяц · все наставники</p>
               </div>
-              <span className="font-display text-xl font-bold text-aura-gold">590 ₽</span>
+              <span className="font-display text-xl font-semibold text-aura-gold">Zovus+</span>
             </button>
           </div>
 
           {error && (
-            <p role="alert" className="mb-4 text-center text-sm text-red-400">
+            <p role="alert" className="mb-4 mt-4 text-center text-sm text-red-300">
               {error}
             </p>
           )}
 
-          <p className="mt-6 text-center text-xs text-gray-600">
+          <p className="mt-6 text-center text-xs text-white/30">
             Оплата через ЮKassa · Безопасное соединение
           </p>
         </div>

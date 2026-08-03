@@ -3,11 +3,11 @@ import { ensureDb } from "@/lib/db";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { requireUserAuth } from "@/lib/require-auth";
 import { hasPaidAccess, getSession } from "@/lib/session";
+import { resolvePhotoInterpretationPrompt } from "@/lib/photo-reading-prompts";
 import {
-  photoReadingFallback,
-  resolvePhotoInterpretationPrompt,
-} from "@/lib/photo-reading-prompts";
-import { createPhotoInterpretationStream } from "@/lib/photo-reading-stream";
+  createPhotoInterpretationJson,
+  createPhotoInterpretationStream,
+} from "@/lib/photo-reading-stream";
 import { getUserById, serializeUserProfile } from "@/lib/users";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { buildMemoryContext, appendMemoryContextToPrompt } from "@/lib/memory/build-memory-context";
@@ -22,6 +22,7 @@ import { getRuneSettings } from "@/lib/rune-settings";
 import { ensureChatSession } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
   buildSpreadSummaryForLlm,
   isRecognizedSpread,
@@ -41,15 +42,40 @@ import {
   persistPhotoReadingResult,
   photoReadingJsonFromContext,
 } from "@/lib/photo-reading-persist";
+import {
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  beginWorkerJobSave,
+  trackWorkerJobCharged,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+} from "@/lib/async-job-lifecycle";
+
+export const maxDuration = 180;
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUserAuth();
-  if (!auth) {
-    return NextResponse.json({ error: "Требуется регистрация", code: "auth_required" }, { status: 401 });
-  }
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let accountId: string;
+  let accountName: string | undefined;
 
-  const rateLimited = await enforcePaidRouteRateLimit(auth.sub, "photo_reading");
-  if (rateLimited) return rateLimited;
+  if (workerUserId) {
+    accountId = workerUserId;
+  } else {
+    const auth = await requireUserAuth();
+    if (!auth) {
+      return NextResponse.json(
+        { error: "Требуется регистрация", code: "auth_required" },
+        { status: 401 }
+      );
+    }
+    accountId = auth.sub;
+    accountName = auth.name;
+    const rateLimited = await enforcePaidRouteRateLimit(auth.sub, "photo_reading");
+    if (rateLimited) return rateLimited;
+  }
 
   let billingCharge: BillingChargeResult | null = null;
   let spentRunes = 0;
@@ -59,9 +85,13 @@ export async function POST(request: NextRequest) {
   let sessionId: string | undefined;
   let confirmedSpread: RedrawSpread | null = null;
   let idempotencyKey: string | undefined;
+  let asyncRequested = false;
+  let rawBody: Record<string, unknown> = {};
 
   try {
     const body = await request.json();
+    rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    asyncRequested = body.async === true;
     characterId = await resolveApiCharacterId(body.characterId);
     question = sanitizeTextField(body.question, 500) ?? "";
     sessionId = body.sessionId;
@@ -118,20 +148,45 @@ export async function POST(request: NextRequest) {
   const photoSpreadKey = buildPhotoSpreadKey(characterId, confirmedSpread, question);
   const lockKey = idempotencyKey || photoSpreadKey;
 
-  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  const profileUserId = workerUserId
+    ? workerUserId
+    : await getProfileUserIdForAccount(accountId);
   const profileRow = profileUserId ? await getUserById(profileUserId) : null;
   if (!profileRow || !isUserAgeEligible(profileRow)) {
     return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
   }
   const profile = serializeUserProfile(profileRow);
 
+  if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
+    if (!profileUserId) {
+      return NextResponse.json(
+        { error: "Требуется регистрация", code: "auth_required" },
+        { status: 401 }
+      );
+    }
+    return enqueuePaidAsyncJob({
+      userId: profileUserId,
+      kind: "photo_reading",
+      payload: {
+        ...rawBody,
+        async: false,
+        photoSpreadKey,
+        idempotencyKey,
+      },
+      bypassDeliveryGate: true,
+    });
+  }
+
+  // Worker / durable path always returns JSON (no SSE).
+  const preferJson = Boolean(workerUserId);
+
   let isPaid = false;
   let referrerSlug: string | null = null;
   let resolvedSessionId: string | undefined = sessionId;
 
   const unlimited = profileUserId
-    ? await resolveUnlimitedAccess({ accountId: auth.sub, profileUserId })
-    : await resolveUnlimitedAccess({ accountId: auth.sub });
+    ? await resolveUnlimitedAccess({ accountId, profileUserId })
+    : await resolveUnlimitedAccess({ accountId });
 
   if (await ensureDb()) {
     if (profileUserId) {
@@ -163,27 +218,27 @@ export async function POST(request: NextRequest) {
   if (profileUserId && (await ensureDb())) {
     const existing = await findPhotoReadingEntry(profileUserId, photoSpreadKey, idempotencyKey);
     if (existing && typeof existing.context_data.analysis === "string") {
-      return NextResponse.json(
-        photoReadingJsonFromContext(existing.context_data, {
-          historyId: existing.id,
-          runeBalance,
-          cached: true,
-        })
-      );
+      const payload = photoReadingJsonFromContext(existing.context_data, {
+        historyId: existing.id,
+        runeBalance,
+        cached: true,
+      });
+      await trackWorkerJobCompleted(request, payload);
+      return NextResponse.json(payload);
     }
   }
 
-  return withPhotoReadingLock(profileUserId ?? auth.sub, lockKey, async () => {
+  return withPhotoReadingLock(profileUserId ?? accountId, lockKey, async () => {
     if (profileUserId && (await ensureDb())) {
       const existing = await findPhotoReadingEntry(profileUserId, photoSpreadKey, idempotencyKey);
       if (existing && typeof existing.context_data.analysis === "string") {
-        return NextResponse.json(
-          photoReadingJsonFromContext(existing.context_data, {
-            historyId: existing.id,
-            runeBalance,
-            cached: true,
-          })
-        );
+        const payload = photoReadingJsonFromContext(existing.context_data, {
+          historyId: existing.id,
+          runeBalance,
+          cached: true,
+        });
+        await trackWorkerJobCompleted(request, payload);
+        return NextResponse.json(payload);
       }
     }
 
@@ -202,6 +257,7 @@ export async function POST(request: NextRequest) {
         billingCharge = charge;
         runeBalance = charge.newBalance;
         spentRunes = charge.spentRunes;
+        await trackWorkerJobCharged(request, charge.transactionId);
       } catch (err) {
         if (err instanceof InsufficientFundsError) {
           return insufficientFundsResponse(err);
@@ -216,8 +272,16 @@ export async function POST(request: NextRequest) {
       year: "numeric",
     });
 
+    const detectedCards = confirmedSpread!.cards.map((c) =>
+      c.reversed ? `${c.name} (перев.)` : c.name
+    );
+    const tarotCards = redrawSpreadToTarotCards(confirmedSpread!);
+    const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread!);
+    /** Rune charge / unlimited / session access — treat as paid for full reading depth. */
+    const paidForPrompt = isPaid || spentRunes > 0 || Boolean(billingCharge) || unlimited;
+
     const ctx = {
-      userName: profile?.name ?? auth.name,
+      userName: normalizePersonDisplayNameOr(profile?.name ?? accountName, "друг"),
       gender:
         profile?.gender === "male"
           ? "Мужской"
@@ -229,22 +293,21 @@ export async function POST(request: NextRequest) {
       birthTime: profile?.birthTime ?? undefined,
       birthCity: profile?.birthCity ?? undefined,
       lifeFocus: profile?.lifeFocus ?? undefined,
-      mainQuestion: profile?.mainQuestion ?? undefined,
+      mainQuestion: question.trim() || profile?.mainQuestion || undefined,
       astroMeta: profile?.astroMeta as import("@/lib/astro-profile").AstroMeta | undefined,
       today,
-      isPaid,
+      isPaid: paidForPrompt,
       question,
+      tarotCards: tarotCards.map((c) => ({
+        name: c.name,
+        meaning: c.meaning || "",
+        position: c.position,
+      })),
     };
-
-    const detectedCards = confirmedSpread!.cards.map((c) =>
-      c.reversed ? `${c.name} (перев.)` : c.name
-    );
-    const tarotCards = redrawSpreadToTarotCards(confirmedSpread!);
-    const spreadSummary = buildSpreadSummaryForLlm(confirmedSpread!);
 
     let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
 
-    if (profileUserId && resolvedSessionId) {
+    if (profileUserId) {
       const memoryCtx = await buildMemoryContext({
         userId: profileUserId,
         characterId,
@@ -263,11 +326,123 @@ export async function POST(request: NextRequest) {
       systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
     }
 
+    const finalizeSuccess = async (reply: string) => {
+      let historyId: string | undefined;
+      if (profileUserId) {
+        if (!(await beginWorkerJobSave(request))) {
+          if (billingCharge) {
+            try {
+              runeBalance = await BillingService.rollbackCharge({
+                userId: profileUserId,
+                cost: billingCharge.spentRunes,
+                wasFreeQuestion: billingCharge.wasFreeQuestion,
+                actionType: "VISION_ANALYSIS",
+              });
+            } catch (refundErr) {
+              console.error("Photo save-race refund failed:", refundErr);
+            }
+          }
+          await trackWorkerJobFailed(request, "Photo reading save race", {
+            refunded: Boolean(billingCharge),
+            errorCode: "generation_failed",
+          });
+          return NextResponse.json(
+            {
+              error: "Не удалось сохранить трактовку. Руны возвращены. Попробуйте ещё раз.",
+              code: "generation_failed",
+              refunded: Boolean(billingCharge),
+            },
+            { status: 502 }
+          );
+        }
+        historyId = await persistPhotoReadingResult({
+          profileUserId,
+          characterId,
+          analysisBody: reply,
+          detectedCards,
+          confirmedSpread: confirmedSpread!,
+          question,
+          userName: ctx.userName ?? "друг",
+          resolvedSessionId,
+          isPaid,
+          spentRunes,
+          photoSpreadKey,
+          idempotencyKey,
+          firstPhotoDiscount,
+        });
+      }
+
+      const payload = {
+        analysis: reply,
+        detectedCards,
+        deckType: confirmedSpread!.deckType,
+        spreadType: confirmedSpread!.spreadType,
+        deckSystem: confirmedSpread!.system,
+        redrawSpread: confirmedSpread,
+        tarotCards,
+        characterId,
+        isPaid: isPaid || spentRunes > 0,
+        saved: Boolean(profileUserId),
+        historyId,
+        sessionId: resolvedSessionId,
+        runeBalance,
+        firstPhotoDiscount,
+        streamed: false,
+      };
+      await trackWorkerJobCompleted(request, payload);
+      return NextResponse.json(payload);
+    };
+
+    const refundAndFail = async (message: string) => {
+      if (profileUserId && billingCharge) {
+        try {
+          runeBalance = await BillingService.rollbackCharge({
+            userId: profileUserId,
+            cost: billingCharge.spentRunes,
+            wasFreeQuestion: billingCharge.wasFreeQuestion,
+            actionType: "VISION_ANALYSIS",
+          });
+          billingCharge = null;
+          spentRunes = 0;
+        } catch (refundErr) {
+          console.error("Photo reading refund failed:", refundErr);
+        }
+      }
+      await trackWorkerJobFailed(request, message, {
+        refunded: true,
+        errorCode: "generation_failed",
+      });
+      return NextResponse.json(
+        {
+          error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+          code: "generation_failed",
+          refunded: true,
+          runeBalance,
+        },
+        { status: 502 }
+      );
+    };
+
+    if (preferJson) {
+      const generated = await createPhotoInterpretationJson({
+        systemPrompt,
+        spreadSummary,
+        question: question.trim() || undefined,
+        userName: ctx.userName ?? "друг",
+        cardCount: confirmedSpread!.cards.length,
+      });
+      if (generated.llmFailed || !generated.reply.trim()) {
+        return refundAndFail("Photo reading generation failed");
+      }
+      return finalizeSuccess(generated.reply);
+    }
+
     const sse = await createPhotoInterpretationStream({
       systemPrompt,
       spreadSummary,
       question: question.trim() || undefined,
       userName: ctx.userName ?? "друг",
+      cardCount: confirmedSpread!.cards.length,
       onComplete: async ({ reply, llmFailed }) => {
         if (llmFailed && profileUserId && billingCharge) {
           try {
@@ -319,23 +494,13 @@ export async function POST(request: NextRequest) {
           runeBalance,
           firstPhotoDiscount,
           streamed: true,
+          refunded: llmFailed && spentRunes === 0,
         };
       },
     });
 
     if (!sse) {
-      if (profileUserId && billingCharge) {
-        runeBalance = await BillingService.rollbackCharge({
-          userId: profileUserId,
-          cost: billingCharge.spentRunes,
-          wasFreeQuestion: billingCharge.wasFreeQuestion,
-          actionType: "VISION_ANALYSIS",
-        });
-      }
-      return NextResponse.json(
-        { error: "Не удалось запустить расшифровку. Руны возвращены." },
-        { status: 503 }
-      );
+      return refundAndFail("Photo reading stream failed to start");
     }
 
     return sse;

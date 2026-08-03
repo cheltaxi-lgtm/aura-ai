@@ -2,36 +2,59 @@ import Link from "next/link";
 import { getFeaturedSpreadIntents, getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 const HOME_INTENT_SLUGS = [
-  "chto-on-chuvstvuet",
-  "vernyotsya-li-on",
-  "lyubit-li-on-menya",
-  "pozvonit-li-on",
-  "est-li-izmena",
+  "chto-mezhdu-nami",
+  "chto-so-mnoy-proiskhodit",
+  "zhdat-ili-zabyt",
   "budem-li-my-vmeste",
   "stoit-li-menyat-rabotu",
+  "kuda-ukhodyat-dengi",
+  "blizhayshee-budushchee",
   "god-vpered",
+  "na-vernost",
+  "chto-meshaet-otnosheniyam",
 ] as const;
 
-/** Server-rendered SEO content for home — crawlable without JS. */
+/**
+ * Server-rendered SEO content for home — crawlable without JS.
+ * Visually hidden: a visible SEO wall above the footer looked like a second tall footer.
+ */
 export default function HomeSeoContent() {
   const intents = HOME_INTENT_SLUGS.map((slug) => getSpreadIntentBySlug(slug)).filter(Boolean);
   const featured = getFeaturedSpreadIntents(4);
 
   return (
-    <section className="seo-crawl-only" aria-label="О сервисе Zovus">
-      <p className="font-display text-2xl font-bold">
-        Расклады Таро онлайн с персональной расшифровкой
-      </p>
+    <section className="home-seo-panel" aria-label="Расклад Таро онлайн на Zovus">
+      <h2 className="font-display text-2xl font-medium text-[#ede6da]">
+        Расклад Таро онлайн бесплатно — с разбором под ваш вопрос
+      </h2>
       <p className="mt-4 leading-relaxed">
-        Zovus — сервис персональных эзотерических консультаций с ИИ-мастерами в художественных
-        образах. Вы выбираете вопрос — о чувствах, отношениях, верности, карьере или будущем —
-        мастер раскладывает карты по проверенной схеме и даёт связную трактовку в чате. После
-        расшифровки можно уточнять детали, сохранять историю в кабинете и продолжать диалог.
+        Zovus — сервис раскладов Таро онлайн: вы формулируете вопрос о связи, решении, работе или
+        будущем и получаете связный разбор, а не общий шаблон. На главной три карты открываются
+        бесплатно до регистрации; после входа классический расклад на три карты — раз в сутки.
       </p>
       <p className="mt-3 leading-relaxed">
-        Откройте бесплатный расклад из трёх карт на главной. После регистрации расклад сохраняется в
-        кабинете. Полные расклады, фото-анализ, нумерология, натальная карта и обряды — по тарифу в рунах ᚢ. Это не
-        медицинская и не юридическая услуга:{" "}
+        Можно выбрать готовый вопрос в каталоге, загрузить{" "}
+        <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
+          фото домашнего расклада
+        </Link>{" "}
+        для расшифровки или начать с{" "}
+        <Link href="/gadanie" className="text-aura-gold hover:underline">
+          гадания онлайн
+        </Link>
+        . Есть{" "}
+        <Link href="/lenormand" className="text-aura-gold hover:underline">
+          Ленорман
+        </Link>
+        ,{" "}
+        <Link href="/telegram" className="text-aura-gold hover:underline">
+          Telegram-бот
+        </Link>
+        {" "}и раздел{" "}
+        <Link href="/faq" className="text-aura-gold hover:underline">
+          FAQ
+        </Link>
+        . Полные сессии, нумерология, натал и обряды — по тарифу в рунах ᚢ. Это не медицинская и не
+        юридическая услуга:{" "}
         <Link href="/disclaimer" className="text-aura-gold hover:underline">
           подробнее об ограничениях
         </Link>
@@ -54,8 +77,28 @@ export default function HomeSeoContent() {
         )}
       </ul>
 
-      <h2 className="mt-8 font-display text-lg text-aura-gold">Тематические разделы</h2>
+      <h2 className="mt-8 font-display text-lg text-aura-gold">С чего начать</h2>
       <ul className="mt-3 flex flex-wrap gap-2 text-sm">
+        <li>
+          <Link href="/taro#besplatno" className="text-aura-gold hover:underline">
+            Бесплатный расклад Таро
+          </Link>
+        </li>
+        <li>
+          <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
+            Расшифровка Таро по фото
+          </Link>
+        </li>
+        <li>
+          <Link href="/statyi/besplatnyy-rasklad-taro-online" className="text-aura-gold hover:underline">
+            Что входит в бесплатный расклад
+          </Link>
+        </li>
+        <li>
+          <Link href="/statyi/rasshifrovka-taro-po-foto" className="text-aura-gold hover:underline">
+            Как работает расшифровка по фото
+          </Link>
+        </li>
         <li>
           <Link href="/gadanie" className="text-aura-gold hover:underline">
             Гадание онлайн
@@ -77,12 +120,17 @@ export default function HomeSeoContent() {
           </Link>
         </li>
         <li>
+          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+            Матрица судьбы
+          </Link>
+        </li>
+        <li>
           <Link href="/numerology" className="text-aura-gold hover:underline">
             Нумерология
           </Link>
         </li>
         <li>
-          <Link href="/cabinet/astrology" className="text-aura-gold hover:underline">
+          <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
             Натальная карта
           </Link>
         </li>
@@ -107,18 +155,13 @@ export default function HomeSeoContent() {
           </Link>
         </li>
         <li>
-          <Link href="/rasklady/budushchee" className="text-aura-gold hover:underline">
-            На будущее
-          </Link>
-        </li>
-        <li>
-          <Link href="/rasklady/chuvstva-i-myisli" className="text-aura-gold hover:underline">
-            Чувства и мысли
-          </Link>
-        </li>
-        <li>
           <Link href="/rasklady/vernost-i-doverie" className="text-aura-gold hover:underline">
             Верность и доверие
+          </Link>
+        </li>
+        <li>
+          <Link href="/rasklady/budushchee" className="text-aura-gold hover:underline">
+            На будущее
           </Link>
         </li>
         <li>
@@ -132,8 +175,23 @@ export default function HomeSeoContent() {
           </Link>
         </li>
         <li>
-          <Link href="/about/methodology" className="text-aura-gold hover:underline">
-            Методика
+          <Link href="/lenormand" className="text-aura-gold hover:underline">
+            Ленорман
+          </Link>
+        </li>
+        <li>
+          <Link href="/faq" className="text-aura-gold hover:underline">
+            FAQ
+          </Link>
+        </li>
+        <li>
+          <Link href="/about" className="text-aura-gold hover:underline">
+            О сервисе
+          </Link>
+        </li>
+        <li>
+          <Link href="/telegram" className="text-aura-gold hover:underline">
+            Telegram-бот
           </Link>
         </li>
       </ul>

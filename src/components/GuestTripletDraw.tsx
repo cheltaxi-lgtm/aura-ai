@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { getDeckPositions, resolveMasterDeckSystem } from "@/lib/decks";
+import { ArrowLeft } from "lucide-react";
+import { getDeckPositionsForUi, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
   buildSeededTableDeck,
@@ -12,10 +13,17 @@ import {
 import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import { buildGuestTripletPreview, buildGuestTripletTeaser } from "@/lib/guest-triplet-teaser";
+import { saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import {
+  buildGuestNarrativeFallback,
+  buildGuestTripletTeaser,
+} from "@/lib/guest-triplet-teaser";
+import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
 import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
 import {
-  GUEST_SPREAD_SECTION_ID,
+  GUEST_SPREAD_DRAFT_KEY,
+  GUEST_SPREAD_PICKER_ID,
+  GUEST_SPREAD_RESET_EVENT,
   GUEST_SPREAD_START_EVENT,
   GUEST_TRIPLET_MASTER_ID,
   LANDING_QUESTION_KEY,
@@ -25,24 +33,26 @@ import {
   buildRegisterHref,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
-import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 import {
   trackGuestCardRevealed,
   trackGuestSpreadCompleted,
   trackGuestSpreadStarted,
-  trackRegistrationCtaClick,
+  trackGuestAuth,
+  trackGuestTeaserCta,
+  trackGuestTeaserView,
   trackRegistrationGateView,
+  trackRegistrationStarted,
 } from "@/lib/seo/metrika";
-import { getCharacterById } from "@/lib/characters";
 import DeckCard from "@/components/DeckCard";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
-import ShareButton from "@/components/share/ShareButton";
-import { tripletToSharePayload } from "@/lib/share/payload-builders";
+import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
+import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 
 const GUEST_ID_KEY = "zovus_guest_id";
-const GUEST_SPREAD_DRAFT_KEY = "zovus_guest_spread_draft";
 const CARD_COUNT = 3;
+const GUEST_TEASER_AUTH_ID = "guest-teaser-auth";
+/** Match server TEASER_RECEIPT_MIN_AGE_MS before first teaser fetch. */
+const TEASER_FETCH_MIN_DELAY_MS = 3200;
 
 function getGuestId(): string {
   if (typeof window === "undefined") return "guest";
@@ -57,7 +67,7 @@ function getGuestId(): string {
   return id;
 }
 
-type GuestStep = "idle" | "intro" | "pick" | "flip" | "done";
+type GuestStep = "idle" | "age" | "intro" | "pick" | "flip" | "done";
 
 type GuestSpreadDraft = {
   step: GuestStep;
@@ -71,42 +81,31 @@ type GuestSpreadDraft = {
 
 type GuestTripletDrawProps = {
   className?: string;
+  startRequest?: {
+    id: number;
+    detail: GuestSpreadStartDetail;
+  } | null;
 };
 
 function GuestSpreadSection({ children }: { children: React.ReactNode }) {
   return (
-    <section id={GUEST_SPREAD_SECTION_ID} className="aura-landing-section aura-landing-section--guest-spread">
-      <div className="mx-auto max-w-6xl">
-        <div className="aura-landing-section__head">
-          <h2 className="font-mystic-display aura-landing-section__title">Ваш бесплатный расклад</h2>
-          <p className="aura-landing-section__subtitle">
-            Откройте три карты — увидите краткий ориентир по символам. Регистрация понадобится для полной
-            расшифровки.
-          </p>
-        </div>
-        {children}
-      </div>
+    <section
+      id={GUEST_SPREAD_PICKER_ID}
+      className="aura-landing-section aura-landing-section--guest-spread"
+      tabIndex={-1}
+    >
+      <div className="mx-auto max-w-6xl">{children}</div>
     </section>
   );
 }
 
-function readGuestSpreadDraft(): GuestSpreadDraft | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(GUEST_SPREAD_DRAFT_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as GuestSpreadDraft;
-    if (!parsed?.step || parsed.step === "idle" || parsed.step === "done") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-export default function GuestTripletDraw({ className = "" }: GuestTripletDrawProps) {
+export default function GuestTripletDraw({
+  className = "",
+  startRequest = null,
+}: GuestTripletDrawProps) {
   const masterId = GUEST_TRIPLET_MASTER_ID;
   const system = resolveMasterDeckSystem(masterId);
-  const positions = getDeckPositions(system);
+  const positions = getDeckPositionsForUi(system);
   const tableSize = resolveTableSize(system, true);
   const [step, setStep] = useState<GuestStep>("idle");
   const [sessionSeed, setSessionSeed] = useState("");
@@ -114,13 +113,22 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
   const [pickedIndices, setPickedIndices] = useState<number[]>([]);
   const [revealed, setRevealed] = useState<boolean[]>([false, false, false]);
   const [ageConfirming, setAgeConfirming] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [ageGateError, setAgeGateError] = useState("");
   const [landingQuestion, setLandingQuestion] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [oauthAgeConfirmed, setOauthAgeConfirmed] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const handledStartRequestId = useRef<number | null>(null);
+  const teaserViewTracked = useRef(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [teaserText, setTeaserText] = useState("");
+  const [teaserLoading, setTeaserLoading] = useState(false);
+  const [teaserPaused, setTeaserPaused] = useState(false);
+  const receiptReadyAtRef = useRef<number | null>(null);
+  const teaserFetchedRef = useRef(false);
+  const teaserBlockRef = useRef<HTMLDivElement | null>(null);
 
   const oauthReturnTo = useMemo(
     () =>
@@ -137,10 +145,111 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     [masterId]
   );
 
-  const previewText = useMemo(() => {
+  const keywordFallback = useMemo(() => {
     if (deck.length < CARD_COUNT) return "";
-    return buildGuestTripletPreview(deck, positions);
-  }, [deck, positions]);
+    return buildGuestNarrativeFallback(
+      landingQuestion,
+      deck.map((c) => ({ name: c.name, meaning: c.meaning }))
+    );
+  }, [deck, landingQuestion]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (step === "idle") {
+      delete document.documentElement.dataset.guestSpreadActive;
+    } else {
+      document.documentElement.dataset.guestSpreadActive = "1";
+    }
+    return () => {
+      delete document.documentElement.dataset.guestSpreadActive;
+    };
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== "done") {
+      teaserFetchedRef.current = false;
+      setTeaserText("");
+      setTeaserLoading(false);
+      return;
+    }
+
+    // Reserve teaser slot immediately — never flash keyword meanings while waiting.
+    setTeaserLoading(true);
+    setTeaserText("");
+
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const run = async () => {
+      const readyAt = receiptReadyAtRef.current ?? Date.now();
+      const wait = Math.max(0, TEASER_FETCH_MIN_DELAY_MS - (Date.now() - readyAt));
+      await new Promise<void>((resolve) => {
+        timer = window.setTimeout(() => resolve(), wait);
+      });
+      if (cancelled || teaserFetchedRef.current) return;
+      teaserFetchedRef.current = true;
+      try {
+        const res = await fetch("/api/guest-triplet/teaser", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!res.ok) {
+          if (!cancelled) setTeaserText(keywordFallback);
+          return;
+        }
+        const data = (await res.json()) as {
+          text?: string;
+          isFallback?: boolean;
+        };
+        if (cancelled) return;
+        const text = typeof data.text === "string" ? data.text.trim() : "";
+        setTeaserText(text || keywordFallback);
+      } catch {
+        if (!cancelled) setTeaserText(keywordFallback);
+      } finally {
+        if (!cancelled) setTeaserLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [step, keywordFallback]);
+
+  useEffect(() => {
+    if (step !== "done") return;
+
+    const onVisibility = () => {
+      setTeaserPaused(document.visibilityState === "hidden");
+    };
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const node = teaserBlockRef.current;
+    let io: IntersectionObserver | null = null;
+    if (node && typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (!entry) return;
+          setTeaserPaused((prev) => {
+            const hiddenPage = document.visibilityState === "hidden";
+            return hiddenPage || !entry.isIntersecting;
+          });
+        },
+        { threshold: 0.15 }
+      );
+      io.observe(node);
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      io?.disconnect();
+    };
+  }, [step]);
 
   useEffect(() => {
     if (typeof window === "undefined" || draftRestored) return;
@@ -149,17 +258,9 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     setAgeConfirmed(isAgeGateConfirmed());
     setOauthAgeConfirmed(isAgeGateConfirmed());
 
-    const draft = readGuestSpreadDraft();
-    if (draft && draft.masterId === GUEST_TRIPLET_MASTER_ID) {
-      setStep(draft.step);
-      setSessionSeed(draft.sessionSeed);
-      setPickedIndices(draft.pickedIndices);
-      setDeck(draft.deck);
-      setRevealed(draft.revealed);
-      setLandingQuestion(draft.landingQuestion);
-    } else if (draft) {
-      sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
-    }
+    // Never auto-restore an in-progress guest draw or pending-auth teaser on homepage
+    // load — a stuck draft previously hijacked the whole landing.
+    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     setDraftRestored(true);
   }, [draftRestored]);
 
@@ -177,13 +278,35 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     sessionStorage.setItem(GUEST_SPREAD_DRAFT_KEY, JSON.stringify(draft));
   }, [step, masterId, sessionSeed, pickedIndices, deck, revealed, landingQuestion]);
 
+  useEffect(() => {
+    if (step !== "done" || teaserViewTracked.current) return;
+    teaserViewTracked.current = true;
+    trackGuestTeaserView();
+    trackRegistrationGateView("guest_triplet_done");
+    trackGuestAuth("guest_triplet_done");
+  }, [step]);
+
   const resetSpreadState = useCallback(() => {
     setSessionSeed("");
     setPickedIndices([]);
     setDeck([]);
     setRevealed([false, false, false]);
+    setCompleting(false);
+    setAgeGateError("");
+    setTeaserText("");
+    setTeaserLoading(false);
+    receiptReadyAtRef.current = null;
+    teaserFetchedRef.current = false;
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   }, []);
+
+  const exitToLanding = useCallback(() => {
+    // UI only — receipt / guest resume UI cache stays for post-auth claim.
+    resetSpreadState();
+    setStep("idle");
+    teaserViewTracked.current = false;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [resetSpreadState]);
 
   const resetPickProgress = useCallback(() => {
     setPickedIndices([]);
@@ -203,15 +326,20 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
     return seed;
   }, [masterId, sessionSeed]);
 
-  useEffect(() => {
-    const onStart = (event: Event) => {
-      const detail = (event as CustomEvent<GuestSpreadStartDetail>).detail;
-      const nextQuestion = detail?.question?.trim();
+  const openCardPicker = useCallback(() => {
+    ensureSessionSeed();
+    resetPickProgress();
+    setStep("pick");
+  }, [ensureSessionSeed, resetPickProgress]);
+
+  const beginGuestSpread = useCallback(
+    (question?: string) => {
       resetSpreadState();
+      teaserViewTracked.current = false;
       setAgeGateError("");
-      if (nextQuestion) {
-        sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
-        setLandingQuestion(nextQuestion);
+      if (question) {
+        sessionStorage.setItem(LANDING_QUESTION_KEY, question);
+        setLandingQuestion(question);
       }
       const seed = buildGuestSpreadSeed({
         guestId: getGuestId(),
@@ -221,49 +349,87 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       });
       setSessionSeed(seed);
       trackGuestSpreadStarted();
-      setStep("intro");
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          document.getElementById(GUEST_SPREAD_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-      });
+      openCardPicker();
+    },
+    [resetSpreadState, openCardPicker]
+  );
+
+  const confirmAgeAndStart = useCallback(async () => {
+    setAgeConfirming(true);
+    setAgeGateError("");
+    const ok = await confirmAgeGateOnServer();
+    setAgeConfirming(false);
+    if (!ok) {
+      setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
+      return;
+    }
+    setAgeConfirmed(true);
+    setOauthAgeConfirmed(true);
+    const pendingQuestion =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem(LANDING_QUESTION_KEY) || landingQuestion
+        : landingQuestion;
+    beginGuestSpread(pendingQuestion || undefined);
+  }, [beginGuestSpread, landingQuestion]);
+
+  const handleStartRequest = useCallback(
+    (detail?: GuestSpreadStartDetail) => {
+      const nextQuestion = detail?.question?.trim();
+      if (nextQuestion) {
+        sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
+        setLandingQuestion(nextQuestion);
+      }
+      if (isAgeGateConfirmed()) {
+        setAgeConfirmed(true);
+        setOauthAgeConfirmed(true);
+        beginGuestSpread(nextQuestion);
+        return;
+      }
+      setAgeGateError("");
+      setStep("age");
+    },
+    [beginGuestSpread]
+  );
+
+  useEffect(() => {
+    const onStart = (event: Event) => {
+      handleStartRequest((event as CustomEvent<GuestSpreadStartDetail>).detail);
     };
     window.addEventListener(GUEST_SPREAD_START_EVENT, onStart);
     return () => window.removeEventListener(GUEST_SPREAD_START_EVENT, onStart);
-  }, [resetSpreadState]);
+  }, [handleStartRequest]);
 
   useEffect(() => {
-    if (step !== "intro" || sessionSeed) return;
-    setSessionSeed(
-      buildGuestSpreadSeed({
-        guestId: getGuestId(),
-        masterId,
-        spreadId: "triplet",
-        topic: "guest_preview",
-      })
-    );
-  }, [step, sessionSeed, masterId]);
+    if (!startRequest) return;
+    if (handledStartRequestId.current === startRequest.id) return;
+    handledStartRequestId.current = startRequest.id;
+    handleStartRequest(startRequest.detail);
+  }, [startRequest, handleStartRequest]);
 
-  const beginPick = useCallback(() => {
-    ensureSessionSeed();
-    resetPickProgress();
-    setStep("pick");
-  }, [ensureSessionSeed, resetPickProgress]);
+  useEffect(() => {
+    const onReset = () => exitToLanding();
+    window.addEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
+    return () => window.removeEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
+  }, [exitToLanding]);
 
-  const handleIntroContinue = async () => {
-    setAgeGateError("");
-    if (!ageConfirmed) {
-      setAgeConfirming(true);
-      const ok = await confirmAgeGateOnServer();
-      setAgeConfirming(false);
-      if (!ok) {
-        setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
-        return;
-      }
-      setAgeConfirmed(true);
-    }
-    beginPick();
-  };
+  useEffect(() => {
+    if (step === "idle") return;
+    const frame = window.requestAnimationFrame(() => {
+      const picker = document.getElementById(GUEST_SPREAD_PICKER_ID);
+      picker?.scrollIntoView({ behavior: "smooth", block: "start" });
+      picker?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [step]);
+
+  useEffect(() => {
+    if (step === "idle") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitToLanding();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, exitToLanding]);
 
   const resolveGuestPicks = useCallback(
     (indices: number[], seed: string) => {
@@ -273,15 +439,17 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
       if (cards.length < CARD_COUNT) return;
       setDeck(cards);
       setStep("flip");
-      window.requestAnimationFrame(() => {
-        document.getElementById("guest-spread-flip")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
     },
     [system, tableSize]
   );
 
   const handleTablePick = useCallback(
     (index: number) => {
+      if (ageConfirming) return;
+      if (!ageConfirmed && !isAgeGateConfirmed()) {
+        setStep("age");
+        return;
+      }
       if (pickedIndices.includes(index)) return;
       const next = [...pickedIndices, index];
       setPickedIndices(next);
@@ -290,7 +458,7 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
         resolveGuestPicks(next, seed);
       }
     },
-    [pickedIndices, resolveGuestPicks, ensureSessionSeed]
+    [pickedIndices, resolveGuestPicks, ensureSessionSeed, ageConfirming, ageConfirmed]
   );
 
   const handleFlip = (index: number) => {
@@ -305,102 +473,143 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
 
   const allRevealed = revealed.every(Boolean);
 
-  const goToRegistration = useCallback(() => {
-    trackRegistrationCtaClick("guest_triplet_register");
+  const goToEmailRegistration = useCallback(() => {
+    trackRegistrationStarted("guest_triplet_email");
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     window.location.assign(
-      buildRegisterHref(
-        resolveRegistrationReturnTo({
-          guestSpread: true,
-          guestMasterId: masterId,
-          guestQuestion: landingQuestion || undefined,
-        }),
-        "/",
-        { method: "email" }
-      )
+      buildRegisterHref(oauthReturnTo, "/", { method: "email" })
     );
-  }, [masterId, landingQuestion]);
+  }, [oauthReturnTo]);
 
   const handleFinish = () => {
-    if (deck.length < CARD_COUNT || !allRevealed) return;
+    if (deck.length < CARD_COUNT || !allRevealed || completing) return;
     const teaser = buildGuestTripletTeaser(deck);
-    saveGuestTriplet({
-      tarotCards: deck,
-      deckSystem: system,
-      teaser,
-      completedAt: new Date().toISOString(),
-      question: landingQuestion || undefined,
-      masterId,
-    });
-    trackGuestSpreadCompleted();
-    trackRegistrationGateView("guest_triplet_done");
-    setStep("done");
-    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
-    window.requestAnimationFrame(() => {
-      document.getElementById("guest-spread")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    const symbols = deck.map((card, index) => ({
+      id: card.id,
+      name: card.name,
+      position: index,
+      reversed: Boolean(card.reversed),
+    }));
+
+    setCompleting(true);
+    setAgeGateError("");
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/guest-triplet/complete", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            masterId,
+            system,
+            spreadId: GUEST_RESUME_SPREAD_ID,
+            question: landingQuestion || "",
+            cards: symbols,
+          }),
+        });
+        if (!res.ok) {
+          setAgeGateError(
+            res.status === 403
+              ? "Подтвердите возраст 18+, чтобы сохранить расклад."
+              : "Не удалось сохранить расклад. Попробуйте ещё раз."
+          );
+          setCompleting(false);
+          return;
+        }
+      } catch {
+        setAgeGateError("Не удалось сохранить расклад. Проверьте соединение и попробуйте ещё раз.");
+        setCompleting(false);
+        return;
+      }
+
+      saveGuestTriplet({
+        tarotCards: deck,
+        deckSystem: system,
+        teaser,
+        completedAt: new Date().toISOString(),
+        question: landingQuestion || undefined,
+        masterId,
+      });
+      saveGuestResumeUiCache({
+        version: 1,
+        origin: "guest",
+        masterId,
+        system,
+        spreadId: GUEST_RESUME_SPREAD_ID,
+        question: landingQuestion || "",
+        teaser,
+        cards: symbols,
+        completedAt: new Date().toISOString(),
+        phase: "receipt_pending_auth",
+      });
+      trackGuestSpreadCompleted();
+      sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+      receiptReadyAtRef.current = Date.now();
+      teaserFetchedRef.current = false;
+      setTeaserText("");
+      setCompleting(false);
+      setStep("done");
+    })();
   };
 
-  const sharePayload = useMemo(() => {
-    if (step !== "done" || deck.length < CARD_COUNT) return null;
-    return tripletToSharePayload({
-      userName: "Гость",
-      cards: deck,
-      deckSystem: system,
-      teaser: buildGuestTripletTeaser(deck),
-    });
-  }, [step, deck, system]);
-
-  const pickedMasterName = getCharacterById(masterId)?.name;
+  const backToLandingButton = (
+    <button
+      type="button"
+      onClick={exitToLanding}
+      className="mb-4 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-aura-gold/25 hover:text-white"
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden />
+      На главную
+    </button>
+  );
 
   if (step === "idle") {
     return null;
   }
 
-  if (step === "intro") {
+  if (step === "age") {
     return (
       <GuestSpreadSection>
-      <div className={`mx-auto max-w-md px-4 ${className}`.trim()}>
-        <div className="glass-panel space-y-5 p-8 text-center">
-          <p className="lux-label">Бесплатный расклад · 3 карты · классическое Таро</p>
-          <p className="text-sm text-aura-champagne/85">
-            Мастер {pickedMasterName ?? "Вероника"} проведёт ваш бесплатный расклад — откройте три карты,
-            затем зарегистрируйтесь для полной расшифровки.
-          </p>
-          {landingQuestion ? (
-            <p className="text-sm text-aura-champagne/80">Ваш вопрос: «{landingQuestion}»</p>
-          ) : null}
-          <h2 className="font-display text-xl font-semibold text-[#EDE6DA]">{ritualCopy.title}</h2>
-          <p className="text-sm leading-relaxed text-aura-ivory/75">{ritualCopy.body}</p>
-          <p className="text-xs uppercase tracking-widest text-aura-gold/80">{ritualCopy.personalNote}</p>
-          {!ageConfirmed ? (
-            <p className="text-sm leading-relaxed text-aura-ivory/65">
-              Бесплатный расклад доступен пользователям от 18 лет. Сервис носит развлекательно-ознакомительный
-              характер.
+        <div className={`mx-auto max-w-md px-4 py-10 ${className}`.trim()}>
+          {backToLandingButton}
+          <div className="glass-panel space-y-5 p-8 text-center">
+            <p className="lux-label">Подтверждение возраста</p>
+            <h2 className="font-display text-2xl text-white">Сервис только для взрослых 18+</h2>
+            <p className="text-sm leading-relaxed text-aura-ivory/70">
+              Расклады и диалог с наставником — развлекательно-ознакомительный сервис. Подтвердите,
+              что вам исполнилось 18 лет.
             </p>
-          ) : null}
-          {ageGateError ? <p className="text-sm text-red-400">{ageGateError}</p> : null}
-          <button
-            type="button"
-            onClick={() => void handleIntroContinue()}
-            disabled={ageConfirming}
-            className="btn-primary w-full px-8 py-3.5 disabled:opacity-50"
-          >
-            {ageConfirming
-              ? "Подтверждаем…"
-              : ageConfirmed
-                ? "К столу карт"
-                : "Мне есть 18 лет — к столу карт"}
-          </button>
+            {ageGateError ? (
+              <p className="text-sm text-red-300/90" role="alert">
+                {ageGateError}
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                disabled={ageConfirming}
+                onClick={() => void confirmAgeAndStart()}
+                className="btn-luxe btn-luxe--md btn-luxe--gold disabled:opacity-60"
+              >
+                {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — открыть карты"}
+              </button>
+              <button
+                type="button"
+                onClick={exitToLanding}
+                className="btn-luxe btn-luxe--sm btn-luxe--ghost"
+              >
+                Вернуться
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
       </GuestSpreadSection>
     );
   }
 
   if (step === "pick") {
     return (
-      <GuestSpreadSection>
       <MagicalSpreadTable
         tableSize={tableSize}
         cardCount={CARD_COUNT}
@@ -408,147 +617,225 @@ export default function GuestTripletDraw({ className = "" }: GuestTripletDrawPro
         masterId={masterId}
         pickedIndices={pickedIndices}
         onPick={handleTablePick}
-        pickHint={ritualCopy.pickHint}
+        pickHint={ageGateError || ritualCopy.pickHint}
         personalNote={ritualCopy.personalNote}
         title="Выберите три карты"
         standalone
-        onBack={() => {
-          setPickedIndices([]);
-          setStep("intro");
-        }}
+        underSiteHeader
+        backLabel="На главную"
+        onBack={exitToLanding}
+        disabled={ageConfirming}
       />
-      </GuestSpreadSection>
     );
   }
 
   if (step === "done") {
     return (
       <GuestSpreadSection>
-      <motion.div
-        className={`glass-panel mx-auto max-w-lg space-y-5 p-8 ${className}`.trim()}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
-      >
-        <p className="text-center text-sm font-medium text-aura-champagne/85">Краткий ориентир по вашему раскладу</p>
-        <div className="guest-spread-preview rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm leading-relaxed text-aura-ivory/80 whitespace-pre-line">
-          {previewText}
-        </div>
-        <p className="text-center text-sm leading-relaxed text-aura-ivory/65">
-          Зарегистрируйтесь — мастер даст полную связную расшифровку, и вы сможете задать первые вопросы
-          бесплатно.
-        </p>
-
-        <div id="guest-oauth-consent" className="rounded-xl border border-white/8 bg-black/20 p-4">
-          <OAuthConsentFields
-            acceptedTerms={acceptedTerms}
-            ageConfirmed={oauthAgeConfirmed}
-            marketingConsent={marketingConsent}
-            onAcceptedTermsChange={setAcceptedTerms}
-            onAgeConfirmedChange={setOauthAgeConfirmed}
-            onMarketingConsentChange={setMarketingConsent}
-            termsId="guest-oauth-terms"
-            ageId="guest-oauth-age"
-          />
-        </div>
-
-        <SocialAuthButtons
-          mode="register"
-          returnTo={oauthReturnTo}
-          requireConsent
-          acceptedTerms={acceptedTerms}
-          ageConfirmed={oauthAgeConfirmed}
-          marketingConsent={marketingConsent}
-          consentScrollTargetId="guest-oauth-consent"
-          showEmailDivider
-          emailDividerLabel="или email"
-        />
-
-        <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={goToRegistration}
-            className="btn-luxe btn-luxe--md btn-luxe--ghost inline-block px-10 py-3.5 text-center"
+        <div className={`mx-auto max-w-lg px-4 pb-12 ${className}`.trim()}>
+          {backToLandingButton}
+          <motion.div
+            className="glass-panel space-y-5 p-6 sm:p-8"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45 }}
           >
-            Регистрация по email
-          </button>
-          {sharePayload ? (
-            <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />
-          ) : null}
+            <p className="text-center text-sm font-medium text-aura-champagne/85">
+              Краткий ориентир по вашему раскладу
+            </p>
+
+            {landingQuestion ? (
+              <p className="rounded-xl border border-white/8 bg-black/20 px-4 py-3 text-center text-sm text-aura-ivory/80">
+                <span className="block text-[11px] uppercase tracking-wide text-aura-ivory/45">
+                  Ваш вопрос
+                </span>
+                <span className="mt-1 block font-medium text-white">{landingQuestion}</span>
+              </p>
+            ) : null}
+
+            <div className="flex flex-wrap items-end justify-center gap-4 sm:gap-5">
+              {positions.map((pos, i) => (
+                <div key={pos} className="flex max-w-[120px] flex-col items-center gap-2">
+                  <p className="lux-label text-center text-[10px]">{pos}</p>
+                  <div className="h-[180px] w-[112px] sm:h-[196px] sm:w-[120px]">
+                    <DeckCard
+                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
+                      system={system}
+                      reversed={deck[i]?.reversed}
+                      showMeaning={false}
+                      size="md"
+                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              ref={teaserBlockRef}
+              className="guest-spread-teaser rounded-xl border border-aura-gold/20 bg-black/25 p-4 text-left text-sm leading-relaxed text-aura-ivory/85"
+              aria-live="polite"
+            >
+              {teaserLoading || !teaserText ? (
+                <div
+                  className={`guest-spread-teaser__skeleton${
+                    teaserPaused ? " guest-spread-teaser__skeleton--paused" : ""
+                  }`}
+                  aria-hidden
+                >
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : (
+                <p className="guest-spread-teaser__text whitespace-pre-wrap">{teaserText}</p>
+              )}
+            </div>
+
+            <p className="text-center text-sm leading-relaxed text-aura-ivory/70">
+              После входа мастер разберёт{" "}
+              <span className="text-aura-champagne/90">этот же расклад</span>
+              {landingQuestion ? " по вашему вопросу" : ""} — что с этим делать и ответы в чате.
+              Пересчёта не будет.
+            </p>
+
+            <p className="text-center text-xs text-aura-ivory/50">
+              Карты зафиксированы — пересчёта не будет · 18+
+            </p>
+
+            <div
+              id={GUEST_TEASER_AUTH_ID}
+              className="guest-teaser-auth scroll-mt-28 space-y-4 rounded-xl border border-white/8 bg-black/20 p-4"
+            >
+              <div>
+                <h3 className="font-display text-lg text-white">Получить полный разбор</h3>
+                <p className="mt-1 text-sm text-aura-ivory/65">
+                  Войдите — откроется расшифровка именно этих трёх карт, а не новый расклад.
+                </p>
+              </div>
+
+              <div id="guest-oauth-consent">
+                <OAuthConsentFields
+                  acceptedTerms={acceptedTerms}
+                  ageConfirmed={oauthAgeConfirmed}
+                  marketingConsent={marketingConsent}
+                  onAcceptedTermsChange={setAcceptedTerms}
+                  onAgeConfirmedChange={setOauthAgeConfirmed}
+                  onMarketingConsentChange={setMarketingConsent}
+                  showDisclaimer
+                  termsId="guest-oauth-terms"
+                  ageId="guest-oauth-age"
+                />
+              </div>
+
+              <SocialAuthButtons
+                mode="register"
+                returnTo={oauthReturnTo}
+                requireConsent
+                acceptedTerms={acceptedTerms}
+                ageConfirmed={oauthAgeConfirmed}
+                marketingConsent={marketingConsent}
+                consentScrollTargetId="guest-oauth-consent"
+                showEmailDivider
+                emailDividerLabel="или email"
+              />
+
+              <button
+                type="button"
+                onClick={() => {
+                  trackGuestTeaserCta();
+                  goToEmailRegistration();
+                }}
+                className="btn-luxe btn-luxe--md btn-luxe--ghost w-full"
+              >
+                Регистрация по email
+              </button>
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
       </GuestSpreadSection>
     );
   }
 
   return (
     <GuestSpreadSection>
-    <div className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
-      <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
-      <p className="mb-2 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
-      <p className="mb-8 text-center text-sm font-medium text-aura-champagne/80">
-        {allRevealed ? "Расклад открыт — сохраните результат" : "Нажмите на каждую карту, чтобы открыть"}
-      </p>
+      <div className={`mx-auto mb-12 max-w-3xl px-4 ${className}`.trim()}>
+        {backToLandingButton}
+        <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
+        <p className="mb-2 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
+        <p className="mb-8 text-center text-sm font-medium text-aura-champagne/80">
+          {allRevealed ? "Расклад открыт — сохраните результат" : "Нажмите на каждую карту, чтобы открыть"}
+        </p>
 
-      <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
-        {positions.map((pos, i) => (
-          <div key={pos} className="flex max-w-[148px] flex-col items-center gap-2">
-            <p className="lux-label text-center">{pos}</p>
-            <button
-              type="button"
-              onClick={() => handleFlip(i)}
-              disabled={revealed[i] || !deck[i]?.name}
-              className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
-              aria-label={revealed[i] ? deck[i]?.name ?? pos : `Открыть ${pos}`}
-            >
-              <motion.div
-                className="relative h-full w-full preserve-3d"
-                animate={{ rotateY: revealed[i] ? 180 : 0 }}
-                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        {landingQuestion ? (
+          <p className="mb-6 text-center text-sm text-aura-ivory/70">
+            Вопрос: <span className="text-white">{landingQuestion}</span>
+          </p>
+        ) : null}
+
+        <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
+          {positions.map((pos, i) => (
+            <div key={pos} className="flex max-w-[148px] flex-col items-center gap-2">
+              <p className="lux-label text-center">{pos}</p>
+              <button
+                type="button"
+                onClick={() => handleFlip(i)}
+                disabled={revealed[i] || !deck[i]?.name}
+                className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
+                aria-label={revealed[i] ? deck[i]?.name ?? pos : `Открыть ${pos}`}
               >
-                <div className="absolute inset-0 backface-hidden">
-                  <DeckCard
-                    card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
-                    system={system}
-                    faceDown
-                    showMeaning={false}
-                    size="md"
-                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                  />
-                </div>
-                <div className="absolute inset-0 backface-hidden rotate-y-180">
-                  <DeckCard
-                    card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
-                    system={system}
-                    showMeaning={false}
-                    size="md"
-                    className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                  />
-                </div>
-              </motion.div>
-            </button>
-            {revealed[i] && deck[i]?.meaning ? (
-              <p className="guest-spread-card-meaning text-center text-[10px] leading-snug text-aura-ivory/55">
-                {deck[i].meaning}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
+                <motion.div
+                  className="relative h-full w-full preserve-3d"
+                  animate={{ rotateY: revealed[i] ? 180 : 0 }}
+                  transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <div className="absolute inset-0 backface-hidden">
+                    <DeckCard
+                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
+                      system={system}
+                      faceDown
+                      showMeaning={false}
+                      size="md"
+                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                    />
+                  </div>
+                  <div className="absolute inset-0 backface-hidden rotate-y-180">
+                    <DeckCard
+                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
+                      system={system}
+                      reversed={deck[i]?.reversed}
+                      showMeaning={false}
+                      size="md"
+                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                    />
+                  </div>
+                </motion.div>
+              </button>
+            </div>
+          ))}
+        </div>
 
-      <div className="text-center">
-        <button
-          type="button"
-          onClick={handleFinish}
-          disabled={!allRevealed}
-          className="btn-primary px-10 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          {allRevealed
-            ? "Сохранить расклад и продолжить"
-            : `Откройте все карты (${revealed.filter(Boolean).length}/${CARD_COUNT})`}
-        </button>
+        {ageGateError ? (
+          <p className="mb-4 text-center text-sm text-red-300/90" role="alert">
+            {ageGateError}
+          </p>
+        ) : null}
+
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={handleFinish}
+            disabled={!allRevealed || completing}
+            className="btn-primary px-10 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {completing
+              ? "Сохраняем…"
+              : allRevealed
+                ? "Сохранить расклад и продолжить"
+                : `Откройте все карты (${revealed.filter(Boolean).length}/${CARD_COUNT})`}
+          </button>
+        </div>
       </div>
-    </div>
     </GuestSpreadSection>
   );
 }

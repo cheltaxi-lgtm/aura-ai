@@ -38,22 +38,26 @@ sudo bash rollback-foxdpi-peer.sh 4StafijHZOL6smIjCSnBPHOYAMxv3lNGpR1d0KORZ38=
 
 (уже выполнено при откате awg-эксперимента)
 
-## Установка (Latvia proxy — основной путь)
+## Установка (Sweden proxy — основной путь)
 
-На **Latvia VPS** (`45.156.20.127`, Beget `intrepid-margarita-2`):
+На **Sweden VPS** (`91.184.240.82`, Aeza / foxdpi `vps2-1`):
 
 ```bash
-sudo bash install-lv-proxy.sh
+sudo bash install-se-proxy.sh
 ```
 
 На **Zovus VPS** в `/opt/aura-ai/.env.local`:
 
 ```bash
-OPENROUTER_HTTPS_PROXY=http://45.156.20.127:3128
+OPENROUTER_HTTPS_PROXY=http://91.184.240.82:3128
 ```
 
-Приложение ходит в OpenRouter через Latvia proxy (`src/lib/openrouter-fetch.ts`).  
-При ошибке proxy — fallback на **wg-foxdpi** (split-route, дом).
+Или одной командой на Zovus: `sudo bash deploy-openrouter-se.sh`.
+
+Приложение ходит в OpenRouter через Sweden proxy (`src/lib/openrouter-fetch.ts`).  
+При ошибке proxy — fallback на direct IPv4 (и/или wg-foxdpi, если настроен).
+
+Скрипты Latvia (`deploy-openrouter-lv.sh` / `install-lv-proxy.sh`) удалены — ДЦ Рига выводится из эксплуатации.
 
 ## Установка wg0 (fallback / дом)
 

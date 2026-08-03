@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MasterShowcaseCard from "@/components/MasterShowcaseCard";
 import MasterListRow from "@/components/MasterListRow";
 import MasterServiceDisclaimer from "@/components/MasterServiceDisclaimer";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { MASTER_SECTION_SUBTITLE } from "@/lib/master-disclosure";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 
@@ -32,8 +32,11 @@ interface MastersShowcaseProps {
   showExpertCta?: boolean;
   showDisclaimer?: boolean;
   layout?: ShowcaseLayout;
+  rowVariant?: "default" | "editorial";
   className?: string;
   onBrowseDeck?: (master: ShowcaseMaster) => void;
+  /** Guest landing: hide prices/badges, warm cards, sixth “all masters” tile. */
+  guestLanding?: boolean;
 }
 
 export default function MastersShowcase({
@@ -56,9 +59,12 @@ export default function MastersShowcase({
   showExpertCta = false,
   showDisclaimer = true,
   layout = "grid",
+  rowVariant = "default",
   className = "",
+  guestLanding = false,
 }: MastersShowcaseProps) {
   const continueSet = useMemo(() => new Set(continueMasterIds), [continueMasterIds]);
+  const { ref: revealRef, className: revealClass } = useScrollReveal<HTMLElement>();
 
   const listBody = masters.map((master, index) => {
     const canContinue = continueSet.has(master.id);
@@ -105,6 +111,7 @@ export default function MastersShowcase({
           onBrowseDeck={onBrowseDeck}
           onSelect={handleSelect}
           actionBlocked={actionBlocked}
+          variant={rowVariant}
         />
       );
     }
@@ -125,25 +132,28 @@ export default function MastersShowcase({
         onBrowseDeck={onBrowseDeck}
         onSelect={handleSelect}
         actionBlocked={actionBlocked}
+        guestLanding={guestLanding}
       />
     );
   });
 
   if (layout === "list") {
-    return (
-      <section id="наставники" className={`master-showcase-section scroll-mt-24 ${className}`.trim()}>
+    const inner = (
+      <>
         {(title || subtitle) && (
-          <div className="master-showcase-section__head mb-4">
+          <div className="master-showcase-section__head mb-6">
             {title ? <h2 className="font-display master-showcase-section__title">{title}</h2> : null}
             {subtitle ? <p className="master-showcase-section__subtitle">{subtitle}</p> : null}
           </div>
         )}
 
-        <div className="master-picker-panel glass-panel mx-auto max-w-xl">
-          <ul className="master-list">{listBody}</ul>
+        <div className={`master-picker-panel ${rowVariant === "editorial" ? "" : "glass-panel mx-auto max-w-xl"}`}>
+          <ul className={`master-list ${rowVariant === "editorial" ? "editorial-master-list" : ""}`}>{listBody}</ul>
 
           {showDisclaimer ? (
-            <MasterServiceDisclaimer className="master-picker-panel__footer px-4 pb-4" />
+            <MasterServiceDisclaimer
+              className={rowVariant === "editorial" ? "mt-6 text-center" : "master-picker-panel__footer px-4 pb-4"}
+            />
           ) : null}
 
           {showExpertCta ? (
@@ -155,14 +165,31 @@ export default function MastersShowcase({
             </p>
           ) : null}
         </div>
+      </>
+    );
+
+    return (
+      <section
+        ref={revealRef}
+        id="наставники"
+        className={`master-showcase-section scroll-mt-24 ${revealClass} ${className}`.trim()}
+      >
+        {rowVariant === "editorial" ? <div className="editorial-landing__inner">{inner}</div> : inner}
       </section>
     );
   }
 
   return (
-    <section id="наставники" className={`master-showcase-section scroll-mt-24 ${className}`.trim()}>
+    <section
+      ref={revealRef}
+      id="наставники"
+      className={`master-showcase-section scroll-mt-24 ${revealClass} salon-reveal--stagger ${className}`.trim()}
+    >
       <div className="mx-auto w-full max-w-[1120px] px-4 sm:px-6">
-        <div className="master-showcase-section__head">
+        <div
+          className="master-showcase-section__head salon-reveal__item"
+          style={{ ["--salon-i" as string]: 0 }}
+        >
           <h2 className="font-display master-showcase-section__title">{title}</h2>
           <p className="master-showcase-section__subtitle">{subtitle}</p>
         </div>
@@ -171,29 +198,37 @@ export default function MastersShowcase({
           className="master-showcase-grid mx-auto grid w-full max-w-[390px] grid-cols-1 justify-items-center gap-7 px-1 sm:max-w-[760px] sm:grid-cols-2 sm:gap-7 lg:max-w-[1120px] lg:grid-cols-3 lg:gap-8 [&_.master-showcase-card]:w-full [&_.master-showcase-card]:max-w-[350px]"
         >
           {listBody}
+          {guestLanding ? (
+            <Link
+              href="/about/masters"
+              className="master-showcase-card master-showcase-card--gallery master-showcase-card--compact master-showcase-card--guest-landing master-showcase-card--all-masters group relative flex h-full w-full max-w-[350px] flex-col items-center justify-center gap-3 p-6 text-center no-underline salon-reveal__item"
+              style={{ ["--salon-i" as string]: masters.length + 2 }}
+            >
+              <span className="master-showcase-card__all-arrow" aria-hidden>
+                →
+              </span>
+              <span className="master-showcase-card__name">Все наставники</span>
+              <span className="master-showcase-card__system">Смотреть полный список</span>
+            </Link>
+          ) : null}
         </div>
 
         {showDisclaimer ? (
           <MasterServiceDisclaimer className="master-showcase-section__disclaimer mx-auto mt-6 max-w-3xl text-center" />
         ) : null}
 
-        {showExpertCta ? (
-          <motion.div
-            className="glass-panel master-showcase-section__expert-cta flex flex-col items-center justify-between gap-3 p-4 sm:flex-row"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-          >
+        {showExpertCta && !guestLanding ? (
+          <div className="glass-panel master-showcase-section__expert-cta flex flex-col items-center justify-between gap-3 p-4 sm:flex-row">
             <div>
               <p className="font-display text-lg font-semibold text-white">Вы — эзотерик или таролог?</p>
               <p className="mt-1 text-sm text-gray-500">
-                Регистрируйтесь как эксперт, подключайте свои материалы к ИИ-образу и получайте white-label страницу
+                Регистрируйтесь как эксперт, подключайте свои материалы к образу наставника и получайте свою витрину
               </p>
             </div>
             <Link href="/auth/expert/register" className="btn-neon shrink-0 px-6 py-3 text-sm">
               Стать мастером
             </Link>
-          </motion.div>
+          </div>
         ) : null}
       </div>
     </section>

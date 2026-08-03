@@ -4,22 +4,55 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
-import { performClientLogout } from "@/lib/client-logout";
+import { clearAuthPending } from "@/lib/auth-pending";
+import { clearClientAuthState } from "@/lib/client-logout";
+import { flushWebViewCookies } from "@/lib/webview-cookies";
+import {
+  homeUrlAfterAccountDeletion,
+  markAccountDeletedHome,
+} from "@/lib/account-deleted";
 
 interface Props {
   onDeleted?: () => void | Promise<void>;
 }
 
+/**
+ * After successful DELETE /api/user/delete:
+ * clear client state and hard-navigate to guest homepage.
+ * Must NOT dispatch AUTH_LOGOUT_EVENT / setState before navigation — cabinet's
+ * `!authUser` effect would otherwise router.replace → /auth/user/login.
+ */
+function leaveToHomeAfterAccountDeletion(): void {
+  const target = homeUrlAfterAccountDeletion();
+  markAccountDeletedHome();
+  clearAuthPending();
+  clearClientAuthState();
+  // Hard document navigation — do not use Next router / AUTH_LOGOUT_EVENT.
+  window.location.replace(target);
+  // Absolute fallback if replace is swallowed by the SPA.
+  window.setTimeout(() => {
+    if (
+      window.location.pathname.startsWith("/cabinet") ||
+      window.location.pathname.startsWith("/auth/")
+    ) {
+      window.location.href = target;
+    }
+  }, 250);
+}
+
 export default function CabinetDeleteAccount({ onDeleted }: Props) {
   const [open, setOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [confirmPhrase, setConfirmPhrase] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = acknowledged && !deleting;
+  const canSubmit =
+    acknowledged && confirmPhrase.trim() === "УДАЛИТЬ" && !deleting;
 
   const resetForm = useCallback(() => {
     setAcknowledged(false);
+    setConfirmPhrase("");
     setError(null);
   }, []);
 
@@ -52,6 +85,8 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
       const res = await fetch("/api/user/delete", {
         method: "DELETE",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmPhrase: confirmPhrase.trim() }),
       });
       const payload = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -66,13 +101,14 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
         );
       }
 
-      resetForm();
-      setOpen(false);
-      await onDeleted?.();
-      await performClientLogout({ redirectTo: "/", hardRedirect: true });
+      // Flag + hard-nav MUST run synchronously after success.
+      // Cookie is already cleared; any /me 401 can null authUser and cabinet
+      // would otherwise router.replace → login before we leave.
+      leaveToHomeAfterAccountDeletion();
+      void flushWebViewCookies().catch(() => undefined);
+      void Promise.resolve(onDeleted?.()).catch(() => undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка удаления");
-    } finally {
       setDeleting(false);
     }
   };
@@ -87,7 +123,7 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
           <div className="min-w-0">
             <p className="text-sm font-medium text-red-100/90">Удалить аккаунт целиком</p>
             <p className="mt-0.5 text-xs text-red-200/50">
-              Безвозвратно: профиль, руны, история и память ИИ
+              Безвозвратно: профиль, руны, история и персональная память
             </p>
           </div>
           <button
@@ -156,6 +192,21 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
                       className="mt-1 h-4 w-4 rounded border-red-400/50 bg-transparent"
                     />
                     <span>Я понимаю, что восстановить аккаунт и данные будет невозможно.</span>
+                  </label>
+
+                  <label className="block space-y-1.5 text-sm text-red-100/90">
+                    <span>
+                      Введите <span className="font-semibold tracking-wide">УДАЛИТЬ</span> для
+                      подтверждения
+                    </span>
+                    <input
+                      type="text"
+                      value={confirmPhrase}
+                      onChange={(e) => setConfirmPhrase(e.target.value)}
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-red-500/30 bg-black/30 px-3 py-2 text-sm text-red-50 outline-none focus:border-red-400/60"
+                      placeholder="УДАЛИТЬ"
+                    />
                   </label>
 
                   {error ? (

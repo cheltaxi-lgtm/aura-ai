@@ -11,7 +11,7 @@ export async function POST() {
   }
 
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "daily_bonus");

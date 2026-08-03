@@ -1,0 +1,122 @@
+competitors:
+  - name: Astro7
+    domain: astro7.ru
+    model: marketplace_psychics
+    positioning: Крупный маркетплейс астрологов и тарологов с платными консультациями
+    ai_disclosure: none_visible
+    free_entry: limited_teaser
+    brand_terms: [astro7, астро7, "астро 7"]
+
+  - name: Astrohelper
+    domain: astrohelper.ru
+    model: online_readings
+    positioning: Онлайн-гадания и астро-сервисы для массовой аудитории
+    ai_disclosure: none_visible
+    free_entry: yes_free_tools
+    brand_terms: [astrohelper, астрохелпер]
+
+  - name: Numerolog.ru
+    domain: numerolog.ru
+    model: numerology_tools
+    positioning: Нумерологические калькуляторы и платные разборы
+    ai_disclosure: none_visible
+    free_entry: yes_calculators
+    brand_terms: [numerolog.ru, "нумеролог.ру", "нумеролог ру"]
+
+  - name: Magiya
+    domain: magiya.com
+    model: esoteric_portal
+    positioning: Портал эзотерики с гаданиями и статьями
+    ai_disclosure: none_visible
+    free_entry: yes_free_divination
+    brand_terms: [magiya.com, "магия.ком"]
+
+  - name: Horo.mail
+    domain: horo.mail.ru
+    model: media_horoscope
+    positioning: Крупный медиа-раздел гороскопов Mail.ru
+    ai_disclosure: none_visible
+    free_entry: yes_content
+    brand_terms: [horo.mail, "гороскоп mail", хоромэйл]
+
+  - name: Syzygy
+    domain: syzygy.ru
+    model: astrology_product
+    positioning: Астрологический продукт с картами и консультациями
+    ai_disclosure: none_visible
+    free_entry: freemium
+    brand_terms: [syzygy, сизиджи]
+
+  - name: Nebo
+    domain: nebo.co
+    model: natal_app
+    positioning: Натальные карты и астро-приложение для широкой аудитории
+    ai_disclosure: none_visible
+    free_entry: freemium
+    brand_terms: [nebo, "nebo.co", небо]
+
+  - name: Spadilo
+    domain: spadilo.ru
+    model: tarot_online
+    positioning: Онлайн Таро и эзотерические сервисы
+    ai_disclosure: none_visible
+    free_entry: yes_free_entry
+    brand_terms: [spadilo, спадило]
+
+  - name: Tarotman
+    domain: tarotman.ru
+    model: tarot_school_service
+    positioning: Обучение и услуги вокруг Таро
+    ai_disclosure: none_visible
+    free_entry: content_teaser
+    brand_terms: [tarotman, таротман]
+
+  - name: Goroskop.ru
+    domain: goroskop.ru
+    model: media_horoscope
+    positioning: Массовый портал гороскопов и эзотерического контента
+    ai_disclosure: none_visible
+    free_entry: yes_content
+    brand_terms: [goroskop.ru, "гороскоп.ру"]
+
+  - name: 1001goroskop
+    domain: 1001goroskop.ru
+    model: media_horoscope
+    positioning: Гороскопы и прогнозы для широкой аудитории
+    ai_disclosure: none_visible
+    free_entry: yes_content
+    brand_terms: [1001goroskop, "1001 гороскоп"]
+
+  - name: Lunniy
+    domain: lunniy.ru
+    model: moon_calendar
+    positioning: Лунный календарь и связанные эзотерические материалы
+    ai_disclosure: none_visible
+    free_entry: yes_content
+    brand_terms: [lunniy.ru, лунный, "лунный.ру"]
+
+  - name: Indastro
+    domain: indastro.ru
+    model: vedic_astrology
+    positioning: Ведическая астрология и консультации
+    ai_disclosure: none_visible
+    free_entry: freemium
+    brand_terms: [indastro, индастро]
+
+  - name: Sunhome
+    domain: sunhome.ru
+    model: esoteric_community
+    positioning: Эзотерический портал со статьями и практиками
+    ai_disclosure: none_visible
+    free_entry: yes_content
+    brand_terms: [sunhome, санхоум, "sunhome.ru"]
+
+angles_allowed:
+  # Bid/creative north star: registration + rune purchase (not free-card traffic)
+  - спокойный вход в аккаунт и продолжение разбора без паники
+  - руны как платный инструмент практики с понятной ценностью
+  - цифровой наставник с памятью сессии после регистрации
+  - значение рун и схем простыми словами без обещания исхода
+  - нумерология и матрица как карта склонностей, не приговор
+  - честные ограничения интерпретации без гарантий событий
+  # Free teaser may appear as landing context only — never as the optimization KPI

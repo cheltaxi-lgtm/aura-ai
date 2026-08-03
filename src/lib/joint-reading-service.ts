@@ -3,6 +3,11 @@ import { query } from "@/lib/db";
 import { generateReading } from "@/lib/chat-prompts";
 import { dispatchNotification } from "@/lib/notify";
 import { normalizeSpreadId, type SpreadId } from "@/lib/spreads";
+import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
+import { buildPaidSpreadReadingExtras } from "@/lib/prompts/premium-reading";
+import { isTarotRuneMasterId } from "@/lib/prompts/tarot-rune-format";
+import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
+import { sanitizeReadingForClient } from "@/lib/chat-reply-sanitize";
 import {
   sendEmail,
   jointReadingCompletedEmailHtml,
@@ -14,6 +19,10 @@ import { isNatalChartEnabled } from "@/lib/settings";
 import { getOrComputeNatalChart } from "@/lib/services/natal-chart-service";
 import { computeSynastry } from "@/lib/natal/synastry";
 import { getNotificationPrefs } from "@/lib/daily-reminder-service";
+import {
+  captureJointCombinedMemory,
+  captureJointInviteMemory,
+} from "@/lib/memory/capture-helpers";
 
 export type JointReadingStatus = "pending_partner" | "partner_done" | "completed" | "expired";
 
@@ -52,7 +61,7 @@ export type JointSubmitResult =
   | { ok: false; error: string; row?: JointReadingRow };
 
 function generateToken(): string {
-  return randomBytes(8).toString("base64url").slice(0, 10);
+  return randomBytes(16).toString("base64url");
 }
 
 function mapRow(row: Record<string, unknown>): JointReadingRow {
@@ -181,6 +190,18 @@ export async function createJointReadingInvite(params: {
       partnerName: params.partnerName,
     });
     if (reconciled.row && !reconciled.createFresh) {
+      if (
+        reconciled.row.initiator_name?.trim() ||
+        reconciled.row.partner_name?.trim()
+      ) {
+        captureJointInviteMemory({
+          userId: reconciled.row.initiator_user_id,
+          jointId: reconciled.row.id,
+          initiatorName: reconciled.row.initiator_name,
+          partnerName: reconciled.row.partner_name,
+          intentSlug: reconciled.row.intent_slug,
+        });
+      }
       return reconciled.row;
     }
   }
@@ -207,7 +228,15 @@ export async function createJointReadingInvite(params: {
           params.runeCharged ?? false,
         ]
       );
-      return mapRow(res.rows[0] as Record<string, unknown>);
+      const created = mapRow(res.rows[0] as Record<string, unknown>);
+      captureJointInviteMemory({
+        userId: created.initiator_user_id,
+        jointId: created.id,
+        initiatorName: created.initiator_name,
+        partnerName: created.partner_name,
+        intentSlug: created.intent_slug,
+      });
+      return created;
     } catch (err) {
       const code = (err as { code?: string })?.code;
       if (code === "23505") continue;
@@ -404,6 +433,9 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
   try {
     const synastry = await resolveJointSynastry(row);
     const combined = await generateCombinedReading(row, synastry);
+    if (!combined?.trim()) {
+      throw new Error("joint_combined_empty");
+    }
     await query(
       `UPDATE joint_readings
        SET combined_reading = $2, synastry_data = $3::jsonb,
@@ -412,8 +444,23 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
        WHERE token = $1 AND combined_claim_token = $4`,
       [row.token, combined, synastry ? JSON.stringify(synastry) : null, claimToken]
     );
-    return (await getJointReadingByToken(row.token)) ?? { ...row, combined_reading: combined, status: "completed" };
+    const completed =
+      (await getJointReadingByToken(row.token)) ??
+      ({ ...row, combined_reading: combined, status: "completed" } as JointReadingRow);
+    if (completed.combined_reading?.trim()) {
+      captureJointCombinedMemory({
+        initiatorUserId: completed.initiator_user_id,
+        partnerUserId: completed.partner_user_id,
+        jointId: completed.id,
+        initiatorName: completed.initiator_name,
+        partnerName: completed.partner_name,
+        intentSlug: completed.intent_slug,
+        combinedReading: completed.combined_reading,
+      });
+    }
+    return completed;
   } catch (err) {
+    // Keep both side readings; do not persist concatenation stubs as combined success.
     await query(
       `UPDATE joint_readings SET combined_claim_token = NULL, combined_claim_at = NULL
        WHERE token = $1 AND combined_claim_token = $2`,
@@ -540,25 +587,49 @@ export async function submitJointReadingSide(params: {
   let updated = await getJointReadingByToken(params.token);
   if (!updated) return { ok: false, error: "Не удалось сохранить расклад." };
 
+  // Capture names when a side submits (invite may have been created without them).
+  if (updated.initiator_name?.trim() || updated.partner_name?.trim()) {
+    captureJointInviteMemory({
+      userId: isInitiator ? updated.initiator_user_id : params.userId,
+      jointId: updated.id,
+      initiatorName: updated.initiator_name,
+      partnerName: updated.partner_name,
+      intentSlug: updated.intent_slug,
+    });
+  }
+
   if (
     updated.initiator_reading?.trim() &&
     updated.partner_reading?.trim() &&
     !updated.combined_reading
   ) {
-    updated = await ensureCombinedReading(updated);
-
-    if (updated.combined_reading && await claimJointCompletionNotification(params.token)) {
-      await notifyJointReadingEvent({
-        userId: updated.initiator_user_id,
-        type: "joint_reading_completed",
-        token: params.token,
-      });
-      if (updated.partner_user_id) {
-        await notifyJointReadingEvent({
-          userId: updated.partner_user_id,
-          type: "joint_reading_completed",
-          token: params.token,
-        });
+    const { schedulePaidAsyncJob } = await import("@/lib/async-job-enqueue");
+    const jobId = await schedulePaidAsyncJob({
+      userId: updated.initiator_user_id,
+      kind: "joint_combined",
+      payload: { token: updated.token, async: false },
+      bypassDeliveryGate: true,
+    });
+    if (!jobId) {
+      // Worker unavailable: keep fail-closed sync path as last resort.
+      try {
+        updated = await ensureCombinedReading(updated);
+        if (updated.combined_reading && (await claimJointCompletionNotification(params.token))) {
+          await notifyJointReadingEvent({
+            userId: updated.initiator_user_id,
+            type: "joint_reading_completed",
+            token: params.token,
+          });
+          if (updated.partner_user_id) {
+            await notifyJointReadingEvent({
+              userId: updated.partner_user_id,
+              type: "joint_reading_completed",
+              token: params.token,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[joint-reading] sync combined fallback failed:", err);
       }
     }
   }
@@ -614,12 +685,37 @@ function jointReadingRelationLabel(intentSlug: string): string {
 }
 
 function formatJointCardsForPrompt(
-  cards: JointReadingRow["initiator_cards"] | JointReadingRow["partner_cards"]
+  cards: JointReadingRow["initiator_cards"] | JointReadingRow["partner_cards"],
+  masterId?: string
 ): string {
   if (!cards?.length) return "—";
+  const system = resolveDeckSystem(undefined, masterId ?? "veronika");
   return cards
-    .map((card) => (card.position?.trim() ? `${card.position}: ${card.name}` : card.name))
+    .map((card) => {
+      const resolved = resolveDeckCard(system, { name: card.name });
+      const pos = card.position?.trim() || "позиция";
+      const meaning = resolved.shortMeaning || "";
+      return meaning
+        ? `${pos}: «${resolved.name}» — ${meaning}`
+        : `${pos}: «${card.name}»`;
+    })
     .join("; ");
+}
+
+function jointCardsToTarotCards(
+  cards: JointReadingRow["initiator_cards"] | JointReadingRow["partner_cards"],
+  masterId?: string
+): { name: string; meaning: string; position?: string }[] {
+  if (!cards?.length) return [];
+  const system = resolveDeckSystem(undefined, masterId ?? "veronika");
+  return cards.map((card) => {
+    const resolved = resolveDeckCard(system, { name: card.name });
+    return {
+      name: resolved.name,
+      meaning: resolved.shortMeaning || "",
+      position: card.position,
+    };
+  });
 }
 
 function stripMarkdownForSynthesis(text: string): string {
@@ -630,8 +726,9 @@ function stripMarkdownForSynthesis(text: string): string {
     .trim();
 }
 
-function polishCombinedReading(text: string): string {
-  let out = stripMarkdownForSynthesis(text);
+function polishCombinedReading(text: string, keepMarkdown = false): string {
+  // Tarot-rune synthesis keeps **names** and «## Простыми словами»; plain masters stay markdown-free.
+  let out = keepMarkdown ? text.replace(/\r\n/g, "\n").trim() : stripMarkdownForSynthesis(text);
   out = out.replace(/\(\s*\)/g, "");
   out = out.replace(/,\s*\./g, ".");
   out = out.replace(/\s+\./g, ".");
@@ -683,53 +780,76 @@ async function generateCombinedReading(
         ? `\n\nДанные синастрии (расчёт движка, не выдумывай):\n- Балл: ${synastry.overallScore}\n${synastry.highlights.map((h) => `- ${h}`).join("\n")}`
         : "";
 
-    const systemPrompt = `Ты — мастер таро Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
+    const masterId = row.initiator_character ?? "veronika";
+    const initiatorCards = jointCardsToTarotCards(row.initiator_cards, masterId);
+    const partnerCards = jointCardsToTarotCards(row.partner_cards, masterId);
+    const allCards = [...initiatorCards, ...partnerCards];
+    const cardCount = Math.max(3, allCards.length || 3);
 
-Правила:
-- Пиши по-русски, тепло, связным прозой (4–6 абзацев).
-- Без markdown, без заголовков, без списков и без «**».
+    const tarotRune = isTarotRuneMasterId(masterId);
+    const formatRules = tarotRune
+      ? `- Markdown: названия карт **жирным**; в конце обязателен блок «## Простыми словами» (5–7 предложений, первая фраза — вердикт).
+- Первая фраза всего ответа — вердикт по союзу (жёстко / в плюс / смешанно).`
+      : `- Чистый текст без markdown и без заголовков.
+- В конце — финальный блок выводов сплошным текстом (вердикт + синтез + действия при рычаге).`;
+
+    const systemPrompt = `Ты — мастер Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов и карт обоих.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
+
+${buildPaidSpreadReadingExtras({
+      cardCount,
+      masterId,
+      includeFinalConclusion: !tarotRune,
+      includeDepthBlocks: true,
+    })}
+
+Правила синтеза:
+- Пиши по-русски, тепло, связной прозой — премиальная глубина, не краткий пересказ.
+${formatRules}
 - Не оставляй пустых скобок, обрывков вроде «твои .» или «()» — каждое предложение должно быть законченным.
 - Не повторяй один и тот же абзац или мысль дважды.
-- Не цитируй тексты дословно — синтезируй смысл обоих раскладов.
+- Не цитируй тексты дословно — синтезируй смысл обоих раскладов через карты.
 - Не используй романтические формулировки, если это не пара — перед тобой ${relation}.
-- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива.`;
+- Если символы показывают тень в союзе — называй прямо, без смягчения.
+- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива, финальный вывод.
+- Назови по имени карты обоих сторон, которые реально вошли в синтез.`;
 
     const userMessage = [
-      `${initiatorLabel} (инициатор), карты: ${formatJointCardsForPrompt(row.initiator_cards)}`,
+      `${initiatorLabel} (инициатор), карты: ${formatJointCardsForPrompt(row.initiator_cards, masterId)}`,
       initiatorText,
       "",
-      `${partnerLabel} (партнёр), карты: ${formatJointCardsForPrompt(row.partner_cards)}`,
+      `${partnerLabel} (партнёр), карты: ${formatJointCardsForPrompt(row.partner_cards, masterId)}`,
       partnerText,
       "",
-      `Синтезируй общую интерпретацию для ${initiatorLabel} и ${partnerLabel} как ${relation}.`,
+      `Синтезируй общую интерпретацию для ${initiatorLabel} и ${partnerLabel} как ${relation}. Опирайся на значения карт выше.`,
       synastryBlock,
     ]
       .filter(Boolean)
       .join("\n");
 
+    const cardNames = allCards.map((c) => c.name).filter(Boolean);
     const generated = await generateReading(systemPrompt, {
       userName: initiatorLabel,
-      tarotCards: [],
+      tarotCards: allCards.length ? allCards : [{ name: "Союз", meaning: "связь двух раскладов" }],
       isPaid: true,
-      characterId: row.initiator_character ?? "veronika",
+      characterId: masterId,
       userMessage,
+      intention: "love",
     });
-    if (generated.text?.trim()) return polishCombinedReading(generated.text);
+    const raw = generated.text?.trim() ?? "";
+    if (generated.fromLlm && raw) {
+      const cleaned = sanitizeReadingForClient(raw, cardNames.length ? cardNames : undefined);
+      const deliverable =
+        cleaned &&
+        (!cardNames.length || isPaidSpreadTextComplete(cleaned, cardNames))
+          ? cleaned
+          : raw;
+      if (deliverable.trim()) return polishCombinedReading(deliverable, tarotRune);
+    }
+    throw new Error("joint_combined_ai_failed");
   } catch (err) {
-    console.warn("Joint reading combined synthesis failed, using plain fallback:", err);
+    console.warn("Joint reading combined synthesis failed (fail-closed):", err);
+    throw err instanceof Error ? err : new Error("joint_combined_ai_failed");
   }
-
-  return polishCombinedReading(
-    [
-      `Совместный расклад ${initiatorLabel} и ${partnerLabel}.`,
-      "",
-      initiatorText,
-      "",
-      partnerText,
-      "",
-      `Карты показывают, что у вас как у ${relation} есть общий ресурс для сближения — обсудите выводы вместе.`,
-    ].join("\n")
-  );
 }
 
 export function buildJointReadingUrl(token: string): string {

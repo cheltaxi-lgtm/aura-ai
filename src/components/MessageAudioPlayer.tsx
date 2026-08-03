@@ -10,6 +10,7 @@ import {
 } from "@/lib/tts-audio-cache";
 import { useTtsEnabled } from "@/hooks/useTtsEnabled";
 import { isCharacterTtsEnabled } from "@/lib/voice-config";
+import { pickUserFacingError } from "@/lib/user-facing-error";
 
 interface MessageAudioPlayerProps {
   text: string;
@@ -176,7 +177,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
           setError("Озвучка отключена");
           return;
         }
-        setError(data.error ?? "Озвучка недоступна");
+        setError(pickUserFacingError(data, "Озвучка временно недоступна"));
         return;
       }
 
@@ -194,7 +195,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
           contentType?: string;
         };
         if (!data.parts?.length) {
-          setError("Пустой ответ от TTS");
+          setError("Не удалось озвучить ответ");
           return;
         }
 
@@ -212,7 +213,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
       const mime = responseType || "audio/mpeg";
       const blob = await res.blob();
       if (blob.size < 256) {
-        setError("Пустой ответ от TTS");
+        setError("Не удалось озвучить ответ");
         return;
       }
 
@@ -259,7 +260,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
           className="flex h-8 w-8 items-center justify-center rounded-full bg-aura-purple/20 text-aura-neon transition-colors hover:bg-aura-purple/40 disabled:opacity-50"
           title={
             fromCache
-              ? "Повтор из кэша (без запроса к API)"
+              ? "Повтор из кэша (без повторной оплаты)"
               : provider
                 ? `Озвучка: ${provider}`
                 : "Озвучить ответ мастера"
@@ -293,7 +294,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
       )}
       {(provider || fromCache) && !error && !isPlaying && !isLoading && (
         <p className="mt-1 text-[10px] text-gray-600">
-          {fromCache ? "Из кэша · повтор без оплаты API" : `AI-голос · ${provider}`}
+          {fromCache ? "Сохранено · повтор без оплаты" : `Голос наставника · ${provider}`}
         </p>
       )}
     </div>

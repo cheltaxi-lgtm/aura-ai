@@ -5,21 +5,18 @@ import StructuredData from "@/components/StructuredData";
 import { BRAND_URL } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/** Cached marketing shell; auth/session logic is client-side in HomePage. */
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   ...buildSeoMetadata({
-    title: "Расклад Таро онлайн — чувства, отношения, будущее | Zovus",
+    title: "Расклад Таро онлайн бесплатно — гадание на картах",
     description:
-      "Персональные расклады Таро с ИИ-мастерами: чувства, верность, карьера. Расшифровка в чате, уточняющие вопросы, история в кабинете.",
+      "Расклад Таро онлайн бесплатно: три карты до регистрации, каталог вопросов на любовь и будущее, расшифровка по фото. ИИ-наставник разберёт ситуацию в чате — Zovus.",
     path: "/",
   }),
-  // `force-dynamic` on this route means the root layout's `title.template`
-  // isn't reliably applied to a plain string title, so pin the fully
-  // resolved string here to guarantee the brand suffix renders exactly once.
   title: {
-    absolute: "Расклад Таро онлайн — чувства, отношения, будущее | Zovus",
+    absolute: "Расклад Таро онлайн бесплатно — гадание на картах | Zovus",
   },
   alternates: {
     canonical: BRAND_URL,

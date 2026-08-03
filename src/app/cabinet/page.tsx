@@ -1,22 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import AppTopHeader from "@/components/AppTopHeader";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { useAuth } from "@/lib/useAuth";
-import { useRuneConfig } from "@/lib/useRuneConfig";
-import {
-  APP_SHELL_SECTIONS,
-  navigateToAppSection,
-  navigateToBirthProfileOnboarding,
-  navigateToDecksModal,
-  navigateToHomeSpreadFlow,
-  navigateToPhotoReading,
-  navigateToRitualFlow,
-} from "@/lib/app-shell-nav";
+import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
 import {
   persistSessionIntention,
   persistIntentionSpreadState,
@@ -49,7 +38,10 @@ import CabinetDailySpreads from "@/components/cabinet/CabinetDailySpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
 import CabinetDangerZone from "@/components/cabinet/CabinetDangerZone";
+import CabinetTelegramLink from "@/components/cabinet/CabinetTelegramLink";
+import CabinetLoginMethods from "@/components/cabinet/CabinetLoginMethods";
 import CabinetDeleteAccount from "@/components/cabinet/CabinetDeleteAccount";
+import { redirectHomeAfterAccountDeletion } from "@/lib/account-deleted";
 import CabinetDailyNotifications from "@/components/cabinet/CabinetDailyNotifications";
 import CabinetAppVersion from "@/components/cabinet/CabinetAppVersion";
 import CabinetJointReadings from "@/components/cabinet/CabinetJointReadings";
@@ -128,8 +120,6 @@ export default function CabinetPage() {
   const router = useRouter();
   const { openPaywall } = usePaywall();
   const { user: authUser, loading: authLoading, refresh: refreshAuth } = useAuth();
-  const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
-  const [headerMounted, setHeaderMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CabinetResponse | null>(null);
@@ -150,9 +140,14 @@ export default function CabinetPage() {
   const [natalChartEnabled, setNatalChartEnabled] = useState(false);
   const [natalChartRefreshKey, setNatalChartRefreshKey] = useState(0);
   const sessionsOffset = useRef(0);
+  const shopDeepLinkOpened = useRef(false);
 
-  const needsOnboarding =
-    Boolean(data?.needsOnboarding) && !authUser?.profileUserId && !data?.profile?.birthDate;
+  const needsOnboarding = Boolean(
+    data &&
+      (data.needsOnboarding ||
+        !data.profile?.birthDate ||
+        !(data.profile.birthCity || "").trim())
+  );
 
   const fetchCabinet = useCallback(async (offset = 0, append = false) => {
     const res = await fetchWithRetry(
@@ -160,8 +155,16 @@ export default function CabinetPage() {
       { credentials: "include" }
     );
     if (res.status === 401) {
+      if (redirectHomeAfterAccountDeletion()) return null;
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       return null;
+    }
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => null)) as { code?: string } | null;
+      if (body?.code === "age_required") {
+        await refreshAuth();
+        return null;
+      }
     }
     if (!res.ok) {
       throw new Error("Не удалось загрузить кабинет");
@@ -180,12 +183,14 @@ export default function CabinetPage() {
     setSessionsHasMore(json.sessionsHasMore);
     sessionsOffset.current = offset + json.sessions.length;
     return json;
-  }, [router]);
+  }, [refreshAuth, router]);
 
   useEffect(() => {
     if (authLoading) return;
 
     if (!authUser) {
+      // After account deletion, go to guest homepage — never the login wall.
+      if (redirectHomeAfterAccountDeletion()) return;
       router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
       setLoading(false);
       return;
@@ -231,9 +236,29 @@ export default function CabinetPage() {
     void fetchCabinet(0, false);
   }, [authLoading, authUser?.profileUserId, data?.needsOnboarding, fetchCabinet]);
 
+  /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
   useEffect(() => {
-    setHeaderMounted(true);
-  }, []);
+    if (loading || authLoading || !authUser || !data) return;
+    if (typeof window === "undefined" || shopDeepLinkOpened.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("shop") !== "1" && params.get("topup") !== "1") return;
+
+    shopDeepLinkOpened.current = true;
+    setActiveTab("runes");
+    openPaywall({
+      currentBalance: data.profile?.runeBalance ?? data.runes?.balance ?? 0,
+      onClose: async () => {
+        await fetchCabinet(0, false);
+        setBalancePulse(true);
+        setTimeout(() => setBalancePulse(false), 600);
+      },
+    });
+
+    params.delete("shop");
+    params.delete("topup");
+    const qs = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+  }, [loading, authLoading, authUser, data, openPaywall, fetchCabinet]);
 
   useEffect(() => {
     if (authLoading || !authUser) {
@@ -279,10 +304,6 @@ export default function CabinetPage() {
     [fetchCabinet, refreshAuth]
   );
 
-  const photoNavLabel = runeConfig.enabled
-    ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`
-    : "Фото расклад";
-
   const handleLoadMore = async () => {
     setLoadingMore(true);
     try {
@@ -306,8 +327,17 @@ export default function CabinetPage() {
   };
 
   const handleDeleteSession = async (memoryId: string) => {
+    const target = sessions.find((s) => s.id === memoryId);
+    const isMatrix =
+      target?.intention === "destiny_matrix" ||
+      target?.spreadId === "destiny_matrix" ||
+      target?.spreadId === "numerolog:destiny_matrix" ||
+      (typeof target?.spreadId === "string" &&
+        target.spreadId.startsWith("numerolog:destiny_matrix"));
     const confirmed = window.confirm(
-      "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
+      isMatrix
+        ? "Удалить матрицу судьбы безвозвратно? Пропадёт из кабинета и чата, покупка сбросится — разбор можно будет купить заново."
+        : "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
     );
     if (!confirmed) return;
 
@@ -476,16 +506,8 @@ export default function CabinetPage() {
   const photoSpreads = data?.photoSpreads ?? [];
   const dailyReadings = data?.dailyReadings ?? [];
   const runesEnabled = Boolean(runes?.enabled);
-  const showRitualsSection =
-    runesEnabled || (ritualStats?.total ?? 0) > 0;
   const ritualAttentionCount =
     (ritualStats?.inProgress ?? 0) + (ritualStats?.pendingReview ?? 0);
-
-  useEffect(() => {
-    if (activeTab === "rituals" && !loading && data && !showRitualsSection) {
-      setActiveTab("profile");
-    }
-  }, [activeTab, loading, data, showRitualsSection]);
 
   const openRitual = (id: string, characterKey: RitualMasterKey) => {
     setRitualFlowMaster(characterKey);
@@ -555,6 +577,8 @@ export default function CabinetPage() {
             ) : authUser?.email && profileLoading ? (
               <CabinetProfileHeaderSkeleton />
             ) : null}
+            <CabinetLoginMethods />
+            <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}
             {achievements ? (
@@ -602,7 +626,7 @@ export default function CabinetPage() {
         );
 
       case "rituals":
-        return showRitualsSection ? (
+        return (
           <div className="space-y-6">
             <CabinetTabHero
               kicker="Ритуалы"
@@ -626,7 +650,7 @@ export default function CabinetPage() {
               onStatsLoaded={setRitualStats}
             />
           </div>
-        ) : null;
+        );
 
       case "diary":
         return (
@@ -707,25 +731,6 @@ export default function CabinetPage() {
 
   return (
     <div className="cabinet-page min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-24 pt-[var(--app-header-h,3.25rem)] text-white">
-      {headerMounted
-        ? createPortal(
-            <AppTopHeader
-              photoNavLabel={photoNavLabel}
-              isLoggedIn
-              authUser={authUser}
-              authLoading={authLoading}
-              onOpenPaywall={() => openPaywall()}
-              onNavMasters={() => navigateToAppSection(APP_SHELL_SECTIONS.masters)}
-              onNavTariffs={() => navigateToAppSection(APP_SHELL_SECTIONS.tariffs)}
-              onNavPhoto={() => navigateToPhotoReading()}
-              onNavDecks={() => navigateToDecksModal()}
-              onNavRitual={() => navigateToRitualFlow()}
-              onStartReading={() => navigateToHomeSpreadFlow()}
-            />,
-            document.body
-          )
-        : null}
-
       <div className="border-b border-white/10 bg-black/40 py-2.5 text-center">
         <span className="text-sm font-semibold text-white/90">Личный кабинет</span>
       </div>
@@ -768,7 +773,7 @@ export default function CabinetPage() {
       <CabinetBottomNav
         active={activeTab}
         onTab={scrollToSection}
-        showRituals={showRitualsSection}
+        showRituals
         ritualPendingReview={ritualStats?.pendingReview ?? 0}
         ritualAttentionCount={ritualAttentionCount}
       />

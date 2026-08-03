@@ -52,6 +52,7 @@ if [ -d "/opt/aura-ai/public/releases" ]; then
 fi
 echo ">>> Bootstrap rsync from tarball..."
 rsync -a --delete --ignore-times \
+  --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
   --exclude='.env.local' \
   --exclude='public/releases/' \
   --exclude='.next/' \

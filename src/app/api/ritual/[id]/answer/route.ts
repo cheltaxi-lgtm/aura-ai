@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { RITUAL_TYPES } from "@/lib/ritual-config";
 import {
   appendRitualAnswer,
   getRitualById,
   ritualToClient,
 } from "@/lib/ritual-service";
+
+const MAX_ANSWER_LENGTH = 800;
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -17,6 +20,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rateLimited = await enforcePaidRouteRateLimit(
+    authed.auth.sub,
+    "ritual_answer"
+  );
+  if (rateLimited) return rateLimited;
 
   const { id } = await context.params;
   const ritual = await getRitualById(id);
@@ -39,6 +48,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const answer = body.answer?.trim();
   if (!answer) {
     return NextResponse.json({ error: "Empty answer" }, { status: 400 });
+  }
+  if (answer.length > MAX_ANSWER_LENGTH) {
+    return NextResponse.json(
+      { error: `Answer too long (max ${MAX_ANSWER_LENGTH})` },
+      { status: 400 }
+    );
   }
 
   const questions = RITUAL_TYPES[ritual.ritual_type].questions;

@@ -2,8 +2,13 @@
 import { deleteUserChatForCharacter } from "./accounts";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
 import { buildAstroMeta } from "./astro-profile";
+import { normalizeStoredDisplayName } from "./normalize-person-name";
 import { clearDailyReadingAnchors } from "./rate-limit-anchors";
 import { tarotCardsKey } from "./tarot";
+
+function storedProfileName(name: string): string {
+  return normalizeStoredDisplayName(name, name.trim() || "Гость");
+}
 
 export interface UserRow {
   id: string;
@@ -49,7 +54,7 @@ export async function createUserProfileForAccount(
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING ${USER_COLUMNS}`,
       [
-        data.name.trim(),
+        storedProfileName(data.name),
         data.gender,
         data.birthDate,
         data.zodiac,
@@ -87,8 +92,8 @@ export async function createUserProfileForAccount(
 
     await queryClient(
       client,
-      "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
-      [accountId, created.id]
+      "UPDATE user_accounts SET profile_user_id = $2, name = $3 WHERE id = $1",
+      [accountId, created.id, created.name]
     );
     return created;
   });
@@ -103,7 +108,7 @@ export async function createUserProfile(data: CreateUserProfileInput): Promise<U
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${USER_COLUMNS}`,
     [
-      data.name.trim(),
+      storedProfileName(data.name),
       data.gender,
       data.birthDate,
       data.zodiac,
@@ -149,7 +154,7 @@ export async function updateUserProfile(
      RETURNING ${USER_COLUMNS}`,
     [
       id,
-      data.name.trim(),
+      storedProfileName(data.name),
       data.gender,
       data.birthDate,
       data.zodiac,
@@ -163,7 +168,23 @@ export async function updateUserProfile(
   return rows[0] ?? null;
 }
 
-export async function linkSessionToUser(sessionId: string, profileUserId: string): Promise<boolean> {
+export async function linkSessionToUser(
+  sessionId: string,
+  profileUserId: string,
+  claimToken?: string | null
+): Promise<boolean> {
+  const { verifySessionClaimForId } = await import("@/lib/session-claim");
+  const { getSession } = await import("@/lib/session");
+
+  const session = await getSession(sessionId);
+  if (!session) return false;
+  if (session.user_id === profileUserId) return true;
+  if (session.user_id != null) return false;
+
+  // Orphan guest session — require signed claim cookie (anti-hijack).
+  const claimed = await verifySessionClaimForId(sessionId, claimToken);
+  if (!claimed) return false;
+
   const { rows } = await query<{ id: string }>(
     `UPDATE sessions AS s
      SET user_id = u.id, updated_at = NOW()
@@ -180,10 +201,11 @@ export async function linkSessionToUser(sessionId: string, profileUserId: string
 /** Attach session to profile only when both rows exist in DB. */
 export async function attachSessionToProfile(
   sessionId: string | undefined,
-  profileUserId: string | undefined
+  profileUserId: string | undefined,
+  claimToken?: string | null
 ): Promise<boolean> {
   if (!sessionId || !profileUserId) return false;
-  return linkSessionToUser(sessionId, profileUserId);
+  return linkSessionToUser(sessionId, profileUserId, claimToken);
 }
 
 export async function createHistoryEntry(data: {
@@ -410,12 +432,21 @@ export function serializeUserProfile(user: UserRow) {
 }
 export function canPersistSceneUrl(url: string): boolean {
   const trimmed = url.trim();
-  return (
-    trimmed.startsWith("http://") ||
-    trimmed.startsWith("https://") ||
-    trimmed.startsWith("/api/scene-art/") ||
-    trimmed.startsWith("/scene-art/")
-  );
+  if (trimmed.startsWith("/api/scene-art/") || trimmed.startsWith("/scene-art/")) {
+    return true;
+  }
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "https:") return false;
+    const host = u.hostname.toLowerCase();
+    return (
+      host === "zovus.ru" ||
+      host === "www.zovus.ru" ||
+      host.endsWith(".zovus.ru")
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function persistSceneArtForSpread(

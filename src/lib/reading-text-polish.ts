@@ -82,6 +82,7 @@ const ALLOWED_LATIN_WORDS = new Set([
   "budha", "shukra",
   "rider", "waite", "lenormand", "tarot", "rws",
   "ace", "king", "queen", "knight", "page", "of", "wands", "cups", "swords", "pentacles",
+  "zovus", "aura",
 ]);
 
 /** Common English leaks from LLM → Russian replacements. */
@@ -163,12 +164,110 @@ export function stripEnglishLeakageFromRussianText(text: string): string {
     }
   );
 
+  // Collapse horizontal whitespace only — never fold newlines (matrix zone
+  // titles and paragraph breaks must stay line-anchored for completeness gates).
   return out
-    .replace(/\s+([.,!?;:—–-])/g, "$1")
-    .replace(/\s{2,}/g, " ")
+    .replace(/[^\S\n]+([.,!?;:—–-])/g, "$1")
+    .replace(/[^\S\n]{2,}/g, " ")
     .replace(/ \n/g, "\n")
     .replace(/\n /g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/** Drop duplicated trailing chat-invite hooks from model + prompt. */
+function dedupeTrailingChatHooks(text: string): string {
+  const re =
+    /Останутся сомнения[^\n.]{0,120}(?:разберём|разберем) глубже\.?/giu;
+  const matches = [...text.matchAll(re)];
+  if (matches.length <= 1) return text;
+  let out = text;
+  for (const m of matches.slice(0, -1)) {
+    out = out.replace(m[0], "");
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Spaces around em/en dashes glued by the model: «настоящем—здесь» → «настоящем — здесь». */
+export function normalizeDashSpacing(text: string): string {
+  return text
+    .replace(/([^\s—–])([—–])/gu, "$1 $2")
+    .replace(/([—–])([^\s—–])/gu, "$1 $2");
+}
+
+const NUM_WORD_TO_RANK: Record<string, string> = {
+  два: "Двойка",
+  две: "Двойка",
+  три: "Тройка",
+  четыре: "Четвёрка",
+  пять: "Пятёрка",
+  шесть: "Шестёрка",
+  семь: "Семёрка",
+  восемь: "Восьмёрка",
+  девять: "Девятка",
+  десять: "Десятка",
+};
+
+const SUIT_TO_GENITIVE: Record<string, string> = {
+  кубки: "Кубков",
+  кубков: "Кубков",
+  жезлы: "Жезлов",
+  жезлов: "Жезлов",
+  мечи: "Мечей",
+  мечей: "Мечей",
+  пентакли: "Пентаклей",
+  пентаклей: "Пентаклей",
+  монеты: "Пентаклей",
+  монет: "Пентаклей",
+};
+
+/** JS \\b is ASCII-only — use unicode letter boundaries for Cyrillic. */
+const WB_L = "(?<![\\p{L}\\p{N}_])";
+const WB_R = "(?![\\p{L}\\p{N}_])";
+
+/**
+ * Fix spoken numeral+suit mistakes: «Три Кубки» / «Шесть Мечей» → «Тройка Кубков» / «Шестёрка Мечей».
+ * Leaves canonical deck labels like «3 Кубков» and already-correct «Тройка Кубков» alone.
+ */
+export function fixSpokenMinorArcanaNames(text: string): string {
+  const re = new RegExp(
+    `${WB_L}(два|две|три|четыре|пять|шесть|семь|восемь|девять|десять)\\s+(кубки|кубков|жезлы|жезлов|мечи|мечей|пентакли|пентаклей|монеты|монет)${WB_R}`,
+    "giu"
+  );
+  return text.replace(re, (full, numRaw: string, suitRaw: string) => {
+    const rank = NUM_WORD_TO_RANK[numRaw.toLowerCase()];
+    const suit = SUIT_TO_GENITIVE[suitRaw.toLowerCase()];
+    if (!rank || !suit) return full;
+    const titled =
+      full[0] && full[0] === full[0].toUpperCase() ? rank : rank.toLowerCase();
+    return `${titled} ${suit}`;
+  });
+}
+
+/** Keep ## Простыми словами on its own lines when the model glues it mid-paragraph. */
+function ensureSimplyHeadingBreaks(text: string): string {
+  return text
+    .replace(/([^\n])[ \t]*(##\s*Простыми словами)/giu, "$1\n\n$2")
+    .replace(/(##\s*Простыми словами)[ \t]+(?=\S)/giu, "$1\n\n");
+}
+
+/** Frequent LLM slips that make readings look illiterate. */
+function fixCommonReadingTypos(text: string): string {
+  const pairs: Array<[string, string]> = [
+    ["верталось", "возвращалось"],
+    ["вертался", "возвращался"],
+    ["верталась", "возвращалась"],
+    ["пресыть", "приесться"],
+  ];
+  let out = text;
+  for (const [from, to] of pairs) {
+    out = out.replace(new RegExp(`${WB_L}${from}${WB_R}`, "giu"), (m) =>
+      m[0] && m[0] === m[0].toUpperCase()
+        ? to[0]!.toUpperCase() + to.slice(1)
+        : to
+    );
+  }
+  return out;
 }
 
 /** Replace empty emphasis / orphan stars; optionally inject spread card names. */
@@ -191,6 +290,11 @@ export function polishSpreadReadingText(text: string, cardNames?: string[]): str
   out = out.replace(/\*\*(?:\s|\u00a0)*\*\*/g, "");
 
   out = stripEnglishLeakageFromRussianText(out);
+  out = fixSpokenMinorArcanaNames(out);
+  out = normalizeDashSpacing(out);
+  out = ensureSimplyHeadingBreaks(out);
+  out = fixCommonReadingTypos(out);
+  out = dedupeTrailingChatHooks(out);
 
   return out.replace(/  +/g, " ").trim();
 }

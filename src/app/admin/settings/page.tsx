@@ -37,7 +37,34 @@ export default function AdminSettingsPage() {
   const [natalChart, setNatalChart] = useState<NatalChartSettings>(
     DEFAULT_NATAL_CHART_SETTINGS
   );
+  const [aiDelivery, setAiDelivery] = useState<{
+    enabledKinds: string[];
+    pilotAccountIds: string[];
+    maxJobAgeMinutes: number;
+    maxAttempts: number;
+  }>({
+    enabledKinds: [],
+    pilotAccountIds: [],
+    maxJobAgeMinutes: 45,
+    maxAttempts: 3,
+  });
   const [saved, setSaved] = useState(false);
+
+  const AI_DELIVERY_KINDS = [
+    "reading",
+    "intention_spread",
+    "daily_reading",
+    "daily_extended",
+    "photo_reading",
+    "ritual_generation",
+    "joint_reading",
+    "joint_combined",
+    "numerology_reading",
+    "image_generate",
+    "natal_interpretation",
+    "natal_forecast",
+    "natal_compatibility",
+  ] as const;
 
   useEffect(() => {
     fetch("/api/admin/settings")
@@ -70,30 +97,42 @@ export default function AdminSettingsPage() {
               ? natal.ephemeris
               : "celestine",
         });
+        const delivery = d.aiDelivery as Partial<typeof aiDelivery> | undefined;
+        setAiDelivery({
+          enabledKinds: Array.isArray(delivery?.enabledKinds)
+            ? delivery!.enabledKinds.map(String)
+            : [],
+          pilotAccountIds: Array.isArray(delivery?.pilotAccountIds)
+            ? delivery!.pilotAccountIds.map(String)
+            : [],
+          maxJobAgeMinutes:
+            typeof delivery?.maxJobAgeMinutes === "number" ? delivery.maxJobAgeMinutes : 45,
+          maxAttempts: typeof delivery?.maxAttempts === "number" ? delivery.maxAttempts : 3,
+        });
       });
   }, []);
 
   const save = async () => {
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "pricing", values: pricing }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "features", values: features }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "share", values: share }),
-    });
-    await fetch("/api/admin/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ section: "natalChart", values: natalChart }),
-    });
+    const { adminFetch } = await import("@/lib/admin-fetch");
+    const patches = [
+      { section: "pricing", values: pricing },
+      { section: "features", values: features },
+      { section: "share", values: share },
+      { section: "natalChart", values: natalChart },
+      { section: "aiDelivery", values: aiDelivery },
+    ];
+    for (const patch of patches) {
+      const res = await adminFetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        alert(data.error ?? `Не удалось сохранить ${patch.section}`);
+        return;
+      }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -361,6 +400,93 @@ export default function AdminSettingsPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
+          <h2 className="font-display text-lg text-white">Premium AI delivery</h2>
+          <p className="text-xs text-gray-500">
+            Durable worker kinds и pilot-аккаунты. Основные продукты (reading / intention / daily)
+            уже идут через bypass — этот список нужен для поэтапного rollout остальных kinds.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {AI_DELIVERY_KINDS.map((kind) => {
+              const enabled = aiDelivery.enabledKinds.includes(kind);
+              return (
+                <label
+                  key={kind}
+                  className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 px-3 py-2"
+                >
+                  <span className="text-sm text-gray-300">{kind}</span>
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => {
+                      setAiDelivery({
+                        ...aiDelivery,
+                        enabledKinds: enabled
+                          ? aiDelivery.enabledKinds.filter((k) => k !== kind)
+                          : [...aiDelivery.enabledKinds, kind],
+                      });
+                    }}
+                    className="h-4 w-4 accent-aura-purple"
+                  />
+                </label>
+              );
+            })}
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">
+              Pilot account / profile IDs (через запятую)
+            </label>
+            <textarea
+              rows={2}
+              value={aiDelivery.pilotAccountIds.join(", ")}
+              onChange={(e) =>
+                setAiDelivery({
+                  ...aiDelivery,
+                  pilotAccountIds: e.target.value
+                    .split(/[,\s]+/)
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Max job age (minutes)</label>
+              <input
+                type="number"
+                min={5}
+                max={240}
+                value={aiDelivery.maxJobAgeMinutes}
+                onChange={(e) =>
+                  setAiDelivery({
+                    ...aiDelivery,
+                    maxJobAgeMinutes: parseInt(e.target.value, 10) || 45,
+                  })
+                }
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Max attempts</label>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={aiDelivery.maxAttempts}
+                onChange={(e) =>
+                  setAiDelivery({
+                    ...aiDelivery,
+                    maxAttempts: parseInt(e.target.value, 10) || 3,
+                  })
+                }
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              />
+            </div>
           </div>
         </div>
 

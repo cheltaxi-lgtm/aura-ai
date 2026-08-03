@@ -1,6 +1,7 @@
 import type { Message } from "@/types";
 import type { DeckSystem } from "@/lib/decks/types";
 import { generateId } from "@/lib/id";
+import { missingCardMentions } from "@/lib/chat-reply-sanitize";
 
 const CHAT_CACHE_KEY = "aura_chat_cache";
 const CHAT_SYNC_CHANNEL = "aura-chat-sync";
@@ -53,18 +54,31 @@ function normalizeEntry(entry: ChatCacheEntry | undefined): ChatCacheSnapshot {
 /** True when chat contains a full spread reading (not just a short teaser). */
 export function chatHasSpreadReading(
   messages: Message[] | null | undefined,
-  minChars = MIN_SPREAD_READING_CHARS
+  minChars = MIN_SPREAD_READING_CHARS,
+  cardNames?: string[]
 ): boolean {
   if (!messages?.length) return false;
-  return messages.some(
-    (m) => m.role === "assistant" && (m.content?.trim().length ?? 0) >= minChars
-  );
+  return messages.some((m) => {
+    if (m.role !== "assistant") return false;
+    const text = m.content?.trim() ?? "";
+    if (text.length < minChars) return false;
+    if (cardNames?.length && missingCardMentions(text, cardNames).length > 0) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /** Append spread reading once — never duplicate an existing full reading message. */
-export function appendSpreadReadingMessage(prev: Message[], content: string): Message[] {
+export function appendSpreadReadingMessage(
+  prev: Message[],
+  content: string,
+  cardNames?: string[]
+): Message[] {
   const text = content.trim();
-  if (!text || chatHasSpreadReading(prev)) return prev;
+  if (!text || chatHasSpreadReading(prev, MIN_SPREAD_READING_CHARS, cardNames)) {
+    return prev;
+  }
   return [
     ...prev,
     {
@@ -187,7 +201,9 @@ export function saveChatCache(
   cardsKey?: string,
   spread?: CachedChatSpread
 ): void {
-  if (typeof window === "undefined" || !messages.length) return;
+  if (typeof window === "undefined") return;
+  // Allow empty messages when persisting spread meta (e.g. life_death ask-first).
+  if (!messages.length && !spread && !cardsKey) return;
   try {
     const stored = localStorage.getItem(CHAT_CACHE_KEY);
     const cache: ChatCache = stored ? JSON.parse(stored) : {};
@@ -195,7 +211,10 @@ export function saveChatCache(
     cache[characterId] = {
       cardsKey: cardsKey || prev.cardsKey,
       spread: spread ?? prev.spread,
-      messages: serializeMessages(messages) as unknown as Message[],
+      // Empty means empty — never keep a prior reading under the same cards key.
+      messages: messages.length
+        ? (serializeMessages(messages) as unknown as Message[])
+        : [],
     };
     localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(cache));
     notifyChatCacheUpdated(characterId);

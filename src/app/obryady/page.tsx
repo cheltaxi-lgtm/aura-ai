@@ -60,25 +60,14 @@ export default async function ObryadyPage() {
       </div>
 
       <p className="mt-10 text-sm text-white/50">
-        Обряды проводят мастера{" "}
-        <Link href="/master/ragnar" className="text-aura-gold hover:underline">
-          Рагнар
+        Обряды проводят мастера Рагнар, Агафья, Вероника, Гуру Шри Радж и Эвелина — выберите обряд
+        выше или начните с{" "}
+        <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+          натальной карты
         </Link>
-        ,{" "}
-        <Link href="/master/agafya" className="text-aura-gold hover:underline">
-          Агафья
-        </Link>
-        ,{" "}
-        <Link href="/master/veronika" className="text-aura-gold hover:underline">
-          Вероника
-        </Link>
-        ,{" "}
-        <Link href="/master/shri-raj" className="text-aura-gold hover:underline">
-          Гуру Шри Радж
-        </Link>{" "}
-        и{" "}
-        <Link href="/master/numerolog" className="text-aura-gold hover:underline">
-          Эвелина
+        {" / "}
+        <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+          матрицы судьбы
         </Link>
         .
       </p>

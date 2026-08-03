@@ -23,7 +23,7 @@ export function getNumerologSessionCopy(
       ritualBody: `${birthHint} ${nameHint} Строю психоматрицу — это чистая математика даты, без случайности.`.trim(),
       computingHint: "Считаем квадрат Пифагора…",
       revealHint: "Ваша матрица готова — изучите ячейки и начните сеанс.",
-      personalNote: "Пифагорейский расчёт · без случайного draw",
+      personalNote: "Пифагорейский расчёт · без случайного вытягивания",
     };
   }
 

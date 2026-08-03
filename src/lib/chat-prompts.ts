@@ -6,6 +6,15 @@ import {
   ensurePaidSpreadTextComplete,
   isPaidSpreadTextComplete,
 } from "@/lib/spread-reading-complete";
+import {
+  buildQualityRepairHint,
+  evaluatePaidReadingQuality,
+  listPaidReadingQualityIssues,
+  meetsPaidDensityFloor,
+  normalizePaidReadingStructure,
+  type ReadingQualityIssue,
+} from "@/lib/reading-quality-gate";
+import { paidSpreadMaxTokens } from "@/lib/prompts/premium-reading";
 import { sanitizeChatHistory, LLM_CONTEXT_MESSAGES, type ChatHistoryMessage } from "@/lib/chat-sanitize";
 import {
   sanitizeReadingForClient,
@@ -14,22 +23,25 @@ import {
   stripTheaterFromReply,
 } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, fromLegacyContext } from "@/lib/prompts";
-import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
+import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
   TAROT_RUNE_MARKDOWN_FORMAT,
   TAROT_RUNE_CHAT_FORMAT,
-  TAROT_RUNE_THEMATIC_READING_RULES,
+  tarotRuneThematicReadingRules,
 } from "@/lib/prompts/tarot-rune-format";
 import { MARINA_PERSONA } from "@/lib/prompts/masters/marina";
 import { getSessionTopic } from "@/lib/session-topics";
-import { buildNumerologSpreadReading } from "@/lib/numerolog/welcome";
 import type { SessionMemory } from "@/lib/prompts/types";
-import { getSpread, normalizeSpreadId, requiredCardCount, resolveSpreadPositions } from "@/lib/spreads";
+import { getSpread, normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
 
 import { buildAstroMeta, lifeFocusLabel, type AstroMeta, type LifeFocus } from "@/lib/astro-profile";
+import {
+  buildClientGenderInstruction,
+  resolveClientGender,
+} from "@/lib/russian-name-gender";
 
 export interface UserContext {
   userName: string;
@@ -89,7 +101,11 @@ export function buildHumanReadingPrompt(
   ctx: UserContext,
   knowledge?: string,
   intention?: string | null,
-  options?: { spreadId?: string | null; positionLabels?: string[] }
+  options?: {
+    spreadId?: string | null;
+    positionLabels?: string[];
+    forceThematicReading?: boolean;
+  }
 ): string {
   const persona = buildHumanMasterPersona(blogger, knowledge);
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
@@ -100,40 +116,58 @@ export function buildHumanReadingPrompt(
     resolveSpreadPositions(spreadId, intention as SessionTopicId | null | undefined).map(
       (p) => p.label
     );
-  const cardsSlice = ctx.tarotCards.slice(0, spread.cardCount);
+  const cardCount = options?.positionLabels?.length
+    ? Math.min(ctx.tarotCards.length, options.positionLabels.length)
+    : Math.min(ctx.tarotCards.length, spread.cardCount);
+  const cardsSlice = ctx.tarotCards.slice(0, Math.max(1, cardCount));
   const cards = cardsSlice
     .map((c, i) => `${positions[i] ?? `Позиция ${i + 1}`}: «${c.name}» — ${c.meaning}`)
     .join("\n");
 
-  const thematic = Boolean(intention?.trim() && intention !== "life_death");
-  const topicLabel = thematic ? (getSessionTopic(intention!)?.label ?? intention) : null;
-  const cardWord = spread.cardCount === 1 ? "карту" : `${spread.cardCount} символов`;
+  const thematic =
+    Boolean(options?.forceThematicReading) ||
+    Boolean(intention?.trim() && intention !== "life_death");
+  const topicLabel = thematic
+    ? intention && intention !== "life_death"
+      ? (getSessionTopic(intention)?.label ?? intention)
+      : "фото-расклад"
+    : null;
+  const n = cardsSlice.length || 1;
+  const cardWord = n === 1 ? "карту" : `${n} символов`;
 
   const paywallRule = ctx.isPaid
     ? thematic
       ? `Клиент оплатил тематический расклад «${topicLabel}» — дай полную глубину по всем ${cardWord} строго через эту тему.`
       : `Пользователь оплатил доступ — дай полную расшифровку всех ${cardWord} подробно.`
-    : spread.cardCount <= 1
+    : n <= 1
       ? "Пользователь НЕ оплатил: дай интригующий крючок без полной расшифровки."
-      : `Пользователь НЕ оплатил: подробно распиши ТОЛЬКО первый символ. По остальным ${spread.cardCount - 1} — интригующий крючок без полной расшифровки.`;
+      : `Пользователь НЕ оплатил: подробно распиши ТОЛЬКО первый символ. По остальным ${n - 1} — интригующий крючок без полной расшифровки.`;
 
   const lengthRule = tarotRune
     ? thematic && ctx.isPaid
-      ? TAROT_RUNE_THEMATIC_READING_RULES
+      ? tarotRuneThematicReadingRules(n)
       : TAROT_RUNE_MARKDOWN_FORMAT
     : thematic && ctx.isPaid
-      ? `${thematicSpreadReadingRules(spread.cardCount)}\n\n${spreadFinalConclusionRules(spread.cardCount)}`
+      ? `${thematicSpreadReadingRules(n)}\n\n${spreadFinalConclusionRules(n)}`
       : ctx.isPaid
-        ? `${responseFormatForSpread(spread.cardCount)}\n\n${spreadFinalConclusionRules(spread.cardCount)}`
+        ? `${responseFormatForSpread(n)}\n\n${spreadFinalConclusionRules(n)}`
         : "7. От пяти до двенадцати предложений. Каждый вывод — только по символам ниже, с названием карты.";
 
   const formatTail = tarotRune
     ? "Пиши на русском, конкретно и по делу. Только русский — без английских вставок (guarded, hidden, safe и т.п.). Используй Markdown по правилам выше."
     : "Пиши на русском, конкретно и по делу. Только русский — без английских вставок. Без markdown.";
 
+  const firstName = (ctx.userName ?? "").trim().split(/\s+/)[0] || "друг";
+  const genderBlock = buildClientGenderInstruction({
+    gender: resolveClientGender(ctx.gender, firstName),
+    firstName,
+  });
+
   return `${persona}
 
 ${CARD_GROUNDED_READING_RULES}
+
+${genderBlock}
 
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ОТВЕТА:
 1. Открытие — одно-два слова в стиле мастера, без «здравствуйте».
@@ -162,26 +196,42 @@ export function buildHumanChatPrompt(
   ctx: Partial<UserContext>,
   knowledge?: string
 ): string {
-  const parts = [buildHumanMasterPersona(blogger, knowledge)];
+  const parts = [
+    buildHumanMasterPersona(blogger, knowledge),
+    CARD_GROUNDED_READING_RULES,
+    CHAT_CLARIFYING_QUESTION_RULE,
+  ];
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
 
   if (ctx.userName) {
     parts.push(`Клиента зовут ${ctx.userName}. Всегда обращайся по имени в начале ответа.`);
   }
   if (ctx.zodiac) parts.push(`Знак зодиака клиента: ${ctx.zodiac}.`);
-  if (ctx.gender) parts.push(`Пол клиента: ${ctx.gender}.`);
+  {
+    const firstName = (ctx.userName ?? "").trim().split(/\s+/)[0] || "друг";
+    parts.push(
+      buildClientGenderInstruction({
+        gender: resolveClientGender(ctx.gender, firstName),
+        firstName,
+      })
+    );
+  }
   if (ctx.birthDate) parts.push(`Дата рождения: ${ctx.birthDate}.`);
   if (ctx.today) parts.push(`Сегодня: ${ctx.today}.`);
   if (ctx.tarotCards?.length) {
-    parts.push(
-      `Карты расклада: ${ctx.tarotCards.map((c) => c.name).join(", ")}. Учитывай их в ответах.`
-    );
+    const cardLines = ctx.tarotCards
+      .map((c, i) => {
+        const meaning = c.meaning?.trim() ? ` — ${c.meaning.trim()}` : "";
+        return `${i + 1}. «${c.name}»${meaning}`;
+      })
+      .join("\n");
+    parts.push(`Выпавшие карты (единственный источник выводов):\n${cardLines}`);
   }
   if (ctx.mainQuestion) parts.push(`Главный вопрос: «${ctx.mainQuestion}».`);
   parts.push(
     tarotRune
-      ? `Отвечай на русском. ${TAROT_RUNE_CHAT_FORMAT} Каждый вывод — только по символам расклада с названием карты и её значением.`
-      : "Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов."
+      ? `Отвечай на русском. ${TAROT_RUNE_CHAT_FORMAT} Каждый вывод — только по символам расклада с названием карты и её значением из блока выше.`
+      : "Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов. Если символы показывают тень — называй прямо."
   );
   return parts.join("\n");
 }
@@ -194,6 +244,9 @@ export function buildCharacterPrompt(
     memory?: SessionMemory[];
     intention?: string | null;
     spreadId?: string | null;
+    spreadType?: string | null;
+    positionLabels?: string[];
+    forceThematicReading?: boolean;
     lastUserMessage?: string;
     customQuestion?: string | null;
     numerologyBlock?: string;
@@ -205,6 +258,9 @@ export function buildCharacterPrompt(
     mode: "reading",
     intention: extras?.intention ?? null,
     spreadId: extras?.spreadId ?? null,
+    spreadType: extras?.spreadType ?? null,
+    positionLabels: extras?.positionLabels,
+    forceThematicReading: extras?.forceThematicReading,
     lastUserMessage: extras?.lastUserMessage ?? ctx.mainQuestion,
     customQuestion: extras?.customQuestion ?? null,
     numerologyBlock: extras?.numerologyBlock,
@@ -234,128 +290,11 @@ export function buildChatPrompt(
   });
 }
 
-const FALLBACK_READINGS: Record<string, (ctx: { userName: string; isPaid: boolean }) => string> = {
-  ragnar: ({ userName, isPaid }) =>
-    `${userName}, руны говорят: прошлое тяжёлое, но Fehu уже близко — богатство ждёт решительных. ${
-      isPaid
-        ? "Настоящее — время собирать союзников. Будущее — прорыв через риск."
-        : "Настоящее и будущее скрыты за завесой... Полный разбор откроет путь."
-    }`,
-  veronika: ({ userName, isPaid }) =>
-    `${userName}, карта Прошлого говорит о ранах, которые вы уже исцеляете. ${
-      isPaid
-        ? "Настоящее — выбор сердца. Будущее — гармония, если доверитесь интуиции."
-        : "Две следующие карты шепчут о любви... но полная картина — за полным разбором."
-    }`,
-  gadalka_marina: ({ userName, isPaid }) =>
-    `${userName}, лунный свет на первой карте открывает то, что вы уже чувствуете сердцем. ${
-      isPaid
-        ? "Настоящее — момент выбора. Будущее — тихая ясность, если доверитесь интуиции."
-        : "Две следующие карты хранят тайну... полный расклад откроет путь."
-    }`,
-  agafya: ({ userName, isPaid }) =>
-    `${userName}, вижу знамение в прошлом — родовая нить тянется к вам. ${
-      isPaid
-        ? "Сейчас — время оберегов. Впереди — перемены через семью."
-        : "Что ждёт в настоящем и будущем — скажу только после полного расклада, дитя."
-    }`,
-  "shri-raj": ({ userName, isPaid }) =>
-    `${userName}, карма прошлого урока уже усвоена — Shani доволен. ${
-      isPaid
-        ? "Настоящее — медитация и служение. Будущее — пробуждение dharma."
-        : "Две карты скрыты в мандале... Полный джйotish-анализ откроет предназначение."
-    }`,
-  numerolog: ({ userName, isPaid }) =>
-    `${userName}, первое число расклада уже говорит о твоём коде. ${
-      isPaid
-        ? "Энергия периода и совет чисел — полная картина цикла."
-        : "Два следующих числа откроют период и совет... полный разбор покажет весь код."
-    }`,
+export type ReadingGenerationResult = {
+  text: string;
+  fromLlm: boolean;
+  provenance?: import("@/lib/ai-generation-contract").AiProvenance;
 };
-
-export function buildCardAwareFallbackReading(
-  characterId: string,
-  ctx: {
-    userName: string;
-    tarotCards: { name: string; meaning?: string }[];
-    intention?: string | null;
-    isPaid?: boolean;
-    spreadId?: string | null;
-    positionLabels?: string[];
-  }
-): string {
-  if (characterId === "numerolog") {
-    return buildNumerologSpreadReading({
-      userName: ctx.userName,
-      spreadNumbers: ctx.tarotCards.map((c) => c.name),
-    });
-  }
-
-  const topicMeta = ctx.intention ? getSessionTopic(ctx.intention) : undefined;
-  const topicLabel = topicMeta?.label ?? ctx.intention?.trim() ?? "расклад";
-  const topicFocus = topicMeta?.focus ?? "ваша ситуация";
-
-  const spreadId = normalizeSpreadId(ctx.spreadId);
-  const positions =
-    ctx.positionLabels ??
-    resolveSpreadPositions(spreadId, ctx.intention as SessionTopicId | null | undefined).map(
-      (p) => p.label
-    );
-  const cards = ctx.tarotCards.slice(0, positions.length || ctx.tarotCards.length);
-
-  const openers: Record<string, string> = {
-    gadalka_marina: `${ctx.userName}, лунный свет лёг на символы — слушаю их для темы «${topicLabel}».`,
-    veronika: `${ctx.userName}, карты открылись на «${topicLabel}» — вот что они говорят.`,
-    ragnar: `${ctx.userName}, руны легли на «${topicLabel}» — смотрим правду без прикрас.`,
-    agafya: `${ctx.userName}, дитя, вижу знамение на «${topicLabel}».`,
-    "shri-raj": `${ctx.userName}, карма раскрыла «${topicLabel}» через эти символы.`,
-    numerolog: `${ctx.userName}, числа легли на «${topicLabel}» — вот что они говорят.`,
-  };
-  const opener =
-    openers[characterId in openers ? characterId : ""] ??
-    `${ctx.userName}, символы раскрывают тему «${topicLabel}».`;
-
-  const cardBlocks = cards.map((card, i) => {
-    const pos = positions[i] ?? `Позиция ${i + 1}`;
-    const rawMeaning = card.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? card.name;
-    return `${pos} — «${card.name}». В контексте ${topicFocus} этот символ показывает: ${rawMeaning}. Для «${topicLabel}» это слой позиции «${pos}». Опирайтесь на образ «${card.name}» как на конкретный ориентир.`;
-  });
-
-  const names = cards.map((c) => c.name).join(" → ");
-
-  const recapParts = cards.map((card, i) => {
-    const raw = card.meaning?.replace(/^[^:]+:\s*/, "").trim() ?? card.name;
-    const short = raw.split(/[.;]/)[0]?.trim() || raw;
-    return `«${card.name}» (${positions[i] ?? i + 1}) — ${short}`;
-  });
-
-  const finalBlock = [
-    `${ctx.userName}, вывод по всему раскладу на тему «${topicLabel}».`,
-    `Линия ${names}: ${recapParts.join("; ")}.`,
-    `Вместе ${cards.length} символов складываются в одну картину — пройди каждую позицию и сведи их в единый совет.`,
-    `По теме «${topicLabel}» опирайся на все выпавшие карты, а не только на первые три.`,
-  ].join(" ");
-
-  return [opener, ...cardBlocks, finalBlock].join("\n\n");
-}
-
-export function fallbackReading(
-  characterId: string,
-  ctx: { userName: string; isPaid: boolean; tarotCards?: { name: string; meaning?: string }[]; intention?: string | null }
-): string {
-  if (ctx.tarotCards?.length) {
-    return buildCardAwareFallbackReading(characterId, {
-      userName: ctx.userName,
-      tarotCards: ctx.tarotCards,
-      intention: ctx.intention,
-      isPaid: ctx.isPaid,
-    });
-  }
-  const id = characterId in FALLBACK_READINGS ? characterId : "ragnar";
-  return FALLBACK_READINGS[id](ctx);
-}
-
-export type ReadingGenerationResult = { text: string; fromLlm: boolean };
 
 export async function generateReading(
   systemPrompt: string,
@@ -394,25 +333,76 @@ export async function generateReading(
 
   const cardWord = cardCount === 1 ? "карту" : cardCount < 5 ? "карты" : "символы";
 
+  const { isCrisisSurvivalQuestion } = await import("@/lib/crisis-question");
+  const crisisQ = isCrisisSurvivalQuestion(ctx.userMessage ?? ctx.intention);
+  const crisisRule = crisisQ
+    ? "\n\nВАЖНО: вопрос о жизни/войне/выживании — ответь на буквальный запрос по доминанте символов. Словарные ярлыки («романтика», «ухаживание», «предложение») не сюжет. Не смягчай Башню/пятёрки/десятки мечей утешительной поэзией."
+    : "";
+
   const userContent =
-    ctx.userMessage?.trim() ||
-    (thematic
-      ? `Расшифруй оплаченный расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Тема «${topicLabel}» — только линза. Все символы: ${cardsDetailed}. Раскрой КАЖДУЮ позицию. В конце — финальный блок выводов по всему раскладу с действиями.`
-      : `Расшифруй расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Символы: ${cardsDetailed}. Раскрой каждую позицию. В конце — финальный блок выводов по всему раскладу с действиями.`);
+    (ctx.userMessage?.trim()
+      ? ctx.userMessage.trim()
+      : thematic
+        ? `Расшифруй оплаченный расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Тема «${topicLabel}» — только линза. Все символы: ${cardsDetailed}. Раскрой КАЖДУЮ позицию. В конце — финальный блок выводов по всему раскладу с действиями.`
+        : `Расшифруй расклад «${spread.label}» (${cardCount} ${cardWord}) для ${ctx.userName}. Символы: ${cardsDetailed}. Раскрой каждую позицию. В конце — финальный блок выводов по всему раскладу с действиями.`) +
+    crisisRule;
 
   const cardNames = ctx.tarotCards.map((c) => c.name);
+  const characterId = ctx.characterId ?? "ragnar";
+
+  const passesPremiumQuality = (candidate: string): boolean => {
+    if (!ctx.isPaid) return true;
+    return evaluatePaidReadingQuality(candidate, { cardCount, characterId }).ok;
+  };
+
+  const prepareReadingCandidate = (raw: string): string => {
+    const theaterStripped =
+      isTarotRuneMasterId(characterId) && characterId !== "numerolog"
+        ? stripTheaterFromReply(raw)
+        : raw;
+    return ctx.isPaid
+      ? normalizePaidReadingStructure(theaterStripped, characterId, ctx.userName)
+      : theaterStripped;
+  };
 
   const acceptReading = (raw: string | null): string | null => {
     if (!raw?.trim()) return null;
     if (isProseLikelyTruncated(raw)) return null;
-    const id = ctx.characterId ?? "ragnar";
-    const theaterStripped =
-      isTarotRuneMasterId(id) && id !== "numerolog" ? stripTheaterFromReply(raw) : raw;
-    const cleaned = sanitizeReadingForClient(theaterStripped, cardNames);
-    if (cleaned.length >= 120 && isPaidSpreadTextComplete(cleaned, cardNames)) return cleaned;
-    const stripped = stripMemoryLeakFromReply(theaterStripped);
+    const prepared = prepareReadingCandidate(raw);
+    const cleaned = sanitizeReadingForClient(prepared, cardNames);
+    if (cleaned.length >= 120 && isPaidSpreadTextComplete(cleaned, cardNames) && passesPremiumQuality(cleaned)) {
+      return cleaned;
+    }
+    const stripped = stripMemoryLeakFromReply(prepared);
     if (
       stripped.length >= 120 &&
+      !isDegenerateLlmOutput(stripped) &&
+      isPaidSpreadTextComplete(stripped, cardNames) &&
+      passesPremiumQuality(stripped)
+    ) {
+      return stripped;
+    }
+    return null;
+  };
+
+  /** Prefer imperfect complete AI prose over empty paid delivery / refund. */
+  const softAcceptReading = (raw: string | null): string | null => {
+    if (!ctx.isPaid || !raw?.trim()) return null;
+    if (isProseLikelyTruncated(raw)) return null;
+    const prepared = prepareReadingCandidate(raw);
+    const cleaned = sanitizeReadingForClient(prepared, cardNames);
+    if (
+      cleaned.length >= 200 &&
+      meetsPaidDensityFloor(cleaned, cardCount) &&
+      !isDegenerateLlmOutput(cleaned) &&
+      isPaidSpreadTextComplete(cleaned, cardNames)
+    ) {
+      return cleaned;
+    }
+    const stripped = stripMemoryLeakFromReply(prepared);
+    if (
+      stripped.length >= 200 &&
+      meetsPaidDensityFloor(stripped, cardCount) &&
       !isDegenerateLlmOutput(stripped) &&
       isPaidSpreadTextComplete(stripped, cardNames)
     ) {
@@ -426,49 +416,203 @@ export async function generateReading(
     { role: "user", content: userContent },
   ];
 
-  const maxTokens = cardCount > 5 ? 5000 : cardCount > 3 ? 4200 : 2800;
+  // Same budget as chat/daily/photo — one formula for every paid full spread.
+  const maxTokens = ctx.isPaid
+    ? paidSpreadMaxTokens(cardCount)
+    : cardCount > 5
+      ? 4500
+      : cardCount > 3
+        ? 3800
+        : 2600;
 
-  const attemptPlans: Array<{
-    messages: ChatMessage[];
-    maxTokens: number;
-    timeoutMs: number;
-    maxAttempts: number;
-    temperature?: number;
-  }> = thematic
-    ? [
-        { messages: baseMessages, maxTokens, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 },
+  const startedAt = Date.now();
+  const { generateValidatedAiText } = await import("@/lib/validated-ai-generation");
+  const { missingCardMentions } = await import("@/lib/chat-reply-sanitize");
+  const validated = await generateValidatedAiText({
+    messages: baseMessages,
+    inputParts: [
+      ctx.characterId ?? "ragnar",
+      ctx.intention ?? null,
+      spreadId,
+      cardNames,
+      ctx.userMessage ?? null,
+    ],
+    maxTokens,
+    temperature: 0.85,
+    // Fail over / soft-ship instead of hanging on one slow primary+repair.
+    timeoutMs: ctx.isPaid ? 45_000 : 50_000,
+    modelFamily: ctx.isPaid ? "paid" : "chat",
+    // Paid: no same-model repair (doubles latency). Next model in chain is faster spare.
+    maxRepairRounds: ctx.isPaid ? 0 : 1,
+    allowReasoningFallback: ctx.isPaid,
+    chatOptions: {
+      skipTemperatureRetry: true,
+      isPaid: ctx.isPaid,
+      maxAttempts: 1,
+    },
+    validate: (text) => {
+      const accepted = acceptReading(text);
+      if (accepted) return { ok: true };
+      const prepared = ctx.isPaid ? prepareReadingCandidate(text) : text;
+      const missing = missingCardMentions(prepared, cardNames);
+      if (missing.length) {
+        return {
+          ok: false,
+          code: "validation_failed",
+          detail: `missing_cards:${missing.join("|")}`,
+        };
+      }
+      if (ctx.isPaid) {
+        const issues = listPaidReadingQualityIssues(prepared, { cardCount, characterId });
+        if (issues.length) {
+          return {
+            ok: false,
+            code: "validation_failed",
+            detail: `quality:${issues.join("|")}`,
+          };
+        }
+      }
+      return { ok: false, code: "validation_failed", detail: "incomplete_or_truncated" };
+    },
+    buildRepairMessages: (failedText, detail) => {
+      const prepared = ctx.isPaid ? prepareReadingCandidate(failedText) : failedText;
+      const missing =
+        detail?.startsWith("missing_cards:")
+          ? detail.slice("missing_cards:".length).split("|").filter(Boolean)
+          : missingCardMentions(prepared, cardNames);
+      const qualityFromDetail = detail?.startsWith("quality:")
+        ? (detail.slice("quality:".length).split("|").filter(Boolean) as ReadingQualityIssue[])
+        : null;
+      const qualityIssues: ReadingQualityIssue[] =
+        qualityFromDetail ?? listPaidReadingQualityIssues(prepared, { cardCount, characterId });
+      const missingLine = missing.length
+        ? `Обязательно назови по имени и раскрой: ${missing.map((n) => `«${n}»`).join(", ")}.`
+        : "Раскрой каждую позицию по имени символа.";
+      const qualityLine = qualityIssues.length ? ` ${buildQualityRepairHint(qualityIssues)}` : "";
+      const crisisLine = isCrisisSurvivalQuestion(ctx.userMessage ?? ctx.intention)
+        ? " Вопрос о жизни/войне — ответь по доминанте символов прямо, без романтических ярлыков и без отказа от темы."
+        : "";
+      return [
+        ...baseMessages,
+        { role: "assistant", content: prepared || failedText },
         {
-          messages: baseMessages,
-          maxTokens: Math.round(maxTokens * 0.75),
-          timeoutMs: 90_000,
-          maxAttempts: 1,
-          temperature: 0.85,
+          role: "user",
+          content: `Перепиши расклад целиком премиально и плотно, без воды. ${missingLine}${qualityLine}${crisisLine} В конце — полный финальный блок выводов. Без удержания и без шаблонных отказов.`,
         },
-      ]
-    : [{ messages: baseMessages, maxTokens, timeoutMs: 120_000, maxAttempts: 2, temperature: 0.85 }];
+      ];
+    },
+  });
 
-  for (const plan of attemptPlans) {
-    let text = await completeProseWithContinuation(plan.messages, {
-      maxTokens: plan.maxTokens,
-      temperature: plan.temperature ?? 0.85,
-      maxPasses: cardCount > 5 ? 3 : 3,
-    });
-    if (text && !isPaidSpreadTextComplete(text, cardNames)) {
-      text = await ensurePaidSpreadTextComplete(plan.messages, text, cardNames, {
-        maxTokens: Math.round(plan.maxTokens * 0.35),
-        temperature: plan.temperature ?? 0.85,
-        maxRounds: 4,
+  if (validated.ok) {
+    const accepted =
+      acceptReading(validated.content) ?? softAcceptReading(validated.content);
+    if (accepted) {
+      console.info("generateReading ok", {
+        characterId: ctx.characterId,
+        intention: ctx.intention,
+        cardCount,
+        ms: Date.now() - startedAt,
+        model: validated.provenance?.model,
+        maxTokens,
       });
+      return { text: accepted, fromLlm: true, provenance: validated.provenance };
     }
-    const accepted = acceptReading(text);
-    if (accepted) return { text: accepted, fromLlm: true };
   }
 
-  const id = ctx.characterId ?? "ragnar";
-  return {
-    text: buildCardAwareFallbackReading(id, ctx),
-    fromLlm: false,
-  };
+  // Bounded legacy continuation — one pass, then one completion round.
+  let text = await completeProseWithContinuation(baseMessages, {
+    maxTokens,
+    temperature: 0.85,
+    maxPasses: 1,
+    cardNames,
+    isPaid: ctx.isPaid,
+  });
+  if (text && !isPaidSpreadTextComplete(text, cardNames)) {
+    text = await ensurePaidSpreadTextComplete(baseMessages, text, cardNames, {
+      maxTokens: Math.max(1400, Math.round(maxTokens * 0.4)),
+      temperature: 0.85,
+      maxRounds: 1,
+      isPaid: ctx.isPaid,
+    });
+  }
+  const accepted = acceptReading(text) ?? softAcceptReading(text);
+  if (accepted) {
+    console.info("generateReading ok-after-continuation", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      ms: Date.now() - startedAt,
+      maxTokens,
+    });
+    return { text: accepted, fromLlm: true };
+  }
+
+  const bestDraft = (text || (validated.ok ? validated.content : "") || "").trim();
+  // Prefer shipping a dense draft over multi-minute rescue when quality floor is met.
+  const preRescueSoft = softAcceptReading(bestDraft);
+  if (preRescueSoft) {
+    console.warn("generateReading soft-shipped before rescue", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      ms: Date.now() - startedAt,
+    });
+    return { text: preRescueSoft, fromLlm: true };
+  }
+
+  // Last-resort AI rescue: lean prompt across the whole model chain, then
+  // AI-written blocks for skipped symbols. Still 100% model-authored.
+  const { rescueReadingWithAi } = await import("@/lib/reading-ai-rescue");
+  const rescued = await rescueReadingWithAi({
+    characterId: ctx.characterId ?? "veronika",
+    userName: ctx.userName,
+    question:
+      ctx.userMessage?.trim() ||
+      (topicLabel ? `Расклад на тему «${topicLabel}»` : `Расклад «${spread.label}»`),
+    cards: ctx.tarotCards.map((c, i) => ({
+      name: c.name,
+      position: positions[i] ?? `Позиция ${i + 1}`,
+      meaning: c.meaning,
+    })),
+    maxTokens,
+    previousDraft: bestDraft,
+    accept: acceptReading,
+    softAccept: softAcceptReading,
+  });
+
+  if (rescued) {
+    console.warn("generateReading rescued by fallback AI pass", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      validatedDetail: validated.ok ? null : validated.detail,
+    });
+    return { text: rescued, fromLlm: true };
+  }
+
+  const softShipped = softAcceptReading(bestDraft);
+  if (softShipped) {
+    console.warn("generateReading soft-shipped after quality/rescue exhaustion", {
+      characterId: ctx.characterId,
+      intention: ctx.intention,
+      cardCount,
+      validatedDetail: validated.ok ? null : validated.detail,
+      issues: listPaidReadingQualityIssues(softShipped, { cardCount, characterId }),
+    });
+    return { text: softShipped, fromLlm: true };
+  }
+
+  console.error("generateReading: all AI attempts failed", {
+    characterId: ctx.characterId,
+    intention: ctx.intention,
+    cardCount,
+    missing: missingCardMentions(bestDraft, cardNames),
+    validatedOk: validated.ok,
+    validatedDetail: validated.ok ? null : validated.detail,
+  });
+
+  // Only a total provider outage reaches this point — never template prose.
+  return { text: "", fromLlm: false };
 }
 
 export async function generateChatReply(
@@ -531,68 +675,6 @@ export async function regenerateChatReply(
     opts.isPaid ?? false,
     opts.temperature ?? 0.75
   );
-}
-
-/** Deterministic short reply when LLM loops or fails (chat follow-up, not full spread). */
-export function buildChatFallbackReply(
-  characterId: string,
-  ctx: {
-    userName: string;
-    lastUserMessage: string;
-    cardNames: string[];
-    intention?: string | null;
-    spreadId?: string | null;
-  }
-): string {
-  const name = ctx.userName?.trim() || "друг";
-  const question = ctx.lastUserMessage.trim().slice(0, 280);
-  const spreadId = normalizeSpreadId(ctx.spreadId);
-  const required = requiredCardCount(spreadId, "new");
-  const cards = ctx.cardNames.slice(0, required);
-
-  if (!cards.length) {
-    return `${name}, слышу тебя. Сформулируй главный страх одним предложением — отвечу по символам, как только канал соберётся.`;
-  }
-
-  const topicMeta = ctx.intention ? getSessionTopic(ctx.intention) : undefined;
-  const topic = topicMeta?.label ?? "твой вопрос";
-  const positions = resolveSpreadPositions(
-    spreadId,
-    ctx.intention as SessionTopicId | null | undefined
-  ).map((p) => p.label);
-
-  if (cards.length === 1) {
-    return `${name}, «${cards[0]}» отвечает на «${question}» по теме «${topic}». Один символ — один совет: не гадай на страхе, сделай один конкретный шаг в ближайшие три дня. Что для тебя сейчас важнее — ясность или комфорт?`;
-  }
-
-  const cardInsights = [
-    "в корне показывает, что уже назревает",
-    "в центре требует внимания сейчас",
-    "на горизонте задаёт направление",
-    "подсвечивает скрытый ресурс",
-    "указывает на точку роста",
-    "снимает лишнее напряжение",
-    "даёт опору на ближайшие сутки",
-    "закрывает тему одним ясным образом",
-    "открывает новый угол зрения",
-    "сводит линии в одну картину",
-  ];
-
-  const cardLines = cards
-    .map((card, i) => {
-      const pos = positions[i] ?? `позиция ${i + 1}`;
-      const insight = cardInsights[i % cardInsights.length];
-      return `«${card}» (${pos}) ${insight}.`;
-    })
-    .join("\n");
-
-  return `${name}, символы говорят по теме «${topic}».
-
-${cardLines}
-
-Ты спросил: «${question}». Расклад просит ясности, не спешки.
-
-Что для тебя сейчас важнее — безопасность или свобода?`;
 }
 
 export function llmUnavailableReply(options?: { runesRefunded?: boolean }): string {

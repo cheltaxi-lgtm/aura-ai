@@ -21,6 +21,7 @@ import {
 } from "@/lib/spreads";
 import { getZodiacFromDate } from "@/utils/zodiac";
 import { useTripletCountdown } from "@/hooks/useTripletCountdown";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import ZodiacGlyph from "@/components/ZodiacGlyph";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
@@ -56,14 +57,7 @@ function zodiacFromBirthDate(birthDate?: string) {
 }
 
 function formatDisplayName(name: string) {
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((part) => {
-      if (!part) return part;
-      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-    })
-    .join(" ");
+  return normalizePersonDisplayNameOr(name, name.trim()) || name.trim();
 }
 
 export default function ReadingRecap({
@@ -81,7 +75,7 @@ export default function ReadingRecap({
   cooldownAllowed = true,
   nextAvailableAt,
   onUnlock,
-  unlockLabel = "199 ₽",
+  unlockLabel = "открыть за руны ᚢ",
   readingHint,
   onOpenGallery,
   spreadId: spreadIdProp,
@@ -125,11 +119,11 @@ export default function ReadingRecap({
       });
     }
     if (!newReadingAllowed && countdown.hintRu) {
-      return `${userName}, суточный лимит активен — ${countdown.hintRu.toLowerCase()}. Выберите мастера ниже, затем выпустите новый расклад.`;
+      return `${userName}, суточный лимит активен — ${countdown.hintRu.toLowerCase()}. Выберите мастера ниже, затем откройте новый расклад.`;
     }
     return (
       teaser ??
-      `${userName}, выберите мастера и выпустите расклад из ${spreadDef.cardCount} карт.`
+      `${userName}, выберите мастера и откройте расклад из ${spreadDef.cardCount} карт.`
     );
   }, [hasSpread, spreadCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu, spreadDef.cardCount]);
 
@@ -173,7 +167,7 @@ export default function ReadingRecap({
           type="button"
           onClick={handleNewReading}
           disabled={!newReadingAllowed}
-          title={countdown.tooltip || "Выпустить новый расклад из 3 карт"}
+          title={countdown.tooltip || "Открыть новый расклад из 3 карт"}
           className={`btn-new-spread shrink-0 ${newReadingAllowed ? "btn-new-spread--active" : "btn-new-spread--cooldown reading-recap__cooldown"}`}
         >
           {newReadingAllowed ? (

@@ -67,7 +67,123 @@ $RequiredArtifacts = @(
   "scripts/migrations/067_migrate_private_report_shares.sql",
   "scripts/migrations/068_harden_natal_backend.sql",
   "scripts/migrations/069_migrate_natal_compatibility.sql",
+  "scripts/migrations/070_migrate_natal_async_jobs.sql",
+  "scripts/migrations/071_fix_natal_compatibility_snapshot_privacy.sql",
+  "scripts/migrations/072_migrate_numerology_report_history.sql",
+  "scripts/migrations/073_migrate_async_job_billing_and_reaper.sql",
+  "scripts/migrations/074_migrate_registration_attribution.sql",
+  "scripts/migrations/075_migrate_oauth_registration_attribution.sql",
+  "scripts/migrations/076_migrate_guest_triplet_receipt.sql",
+  "scripts/migrations/077_migrate_premium_ai_delivery.sql",
+  "scripts/migrations/078_migrate_joint_combined_job.sql",
+  "scripts/migrations/079_migrate_memory_governance.sql",
+  "scripts/migrations/080_fix_memory_extraction_outbox.sql",
+  "scripts/migrations/081_migrate_personal_memory_moat.sql",
+  "scripts/migrations/082_migrate_memory_product_moat_v2.sql",
+  "scripts/migrations/083_migrate_partner_leads.sql",
+  "scripts/migrations/084_migrate_ads_schema.sql",
+  "scripts/migrations/085_migrate_ads_source_snapshots.sql",
+  "scripts/migrations/086_migrate_ads_budget_guards.sql",
+  "scripts/migrations/087_migrate_ads_wordstat_source.sql",
+  "scripts/migrations/088_migrate_ads_wordstat_history.sql",
+  "scripts/migrations/089_migrate_telegram_identities.sql",
+  "scripts/migrations/090_migrate_telegram_auth_bridge.sql",
+  "scripts/migrations/091_migrate_oauth_link_mode.sql",
+  "scripts/migrations/092_migrate_auth_token_version.sql",
+  "scripts/migrations/093_migrate_matrix_subjects.sql",
+  "src/lib/services/matrix-subject-service.ts",
+  "src/app/api/numerology/matrix-subjects/route.ts",
+  "src/app/cabinet/numerology/matrix/[id]/print/page.tsx",
+  "src/app/api/auth/telegram/bridge/route.ts",
+  "src/app/api/auth/telegram/link-code/route.ts",
+  "src/app/api/auth/telegram/unlink/route.ts",
+  "src/app/api/internal/bot/link-code/route.ts",
+  "src/app/api/internal/bot/catalog/route.ts",
+  "src/lib/telegram/bot-catalog-service.ts",
+  "telegram-bot/src/flows/catalog.ts",
+  "src/app/auth/telegram-link/page.tsx",
+  "src/lib/telegram/link-code.ts",
+  "src/lib/telegram/auth-flags.ts",
+  "src/components/auth/TelegramBridgeButton.tsx",
+  "src/app/api/auth/telegram/route.ts",
+  "src/app/api/guest-triplet/telegram-claim/route.ts",
+  "telegram-bot/CONTRACT.md",
+  "telegram-bot/src/flows/site-account.ts",
+  "telegram-bot/package.json",
+  "telegram-bot/src/index.ts",
+  "hosting/zovus-telegram-bot.service",
+  "config/ads/wordstat-seeds.yaml",
+  "src/modules/ads/sources/wordstat.ts",
+  "src/modules/ads/admin/WordstatPanel.tsx",
+  "src/app/(ads)/api/ads/admin/sources/wordstat/route.ts",
+  "src/lib/partner-leads.ts",
+  "src/app/api/partners/leads/route.ts",
+  "src/app/api/admin/partners/leads/route.ts",
+  "src/app/admin/partners/page.tsx",
+  "src/components/seo/LandingPartnersSection.tsx",
+  "src/components/partners/PartnerInquiryForm.tsx",
+  "src/components/partners/PartnerInquiryModal.tsx",
+  "src/app/api/memory/preferences/route.ts",
+  "src/app/api/memory/activity/route.ts",
+  "src/app/api/memory/facts/action/route.ts",
+  "src/app/api/memory/session-facts/route.ts",
+  "src/app/api/metrics/memory/route.ts",
+  "src/components/PersonalMemoryChoice.tsx",
+  "src/components/MemoryMoments.tsx",
+  "src/components/MemoryAnchorSuggestion.tsx",
+  "src/app/about/personal-memory/page.tsx",
+  "src/app/api/cron/memory-extract/route.ts",
+  "src/lib/memory/preferences.ts",
+  "src/lib/memory/product-analytics.ts",
+  "src/lib/memory/memory-analytics.ts",
+  "src/lib/memory/extraction-jobs.ts",
+  "src/lib/memory/tombstones.ts",
+  "src/lib/memory/injection-guard.ts",
+  "src/lib/memory/predicates.ts",
+  "src/lib/memory/grounding.ts",
+  "proxmox-setup/cron-memory-extract.sh",
+  "scripts/verify-memory-policy.mjs",
+  "scripts/verify-memory-analytics.mjs",
+  "scripts/verify-personal-memory-product.mjs",
+  "src/app/api/joint-reading/[token]/combine/route.ts",
+  "scripts/verify-ai-delivery-invariants.mjs",
+  "scripts/browser-smoke-joint-combined.mjs",
+  "src/lib/repair/legacy-fallback-text.ts",
+  "src/app/joint-reading/[token]/page.tsx",
+  "src/lib/ai-generation-contract.ts",
+  "src/lib/validated-ai-generation.ts",
+  "src/lib/async-job-registry.ts",
+  "src/lib/async-job-enqueue.ts",
+  "src/lib/async-job-lifecycle.ts",
+  "src/lib/client/wait-for-async-job.ts",
+  "src/lib/intention-spread-client.ts",
+  "src/lib/daily-energy.ts",
+  "src/app/api/intention-spread/route.ts",
+  "src/app/api/daily-reading/route.ts",
+  "src/app/api/image/generate/route.ts",
+  "src/app/api/reading/route.ts",
+  "src/app/api/photo-reading/stream/route.ts",
+  "src/app/api/ritual/[id]/regenerate/route.ts",
+  "src/app/api/joint-reading/create/route.ts",
+  "src/lib/photo-reading-stream.ts",
+  "src/components/PhotoReadingFlow.tsx",
+  "src/components/ritual/RitualGenerating.tsx",
+  "src/components/seo/JointReadingInvite.tsx",
+  "src/components/PremiumEnergyBlock.tsx",
+  "src/app/admin/settings/page.tsx",
+  "src/app/admin/ai/page.tsx",
+  "src/app/api/admin/settings/route.ts",
+  "scripts/verify-ai-delivery.mjs",
+  "scripts/quarantine-legacy-fallback-readings.ts",
+  "src/app/api/jobs/active/route.ts",
+  "src/app/api/numerology/matrix-report/route.ts",
+  "src/lib/services/numerology-report-service.ts",
+  "scripts/run-async-jobs.ts",
+  "hosting/aura-ai-async-jobs.service",
+  "hosting/ensure-async-jobs-user.sh",
+  "hosting/sync-async-jobs-env.sh",
   "proxmox-setup/vm_local_deploy.sh",
+  "hosting/Caddyfile",
   "proxmox-setup/install-crons.sh",
   "proxmox-setup/cron-natal-transits.sh",
   "src/app/api/cron/natal-transits/route.ts",
@@ -109,7 +225,7 @@ try {
 } catch {
   "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
 }
-tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.next-e2e --exclude=.git --exclude=.cursor --exclude=test-results --exclude=.env.local --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip .
+tar -czf $Tarball -C $Root --exclude=node_modules --exclude=.next --exclude=.next-e2e --exclude=.git --exclude=.cursor --exclude=test-results --exclude=.env.local --exclude=_verify --exclude=telegram-bot/.env --exclude=telegram-bot/data --exclude=telegram-bot/node_modules --exclude=data/geonames/cities15000.txt --exclude=data/geonames/cities15000.zip --exclude=docs/qa-guest-teaser-i2 --exclude=docs/qa-landing-demo --exclude=docs/qa-landing-faq-cta .
 Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ">>> Upload tarball..."
@@ -137,12 +253,16 @@ fi
 echo ">>> Bootstrap rsync from tarball..."
 rsync -a --delete --ignore-times \
   --exclude='.env.local' \
+  --exclude='telegram-bot/.env' \
+  --exclude='telegram-bot/data/' \
+  --exclude='telegram-bot/node_modules/' \
   --exclude='public/releases/' \
   --exclude='.next/' \
   --exclude='.next-candidate/' \
   --exclude='.next-previous/' \
   --exclude='node_modules/' \
   --exclude='logs/' \
+  --exclude='backups/' \
   "$STAGE/" /opt/aura-ai/
 echo ">>> Verify GeoNames index after rsync..."
 verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
@@ -151,18 +271,39 @@ if [ -n "$RELEASES_BACKUP" ] && [ -d "$RELEASES_BACKUP" ]; then
   cp -a "$RELEASES_BACKUP/." /opt/aura-ai/public/releases/
   rm -rf "$RELEASES_BACKUP"
 fi
+# Keep Safe Browsing clean: never leave junk/test APKs on public paths.
+rm -f /opt/aura-ai/public/zovus.apk \
+  /opt/aura-ai/public/test-root.apk \
+  /opt/aura-ai/public/releases/test.apk \
+  /opt/aura-ai/public/releases/zovus-latest.zip
 rm -rf "$STAGE"
 sed -i 's/\r$//' /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
 chmod +x /opt/aura-ai/proxmox-setup/vm_local_deploy.sh
+# Pre-migrate dump (up-only runner)
+mkdir -p /opt/aura-ai/backups
+DUMP="/opt/aura-ai/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
+docker exec auraai-postgres pg_dump -U auraai -Fc auraai > "$DUMP" || true
+ls -la "$DUMP" || true
+# Close stdin so children cannot consume the rest of a piped script.
+exec 0</dev/null
 bash /opt/aura-ai/proxmox-setup/vm_local_deploy.sh /tmp/aura-ai-deploy.tgz
 '@
 $DeployCmd = ($DeployCmd -replace "`r`n", "`n" -replace "`r", "`n")
+$RemoteDeploySh = Join-Path $env:TEMP "aura-ai-remote-deploy.sh"
+[System.IO.File]::WriteAllText($RemoteDeploySh, $DeployCmd, [System.Text.UTF8Encoding]::new($false))
 if ($SshKey) {
-  $sshArgs = @(Get-SshBaseArgs) + @("${User}@${DeployHost}", "bash", "-s")
-  $DeployCmd | & ssh.exe @sshArgs
+  Copy-Remote $RemoteDeploySh "/tmp/aura-ai-remote-deploy.sh"
+  Invoke-Remote "sed -i 's/\r$//' /tmp/aura-ai-remote-deploy.sh && bash /tmp/aura-ai-remote-deploy.sh"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Remote deploy failed with exit code $LASTEXITCODE (active .next was not activated if candidate gates failed)"
+  }
 } else {
-  Invoke-Remote $DeployCmd
+  Copy-Remote $RemoteDeploySh "/tmp/aura-ai-remote-deploy.sh"
+  Invoke-Remote "sed -i 's/\r$//' /tmp/aura-ai-remote-deploy.sh && bash /tmp/aura-ai-remote-deploy.sh"
 }
+
+Write-Host ">>> Install / restore Telegram bot..."
+Invoke-Remote "sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh; chmod +x /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh; bash /opt/aura-ai/hosting/install-telegram-bot-on-server.sh"
 
 Write-Host ">>> Health check..."
 try {

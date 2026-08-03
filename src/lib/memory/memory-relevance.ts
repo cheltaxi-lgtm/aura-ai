@@ -138,6 +138,10 @@ export function composeMemoryQueryText(parts: {
   // Substantive user message wins — don't pull old profile/intention into relevance.
   if (last.length >= 10) return last;
 
+  // Short non-empty replies ("ок", "привет") during a spread must not revive
+  // topic-slug memory. Empty lastUserMessage still allows intention/custom.
+  if (last.length > 0) return "";
+
   const custom = parts.customQuestion?.trim() ?? "";
   if (parts.intention === "custom" && custom.length >= 8) {
     return custom;
@@ -146,15 +150,9 @@ export function composeMemoryQueryText(parts: {
   const intentionText = parts.intention?.trim()
     ? expandIntentionForQuery(parts.intention.trim())
     : "";
-
-  return [
-    last,
-    custom,
-    intentionText,
-    parts.mainQuestion?.trim(),
-  ]
-    .filter(Boolean)
-    .join(" ");
+  if (intentionText) return intentionText;
+  if (custom.length >= 8) return custom;
+  return "";
 }
 
 /** Trim chat history so old off-topic turns don't anchor the model. */

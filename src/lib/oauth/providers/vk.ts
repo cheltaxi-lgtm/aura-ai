@@ -8,6 +8,8 @@ interface VkTokenResponse {
   user_id?: number;
   error?: string;
   error_description?: string;
+  error_msg?: string;
+  error_description_text?: string;
 }
 
 interface VkUserInfoResponse {
@@ -21,6 +23,17 @@ interface VkUserInfoResponse {
   };
   error?: string;
   error_description?: string;
+}
+
+function vkErrorMessage(data: VkTokenResponse): string {
+  const desc = data.error_description;
+  if (typeof desc === "string" && desc.trim()) return desc;
+  if (desc && typeof desc === "object") {
+    const nested = desc as { error_description?: string; error?: string };
+    if (typeof nested.error_description === "string") return nested.error_description;
+    if (typeof nested.error === "string") return nested.error;
+  }
+  return data.error_description_text ?? data.error_msg ?? data.error ?? "vk_token_failed";
 }
 
 export async function fetchVkUserInfo(
@@ -52,7 +65,9 @@ export async function fetchVkUserInfo(
     providerUserId: String(user.user_id),
     email: user.email?.trim().toLowerCase() ?? null,
     name,
-    emailVerified: Boolean(user.email),
+    // VK ID does not assert email verification in the userinfo payload.
+    // Never auto-link to an existing password account by email alone.
+    emailVerified: false,
     gender,
   };
 }
@@ -70,11 +85,19 @@ export function buildVkAuthorizeUrl(
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
+    // Space-separated scopes per VK ID web docs.
     scope: "email",
   });
   return `https://id.vk.ru/authorize?${params.toString()}`;
 }
 
+/**
+ * Exchange authorization code for tokens.
+ * Match @vkid/sdk: most params in the query string, `code` in the POST body.
+ * Confidential apps also send `service_token` in the body (VK docs).
+ * @see https://id.vk.com/about/business/go/docs/ru/vkid/latest/vk-id/connection/api-description
+ * @see https://github.com/VKCOM/vkid-web-sdk/blob/master/src/auth/auth.ts
+ */
 export async function exchangeVkCode(
   code: string,
   codeVerifier: string,
@@ -84,19 +107,29 @@ export async function exchangeVkCode(
   if (!options?.deviceId?.trim()) {
     throw new Error("vk_device_id_required");
   }
-  const { clientId, clientSecret } = requireOAuthProviderConfig("vk");
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    code,
-    client_id: clientId,
-    client_secret: clientSecret,
-    redirect_uri: redirectUri,
-    code_verifier: codeVerifier,
-  });
-  body.set("device_id", options.deviceId);
-  if (options?.state) body.set("state", options.state);
+  if (!codeVerifier.trim()) {
+    throw new Error("vk_code_verifier_required");
+  }
+  const { clientId, clientSecret, serviceToken } = requireOAuthProviderConfig("vk");
+  const deviceId = options.deviceId.trim();
 
-  const tokenRes = await fetch("https://id.vk.ru/oauth2/auth", {
+  const query = new URLSearchParams({
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    code_verifier: codeVerifier.trim(),
+    device_id: deviceId,
+  });
+  if (options?.state) query.set("state", options.state);
+
+  const body = new URLSearchParams({ code });
+  // Prefer dedicated service token; fall back to protected key env for older deploys.
+  const vkServiceToken = serviceToken?.trim() || clientSecret?.trim() || "";
+  if (vkServiceToken) {
+    body.set("service_token", vkServiceToken);
+  }
+
+  const tokenRes = await fetch(`https://id.vk.ru/oauth2/auth?${query.toString()}`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
@@ -104,7 +137,7 @@ export async function exchangeVkCode(
   });
   const tokenData = (await tokenRes.json()) as VkTokenResponse;
   if (!tokenRes.ok || !tokenData.access_token) {
-    throw new Error(tokenData.error_description ?? tokenData.error ?? "vk_token_failed");
+    throw new Error(vkErrorMessage(tokenData));
   }
 
   return fetchVkUserInfo(tokenData.access_token, clientId);

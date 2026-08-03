@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb, query } from "@/lib/db";
-import { getAccountConsentSnapshot, getProfileUserIdForAccount } from "@/lib/accounts";
+import {
+  getAccountConsentSnapshot,
+  getProfileUserIdForAccount,
+  updateUserAccountName,
+} from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { validateDisplayName } from "@/lib/auth-policy";
+import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import {
   createUserProfileForAccount,
   createHistoryEntry,
@@ -13,6 +18,7 @@ import {
   linkSessionToUser,
   recordTripletDrawAnchor,
 } from "@/lib/users";
+import { readSessionClaimCookie } from "@/lib/session-claim";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import type { AstroMeta } from "@/lib/astro-profile";
 import { astroMetaFromBirthDate } from "@/lib/registration-consent";
@@ -20,6 +26,7 @@ import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { tarotCardsKey } from "@/lib/tarot";
 import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
 import { isNatalChartEnabled } from "@/lib/settings";
+import { upsertFact } from "@/lib/memory/user-facts";
 
 function normalizeOptionalText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -31,7 +38,7 @@ export async function POST(request: NextRequest) {
   let step = "init";
   try {
     if (!(await ensureDb())) {
-      return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+      return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
     }
 
     const auth = await requireUserAuth();
@@ -110,11 +117,13 @@ export async function POST(request: NextRequest) {
     }
     let user = profileUserId ? await getUserById(profileUserId) : null;
 
+    const displayName = normalizeStoredDisplayName(String(name), String(name).trim());
+
     if (!user) {
       step = "create_user";
       try {
         user = await createUserProfileForAccount(auth.sub, {
-          name: String(name).trim(),
+          name: displayName,
           gender,
           birthDate,
           zodiac,
@@ -139,7 +148,7 @@ export async function POST(request: NextRequest) {
     } else {
       step = "update_user";
       const updated = await updateUserProfile(user.id, {
-        name: String(name).trim(),
+        name: displayName,
         gender,
         birthDate,
         zodiac,
@@ -153,11 +162,34 @@ export async function POST(request: NextRequest) {
       await grantStarterRunesIfNeeded(user.id);
     }
 
+    await updateUserAccountName(auth.sub, displayName);
+
     const verifiedUser = await getUserById(user.id);
     if (!verifiedUser) {
       throw new Error(`Profile user ${user.id} not found after save`);
     }
     user = verifiedUser;
+
+    const trimmedMainQuestion =
+      typeof mainQuestion === "string" ? mainQuestion.trim() : "";
+    if (trimmedMainQuestion.length >= 8) {
+      void import("@/lib/memory/preferences")
+        .then(({ canAutoCapture }) => canAutoCapture(user!.id))
+        .then((allowed) => {
+          if (!allowed) return;
+          return upsertFact(user!.id, {
+            fact: `Главный запрос клиента: ${trimmedMainQuestion}`,
+            category: "goal",
+            salience: 4,
+            sourceCharacter: "profile",
+            sourceType: "profile",
+            predicateKey: "goal.current",
+            operation: "replace",
+            allowSensitive: false,
+          });
+        })
+        .catch((err) => console.warn("[memory] onboarding seed main question failed:", err));
+    }
 
     if (await isNatalChartEnabled()) {
       scheduleNatalChartCompute(user.id);
@@ -165,7 +197,8 @@ export async function POST(request: NextRequest) {
 
     if (sessionId) {
       try {
-        await linkSessionToUser(String(sessionId), user.id);
+        const claimToken = await readSessionClaimCookie();
+        await linkSessionToUser(String(sessionId), user.id, claimToken);
       } catch (linkError) {
         console.warn("Onboarding session link skipped:", linkError);
       }

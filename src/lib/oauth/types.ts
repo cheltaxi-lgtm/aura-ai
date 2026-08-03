@@ -1,6 +1,6 @@
 export type OAuthProvider = "vk" | "yandex";
 
-export type OAuthMode = "login" | "register";
+export type OAuthMode = "login" | "register" | "link";
 
 export interface OAuthTransaction {
   provider: OAuthProvider;
@@ -13,6 +13,10 @@ export interface OAuthTransaction {
   marketingConsent: boolean;
   mode: OAuthMode;
   appFlow: boolean;
+  /** When mode=link — attach provider identity to this account. */
+  linkAccountId?: string | null;
+  /** First-touch UTM captured at OAuth start (null if none). */
+  registrationAttribution?: Record<string, string> | null;
 }
 
 export interface OAuthPendingRegistration {
@@ -21,6 +25,7 @@ export interface OAuthPendingRegistration {
   returnTo: string;
   sessionId: string | null;
   appFlow: boolean;
+  registrationAttribution?: Record<string, string> | null;
 }
 
 export interface OAuthUserInfo {

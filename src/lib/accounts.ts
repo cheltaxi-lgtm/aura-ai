@@ -1,5 +1,6 @@
 import { query, queryClient, withTransaction } from "./db";
 import { deleteUserTripletForMaster } from "./triplet-cleanup";
+import { normalizeStoredDisplayName } from "./normalize-person-name";
 import { getUserById } from "./users";
 import { tarotCardsKey } from "./tarot";
 
@@ -74,71 +75,27 @@ export async function setUserAccountUnlimited(accountId: string, unlimited: bool
 }
 
 /** Returns profile id only when this account exclusively owns the linked profile (UUID link only). */
+/**
+ * Resolve onboarding profile id for an account.
+ * Read-only: must not lock rows or unlink sibling accounts on hot paths
+ * (job polling, /api/auth/me, natal GET) — that caused intermittent 401s
+ * right after a paid natal job was successfully enqueued.
+ */
 export async function getProfileUserIdForAccount(accountId: string): Promise<string | null> {
-  return withTransaction(async (client) => {
-    const accountResult = await queryClient<{
-      id: string;
-      profile_user_id: string | null;
-    }>(client, "SELECT id, profile_user_id FROM user_accounts WHERE id = $1 FOR UPDATE", [
-      accountId,
-    ]);
-    const account = accountResult.rows[0];
-    if (!account) return null;
-
-    const profileId = account.profile_user_id ?? null;
-    if (!profileId) {
-      return null;
-    }
-
-    const profileRows = await queryClient<{ id: string }>(
-      client,
-      "SELECT id FROM users WHERE id = $1",
-      [profileId]
-    );
-    if (!profileRows.rows[0]) {
-      await queryClient(client, "UPDATE user_accounts SET profile_user_id = NULL WHERE id = $1", [
-        accountId,
-      ]);
-      return null;
-    }
-
-    const linkedAccounts = await queryClient<{ id: string; created_at: Date }>(
-      client,
-      `SELECT id, created_at FROM user_accounts
-       WHERE profile_user_id = $1
-       ORDER BY created_at ASC
-       FOR UPDATE`,
-      [profileId]
-    );
-
-    if (linkedAccounts.rows.length === 0) {
-      await queryClient(client, "UPDATE user_accounts SET profile_user_id = NULL WHERE id = $1", [
-        accountId,
-      ]);
-      return null;
-    }
-
-    if (linkedAccounts.rows.length === 1) {
-      return linkedAccounts.rows[0].id === accountId ? profileId : null;
-    }
-
-    const staleAccountIds = linkedAccounts.rows
-      .filter((row) => row.id !== accountId)
-      .map((row) => row.id);
-    if (staleAccountIds.length > 0) {
-      await queryClient(
-        client,
-        "UPDATE user_accounts SET profile_user_id = NULL WHERE id = ANY($1::uuid[])",
-        [staleAccountIds]
-      );
-    }
-
-    return linkedAccounts.rows.some((row) => row.id === accountId) ? profileId : null;
-  });
+  const { rows } = await query<{ profile_user_id: string | null }>(
+    `SELECT ua.profile_user_id
+     FROM user_accounts ua
+     WHERE ua.id = $1
+       AND ua.profile_user_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM users u WHERE u.id = ua.profile_user_id)`,
+    [accountId]
+  );
+  return rows[0]?.profile_user_id ?? null;
 }
 
 export async function updateUserAccountName(accountId: string, name: string) {
-  await query("UPDATE user_accounts SET name = $2 WHERE id = $1", [accountId, name.trim()]);
+  const normalized = normalizeStoredDisplayName(name, name.trim() || "Гость");
+  await query("UPDATE user_accounts SET name = $2 WHERE id = $1", [accountId, normalized]);
 }
 
 export interface AccountConsentSnapshot {
@@ -169,6 +126,62 @@ export async function getAccountConsentSnapshot(
     marketingConsent: Boolean(row.marketing_consent),
     marketingConsentAt: row.marketing_consent_at?.toISOString() ?? null,
   };
+}
+
+export async function hasAccountAgeConfirmed(accountId: string): Promise<boolean> {
+  const snap = await getAccountConsentSnapshot(accountId);
+  return Boolean(snap?.ageConfirmedAt);
+}
+
+/** Persist explicit 18+ / terms consent on the account (and linked profile meta). */
+export async function recordAccountLegalConsent(
+  accountId: string,
+  opts: {
+    ageConfirmed?: boolean;
+    acceptedTerms?: boolean;
+    marketingConsent?: boolean;
+  }
+): Promise<AccountConsentSnapshot | null> {
+  const now = new Date().toISOString();
+  const ageAt = opts.ageConfirmed === true ? now : null;
+  const termsAt = opts.acceptedTerms === true ? now : null;
+  const marketingOn = opts.marketingConsent === true;
+
+  await query(
+    `UPDATE user_accounts SET
+       age_confirmed_at = CASE
+         WHEN $2::timestamptz IS NOT NULL THEN COALESCE(age_confirmed_at, $2::timestamptz)
+         ELSE age_confirmed_at
+       END,
+       terms_accepted_at = CASE
+         WHEN $3::timestamptz IS NOT NULL THEN COALESCE(terms_accepted_at, $3::timestamptz)
+         ELSE terms_accepted_at
+       END,
+       marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
+       marketing_consent_at = CASE
+         WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
+         ELSE marketing_consent_at
+       END
+     WHERE id = $1`,
+    [accountId, ageAt, termsAt, marketingOn, marketingOn ? now : null]
+  );
+
+  if (opts.ageConfirmed === true) {
+    const profileUserId = await getProfileUserIdForAccount(accountId);
+    if (profileUserId) {
+      await query(
+        `UPDATE users
+         SET astro_meta = COALESCE(astro_meta, '{}'::jsonb) || $2::jsonb
+         WHERE id = $1`,
+        [
+          profileUserId,
+          JSON.stringify({ ageConfirmed: true, ageConfirmedAt: now }),
+        ]
+      );
+    }
+  }
+
+  return getAccountConsentSnapshot(accountId);
 }
 
 export async function linkAccountToProfile(
@@ -219,6 +232,21 @@ export async function createUser(email: string, passwordHash: string, name: stri
     [email.toLowerCase(), passwordHash, name]
   );
   return rows[0];
+}
+
+/** First-touch only — never overwrites an existing attribution snapshot. */
+export async function saveRegistrationAttributionIfEmpty(
+  accountId: string,
+  attribution: Record<string, string>
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE user_accounts
+     SET registration_attribution = $2::jsonb
+     WHERE id = $1
+       AND registration_attribution IS NULL`,
+    [accountId, JSON.stringify(attribution)]
+  );
+  return (rowCount ?? 0) > 0;
 }
 
 export async function findExpertByEmail(email: string) {
@@ -338,21 +366,42 @@ export function findCachedIntentionSpread(
   characterId: string,
   intention: string,
   cards: { name: string }[],
-  spreadId?: string | null
+  spreadId?: string | null,
+  options?: {
+    /** Only reuse a reading that belongs to this consultation session. */
+    sessionId?: string | null;
+    /**
+     * When true (default for custom polls), never return a cross-session hit.
+     * Same cards + same question must not surface a previous consultation.
+     */
+    requireSessionId?: boolean;
+  }
 ): {
   reading: string;
   tarotCards: { name: string; meaning?: string }[];
   deckSystem?: string;
   system?: string;
+  source?: string;
+  provenance?: unknown;
+  sessionId?: string;
 } | null {
   const key = tarotCardsKey(cards);
   if (!key) return null;
+
+  const sessionId = options?.sessionId?.trim() || null;
+  const requireSessionId = options?.requireSessionId === true || Boolean(sessionId);
+  if (requireSessionId && !sessionId) return null;
 
   const entry = history.find((r) => {
     if (r.character_name !== characterId) return false;
     const ctx = r.context_data;
     if (ctx?.type !== "intention_spread" || ctx.intention !== intention) return false;
     if (spreadId && ctx.spreadId && ctx.spreadId !== spreadId) return false;
+    if (sessionId) {
+      const storedSessionId =
+        typeof ctx.sessionId === "string" ? ctx.sessionId.trim() : "";
+      if (storedSessionId !== sessionId) return false;
+    }
     const reading = typeof ctx.reading === "string" ? ctx.reading.trim() : "";
     if (reading.length < 80) return false;
     const stored = ctx.tarotCards as { name: string }[] | undefined;
@@ -366,6 +415,9 @@ export function findCachedIntentionSpread(
     tarotCards: (ctx.tarotCards as { name: string; meaning?: string }[]) ?? cards,
     deckSystem: ctx.deckSystem as string | undefined,
     system: ctx.system as string | undefined,
+    source: typeof ctx.source === "string" ? ctx.source : undefined,
+    provenance: ctx.provenance,
+    sessionId: typeof ctx.sessionId === "string" ? ctx.sessionId : undefined,
   };
 }
 
@@ -417,19 +469,6 @@ export async function getExpertStats(slug: string) {
     payments: parseInt(rows[0]?.payments ?? "0", 10),
     revenue: parseFloat(rows[0]?.revenue ?? "0"),
   };
-}
-
-export async function linkSessionToUser(sessionId: string, userId: string): Promise<boolean> {
-  const { rows } = await query<{ id: string }>(
-    `UPDATE sessions AS s
-     SET user_id = $2, updated_at = NOW()
-     WHERE s.id = $1
-       AND EXISTS (SELECT 1 FROM users u WHERE u.id = $2)
-       AND (s.user_id IS NULL OR s.user_id = $2)
-     RETURNING s.id`,
-    [sessionId, userId]
-  );
-  return Boolean(rows[0]);
 }
 
 export async function deleteUserChatForCharacter(

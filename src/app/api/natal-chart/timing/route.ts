@@ -3,10 +3,14 @@ import { requireProfileUserId } from "@/lib/require-auth";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { parseTimingHorizon } from "@/lib/natal/timing";
 import { getOrComputePersonalTiming } from "@/lib/services/natal-timing-service";
+import { isNatalChartEnabled } from "@/lib/settings";
 
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
+  if (!(await isNatalChartEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
   const auth = await requireProfileUserId();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const limited = await enforcePaidRouteRateLimit(auth.profileUserId, "natal_timing");

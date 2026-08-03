@@ -21,6 +21,12 @@ const tripletLovePositions: SpreadPosition[] = [
   { key: "outlook", label: "Перспектива" },
 ];
 
+const lifeDeathTripletPositions: SpreadPosition[] = [
+  { key: "state", label: "Состояние" },
+  { key: "circumstances", label: "Обстоятельства" },
+  { key: "vector", label: "Вектор" },
+];
+
 const situation5Positions: SpreadPosition[] = [
   { key: "situation", label: "Ситуация" },
   { key: "obstacle", label: "Препятствие" },
@@ -203,7 +209,7 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
     layout: "row",
     seoSlug: "da-net",
     seo: {
-      title: "Таро да нет: точный расклад онлайн бесплатно | Zovus",
+      title: "Таро да нет: точный расклад онлайн | Zovus",
       h1: "Таро да нет — точный ответ на ваш вопрос",
       intro:
         "Расклад «Таро да нет» — самый быстрый способ гадания на картах Таро: вы формулируете один чёткий вопрос, вытягиваете одну карту, и мастер переводит её значение в понятный ответ «да» или «нет» с пояснением нюансов и оговорок.",
@@ -364,7 +370,7 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
   "lenormand-line": {
     id: "lenormand-line",
     label: "Линия Ленорман",
-    description: "Пять карт в линию — быстрая фраза «основа → исход» в духе оракула Ленорман",
+    description: "Пять карт в линию — быстрая фраза «основа → исход» в духе колоды Ленорман",
     cardCount: 5,
     positions: lenormandLinePositions,
     topics: "*",
@@ -377,7 +383,7 @@ export const SPREAD_REGISTRY: Record<SpreadId, SpreadDefinition> = {
       title: "Ленорман онлайн: расклад «Линия» на 5 карт | Zovus",
       h1: "Ленорман онлайн — расклад «Линия» на 5 карт",
       intro:
-        "Расклад «Линия» на картах оракула Ленорман строит короткую фразу из пяти карт: основа, развитие, ядро вопроса, исход и ключ — более конкретный и прямой стиль ответа, чем у классического Таро.",
+        "Расклад «Линия» на картах Ленорман строит короткую фразу из пяти карт: основа, развитие, ядро вопроса, исход и ключ — более конкретный и прямой стиль ответа, чем у классического Таро.",
     },
   },
 };
@@ -469,6 +475,9 @@ export function resolveSpreadPositions(
   const spread = getSpread(spreadId);
   if (topic === "love" && spread.id === "triplet") {
     return tripletLovePositions;
+  }
+  if (topic === "life_death" && spread.id === "triplet") {
+    return lifeDeathTripletPositions;
   }
   return spread.positions;
 }

@@ -2,25 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminAction } from "@/lib/admin";
 import { ensureDb } from "@/lib/db";
+import { processMemoryExtractionJobs } from "@/lib/memory/client-memory";
 import { runMemoryMaintenance } from "@/lib/memory/user-facts";
 
 /**
- * Re-embeds long-term memory facts that were stored without a vector
- * (e.g. while the embeddings provider was unavailable), and decays stale
- * "critical" facts back to normal salience. Safe to call repeatedly;
- * intended for an admin button or a cron job.
+ * Re-embeds missing vectors, decays/expires stale facts, drains extraction outbox.
+ * Safe to call repeatedly; intended for an admin button or a cron job.
  */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const limitParam = Number(request.nextUrl.searchParams.get("limit"));
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 1000) : 200;
 
   const result = await runMemoryMaintenance(limit);
-  await logAdminAction(auth.sub, "memory_maintenance", "system", undefined, result);
-  return NextResponse.json({ ok: true, ...result });
+  const extraction = await processMemoryExtractionJobs(
+    Math.min(20, Math.max(5, Math.floor(limit / 10)))
+  ).catch(() => ({ processed: 0, stored: 0, failed: 0 }));
+  const payload = { ...result, extraction };
+  await logAdminAction(auth.sub, "memory_maintenance", "system", undefined, payload);
+  return NextResponse.json({ ok: true, ...payload });
 }

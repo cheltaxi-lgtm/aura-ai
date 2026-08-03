@@ -10,6 +10,7 @@ import {
   navigateToPhotoReading,
   navigateToRitualFlow,
   navigateToSpreadCatalog,
+  navigateToStartReading,
 } from "@/lib/app-shell-nav";
 
 /** Thin hook wrapper — navigation uses plain functions safe for Capacitor WebView. */
@@ -19,6 +20,7 @@ export function useAppShellNav() {
     navigateToAppSection,
     navigateToAppHome,
     navigateToHomeSpreadFlow,
+    navigateToStartReading,
     navigateToSpreadCatalog,
     navigateToPhotoReading,
     navigateToDecksModal,

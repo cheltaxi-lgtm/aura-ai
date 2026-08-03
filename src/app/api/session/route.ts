@@ -15,6 +15,7 @@ import {
   updateSessionReferrer,
   getFreeQuestionLimit,
   setSessionAwaitingContext,
+  setSessionMemoryReadMode,
   updateSessionChatMeta,
 } from "@/lib/session";
 
@@ -23,9 +24,38 @@ import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accoun
 import { requireUserAuth } from "@/lib/require-auth";
 import { resolveSessionForUser, assertSessionReadAccess } from "@/lib/session-access";
 import { setSessionClaimCookie } from "@/lib/session-claim";
+import { clientIp, enforceSessionCreateRateLimit } from "@/lib/api-guards";
 import { parseNumerologToolParams, decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
+import { resolveMatrixAwareFreeQuestionLimit } from "@/lib/numerology/matrix-chat-allowance";
 import { upsertSessionMemoryFromChat } from "@/lib/session-memory";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
+import { getUserById } from "@/lib/users";
+
+async function resolveSessionFreeLimit(
+  session: {
+    user_id?: string | null;
+    spread_id?: string | null;
+  },
+  profileUserId: string | null | undefined
+): Promise<number> {
+  const baseLimit = await getFreeQuestionLimit();
+  let birthDate: string | null = null;
+  const uid = profileUserId ?? session.user_id ?? null;
+  if (uid) {
+    try {
+      const user = await getUserById(uid);
+      birthDate = user?.birth_date ?? null;
+    } catch {
+      birthDate = null;
+    }
+  }
+  return resolveMatrixAwareFreeQuestionLimit({
+    baseLimit,
+    profileUserId: uid,
+    birthDate,
+    spreadId: session.spread_id,
+  });
+}
 
 function formatSession(
   session: {
@@ -35,6 +65,7 @@ function formatSession(
     free_questions_used: number;
     paid_until: Date | null;
     has_single_unlock: boolean;
+    memory_read_mode?: "default" | "fresh";
   },
   unlimited = false,
   freeLimit = 2,
@@ -53,11 +84,15 @@ function formatSession(
     referrerSlug: session.referrer_slug,
     isUnlimited: unlimited,
     ownerMismatch,
+    memoryReadMode: session.memory_read_mode ?? "default",
   };
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimited = await enforceSessionCreateRateLimit(clientIp(request));
+    if (rateLimited) return rateLimited;
+
     const auth = await getAuth();
     const body = await request.json().catch(() => ({}));
     const referrerSlug = body.referrerSlug as string | undefined;
@@ -136,6 +171,10 @@ export async function PATCH(request: NextRequest) {
         ? null
         : String(body.referrerSlug);
     const awaitingContext = body.awaitingContext as boolean | undefined;
+    const memoryReadMode =
+      body.memoryReadMode === "default" || body.memoryReadMode === "fresh"
+        ? body.memoryReadMode
+        : undefined;
     const characterKey =
       typeof body.characterKey === "string" ? body.characterKey.trim() : undefined;
     const intention =
@@ -157,12 +196,23 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (!(await ensureDb())) {
-      return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+      return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
     }
 
     const profileUserId = await getProfileUserIdForAccount(auth.sub);
     const resolved = await resolveSessionForUser(sessionId, profileUserId);
     if (resolved.error) return resolved.error;
+
+    if (memoryReadMode && profileUserId) {
+      const updatedMode = await setSessionMemoryReadMode(
+        sessionId,
+        profileUserId,
+        memoryReadMode
+      );
+      if (!updatedMode) {
+        return NextResponse.json({ error: "not_found" }, { status: 404 });
+      }
+    }
 
     const hasReferrerUpdate = Object.prototype.hasOwnProperty.call(body, "referrerSlug");
     if (hasReferrerUpdate) {
@@ -221,7 +271,7 @@ export async function PATCH(request: NextRequest) {
       profileUserId: updated.user_id,
     });
 
-    const freeLimit = await getFreeQuestionLimit();
+    const freeLimit = await resolveSessionFreeLimit(updated, profileUserId);
     return NextResponse.json(formatSession(updated, unlimited, freeLimit));
   } catch (error) {
     console.error("Session patch error:", error);
@@ -276,7 +326,7 @@ export async function GET(request: NextRequest) {
       profileUserId: session.user_id,
     });
 
-    const freeLimit = await getFreeQuestionLimit();
+    const freeLimit = await resolveSessionFreeLimit(session, profileUserId);
     const payload = formatSession(session, unlimited, freeLimit, false);
     if (!session.user_id) {
       return NextResponse.json({

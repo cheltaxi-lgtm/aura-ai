@@ -20,6 +20,7 @@ export interface SessionRow {
   spread_id?: string | null;
   cards?: string[] | null;
   numerolog_tool_params?: NumerologToolParams | null;
+  memory_read_mode?: "default" | "fresh";
   status?: string;
   created_at?: Date;
   updated_at?: Date;
@@ -40,6 +41,7 @@ const SESSION_SELECT_FIELDS = `
   id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
   COALESCE(awaiting_context, false) AS awaiting_context,
   character_key, intention, spread_type, spread_id, cards, numerolog_tool_params,
+  COALESCE(memory_read_mode, 'default') AS memory_read_mode,
   COALESCE(status, 'active') AS status, created_at, updated_at
 `;
 
@@ -61,9 +63,23 @@ function parseSessionCards(raw: unknown): string[] | null {
   if (!raw) return null;
   if (Array.isArray(raw)) {
     const names = raw
-      .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
-      .map((c) => c.trim());
+      .map((c) => {
+        if (typeof c === "string" && c.trim()) return c.trim();
+        if (c && typeof c === "object" && typeof (c as { name?: unknown }).name === "string") {
+          const name = String((c as { name: string }).name).trim();
+          const reversed = Boolean((c as { reversed?: unknown }).reversed);
+          return name ? (reversed ? `${name} (перевёрнутая)` : name) : "";
+        }
+        return "";
+      })
+      .filter((n) => n.length > 0);
     return names.length ? names : null;
+  }
+  if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    if (obj.kind === "guest_triplet_resume" && Array.isArray(obj.symbols)) {
+      return parseSessionCards(obj.symbols);
+    }
   }
   return null;
 }
@@ -162,6 +178,38 @@ export async function setSessionAwaitingContext(
   );
 }
 
+/** Owner-scoped switch for suppressing all long-term memory reads in one session. */
+export async function setSessionMemoryReadMode(
+  sessionId: string,
+  userId: string,
+  mode: "default" | "fresh"
+): Promise<boolean> {
+  const result = await query(
+    `UPDATE sessions
+        SET memory_read_mode = $3, updated_at = NOW()
+      WHERE id = $1 AND user_id = $2
+        AND COALESCE(status, 'active') = 'active'`,
+    [sessionId, userId, mode]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Fail closed: only the owner and default mode may read long-term memory. */
+export async function canSessionReadLongTermMemory(
+  sessionId: string,
+  userId: string
+): Promise<boolean> {
+  const { rows } = await query<{ allowed: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM sessions
+        WHERE id = $1 AND user_id = $2
+          AND COALESCE(memory_read_mode, 'default') = 'default'
+     ) AS allowed`,
+    [sessionId, userId]
+  );
+  return rows[0]?.allowed === true;
+}
+
 export async function getSessionChatMeta(sessionId: string): Promise<SessionChatMeta | null> {
   const { rows } = await query<{
     id: string;
@@ -237,8 +285,32 @@ export async function updateSessionChatMeta(
     params.push(meta.spreadId);
   }
   if (meta.cards !== undefined) {
-    sets.push(`cards = $${idx++}::jsonb`);
-    params.push(meta.cards?.length ? JSON.stringify(meta.cards) : null);
+    // Preserve structured guest-resume receipt payload if present.
+    let preserveGuestPayload = false;
+    if (meta.cards?.length) {
+      try {
+        const { rows } = await query<{ cards: unknown; spread_type: string | null }>(
+          `SELECT cards, spread_type FROM sessions WHERE id = $1 LIMIT 1`,
+          [sessionId]
+        );
+        const existing = rows[0];
+        const existingCards = existing?.cards;
+        const isGuestPayload =
+          existingCards &&
+          typeof existingCards === "object" &&
+          !Array.isArray(existingCards) &&
+          (existingCards as { kind?: unknown }).kind === "guest_triplet_resume";
+        const isGuestSpread =
+          existing?.spread_type === "guest_resume" || meta.spreadType === "guest_resume";
+        preserveGuestPayload = Boolean(isGuestPayload || isGuestSpread);
+      } catch {
+        preserveGuestPayload = false;
+      }
+    }
+    if (!preserveGuestPayload) {
+      sets.push(`cards = $${idx++}::jsonb`);
+      params.push(meta.cards?.length ? JSON.stringify(meta.cards) : null);
+    }
   }
   if (meta.numerologToolParams !== undefined) {
     sets.push(`numerolog_tool_params = $${idx++}::jsonb`);
@@ -352,7 +424,11 @@ export async function unlockSingleSession(sessionId: string) {
   );
 }
 
-export async function unlockSubscription(sessionId: string, days = 30) {
+export async function unlockSubscription(
+  sessionId: string,
+  days = 30,
+  bonusPaymentId?: string
+) {
   await query(
     `UPDATE sessions SET paid_until = GREATEST(COALESCE(paid_until, NOW()), NOW()) + ($2 || ' days')::INTERVAL,
      has_single_unlock = TRUE, updated_at = NOW() WHERE id = $1`,
@@ -371,7 +447,8 @@ export async function unlockSubscription(sessionId: string, days = 30) {
           session.user_id,
           runeEquivalent,
           "bonus",
-          `Подписка ${days} дней — эквивалент рун`
+          `Подписка ${days} дней — эквивалент рун`,
+          bonusPaymentId
         );
       }
     }
@@ -477,8 +554,14 @@ export async function recordPayment(data: {
 
 export async function completePayment(
   yukassaPaymentId: string,
-  verifiedAmountRub?: number
+  verifiedAmountRub: number
 ) {
+  if (!Number.isFinite(verifiedAmountRub)) {
+    console.warn("[completePayment] verifiedAmountRub required", yukassaPaymentId);
+    return null;
+  }
+
+  // Amount must match before flipping status — otherwise retries never unlock.
   const { rows } = await query<{
     session_id: string;
     payment_type: "single" | "subscription";
@@ -488,46 +571,66 @@ export async function completePayment(
   }>(
     `UPDATE payments SET status = 'succeeded', updated_at = NOW()
      WHERE yukassa_payment_id = $1 AND status = 'pending'
+       AND ABS(amount - $2::numeric) < 0.01
      RETURNING session_id, payment_type, influencer_id, amount::text, blogger_split_percent`,
-    [yukassaPaymentId]
+    [yukassaPaymentId, verifiedAmountRub]
   );
   const payment = rows[0];
-  if (!payment) return null;
-
-  if (verifiedAmountRub !== undefined) {
-    const expected = parseFloat(payment.amount);
-    if (!Number.isFinite(expected) || Math.abs(expected - verifiedAmountRub) > 0.01) {
+  if (!payment) {
+    const pending = await query<{ amount: string }>(
+      `SELECT amount::text FROM payments
+       WHERE yukassa_payment_id = $1 AND status = 'pending' LIMIT 1`,
+      [yukassaPaymentId]
+    );
+    if (pending.rows[0]) {
       console.warn(
         "[completePayment] amount mismatch",
         yukassaPaymentId,
         "expected",
-        expected,
+        pending.rows[0].amount,
         "verified",
         verifiedAmountRub
       );
-      return null;
     }
+    return null;
   }
 
   if (payment.payment_type === "subscription") {
-    await unlockSubscription(payment.session_id);
+    await unlockSubscription(payment.session_id, 30, `sub-bonus:${yukassaPaymentId}`);
   } else {
     await unlockSingleSession(payment.session_id);
   }
   return payment;
 }
 
-export async function completePaymentByOrderId(orderId: string) {
-  const { rows } = await query<{ session_id: string; payment_type: "single" | "subscription" }>(
+/** Prefer completePayment(yukassaId, amount). Order-id path also requires amount binding. */
+export async function completePaymentByOrderId(
+  orderId: string,
+  verifiedAmountRub: number
+) {
+  if (!Number.isFinite(verifiedAmountRub)) {
+    console.warn("[completePaymentByOrderId] verifiedAmountRub required", orderId);
+    return null;
+  }
+
+  const { rows } = await query<{
+    session_id: string;
+    payment_type: "single" | "subscription";
+    yukassa_payment_id: string | null;
+  }>(
     `UPDATE payments SET status = 'succeeded', updated_at = NOW()
      WHERE order_id = $1 AND status = 'pending'
-     RETURNING session_id, payment_type`,
-    [orderId]
+       AND ABS(amount - $2::numeric) < 0.01
+     RETURNING session_id, payment_type, yukassa_payment_id`,
+    [orderId, verifiedAmountRub]
   );
   const payment = rows[0];
   if (!payment) return null;
+  const bonusKey = payment.yukassa_payment_id
+    ? `sub-bonus:${payment.yukassa_payment_id}`
+    : `sub-bonus:order:${orderId}`;
   if (payment.payment_type === "subscription") {
-    await unlockSubscription(payment.session_id);
+    await unlockSubscription(payment.session_id, 30, bonusKey);
   } else {
     await unlockSingleSession(payment.session_id);
   }
@@ -577,7 +680,7 @@ export async function completeYoomoneyPayment(data: {
   }
 
   if (payment.payment_type === "subscription") {
-    await unlockSubscription(data.sessionId);
+    await unlockSubscription(data.sessionId, 30, `sub-bonus:ym:${data.operationId}`);
   } else {
     await unlockSingleSession(data.sessionId);
   }

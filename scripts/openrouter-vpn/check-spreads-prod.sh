@@ -8,10 +8,14 @@ docker exec auraai-postgres psql -U auraai -d auraai -tAc "SELECT value FROM pla
 echo "=== spread registry ==="
 cd /opt/aura-ai && npx tsx scripts/verify-spread-registry.ts 2>&1 | tail -5
 echo "=== OpenRouter spread-like chat ==="
-KEY=$(grep ^OPENROUTER_API_KEY= /opt/aura-ai/.env.local | cut -d= -f2- | tr -d "'\"")
+set -a
+# shellcheck disable=SC1091
+source <(grep -E '^(OPENROUTER_API_KEY|OPENROUTER_HTTPS_PROXY|OPENROUTER_MODEL)=' /opt/aura-ai/.env.local | sed 's/\r$//')
+set +a
+export KEY="$OPENROUTER_API_KEY"
 node --input-type=module <<'NODE'
 import { openRouterFetch } from './src/lib/openrouter-fetch.ts';
-const key = process.env.KEY;
+const key = process.env.OPENROUTER_API_KEY || process.env.KEY;
 const res = await openRouterFetch('https://openrouter.ai/api/v1/chat/completions', {
   method: 'POST',
   headers: {

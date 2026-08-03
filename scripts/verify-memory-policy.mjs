@@ -1,5 +1,5 @@
 /**
- * Static checks for global memory relevance policy.
+ * Static checks for global memory relevance + governance policy.
  * Run: npx tsx scripts/verify-memory-policy.mjs
  */
 import { readFileSync } from "node:fs";
@@ -25,11 +25,44 @@ assert(
   buildMemoryContextSrc.includes("export async function buildMemoryContext") &&
     buildMemoryContextSrc.includes("composeMemoryQueryText")
 );
+assert(
+  "buildMemoryContext gates reads on canReadMemory",
+  buildMemoryContextSrc.includes("canReadMemory")
+);
+assert(
+  "fresh sessions centrally suppress long-term facts and past-session memory",
+  buildMemoryContextSrc.includes("canSessionReadLongTermMemory") &&
+    buildMemoryContextSrc.includes("sessionAllowsLongTerm") &&
+    buildMemoryContextSrc.includes("consentOn && sessionAllowsLongTerm")
+);
 
 const photoRoute = read("src/app/api/photo-reading/stream/route.ts");
 assert(
   "photo-reading uses the shared memory-context helper (not hand-rolled blocks)",
   photoRoute.includes("buildMemoryContext") && photoRoute.includes("appendMemoryContextToPrompt")
+);
+assert(
+  "photo-reading injects memory without requiring sessionId",
+  photoRoute.includes("if (profileUserId)") &&
+    !photoRoute.includes("if (profileUserId && resolvedSessionId)")
+);
+
+const dailyEnergy = read("src/lib/daily-energy.ts");
+assert(
+  "daily-energy uses shared memory-context helper",
+  dailyEnergy.includes("buildMemoryContext") && dailyEnergy.includes("appendMemoryContextToPrompt")
+);
+
+const natalLens = read("src/lib/natal/personalization-lens.ts");
+assert(
+  "natal personalization lens uses buildMemoryContext",
+  natalLens.includes("buildMemoryContext") && natalLens.includes("appendMemoryContextToPrompt")
+);
+
+assert(
+  "past sessions load even without current sessionId (consent-gated)",
+  buildMemoryContextSrc.includes("memoryOn && includePastSessions") &&
+    !buildMemoryContextSrc.includes("userId && params.sessionId && includePastSessions")
 );
 
 const intentionSpreadRoute = read("src/app/api/intention-spread/route.ts");
@@ -51,26 +84,96 @@ assert(
 
 const userFacts = read("src/lib/memory/user-facts.ts");
 assert(
+  "draft facts are isolated from active retrieval and promoted only on confirmation",
+  userFacts.includes("targetStatus = draft ? \"draft\" : \"active\"") &&
+    userFacts.includes("status = 'active'") &&
+    userFacts.includes("status IN ('draft', 'active')") &&
+    userFacts.includes("capture_tier = 'user_confirmed'")
+);
+assert(
   "searchFacts empty query returns []",
-  /if \(!trimmed\) \{\s*return \[\];/s.test(userFacts)
+  userFacts.includes("if (!trimmed) return [];")
+);
+assert(
+  "purgeAllUserMemory revokes consent, clears jobs/reminders, keeps tombstones",
+  userFacts.includes("purgeAllUserMemory") &&
+    userFacts.includes("revokeMemoryConsent") &&
+    userFacts.includes("purgeMemoryExtractionJobs") &&
+    userFacts.includes("event_reminder") &&
+    userFacts.includes("addTombstone") &&
+    userFacts.includes("tombstonesAdded") &&
+    !/purgeAllUserMemory[\s\S]*purgeTombstones/.test(userFacts)
+);
+assert(
+  "fact lifecycle includes supersede/expire/tombstones",
+  userFacts.includes("expireStaleFacts") &&
+    userFacts.includes("addTombstone") &&
+    userFacts.includes("status = 'active'")
 );
 
 const clientMemory = read("src/lib/memory/client-memory.ts");
 assert(
-  "loadClientMemoryBlock does NOT early-return on empty query (would make the " +
-    "imminent-events-are-unconditional branch below it unreachable)",
-  !clientMemory.includes('if (!queryTrimmed) return "";')
+  "loadClientMemoryBlock fail-closes on empty query (no unconditional event leak)",
+  clientMemory.includes("if (!queryTrimmed)") && clientMemory.includes('return "";')
 );
 assert(
-  "loadClientMemoryBlock still surfaces imminent events unconditionally of query relevance",
-  clientMemory.includes("days <= IMMINENT_EVENT_DAYS) return true;")
+  "facts and events use semantic relevance fallback (no unconditional bypass)",
+  clientMemory.includes("isTextRelevantToQueryAsync") &&
+    clientMemory.includes("upcomingMatches") &&
+    clientMemory.includes("criticalMatches")
+);
+{
+  const recordTurnSrc = clientMemory.slice(
+    clientMemory.indexOf("export async function recordTurn"),
+    clientMemory.indexOf("export async function processMemoryExtractionJobs")
+  );
+  assert(
+    "recordTurn enqueues durable jobs (no in-request extract LLM)",
+    recordTurnSrc.includes("enqueueMemoryExtraction") &&
+      !recordTurnSrc.includes("extractFactsFromTurn")
+  );
+}
+assert(
+  "client memory serializes facts as untrusted XML",
+  clientMemory.includes("memory_data") &&
+    clientMemory.includes("false") &&
+    clientMemory.includes("MEMORY_SECURITY_RULES") &&
+    clientMemory.includes("escapeMemoryXml")
+);
+
+const preferences = read("src/lib/memory/preferences.ts");
+assert(
+  "memory preferences fail-closed by default",
+  preferences.includes("memoryEnabled: false") &&
+    preferences.includes("autoCaptureEnabled: false") &&
+    preferences.includes("canReadMemory") &&
+    preferences.includes("canAutoCapture")
+);
+
+const prefsRoute = read("src/app/api/memory/preferences/route.ts");
+assert(
+  "memory preferences API requires PD consent to enable",
+  prefsRoute.includes("pdConsent") && prefsRoute.includes("consent_required")
+);
+assert(
+  "initial choice has stable experiment assignment and one-time transactional email",
+  prefsRoute.includes("getMemoryExperimentAssignment") &&
+    prefsRoute.includes("sendMemoryChoiceEmail") &&
+    prefsRoute.includes("memory_choice_email_version") &&
+    prefsRoute.includes("consent_choice_enabled")
+);
+
+const extractCron = read("src/app/api/cron/memory-extract/route.ts");
+assert(
+  "memory extraction cron drains processMemoryExtractionJobs",
+  extractCron.includes("processMemoryExtractionJobs") && extractCron.includes("x-cron-secret")
 );
 
 const userMemory = read("src/lib/user-memory.ts");
 assert(
-  "buildMemoryBlock degrades to a single recent-visit line on empty query (no full history injection)",
-  userMemory.includes("ПОСЛЕДНИЙ ВИЗИТ КЛИЕНТА") &&
-    userMemory.includes("Не возвращайся к прошлой теме сам")
+  "buildMemoryBlock returns empty on empty query (no episodic leak)",
+  userMemory.includes("if (!topicQuery) return \"\";") &&
+    userMemory.includes("buildMemoryBlock")
 );
 assert(
   "past-session retrieval downranks sessions the client rated poorly (1-2)",
@@ -79,6 +182,11 @@ assert(
 assert(
   "buildClientBlock gates mainQuestion by relevance",
   userMemory.includes("isTextRelevantToQuery(query, profile.mainQuestion)")
+);
+assert(
+  "buildClientBlock does not inject birthDate on empty query",
+  userMemory.includes("Boolean(query)") &&
+    userMemory.includes("/натал|астро|зодиак|гороскоп|нумеролог|матриц|даша|транзит|рожден/i")
 );
 assert(
   "buildCurrentSessionAnchorBlock rejects empty query",
@@ -96,6 +204,11 @@ const relevance = read("src/lib/memory/memory-relevance.ts");
 assert(
   "composeMemoryQueryText expands intention slug",
   relevance.includes("expandIntentionForQuery")
+);
+assert(
+  "composeMemoryQueryText does not revive mainQuestion for short chat replies",
+  relevance.includes("Short non-empty replies") &&
+    relevance.includes("if (last.length > 0) return \"\";")
 );
 
 const adminMemory = read("src/app/api/admin/users/[userId]/memory/route.ts");
@@ -139,6 +252,14 @@ assert(
   "memory facts POST requires PD consent",
   factsRoute.includes("pdConsent") && factsRoute.includes("consent_required")
 );
+assert(
+  "manual fact add enables memory read (not auto-capture)",
+  factsRoute.includes("memoryEnabled: true") && factsRoute.includes("updateMemoryPreferences")
+);
+assert(
+  "memory facts API supports PATCH edit",
+  factsRoute.includes("export async function PATCH") && factsRoute.includes("updateFact")
+);
 
 const cabinetMemory = read("src/components/cabinet/CabinetMemoryFacts.tsx");
 assert(
@@ -151,6 +272,18 @@ assert(
   cabinetMemory.includes("pdConsent") &&
     cabinetMemory.includes("152-ФЗ") &&
     cabinetMemory.includes("/privacy")
+);
+assert(
+  "cabinet memory exposes governance toggles",
+  cabinetMemory.includes("/api/memory/preferences") &&
+    cabinetMemory.includes("autoCaptureEnabled") &&
+    cabinetMemory.includes("Использовать память в сеансах")
+);
+assert(
+  "cabinet memory supports edit + purge",
+  cabinetMemory.includes("method: \"PATCH\"") &&
+    cabinetMemory.includes("/api/memory/purge") &&
+    cabinetMemory.includes("Очистить всю память")
 );
 
 const userFactDisplay = read("src/lib/memory/user-fact-display.ts");
@@ -178,6 +311,13 @@ assert(
 assert(
   "chat-orchestrator uses the shared memory-context helper",
   orchestrator.includes("buildMemoryContext")
+);
+assert(
+  "chat-orchestrator paid full spreads use reading-mode builders",
+  orchestrator.includes("shouldUsePremiumReadingPrompt") &&
+    orchestrator.includes("buildCharacterPrompt") &&
+    orchestrator.includes("buildHumanReadingPrompt") &&
+    orchestrator.includes("buildPaidSpreadReadingExtras")
 );
 
 assert(
@@ -230,10 +370,6 @@ assert(
     purgeRoute.includes("purgeAllUserMemory") &&
     purgeRoute.includes("confirm")
 );
-assert(
-  "cabinet UI exposes the self-service purge action",
-  cabinetMemory.includes("/api/memory/purge") && cabinetMemory.includes("Очистить всю память")
-);
 
 const adminMemoryStatsRoute = read("src/app/api/admin/memory/stats/route.ts");
 assert(
@@ -251,6 +387,178 @@ const gitignore = read(".gitignore");
 assert(
   "gitignore excludes local debug artifacts",
   gitignore.includes(".tmp-*")
+);
+
+const migration079 = read("scripts/migrations/079_migrate_memory_governance.sql");
+assert(
+  "migration 079 creates prefs, jobs, tombstones",
+  migration079.includes("user_memory_preferences") &&
+    migration079.includes("memory_extraction_jobs") &&
+    migration079.includes("user_memory_tombstones")
+);
+const migration080 = read("scripts/migrations/080_fix_memory_extraction_outbox.sql");
+assert(
+  "migration 080 drops session-level outbox unique index",
+  migration080.includes("DROP INDEX IF EXISTS idx_memory_extraction_jobs_dedupe") &&
+    migration080.includes("idx_memory_extraction_jobs_pending_msg")
+);
+const migration081 = read("scripts/migrations/081_migrate_personal_memory_moat.sql");
+assert(
+  "migration 081 adds initial choice, provenance, activity, and extraction metrics",
+  migration081.includes("memory_initial_choice") &&
+    migration081.includes("evidence_quote") &&
+    migration081.includes("user_memory_activity") &&
+    migration081.includes("grounding_rejected_count")
+);
+const migration082 = read("scripts/migrations/082_migrate_memory_product_moat_v2.sql");
+assert(
+  "migration 082 adds fresh sessions, quiet UI, drafts, decisions, and privacy-safe analytics",
+  migration082.includes("memory_read_mode") &&
+    migration082.includes("memory_moments_mode") &&
+    migration082.includes("'draft'") &&
+    migration082.includes("session_memory_fact_decisions") &&
+    migration082.includes("memory_product_events")
+);
+const extractFactsV2 = read("src/lib/memory/extract-facts.ts");
+assert(
+  "confidence-tier drafts are limited to a non-sensitive predicate whitelist",
+  extractFactsV2.includes("DRAFT_PREDICATE_WHITELIST") &&
+    extractFactsV2.includes("confidence >= 0.7") &&
+    extractFactsV2.includes('sensitivity === "normal"')
+);
+const memoryActivityRoute = read("src/app/api/memory/activity/route.ts");
+assert(
+  "quiet mode and two-moment cap are enforced server-side",
+  memoryActivityRoute.includes("memory_moments_mode = 'active'") &&
+    memoryActivityRoute.includes("moment_number <= 2") &&
+    memoryActivityRoute.includes("LIMIT 2") &&
+    userFacts.includes("memory_moments_mode = 'quiet'") &&
+    userFacts.includes(") < 2")
+);
+assert(
+  "session anchor choices are owner-scoped, relevant, and capped",
+  read("src/app/api/memory/session-facts/route.ts").includes("searchFacts") &&
+    read("src/app/api/memory/session-facts/route.ts").includes("s.user_id = $2") &&
+    read("src/app/api/memory/session-facts/route.ts").includes("decision_count") &&
+    read("src/components/MemoryAnchorSuggestion.tsx").includes("Учитывать это дальше")
+);
+const extractionJobs = read("src/lib/memory/extraction-jobs.ts");
+assert(
+  "enqueue inserts a new job per turn (no completed-job freeze)",
+  extractionJobs.includes("INSERT INTO memory_extraction_jobs") &&
+    !extractionJobs.includes("WHEN memory_extraction_jobs.status = 'completed'")
+);
+assert(
+  "employment predicates mutually supersede",
+  read("src/lib/memory/predicates.ts").includes("supersedeGroupForPredicate") &&
+    read("src/lib/memory/user-facts.ts").includes("supersedeGroupForPredicate")
+);
+assert(
+  "semantic dedup does not merge contradictory supersede-group predicates",
+  read("src/lib/memory/user-facts.ts").includes("conflictingPredicate") &&
+    read("src/lib/memory/user-facts.ts").includes("incomingGroup.includes")
+);
+
+const installCrons = read("proxmox-setup/install-crons.sh");
+assert(
+  "install-crons schedules memory-extract every 5 minutes",
+  installCrons.includes("cron-memory-extract.sh") && installCrons.includes("*/5 * * * *")
+);
+assert(
+  "install-crons hardens cron wrappers to mode 750 (not world-writable)",
+  installCrons.includes("chmod 750")
+);
+const vmDeploy = read("proxmox-setup/vm_local_deploy.sh");
+assert(
+  "vm_local_deploy hardens file modes after rsync",
+  vmDeploy.includes("Hardening /opt/aura-ai file modes") &&
+    vmDeploy.includes("chmod 755") &&
+    vmDeploy.includes("chmod 644")
+);
+
+const numerologyRunner = read("src/lib/services/numerology-tool-runner.ts");
+assert(
+  "numerology tool runner uses buildMemoryContext + recordTurn",
+  numerologyRunner.includes("buildMemoryContext") && numerologyRunner.includes("recordTurn")
+);
+
+const privacy = read("src/app/(legal)/privacy/page.tsx");
+assert(
+  "privacy policy documents explicit memory choice and cabinet controls",
+  privacy.includes("обязательный явный выбор") &&
+    privacy.includes("управлять персональной памятью") &&
+    privacy.includes("исходную историю сообщений")
+);
+
+const captureHelpers = read("src/lib/memory/capture-helpers.ts");
+assert(
+  "capture helpers cover ritual + joint sources",
+  captureHelpers.includes('sourceType: "ritual"') &&
+    captureHelpers.includes('sourceType: "ritual_review"') &&
+    captureHelpers.includes('sourceType: "joint"') &&
+    captureHelpers.includes('sourceType: "joint_combined"') &&
+    captureHelpers.includes("sourceEntityId: params.ritualId") &&
+    captureHelpers.includes("sourceEntityId: params.jointId")
+);
+assert(
+  "ritual generation runner captures on fresh complete",
+  read("src/lib/ritual-generation-runner.ts").includes("captureRitualMemory")
+);
+assert(
+  "ritual review captures outcome text",
+  read("src/lib/ritual-service.ts").includes("captureRitualReviewMemory")
+);
+assert(
+  "joint invite + combined capture are wired",
+  read("src/lib/joint-reading-service.ts").includes("captureJointInviteMemory") &&
+    read("src/lib/joint-reading-service.ts").includes("captureJointCombinedMemory")
+);
+assert(
+  "chat history repair recovers customQuestion for memory capture",
+  read("src/app/api/chat/history/route.ts").includes("findStoredSpreadReadingWithMeta") &&
+    read("src/app/api/chat/history/route.ts").includes("customQuestion: spreadReadingMeta.customQuestion") &&
+    read("src/lib/session-spread-reading.ts").includes("findStoredSpreadReadingWithMeta") &&
+    read("src/lib/session-spread-reading.ts").includes("pickCustomQuestion")
+);
+assert(
+  "onboarding seeds mainQuestion via upsertFact when auto-capture allowed",
+  read("src/app/api/onboarding/route.ts").includes("upsertFact") &&
+    read("src/app/api/onboarding/route.ts").includes("canAutoCapture") &&
+    read("src/app/api/onboarding/route.ts").includes("goal.current")
+);
+assert(
+  "post-profile memory choice covers all auth paths",
+  read("src/components/HomePage.tsx").includes("PersonalMemoryChoice") &&
+    read("src/components/PersonalMemoryChoice.tsx").includes("Персональная память") &&
+    !read("src/components/PersonalMemoryChoice.tsx").includes("ИИ")
+);
+assert(
+  "initial choice enables normal memory but keeps sensitive/reminders off",
+  preferences.includes("recordInitialMemoryChoice") &&
+    preferences.includes("sensitive_capture_enabled = FALSE") &&
+    preferences.includes("event_reminders_enabled = FALSE")
+);
+assert(
+  "memory activity API is self-only and source scoped",
+  read("src/app/api/memory/activity/route.ts").includes("requireUserAuth") &&
+    read("src/app/api/memory/activity/route.ts").includes("a.user_id = $1") &&
+    read("src/app/api/memory/activity/route.ts").includes("source_entity_id")
+);
+assert(
+  "memory moments expose confirm/change/forget",
+  read("src/components/MemoryMoments.tsx").includes('"confirm"') &&
+    read("src/components/MemoryMoments.tsx").includes('"change"') &&
+    read("src/components/MemoryMoments.tsx").includes('"forget"')
+);
+assert(
+  "worker drains durable memory outbox near-real-time",
+  read("scripts/run-async-jobs.ts").includes("scheduleMemoryDrain") &&
+    read("scripts/run-async-jobs.ts").includes("processMemoryExtractionJobs")
+);
+assert(
+  "production tombstones require a configured secret",
+  read("src/lib/memory/tombstones.ts").includes('NODE_ENV === "production"') &&
+    read("src/lib/memory/tombstones.ts").includes("is required in production")
 );
 
 console.log(`\n--- ${failed} failed ---`);

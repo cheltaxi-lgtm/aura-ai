@@ -6,11 +6,21 @@ import {
   parsePhotoReadingResponse,
   resolvePhotoRecognitionPrompt,
 } from "@/lib/photo-reading-prompts";
-import { isLandscapePhotoBase64 } from "@/lib/image-dimensions";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import {
+  getImageDimensionsFromBase64,
+  isLandscapePhotoBase64,
+  isWideOrSquarePhotoBase64,
+} from "@/lib/image-dimensions";
+import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { getUserById, serializeUserProfile } from "@/lib/users";
 import { enforcePaidRouteRateLimit, MAX_IMAGE_BYTES, validateImageMime, validateImageBase64Payload } from "@/lib/api-guards";
+import { resolvePhotoReadingPricing } from "@/lib/photo-reading-billing";
+import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
+import { getRuneSettings } from "@/lib/rune-settings";
+import { insufficientRunesResponse } from "@/lib/insufficient-runes";
+import { reportError } from "@/lib/error-report";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
+import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
   isRecognizedSpread,
   isUnrecognizedCardLabel,
@@ -40,6 +50,8 @@ export async function POST(request: NextRequest) {
 
   const rateLimited = await enforcePaidRouteRateLimit(auth.sub, "photo_recognize");
   if (rateLimited) return rateLimited;
+  const dailyLimited = await enforcePaidRouteRateLimit(auth.sub, "photo_recognize_daily");
+  if (dailyLimited) return dailyLimited;
 
   let characterId = "veronika";
   let imageBase64 = "";
@@ -139,6 +151,21 @@ export async function POST(request: NextRequest) {
   if (!profileRow || !isUserAgeEligible(profileRow)) {
     return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
   }
+
+  // Soft gate: vision is free until interpret, but require enough runes for the paid stream.
+  const unlimited = await resolveUnlimitedAccess({
+    accountId: auth.sub,
+    profileUserId,
+  });
+  const runeSettings = await getRuneSettings();
+  if (isRuneBillingActive(profileUserId, unlimited, runeSettings) && profileUserId) {
+    const pricing = await resolvePhotoReadingPricing(profileUserId);
+    const balance = await getRuneBalance(profileUserId);
+    if (balance < pricing.effectiveCost) {
+      return insufficientRunesResponse(balance, pricing.effectiveCost);
+    }
+  }
+
   const profile = serializeUserProfile(profileRow);
 
   const today = new Date().toLocaleDateString("ru-RU", {
@@ -148,7 +175,7 @@ export async function POST(request: NextRequest) {
   });
 
   const ctx = {
-    userName: profile?.name ?? auth.name,
+    userName: normalizePersonDisplayNameOr(profile?.name ?? auth.name, "друг"),
     gender: profile?.gender === "male" ? "Мужской" : profile?.gender === "female" ? "Женский" : undefined,
     zodiac: profile?.zodiac,
     birthDate: profile?.birthDate,
@@ -158,7 +185,10 @@ export async function POST(request: NextRequest) {
   };
 
   try {
+    const dims = getImageDimensionsFromBase64(imageBase64, mimeType);
     const landscapePhoto = isLandscapePhotoBase64(imageBase64, mimeType);
+    const horizontalRowSuspect =
+      landscapePhoto || isWideOrSquarePhotoBase64(imageBase64, mimeType) || dims == null;
     const systemPrompt = await resolvePhotoRecognitionPrompt(characterId, ctx);
     const recognitionUserText = question.trim()
       ? `Мой вопрос: ${question.trim()}. Определи колоду, схему расклада и все видимые карты/руны/символы.`
@@ -167,7 +197,8 @@ export async function POST(request: NextRequest) {
       systemPrompt,
       imageBase64,
       recognitionUserText,
-      mimeType
+      mimeType,
+      { landscapePhoto }
     );
 
     if (!llmText) {
@@ -186,7 +217,10 @@ export async function POST(request: NextRequest) {
     }
 
     const analysis = llmText;
-    const parsed = parsePhotoReadingResponse(analysis, { landscapePhoto });
+    const parsed = parsePhotoReadingResponse(analysis, {
+      landscapePhoto,
+      horizontalRowSuspect,
+    });
     const { deckType, spreadType } = parsed;
     /** The vision prompt caps itself at MAX_PHOTO_CARDS, but stay defensive in case a model overshoots — clamp upfront so what the user sees always matches what /stream will accept. */
     const totalDetected = parsed.detectedCards.length;
@@ -262,6 +296,10 @@ export async function POST(request: NextRequest) {
       cards: detectedCards.length,
       confidence,
       truncated,
+      landscapePhoto,
+      horizontalRowSuspect,
+      dims,
+      reversedKept: detectedCards.filter((c) => /\(перев/i.test(c)).length,
     });
 
     return NextResponse.json({
@@ -285,6 +323,12 @@ export async function POST(request: NextRequest) {
       imageBytes: rawSize,
       mimeType,
       error,
+    });
+    reportError(error, {
+      route: "photo-reading/recognize",
+      userId: auth.sub,
+      characterId,
+      imageBytes: rawSize,
     });
     return NextResponse.json(
       { error: "Не удалось распознать расклад. Попробуйте другое фото." },

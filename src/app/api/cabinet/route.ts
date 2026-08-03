@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getProfileUserIdForAccount, hasAccountAgeConfirmed } from "@/lib/accounts";
+import { AGE_REQUIRED_ERROR } from "@/lib/age-gate";
 import { requireUserAuth } from "@/lib/require-auth";
 import { syncRetroactiveAchievements } from "@/lib/achievements";
 import { pruneDuplicateActiveSessions, pruneEmptySessionStubs } from "@/lib/session";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import {  getCabinetProfile,
-  getCabinetStats,
-  getCabinetAchievements,
-  getCabinetSessions,
-  getCabinetDiaryPreview,
-  getCabinetRunes,
-  getCabinetLegacyAccess,
-  getCabinetPhotoSpreads,
-  getCabinetDailyReadings,
-} from "@/lib/cabinet-data";
+    getCabinetStats,
+    getCabinetAchievements,
+    getCabinetSessions,
+    getCabinetDiaryPreview,
+    getCabinetRunes,
+    getCabinetLegacyAccess,
+    getCabinetPhotoSpreads,
+    getCabinetDailyReadings,
+  } from "@/lib/cabinet-data";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
+
+  if (!(await hasAccountAgeConfirmed(auth.sub))) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
   }
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
@@ -56,6 +61,7 @@ export async function GET(request: NextRequest) {
         email: auth.email,
         zodiac: null,
         birthDate: null,
+        birthCity: null,
         runeBalance: 0,
         createdAt: null,
       },
@@ -124,6 +130,7 @@ export async function GET(request: NextRequest) {
         email: auth.email,
         zodiac: null,
         birthDate: null,
+        birthCity: null,
         runeBalance: 0,
         createdAt: null,
       },
@@ -159,7 +166,11 @@ export async function GET(request: NextRequest) {
     safe("dailyReadings", () => getCabinetDailyReadings(profileUserId), [], errors),
   ]);
 
+  const needsOnboarding =
+    !profile.birthDate || !(profile.birthCity || "").trim();
+
   return NextResponse.json({
+    needsOnboarding,
     profile,
     stats,
     achievements,

@@ -38,10 +38,15 @@ export interface RitualAchievementPayload {
   phrase: string;
 }
 
+export type RitualReadyPayload = {
+  achievement?: RitualAchievementPayload | null;
+  ritual?: Record<string, unknown> | null;
+};
+
 interface Props {
   characterKey: string;
   ritualId: string;
-  onReady: (achievement?: RitualAchievementPayload | null) => void;
+  onReady: (payload?: RitualReadyPayload | null) => void;
   onFailed: (opts?: { refunded?: boolean }) => void;
 }
 
@@ -93,13 +98,16 @@ export default function RitualGenerating({
       data: {
         status?: string;
         error?: string;
-        ritual?: { status?: string };
+        ritual?: { status?: string } & Record<string, unknown>;
         achievement?: RitualAchievementPayload | null;
       },
       resOk: boolean
     ) => {
       if ((resOk && data.status === "completed") || data.ritual?.status === "completed") {
-        onReadyRef.current(data.achievement ?? null);
+        onReadyRef.current({
+          achievement: data.achievement ?? null,
+          ritual: data.ritual ?? null,
+        });
         return true;
       }
       if (
@@ -108,11 +116,16 @@ export default function RitualGenerating({
         data.error === "generation_error" ||
         data.error === "needs_payment"
       ) {
-        setRefunded(true);
+        const wasPaidRefund = Boolean(
+          (data as { refunded?: boolean }).refunded
+        );
+        setRefunded(wasPaidRefund || data.error === "needs_payment");
         setError(
           data.error === "needs_payment"
             ? "Оплата не завершена. Вернитесь к оплате и получите обряд снова."
-            : "Не удалось составить обряд. Руны возвращены на баланс — попробуйте ещё раз."
+            : wasPaidRefund
+              ? "Не удалось составить обряд. Руны возвращены на баланс — попробуйте ещё раз."
+              : "Не удалось составить обряд. Попробуйте ещё раз."
         );
         return true;
       }
@@ -131,17 +144,22 @@ export default function RitualGenerating({
       const timer = window.setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
 
       try {
-        const res = await fetch(`/api/ritual/${ritualId}/regenerate`, {
-          method: "POST",
+        const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+        const { status, data } = await postWithAsyncJob({
+          url: `/api/ritual/${ritualId}/regenerate`,
+          body: {},
+          storageKey: `aura:ritual-active-job:${ritualId}`,
           signal: controller.signal,
         });
-        const data = (await res.json()) as {
-          status?: string;
-          error?: string;
-          ritual?: { status?: string };
-          achievement?: RitualAchievementPayload | null;
-        };
-        return handleGenerationResult(data, res.ok);
+        return handleGenerationResult(
+          data as {
+            status?: string;
+            error?: string;
+            ritual?: { status?: string };
+            achievement?: RitualAchievementPayload | null;
+          },
+          status < 400
+        );
       } catch {
         return false;
       } finally {
@@ -155,8 +173,35 @@ export default function RitualGenerating({
   useEffect(() => {
     let cancelled = false;
     const startedAt = Date.now();
+    const storageKey = `aura:ritual-active-job:${ritualId}`;
 
     void (async () => {
+      try {
+        const { resumeStoredOrActiveAsyncJob } = await import(
+          "@/lib/client/wait-for-async-job"
+        );
+        const resumed = await resumeStoredOrActiveAsyncJob({
+          storageKey,
+          kind: "ritual_generation",
+        });
+        if (cancelled) return;
+        if (resumed) {
+          const handled = handleGenerationResult(
+            resumed as {
+              status?: string;
+              error?: string;
+              ritual?: { status?: string };
+              achievement?: RitualAchievementPayload | null;
+              refunded?: boolean;
+            },
+            true
+          );
+          if (handled) return;
+        }
+      } catch {
+        /* fall through to regenerate */
+      }
+
       const firstDone = await triggerGeneration(false);
       if (cancelled || firstDone) return;
 
@@ -189,7 +234,7 @@ export default function RitualGenerating({
     return () => {
       cancelled = true;
     };
-  }, [ritualId, triggerGeneration, pollStatus]);
+  }, [ritualId, triggerGeneration, pollStatus, handleGenerationResult]);
 
   const handleRetry = () => {
     void triggerGeneration(true);
@@ -235,6 +280,21 @@ export default function RitualGenerating({
 
   return (
     <div className="flex min-h-[360px] flex-col items-center justify-center px-6 py-10">
+      <div className="mb-4 w-full max-w-sm">
+        {/* lazy import avoided — tiny notice */}
+        {isGenerating ? (
+          <div
+            role="status"
+            className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs leading-relaxed text-amber-50/90"
+          >
+            <p className="font-medium text-amber-100">Составляем обряд</p>
+            <p className="mt-1 text-amber-50/70">
+              Можно закрыть страницу — результат сохранится. После обновления
+              ожидание восстановится автоматически.
+            </p>
+          </div>
+        ) : null}
+      </div>
       <div className="relative mb-8 flex h-32 w-32 items-center justify-center">
         {symbols.map((sym, i) => (
           <motion.span

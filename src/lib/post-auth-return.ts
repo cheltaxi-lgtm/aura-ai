@@ -198,17 +198,11 @@ export function resolveRegistrationReturnTo(context: RegistrationReturnContext =
     return withAppShellIfNeeded("/?photo=1");
   }
   if (context.guestSpread) {
-    const masterId = resolveGuestSpreadMasterId(context.guestMasterId);
-    const question = context.guestQuestion?.trim();
-    if (question && question.length >= 8) {
-      const params = new URLSearchParams({
-        ask: question,
-        spread: "1",
-        master: masterId,
-      });
-      return withAppShellIfNeeded(`/?${params.toString()}`);
-    }
-    return withAppShellIfNeeded(`/?master=${encodeURIComponent(masterId)}`);
+    // Clean home — onboarding / claim coordinator owns next step.
+    // Never emit SEO ask+spread=1 (redraw) or master-only deep links that open salon noise.
+    void context.guestMasterId;
+    void context.guestQuestion;
+    return withAppShellIfNeeded("/");
   }
   return withAppShellIfNeeded("/");
 }

@@ -15,6 +15,7 @@ import {
   linkSessionToUser,
 } from "@/lib/users";
 import { getUserReadingHistory } from "@/lib/accounts";
+import { readSessionClaimCookie } from "@/lib/session-claim";
 import { upsertFact } from "@/lib/memory/user-facts";
 import { mastersWithReadingForSpread } from "@/lib/reading-progress";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
@@ -32,10 +33,14 @@ import { astroMetaFromBirthDate } from "@/lib/registration-consent";
 import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
 import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
 import type { LifeFocus, AstroMeta } from "@/lib/astro-profile";
+import {
+  inferGenderFromFirstName,
+  normalizeUserGender,
+} from "@/lib/russian-name-gender";
 
 export async function GET() {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const auth = await requireUserAuth();
@@ -107,7 +112,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const auth = await requireUserAuth();
@@ -144,12 +149,60 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    if (!birthDate && !name && !gender && !lifeFocus) {
+    const hasCoreField = Boolean(birthDate || name || gender || lifeFocus);
+    const hasMainQuestionUpdate = mainQuestion !== undefined;
+    if (!hasCoreField && !hasMainQuestionUpdate) {
       return NextResponse.json({ error: "Нет данных для обновления" }, { status: 400 });
     }
 
     let profileUserId = await getProfileUserIdForAccount(auth.sub);
     let profile = profileUserId ? await getUserById(profileUserId) : null;
+
+    // Allow mainQuestion-only edits on an existing profile without re-sending birth data.
+    if (!hasCoreField && hasMainQuestionUpdate) {
+      if (!profileUserId || !profile?.birth_date) {
+        return NextResponse.json(
+          { error: "Сначала заполните профиль (дата рождения)" },
+          { status: 400 }
+        );
+      }
+      profile = await updateUserProfile(profileUserId, {
+        name: profile.name,
+        gender: (normalizeUserGender(profile.gender) ?? "female") as "male" | "female",
+        birthDate: profile.birth_date,
+        zodiac: profile.zodiac,
+        birthTime: profile.birth_time ?? undefined,
+        birthCity: profile.birth_city ?? undefined,
+        lifeFocus: (profile.life_focus ?? "general") as LifeFocus,
+        mainQuestion: mainQuestion ?? undefined,
+        astroMeta: (profile.astro_meta as AstroMeta | undefined) ?? undefined,
+      });
+      const trimmedQuestion = mainQuestion?.trim();
+      if (trimmedQuestion && trimmedQuestion.length >= 8) {
+        void import("@/lib/memory/preferences")
+          .then(({ canAutoCapture }) => canAutoCapture(profileUserId!))
+          .then((allowed) => {
+            if (!allowed) return;
+            return upsertFact(profileUserId!, {
+              fact: `Главный запрос клиента: ${trimmedQuestion}`,
+              category: "goal",
+              salience: 4,
+              sourceCharacter: "profile",
+              sourceType: "profile",
+              predicateKey: "goal.current",
+              operation: "replace",
+              allowSensitive: false,
+            });
+          })
+          .catch((err) => console.warn("[memory] seed main question failed:", err));
+      }
+      return NextResponse.json({
+        ok: true,
+        profileUserId,
+        needsProfile: false,
+        profile: profile ? serializeUserProfile(profile) : null,
+      });
+    }
 
     if (!birthDate && !profile?.birth_date) {
       return NextResponse.json({ error: "Укажите дату рождения" }, { status: 400 });
@@ -168,9 +221,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Некорректная дата рождения" }, { status: 400 });
     }
 
+    const resolvedName = (name ?? profile?.name ?? auth.name).trim();
+    const resolvedGender =
+      normalizeUserGender(gender) ??
+      normalizeUserGender(profile?.gender) ??
+      inferGenderFromFirstName(resolvedName) ??
+      "female";
+
     const payload = {
-      name: (name ?? profile?.name ?? auth.name).trim(),
-      gender: gender ?? profile?.gender ?? "female",
+      name: resolvedName,
+      gender: resolvedGender,
       birthDate: effectiveBirthDate,
       zodiac: formatZodiacLabel(sign),
       birthTime: birthTime ?? profile?.birth_time ?? undefined,
@@ -201,28 +261,38 @@ export async function PATCH(request: NextRequest) {
 
     if (sessionId && profileUserId) {
       try {
-        await linkSessionToUser(String(sessionId), profileUserId);
+        const claimToken = await readSessionClaimCookie();
+        await linkSessionToUser(String(sessionId), profileUserId, claimToken);
       } catch (linkError) {
         console.warn("Profile session link skipped:", linkError);
       }
     }
 
     if (name?.trim()) {
-      await updateUserAccountName(auth.sub, name.trim());
+      await updateUserAccountName(auth.sub, payload.name);
     }
 
     const serialized = profile ? serializeUserProfile(profile) : null;
 
-    // Seed the client's main question into long-term memory so it is
-    // semantically searchable across masters (vector dedup collapses repeats).
+    // Seed main question only when the user opted into auto memory capture.
     const trimmedQuestion = mainQuestion?.trim();
     if (profileUserId && trimmedQuestion && trimmedQuestion.length >= 8) {
-      void upsertFact(profileUserId, {
-        fact: `Главный запрос клиента: ${trimmedQuestion}`,
-        category: "goal",
-        salience: 4,
-        sourceCharacter: "profile",
-      }).catch((err) => console.warn("[memory] seed main question failed:", err));
+      void import("@/lib/memory/preferences")
+        .then(({ canAutoCapture }) => canAutoCapture(profileUserId))
+        .then((allowed) => {
+          if (!allowed) return;
+          return upsertFact(profileUserId, {
+            fact: `Главный запрос клиента: ${trimmedQuestion}`,
+            category: "goal",
+            salience: 4,
+            sourceCharacter: "profile",
+            sourceType: "profile",
+            predicateKey: "goal.current",
+            operation: "replace",
+            allowSensitive: false,
+          });
+        })
+        .catch((err) => console.warn("[memory] seed main question failed:", err));
     }
 
     const birthFieldsTouched =

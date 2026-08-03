@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminStepUp } from "@/lib/admin-stepup";
+import { getAdminRuneGrantCap } from "@/lib/admin-settings-validate";
 import { ensureDb } from "@/lib/db";
 import { adminGrantRunes } from "@/lib/rune-service";
 import { query } from "@/lib/db";
@@ -8,11 +9,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
-  const auth = await requireAdmin();
-  if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const stepped = await requireAdminStepUp(request);
+  if (!stepped.ok) return stepped.response;
+  const auth = stepped.auth;
 
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const { userId } = await params;
@@ -30,8 +32,15 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const grantCap = getAdminRuneGrantCap();
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: "amount must be positive" }, { status: 400 });
+  }
+  if (amount > grantCap) {
+    return NextResponse.json(
+      { error: `amount exceeds max ${grantCap} per grant` },
+      { status: 400 }
+    );
   }
   if (!reason || reason.length < 2) {
     return NextResponse.json({ error: "reason required" }, { status: 400 });

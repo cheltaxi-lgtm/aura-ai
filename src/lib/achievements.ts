@@ -24,13 +24,13 @@ export const ACHIEVEMENTS = {
     },
   },
   week_streak: {
-    label: "Искатель",
+    label: "Семь дней",
     description: "7 дней подряд в приложении",
     bonus: 25,
     phrase: {
       ragnar: "Семь рассветов подряд. Норны замечают упорных.",
       agafya: "Семь дней ходишь... Уважаю.",
-      veronika: "Семь дней. Карты начинают узнавать тебя.",
+      veronika: "Семь дней. Карты начинают узнавать вас.",
       "shri-raj": "Семь дней — первый цикл. Шани доволен.",
       numerolog: "Семь дней подряд — цикл начал читаться.",
     },
@@ -42,7 +42,7 @@ export const ACHIEVEMENTS = {
     phrase: {
       ragnar: "Десять раз вернулся. Это не случайно.",
       agafya: "Десять раз пришла. Значит доверяешь.",
-      veronika: "Десять встреч. Карты тебя уже знают.",
+      veronika: "Десять встреч. Карты вас уже знают.",
       "shri-raj": "Десять сеансов — это уже путь.",
       numerolog: "Десять раз вернулась — числа тебя узнали.",
     },
@@ -68,7 +68,7 @@ export const ACHIEVEMENTS = {
       agafya: "Месяц уже... Родной человек стал.",
       veronika: "Тридцать дней. Это уже не случайность.",
       "shri-raj": "Месяц пути. Карма меняется.",
-      numerolog: "Месяц в коде — ты уже не случайный гость.",
+      numerolog: "Месяц в коде — вы уже не случайный гость.",
     },
   },
   ritual_first: {
@@ -85,14 +85,14 @@ export const ACHIEVEMENTS = {
   },
   ritual_elements: {
     label: "Все стихии",
-    description: "Провёл обряды всех 5 видов",
+    description: "Провёл обряды всех 7 видов",
     bonus: 50,
     phrase: {
-      ragnar: "Все пять стихий пройдены. Ты знаешь силу каждой.",
-      agafya: "Прошла все пять обрядов. Редкий путь, дитя.",
-      veronika: "Все пять обрядов испытаны — ты знаешь всю палитру.",
-      "shri-raj": "Пять стихий пройдены — колесо сделало полный круг.",
-      numerolog: "Все пять чисел обряда сошлись в одном пути.",
+      ragnar: "Все семь стихий пройдены. Ты знаешь силу каждой.",
+      agafya: "Прошла все семь обрядов. Редкий путь, дитя.",
+      veronika: "Все семь обрядов испытаны — ты знаешь всю палитру.",
+      "shri-raj": "Семь стихий пройдены — колесо сделало полный круг.",
+      numerolog: "Все семь чисел обряда сошлись в одном пути.",
     },
   },
   ritual_full_moon: {
@@ -262,7 +262,7 @@ function checkRitualAchievement(
     case "ritual_first":
       return stats.totalCompleted >= 1;
     case "ritual_elements":
-      return stats.distinctTypesCompleted >= 5;
+      return stats.distinctTypesCompleted >= 7;
     case "ritual_full_moon":
       return stats.hasFullMoonRitual;
     case "ritual_loyal":

@@ -4,9 +4,9 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import AboutPageShell, { AboutSection } from "@/components/seo/AboutPageShell";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: "О сервисе Zovus — персональные расклады с ИИ-мастерами",
+  title: "О сервисе Zovus — персональные расклады с ИИ-наставниками",
   description:
-    "Zovus — онлайн-сервис эзотерических консультаций: Таро, руны, астрология, нумерология. ИИ-мастера в художественных образах, чат после расклада.",
+    "Zovus — онлайн-сервис эзотерических консультаций: Таро, руны, астрология, нумерология. ИИ-наставники в художественных образах, чат после расклада.",
   path: "/about",
 });
 
@@ -39,6 +39,15 @@ export default function AboutPage() {
           .
         </p>
       </AboutSection>
+      <AboutSection title="Telegram-бот">
+        <p>
+          Официальный бот в мессенджере — расклады и матрица судьбы без отдельного приложения:{" "}
+          <Link href="/telegram" className="text-aura-gold hover:underline">
+            страница бота
+          </Link>
+          .
+        </p>
+      </AboutSection>
       <AboutSection title="Документы">
         <ul className="space-y-2">
           <li>
@@ -54,6 +63,11 @@ export default function AboutPage() {
           <li>
             <Link href="/about/masters" className="text-aura-gold hover:underline">
               О мастерах
+            </Link>
+          </li>
+          <li>
+            <Link href="/about/personal-memory" className="text-aura-gold hover:underline">
+              Персональная память
             </Link>
           </li>
           <li>

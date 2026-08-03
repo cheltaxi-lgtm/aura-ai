@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import ShareButton from "@/components/share/ShareButton";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { ritualToSharePayload } from "@/lib/share/payload-builders";
 import { RITUAL_TYPES, type RitualType } from "@/lib/ritual-config";
 import { getCharacterById } from "@/lib/characters";
@@ -93,9 +94,9 @@ export default function RitualCard({ ritual, onDone }: Props) {
             <h3 className="font-display text-xs uppercase tracking-widest text-amber-500">
               Время
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-white/85">
-              {ritual.ritualTime}
-            </p>
+            <div className="mt-2">
+              <PremiumReadingBody content={ritual.ritualTime} className="text-sm text-white/85" />
+            </div>
           </section>
         ) : null}
 
@@ -104,9 +105,9 @@ export default function RitualCard({ ritual, onDone }: Props) {
             <h3 className="font-display text-xs uppercase tracking-widest text-amber-500">
               Место
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-white/85">
-              {ritual.ritualPlace}
-            </p>
+            <div className="mt-2">
+              <PremiumReadingBody content={ritual.ritualPlace} className="text-sm text-white/85" />
+            </div>
           </section>
         ) : null}
 
@@ -142,9 +143,9 @@ export default function RitualCard({ ritual, onDone }: Props) {
                   }`}
                 >
                   <p className="font-medium text-amber-200">{step.step}</p>
-                  <p className="mt-1 leading-relaxed text-white/75">
-                    {step.description}
-                  </p>
+                  <div className="mt-1">
+                    <PremiumReadingBody content={step.description} className="text-sm text-white/75" />
+                  </div>
                 </li>
               ))}
             </ol>
@@ -156,9 +157,9 @@ export default function RitualCard({ ritual, onDone }: Props) {
             <h3 className="font-display text-xs uppercase tracking-widest text-amber-500">
               Слова
             </h3>
-            <p className="mt-2 text-sm italic leading-relaxed text-amber-100/90">
-              {ritual.ritualWords}
-            </p>
+            <div className="mt-2 italic text-amber-100/90">
+              <PremiumReadingBody content={ritual.ritualWords} className="text-sm text-amber-100/90" />
+            </div>
             {ritual.ritualWordOfPower ? (
               <div className="mt-4 text-center">
                 <p className="text-xs text-white/40">Слово силы</p>

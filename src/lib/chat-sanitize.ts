@@ -18,6 +18,21 @@ export function sanitizeTextField(value: unknown, maxLen: number): string | unde
   return cleaned || undefined;
 }
 
+/**
+ * Harden a user question before embedding in LLM prompts:
+ * length cap, control-char strip, quote breakout neutralization, tag strip.
+ * Does not invent content — empty input stays empty.
+ */
+export function formatUserQuestionForPrompt(raw: string, maxLen = MAX_USER_MESSAGE_LENGTH): string {
+  const cleaned = stripControlChars(raw)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLen)
+    .replace(/[«»„“”"]/g, "'")
+    .replace(/<\/?(?:system|instructions|memory_data|prompt)\b[^>]*>/gi, "");
+  return cleaned;
+}
+
 export type ChatHistoryMessage = { role: "user" | "assistant"; content: string };
 
 /** Keep only user/assistant turns, trim length, cap history depth. */

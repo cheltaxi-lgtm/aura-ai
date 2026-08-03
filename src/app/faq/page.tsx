@@ -31,15 +31,34 @@ export default function FaqPage() {
           </div>
         ))}
       </AboutSection>
-      <AboutSection title="Расклады">
+      <AboutSection title="Расклады и другие практики">
         <p>
           <Link href="/rasklady" className="text-aura-gold hover:underline">
             Каталог раскладов
           </Link>
           {" · "}
+          <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+            Натальная карта
+          </Link>
+          {" · "}
+          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+            Полная матрица судьбы + ведение
+          </Link>
+          {" · "}
           <Link href="/about/how-readings-work" className="text-aura-gold hover:underline">
             Как проходит расклад
           </Link>
+        </p>
+      </AboutSection>
+      <AboutSection title="Персональная память">
+        <p>
+          Память включается только после отдельного выбора и помогает учитывать релевантный
+          жизненный контекст в следующих консультациях. Сведения можно исправлять и удалять, а
+          отдельный разговор начать без памяти.{" "}
+          <Link href="/about/personal-memory" className="text-aura-gold hover:underline">
+            Как работает персональная память
+          </Link>
+          .
         </p>
       </AboutSection>
       <script

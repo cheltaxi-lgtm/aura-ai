@@ -1,76 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import {
-  claimJointCompletionNotification,
-  ensureCombinedReading,
   getJointReadingByToken,
-  notifyJointReadingEvent,
   resolveJointParticipantRole,
 } from "@/lib/joint-reading-service";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { clientIp, enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { sanitizeSynastryForClient } from "@/lib/natal/synastry";
-import { checkJointReadingAchievementsSilently } from "@/lib/achievements";
 import { isNatalChartEnabled } from "@/lib/settings";
+import { schedulePaidAsyncJob } from "@/lib/async-job-enqueue";
 
 type RouteParams = { params: Promise<{ token: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   const rateLimited = await enforcePaidRouteRateLimit(clientIp(request), "joint_reading_view");
   if (rateLimited) return rateLimited;
 
   const { token } = await params;
-  let row = await getJointReadingByToken(token);
+  const row = await getJointReadingByToken(token);
   if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const authed = await requireProfileUserId();
   const viewerId = authed?.profileUserId ?? null;
-  let participantRole = viewerId ? resolveJointParticipantRole(row, viewerId) : null;
+  const participantRole = viewerId ? resolveJointParticipantRole(row, viewerId) : null;
 
+  let combinedJobId: string | null = null;
+  let combinedPending = false;
   if (
     participantRole &&
     row.initiator_reading?.trim() &&
     row.partner_reading?.trim() &&
     !row.combined_reading
   ) {
-    try {
-      row = await ensureCombinedReading(row);
-      if (row.combined_reading && await claimJointCompletionNotification(row.token)) {
-        await notifyJointReadingEvent({
-          userId: row.initiator_user_id,
-          type: "joint_reading_completed",
-          token: row.token,
-        });
-        if (row.partner_user_id) {
-          await notifyJointReadingEvent({
-            userId: row.partner_user_id,
-            type: "joint_reading_completed",
-            token: row.token,
-          });
-        }
-        if (row.initiator_user_id) {
-          void checkJointReadingAchievementsSilently(
-            row.initiator_user_id,
-            row.initiator_character ?? "ragnar"
-          );
-        }
-        if (row.partner_user_id) {
-          void checkJointReadingAchievementsSilently(
-            row.partner_user_id,
-            row.partner_character ?? "ragnar"
-          );
-        }
-      }
-    } catch {
-      console.warn("[joint-reading] combined reading generation unavailable");
-    }
-    participantRole = viewerId ? resolveJointParticipantRole(row, viewerId) : null;
+    combinedJobId = await schedulePaidAsyncJob({
+      userId: row.initiator_user_id,
+      kind: "joint_combined",
+      payload: { token: row.token, async: false },
+      bypassDeliveryGate: true,
+    });
+    combinedPending = Boolean(combinedJobId) || Boolean(row.combined_claim_token);
   }
 
   const isInitiator = participantRole === "initiator";
@@ -107,6 +81,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     hasInitiatorReading: Boolean(row.initiator_reading),
     hasPartnerReading: Boolean(row.partner_reading),
     combinedReading: canViewPrivate ? row.combined_reading : null,
+    combinedPending,
+    combinedJobId,
     initiatorReading: isInitiator ? row.initiator_reading : null,
     partnerReading: isPartner ? row.partner_reading : null,
     viewerRole: isInitiator ? "initiator" : isPartner ? "partner" : viewerId ? "guest" : null,

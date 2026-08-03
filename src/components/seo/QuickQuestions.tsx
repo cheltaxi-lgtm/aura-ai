@@ -12,23 +12,26 @@ import { trackQuickQuestionClick } from "@/lib/seo/metrika";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 
 const QUICK_INTENT_SLUGS = [
-  "chto-on-chuvstvuet",
-  "vernyotsya-li-on",
-  "est-li-izmena",
+  "chto-mezhdu-nami",
   "chto-so-mnoy-proiskhodit",
+  "zhdat-ili-zabyt",
   "stoit-li-menyat-rabotu",
   "kuda-ukhodyat-dengi",
+  "blizhayshee-budushchee",
   "god-vpered",
   "kak-otpustit-cheloveka",
-  "sovmestimost-12",
+  "sovmestimost-pary",
   "lenormand-liniya",
-  "blizhayshee-budushchee",
+  "chto-on-chuvstvuet",
 ] as const;
 
 const ENTRY_LINKS = [
+  { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
+  { label: "Натальная карта", href: "/natalnaya-karta" },
   { label: "Все расклады", href: "/rasklady" },
-  { label: "Фото-расклад", href: "/?photo=1" },
-  { label: "Отметить карты", href: "/?photo=1&mode=mark" },
+  { label: "Фото-расклад", href: "/photo-rasklad" },
+  { label: "Таро онлайн", href: "/taro" },
+  { label: "Гадание", href: "/gadanie" },
   { label: "Обряды", href: "/obryady" },
   { label: "Нумерология", href: "/numerology" },
   { label: "Статьи", href: "/statyi" },
@@ -91,11 +94,11 @@ export default function QuickQuestions({
         <div className="quick-questions__head">
           <p className="quick-questions__eyebrow">Быстрый старт</p>
           <h2 id="quick-questions-title" className="quick-questions__title">
-            С чего начнём?
+            О чём хотите ясности?
           </h2>
         </div>
         <p className="quick-questions__subtitle">
-          Выберите вопрос — мы подберём мастера и расклад.
+          Выберите готовый вопрос — откроем подходящий расклад.
           {userGender === "male"
             ? " Формулировки про партнёршу."
             : userGender === "female"
@@ -112,16 +115,19 @@ export default function QuickQuestions({
 
         <p className="quick-questions__section-label">Популярные вопросы</p>
         <div className="quick-questions__chips">
-          {QUICK_INTENT_SLUGS.map((slug) => (
+          {QUICK_INTENT_SLUGS.map((slug) => {
+            const seoHref = `/rasklady/${slug}`;
+            return (
             <a
               key={slug}
-              href={`/?intent=${encodeURIComponent(slug)}`}
-              onClick={go(`/?intent=${encodeURIComponent(slug)}`, slug, quickQuestion(slug))}
+              href={seoHref}
+              onClick={go(seoHref, slug, quickQuestion(slug))}
               className="quick-questions__chip"
             >
               {quickLabel(slug)}
             </a>
-          ))}
+            );
+          })}
         </div>
 
         <div className="quick-questions__entries-wrap">
@@ -142,11 +148,11 @@ export default function QuickQuestions({
               <span key={item.slug}>
                 {i > 0 ? " · " : ""}
                 <a
-                  href={`/?intent=${encodeURIComponent(item.slug)}`}
+                  href={`/rasklady/${item.slug}`}
                   onClick={go(
-                    `/?intent=${encodeURIComponent(item.slug)}`,
+                    `/rasklady/${item.slug}`,
                     item.slug,
-                    resolveIntentCopy(item, userGender).title
+                    quickQuestion(item.slug)
                   )}
                   className="quick-questions__featured-link"
                 >

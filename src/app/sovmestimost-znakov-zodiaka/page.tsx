@@ -146,6 +146,31 @@ export default function ZodiacCompatibilityPage() {
         ))}
       </SeoSection>
 
+      <SeoSection title="Также на Zovus">
+        <ul className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+          <li>
+            <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+              Натальная карта
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+              Матрица судьбы
+            </Link>
+          </li>
+          <li>
+            <Link href="/numerology/compatibility" className="text-aura-gold hover:underline">
+              Совместимость по дате рождения
+            </Link>
+          </li>
+          <li>
+            <Link href="/joint-reading" className="text-aura-gold hover:underline">
+              Совместный расклад
+            </Link>
+          </li>
+        </ul>
+      </SeoSection>
+
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

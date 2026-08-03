@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { registerInfluencer } from "@/lib/influencers";
@@ -5,13 +6,19 @@ import { clientIp, enforceInfluencerRegisterRateLimit } from "@/lib/api-guards";
 import { sanitizeTextField } from "@/lib/chat-sanitize";
 import { isExpertRegistrationEnabled } from "@/lib/settings";
 
+function secretsMatch(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const rateLimited = await enforceInfluencerRegisterRateLimit(clientIp(request));
     if (rateLimited) return rateLimited;
 
     if (!(await ensureDb())) {
-      return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+      return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
     }
 
     if (!(await isExpertRegistrationEnabled())) {
@@ -32,10 +39,13 @@ export async function POST(request: NextRequest) {
           { status: 503 }
         );
       }
-      if (body.secret !== registerSecret) {
+      if (typeof body.secret !== "string" || !secretsMatch(body.secret, registerSecret)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-    } else if (registerSecret && body.secret !== registerSecret) {
+    } else if (
+      registerSecret &&
+      (typeof body.secret !== "string" || !secretsMatch(body.secret, registerSecret))
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

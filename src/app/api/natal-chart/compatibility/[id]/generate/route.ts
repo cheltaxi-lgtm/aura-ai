@@ -9,16 +9,33 @@ import {
   formatCompatibilityEvidence,
   validateCompatibilityReport,
 } from "@/lib/natal/compatibility-report";
+import { getNatalModel } from "@/lib/ai-model";
 import { completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { getUserById } from "@/lib/users";
 import { isNatalChartEnabled } from "@/lib/settings";
-import { BillingService, InsufficientFundsError } from "@/lib/services/billing-service";
 import {
+  BillingService,
+  InsufficientFundsError,
+  type BillingChargeResult,
+} from "@/lib/services/billing-service";
+import {
+  compatibilityChartsAreCurrent,
   claimCompatibilityGeneration,
   releaseCompatibilityClaim,
   saveCompatibilityReport,
 } from "@/lib/services/natal-compatibility-service";
+import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
+import {
+  beginWorkerJobSave,
+  chargeRuneActionForWorkerJob,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/natal/async-job-lifecycle";
+import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
 type RouteParams = { params: Promise<{ id: string }> };
@@ -27,13 +44,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   if (!(await isNatalChartEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
-  const auth = await requireProfileUserId();
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  const auth = workerUserId
+    ? { profileUserId: workerUserId }
+    : await requireProfileUserId();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const limited = await enforcePaidRouteRateLimit(
-    auth.profileUserId,
-    "natal_compatibility_generate"
-  );
-  if (limited) return limited;
+  if (!workerUserId) {
+    const limited = await enforcePaidRouteRateLimit(
+      auth.profileUserId,
+      "natal_compatibility_generate"
+    );
+    if (limited) return limited;
+  }
   const { id } = await params;
   if (!isCompatibilityId(id)) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -45,34 +67,62 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       { status: 400 }
     );
   }
+  if (body.async === true) {
+    return enqueueNatalAsyncJob({
+      userId: auth.profileUserId,
+      kind: "natal_compatibility",
+      payload: { id, aiDataUseAcknowledged: true },
+    });
+  }
+  if (!(await compatibilityChartsAreCurrent(id, auth.profileUserId))) {
+    return NextResponse.json(
+      {
+        error: "Карты изменились после создания совместимости. Обновите расчёт — это бесплатно.",
+        code: "charts_changed",
+      },
+      { status: 409 }
+    );
+  }
 
   const claim = await claimCompatibilityGeneration(id, auth.profileUserId);
   if (claim.status === "not_found") {
+    await trackWorkerJobFailed(request, "not_found", { errorCode: "not_found" });
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
   if (claim.status === "cached") {
-    return NextResponse.json({ record: claim.record, cached: true });
+    const payload = { record: claim.record, cached: true };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   }
   if (claim.status === "not_ready") {
+    await trackWorkerJobFailed(request, "charts_not_ready", { errorCode: "charts_not_ready" });
     return NextResponse.json({ error: "charts_not_ready" }, { status: 409 });
   }
   if (claim.status === "busy") {
+    await trackWorkerJobFailed(request, "generation_in_progress", {
+      errorCode: "generation_in_progress",
+    });
     return NextResponse.json({ error: "generation_in_progress" }, { status: 409 });
   }
   if (!claim.record.synastry) {
     await releaseCompatibilityClaim(id, auth.profileUserId, claim.token);
+    await trackWorkerJobFailed(request, "synastry_missing", { errorCode: "synastry_missing" });
     return NextResponse.json({ error: "synastry_missing" }, { status: 409 });
   }
 
   const evidence = buildCompatibilityEvidence(claim.record.synastry);
-  const systemPrompt = await wrapSystemPrompt(`Ты — астрологический аналитик Zovus.
+  const compatUser = await getUserById(auth.profileUserId).catch(() => null);
+  const systemPrompt = await appendNatalPersonalizationLens(
+    await wrapSystemPrompt(`Ты — астрологический аналитик Zovus.
 Создай проверяемый отчёт о совместимости на русском языке.
 Используй ТОЛЬКО рассчитанный evidence ниже. Не выдумывай положения, аспекты,
 биографические факты или даты. Не делай предсказаний и не упоминай координаты.
 ${compatibilityReportJsonInstructions()}
 
 EVIDENCE:
-${formatCompatibilityEvidence(evidence)}`);
+${formatCompatibilityEvidence(evidence)}`),
+    { profileUserId: auth.profileUserId, user: compatUser }
+  );
   const baseMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     {
@@ -81,7 +131,7 @@ ${formatCompatibilityEvidence(evidence)}`);
     },
   ];
 
-  let charge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | undefined;
+  let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
@@ -94,22 +144,26 @@ ${formatCompatibilityEvidence(evidence)}`);
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
+    await trackWorkerJobRefunded(request);
   };
 
   try {
-    charge = await BillingService.chargeRuneAction({
+    charge = await chargeRuneActionForWorkerJob({
+      request,
       userId: auth.profileUserId,
       action: "SYNASTRY_REPORT",
     });
+    const natalModel = await getNatalModel();
     let raw = await completeChat({
       messages: baseMessages,
       maxTokens: 5200,
       temperature: 0.3,
       timeoutMs: 170_000,
-      maxAttempts: 1,
+      maxAttempts: 2,
       jsonObject: true,
-      allowReasoningFallback: true,
+      allowReasoningFallback: false,
       skipTemperatureRetry: true,
+      modelOverride: natalModel,
     });
     let validation = (() => {
       try {
@@ -134,10 +188,11 @@ ${formatCompatibilityEvidence(evidence)}`);
         maxTokens: 5200,
         temperature: 0.1,
         timeoutMs: 90_000,
-        maxAttempts: 1,
+        maxAttempts: 2,
         jsonObject: true,
-        allowReasoningFallback: true,
+        allowReasoningFallback: false,
         skipTemperatureRetry: true,
+        modelOverride: natalModel,
       });
       try {
         validation = validateCompatibilityReport(
@@ -153,12 +208,23 @@ ${formatCompatibilityEvidence(evidence)}`);
     }
     if (!validation.ok) {
       await rollback();
+      await trackWorkerJobFailed(request, "invalid_model_report", {
+        refunded: true,
+        errorCode: "invalid_model_report",
+      });
       return NextResponse.json(
         { error: "invalid_model_report", refunded: true },
         { status: 502 }
       );
     }
 
+    if (!(await beginWorkerJobSave(request))) {
+      await rollback();
+      return NextResponse.json(
+        { error: "generation_timeout", refunded: true },
+        { status: 409 }
+      );
+    }
     const saved = await saveCompatibilityReport({
       id,
       ownerUserId: auth.profileUserId,
@@ -170,24 +236,38 @@ ${formatCompatibilityEvidence(evidence)}`);
     });
     if (!saved) {
       await rollback();
+      await trackWorkerJobFailed(request, "generation_claim_lost", {
+        refunded: true,
+        errorCode: "generation_claim_lost",
+      });
       return NextResponse.json(
         { error: "generation_claim_lost", refunded: true },
         { status: 409 }
       );
     }
-    return NextResponse.json({ record: saved, runeBalance: charge.newBalance });
+    const payload = { record: saved, runeBalance: charge.newBalance };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[natal-compatibility] billing rollback failed");
     });
     if (error instanceof InsufficientFundsError) {
+      await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
       return NextResponse.json(
         { error: "insufficient", balance: error.balance, cost: error.required },
         { status: 402 }
       );
     }
     console.warn("[natal-compatibility] generation failed");
-    return NextResponse.json({ error: "generation_failed" }, { status: 502 });
+    await trackWorkerJobFailed(request, "generation_failed", {
+      refunded: rollbackAttempted,
+      errorCode: "generation_failed",
+    });
+    return NextResponse.json(
+      { error: "generation_failed", refunded: rollbackAttempted },
+      { status: 502 }
+    );
   } finally {
     await releaseCompatibilityClaim(id, auth.profileUserId, claim.token).catch(() => {
       console.warn("[natal-compatibility] claim release failed");

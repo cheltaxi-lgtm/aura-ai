@@ -1,0 +1,395 @@
+{
+  "at": "2026-08-02T09:06:17.438Z",
+  "base": "https://zovus.ru",
+  "webmaster": {
+    "userId": 112696101,
+    "summary": {
+      "status": 200,
+      "body": {
+        "sqi": 0,
+        "excluded_pages_count": 1,
+        "searchable_pages_count": 96,
+        "site_problems": {
+          "RECOMMENDATION": 1
+        }
+      }
+    },
+    "sitemaps": {
+      "status": 200,
+      "body": {
+        "sitemaps": [
+          {
+            "sitemap_id": "9c6d6b10-fb44-3723-bad1-c51fc829d01d",
+            "sitemap_url": "https://zovus.ru/sitemap.xml",
+            "added_date": "2026-07-10T06:07:29.189+03:00"
+          }
+        ],
+        "count": 1
+      }
+    },
+    "recrawlQuota": {
+      "status": 200,
+      "body": {
+        "daily_quota": 150,
+        "quota_remainder": 135
+      }
+    },
+    "queries_TOTAL_CLICKS": {
+      "status": 200,
+      "top": [
+        {
+          "query": "расшифровка таро по фото онлайн бесплатно",
+          "value": 3
+        },
+        {
+          "query": "таро руна совместимость искусственный интеллект",
+          "value": 2
+        },
+        {
+          "query": "лиса и медведь ленорман",
+          "value": 2
+        },
+        {
+          "query": "таро прогноз на 2 -ое полугодие 2026 для рака",
+          "value": 1
+        },
+        {
+          "query": "рак август 2026 таро прогноз",
+          "value": 1
+        },
+        {
+          "query": "парное значение карт ленорман",
+          "value": 1
+        },
+        {
+          "query": "таро расклады смотреть бесплатно",
+          "value": 1
+        },
+        {
+          "query": "получу ли я премию ? погадать",
+          "value": 1
+        },
+        {
+          "query": "таро трансформации новые расклады",
+          "value": 1
+        },
+        {
+          "query": "свободен или нет загаданный мужчина",
+          "value": 1
+        }
+      ]
+    },
+    "queries_TOTAL_SHOWS": {
+      "status": 200,
+      "top": [
+        {
+          "query": "лиса и медведь ленорман",
+          "value": 11
+        },
+        {
+          "query": "расшифровка расклада таро по фото онлайн бесплатно",
+          "value": 10
+        },
+        {
+          "query": "ждать или отпустить таро",
+          "value": 5
+        },
+        {
+          "query": "таро руна совместимость искусственный интеллект",
+          "value": 4
+        },
+        {
+          "query": "расшифровка таро по фото онлайн бесплатно",
+          "value": 4
+        },
+        {
+          "query": "ждать или забыть гадание",
+          "value": 4
+        },
+        {
+          "query": "расшифровать расклад по фото",
+          "value": 4
+        },
+        {
+          "query": "рак таро август 2026",
+          "value": 4
+        },
+        {
+          "query": "расшифровка расклада таро онлайн по фото",
+          "value": 4
+        },
+        {
+          "query": "меркстав",
+          "value": 4
+        }
+      ]
+    },
+    "queries_AVG_SHOW_POSITION": {
+      "status": 400,
+      "top": []
+    }
+  },
+  "metrika": {
+    "status": 200,
+    "id": 110138367,
+    "name": "Zovus",
+    "site": "zovus.ru",
+    "code_status": "CS_ERR_UNKNOWN",
+    "permission": "own"
+  },
+  "direct": {
+    "sandboxEnvFlag": true,
+    "login": "cheldriver",
+    "production": {
+      "http": 200,
+      "units": "15/99920/100000",
+      "campaigns": [
+        {
+          "id": 12264917,
+          "name": "Первая кампания",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "TEXT_CAMPAIGN"
+        },
+        {
+          "id": 26169404,
+          "name": "Приложение",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "MOBILE_APP_CAMPAIGN"
+        },
+        {
+          "id": 26170518,
+          "name": "Приложение сайт",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "TEXT_CAMPAIGN"
+        },
+        {
+          "id": 26224929,
+          "name": "Приложение Мой Копейск",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "TEXT_CAMPAIGN"
+        },
+        {
+          "id": 35196656,
+          "name": "Мобильное приложение \"Мой Копейск\"",
+          "state": "OFF",
+          "status": "DRAFT",
+          "type": "TEXT_CAMPAIGN"
+        }
+      ]
+    },
+    "sandbox": {
+      "http": 200,
+      "error": {
+        "request_id": "2586988839321648510",
+        "error_code": 513,
+        "error_detail": "",
+        "error_string": "Ваш логин не подключен к Яндекс.Директу"
+      },
+      "campaigns": 0
+    },
+    "balanceLiveV4": {
+      "http": 200,
+      "body": {
+        "data": {
+          "ActionsResult": [],
+          "Accounts": [
+            {
+              "AccountDayBudget": {
+                "Amount": "1000"
+              },
+              "Amount": "0",
+              "Login": "cheldriver",
+              "AmountAvailableForTransfer": "0",
+              "SmsNotification": {
+                "MoneyOutSms": "No",
+                "SmsTimeFrom": "09:00",
+                "SmsTimeTo": "21:00",
+                "PausedByDayBudgetSms": "Yes",
+                "MoneyInSms": "No"
+              },
+              "Currency": "RUB",
+              "AgencyName": null,
+              "AccountID": 8498596,
+              "EmailNotification": {
+                "Email": "cheldriver@yandex.ru",
+                "PausedByDayBudget": "Yes",
+                "MoneyWarningValue": 20
+              }
+            }
+          ]
+        }
+      }
+    },
+    "changesProbe": {
+      "http": 202,
+      "error": {
+        "request_id": "9147754918726765596",
+        "error_code": 55,
+        "error_detail": "Указано неверное значение ключа method при запросе в формате JSON или некорректный SOAPAction",
+        "error_string": "Операция не найдена"
+      }
+    }
+  },
+  "site": {
+    "/": {
+      "status": 200,
+      "needles": {
+        "yandex-verification": true,
+        "7902ba7dfdb76ac3": true
+      }
+    },
+    "/telegram": {
+      "status": 200,
+      "needles": {
+        "zovus_card_bot": true,
+        "t.me/": true
+      }
+    },
+    "/robots.txt": {
+      "status": 200,
+      "needles": {
+        "Sitemap:": true,
+        "Host:": true
+      }
+    },
+    "/sitemap.xml": {
+      "status": 200,
+      "needles": {
+        "/telegram": true
+      }
+    },
+    "/107274032904532db6ae0e4b2f39c4b3.txt": {
+      "status": 200,
+      "needles": {
+        "107274032904532db6ae0e4b2f39c4b3": true
+      }
+    }
+  },
+  "recrawl": [
+    {
+      "url": "https://zovus.ru/",
+      "status": 202,
+      "body": {
+        "task_id": "6cc2d8c0-8e51-11f1-aaa9-ef01330240aa",
+        "quota_remainder": 135
+      }
+    },
+    {
+      "url": "https://zovus.ru/telegram",
+      "status": 202,
+      "body": {
+        "task_id": "6d0dc470-8e51-11f1-90a7-cba8414bebe9",
+        "quota_remainder": 134
+      }
+    },
+    {
+      "url": "https://zovus.ru/about",
+      "status": 202,
+      "body": {
+        "task_id": "6d60ed80-8e51-11f1-8f84-37990ca0c23c",
+        "quota_remainder": 133
+      }
+    },
+    {
+      "url": "https://zovus.ru/taro",
+      "status": 202,
+      "body": {
+        "task_id": "6da9b650-8e51-11f1-bd35-e51065dd41c1",
+        "quota_remainder": 132
+      }
+    },
+    {
+      "url": "https://zovus.ru/gadanie",
+      "status": 202,
+      "body": {
+        "task_id": "6df6ebf0-8e51-11f1-8f84-37990ca0c23c",
+        "quota_remainder": 131
+      }
+    },
+    {
+      "url": "https://zovus.ru/rasklady",
+      "status": 202,
+      "body": {
+        "task_id": "6e41feb1-8e51-11f1-aaa9-ef01330240aa",
+        "quota_remainder": 130
+      }
+    },
+    {
+      "url": "https://zovus.ru/rasklady/lyubov",
+      "status": 202,
+      "body": {
+        "task_id": "6e8f5b60-8e51-11f1-8f84-37990ca0c23c",
+        "quota_remainder": 129
+      }
+    },
+    {
+      "url": "https://zovus.ru/numerology/destiny-matrix",
+      "status": 202,
+      "body": {
+        "task_id": "6ed58c20-8e51-11f1-8f84-37990ca0c23c",
+        "quota_remainder": 128
+      }
+    },
+    {
+      "url": "https://zovus.ru/natalnaya-karta",
+      "status": 202,
+      "body": {
+        "task_id": "6f1d6a92-8e51-11f1-8f84-37990ca0c23c",
+        "quota_remainder": 127
+      }
+    },
+    {
+      "url": "https://zovus.ru/runy",
+      "status": 202,
+      "body": {
+        "task_id": "6f6940a0-8e51-11f1-8f84-37990ca0c23c",
+        "quota_remainder": 126
+      }
+    },
+    {
+      "url": "https://zovus.ru/photo-rasklad",
+      "status": 202,
+      "body": {
+        "task_id": "6fb20970-8e51-11f1-90a7-cba8414bebe9",
+        "quota_remainder": 125
+      }
+    },
+    {
+      "url": "https://zovus.ru/faq",
+      "status": 202,
+      "body": {
+        "task_id": "6ffcce10-8e51-11f1-aaa9-ef01330240aa",
+        "quota_remainder": 124
+      }
+    },
+    {
+      "url": "https://zovus.ru/cards",
+      "status": 202,
+      "body": {
+        "task_id": "7045bdf0-8e51-11f1-90a7-cba8414bebe9",
+        "quota_remainder": 123
+      }
+    },
+    {
+      "url": "https://zovus.ru/prognoz",
+      "status": 202,
+      "body": {
+        "task_id": "70920930-8e51-11f1-90a7-cba8414bebe9",
+        "quota_remainder": 122
+      }
+    },
+    {
+      "url": "https://zovus.ru/statyi",
+      "status": 202,
+      "body": {
+        "task_id": "70dd1bf0-8e51-11f1-90a7-cba8414bebe9",
+        "quota_remainder": 121
+      }
+    }
+  ],
+  "errors": []
+}

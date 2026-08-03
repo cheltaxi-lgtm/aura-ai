@@ -182,7 +182,8 @@ export default function OpenRouterDashboard() {
     setMgmtError(null);
     setMgmtSaved(false);
     try {
-      const res = await fetch("/api/admin/openrouter", {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const res = await adminFetch("/api/admin/openrouter", {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

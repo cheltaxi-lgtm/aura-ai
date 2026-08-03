@@ -66,7 +66,7 @@ export async function listHumanMasters(): Promise<ShowcaseMaster[]> {
       gradient: theme.gradient,
       glowColor: theme.glowColor,
       borderColor: theme.borderColor,
-      priceFrom: "990 ₽",
+      priceFrom: "по тарифу ᚢ",
       ...(sessions > 0 ? { sessions: `${sessions} сеансов` } : {}),
       styleNotes: row.style_notes ?? undefined,
       profilePath: `/master/${row.slug}`,

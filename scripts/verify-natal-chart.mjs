@@ -430,13 +430,47 @@ async function main() {
   );
   assert(
     !validateNatalReport(
-      { ...validReport, reportType: "forecast", horizonDays: 30 },
+      {
+        ...validForecast,
+        sections: validForecast.sections.map((section) =>
+          section.key === "currentPeriod"
+            ? {
+                ...section,
+                claims: [{
+                  text: section.claims[0]?.text ?? "Период без timing.",
+                  evidenceIds: [evidenceA.find((item) => item.tradition === "western")?.id ?? evidenceA[0].id],
+                }],
+              }
+            : section
+        ),
+      },
       forecastEvidence,
       "western",
       "forecast",
       30
     ).ok,
-    "report schema rejects forecast claims without timing evidence"
+    "report schema rejects forecast currentPeriod claims without timing evidence"
+  );
+  const forecastWithNatalPersonality = {
+    ...validForecast,
+    sections: validForecast.sections.map((section) =>
+      section.key === "personality"
+        ? {
+            ...section,
+            claims: [{ text: "Натальный акцент периода.", evidenceIds: [evidenceA[0].id] }],
+          }
+        : section
+    ),
+  };
+  assert(
+    validateNatalReport(
+      forecastWithNatalPersonality,
+      forecastEvidence,
+      "western",
+      "forecast",
+      30
+    ).ok,
+    "report schema accepts forecast personality claims grounded in natal evidence"
   );
   assert(
     !validateNatalReport(
@@ -641,7 +675,7 @@ async function main() {
       key,
       title: key,
       claims: [{
-        text: `Grounded ${key}`,
+        text: `Раздел ${key} опирается на рассчитанный показатель совместимости и описывает его как символическую тенденцию, а не как гарантию. Этот фактор помогает заметить характер взаимодействия пары в соответствующей сфере, обсудить различия спокойно и выбрать практичный способ поддержки друг друга. Вывод относится только к указанному расчёту и требует личного контекста.`,
         evidenceIds: [`dimension:${key === "summary" || key === "recommendations" ? "growth" : key}`],
       }],
     })),
@@ -810,6 +844,9 @@ async function main() {
   const printableReport = readFileSync(
     new URL("../src/components/natal/PrintableReport.tsx", import.meta.url), "utf8"
   );
+  const natalStructuredReportView = readFileSync(
+    new URL("../src/components/natal/NatalStructuredReportView.tsx", import.meta.url), "utf8"
+  );
   const natalExplainers = readFileSync(
     new URL("../src/lib/natal/explainers.ts", import.meta.url), "utf8"
   );
@@ -825,8 +862,14 @@ async function main() {
   const runeCosts = readFileSync(
     new URL("../src/lib/rune-costs.ts", import.meta.url), "utf8"
   );
-  const claimCall = interpretationRoute.indexOf("claimNatalInterpretation(");
-  const chargeCall = interpretationRoute.indexOf("BillingService.chargeRuneAction(");
+  const claimCall = Math.max(
+    interpretationRoute.indexOf("claimNatalInterpretation("),
+    interpretationRoute.indexOf("claimNatalInterpretationResilient(")
+  );
+  const chargeCall = Math.max(
+    interpretationRoute.indexOf("await BillingService.chargeRuneAction("),
+    interpretationRoute.indexOf("await chargeRuneActionForWorkerJob(")
+  );
   assert(claimCall >= 0 && chargeCall > claimCall, "interpretation route claims before charging");
   assert(
     interpretationRoute.includes("releaseNatalInterpretationClaim("),
@@ -895,7 +938,8 @@ async function main() {
   );
   assert(
     astrologyWorkspace.includes('"overview"') &&
-      astrologyWorkspace.includes('"relationships"') &&
+      (astrologyWorkspace.includes('"relationships"') ||
+        astrologyWorkspace.includes('"compatibility"')) &&
       astrologyWorkspace.includes("/api/natal-chart/history"),
     "astrology workspace includes all sections and report history"
   );
@@ -1002,20 +1046,33 @@ async function main() {
       natalLabels.includes("GRAHA_LABELS") &&
       natalLabels.includes("TIMING_SOURCE_LABELS") &&
       natalLabels.includes("IMPORTANCE_PLANET_KEYS") &&
+      natalLabels.includes("normalizeLabelKey") &&
       !astrologyWorkspace.includes("} /> {planet}") &&
       !astrologyWorkspace.includes("{event.source}"),
     "visible natal UI uses reusable Russian labels instead of calculation keys"
   );
+  {
+    const { russianGrahaLabel } = await import("../src/lib/natal/labels.ts");
+    assert(
+      russianGrahaLabel("Venus") === "Шукра (Венера)" &&
+        russianGrahaLabel("Sun") === "Сурья (Солнце)" &&
+        russianGrahaLabel("Ketu") === "Кету",
+      "Vimshottari TitleCase lords map to Russian graha labels"
+    );
+  }
   assert(
     printableReport.includes("Приложение: расчётные данные") &&
-      printableReport.includes("Основано на рассчитанных данных") &&
+      (printableReport.includes("Основано на рассчитанных данных") ||
+        natalStructuredReportView.includes("Основано на рассчитанных данных")) &&
+      printableReport.includes("NatalStructuredReportView") &&
+      astrologyWorkspace.includes("NatalStructuredReportView") &&
       !printableReport.includes("Evidence:") &&
       !astrologyWorkspace.includes('label="FORECAST_REPORT"') &&
       !astrologyWorkspace.includes("fingerprint {report.birthFingerprint}"),
     "report and print views hide English implementation labels and identifiers"
   );
   assert(
-    ["Текущие транзиты", "Колесо", "Положения", "Аспекты и орб", "D1 и D9",
+    ["Текущие транзиты", "Колесо", "Положения", "Аспекты и орб", "Раши и навамша",
       "Шкала и фильтры", "Солнечное возвращение", "Вторичные прогрессии",
       "Текущая даша"]
       .every((title) => astrologyWorkspace.includes(`title="${title}"`)) &&
@@ -1026,19 +1083,21 @@ async function main() {
     "all major natal panels include plain-language introductions"
   );
   assert(
-    astrologyWorkspace.includes("Показать расчёт:") &&
-      astrologyWorkspace.includes("полноты показывает") &&
-      astrologyWorkspace.includes("не подтверждает истинность") &&
+    natalStructuredReportView.includes("Показать расчёт:") &&
+      natalStructuredReportView.includes("полноты показывает") &&
+      natalStructuredReportView.includes("не подтверждает истинность") &&
       natalSettings.includes("не создают прогноз") &&
-      astrologyWorkspace.includes("асцендент D9 также исключён") &&
-      !astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
+      astrologyWorkspace.includes("асцендент девятой карты (навамша) также исключён") &&
+      astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
     "timing and evidence language remains calibrated and explicit about limits"
   );
   assert(
-    astrologyWorkspace.includes("дата, время, город и координаты рождения исключены") &&
-      astrologyWorkspace.includes("Настройки чата и Таро не используются и не меняются") &&
-      natalSettings.includes("Эти согласия независимы от разового подтверждения платного отчёта"),
-    "paid-report acknowledgement and optional chat or Tarot consent stay distinct"
+    astrologyWorkspace.includes("aiDataUseAcknowledged: true") &&
+      !astrologyWorkspace.includes("Внешней языковой модели") &&
+      !astrologyWorkspace.includes("координаты рождения исключены") &&
+      natalSettings.includes("Контекст для Shri Raj") &&
+      !natalSettings.includes("координаты рождения не передаются"),
+    "paid natal reports no longer show external-model disclosure copy in the UI"
   );
   assert(
     astrologyWorkspace.includes("NATAL_GUIDES.overview") &&

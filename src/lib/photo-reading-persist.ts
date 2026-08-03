@@ -35,6 +35,8 @@ export async function persistPhotoReadingResult(params: {
       contextData: {
         type: "photo_reading",
         analysis: params.analysisBody,
+        // Dual-write: cabinet/history readers historically expect `interpretation`.
+        interpretation: params.analysisBody,
         detectedCards: params.detectedCards,
         deckType: params.confirmedSpread.deckType,
         spreadType: params.confirmedSpread.spreadType,
@@ -97,6 +99,8 @@ export async function persistPhotoReadingResult(params: {
       characterId: params.characterId,
       userMessage: params.question,
       assistantReply: params.analysisBody,
+      sourceType: "photo",
+      sourceEntityId: historyId ?? params.resolvedSessionId ?? null,
     }).catch((err) => console.warn("[memory] photo recordTurn failed:", err));
   }
 

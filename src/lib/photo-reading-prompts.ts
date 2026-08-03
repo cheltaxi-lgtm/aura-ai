@@ -1,8 +1,13 @@
 import { completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { todayLabelRu } from "@/lib/prompt-date";
-import { buildChatPrompt, buildHumanChatPrompt } from "@/lib/chat-prompts";
-import type { UserContext } from "@/lib/chat-prompts";
+import {
+  buildCharacterPrompt,
+  buildChatPrompt,
+  buildHumanChatPrompt,
+  buildHumanReadingPrompt,
+  type UserContext,
+} from "@/lib/chat-prompts";
 import { getBloggerBySlug, getBloggerKnowledge } from "@/lib/session";
 import { isAiMasterId } from "@/lib/showcase-masters";
 import { formatReversedCardName, parseCardOrientation } from "@/lib/card-orientation";
@@ -11,6 +16,7 @@ import {
   normalizeCardConfidence,
   type PhotoRecognitionConfidence,
 } from "@/lib/photo-reading-constants";
+import { buildPaidSpreadReadingExtras } from "@/lib/prompts/premium-reading";
 
 export interface PhotoReadingContext extends Partial<UserContext> {
   question?: string;
@@ -19,6 +25,11 @@ export interface PhotoReadingContext extends Partial<UserContext> {
 export interface PhotoReadingParseOptions {
   /** Landscape camera frame — common source of false reversed flags on multi-card rows. */
   landscapePhoto?: boolean;
+  /**
+   * Wide/square frame or unknown dims with a multi-card row — still triggers the
+   * classic “half the cards marked reversed” vision bug.
+   */
+  horizontalRowSuspect?: boolean;
 }
 
 export interface PhotoReadingMetadata {
@@ -29,29 +40,51 @@ export interface PhotoReadingMetadata {
   cardConfidences: PhotoRecognitionConfidence[];
 }
 
-import { MAX_SPREAD_CARD_COUNT } from "@/lib/spreads";
-import { spreadFinalConclusionRules } from "@/lib/prompts/format";
+/** Extra photo-only rules layered on top of full reading-mode persona. */
+function photoInterpretationRules(cardCount: number, masterId: string): string {
+  const n = Math.max(1, cardCount);
 
-/** Rules for the SECOND step: cards already confirmed in the Zovus deck, no recognition needed. */
-const PHOTO_INTERPRETATION_RULES = `
-РЕЖИМ: РАСШИФРОВКА ПОДТВЕРЖДЁННОГО РАСКЛАДА.
+  return `
+РЕЖИМ: РАСШИФРОВКА ПОДТВЕРЖДЁННОГО ФОТО-РАСКЛАДА.
 Карты уже распознаны и подтверждены клиентом — НЕ определяй колоду заново, НЕ выводи служебные строки (КОЛОДА/РАСКЛАД/КАРТЫ), НЕ перечисляй карты списком с номерами.
 
-Дай персональную расшифровку от лица мастера, 4–8 абзацев на русском живым текстом:
-- по каждой карте: название → значение в её позиции расклада → вывод для клиента;
-- обращай внимание не только на отдельные карты, но и на комбинации соседних и повторяющихся карт (масти, числа, стихии, конфликтующие или усиливающие друг друга образы) — если видна значимая связка, отдельно назови её и что она добавляет к смыслу расклада;
-- свяжи с вопросом клиента и астрологическим профилем (если есть);
-- честно, без смягчения негатива и без отказа от «тёмных» тем;
-- не используй markdown (* ** #) и нумерованные списки;
-- оставайся в образе; на прямой вопрос «ты ИИ?» — честно, в образе мастера;
-- пиши только готовый текст для клиента — без повтора этих правил, профиля и структуры промпта.
+${buildPaidSpreadReadingExtras({ cardCount: n, masterId, includeDepthBlocks: true })}
 
-${spreadFinalConclusionRules(MAX_SPREAD_CARD_COUNT)}`;
+ДОПОЛНИТЕЛЬНО ДЛЯ ФОТО-РАСКЛАДА:
+- по каждой карте: название → значение в её позиции → вывод для клиента (отдельный развёрнутый абзац);
+- если карт больше одной — отдельно назови значимые связки соседних и повторяющихся карт (масти, числа, стихии, конфликт или усиление) и что они добавляют к смыслу;
+- свяжи с вопросом клиента и астрологическим профилем (если есть);
+- оставайся в образе; на прямой вопрос «ты ИИ?» — честно, в образе мастера.`;
+}
+
+function photoReadingExtras(ctx: PhotoReadingContext) {
+  const cards = ctx.tarotCards ?? [];
+  const positionLabels = cards.map((c, i) => {
+    const pos = (c as { position?: string }).position?.trim();
+    return pos || `Позиция ${i + 1}`;
+  });
+  const question = ctx.question?.trim() || ctx.mainQuestion?.trim() || undefined;
+
+  return {
+    spreadType: "photo" as const,
+    positionLabels,
+    forceThematicReading: true,
+    lastUserMessage: question,
+    customQuestion: question ?? null,
+  };
+}
 
 function buildPersonaBase(
   characterId: string,
   ctx: PhotoReadingContext,
-  bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
+  bloggerOverlay?: {
+    display_name: string;
+    title: string | null;
+    style_notes: string | null;
+    emoji?: string | null;
+    knowledge?: string;
+    slug?: string;
+  }
 ): string {
   let base = buildChatPrompt(characterId, ctx);
 
@@ -69,11 +102,73 @@ function buildPersonaBase(
   return base;
 }
 
+function buildInterpretationPersonaBase(
+  characterId: string,
+  ctx: PhotoReadingContext,
+  bloggerOverlay?: {
+    display_name: string;
+    title: string | null;
+    style_notes: string | null;
+    emoji?: string | null;
+    knowledge?: string;
+    slug?: string;
+  }
+): string {
+  const extras = photoReadingExtras(ctx);
+  const readingCtx: UserContext = {
+    userName: ctx.userName ?? "друг",
+    gender: ctx.gender ?? "",
+    zodiac: ctx.zodiac ?? "",
+    birthDate: ctx.birthDate ?? "",
+    today: ctx.today ?? todayLabelRu(),
+    tarotCards: (ctx.tarotCards ?? []).map((c) => ({
+      name: c.name,
+      meaning: c.meaning ?? "",
+    })),
+    isPaid: Boolean(ctx.isPaid),
+    birthTime: ctx.birthTime,
+    birthCity: ctx.birthCity,
+    lifeFocus: ctx.lifeFocus,
+    mainQuestion: ctx.question?.trim() || ctx.mainQuestion,
+    astroMeta: ctx.astroMeta,
+  };
+
+  if (bloggerOverlay && !isAiMasterId(characterId)) {
+    return buildHumanReadingPrompt(
+      bloggerOverlay,
+      readingCtx,
+      bloggerOverlay.knowledge,
+      extras.customQuestion,
+      {
+        positionLabels: extras.positionLabels,
+        forceThematicReading: true,
+      }
+    );
+  }
+
+  let base = buildCharacterPrompt(characterId, readingCtx, extras);
+
+  if (bloggerOverlay && isAiMasterId(characterId)) {
+    base += `\n\nСтиль мастера ${bloggerOverlay.display_name}: ${bloggerOverlay.style_notes ?? ""}`;
+    if (bloggerOverlay.knowledge) {
+      base += `\nБаза знаний:\n${bloggerOverlay.knowledge}`;
+    }
+  }
+
+  return base;
+}
+
 /** Lean persona-only base for the recognition pass — no interpretation rules, PHOTO_RECOGNITION_ONLY carries the actual instructions. */
 export function buildPhotoRecognitionPrompt(
   characterId: string,
   ctx: PhotoReadingContext,
-  bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
+  bloggerOverlay?: {
+    display_name: string;
+    title: string | null;
+    style_notes: string | null;
+    emoji?: string | null;
+    knowledge?: string;
+  }
 ): string {
   const base = buildPersonaBase(characterId, ctx, bloggerOverlay);
   return `${base}
@@ -84,13 +179,20 @@ export function buildPhotoRecognitionPrompt(
 export function buildPhotoInterpretationPrompt(
   characterId: string,
   ctx: PhotoReadingContext,
-  bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
+  bloggerOverlay?: {
+    display_name: string;
+    title: string | null;
+    style_notes: string | null;
+    emoji?: string | null;
+    knowledge?: string;
+  }
 ): string {
-  const base = buildPersonaBase(characterId, ctx, bloggerOverlay);
+  const cardCount = Math.max(1, ctx.tarotCards?.length ?? 1);
+  const base = buildInterpretationPersonaBase(characterId, ctx, bloggerOverlay);
 
   return `${base}
 
-${PHOTO_INTERPRETATION_RULES}
+${photoInterpretationRules(cardCount, characterId)}
 
 Сегодня: ${ctx.today ?? todayLabelRu()}.`;
 }
@@ -201,26 +303,43 @@ function parseDetectedCardsFromLists(analysis: string): string[] {
   return items;
 }
 
-/** Corrects common false reversed flags when many cards are shot in a landscape frame. */
+/**
+ * Corrects false reversed flags from horizontal / multi-card-row photos.
+ * Vision models often treat phone landscape (or a sideways EXIF frame) as
+ * "every other card is upside-down" even when all cards are upright on the table.
+ * The UI already lets the user toggle reversed manually — prefer upright default.
+ */
 export function sanitizeLandscapeReversedGuesses(
   cards: DetectedCardEntry[],
   opts?: PhotoReadingParseOptions
 ): DetectedCardEntry[] {
-  if (!opts?.landscapePhoto || cards.length < 4) return cards;
-
   const reversedCount = cards.filter((card) => card.reversed).length;
-  if (reversedCount === 0) return cards;
+  if (reversedCount === 0 || cards.length < 1) return cards;
 
-  const ratio = reversedCount / cards.length;
+  const landscape = Boolean(opts?.landscapePhoto);
+  const rowSuspect = Boolean(opts?.horizontalRowSuspect) || landscape;
+
+  // Horizontal frame: never trust model reversed — clear all.
+  if (landscape) {
+    return cards.map((card) => ({ ...card, reversed: false }));
+  }
+
+  if (cards.length < 2) return cards;
+
+  // Need ≥3 cards — on a pair, "second reversed" is a valid reading, not a checkerboard artifact.
   const alternating =
-    cards.every((card, index) => card.reversed === (index % 2 === 0)) ||
-    cards.every((card, index) => card.reversed === (index % 2 === 1));
+    cards.length >= 3 &&
+    (cards.every((card, index) => card.reversed === (index % 2 === 0)) ||
+      cards.every((card, index) => card.reversed === (index % 2 === 1)));
+  const partialMix = reversedCount >= 1 && reversedCount < cards.length;
 
+  // Patterned / partial reverses on a multi-card row are almost always artifacts.
+  // Keep unanimous reverses on upright portrait photos (user may have flipped the whole pack).
   const shouldClear =
-    cards.length >= 5 ||
-    ratio >= 0.5 ||
     alternating ||
-    (cards.length >= 4 && reversedCount >= 2);
+    (rowSuspect && partialMix) ||
+    (rowSuspect && cards.length >= 3 && reversedCount >= 1) ||
+    (cards.length >= 3 && partialMix);
 
   if (!shouldClear) return cards;
 
@@ -268,14 +387,6 @@ export function parseDetectedCards(analysis: string, opts?: PhotoReadingParseOpt
   );
 }
 
-/** Per-card confidence, index-aligned with parseDetectedCards() when КАРТЫ_JSON was provided; empty otherwise. */
-function parseDetectedCardConfidences(
-  analysis: string,
-  opts?: PhotoReadingParseOptions
-): PhotoRecognitionConfidence[] {
-  return parseDetectedCardEntries(analysis, opts).map((entry) => entry.confidence);
-}
-
 export function parsePhotoReadingResponse(
   analysis: string,
   opts?: PhotoReadingParseOptions
@@ -289,11 +400,6 @@ export function parsePhotoReadingResponse(
     detectedCards,
     cardConfidences,
   };
-}
-
-export function photoReadingFallback(userName?: string): string {
-  const name = userName ?? "друг";
-  return `${name}, связь с образом прервалась — не могу сейчас расшифровать расклад. Руны возвращены на баланс. Попробуйте ещё раз с более чётким фото: все карты целиком в кадре, без бликов, сверху. Или соберите расклад вручную в фото-режиме.`;
 }
 
 const PHOTO_RECOGNITION_ONLY = `
@@ -317,7 +423,8 @@ const PHOTO_RECOGNITION_ONLY = `
 - Перечисли ВСЕ различимые символы на фото слева направо / сверху вниз, как они лежат на фото.
 - Максимум 12 символов — если на фото больше, перечисли 12 самых различимых, остальные клиент добавит вручную.
 - Если символов 1–2 — перечисли только видимые; клиент может добавить вручную.
-- Названия — в терминологии ЭТОЙ колоды на фото (English RWS: "Two of Swords", Ленорман: "Всадник", оракул: текст с карты).
+- Названия для клиента — по-русски, когда это классическое таро/Ленорман/руны (Rider-Waite: «Двойка Мечей», «Суд», «Королева Мечей»; Ленорман: «Всадник»; руны: «Феху»). English RWS ("Two of Swords") допустим только если русского названия не знаешь — тогда пиши английское как есть.
+- Оракул / авторская колода: название как на карте (язык с фото).
 - Ориентация и reversed (критично — частая ошибка на горизонтальных фото):
   - Сначала для КАЖДОЙ карты отдельно определи её ориентацию по собственным визуальным признакам: положение номера, названия, символов и изображения относительно рамки самой карты.
   - НЕ суди о перевёрнутости относительно рамки всего фото, экрана, телефона или горизонтального кадра — только относительно границ конкретной карты.
@@ -325,8 +432,7 @@ const PHOTO_RECOGNITION_ONLY = `
   - Типичная ошибка: карты лежат прямо, но из-за горизонтального фото модель помечает часть карт как reversed. Так делать нельзя.
   - reversed: true только если внутри рамки карты изображение/текст перевёрнуты на 180° относительно нормального положения этой колоды; иначе false.
   - При сомнении в reversed всегда ставь false — клиент поправит вручную. Ложный reversed хуже, чем пропущенный реальный переворот.
-- confidence — твоя уверенность именно в ЭТОЙ карте (не в колоде целиком): "высокая" если название читается чётко, "средняя" при частичном перекрытии/блике, "низкая" при угадывании по обрывку образа.
-- Для Rider-Waite / универсального таро можно дублировать русское «2 Мечей».
+- confidence — твоя уверенность именно в ЭТОЙ карте (не в колоде целиком): "высокая" если название читается чётко, "средняя" при частичном перекрытии/блике, "низкая" при угадывании по обрывку образа. Только русские слова: высокая/средняя/низкая.
 - НЕ отказывайся от распознавания из-за незнакомой колоды — опиши каждую видимую карту.
 - КАРТЫ: не удалось распознать — ТОЛЬКО если на фото точно нет карт/рун/символов (портрет, пейзаж, пустой стол).
 - Если видна хотя бы 1 карта — перечисли её; при сомнении укажи лучшее предположение и низкую уверенность и в КОЛОДА, и в confidence этой карты.`;
@@ -334,19 +440,29 @@ const PHOTO_RECOGNITION_ONLY = `
 const PHOTO_RECOGNITION_USER_HINT =
   "Важно: фото может быть горизонтальным, особенно если карт много в ряд. Ориентацию reversed определяй только по рамке каждой карты, не по рамке всего фото. При сомнении reversed=false.";
 
+const PHOTO_RECOGNITION_LANDSCAPE_FORCE_UPRIGHT =
+  "КРИТИЧНО: это горизонтальное фото (кадр шире высоты, карты обычно в один ряд). Поставь reversed:false для КАЖДОЙ карты в КАРТЫ_JSON и не пиши «(перев.)» в КАРТЫ. Клиент поправит переворот вручную при необходимости.";
+
 export async function generatePhotoRecognition(
   systemPrompt: string,
   imageBase64: string,
   userText: string,
-  mimeType?: string
+  mimeType?: string,
+  opts?: { landscapePhoto?: boolean }
 ): Promise<string | null> {
   const fullPrompt = await wrapSystemPrompt(`${systemPrompt}\n\n${PHOTO_RECOGNITION_ONLY}`);
+  const hints = [
+    PHOTO_RECOGNITION_USER_HINT,
+    opts?.landscapePhoto ? PHOTO_RECOGNITION_LANDSCAPE_FORCE_UPRIGHT : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
   const messages: ChatMessage[] = [
     { role: "system", content: fullPrompt },
     buildPhotoVisionMessage(
       userText
-        ? `${userText}\n\n${PHOTO_RECOGNITION_USER_HINT}`
-        : `Распознай колоду, схему расклада и все видимые символы. Только строки КОЛОДА/РАСКЛАД/КАРТЫ.\n\n${PHOTO_RECOGNITION_USER_HINT}`,
+        ? `${userText}\n\n${hints}`
+        : `Распознай колоду, схему расклада и все видимые символы. Только строки КОЛОДА/РАСКЛАД/КАРТЫ.\n\n${hints}`,
       imageBase64,
       mimeType ?? "image/jpeg"
     ),
@@ -383,7 +499,13 @@ async function resolvePromptWithBuilder(
   builder: (
     characterId: string,
     ctx: PhotoReadingContext,
-    bloggerOverlay?: { display_name: string; title: string | null; style_notes: string | null; emoji?: string | null; knowledge?: string }
+    bloggerOverlay?: {
+      display_name: string;
+      title: string | null;
+      style_notes: string | null;
+      emoji?: string | null;
+      knowledge?: string;
+    }
   ) => string,
   characterId: string,
   ctx: PhotoReadingContext,
@@ -404,3 +526,5 @@ async function resolvePromptWithBuilder(
     return prompt;
   }
 }
+
+export { paidSpreadMaxTokens as photoInterpretationMaxTokens } from "@/lib/prompts/premium-reading";

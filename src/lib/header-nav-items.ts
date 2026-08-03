@@ -4,17 +4,33 @@ import {
   Download,
   Flame,
   HeartHandshake,
+  Hexagon,
   Layers,
   LayoutGrid,
   Sparkles,
   Star,
   Users,
 } from "lucide-react";
-import { shouldUseAppShellClient } from "@/lib/app-shell";
-import { navigateToSpreadCatalog } from "@/lib/app-shell-nav";
+import { isAppShellSearchParam, isNativeCapacitorPlatform } from "@/lib/app-shell";
+import {
+  navigateToJointReading,
+  navigateToNatalChart,
+  navigateToNatalCompatibility,
+  navigateToSpreadCatalog,
+} from "@/lib/app-shell-nav";
+
+function navigateToDestinyMatrix() {
+  if (typeof window === "undefined") return;
+  window.location.assign("/numerology/destiny-matrix");
+}
 
 const APK_URL =
   process.env.NEXT_PUBLIC_ANDROID_APK_URL?.trim() || "/releases/zovus-latest.apk";
+
+function resolveAppRouteLinks(): boolean {
+  if (typeof window === "undefined") return false;
+  return isNativeCapacitorPlatform() || isAppShellSearchParam(window.location.search);
+}
 
 export type HeaderNavItem = {
   id: string;
@@ -41,9 +57,17 @@ export type HeaderNavCallbacks = {
   onStartReading: () => void;
 };
 
+export type BuildHeaderNavOptions = {
+  isLoggedIn?: boolean;
+};
+
 /** Grouped header navigation — shared by desktop dropdown and mobile sheet. */
-export function buildHeaderNavSections(callbacks: HeaderNavCallbacks): HeaderNavSection[] {
-  const inAppShell = typeof window !== "undefined" && shouldUseAppShellClient();
+export function buildHeaderNavSections(
+  callbacks: HeaderNavCallbacks,
+  options: BuildHeaderNavOptions = {}
+): HeaderNavSection[] {
+  const { isLoggedIn = false } = options;
+  const appRoutes = resolveAppRouteLinks();
 
   const sections: HeaderNavSection[] = [
     {
@@ -62,12 +86,16 @@ export function buildHeaderNavSections(callbacks: HeaderNavCallbacks): HeaderNav
           icon: Sparkles,
           onClick: callbacks.onStartReading,
         },
-        {
-          id: "joint",
-          label: "Совместный расклад",
-          icon: Users,
-          href: inAppShell ? "/joint-reading?app=1" : "/joint-reading",
-        },
+        ...(isLoggedIn
+          ? [
+              {
+                id: "joint",
+                label: "Совместный расклад",
+                icon: Users,
+                onClick: navigateToJointReading,
+              } satisfies HeaderNavItem,
+            ]
+          : []),
         {
           id: "photo",
           label: callbacks.photoNavLabel,
@@ -99,18 +127,22 @@ export function buildHeaderNavSections(callbacks: HeaderNavCallbacks): HeaderNav
           onClick: callbacks.onNavRitual,
         },
         {
+          id: "destiny-matrix",
+          label: "Матрица судьбы",
+          icon: Hexagon,
+          onClick: navigateToDestinyMatrix,
+        },
+        {
           id: "natal-chart",
           label: "Натальная карта",
           icon: Star,
-          href: inAppShell ? "/cabinet/astrology?app=1" : "/cabinet/astrology",
+          onClick: navigateToNatalChart,
         },
         {
           id: "natal-compatibility",
           label: "Натальная совместимость",
           icon: HeartHandshake,
-          href: inAppShell
-            ? "/cabinet/astrology?tab=compatibility&app=1"
-            : "/cabinet/astrology?tab=compatibility",
+          onClick: navigateToNatalCompatibility,
         },
       ],
     },
@@ -124,7 +156,7 @@ export function buildHeaderNavSections(callbacks: HeaderNavCallbacks): HeaderNav
           icon: LayoutGrid,
           onClick: callbacks.onNavTariffs,
         },
-        ...(inAppShell
+        ...(appRoutes
           ? []
           : [
               {

@@ -604,6 +604,12 @@ html[data-app-shell="android"] .app-shell-splash__ring--inner {
 }
 
 /* ── Bottom tab bar ── */
+@media (min-width: 768px) {
+  html:not([data-native-app="1"]) .app-shell-tabs {
+    display: none !important;
+  }
+}
+
 .app-shell-tabs {
   position: fixed;
   left: 0;

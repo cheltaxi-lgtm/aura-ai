@@ -20,9 +20,29 @@ export interface AiSettings {
   /** Free-tier chat model (e.g. venice/uncensored) */
   freeModel?: string;
   visionModel: string;
+  /** Fast structured JSON model for natal reports and synastry (not reasoning). */
+  natalModel?: string;
+  /** Destiny-matrix zone assembly (sectioned reading). Falls back to paidModel → model. */
+  matrixModel?: string;
+  /** Ordered AI backup models for chat/reading generation (admin-configured). */
+  fallbackModels?: string[];
+  /** Ordered AI backup models for natal JSON reports. */
+  natalFallbackModels?: string[];
+  /** Ordered backups for matrix zones; empty → use fallbackModels. */
+  matrixFallbackModels?: string[];
   temperature: number;
   maxTokens: number;
   maxReadingTokens: number;
+}
+
+/** Rollout controls for durable premium AI delivery. */
+export interface AiDeliveryPlatformSettings {
+  /** Job kinds allowed for general traffic (empty = natal-only legacy mode). */
+  enabledKinds: string[];
+  /** Profile user ids that may use kinds before global enable. */
+  pilotAccountIds: string[];
+  maxJobAgeMinutes: number;
+  maxAttempts: number;
 }
 
 export interface PricingSettings {
@@ -95,6 +115,7 @@ export interface RitualTypePlatformSetting {
 }
 
 export interface RitualPlatformSettings {
+  enabled: boolean;
   types: Record<RitualType, RitualTypePlatformSetting>;
 }
 
@@ -135,9 +156,21 @@ const DEFAULTS = {
     paidModel: "moonshotai/kimi-k2.5",
     freeModel: "openai/gpt-4o-mini",
     visionModel: "google/gemini-2.0-flash-001",
+    natalModel: "openai/gpt-4o-mini",
+    /** Empty at runtime → DEFAULT_MATRIX_MODEL (see ai-model.ts), not paid chat. */
+    matrixModel: "deepseek/deepseek-chat-v3-0324",
+    fallbackModels: [] as string[],
+    natalFallbackModels: [] as string[],
+    matrixFallbackModels: ["moonshotai/kimi-k2.5", "openai/gpt-4o-mini"] as string[],
     temperature: 0.85,
     maxTokens: 800,
     maxReadingTokens: 900,
+  },
+  aiDelivery: {
+    enabledKinds: [] as string[],
+    pilotAccountIds: [] as string[],
+    maxJobAgeMinutes: 45,
+    maxAttempts: 3,
   },
   pricing: { singlePrice: 199, subscriptionPrice: 590, currency: "RUB" },
   features: {
@@ -149,6 +182,11 @@ const DEFAULTS = {
     recaptchaScopes: { ...DEFAULT_RECAPTCHA_SCOPES },
     spreadsCatalogEnabled: DEFAULT_SPREAD_CATALOG_SETTINGS.spreadsCatalogEnabled,
     spreadOverrides: { ...DEFAULT_SPREAD_CATALOG_SETTINGS.spreadOverrides },
+    personalMemoryChoiceEnabled: true,
+    personalMemoryRolloutPercent: 100,
+    personalMemoryMoatV2Enabled: true,
+    personalMemoryMoatV2RolloutPercent: 100,
+    personalMemoryDraftCaptureEnabled: true,
     freeQuestionLimit: 2,
     demoPayments: true,
   },
@@ -172,7 +210,8 @@ const DEFAULTS = {
     stylePrefix:
       `${BRAND_NAME} mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements`,
     scenes: {
-      zodiac_avatar: true,
+      // Static deck art only — never spend image-gen tokens on onboarding avatars.
+      zodiac_avatar: false,
       tarot_atmosphere: true,
       destiny_card: true,
       scene_illustration: true,
@@ -199,6 +238,7 @@ const DEFAULTS = {
     },
   },
   rituals: {
+    enabled: true,
     types: Object.fromEntries(
       RITUAL_TYPE_KEYS.map((key) => [key, { enabled: true, cost: RITUAL_TYPES[key].cost }])
     ) as Record<RitualType, RitualTypePlatformSetting>,
@@ -265,21 +305,61 @@ export async function setSetting<K extends keyof typeof DEFAULTS>(
 }
 
 export async function getAllSettings() {
-  const [ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading, natalChart] =
-    await Promise.all([
-      getSetting("ai"),
-      getSetting("pricing"),
-      getSetting("features"),
-      getSetting("prompts"),
-      getSetting("tts"),
-      getSetting("visual"),
-      getSetting("runes"),
-      getSetting("share"),
-      getSetting("rituals"),
-      getSetting("jointReading"),
-      getSetting("natalChart"),
-    ]);
-  return { ai, pricing, features, prompts, tts, visual, runes, share, rituals, jointReading, natalChart };
+  const [
+    ai,
+    aiDelivery,
+    pricing,
+    features,
+    prompts,
+    tts,
+    visual,
+    runes,
+    share,
+    rituals,
+    jointReading,
+    natalChart,
+  ] = await Promise.all([
+    getSetting("ai"),
+    getSetting("aiDelivery"),
+    getSetting("pricing"),
+    getSetting("features"),
+    getSetting("prompts"),
+    getSetting("tts"),
+    getSetting("visual"),
+    getSetting("runes"),
+    getSetting("share"),
+    getSetting("rituals"),
+    getSetting("jointReading"),
+    getSetting("natalChart"),
+  ]);
+  return {
+    ai,
+    aiDelivery,
+    pricing,
+    features,
+    prompts,
+    tts,
+    visual,
+    runes,
+    share,
+    rituals,
+    jointReading,
+    natalChart,
+  };
+}
+
+export async function getAiDeliverySettings(): Promise<AiDeliveryPlatformSettings> {
+  return getSetting("aiDelivery");
+}
+
+/** Whether a user may use durable AI delivery for a given job kind. */
+export async function isAiDeliveryKindEnabled(
+  kind: string,
+  userId?: string | null
+): Promise<boolean> {
+  const settings = await getAiDeliverySettings();
+  if (userId && settings.pilotAccountIds.includes(userId)) return true;
+  return settings.enabledKinds.includes(kind);
 }
 
 export async function isJointReadingEnabled(): Promise<boolean> {

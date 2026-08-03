@@ -218,6 +218,16 @@
       "metrikaGoalId": 580953383
     },
     {
+      "id": "paywall_open",
+      "group": "revenue",
+      "metrikaGoalId": 585784513
+    },
+    {
+      "id": "payment_cancelled",
+      "group": "revenue",
+      "metrikaGoalId": 585784514
+    },
+    {
       "id": "share_open",
       "group": "share",
       "metrikaGoalId": 580954267
@@ -293,6 +303,11 @@
       "metrikaGoalId": 582035042
     },
     {
+      "id": "ritual_step",
+      "group": "ritual",
+      "metrikaGoalId": 591835994
+    },
+    {
       "id": "numerology_hub_view",
       "group": "numerology",
       "metrikaGoalId": 582035043
@@ -306,6 +321,131 @@
       "id": "lenormand_combo_view",
       "group": "seo",
       "metrikaGoalId": 582035077
+    },
+    {
+      "id": "matrix_landing_view",
+      "group": "numerology",
+      "metrikaGoalId": 586818637
+    },
+    {
+      "id": "matrix_preview_start",
+      "group": "numerology",
+      "metrikaGoalId": 586818639
+    },
+    {
+      "id": "natal_landing_view",
+      "group": "astrology",
+      "metrikaGoalId": 586818640
+    },
+    {
+      "id": "natal_landing_cta_click",
+      "group": "astrology",
+      "metrikaGoalId": 586818641
+    },
+    {
+      "id": "natal_landing_login_click",
+      "group": "astrology",
+      "metrikaGoalId": 586818642
+    },
+    {
+      "id": "matrix_preview_complete",
+      "group": "numerology",
+      "metrikaGoalId": 586829323
+    },
+    {
+      "id": "prognoz_hub_view",
+      "group": "seo",
+      "metrikaGoalId": 586829324
+    },
+    {
+      "id": "memory_consent_prompt_shown",
+      "group": "memory",
+      "metrikaGoalId": 591835997
+    },
+    {
+      "id": "memory_consent_choice_enabled",
+      "group": "memory",
+      "metrikaGoalId": 591835999
+    },
+    {
+      "id": "memory_consent_choice_disabled",
+      "group": "memory",
+      "metrikaGoalId": 591836000
+    },
+    {
+      "id": "memory_settings_changed",
+      "group": "memory",
+      "metrikaGoalId": 591836001
+    },
+    {
+      "id": "memory_fact_captured",
+      "group": "memory",
+      "metrikaGoalId": 591836002
+    },
+    {
+      "id": "memory_fact_confirmed",
+      "group": "memory",
+      "metrikaGoalId": 591836004
+    },
+    {
+      "id": "memory_fact_feedback_positive",
+      "group": "memory",
+      "metrikaGoalId": 591836005
+    },
+    {
+      "id": "memory_fact_feedback_negative",
+      "group": "memory",
+      "metrikaGoalId": 591836006
+    },
+    {
+      "id": "memory_moments_mode_changed",
+      "group": "memory",
+      "metrikaGoalId": 591836007
+    },
+    {
+      "id": "memory_fresh_session_started",
+      "group": "memory",
+      "metrikaGoalId": 591836008
+    },
+    {
+      "id": "memory_injected",
+      "group": "memory",
+      "metrikaGoalId": 591836009
+    },
+    {
+      "id": "memory_fact_draft_captured",
+      "group": "memory",
+      "metrikaGoalId": 591836010
+    },
+    {
+      "id": "memory_fact_changed",
+      "group": "memory",
+      "metrikaGoalId": 591836011
+    },
+    {
+      "id": "memory_fact_forgotten",
+      "group": "memory",
+      "metrikaGoalId": 591836012
+    },
+    {
+      "id": "memory_fact_dismissed",
+      "group": "memory",
+      "metrikaGoalId": 591836013
+    },
+    {
+      "id": "memory_anchor_included",
+      "group": "memory",
+      "metrikaGoalId": 591836014
+    },
+    {
+      "id": "memory_anchor_excluded",
+      "group": "memory",
+      "metrikaGoalId": 591836015
+    },
+    {
+      "id": "memory_purged",
+      "group": "memory",
+      "metrikaGoalId": 591836016
     }
   ]
 }

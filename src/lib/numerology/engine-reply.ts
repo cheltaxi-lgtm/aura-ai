@@ -16,6 +16,7 @@ import {
 import {
   buildNumerologyChatContext,
   detectNumerologyTopics,
+  sessionTopicToNumerologyTopics,
   type NumerologyChatUi,
   type NumerologyTopic,
 } from "./topic-handlers";
@@ -28,6 +29,7 @@ export interface NumerologEngineReplyInput {
   /** Prior user turns (oldest first), excluding the current message. */
   recentUserMessages?: string[];
   spreadNumbers?: string[];
+  intention?: string | null;
 }
 
 export interface NumerologEngineReplyResult {
@@ -52,6 +54,7 @@ const ENGINE_REPLY_TOPICS = new Set<NumerologyTopic>([
   "chaldean",
   "object_number",
   "compatibility",
+  "matrix_compatibility",
   "destiny_matrix",
 ]);
 
@@ -194,6 +197,8 @@ function extractEngineFacts(prompt: string, topic: NumerologyTopic): string {
     chaldean: "ХАЛДЕЙСКАЯ СИСТЕМА",
     object_number: "ЧИСЛО ОБЪЕКТА",
     compatibility: "СОВМЕСТИМОСТЬ",
+    matrix_compatibility: "СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ",
+    destiny_matrix: "МАТРИЦА СУДЬБЫ",
   };
   const marker = markers[topic];
   if (marker) {
@@ -226,6 +231,17 @@ export function buildRichEngineFacts(params: {
   const question = params.userMessage.trim();
   if (question) {
     chunks.push(`ВОПРОС КЛИЕНТА:\n«${question.slice(0, 600)}»`);
+  }
+
+  // Destiny matrix is a closed 22-arcana system — do not attach LP / Pythagoras.
+  if (params.primaryTopic === "destiny_matrix") {
+    const matrixBlock = extractEngineFacts(params.prompt, "destiny_matrix");
+    if (matrixBlock) chunks.push(matrixBlock);
+    const clientBlock = params.prompt
+      .split("\n\n")
+      .find((p) => p.startsWith("КЛИЕНТ ДЛЯ МАТРИЦЫ СУДЬБЫ:"));
+    if (clientBlock) chunks.unshift(clientBlock.trim());
+    return chunks.join("\n\n").slice(0, 6500);
   }
 
   const topicsForFacts = new Set<NumerologyTopic>([params.primaryTopic]);
@@ -326,10 +342,12 @@ function formatContextualFollowUp(
 
 function resolveActiveTopics(
   lastUserMessage: string,
-  recentUserMessages: string[]
+  recentUserMessages: string[],
+  intention?: string | null
 ): NumerologyTopic[] {
   const trimmed = lastUserMessage.trim();
   const explicit = detectNumerologyTopics(trimmed);
+  const fromIntention = sessionTopicToNumerologyTopics(intention);
 
   if (RETRY_CALCULATION_RE.test(trimmed)) {
     const found = new Set<NumerologyTopic>(explicit);
@@ -402,6 +420,10 @@ function resolveActiveTopics(
     found.add("sphere_health");
   }
 
+  if (found.size === 0 && fromIntention.length > 0) {
+    for (const t of fromIntention) found.add(t);
+  }
+
   return [...found];
 }
 
@@ -412,6 +434,7 @@ function pickPrimaryTopic(topics: NumerologyTopic[]): NumerologyTopic | null {
     "personal_cycle",
     "forecast_timeline",
     "favorable_dates",
+    "matrix_compatibility",
     "compatibility",
     "chaldean",
     "object_number",
@@ -716,6 +739,12 @@ function formatFromContextBlock(
     const block = prompt.split("\n\n").find((p) => p.startsWith("ЧИСЛО ОБЪЕКТА") || p.includes("ЧИСЛО"));
     if (block) return `${name}, ${block.trim()}`;
   }
+  if (topics.includes("matrix_compatibility")) {
+    const block = prompt
+      .split("\n\n")
+      .find((p) => p.startsWith("СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ"));
+    if (block) return `${name}, ${block.trim()}`;
+  }
   if (topics.includes("compatibility")) {
     const block = prompt.split("\n\n").find((p) => p.startsWith("СОВМЕСТИМОСТЬ") || p.includes("score"));
     if (block) return `${name}, ${block.trim()}`;
@@ -723,7 +752,12 @@ function formatFromContextBlock(
   if (topics.includes("destiny_matrix")) {
     const block = prompt.split("\n\n").find((p) => p.startsWith("МАТРИЦА СУДЬБЫ"));
     if (block) {
-      return `${name}, твоя матрица судьбы:\n\n${block.replace("МАТРИЦА СУДЬБЫ / 22 АРКАНА (реальный расчёт, авторская адаптация Zovus):", "").trim()}`;
+      return `${name}, твоя матрица судьбы:\n\n${block
+        .replace(
+          /^МАТРИЦА СУДЬБЫ \/ 22 АРКАНА \([^)]+\):\s*/m,
+          ""
+        )
+        .trim()}`;
     }
   }
   return null;
@@ -735,14 +769,20 @@ export function buildNumerologEngineReply(
 ): NumerologEngineReplyResult | null {
   const recent = input.recentUserMessages ?? [];
   const clarify = isNumerologClarificationRequest(input.lastUserMessage);
-  const allTopics = resolveActiveTopics(input.lastUserMessage, recent);
+  const allTopics = resolveActiveTopics(
+    input.lastUserMessage,
+    recent,
+    input.intention
+  );
   const resolvedMessage = resolveNumerologyMessageForTopics(input.lastUserMessage, recent);
 
   if (clarify && allTopics.length === 0) {
     if (isHealthConversationThread(recent, input.lastUserMessage)) {
       allTopics.push("sphere_health");
     } else {
+      const fromIntention = sessionTopicToNumerologyTopics(input.intention);
       const thread =
+        fromIntention[0] ??
         inferThreadTopic(recent, input.lastUserMessage) ??
         inferSessionTopic(recent, input.lastUserMessage) ??
         "life_path";
@@ -791,6 +831,7 @@ export function buildNumerologEngineReply(
     birthDate: input.birthDate,
     profileName: input.profileName ?? input.userName,
     lastUserMessage: resolvedMessage,
+    intention: input.intention,
   });
 
   let ui: NumerologyChatUi | undefined;
@@ -825,9 +866,14 @@ export function buildNumerologEngineReply(
       reply = buildPersonalCycleNarrativeReading({ name, birthDate });
     }
   } else if (
-    ["favorable_dates", "chaldean", "object_number", "compatibility", "destiny_matrix"].includes(
-      primary
-    )
+    [
+      "favorable_dates",
+      "chaldean",
+      "object_number",
+      "compatibility",
+      "matrix_compatibility",
+      "destiny_matrix",
+    ].includes(primary)
   ) {
     reply = formatFromContextBlock(name, topicsToUse, ctx.prompt, clarify);
   }

@@ -1,3 +1,7 @@
+"use client";
+
+import { useId } from "react";
+
 interface BrandMarkProps {
   size?: number;
   className?: string;
@@ -5,6 +9,11 @@ interface BrandMarkProps {
 
 /** Zovus logomark — stylized Z in mystic gold ring. */
 export default function BrandMark({ size = 28, className }: BrandMarkProps) {
+  const uid = useId().replace(/:/g, "");
+  const goldId = `zovus-gold-${uid}`;
+  const bgId = `zovus-bg-${uid}`;
+  const glowId = `zovus-glow-${uid}`;
+
   return (
     <svg
       width={size}
@@ -14,29 +23,30 @@ export default function BrandMark({ size = 28, className }: BrandMarkProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden
+      focusable="false"
     >
       <defs>
-        <linearGradient id="zovus-gold" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+        <linearGradient id={goldId} x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
           <stop stopColor="#F5E6B8" />
           <stop offset="0.45" stopColor="#E8C77E" />
           <stop offset="1" stopColor="#A8843A" />
         </linearGradient>
-        <radialGradient id="zovus-bg" cx="16" cy="14" r="18" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3D2858" />
-          <stop offset="0.55" stopColor="#1A0F2E" />
-          <stop offset="1" stopColor="#07050F" />
+        <radialGradient id={bgId} cx="16" cy="14" r="18" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#2a2218" />
+          <stop offset="0.55" stopColor="#141210" />
+          <stop offset="1" stopColor="#0a0908" />
         </radialGradient>
-        <radialGradient id="zovus-glow" cx="16" cy="12" r="10" gradientUnits="userSpaceOnUse">
+        <radialGradient id={glowId} cx="16" cy="12" r="10" gradientUnits="userSpaceOnUse">
           <stop stopColor="#C9A24A" stopOpacity="0.35" />
           <stop offset="1" stopColor="#C9A24A" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <rect width="32" height="32" rx="7" fill="url(#zovus-bg)" />
-      <rect width="32" height="32" rx="7" fill="url(#zovus-glow)" />
-      <circle cx="16" cy="16" r="11.5" stroke="url(#zovus-gold)" strokeWidth="1.1" opacity="0.45" />
+      <rect width="32" height="32" rx="7" fill={`url(#${bgId})`} />
+      <rect width="32" height="32" rx="7" fill={`url(#${glowId})`} />
+      <circle cx="16" cy="16" r="11.5" stroke={`url(#${goldId})`} strokeWidth="1.1" opacity="0.45" />
       <path
         d="M10.5 10.5h11.5L12 21.5h11.5"
-        stroke="url(#zovus-gold)"
+        stroke={`url(#${goldId})`}
         strokeWidth="2.35"
         strokeLinecap="round"
         strokeLinejoin="round"

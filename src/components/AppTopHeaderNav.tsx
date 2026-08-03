@@ -12,6 +12,7 @@ import {
 
 export type AppTopHeaderNavProps = {
   photoNavLabel: string;
+  isLoggedIn?: boolean;
   onNavMasters: () => void;
   onNavDecks: () => void;
   onNavPhoto: () => void;
@@ -22,7 +23,7 @@ export type AppTopHeaderNavProps = {
 
 type Anchor = { top: number; left: number; minWidth: number };
 
-export default function AppTopHeaderNav(props: AppTopHeaderNavProps) {
+export default function AppTopHeaderNav({ isLoggedIn = false, ...callbacks }: AppTopHeaderNavProps) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
@@ -30,7 +31,7 @@ export default function AppTopHeaderNav(props: AppTopHeaderNavProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
-  const sections = buildHeaderNavSections(props);
+  const sections = buildHeaderNavSections(callbacks, { isLoggedIn });
 
   const close = useCallback(() => setOpen(false), []);
 

@@ -8,7 +8,7 @@ import {
 } from "@/lib/photo-reading-guide";
 
 export default function PhotoReadingGuide({ compact = false }: { compact?: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!compact);
 
   return (
     <section
