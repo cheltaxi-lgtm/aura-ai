@@ -56,8 +56,10 @@ export default function NumerologCalculationPicker({
 }: NumerologCalculationPickerProps) {
   const [partnerDateError, setPartnerDateError] = useState("");
   const selected = getNumerologTool(selectedId);
+  const showSubjectPicker =
+    selectedId === "destiny_matrix" || selectedId === "child_matrix";
   const matrixSubjects = useMatrixSubjects({
-    enabled: selectedId === "destiny_matrix",
+    enabled: showSubjectPicker,
   });
   const sessionError = validateNumerologSessionReady(
     selectedId,
@@ -80,6 +82,21 @@ export default function NumerologCalculationPicker({
 
   return (
     <div className="numerolog-calc-picker space-y-4">
+      {showSubjectPicker ? (
+        <MatrixSubjectPicker
+          subjects={matrixSubjects.subjects}
+          selectedId={matrixSubjectId}
+          disabled={matrixSubjects.loading}
+          costs={matrixSubjects.costs}
+          allowKinds={
+            selectedId === "child_matrix" ? ["child"] : ["child", "partner", "other"]
+          }
+          onSelect={(id) => onMatrixSubjectIdChange?.(id)}
+          onCreate={matrixSubjects.create}
+          onCreated={(subject) => onMatrixSubjectIdChange?.(subject.id)}
+        />
+      ) : null}
+
       <div className="numerolog-calc-picker__grid grid grid-cols-2 gap-2">
         {NUMEROLOG_SESSION_TOOLS.map((tool) => {
           const active = tool.id === selectedId;
@@ -148,18 +165,6 @@ export default function NumerologCalculationPicker({
           );
         })}
       </div>
-
-      {selectedId === "destiny_matrix" ? (
-        <MatrixSubjectPicker
-          subjects={matrixSubjects.subjects}
-          selectedId={matrixSubjectId}
-          disabled={matrixSubjects.loading}
-          costs={matrixSubjects.costs}
-          onSelect={(id) => onMatrixSubjectIdChange?.(id)}
-          onCreate={matrixSubjects.create}
-          onCreated={(subject) => onMatrixSubjectIdChange?.(subject.id)}
-        />
-      ) : null}
 
       {!hideSummaryPanel ? (
         <div className="numerolog-calc-picker__summary rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/25 via-black/20 to-transparent px-4 py-3.5">
