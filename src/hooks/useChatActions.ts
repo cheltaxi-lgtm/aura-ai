@@ -89,7 +89,12 @@ import {
   hasActivePeriodSpread,
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
-import { FLOW_STEP_KEY, LAST_MASTER_KEY, markNeedsServerProfile } from "@/lib/home-flow-storage";
+import {
+  FLOW_STEP_KEY,
+  LAST_MASTER_KEY,
+  markNeedsServerProfile,
+  persistStep,
+} from "@/lib/home-flow-storage";
 import { patchGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import type { StoredProfile } from "@/types/stored-profile";
 import type { Message } from "@/types";
@@ -1738,7 +1743,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       }
 
       localStorage.setItem(LAST_MASTER_KEY, characterId);
-      localStorage.setItem(FLOW_STEP_KEY, "chat");
+      persistStep("chat");
       setLastMasterId(characterId);
       setStep("chat");
       if (!openingArchive && !openOptions?.preserveSpreadState) {

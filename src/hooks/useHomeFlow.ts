@@ -28,6 +28,7 @@ import {
   clearPendingMasterResume,
   hasGuestExplicitMasterResume,
   hasPendingServerProfile,
+  isStoredChatResumeFresh,
   markNeedsServerProfile,
   persistProfileData,
   persistStep,
@@ -364,7 +365,12 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         } else if (effectiveStep === "chat") {
           const restoreMaster =
             savedMaster ?? localStorage.getItem(PENDING_MASTER_KEY);
-          if (!restoreMaster) {
+          // A stored `chat` step is session continuity, not a permanent redirect:
+          // stale state must land on the landing, not reopen the last reading.
+          if (!urlStep && !isStoredChatResumeFresh()) {
+            setStepState("masters");
+            persistStep("masters");
+          } else if (!restoreMaster) {
             setStepState("masters");
             persistStep("masters");
           } else {

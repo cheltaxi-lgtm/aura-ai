@@ -1,5 +1,5 @@
 import { APP_SHELL_QUERY, APP_SHELL_VALUE } from "@/lib/app-shell";
-import { FLOW_STEP_KEY, PENDING_MASTER_KEY, persistStep } from "@/lib/home-flow-storage";
+import { PENDING_MASTER_KEY, persistStep } from "@/lib/home-flow-storage";
 import type { IntentionStartMode } from "@/components/IntentionPicker";
 import type { SessionIntention } from "@/lib/intention";
 
@@ -36,7 +36,7 @@ export function navigateHomeAfterIntention(
   }
   try {
     localStorage.removeItem(PENDING_MASTER_KEY);
-    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    persistStep("chat");
   } catch {
     /* ignore */
   }

@@ -139,6 +139,7 @@ import {
   clearNeedsServerProfile,
   clearOnboardingUrlParams,
   hasPendingServerProfile,
+  isStoredChatResumeFresh,
   markNeedsServerProfile,
   persistStep,
   readStoredProfile,
@@ -1966,7 +1967,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       clearPendingMasterResume();
 
       localStorage.setItem(LAST_MASTER_KEY, masterId);
-      localStorage.setItem(FLOW_STEP_KEY, "chat");
+      persistStep("chat");
       setLastMasterId(masterId);
       setStep("chat");
       setSpreadFlipped(
@@ -2544,7 +2545,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     ]);
     await bindSessionToMasterRef.current(masterToBind, sessionId);
     localStorage.setItem(LAST_MASTER_KEY, masterToBind);
-    localStorage.setItem(FLOW_STEP_KEY, "chat");
     setLastMasterId(masterToBind);
     persistStep("chat");
     setStep("chat");
@@ -3013,7 +3013,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       pendingChatOptsRef.current = null;
       clearPendingMasterResume();
       localStorage.setItem(LAST_MASTER_KEY, characterKey);
-      localStorage.setItem(FLOW_STEP_KEY, "chat");
+      persistStep("chat");
       setLastMasterId(characterKey);
       deps.setSessionOnlyChat(false);
 
@@ -4065,7 +4065,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     const resumeChat =
       params.get("resume") === "chat" ||
       params.get("step") === "chat" ||
-      localStorage.getItem(FLOW_STEP_KEY) === "chat";
+      // Stored step alone must not reopen the last reading forever — only right
+      // after leaving it, otherwise the landing is never reachable.
+      (localStorage.getItem(FLOW_STEP_KEY) === "chat" && isStoredChatResumeFresh());
 
     let continueMaster = params.get("master") ?? params.get("continue");
     if (!continueMaster && resumeChat) {
@@ -4244,7 +4246,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       }
       await bindSessionToMaster(masterId, item.id);
       localStorage.setItem(LAST_MASTER_KEY, masterId);
-      localStorage.setItem(FLOW_STEP_KEY, "chat");
+      persistStep("chat");
       setStep("chat");
       if (deps) {
         deps.skipNextReadingRef.current = item.messageCount > 0;

@@ -4,6 +4,7 @@ import type { StoredProfile } from "@/types/stored-profile";
 export const PROFILE_KEY = "aura_profile";
 export const ACCOUNT_KEY = "aura_account_id";
 export const FLOW_STEP_KEY = "aura_flow_step";
+export const FLOW_STEP_AT_KEY = "aura_flow_step_at";
 export const LAST_VISIT_KEY = "aura_last_visit";
 export const LAST_MASTER_KEY = "aura_last_master";
 export const PENDING_MASTER_KEY = "aura_pending_master";
@@ -32,6 +33,22 @@ export const NEEDS_PROFILE_KEY = "aura_needs_profile";
 
 export function persistStep(step: FlowStep) {
   localStorage.setItem(FLOW_STEP_KEY, step);
+  localStorage.setItem(FLOW_STEP_AT_KEY, String(Date.now()));
+}
+
+/**
+ * Auto-resume into the chat is session continuity (reload, app switch), not a
+ * permanent redirect: a stored `chat` step older than this hijacks the landing.
+ */
+export const CHAT_RESUME_MAX_AGE_MS = 30 * 60 * 1000;
+
+/** True when the stored `chat` step is recent enough to reopen on load. */
+export function isStoredChatResumeFresh(): boolean {
+  if (typeof window === "undefined") return false;
+  const at = Number.parseInt(localStorage.getItem(FLOW_STEP_AT_KEY) ?? "", 10);
+  if (!Number.isFinite(at)) return false;
+  const age = Date.now() - at;
+  return age >= 0 && age < CHAT_RESUME_MAX_AGE_MS;
 }
 
 /** Remove onboarding deep-link params after profile is saved. */

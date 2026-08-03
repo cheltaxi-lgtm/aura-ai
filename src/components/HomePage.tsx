@@ -131,6 +131,7 @@ import {
   LAST_MASTER_KEY,
   PENDING_MASTER_KEY,
   hasPendingServerProfile,
+  persistStep,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
 import { resetGuestSpreadFlow } from "@/lib/guest-spread-reset";
@@ -2521,7 +2522,7 @@ export default function HomePage({
     }
     const nextStep = !authUser?.profileUserId ? "onboarding" : "masters";
     setStep(nextStep);
-    localStorage.setItem(FLOW_STEP_KEY, nextStep);
+    persistStep(nextStep);
   }, [
     selectedCharacter,
     messages,
@@ -2606,7 +2607,7 @@ export default function HomePage({
     setSessionOnlyChat(false);
     setLastMasterId(masterId);
     localStorage.setItem(LAST_MASTER_KEY, masterId);
-    localStorage.setItem(FLOW_STEP_KEY, "chat");
+    persistStep("chat");
     setStep("chat");
     setHistoryHasMore(false);
     setIsLoadingHistory(false);
@@ -2930,7 +2931,7 @@ export default function HomePage({
       setSessionOnlyChat(false);
       setLastMasterId(masterId);
       localStorage.setItem(LAST_MASTER_KEY, masterId);
-      localStorage.setItem(FLOW_STEP_KEY, "chat");
+      persistStep("chat");
       setStep("chat");
       chatLoadedForRef.current = masterId;
       setHistoryHasMore(false);
