@@ -362,6 +362,19 @@ else
   # shellcheck disable=SC1090
   source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|OPENROUTER_HTTPS_PROXY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
   set +a
+  # Every later gate rolls .next back, but nothing rolls a migration back, and only two
+  # migrations ship a .down.sql. Take a dump first so a bad schema change is recoverable.
+  # Failing here is safe: no schema has changed yet, and the exit trap restores the app.
+  if [ -x /opt/aura-ai/proxmox-setup/cron-pg-backup.sh ] || [ -f /opt/aura-ai/proxmox-setup/cron-pg-backup.sh ]; then
+    echo ">>> Pre-migrate database dump..."
+    if ! bash /opt/aura-ai/proxmox-setup/cron-pg-backup.sh; then
+      echo "ERROR: pre-migrate dump failed — refusing to migrate without a recovery point"
+      DEPLOY_STATUS="pre_migrate_backup_failed"
+      exit 1
+    fi
+  else
+    echo "WARN: cron-pg-backup.sh missing — migrating without a fresh recovery point"
+  fi
   node /opt/aura-ai/scripts/migrate.mjs
 fi
 echo ">>> Natal migration/schema gate..."
