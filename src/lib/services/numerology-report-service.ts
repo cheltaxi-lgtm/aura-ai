@@ -489,22 +489,33 @@ export async function deleteUserMatrixReport(
   return { deleted: (rowCount ?? 0) > 0, sessionIds };
 }
 
-/** Delete all destiny-matrix reports for a birth date (user-initiated reset). */
+/**
+ * Delete destiny-matrix reports for a birth date.
+ * Multi-subject safe: without subjectId only touches the user's `self` subject
+ * (plus legacy rows with null subject_id). Never wipes other people sharing a date.
+ */
 export async function deleteOwnedMatrixReportsForBirth(
   userId: string,
   birthDateRaw: string | null | undefined,
-  options?: { toolId?: string }
+  options?: { toolId?: string; subjectId?: string | null }
 ): Promise<{ deleted: number; sessionIds: string[] }> {
   const birthDate = toIsoBirthDate(birthDateRaw);
   if (!birthDate) return { deleted: 0, sessionIds: [] };
   const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
+  const subjectId = options?.subjectId?.trim() || null;
+
+  if (subjectId) {
+    return deleteOwnedMatrixReportsForSubject(userId, subjectId, { toolId });
+  }
 
   const before = await query<{ session_id: string | null }>(
-    `SELECT session_id
-     FROM numerology_report_history
-     WHERE user_id = $1
-       AND tool_id = $2
-       AND birth_date = $3::date`,
+    `SELECT n.session_id
+     FROM numerology_report_history n
+     LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
+     WHERE n.user_id = $1
+       AND n.tool_id = $2
+       AND n.birth_date = $3::date
+       AND (n.subject_id IS NULL OR ms.kind = 'self')`,
     [userId, toolId, birthDate]
   );
   const sessionIds = [
@@ -516,13 +527,28 @@ export async function deleteOwnedMatrixReportsForBirth(
   ];
 
   const { rowCount } = await query(
+    `DELETE FROM numerology_report_history n
+     USING matrix_subjects ms
+     WHERE n.user_id = $1
+       AND n.tool_id = $2
+       AND n.birth_date = $3::date
+       AND n.subject_id = ms.id
+       AND ms.kind = 'self'`,
+    [userId, toolId, birthDate]
+  );
+  // Legacy rows without subject_id (pre-migration leftovers).
+  const legacy = await query(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1
        AND tool_id = $2
-       AND birth_date = $3::date`,
+       AND birth_date = $3::date
+       AND subject_id IS NULL`,
     [userId, toolId, birthDate]
   );
-  return { deleted: rowCount ?? 0, sessionIds };
+  return {
+    deleted: (rowCount ?? 0) + (legacy.rowCount ?? 0),
+    sessionIds,
+  };
 }
 
 export async function deleteOwnedMatrixReportsForSubject(

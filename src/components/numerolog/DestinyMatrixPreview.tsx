@@ -436,9 +436,18 @@ export default function DestinyMatrixPreview() {
                     type="button"
                     onClick={() => {
                       void (async () => {
+                        const subjectId =
+                          selectedSubjectId ||
+                          matrixOwnership.subjectId ||
+                          matrixSubjects.subjects.find((s) => s.kind === "self")?.id ||
+                          null;
+                        if (!subjectId) {
+                          window.alert("Выберите человека, чью матрицу пересчитать.");
+                          return;
+                        }
                         if (
                           !window.confirm(
-                            `Удалить текущий разбор и рассчитать новую матрицу за ${PRICING.NUMEROLOGY_SESSION} ᚢ? Старый текст исчезнет из кабинета и чата.`
+                            `Удалить разбор этого человека и рассчитать заново за ${PRICING.NUMEROLOGY_SESSION} ᚢ? Старый текст исчезнет из кабинета и чата. Матрицы других людей не затронутся.`
                           )
                         ) {
                           return;
@@ -448,15 +457,20 @@ export default function DestinyMatrixPreview() {
                             method: "DELETE",
                             credentials: "include",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ birthDate }),
+                            body: JSON.stringify({
+                              subjectId,
+                              reportId: matrixOwnership.reportId,
+                            }),
                           });
                           if (!res.ok) {
                             window.alert("Не удалось подготовить новую матрицу. Попробуйте ещё раз.");
                             return;
                           }
                           trackSeoEvent("matrix_report_replaced");
-                          // DELETE already wiped ownership; deep-link opens fresh paid flow.
-                          window.location.assign(FULL_HREF);
+                          // DELETE wiped only this subject; reopen paid flow for the same person.
+                          window.location.assign(
+                            `${FULL_HREF}&subjectId=${encodeURIComponent(subjectId)}`
+                          );
                         } catch {
                           window.alert("Не удалось подготовить новую матрицу. Проверьте соединение.");
                         }
@@ -464,15 +478,24 @@ export default function DestinyMatrixPreview() {
                     }}
                     className="inline-flex items-center justify-center rounded-xl border border-aura-gold/40 bg-aura-gold/10 px-4 py-2.5 text-sm font-medium text-aura-gold transition hover:border-aura-gold/60 hover:bg-aura-gold/15"
                   >
-                    Новая матрица · {PRICING.NUMEROLOGY_SESSION} ᚢ
+                    Пересчитать · {PRICING.NUMEROLOGY_SESSION} ᚢ
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       void (async () => {
+                        const subjectId =
+                          selectedSubjectId ||
+                          matrixOwnership.subjectId ||
+                          matrixSubjects.subjects.find((s) => s.kind === "self")?.id ||
+                          null;
+                        if (!subjectId && !matrixOwnership.reportId) {
+                          window.alert("Выберите человека, чью матрицу удалить.");
+                          return;
+                        }
                         if (
                           !window.confirm(
-                            "Удалить сохранённую матрицу безвозвратно? Исчезнет из кабинета и чата — разбор можно будет купить заново."
+                            "Удалить сохранённую матрицу этого человека безвозвратно? Исчезнет из кабинета и чата — разбор можно будет купить заново. Другие матрицы останутся."
                           )
                         ) {
                           return;
@@ -482,7 +505,12 @@ export default function DestinyMatrixPreview() {
                             method: "DELETE",
                             credentials: "include",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ birthDate }),
+                            body: JSON.stringify({
+                              ...(subjectId ? { subjectId } : {}),
+                              ...(matrixOwnership.reportId
+                                ? { reportId: matrixOwnership.reportId }
+                                : {}),
+                            }),
                           });
                           if (!res.ok) {
                             window.alert("Не удалось удалить матрицу. Попробуйте ещё раз.");

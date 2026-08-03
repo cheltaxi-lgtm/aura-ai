@@ -1,11 +1,15 @@
 /**
  * Shared cleanup for destiny-matrix sessions + report history.
  * Site cabinet / chat delete and Telegram bot must use the same rules.
+ *
+ * Multi-subject rule: never wipe by profile birth date alone — that erased
+ * the user's own matrix when ordering/deleting a matrix for another person.
  */
 import { query } from "@/lib/db";
 import { deleteConsultationSession } from "@/lib/session";
 import {
   deleteOwnedMatrixReportsForBirth,
+  deleteOwnedMatrixReportsForSubject,
   deleteUserMatrixReport,
   MATRIX_REPORT_TOOL_ID,
   toIsoBirthDate,
@@ -81,24 +85,39 @@ export type WipeMatrixResult = {
   deletedReports: number;
   purgedSessions: number;
   birthDates: string[];
+  subjectIds: string[];
 };
 
 /**
  * Full user-initiated matrix wipe: report history + linked/orphan sessions.
- * Pass reportId and/or birthDate; if both empty, wipes nothing.
+ * Prefer subjectId or reportId. birthDate alone only touches the self subject.
  */
 export async function wipeUserMatrixReports(input: {
   userId: string;
   reportId?: string | null;
+  subjectId?: string | null;
   birthDate?: string | null;
 }): Promise<WipeMatrixResult> {
   const birthDates = new Set<string>();
+  const subjectIds = new Set<string>();
   let deletedReports = 0;
   const sessionIds: string[] = [];
 
-  if (input.reportId?.trim()) {
-    const { rows } = await query<{ birth_date: Date | string; session_id: string | null }>(
-      `SELECT birth_date, session_id
+  if (input.subjectId?.trim()) {
+    const many = await deleteOwnedMatrixReportsForSubject(
+      input.userId,
+      input.subjectId.trim()
+    );
+    deletedReports += many.deleted;
+    sessionIds.push(...many.sessionIds);
+    subjectIds.add(input.subjectId.trim());
+  } else if (input.reportId?.trim()) {
+    const { rows } = await query<{
+      birth_date: Date | string;
+      session_id: string | null;
+      subject_id: string | null;
+    }>(
+      `SELECT birth_date, session_id, subject_id
        FROM numerology_report_history
        WHERE user_id = $1 AND id = $2::uuid AND tool_id = $3
        LIMIT 1`,
@@ -109,19 +128,32 @@ export async function wipeUserMatrixReports(input: {
       const isoFromReport = formatRowBirth(row.birth_date);
       if (isoFromReport) birthDates.add(isoFromReport);
       if (row.session_id) sessionIds.push(row.session_id);
+      if (row.subject_id) {
+        subjectIds.add(row.subject_id);
+        const many = await deleteOwnedMatrixReportsForSubject(
+          input.userId,
+          row.subject_id
+        );
+        deletedReports += many.deleted;
+        sessionIds.push(...many.sessionIds);
+      } else {
+        const one = await deleteUserMatrixReport(input.userId, input.reportId);
+        if (one.deleted) deletedReports += 1;
+        sessionIds.push(...one.sessionIds);
+      }
+    }
+  } else {
+    // Birth-date path: self-subject only (never other people with the same date).
+    const iso = toIsoBirthDate(input.birthDate);
+    if (iso) {
+      birthDates.add(iso);
+      const many = await deleteOwnedMatrixReportsForBirth(input.userId, iso);
+      deletedReports += many.deleted;
+      sessionIds.push(...many.sessionIds);
     }
   }
 
-  const iso = toIsoBirthDate(input.birthDate);
-  if (iso) birthDates.add(iso);
-
-  for (const birth of birthDates) {
-    const many = await deleteOwnedMatrixReportsForBirth(input.userId, birth);
-    deletedReports += many.deleted;
-    sessionIds.push(...many.sessionIds);
-  }
-
-  // Fallback: delete by id if birth wipe found nothing (race / odd tool_id).
+  // Fallback: delete by id if scoped wipe found nothing (race / odd tool_id).
   if (deletedReports < 1 && input.reportId?.trim()) {
     const one = await deleteUserMatrixReport(input.userId, input.reportId);
     if (one.deleted) deletedReports += 1;
@@ -137,6 +169,7 @@ export async function wipeUserMatrixReports(input: {
     deletedReports,
     purgedSessions,
     birthDates: [...birthDates],
+    subjectIds: [...subjectIds],
   };
 }
 
@@ -148,61 +181,65 @@ function formatRowBirth(value: Date | string): string | null {
 }
 
 /**
- * When user deletes a matrix chat session from site/cabinet — drop ownership
- * for linked birth dates (+ profile birth fallback) so buy-once cannot reopen.
- * Does not delete the session itself (caller does that) to avoid recursion.
+ * When user deletes a matrix chat session — drop ownership only for reports
+ * linked to that session (by session_id / subject_id on those rows).
+ * Never wipe by profile birth date: that erased self when deleting another's chat.
  */
 export async function wipeMatrixOwnershipForSession(input: {
   userId: string;
   sessionId: string;
-  /** Profile birth date fallback when report.session_id was stale. */
+  /** @deprecated Ignored — kept for call-site compatibility. */
   profileBirthDate?: string | null;
-  /** When false, skip profile-birth wipe (caller did not confirm matrix session). */
+  /** When false, skip wipe (caller did not confirm matrix session). */
   isMatrixSession?: boolean;
 }): Promise<WipeMatrixResult> {
-  const birthDates = new Set<string>();
+  if (input.isMatrixSession === false) {
+    return {
+      deletedReports: 0,
+      purgedSessions: 0,
+      birthDates: [],
+      subjectIds: [],
+    };
+  }
 
-  const { rows } = await query<{ birth_date: Date | string }>(
-    `SELECT birth_date
+  const birthDates = new Set<string>();
+  const subjectIds = new Set<string>();
+
+  const { rows } = await query<{
+    id: string;
+    birth_date: Date | string;
+    subject_id: string | null;
+  }>(
+    `SELECT id, birth_date, subject_id
      FROM numerology_report_history
      WHERE user_id = $1
        AND tool_id = $2
-       AND (
-         session_id = $3::uuid
-         OR ($4::date IS NOT NULL AND birth_date = $4::date)
-       )`,
-    [
-      input.userId,
-      MATRIX_REPORT_TOOL_ID,
-      input.sessionId,
-      toIsoBirthDate(input.profileBirthDate),
-    ]
+       AND session_id = $3::uuid`,
+    [input.userId, MATRIX_REPORT_TOOL_ID, input.sessionId]
   );
+
+  let deletedReports = 0;
+  const sessionIds = [input.sessionId];
 
   for (const row of rows) {
     const iso = formatRowBirth(row.birth_date);
     if (iso) birthDates.add(iso);
+    if (row.subject_id) {
+      subjectIds.add(row.subject_id);
+      const many = await deleteOwnedMatrixReportsForSubject(
+        input.userId,
+        row.subject_id
+      );
+      deletedReports += many.deleted;
+      sessionIds.push(...many.sessionIds);
+    } else {
+      const one = await deleteUserMatrixReport(input.userId, row.id);
+      if (one.deleted) deletedReports += 1;
+      sessionIds.push(...one.sessionIds);
+    }
   }
 
-  const profileIso = toIsoBirthDate(input.profileBirthDate);
-  if (
-    profileIso &&
-    birthDates.size === 0 &&
-    input.isMatrixSession !== false
-  ) {
-    // Stale session_id on report: wipe profile birth only for confirmed matrix chats.
-    birthDates.add(profileIso);
-  }
-
-  let deletedReports = 0;
-  const sessionIds = [input.sessionId];
-  for (const iso of birthDates) {
-    const many = await deleteOwnedMatrixReportsForBirth(input.userId, iso);
-    deletedReports += many.deleted;
-    sessionIds.push(...many.sessionIds);
-  }
-
-  // Also clear any rows still pointing at this session.
+  // Clear any rows still pointing at this session (no cross-subject birth wipe).
   const dangling = await query(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1
@@ -216,5 +253,6 @@ export async function wipeMatrixOwnershipForSession(input: {
     deletedReports,
     purgedSessions: 0,
     birthDates: [...birthDates],
+    subjectIds: [...subjectIds],
   };
 }
