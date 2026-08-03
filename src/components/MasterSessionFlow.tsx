@@ -1554,7 +1554,9 @@ export default function MasterSessionFlow({
                     onSelect={(id) => {
                       setSelectedNumerologTool(id);
                       setNumerologToolParams({});
-                      if (id !== "destiny_matrix") setMatrixSubjectId(null);
+                      if (id !== "destiny_matrix" && id !== "child_matrix") {
+                        setMatrixSubjectId(null);
+                      }
                     }}
                     onParamsChange={setNumerologToolParams}
                     runeBillingEnabled={runeConfig.enabled}

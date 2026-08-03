@@ -20,6 +20,7 @@ import LegalDocLink from "@/components/legal/LegalDocLink";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
+import MatrixSubjectPicker from "@/components/numerolog/MatrixSubjectPicker";
 
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
 
@@ -53,11 +54,13 @@ export default function DestinyMatrixPreview() {
   const [revealed, setRevealed] = useState(0);
   /** null = guest / unknown; false = missing time or city for «Небо». */
   const [skyProfileComplete, setSkyProfileComplete] = useState<boolean | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const matrixSubjects = useMatrixSubjects({ enabled: isLoggedIn });
   const matrixOwnership = useMatrixOwnership({
     enabled: isLoggedIn && Boolean(birthDate && parseBirthDate(birthDate)),
     birthDate: birthDate || null,
+    subjectId: selectedSubjectId,
   });
-  const matrixSubjects = useMatrixSubjects({ enabled: isLoggedIn });
   const ownedFull = matrixOwnership.owned;
   const [pending, startTransition] = useTransition();
   const [ageReady, setAgeReady] = useState(false);
@@ -183,6 +186,12 @@ export default function DestinyMatrixPreview() {
 
   const openFullMatrix = async () => {
     trackSeoEvent("matrix_cta_full", { source: "preview", owned: ownedFull ? "1" : "0" });
+    if (selectedSubjectId) {
+      window.location.assign(
+        `${FULL_HREF}&subjectId=${encodeURIComponent(selectedSubjectId)}`
+      );
+      return;
+    }
     const self = matrixSubjects.subjects.find((subject) => subject.kind === "self");
     if (isLoggedIn && birthDate && self && self.birthDate !== birthDate) {
       try {
@@ -198,7 +207,9 @@ export default function DestinyMatrixPreview() {
         return;
       }
     }
-    window.location.assign(FULL_HREF);
+    window.location.assign(
+      self ? `${FULL_HREF}&subjectId=${encodeURIComponent(self.id)}` : FULL_HREF
+    );
   };
 
   function onSubmit(e: React.FormEvent) {
@@ -247,15 +258,49 @@ export default function DestinyMatrixPreview() {
     <div id="calculate" className="destiny-matrix-preview mt-10 scroll-mt-24">
       <h2 className="font-display text-xl font-semibold text-white">Рассчитать бесплатно</h2>
       <p className="mt-2 text-sm text-white/55">
-        {fromProfile
-          ? "Подставили данные из вашего профиля — можно сразу смотреть результат или изменить поля."
-          : "Нужна только дата рождения. Цифры матрицы — бесплатно и всегда одинаковые."}{" "}
-        {PRICING.NUMEROLOGY_SESSION} ᚢ — за персональный разбор Эвелины с сохранением и{" "}
-        {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате.
+        Можно считать для себя, ребёнка, партнёра или любого человека — нужна только дата. Цифры
+        матрицы бесплатны и всегда одинаковые. {PRICING.NUMEROLOGY_SESSION} ᚢ — за персональный
+        разбор Эвелины с сохранением и {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате.
       </p>
       <p className="mt-2 text-xs text-white/40">
         Сервис 18+. Дата рождения используется только для расчёта и не публикуется.
       </p>
+
+      {isLoggedIn ? (
+        <div className="mt-5">
+          <MatrixSubjectPicker
+            subjects={matrixSubjects.subjects}
+            selectedId={selectedSubjectId}
+            disabled={matrixSubjects.loading}
+            costs={matrixSubjects.costs}
+            onSelect={(id) => {
+              setSelectedSubjectId(id);
+              const subject = matrixSubjects.subjects.find((item) => item.id === id);
+              if (!subject) return;
+              setBirthDate(subject.birthDate);
+              if (subject.displayName) setName(subject.displayName);
+              setFromProfile(subject.kind === "self");
+              if (parseBirthDate(subject.birthDate)) {
+                runCalculate(subject.birthDate, subject.displayName || name);
+              }
+            }}
+            onCreate={matrixSubjects.create}
+            onCreated={(subject) => {
+              setSelectedSubjectId(subject.id);
+              setBirthDate(subject.birthDate);
+              if (subject.displayName) setName(subject.displayName);
+              setFromProfile(false);
+              if (parseBirthDate(subject.birthDate)) {
+                runCalculate(subject.birthDate, subject.displayName || name);
+              }
+            }}
+          />
+        </div>
+      ) : (
+        <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/60">
+          Войдите в аккаунт, чтобы сохранять матрицы на разных людей (ребёнок, партнёр и др.).
+        </p>
+      )}
 
       <form onSubmit={onSubmit} className="mt-5 space-y-3">
         <label className="block text-sm text-white/70">
