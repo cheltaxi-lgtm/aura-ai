@@ -47,10 +47,16 @@ restore_previous_release() {
     sed -i 's/\r$//' /opt/aura-ai/hosting/sync-async-jobs-env.sh 2>/dev/null || true
     bash /opt/aura-ai/hosting/sync-async-jobs-env.sh /opt/aura-ai || true
   fi
-  # `npm ci` wipes node_modules before it repopulates it, so an abort during install
-  # leaves a tree the old .next cannot boot against. Starting the unit then just gives
-  # a crash loop; reinstall first so the restore actually restores something runnable.
-  if [ ! -d /opt/aura-ai/node_modules/next ]; then
+  # Activation swaps both .next and node_modules. Prefer the side-by-side previous
+  # trees when present; only reinstall if both are gone.
+  if [ -d /opt/aura-ai/.next-previous ]; then
+    rm -rf /opt/aura-ai/.next
+    mv /opt/aura-ai/.next-previous /opt/aura-ai/.next
+  fi
+  if [ -d /opt/aura-ai/node_modules-previous/next ]; then
+    rm -rf /opt/aura-ai/node_modules
+    mv /opt/aura-ai/node_modules-previous /opt/aura-ai/node_modules
+  elif [ ! -d /opt/aura-ai/node_modules/next ]; then
     echo ">>> node_modules incomplete — reinstalling before restore..."
     (cd /opt/aura-ai && npm ci --legacy-peer-deps) || echo "WARN: reinstall failed; app cannot start without manual npm ci"
   fi
@@ -64,12 +70,22 @@ restore_previous_release() {
     fi
     sleep 2
   done
-  # Say it loudly: a silent restore failure reads as "only the deploy failed" while
-  # production is still down.
   if [ "$RESTORED" -ne 1 ]; then
     echo "ERROR: restore did not bring the app back — production is DOWN, manual recovery required"
   fi
   sudo systemctl start aura-ai-async-jobs || true
+}
+
+# Stronger than /api/health alone: that endpoint only checks SELECT 1 + LLM slots,
+# so a ChunkLoadError release still passes. Register + a real SSR page catch more.
+candidate_accepts_traffic() {
+  curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1 || return 1
+  local register_code matrix_code
+  register_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/auth/user/register || printf '000')"
+  [ "$register_code" = "200" ] || return 1
+  matrix_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/numerology/destiny-matrix || printf '000')"
+  [ "$matrix_code" = "200" ] || return 1
+  return 0
 }
 
 on_exit() {
@@ -107,6 +123,9 @@ if [ -f "$TARBALL" ]; then
     --exclude='.next-candidate/' \
     --exclude='.next-previous/' \
     --exclude='node_modules/' \
+    --exclude='node_modules-candidate/' \
+    --exclude='node_modules-previous/' \
+    --exclude='.build-staging/' \
     --exclude='logs/' \
     --exclude='backups/' \
     --exclude='telegram-bot/.env' \
@@ -265,8 +284,9 @@ grep -q '^DB_POOL_MAX=' "$ENV_FILE" \
   && sed -i 's|^DB_POOL_MAX=.*|DB_POOL_MAX=20|' "$ENV_FILE" \
   || echo 'DB_POOL_MAX=20' >> "$ENV_FILE"
 
-# Stable secret shared with proactive-reminder crons. Generated once, preserved
-# across deploys (never overwrite an existing value).
+# Stable secret shared with local cron wrappers. Ensure it exists here; rotation
+# happens at activation so the still-running process and the file stay in sync
+# through the long staging build.
 if ! grep -q '^CRON_SECRET=' "$ENV_FILE" || [ -z "$(grep '^CRON_SECRET=' "$ENV_FILE" | cut -d= -f2- | tr -d '[:space:]')" ]; then
   if grep -q '^CRON_SECRET=' "$ENV_FILE"; then
     sed -i "s|^CRON_SECRET=.*|CRON_SECRET=$(openssl rand -hex 24)|" "$ENV_FILE"
@@ -316,39 +336,55 @@ rm -f \
   src/components/numerolog/NumerologToolResultModal.tsx \
   src/app/api/photo-reading/route.ts
 
-# Stop the app for npm ci + candidate build. On this host, a live `next start`
-# reading node_modules while webpack builds corrupts the Next package tree
-# (missing css-loader/utils, headers.js, etc.). Caddy retries briefly (lb_try_duration).
-echo ">>> Refreshing node_modules + candidate build (services stopped)..."
-sudo systemctl stop aura-ai-async-jobs || true
-sudo systemctl stop aura-ai || true
-# Kill leftover next-server if systemd left orphans (seen after TimeoutStop).
-pkill -f 'next-server|next start' 2>/dev/null || true
-rm -rf node_modules
-npm ci --legacy-peer-deps
+# Install + test + build in a side tree so the live `next start` keeps serving on
+# its current node_modules + .next. Stopping for the whole npm ci/build window was
+# the multi-minute 502 outage; activation below is the only intentional downtime.
+BUILD_STAGING="/opt/aura-ai/.build-staging"
+echo ">>> Candidate install/test/build (live app stays up)..."
+rm -rf "$BUILD_STAGING"
+mkdir -p "$BUILD_STAGING"
+rsync -a \
+  --exclude='node_modules/' \
+  --exclude='node_modules-candidate/' \
+  --exclude='node_modules-previous/' \
+  --exclude='.next/' \
+  --exclude='.next-candidate/' \
+  --exclude='.next-previous/' \
+  --exclude='.build-staging/' \
+  --exclude='logs/' \
+  --exclude='backups/' \
+  --exclude='telegram-bot/data/' \
+  --exclude='telegram-bot/node_modules/' \
+  --exclude='.env.local' \
+  --exclude='.env.async-jobs' \
+  /opt/aura-ai/ "$BUILD_STAGING/"
+# NEXT_PUBLIC_* must be present during `next build` (inlined into client bundle).
+ln -sfn /opt/aura-ai/.env.local "$BUILD_STAGING/.env.local"
 echo ">>> Verifying packaged GeoNames index..."
 verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
 set -a
-# NEXT_PUBLIC_* must be present during `next build` (inlined into client bundle).
 # shellcheck disable=SC1090
 source <(grep -E '^(NEXT_PUBLIC_RECAPTCHA_SITE_KEY|NEXT_PUBLIC_RECAPTCHA_ENABLED|NEXT_PUBLIC_APP_URL)=' "$ENV_FILE" | sed 's/\r$//')
 set +a
-# Run the complete test suite before building or touching the active release.
-# A failure leaves the currently running .next directory untouched.
-echo ">>> Candidate tests..."
-npm test
-
-# Build beside the active release exactly once. The running process must keep its current
-# .next directory until every gate passes; replacing it in-place causes
-# ChunkLoadError/blank pages when a later smoke test aborts the deploy.
-rm -rf .next-candidate
-# tsconfig `include` still lists .next/types/**/*.ts, and rsync deliberately keeps
-# .next so the live release survives. A route deleted since the last activation
-# therefore leaves a generated type file importing a source that no longer exists,
-# and the candidate type-check fails on code we no longer ship. These stubs are
-# regenerated by every build and are not needed at runtime.
-rm -rf .next/types
-NEXT_DIST_DIR=.next-candidate npm run build
+(
+  cd "$BUILD_STAGING"
+  npm ci --legacy-peer-deps
+  echo ">>> Candidate tests..."
+  npm test
+  # Build beside the active release exactly once. The running process must keep its
+  # current .next until every gate passes; replacing it in-place causes
+  # ChunkLoadError/blank pages when a later smoke test aborts the deploy.
+  rm -rf .next-candidate
+  NEXT_DIST_DIR=.next-candidate npm run build
+)
+# Move artifacts next to the live tree without touching the running release.
+rm -rf /opt/aura-ai/.next-candidate /opt/aura-ai/node_modules-candidate
+mv "$BUILD_STAGING/.next-candidate" /opt/aura-ai/.next-candidate
+mv "$BUILD_STAGING/node_modules" /opt/aura-ai/node_modules-candidate
+rm -rf "$BUILD_STAGING"
+# Stale generated types under the live .next can break a future in-tree type-check;
+# they are not needed at runtime and are regenerated by every candidate build.
+rm -rf /opt/aura-ai/.next/types
 
 echo ">>> Launch env check..."
 set -a
@@ -421,18 +457,39 @@ else
 fi
 unset -f read_env_var
 
-echo ">>> Activating candidate build..."
-rm -rf .next-previous
+echo ">>> Activating candidate build (brief downtime)..."
+# Rotate while the process is about to die: Caddy previously logged the old value
+# whenever memory-extract hit the public host during a 502. Crons re-read .env.local.
+_new_cron="$(openssl rand -hex 24)"
+if grep -q '^CRON_SECRET=' "$ENV_FILE"; then
+  sed -i "s|^CRON_SECRET=.*|CRON_SECRET=${_new_cron}|" "$ENV_FILE"
+else
+  echo "CRON_SECRET=${_new_cron}" >> "$ENV_FILE"
+fi
+unset _new_cron
+echo "Rotated CRON_SECRET for this deploy"
+# Only now stop the live process — install/test/build already finished beside it.
+sudo systemctl stop aura-ai-async-jobs || true
+sudo systemctl stop aura-ai || true
+pkill -f 'next-server|next start' 2>/dev/null || true
+
+rm -rf .next-previous node_modules-previous
 if [ -d .next ]; then
   mv .next .next-previous
 fi
 mv .next-candidate .next
+if [ -d node_modules ]; then
+  mv node_modules node_modules-previous
+fi
+mv node_modules-candidate node_modules
 
-if ! sudo systemctl restart aura-ai; then
-  echo "ERROR: service restart failed — restoring previous build"
+if ! sudo systemctl start aura-ai; then
+  echo "ERROR: service start failed — restoring previous build"
   rm -rf .next
   [ -d .next-previous ] && mv .next-previous .next
-  sudo systemctl restart aura-ai
+  rm -rf node_modules
+  [ -d node_modules-previous ] && mv node_modules-previous node_modules
+  sudo systemctl start aura-ai
   DEPLOY_STATUS="service_restart_failed"
   exit 1
 fi
@@ -440,7 +497,7 @@ fi
 HEALTHY=0
 # Longer window: Next cold-start after .next swap often exceeds 20s under load.
 for _ in $(seq 1 45); do
-  if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+  if candidate_accepts_traffic; then
     HEALTHY=1
     break
   fi
@@ -448,10 +505,12 @@ for _ in $(seq 1 45); do
 done
 
 if [ "$HEALTHY" -ne 1 ]; then
-  echo "ERROR: candidate failed health check — rolling back"
+  echo "ERROR: candidate failed traffic gate — rolling back"
   sudo systemctl stop aura-ai || true
   rm -rf .next
   [ -d .next-previous ] && mv .next-previous .next
+  rm -rf node_modules
+  [ -d node_modules-previous ] && mv node_modules-previous node_modules
   sudo systemctl start aura-ai
   DEPLOY_STATUS="health_check_failed"
   exit 1
@@ -459,6 +518,7 @@ fi
 
 systemctl is-active aura-ai
 curl -sS -o /dev/null -w "register_page=%{http_code}\n" http://127.0.0.1:3000/auth/user/register
+curl -sS -o /dev/null -w "matrix_page=%{http_code}\n" http://127.0.0.1:3000/numerology/destiny-matrix
 
 echo ">>> Activating natal async worker..."
 # App candidate is already live — worker/cron failures must not roll back .next
@@ -504,6 +564,7 @@ sed -i 's/\r$//' \
   /opt/aura-ai/proxmox-setup/install-crons.sh \
   /opt/aura-ai/proxmox-setup/cron-proactive-reminders.sh \
   /opt/aura-ai/proxmox-setup/cron-memory-maintenance.sh \
+  /opt/aura-ai/proxmox-setup/cron-memory-extract.sh \
   /opt/aura-ai/proxmox-setup/cron-daily-reading-remind.sh \
   /opt/aura-ai/proxmox-setup/cron-reconcile-rune-payments.sh \
   /opt/aura-ai/proxmox-setup/cron-pg-backup.sh \
@@ -518,6 +579,8 @@ if ! crontab -l 2>/dev/null | grep -Fq "/opt/aura-ai/proxmox-setup/cron-natal-tr
   sudo systemctl stop aura-ai || true
   rm -rf .next
   [ -d .next-previous ] && mv .next-previous .next
+  rm -rf node_modules
+  [ -d node_modules-previous ] && mv node_modules-previous node_modules
   sudo systemctl start aura-ai
   DEPLOY_STATUS="natal_cron_install_failed"
   exit 1
@@ -531,6 +594,8 @@ if [ -z "$_CRON_SECRET" ]; then
   sudo systemctl stop aura-ai || true
   rm -rf .next
   [ -d .next-previous ] && mv .next-previous .next
+  rm -rf node_modules
+  [ -d node_modules-previous ] && mv node_modules-previous node_modules
   sudo systemctl start aura-ai
   DEPLOY_STATUS="natal_cron_secret_missing"
   exit 1
@@ -545,6 +610,8 @@ else
     sudo systemctl stop aura-ai || true
     rm -rf .next
     [ -d .next-previous ] && mv .next-previous .next
+    rm -rf node_modules
+    [ -d node_modules-previous ] && mv node_modules-previous node_modules
     sudo systemctl start aura-ai
     DEPLOY_STATUS="natal_cron_probe_failed"
     exit 1
@@ -558,7 +625,7 @@ else
 fi
 unset _CRON_SECRET _CRON_BODY _CRON_STATUS
 
-rm -rf .next-previous
+rm -rf .next-previous node_modules-previous
 DEPLOY_STATUS="success"
 if [ -f /opt/aura-ai/hosting/Caddyfile ]; then
   echo ">>> Sync Caddyfile..."

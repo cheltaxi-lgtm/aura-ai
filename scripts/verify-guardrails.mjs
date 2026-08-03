@@ -760,6 +760,18 @@ function checkNatalDeploySafety() {
   if (!(migrateAt >= 0 && migrateAt < schemaAt && schemaAt < switchAt)) {
     fail("natal deploy: migration records/schema must be verified before service switch");
   }
+  // Live app must stay up through npm ci/test/build — stopping earlier was the
+  // multi-minute public 502 window.
+  const stopLiveAt = deploy.indexOf('echo ">>> Activating candidate build (brief downtime)..."');
+  if (!(buildAt >= 0 && stopLiveAt > buildAt && stopLiveAt < switchAt)) {
+    fail("natal deploy: live app must stay up until brief activation (staging build required)");
+  }
+  if (!deploy.includes(".build-staging") || !deploy.includes("node_modules-candidate")) {
+    fail("natal deploy: candidate must install into a side tree, not wipe live node_modules");
+  }
+  if (!deploy.includes("candidate_accepts_traffic")) {
+    fail("natal deploy: activation must gate on real pages, not only /api/health");
+  }
   if (
     deploy.includes("npm run build:geonames") ||
     !deploy.includes("verify_geonames_index") ||
@@ -770,6 +782,18 @@ function checkNatalDeploySafety() {
   }
   if (/echo[^\n]*\$_CRON_SECRET/.test(deploy)) {
     fail("natal deploy: cron secret must never be printed");
+  }
+
+  const memoryExtract = fs.readFileSync(
+    path.join(ROOT, "proxmox-setup/cron-memory-extract.sh"),
+    "utf8"
+  );
+  if (
+    !memoryExtract.includes("127.0.0.1:3000") ||
+    /NEXT_PUBLIC_APP_URL/.test(memoryExtract) ||
+    /zovus\.ru/.test(memoryExtract)
+  ) {
+    fail("natal deploy: memory-extract cron must hit loopback only (never public host / CRON_SECRET in Caddy logs)");
   }
 
   const packer = fs.readFileSync(path.join(ROOT, "hosting/deploy-beget.ps1"), "utf8");
