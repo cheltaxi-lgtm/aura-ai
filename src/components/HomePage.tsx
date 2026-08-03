@@ -3783,9 +3783,14 @@ export default function HomePage({
                   onOpenOwnedDestinyMatrixReport={
                     isLoggedIn
                       ? () => {
-                          // Open the session picker so the correct subject is chosen —
-                          // never start a reading without matrixSubjectId (API rejects it).
-                          openNumerologSessionFlow("destiny_matrix");
+                          void openChatWithSessionParams({
+                            characterKey: "numerolog",
+                            intention: null,
+                            spreadType: "new",
+                            cards: [],
+                            cardsRevealed: true,
+                            numerologToolId: "destiny_matrix",
+                          });
                         }
                       : undefined
                   }

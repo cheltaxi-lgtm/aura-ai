@@ -79,6 +79,12 @@ const SELECT_COLS = `
   rune_cost, session_id, created_at, updated_at
 `;
 
+/** Same columns qualified for queries that join matrix_subjects (shared column names). */
+const SELECT_COLS_N = `
+  n.id, n.tool_id, n.subject_id, n.birth_date, n.calculation_version, n.content,
+  n.structured_data, n.rune_cost, n.session_id, n.created_at, n.updated_at
+`;
+
 export async function findOwnedMatrixReport(
   userId: string,
   birthDateRaw: string | null | undefined,
@@ -92,7 +98,7 @@ export async function findOwnedMatrixReport(
   // Multi-subject safe: birth-date lookup only matches the user's `self` subject
   // (plus legacy null subject_id). Never return another person's report by date.
   const exact = await query<NumerologyReportHistoryRow>(
-    `SELECT ${SELECT_COLS}
+    `SELECT ${SELECT_COLS_N}
      FROM numerology_report_history n
      LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
      WHERE n.user_id = $1
@@ -108,7 +114,7 @@ export async function findOwnedMatrixReport(
 
   // Buy-once unlock survives calculation-version bumps: any non-empty saved row for this date.
   const anyVersion = await query<NumerologyReportHistoryRow>(
-    `SELECT ${SELECT_COLS}
+    `SELECT ${SELECT_COLS_N}
      FROM numerology_report_history n
      LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
      WHERE n.user_id = $1

@@ -264,16 +264,7 @@ export async function GET(request: NextRequest) {
         matrixSubjectIdRaw && /^[0-9a-f-]{1,40}$/i.test(matrixSubjectIdRaw)
           ? matrixSubjectIdRaw
           : null;
-      if (matrixSubjectTools) {
-        if (!matrixSubjectId) {
-          return NextResponse.json(
-            {
-              error: "Выберите, чью матрицу рассчитать.",
-              code: "matrix_subject_required",
-            },
-            { status: 400 }
-          );
-        }
+      if (matrixSubjectTools && matrixSubjectId) {
         const subject = await getMatrixSubject(authed.profileUserId, matrixSubjectId);
         if (!subject) {
           return NextResponse.json(

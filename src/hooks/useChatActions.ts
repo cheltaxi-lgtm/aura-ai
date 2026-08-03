@@ -672,25 +672,6 @@ export function useChatActions(options: UseChatActionsOptions) {
         let matrixAlreadyOwned = false;
         const matrixSubjectIdForReading =
           sessionSpreadMetaRef.current?.matrixSubjectId?.trim() || "";
-        if (
-          isLoggedIn &&
-          (metaNumerologToolId === "destiny_matrix" ||
-            metaNumerologToolId === "child_matrix" ||
-            metaNumerologToolId === "matrix_year_forecast") &&
-          !matrixSubjectIdForReading
-        ) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: generateId(),
-              role: "assistant",
-              content:
-                "Не выбран человек для матрицы. Откройте расчёт заново и выберите, чью матрицу считать.",
-              timestamp: new Date(),
-            },
-          ]);
-          return;
-        }
         if (billingActive && isLoggedIn && metaNumerologToolId === "destiny_matrix") {
           try {
             const subjectId = matrixSubjectIdForReading;

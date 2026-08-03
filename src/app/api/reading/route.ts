@@ -384,15 +384,9 @@ export async function POST(request: NextRequest) {
         );
       }
     } else if (isMatrixBuyOnceTool) {
-      // Never silently fall back to «Я» — that reopened the user's own matrix
-      // when the client lost matrixSubjectId for another person.
-      return NextResponse.json(
-        {
-          error: "Выберите, чью матрицу открыть.",
-          code: "matrix_subject_required",
-        },
-        { status: 400 }
-      );
+      // Legacy clients / reopen from history send no subject: treat as «Я».
+      // Clients that target another person always send matrixSubjectId.
+      resolvedMatrixSubject = await ensureSelfSubject(authed.profileUserId);
     }
 
     if (resolvedMatrixSubject) {
