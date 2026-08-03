@@ -10,6 +10,8 @@ import {
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
 import RuneCost from "@/components/RuneCost";
+import MatrixSubjectPicker from "@/components/numerolog/MatrixSubjectPicker";
+import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 
 interface NumerologCalculationPickerProps {
   selectedId: NumerologToolId;
@@ -22,6 +24,8 @@ interface NumerologCalculationPickerProps {
   userFullName?: string;
   /** Summary block is rendered in the modal footer — hide duplicate panel here. */
   hideSummaryPanel?: boolean;
+  matrixSubjectId?: string | null;
+  onMatrixSubjectIdChange?: (id: string | null) => void;
 }
 
 function drawMeta(tool: NumerologToolDef): string {
@@ -47,9 +51,14 @@ export default function NumerologCalculationPicker({
   userBirthDate,
   userFullName,
   hideSummaryPanel = false,
+  matrixSubjectId = null,
+  onMatrixSubjectIdChange,
 }: NumerologCalculationPickerProps) {
   const [partnerDateError, setPartnerDateError] = useState("");
   const selected = getNumerologTool(selectedId);
+  const matrixSubjects = useMatrixSubjects({
+    enabled: selectedId === "destiny_matrix",
+  });
   const sessionError = validateNumerologSessionReady(
     selectedId,
     params,
@@ -139,6 +148,18 @@ export default function NumerologCalculationPicker({
           );
         })}
       </div>
+
+      {selectedId === "destiny_matrix" ? (
+        <MatrixSubjectPicker
+          subjects={matrixSubjects.subjects}
+          selectedId={matrixSubjectId}
+          disabled={matrixSubjects.loading}
+          costs={matrixSubjects.costs}
+          onSelect={(id) => onMatrixSubjectIdChange?.(id)}
+          onCreate={matrixSubjects.create}
+          onCreated={(subject) => onMatrixSubjectIdChange?.(subject.id)}
+        />
+      ) : null}
 
       {!hideSummaryPanel ? (
         <div className="numerolog-calc-picker__summary rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/25 via-black/20 to-transparent px-4 py-3.5">

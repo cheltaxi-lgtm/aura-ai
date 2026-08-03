@@ -488,6 +488,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: import("@/lib/numerology/tools").NumerologToolId;
     numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams;
+    matrixSubjectId?: string | null;
   } | null>(null);
   const tripletPendingRef = useRef<{ cards: SpreadSymbol[]; teaser: string } | null>(null);
   const tripletDrawnAtRef = useRef(0);
@@ -2968,6 +2969,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         customQuestion,
         numerologToolId,
         numerologToolParams,
+        matrixSubjectId,
       } = params;
       const numerologTool = numerologToolId ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
       const isNumerologSessionStart =
@@ -2991,6 +2993,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         cardNames: cards,
         numerologToolId,
         numerologToolParams,
+        matrixSubjectId,
       };
       setChatSessionSpread(null);
       readingInFlightRef.current = true;

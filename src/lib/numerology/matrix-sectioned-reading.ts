@@ -518,6 +518,7 @@ export function forceFillMissingSections(
 export async function generateFullMatrixSectionedReading(input: {
   birthDate: string;
   name: string;
+  toolId?: "destiny_matrix" | "child_matrix";
   gender?: string | null;
   /**
    * Soft natal / memory facts for LLM prompts only (does not change arcana numbers).
@@ -547,7 +548,8 @@ export async function generateFullMatrixSectionedReading(input: {
   );
   const gender = resolveClientGender(input.gender, displayName);
   const contextFacts = input.contextFacts?.trim() || null;
-  const zones = listMatrixZones(matrix);
+  const toolId = input.toolId ?? "destiny_matrix";
+  const zones = listMatrixZones(matrix, toolId);
   const mode: "off" | "hero" | "all" =
     input.useLlm === false ? "off" : input.useLlm === "hero" ? "hero" : "all";
 
@@ -672,7 +674,7 @@ export async function generateFullMatrixSectionedReading(input: {
       finale,
     ].join("\n\n");
     const missing = new Set(
-      matrixMissingSections(draftPlain).filter((m) => m !== "Простыми словами")
+      matrixMissingSections(draftPlain, toolId).filter((m) => m !== "Простыми словами")
     );
     if (missing.size) {
       filledBlocks = filledBlocks.map((item) => {
@@ -714,10 +716,10 @@ export async function generateFullMatrixSectionedReading(input: {
 
   let reading = renderMatrixReadingMarkdown(document);
 
-  if (!isCompleteMatrixReading(reading)) {
+  if (!isCompleteMatrixReading(reading, toolId)) {
     console.warn(
       "[matrix-sectioned] structured markdown incomplete; engine-filling missing:",
-      matrixMissingSections(reading).join(", ")
+      matrixMissingSections(reading, toolId).join(", ")
     );
     const byId = new Map(document.zones.map((z) => [z.id, z]));
     for (const z of zones) {
@@ -741,7 +743,7 @@ export async function generateFullMatrixSectionedReading(input: {
     reading = renderMatrixReadingMarkdown(document);
   }
 
-  if (!isCompleteMatrixReading(reading)) {
+  if (!isCompleteMatrixReading(reading, toolId)) {
     // Paid full path must never silently ship a pure dictionary report.
     if (mode === "all") {
       const metaFail: MatrixSectionedMeta = {
@@ -751,7 +753,7 @@ export async function generateFullMatrixSectionedReading(input: {
       };
       console.error(
         "[matrix-sectioned] incomplete after fill on paid path; refusing engine dump",
-        matrixMissingSections(reading).join(", "),
+        matrixMissingSections(reading, toolId).join(", "),
         metaFail
       );
       throw new MatrixQualityCanaryError(metaFail);

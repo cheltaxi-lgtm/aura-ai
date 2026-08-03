@@ -240,6 +240,7 @@ const NUMEROLOGY_READING: PaidJobKindConfig = {
       payload.numerologReadingCacheKey,
       birthKey,
       partnerKey,
+      typeof payload.matrixSubjectId === "string" ? payload.matrixSubjectId.trim() : "",
     ]);
   },
 };

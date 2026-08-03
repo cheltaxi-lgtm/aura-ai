@@ -1,5 +1,5 @@
-import type { Context, InlineKeyboard } from "grammy";
-import { InputFile } from "grammy";
+import type { Context } from "grammy";
+import { InputFile, InlineKeyboard } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { clearFlow, getFlow, setFlow, trackEvent } from "../db/repos.js";
@@ -440,11 +440,18 @@ export async function showMatrixReports(ctx: Context): Promise<void> {
 export async function runMatrixFull(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
+  const activeFlow = getFlow(linked.user.telegram_user_id);
+  const subjectId =
+    activeFlow?.flow === "matrix_subject" &&
+    typeof activeFlow.data?.subjectId === "string"
+      ? activeFlow.data.subjectId
+      : undefined;
   await ctx.reply(copy.matrixRunning);
   try {
     await ctx.replyWithChatAction("typing");
     const { data } = await siteNumerology(linked.user.telegram_user_id, "run", undefined, {
       replace: true,
+      ...(subjectId ? { subjectId } : {}),
     });
     if (!data.ok) {
       if (data.error === "insufficient_runes") {
@@ -582,6 +589,68 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
 
   if (data === CB.mxNoop) {
     await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+
+  if (data === CB.mxSubjects) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    const { data: subjects } = await siteNumerology(linked.user.telegram_user_id, "subjects");
+    if (!subjects.ok) {
+      await ctx.reply(subjects.message || copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      return true;
+    }
+    const items = subjects.subjects || [];
+    const kb = new InlineKeyboard();
+    for (const subject of items) {
+      const name = subject.displayName || (subject.kind === "self" ? "Я" : subject.kind);
+      kb.text(`${name} · ${subject.birthDate}`.slice(0, 60), `${CB.mxSubjectSelectPrefix}${subject.id}`).row();
+    }
+    kb.text("➕ Добавить", CB.mxSubjectNew);
+    await ctx.reply("Чья матрица?", { reply_markup: kb });
+    return true;
+  }
+
+  if (data.startsWith(CB.mxSubjectSelectPrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const subjectId = data.slice(CB.mxSubjectSelectPrefix.length);
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked || !subjectId) return true;
+    setFlow(linked.user.telegram_user_id, "matrix_subject", "active", { subjectId });
+    const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary", undefined, { subjectId });
+    if (!summary.ok) {
+      await ctx.reply(summary.message || copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      return true;
+    }
+    await renderMatrixTeaserFromSummary(ctx, summary);
+    return true;
+  }
+
+  if (data === CB.mxSubjectNew) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    const kb = new InlineKeyboard()
+      .text("🧸 Ребёнок", `${CB.mxSubjectKindPrefix}child`)
+      .row()
+      .text("💞 Партнёр", `${CB.mxSubjectKindPrefix}partner`)
+      .row()
+      .text("👤 Другой человек", `${CB.mxSubjectKindPrefix}other`);
+    await ctx.reply("Кого добавить?", { reply_markup: kb });
+    return true;
+  }
+
+  if (data.startsWith(CB.mxSubjectKindPrefix)) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const kind = data.slice(CB.mxSubjectKindPrefix.length);
+    if (kind !== "child" && kind !== "partner" && kind !== "other") return true;
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    setFlow(linked.user.telegram_user_id, "matrix_subject", "dob", { kind });
+    await ctx.reply(
+      "Введите дату рождения (ДД.ММ.ГГГГ).\nДля ребёнка можно указать любой возраст от 0 лет."
+    );
     return true;
   }
 
@@ -1230,10 +1299,107 @@ export async function openHistoryReading(ctx: Context, sessionId: string): Promi
 }
 
 /** Handle free text for chat / support flows. Returns true if consumed. */
+function parseSubjectBirthDateRu(raw: string): string | null {
+  const m = /^(\d{1,2})[./](\d{1,2})[./](\d{2}|\d{4})$/.exec(raw.trim());
+  if (!m) return null;
+  let dd = Number(m[1]);
+  let mm = Number(m[2]);
+  let yyyy = Number(m[3]);
+  if (yyyy < 100) yyyy += yyyy >= 30 ? 1900 : 2000;
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const iso = `${String(yyyy).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() + 1 !== mm || d.getUTCDate() !== dd) {
+    return null;
+  }
+  const now = new Date();
+  let age = now.getUTCFullYear() - yyyy;
+  const monthDiff = now.getUTCMonth() + 1 - mm;
+  if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < dd)) age -= 1;
+  if (age < 0 || age > 120) return null;
+  return iso;
+}
+
 export async function handleCabinetText(ctx: Context, text: string): Promise<boolean> {
   if (!ctx.from) return false;
   const flow = getFlow(ctx.from.id);
   if (!flow) return false;
+
+  if (flow.flow === "matrix_subject" && flow.step === "dob") {
+    const kind = typeof flow.data?.kind === "string" ? flow.data.kind : "";
+    if (kind !== "child" && kind !== "partner" && kind !== "other") {
+      clearFlow(ctx.from.id);
+      return true;
+    }
+    const iso = parseSubjectBirthDateRu(text);
+    if (!iso) {
+      await ctx.reply("Некорректная дата. Формат: ДД.ММ.ГГГГ (возраст 0–120 лет).");
+      return true;
+    }
+    setFlow(ctx.from.id, "matrix_subject", "name", { kind, birthDate: iso });
+    await ctx.reply("Как подписать человека? (имя или «-», чтобы пропустить)");
+    return true;
+  }
+
+  if (flow.flow === "matrix_subject" && flow.step === "name") {
+    const kind = typeof flow.data?.kind === "string" ? flow.data.kind : "";
+    const birthDate = typeof flow.data?.birthDate === "string" ? flow.data.birthDate : "";
+    if ((kind !== "child" && kind !== "partner" && kind !== "other") || !birthDate) {
+      clearFlow(ctx.from.id);
+      return true;
+    }
+    const displayName =
+      text.trim() === "-" || text.trim().toLowerCase() === "пропустить"
+        ? undefined
+        : text.trim().slice(0, 40) || undefined;
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    try {
+      const { data } = await siteNumerology(
+        linked.user.telegram_user_id,
+        "subjects.create",
+        undefined,
+        { kind, birthDate, displayName }
+      );
+      if (!data.ok || !data.subject?.id) {
+        await ctx.reply(data.message || "Не удалось сохранить. Попробуйте ещё раз.", {
+          reply_markup: salonKeyboard(),
+        });
+        clearFlow(linked.user.telegram_user_id);
+        return true;
+      }
+      setFlow(linked.user.telegram_user_id, "matrix_subject", "active", {
+        subjectId: data.subject.id,
+      });
+      const label =
+        data.subject.displayName ||
+        (data.subject.kind === "child"
+          ? "Ребёнок"
+          : data.subject.kind === "partner"
+            ? "Партнёр"
+            : "Другой человек");
+      await ctx.reply(`Сохранено: ${label} · ${data.subject.birthDate}`);
+      const { data: summary } = await siteNumerology(
+        linked.user.telegram_user_id,
+        "summary",
+        undefined,
+        { subjectId: data.subject.id }
+      );
+      if (summary.ok) {
+        await renderMatrixTeaserFromSummary(ctx, summary);
+      } else {
+        await ctx.reply(summary.message || copy.siteBridgeDown, {
+          reply_markup: salonKeyboard(),
+        });
+      }
+    } catch (err) {
+      console.error("[cabinet] matrix subject create", err);
+      clearFlow(linked.user.telegram_user_id);
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+    }
+    return true;
+  }
 
   if (flow.flow === "photo") {
     const { handlePhotoText } = await import("./photo.js");

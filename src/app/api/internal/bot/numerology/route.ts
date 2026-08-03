@@ -18,6 +18,10 @@ export async function POST(request: NextRequest) {
     action?: unknown;
     report_id?: unknown;
     replace?: unknown;
+    subject_id?: unknown;
+    kind?: unknown;
+    display_name?: unknown;
+    birth_date?: unknown;
   };
   try {
     body = (await request.json()) as {
@@ -25,6 +29,10 @@ export async function POST(request: NextRequest) {
       action?: unknown;
       report_id?: unknown;
       replace?: unknown;
+      subject_id?: unknown;
+      kind?: unknown;
+      display_name?: unknown;
+      birth_date?: unknown;
     };
   } catch {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
@@ -42,6 +50,10 @@ export async function POST(request: NextRequest) {
     rawAction === "run" ||
     rawAction === "delete" ||
     rawAction === "summary"
+    || rawAction === "subjects"
+    || rawAction === "subjects.list"
+    || rawAction === "subjects.create"
+    || rawAction === "subjects.delete"
       ? rawAction
       : "summary";
   const reportId = typeof body.report_id === "string" ? body.report_id : undefined;
@@ -52,6 +64,10 @@ export async function POST(request: NextRequest) {
     action,
     reportId,
     replace,
+    subjectId: typeof body.subject_id === "string" ? body.subject_id : undefined,
+    kind: typeof body.kind === "string" ? body.kind : undefined,
+    displayName: typeof body.display_name === "string" ? body.display_name : undefined,
+    birthDate: typeof body.birth_date === "string" ? body.birth_date : undefined,
   });
 
   if (!result.ok) {

@@ -89,6 +89,11 @@ export const CB = {
   mxDelYes: "mx:del:yes",
   mxDelNo: "mx:del:no",
   mxList: "mx:list",
+  mxSubjects: "mx:subj",
+  mxSubjectNew: "mx:subj:new",
+  mxSubjectKindPrefix: "mx:subj:k:",
+  mxSubjectSelectPrefix: "mx:subj:s:",
+  mxSubjectDeletePrefix: "mx:subj:del:",
   mxNoop: "mx:noop",
   mxPagePrefix: "mx:pg:",
   mxOpenPrefix: "mx:o:",
@@ -521,7 +526,9 @@ export function matrixGetKeyboard(opts: {
   const kb = new InlineKeyboard()
     .text(`✨ Получить полный разбор · ${cost}ᚢ`, CB.mxRun)
     .row()
-    .text("📅 Узел периода", CB.mxPeriod);
+    .text("📅 Узел периода", CB.mxPeriod)
+    .row()
+    .text("👥 Чья матрица", CB.mxSubjects);
   const bal = opts.runeBalance;
   const needTopUp =
     typeof bal === "number" && Number.isFinite(bal) && bal < cost && Boolean(opts.shopUrl);
@@ -539,6 +546,9 @@ export function matrixOwnedKeyboard(opts?: { siteUrl?: string | null }): InlineK
     .text("📅 Узел периода", CB.mxPeriod)
     .row()
     .text("📤 Карточка зоны", CB.mxShare)
+    .row()
+    .text("👥 Чья матрица", CB.mxSubjects)
+    .text("📚 Мои отчёты", CB.mxList)
     .row()
     .text("✨ Новая матрица", CB.mxNew)
     .row()

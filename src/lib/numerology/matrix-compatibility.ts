@@ -2,11 +2,11 @@
  * Pair destiny-matrix compatibility (matrix-v2) — MVP keys for love/money/comfort/tail/year.
  */
 import { getArcanaEntry } from "./arcana-dictionary";
-import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
+import { destinyMatrix, reduceToArcanaNumber, type DestinyMatrixResult } from "./destiny-matrix";
 import { parseBirthDate } from "./constants";
 
 export type MatrixCompatKey = {
-  id: "comfort" | "love" | "money" | "tail" | "year";
+  id: "comfort" | "love" | "money" | "tail" | "year" | "purpose" | "tension" | "pairYear";
   label: string;
   numberA: number;
   numberB: number;
@@ -25,6 +25,8 @@ export type MatrixCompatibilityResult = {
   summary: string;
   strengths: string[];
   risks: string[];
+  pairComfort: number;
+  pairYear: number;
 };
 
 function pairScore(a: number, b: number): number {
@@ -65,6 +67,17 @@ export function matrixCompatibility(
   if (!matrixA || !matrixB) return null;
 
   const keys: MatrixCompatKey[] = [
+    {
+      id: "purpose",
+      label: "Зачем встретились",
+      numberA: matrixA.purpose.number,
+      numberB: matrixB.purpose.number,
+      titleA: matrixA.purpose.arcanaName,
+      titleB: matrixB.purpose.arcanaName,
+      score: pairScore(matrixA.purpose.number, matrixB.purpose.number),
+      note: noteFor("Смысл встречи", matrixA.purpose.number, matrixB.purpose.number, "пара усиливает общий вектор роста.", "союз учит видеть разные способы быть собой."),
+      practice: "Раз в месяц сверяйте: что каждый хочет сохранить в этом союзе и чему научиться рядом.",
+    },
     {
       id: "comfort",
       label: "Зона комфорта",
@@ -138,6 +151,17 @@ export function matrixCompatibility(
         "Когда вспышка повторяется — пауза 10 минут и фраза: «это мой урок, не атака на тебя».",
     },
     {
+      id: "tension",
+      label: "Точки напряжения",
+      numberA: matrixA.karmicTail[0].number,
+      numberB: matrixB.karmicTail[0].number,
+      titleA: matrixA.karmicTail[0].arcanaName,
+      titleB: matrixB.karmicTail[0].arcanaName,
+      score: pairScore(matrixA.karmicTail[0].number, matrixB.karmicTail[0].number),
+      note: noteFor("Напряжение", matrixA.karmicTail[0].number, matrixB.karmicTail[0].number, "похожие уязвимости легче заметить и не обесценить.", "триггеры различаются — важнее пауза и уточнение, чем догадки."),
+      practice: "В споре сначала назовите чувство и просьбу, а не объяснение, кто виноват.",
+    },
+    {
       id: "year",
       label: "Аркан года",
       numberA: matrixA.yearArcana.number,
@@ -156,6 +180,19 @@ export function matrixCompatibility(
         "Выберите один общий фокус на квартал и один личный фокус у каждого — без конкуренции.",
     },
   ];
+  const pairComfort = reduceToArcanaNumber(matrixA.comfort.number + matrixB.comfort.number);
+  const pairYear = reduceToArcanaNumber(matrixA.yearArcana.number + matrixB.yearArcana.number);
+  keys.push({
+    id: "pairYear",
+    label: "Аркан пары на год",
+    numberA: pairYear,
+    numberB: pairYear,
+    titleA: titleOf(pairYear),
+    titleB: titleOf(pairYear),
+    score: 80,
+    note: `Общий аркан пары: ${pairYear} (${titleOf(pairYear)}) — фон решений и договорённостей на этот год.`,
+    practice: "Выберите одну общую тему года и возвращайтесь к ней перед крупными решениями.",
+  });
 
   const score = Math.round(
     keys.reduce((sum, k) => sum + k.score, 0) / keys.length
@@ -177,6 +214,8 @@ export function matrixCompatibility(
     summary,
     strengths: strengths.length ? strengths : [keys[0]!.note],
     risks: risks.length ? risks : ["Следите, чтобы разный ритм не превращался в молчаливую обиду."],
+    pairComfort,
+    pairYear,
   };
 }
 
@@ -203,6 +242,7 @@ export function buildMatrixCompatibilityPromptBlock(
     ...result.strengths.map((s) => `• ${s}`),
     "Точки роста:",
     ...result.risks.map((s) => `• ${s}`),
-    "Структура ответа: 2–3 предложения вступления → 5 ключей (каждый со своей практикой) → общий совет на 30 дней. Только «ты»/«вы двое». Без markdown. Не пересчитывай арканы.",
+    `Комфорт пары: ${result.pairComfort} (${titleOf(result.pairComfort)}). Аркан пары на год: ${result.pairYear} (${titleOf(result.pairYear)}).`,
+    "Структура ответа: 2–3 предложения вступления → ключи (каждый со своей практикой) → общий совет на 30 дней. Только «ты»/«вы двое». Без markdown. Не пересчитывай арканы.",
   ].join("\n");
 }

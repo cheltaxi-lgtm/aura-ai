@@ -19,6 +19,7 @@ import {
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
+import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
 
@@ -56,6 +57,7 @@ export default function DestinyMatrixPreview() {
     enabled: isLoggedIn && Boolean(birthDate && parseBirthDate(birthDate)),
     birthDate: birthDate || null,
   });
+  const matrixSubjects = useMatrixSubjects({ enabled: isLoggedIn });
   const ownedFull = matrixOwnership.owned;
   const [pending, startTransition] = useTransition();
   const [ageReady, setAgeReady] = useState(false);
@@ -178,6 +180,26 @@ export default function DestinyMatrixPreview() {
     }
     setAgeReady(true);
   }
+
+  const openFullMatrix = async () => {
+    trackSeoEvent("matrix_cta_full", { source: "preview", owned: ownedFull ? "1" : "0" });
+    const self = matrixSubjects.subjects.find((subject) => subject.kind === "self");
+    if (isLoggedIn && birthDate && self && self.birthDate !== birthDate) {
+      try {
+        const subject = await matrixSubjects.create({
+          kind: "other",
+          displayName: name.trim() || undefined,
+          birthDate,
+        });
+        window.location.assign(`${FULL_HREF}&subjectId=${encodeURIComponent(subject.id)}`);
+        return;
+      } catch {
+        window.alert("Не удалось сохранить профиль для матрицы. Попробуйте ещё раз.");
+        return;
+      }
+    }
+    window.location.assign(FULL_HREF);
+  };
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -357,6 +379,14 @@ export default function DestinyMatrixPreview() {
                   повторной оплаты за те же числа. Или закажите новый полный разбор.
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  {matrixOwnership.reportId ? (
+                    <a
+                      href={`/cabinet/numerology/matrix/${encodeURIComponent(matrixOwnership.reportId)}/print`}
+                      className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2.5 text-sm font-medium text-white/80 transition hover:border-white/40 hover:text-white"
+                    >
+                      Печать / PDF
+                    </a>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => {
@@ -439,15 +469,15 @@ export default function DestinyMatrixPreview() {
               </ul>
             )}
             <div className="mt-5">
-              <SeoTrackedCta
-                href={FULL_HREF}
-                trackGoal="matrix_cta_full"
-                trackParams={{ source: "preview", owned: ownedFull ? "1" : "0" }}
+              <button
+                type="button"
+                onClick={() => void openFullMatrix()}
+                className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
               >
                 {ownedFull
                   ? "Открыть сохранённый разбор"
                   : "Открыть полный разбор с Эвелиной"}
-              </SeoTrackedCta>
+              </button>
             </div>
             <p className="mt-2 text-xs text-white/40">
               {ownedFull

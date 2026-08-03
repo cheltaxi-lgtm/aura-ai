@@ -278,6 +278,7 @@ export interface UseChatActionsOptions {
     periodSpreadScope?: PeriodSpreadScope;
     numerologToolId?: NumerologToolId;
     numerologToolParams?: NumerologToolParams;
+    matrixSubjectId?: string | null;
   } | null>;
   sendingRef: MutableRefObject<boolean>;
   archiveSessionIdRef: MutableRefObject<string | null>;
@@ -555,6 +556,7 @@ export function useChatActions(options: UseChatActionsOptions) {
               birthDate: activeProfile.birthDate,
               cardNames,
               params: sessionSpreadMetaRef.current?.numerologToolParams,
+              matrixSubjectId: sessionSpreadMetaRef.current?.matrixSubjectId,
             })
           : spreadKey(cardsForMaster) || spreadCardsKey;
         const loadAttemptKey = `${characterId}:${cardsKey}`;
@@ -670,10 +672,13 @@ export function useChatActions(options: UseChatActionsOptions) {
         let matrixAlreadyOwned = false;
         if (billingActive && isLoggedIn && metaNumerologToolId === "destiny_matrix") {
           try {
+            const subjectId = sessionSpreadMetaRef.current?.matrixSubjectId?.trim();
             const birthRaw = activeProfile.birthDate?.trim();
-            if (birthRaw) {
+            if (subjectId || birthRaw) {
               const ownedRes = await fetch(
-                `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthRaw)}`,
+                subjectId
+                  ? `/api/numerology/matrix-report?subjectId=${encodeURIComponent(subjectId)}`
+                  : `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthRaw!)}`,
                 { credentials: "include" }
               );
               if (ownedRes.ok) {
@@ -687,7 +692,7 @@ export function useChatActions(options: UseChatActionsOptions) {
               }
             }
             // Metadata fallback (no full bodies) — same birth date only.
-            if (!matrixAlreadyOwned && birthRaw) {
+            if (!matrixAlreadyOwned && birthRaw && !subjectId) {
               const listRes = await fetch(
                 `/api/numerology/matrix-report?list=1`,
                 { credentials: "include" }
@@ -773,6 +778,9 @@ export function useChatActions(options: UseChatActionsOptions) {
                 metaNumerologToolId,
                 sessionSpreadMetaRef.current?.numerologToolParams
               ),
+              ...(sessionSpreadMetaRef.current?.matrixSubjectId
+                ? { matrixSubjectId: sessionSpreadMetaRef.current.matrixSubjectId }
+                : {}),
             }),
           });
           let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;

@@ -76,6 +76,7 @@ export interface SessionStartParams {
   deckSystem?: DeckSystem;
   numerologToolId?: NumerologToolId;
   numerologToolParams?: NumerologToolParams;
+  matrixSubjectId?: string | null;
 }
 
 interface MasterSessionFlowProps {
@@ -100,6 +101,8 @@ interface MasterSessionFlowProps {
   requiresPartnerInfo?: boolean;
   /** Preselect numerolog calculation (SEO / deep links). */
   initialNumerologTool?: NumerologToolId;
+  /** Saved person selected by a Matrix deep link. */
+  initialMatrixSubjectId?: string | null;
   /** Birth date from profile — required for several numerolog calculations. */
   userBirthDate?: string;
   /** Full name from profile — required for chaldean/karma. */
@@ -181,6 +184,7 @@ export default function MasterSessionFlow({
   autoDrawOnOpen = false,
   requiresPartnerInfo = false,
   initialNumerologTool,
+  initialMatrixSubjectId,
   userBirthDate,
   userFullName,
   initialPartnerInfo,
@@ -226,6 +230,7 @@ export default function MasterSessionFlow({
     DEFAULT_NUMEROLOG_SESSION_TOOL
   );
   const [numerologToolParams, setNumerologToolParams] = useState<NumerologToolParams>({});
+  const [matrixSubjectId, setMatrixSubjectId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen || !initialPartnerInfo) return;
@@ -246,6 +251,7 @@ export default function MasterSessionFlow({
     enabled:
       isOpen && numerologFlow && selectedNumerologTool === "destiny_matrix",
     birthDate: userBirthDate,
+    subjectId: matrixSubjectId,
   });
   const matrixOwned = matrixOwnership.owned;
   const matrixBuyOnceOwned =
@@ -374,6 +380,7 @@ export default function MasterSessionFlow({
     const resolvedNumerologTool = initialNumerologTool ?? DEFAULT_NUMEROLOG_SESSION_TOOL;
     setSelectedNumerologTool(resolvedNumerologTool);
     setNumerologToolParams({});
+    setMatrixSubjectId(initialMatrixSubjectId ?? null);
     setNumerologResult(null);
     setNumerologRevealReady(false);
 
@@ -435,6 +442,7 @@ export default function MasterSessionFlow({
     autoDrawOnOpen,
     requiresPartnerInfo,
     initialNumerologTool,
+    initialMatrixSubjectId,
   ]);
 
   const flowOpenedRef = useRef(false);
@@ -552,6 +560,7 @@ export default function MasterSessionFlow({
         if (partnerDate) qs.set("partnerDate", partnerDate);
         if (partnerName) qs.set("partnerName", partnerName);
         if (objectValue) qs.set("objectValue", objectValue);
+        if (matrixSubjectId) qs.set("matrixSubjectId", matrixSubjectId);
       } else if (topic) {
         qs.set("topic", topic);
         if (topic === "custom" && resolvedCustomQuestion) {
@@ -582,6 +591,7 @@ export default function MasterSessionFlow({
       selectedSpreadId,
       selectedNumerologTool,
       numerologToolParams,
+      matrixSubjectId,
       reshuffleSalt,
       spreadIntentSlug,
     ]
@@ -841,15 +851,15 @@ export default function MasterSessionFlow({
       deckSystem,
       numerologToolId: "destiny_matrix",
       numerologToolParams,
+      matrixSubjectId,
     });
   };
 
   /** Wipe buy-once report and start a fresh paid full matrix. */
   const startNewMatrixSession = async () => {
     if (!master || matrixReplaceBusy) return;
-    const birthDate = userBirthDate?.trim();
-    if (!birthDate) {
-      setDrawError("Нужна дата рождения в профиле для новой матрицы.");
+    if (!matrixSubjectId) {
+      setDrawError("Выберите человека для новой матрицы.");
       return;
     }
     if (
@@ -866,7 +876,7 @@ export default function MasterSessionFlow({
         method: "DELETE",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ birthDate }),
+        body: JSON.stringify({ subjectId: matrixSubjectId }),
       });
       if (!res.ok) {
         throw new Error("delete_failed");
@@ -904,6 +914,7 @@ export default function MasterSessionFlow({
         deckSystem,
         numerologToolId: selectedNumerologTool,
         numerologToolParams,
+        matrixSubjectId,
         customQuestion: resolvedCustomQuestion,
       });
       return;
@@ -1543,12 +1554,15 @@ export default function MasterSessionFlow({
                     onSelect={(id) => {
                       setSelectedNumerologTool(id);
                       setNumerologToolParams({});
+                      if (id !== "destiny_matrix") setMatrixSubjectId(null);
                     }}
                     onParamsChange={setNumerologToolParams}
                     runeBillingEnabled={runeConfig.enabled}
                     userBirthDate={userBirthDate}
                     userFullName={userFullName}
                     hideSummaryPanel
+                    matrixSubjectId={matrixSubjectId}
+                    onMatrixSubjectIdChange={setMatrixSubjectId}
                   />
                 </div>
               </motion.div>

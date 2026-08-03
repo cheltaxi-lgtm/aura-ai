@@ -4,7 +4,7 @@
  *
  * Note: JS `\b` is ASCII-only — use `(?!\p{L})` for Cyrillic titles.
  */
-import { MATRIX_ZONE_DEFS } from "./matrix-zones";
+import { matrixZoneDefsFor } from "./matrix-zones";
 
 export type MatrixSectionCheck = {
   id: string;
@@ -24,18 +24,21 @@ function titleRe(core: string): RegExp {
 }
 
 /** Required paid zones — derived from MATRIX_ZONE_DEFS. */
-export const MATRIX_REQUIRED_SECTIONS: MatrixSectionCheck[] = MATRIX_ZONE_DEFS.filter(
-  (z) => z.required
-).map((z) => ({
+export function matrixRequiredSections(toolId?: string): MatrixSectionCheck[] {
+  return matrixZoneDefsFor(toolId).filter((z) => z.required).map((z) => ({
   id: z.id,
   label: z.label,
   re: titleRe(z.titleCore),
-}));
+  }));
+}
 
-function hasKarmicTailCoverage(text: string): boolean {
-  const root = MATRIX_REQUIRED_SECTIONS.find((s) => s.id === "tail_root");
-  const mid = MATRIX_REQUIRED_SECTIONS.find((s) => s.id === "tail_mid");
-  const tip = MATRIX_REQUIRED_SECTIONS.find((s) => s.id === "tail_tip");
+export const MATRIX_REQUIRED_SECTIONS = matrixRequiredSections();
+
+function hasKarmicTailCoverage(text: string, sections: MatrixSectionCheck[]): boolean {
+  const root = sections.find((s) => s.id === "tail_root");
+  const mid = sections.find((s) => s.id === "tail_mid");
+  const tip = sections.find((s) => s.id === "tail_tip");
+  if (!root && !mid && !tip) return true;
   if (root?.re.test(text) && mid?.re.test(text) && tip?.re.test(text)) return true;
   if (!titleRe(String.raw`Кармический\s+хвост`).test(text)) return false;
   const parts = (
@@ -46,20 +49,21 @@ function hasKarmicTailCoverage(text: string): boolean {
   return parts >= 3;
 }
 
-export function matrixMissingSections(text: string): string[] {
+export function matrixMissingSections(text: string, toolId?: string): string[] {
+  const sections = matrixRequiredSections(toolId);
   const raw = (text || "").replace(/\r\n/g, "\n");
   if (!raw.trim()) {
-    return MATRIX_REQUIRED_SECTIONS.filter((s) => !s.id.startsWith("tail_"))
+    return sections.filter((s) => !s.id.startsWith("tail_"))
       .map((s) => s.label)
       .concat(["Кармический хвост · корень/середина/остриё"]);
   }
 
   const missing: string[] = [];
-  for (const section of MATRIX_REQUIRED_SECTIONS) {
+  for (const section of sections) {
     if (section.id.startsWith("tail_")) continue;
     if (!section.re.test(raw)) missing.push(section.label);
   }
-  if (!hasKarmicTailCoverage(raw)) {
+  if (!hasKarmicTailCoverage(raw, sections)) {
     missing.push("Кармический хвост · корень/середина/остриё");
   }
   // Finale may be `## Простыми словами` (structured) or `Простыми словами:`.
@@ -70,10 +74,10 @@ export function matrixMissingSections(text: string): string[] {
 }
 
 /** Paid full matrix: all required zone headers + finale (+ sane length). */
-export function isCompleteMatrixReading(text: string): boolean {
+export function isCompleteMatrixReading(text: string, toolId?: string): boolean {
   const t = (text || "").trim();
   if (t.length < 2200) return false;
-  return matrixMissingSections(t).length === 0;
+  return matrixMissingSections(t, toolId).length === 0;
 }
 
 export function matrixContinuePrompt(missing: string[]): string {
