@@ -245,6 +245,7 @@ export default function MasterSessionFlow({
     }));
   }, [isOpen, initialPartnerInfo?.partnerName, initialPartnerInfo?.partnerDate]);
   const [numerologResult, setNumerologResult] = useState<NumerologSessionResult | null>(null);
+  const [matrixSubjectLabel, setMatrixSubjectLabel] = useState<string | null>(null);
   const [numerologRevealReady, setNumerologRevealReady] = useState(false);
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
   const numerologFlow = isNumerologMaster(master);
@@ -638,6 +639,7 @@ export default function MasterSessionFlow({
         });
         const data = (await res.json().catch(() => ({}))) as {
           error?: string;
+          code?: string;
           sessionSeed?: string;
           ritualTitle?: string;
           ritualBody?: string;
@@ -650,12 +652,18 @@ export default function MasterSessionFlow({
           deck?: string;
           tableCards?: { name: string }[];
           numerologResult?: NumerologSessionResult;
+          matrixSubjectLabel?: string;
         };
         if (res.status === 401) {
           setDrawError("Нужна регистрация");
           return;
         }
         if (!res.ok) {
+          if (data.code === "matrix_subject_required") {
+            setDrawError("Выберите человека в блоке «Чья матрица».");
+            setStep("calculation");
+            return;
+          }
           throw new Error(data.error || "init_failed");
         }
 
@@ -682,6 +690,7 @@ export default function MasterSessionFlow({
         if (numerologFlow && data.numerologResult) {
           const result = data.numerologResult as NumerologSessionResult;
           setNumerologResult(result);
+          setMatrixSubjectLabel(data.matrixSubjectLabel?.trim() || null);
           setNewCards(result.cardNames.map((name) => ({ name })));
           setFlipped(result.cardNames.map(() => true));
           setNumerologRevealReady(false);
@@ -806,6 +815,7 @@ export default function MasterSessionFlow({
       setDrawError(null);
       setSessionSeed("");
       setNumerologResult(null);
+      setMatrixSubjectLabel(null);
       setNumerologRevealReady(false);
     }
   }, [selectedNumerologTool, numerologFlow, step, cardCount]);
@@ -1132,6 +1142,15 @@ export default function MasterSessionFlow({
               )
             }
             onClick={() => {
+              if (
+                (selectedNumerologTool === "destiny_matrix" ||
+                  selectedNumerologTool === "child_matrix" ||
+                  selectedNumerologTool === "matrix_year_forecast") &&
+                !matrixSubjectId
+              ) {
+                setDrawError("Выберите человека в блоке «Чья матрица».");
+                return;
+              }
               setFlipped(emptyFlipped(cardCount));
               setNewCards([]);
               goToRitualStep();
@@ -1774,6 +1793,7 @@ export default function MasterSessionFlow({
               >
                 <NumerologSessionReveal
                   result={numerologResult}
+                  subjectLabel={matrixSubjectLabel}
                   onAllRevealed={handleNumerologRevealReady}
                 />
                 {drawHint ? (

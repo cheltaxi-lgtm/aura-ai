@@ -71,6 +71,8 @@ import {
 import { drawNumerologSessionSpread } from "@/lib/numerology/session-draw";
 import { buildNumerologSessionResult } from "@/lib/numerology/session-result";
 import { getNumerologSessionCopy } from "@/lib/numerology/session-copy";
+import { getMatrixSubject } from "@/lib/services/matrix-subject-service";
+import { toIsoBirthDate } from "@/lib/services/numerology-report-service";
 import { buildMemoryContext, appendMemoryContextToPrompt } from "@/lib/memory/build-memory-context";
 import {
   buildSpreadUserMessage,
@@ -249,8 +251,48 @@ export async function GET(request: NextRequest) {
         objectValue: request.nextUrl.searchParams.get("objectValue"),
       });
       const profileUser = await getUserById(authed.profileUserId);
-      const birthDate = profileUser?.birth_date ?? null;
-      const fullName = profileUser?.name ?? null;
+      let birthDate = profileUser?.birth_date ?? null;
+      let fullName = profileUser?.name ?? null;
+      let matrixSubjectLabel: string | null = null;
+      const matrixSubjectTools =
+        toolId === "destiny_matrix" ||
+        toolId === "child_matrix" ||
+        toolId === "matrix_year_forecast";
+      const matrixSubjectIdRaw =
+        request.nextUrl.searchParams.get("matrixSubjectId")?.trim() ?? "";
+      const matrixSubjectId =
+        matrixSubjectIdRaw && /^[0-9a-f-]{1,40}$/i.test(matrixSubjectIdRaw)
+          ? matrixSubjectIdRaw
+          : null;
+      if (matrixSubjectTools) {
+        if (!matrixSubjectId) {
+          return NextResponse.json(
+            {
+              error: "Выберите, чью матрицу рассчитать.",
+              code: "matrix_subject_required",
+            },
+            { status: 400 }
+          );
+        }
+        const subject = await getMatrixSubject(authed.profileUserId, matrixSubjectId);
+        if (!subject) {
+          return NextResponse.json(
+            { error: "Субъект матрицы не найден.", code: "matrix_subject_forbidden" },
+            { status: 403 }
+          );
+        }
+        birthDate = toIsoBirthDate(subject.birthDate) ?? subject.birthDate;
+        fullName = subject.displayName?.trim() || fullName;
+        matrixSubjectLabel =
+          subject.kind === "self"
+            ? "Вы"
+            : subject.displayName?.trim() ||
+              (subject.kind === "child"
+                ? "Ребёнок"
+                : subject.kind === "partner"
+                  ? "Партнёр"
+                  : "Другой человек");
+      }
       const readyError = validateNumerologSessionReady(toolId, toolParams, birthDate, fullName);
       if (readyError) {
         return NextResponse.json({ error: readyError }, { status: 400 });
@@ -280,6 +322,8 @@ export async function GET(request: NextRequest) {
           deck: system,
           numerologTool: toolId,
           numerologResult,
+          matrixSubjectId: matrixSubjectId || undefined,
+          matrixSubjectLabel: matrixSubjectLabel || undefined,
           ritualTitle: copy.ritualTitle,
           ritualBody: copy.ritualBody,
           drawHint: copy.revealHint,

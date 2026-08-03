@@ -12,10 +12,18 @@ import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
 interface NumerologSessionRevealProps {
   result: NumerologSessionResult;
   onAllRevealed?: () => void;
+  /** Whose matrix is shown — e.g. «Вы», «Мария». */
+  subjectLabel?: string | null;
 }
 
-export default function NumerologSessionReveal({ result, onAllRevealed }: NumerologSessionRevealProps) {
-  const isMatrix = result.toolId === "destiny_matrix" && Boolean(result.destinyMatrix);
+export default function NumerologSessionReveal({
+  result,
+  onAllRevealed,
+  subjectLabel,
+}: NumerologSessionRevealProps) {
+  const isMatrix =
+    (result.toolId === "destiny_matrix" || result.toolId === "child_matrix") &&
+    Boolean(result.destinyMatrix);
   // Matrix grid has 16 slots — don't animate 18 zone-list steps (~80s). Match SEO preview pace.
   const totalSteps = result.pythagorasSquare
     ? 1
@@ -25,10 +33,22 @@ export default function NumerologSessionReveal({ result, onAllRevealed }: Numero
   const [revealed, setRevealed] = useState(0);
   const onAllRevealedRef = useRef(onAllRevealed);
   onAllRevealedRef.current = onAllRevealed;
+  const matrixFingerprint = result.destinyMatrix
+    ? [
+        result.destinyMatrix.comfort.number,
+        result.destinyMatrix.ageCurrent.number,
+        result.destinyMatrix.ageCurrent.age,
+        result.destinyMatrix.yearArcana.number,
+      ].join(":")
+    : "";
+  const eyebrow =
+    subjectLabel && subjectLabel !== "Вы"
+      ? `Расчёт · ${subjectLabel}`
+      : "Ваш расчёт";
 
   useEffect(() => {
     setRevealed(0);
-  }, [result.toolId]);
+  }, [result.toolId, matrixFingerprint]);
 
   useEffect(() => {
     if (totalSteps === 0) {
@@ -59,12 +79,12 @@ export default function NumerologSessionReveal({ result, onAllRevealed }: Numero
     return (
       <div className="numerolog-reveal mx-auto w-full max-w-lg text-center">
         <div className="numerolog-reveal__head">
-          <p className="numerolog-reveal__eyebrow">Ваш расчёт</p>
+          <p className="numerolog-reveal__eyebrow">{eyebrow}</p>
           <h3 className="numerolog-reveal__title">{result.title}</h3>
           <p className="numerolog-reveal__subtitle">{result.subtitle}</p>
         </div>
         <p className="mt-6 text-sm text-red-300">
-          Не удалось построить позиции расчёта — проверьте дату рождения в профиле.
+          Не удалось построить позиции расчёта — проверьте дату рождения.
         </p>
       </div>
     );
@@ -73,7 +93,7 @@ export default function NumerologSessionReveal({ result, onAllRevealed }: Numero
   return (
     <div className={`numerolog-reveal mx-auto w-full ${isMatrix ? "max-w-md" : "max-w-lg"}`}>
       <div className="numerolog-reveal__head">
-        <p className="numerolog-reveal__eyebrow">Ваш расчёт</p>
+        <p className="numerolog-reveal__eyebrow">{eyebrow}</p>
         <h3 className="numerolog-reveal__title">{result.title}</h3>
         <p className="numerolog-reveal__subtitle">{result.subtitle}</p>
       </div>
