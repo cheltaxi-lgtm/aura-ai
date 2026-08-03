@@ -147,6 +147,15 @@ if [ -f "$TARBALL" ]; then
     -not -path '/opt/aura-ai/telegram-bot/node_modules*' \
     -not -path '/opt/aura-ai/.build-staging*' \
     -exec chmod 644 {} +
+  # Older deploys may already have stripped +x from the live tree; put it back so
+  # smoke tests and any side tooling can still exec esbuild/tsx.
+  for nm in /opt/aura-ai/node_modules /opt/aura-ai/node_modules-candidate /opt/aura-ai/telegram-bot/node_modules; do
+    if [ -d "$nm" ]; then
+      find "$nm" -type d -exec chmod 755 {} +
+      find "$nm/.bin" -type f -exec chmod 755 {} + 2>/dev/null || true
+      find "$nm" \( -name 'esbuild' -o -name '*.node' -o -name 'node-gyp' \) -type f -exec chmod 755 {} + 2>/dev/null || true
+    fi
+  done
   find /opt/aura-ai/proxmox-setup -type f -name '*.sh' -exec chmod 750 {} +
   find /opt/aura-ai/hosting -type f \( -name '*.sh' -o -name '*.ps1' \) -exec chmod 750 {} + 2>/dev/null || true
   echo ">>> Verifying installed GeoNames index after rsync..."
@@ -439,13 +448,13 @@ set -a
 # shellcheck disable=SC1090
 source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|OPENROUTER_HTTPS_PROXY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
 set +a
-# Prefer the candidate tree: it is what we are about to activate, and the live
-# node_modules may already have had +x stripped by an older hardening pass.
-_SMOKE_TSX="/opt/aura-ai/node_modules-candidate/.bin/tsx"
-if [ ! -x "$_SMOKE_TSX" ]; then
-  _SMOKE_TSX="/opt/aura-ai/node_modules/.bin/tsx"
+# Prefer the candidate tree: it is what we are about to activate. Invoke via
+# node on the cli entry (not the .bin shim) so a missing +x bit cannot fail us.
+_SMOKE_TSX="/opt/aura-ai/node_modules-candidate/tsx/dist/cli.mjs"
+if [ ! -f "$_SMOKE_TSX" ]; then
+  _SMOKE_TSX="/opt/aura-ai/node_modules/tsx/dist/cli.mjs"
 fi
-if ! "$_SMOKE_TSX" /opt/aura-ai/scripts/memory-smoke-test.ts; then
+if ! node "$_SMOKE_TSX" /opt/aura-ai/scripts/memory-smoke-test.ts; then
   if [ "${STRICT_MEMORY_SMOKE:-1}" = "1" ]; then
     echo "ERROR: memory smoke failed in strict mode; active build was not touched"
     DEPLOY_STATUS="memory_smoke_failed"
