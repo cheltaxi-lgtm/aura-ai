@@ -67,6 +67,7 @@ rsync -a --delete --ignore-times \
   --exclude='.next-previous/' \
   --exclude='node_modules/' \
   --exclude='logs/' \
+  --exclude='backups/' \
   --exclude='telegram-bot/.env' \
   --exclude='telegram-bot/data/' \
   --exclude='telegram-bot/node_modules/' \

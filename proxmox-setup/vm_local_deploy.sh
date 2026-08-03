@@ -47,14 +47,28 @@ restore_previous_release() {
     sed -i 's/\r$//' /opt/aura-ai/hosting/sync-async-jobs-env.sh 2>/dev/null || true
     bash /opt/aura-ai/hosting/sync-async-jobs-env.sh /opt/aura-ai || true
   fi
+  # `npm ci` wipes node_modules before it repopulates it, so an abort during install
+  # leaves a tree the old .next cannot boot against. Starting the unit then just gives
+  # a crash loop; reinstall first so the restore actually restores something runnable.
+  if [ ! -d /opt/aura-ai/node_modules/next ]; then
+    echo ">>> node_modules incomplete — reinstalling before restore..."
+    (cd /opt/aura-ai && npm ci --legacy-peer-deps) || echo "WARN: reinstall failed; app cannot start without manual npm ci"
+  fi
   sudo systemctl start aura-ai || true
+  RESTORED=0
   for _ in $(seq 1 30); do
     if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+      RESTORED=1
       echo "previous_release_restored=1"
       break
     fi
     sleep 2
   done
+  # Say it loudly: a silent restore failure reads as "only the deploy failed" while
+  # production is still down.
+  if [ "$RESTORED" -ne 1 ]; then
+    echo "ERROR: restore did not bring the app back — production is DOWN, manual recovery required"
+  fi
   sudo systemctl start aura-ai-async-jobs || true
 }
 
@@ -94,6 +108,7 @@ if [ -f "$TARBALL" ]; then
     --exclude='.next-previous/' \
     --exclude='node_modules/' \
     --exclude='logs/' \
+    --exclude='backups/' \
     --exclude='telegram-bot/.env' \
     --exclude='telegram-bot/data/' \
     --exclude='telegram-bot/node_modules/' \
@@ -103,28 +118,8 @@ if [ -f "$TARBALL" ]; then
   echo ">>> Hardening /opt/aura-ai file modes..."
   find /opt/aura-ai -type d -exec chmod 755 {} +
   find /opt/aura-ai -type f -exec chmod 644 {} +
-  # The blanket 644 above would expose secrets. .env.local, telegram-bot/.env and
-  # .env.async-jobs are all excluded from rsync, so they reach this step as existing
-  # files and keep whatever mode chmod just gave them. systemd reads every one of
-  # these as root before dropping to the aura-ai user, so 600 root:root is safe.
-  for secret_file in \
-    /opt/aura-ai/.env.local \
-    /opt/aura-ai/.env.async-jobs \
-    /opt/aura-ai/telegram-bot/.env; do
-    if [ -f "$secret_file" ]; then
-      chmod 600 "$secret_file"
-    fi
-  done
   find /opt/aura-ai/proxmox-setup -type f -name '*.sh' -exec chmod 750 {} +
   find /opt/aura-ai/hosting -type f \( -name '*.sh' -o -name '*.ps1' \) -exec chmod 750 {} + 2>/dev/null || true
-  # The bot runs as aura-ai and writes its SQLite (plus -wal/-shm) in place. The
-  # blanket chmod above strips that write access and puts the bot in a restart loop
-  # with "attempt to write a readonly database", so give the data dir back.
-  if [ -d /opt/aura-ai/telegram-bot/data ]; then
-    chown -R aura-ai:aura-ai /opt/aura-ai/telegram-bot/data
-    find /opt/aura-ai/telegram-bot/data -type d -exec chmod 750 {} +
-    find /opt/aura-ai/telegram-bot/data -type f -exec chmod 640 {} +
-  fi
   echo ">>> Verifying installed GeoNames index after rsync..."
   verify_geonames_index /opt/aura-ai/data/geonames/cities.min.json
   echo ">>> Rsync complete ($(test -f /opt/aura-ai/deploy-sha.txt && tr -d '\r\n' < /opt/aura-ai/deploy-sha.txt || echo no-sha))"
@@ -151,6 +146,28 @@ if [ -f "$TARBALL" ]; then
     else
       sudo chown -R ubuntu:ubuntu /opt/aura-ai
     fi
+  fi
+
+  # Runs last on purpose: the blanket chmod 644 and the legacy chown above would
+  # otherwise undo both of these.
+  # Secrets — every one of these is excluded from rsync, so it arrives as an existing
+  # file and keeps whatever mode the blanket chmod gave it. systemd reads all three as
+  # root before dropping to the aura-ai user, so 600 root:root is safe.
+  for secret_file in \
+    /opt/aura-ai/.env.local \
+    /opt/aura-ai/.env.async-jobs \
+    /opt/aura-ai/telegram-bot/.env; do
+    if [ -f "$secret_file" ]; then
+      chmod 600 "$secret_file"
+    fi
+  done
+  # The bot runs as aura-ai and writes its SQLite (plus -wal/-shm) in place. Losing
+  # that write access puts it in a restart loop on "attempt to write a readonly
+  # database", so hand the data directory back.
+  if [ -d /opt/aura-ai/telegram-bot/data ]; then
+    chown -R aura-ai:aura-ai /opt/aura-ai/telegram-bot/data
+    find /opt/aura-ai/telegram-bot/data -type d -exec chmod 750 {} +
+    find /opt/aura-ai/telegram-bot/data -type f -exec chmod 640 {} +
   fi
 fi
 

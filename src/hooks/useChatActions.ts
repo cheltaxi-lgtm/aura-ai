@@ -684,6 +684,10 @@ export function useChatActions(options: UseChatActionsOptions) {
           isUnlimited: session?.isUnlimited,
         });
         let matrixAlreadyOwned = false;
+        // A pre-v3 report is not openable, but it was paid for: the server rebuilds it
+        // for free. Without this the paywall fires client-side and a user with an empty
+        // balance can never reach the rebuild they are already owed.
+        let matrixLegacyRebuild = false;
         const matrixSubjectIdForReading =
           sessionSpreadMetaRef.current?.matrixSubjectId?.trim() || "";
         if (
@@ -712,11 +716,13 @@ export function useChatActions(options: UseChatActionsOptions) {
               if (ownedRes.ok) {
                 const ownedData = (await ownedRes.json()) as {
                   owned?: boolean;
+                  legacyVersion?: boolean;
                   report?: { hasContent?: boolean } | null;
                 };
                 matrixAlreadyOwned = Boolean(
                   ownedData.owned && (ownedData.report?.hasContent !== false)
                 );
+                matrixLegacyRebuild = Boolean(ownedData.legacyVersion);
               }
             }
             // Metadata fallback (no full bodies) — same birth date only.
@@ -740,28 +746,31 @@ export function useChatActions(options: UseChatActionsOptions) {
                   }>;
                 };
                 const birthKey = birthRaw.slice(0, 10);
-                matrixAlreadyOwned = Boolean(
-                  listData.reports?.some((r) => {
+                const matches =
+                  listData.reports?.filter((r) => {
                     const has =
                       r.hasContent === true ||
                       Boolean(String(r.content ?? "").trim());
                     return (
-                      has &&
-                      r.legacyVersion !== true &&
-                      (r.birthDate === birthKey || r.birthDate === birthRaw)
+                      has && (r.birthDate === birthKey || r.birthDate === birthRaw)
                     );
-                  })
-                );
+                  }) ?? [];
+                matrixAlreadyOwned = matches.some((r) => r.legacyVersion !== true);
+                if (!matrixLegacyRebuild) {
+                  matrixLegacyRebuild = matches.some((r) => r.legacyVersion === true);
+                }
               }
             }
           } catch {
             matrixAlreadyOwned = false;
+            matrixLegacyRebuild = false;
           }
         }
+        const matrixCostsNothing = matrixAlreadyOwned || matrixLegacyRebuild;
         const affordGate = gateSpreadReadingRunes({
-          billingActive: billingActive && !matrixAlreadyOwned,
+          billingActive: billingActive && !matrixCostsNothing,
           balance: runeBalance,
-          cost: matrixAlreadyOwned ? 0 : requiredReadingCost,
+          cost: matrixCostsNothing ? 0 : requiredReadingCost,
         });
         if (affordGate.blocked) {
           loadReadingAttemptKeyRef.current = loadAttemptKey;

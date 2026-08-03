@@ -113,6 +113,7 @@ export function useMatrixOwnership(options?: {
             birthDate?: string;
             subjectId?: string;
             hasContent?: boolean;
+            legacyVersion?: boolean;
             content?: string;
           }>;
         };
@@ -121,6 +122,9 @@ export function useMatrixOwnership(options?: {
           const has =
             r.hasContent === true || Boolean(String(r.content ?? "").trim());
           if (!has) return false;
+          // A pre-v3 row owes a free rebuild and cannot be opened, so surfacing it as
+          // owned would promise a saved report the chat then refuses to show.
+          if (r.legacyVersion === true) return false;
           if (subjectId) return false;
           if (!birthKey) return true;
           return r.birthDate === birthKey || r.birthDate === birth;

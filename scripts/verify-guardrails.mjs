@@ -807,7 +807,8 @@ function checkDeployExcludeParity() {
     );
     return;
   }
-  for (const runtimeState of ["telegram-bot/data/", "telegram-bot/.env"]) {
+  // backups/pg holds the only on-host database dumps (cron-pg-backup.sh writes there).
+  for (const runtimeState of ["telegram-bot/data/", "telegram-bot/.env", "backups/"]) {
     if (!directExcludes.has(runtimeState)) {
       fail(`deploy rsync: bootstrap rsync would overwrite production ${runtimeState}`);
       return;

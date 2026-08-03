@@ -426,6 +426,7 @@ export async function botMatrixRun(
   // Rebuild is free — the client already paid for text we can no longer serve.
   // Always subject-scoped — never wipe every report sharing a birth date.
   const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
+  const keepLegacyArtifact = Boolean(ownedLegacy && !replace && owned);
   if (ownedLegacy && !replace && owned) {
     // Site parity: keep the readable paid artifact, drop only its stale chat.
     const staleSession = owned.sessionId?.trim();
@@ -547,8 +548,10 @@ export async function botMatrixRun(
           : {}),
       },
       subjectId: subject?.id,
-      // New paid order always replaces any prior report for this birth date.
-      overwrite: true,
+      // New paid order always replaces any prior report for this birth date. A free
+      // pre-v3 rebuild must not: overwrite deletes every calculation version for the
+      // subject, which would destroy the paid artifact the site deliberately keeps.
+      overwrite: !keepLegacyArtifact,
     });
 
     if (saved.status === "already_saved") {
