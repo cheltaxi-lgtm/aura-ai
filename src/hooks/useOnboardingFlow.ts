@@ -101,7 +101,7 @@ import {
   resolveNumerologToolId,
 } from "@/lib/numerology/tools";
 import { pythagorasSquare } from "@/lib/numerology/pythagoras-square";
-import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
+import { destinyMatrix, matrixOptionsForTimestamp } from "@/lib/numerology/destiny-matrix";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet, loadGuestTriplet } from "@/lib/guest-triplet";
 import {
   clearGuestResumeUiCache,
@@ -139,7 +139,6 @@ import {
   clearNeedsServerProfile,
   clearOnboardingUrlParams,
   hasPendingServerProfile,
-  isStoredChatResumeFresh,
   markNeedsServerProfile,
   persistStep,
   readStoredProfile,
@@ -282,6 +281,11 @@ type ApplyHistorySessionMetaFn = (
     spreadType?: string | null;
     spreadId?: string | null;
     cards?: string[] | null;
+    numerologToolId?: import("@/lib/numerology/tools").NumerologToolId | null;
+    numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
+    matrixSubjectId?: string | null;
+    matrixBirthDate?: string | null;
+    subjectName?: string | null;
     spread?:
       | {
           cards: { name: string; meaning?: string }[];
@@ -490,7 +494,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     numerologToolId?: import("@/lib/numerology/tools").NumerologToolId;
     numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams;
     matrixSubjectId?: string | null;
+    matrixBirthDate?: string | null;
+    subjectName?: string | null;
   } | null>(null);
+  /** Subject birth for destiny-matrix grid (must be state — ref alone won't recompute display). */
+  const [matrixSessionBirthDate, setMatrixSessionBirthDate] = useState<string | null>(null);
+  const [matrixSessionSubjectName, setMatrixSessionSubjectName] = useState<string | null>(null);
+  /** Reopened session's start day — keeps year/month/age points matching the saved text. */
+  const [matrixSessionAsOf, setMatrixSessionAsOf] = useState<string | null>(null);
   const tripletPendingRef = useRef<{ cards: SpreadSymbol[]; teaser: string } | null>(null);
   const tripletDrawnAtRef = useRef(0);
   const bindSessionToMasterRef = useRef<(masterId: string, overrideSessionId?: string) => Promise<void>>(
@@ -1068,7 +1079,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       );
       const drawCount = numerologToolDrawCount(toolId);
       if (numerologComputedOnlyTool(toolId)) {
-        const birthDate = getActiveProfile()?.birthDate ?? profile?.birthDate ?? null;
+        const subjectBirth =
+          matrixSessionBirthDate?.trim() ||
+          sessionSpreadMetaRef.current?.matrixBirthDate?.trim() ||
+          sessionSpreadMetaRef.current?.numerologToolParams?.matrixBirthDate?.trim() ||
+          null;
+        const birthDate =
+          subjectBirth ||
+          getActiveProfile()?.birthDate ||
+          profile?.birthDate ||
+          null;
         return {
           source: "numerolog" as const,
           cards: [],
@@ -1080,8 +1100,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           ...(toolId === "pythagoras" && birthDate
             ? { pythagorasSquare: pythagorasSquare(birthDate) ?? undefined }
             : {}),
-          ...(toolId === "destiny_matrix" && birthDate
-            ? { destinyMatrix: destinyMatrix(birthDate) ?? undefined }
+          ...((toolId === "destiny_matrix" ||
+            toolId === "child_matrix" ||
+            toolId === "matrix_year_forecast") &&
+          birthDate
+            ? {
+                destinyMatrix:
+                  destinyMatrix(birthDate, matrixOptionsForTimestamp(matrixSessionAsOf)) ??
+                  undefined,
+              }
             : {}),
         };
       }
@@ -1434,6 +1461,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     displayTarotCards,
     displayDeckSystem,
     cachedChatSpread,
+    matrixSessionBirthDate,
+    matrixSessionAsOf,
   ]);
 
   const displaySpreadComplete = (() => {
@@ -2341,6 +2370,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         deps.chatLoadedForRef.current = masterId;
 
         applyHistorySessionMetaRef.current(restored ?? {}, masterId);
+        const restoredBirth =
+          restored?.matrixBirthDate?.trim() ||
+          restored?.numerologToolParams?.matrixBirthDate?.trim() ||
+          null;
+        const restoredSubject =
+          restored?.subjectName?.trim() ||
+          restored?.numerologToolParams?.subjectName?.trim() ||
+          null;
+        setMatrixSessionBirthDate(restoredBirth);
+        setMatrixSessionSubjectName(restoredSubject);
+        setMatrixSessionAsOf(restored?.sessionCreatedAt ?? null);
 
         const persistedForMaster = readIntentionSpreadForMaster(masterId);
         if (persistedForMaster) {
@@ -2985,6 +3025,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setIntentionSpread(null);
         persistIntentionSpreadState(characterKey, null);
       }
+      const matrixBirthFromParams =
+        numerologToolParams?.matrixBirthDate?.trim() || null;
+      if (matrixBirthFromParams) {
+        setMatrixSessionBirthDate(matrixBirthFromParams);
+        // Fresh session — drop any as-of inherited from a reopened one.
+        setMatrixSessionAsOf(null);
+      }
+      if (numerologToolParams?.subjectName?.trim()) {
+        setMatrixSessionSubjectName(numerologToolParams.subjectName.trim());
+      }
       sessionSpreadMetaRef.current = {
         spreadType,
         spreadId: isNumerologSessionStart
@@ -2994,6 +3044,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         numerologToolId,
         numerologToolParams,
         matrixSubjectId,
+        matrixBirthDate: matrixBirthFromParams,
+        subjectName: numerologToolParams?.subjectName?.trim() || null,
       };
       setChatSessionSpread(null);
       readingInFlightRef.current = true;
@@ -3213,13 +3265,20 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             if (!chatSessionId) throw new Error("failed_to_create_consultation_session");
           }
           await bindSessionToMaster(characterKey, chatSessionId);
+          const matrixParams: import("@/lib/numerology/tools").NumerologToolParams = {
+            ...(numerologToolParams ?? {}),
+            ...(matrixSubjectId ? { matrixSubjectId } : {}),
+            ...(matrixSubjectId && numerologToolParams?.matrixBirthDate
+              ? { matrixBirthDate: numerologToolParams.matrixBirthDate }
+              : {}),
+          };
           await deps.persistSessionMetaToServer(chatSessionId, {
             characterKey,
             intention: null,
             spreadType,
             spreadId: encodeNumerologSpreadId(numerologTool),
             cards,
-            numerologToolParams: numerologToolParams ?? null,
+            numerologToolParams: Object.keys(matrixParams).length ? matrixParams : null,
           });
           if (chatSessionId) {
             deps.setConsultationSessionId(chatSessionId);
@@ -4062,28 +4121,34 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     // Stale onboarding_required is fine once profile exists — guest bootstrap owns resume.
 
     const params = new URLSearchParams(window.location.search);
-    const resumeChat =
-      params.get("resume") === "chat" ||
-      params.get("step") === "chat" ||
-      // Stored step alone must not reopen the last reading forever — only right
-      // after leaving it, otherwise the landing is never reachable.
-      (localStorage.getItem(FLOW_STEP_KEY) === "chat" && isStoredChatResumeFresh());
-
-    let continueMaster = params.get("master") ?? params.get("continue");
+    // Home "/" must never reopen the last reading from localStorage alone.
+    // Open chat only for explicit URL intent: ?resume=chat and/or ?master=.
+    const resumeChat = params.get("resume") === "chat";
+    const masterFromUrl = params.get("master") ?? params.get("continue");
+    let continueMaster = masterFromUrl;
     if (!continueMaster && resumeChat) {
       continueMaster =
         localStorage.getItem(LAST_MASTER_KEY) ??
         localStorage.getItem(PENDING_MASTER_KEY);
     }
-    const activeProfileEarly = getActiveProfile();
-    const hasSpreadEarly =
-      (activeProfileEarly?.tarotCards?.length ?? 0) >= 3 ||
-      (profile?.tarotCards?.length ?? 0) >= 3 ||
-      displayTarotCards.length >= 3;
-    if (!continueMaster && hasSpreadEarly) {
-      continueMaster = localStorage.getItem(PENDING_MASTER_KEY);
+    const shouldOpenChat = Boolean(continueMaster) && (resumeChat || Boolean(masterFromUrl));
+    if (params.get("step") === "chat" || localStorage.getItem(FLOW_STEP_KEY) === "chat") {
+      if (params.get("step") === "chat") {
+        const cleaned = new URL(window.location.href);
+        cleaned.searchParams.delete("step");
+        const qs = cleaned.searchParams.toString();
+        window.history.replaceState(
+          null,
+          "",
+          qs ? `${cleaned.pathname}?${qs}` : cleaned.pathname
+        );
+      }
+      if (!shouldOpenChat && localStorage.getItem(FLOW_STEP_KEY) === "chat") {
+        persistStep("masters");
+      }
     }
-    if (!continueMaster) return;
+    if (!shouldOpenChat || !continueMaster) return;
+    const masterToOpen = continueMaster;
 
     const intentionSkip = params.get("intentionSkip") === "1";
     const intentionRaw = params.get("intention");
@@ -4103,9 +4168,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     ]) {
       cleaned.searchParams.delete(key);
     }
-    if (resumeChat) {
-      cleaned.searchParams.set("step", "chat");
-    }
+    // Keep resume=chat for explicit deep links; never re-stamp ?step=chat.
+    cleaned.searchParams.delete("step");
     const nextUrl = cleaned.searchParams.toString();
     window.history.replaceState(
       null,
@@ -4120,8 +4184,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       displayTarotCards.length >= 3;
 
     if (!resumeChat && !hasSpread) {
-      localStorage.setItem(PENDING_MASTER_KEY, continueMaster);
-      applyTripletMaster(continueMaster);
+      localStorage.setItem(PENDING_MASTER_KEY, masterToOpen);
+      applyTripletMaster(masterToOpen);
       if (activeProfile?.birthDate) {
         setStep("triplet");
       } else {
@@ -4135,17 +4199,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     void (async () => {
       const deps = chat();
       if (deps) deps.chatLoadedForRef.current = null;
-      pendingChatOptsRef.current = { masterId: continueMaster, skipReading: false };
+      pendingChatOptsRef.current = { masterId: masterToOpen, skipReading: false };
       if (sessionIdParam && deps) {
         deps.setConsultationSessionId(sessionIdParam);
         deps.consultationSessionIdRef.current = sessionIdParam;
       }
       await bindSessionToMasterRef.current(
-        continueMaster,
+        masterToOpen,
         sessionIdParam ?? undefined
       );
       if (intentionSkip) {
-        await beginChatAfterIntention(continueMaster, null, "existing");
+        await beginChatAfterIntention(masterToOpen, null, "existing");
         return;
       }
       if (intentionRaw) {
@@ -4154,10 +4218,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           intentionModeRaw === "fresh" || intentionModeRaw === "existing"
             ? intentionModeRaw
             : "fresh";
-        await beginChatAfterIntention(continueMaster, intention, mode);
+        await beginChatAfterIntention(masterToOpen, intention, mode);
         return;
       }
-      await beginChatAfterIntention(continueMaster, null, "existing");
+      await beginChatAfterIntention(masterToOpen, null, "existing");
     })();
   }, [
     authLoading,
@@ -4302,6 +4366,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const handleSessionListBack = useCallback(() => {
     const deps = chat();
     sessionListBackMasterRef.current = null;
+    setMatrixSessionBirthDate(null);
+    setMatrixSessionSubjectName(null);
+    setMatrixSessionAsOf(null);
     if (deps) {
       deps.setSessionListMaster(null);
       deps.setSelectedCharacter(null);
@@ -4596,6 +4663,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     sessionListBackMasterRef,
     pendingChatOptsRef,
     sessionSpreadMetaRef,
+    matrixSessionBirthDate,
+    setMatrixSessionBirthDate,
+    matrixSessionSubjectName,
+    setMatrixSessionSubjectName,
     effectiveTripletCooldown,
     tripletCountdown,
     displayTarotCards,

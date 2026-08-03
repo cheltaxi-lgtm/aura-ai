@@ -30,7 +30,7 @@ try {
 } catch {
   "unknown" | Out-File -FilePath $DeployShaFile -Encoding ascii -NoNewline
 }
-tar -czf $Tarball -C $ProjectRoot --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local .
+tar -czf $Tarball -C $ProjectRoot --exclude=node_modules --exclude=.next --exclude=.git --exclude=.env.local --exclude=.cursor .
 Remove-Item $DeployShaFile -Force -ErrorAction SilentlyContinue
 Write-Host "    $((Get-Item $Tarball).Length) bytes"
 

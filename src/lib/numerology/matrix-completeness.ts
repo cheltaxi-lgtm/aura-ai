@@ -5,6 +5,7 @@
  * Note: JS `\b` is ASCII-only — use `(?!\p{L})` for Cyrillic titles.
  */
 import { matrixZoneDefsFor } from "./matrix-zones";
+import type { DestinyMatrixResult } from "./destiny-matrix";
 
 export type MatrixSectionCheck = {
   id: string;
@@ -78,6 +79,102 @@ export function isCompleteMatrixReading(text: string, toolId?: string): boolean 
   const t = (text || "").trim();
   if (t.length < 2200) return false;
   return matrixMissingSections(t, toolId).length === 0;
+}
+
+/**
+ * Post-generation arcana fidelity: every «N — Название» pair in the text must match the
+ * engine's number→name mapping, and every required zone heading must carry its own number.
+ * Catches LLM number swaps that header/length checks cannot see.
+ */
+export function matrixReadingMatchesEngine(
+  text: string,
+  matrix: DestinyMatrixResult,
+  toolId?: string
+): boolean {
+  const t = (text || "").replace(/\*\*/g, "");
+  if (!t.trim()) return false;
+
+  const expected = new Map<number, string>();
+  const add = (p: { number: number; arcanaName: string } | null | undefined) => {
+    if (p && !expected.has(p.number)) expected.set(p.number, p.arcanaName);
+  };
+  add(matrix.body);
+  add(matrix.energy);
+  add(matrix.roots);
+  add(matrix.comfort);
+  add(matrix.talents);
+  add(matrix.money);
+  add(matrix.relationships);
+  add(matrix.paternal);
+  add(matrix.maternal);
+  add(matrix.purpose);
+  add(matrix.skySpirit);
+  add(matrix.yearArcana);
+  add(matrix.monthArcana);
+  add(matrix.ageCurrent);
+  add(matrix.ageNext);
+  matrix.karmicTail.forEach(add);
+  matrix.agePoints.forEach(add);
+  for (const ch of matrix.channels) {
+    ch.points.forEach(add);
+  }
+
+  const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+  for (const m of t.matchAll(/\b(\d{1,2})\s*[—–-]\s*([«"']?[А-ЯЁA-Z][^\n,()»"']{1,40}?)(?=[,)\n»"']|$)/giu)) {
+    const n = Number(m[1]);
+    const name = norm(m[2] ?? "");
+    if (n < 1 || n > 22 || !name) continue;
+    const engineName = expected.get(n);
+    if (!engineName) continue;
+    if (!name.startsWith(norm(engineName))) return false;
+  }
+
+  // Every required zone heading must carry the engine's number for that zone.
+  const zoneNumberById: Record<string, number> = {
+    character: matrix.body.number,
+    sky_energy: matrix.energy.number,
+    matter: matrix.roots.number,
+    comfort: matrix.comfort.number,
+    talents: matrix.talents.number,
+    money: matrix.money.number,
+    love: matrix.relationships.number,
+    father: matrix.paternal.number,
+    mother: matrix.maternal.number,
+    age: matrix.ageCurrent.number,
+    year: matrix.yearArcana.number,
+    month: matrix.monthArcana.number,
+    sky_spirit: matrix.skySpirit.number,
+  };
+  for (const def of matrixZoneDefsFor(toolId)) {
+    if (!def.required) continue;
+    const zoneNumber = zoneNumberById[def.id];
+    if (zoneNumber == null) continue;
+    const headingWithNumber = new RegExp(
+      String.raw`(?:^|\n)\s*(?:#{1,3}\s*)?(?:${EMOJI}\s*)?${def.titleCore}[^\n]*\b${zoneNumber}\b`,
+      "iu"
+    );
+    if (!headingWithNumber.test(t)) return false;
+  }
+  // Tail zones may ship as aggregate «Корень/Середина/Остриё: N» lines instead of
+  // per-part headings — accept those when they carry the engine's tail numbers.
+  const tailNums = [matrix.karmicTail[0].number, matrix.karmicTail[1].number, matrix.karmicTail[2].number];
+  const tailLabels = ["Корень", "Середина", "Остри[её]"];
+  const tailCovered = tailNums.every((n, i) =>
+    new RegExp(String.raw`(?:^|\n)\s*(?:·\s*)?${tailLabels[i]}\s*[:.\-—–][^\n]*\b${n}\b`, "iu").test(t)
+  );
+  const tailRequired = matrixZoneDefsFor(toolId).some((z) => z.required && z.id === "tail_root");
+  if (tailRequired && !tailCovered) {
+    const perPart = ["tail_root", "tail_mid", "tail_tip"].every((id, i) => {
+      const def = matrixZoneDefsFor(toolId).find((z) => z.id === id);
+      if (!def) return false;
+      return new RegExp(
+        String.raw`(?:^|\n)\s*(?:#{1,3}\s*)?(?:${EMOJI}\s*)?${def.titleCore}[^\n]*\b${tailNums[i]}\b`,
+        "iu"
+      ).test(t);
+    });
+    if (!perPart) return false;
+  }
+  return true;
 }
 
 export function matrixContinuePrompt(missing: string[]): string {

@@ -29,6 +29,12 @@ export type NumerologToolParams = {
   partnerName?: string;
   partnerDate?: string;
   objectValue?: string;
+  /** Destiny-matrix subject (when not the account holder). */
+  matrixSubjectId?: string;
+  /** Birth date for the matrix subject (ISO or ДД.ММ.ГГГГ). */
+  matrixBirthDate?: string;
+  /** Display name for whose matrix is open. */
+  subjectName?: string;
 };
 
 export type NumerologToolGroup = "period" | "session" | "form";
@@ -481,14 +487,23 @@ export function parseNumerologToolParams(raw: {
   partnerName?: string | null;
   partnerDate?: string | null;
   objectValue?: string | null;
+  matrixSubjectId?: string | null;
+  matrixBirthDate?: string | null;
+  subjectName?: string | null;
 }): NumerologToolParams {
   const partnerName = raw.partnerName?.trim();
   const partnerDate = raw.partnerDate?.trim();
   const objectValue = raw.objectValue?.trim();
+  const matrixSubjectId = raw.matrixSubjectId?.trim();
+  const matrixBirthDate = raw.matrixBirthDate?.trim();
+  const subjectName = raw.subjectName?.trim();
   return {
     ...(partnerName ? { partnerName } : {}),
     ...(partnerDate ? { partnerDate } : {}),
     ...(objectValue ? { objectValue } : {}),
+    ...(matrixSubjectId ? { matrixSubjectId } : {}),
+    ...(matrixBirthDate ? { matrixBirthDate } : {}),
+    ...(subjectName ? { subjectName } : {}),
   };
 }
 

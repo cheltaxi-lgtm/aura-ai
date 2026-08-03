@@ -1,5 +1,6 @@
 import { getArcanaEntry, type ArcanaDictionaryEntry } from "./arcana-dictionary";
 import type { DestinyMatrixResult } from "./destiny-matrix";
+import { focusNumber } from "./matrix-period";
 
 /** Matrix-v1 point roles — each needs a distinct prose angle even if arcana numbers match. */
 export type MatrixPointRole =
@@ -113,7 +114,8 @@ export function formatMatrixFinaleKeys(matrix: DestinyMatrixResult): string {
     line("Деньги", matrix.money.number),
     line("Отношения", matrix.relationships.number),
     line("Аркан года", matrix.yearArcana.number),
-    line("Узел периода", matrix.monthArcana.number),
+    line("Аркан месяца", matrix.monthArcana.number),
+    line("Узел периода", focusNumber(matrix)),
     `Фокус сейчас: ${matrix.focusLabel}.`,
     "В резюме аркан года — ТОЛЬКО строка «Аркан года». Не подменяй его соседними точками.",
   ].join("\n");

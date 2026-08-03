@@ -67,4 +67,5 @@ mobile/android/app/build/
 deploy-sha.txt
 scripts/prod-journal.txt
 
-.cursor/yandex360-setup/
+# Cursor-local state (chrome debug profiles run into hundreds of MB)
+.cursor/

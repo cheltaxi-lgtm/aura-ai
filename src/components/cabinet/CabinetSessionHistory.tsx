@@ -8,6 +8,9 @@ import BodyPortal from "@/components/BodyPortal";
 import ShareButton from "@/components/share/ShareButton";
 import { sessionToSharePayload } from "@/lib/share/payload-builders";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
+import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
+import { destinyMatrix, matrixOptionsForTimestamp } from "@/lib/numerology/destiny-matrix";
+import { decodeNumerologSpreadId } from "@/lib/numerology/tools";
 import {
   formatCabinetDate,
   formatCabinetPredictionPreview,
@@ -89,6 +92,35 @@ function RateModal({
   );
 }
 
+function isMatrixSession(session: CabinetSessionRow): boolean {
+  const toolId = decodeNumerologSpreadId(session.spreadId ?? null);
+  return (
+    toolId === "destiny_matrix" ||
+    toolId === "child_matrix" ||
+    session.spreadId === "destiny_matrix" ||
+    Boolean(session.matrixBirthDate)
+  );
+}
+
+function CabinetMatrixPreview({
+  birthDate,
+  generatedAt,
+}: {
+  birthDate: string;
+  generatedAt: string | null;
+}) {
+  const matrix = useMemo(
+    () => destinyMatrix(birthDate, matrixOptionsForTimestamp(generatedAt)),
+    [birthDate, generatedAt]
+  );
+  if (!matrix) return null;
+  return (
+    <div className="destiny-matrix--session-list mt-3">
+      <DestinyMatrixGrid matrix={matrix} revealed={99} hint="" />
+    </div>
+  );
+}
+
 function SessionCard({
   session,
   index,
@@ -106,6 +138,18 @@ function SessionCard({
   const predictionPreview = session.prediction
     ? formatCabinetPredictionPreview(session.prediction)
     : "";
+  const displayQuestion =
+    session.customQuestion?.trim() ||
+    (session.intention === "custom" &&
+    session.topicSummary &&
+    session.topicSummary !== "Свой вопрос"
+      ? session.topicSummary.trim()
+      : null);
+  const matrixSession = isMatrixSession(session);
+  const matrixWho =
+    session.matrixSubjectKind === "self"
+      ? "Я"
+      : session.matrixSubjectName?.trim() || null;
 
   return (
     <motion.article
@@ -129,14 +173,31 @@ function SessionCard({
         )}
       </div>
 
-      {session.topicSummary && (
+      {matrixSession ? (
+        <p className="mt-4 text-sm text-white/80">
+          <span className="text-white/40">Тема: </span>
+          Матрица судьбы{matrixWho ? ` · ${matrixWho}` : ""}
+        </p>
+      ) : displayQuestion ? (
+        <p className="mt-4 text-sm text-amber-100/90">
+          <span className="text-white/40">Вопрос: </span>
+          «{truncate(displayQuestion, 140)}»
+        </p>
+      ) : session.topicSummary ? (
         <p className="mt-4 text-sm text-white/80">
           <span className="text-white/40">Тема: </span>
           {truncate(session.topicSummary, 60)}
         </p>
-      )}
+      ) : null}
 
-      {session.keyCards.length > 0 && (
+      {matrixSession && session.matrixBirthDate ? (
+        <CabinetMatrixPreview
+          birthDate={session.matrixBirthDate}
+          generatedAt={session.createdAt || session.sessionDate}
+        />
+      ) : null}
+
+      {!matrixSession && session.keyCards.length > 0 && (
         <div className="mt-3">
           <p className="text-xs text-white/40">Карты</p>
           <div className="mt-1 flex flex-wrap gap-1.5">

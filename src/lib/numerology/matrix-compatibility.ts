@@ -2,7 +2,12 @@
  * Pair destiny-matrix compatibility (matrix-v2) — MVP keys for love/money/comfort/tail/year.
  */
 import { getArcanaEntry } from "./arcana-dictionary";
-import { destinyMatrix, reduceToArcanaNumber, type DestinyMatrixResult } from "./destiny-matrix";
+import {
+  destinyMatrix,
+  MATRIX_CALCULATION_VERSION,
+  reduceToArcanaNumber,
+  type DestinyMatrixResult,
+} from "./destiny-matrix";
 import { parseBirthDate } from "./constants";
 
 export type MatrixCompatKey = {
@@ -231,7 +236,7 @@ export function buildMatrixCompatibilityPromptBlock(
   const a = nameA?.trim() || "Вы";
   const b = nameB?.trim() || "Партнёр";
   return [
-    "СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ (matrix-v2, авторский расчёт Zovus):",
+    `СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ (${MATRIX_CALCULATION_VERSION}, расчёт Zovus):`,
     `${a} × ${b}. Общий score: ${result.score}/100.`,
     result.summary,
     ...result.keys.map(

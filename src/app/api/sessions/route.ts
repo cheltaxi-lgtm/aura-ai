@@ -49,6 +49,12 @@ export async function GET(request: NextRequest) {
     topicSummary: s.topic_summary,
     keyCards: s.key_cards,
     prediction: s.prediction,
+    matrixSubjectId: s.matrix_subject_id ?? null,
+    matrixBirthDate: s.matrix_birth_date ?? null,
+    matrixSubjectName: s.matrix_subject_name ?? null,
+    matrixSubjectKind: s.matrix_subject_kind ?? null,
+    readingPreview: s.reading_preview ?? null,
+    customQuestion: s.custom_question ?? null,
   });
 
   return NextResponse.json({

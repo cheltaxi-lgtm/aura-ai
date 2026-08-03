@@ -5,32 +5,53 @@ import type { MatrixDiagramInput, MatrixDiagramSlot } from "../../render/matrix-
  * Must stay equal to site `MATRIX_CALCULATION_VERSION`.
  * Drift is caught by `scripts/verify-matrix-calc-drift.mjs`.
  */
-export const BOT_MATRIX_CALC_VERSION = "matrix-v2" as const;
+export const BOT_MATRIX_CALC_VERSION = "matrix-v3" as const;
 
-/** Same reduce as site matrix-v2 (1–22; 0 → 22). */
 function sumDigits(n: number): number {
   return String(Math.abs(Math.trunc(n)))
     .split("")
     .reduce((a, d) => a + Number(d), 0);
 }
 
+/** Same canonical reduce as site matrix-v3: subtract 22 (1–22; 0 → 22). */
 function reduceToArcanaNumber(n: number): number {
   let value = Math.abs(Math.trunc(n));
-  while (value > 22) value = sumDigits(value);
+  while (value > 22) value -= 22;
   return value === 0 ? 22 : value;
 }
 
+/** Same accept/reject set as site `parseBirthDate` — impossible dates must not render. */
 function parseBirthDate(raw: string): { day: number; month: number; year: number } | null {
   const s = raw.trim();
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  let day: number;
+  let month: number;
+  let year: number;
+
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
   if (iso) {
-    return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };
+    year = Number(iso[1]);
+    month = Number(iso[2]);
+    day = Number(iso[3]);
+  } else {
+    const dmy = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/.exec(s);
+    if (!dmy) return null;
+    day = Number(dmy[1]);
+    month = Number(dmy[2]);
+    year = Number(dmy[3]);
   }
-  const dmy = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/.exec(s);
-  if (dmy) {
-    return { day: Number(dmy[1]), month: Number(dmy[2]), year: Number(dmy[3]) };
+
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
+    return null;
   }
-  return null;
+  const probe = new Date(year, month - 1, day);
+  if (
+    probe.getFullYear() !== year ||
+    probe.getMonth() !== month - 1 ||
+    probe.getDate() !== day
+  ) {
+    return null;
+  }
+  return { day, month, year };
 }
 
 function arcanaName(n: number): string {
@@ -89,10 +110,13 @@ const SLOTS: SlotDef[] = [
  */
 export function buildLocalMatrixDiagram(
   birthDate: string,
-  name?: string | null
+  name?: string | null,
+  /** Freeze the calendar anchor (year/month/age) — replays a stored reading. */
+  options?: { asOfDate?: string }
 ): MatrixDiagramInput | null {
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
+  const asOf = options?.asOfDate ? parseBirthDate(options.asOfDate) : null;
 
   const a = reduceToArcanaNumber(parsed.day);
   const b = reduceToArcanaNumber(parsed.month);
@@ -110,13 +134,13 @@ export function buildLocalMatrixDiagram(
   const ga = reduceToArcanaNumber(g + a);
   const paternal = reduceToArcanaNumber(a + c);
   const maternal = reduceToArcanaNumber(b + c);
-  const now = new Date();
+  const now = asOf ? new Date(asOf.year, asOf.month - 1, asOf.day) : new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   const yearArcana = reduceToArcanaNumber(a + b + sumDigits(year));
   const monthArcana = reduceToArcanaNumber(yearArcana + month);
 
-  // Age belt: corners every 10y, midpoints every +5 — same as site.
+  // Age belt: corners every 10y, midpoints every +5, closing at 80 — same as site.
   const perimeter = [a, ab, b, bc, c, cg, g, ga];
   const agePoints: Array<{ age: number; n: number }> = [];
   for (let i = 0; i < 8; i++) {
@@ -126,6 +150,7 @@ export function buildLocalMatrixDiagram(
       n: reduceToArcanaNumber(perimeter[i]! + perimeter[(i + 1) % 8]!),
     });
   }
+  agePoints.push({ age: 80, n: perimeter[0]! });
   agePoints.sort((p, q) => p.age - q.age);
   const chronologicalAge = yearsBetween(parsed, now);
   let age = agePoints[0]!.n;
@@ -136,12 +161,12 @@ export function buildLocalMatrixDiagram(
 
   // Period focus — same weights as site destiny-matrix pickFocus.
   const focusCandidates: Array<{ key: string; n: number; weight: number }> = [
-    { key: "karma", n: g, weight: 3 },
+    { key: "ageCurrent", n: age, weight: 3 },
+    { key: "karma", n: g, weight: 2.6 },
     { key: "karmicMid", n: mid, weight: 2.5 },
-    { key: "karmicTip", n: tip, weight: 2 },
+    { key: "karmicTip", n: tip, weight: 2.4 },
     { key: "money", n: money, weight: 2 },
     { key: "relationships", n: love, weight: 2 },
-    { key: "ageCurrent", n: age, weight: 2 },
     { key: "purpose", n: x, weight: 1 },
     { key: "yearArcana", n: yearArcana, weight: 1.5 },
     { key: "monthArcana", n: monthArcana, weight: 1.5 },
@@ -150,8 +175,8 @@ export function buildLocalMatrixDiagram(
   let bestScore = -1;
   for (const c of focusCandidates) {
     let score = c.weight;
-    if (c.n === yearArcana) score += 3;
-    if (c.n === monthArcana) score += 2;
+    if (c.key !== "yearArcana" && c.n === yearArcana) score += 3;
+    if (c.key !== "monthArcana" && c.n === monthArcana) score += 2;
     if (score > bestScore) {
       bestScore = score;
       focusKey = c.key;

@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Plus, CheckCircle2, Circle, Archive, Trash2 } from "lucide-react";
-import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
+import { getSessionTopic, topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import { formatCabinetPredictionPreview, stripMarkdownText, truncate } from "@/lib/cabinet-utils";
 import { getSpread, normalizeSpreadId } from "@/lib/spreads";
 import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
+import { destinyMatrix, matrixOptionsForTimestamp } from "@/lib/numerology/destiny-matrix";
+import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
 import MasterAvatar from "@/components/MasterAvatar";
 import { getCharacterById } from "@/lib/characters";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
@@ -32,6 +34,12 @@ export type SessionListItem = {
   topicSummary: string | null;
   keyCards: string[] | null;
   prediction: string | null;
+  matrixSubjectId?: string | null;
+  matrixBirthDate?: string | null;
+  matrixSubjectName?: string | null;
+  matrixSubjectKind?: string | null;
+  readingPreview?: string | null;
+  customQuestion?: string | null;
 };
 
 interface SessionListProps {
@@ -73,16 +81,62 @@ function intentionLabel(raw: string | null): string {
   }
 }
 
+const KNOWN_GENERIC_SUMMARIES = new Set([
+  "сеанс",
+  "свой вопрос",
+  "нумерология",
+  "матрица судьбы",
+  "матрица",
+  "сеанс в процессе",
+]);
+
+function isGenericSummary(summary: string): boolean {
+  return KNOWN_GENERIC_SUMMARIES.has(summary.trim().toLowerCase());
+}
+
+function looksLikeCustomQuestion(summary: string): boolean {
+  const t = summary.trim();
+  if (!t || isGenericSummary(t)) return false;
+  if (getSessionTopic(t)) return false;
+  // Free-form client question stored in topic_summary without intention=custom.
+  return t.length >= 8;
+}
+
+function resolveCustomQuestion(item: SessionListItem): string | null {
+  const fromApi = item.customQuestion?.trim() || "";
+  if (fromApi) return fromApi;
+  const summary = item.topicSummary ? stripMarkdownText(item.topicSummary) : "";
+  if (looksLikeCustomQuestion(summary)) return summary;
+  return null;
+}
+
 function sessionTopicLabel(item: SessionListItem): string {
   if (item.spreadType === "photo") return "Фото-расклад";
   const summary = item.topicSummary ? stripMarkdownText(item.topicSummary) : "";
+  const numerologToolId = decodeNumerologSpreadId(item.spreadId);
+  if (numerologToolId === "destiny_matrix" || numerologToolId === "child_matrix") {
+    const who =
+      item.matrixSubjectKind === "self"
+        ? "Я"
+        : item.matrixSubjectName?.trim() || null;
+    return who || "Матрица";
+  }
+  const question = resolveCustomQuestion(item);
+  if (item.intention === "custom" || summary === "Свой вопрос" || question) {
+    return "Свой вопрос";
+  }
   if (!item.intention && summary) return summary;
   return intentionLabel(item.intention);
 }
 
 /** Old rows may hold raw reading markdown (card images etc.) — always sanitize. */
 function sessionPreviewText(item: SessionListItem): string {
-  const source = item.prediction?.trim() || item.topicSummary?.trim() || "";
+  const stub = (item.prediction?.trim() || "").toLowerCase() === "сеанс в процессе";
+  const source =
+    (!stub && item.prediction?.trim()) ||
+    item.readingPreview?.trim() ||
+    (!isGenericSummary(item.topicSummary || "") ? item.topicSummary?.trim() : "") ||
+    "";
   if (!source) return "";
   const polished = formatCabinetPredictionPreview(source);
   if (polished) return polished;
@@ -103,9 +157,28 @@ function sessionSpreadLabel(item: SessionListItem): string | null {
 function sessionHeading(item: SessionListItem): string {
   const topic = sessionTopicLabel(item);
   const spread = sessionSpreadLabel(item);
-  if (spread && spread !== topic) return `${spread} · ${topic}`;
+  if (spread && topic && spread !== topic) return `${spread} · ${topic}`;
   if (spread) return spread;
   return topic;
+}
+
+function isDestinyMatrixSession(item: SessionListItem): boolean {
+  const toolId = decodeNumerologSpreadId(item.spreadId);
+  return toolId === "destiny_matrix" || toolId === "child_matrix";
+}
+
+function MatrixSessionPreview({ item }: { item: SessionListItem }) {
+  const matrix = useMemo(() => {
+    const birth = item.matrixBirthDate?.trim();
+    if (!birth) return null;
+    return destinyMatrix(birth, matrixOptionsForTimestamp(item.createdAt));
+  }, [item.matrixBirthDate, item.createdAt]);
+  if (!matrix) return null;
+  return (
+    <div className="destiny-matrix--session-list mt-3 origin-top-left">
+      <DestinyMatrixGrid matrix={matrix} revealed={99} hint="" />
+    </div>
+  );
 }
 
 function minutesSince(updatedAt: string, createdAt: string): number {
@@ -306,8 +379,20 @@ export default function SessionList({
             {sessionHeading(active)} · {active.messageCount} сообщений ·{" "}
             {minutesSince(active.updatedAt, active.createdAt)} мин
           </p>
+          {resolveCustomQuestion(active) ? (
+            <p className="mt-2 text-sm text-amber-100/90">
+              <span className="text-white/45">Вопрос: </span>
+              «{truncate(resolveCustomQuestion(active)!, 120)}»
+            </p>
+          ) : null}
           {active.cards?.length ? (
             <p className="mt-1 text-sm text-gray-400">{active.cards.join(" · ")}</p>
+          ) : null}
+          {isDestinyMatrixSession(active) ? <MatrixSessionPreview item={active} /> : null}
+          {sessionPreviewText(active) ? (
+            <p className="mt-2 line-clamp-2 text-sm text-gray-400">
+              «{sessionPreviewText(active)}»
+            </p>
           ) : null}
           <SessionActions
             session={active}
@@ -330,10 +415,18 @@ export default function SessionList({
               </div>
               <p className="font-medium text-white">
                 {sessionHeading(item)}
-                {item.keyCards?.length || item.cards?.length
+                {!isDestinyMatrixSession(item) &&
+                (item.keyCards?.length || item.cards?.length)
                   ? ` · ${(item.keyCards ?? item.cards ?? []).join(" · ")}`
                   : ""}
               </p>
+              {resolveCustomQuestion(item) ? (
+                <p className="mt-2 text-sm text-amber-100/90">
+                  <span className="text-white/45">Вопрос: </span>
+                  «{truncate(resolveCustomQuestion(item)!, 120)}»
+                </p>
+              ) : null}
+              {isDestinyMatrixSession(item) ? <MatrixSessionPreview item={item} /> : null}
               {sessionPreviewText(item) ? (
                 <p className="mt-2 line-clamp-2 text-sm text-gray-400">
                   «{sessionPreviewText(item)}»

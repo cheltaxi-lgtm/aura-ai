@@ -30,6 +30,11 @@ export async function GET(request: NextRequest) {
   const birthDateParam = request.nextUrl.searchParams.get("birthDate");
   const subjectId = request.nextUrl.searchParams.get("subjectId")?.trim() || null;
   const list = request.nextUrl.searchParams.get("list") === "1";
+  const toolIdParam = request.nextUrl.searchParams.get("toolId")?.trim() || null;
+  const toolId =
+    toolIdParam === "child_matrix" || toolIdParam === "matrix_year_forecast"
+      ? toolIdParam
+      : undefined;
 
   try {
     if (list) {
@@ -50,13 +55,14 @@ export async function GET(request: NextRequest) {
     }
 
     const lookup = subjectId
-      ? await lookupOwnedMatrixReportBySubject(auth.profileUserId, subjectId)
-      : await lookupOwnedMatrixReport(auth.profileUserId, birthDate);
+      ? await lookupOwnedMatrixReportBySubject(auth.profileUserId, subjectId, { toolId })
+      : await lookupOwnedMatrixReport(auth.profileUserId, birthDate, { toolId });
     const owned = lookup.usable;
     const report = lookup.report;
     return NextResponse.json({
       owned,
       unusable: lookup.unusable,
+      legacyVersion: lookup.legacyVersion,
       report: owned && report
         ? {
             id: report.id,

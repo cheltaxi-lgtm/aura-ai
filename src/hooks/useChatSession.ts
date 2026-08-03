@@ -38,6 +38,12 @@ export interface RestoreChatResult {
   spreadId?: string | null;
   numerologToolId?: import("@/lib/numerology/tools").NumerologToolId | null;
   numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
+  matrixSubjectId?: string | null;
+  matrixBirthDate?: string | null;
+  subjectName?: string | null;
+  subjectKind?: string | null;
+  /** Session start day — anchors the matrix diagram to the reading it belongs to. */
+  sessionCreatedAt?: string | null;
   spread?: {
     cards: { name: string; meaning?: string }[];
     system: DeckSystem;
@@ -239,6 +245,13 @@ export function useChatSession(options: UseChatSessionOptions) {
             const numerologToolId =
               (data.numerologToolId as RestoreChatResult["numerologToolId"]) ??
               decodeNumerologSpreadId(data.spreadId as string | null | undefined);
+            const matrixBirthDate =
+              (typeof data.matrixBirthDate === "string" && data.matrixBirthDate.trim()) ||
+              (typeof (data.numerologToolParams as { matrixBirthDate?: string } | null)
+                ?.matrixBirthDate === "string"
+                ? (data.numerologToolParams as { matrixBirthDate?: string }).matrixBirthDate
+                : null) ||
+              null;
             const restored: Message[] = enrichNumerologMessagesOnRestore(
               rows.map((m) => ({
                 id: m.id,
@@ -248,7 +261,7 @@ export function useChatSession(options: UseChatSessionOptions) {
               })),
               {
                 numerologToolId,
-                birthDate: activeProfile?.birthDate,
+                birthDate: matrixBirthDate || activeProfile?.birthDate,
               }
             );
 
@@ -260,9 +273,24 @@ export function useChatSession(options: UseChatSessionOptions) {
               status: data.status as string | null | undefined,
               intention: data.intention as string | null | undefined,
               spreadType: data.spreadType as string | null | undefined,
+              spreadId: data.spreadId as string | null | undefined,
               cards: data.cards as string[] | null | undefined,
               numerologToolId: data.numerologToolId as RestoreChatResult["numerologToolId"],
               numerologToolParams: data.numerologToolParams as RestoreChatResult["numerologToolParams"],
+              matrixSubjectId:
+                (typeof data.matrixSubjectId === "string" && data.matrixSubjectId) ||
+                (data.numerologToolParams as { matrixSubjectId?: string } | null)
+                  ?.matrixSubjectId ||
+                null,
+              matrixBirthDate,
+              subjectName:
+                (typeof data.subjectName === "string" && data.subjectName) ||
+                (data.numerologToolParams as { subjectName?: string } | null)?.subjectName ||
+                null,
+              subjectKind:
+                (typeof data.subjectKind === "string" && data.subjectKind) || null,
+              sessionCreatedAt:
+                (typeof data.sessionCreatedAt === "string" && data.sessionCreatedAt) || null,
               spread: spread ?? undefined,
             };
           }

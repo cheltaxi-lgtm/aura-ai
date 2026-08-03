@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  type SetStateAction,
+} from "react";
 import { flushSync } from "react-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
@@ -214,7 +222,24 @@ export default function HomePage({
     consumeAccountDeletedHomeArrival();
   }, []);
 
-  const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
+  const [selectedCharacter, setSelectedCharacterState] = useState<string | null>(null);
+  const selectedCharacterRef = useRef<string | null>(null);
+  const stepRef = useRef<string>("intro");
+  // Do NOT reject sets while stepRef is still "masters": openChat calls setStep("chat")
+  // then setSelectedCharacter in the same tick, but stepRef only updates after paint.
+  // Rejecting here blocked history/matrix reopen.
+  // Flash prevention: ChatWindow requires step==="chat"; stale character cleared below.
+  const setSelectedCharacter = useCallback(
+    (next: SetStateAction<string | null>) => {
+      const resolved =
+        typeof next === "function"
+          ? (next as (prev: string | null) => string | null)(selectedCharacterRef.current)
+          : next;
+      selectedCharacterRef.current = resolved;
+      setSelectedCharacterState(resolved);
+    },
+    []
+  );
   const [lastMasterId, setLastMasterId] = useState<string | null>(null);
   const [photoChatSpread, setPhotoChatSpread] = useState<{
     masterId: string;
@@ -309,7 +334,6 @@ export default function HomePage({
   const sendingRef = useRef(false);
   const skipNextReadingRef = useRef(false);
   const pendingNewChatThreadRef = useRef(false);
-  const selectedCharacterRef = useRef<string | null>(null);
   const chatClearRef = useRef<() => void>(() => {});
   const accountSwitchCleanupRef = useRef<() => void>(() => {});
   const pendingReadingMasterRef = useRef<string | null>(null);
@@ -319,7 +343,7 @@ export default function HomePage({
   const {
     step,
     setStepState,
-    setStep,
+    setStep: setStepRaw,
     flowBootstrapped,
     profile,
     setProfile,
@@ -356,6 +380,15 @@ export default function HomePage({
       accountSwitchCleanupRef.current();
     },
   });
+
+  // Keep stepRef in sync immediately — effects lag one paint behind setStep("chat").
+  const setStep = useCallback(
+    (next: typeof step) => {
+      stepRef.current = next;
+      setStepRaw(next);
+    },
+    [setStepRaw]
+  );
 
   const [deckGalleryOpen, setDeckGalleryOpen] = useState(false);
   const [browseDeckMaster, setBrowseDeckMaster] = useState<ShowcaseMaster | null>(null);
@@ -537,6 +570,10 @@ export default function HomePage({
     pendingChatOptsRef,
     sessionListBackMasterRef,
     sessionSpreadMetaRef,
+    matrixSessionBirthDate,
+    setMatrixSessionBirthDate,
+    matrixSessionSubjectName,
+    setMatrixSessionSubjectName,
     displayTarotCards,
     displayDeckSystem,
     displayTeaser,
@@ -1030,6 +1067,24 @@ export default function HomePage({
   }, [selectedCharacter]);
 
   useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  // Proven by logs: step=masters can keep selectedCharacter=numerolog and the
+  // ChatWindow branch ignores step — so home shows the matrix reading.
+  // Skip while FLOW_STEP is chat (open in flight / URL resume already stripped).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (step !== "masters" && step !== "intro") return;
+    if (!selectedCharacter) return;
+    const resume = new URLSearchParams(window.location.search).get("resume");
+    if (resume === "chat") return;
+    if (localStorage.getItem(FLOW_STEP_KEY) === "chat") return;
+    setSelectedCharacterState(null);
+    selectedCharacterRef.current = null;
+  }, [step, selectedCharacter]);
+
+  useEffect(() => {
     const savedMaster = localStorage.getItem(LAST_MASTER_KEY);
     if (savedMaster) setLastMasterId(savedMaster);
   }, [setLastMasterId]);
@@ -1320,24 +1375,21 @@ export default function HomePage({
     if (pendingChatOptsRef.current) return;
     if (readingInFlightRef.current) return;
 
-    const urlStep = new URLSearchParams(window.location.search).get("step");
+    const params = new URLSearchParams(window.location.search);
+    const urlStep = params.get("step");
     const savedStep = localStorage.getItem(FLOW_STEP_KEY);
-    const wantsChat = urlStep === "chat" || savedStep === "chat";
+    // Never restore a master from a leftover FLOW_STEP=chat — only ?resume=chat.
+    const allowChatRestore = params.get("resume") === "chat";
 
     const masterId =
       localStorage.getItem(LAST_MASTER_KEY) ||
       lastMasterId ||
       localStorage.getItem(PENDING_MASTER_KEY);
-    if (masterId) {
+    if (allowChatRestore && masterId) {
       void bindSessionToMaster(masterId).finally(() => {
         setSelectedCharacter(masterId);
         setLastMasterId(masterId);
       });
-      return;
-    }
-
-    if (wantsChat) {
-      setStep("masters");
       return;
     }
 
@@ -1798,6 +1850,8 @@ export default function HomePage({
     pendingNewChatThreadRef,
     pendingReadingMasterRef,
     sessionSpreadMetaRef,
+    setMatrixSessionBirthDate,
+    setMatrixSessionSubjectName,
     sendingRef,
     archiveSessionIdRef,
     exitingToSessionListRef,
@@ -3152,7 +3206,7 @@ export default function HomePage({
     return () => window.clearTimeout(timer);
   }, [spreadRitual.active, setSpreadRitual]);
 
-  const inActiveChat = step === "chat" || Boolean(selectedCharacter);
+  const inActiveChat = step === "chat" && Boolean(selectedCharacter);
 
   const guestResumeChatAssist = useMemo(() => {
     // Ref is read on message-driven re-renders after guest resume sets chat.
@@ -3329,7 +3383,7 @@ export default function HomePage({
               }}
             />
           </>
-        ) : selectedCharacter && !isLoggedIn ? (
+        ) : selectedCharacter && step === "chat" && flowBootstrapped && !isLoggedIn ? (
           <RegisterGate
             compact
             title="Войдите для продолжения сеанса"
@@ -3337,7 +3391,7 @@ export default function HomePage({
             returnTo={resolveRegistrationReturnTo({ guestSpread: true })}
             source="chat_register_gate"
           />
-        ) : selectedCharacter ? (
+        ) : selectedCharacter && step === "chat" && flowBootstrapped ? (
           <>
           <ChatWindow
             characterId={selectedCharacter}
@@ -3438,7 +3492,9 @@ export default function HomePage({
             startingNewSession={startingNewSession}
             userBirthDate={
               selectedCharacter === "numerolog"
-                ? getActiveProfile()?.birthDate || profile?.birthDate
+                ? matrixSessionBirthDate ||
+                  getActiveProfile()?.birthDate ||
+                  profile?.birthDate
                 : undefined
             }
             sessionId={consultationSessionId ?? session?.sessionId ?? undefined}

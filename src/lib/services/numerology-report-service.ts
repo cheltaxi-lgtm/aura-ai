@@ -1,8 +1,56 @@
 import { query, queryClient, withTransaction } from "@/lib/db";
 import { parseBirthDate } from "@/lib/numerology/constants";
-import { MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
+import {
+  isLegacyMatrixCalculationVersion,
+  MATRIX_CALCULATION_VERSION,
+} from "@/lib/numerology/destiny-matrix";
 
 export const MATRIX_REPORT_TOOL_ID = "destiny_matrix" as const;
+
+/**
+ * Tools whose product covers one calendar year. Their entitlement must renew
+ * annually, so the stored `calculation_version` carries the period ("...@2026").
+ * Without it the unique key would pin one forecast per subject forever and next
+ * year's request would silently return the previous year's text.
+ */
+const PERIOD_SCOPED_TOOL_IDS = new Set<string>(["matrix_year_forecast"]);
+
+export function isPeriodScopedMatrixTool(toolId: string): boolean {
+  return PERIOD_SCOPED_TOOL_IDS.has(toolId);
+}
+
+/** Version actually written to / matched in the DB for a given tool. */
+export function matrixReportVersion(
+  toolId: string,
+  baseVersion: string = MATRIX_CALCULATION_VERSION,
+  at: Date = new Date()
+): string {
+  return isPeriodScopedMatrixTool(toolId)
+    ? `${baseVersion}@${at.getFullYear()}`
+    : baseVersion;
+}
+
+/**
+ * Buy-once entitlement must survive engine-version bumps, but for period-scoped
+ * tools only inside the same year. Legacy rows carry no "@period" suffix, so they
+ * are attributed to the year they were created in.
+ */
+function ownedVersionClause(
+  toolId: string,
+  column: string,
+  createdColumn: string,
+  versionParam: number,
+  yearParam: number
+): string {
+  if (!isPeriodScopedMatrixTool(toolId)) return "";
+  return `AND (${column} LIKE $${versionParam}
+           OR (position('@' in ${column}) = 0
+               AND date_part('year', ${createdColumn}) = $${yearParam}))`;
+}
+
+function currentPeriodYear(at: Date = new Date()): number {
+  return at.getFullYear();
+}
 
 export type NumerologyReportHistoryItem = {
   id: string;
@@ -93,7 +141,11 @@ export async function findOwnedMatrixReport(
   const birthDate = toIsoBirthDate(birthDateRaw);
   if (!birthDate) return null;
   const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
-  const calculationVersion = options?.calculationVersion ?? MATRIX_CALCULATION_VERSION;
+  const calculationVersion = matrixReportVersion(
+    toolId,
+    options?.calculationVersion ?? MATRIX_CALCULATION_VERSION
+  );
+  const periodYear = currentPeriodYear();
 
   // Multi-subject safe: birth-date lookup only matches the user's `self` subject
   // (plus legacy null subject_id). Never return another person's report by date.
@@ -107,6 +159,7 @@ export async function findOwnedMatrixReport(
        AND n.calculation_version = $4
        AND length(trim(n.content)) > 0
        AND (n.subject_id IS NULL OR ms.kind = 'self')
+     ORDER BY n.created_at DESC
      LIMIT 1`,
     [userId, toolId, birthDate, calculationVersion]
   );
@@ -122,9 +175,12 @@ export async function findOwnedMatrixReport(
        AND n.birth_date = $3::date
        AND length(trim(n.content)) > 0
        AND (n.subject_id IS NULL OR ms.kind = 'self')
+       ${ownedVersionClause(toolId, "n.calculation_version", "n.created_at", 4, 5)}
      ORDER BY n.created_at DESC
      LIMIT 1`,
-    [userId, toolId, birthDate]
+    isPeriodScopedMatrixTool(toolId)
+      ? [userId, toolId, birthDate, `%@${periodYear}`, periodYear]
+      : [userId, toolId, birthDate]
   );
   return anyVersion.rows[0] ? mapRow(anyVersion.rows[0]) : null;
 }
@@ -135,7 +191,12 @@ export async function findOwnedMatrixReportBySubject(
   options?: { calculationVersion?: string; toolId?: string }
 ): Promise<NumerologyReportHistoryItem | null> {
   const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
-  const calculationVersion = options?.calculationVersion ?? MATRIX_CALCULATION_VERSION;
+  const calculationVersion = matrixReportVersion(
+    toolId,
+    options?.calculationVersion ?? MATRIX_CALCULATION_VERSION
+  );
+  const periodYear = currentPeriodYear();
+  if (!UUID_RE.test(subjectId.trim())) return null;
   const exact = await query<NumerologyReportHistoryRow>(
     `SELECT ${SELECT_COLS}
      FROM numerology_report_history
@@ -144,6 +205,7 @@ export async function findOwnedMatrixReportBySubject(
        AND subject_id = $3::uuid
        AND calculation_version = $4
        AND length(trim(content)) > 0
+     ORDER BY created_at DESC
      LIMIT 1`,
     [userId, toolId, subjectId.trim(), calculationVersion]
   );
@@ -156,9 +218,12 @@ export async function findOwnedMatrixReportBySubject(
        AND tool_id = $2
        AND subject_id = $3::uuid
        AND length(trim(content)) > 0
+       ${ownedVersionClause(toolId, "calculation_version", "created_at", 4, 5)}
      ORDER BY created_at DESC
      LIMIT 1`,
-    [userId, toolId, subjectId.trim()]
+    isPeriodScopedMatrixTool(toolId)
+      ? [userId, toolId, subjectId.trim(), `%@${periodYear}`, periodYear]
+      : [userId, toolId, subjectId.trim()]
   );
   return anyVersion.rows[0] ? mapRow(anyVersion.rows[0]) : null;
 }
@@ -167,9 +232,26 @@ export type OwnedMatrixLookup = {
   report: NumerologyReportHistoryItem | null;
   /** Content passes client-safety + completeness gate (site/bot parity). */
   usable: boolean;
-  /** Non-empty row exists but fails the usability gate (leak / truncated). */
+  /** Non-empty row exists but fails the usability gate (leak / truncated / legacy). */
   unusable: boolean;
+  /** Numbers came from a retired reducer — rebuild is owed for free. */
+  legacyVersion: boolean;
 };
+
+/**
+ * A report saved before matrix-v3 carries digit-sum numbers that the engine can
+ * no longer reproduce, so its text would contradict the live diagram. Treat it as
+ * unusable: callers already wipe + regenerate unusable reports free of charge.
+ */
+function classifyOwnedReport(
+  report: NumerologyReportHistoryItem | null,
+  contentUsable: boolean
+): OwnedMatrixLookup {
+  if (!report) return { report: null, usable: false, unusable: false, legacyVersion: false };
+  const legacyVersion = isLegacyMatrixCalculationVersion(report.calculationVersion);
+  const usable = contentUsable && !legacyVersion;
+  return { report, usable, unusable: !usable, legacyVersion };
+}
 
 /** Owned report + usability — mirror Telegram botMatrixService gates. */
 export async function lookupOwnedMatrixReport(
@@ -179,11 +261,10 @@ export async function lookupOwnedMatrixReport(
 ): Promise<OwnedMatrixLookup> {
   const report = await findOwnedMatrixReport(userId, birthDateRaw, options);
   if (!report?.content?.trim()) {
-    return { report: null, usable: false, unusable: false };
+    return { report: null, usable: false, unusable: false, legacyVersion: false };
   }
   const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
-  const usable = isUsableMatrixReading(report.content);
-  return { report, usable, unusable: !usable };
+  return classifyOwnedReport(report, isUsableMatrixReading(report.content));
 }
 
 export async function lookupOwnedMatrixReportBySubject(
@@ -193,11 +274,10 @@ export async function lookupOwnedMatrixReportBySubject(
 ): Promise<OwnedMatrixLookup> {
   const report = await findOwnedMatrixReportBySubject(userId, subjectId, options);
   if (!report?.content?.trim()) {
-    return { report: null, usable: false, unusable: false };
+    return { report: null, usable: false, unusable: false, legacyVersion: false };
   }
   const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
-  const usable = isUsableMatrixReading(report.content);
-  return { report, usable, unusable: !usable };
+  return classifyOwnedReport(report, isUsableMatrixReading(report.content));
 }
 
 export async function findUsableOwnedMatrixReport(
@@ -234,6 +314,15 @@ export async function userOwnsMatrixReport(
   return Boolean(owned);
 }
 
+export async function userOwnsMatrixReportForSubject(
+  userId: string,
+  subjectId: string,
+  options?: { calculationVersion?: string; toolId?: string }
+): Promise<boolean> {
+  const owned = await findUsableOwnedMatrixReportBySubject(userId, subjectId, options);
+  return Boolean(owned);
+}
+
 /** List metadata without full LLM bodies (browser ownership / cabinet chips). */
 export async function listUserMatrixReportSummaries(
   userId: string,
@@ -247,6 +336,8 @@ export async function listUserMatrixReportSummaries(
     birthDate: string;
     calculationVersion: string;
     hasContent: boolean;
+    /** Saved with a retired reducer — owes a free rebuild, not openable as-is. */
+    legacyVersion: boolean;
     sessionId: string | null;
     createdAt: string;
     updatedAt: string;
@@ -276,6 +367,7 @@ export async function listUserMatrixReportSummaries(
       birthDate: report.birthDate,
       calculationVersion: report.calculationVersion,
       hasContent: Boolean(report.content?.trim()),
+      legacyVersion: isLegacyMatrixCalculationVersion(report.calculationVersion),
       sessionId: report.sessionId,
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
@@ -307,13 +399,19 @@ export async function saveMatrixReport(params: {
     throw new Error("invalid_birth_date_for_matrix_report");
   }
   const toolId = params.toolId ?? MATRIX_REPORT_TOOL_ID;
-  const calculationVersion = params.calculationVersion ?? MATRIX_CALCULATION_VERSION;
+  const calculationVersion = matrixReportVersion(
+    toolId,
+    params.calculationVersion ?? MATRIX_CALCULATION_VERSION
+  );
   const content = params.content.trim();
   if (!content) {
     throw new Error("empty_matrix_report_content");
   }
   const overwrite = Boolean(params.overwrite);
   let subjectId = params.subjectId?.trim() || null;
+  if (subjectId && !UUID_RE.test(subjectId)) {
+    throw new Error("matrix_subject_required");
+  }
 
   if (!subjectId) {
     const { ensureSelfSubject } = await import("@/lib/services/matrix-subject-service");
@@ -337,14 +435,19 @@ export async function saveMatrixReport(params: {
     }
 
     if (overwrite) {
-      // Wipe any prior destiny-matrix rows for this subject (all calculation versions).
+      // Wipe prior rows for this subject across calculation versions — but for
+      // period-scoped tools only within the current period, so an earlier year's
+      // purchased forecast survives.
       await queryClient(
         client,
         `DELETE FROM numerology_report_history
          WHERE user_id = $1
            AND tool_id = $2
-           AND subject_id = $3::uuid`,
-        [params.userId, toolId, subjectId]
+           AND subject_id = $3::uuid
+           ${ownedVersionClause(toolId, "calculation_version", "created_at", 4, 5)}`,
+        isPeriodScopedMatrixTool(toolId)
+          ? [params.userId, toolId, subjectId, `%@${currentPeriodYear()}`, currentPeriodYear()]
+          : [params.userId, toolId, subjectId]
       );
     }
 
@@ -452,12 +555,14 @@ export async function listUserMatrixReports(
   return rows.map(mapRow);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getUserMatrixReportById(
   userId: string,
   reportId: string
 ): Promise<NumerologyReportHistoryItem | null> {
   const id = reportId.trim();
-  if (!id) return null;
+  if (!id || !UUID_RE.test(id)) return null;
   const { rows } = await query<NumerologyReportHistoryRow>(
     `SELECT ${SELECT_COLS}
      FROM numerology_report_history
@@ -476,7 +581,7 @@ export async function deleteUserMatrixReport(
   reportId: string
 ): Promise<{ deleted: boolean; sessionIds: string[] }> {
   const id = reportId.trim();
-  if (!id) return { deleted: false, sessionIds: [] };
+  if (!id || !UUID_RE.test(id)) return { deleted: false, sessionIds: [] };
 
   const before = await query<{ session_id: string | null }>(
     `SELECT session_id
@@ -569,6 +674,7 @@ export async function deleteOwnedMatrixReportsForSubject(
   options?: { toolId?: string }
 ): Promise<{ deleted: number; sessionIds: string[] }> {
   const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
+  if (!UUID_RE.test(subjectId.trim())) return { deleted: 0, sessionIds: [] };
   const before = await query<{ session_id: string | null }>(
     `SELECT session_id
      FROM numerology_report_history

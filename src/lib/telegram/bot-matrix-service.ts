@@ -7,6 +7,7 @@ import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 import {
   DESTINY_MATRIX_DIAGRAM_SLOTS,
   destinyMatrix,
+  isLegacyMatrixCalculationVersion,
   MATRIX_CALCULATION_VERSION,
   matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
@@ -147,8 +148,9 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     : await ensureSelfSubject(gate.resolved.profileUserId!);
   if (subjectId && !subject) return { ok: false as const, error: "not_found" as const, message: "Субъект матрицы не найден." };
   const subjectBirthDate = subject?.birthDate ?? gate.user.birth_date!;
+  const subjectName = subject?.displayName?.trim() || gate.user.name || undefined;
   const summary = buildMatrixFreeSummary(subjectBirthDate, {
-    name: gate.user.name || undefined,
+    name: subjectName,
   });
   if (!summary) {
     return {
@@ -158,19 +160,33 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     };
   }
 
-  const owned = await findOwnedMatrixReport(gate.resolved.profileUserId!, gate.user.birth_date);
+  // Ownership + diagram must follow the selected subject, not the account profile —
+  // otherwise a child's summary showed the parent's matrix and "owned" flag.
+  const toolId = subject?.kind === "child" ? "child_matrix" : "destiny_matrix";
+  const owned = subject?.id
+    ? await findOwnedMatrixReportBySubject(gate.resolved.profileUserId!, subject.id, { toolId })
+    : await findOwnedMatrixReport(gate.resolved.profileUserId!, subjectBirthDate, { toolId });
   const reports = await listUserMatrixReports(gate.resolved.profileUserId!, 20);
-  const cost = getNumerologTool("destiny_matrix").cost || PRICING.NUMEROLOGY_SESSION;
+  const cost = getNumerologTool(toolId).cost || PRICING.NUMEROLOGY_SESSION;
   const runeBalance = await getRuneBalance(gate.resolved.profileUserId!);
   const diagram = buildMatrixDiagram(
-    gate.user.birth_date!,
-    gate.user.name || gate.resolved.name
+    subjectBirthDate,
+    subjectName || gate.resolved.name
+  );
+  // Legacy-reducer reports are not offerable as "owned" — they owe a free rebuild.
+  const summaryOwnedUsable = Boolean(
+    owned?.content?.trim() &&
+      !isLegacyMatrixCalculationVersion(owned.calculationVersion) &&
+      isUsableMatrixReading(owned.content)
   );
   const currentStructured = summary.matrix
     ? matrixToStructuredData(summary.matrix)
     : null;
+  // Never diff across reducer generations: every point would "change" spuriously.
   const prevStructured =
-    owned?.structuredData && typeof owned.structuredData === "object"
+    owned?.structuredData &&
+    typeof owned.structuredData === "object" &&
+    !isLegacyMatrixCalculationVersion(owned.calculationVersion)
       ? (owned.structuredData as Record<string, unknown>)
       : null;
   const sinceLast =
@@ -181,8 +197,8 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
   return {
     ok: true as const,
     action: "summary" as const,
-    birthDate: gate.user.birth_date,
-    name: gate.user.name || gate.resolved.name || null,
+    birthDate: subjectBirthDate,
+    name: subjectName || gate.resolved.name || null,
     portrait: summary.portrait.slice(0, 900),
     moneyInsight: summary.moneyInsight.slice(0, 400),
     loveInsight: summary.loveInsight.slice(0, 400),
@@ -197,8 +213,8 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     focusTitle: summary.period.focusTitle,
     practiceSeed: summary.period.practiceSeed,
     denseTeaser: formatMatrixDenseTeaser(summary, {
-      name: gate.user.name || gate.resolved.name,
-      birthDate: gate.user.birth_date,
+      name: subjectName || gate.resolved.name,
+      birthDate: subjectBirthDate,
       withCta: false,
     }).slice(0, 1600),
     sinceLast,
@@ -213,9 +229,8 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     keyArcana: summary.keyArcana,
     diagram,
     savedReports: reports.length,
-    owned: Boolean(owned?.content?.trim() && isUsableMatrixReading(owned.content)),
-    ownedReportId:
-      owned?.content?.trim() && isUsableMatrixReading(owned.content) ? owned.id : null,
+    owned: Boolean(summaryOwnedUsable),
+    ownedReportId: summaryOwnedUsable ? owned!.id : null,
     cost,
     runeBalance,
     url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=numerology`,
@@ -256,6 +271,14 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
       ok: false as const,
       error: "not_found" as const,
       message: "Отчёт не найден.",
+    };
+  }
+  if (isLegacyMatrixCalculationVersion(report.calculationVersion)) {
+    return {
+      ok: false as const,
+      error: "not_found" as const,
+      message:
+        "Метод расчёта матрицы обновлён до канонического. Нажмите «Получить матрицу» — пересоберём бесплатно.",
     };
   }
   if (!isUsableMatrixReading(report.content)) {
@@ -337,7 +360,13 @@ export async function botMatrixRun(
   const owned = subject?.id
     ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
     : await findOwnedMatrixReport(profileUserId, isoBirth, { toolId });
-  const ownedUsable = Boolean(owned?.content?.trim() && isUsableMatrixReading(owned.content));
+  // Pre-v3 reports hold digit-sum numbers the engine can't reproduce — rebuild free.
+  const ownedLegacy = Boolean(
+    owned?.content?.trim() && isLegacyMatrixCalculationVersion(owned.calculationVersion)
+  );
+  const ownedUsable = Boolean(
+    owned?.content?.trim() && !ownedLegacy && isUsableMatrixReading(owned.content)
+  );
 
   // Open existing only when not explicitly ordering a replacement and content is client-safe.
   if (ownedUsable && owned && !replace) {
@@ -393,11 +422,17 @@ export async function botMatrixRun(
     };
   }
 
-  // Bad/leaked owned report (or explicit replace): wipe before regenerating.
-  // Regeneration after a leak is free — client already paid for unusable text.
+  // Bad/leaked/legacy owned report (or explicit replace): wipe before regenerating.
+  // Rebuild is free — the client already paid for text we can no longer serve.
   // Always subject-scoped — never wipe every report sharing a birth date.
   const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
-  if ((replace || regenerateAfterLeak) && owned) {
+  if (ownedLegacy && !replace && owned) {
+    // Site parity: keep the readable paid artifact, drop only its stale chat.
+    const staleSession = owned.sessionId?.trim();
+    if (staleSession) {
+      await purgeMatrixConsultationSessions(profileUserId, [staleSession]);
+    }
+  } else if ((replace || regenerateAfterLeak) && owned) {
     const subjectForWipe = subject ?? (await ensureSelfSubject(profileUserId));
     const wiped = subjectForWipe?.id
       ? await deleteOwnedMatrixReportsForSubject(profileUserId, subjectForWipe.id, {
@@ -681,9 +716,15 @@ export async function botMatrixAction(input: {
       if (!gate.ok) return gate;
       if (!input.subjectId) return { ok: false as const, error: "not_found" as const, message: "Субъект не выбран." };
       const result = await deleteMatrixSubject(gate.resolved.profileUserId!, input.subjectId);
-      return result.deleted
-        ? { ok: true as const, action: "subjects.delete", ...result }
-        : { ok: false as const, error: "not_found" as const, message: "Субъект не найден." };
+      if (!result.deleted) {
+        return { ok: false as const, error: "not_found" as const, message: "Субъект не найден." };
+      }
+      // Site parity: dropping a subject also purges its orphaned matrix chats.
+      const purgedSessions = await purgeMatrixConsultationSessions(
+        gate.resolved.profileUserId!,
+        result.sessionIds
+      );
+      return { ok: true as const, action: "subjects.delete", ...result, purgedSessions };
     }
     case "list":
       return botMatrixList(input.telegramUserId, input.subjectId);

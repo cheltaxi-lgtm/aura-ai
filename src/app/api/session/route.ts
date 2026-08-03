@@ -35,6 +35,10 @@ async function resolveSessionFreeLimit(
   session: {
     user_id?: string | null;
     spread_id?: string | null;
+    numerolog_tool_params?: {
+      matrixSubjectId?: string | null;
+      matrixBirthDate?: string | null;
+    } | null;
   },
   profileUserId: string | null | undefined
 ): Promise<number> {
@@ -54,6 +58,7 @@ async function resolveSessionFreeLimit(
     profileUserId: uid,
     birthDate,
     spreadId: session.spread_id,
+    numerologToolParams: session.numerolog_tool_params ?? null,
   });
 }
 

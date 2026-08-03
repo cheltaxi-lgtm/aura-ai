@@ -21,7 +21,7 @@ export default function HomeDestinyMatrixBanner({
   onOpenWithEvelina,
   onOpenOwnedReport,
 }: HomeDestinyMatrixBannerProps) {
-  const { owned } = useMatrixOwnership({ enabled: isLoggedIn });
+  const { owned, loading } = useMatrixOwnership({ enabled: isLoggedIn });
 
   const openPreview = () => {
     window.location.assign(MATRIX_HREF);

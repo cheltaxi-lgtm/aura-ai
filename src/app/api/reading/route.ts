@@ -888,7 +888,16 @@ export async function POST(request: NextRequest) {
           }
           // Bad/leaked owned report: wipe once, then regenerate free (bot parity).
           // Always subject-scoped — birth-date wipe used to erase other people too.
-          if (lookup.unusable && lookup.report) {
+          if (lookup.unusable && lookup.report && lookup.legacyVersion) {
+            // Retired reducer: the text still reads fine, only its numbers are stale.
+            // Keep the paid artifact (unique key includes the version, so v3 inserts
+            // alongside it) and just drop the chat that would pair it with a v3 grid.
+            matrixRegenerateAfterLeak = true;
+            const staleSession = lookup.report.sessionId?.trim();
+            if (staleSession) {
+              await purgeMatrixConsultationSessions(authed.profileUserId, [staleSession]);
+            }
+          } else if (lookup.unusable && lookup.report) {
             matrixRegenerateAfterLeak = true;
             const subjectForWipe =
               resolvedMatrixSubject ??
@@ -1053,6 +1062,17 @@ export async function POST(request: NextRequest) {
             }
             if (!isUsableMatrixReading(matrixContent)) {
               throw new Error("matrix_incomplete_after_fill");
+            }
+            if (matrix) {
+              const { matrixReadingMatchesEngine } = await import(
+                "@/lib/numerology/matrix-completeness"
+              );
+              if (!matrixReadingMatchesEngine(matrixContent, matrix, toolId)) {
+                console.error(
+                  `[matrix-save] arcana fidelity mismatch user=${authed.profileUserId} tool=${toolId}`
+                );
+                throw new Error("matrix_arcana_mismatch");
+              }
             }
             reading = matrixContent;
             const structuredBase = matrix

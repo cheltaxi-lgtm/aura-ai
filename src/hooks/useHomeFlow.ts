@@ -28,7 +28,6 @@ import {
   clearPendingMasterResume,
   hasGuestExplicitMasterResume,
   hasPendingServerProfile,
-  isStoredChatResumeFresh,
   markNeedsServerProfile,
   persistProfileData,
   persistStep,
@@ -91,7 +90,23 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
   const setStep = useCallback((next: FlowStep) => {
     setStepState(next);
     persistStep(next);
-    if (typeof window !== "undefined" && next !== "intro") {
+    if (typeof window === "undefined") return;
+    // Chat is session state, not a shareable landing URL. Writing ?step=chat made
+    // every later visit to "/" reopen the last reading (matrix) forever.
+    if (next === "chat") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("step") === "chat") {
+        url.searchParams.delete("step");
+        const qs = url.searchParams.toString();
+        window.history.replaceState(
+          { step: next },
+          "",
+          qs ? `${url.pathname}?${qs}` : url.pathname
+        );
+      }
+      return;
+    }
+    if (next !== "intro") {
       const url = new URL(window.location.href);
       url.searchParams.set("step", next);
       window.history.pushState({ step: next }, "", `${url.pathname}?${url.searchParams.toString()}`);
@@ -114,7 +129,8 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     const params = new URLSearchParams(window.location.search);
     const urlStep = params.get("step") as FlowStep | null;
     // Only honor explicit URL deep-links here; storage restore waits for auth bootstrap.
-    if (urlStep && urlStep !== "intro") {
+    // Bare ?step=chat is a leftover from older clients — ignore until bootstrap decides.
+    if (urlStep && urlStep !== "intro" && urlStep !== "chat") {
       setStepState(urlStep);
     }
   }, []);
@@ -365,12 +381,20 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         } else if (effectiveStep === "chat") {
           const restoreMaster =
             savedMaster ?? localStorage.getItem(PENDING_MASTER_KEY);
-          // A stored `chat` step is session continuity, not a permanent redirect:
-          // stale state must land on the landing, not reopen the last reading.
-          if (!urlStep && !isStoredChatResumeFresh()) {
-            setStepState("masters");
-            persistStep("masters");
-          } else if (!restoreMaster) {
+          // Stored FLOW_STEP=chat must not reopen the last reading on "/".
+          // Only explicit ?resume=chat deep links restore a chat session.
+          const allowChatRestore = params.get("resume") === "chat";
+          if (!allowChatRestore || !restoreMaster) {
+            if (urlStep === "chat") {
+              const cleaned = new URL(window.location.href);
+              cleaned.searchParams.delete("step");
+              const qs = cleaned.searchParams.toString();
+              window.history.replaceState(
+                null,
+                "",
+                qs ? `${cleaned.pathname}?${qs}` : cleaned.pathname
+              );
+            }
             setStepState("masters");
             persistStep("masters");
           } else {

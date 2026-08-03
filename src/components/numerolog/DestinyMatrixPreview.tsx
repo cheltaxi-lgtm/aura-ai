@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
+import { MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
 import { buildMatrixFreeSummary, type MatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
 import { downloadMatrixShareCardSvg } from "@/lib/numerology/matrix-share-card-svg";
 import { parseBirthDate } from "@/lib/numerology/constants";
@@ -347,7 +348,7 @@ export default function DestinyMatrixPreview() {
             matrix={summary.matrix}
             revealed={revealed}
             focusKey={summary.period.focusKey}
-            hint="Полная матрица Zovus (matrix-v2). Цифры фиксированы движком — наставник их не пересчитывает."
+            hint={`Полная матрица Zovus (${MATRIX_CALCULATION_VERSION}, канонический расчёт). Цифры фиксированы движком — наставник их не пересчитывает.`}
           />
 
           <div className="flex flex-wrap gap-3">

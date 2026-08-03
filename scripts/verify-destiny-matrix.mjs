@@ -52,22 +52,22 @@ const FIXTURES = [
     expect: {
       body: 14,
       energy: 3,
-      roots: 6,
-      purpose: 10,
-      relationships: 6,
-      money: 16,
-      karma: 5,
+      roots: 2,
+      purpose: 16,
+      relationships: 8,
+      money: 18,
+      karma: 19,
       talents: 17,
-      paternal: 20,
-      maternal: 9,
-      yearArcana: 9,
+      paternal: 16,
+      maternal: 5,
+      yearArcana: 5,
     },
     zones: {
-      karmicTail: [5, 15, 20],
+      karmicTail: [19, 13, 10],
       age0: 14,
-      age40: 6,
-      moneyChannel: [13, 10, 16, 15],
-      loveChannel: [14, 6, 10, 16],
+      age40: 2,
+      moneyChannel: [19, 16, 18, 13],
+      loveChannel: [14, 8, 16, 18],
     },
   },
   {
@@ -98,17 +98,17 @@ const FIXTURES = [
     date: "1988-12-31",
     asOfYear: 2026,
     expect: {
-      body: 4,
+      body: 9,
       energy: 12,
-      roots: 8,
-      purpose: 3,
-      relationships: 7,
-      money: 11,
-      karma: 6,
-      talents: 16,
-      paternal: 12,
-      maternal: 20,
-      yearArcana: 8,
+      roots: 4,
+      purpose: 6,
+      relationships: 15,
+      money: 10,
+      karma: 3,
+      talents: 21,
+      paternal: 13,
+      maternal: 16,
+      yearArcana: 9,
     },
   },
   {
@@ -118,14 +118,14 @@ const FIXTURES = [
       body: 7,
       energy: 7,
       roots: 22,
-      purpose: 9,
-      relationships: 16,
-      money: 4,
-      karma: 9,
+      purpose: 6,
+      relationships: 13,
+      money: 6,
+      karma: 14,
       talents: 14,
-      paternal: 11,
-      maternal: 11,
-      yearArcana: 6,
+      paternal: 7,
+      maternal: 7,
+      yearArcana: 2,
     },
   },
   {
@@ -135,14 +135,14 @@ const FIXTURES = [
       body: 15,
       energy: 6,
       roots: 3,
-      purpose: 3,
-      relationships: 18,
-      money: 6,
-      karma: 6,
+      purpose: 4,
+      relationships: 19,
+      money: 7,
+      karma: 2,
       talents: 21,
       paternal: 18,
       maternal: 9,
-      yearArcana: 4,
+      yearArcana: 9,
     },
   },
   {
@@ -152,14 +152,14 @@ const FIXTURES = [
       body: 22,
       energy: 11,
       roots: 20,
-      purpose: 7,
-      relationships: 11,
-      money: 9,
-      karma: 8,
-      talents: 6,
-      paternal: 6,
-      maternal: 4,
-      yearArcana: 7,
+      purpose: 18,
+      relationships: 18,
+      money: 16,
+      karma: 9,
+      talents: 11,
+      paternal: 20,
+      maternal: 9,
+      yearArcana: 21,
     },
   },
   {
@@ -168,74 +168,79 @@ const FIXTURES = [
     expect: {
       body: 9,
       energy: 9,
-      roots: 10,
-      purpose: 11,
-      relationships: 20,
-      money: 21,
-      karma: 10,
+      roots: 6,
+      purpose: 4,
+      relationships: 13,
+      money: 10,
+      karma: 2,
       talents: 18,
-      paternal: 19,
-      maternal: 19,
-      yearArcana: 10,
+      paternal: 15,
+      maternal: 15,
+      yearArcana: 6,
     },
   },
   {
     date: "1980-02-29",
     asOfYear: 2026,
     expect: {
-      body: 11,
+      body: 7,
       energy: 2,
       roots: 18,
-      purpose: 8,
-      relationships: 19,
-      money: 8,
-      karma: 4,
-      talents: 13,
-      paternal: 11,
+      purpose: 10,
+      relationships: 17,
+      money: 6,
+      karma: 5,
+      talents: 9,
+      paternal: 3,
       maternal: 20,
-      yearArcana: 5,
+      yearArcana: 19,
     },
   },
   {
-    // Classic public example 15.08.1985 — A=15 B=8 C=5 G=10 comfort=11
+    // Classic public example 15.08.1985 — canonical subtract-22 chain:
+    // A=15 B=8 C=1985→23→1 G=15+8+1=24→2 comfort=15+8+1+2=26→4
     date: "1985-08-15",
     asOfYear: 2026,
     expect: {
       body: 15,
       energy: 8,
-      roots: 5,
-      purpose: 11,
-      relationships: 8,
-      money: 16,
-      karma: 10,
-      talents: 5,
-      paternal: 20,
-      maternal: 13,
-      yearArcana: 6,
+      roots: 1,
+      purpose: 4,
+      relationships: 19,
+      money: 5,
+      karma: 2,
+      talents: 1,
+      paternal: 16,
+      maternal: 9,
+      yearArcana: 11,
     },
     // Full-matrix zones (etalon after calibration)
     zones: {
-      karmicTail: [10, 21, 4],
+      karmicTail: [2, 6, 8],
       age0: 15,
-      age40: 5,
-      moneyChannel: [19, 11, 16, 21],
-      loveChannel: [15, 8, 11, 16],
+      age40: 1,
+      moneyChannel: [12, 4, 5, 6],
+      loveChannel: [15, 19, 4, 5],
     },
   },
 ];
 
-assert(MATRIX_CALCULATION_VERSION === "matrix-v2", "version must be matrix-v2");
+assert(MATRIX_CALCULATION_VERSION === "matrix-v3", "version must be matrix-v3");
 assert(DESTINY_MATRIX_POINT_KEYS.length === 11, "expected 11 core point keys");
 
+// Canonical reduction: subtract 22, not digit-sum folding.
 for (const [n, expected] of [
   [0, 22],
   [22, 22],
-  [23, 5],
-  [45, 9],
-  [99, 18],
+  [23, 1],
+  [45, 1],
+  [99, 11],
 ]) {
   assert(reduceToArcanaNumber(n) === expected, `reduceToArcanaNumber(${n}) => ${expected}`);
 }
+// Digit-sum folding caps at 18 for two-digit input; canonical must not do that.
+assert(reduceToArcanaNumber(41) === 19, "reduceToArcanaNumber(41) => 19 (high arcana reachable)");
+assert(reduceToArcanaNumber(43) === 21, "reduceToArcanaNumber(43) => 21 (high arcana reachable)");
 
 assert(ARCANA_DICTIONARY.length === 22, "dictionary must have 22 entries");
 for (let id = 1; id <= 22; id++) {
@@ -265,7 +270,15 @@ for (const fixture of FIXTURES) {
   }
   assert(matrix.comfort.number === matrix.purpose.number, `${fixture.date}: comfort===purpose`);
   assert(matrix.karmicTail?.length === 3, `${fixture.date}: karmic tail 3`);
-  assert(matrix.agePoints?.length === 16, `${fixture.date}: 16 age points`);
+  assert(matrix.agePoints?.length === 17, `${fixture.date}: 17 age points (0–80 belt)`);
+  assert(
+    matrix.agePoints?.at(-1)?.age === 80,
+    `${fixture.date}: age belt must close at 80`
+  );
+  assert(
+    matrix.asOf?.year === fixture.asOfYear,
+    `${fixture.date}: asOf.year must echo the frozen year`
+  );
   assert(matrix.channels?.length === 5, `${fixture.date}: 5 channels`);
   assert(matrix.monthArcana?.number >= 1, `${fixture.date}: month arcana`);
   assert(matrix.focusLabel?.length > 0, `${fixture.date}: focus label`);
@@ -339,16 +352,17 @@ for (const fixture of FIXTURES) {
   assert(!/КВАДРАТ ПИФАГОРА/i.test(facts), "rich facts exclude Pythagoras");
   assert(/нельзя объединять/i.test(facts), "anti-collapse rule in facts");
 
-  // matrix-v2 sample: repeats still possible across roles — prose must stay distinct.
+  // matrix-v3 sample: repeats still possible across roles — prose must stay distinct.
   const gennady = destinyMatrix("1979-09-18", { asOfYear: 2026 });
   assert(!!gennady, "1979-09-18 matrix");
   assert(gennady?.body.number === 18, "1979-09-18 body=18 Moon");
-  assert(gennady?.energy.number === 9 && gennady?.talents.number === 9, "energy/talents both 9");
-  assert(gennady?.roots.number === 8 && gennady?.karma.number === 8, "roots/karma both 8");
-  assert(gennady?.purpose.number === 7, "1979-09-18 comfort/purpose=7");
-  assert(gennady?.money.number === 15, "1979-09-18 money=15 Devil");
-  assert(gennady?.yearArcana.number === 10, "1979-09-18 year=10 Wheel");
-  assert(gennady?.karmicTail[0].number === 8, "tail root=8");
+  assert(gennady?.energy.number === 9 && gennady?.karma.number === 9, "energy/karma both 9");
+  assert(gennady?.body.number === gennady?.purpose.number, "body/comfort both 18");
+  assert(gennady?.roots.number === 4, "1979-09-18 roots=4 Emperor");
+  assert(gennady?.talents.number === 5, "1979-09-18 talents=5 Hierophant");
+  assert(gennady?.money.number === 22, "1979-09-18 money=22 Fool");
+  assert(gennady?.yearArcana.number === 15, "1979-09-18 year=15 Devil");
+  assert(gennady?.karmicTail[0].number === 9, "tail root=9");
 
   const strength = getArcanaEntry(8);
   assert(!!strength, "arcana 8 entry");
@@ -389,20 +403,82 @@ for (const fixture of FIXTURES) {
   assert(!!note && /8 →/i.test(note), "repeat note lists arcana 8");
 
   const keys = formatMatrixFinaleKeys(gennady);
-  assert(/Аркан года: 10 — Колесо/i.test(keys), "keys lock year to Wheel");
+  assert(/Аркан года: 15 — Дьявол/i.test(keys), "keys lock year to Devil");
   assert(!/Аркан года: 9/i.test(keys), "keys must not set year to Hermit");
 
+  // «Узел периода» must carry the focus number (periodFromMatrix), not the month arcana.
+  {
+    const { focusNumber } = await import("../src/lib/numerology/matrix-period.ts");
+    const focusN = focusNumber(gennady);
+    assert(
+      new RegExp(`Узел периода: ${focusN} —`, "i").test(keys),
+      `finale keys «Узел периода» must be focus number ${focusN}`
+    );
+    assert(/Аркан месяца: \d{1,2} —/i.test(keys), "finale keys keep month arcana as its own line");
+  }
+
+  // Post-generation arcana fidelity gate (matrix-completeness).
+  {
+    const { matrixReadingMatchesEngine, isCompleteMatrixReading } = await import(
+      "../src/lib/numerology/matrix-completeness.ts"
+    );
+    const { listMatrixZones } = await import("../src/lib/numerology/matrix-zones.ts");
+    const { renderMatrixReadingMarkdown, parseZoneBlock, MATRIX_READING_SCHEMA_VERSION } =
+      await import("../src/lib/numerology/matrix-reading-document.ts");
+    const zones = listMatrixZones(gennady);
+    const goodDoc = renderMatrixReadingMarkdown({
+      schemaVersion: MATRIX_READING_SCHEMA_VERSION,
+      intro: "Геннадий, вот твоя матрица судьбы по 22 арканам. ".repeat(6),
+      zones: zones.map((z) =>
+        parseZoneBlock(
+          `${z.label}\n${"Текст зоны про ресурс, риск и опору для жизни. ".repeat(8)}\nПрактика: сделай один шаг.`,
+          z,
+          "engine"
+        )
+      ),
+      finale: "Зона комфорта — опора.\nДеньги — канал.",
+      meta: { aiZones: 0, engineZones: zones.length, totalZones: zones.length },
+    });
+    assert(isCompleteMatrixReading(goodDoc), "engine-rendered doc passes completeness");
+    assert(
+      matrixReadingMatchesEngine(goodDoc, gennady),
+      "engine-rendered doc passes arcana fidelity"
+    );
+    // Derive the money heading from the engine so the test survives reducer changes.
+    const moneyZone = zones.find((z) => z.id === "money");
+    const moneyHeading = `Деньги (${moneyZone.number} — ${moneyZone.arcanaName})`;
+    assert(goodDoc.includes(moneyHeading), `doc must carry «${moneyHeading}»`);
+    const otherNumber = moneyZone.number === 1 ? 2 : 1;
+    const swapped = goodDoc.replace(
+      moneyHeading,
+      `Деньги (${otherNumber} — ${moneyZone.arcanaName})`
+    );
+    assert(
+      swapped !== goodDoc && !matrixReadingMatchesEngine(swapped, gennady),
+      "swapped zone number must fail arcana fidelity"
+    );
+    const wrongName = moneyZone.arcanaName === "Отшельник" ? "Башня" : "Отшельник";
+    const renamed = goodDoc.replace(
+      moneyHeading,
+      `Деньги (${moneyZone.number} — ${wrongName})`
+    );
+    assert(
+      renamed !== goodDoc && !matrixReadingMatchesEngine(renamed, gennady),
+      "number with wrong arcana name must fail arcana fidelity"
+    );
+  }
+
   const plain = buildMatrixPlainFinale("Геннадий", gennady);
-  assert(/Аркан этого года — Колесо Фортуны \(10\)/i.test(plain), "plain finale year=10");
+  assert(/Аркан этого года — Дьявол \(15\)/i.test(plain), "plain finale year=15");
   assert(!/аркан этого года — Отшельник/i.test(plain), "plain finale must not call year Hermit");
-  assert(/Зона комфорта — Колесница \(7\)/i.test(plain), "plain finale comfort=7");
-  assert(/Деньги — через Дьявол/i.test(plain), "plain finale money=Devil");
+  assert(/Зона комфорта — Луна \(18\)/i.test(plain), "plain finale comfort=18");
+  assert(/Деньги — через Шут/i.test(plain), "plain finale money=Fool");
   assert(plain.includes("\n"), "plain finale uses line breaks");
 
   const wall = [
     "Геннадий, вот твой разбор матрицы судьбы по 22 арканам. Характер (18 — Луна)",
-    "Ты чувствителен к настроениям. Практика: записывай сны. Зона комфорта (7 — Колесница)",
-    "Ты восстанавливаешься в движении. Кармический хвост · корень (8 — Сила)",
+    "Ты чувствителен к настроениям. Практика: записывай сны. Зона комфорта (18 — Луна)",
+    "Ты восстанавливаешься в движении. Кармический хвост · корень (9 — Отшельник)",
     "Узел периода требует внимания.",
     "Шаги на 30 дней:",
     "1) Записывай сны 7 дней. 2) День уединения раз в неделю. 3) Честный разговор.",

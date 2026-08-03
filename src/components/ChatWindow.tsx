@@ -281,14 +281,23 @@ export default function ChatWindow({
   /** Matrix diagram from props, or recompute from birth date when reopen skipped UI payload. */
   const resolvedDestinyMatrix = useMemo((): DestinyMatrixResult | null => {
     if (spreadDestinyMatrix) return spreadDestinyMatrix;
-    if (numerologSessionToolId !== "destiny_matrix") return null;
+    if (
+      numerologSessionToolId !== "destiny_matrix" &&
+      numerologSessionToolId !== "child_matrix" &&
+      numerologSessionToolId !== "matrix_year_forecast"
+    ) {
+      return null;
+    }
     const birth = userBirthDate?.trim();
     if (!birth) return null;
     return destinyMatrix(birth);
   }, [spreadDestinyMatrix, numerologSessionToolId, userBirthDate]);
   const hideDestinyCardArt =
     isNumerologMaster(characterId) &&
-    (numerologSessionToolId === "destiny_matrix" || Boolean(resolvedDestinyMatrix));
+    (numerologSessionToolId === "destiny_matrix" ||
+      numerologSessionToolId === "child_matrix" ||
+      numerologSessionToolId === "matrix_year_forecast" ||
+      Boolean(resolvedDestinyMatrix));
   const [statusText, setStatusText] = useState("Считывает энергетику...");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -819,7 +828,11 @@ export default function ChatWindow({
                 ? spreadComputedOnly && spreadPythagorasSquare
                   ? "Квадрат Пифагора"
                   : spreadComputedOnly && resolvedDestinyMatrix
-                    ? "Матрица судьбы"
+                    ? numerologSessionToolId === "child_matrix"
+                      ? "Детская матрица"
+                      : numerologSessionToolId === "matrix_year_forecast"
+                        ? "Матрица · прогноз на год"
+                        : "Матрица судьбы"
                     : "Ваши числа"
                 : spreadVariant === "intention"
                   ? sessionIntention
@@ -1050,7 +1063,9 @@ export default function ChatWindow({
                         />
                       ) : null}
                       {msg.role === "assistant" &&
-                      numerologSessionToolId === "destiny_matrix" &&
+                      (numerologSessionToolId === "destiny_matrix" ||
+                        numerologSessionToolId === "child_matrix" ||
+                        numerologSessionToolId === "matrix_year_forecast") &&
                       msgIndex ===
                         messages.findIndex(
                           (m) => m.role === "assistant" && Boolean(m.content?.trim())

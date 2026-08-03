@@ -20,7 +20,8 @@ export type MatrixPeriodSnapshot = {
   teaser: string;
 };
 
-function focusNumber(m: DestinyMatrixResult): number {
+/** Arcana number behind the matrix's focusKey — single source of truth for «Узел периода». */
+export function focusNumber(m: DestinyMatrixResult): number {
   switch (m.focusKey) {
     case "karma":
       return m.karmicTail[0].number;

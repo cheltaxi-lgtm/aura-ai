@@ -57,6 +57,7 @@ import { PRICING } from "@/lib/config/pricing";
 import { formatSpreadUnitRu } from "@/lib/spread-ritual-copy";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
+import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 import DeckShuffleAnimation from "@/components/DeckShuffleAnimation";
 
 /** Minimum time for a full riffle shuffle ritual (split → riffle → square). */
@@ -258,6 +259,23 @@ export default function MasterSessionFlow({
     birthDate: userBirthDate,
     subjectId: matrixSubjectId,
   });
+  const matrixSubjects = useMatrixSubjects({
+    enabled:
+      isOpen &&
+      numerologFlow &&
+      (selectedNumerologTool === "destiny_matrix" ||
+        selectedNumerologTool === "child_matrix" ||
+        selectedNumerologTool === "matrix_year_forecast"),
+  });
+  const resolveMatrixToolParams = useCallback((): NumerologToolParams => {
+    const subject = matrixSubjects.subjects.find((s) => s.id === matrixSubjectId);
+    return {
+      ...numerologToolParams,
+      ...(matrixSubjectId ? { matrixSubjectId } : {}),
+      ...(subject?.birthDate ? { matrixBirthDate: subject.birthDate } : {}),
+      ...(subject?.displayName ? { subjectName: subject.displayName } : {}),
+    };
+  }, [matrixSubjectId, matrixSubjects.subjects, numerologToolParams]);
   const matrixOwned = matrixOwnership.owned;
   const matrixBuyOnceOwned =
     numerologFlow && selectedNumerologTool === "destiny_matrix" && matrixOwned;
@@ -868,7 +886,7 @@ export default function MasterSessionFlow({
       previewCards: [],
       deckSystem,
       numerologToolId: "destiny_matrix",
-      numerologToolParams,
+      numerologToolParams: resolveMatrixToolParams(),
       matrixSubjectId,
     });
   };
@@ -940,7 +958,7 @@ export default function MasterSessionFlow({
         previewCards: newCards.slice(0, Math.max(cards.length, 1)),
         deckSystem,
         numerologToolId: selectedNumerologTool,
-        numerologToolParams,
+        numerologToolParams: resolveMatrixToolParams(),
         matrixSubjectId,
         customQuestion: resolvedCustomQuestion,
       });

@@ -51,11 +51,28 @@ function parseNumerologToolParams(raw: unknown): NumerologToolParams | null {
   const partnerName = typeof o.partnerName === "string" ? o.partnerName.trim() : "";
   const partnerDate = typeof o.partnerDate === "string" ? o.partnerDate.trim() : "";
   const objectValue = typeof o.objectValue === "string" ? o.objectValue.trim() : "";
-  if (!partnerName && !partnerDate && !objectValue) return null;
+  const matrixSubjectId =
+    typeof o.matrixSubjectId === "string" ? o.matrixSubjectId.trim() : "";
+  const matrixBirthDate =
+    typeof o.matrixBirthDate === "string" ? o.matrixBirthDate.trim() : "";
+  const subjectName = typeof o.subjectName === "string" ? o.subjectName.trim() : "";
+  if (
+    !partnerName &&
+    !partnerDate &&
+    !objectValue &&
+    !matrixSubjectId &&
+    !matrixBirthDate &&
+    !subjectName
+  ) {
+    return null;
+  }
   return {
     ...(partnerName ? { partnerName } : {}),
     ...(partnerDate ? { partnerDate } : {}),
     ...(objectValue ? { objectValue } : {}),
+    ...(matrixSubjectId ? { matrixSubjectId } : {}),
+    ...(matrixBirthDate ? { matrixBirthDate } : {}),
+    ...(subjectName ? { subjectName } : {}),
   };
 }
 
@@ -879,7 +896,25 @@ export type ConsultationListItem = {
   topic_summary: string | null;
   key_cards: string[] | null;
   prediction: string | null;
+  /** Destiny-matrix subject (list preview / title). */
+  matrix_subject_id?: string | null;
+  matrix_birth_date?: string | null;
+  matrix_subject_name?: string | null;
+  matrix_subject_kind?: string | null;
+  /** First assistant reading snippet when session_memories.prediction is a stub. */
+  reading_preview?: string | null;
+  /** Free-form question from history.context_data.customQuestion. */
+  custom_question?: string | null;
 };
+
+function formatListBirthDate(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (typeof value === "string") return value.slice(0, 10);
+  const y = value.getUTCFullYear();
+  const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(value.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 export async function listConsultationSessions(
   userId: string,
@@ -890,13 +925,61 @@ export async function listConsultationSessions(
            COALESCE(s.status, 'active') AS status,
            s.created_at, s.updated_at,
            COALESCE(s.message_count, 0)::int AS message_count,
-           sm.topic_summary, sm.key_cards, sm.prediction
+           sm.topic_summary, sm.key_cards, sm.prediction,
+           n.subject_id AS matrix_subject_id,
+           n.birth_date AS matrix_birth_date_raw,
+           ms.display_name AS matrix_subject_name,
+           ms.kind AS matrix_subject_kind,
+           COALESCE(
+             NULLIF(TRIM(s.numerolog_tool_params->>'matrixBirthDate'), ''),
+             NULL
+           ) AS matrix_birth_from_params,
+           COALESCE(
+             NULLIF(TRIM(s.numerolog_tool_params->>'subjectName'), ''),
+             NULL
+           ) AS matrix_name_from_params,
+           (
+             SELECT left(cm.content, 280)
+             FROM chat_messages cm
+             WHERE cm.session_id = s.id
+               AND cm.role = 'assistant'
+               AND length(trim(cm.content)) > 40
+             ORDER BY cm.created_at ASC
+             LIMIT 1
+           ) AS reading_preview,
+           (
+             SELECT NULLIF(TRIM(h.context_data->>'customQuestion'), '')
+             FROM history h
+             WHERE h.user_id = s.user_id
+               AND h.context_data->>'sessionId' = s.id::text
+               AND NULLIF(TRIM(h.context_data->>'customQuestion'), '') IS NOT NULL
+             ORDER BY h.created_at DESC
+             LIMIT 1
+           ) AS custom_question
      FROM sessions s
      LEFT JOIN session_memories sm ON sm.session_id = s.id
+     LEFT JOIN LATERAL (
+       SELECT nr.subject_id, nr.birth_date
+       FROM numerology_report_history nr
+       WHERE nr.session_id = s.id
+         AND nr.user_id = s.user_id
+         AND nr.tool_id IN ('destiny_matrix', 'child_matrix', 'matrix_year_forecast')
+         AND length(trim(nr.content)) > 0
+       ORDER BY nr.created_at DESC
+       LIMIT 1
+     ) n ON TRUE
+     LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
      WHERE s.user_id = $1
        AND s.character_key = $2`;
 
-  const { rows: activeRows } = await query<ConsultationListItem & { cards?: unknown }>(
+  type ListRow = ConsultationListItem & {
+    cards?: unknown;
+    matrix_birth_date_raw?: Date | string | null;
+    matrix_birth_from_params?: string | null;
+    matrix_name_from_params?: string | null;
+  };
+
+  const { rows: activeRows } = await query<ListRow>(
     `${sessionSelect}
        AND COALESCE(s.status, 'active') = 'active'
      ORDER BY s.updated_at DESC
@@ -906,7 +989,7 @@ export async function listConsultationSessions(
 
   const activeId = activeRows[0]?.id ?? null;
 
-  const { rows: completedRows } = await query<ConsultationListItem & { cards?: unknown }>(
+  const { rows: completedRows } = await query<ListRow>(
     `${sessionSelect}
        AND COALESCE(s.status, 'active') = 'completed'
        AND ($3::uuid IS NULL OR s.id <> $3)
@@ -915,11 +998,35 @@ export async function listConsultationSessions(
     [userId, characterKey, activeId]
   );
 
-  const mapRow = (r: ConsultationListItem & { cards?: unknown }): ConsultationListItem => ({
-    ...r,
-    cards: parseSessionCards(r.cards),
-    message_count: Number(r.message_count ?? 0),
-  });
+  const mapRow = (r: ListRow): ConsultationListItem => {
+    const birth =
+      formatListBirthDate(r.matrix_birth_date_raw) ||
+      (r.matrix_birth_from_params?.trim() || null);
+    const subjectName =
+      r.matrix_subject_name?.trim() ||
+      r.matrix_name_from_params?.trim() ||
+      null;
+    return {
+      id: r.id,
+      intention: r.intention,
+      spread_type: r.spread_type,
+      spread_id: r.spread_id,
+      cards: parseSessionCards(r.cards),
+      status: r.status,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      message_count: Number(r.message_count ?? 0),
+      topic_summary: r.topic_summary,
+      key_cards: r.key_cards,
+      prediction: r.prediction,
+      matrix_subject_id: r.matrix_subject_id ?? null,
+      matrix_birth_date: birth,
+      matrix_subject_name: subjectName,
+      matrix_subject_kind: r.matrix_subject_kind ?? null,
+      reading_preview: r.reading_preview ?? null,
+      custom_question: r.custom_question?.trim() || null,
+    };
+  };
 
   return {
     active: activeRows[0] ? mapRow(activeRows[0]) : null,

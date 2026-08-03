@@ -293,6 +293,51 @@ async function llmOnce(
   return null;
 }
 
+/**
+ * Arcana-number fidelity: the zone's own number must appear (title or body), and any
+ * other 1–22 number mentioned next to an arcana-ish word must belong to this matrix.
+ * Otherwise the model swapped/invented an arcana and the block is unsafe to ship.
+ */
+function zoneHasForeignArcana(text: string, zone: MatrixZoneInstance, matrix: DestinyMatrixResult): boolean {
+  if (zone.number == null) return false;
+  const allowed = new Set<number>([
+    matrix.body.number,
+    matrix.energy.number,
+    matrix.roots.number,
+    matrix.comfort.number,
+    matrix.talents.number,
+    matrix.money.number,
+    matrix.relationships.number,
+    matrix.paternal.number,
+    matrix.maternal.number,
+    matrix.purpose.number,
+    matrix.skySpirit.number,
+    matrix.yearArcana.number,
+    matrix.monthArcana.number,
+    matrix.ageCurrent.number,
+    matrix.karmicTail[0].number,
+    matrix.karmicTail[1].number,
+    matrix.karmicTail[2].number,
+  ]);
+  if (matrix.ageNext) allowed.add(matrix.ageNext.number);
+  for (const p of matrix.agePoints) allowed.add(p.number);
+  for (const ch of matrix.channels) {
+    for (const p of ch.points) allowed.add(p.number);
+  }
+
+  const t = text.replace(/\*\*/g, "");
+  if (!new RegExp(`\\b${zone.number}\\b`).test(t)) return true;
+  for (const m of t.matchAll(/(\d{1,2})(?=\s*(?:[—–-]\s*)?[А-ЯЁA-Z][^\n]{0,40}(?:аркан|старш))/giu)) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= 22 && !allowed.has(n)) return true;
+  }
+  for (const m of t.matchAll(/аркан[а-яё]*\s*(?:№\s*)?(\d{1,2})/giu)) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= 22 && !allowed.has(n)) return true;
+  }
+  return false;
+}
+
 function looksBrokenZoneLlm(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
@@ -406,16 +451,23 @@ async function generateMatrixZoneLlm(
     ]
       .filter(Boolean)
       .join("\n");
-    const raw = await llmOnce(
-      [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      600,
-      zone.id
-    );
-    return raw ? normalizeZoneBlock(raw, zone) : null;
-  }
+  const raw = await llmOnce(
+    [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    600,
+    zone.id
+  );
+  return raw ? normalizeZoneBlock(raw, zone) : null;
+}
+
+/** LLM block is only usable when its arcana numbers match the engine for this matrix. */
+function zoneLlmFidelityOk(text: string, zone: MatrixZoneInstance, matrix: DestinyMatrixResult): boolean {
+  if (!zoneHasForeignArcana(text, zone, matrix)) return true;
+  console.warn(`[matrix-sectioned] zone reject arcana-fidelity label=${zone.label}`);
+  return false;
+}
 
   const system = [
     "Ты — Эвелина. Пишешь ОДНУ зону полной матрицы судьбы.",
@@ -452,7 +504,10 @@ async function generateMatrixZoneLlm(
     ZONE_MAX_TOKENS_FAST,
     zone.id
   );
-  return raw ? normalizeZoneBlock(raw, zone) : null;
+  if (!raw) return null;
+  const normalized = normalizeZoneBlock(raw, zone);
+  if (!normalized) return null;
+  return zoneLlmFidelityOk(normalized, zone, matrix) ? normalized : null;
 }
 
 async function mapInBatches<T, R>(

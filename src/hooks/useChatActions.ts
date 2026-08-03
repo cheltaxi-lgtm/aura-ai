@@ -284,7 +284,11 @@ export interface UseChatActionsOptions {
     numerologToolId?: NumerologToolId;
     numerologToolParams?: NumerologToolParams;
     matrixSubjectId?: string | null;
+    matrixBirthDate?: string | null;
+    subjectName?: string | null;
   } | null>;
+  setMatrixSessionBirthDate?: Dispatch<SetStateAction<string | null>>;
+  setMatrixSessionSubjectName?: Dispatch<SetStateAction<string | null>>;
   sendingRef: MutableRefObject<boolean>;
   archiveSessionIdRef: MutableRefObject<string | null>;
   exitingToSessionListRef: MutableRefObject<boolean>;
@@ -414,6 +418,8 @@ export function useChatActions(options: UseChatActionsOptions) {
     pendingNewChatThreadRef,
     pendingReadingMasterRef,
     sessionSpreadMetaRef,
+    setMatrixSessionBirthDate,
+    setMatrixSessionSubjectName,
     sendingRef,
     archiveSessionIdRef,
     exitingToSessionListRef,
@@ -594,7 +600,10 @@ export function useChatActions(options: UseChatActionsOptions) {
 
         // Full Matrix reuse is server-side (numerology_report_history) only.
         // Client savedReadings cache kept serving stale watery reports after DB purge.
-        const skipClientReadingCache = metaNumerologToolId === "destiny_matrix";
+        const skipClientReadingCache =
+          metaNumerologToolId === "destiny_matrix" ||
+          metaNumerologToolId === "child_matrix" ||
+          metaNumerologToolId === "matrix_year_forecast";
         const cachedReading =
           loadOptions?.force || skipClientReadingCache
             ? undefined
@@ -677,15 +686,27 @@ export function useChatActions(options: UseChatActionsOptions) {
         let matrixAlreadyOwned = false;
         const matrixSubjectIdForReading =
           sessionSpreadMetaRef.current?.matrixSubjectId?.trim() || "";
-        if (billingActive && isLoggedIn && metaNumerologToolId === "destiny_matrix") {
+        if (
+          billingActive &&
+          isLoggedIn &&
+          (metaNumerologToolId === "destiny_matrix" ||
+            metaNumerologToolId === "child_matrix" ||
+            metaNumerologToolId === "matrix_year_forecast")
+        ) {
           try {
             const subjectId = matrixSubjectIdForReading;
-            const birthRaw = activeProfile.birthDate?.trim();
+            const birthRaw =
+              sessionSpreadMetaRef.current?.matrixBirthDate?.trim() ||
+              activeProfile.birthDate?.trim();
             if (subjectId || birthRaw) {
+              const toolQuery =
+                metaNumerologToolId === "destiny_matrix"
+                  ? ""
+                  : `&toolId=${encodeURIComponent(metaNumerologToolId)}`;
               const ownedRes = await fetch(
                 subjectId
-                  ? `/api/numerology/matrix-report?subjectId=${encodeURIComponent(subjectId)}`
-                  : `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthRaw!)}`,
+                  ? `/api/numerology/matrix-report?subjectId=${encodeURIComponent(subjectId)}${toolQuery}`
+                  : `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthRaw!)}${toolQuery}`,
                 { credentials: "include" }
               );
               if (ownedRes.ok) {
@@ -699,7 +720,12 @@ export function useChatActions(options: UseChatActionsOptions) {
               }
             }
             // Metadata fallback (no full bodies) — same birth date only.
-            if (!matrixAlreadyOwned && birthRaw && !subjectId) {
+            if (
+              !matrixAlreadyOwned &&
+              birthRaw &&
+              !subjectId &&
+              metaNumerologToolId === "destiny_matrix"
+            ) {
               const listRes = await fetch(
                 `/api/numerology/matrix-report?list=1`,
                 { credentials: "include" }
@@ -709,6 +735,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                   reports?: Array<{
                     birthDate?: string;
                     hasContent?: boolean;
+                    legacyVersion?: boolean;
                     content?: string;
                   }>;
                 };
@@ -720,6 +747,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                       Boolean(String(r.content ?? "").trim());
                     return (
                       has &&
+                      r.legacyVersion !== true &&
                       (r.birthDate === birthKey || r.birthDate === birthRaw)
                     );
                   })
@@ -754,6 +782,8 @@ export function useChatActions(options: UseChatActionsOptions) {
         const controller = new AbortController();
         const isLongMatrix =
           metaNumerologToolId === "destiny_matrix" ||
+          metaNumerologToolId === "child_matrix" ||
+          metaNumerologToolId === "matrix_year_forecast" ||
           metaNumerologToolId === "matrix_compatibility";
         const timeout = setTimeout(
           () => controller.abort(),
@@ -910,7 +940,9 @@ export function useChatActions(options: UseChatActionsOptions) {
             !session.offline &&
             (typeof data.runeBalance === "number" ||
               data.matrixOwned === true ||
-              metaNumerologToolId === "destiny_matrix")
+              metaNumerologToolId === "destiny_matrix" ||
+              metaNumerologToolId === "child_matrix" ||
+              metaNumerologToolId === "matrix_year_forecast")
           ) {
             void refresh(session.sessionId);
           }
@@ -924,6 +956,8 @@ export function useChatActions(options: UseChatActionsOptions) {
             // Matrix reports are zone prose, not tarot card coverage — don't coerce via cardNames.
             const cleanedReading =
               metaNumerologToolId === "destiny_matrix" ||
+              metaNumerologToolId === "child_matrix" ||
+              metaNumerologToolId === "matrix_year_forecast" ||
               metaNumerologToolId === "matrix_compatibility"
                 ? coerceSpreadReadingText(readingText) || readingText.trim()
                 : coerceSpreadReadingText(readingText, cardNames);
@@ -996,7 +1030,11 @@ export function useChatActions(options: UseChatActionsOptions) {
         const matrixTimedOut =
           aborted &&
           (meta?.numerologToolId === "destiny_matrix" ||
-            String(meta?.spreadId || "").includes("destiny_matrix"));
+            meta?.numerologToolId === "child_matrix" ||
+            meta?.numerologToolId === "matrix_year_forecast" ||
+            String(meta?.spreadId || "").includes("destiny_matrix") ||
+            String(meta?.spreadId || "").includes("child_matrix") ||
+            String(meta?.spreadId || "").includes("matrix_year_forecast"));
         setMessages([
           {
             id: generateId(),
@@ -1140,6 +1178,8 @@ export function useChatActions(options: UseChatActionsOptions) {
         numerologToolId?: import("@/lib/numerology/tools").NumerologToolId | null;
         numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
         matrixSubjectId?: string | null;
+        matrixBirthDate?: string | null;
+        subjectName?: string | null;
         spread?:
           | {
               cards: { name: string; meaning?: string }[];
@@ -1153,6 +1193,22 @@ export function useChatActions(options: UseChatActionsOptions) {
       characterId: string
     ) => {
       if (characterId !== selectedCharacterRef.current) return;
+      const matrixBirthDate =
+        data.matrixBirthDate?.trim() ||
+        data.numerologToolParams?.matrixBirthDate?.trim() ||
+        null;
+      const subjectName =
+        data.subjectName?.trim() ||
+        data.numerologToolParams?.subjectName?.trim() ||
+        null;
+      const matrixSubjectId =
+        data.matrixSubjectId?.trim() ||
+        data.numerologToolParams?.matrixSubjectId?.trim() ||
+        null;
+      if (matrixBirthDate || matrixSubjectId || subjectName) {
+        if (matrixBirthDate) setMatrixSessionBirthDate?.(matrixBirthDate);
+        setMatrixSessionSubjectName?.(subjectName);
+      }
 
       const intention = normalizeSessionIntention(
         data.intention ?? data.spread?.intention ?? null
@@ -1221,8 +1277,10 @@ export function useChatActions(options: UseChatActionsOptions) {
                   numerologToolId,
                   numerologToolParams,
                   matrixSubjectId:
-                    data.matrixSubjectId ??
-                    sessionSpreadMetaRef.current?.matrixSubjectId,
+                    matrixSubjectId ?? sessionSpreadMetaRef.current?.matrixSubjectId,
+                  matrixBirthDate:
+                    matrixBirthDate ?? sessionSpreadMetaRef.current?.matrixBirthDate,
+                  subjectName: subjectName ?? sessionSpreadMetaRef.current?.subjectName,
                 }
               : {}),
           };
@@ -1240,7 +1298,10 @@ export function useChatActions(options: UseChatActionsOptions) {
           numerologToolId,
           numerologToolParams,
           matrixSubjectId:
-            data.matrixSubjectId ?? sessionSpreadMetaRef.current?.matrixSubjectId,
+            matrixSubjectId ?? sessionSpreadMetaRef.current?.matrixSubjectId,
+          matrixBirthDate:
+            matrixBirthDate ?? sessionSpreadMetaRef.current?.matrixBirthDate,
+          subjectName: subjectName ?? sessionSpreadMetaRef.current?.subjectName,
         };
       } else if (!readingInFlightRef.current) {
         sessionSpreadMetaRef.current = null;
@@ -1300,6 +1361,8 @@ export function useChatActions(options: UseChatActionsOptions) {
       applyRestoredChatSpread,
       setSessionIntention,
       sessionSpreadMetaRef,
+      setMatrixSessionBirthDate,
+      setMatrixSessionSubjectName,
       setIntentionSpread,
       setChatSessionSpread,
       setSpreadFlipped,
@@ -1648,7 +1711,13 @@ export function useChatActions(options: UseChatActionsOptions) {
     const numerologToolId = isNumerologMaster(selectedCharacter)
       ? resolveNumerologToolId(meta?.spreadId, meta?.numerologToolId)
       : null;
-    if (numerologToolId === "destiny_matrix") return;
+    if (
+      numerologToolId === "destiny_matrix" ||
+      numerologToolId === "child_matrix" ||
+      numerologToolId === "matrix_year_forecast"
+    ) {
+      return;
+    }
 
     const cardsForMaster = resolveSpreadCardsForReading({
       profile: activeProfile,

@@ -316,6 +316,7 @@ export class ChatOrchestrator {
       birthDate: orch.userProfile?.birthDate,
       spreadId: orch.session?.spread_id,
       requestSpreadId: orch.spreadId,
+      numerologToolParams: orch.session?.numerolog_tool_params ?? null,
     });
 
     return {

@@ -8203,6 +8203,26 @@ body.cookie-banner-visible .auth-salon-page .auth-form {
   overflow: hidden;
 }
 
+/* Compact matrix thumbnail in session history cards */
+.destiny-matrix--session-list {
+  max-width: 18rem;
+  transform: scale(0.92);
+  transform-origin: top left;
+  width: 108%;
+}
+.destiny-matrix--session-list .destiny-matrix {
+  margin-top: 0;
+}
+.destiny-matrix--session-list .destiny-matrix__name {
+  display: none;
+}
+.destiny-matrix--session-list .destiny-matrix__label {
+  font-size: 0.55rem;
+}
+.destiny-matrix--session-list .destiny-matrix__number {
+  font-size: 0.95rem;
+}
+
 /* ── Destiny matrix (22-arcana) reveal — matrix-v2 full ── */
 .destiny-matrix {
   display: grid;

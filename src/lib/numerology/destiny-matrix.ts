@@ -2,12 +2,28 @@ import { parseBirthDate, sumDigits } from "./constants";
 import { MAJOR_ARCANA } from "../tarot";
 
 /**
- * matrix-v2 — full popular 22-arcana destiny matrix (octagram zones).
+ * matrix-v3 — full popular 22-arcana destiny matrix (octagram zones).
  * Public-method adaptation (Ladini-school topology): corners, comfort center,
  * 3-point karmic tail, money/love/lineage channels, age belt, period arcs.
  * Not a licensed Ladini product — Zovus entertainment / self-reflection.
  */
-export const MATRIX_CALCULATION_VERSION = "matrix-v2" as const;
+export const MATRIX_CALCULATION_VERSION = "matrix-v3" as const;
+
+/** Versions whose stored numbers came from the pre-canonical digit-sum reducer. */
+export const MATRIX_LEGACY_CALCULATION_VERSIONS = ["matrix-v1", "matrix-v2"] as const;
+
+/**
+ * True when a saved report was computed with the old digit-sum reducer, so its
+ * numbers can no longer be reproduced. Such reports must be rebuilt for free.
+ * Period-scoped versions carry an "@year" suffix ("matrix-v2@2026").
+ */
+export function isLegacyMatrixCalculationVersion(
+  version: string | null | undefined
+): boolean {
+  const base = String(version ?? "").split("@")[0]?.trim();
+  if (!base) return false;
+  return (MATRIX_LEGACY_CALCULATION_VERSIONS as readonly string[]).includes(base);
+}
 
 export interface DestinyMatrixPoint {
   number: number;
@@ -69,6 +85,12 @@ export interface DestinyMatrixResult {
   channels: DestinyMatrixChannel[];
   focusKey: string;
   focusLabel: string;
+  /**
+   * Calendar anchor behind yearArcana / monthArcana / ageCurrent. Persist it with
+   * a saved reading and replay it via `asOfDate`, otherwise the diagram silently
+   * re-dates itself and stops matching the text.
+   */
+  asOf: { year: number; month: number; date: string };
 }
 
 /** Core keys used by older UI that only expects the v1 cross. */
@@ -98,11 +120,15 @@ export type DestinyMatrixOptions = {
 /**
  * Reduces any sum to the 1–22 range used by the 22-arcana method.
  * 0 wraps to 22 (Шут/The Fool).
+ *
+ * Canonical convention: subtract 22 until the value fits. Digit-sum folding
+ * (used up to matrix-v2) caps at 18 for any two-digit input, which made the
+ * high arcana unreachable and skewed the whole belt toward mid arcana.
  */
 export function reduceToArcanaNumber(n: number): number {
   let value = Math.abs(Math.trunc(n));
   while (value > 22) {
-    value = sumDigits(value);
+    value -= 22;
   }
   return value === 0 ? 22 : value;
 }
@@ -117,6 +143,9 @@ export function arcanaForNumber(n: number): DestinyMatrixPoint {
   };
 }
 
+/** The octagram age belt is a full 0–80 life cycle; 80 lands back on point A. */
+export const AGE_BELT_END = 80;
+
 function agePoint(age: number, n: number): DestinyMatrixAgePoint {
   const p = arcanaForNumber(n);
   return { age, number: p.number, arcanaName: p.arcanaName, arcanaMeaning: p.arcanaMeaning };
@@ -128,6 +157,13 @@ function yearsBetween(birth: { year: number; month: number; day: number }, asOf:
   const d = asOf.getDate();
   if (m < birth.month || (m === birth.month && d < birth.day)) age -= 1;
   return Math.max(0, age);
+}
+
+function toIsoDay(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function resolveAsOf(options?: DestinyMatrixOptions): {
@@ -179,13 +215,15 @@ function pickFocus(input: {
   tail: [number, number, number];
   ageN: number;
 }): { focusKey: string; focusLabel: string } {
+  // Age point leads without resonance: it is the literal marker of the period.
+  // A karmic/money/love point overtakes it only when it echoes the year arcana.
   const candidates: Array<{ key: string; n: number; weight: number }> = [
-    { key: "karma", n: input.tail[0], weight: 3 },
+    { key: "ageCurrent", n: input.ageN, weight: 3 },
+    { key: "karma", n: input.tail[0], weight: 2.6 },
     { key: "karmicMid", n: input.tail[1], weight: 2.5 },
-    { key: "karmicTip", n: input.tail[2], weight: 2 },
+    { key: "karmicTip", n: input.tail[2], weight: 2.4 },
     { key: "money", n: input.moneyN, weight: 2 },
     { key: "relationships", n: input.loveN, weight: 2 },
-    { key: "ageCurrent", n: input.ageN, weight: 2 },
     { key: "purpose", n: input.comfortN, weight: 1 },
     { key: "yearArcana", n: input.yearN, weight: 1.5 },
     { key: "monthArcana", n: input.monthN, weight: 1.5 },
@@ -194,8 +232,10 @@ function pickFocus(input: {
   let bestScore = -1;
   for (const c of candidates) {
     let score = c.weight;
-    if (c.n === input.yearN) score += 3;
-    if (c.n === input.monthN) score += 2;
+    // Resonance bonus only for personal points that echo the period arcana —
+    // the year/month candidates match themselves, so self-matches score 0.
+    if (c.key !== "yearArcana" && c.n === input.yearN) score += 3;
+    if (c.key !== "monthArcana" && c.n === input.monthN) score += 2;
     if (score > bestScore) {
       bestScore = score;
       best = c;
@@ -250,7 +290,7 @@ export function destinyMatrix(
   const monthArcanaN = reduceToArcanaNumber(yearArcanaN + asOf.month);
 
   // Age belt on octagram perimeter (corners every 10y, midpoints every +5).
-  // Order clockwise from character (A) = age 0.
+  // Order clockwise from character (A) = age 0; the belt closes at 80 back on A.
   const perimeter = [a, ab, b, bc, c, cg, g, ga];
   const agePoints: DestinyMatrixAgePoint[] = [];
   for (let i = 0; i < 8; i++) {
@@ -258,6 +298,7 @@ export function destinyMatrix(
     const mid = reduceToArcanaNumber(perimeter[i]! + perimeter[(i + 1) % 8]!);
     agePoints.push(agePoint(i * 10 + 5, mid));
   }
+  agePoints.push(agePoint(AGE_BELT_END, perimeter[0]!));
   agePoints.sort((p, q) => p.age - q.age);
 
   const chronologicalAge = yearsBetween(parsed, asOf.date);
@@ -353,6 +394,7 @@ export function destinyMatrix(
     channels,
     focusKey: focus.focusKey,
     focusLabel: focus.focusLabel,
+    asOf: { year: asOf.year, month: asOf.month, date: toIsoDay(asOf.date) },
   };
 }
 
@@ -410,6 +452,17 @@ export const DESTINY_MATRIX_DIAGRAM_SLOTS: Array<{
 
 export const DESTINY_MATRIX_UI_SLOT_COUNT = DESTINY_MATRIX_DIAGRAM_SLOTS.length;
 
+/**
+ * Freezes a stored reading's diagram to the day it was generated, so the year /
+ * month / age points keep matching the saved text instead of silently re-dating.
+ */
+export function matrixOptionsForTimestamp(
+  timestamp: string | null | undefined
+): DestinyMatrixOptions | undefined {
+  const day = timestamp?.slice(0, 10);
+  return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? { asOfDate: day } : undefined;
+}
+
 export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {
   return [
     `Матрица судьбы (${MATRIX_CALCULATION_VERSION}, полная, 22 аркана):`,
@@ -464,5 +517,6 @@ export function matrixToStructuredData(m: DestinyMatrixResult): Record<string, u
     })),
     focusKey: m.focusKey,
     focusLabel: m.focusLabel,
+    asOf: m.asOf,
   };
 }

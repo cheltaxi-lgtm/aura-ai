@@ -277,14 +277,93 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const numerologToolId = decodeNumerologSpreadId(sessionRow.spread_id);
+  let numerologToolParams = sessionRow.numerolog_tool_params ?? null;
+  let matrixSubjectId: string | null =
+    typeof numerologToolParams?.matrixSubjectId === "string"
+      ? numerologToolParams.matrixSubjectId
+      : null;
+  let matrixBirthDate: string | null =
+    typeof numerologToolParams?.matrixBirthDate === "string"
+      ? numerologToolParams.matrixBirthDate
+      : null;
+  let subjectName: string | null =
+    typeof numerologToolParams?.subjectName === "string"
+      ? numerologToolParams.subjectName
+      : null;
+  let subjectKind: string | null = null;
+
+  // Reopen must use the report's subject birth — profile DOB would show "my" grid for everyone.
+  if (
+    numerologToolId === "destiny_matrix" ||
+    numerologToolId === "child_matrix" ||
+    numerologToolId === "matrix_year_forecast"
+  ) {
+    try {
+      const { rows: reportRows } = await query<{
+        subject_id: string | null;
+        birth_date: Date | string;
+        display_name: string | null;
+        kind: string | null;
+      }>(
+        `SELECT n.subject_id, n.birth_date, s.display_name, s.kind
+         FROM numerology_report_history n
+         LEFT JOIN matrix_subjects s ON s.id = n.subject_id
+         WHERE n.user_id = $1
+           AND n.session_id = $2::uuid
+           AND n.tool_id = $3
+           AND length(trim(n.content)) > 0
+         ORDER BY n.created_at DESC
+         LIMIT 1`,
+        [profileUserId, sessionRow.id, numerologToolId]
+      );
+      const report = reportRows[0];
+      if (report) {
+        const birth =
+          typeof report.birth_date === "string"
+            ? report.birth_date.slice(0, 10)
+            : `${report.birth_date.getUTCFullYear()}-${String(report.birth_date.getUTCMonth() + 1).padStart(2, "0")}-${String(report.birth_date.getUTCDate()).padStart(2, "0")}`;
+        matrixSubjectId = report.subject_id ?? matrixSubjectId;
+        matrixBirthDate = birth || matrixBirthDate;
+        subjectName = report.display_name ?? subjectName;
+        subjectKind = report.kind;
+        numerologToolParams = {
+          ...(numerologToolParams ?? {}),
+          ...(matrixSubjectId ? { matrixSubjectId } : {}),
+          ...(matrixBirthDate ? { matrixBirthDate } : {}),
+          ...(subjectName ? { subjectName } : {}),
+        };
+        // Backfill legacy sessions that never stored subject params.
+        if (!sessionRow.numerolog_tool_params?.matrixBirthDate && matrixBirthDate) {
+          void updateSessionChatMeta(sessionRow.id, {
+            numerologToolParams,
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn("[chat/history] matrix subject enrich failed:", err);
+    }
+  }
+
   return NextResponse.json({
     sessionId: sessionRow.id,
     intention: sessionRow.intention ?? null,
     spreadType: sessionRow.spread_type ?? null,
     spreadId: sessionRow.spread_id ?? null,
     cards: sessionRow.cards ?? null,
-    numerologToolId: decodeNumerologSpreadId(sessionRow.spread_id),
-    numerologToolParams: sessionRow.numerolog_tool_params ?? null,
+    numerologToolId,
+    numerologToolParams,
+    matrixSubjectId,
+    matrixBirthDate,
+    subjectName,
+    subjectKind,
+    // Anchors the matrix diagram to the day the reading was made.
+    sessionCreatedAt:
+      sessionRow.created_at instanceof Date
+        ? sessionRow.created_at.toISOString()
+        : sessionRow.created_at
+          ? String(sessionRow.created_at)
+          : null,
     status: sessionRow.status ?? "active",
     messages,
     pastSessions: [],

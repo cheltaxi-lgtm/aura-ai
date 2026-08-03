@@ -49,6 +49,8 @@ export interface CabinetSessionRow {
   sessionDate: string;
   createdAt: string;
   topicSummary: string;
+  /** Free-form client question (custom spreads) — prefer over generic topic labels. */
+  customQuestion?: string | null;
   intention?: string | null;
   spreadId?: string | null;
   spreadType?: string | null;
@@ -56,6 +58,9 @@ export interface CabinetSessionRow {
   prediction: string;
   mood: string | null;
   outcomeRating: number | null;
+  matrixBirthDate?: string | null;
+  matrixSubjectName?: string | null;
+  matrixSubjectKind?: string | null;
 }
 
 export interface CabinetAchievementEarned {
@@ -300,6 +305,7 @@ export async function getCabinetSessions(
       character_key: string;
       session_date: Date;
       topic_summary: string | null;
+      custom_question: string | null;
       intention: string | null;
       spread_id: string | null;
       spread_type: string | null;
@@ -311,6 +317,9 @@ export async function getCabinetSessions(
       outcome_rating: number | null;
       created_at: Date;
       status: string;
+      matrix_birth_date: Date | string | null;
+      matrix_subject_name: string | null;
+      matrix_subject_kind: string | null;
     }>(
       `WITH last_assistant AS (
          SELECT DISTINCT ON (cm.session_id)
@@ -327,6 +336,15 @@ export async function getCabinetSessions(
          s.character_key,
          COALESCE(sm.session_date, s.updated_at, s.created_at) AS session_date,
          sm.topic_summary,
+         (
+           SELECT NULLIF(TRIM(h.context_data->>'customQuestion'), '')
+           FROM history h
+           WHERE h.user_id = s.user_id
+             AND h.context_data->>'sessionId' = s.id::text
+             AND NULLIF(TRIM(h.context_data->>'customQuestion'), '') IS NOT NULL
+           ORDER BY h.created_at DESC
+           LIMIT 1
+         ) AS custom_question,
          s.intention,
          s.spread_id,
          s.spread_type,
@@ -337,10 +355,24 @@ export async function getCabinetSessions(
          sm.mood,
          sm.outcome_rating,
          COALESCE(sm.created_at, s.created_at) AS created_at,
-         COALESCE(s.status, 'active') AS status
+         COALESCE(s.status, 'active') AS status,
+         n.birth_date AS matrix_birth_date,
+         ms.display_name AS matrix_subject_name,
+         ms.kind AS matrix_subject_kind
        FROM sessions s
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id
        LEFT JOIN last_assistant la ON la.session_id = s.id
+       LEFT JOIN LATERAL (
+         SELECT nr.subject_id, nr.birth_date
+         FROM numerology_report_history nr
+         WHERE nr.session_id = s.id
+           AND nr.user_id = s.user_id
+           AND nr.tool_id IN ('destiny_matrix', 'child_matrix', 'matrix_year_forecast')
+           AND length(trim(nr.content)) > 0
+         ORDER BY nr.created_at DESC
+         LIMIT 1
+       ) n ON TRUE
+       LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
        WHERE s.user_id = $1
          AND s.character_key IS NOT NULL
          AND TRIM(s.character_key) <> ''
@@ -439,13 +471,37 @@ export async function getCabinetSessions(
             r.last_assistant?.trim() ||
             "Сеанс завершён";
 
+    const customQuestion = r.custom_question?.trim() || null;
+    const rawTopic = r.topic_summary?.trim() || "";
+    const topicLooksLikeQuestion =
+      rawTopic.length >= 8 &&
+      rawTopic !== "Свой вопрос" &&
+      rawTopic !== topicFromIntention &&
+      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня"].includes(rawTopic);
+    const resolvedQuestion =
+      customQuestion ||
+      (r.intention === "custom" && topicLooksLikeQuestion ? rawTopic : null) ||
+      (topicLooksLikeQuestion ? rawTopic : null);
+    const topicSummary =
+      resolvedQuestion ||
+      (rawTopic && rawTopic !== "Свой вопрос" ? rawTopic : "") ||
+      topicFromIntention;
+
+    const matrixBirth =
+      typeof r.matrix_birth_date === "string"
+        ? r.matrix_birth_date.slice(0, 10)
+        : r.matrix_birth_date
+          ? `${r.matrix_birth_date.getUTCFullYear()}-${String(r.matrix_birth_date.getUTCMonth() + 1).padStart(2, "0")}-${String(r.matrix_birth_date.getUTCDate()).padStart(2, "0")}`
+          : null;
+
     return {
       id: r.id,
       sessionId: r.session_id,
       characterKey: r.character_key,
       sessionDate: r.session_date.toISOString(),
       createdAt: r.created_at.toISOString(),
-      topicSummary: r.topic_summary?.trim() || topicFromIntention,
+      topicSummary,
+      customQuestion: resolvedQuestion,
       intention: r.intention,
       spreadId: r.spread_id,
       spreadType: r.spread_type,
@@ -453,6 +509,9 @@ export async function getCabinetSessions(
       prediction,
       mood: r.mood,
       outcomeRating: r.outcome_rating,
+      matrixBirthDate: matrixBirth,
+      matrixSubjectName: r.matrix_subject_name?.trim() || null,
+      matrixSubjectKind: r.matrix_subject_kind ?? null,
     };
   });
 

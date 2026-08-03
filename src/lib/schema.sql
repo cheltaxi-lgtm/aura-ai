@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   spread_type TEXT,
   spread_id TEXT,
   cards JSONB,
+  numerolog_tool_params JSONB,
   memory_read_mode TEXT NOT NULL DEFAULT 'default'
     CHECK (memory_read_mode IN ('default', 'fresh')),
   status TEXT NOT NULL DEFAULT 'active'
