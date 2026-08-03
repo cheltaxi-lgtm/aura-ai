@@ -134,9 +134,19 @@ if [ -f "$TARBALL" ]; then
     --exclude='telegram-bot/backups/' \
     "$STAGE/" /opt/aura-ai/
   # Windows tar often packs modes as 666/777 — harden before the app starts.
+  # Skip node_modules trees: a blanket 644 strips +x from .bin/tsx and esbuild,
+  # and we no longer reinstall into the live tree before smoke tests.
   echo ">>> Hardening /opt/aura-ai file modes..."
-  find /opt/aura-ai -type d -exec chmod 755 {} +
-  find /opt/aura-ai -type f -exec chmod 644 {} +
+  find /opt/aura-ai -type d \
+    -not -path '/opt/aura-ai/node_modules*' \
+    -not -path '/opt/aura-ai/telegram-bot/node_modules*' \
+    -not -path '/opt/aura-ai/.build-staging*' \
+    -exec chmod 755 {} +
+  find /opt/aura-ai -type f \
+    -not -path '/opt/aura-ai/node_modules*' \
+    -not -path '/opt/aura-ai/telegram-bot/node_modules*' \
+    -not -path '/opt/aura-ai/.build-staging*' \
+    -exec chmod 644 {} +
   find /opt/aura-ai/proxmox-setup -type f -name '*.sh' -exec chmod 750 {} +
   find /opt/aura-ai/hosting -type f \( -name '*.sh' -o -name '*.ps1' \) -exec chmod 750 {} + 2>/dev/null || true
   echo ">>> Verifying installed GeoNames index after rsync..."
@@ -429,7 +439,13 @@ set -a
 # shellcheck disable=SC1090
 source <(grep -E '^(DATABASE_URL|OPENROUTER_API_KEY|OPENROUTER_HTTPS_PROXY|MEMORY_EMBED_MODEL)=' "$ENV_FILE" | sed 's/\r$//')
 set +a
-if ! npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts; then
+# Prefer the candidate tree: it is what we are about to activate, and the live
+# node_modules may already have had +x stripped by an older hardening pass.
+_SMOKE_TSX="/opt/aura-ai/node_modules-candidate/.bin/tsx"
+if [ ! -x "$_SMOKE_TSX" ]; then
+  _SMOKE_TSX="/opt/aura-ai/node_modules/.bin/tsx"
+fi
+if ! "$_SMOKE_TSX" /opt/aura-ai/scripts/memory-smoke-test.ts; then
   if [ "${STRICT_MEMORY_SMOKE:-1}" = "1" ]; then
     echo "ERROR: memory smoke failed in strict mode; active build was not touched"
     DEPLOY_STATUS="memory_smoke_failed"
@@ -437,6 +453,7 @@ if ! npx tsx /opt/aura-ai/scripts/memory-smoke-test.ts; then
   fi
   echo "WARN: memory smoke failed; candidate may activate, availability health check still gates it"
 fi
+unset _SMOKE_TSX
 
 echo ">>> Seed admin..."
 read_env_var() {
