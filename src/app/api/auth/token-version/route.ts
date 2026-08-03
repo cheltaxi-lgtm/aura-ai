@@ -33,7 +33,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, reason: "unavailable" }, { status: 503 });
   }
 
-  const claimed = payload.tv ?? 0;
+  const claimed = Number(payload.tv ?? 0) || 0;
   if (claimed !== dbTv) {
     return NextResponse.json(
       { ok: false, reason: "revoked", sub: payload.sub, tv: claimed, dbTv },
