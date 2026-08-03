@@ -21,16 +21,13 @@ export function reportError(
 
   const dsn = process.env.SENTRY_DSN?.trim();
   if (dsn) {
-    try {
-      // Optional peer — avoid hard dependency until Sentry is installed.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Sentry = require("@sentry/nextjs") as {
-        captureException?: (err: unknown, hint?: { extra?: Record<string, unknown> }) => void;
-      };
-      Sentry.captureException?.(error, { extra: context });
-    } catch {
-      /* Sentry not installed */
-    }
+    void import("@sentry/nextjs")
+      .then((Sentry) => {
+        Sentry.captureException(error, { extra: context });
+      })
+      .catch(() => {
+        /* Sentry unavailable */
+      });
   }
 
   const webhook = process.env.ERROR_WEBHOOK_URL?.trim();

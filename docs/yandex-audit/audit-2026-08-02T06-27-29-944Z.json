@@ -1,0 +1,192 @@
+{
+  "at": "2026-08-02T06:27:26.757Z",
+  "base": "https://zovus.ru",
+  "webmaster": {
+    "userId": 112696101,
+    "summary": {
+      "status": 200,
+      "body": {
+        "sqi": 0,
+        "excluded_pages_count": 0,
+        "searchable_pages_count": 95,
+        "site_problems": {
+          "RECOMMENDATION": 1
+        }
+      }
+    },
+    "sitemaps": {
+      "status": 200,
+      "body": {
+        "sitemaps": [
+          {
+            "sitemap_id": "9c6d6b10-fb44-3723-bad1-c51fc829d01d",
+            "sitemap_url": "https://zovus.ru/sitemap.xml",
+            "added_date": "2026-07-10T06:07:29.189+03:00"
+          }
+        ],
+        "count": 1
+      }
+    },
+    "recrawlQuota": {
+      "status": 200,
+      "body": {
+        "daily_quota": 150,
+        "quota_remainder": 150
+      }
+    },
+    "queries_TOTAL_CLICKS": {
+      "status": 200,
+      "top": [
+        {
+          "query": "расшифровка таро по фото онлайн бесплатно",
+          "value": 3
+        },
+        {
+          "query": "таро руна совместимость искусственный интеллект",
+          "value": 2
+        },
+        {
+          "query": "лиса и медведь ленорман",
+          "value": 2
+        },
+        {
+          "query": "таро прогноз на 2 -ое полугодие 2026 для рака",
+          "value": 1
+        },
+        {
+          "query": "рак август 2026 таро прогноз",
+          "value": 1
+        },
+        {
+          "query": "парное значение карт ленорман",
+          "value": 1
+        },
+        {
+          "query": "таро расклады смотреть бесплатно",
+          "value": 1
+        },
+        {
+          "query": "получу ли я премию ? погадать",
+          "value": 1
+        },
+        {
+          "query": "таро трансформации новые расклады",
+          "value": 1
+        },
+        {
+          "query": "свободен или нет загаданный мужчина",
+          "value": 1
+        }
+      ]
+    },
+    "queries_TOTAL_SHOWS": {
+      "status": 200,
+      "top": [
+        {
+          "query": "лиса и медведь ленорман",
+          "value": 11
+        },
+        {
+          "query": "расшифровка расклада таро по фото онлайн бесплатно",
+          "value": 10
+        },
+        {
+          "query": "ждать или отпустить таро",
+          "value": 5
+        },
+        {
+          "query": "таро руна совместимость искусственный интеллект",
+          "value": 4
+        },
+        {
+          "query": "расшифровка таро по фото онлайн бесплатно",
+          "value": 4
+        },
+        {
+          "query": "ждать или забыть гадание",
+          "value": 4
+        },
+        {
+          "query": "расшифровать расклад по фото",
+          "value": 4
+        },
+        {
+          "query": "рак таро август 2026",
+          "value": 4
+        },
+        {
+          "query": "расшифровка расклада таро онлайн по фото",
+          "value": 4
+        },
+        {
+          "query": "меркстав",
+          "value": 4
+        }
+      ]
+    },
+    "queries_AVG_SHOW_POSITION": {
+      "status": 400,
+      "top": []
+    }
+  },
+  "metrika": {
+    "status": 200,
+    "id": 110138367,
+    "name": "Zovus",
+    "site": "zovus.ru",
+    "code_status": "CS_ERR_UNKNOWN",
+    "permission": "own"
+  },
+  "direct": {
+    "http": 200,
+    "sandbox": true,
+    "login": "cheldriver",
+    "units": null,
+    "error": {
+      "request_id": "5403215598887717363",
+      "error_code": 513,
+      "error_detail": "",
+      "error_string": "Ваш логин не подключен к Яндекс.Директу"
+    },
+    "campaigns": [],
+    "balanceHttp": 404,
+    "balance": {}
+  },
+  "site": {
+    "/": {
+      "status": 200,
+      "needles": {
+        "yandex-verification": true,
+        "7902ba7dfdb76ac3": true
+      }
+    },
+    "/telegram": {
+      "status": 404,
+      "needles": {
+        "zovus_card_bot": false,
+        "t.me/": false
+      }
+    },
+    "/robots.txt": {
+      "status": 200,
+      "needles": {
+        "Sitemap:": true,
+        "Host:": true
+      }
+    },
+    "/sitemap.xml": {
+      "status": 200,
+      "needles": {
+        "/telegram": false
+      }
+    },
+    "/107274032904532db6ae0e4b2f39c4b3.txt": {
+      "status": 200,
+      "needles": {
+        "107274032904532db6ae0e4b2f39c4b3": true
+      }
+    }
+  },
+  "recrawl": [],
+  "errors": []
+}
