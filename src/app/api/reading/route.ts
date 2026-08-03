@@ -16,8 +16,10 @@ import {
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
+  chargeRuneActionForWorkerJob,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
+  trackWorkerJobRefunded,
 } from "@/lib/async-job-lifecycle";
 import { mergeAsyncJobPeriodMetadata } from "@/lib/async-jobs";
 import {
@@ -89,10 +91,14 @@ import {
   matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
 import {
-  findOwnedMatrixReport,
+  deleteOwnedMatrixReportsForBirth,
+  findUsableOwnedMatrixReport,
+  lookupOwnedMatrixReport,
   MATRIX_REPORT_TOOL_ID,
   saveMatrixReport,
+  toIsoBirthDate as toIsoBirthDateShared,
 } from "@/lib/services/numerology-report-service";
+import { purgeMatrixConsultationSessions } from "@/lib/numerology/matrix-session-cleanup";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import {
   periodSpreadPositions,
@@ -342,15 +348,16 @@ export async function POST(request: NextRequest) {
     requestNumerologToolId === MATRIX_REPORT_TOOL_ID &&
     (await ensureDb())
   ) {
-    const { toIsoBirthDate } = await import("@/lib/services/numerology-report-service");
     const isoBirth =
-      toIsoBirthDate(birthDate) ?? toIsoBirthDate(String(birthDate).slice(0, 10));
-    const owned = await findOwnedMatrixReport(
+      toIsoBirthDateShared(birthDate) ??
+      toIsoBirthDateShared(String(birthDate).slice(0, 10));
+    const owned = await findUsableOwnedMatrixReport(
       authed.profileUserId,
       isoBirth ?? birthDate
     );
     if (owned?.content?.trim()) {
       const reading = owned.content.trim();
+      let historyId: string | undefined;
       if (sessionId) {
         try {
           await persistReadingToSession({
@@ -368,10 +375,33 @@ export async function POST(request: NextRequest) {
           console.warn("Owned matrix reading chat save failed:", err);
         }
       }
+      try {
+        const entry = await createHistoryEntry({
+          userId: authed.profileUserId,
+          characterName: characterId,
+          contextData: {
+            type: "reading",
+            reading,
+            tarotCards,
+            deckSystem: resolveMasterDeckSystem(characterId),
+            userName,
+            birthDate: isoBirth ?? birthDate,
+            numerologToolId: MATRIX_REPORT_TOOL_ID,
+            matrixOwned: true,
+            reportId: owned.id,
+            ...(sessionId ? { sessionId } : {}),
+          },
+          isPaid: true,
+        });
+        historyId = entry.id;
+      } catch (err) {
+        console.warn("Owned matrix history entry failed:", err);
+      }
       return NextResponse.json({
         reading,
         isPaid: true,
-        historyId: owned.id,
+        historyId,
+        reportId: owned.id,
         reused: true,
         matrixOwned: true,
         createdAt: owned.createdAt || new Date().toISOString(),
@@ -384,10 +414,17 @@ export async function POST(request: NextRequest) {
       isNumerologMaster(characterId) &&
       (requestNumerologToolId === "destiny_matrix" ||
         requestNumerologToolId === "matrix_compatibility");
+    const isoBirthForJob =
+      toIsoBirthDateShared(birthDate) ??
+      toIsoBirthDateShared(String(birthDate ?? "").slice(0, 10));
     return enqueuePaidAsyncJob({
       userId: authed.profileUserId,
       kind: longNumerology ? "numerology_reading" : "reading",
-      payload: { ...rawBody, async: false },
+      payload: {
+        ...rawBody,
+        async: false,
+        ...(isoBirthForJob ? { birthDate: isoBirthForJob } : {}),
+      },
       bypassDeliveryGate: true,
     });
   }
@@ -673,39 +710,64 @@ export async function POST(request: NextRequest) {
           | import("@/lib/numerology/matrix-reading-document").MatrixReadingDocument
           | undefined;
 
-        // Buy-once Full Matrix: reopen saved AI report for THIS birth date only.
-        if (isDestinyMatrix && (await ensureDb())) {
-          const { toIsoBirthDate } = await import("@/lib/services/numerology-report-service");
+        // Buy-once Full Matrix: reopen usable saved AI report for THIS birth date only.
+        // forceRegenerate / unusable (leaked) content must not short-circuit.
+        let matrixRegenerateAfterLeak = false;
+        if (isDestinyMatrix && !forceRegenerate && (await ensureDb())) {
           const isoBirth =
-            toIsoBirthDate(birthDate) ?? toIsoBirthDate(String(birthDate).slice(0, 10));
-          const owned = await findOwnedMatrixReport(
+            toIsoBirthDateShared(birthDate) ??
+            toIsoBirthDateShared(String(birthDate).slice(0, 10));
+          const lookup = await lookupOwnedMatrixReport(
             authed.profileUserId,
             isoBirth ?? birthDate
           );
-          if (owned?.content?.trim()) {
+          if (lookup.usable && lookup.report?.content?.trim()) {
+            const owned = lookup.report;
             reading = owned.content;
             isPaid = true;
-            if (await ensureDb()) {
-              try {
-                await persistReadingToSession({
-                  sessionId,
-                  profileUserId: authed.profileUserId,
-                  characterId,
-                  customQuestion: customQuestion || undefined,
+            let reopenHistoryId: string | undefined;
+            try {
+              await persistReadingToSession({
+                sessionId,
+                profileUserId: authed.profileUserId,
+                characterId,
+                customQuestion: customQuestion || undefined,
+                reading,
+                tarotCards,
+                intention: intention || undefined,
+                spreadType: isDailySpread ? "daily" : "new",
+                spreadId: storedSpreadId,
+              });
+            } catch (err) {
+              console.warn("Reading chat save failed:", err);
+            }
+            try {
+              const entry = await createHistoryEntry({
+                userId: authed.profileUserId,
+                characterName: characterId,
+                contextData: {
+                  type: "reading",
                   reading,
                   tarotCards,
-                  intention: intention || undefined,
-                  spreadType: isDailySpread ? "daily" : "new",
-                  spreadId: storedSpreadId,
-                });
-              } catch (err) {
-                console.warn("Reading chat save failed:", err);
-              }
+                  deckSystem: resolveMasterDeckSystem(characterId),
+                  userName,
+                  birthDate: isoBirth ?? birthDate,
+                  numerologToolId: toolId,
+                  matrixOwned: true,
+                  reportId: owned.id,
+                  ...(sessionId ? { sessionId } : {}),
+                },
+                isPaid: true,
+              });
+              reopenHistoryId = entry.id;
+            } catch (err) {
+              console.warn("Owned matrix history entry failed:", err);
             }
             return {
               kind: "new" as const,
               reading,
-              historyId: owned.id,
+              historyId: reopenHistoryId,
+              reportId: owned.id,
               isPaid: true,
               runeBalance: undefined,
               numerologyUi,
@@ -713,29 +775,33 @@ export async function POST(request: NextRequest) {
               matrixOwned: true,
             };
           }
+          // Bad/leaked owned report: wipe once, then regenerate free (bot parity).
+          if (lookup.unusable && lookup.report) {
+            matrixRegenerateAfterLeak = true;
+            const wiped = await deleteOwnedMatrixReportsForBirth(
+              authed.profileUserId,
+              isoBirth ?? birthDate
+            );
+            await purgeMatrixConsultationSessions(
+              authed.profileUserId,
+              wiped.sessionIds
+            );
+          }
         }
 
         const runeSettings = await getRuneSettings();
-        // Skip charge only when this birth date already has a saved full report.
-        let matrixOwnedSkipCharge = false;
-        if (isDestinyMatrix && (await ensureDb())) {
-          const ownedRow = await findOwnedMatrixReport(authed.profileUserId, birthDate);
-          matrixOwnedSkipCharge = Boolean(ownedRow?.content?.trim());
-        }
         const useRuneBilling =
           !isDailySpread &&
-          !matrixOwnedSkipCharge &&
+          !matrixRegenerateAfterLeak &&
           isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
 
         if (useRuneBilling) {
           try {
-            const charge = await BillingService.chargeForSession({
+            // Worker-aware charge: links ledger to async_jobs and reuses on requeue.
+            const charge = await chargeRuneActionForWorkerJob({
+              request,
               userId: authed.profileUserId,
-              cost: tool.cost,
-              actionType: "NUMEROLOGY_SESSION",
-              description: isDestinyMatrix
-                ? `Матрица судьбы — полный разбор Эвелины`
-                : `${tool.label} (Эвелина)`,
+              action: "NUMEROLOGY_SESSION",
             });
             billingCharge = charge;
             runeBalance = charge.newBalance;
@@ -815,6 +881,7 @@ export async function POST(request: NextRequest) {
               actionType: "NUMEROLOGY_SESSION",
               transactionId: billingCharge.transactionId,
             });
+            await trackWorkerJobRefunded(request);
             billingCharge = null;
             spentRunes = 0;
           }
@@ -823,6 +890,21 @@ export async function POST(request: NextRequest) {
 
         if (isDestinyMatrix && (await ensureDb())) {
           try {
+            if (!(await beginWorkerJobSave(request))) {
+              if (billingCharge) {
+                await BillingService.rollbackCharge({
+                  userId: authed.profileUserId,
+                  cost: billingCharge.spentRunes,
+                  wasFreeQuestion: false,
+                  actionType: "NUMEROLOGY_SESSION",
+                  transactionId: billingCharge.transactionId,
+                });
+                await trackWorkerJobRefunded(request);
+                billingCharge = null;
+                spentRunes = 0;
+              }
+              return { kind: "failed" as const };
+            }
             const matrix = birthDate ? destinyMatrix(birthDate) : null;
             const {
               isUsableMatrixReading,
@@ -876,6 +958,7 @@ export async function POST(request: NextRequest) {
                   actionType: "NUMEROLOGY_SESSION",
                   transactionId: billingCharge.transactionId,
                 });
+                await trackWorkerJobRefunded(request);
                 runeBalance = undefined;
                 spentRunes = 0;
                 billingCharge = null;
@@ -892,6 +975,7 @@ export async function POST(request: NextRequest) {
                 actionType: "NUMEROLOGY_SESSION",
                 transactionId: billingCharge.transactionId,
               });
+              await trackWorkerJobRefunded(request);
               billingCharge = null;
               spentRunes = 0;
             }
@@ -1230,6 +1314,9 @@ export async function POST(request: NextRequest) {
       runeBalance: lockedResult.runeBalance,
       spreadId: storedSpreadId,
       createdAt: new Date().toISOString(),
+      ...("reportId" in lockedResult && lockedResult.reportId
+        ? { reportId: lockedResult.reportId }
+        : {}),
       ...("reused" in lockedResult && lockedResult.reused ? { reused: true } : {}),
       ...("matrixOwned" in lockedResult && lockedResult.matrixOwned
         ? { matrixOwned: true }
@@ -1244,14 +1331,20 @@ export async function POST(request: NextRequest) {
     console.error("Reading error:", error);
     const { reportError } = await import("@/lib/error-report");
     reportError(error, { route: "reading", spentRunes });
-    if (spentRunes > 0) {
+    // CFA in catch can narrow billingCharge to never; snapshot via alias.
+    const chargeToRefund = billingCharge as BillingChargeResult | null;
+    if (spentRunes > 0 || chargeToRefund) {
       try {
         await BillingService.rollbackCharge({
           userId: authed.profileUserId,
-          cost: spentRunes,
-          wasFreeQuestion: false,
-          actionType: "READING",
+          cost: chargeToRefund?.spentRunes ?? spentRunes,
+          wasFreeQuestion: chargeToRefund?.wasFreeQuestion ?? false,
+          actionType:
+            chargeToRefund?.actionType ??
+            (isNumerologMaster(characterId) ? "NUMEROLOGY_SESSION" : "READING"),
+          transactionId: chargeToRefund?.transactionId,
         });
+        await trackWorkerJobRefunded(request);
       } catch (refundErr) {
         console.error("Reading refund failed:", refundErr);
         reportError(refundErr, { route: "reading", stage: "refund" });

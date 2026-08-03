@@ -43,6 +43,9 @@ export async function purgeMatrixConsultationSessions(
 ): Promise<number> {
   const wanted = new Set(sessionIds.filter((id) => Boolean(id?.trim())));
 
+  // Orphan = matrix chat not linked to any remaining owned report for this user.
+  // Scoped by session_id so wiping birth date A does not keep stale chats when
+  // the user still owns a report for birth date B.
   const { rows: orphans } = await query<{ id: string }>(
     `SELECT s.id
      FROM sessions s
@@ -54,6 +57,7 @@ export async function purgeMatrixConsultationSessions(
          WHERE n.user_id = s.user_id
            AND n.tool_id = $2
            AND length(trim(n.content)) > 0
+           AND n.session_id = s.id
        )`,
     [profileUserId, MATRIX_REPORT_TOOL_ID]
   );
@@ -153,6 +157,8 @@ export async function wipeMatrixOwnershipForSession(input: {
   sessionId: string;
   /** Profile birth date fallback when report.session_id was stale. */
   profileBirthDate?: string | null;
+  /** When false, skip profile-birth wipe (caller did not confirm matrix session). */
+  isMatrixSession?: boolean;
 }): Promise<WipeMatrixResult> {
   const birthDates = new Set<string>();
 
@@ -179,8 +185,12 @@ export async function wipeMatrixOwnershipForSession(input: {
   }
 
   const profileIso = toIsoBirthDate(input.profileBirthDate);
-  if (profileIso && birthDates.size === 0) {
-    // Stale session_id on report: still wipe profile birth matrix if this is a matrix chat.
+  if (
+    profileIso &&
+    birthDates.size === 0 &&
+    input.isMatrixSession !== false
+  ) {
+    // Stale session_id on report: wipe profile birth only for confirmed matrix chats.
     birthDates.add(profileIso);
   }
 

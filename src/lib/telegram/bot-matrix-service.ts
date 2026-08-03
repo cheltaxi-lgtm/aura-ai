@@ -213,6 +213,7 @@ export async function botMatrixList(telegramUserId: number) {
   if (!gate.ok) return gate;
 
   const reports = await listUserMatrixReports(gate.resolved.profileUserId!, 20);
+  const cost = getNumerologTool("destiny_matrix").cost || PRICING.NUMEROLOGY_SESSION;
   return {
     ok: true as const,
     action: "list" as const,
@@ -224,6 +225,8 @@ export async function botMatrixList(telegramUserId: number) {
       sessionId: r.sessionId,
       runeCost: r.runeCost,
     })),
+    cost,
+    sessionCost: cost,
     url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=numerology`,
   };
 }

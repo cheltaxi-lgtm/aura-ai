@@ -349,7 +349,7 @@ export async function getCabinetSessions(
            AND COALESCE(sm.prediction, 'Сеанс в процессе') = 'Сеанс в процессе'
            AND COALESCE(NULLIF(TRIM(s.intention), ''), '') = ''
          )
-         /* Matrix: hide sessions when user has no owned matrix report left */
+         /* Matrix: hide sessions not linked to an owned report for this session */
          AND NOT (
            (
              COALESCE(s.spread_id, '') IN ('destiny_matrix', 'numerolog:destiny_matrix')
@@ -361,6 +361,7 @@ export async function getCabinetSessions(
              WHERE n.user_id = s.user_id
                AND n.tool_id = 'destiny_matrix'
                AND length(trim(n.content)) > 0
+               AND n.session_id = s.id
            )
          )
          /* Photo: hide sessions whose photo_reading history row is gone */
@@ -400,6 +401,7 @@ export async function getCabinetSessions(
              WHERE n.user_id = s.user_id
                AND n.tool_id = 'destiny_matrix'
                AND length(trim(n.content)) > 0
+               AND n.session_id = s.id
            )
          )
          AND NOT (
@@ -737,6 +739,7 @@ async function deleteSessionWithMatrixWipe(
       userId,
       sessionId,
       profileBirthDate: profileRows[0]?.birth_date ?? null,
+      isMatrixSession: true,
     });
   }
 

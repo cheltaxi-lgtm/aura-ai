@@ -411,8 +411,14 @@ export async function showMatrixReports(ctx: Context): Promise<void> {
     }
     const items = (data.items || []) as MatrixListItem[];
     if (!items.length) {
+      const emptyCost = Number(
+        (data as { cost?: number; sessionCost?: number }).cost ??
+          (data as { sessionCost?: number }).sessionCost
+      );
       await ctx.reply(copy.matrixReportsEmpty, {
-        reply_markup: matrixGetKeyboard({ cost: 20 }),
+        reply_markup: matrixGetKeyboard({
+          cost: Number.isFinite(emptyCost) && emptyCost > 0 ? emptyCost : 20,
+        }),
       });
       return;
     }

@@ -18,6 +18,7 @@ import {
 } from "@/lib/age-gate";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { trackSeoEvent } from "@/lib/seo/metrika";
+import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
 
@@ -49,9 +50,13 @@ export default function DestinyMatrixPreview() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<MatrixFreeSummary | null>(null);
   const [revealed, setRevealed] = useState(0);
-  const [ownedFull, setOwnedFull] = useState(false);
   /** null = guest / unknown; false = missing time or city for «Небо». */
   const [skyProfileComplete, setSkyProfileComplete] = useState<boolean | null>(null);
+  const matrixOwnership = useMatrixOwnership({
+    enabled: isLoggedIn && Boolean(birthDate && parseBirthDate(birthDate)),
+    birthDate: birthDate || null,
+  });
+  const ownedFull = matrixOwnership.owned;
   const [pending, startTransition] = useTransition();
   const [ageReady, setAgeReady] = useState(false);
   const [ageConfirming, setAgeConfirming] = useState(false);
@@ -161,30 +166,6 @@ export default function DestinyMatrixPreview() {
     }, 90);
     return () => window.clearInterval(id);
   }, [summary]);
-
-  useEffect(() => {
-    if (!isLoggedIn || !birthDate || !parseBirthDate(birthDate)) {
-      setOwnedFull(false);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
-          { credentials: "include" }
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { owned?: boolean };
-        if (!cancelled) setOwnedFull(Boolean(data.owned));
-      } catch {
-        if (!cancelled) setOwnedFull(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoggedIn, birthDate]);
 
   async function confirmAge() {
     setAgeConfirming(true);
@@ -398,9 +379,9 @@ export default function DestinyMatrixPreview() {
                             window.alert("Не удалось подготовить новую матрицу. Попробуйте ещё раз.");
                             return;
                           }
-                          setOwnedFull(false);
                           trackSeoEvent("matrix_report_replaced");
-                          window.location.assign(`${FULL_HREF}&replace=1`);
+                          // DELETE already wiped ownership; deep-link opens fresh paid flow.
+                          window.location.assign(FULL_HREF);
                         } catch {
                           window.alert("Не удалось подготовить новую матрицу. Проверьте соединение.");
                         }
@@ -432,7 +413,7 @@ export default function DestinyMatrixPreview() {
                             window.alert("Не удалось удалить матрицу. Попробуйте ещё раз.");
                             return;
                           }
-                          setOwnedFull(false);
+                          matrixOwnership.refetch();
                           trackSeoEvent("matrix_report_deleted");
                         } catch {
                           window.alert("Не удалось удалить матрицу. Проверьте соединение.");

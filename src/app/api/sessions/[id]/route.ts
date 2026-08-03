@@ -118,6 +118,7 @@ export async function DELETE(
       userId: profileUserId,
       sessionId,
       profileBirthDate: profileRows[0]?.birth_date ?? null,
+      isMatrixSession: true,
     });
   }
 

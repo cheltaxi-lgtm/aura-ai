@@ -134,6 +134,30 @@ export function buildLocalMatrixDiagram(
     else break;
   }
 
+  // Period focus — same weights as site destiny-matrix pickFocus.
+  const focusCandidates: Array<{ key: string; n: number; weight: number }> = [
+    { key: "karma", n: g, weight: 3 },
+    { key: "karmicMid", n: mid, weight: 2.5 },
+    { key: "karmicTip", n: tip, weight: 2 },
+    { key: "money", n: money, weight: 2 },
+    { key: "relationships", n: love, weight: 2 },
+    { key: "ageCurrent", n: age, weight: 2 },
+    { key: "purpose", n: x, weight: 1 },
+    { key: "yearArcana", n: yearArcana, weight: 1.5 },
+    { key: "monthArcana", n: monthArcana, weight: 1.5 },
+  ];
+  let focusKey = focusCandidates[0]!.key;
+  let bestScore = -1;
+  for (const c of focusCandidates) {
+    let score = c.weight;
+    if (c.n === yearArcana) score += 3;
+    if (c.n === monthArcana) score += 2;
+    if (score > bestScore) {
+      bestScore = score;
+      focusKey = c.key;
+    }
+  }
+
   const points = {
     a,
     b,
@@ -169,5 +193,6 @@ export function buildLocalMatrixDiagram(
     name: name?.trim() || null,
     birthDate,
     slots,
+    focusKey,
   };
 }

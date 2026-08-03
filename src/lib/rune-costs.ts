@@ -15,6 +15,8 @@ export const DEFAULT_RUNE_COSTS = {
   NATAL_READING: 20,
   FORECAST_REPORT: 20,
   SYNASTRY_REPORT: 30,
+  /** Full numerology session (destiny matrix / tools) — matches PRICING.NUMEROLOGY_SESSION. */
+  NUMEROLOGY_SESSION: 20,
   /** Per TTS request; long texts scale by VOICE_TTS_CHARS_PER_UNIT below. */
   VOICE_TTS: 2,
 } as const;
@@ -45,6 +47,7 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
   NATAL_READING: "Полная натальная трактовка",
   FORECAST_REPORT: "Персональный прогноз",
   SYNASTRY_REPORT: "Отчёт о натальной совместимости",
+  NUMEROLOGY_SESSION: "Сеанс нумерологии / матрица судьбы",
   VOICE_TTS: "Озвучка ответа",
 };
 
@@ -63,6 +66,7 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   NATAL_READING: "Глубокая интерпретация одной выбранной традиции: западной или ведической",
   FORECAST_REPORT: "Один персональный прогноз выбранного горизонта; списание только после явного подтверждения",
   SYNASTRY_REPORT: "Проверяемый отчёт по синастрии и композиту двух натальных карт",
+  NUMEROLOGY_SESSION: "Полный разбор матрицы судьбы или другого нумерологического инструмента Эвелины",
   VOICE_TTS: "Озвучка одного ответа наставника (длинный текст — несколько единиц)",
 };
 

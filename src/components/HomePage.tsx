@@ -1007,6 +1007,8 @@ export default function HomePage({
     const url = new URL(window.location.href);
     url.searchParams.delete("numerolog");
     url.searchParams.delete("tool");
+    // Legacy replace=1 from SEO preview after DELETE — wipe already done; strip leftover.
+    url.searchParams.delete("replace");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
   }, [
     autoOpenMasterId,

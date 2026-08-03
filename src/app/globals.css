@@ -8207,8 +8207,21 @@ body.cookie-banner-visible .auth-salon-page .auth-form {
 .destiny-matrix {
   display: grid;
   margin-top: 1rem;
-  gap: 0.5rem;
-  grid-template-columns: minmax(0, 1fr);
+  gap: 0.45rem;
+  /* Compact 2-col stack on narrow phones (avoid 16-row scroll). */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.destiny-matrix--v2 {
+  grid-template-areas:
+    "energy sky"
+    "body purpose"
+    "roots money"
+    "talents rel"
+    "paternal maternal"
+    "karma tailMid"
+    "tailTip age"
+    "year month";
 }
 
 .destiny-matrix__slot {

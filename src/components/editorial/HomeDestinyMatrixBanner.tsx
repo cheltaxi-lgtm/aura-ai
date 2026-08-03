@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Hexagon } from "lucide-react";
 import { PRICING } from "@/lib/config/pricing";
-import { readStoredProfile } from "@/lib/home-flow-storage";
-import { parseBirthDate } from "@/lib/numerology/constants";
+import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 
 const MATRIX_HREF = "/numerology/destiny-matrix";
 const FULL_SESSION_HREF = "/?numerolog=1&tool=destiny_matrix";
@@ -17,88 +15,13 @@ type HomeDestinyMatrixBannerProps = {
   onOpenOwnedReport?: () => void;
 };
 
-function toIsoDate(raw: string | null | undefined): string | null {
-  if (!raw?.trim()) return null;
-  const parsed = parseBirthDate(raw.trim());
-  if (!parsed) return null;
-  return `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
-}
-
 /** Homepage promo — matrix is the lightest product entry (date → free preview). */
 export default function HomeDestinyMatrixBanner({
   isLoggedIn = false,
   onOpenWithEvelina,
   onOpenOwnedReport,
 }: HomeDestinyMatrixBannerProps) {
-  const [owned, setOwned] = useState(false);
-
-  useEffect(() => {
-    if (!isLoggedIn) {
-      setOwned(false);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      let birthDate = toIsoDate(readStoredProfile()?.birthDate);
-      try {
-        const profileRes = await fetch("/api/profile", { credentials: "include" });
-        if (profileRes.ok) {
-          const data = (await profileRes.json()) as {
-            profile?: { birthDate?: string } | null;
-          };
-          birthDate = toIsoDate(data.profile?.birthDate) ?? birthDate;
-        }
-      } catch {
-        /* keep local */
-      }
-      try {
-        if (birthDate) {
-          const res = await fetch(
-            `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birthDate)}`,
-            { credentials: "include" }
-          );
-          if (res.ok) {
-            const data = (await res.json()) as { owned?: boolean };
-            if (!cancelled && data.owned) {
-              setOwned(true);
-              return;
-            }
-          }
-        }
-        if (!birthDate) {
-          if (!cancelled) setOwned(false);
-          return;
-        }
-        const listRes = await fetch(`/api/numerology/matrix-report?list=1`, {
-          credentials: "include",
-        });
-        if (!listRes.ok || cancelled) {
-          if (!cancelled) setOwned(false);
-          return;
-        }
-        const listData = (await listRes.json()) as {
-          reports?: Array<{ content?: string; birthDate?: string }>;
-        };
-        const birthKey = birthDate.slice(0, 10);
-        if (!cancelled) {
-          setOwned(
-            Boolean(
-              listData.reports?.some(
-                (r) =>
-                  Boolean(String(r.content ?? "").trim()) &&
-                  (r.birthDate === birthKey || r.birthDate === birthDate)
-              )
-            )
-          );
-        }
-      } catch {
-        if (!cancelled) setOwned(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoggedIn]);
+  const { owned } = useMatrixOwnership({ enabled: isLoggedIn });
 
   const openPreview = () => {
     window.location.assign(MATRIX_HREF);
