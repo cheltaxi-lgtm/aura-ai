@@ -102,6 +102,46 @@ declare module "natalengine" {
 
   export function resolveUtcOffset(dateStr: string, timeStr: string, timeZone: string): number;
 
+  export interface NatalEngineBodyPosition {
+    longitude: number;
+    latitude?: number;
+    distance?: number;
+    [key: string]: unknown;
+  }
+
+  export interface NatalEngineBirthPositions {
+    julianDay: number;
+    nodeType: string;
+    sun: NatalEngineBodyPosition;
+    earth: NatalEngineBodyPosition;
+    moon: NatalEngineBodyPosition;
+    mercury: NatalEngineBodyPosition;
+    venus: NatalEngineBodyPosition;
+    mars: NatalEngineBodyPosition;
+    jupiter: NatalEngineBodyPosition;
+    saturn: NatalEngineBodyPosition;
+    uranus: NatalEngineBodyPosition;
+    neptune: NatalEngineBodyPosition;
+    pluto: NatalEngineBodyPosition;
+    northNode: NatalEngineBodyPosition;
+    southNode: NatalEngineBodyPosition;
+  }
+
+  /**
+   * Raw tropical geocentric positions. Pass timezone = 0 with UTC components —
+   * internally uses Date.UTC, so results are server-timezone independent.
+   */
+  export function calculateBirthPositions(
+    year: number,
+    month: number,
+    day: number,
+    hour?: number,
+    timezone?: number,
+    latitude?: number | null,
+    longitude?: number | null,
+    options?: { nodeType?: "true" | "mean" }
+  ): NatalEngineBirthPositions;
+
   export function compareAstrology(
     chartA: Record<string, unknown>,
     chartB: Record<string, unknown>
