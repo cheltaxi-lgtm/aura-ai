@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { HdBodyKey, HdCenterKey, HdChart } from "@/lib/human-design";
 import {
@@ -14,6 +14,7 @@ import {
   HD_GATE_ANCHORS,
   gateAnchor,
 } from "./bodygraph-geometry";
+import HdCosmos from "./HdCosmos";
 
 const COLOR_P = "#f2e7c9";
 const COLOR_D = "#e05555";
@@ -47,6 +48,7 @@ interface TooltipState {
   y: number;
   title: string;
   lines: string[];
+  action?: { label: string; run: () => void };
 }
 
 function buildGateActivity(chart: HdChart): Map<number, GateActivity> {
@@ -94,7 +96,34 @@ function formatDesignDate(utcIso: string): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 }
 
-export default function Bodygraph({ chart }: { chart: HdChart }) {
+export interface BodygraphProps {
+  chart: HdChart;
+  /** gate → transiting body, for the live-transit overlay. */
+  transits?: Map<number, HdBodyKey> | null;
+  /** Channels completed only by combining two charts (composite). */
+  electromagneticChannels?: Set<string> | null;
+  /** Gates activated only by the partner in composite mode. */
+  partnerGates?: Set<number> | null;
+  /** Ask Evelina about a center (paid). */
+  onCenterInsight?: (center: HdCenterKey) => void;
+}
+
+interface ZoomState {
+  k: number;
+  x: number;
+  y: number;
+}
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 3;
+
+export default function Bodygraph({
+  chart,
+  transits,
+  electromagneticChannels,
+  partnerGates,
+  onCenterInsight,
+}: BodygraphProps) {
   const reduceMotion = useReducedMotion();
   const svgRef = useRef<SVGSVGElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -102,6 +131,73 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
   const [layer, setLayer] = useState<LayerFilter>("all");
   const [highlightCenter, setHighlightCenter] = useState<HdCenterKey | null>(null);
   const [tilt, setTilt] = useState<{ rx: number; ry: number }>({ rx: 0, ry: 0 });
+  const [fullscreen, setFullscreen] = useState(false);
+  const [zoom, setZoom] = useState<ZoomState>({ k: 1, x: 0, y: 0 });
+  const dragRef = useRef<{ px: number; py: number; zx: number; zy: number } | null>(null);
+
+  const clampZoom = useCallback((z: ZoomState): ZoomState => {
+    const k = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z.k));
+    if (k === 1) return { k: 1, x: 0, y: 0 };
+    const limit = 140 * (k - 1);
+    return {
+      k,
+      x: Math.min(limit, Math.max(-limit, z.x)),
+      y: Math.min(limit * 1.6, Math.max(-limit * 1.6, z.y)),
+    };
+  }, []);
+
+  const zoomBy = useCallback(
+    (delta: number) => setZoom((z) => clampZoom({ ...z, k: z.k + delta })),
+    [clampZoom]
+  );
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom((z) => clampZoom({ ...z, k: z.k + (e.deltaY < 0 ? 0.25 : -0.25) }));
+    };
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  }, [clampZoom]);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [fullscreen]);
+
+  const onPanStart = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (zoom.k <= 1) return;
+      dragRef.current = { px: e.clientX, py: e.clientY, zx: zoom.x, zy: zoom.y };
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    },
+    [zoom]
+  );
+
+  const onPanMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      setZoom((z) =>
+        clampZoom({ ...z, x: drag.zx + (e.clientX - drag.px), y: drag.zy + (e.clientY - drag.py) })
+      );
+    },
+    [clampZoom]
+  );
+
+  const onPanEnd = useCallback(() => {
+    dragRef.current = null;
+  }, []);
 
   const gateActivity = useMemo(() => buildGateActivity(chart), [chart]);
   const definedCenters = useMemo(() => new Set(chart.definedCenters), [chart]);
@@ -144,6 +240,10 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
         lines.push(`Дизайн: линия ${activity.dLine}${body}`);
       }
       if (!lines.length) lines.push("Ворота не активированы");
+      const transitBody = transits?.get(gate);
+      if (transitBody) {
+        lines.push(`Транзит сейчас: ${BODY_NAMES_RU[transitBody]}`);
+      }
       setTooltip({
         x: lx,
         y: ly,
@@ -151,7 +251,7 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
         lines,
       });
     },
-    [gateActivity]
+    [gateActivity, transits]
   );
 
   const showCenterTooltip = useCallback(
@@ -166,9 +266,12 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
             ? "Определённый центр — стабильная, надёжная энергия"
             : "Открытый центр — гибкость и чувствительность к чужому влиянию",
         ],
+        action: onCenterInsight
+          ? { label: "Разбор Эвелины", run: () => onCenterInsight(center) }
+          : undefined,
       });
     },
-    [definedCenters]
+    [definedCenters, onCenterInsight]
   );
 
   const onTiltMove = useCallback(
@@ -260,37 +363,47 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
   };
 
   return (
-    <div className="hd-bodygraph">
+    <div className={`hd-bodygraph${fullscreen ? " is-fullscreen" : ""}`}>
       <div
         ref={stageRef}
-        className="hd-bodygraph__stage"
+        className={`hd-bodygraph__stage${zoom.k > 1 ? " is-pannable" : ""}`}
         onMouseLeave={() => {
           setTooltip(null);
           setTilt({ rx: 0, ry: 0 });
         }}
         onMouseMove={onTiltMove}
+        onPointerDown={onPanStart}
+        onPointerMove={onPanMove}
+        onPointerUp={onPanEnd}
+        onPointerCancel={onPanEnd}
         style={{
           transform: `perspective(1200px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
         }}
       >
-        {/* Floating particles */}
-        {!reduceMotion && (
-          <div className="hd-bodygraph__particles" aria-hidden="true">
-            {Array.from({ length: 14 }).map((_, i) => (
-              <i
-                key={i}
-                style={{
-                  left: `${(i * 37 + 11) % 100}%`,
-                  top: `${(i * 53 + 7) % 100}%`,
-                  animationDelay: `${(i % 7) * 1.3}s`,
-                  animationDuration: `${9 + (i % 5) * 2}s`,
-                }}
-              />
-            ))}
-          </div>
-        )}
+        <HdCosmos />
 
-        <div className="hd-bodygraph__layout">
+        {/* Zoom / fullscreen toolbar */}
+        <div className="hd-bodygraph__toolbar hd-print-hidden">
+          <button type="button" onClick={() => zoomBy(0.5)} aria-label="Приблизить" title="Приблизить">+</button>
+          <button type="button" onClick={() => zoomBy(-0.5)} aria-label="Отдалить" title="Отдалить">−</button>
+          {zoom.k > 1 && (
+            <button type="button" onClick={() => setZoom({ k: 1, x: 0, y: 0 })} title="Сбросить масштаб">⟲</button>
+          )}
+          <button
+            type="button"
+            onClick={() => setFullscreen((v) => !v)}
+            title={fullscreen ? "Свернуть (Esc)" : "На весь экран"}
+          >
+            {fullscreen ? "✕" : "⛶"}
+          </button>
+        </div>
+
+        <div
+          className="hd-bodygraph__layout"
+          style={{
+            transform: `scale(${zoom.k}) translate(${zoom.x / zoom.k}px, ${zoom.y / zoom.k}px)`,
+          }}
+        >
           {renderActivationColumn("d")}
 
           <svg
@@ -331,6 +444,7 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
                 const aSource = aAct?.pLine ? "p" : aAct?.dLine ? "d" : undefined;
                 const bSource = bAct?.pLine ? "p" : bAct?.dLine ? "d" : undefined;
                 const defined = definedChannels.has(seg.key);
+                const electro = electromagneticChannels?.has(seg.key) ?? false;
                 const aVisible = layerVisible(aSource, layer);
                 const bVisible = layerVisible(bSource, layer);
                 const highlighted = highlightChannels?.has(seg.key) ?? false;
@@ -338,6 +452,14 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
                 const delay = reduceMotion ? 0 : channelDrawDelay + i * 0.03;
                 return (
                   <g key={seg.key} opacity={dimmed ? 0.15 : 1} style={{ transition: "opacity 0.25s" }}>
+                    {electro && (
+                      <line
+                        x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
+                        stroke="rgba(155,127,212,0.55)"
+                        strokeWidth={11}
+                        filter="url(#hd-soft-glow)"
+                      />
+                    )}
                     {defined && (
                       <line
                         x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
@@ -466,6 +588,8 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
                 const source = a?.pLine ? "p" : a?.dLine ? "d" : undefined;
                 const visible = layerVisible(source, layer);
                 const glyph = a?.pBody ? BODY_GLYPH[a.pBody] : a?.dBody ? BODY_GLYPH[a.dBody] : null;
+                const transitBody = transits?.get(anchor.gate);
+                const partnerOnly = !active && (partnerGates?.has(anchor.gate) ?? false);
                 return (
                   <g
                     key={anchor.gate}
@@ -474,12 +598,30 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
                     className="hd-bodygraph__gate"
                     opacity={visible ? 1 : 0.2}
                   >
+                    {transitBody && (
+                      <motion.circle
+                        cx={anchor.lx}
+                        cy={anchor.ly}
+                        r={11}
+                        fill="none"
+                        stroke="rgba(155,127,212,0.9)"
+                        strokeWidth={1.5}
+                        animate={reduceMotion ? undefined : { r: [10, 13, 10], opacity: [0.9, 0.4, 0.9] }}
+                        transition={reduceMotion ? undefined : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    )}
                     <circle
                       cx={anchor.lx}
                       cy={anchor.ly}
                       r={8}
-                      fill={active ? (a?.dLine && !a?.pLine ? COLOR_D : COLOR_P) : "#17131f"}
-                      stroke={active ? "rgba(255,255,255,0.5)" : "rgba(232,199,126,0.3)"}
+                      fill={
+                        active
+                          ? (a?.dLine && !a?.pLine ? COLOR_D : COLOR_P)
+                          : partnerOnly
+                            ? "#9b7fd4"
+                            : "#17131f"
+                      }
+                      stroke={active || partnerOnly ? "rgba(255,255,255,0.5)" : "rgba(232,199,126,0.3)"}
                       strokeWidth={1}
                     />
                     <text
@@ -512,7 +654,7 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
 
         {tooltip && (
           <div
-            className="hd-bodygraph__tooltip"
+            className={`hd-bodygraph__tooltip${tooltip.action ? " has-action" : ""}`}
             style={{
               left: `${(tooltip.x / 400) * 100}%`,
               top: `${(tooltip.y / 700) * 100}%`,
@@ -523,6 +665,18 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
             {tooltip.lines.map((line) => (
               <p key={line} className="hd-bodygraph__tooltip-line">{line}</p>
             ))}
+            {tooltip.action && (
+              <button
+                type="button"
+                className="hd-bodygraph__tooltip-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  tooltip.action!.run();
+                }}
+              >
+                {tooltip.action.label}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -578,7 +732,22 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
         <span className="hd-bodygraph__legend-item">
           <i className="hd-bodygraph__legend-swatch" /> Определённый центр
         </span>
-        <button type="button" onClick={exportPng} className="hd-bodygraph__export">
+        {transits && (
+          <span className="hd-bodygraph__legend-item">
+            <i className="hd-bodygraph__legend-transit" /> Транзит сейчас
+          </span>
+        )}
+        {partnerGates && (
+          <span className="hd-bodygraph__legend-item">
+            <i style={{ background: "#9b7fd4" }} /> Ворота партнёра
+          </span>
+        )}
+        {electromagneticChannels && electromagneticChannels.size > 0 && (
+          <span className="hd-bodygraph__legend-item">
+            <i className="hd-bodygraph__legend-electro" /> Электромагнетика
+          </span>
+        )}
+        <button type="button" onClick={exportPng} className="hd-bodygraph__export hd-print-hidden">
           Скачать PNG
         </button>
       </div>

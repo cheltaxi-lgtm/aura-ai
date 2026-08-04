@@ -426,6 +426,13 @@ function birthUtcMs(input: HdCalcInput, timeLabel: string): number {
   return Date.UTC(year, month - 1, day, hour, minute) - offsetHours * 3_600_000;
 }
 
+/** Current sky: HD activations for all bodies at the given moment (transits). */
+export function computeTransits(atMs: number = Date.now()): HdActivation[] {
+  const jd = julianDateFromUnixMs(atMs);
+  const longitudes = hdLongitudesAt(jd);
+  return HD_BODIES.map((body) => longitudeToActivation(body, longitudes[body]));
+}
+
 export function calculateHdChart(input: HdCalcInput): HdChart {
   const parsed = parseInput(input);
   const utcMs = birthUtcMs(input, parsed.timeLabel);

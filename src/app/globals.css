@@ -8359,6 +8359,7 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
 
 .hd-bodygraph__layout {
   @apply flex items-start justify-center gap-2;
+  transition: transform 0.2s ease-out;
 }
 
 .hd-bodygraph__activations {
@@ -8515,6 +8516,58 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
   box-shadow: 0 0 8px rgba(232, 199, 126, 0.6);
 }
 
+.hd-cosmos {
+  @apply pointer-events-none absolute inset-0 h-full w-full;
+}
+
+.hd-bodygraph__toolbar {
+  @apply absolute right-3 top-3 z-20 flex gap-1;
+}
+
+.hd-bodygraph__toolbar button {
+  @apply flex h-8 w-8 items-center justify-center rounded-full border border-white/15 text-sm text-white/70 transition hover:border-amber-400/50 hover:text-amber-100;
+  background: rgba(12, 10, 20, 0.7);
+  backdrop-filter: blur(6px);
+}
+
+.hd-bodygraph__stage.is-pannable {
+  cursor: grab;
+}
+
+.hd-bodygraph__stage.is-pannable:active {
+  cursor: grabbing;
+}
+
+.hd-bodygraph.is-fullscreen {
+  @apply fixed inset-0 z-50 m-0 max-w-none overflow-y-auto p-4 sm:p-8;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 20%, rgba(155, 127, 212, 0.12), transparent 70%),
+    linear-gradient(165deg, #14101f, #07060d);
+}
+
+.hd-bodygraph.is-fullscreen .hd-bodygraph__stage {
+  @apply mx-auto max-w-3xl;
+}
+
+.hd-bodygraph__tooltip.has-action {
+  pointer-events: auto;
+}
+
+.hd-bodygraph__tooltip-action {
+  @apply mt-1.5 inline-block rounded-full border border-amber-400/40 px-2.5 py-0.5 text-[0.625rem] font-medium text-amber-100 transition hover:bg-amber-500/15;
+}
+
+.hd-bodygraph__legend-transit {
+  background: transparent !important;
+  border: 1.5px solid rgba(155, 127, 212, 0.9);
+  border-radius: 9999px;
+}
+
+.hd-bodygraph__legend-electro {
+  background: linear-gradient(90deg, rgba(155, 127, 212, 0.9), rgba(155, 127, 212, 0.4)) !important;
+  box-shadow: 0 0 8px rgba(155, 127, 212, 0.6);
+}
+
 .hd-bodygraph__legend {
   @apply mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[0.6875rem] text-white/60;
 }
@@ -8530,6 +8583,21 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
 .hd-bodygraph__export {
   @apply rounded-full border border-amber-500/30 px-3 py-1 text-[0.6875rem] text-amber-100/90 transition hover:border-amber-400/50 hover:text-amber-50;
   background: rgba(201, 162, 74, 0.1);
+}
+
+/* ── HD 3D ── */
+.hd-3d {
+  @apply relative overflow-hidden rounded-3xl border border-violet-400/20;
+  background: linear-gradient(170deg, #16121f 0%, #07060d 100%);
+}
+
+.hd-3d__canvas {
+  @apply h-[480px] w-full sm:h-[640px];
+  touch-action: none;
+}
+
+.hd-3d__hint {
+  @apply pb-3 text-center text-[0.6875rem] text-white/40;
 }
 
 /* ── HD share card ── */

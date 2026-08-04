@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import type { HdChart } from "@/lib/human-design";
+import { useCallback, useState } from "react";
+import type { HdBodyKey, HdCenterKey, HdChart } from "@/lib/human-design";
 import {
   AUTHORITY_NAMES_RU,
+  CENTER_NAMES_RU,
   CROSS_ANGLE_NAMES_RU,
   CROSS_NAMES_RU,
   DEFINITION_NAMES_RU,
@@ -11,6 +12,7 @@ import {
   TYPE_META,
 } from "@/lib/human-design";
 import Bodygraph from "./Bodygraph";
+import HdBodygraph3D from "./HdBodygraph3D";
 import HdShareCard from "./HdShareCard";
 
 export interface HdChartPayload {
@@ -38,6 +40,76 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const stability = chart.stability;
   const [copied, setCopied] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
+  const [transits, setTransits] = useState<Map<number, HdBodyKey> | null>(null);
+  const [transitsAt, setTransitsAt] = useState<string | null>(null);
+  const [transitsLoading, setTransitsLoading] = useState(false);
+  const [insight, setInsight] = useState<{ center: HdCenterKey; text: string } | null>(null);
+  const [insightLoading, setInsightLoading] = useState<HdCenterKey | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
+  const [show3d, setShow3d] = useState(false);
+
+  const toggleTransits = useCallback(async () => {
+    if (transits) {
+      setTransits(null);
+      setTransitsAt(null);
+      return;
+    }
+    setTransitsLoading(true);
+    try {
+      const res = await fetch("/api/human-design/transits");
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as {
+        at: string;
+        activations: { body: HdBodyKey; gate: number }[];
+      };
+      const map = new Map<number, HdBodyKey>();
+      for (const a of data.activations) map.set(a.gate, a.body);
+      setTransits(map);
+      setTransitsAt(data.at);
+    } catch {
+      setTransits(null);
+    } finally {
+      setTransitsLoading(false);
+    }
+  }, [transits]);
+
+  const askCenterInsight = useCallback(
+    async (center: HdCenterKey) => {
+      if (insightLoading) return;
+      setInsightLoading(center);
+      setInsightError(null);
+      try {
+        const res = await fetch("/api/human-design/center-insight", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chartId: payload.id, center }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          answer?: string;
+          error?: string;
+          message?: string;
+        };
+        if (res.status === 401) {
+          setInsightError("Войдите в аккаунт, чтобы получить разбор центра от Эвелины.");
+          return;
+        }
+        if (res.status === 402) {
+          setInsightError(data.message ?? "Недостаточно рун для разбора центра.");
+          return;
+        }
+        if (!res.ok || !data.answer) {
+          setInsightError(data.error ?? "Не удалось получить разбор. Попробуйте позже.");
+          return;
+        }
+        setInsight({ center, text: data.answer });
+      } catch {
+        setInsightError("Сеть недоступна. Попробуйте позже.");
+      } finally {
+        setInsightLoading(null);
+      }
+    },
+    [insightLoading, payload.id]
+  );
 
   const share = async () => {
     const url = `${window.location.origin}/dizayn-cheloveka/karta/${payload.fingerprint}`;
@@ -104,7 +176,82 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         </p>
       )}
 
-      <Bodygraph chart={chart} />
+      <Bodygraph
+        chart={chart}
+        transits={transits}
+        onCenterInsight={(center) => void askCenterInsight(center)}
+      />
+
+      <div className="hd-print-hidden flex flex-wrap justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => void toggleTransits()}
+          disabled={transitsLoading}
+          className="hd-bodygraph__export"
+        >
+          {transitsLoading
+            ? "Считаю небо…"
+            : transits
+              ? "Скрыть транзиты"
+              : "Транзиты сейчас"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShow3d((v) => !v)}
+          className="hd-bodygraph__export"
+        >
+          {show3d ? "Скрыть 3D" : "3D-бодиграф"}
+        </button>
+      </div>
+
+      {show3d && (
+        <div className="hd-print-hidden">
+          <HdBodygraph3D chart={chart} />
+        </div>
+      )}
+
+      {transits && transitsAt && (
+        <p className="hd-print-hidden text-center text-[0.6875rem] text-violet-200/70">
+          Фиолетовые кольца — ворота, активированные текущим небом (
+          {new Date(transitsAt).toLocaleString("ru-RU", {
+            day: "numeric",
+            month: "long",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+          ). Наведите на ворота, чтобы увидеть планету-транзит.
+        </p>
+      )}
+
+      {insightLoading && (
+        <p className="hd-print-hidden text-center text-xs text-amber-100/70">
+          Эвелина разбирает центр «{CENTER_NAMES_RU[insightLoading]}»…
+        </p>
+      )}
+
+      {insightError && (
+        <p className="hd-print-hidden rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-center text-xs text-red-200/90">
+          {insightError}
+        </p>
+      )}
+
+      {insight && (
+        <div className="hd-print-hidden hd-panel">
+          <p className="hd-panel__title">
+            Эвелина о центре «{CENTER_NAMES_RU[insight.center]}»
+          </p>
+          <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-white/85">
+            {insight.text}
+          </p>
+          <button
+            type="button"
+            onClick={() => setInsight(null)}
+            className="hd-bodygraph__export mt-4"
+          >
+            Закрыть
+          </button>
+        </div>
+      )}
 
       <div className="hd-print-hidden flex flex-wrap justify-center gap-2">
         <button type="button" onClick={() => void share()} className="hd-bodygraph__export">

@@ -18,6 +18,7 @@ export {
 } from "./constants";
 export {
   calculateHdChart,
+  computeTransits,
   hdAuthorityFromChannels,
   hdTypeFromChannels,
   longitudeToActivation,

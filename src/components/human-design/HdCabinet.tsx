@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import HdCalculator from "./HdCalculator";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
+import HdComposite from "./HdComposite";
 import HdReportPanel from "./HdReportPanel";
 import { TYPE_META } from "@/lib/human-design";
 
@@ -16,6 +17,7 @@ export default function HdCabinet() {
   const [creating, setCreating] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [partnerId, setPartnerId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/human-design/mine")
@@ -171,6 +173,39 @@ export default function HdCabinet() {
       )}
 
       <HdChartView payload={selected} />
+
+      {charts.length > 1 && (
+        <div className="hd-print-hidden space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-white/50">Композит с:</span>
+            {charts
+              .filter((c) => c.id !== selected.id)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setPartnerId(partnerId === c.id ? null : c.id)}
+                  className={`rounded-full border px-3 py-1 text-xs transition ${
+                    partnerId === c.id
+                      ? "border-violet-400/60 bg-violet-500/15 text-violet-100"
+                      : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40"
+                  }`}
+                >
+                  {c.subjectKind === "other" && c.subjectName
+                    ? c.subjectName
+                    : c.birthDate.split("-").reverse().join(".")}
+                </button>
+              ))}
+          </div>
+          {partnerId && (
+            <HdComposite
+              base={selected}
+              partner={charts.find((c) => c.id === partnerId)!}
+            />
+          )}
+        </div>
+      )}
+
       <HdReportPanel
         chartId={selected.id}
         authenticated
