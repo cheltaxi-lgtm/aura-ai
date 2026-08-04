@@ -34,9 +34,9 @@ if [ -f "$APP_DIR/.env.local" ]; then
   echo "Backed up .env.local -> $ENV_BACKUP"
 fi
 
-sudo rm -rf "$APP_DIR"
-sudo tar -xzf /tmp/aura-ai-deploy.tgz -C /opt
-sudo chown -R ubuntu:ubuntu "$APP_DIR"
+rm -rf "$APP_DIR"
+tar -xzf /tmp/aura-ai-deploy.tgz -C /opt
+chown -R root:root "$APP_DIR"
 
 if [ -f "$ENV_BACKUP" ]; then
   cp "$ENV_BACKUP" "$APP_DIR/.env.local"
@@ -52,8 +52,8 @@ npm ci
 [ -f data/geonames/cities.min.json ] || npm run build:geonames
 npm run migrate
 npm run build
-sudo -u ubuntu bash proxmox-setup/install-crons.sh
-sudo systemctl restart aura-ai
+bash proxmox-setup/install-crons.sh
+systemctl restart aura-ai
 systemctl is-active aura-ai
 REMOTE
 
