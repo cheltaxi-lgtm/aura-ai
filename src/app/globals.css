@@ -8357,8 +8357,93 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
   @apply mx-auto w-full max-w-md;
 }
 
+.hd-bodygraph__layout {
+  @apply flex items-start justify-center gap-2;
+}
+
+.hd-bodygraph__activations {
+  @apply mt-6 hidden w-16 shrink-0 sm:block;
+}
+
+.hd-bodygraph__activations-title {
+  @apply mb-1 text-center text-[0.625rem] font-semibold uppercase tracking-widest;
+}
+
+.hd-bodygraph__activations--d .hd-bodygraph__activations-title {
+  color: rgba(224, 85, 85, 0.8);
+}
+
+.hd-bodygraph__activations--p .hd-bodygraph__activations-title {
+  color: rgba(242, 231, 201, 0.8);
+}
+
+.hd-bodygraph__activations-date {
+  @apply mb-1 text-center text-[0.5625rem] leading-tight text-white/40;
+}
+
+.hd-bodygraph__activations ul {
+  @apply space-y-0.5;
+}
+
+.hd-bodygraph__activations li {
+  @apply flex items-center justify-center gap-1 text-[0.625rem] text-white/25;
+}
+
+.hd-bodygraph__activations li.is-active {
+  @apply text-white/90;
+}
+
+.hd-bodygraph__activations--d li.is-active {
+  color: rgba(224, 85, 85, 0.95);
+}
+
+.hd-bodygraph__activations--p li.is-active {
+  color: rgba(242, 231, 201, 0.95);
+}
+
+.hd-bodygraph__glyph {
+  @apply inline-block w-4 text-center text-[0.6875rem];
+}
+
+.hd-bodygraph__act-gate {
+  @apply inline-block w-5 text-center font-semibold;
+}
+
+.hd-bodygraph__act-line {
+  @apply inline-block w-4 text-center text-white/50;
+}
+
+.hd-bodygraph__particles {
+  @apply pointer-events-none absolute inset-0 overflow-hidden;
+}
+
+.hd-bodygraph__particles i {
+  @apply absolute block h-0.5 w-0.5 rounded-full;
+  background: rgba(232, 199, 126, 0.5);
+  animation: hd-float-particle linear infinite;
+}
+
+@keyframes hd-float-particle {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+  }
+  85% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(-90px) translateX(14px);
+    opacity: 0;
+  }
+}
+
 .hd-bodygraph__stage {
   @apply relative overflow-hidden rounded-3xl border border-amber-500/15 p-3;
+  transition: transform 0.18s ease-out;
+  will-change: transform;
   background:
     radial-gradient(ellipse 70% 45% at 50% 30%, rgba(155, 127, 212, 0.08), transparent 70%),
     linear-gradient(165deg, rgba(28, 22, 48, 0.85), rgba(10, 8, 18, 0.92));
@@ -8572,6 +8657,8 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
   .hd-bodygraph__export,
   .hd-bodygraph__layers,
   .hd-bodygraph__centers-legend,
+  .hd-bodygraph__particles,
+  .hd-bodygraph__tooltip,
   .hd-print-hidden {
     display: none !important;
   }
@@ -8581,5 +8668,70 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
     border-color: rgba(0, 0, 0, 0.2) !important;
     background: #ffffff !important;
     box-shadow: none !important;
+    transform: none !important;
+  }
+
+  /* A4-friendly chart: dark strokes on white */
+  .hd-bodygraph__svg .hd-ch-p {
+    stroke: #1a1a1a !important;
+    opacity: 1 !important;
+  }
+
+  .hd-bodygraph__svg .hd-ch-d {
+    stroke: #b03030 !important;
+    opacity: 1 !important;
+  }
+
+  .hd-bodygraph__svg .hd-ch-base {
+    stroke: rgba(0, 0, 0, 0.12) !important;
+    opacity: 1 !important;
+  }
+
+  .hd-bodygraph__svg text {
+    fill: #1a1a1a !important;
+  }
+
+  .hd-bodygraph__svg circle[fill="#17131f"] {
+    fill: #ffffff !important;
+    stroke: rgba(0, 0, 0, 0.35) !important;
+  }
+
+  .hd-bodygraph__activations li,
+  .hd-bodygraph__activations li.is-active,
+  .hd-bodygraph__activations--d li.is-active,
+  .hd-bodygraph__activations--p li.is-active {
+    color: #1a1a1a !important;
+  }
+
+  .hd-bodygraph__activations--d .hd-bodygraph__activations-title {
+    color: #b03030 !important;
+  }
+
+  .hd-bodygraph__activations--p .hd-bodygraph__activations-title {
+    color: #1a1a1a !important;
+  }
+
+  .hd-bodygraph__legend,
+  .hd-bodygraph__legend-item {
+    color: #333333 !important;
+  }
+
+  .hd-fact {
+    border-color: rgba(0, 0, 0, 0.15) !important;
+    background: #ffffff !important;
+  }
+
+  .hd-fact__value {
+    color: #1a1a1a !important;
+  }
+
+  .hd-fact__label,
+  .hd-fact__sub {
+    color: #555555 !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
   }
 }

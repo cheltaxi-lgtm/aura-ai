@@ -117,6 +117,13 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         >
           {showShareCard ? "Скрыть карточку" : "Карточка для соцсетей"}
         </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="hd-bodygraph__export"
+        >
+          Печать / PDF
+        </button>
       </div>
 
       {showShareCard && (
