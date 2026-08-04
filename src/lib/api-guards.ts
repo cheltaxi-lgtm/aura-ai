@@ -83,6 +83,7 @@ export const PAID_ROUTE_LIMITS = {
   hd_report: { max: 3, windowMs: 60_000 },
   hd_ask: { max: 20, windowMs: 60_000 },
   hd_claim: { max: 10, windowMs: 60_000 },
+  hd_delete: { max: 10, windowMs: 60_000 },
   natal_history: { max: 30, windowMs: 60_000 },
   natal_report_delete: { max: 5, windowMs: 60_000 },
   numerology_matrix_report: { max: 30, windowMs: 60_000 },

@@ -61,6 +61,8 @@ export interface CabinetSessionRow {
   matrixBirthDate?: string | null;
   matrixSubjectName?: string | null;
   matrixSubjectKind?: string | null;
+  /** Human Design rows: chart id for the delete action (row id is the report id). */
+  hdChartId?: string | null;
 }
 
 export interface CabinetAchievementEarned {
@@ -320,6 +322,7 @@ export async function getCabinetSessions(
       matrix_birth_date: Date | string | null;
       matrix_subject_name: string | null;
       matrix_subject_kind: string | null;
+      hd_chart_id: string | null;
     }>(
       `WITH last_assistant AS (
          SELECT DISTINCT ON (cm.session_id)
@@ -359,7 +362,8 @@ export async function getCabinetSessions(
          COALESCE(s.status, 'active') AS status,
          n.birth_date AS matrix_birth_date,
          ms.display_name AS matrix_subject_name,
-         ms.kind AS matrix_subject_kind
+         ms.kind AS matrix_subject_kind,
+         NULL::uuid AS hd_chart_id
        FROM sessions s
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id
        LEFT JOIN last_assistant la ON la.session_id = s.id
@@ -432,7 +436,8 @@ export async function getCabinetSessions(
          'done' AS status,
          NULL AS matrix_birth_date,
          NULL AS matrix_subject_name,
-         NULL AS matrix_subject_kind
+         NULL AS matrix_subject_kind,
+         r.chart_id AS hd_chart_id
        FROM hd_reports r
        JOIN hd_charts c ON c.id = r.chart_id
        WHERE r.user_id = $1
@@ -549,6 +554,7 @@ export async function getCabinetSessions(
       matrixBirthDate: matrixBirth,
       matrixSubjectName: r.matrix_subject_name?.trim() || null,
       matrixSubjectKind: r.matrix_subject_kind ?? null,
+      hdChartId: r.hd_chart_id ?? null,
     };
   });
 

@@ -230,10 +230,21 @@ function SessionCard({
 
       <div className="cabinet-session-card__actions">
         {hdSession ? (
-          <Link href="/cabinet/human-design" className="cabinet-btn cabinet-btn--primary">
-            Открыть разбор
-            <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          </Link>
+          <>
+            <Link href="/cabinet/human-design" className="cabinet-btn cabinet-btn--primary">
+              Открыть разбор
+              <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            </Link>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => onDelete(session.id)}
+              className="cabinet-btn cabinet-btn--danger"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {deleting ? "Удаление…" : "Удалить"}
+            </button>
+          </>
         ) : (
           <>
             <ShareButton

@@ -255,6 +255,28 @@ export async function listHdChartsForUser(userId: string): Promise<HdChartRow[]>
 }
 
 /** Attach a guest chart to a freshly registered/logged-in account. */
+/**
+ * Delete a chart owned by the user. Accepts a chart id or a report id
+ * (cabinet history rows reference the report). Cascades to hd_reports and
+ * hd_report_messages via FK. Returns the deleted row for memory cleanup.
+ */
+export async function deleteHdChartForUser(
+  id: string,
+  userId: string
+): Promise<HdChartRow | null> {
+  const found = await query<HdChartDbRow>(
+    `SELECT c.* FROM hd_charts c
+     LEFT JOIN hd_reports r ON r.chart_id = c.id
+     WHERE (c.id = $1 OR r.id = $1) AND c.user_id = $2
+     LIMIT 1`,
+    [id, userId]
+  );
+  const row = found.rows[0];
+  if (!row) return null;
+  await query("DELETE FROM hd_charts WHERE id = $1 AND user_id = $2", [row.id, userId]);
+  return mapChartRow(row);
+}
+
 export async function claimHdChart(fingerprint: string, userId: string): Promise<boolean> {
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) return false;
   const result = await query(

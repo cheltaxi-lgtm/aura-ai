@@ -15,6 +15,7 @@ export default function HdCabinet() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [enabled, setEnabled] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/human-design/mine")
@@ -79,6 +80,10 @@ export default function HdCabinet() {
             setCharts(null);
             load();
           }}
+          onChartDeleted={(chartId) => {
+            if (chartId === selectedId) setSelectedId(null);
+            load();
+          }}
         />
       </div>
     );
@@ -86,17 +91,57 @@ export default function HdCabinet() {
 
   const selected = charts.find((c) => c.id === selectedId) ?? charts[0]!;
 
+  const deleteSelected = async () => {
+    const who =
+      selected.subjectKind === "other" && selected.subjectName
+        ? `«${selected.subjectName}»`
+        : "эту карту";
+    if (
+      !window.confirm(
+        `Удалить карту ${who} безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему — из кабинета, истории и памяти мастеров.`
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/human-design/chart?id=${encodeURIComponent(selected.id)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      if (!res.ok) throw new Error("delete failed");
+      const remaining = charts.filter((c) => c.id !== selected.id);
+      setCharts(remaining);
+      setSelectedId(remaining[0]?.id ?? null);
+      if (remaining.length === 0) setCreating(true);
+    } catch {
+      window.alert("Не удалось удалить карту. Попробуйте ещё раз.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">Дизайн Человека</h1>
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          className="hd-bodygraph__export"
-        >
-          Новая карта
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void deleteSelected()}
+            disabled={deleting}
+            className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
+          >
+            {deleting ? "Удаление…" : "Удалить карту"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="hd-bodygraph__export"
+          >
+            Новая карта
+          </button>
+        </div>
       </div>
 
       {charts.length > 1 && (

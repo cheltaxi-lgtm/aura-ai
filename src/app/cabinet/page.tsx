@@ -334,25 +334,34 @@ export default function CabinetPage() {
 
   const handleDeleteSession = async (memoryId: string) => {
     const target = sessions.find((s) => s.id === memoryId);
+    const isHd = target?.spreadId === "human_design" && Boolean(target?.hdChartId);
     const isMatrix =
-      target?.intention === "destiny_matrix" ||
-      target?.spreadId === "destiny_matrix" ||
-      target?.spreadId === "numerolog:destiny_matrix" ||
-      (typeof target?.spreadId === "string" &&
-        target.spreadId.startsWith("numerolog:destiny_matrix"));
+      !isHd &&
+      (target?.intention === "destiny_matrix" ||
+        target?.spreadId === "destiny_matrix" ||
+        target?.spreadId === "numerolog:destiny_matrix" ||
+        (typeof target?.spreadId === "string" &&
+          target.spreadId.startsWith("numerolog:destiny_matrix")));
     const confirmed = window.confirm(
-      isMatrix
-        ? "Удалить матрицу судьбы безвозвратно? Пропадёт из кабинета и чата, покупка сбросится — разбор можно будет купить заново."
-        : "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
+      isHd
+        ? "Удалить карту Дизайна Человека безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему — из кабинета, истории и памяти мастеров."
+        : isMatrix
+          ? "Удалить матрицу судьбы безвозвратно? Пропадёт из кабинета и чата, покупка сбросится — разбор можно будет купить заново."
+          : "Удалить этот сеанс безвозвратно? Переписка пропадёт из кабинета, списка сеансов мастера и чата."
     );
     if (!confirmed) return;
 
     setDeletingSessionId(memoryId);
     try {
-      const res = await fetch(`/api/cabinet/readings/${encodeURIComponent(memoryId)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const res = await fetch(
+        isHd
+          ? `/api/human-design/chart?id=${encodeURIComponent(target!.hdChartId!)}`
+          : `/api/cabinet/readings/${encodeURIComponent(memoryId)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
       if (!res.ok) throw new Error("Не удалось удалить сеанс");
 
       const payload = (await res.json()) as { characterKey?: string | null };

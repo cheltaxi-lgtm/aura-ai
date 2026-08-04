@@ -20,9 +20,11 @@ interface HdCalculatorProps {
   returnTo: string;
   /** Fired when a new chart is computed (cabinet list refresh). */
   onChartCreated?: (chart: HdChartPayload) => void;
+  /** Fired when a chart is deleted from the «Мои карты» block. */
+  onChartDeleted?: (chartId: string) => void;
 }
 
-export default function HdCalculator({ initialChart = null, returnTo, onChartCreated }: HdCalculatorProps) {
+export default function HdCalculator({ initialChart = null, returnTo, onChartCreated, onChartDeleted }: HdCalculatorProps) {
   const [subjectKind, setSubjectKind] = useState<"self" | "other">("self");
   const [subjectName, setSubjectName] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -102,6 +104,37 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       setPlaceQuery("");
     }
   };
+
+  const deleteMine = useCallback(
+    async (chart: HdChartPayload) => {
+      const who =
+        chart.subjectKind === "other" && chart.subjectName
+          ? `«${chart.subjectName}»`
+          : "эту карту";
+      if (
+        !window.confirm(
+          `Удалить карту ${who} безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему.`
+        )
+      ) {
+        return;
+      }
+      const res = await fetch(
+        `/api/human-design/chart?id=${encodeURIComponent(chart.id)}`,
+        { method: "DELETE", credentials: "include" }
+      ).catch(() => null);
+      if (!res?.ok) {
+        window.alert("Не удалось удалить карту. Попробуйте ещё раз.");
+        return;
+      }
+      setMine((prev) => prev.filter((c) => c.id !== chart.id));
+      if (localStorage.getItem(STORAGE_KEY) === chart.fingerprint) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      if (result?.id === chart.id) setResult(null);
+      onChartDeleted?.(chart.id);
+    },
+    [result, onChartDeleted]
+  );
 
   // Restore the last computed chart (survives the login redirect round-trip).
   useEffect(() => {
@@ -248,20 +281,33 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
           <p className="hd-field__label mb-3">Мои карты</p>
           <div className="flex flex-wrap gap-2">
             {mine.map((c) => (
-              <button
+              <span
                 key={c.id}
-                type="button"
-                onClick={() => {
-                  setResult(c);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                className="rounded-full border border-amber-300/25 bg-amber-300/5 px-3.5 py-1.5 text-xs text-amber-100/85 transition hover:border-amber-300/50 hover:bg-amber-300/15"
+                className="inline-flex items-center overflow-hidden rounded-full border border-amber-300/25 bg-amber-300/5 text-xs text-amber-100/85 transition hover:border-amber-300/50 hover:bg-amber-300/15"
               >
-                {c.subjectKind === "other" && c.subjectName
-                  ? `${c.subjectName} · `
-                  : ""}
-                {c.birthDate.split("-").reverse().join(".")}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResult(c);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="px-3.5 py-1.5"
+                >
+                  {c.subjectKind === "other" && c.subjectName
+                    ? `${c.subjectName} · `
+                    : ""}
+                  {c.birthDate.split("-").reverse().join(".")}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Удалить карту"
+                  title="Удалить карту"
+                  onClick={() => void deleteMine(c)}
+                  className="border-l border-amber-300/20 px-2 py-1.5 text-amber-100/50 transition hover:bg-red-500/15 hover:text-red-300"
+                >
+                  ×
+                </button>
+              </span>
             ))}
           </div>
         </div>

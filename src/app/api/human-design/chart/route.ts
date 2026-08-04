@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUserAuth } from "@/lib/require-auth";
+import {
+  profileAuthFailureResponse,
+  requireUserAuth,
+  resolveProfileUserContext,
+} from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { isHumanDesignEnabled } from "@/lib/settings";
-import { clientIp } from "@/lib/api-guards";
+import { clientIp, enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import {
+  deleteHdChartForUser,
   getHdChartByFingerprint,
   getOrComputeHdChart,
   HdInputError,
 } from "@/lib/services/human-design-service";
 import type { HdChartIdentity } from "@/lib/human-design";
-import { rememberHdChartFact } from "@/lib/human-design/memory";
+import { forgetHdChartFact, rememberHdChartFact } from "@/lib/human-design/memory";
 
 function hdErrorResponse(error: unknown) {
   if (error instanceof HdInputError) {
@@ -93,4 +98,36 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
   return NextResponse.json({ chart });
+}
+
+/**
+ * Delete an owned chart. Accepts the chart id or a report id (cabinet
+ * history rows reference reports). Cascades to report + chat messages.
+ */
+export async function DELETE(request: NextRequest) {
+  if (!(await isHumanDesignEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
+  const resolved = await resolveProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(resolved.profileUserId, "hd_delete");
+  if (rateLimited) return rateLimited;
+
+  const id = request.nextUrl.searchParams.get("id") ?? "";
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ error: "Некорректный идентификатор карты." }, { status: 400 });
+  }
+
+  const deleted = await deleteHdChartForUser(id, resolved.profileUserId);
+  if (!deleted) {
+    return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
+  }
+  if (deleted.subjectKind === "self") {
+    forgetHdChartFact(resolved.profileUserId, deleted.id);
+  }
+  return NextResponse.json({ ok: true, chartId: deleted.id, fingerprint: deleted.fingerprint });
 }
