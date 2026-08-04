@@ -8455,7 +8455,7 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
 }
 
 .hd-fact {
-  @apply rounded-2xl border border-white/8 px-3.5 py-3;
+  @apply rounded-2xl border border-white/10 px-3.5 py-3;
   background: rgba(255, 255, 255, 0.03);
 }
 

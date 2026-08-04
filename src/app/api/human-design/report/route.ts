@@ -17,6 +17,7 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
+  claimHdChart,
   completeHdReport,
   createPendingHdReport,
   failHdReport,
@@ -64,7 +65,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Укажите карту." }, { status: 400 });
   }
 
-  const chart = await getHdChartById(body.chartId);
+  let chart = await getHdChartById(body.chartId);
+  if (!chart) {
+    return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
+  }
+  // Unowned guest chart → first authenticated purchase attaches it (same rule as /claim).
+  if (!chart.userId) {
+    await claimHdChart(chart.fingerprint, userId);
+    chart = await getHdChartById(body.chartId);
+  }
   if (!chart || chart.userId !== userId) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }

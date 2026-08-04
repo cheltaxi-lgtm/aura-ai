@@ -18,9 +18,11 @@ interface HdCalculatorProps {
   initialChart?: HdChartPayload | null;
   /** returnTo path for the login CTA. */
   returnTo: string;
+  /** Fired when a new chart is computed (cabinet list refresh). */
+  onChartCreated?: (chart: HdChartPayload) => void;
 }
 
-export default function HdCalculator({ initialChart = null, returnTo }: HdCalculatorProps) {
+export default function HdCalculator({ initialChart = null, returnTo, onChartCreated }: HdCalculatorProps) {
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [timeUnknown, setTimeUnknown] = useState(false);
@@ -40,6 +42,20 @@ export default function HdCalculator({ initialChart = null, returnTo }: HdCalcul
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setAuthenticated(Boolean(d?.authenticated && !d?.needsProfile)))
       .catch(() => setAuthenticated(false));
+  }, []);
+
+  // Restore the last computed chart (survives the login redirect round-trip).
+  useEffect(() => {
+    if (initialChart) return;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return;
+    fetch(`/api/human-design/chart?fingerprint=${encodeURIComponent(stored)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.chart) setResult(d.chart as HdChartPayload);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Claim a guest chart after login.
@@ -118,6 +134,7 @@ export default function HdCalculator({ initialChart = null, returnTo }: HdCalcul
       const payload = data.chart as HdChartPayload;
       setResult(payload);
       localStorage.setItem(STORAGE_KEY, payload.fingerprint);
+      onChartCreated?.(payload);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       setError("Сеть недоступна. Попробуйте ещё раз.");

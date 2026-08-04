@@ -58,7 +58,15 @@ export default function HdCabinet() {
             </button>
           )}
         </div>
-        <HdCalculator returnTo="/cabinet/human-design" />
+        <HdCalculator
+          returnTo="/cabinet/human-design"
+          onChartCreated={(chart) => {
+            setCreating(false);
+            setSelectedId(chart.id);
+            setCharts(null);
+            load();
+          }}
+        />
       </div>
     );
   }
