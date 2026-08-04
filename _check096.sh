@@ -1,2 +1,5 @@
 #!/bin/bash
-curl -sv -m 30 "http://127.0.0.1:3000/dizayn-cheloveka/karta/abc123/opengraph-image" -o /dev/null 2>&1 | grep -E '^[*<>]' | head -20
+FP=49962ebdadd3002222a9508dc84ffa38645990786ce4134289c51ae28e5336e2
+curl -s -m 45 -o /dev/null "http://127.0.0.1:3000/dizayn-cheloveka/karta/$FP/opengraph-image"
+sleep 2
+journalctl -u aura-ai --since "3 min ago" --no-pager | tail -30

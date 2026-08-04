@@ -17,13 +17,19 @@ export default async function OpenGraphImage({
   params: Promise<{ fingerprint: string }>;
 }) {
   const { fingerprint } = await params;
-  const chart = await getHdChartByFingerprint(fingerprint).catch(() => null);
+  console.error("[hd-og] start", fingerprint.slice(0, 8));
+  const chart = await getHdChartByFingerprint(fingerprint).catch((e) => {
+    console.error("[hd-og] db error", e?.message);
+    return null;
+  });
+  console.error("[hd-og] chart loaded", Boolean(chart));
 
   const typeName = chart ? TYPE_META[chart.chart.type].nameRu : "Дизайн Человека";
   const profile = chart ? chart.chart.profile : "";
   const authority = chart ? AUTHORITY_NAMES_RU[chart.chart.authority] : "";
   const profileName = chart ? (PROFILE_NAMES_RU[chart.chart.profile] ?? "") : "";
 
+  console.error("[hd-og] rendering");
   return new ImageResponse(
     (
       <div
@@ -49,7 +55,7 @@ export default async function OpenGraphImage({
               justifyContent: "center",
             }}
           >
-            {chart.chart.definedCenters.slice(0, 9).map((c) => (
+            {(chart.chart.definedCenters ?? []).slice(0, 9).map((c) => (
               <div
                 key={c}
                 style={{
@@ -57,7 +63,6 @@ export default async function OpenGraphImage({
                   height: 84,
                   borderRadius: 20,
                   background: "linear-gradient(145deg, #e8c77e, #9b7fd4)",
-                  boxShadow: "0 0 32px rgba(232,199,126,0.45)",
                 }}
               />
             ))}
