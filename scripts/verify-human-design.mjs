@@ -38,7 +38,7 @@ import {
   julianDateFromUnixMs,
   sunLongitudeAt,
 } from "../src/lib/human-design/ephemeris.ts";
-import { calculateHumanDesign, resolveUtcOffset } from "natalengine";
+import { spawnSync } from "node:child_process";
 
 const failures = [];
 let checks = 0;
@@ -289,18 +289,50 @@ const TYPE_NAME_MAP = {
   Reflector: "reflector",
 };
 {
+  // natalengine must run under plain node: tsx's module interop breaks its
+  // `import * as Astronomy` namespace (Astronomy.GeoVector goes missing), so
+  // the reference implementation is evaluated in a child node process.
+  const childScript = `
+    import { calculateHumanDesign, resolveUtcOffset } from "natalengine";
+    const cases = ${JSON.stringify(XV_CASES)};
+    const out = cases.map(([date, time, tz]) => {
+      const offset = resolveUtcOffset(date, time, tz);
+      const [hh, mm] = time.split(":").map(Number);
+      const r = calculateHumanDesign(date, hh + mm / 60, offset, { nodeType: "true" });
+      return { type: r.type.name, profile: r.profile.numbers };
+    });
+    process.stdout.write(JSON.stringify(out));
+  `;
+  const child = spawnSync(process.execPath, ["--input-type=module", "--eval", childScript], {
+    encoding: "utf8",
+    cwd: process.cwd(),
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  let theirsList = null;
+  if (child.status === 0) {
+    try {
+      theirsList = JSON.parse(child.stdout);
+    } catch {
+      theirsList = null;
+    }
+  }
+  assert(
+    Array.isArray(theirsList) && theirsList.length === XV_CASES.length,
+    `xv reference process failed: ${child.stderr?.slice(0, 300) || child.error?.message || "bad output"}`
+  );
   let typeMatch = 0;
   let profileMatch = 0;
-  for (const [date, time, tz] of XV_CASES) {
-    const mine = calculateHdChart({ birthDate: date, birthTime: time, timezone: tz });
-    const offset = resolveUtcOffset(date, time, tz);
-    const [hh, mm] = time.split(":").map(Number);
-    const theirs = calculateHumanDesign(date, hh + mm / 60, offset, { nodeType: "true" });
-    const theirType = TYPE_NAME_MAP[theirs.type.name];
-    if (theirType === mine.type) typeMatch++;
-    else failures.push(`xv type ${date} ${time} ${tz}: mine ${mine.type} vs theirs ${theirs.type.name}`);
-    if (theirs.profile.numbers === mine.profile) profileMatch++;
-    else failures.push(`xv profile ${date} ${time} ${tz}: mine ${mine.profile} vs theirs ${theirs.profile.numbers}`);
+  if (Array.isArray(theirsList)) {
+    for (let i = 0; i < XV_CASES.length; i++) {
+      const [date, time, tz] = XV_CASES[i];
+      const mine = calculateHdChart({ birthDate: date, birthTime: time, timezone: tz });
+      const theirs = theirsList[i];
+      const theirType = TYPE_NAME_MAP[theirs.type];
+      if (theirType === mine.type) typeMatch++;
+      else failures.push(`xv type ${date} ${time} ${tz}: mine ${mine.type} vs theirs ${theirs.type}`);
+      if (theirs.profile === mine.profile) profileMatch++;
+      else failures.push(`xv profile ${date} ${time} ${tz}: mine ${mine.profile} vs theirs ${theirs.profile}`);
+    }
   }
   console.log(`  cross-validation: type ${typeMatch}/${XV_CASES.length}, profile ${profileMatch}/${XV_CASES.length}`);
 }
