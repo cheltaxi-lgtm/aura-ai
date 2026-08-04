@@ -6,6 +6,8 @@ HOST="${DEPLOY_HOST:-root@217.12.37.32}"
 APP_DIR="${DEPLOY_DIR:-/opt/aura-ai}"
 TARBALL="${TMPDIR:-/tmp}/aura-ai-deploy.tgz"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SSH_KEY="${DEPLOY_SSH_KEY:-$HOME/.ssh/aura_deploy_ed25519}"
+SSH_OPTS=(-i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 
 # Local build intentionally skipped: the tarball excludes .next and the server
 # rebuilds anyway — building here only risks local OOM on Windows.
@@ -19,10 +21,10 @@ tar --exclude="node_modules" --exclude=".next" --exclude=".git" --exclude=".env.
   -czf "$TARBALL" -C "$(dirname "$ROOT")" "$(basename "$ROOT")"
 
 echo "==> Uploading to $HOST..."
-scp "$TARBALL" "$HOST:/tmp/aura-ai-deploy.tgz"
+scp "${SSH_OPTS[@]}" "$TARBALL" "$HOST:/tmp/aura-ai-deploy.tgz"
 
 echo "==> Deploying on server (env preserved)..."
-ssh "$HOST" bash -s <<'REMOTE'
+ssh "${SSH_OPTS[@]}" "$HOST" bash -s <<'REMOTE'
 set -euo pipefail
 APP_DIR="/opt/aura-ai"
 ENV_BACKUP="/tmp/aura-ai-env.local.bak"
