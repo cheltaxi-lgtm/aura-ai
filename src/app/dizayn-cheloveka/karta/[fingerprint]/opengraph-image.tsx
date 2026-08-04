@@ -4,63 +4,12 @@ import {
   AUTHORITY_NAMES_RU,
   PROFILE_NAMES_RU,
   TYPE_META,
-  type HdChart,
 } from "@/lib/human-design";
-import {
-  HD_CENTER_SHAPES,
-  HD_CHANNEL_SEGMENTS,
-  HD_GATE_ANCHORS,
-} from "@/components/human-design/bodygraph-geometry";
 
 export const runtime = "nodejs";
 export const alt = "Карта Дизайна Человека";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-
-const COLOR_P = "#f2e7c9";
-const COLOR_D = "#e05555";
-const COLOR_BASE = "rgba(232, 199, 126, 0.12)";
-
-function bodygraphSvg(chart: HdChart): string {
-  const gates = new Map<number, "p" | "d">();
-  for (const a of chart.personality) gates.set(a.gate, "p");
-  for (const a of chart.designActivations) {
-    if (!gates.has(a.gate)) gates.set(a.gate, "d");
-  }
-  const definedCenters = new Set(chart.definedCenters);
-  const definedChannels = new Set(chart.channels.filter((c) => c.defined).map((c) => c.key));
-
-  const channels = HD_CHANNEL_SEGMENTS.map((seg) => {
-    const a = gates.get(seg.gates[0]);
-    const b = gates.get(seg.gates[1]);
-    const w = definedChannels.has(seg.key) ? 5 : 3;
-    const cA = a ? (a === "d" ? COLOR_D : COLOR_P) : COLOR_BASE;
-    const cB = b ? (b === "d" ? COLOR_D : COLOR_P) : COLOR_BASE;
-    return (
-      `<line x1="${seg.ax}" y1="${seg.ay}" x2="${seg.mx}" y2="${seg.my}" stroke="${cA}" stroke-width="${w}" stroke-linecap="round"/>` +
-      `<line x1="${seg.mx}" y1="${seg.my}" x2="${seg.bx}" y2="${seg.by}" stroke="${cB}" stroke-width="${w}" stroke-linecap="round"/>`
-    );
-  }).join("");
-
-  const centers = Object.values(HD_CENTER_SHAPES)
-    .map((s) => {
-      const defined = definedCenters.has(s.key);
-      const fill = defined ? "#c9a24a" : "rgba(255,255,255,0.05)";
-      const stroke = defined ? "#ffe8a8" : "rgba(232,199,126,0.4)";
-      return `<path d="${s.path}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
-    })
-    .join("");
-
-  // No <text> in the SVG: resvg on the server has no system fonts and hangs.
-  const gateCircles = HD_GATE_ANCHORS.map((a) => {
-    const act = gates.get(a.gate);
-    const fill = act ? (act === "d" ? COLOR_D : COLOR_P) : "#17131f";
-    return `<circle cx="${a.lx}" cy="${a.ly}" r="${act ? 6 : 3.5}" fill="${fill}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>`;
-  }).join("");
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 700" width="360" height="630">${channels}${centers}${gateCircles}</svg>`;
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
-}
 
 export default async function OpenGraphImage({
   params,
@@ -90,8 +39,29 @@ export default async function OpenGraphImage({
         }}
       >
         {chart && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={bodygraphSvg(chart.chart)} width={360} height={630} alt="" />
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              width: 300,
+              gap: 18,
+              alignContent: "center",
+              justifyContent: "center",
+            }}
+          >
+            {chart.chart.definedCenters.slice(0, 9).map((c) => (
+              <div
+                key={c}
+                style={{
+                  width: 84,
+                  height: 84,
+                  borderRadius: 20,
+                  background: "linear-gradient(145deg, #e8c77e, #9b7fd4)",
+                  boxShadow: "0 0 32px rgba(232,199,126,0.45)",
+                }}
+              />
+            ))}
+          </div>
         )}
         <div
           style={{
