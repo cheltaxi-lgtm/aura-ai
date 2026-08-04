@@ -38,6 +38,7 @@ import {
   julianDateFromUnixMs,
   sunLongitudeAt,
 } from "../src/lib/human-design/ephemeris.ts";
+import { hdFingerprint } from "../src/lib/human-design/fingerprint.ts";
 import { spawnSync } from "node:child_process";
 
 const failures = [];
@@ -383,6 +384,36 @@ const TYPE_NAME_MAP = {
     wrap.line === 1 && wrap.color === 1 && wrap.tone === 1 && wrap.base === 1,
     `wrap: sub-structure 1/1/1/1 (got ${wrap.line}/${wrap.color}/${wrap.tone}/${wrap.base})`
   );
+}
+
+/* ---------- 9c. Fingerprint normalization ---------- */
+/* One person = one fingerprint: time padding, place whitespace/case and
+   timezone casing must not fragment the identity (else duplicate guest-pool
+   rows and double-paid reports for the same chart). */
+{
+  const base = {
+    birthDate: "1990-05-15",
+    birthTime: "07:30",
+    timezone: "Europe/Moscow",
+    placeName: "Москва",
+    lat: 55.7558,
+    lon: 37.6173,
+  };
+  const fp = (over) => hdFingerprint({ ...base, ...over });
+  assert(fp({}) === fp({ birthTime: "7:30" }), "fingerprint: time padding normalized");
+  assert(
+    fp({}) === fp({ placeName: "  москва   " }),
+    "fingerprint: place case/whitespace normalized"
+  );
+  assert(
+    fp({}) === fp({ timezone: "europe/moscow" }),
+    "fingerprint: timezone casing canonicalized"
+  );
+  assert(
+    fp({}) !== fp({ timezone: "Europe/Kyiv" }),
+    "fingerprint: different tz → different fingerprint"
+  );
+  assert(fp({ birthTime: null }) !== fp({}), "fingerprint: unknown time differs from known");
 }
 
 /* ---------- 10. Regression golden set ---------- */

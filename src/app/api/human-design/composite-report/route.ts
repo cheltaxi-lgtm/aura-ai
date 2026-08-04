@@ -25,8 +25,12 @@ import {
   failCompositeReport,
   getHdChartById,
   getHdCompositeReport,
+  hasRuneRefundForTransaction,
+  HD_UUID_RE,
   isStalePendingComposite,
   lockStalePendingCompositeForResume,
+  markCompositeReportChargeRefunded,
+  releaseStalePendingCompositeLock,
   toPublicHdCompositeReport,
   type HdCompositeReportRow,
 } from "@/lib/services/human-design-service";
@@ -81,7 +85,12 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (typeof body.baseChartId !== "string" || typeof body.partnerChartId !== "string") {
+  if (
+    typeof body.baseChartId !== "string" ||
+    typeof body.partnerChartId !== "string" ||
+    !HD_UUID_RE.test(body.baseChartId) ||
+    !HD_UUID_RE.test(body.partnerChartId)
+  ) {
     return NextResponse.json({ error: "Укажите обе карты." }, { status: 400 });
   }
   if (body.baseChartId === body.partnerChartId) {
@@ -94,7 +103,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Карты не найдены." }, { status: 404 });
   }
 
-  const existing = await getHdCompositeReport(base.id, partner.id, userId);
+  let existing = await getHdCompositeReport(base.id, partner.id, userId);
   if (existing?.status === "done" && existing.reportText) {
     return NextResponse.json({ report: toPublicHdCompositeReport(existing), cached: true });
   }
@@ -106,10 +115,22 @@ export async function POST(request: NextRequest) {
   }
   // Stale pending with a recorded charge → crashed after payment: resume
   // generation on the same row without charging twice.
-  const resumePaidPending =
+  let resumePaidPending =
     existing?.status === "pending" &&
     isStalePendingComposite(existing) &&
     Boolean(existing.transactionId);
+
+  if (resumePaidPending && existing?.transactionId) {
+    // Barrier against refunded orphans: if the charge behind this row was
+    // already returned (rollback raced a crash), resuming would be a FREE
+    // generation. Drop the row and fall into the normal paid flow.
+    const alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId).catch(() => false);
+    if (alreadyRefunded) {
+      await deleteCompositeReportRow(existing.id).catch(() => undefined);
+      existing = null;
+      resumePaidPending = false;
+    }
+  }
 
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
@@ -160,6 +181,8 @@ export async function POST(request: NextRequest) {
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
   let refundLanded = false;
+  let completed = false;
+  let pending: HdCompositeReportRow | null = null;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
     rollbackAttempted = true;
@@ -172,9 +195,13 @@ export async function POST(request: NextRequest) {
       slotReserved: charge.slotReserved,
     });
     refundLanded = res.refunded;
+    if (res.refunded && pending) {
+      // Money went back → the pending row must NEVER be resumable (a resumable
+      // row with a refunded charge is a free generation 10 minutes later).
+      await markCompositeReportChargeRefunded(pending.id);
+    }
   };
 
-  let pending: HdCompositeReportRow | null = null;
   try {
     if (resumePaidPending && existing) {
       // CAS-lock the stale row: concurrent resumes see a fresh pending → 409.
@@ -236,6 +263,8 @@ export async function POST(request: NextRequest) {
       await rollback();
       if (resumePaidPending) {
         // Keep the paid pending row: the next attempt resumes it for free.
+        // Release the CAS-lock age reset so the retry isn't blocked for 10 min.
+        await releaseStalePendingCompositeLock(pending.id).catch(() => undefined);
         return NextResponse.json(
           { error: "Модель не смогла подготовить разбор. Попробуйте ещё раз — оплата сохранена." },
           { status: 502 }
@@ -255,6 +284,7 @@ export async function POST(request: NextRequest) {
 
     const text = answer.trim() + DISCLAIMER;
     await completeCompositeReport(pending.id, text, "openrouter");
+    completed = true; // past this point a catch must NOT refund a done report
     const done = await getHdCompositeReport(base.id, partner.id, userId);
     return NextResponse.json({
       report: done ? toPublicHdCompositeReport(done) : null,
@@ -262,9 +292,13 @@ export async function POST(request: NextRequest) {
       runeBalance: charge?.newBalance,
     });
   } catch (error) {
-    await rollback().catch(() => {
-      console.warn("[human-design] composite rollback failed");
-    });
+    // Never refund a report that actually completed — a post-completion
+    // failure (e.g. the final SELECT) must not turn into a free report.
+    if (!completed) {
+      await rollback().catch(() => {
+        console.warn("[human-design] composite rollback failed");
+      });
+    }
     // A failed create+charge transaction rolled back atomically — no unpaid
     // placeholder to clean up, the next attempt starts clean.
     if (error instanceof InsufficientFundsError) {

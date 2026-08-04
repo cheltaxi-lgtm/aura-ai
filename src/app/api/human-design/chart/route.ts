@@ -13,6 +13,7 @@ import {
   getHdChartByFingerprint,
   getOrComputeHdChart,
   HdInputError,
+  HdRateLimitError,
   toPublicHdChartPayload,
 } from "@/lib/services/human-design-service";
 import type { HdChartIdentity } from "@/lib/human-design";
@@ -21,6 +22,9 @@ import { forgetHdChartFact, rememberHdChartFact } from "@/lib/human-design/memor
 function hdErrorResponse(error: unknown) {
   if (error instanceof HdInputError) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (error instanceof HdRateLimitError) {
+    return NextResponse.json({ error: error.message }, { status: 429 });
   }
   console.warn("[human-design] chart failed");
   return NextResponse.json(
@@ -57,6 +61,19 @@ export async function POST(request: NextRequest) {
 
   const auth = await requireUserAuth();
   const userId = auth ? await getProfileUserIdForAccount(auth.sub) : null;
+
+  // Guests get a tighter write budget: every anonymous POST may insert a full
+  // chart row (JSONB) into the shared pool. Reads (GET) stay at 20/min.
+  if (!userId) {
+    const { allowed: guestAllowed } = await checkRateLimit(
+      rateLimitKey("hd_chart_guest_post", clientIp(request)),
+      5,
+      60_000
+    );
+    if (!guestAllowed) {
+      return NextResponse.json({ error: "rate_limit" }, { status: 429 });
+    }
+  }
 
   const subject =
     body.subjectKind === "other"

@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { query, queryClient, type PoolClient } from "@/lib/db";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
+import { refundRunes } from "@/lib/rune-service";
 import {
   calculateHdChart,
   HD_ENGINE_VERSION,
@@ -142,6 +144,17 @@ export class HdInputError extends Error {
   }
 }
 
+/** Thrown when a global (not per-IP) pool guard rejects the request → 429. */
+export class HdRateLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HdRateLimitError";
+  }
+}
+
+/** All id path/body params must pass this before touching UUID columns (22P02 → 500 otherwise). */
+export const HD_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -150,11 +163,32 @@ export function validateHdInput(identity: HdChartIdentity): void {
     throw new HdInputError("Некорректная дата рождения.");
   }
   const year = Number(identity.birthDate.slice(0, 4));
-  // Births can't be in the future — compare the full ISO date, not just the
-  // year, so "this December" is rejected too. The engine's own 2050 cap is a
-  // sanity bound for direct calculateHdChart callers.
-  const now = new Date();
-  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  // Births can't be in the future — "today" is evaluated IN THE BIRTH
+  // TIMEZONE, not server-local: a server already past midnight must not
+  // accept tomorrow's date for a birth in UTC-10, nor reject a legitimate
+  // "today" birth in UTC+13. The engine's own 2050 cap is a sanity bound
+  // for direct calculateHdChart callers.
+  let todayIso = "";
+  try {
+    // en-CA yields YYYY-MM-DD; formatToParts guards against locale-data drift.
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: identity.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    todayIso = `${get("year")}-${get("month")}-${get("day")}`;
+    if (!DATE_RE.test(todayIso)) todayIso = "";
+  } catch {
+    todayIso = "";
+  }
+  if (!todayIso) {
+    // Invalid timezone — the engine rejects it later with HD_INVALID_TIMEZONE;
+    // fall back to the server date so the range check still runs.
+    const now = new Date();
+    todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }
   if (year < HD_MIN_BIRTH_YEAR || identity.birthDate > todayIso) {
     throw new HdInputError("Дата рождения вне поддерживаемого диапазона.");
   }
@@ -265,14 +299,33 @@ export async function getOrComputeHdChart(
   }
 
   if (userId && claimToken && /^[0-9a-f]{48}$/.test(claimToken)) {
-    const adopted = await query<HdChartDbRow>(
-      `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
-       WHERE fingerprint = $1 AND user_id IS NULL AND claim_token = $3
-       RETURNING *`,
-      [fingerprint, userId, claimToken]
-    );
-    if (adopted.rows[0]) {
-      let row = await refreshChartIfEngineStale(adopted.rows[0]);
+    let adoptedRows: HdChartDbRow[] = [];
+    try {
+      const adopted = await query<HdChartDbRow>(
+        `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
+         WHERE fingerprint = $1 AND user_id IS NULL AND claim_token = $3
+         RETURNING *`,
+        [fingerprint, userId, claimToken]
+      );
+      adoptedRows = adopted.rows;
+    } catch (error) {
+      // Adopt flips owner_key (generated from user_id): a concurrent own-row
+      // insert for the same fingerprint makes this UPDATE hit the unique
+      // index. The own row now exists — fall through and read it.
+      if ((error as { code?: string })?.code !== "23505") throw error;
+      const own2 = await query<HdChartDbRow>(
+        "SELECT * FROM hd_charts WHERE fingerprint = $1 AND owner_key = $2",
+        [fingerprint, ownerKey]
+      );
+      if (own2.rows[0]) {
+        let row = await refreshChartIfEngineStale(own2.rows[0]);
+        if (subject) row = await relabelOwnedChart(row, subjectKind, subjectName);
+        return { row: mapChartRow(row), claimToken: null };
+      }
+      throw error;
+    }
+    if (adoptedRows[0]) {
+      let row = await refreshChartIfEngineStale(adoptedRows[0]);
       if (subject) {
         row = await relabelOwnedChart(row, subjectKind, subjectName);
       }
@@ -292,6 +345,22 @@ export async function getOrComputeHdChart(
   }
   if (!chart) {
     chart = computeChartOrThrow(identity);
+  }
+
+  // Global daily ceiling on guest-pool inserts: per-IP limits alone let a
+  // distributed flood grow the pool unboundedly (sweep runs nightly). Cache
+  // hits and owned rows never reach this — only actual new guest rows.
+  if (!userId) {
+    const { allowed } = await checkRateLimit(
+      rateLimitKey("hd_guest_pool_day", "global"),
+      4000,
+      86_400_000
+    );
+    if (!allowed) {
+      throw new HdRateLimitError(
+        "Сервис перегружен. Войдите в аккаунт или попробуйте завтра."
+      );
+    }
   }
 
   const newClaimToken = userId ? null : randomBytes(24).toString("hex");
@@ -638,23 +707,31 @@ export async function lockStalePendingCompositeForResume(reportId: string): Prom
 
 /**
  * Guest-pool hygiene: unclaimed guest charts (and their claim tokens) expire
- * after `olderThanDays`. Owned charts are never touched. Cascades clean up
- * any dependent rows via FK.
+ * after `olderThanDays`. Owned charts are never touched; FK cascades clean up
+ * dependent rows. Drains in batches — a fixed LIMIT would fall behind any
+ * sustained flood (20/min/IP creates up to ~28k rows/day). The loop stops
+ * when a batch comes back partial. Safety ceiling: 250 × 2000 = 500k/run.
  */
 export async function sweepGuestPoolHdCharts(
   olderThanDays = 30,
-  limit = 500
+  batchSize = 2000
 ): Promise<number> {
-  const result = await query(
-    `DELETE FROM hd_charts
-     WHERE id IN (
-       SELECT id FROM hd_charts
-       WHERE user_id IS NULL AND created_at < now() - make_interval(days => $1)
-       LIMIT $2
-     )`,
-    [olderThanDays, limit]
-  );
-  return result.rowCount ?? 0;
+  let total = 0;
+  for (let i = 0; i < 250; i++) {
+    const result = await query(
+      `DELETE FROM hd_charts
+       WHERE id IN (
+         SELECT id FROM hd_charts
+         WHERE user_id IS NULL AND created_at < now() - make_interval(days => $1)
+         LIMIT $2
+       )`,
+      [olderThanDays, batchSize]
+    );
+    const n = result.rowCount ?? 0;
+    total += n;
+    if (n < batchSize) break;
+  }
+  return total;
 }
 
 export async function completeCompositeReport(
@@ -707,4 +784,185 @@ export async function appendHdReportMessage(
     "INSERT INTO hd_report_messages (report_id, role, content) VALUES ($1, $2, $3)",
     [reportId, role, content]
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * Charge/refund invariant helpers
+ *
+ * INVARIANT: a row in status 'pending' with transaction_id ≠ NULL means
+ * "the charge is still held" and may be resumed for free. A refunded charge
+ * must therefore ALWAYS terminalize the row (status='error', tx=NULL) —
+ * otherwise the next request after STALE_PENDING_MS gets a free generation.
+ * ------------------------------------------------------------------ */
+
+/** True when a refund row already exists for the given spend transaction. */
+export async function hasRuneRefundForTransaction(transactionId: string): Promise<boolean> {
+  const { rows } = await query(
+    `SELECT 1 FROM rune_transactions
+     WHERE type = 'refund' AND refund_of_transaction_id = $1
+     LIMIT 1`,
+    [transactionId]
+  );
+  return rows.length > 0;
+}
+
+/** Refund landed → the pending row must never be resumable again. */
+export async function markHdReportChargeRefunded(reportId: string): Promise<void> {
+  await query(
+    `UPDATE hd_reports
+     SET status = 'error', error = 'charge_refunded', transaction_id = NULL, updated_at = now()
+     WHERE id = $1 AND status = 'pending'`,
+    [reportId]
+  );
+}
+
+export async function markCompositeReportChargeRefunded(reportId: string): Promise<void> {
+  await query(
+    `UPDATE hd_composite_reports
+     SET status = 'error', error = 'charge_refunded', transaction_id = NULL, updated_at = now()
+     WHERE id = $1 AND status = 'pending'`,
+    [reportId]
+  );
+}
+
+/**
+ * Undo the CAS-lock age reset after a failed resume so the user can retry
+ * immediately instead of waiting out a fresh 10-minute stale window.
+ */
+export async function releaseStalePendingReportLock(reportId: string): Promise<void> {
+  await query(
+    `UPDATE hd_reports SET created_at = now() - make_interval(secs => $2), updated_at = now()
+     WHERE id = $1 AND status = 'pending'`,
+    [reportId, STALE_PENDING_MS / 1000 + 1]
+  );
+}
+
+export async function releaseStalePendingCompositeLock(reportId: string): Promise<void> {
+  await query(
+    `UPDATE hd_composite_reports SET created_at = now() - make_interval(secs => $2), updated_at = now()
+     WHERE id = $1 AND status = 'pending'`,
+    [reportId, STALE_PENDING_MS / 1000 + 1]
+  );
+}
+
+/**
+ * Reconciler for crashed purchases: rows stuck pending/error with a charge
+ * attached and no refund recorded. Refunds the original amount (read from
+ * the spend transaction — refundRunes is idempotent per source transaction)
+ * and terminalizes the row. Rows younger than 1 h are left alone: generation
+ * may still be in flight or the user may be about to resume.
+ */
+export async function reconcileHdReportCharges(limit = 50): Promise<number> {
+  let refunded = 0;
+  for (const table of ["hd_reports", "hd_composite_reports"] as const) {
+    // Identical shape in both tables; the table name cannot be parameterized.
+    // transaction_id is UUID in hd_reports but TEXT in hd_composite_reports —
+    // compare as text to keep one code path (and never throw on a bad cast).
+    const { rows } = await query<{
+      id: string;
+      user_id: string;
+      transaction_id: string;
+      amount: number;
+    }>(
+      `SELECT r.id, r.user_id, r.transaction_id, ABS(t.amount) AS amount
+       FROM ${table} r
+       JOIN rune_transactions t ON t.id::text = r.transaction_id::text AND t.type = 'spend'
+       WHERE r.status IN ('pending', 'error')
+         AND r.transaction_id IS NOT NULL
+         AND r.updated_at < now() - interval '1 hour'
+         AND NOT EXISTS (
+           SELECT 1 FROM rune_transactions rf
+           WHERE rf.type = 'refund' AND rf.refund_of_transaction_id::text = r.transaction_id::text
+         )
+       ORDER BY r.updated_at
+       LIMIT $1`,
+      [limit]
+    );
+    for (const row of rows) {
+      try {
+        await refundRunes(
+          row.user_id,
+          row.amount,
+          "Возврат: разбор не был создан",
+          "HD_REPORT",
+          row.transaction_id
+        );
+        await query(
+          `UPDATE ${table}
+           SET status = 'error', error = 'charge_refunded_reconcile', transaction_id = NULL, updated_at = now()
+           WHERE id = $1`,
+          [row.id]
+        );
+        refunded += 1;
+      } catch (error) {
+        console.warn(`[human-design] reconcile failed for ${table}:${row.id}`, error);
+      }
+    }
+  }
+  return refunded;
+}
+
+/* ------------------------------------------------------------------ *
+ * Center insights: persisted per (chart, user, center) — a repeat purchase
+ * returns the cached text instead of charging again, and a crash between
+ * charge and response can never lose a paid insight.
+ * ------------------------------------------------------------------ */
+
+export interface HdCenterInsightRow {
+  id: string;
+  chartId: string;
+  center: string;
+  insightText: string;
+  createdAt: string;
+}
+
+interface HdCenterInsightDbRow {
+  id: string;
+  chart_id: string;
+  center: string;
+  insight_text: string;
+  created_at: string | Date;
+}
+
+function mapInsightRow(row: HdCenterInsightDbRow): HdCenterInsightRow {
+  return {
+    id: row.id,
+    chartId: row.chart_id,
+    center: row.center,
+    insightText: row.insight_text,
+    createdAt: toIso(row.created_at),
+  };
+}
+
+export async function getHdCenterInsight(
+  chartId: string,
+  userId: string,
+  center: string
+): Promise<HdCenterInsightRow | null> {
+  const { rows } = await query<HdCenterInsightDbRow>(
+    `SELECT id, chart_id, center, insight_text, created_at
+     FROM hd_center_insights
+     WHERE chart_id = $1 AND user_id = $2 AND center = $3`,
+    [chartId, userId, center]
+  );
+  return rows[0] ? mapInsightRow(rows[0]) : null;
+}
+
+/**
+ * Insert the insight; returns null when a concurrent request already stored
+ * one (caller must roll back its charge and serve the existing row).
+ */
+export async function insertHdCenterInsight(
+  params: { chartId: string; userId: string; center: string; insightText: string; transactionId: string | null },
+  client?: PoolClient
+): Promise<HdCenterInsightRow | null> {
+  const sql = `INSERT INTO hd_center_insights (chart_id, user_id, center, insight_text, transaction_id)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (chart_id, user_id, center) DO NOTHING
+     RETURNING id, chart_id, center, insight_text, created_at`;
+  const params_ = [params.chartId, params.userId, params.center, params.insightText, params.transactionId];
+  const { rows } = client
+    ? await queryClient<HdCenterInsightDbRow>(client, sql, params_)
+    : await query<HdCenterInsightDbRow>(sql, params_);
+  return rows[0] ? mapInsightRow(rows[0]) : null;
 }

@@ -25,8 +25,12 @@ import {
   failHdReport,
   getHdChartById,
   getHdReportForChart,
+  hasRuneRefundForTransaction,
+  HD_UUID_RE,
   isStalePendingReport,
   lockStalePendingReportForResume,
+  markHdReportChargeRefunded,
+  releaseStalePendingReportLock,
   toPublicHdReport,
 } from "@/lib/services/human-design-service";
 import {
@@ -67,7 +71,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (typeof body.chartId !== "string" || body.chartId.length < 10) {
+  if (typeof body.chartId !== "string" || !HD_UUID_RE.test(body.chartId)) {
     return NextResponse.json({ error: "Укажите карту." }, { status: 400 });
   }
 
@@ -84,7 +88,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const existing = await getHdReportForChart(chart.id, userId);
+  let existing = await getHdReportForChart(chart.id, userId);
   if (existing?.status === "done" && existing.reportText) {
     return NextResponse.json({ report: toPublicHdReport(existing), cached: true });
   }
@@ -96,10 +100,22 @@ export async function POST(request: NextRequest) {
   }
   // Stale pending with a recorded charge → the process crashed AFTER payment:
   // resume generation on the same row without charging twice.
-  const resumePaidPending =
+  let resumePaidPending =
     existing?.status === "pending" &&
     isStalePendingReport(existing) &&
     Boolean(existing.transactionId);
+
+  if (resumePaidPending && existing?.transactionId) {
+    // Barrier against refunded orphans: if the charge behind this row was
+    // already returned (rollback raced a crash), resuming would be a FREE
+    // generation. Drop the row and fall into the normal paid flow.
+    const alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId).catch(() => false);
+    if (alreadyRefunded) {
+      await deleteHdReportRow(existing.id).catch(() => undefined);
+      existing = null;
+      resumePaidPending = false;
+    }
+  }
 
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
@@ -121,6 +137,8 @@ export async function POST(request: NextRequest) {
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
   let refundLanded = false;
+  let completed = false;
+  let pending: { id: string } | null = null;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
     rollbackAttempted = true;
@@ -133,9 +151,13 @@ export async function POST(request: NextRequest) {
       slotReserved: charge.slotReserved,
     });
     refundLanded = res.refunded;
+    if (res.refunded && pending) {
+      // Money went back → the pending row must NEVER be resumable (a resumable
+      // row with a refunded charge is a free generation 10 minutes later).
+      await markHdReportChargeRefunded(pending.id);
+    }
   };
 
-  let pending: { id: string } | null = null;
   try {
     if (resumePaidPending && existing) {
       // CAS-lock the stale row: concurrent resumes see a fresh pending → 409.
@@ -195,6 +217,8 @@ export async function POST(request: NextRequest) {
       await rollback();
       if (resumePaidPending) {
         // Keep the paid pending row: the next attempt resumes it for free.
+        // Release the CAS-lock age reset so the retry isn't blocked for 10 min.
+        await releaseStalePendingReportLock(pending.id).catch(() => undefined);
         return NextResponse.json(
           { error: "Модель не смогла создать разбор. Попробуйте ещё раз — оплата сохранена." },
           { status: 502 }
@@ -214,6 +238,7 @@ export async function POST(request: NextRequest) {
 
     const reportText = text.trim() + REPORT_DISCLAIMER;
     await completeHdReport(pending.id, reportText, "openrouter");
+    completed = true; // past this point a catch must NOT refund a done report
     if (chart.subjectKind === "self") {
       rememberHdChartFact(userId, chart.chart, chart.id);
     }
@@ -224,9 +249,13 @@ export async function POST(request: NextRequest) {
       runeBalance: charge?.newBalance,
     });
   } catch (error) {
-    await rollback().catch(() => {
-      console.warn("[human-design] billing rollback failed");
-    });
+    // Never refund a report that actually completed — a post-completion
+    // failure (e.g. the final SELECT) must not turn into a free report.
+    if (!completed) {
+      await rollback().catch(() => {
+        console.warn("[human-design] billing rollback failed");
+      });
+    }
     // A failed create+charge transaction rolled back atomically — no unpaid
     // placeholder to clean up, the next attempt starts clean.
     if (error instanceof InsufficientFundsError) {
@@ -263,6 +292,9 @@ export async function GET(request: NextRequest) {
   if (rateLimited) return rateLimited;
 
   const chartId = request.nextUrl.searchParams.get("chartId") ?? "";
+  if (!HD_UUID_RE.test(chartId)) {
+    return NextResponse.json({ report: null });
+  }
   const report = await getHdReportForChart(chartId, resolved.profileUserId);
   return NextResponse.json({ report: report ? toPublicHdReport(report) : null });
 }

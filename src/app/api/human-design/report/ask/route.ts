@@ -20,6 +20,7 @@ import {
   appendHdReportMessage,
   getHdChartById,
   getHdReportById,
+  HD_UUID_RE,
   listHdReportMessages,
 } from "@/lib/services/human-design-service";
 import { buildHdAskSystemPrompt, formatHdEvidence } from "@/lib/human-design";
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     question?: unknown;
   };
   const question = typeof body.question === "string" ? body.question.trim() : "";
-  if (typeof body.reportId !== "string" || !question) {
+  if (typeof body.reportId !== "string" || !HD_UUID_RE.test(body.reportId) || !question) {
     return NextResponse.json({ error: "Укажите разбор и вопрос." }, { status: 400 });
   }
   if (question.length > MAX_QUESTION_LENGTH) {
@@ -138,4 +139,36 @@ export async function POST(request: NextRequest) {
       { status: 502 }
     );
   }
+}
+
+/**
+ * Owner-scoped message history. A paid answer commits atomically with the
+ * charge — if the HTTP response is lost, the client refetches it here
+ * instead of paying again for a retry.
+ */
+export async function GET(request: NextRequest) {
+  if (!(await isHumanDesignEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
+  const resolved = await resolveProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(resolved.profileUserId, "hd_chart_read");
+  if (rateLimited) return rateLimited;
+
+  const reportId = request.nextUrl.searchParams.get("reportId") ?? "";
+  if (!HD_UUID_RE.test(reportId)) {
+    return NextResponse.json({ error: "Укажите разбор." }, { status: 400 });
+  }
+
+  const report = await getHdReportById(reportId, resolved.profileUserId);
+  if (!report) {
+    return NextResponse.json({ error: "Разбор не найден." }, { status: 404 });
+  }
+
+  const messages = await listHdReportMessages(report.id, 40);
+  return NextResponse.json({ messages });
 }

@@ -15,7 +15,13 @@ import {
   ensureSufficientRunes,
   InsufficientFundsError,
 } from "@/lib/services/billing-service";
-import { getHdChartById } from "@/lib/services/human-design-service";
+import { withTransaction } from "@/lib/db";
+import {
+  getHdCenterInsight,
+  getHdChartById,
+  HD_UUID_RE,
+  insertHdCenterInsight,
+} from "@/lib/services/human-design-service";
 import {
   buildHdAskSystemPrompt,
   formatHdEvidence,
@@ -30,6 +36,14 @@ export const maxDuration = 120;
 const VALID_CENTERS = new Set<string>([
   "head", "ajna", "throat", "g", "heart", "sacral", "solar", "spleen", "root",
 ]);
+
+/** Aborts the charge transaction when a concurrent purchase already stored the insight. */
+class HdInsightExistsError extends Error {
+  constructor() {
+    super("hd_insight_exists");
+    this.name = "HdInsightExistsError";
+  }
+}
 
 export async function POST(request: NextRequest) {
   if (!(await isHumanDesignEnabled())) {
@@ -49,7 +63,12 @@ export async function POST(request: NextRequest) {
     chartId?: unknown;
     center?: unknown;
   };
-  if (typeof body.chartId !== "string" || typeof body.center !== "string" || !VALID_CENTERS.has(body.center)) {
+  if (
+    typeof body.chartId !== "string" ||
+    !HD_UUID_RE.test(body.chartId) ||
+    typeof body.center !== "string" ||
+    !VALID_CENTERS.has(body.center)
+  ) {
     return NextResponse.json({ error: "Укажите карту и центр." }, { status: 400 });
   }
 
@@ -59,11 +78,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
 
+  const centerKey = body.center as HdCenterKey;
+
+  // Idempotency: a previously purchased insight is served from the store —
+  // repeat clicks never charge twice, and a crash after the charge can never
+  // lose the paid text.
+  const cached = await getHdCenterInsight(chart.id, userId, centerKey);
+  if (cached) {
+    return NextResponse.json({ answer: cached.insightText, cached: true });
+  }
+
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
-  const center = body.center as HdCenterKey;
+  const center = centerKey;
   const defined = chart.chart.definedCenters.includes(center);
   const centerName = CENTER_NAMES_RU[center];
 
@@ -113,9 +142,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const charge = await chargeRuneAction({ userId, action: "HD_ASK", exempt });
-    return NextResponse.json({ answer: answer.trim(), runeBalance: charge.newBalance });
+    const text = answer.trim();
+    // Charge + persist atomically: a paid insight is stored before the
+    // response leaves, so a lost HTTP response never loses the purchase.
+    const { charge, insight } = await withTransaction(async (client) => {
+      const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client });
+      const row = await insertHdCenterInsight(
+        {
+          chartId: chart.id,
+          userId,
+          center,
+          insightText: text,
+          transactionId: c.transactionId ?? null,
+        },
+        client
+      );
+      if (!row) {
+        // Concurrent purchase stored the insight first — roll this charge
+        // back by aborting the transaction and serve the existing row.
+        throw new HdInsightExistsError();
+      }
+      return { charge: c, insight: row };
+    });
+
+    return NextResponse.json({ answer: insight.insightText, runeBalance: charge.newBalance });
   } catch (error) {
+    if (error instanceof HdInsightExistsError) {
+      const existing = await getHdCenterInsight(chart.id, userId, center);
+      if (existing) {
+        return NextResponse.json({ answer: existing.insightText, cached: true });
+      }
+    }
     if (error instanceof InsufficientFundsError) {
       return NextResponse.json(
         {

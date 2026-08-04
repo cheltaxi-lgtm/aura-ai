@@ -61,6 +61,35 @@ export default function HdReportPanel({
     };
   }, [authenticated, chartId]);
 
+  // Restore the paid Q&A history: answers commit atomically with the charge
+  // server-side, so a lost response (network drop, tab closed) reappears here.
+  const reportId = report?.id ?? null;
+  useEffect(() => {
+    if (!authenticated || !reportId) return;
+    let cancelled = false;
+    fetch(`/api/human-design/report/ask?reportId=${encodeURIComponent(reportId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !Array.isArray(d?.messages)) return;
+        const restored = d.messages
+          .filter((m: unknown): m is { role: "user" | "assistant"; content: string } =>
+            Boolean(
+              m &&
+                typeof m === "object" &&
+                ((m as { role?: unknown }).role === "user" ||
+                  (m as { role?: unknown }).role === "assistant") &&
+                typeof (m as { content?: unknown }).content === "string"
+            )
+          )
+          .map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: m.content }));
+        if (restored.length) setDialog(restored);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, reportId]);
+
   useEffect(() => {
     // block:"nearest" — "end" would yank the whole page down on mobile.
     dialogEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
