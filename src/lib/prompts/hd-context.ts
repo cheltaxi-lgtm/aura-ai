@@ -16,7 +16,8 @@ export async function buildHdPromptContext(params: {
 
   try {
     const charts = await listHdChartsForUser(params.profileUserId);
-    const latest = charts[0];
+    // Only the client's own chart belongs in their personal chat context.
+    const latest = charts.find((c) => c.subjectKind !== "other");
     if (!latest) return "";
     return `=== ДИЗАЙН ЧЕЛОВЕКА КЛИЕНТА (рассчитано) ===
 ${formatHdChatSummary(latest.chart)}

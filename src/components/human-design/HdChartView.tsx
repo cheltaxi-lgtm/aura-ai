@@ -19,6 +19,8 @@ export interface HdChartPayload {
   birthDate: string;
   birthTime: string | null;
   timeUnknown: boolean;
+  subjectKind?: "self" | "other";
+  subjectName?: string | null;
   chart: HdChart;
 }
 

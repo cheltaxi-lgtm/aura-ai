@@ -114,7 +114,10 @@ export default function HdCabinet() {
                     : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
                 }`}
               >
-                {c.placeName} · {c.birthDate.split("-").reverse().join(".")}
+                {c.subjectKind === "other" && c.subjectName
+                  ? `${c.subjectName} · `
+                  : ""}
+                {c.birthDate.split("-").reverse().join(".")}
                 <span className="ml-1.5 text-white/40">{TYPE_META[c.chart.type].nameRu}</span>
               </button>
             );

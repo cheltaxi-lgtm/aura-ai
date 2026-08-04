@@ -23,6 +23,8 @@ interface HdCalculatorProps {
 }
 
 export default function HdCalculator({ initialChart = null, returnTo, onChartCreated }: HdCalculatorProps) {
+  const [subjectKind, setSubjectKind] = useState<"self" | "other">("self");
+  const [subjectName, setSubjectName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [timeUnknown, setTimeUnknown] = useState(false);
@@ -34,9 +36,11 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<HdChartPayload | null>(initialChart);
   const [authenticated, setAuthenticated] = useState(false);
+  const [mine, setMine] = useState<HdChartPayload[]>([]);
   const placeBoxRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefillDoneRef = useRef(false);
+  const prefilledRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -45,15 +49,27 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       .catch(() => setAuthenticated(false));
   }, []);
 
-  // Prefill birth data from the cabinet profile + natal chart place.
+  // Logged-in visitors see their existing charts above the form.
   useEffect(() => {
-    if (!authenticated || prefillDoneRef.current) return;
+    if (!authenticated) return;
+    fetch("/api/human-design/mine")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (Array.isArray(d?.charts)) setMine(d.charts as HdChartPayload[]);
+      })
+      .catch(() => undefined);
+  }, [authenticated]);
+
+  // Prefill birth data from the cabinet profile + natal chart place (self only).
+  useEffect(() => {
+    if (!authenticated || subjectKind !== "self" || prefillDoneRef.current) return;
     prefillDoneRef.current = true;
     fetch("/api/human-design/prefill")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const p = d?.prefill;
         if (!p) return;
+        prefilledRef.current = true;
         if (typeof p.birthDate === "string" && p.birthDate) setBirthDate(p.birthDate);
         if (typeof p.birthTime === "string" && p.birthTime) {
           setBirthTime(p.birthTime.slice(0, 5));
@@ -71,7 +87,21 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated]);
+  }, [authenticated, subjectKind]);
+
+  const switchSubject = (kind: "self" | "other") => {
+    setSubjectKind(kind);
+    setError(null);
+    if (kind === "other" && prefilledRef.current) {
+      // The form holds MY birth data — it must not leak into another person's chart.
+      prefilledRef.current = false;
+      setBirthDate("");
+      setBirthTime("");
+      setTimeUnknown(false);
+      setPlace(null);
+      setPlaceQuery("");
+    }
+  };
 
   // Restore the last computed chart (survives the login redirect round-trip).
   useEffect(() => {
@@ -134,6 +164,10 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 
   const submit = useCallback(async () => {
     setError(null);
+    if (subjectKind === "other" && !subjectName.trim()) {
+      setError("Укажите имя человека, для которого делается расчёт.");
+      return;
+    }
     if (!birthDate) {
       setError("Укажите дату рождения.");
       return;
@@ -158,6 +192,8 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
           placeName: place.label,
           lat: place.latitude,
           lon: place.longitude,
+          subjectKind,
+          subjectName: subjectKind === "other" ? subjectName.trim() : null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -167,6 +203,9 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       }
       const payload = data.chart as HdChartPayload;
       setResult(payload);
+      setMine((prev) =>
+        prev.some((c) => c.id === payload.id) ? prev : [payload, ...prev]
+      );
       localStorage.setItem(STORAGE_KEY, payload.fingerprint);
       onChartCreated?.(payload);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -175,7 +214,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     } finally {
       setLoading(false);
     }
-  }, [birthDate, birthTime, place, timeUnknown]);
+  }, [birthDate, birthTime, place, timeUnknown, subjectKind, subjectName]);
 
   if (result) {
     return (
@@ -203,10 +242,79 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   }
 
   return (
-    <div className="hd-panel">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="hd-field">
-          <label className="hd-field__label" htmlFor="hd-date">Дата рождения</label>
+    <div className="space-y-5">
+      {authenticated && mine.length > 0 && (
+        <div className="hd-panel">
+          <p className="hd-field__label mb-3">Мои карты</p>
+          <div className="flex flex-wrap gap-2">
+            {mine.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  setResult(c);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="rounded-full border border-amber-300/25 bg-amber-300/5 px-3.5 py-1.5 text-xs text-amber-100/85 transition hover:border-amber-300/50 hover:bg-amber-300/15"
+              >
+                {c.subjectKind === "other" && c.subjectName
+                  ? `${c.subjectName} · `
+                  : ""}
+                {c.birthDate.split("-").reverse().join(".")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="hd-panel">
+        <div className="mb-4">
+          <p className="hd-field__label mb-2">Для кого расчёт?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => switchSubject("self")}
+              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                subjectKind === "self"
+                  ? "bg-amber-400/90 text-black"
+                  : "border border-white/15 text-white/60 hover:border-amber-300/40 hover:text-white/85"
+              }`}
+            >
+              Себе
+            </button>
+            <button
+              type="button"
+              onClick={() => switchSubject("other")}
+              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                subjectKind === "other"
+                  ? "bg-amber-400/90 text-black"
+                  : "border border-white/15 text-white/60 hover:border-amber-300/40 hover:text-white/85"
+              }`}
+            >
+              Другому человеку
+            </button>
+          </div>
+        </div>
+
+        {subjectKind === "other" && (
+          <div className="hd-field mb-4">
+            <label className="hd-field__label" htmlFor="hd-subject">Имя человека</label>
+            <input
+              id="hd-subject"
+              type="text"
+              value={subjectName}
+              onChange={(e) => setSubjectName(e.target.value)}
+              placeholder="Например, Мария"
+              maxLength={60}
+              className="hd-field__input"
+              autoComplete="off"
+            />
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="hd-field">
+            <label className="hd-field__label" htmlFor="hd-date">Дата рождения</label>
           <input
             id="hd-date"
             type="date"
@@ -290,6 +398,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       <p className="mt-3 text-center text-[0.6875rem] leading-relaxed text-white/40">
         Расчёт бесплатный. Точные эфемериды, истинный лунный узел, 88° солярной дуги.
       </p>
+      </div>
     </div>
   );
 }
@@ -297,5 +406,9 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 function payload_line(payload: HdChartPayload): string {
   const date = payload.birthDate.split("-").reverse().join(".");
   const time = payload.timeUnknown ? "время неизвестно" : payload.birthTime;
-  return `${date} · ${time} · ${payload.placeName}`;
+  const who =
+    payload.subjectKind === "other" && payload.subjectName
+      ? `${payload.subjectName} · `
+      : "";
+  return `${who}${date} · ${time} · ${payload.placeName}`;
 }

@@ -52,9 +52,20 @@ export async function POST(request: NextRequest) {
   const auth = await requireUserAuth();
   const userId = auth ? await getProfileUserIdForAccount(auth.sub) : null;
 
+  const subject =
+    body.subjectKind === "other"
+      ? {
+          kind: "other" as const,
+          name: typeof body.subjectName === "string" ? body.subjectName : null,
+        }
+      : { kind: "self" as const, name: null };
+
   try {
-    const chart = await getOrComputeHdChart(identity, userId);
-    if (userId) rememberHdChartFact(userId, chart.chart, chart.id);
+    const chart = await getOrComputeHdChart(identity, userId, subject);
+    // Memory facts describe the client — only self charts belong there.
+    if (userId && chart.subjectKind === "self") {
+      rememberHdChartFact(userId, chart.chart, chart.id);
+    }
     return NextResponse.json({ chart, owned: Boolean(userId) });
   } catch (error) {
     return hdErrorResponse(error);

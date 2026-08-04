@@ -20,7 +20,14 @@ export interface HdChartRow {
   fingerprint: string;
   chart: HdChart;
   engineVersion: string;
+  subjectKind: "self" | "other";
+  subjectName: string | null;
   createdAt: string;
+}
+
+export interface HdSubject {
+  kind: "self" | "other";
+  name: string | null;
 }
 
 export interface HdReportRow {
@@ -48,6 +55,8 @@ interface HdChartDbRow {
   fingerprint: string;
   chart: HdChart;
   engine_version: string;
+  subject_kind: string | null;
+  subject_name: string | null;
   created_at: string | Date;
 }
 
@@ -85,6 +94,8 @@ function mapChartRow(row: HdChartDbRow): HdChartRow {
     fingerprint: row.fingerprint,
     chart: row.chart,
     engineVersion: row.engine_version,
+    subjectKind: row.subject_kind === "other" ? "other" : "self",
+    subjectName: row.subject_name,
     createdAt: toIso(row.created_at),
   };
 }
@@ -143,10 +154,16 @@ export function validateHdInput(identity: HdChartIdentity): void {
  */
 export async function getOrComputeHdChart(
   identity: HdChartIdentity,
-  userId: string | null
+  userId: string | null,
+  subject?: HdSubject
 ): Promise<HdChartRow> {
   validateHdInput(identity);
   const fingerprint = hdFingerprint(identity);
+  const subjectKind = subject?.kind === "other" ? "other" : "self";
+  const subjectName =
+    subjectKind === "other" && subject?.name?.trim()
+      ? subject.name.trim().slice(0, 60)
+      : null;
 
   const existing = await query<HdChartDbRow>(
     "SELECT * FROM hd_charts WHERE fingerprint = $1",
@@ -160,6 +177,15 @@ export async function getOrComputeHdChart(
         [row.id, userId]
       );
       row.user_id = userId;
+    }
+    // Owner re-labels their own chart (e.g. first computed as guest, now named).
+    if (userId && row.user_id === userId && subject) {
+      await query(
+        "UPDATE hd_charts SET subject_kind = $2, subject_name = $3, updated_at = now() WHERE id = $1",
+        [row.id, subjectKind, subjectName]
+      );
+      row.subject_kind = subjectKind;
+      row.subject_name = subjectName;
     }
     return mapChartRow(row);
   }
@@ -182,8 +208,9 @@ export async function getOrComputeHdChart(
   const inserted = await query<HdChartDbRow>(
     `INSERT INTO hd_charts (
        user_id, birth_date, birth_time, time_unknown, timezone,
-       place_name, lat, lon, fingerprint, chart, engine_version
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       place_name, lat, lon, fingerprint, chart, engine_version,
+       subject_kind, subject_name
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (fingerprint) DO UPDATE SET updated_at = hd_charts.updated_at
      RETURNING *`,
     [
@@ -198,6 +225,8 @@ export async function getOrComputeHdChart(
       fingerprint,
       JSON.stringify(chart),
       HD_ENGINE_VERSION,
+      subjectKind,
+      subjectName,
     ]
   );
   return mapChartRow(inserted.rows[0]!);

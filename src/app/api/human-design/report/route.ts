@@ -101,7 +101,10 @@ export async function POST(request: NextRequest) {
   }
 
   const user = await getUserById(userId).catch(() => null);
-  const clientName = normalizePersonDisplayName(user?.name) || null;
+  const clientName =
+    chart.subjectKind === "other" && chart.subjectName
+      ? chart.subjectName
+      : normalizePersonDisplayName(user?.name) || null;
   const evidence = formatHdEvidence(chart.chart);
   const systemPrompt = await wrapSystemPrompt(buildHdReportSystemPrompt(clientName));
 
@@ -170,7 +173,9 @@ export async function POST(request: NextRequest) {
 
     const reportText = text.trim() + REPORT_DISCLAIMER;
     await completeHdReport(pending.id, reportText, "openrouter");
-    rememberHdChartFact(userId, chart.chart, chart.id);
+    if (chart.subjectKind === "self") {
+      rememberHdChartFact(userId, chart.chart, chart.id);
+    }
 
     const report = await getHdReportForChart(chart.id, userId);
     return NextResponse.json({ report, runeBalance: charge.newBalance });

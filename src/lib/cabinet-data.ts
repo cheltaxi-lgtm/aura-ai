@@ -413,7 +413,11 @@ export async function getCabinetSessions(
          NULL::uuid AS session_id,
          'numerolog' AS character_key,
          r.created_at AS session_date,
-         'Дизайн Человека — полный разбор' AS topic_summary,
+         CASE
+           WHEN c.subject_kind = 'other' AND NULLIF(trim(c.subject_name), '') IS NOT NULL
+             THEN 'Дизайн Человека — ' || trim(c.subject_name)
+           ELSE 'Дизайн Человека — полный разбор'
+         END AS topic_summary,
          NULL AS custom_question,
          NULL AS intention,
          'human_design' AS spread_id,
@@ -430,6 +434,7 @@ export async function getCabinetSessions(
          NULL AS matrix_subject_name,
          NULL AS matrix_subject_kind
        FROM hd_reports r
+       JOIN hd_charts c ON c.id = r.chart_id
        WHERE r.user_id = $1
          AND r.status = 'done'
          AND length(trim(r.report_text)) > 0
@@ -505,10 +510,11 @@ export async function getCabinetSessions(
     const customQuestion = r.custom_question?.trim() || null;
     const rawTopic = r.topic_summary?.trim() || "";
     const topicLooksLikeQuestion =
+      r.spread_id !== "human_design" &&
       rawTopic.length >= 8 &&
       rawTopic !== "Свой вопрос" &&
       rawTopic !== topicFromIntention &&
-      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня", "Дизайн Человека — полный разбор"].includes(rawTopic);
+      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня"].includes(rawTopic);
     const resolvedQuestion =
       customQuestion ||
       (r.intention === "custom" && topicLooksLikeQuestion ? rawTopic : null) ||
