@@ -14,22 +14,12 @@ const HEIGHT = 630;
 
 export async function GET(request: NextRequest) {
   const fingerprint = request.nextUrl.searchParams.get("f") ?? "";
-  const debug = request.nextUrl.searchParams.get("debug");
   const chart = /^[0-9a-f]{64}$/.test(fingerprint)
     ? await getHdChartByFingerprint(fingerprint).catch(() => null)
     : null;
 
-  if (debug === "json") {
-    return Response.json({
-      found: Boolean(chart),
-      type: chart?.chart.type ?? null,
-      profile: chart?.chart.profile ?? null,
-      definedCenters: chart?.chart.definedCenters ?? null,
-    });
-  }
-
   const typeName = chart ? TYPE_META[chart.chart.type].nameRu : "Дизайн Человека";
-  const profile = chart ? chart.chart.profile : "";
+  const profile = chart?.chart.profile ?? "";
   const authority = chart ? AUTHORITY_NAMES_RU[chart.chart.authority] : "";
   const profileName = chart ? (PROFILE_NAMES_RU[chart.chart.profile] ?? "") : "";
 
@@ -40,88 +30,77 @@ export async function GET(request: NextRequest) {
           width: "100%",
           height: "100%",
           display: "flex",
-          alignItems: "center",
+          flexDirection: "column",
+          justifyContent: "center",
           background:
             "radial-gradient(ellipse 70% 50% at 30% 20%, rgba(155,127,212,0.25), transparent 70%), linear-gradient(150deg, #14101f 0%, #07060d 100%)",
           color: "#F5E6B8",
-          padding: 48,
+          padding: 64,
         }}
       >
-        {chart && debug !== "nosquares" && (
+        <div
+          style={{
+            display: "flex",
+            fontSize: 20,
+            letterSpacing: 6,
+            color: "rgba(232,199,126,0.6)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          ZOVUS · ДИЗАЙН ЧЕЛОВЕКА
+        </div>
+        <div
+          style={{
+            display: "flex",
+            fontSize: 52,
+            fontWeight: 700,
+            marginTop: 20,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {typeName}
+        </div>
+        {chart && (
           <div
             style={{
               display: "flex",
-              flexWrap: "wrap",
-              width: 300,
-              gap: 18,
-              alignContent: "center",
-              justifyContent: "center",
+              fontSize: 28,
+              color: "rgba(245,230,184,0.85)",
+              marginTop: 16,
+              whiteSpace: "nowrap",
             }}
           >
-            {(chart.chart.definedCenters ?? []).slice(0, 9).map((c) => (
-              <div
-                key={c}
-                style={{
-                  width: 84,
-                  height: 84,
-                  borderRadius: 20,
-                  background: "linear-gradient(145deg, #e8c77e, #9b7fd4)",
-                }}
-              />
-            ))}
+            {`Профиль ${profile}${profileName ? ` · ${profileName}` : ""}`}
+          </div>
+        )}
+        {chart && authority && (
+          <div
+            style={{
+              display: "flex",
+              fontSize: 26,
+              color: "rgba(245,230,184,0.65)",
+              marginTop: 8,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {`Авторитет: ${authority}`}
           </div>
         )}
         <div
           style={{
+            marginTop: 36,
             display: "flex",
-            flexDirection: "column",
-            marginLeft: chart ? 56 : 0,
-            flex: 1,
+            fontSize: 24,
+            color: "#0c0a14",
+            background: "linear-gradient(90deg, #e8c77e, #c9a24a)",
+            padding: "14px 28px",
+            borderRadius: 999,
+            fontWeight: 600,
+            alignSelf: "flex-start",
+            whiteSpace: "nowrap",
           }}
         >
-          <div style={{ fontSize: 20, letterSpacing: 6, color: "rgba(232,199,126,0.6)" }}>
-            ZOVUS · ДИЗАЙН ЧЕЛОВЕКА
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              fontSize: 56,
-              fontWeight: 700,
-              marginTop: 18,
-              lineHeight: 1.15,
-            }}
-          >
-            {(debug === "notext" ? "Дизайн Человека" : typeName)
-              .split(" ")
-              .map((word) => (
-                <div key={word}>{word}</div>
-              ))}
-          </div>
-          {chart && debug !== "notext" && (
-            <div style={{ fontSize: 30, color: "rgba(245,230,184,0.85)", marginTop: 14 }}>
-              Профиль {profile} · {profileName}
-            </div>
-          )}
-          {chart && debug !== "notext" && (
-            <div style={{ fontSize: 26, color: "rgba(245,230,184,0.65)", marginTop: 8 }}>
-              Авторитет: {authority}
-            </div>
-          )}
-          <div
-            style={{
-              marginTop: 36,
-              fontSize: 24,
-              color: "#0c0a14",
-              background: "linear-gradient(90deg, #e8c77e, #c9a24a)",
-              padding: "14px 28px",
-              borderRadius: 999,
-              alignSelf: "flex-start",
-              fontWeight: 600,
-            }}
-          >
-            Рассчитать свою карту бесплатно
-          </div>
+          Рассчитать свою карту бесплатно
         </div>
       </div>
     ),
