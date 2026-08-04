@@ -442,6 +442,7 @@ export default function AuraSellingLanding({
         <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
         <LandingDemoSection onOpenCards={() => handlePrimaryCta("final")} />
         <EditorialSessionStepsSection />
+        <EditorialBirthToolsSection />
         <LandingHonestSection />
         <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
         {showMasters ? (

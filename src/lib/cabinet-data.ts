@@ -301,7 +301,7 @@ export async function getCabinetSessions(
   const [rows, countRows] = await Promise.all([
     query<{
       id: string;
-      session_id: string;
+      session_id: string | null;
       character_key: string;
       session_date: Date;
       topic_summary: string | null;
@@ -330,6 +330,7 @@ export async function getCabinetSessions(
          WHERE cm.role = 'assistant'
          ORDER BY cm.session_id, cm.created_at DESC
        )
+       SELECT * FROM (
        SELECT
          COALESCE(sm.id, s.id) AS id,
          s.id AS session_id,
@@ -406,12 +407,42 @@ export async function getCabinetSessions(
                AND h.context_data->>'sessionId' = s.id::text
            )
          )
-       ORDER BY COALESCE(sm.session_date, s.updated_at, s.created_at) DESC
+       UNION ALL
+       SELECT
+         r.id,
+         NULL::uuid AS session_id,
+         'numerolog' AS character_key,
+         r.created_at AS session_date,
+         'Дизайн Человека — полный разбор' AS topic_summary,
+         NULL AS custom_question,
+         NULL AS intention,
+         'human_design' AS spread_id,
+         NULL AS spread_type,
+         NULL::text[] AS key_cards,
+         NULL::text[] AS session_cards,
+         left(r.report_text, 600) AS prediction,
+         NULL AS last_assistant,
+         NULL AS mood,
+         NULL AS outcome_rating,
+         r.created_at,
+         'done' AS status,
+         NULL AS matrix_birth_date,
+         NULL AS matrix_subject_name,
+         NULL AS matrix_subject_kind
+       FROM hd_reports r
+       WHERE r.user_id = $1
+         AND r.status = 'done'
+         AND length(trim(r.report_text)) > 0
+       ) combined
+       ORDER BY session_date DESC
        LIMIT $2 OFFSET $3`,
       [userId, limit, offset]
     ),
     query<{ cnt: string }>(
-      `SELECT COUNT(*)::text AS cnt
+      `SELECT (COUNT(*) + (
+         SELECT COUNT(*) FROM hd_reports r
+         WHERE r.user_id = $1 AND r.status = 'done' AND length(trim(r.report_text)) > 0
+       ))::text AS cnt
        FROM sessions s
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id
        WHERE s.user_id = $1
@@ -477,7 +508,7 @@ export async function getCabinetSessions(
       rawTopic.length >= 8 &&
       rawTopic !== "Свой вопрос" &&
       rawTopic !== topicFromIntention &&
-      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня"].includes(rawTopic);
+      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня", "Дизайн Человека — полный разбор"].includes(rawTopic);
     const resolvedQuestion =
       customQuestion ||
       (r.intention === "custom" && topicLooksLikeQuestion ? rawTopic : null) ||

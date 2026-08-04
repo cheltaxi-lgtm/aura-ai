@@ -32,6 +32,20 @@ export default function HdCabinet() {
     load();
   }, [load]);
 
+  // Refetch when the tab becomes visible — a chart computed in another tab
+  // (public calculator) must appear without a manual reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [load]);
+
   if (!enabled) {
     return (
       <p className="text-sm text-white/50">Модуль Дизайна Человека временно недоступен.</p>

@@ -102,6 +102,10 @@ function isMatrixSession(session: CabinetSessionRow): boolean {
   );
 }
 
+function isHumanDesignSession(session: CabinetSessionRow): boolean {
+  return session.spreadId === "human_design";
+}
+
 function CabinetMatrixPreview({
   birthDate,
   generatedAt,
@@ -146,6 +150,7 @@ function SessionCard({
       ? session.topicSummary.trim()
       : null);
   const matrixSession = isMatrixSession(session);
+  const hdSession = isHumanDesignSession(session);
   const matrixWho =
     session.matrixSubjectKind === "self"
       ? "Я"
@@ -224,41 +229,50 @@ function SessionCard({
       )}
 
       <div className="cabinet-session-card__actions">
-        <ShareButton
-          payload={sessionToSharePayload(session)}
-          variant="pill"
-          className="cabinet-btn cabinet-btn--secondary !gap-1.5"
-        />
-        {session.outcomeRating == null && (
-          <button
-            type="button"
-            onClick={() => onRateClick(session.id)}
-            className="cabinet-btn cabinet-btn--secondary"
-          >
-            <Star className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            Оценить исход
-          </button>
+        {hdSession ? (
+          <Link href="/cabinet/human-design" className="cabinet-btn cabinet-btn--primary">
+            Открыть разбор
+            <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          </Link>
+        ) : (
+          <>
+            <ShareButton
+              payload={sessionToSharePayload(session)}
+              variant="pill"
+              className="cabinet-btn cabinet-btn--secondary !gap-1.5"
+            />
+            {session.outcomeRating == null && (
+              <button
+                type="button"
+                onClick={() => onRateClick(session.id)}
+                className="cabinet-btn cabinet-btn--secondary"
+              >
+                <Star className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Оценить исход
+              </button>
+            )}
+            <Link
+              href={
+                session.sessionId
+                  ? `/?master=${encodeURIComponent(session.characterKey)}&resume=chat&sessionId=${encodeURIComponent(session.sessionId)}`
+                  : `/?master=${encodeURIComponent(session.characterKey)}&resume=chat`
+              }
+              className="cabinet-btn cabinet-btn--primary"
+            >
+              Продолжить чат
+              <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            </Link>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => onDelete(session.id)}
+              className="cabinet-btn cabinet-btn--danger"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {deleting ? "Удаление…" : "Удалить"}
+            </button>
+          </>
         )}
-        <Link
-          href={
-            session.sessionId
-              ? `/?master=${encodeURIComponent(session.characterKey)}&resume=chat&sessionId=${encodeURIComponent(session.sessionId)}`
-              : `/?master=${encodeURIComponent(session.characterKey)}&resume=chat`
-          }
-          className="cabinet-btn cabinet-btn--primary"
-        >
-          Продолжить чат
-          <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        </Link>
-        <button
-          type="button"
-          disabled={deleting}
-          onClick={() => onDelete(session.id)}
-          className="cabinet-btn cabinet-btn--danger"
-        >
-          <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          {deleting ? "Удаление…" : "Удалить"}
-        </button>
       </div>
     </motion.article>
   );
