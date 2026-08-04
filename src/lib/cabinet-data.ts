@@ -419,7 +419,7 @@ export async function getCabinetSessions(
          'human_design' AS spread_id,
          NULL AS spread_type,
          NULL::text[] AS key_cards,
-         NULL::text[] AS session_cards,
+         NULL::jsonb AS session_cards,
          left(r.report_text, 600) AS prediction,
          NULL AS last_assistant,
          NULL AS mood,
