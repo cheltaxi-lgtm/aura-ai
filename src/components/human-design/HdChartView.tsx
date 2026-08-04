@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { HdBodyKey, HdCenterKey, HdChart } from "@/lib/human-design";
 import {
   AUTHORITY_NAMES_RU,
@@ -14,6 +14,7 @@ import {
 import Bodygraph from "./Bodygraph";
 import HdBodygraph3D from "./HdBodygraph3D";
 import HdShareCard from "./HdShareCard";
+import { hdApiErrorMessage } from "./hd-errors";
 
 export interface HdChartPayload {
   id: string;
@@ -47,6 +48,14 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const [insightLoading, setInsightLoading] = useState<HdCenterKey | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
   const [show3d, setShow3d] = useState(false);
+
+  // Defense in depth: callers key this component by chart id, but a paid
+  // center insight must never survive a chart switch even if one forgets.
+  useEffect(() => {
+    setInsight(null);
+    setInsightError(null);
+    setInsightLoading(null);
+  }, [payload.id]);
 
   const toggleTransits = useCallback(async () => {
     if (transits) {
@@ -98,7 +107,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
           return;
         }
         if (!res.ok || !data.answer) {
-          setInsightError(data.error ?? "Не удалось получить разбор. Попробуйте позже.");
+          setInsightError(hdApiErrorMessage(data, "Не удалось получить разбор. Попробуйте позже."));
           return;
         }
         setInsight({ center, text: data.answer });

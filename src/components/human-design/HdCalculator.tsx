@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdReportPanel from "./HdReportPanel";
+import { hdApiErrorMessage } from "./hd-errors";
+import {
+  claimAllPendingHdCharts,
+  clearHdClaimToken,
+  readHdClaimToken,
+  storeHdClaimToken,
+} from "./hd-claim";
 
 interface PlaceSuggestion {
   label: string;
@@ -12,8 +19,30 @@ interface PlaceSuggestion {
 }
 
 const STORAGE_KEY = "hd:last-fingerprint";
-/** Claim capability issued at guest-chart creation — proves the browser made it. */
-const claimTokenKey = (fingerprint: string) => `hd:claim-token:${fingerprint}`;
+
+function readStoredFingerprint(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeFingerprint(fingerprint: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, fingerprint);
+  } catch {
+    /* private mode — restore-after-reload simply won't work */
+  }
+}
+
+function clearStoredFingerprint(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 interface HdCalculatorProps {
   /** Initial chart (e.g. restored from fingerprint in the cabinet). */
@@ -135,10 +164,10 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
         return;
       }
       setMine((prev) => prev.filter((c) => c.id !== chart.id));
-      if (localStorage.getItem(STORAGE_KEY) === chart.fingerprint) {
-        localStorage.removeItem(STORAGE_KEY);
+      if (readStoredFingerprint() === chart.fingerprint) {
+        clearStoredFingerprint();
       }
-      localStorage.removeItem(claimTokenKey(chart.fingerprint));
+      clearHdClaimToken(chart.fingerprint);
       if (result?.id === chart.id) setResult(null);
       onChartDeleted?.(chart.id);
     },
@@ -148,7 +177,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   // Restore the last computed chart (survives the login redirect round-trip).
   useEffect(() => {
     if (initialChart) return;
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readStoredFingerprint();
     if (!stored) return;
     fetch(`/api/human-design/chart?fingerprint=${encodeURIComponent(stored)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -159,29 +188,21 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Claim a guest chart after login (token proves this browser created it).
+  // After login, claim every guest chart this browser created — the main
+  // calculator's and the compatibility calculator's alike.
   useEffect(() => {
-    if (!authenticated || !result) return;
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && stored === result.fingerprint) {
-      const claimToken = localStorage.getItem(claimTokenKey(stored));
-      void fetch("/api/human-design/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fingerprint: stored, claimToken }),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          if (!d?.claimed) return; // not ours to claim — adopt happens on recompute
-          localStorage.removeItem(STORAGE_KEY);
-          localStorage.removeItem(claimTokenKey(stored));
-          // Cabinet: the claimed chart now belongs to the user — refresh the list.
-          onChartCreated?.(result);
-        })
-        .catch(() => undefined);
-    }
+    if (!authenticated) return;
+    void claimAllPendingHdCharts().then((claimed) => {
+      if (claimed.length === 0) return;
+      const stored = readStoredFingerprint();
+      if (stored && claimed.includes(stored)) {
+        clearStoredFingerprint();
+      }
+      // Cabinet: claimed charts now belong to the user — refresh the list.
+      if (result) onChartCreated?.(result);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, result]);
+  }, [authenticated]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -231,7 +252,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     setLoading(true);
     try {
       // Recomputing the same data after login adopts the guest row via its token.
-      const storedFp = localStorage.getItem(STORAGE_KEY);
+      const storedFp = readStoredFingerprint();
       const res = await fetch("/api/human-design/chart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -244,12 +265,12 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
           lon: place.longitude,
           subjectKind,
           subjectName: subjectKind === "other" ? subjectName.trim() : null,
-          claimToken: storedFp ? localStorage.getItem(claimTokenKey(storedFp)) : null,
+          claimToken: storedFp ? readHdClaimToken(storedFp) : null,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Не удалось рассчитать карту.");
+        setError(hdApiErrorMessage(data, "Не удалось рассчитать карту."));
         return;
       }
       const payload = data.chart as HdChartPayload;
@@ -257,10 +278,8 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       setMine((prev) =>
         prev.some((c) => c.id === payload.id) ? prev : [payload, ...prev]
       );
-      localStorage.setItem(STORAGE_KEY, payload.fingerprint);
-      if (typeof data.claimToken === "string" && data.claimToken) {
-        localStorage.setItem(claimTokenKey(payload.fingerprint), data.claimToken);
-      }
+      storeFingerprint(payload.fingerprint);
+      storeHdClaimToken(payload.fingerprint, data.claimToken);
       onChartCreated?.(payload);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
@@ -285,8 +304,9 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
             Новый расчёт
           </button>
         </div>
-        <HdChartView payload={result} />
+        <HdChartView key={result.id} payload={result} />
         <HdReportPanel
+          key={result.id}
           chartId={result.id}
           authenticated={authenticated}
           loginReturnTo={returnTo}

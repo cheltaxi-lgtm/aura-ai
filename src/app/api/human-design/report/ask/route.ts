@@ -10,11 +10,11 @@ import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { isRuneBillingActive } from "@/lib/rune-service";
+import { withTransaction } from "@/lib/db";
 import {
-  BillingService,
   chargeRuneAction,
+  ensureSufficientRunes,
   InsufficientFundsError,
-  type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
   appendHdReportMessage,
@@ -89,23 +89,11 @@ export async function POST(request: NextRequest) {
   const runeSettings = await getRuneSettings();
   const exempt = !isRuneBillingActive(userId, unlimited, runeSettings);
 
-  let charge: BillingChargeResult | undefined;
-  let rollbackAttempted = false;
-  const rollback = async () => {
-    if (!charge || rollbackAttempted) return;
-    rollbackAttempted = true;
-    await BillingService.rollbackCharge({
-      userId,
-      cost: charge.spentRunes,
-      wasFreeQuestion: charge.wasFreeQuestion,
-      transactionId: charge.transactionId,
-      actionType: charge.actionType,
-      slotReserved: charge.slotReserved,
-    });
-  };
-
   try {
-    charge = await chargeRuneAction({ userId, action: "HD_ASK", exempt });
+    // Generate-first: a crash during the LLM call can never lose the user's
+    // runes. Balance is pre-checked so broke users don't burn model tokens;
+    // the authoritative charge commits atomically with the stored messages.
+    await ensureSufficientRunes({ userId, action: "HD_ASK", exempt });
 
     const answer = await completeChat({
       messages,
@@ -116,21 +104,22 @@ export async function POST(request: NextRequest) {
     });
 
     if (!answer || isRejectedLlmOutput(answer)) {
-      await rollback();
       return NextResponse.json(
-        { error: "Модель не смогла ответить. Оплата возвращена.", refunded: true },
+        { error: "Модель не смогла ответить. Оплата не списывалась." },
         { status: 502 }
       );
     }
 
-    await appendHdReportMessage(report.id, "user", question);
-    await appendHdReportMessage(report.id, "assistant", answer.trim());
-
-    return NextResponse.json({ answer: answer.trim(), runeBalance: charge.newBalance });
-  } catch (error) {
-    await rollback().catch(() => {
-      console.warn("[human-design] ask rollback failed");
+    const text = answer.trim();
+    const charge = await withTransaction(async (client) => {
+      const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client });
+      await appendHdReportMessage(report.id, "user", question, client);
+      await appendHdReportMessage(report.id, "assistant", text, client);
+      return c;
     });
+
+    return NextResponse.json({ answer: text, runeBalance: charge.newBalance });
+  } catch (error) {
     if (error instanceof InsufficientFundsError) {
       return NextResponse.json(
         {
@@ -145,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
     console.warn("[human-design] ask failed");
     return NextResponse.json(
-      { error: "Ошибка генерации ответа.", refunded: rollbackAttempted },
+      { error: "Ошибка генерации ответа. Оплата не списывалась." },
       { status: 502 }
     );
   }

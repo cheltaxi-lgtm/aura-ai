@@ -16,6 +16,7 @@ import {
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
+import { withTransaction } from "@/lib/db";
 import {
   attachCompositeReportTransaction,
   completeCompositeReport,
@@ -25,6 +26,7 @@ import {
   getHdChartById,
   getHdCompositeReport,
   isStalePendingComposite,
+  lockStalePendingCompositeForResume,
   type HdCompositeReportRow,
 } from "@/lib/services/human-design-service";
 import {
@@ -170,23 +172,39 @@ export async function POST(request: NextRequest) {
   };
 
   let pending: HdCompositeReportRow | null = null;
-  let freshPending = false;
   try {
     if (resumePaidPending && existing) {
+      // CAS-lock the stale row: concurrent resumes see a fresh pending → 409.
+      const locked = await lockStalePendingCompositeForResume(existing.id);
+      if (!locked) {
+        return NextResponse.json(
+          { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+          { status: 409 }
+        );
+      }
       pending = existing;
     } else {
       // error / unpaid stale pending → start over (its charge was rolled back).
       if (existing) await deleteCompositeReportRow(existing.id);
 
-      // Insert BEFORE charging: a crash here leaves an unpaid placeholder that
-      // the recovery path later discards — never a paid orphan.
-      pending = await createPendingCompositeReport({
-        baseChartId: base.id,
-        partnerChartId: partner.id,
-        userId,
-        transactionId: null,
+      // Atomic: pending row + charge + transaction link commit or roll back
+      // together — a crash can leave neither a paid orphan nor an unpaid charge.
+      const created = await withTransaction(async (client) => {
+        const row = await createPendingCompositeReport(
+          {
+            baseChartId: base.id,
+            partnerChartId: partner.id,
+            userId,
+            transactionId: null,
+          },
+          client
+        );
+        if (!row) return null;
+        const c = await chargeRuneAction({ userId, action: "HD_REPORT", exempt, client });
+        await attachCompositeReportTransaction(row.id, c.transactionId ?? null, client);
+        return { row, charge: c };
       });
-      if (!pending) {
+      if (!created) {
         const again = await getHdCompositeReport(base.id, partner.id, userId);
         if (again?.status === "done" && again.reportText) {
           return NextResponse.json({ report: again, cached: true });
@@ -196,10 +214,8 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
-      freshPending = true;
-
-      charge = await chargeRuneAction({ userId, action: "HD_REPORT", exempt });
-      await attachCompositeReportTransaction(pending.id, charge.transactionId ?? null);
+      pending = created.row;
+      charge = created.charge;
     }
 
     const answer = await completeChat({
@@ -237,11 +253,8 @@ export async function POST(request: NextRequest) {
     await rollback().catch(() => {
       console.warn("[human-design] composite rollback failed");
     });
-    // Charge never happened → remove the unpaid placeholder so the next
-    // attempt starts clean instead of hitting CLAIM_BUSY.
-    if (freshPending && !charge && pending) {
-      await deleteCompositeReportRow(pending.id).catch(() => undefined);
-    }
+    // A failed create+charge transaction rolled back atomically — no unpaid
+    // placeholder to clean up, the next attempt starts clean.
     if (error instanceof InsufficientFundsError) {
       return NextResponse.json(
         {

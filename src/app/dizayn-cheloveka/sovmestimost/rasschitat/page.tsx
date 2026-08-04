@@ -14,6 +14,17 @@ export const metadata: Metadata = buildSeoMetadata({
   path: "/dizayn-cheloveka/sovmestimost/rasschitat",
 });
 
+const FAQ = [
+  {
+    q: "Нужна ли регистрация для расчёта совместимости?",
+    a: "Нет, композитный бодиграф пары строится бесплатно и без регистрации. Войти понадобится только для персонального разбора совместимости от Эвелины.",
+  },
+  {
+    q: "Что делать, если не знаю время рождения партнёра?",
+    a: "Отметьте «не знаю время» — расчёт будет сделан на полдень с проверкой стабильности. Тип и большинство каналов обычно не меняются в течение дня.",
+  },
+] as const;
+
 export default async function HdCompatibilityCalcPage() {
   if (!(await isHumanDesignEnabled())) notFound();
 
@@ -21,16 +32,7 @@ export default async function HdCompatibilityCalcPage() {
     title: "Рассчитать совместимость пары по Дизайну Человека",
     description: metadata.description as string,
     path: "/dizayn-cheloveka/sovmestimost/rasschitat",
-    faq: [
-      {
-        q: "Нужна ли регистрация для расчёта совместимости?",
-        a: "Нет, композитный бодиграф пары строится бесплатно и без регистрации. Войти понадобится только для персонального разбора совместимости от Эвелины.",
-      },
-      {
-        q: "Что делать, если не знаю время рождения партнёра?",
-        a: "Отметьте «не знаю время» — расчёт будет сделан на полдень с проверкой стабильности. Тип и большинство каналов обычно не меняются в течение дня.",
-      },
-    ],
+    faq: FAQ.map((item) => ({ q: item.q, a: item.a })),
   });
 
   return (
@@ -61,6 +63,17 @@ export default async function HdCompatibilityCalcPage() {
           <li>Ворота партнёра на вашей карте — где вы дополняете друг друга.</li>
           <li>Разбор совместимости от Эвелины — перевод механики на язык вашей жизни.</li>
         </ul>
+      </SeoSection>
+
+      <SeoSection title="Частые вопросы">
+        <div className="space-y-4">
+          {FAQ.map((item) => (
+            <div key={item.q}>
+              <p className="font-medium text-amber-50">{item.q}</p>
+              <p className="mt-1 text-white/70">{item.a}</p>
+            </div>
+          ))}
+        </div>
       </SeoSection>
     </SeoPageShell>
   );

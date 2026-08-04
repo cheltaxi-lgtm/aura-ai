@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { query } from "@/lib/db";
+import { query, queryClient, type PoolClient } from "@/lib/db";
 import {
   calculateHdChart,
   HD_ENGINE_VERSION,
@@ -329,8 +329,10 @@ export function toPublicHdChartPayload(row: HdChartRow) {
 
 export async function getHdChartByFingerprint(fingerprint: string): Promise<HdChartRow | null> {
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) return null;
+  // Guest-pool row first: it is the shareable/public one and never carries a
+  // private subject label set by a specific owner.
   const { rows } = await query<HdChartDbRow>(
-    "SELECT * FROM hd_charts WHERE fingerprint = $1",
+    "SELECT * FROM hd_charts WHERE fingerprint = $1 ORDER BY (user_id IS NULL) DESC",
     [fingerprint]
   );
   return rows[0] ? mapChartRow(rows[0]) : null;
@@ -424,18 +426,22 @@ export async function getHdReportById(
  * Insert the pending report row. The unique chart_id index is the idempotency
  * key: returns null when a report already exists (caller must not charge).
  */
-export async function createPendingHdReport(params: {
-  chartId: string;
-  userId: string;
-  transactionId: string | null;
-}): Promise<HdReportRow | null> {
-  const { rows } = await query<HdReportDbRow>(
-    `INSERT INTO hd_reports (chart_id, user_id, status, transaction_id)
+export async function createPendingHdReport(
+  params: {
+    chartId: string;
+    userId: string;
+    transactionId: string | null;
+  },
+  client?: PoolClient
+): Promise<HdReportRow | null> {
+  const sql = `INSERT INTO hd_reports (chart_id, user_id, status, transaction_id)
      VALUES ($1, $2, 'pending', $3)
      ON CONFLICT (chart_id) DO NOTHING
-     RETURNING *`,
-    [params.chartId, params.userId, params.transactionId]
-  );
+     RETURNING *`;
+  const params_ = [params.chartId, params.userId, params.transactionId];
+  const { rows } = client
+    ? await queryClient<HdReportDbRow>(client, sql, params_)
+    : await query<HdReportDbRow>(sql, params_);
   return rows[0] ? mapReportRow(rows[0]) : null;
 }
 
@@ -460,12 +466,29 @@ export async function deleteHdReportRow(reportId: string): Promise<void> {
 
 export async function attachHdReportTransaction(
   reportId: string,
-  transactionId: string | null
+  transactionId: string | null,
+  client?: PoolClient
 ): Promise<void> {
-  await query("UPDATE hd_reports SET transaction_id = $2, updated_at = now() WHERE id = $1", [
+  const run = client ? queryClient.bind(null, client) : query;
+  await run("UPDATE hd_reports SET transaction_id = $2, updated_at = now() WHERE id = $1", [
     reportId,
     transactionId,
   ]);
+}
+
+/**
+ * CAS-lock a stale pending report for resume: resets its age so a concurrent
+ * request sees a fresh pending and backs off with 409. Returns false when the
+ * row was already resumed/completed by someone else.
+ */
+export async function lockStalePendingReportForResume(reportId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE hd_reports SET created_at = now(), updated_at = now()
+     WHERE id = $1 AND status = 'pending'
+       AND created_at < now() - make_interval(secs => $2)`,
+    [reportId, STALE_PENDING_MS / 1000]
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function completeHdReport(
@@ -534,19 +557,23 @@ export async function getHdCompositeReport(
 }
 
 /** Idempotency via UNIQUE(base_chart_id, partner_chart_id, user_id): null = already exists. */
-export async function createPendingCompositeReport(params: {
-  baseChartId: string;
-  partnerChartId: string;
-  userId: string;
-  transactionId: string | null;
-}): Promise<HdCompositeReportRow | null> {
-  const { rows } = await query<HdCompositeReportDbRow>(
-    `INSERT INTO hd_composite_reports (base_chart_id, partner_chart_id, user_id, status, transaction_id)
+export async function createPendingCompositeReport(
+  params: {
+    baseChartId: string;
+    partnerChartId: string;
+    userId: string;
+    transactionId: string | null;
+  },
+  client?: PoolClient
+): Promise<HdCompositeReportRow | null> {
+  const sql = `INSERT INTO hd_composite_reports (base_chart_id, partner_chart_id, user_id, status, transaction_id)
      VALUES ($1, $2, $3, 'pending', $4)
      ON CONFLICT (base_chart_id, partner_chart_id, user_id) DO NOTHING
-     RETURNING id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at`,
-    [params.baseChartId, params.partnerChartId, params.userId, params.transactionId]
-  );
+     RETURNING id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at`;
+  const params_ = [params.baseChartId, params.partnerChartId, params.userId, params.transactionId];
+  const { rows } = client
+    ? await queryClient<HdCompositeReportDbRow>(client, sql, params_)
+    : await query<HdCompositeReportDbRow>(sql, params_);
   return rows[0] ? mapCompositeRow(rows[0]) : null;
 }
 
@@ -563,12 +590,25 @@ export async function deleteCompositeReportRow(reportId: string): Promise<void> 
 
 export async function attachCompositeReportTransaction(
   reportId: string,
-  transactionId: string | null
+  transactionId: string | null,
+  client?: PoolClient
 ): Promise<void> {
-  await query(
+  const run = client ? queryClient.bind(null, client) : query;
+  await run(
     "UPDATE hd_composite_reports SET transaction_id = $2, updated_at = now() WHERE id = $1",
     [reportId, transactionId]
   );
+}
+
+/** CAS-lock a stale pending composite for resume (see lockStalePendingReportForResume). */
+export async function lockStalePendingCompositeForResume(reportId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE hd_composite_reports SET created_at = now(), updated_at = now()
+     WHERE id = $1 AND status = 'pending'
+       AND created_at < now() - make_interval(secs => $2)`,
+    [reportId, STALE_PENDING_MS / 1000]
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function completeCompositeReport(
@@ -613,9 +653,11 @@ export async function listHdReportMessages(
 export async function appendHdReportMessage(
   reportId: string,
   role: "user" | "assistant",
-  content: string
+  content: string,
+  client?: PoolClient
 ): Promise<void> {
-  await query(
+  const run = client ? queryClient.bind(null, client) : query;
+  await run(
     "INSERT INTO hd_report_messages (report_id, role, content) VALUES ($1, $2, $3)",
     [reportId, role, content]
   );

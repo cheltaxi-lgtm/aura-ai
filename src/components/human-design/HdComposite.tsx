@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HdChart } from "@/lib/human-design";
 import { CHANNELS, TYPE_META } from "@/lib/human-design";
+import PaywallModal from "@/components/PaywallModal";
+import { useRuneConfig } from "@/lib/useRuneConfig";
 import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
+import { hdApiErrorMessage } from "./hd-errors";
 
 interface Props {
   base: HdChartPayload;
@@ -60,15 +63,21 @@ export default function HdComposite({ base, partner }: Props) {
   const partnerName =
     partner.subjectKind === "other" && partner.subjectName ? partner.subjectName : "Партнёр";
 
+  const { cost } = useRuneConfig();
+  const reportCost = cost("HD_REPORT");
   const [report, setReport] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [paywall, setPaywall] = useState<{ balance: number; required: number } | null>(null);
 
   // Switching either chart must not show the previous pair's report.
   useEffect(() => {
     setReport(null);
     setError(null);
     setBusy(false);
+    setNeedsLogin(false);
+    setPaywall(null);
   }, [base.id, partner.id]);
 
   const buyReport = async () => {
@@ -97,17 +106,23 @@ export default function HdComposite({ base, partner }: Props) {
         report?: { reportText?: string | null };
         error?: string;
         message?: string;
+        balance?: number;
+        required?: number;
       };
       if (res.status === 401) {
+        setNeedsLogin(true);
         setError("Разбор совместимости доступен после входа в аккаунт — карты сохранятся в кабинете.");
         return;
       }
       if (res.status === 402) {
-        setError(data.message ?? "Недостаточно рун для разбора совместимости.");
+        setPaywall({
+          balance: Number(data.balance) || 0,
+          required: Number(data.required) || reportCost,
+        });
         return;
       }
       if (!res.ok || !data.report?.reportText) {
-        setError(data.error ?? "Не удалось получить разбор. Попробуйте позже.");
+        setError(hdApiErrorMessage(data, "Не удалось получить разбор. Попробуйте позже."));
         return;
       }
       setReport(data.report.reportText);
@@ -153,8 +168,16 @@ export default function HdComposite({ base, partner }: Props) {
           </button>
         )}
         {error && (
-          <p className="mt-2 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-200/90">
+          <p className="mt-2 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-200/90" role="alert">
             {error}
+            {needsLogin && (
+              <>
+                {" "}
+                <a href="/auth/user/login" className="underline underline-offset-2 hover:text-red-100">
+                  Войти
+                </a>
+              </>
+            )}
           </p>
         )}
         {report && (
@@ -176,6 +199,15 @@ export default function HdComposite({ base, partner }: Props) {
           </div>
         )}
       </div>
+      <PaywallModal
+        isOpen={paywall !== null}
+        onClose={() => setPaywall(null)}
+        options={{
+          currentBalance: paywall?.balance ?? 0,
+          requiredRunes: paywall?.required ?? reportCost,
+          onUnlocked: () => setPaywall(null),
+        }}
+      />
     </div>
   );
 }

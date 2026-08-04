@@ -375,9 +375,30 @@ export function insufficientFundsResponse(err: InsufficientFundsError): NextResp
   return insufficientRunesResponse(err.balance, err.required);
 }
 
+/**
+ * Cheap balance pre-check BEFORE an expensive LLM call in generate-first flows:
+ * throws InsufficientFundsError early so broke users never burn model tokens.
+ * The authoritative, race-safe charge still happens later via chargeRuneAction.
+ */
+export async function ensureSufficientRunes(params: {
+  userId: string;
+  action: RuneActionType;
+  exempt?: boolean;
+}): Promise<void> {
+  if (params.exempt) return;
+  const settings = await getRuneSettings();
+  const cost = runeCostFromSettings(settings, params.action);
+  if (cost <= 0) return;
+  const balance = await getRuneBalance(params.userId);
+  if (balance < cost) {
+    throw new InsufficientFundsError(balance, cost);
+  }
+}
+
 export const BillingService = {
   chargeForSession,
   chargeRuneAction,
+  ensureSufficientRunes,
   rollbackCharge,
   InsufficientFundsError,
 };

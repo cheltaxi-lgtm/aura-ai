@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import HdComposite from "./HdComposite";
 import type { HdChartPayload } from "./HdChartView";
+import { hdApiErrorMessage } from "./hd-errors";
+import { claimAllPendingHdCharts, storeHdClaimToken } from "./hd-claim";
 
 interface PlaceSuggestion {
   label: string;
@@ -197,6 +199,17 @@ export default function HdCompatibilityCalculator() {
   const [a, setA] = useState<PersonState>(EMPTY);
   const [b, setB] = useState<PersonState>(EMPTY);
 
+  // Logged-in visitors get every guest chart this browser created (including
+  // the pair computed here) attached to their account.
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.authenticated && !d?.needsProfile) void claimAllPendingHdCharts();
+      })
+      .catch(() => undefined);
+  }, []);
+
   const compute = useCallback(
     async (
       state: PersonState,
@@ -238,12 +251,14 @@ export default function HdCompatibilityCalculator() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           patch({
-            error: typeof data.error === "string" ? data.error : "Не удалось рассчитать карту.",
+            error: hdApiErrorMessage(data, "Не удалось рассчитать карту."),
             loading: false,
           });
           return null;
         }
         const payload = data.chart as HdChartPayload;
+        // Guest chart: keep the claim capability so a later login attaches it.
+        storeHdClaimToken(payload.fingerprint, data.claimToken);
         patch({ chart: payload, loading: false });
         return payload;
       } catch {
@@ -276,7 +291,7 @@ export default function HdCompatibilityCalculator() {
           <h2 className="mb-4 font-display text-xl font-bold text-amber-50">
             Композит: {a.name.trim()} + {b.name.trim()}
           </h2>
-          <HdComposite base={a.chart!} partner={b.chart!} />
+          <HdComposite key={`${a.chart!.id}:${b.chart!.id}`} base={a.chart!} partner={b.chart!} />
         </div>
       )}
 

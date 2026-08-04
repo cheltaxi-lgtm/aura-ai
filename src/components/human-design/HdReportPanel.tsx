@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import PaywallModal from "@/components/PaywallModal";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { hdApiErrorMessage } from "./hd-errors";
 
 interface HdReport {
   id: string;
@@ -79,7 +80,7 @@ export default function HdReportPanel({
         return;
       }
       if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Не удалось создать разбор.");
+        setError(hdApiErrorMessage(data, "Не удалось создать разбор."));
         return;
       }
       if (data.report?.status === "done") {
@@ -113,7 +114,7 @@ export default function HdReportPanel({
       }
       if (!res.ok || typeof data.answer !== "string") {
         setDialog((prev) => prev.slice(0, -1));
-        setError(typeof data.error === "string" ? data.error : "Не удалось получить ответ.");
+        setError(hdApiErrorMessage(data, "Не удалось получить ответ."));
         return;
       }
       setDialog((prev) => [...prev, { role: "assistant", content: data.answer }]);

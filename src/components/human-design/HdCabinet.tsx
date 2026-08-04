@@ -177,7 +177,7 @@ export default function HdCabinet() {
         </div>
       )}
 
-      <HdChartView payload={selected} />
+      <HdChartView key={selected.id} payload={selected} />
 
       {charts.length > 1 && (
         <div className="hd-print-hidden space-y-3">
@@ -204,6 +204,7 @@ export default function HdCabinet() {
           </div>
           {partnerId && (
             <HdComposite
+              key={`${selected.id}:${partnerId}`}
               base={selected}
               partner={charts.find((c) => c.id === partnerId)!}
             />
@@ -212,6 +213,7 @@ export default function HdCabinet() {
       )}
 
       <HdReportPanel
+        key={selected.id}
         chartId={selected.id}
         authenticated
         loginReturnTo="/cabinet/human-design"

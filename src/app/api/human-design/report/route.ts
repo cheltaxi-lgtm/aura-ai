@@ -16,6 +16,7 @@ import {
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
+import { withTransaction } from "@/lib/db";
 import {
   attachHdReportTransaction,
   completeHdReport,
@@ -25,6 +26,7 @@ import {
   getHdChartById,
   getHdReportForChart,
   isStalePendingReport,
+  lockStalePendingReportForResume,
 } from "@/lib/services/human-design-service";
 import {
   buildHdReportSystemPrompt,
@@ -131,22 +133,34 @@ export async function POST(request: NextRequest) {
   };
 
   let pending: { id: string } | null = null;
-  let freshPending = false;
   try {
     if (resumePaidPending && existing) {
+      // CAS-lock the stale row: concurrent resumes see a fresh pending → 409.
+      const locked = await lockStalePendingReportForResume(existing.id);
+      if (!locked) {
+        return NextResponse.json(
+          { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+          { status: 409 }
+        );
+      }
       pending = existing;
     } else {
       // error / unpaid stale pending → start over (its charge was rolled back).
       if (existing) await deleteHdReportRow(existing.id);
 
-      // Insert BEFORE charging: a crash here leaves an unpaid pending row that
-      // the recovery path above later discards — never a paid orphan.
-      pending = await createPendingHdReport({
-        chartId: chart.id,
-        userId,
-        transactionId: null,
+      // Atomic: pending row + charge + transaction link commit or roll back
+      // together — a crash can leave neither a paid orphan nor an unpaid charge.
+      const created = await withTransaction(async (client) => {
+        const row = await createPendingHdReport(
+          { chartId: chart.id, userId, transactionId: null },
+          client
+        );
+        if (!row) return null;
+        const c = await chargeRuneAction({ userId, action: "HD_REPORT", exempt, client });
+        await attachHdReportTransaction(row.id, c.transactionId ?? null, client);
+        return { row, charge: c };
       });
-      if (!pending) {
+      if (!created) {
         const raced = await getHdReportForChart(chart.id, userId);
         if (raced?.status === "done") {
           return NextResponse.json({ report: raced, cached: true });
@@ -156,10 +170,8 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
-      freshPending = true;
-
-      charge = await chargeRuneAction({ userId, action: "HD_REPORT", exempt });
-      await attachHdReportTransaction(pending.id, charge.transactionId ?? null);
+      pending = created.row;
+      charge = created.charge;
     }
 
     const text = await completeChat({
@@ -204,11 +216,8 @@ export async function POST(request: NextRequest) {
     await rollback().catch(() => {
       console.warn("[human-design] billing rollback failed");
     });
-    // Charge never happened → the fresh pending row is an unpaid placeholder;
-    // remove it so the next attempt starts clean instead of hitting CLAIM_BUSY.
-    if (freshPending && !charge && pending) {
-      await deleteHdReportRow(pending.id).catch(() => undefined);
-    }
+    // A failed create+charge transaction rolled back atomically — no unpaid
+    // placeholder to clean up, the next attempt starts clean.
     if (error instanceof InsufficientFundsError) {
       return NextResponse.json(
         {

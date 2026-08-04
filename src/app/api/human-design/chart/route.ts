@@ -110,7 +110,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
   // Public capability URL: strip owner id, coordinates and timezone (PII).
-  return NextResponse.json({ chart: toPublicHdChartPayload(chart) });
+  const payload = toPublicHdChartPayload(chart);
+  if (chart.userId) {
+    // An owned row's subject label is private (e.g. a partner's name) — never
+    // expose it on the unauthenticated capability URL. Guest-pool rows keep
+    // the label so the creating browser can restore its own view.
+    payload.subjectKind = "self";
+    payload.subjectName = null;
+  }
+  return NextResponse.json({ chart: payload });
 }
 
 /**
