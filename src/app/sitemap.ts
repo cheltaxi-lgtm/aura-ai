@@ -22,6 +22,7 @@ import {
   ALL_GATE_SLUGS,
   CENTER_SEO_SLUGS,
 } from "@/lib/human-design/seo-entities";
+import { HD_PAIR_SLUGS } from "@/lib/human-design/seo-compatibility";
 
 const ABOUT_PATHS = [
   "/about",
@@ -159,6 +160,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
+  const hdPairPages: MetadataRoute.Sitemap = HD_PAIR_SLUGS.map((pair) => ({
+    url: `${base}/dizayn-cheloveka/sovmestimost/${pair}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.65,
+  }));
+
   const yearPages: MetadataRoute.Sitemap = FORECAST_YEARS.map((year) => ({
     url: `${base}/prognoz/${year}`,
     lastModified: now,
@@ -202,6 +210,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     staticPage("/natalnaya-karta", 0.9, "weekly"),
     staticPage("/dizayn-cheloveka", 0.9, "weekly"),
     staticPage("/dizayn-cheloveka/rasschitat", 0.85, "weekly"),
+    staticPage("/dizayn-cheloveka/sovmestimost", 0.85, "weekly"),
+    staticPage("/dizayn-cheloveka/sovmestimost/rasschitat", 0.8, "weekly"),
     staticPage("/numerology/favorable-dates", 0.55, "monthly"),
     staticPage("/sovmestimost-znakov-zodiaka", 0.75, "monthly"),
     staticPage("/gadanie", 0.9),
@@ -244,5 +254,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...hdGatePages,
     ...hdChannelPages,
     ...hdCenterPages,
+    ...hdPairPages,
   ];
 }

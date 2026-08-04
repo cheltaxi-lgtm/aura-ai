@@ -93,6 +93,22 @@ export default function HumanDesignHubPage() {
         <HdTransitToday />
       </div>
 
+      <SeoSection title="Совместимость пары">
+        <p>
+          Наложите две карты друг на друга: композитный бодиграф покажет
+          электромагнетические каналы притяжения и то, как вы влияете друг на друга.
+          Разборы динамики для всех 15 пар типов и бесплатный калькулятор совместимости —
+          в разделе{" "}
+          <Link
+            href="/dizayn-cheloveka/sovmestimost"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Совместимость
+          </Link>
+          .
+        </p>
+      </SeoSection>
+
       <SeoSection title="Пять типов энергии">
         <p>
           Тип — фундамент Дизайна Человека: как ваша аура взаимодействует с миром и какая

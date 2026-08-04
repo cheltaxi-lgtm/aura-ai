@@ -7,9 +7,11 @@ APP_DIR="${DEPLOY_DIR:-/opt/aura-ai}"
 TARBALL="${TMPDIR:-/tmp}/aura-ai-deploy.tgz"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "==> Building locally..."
+# Local build intentionally skipped: the tarball excludes .next and the server
+# rebuilds anyway — building here only risks local OOM on Windows.
+echo "==> Type-checking locally..."
 cd "$ROOT"
-npm run build
+npx tsc --noEmit -p tsconfig.json
 
 echo "==> Packing (excluding node_modules, .next, .git, .env.local)..."
 rm -f "$TARBALL"

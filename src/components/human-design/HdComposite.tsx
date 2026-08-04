@@ -91,6 +91,10 @@ export default function HdComposite({ base, partner }: Props) {
         error?: string;
         message?: string;
       };
+      if (res.status === 401) {
+        setError("Разбор совместимости доступен после входа в аккаунт — карты сохранятся в кабинете.");
+        return;
+      }
       if (res.status === 402) {
         setError(data.message ?? "Недостаточно рун для разбора совместимости.");
         return;
