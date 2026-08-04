@@ -82,8 +82,21 @@ export async function GET(request: NextRequest) {
           <div style={{ fontSize: 20, letterSpacing: 6, color: "rgba(232,199,126,0.6)" }}>
             ZOVUS · ДИЗАЙН ЧЕЛОВЕКА
           </div>
-          <div style={{ fontSize: 64, fontWeight: 700, marginTop: 18, lineHeight: 1.1 }}>
-            {debug === "notext" ? "Дизайн Человека" : typeName}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              fontSize: 56,
+              fontWeight: 700,
+              marginTop: 18,
+              lineHeight: 1.15,
+            }}
+          >
+            {(debug === "notext" ? "Дизайн Человека" : typeName)
+              .split(" ")
+              .map((word) => (
+                <div key={word}>{word}</div>
+              ))}
           </div>
           {chart && debug !== "notext" && (
             <div style={{ fontSize: 30, color: "rgba(245,230,184,0.85)", marginTop: 14 }}>
