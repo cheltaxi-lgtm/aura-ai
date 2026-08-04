@@ -80,6 +80,7 @@ import {
   type NumerologyUi,
 } from "@/lib/services/numerology-service";
 import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
+import { buildHdPromptContext } from "@/lib/prompts/hd-context";
 import { resolveMatrixAwareFreeQuestionLimit } from "@/lib/numerology/matrix-chat-allowance";
 import {
   getSession,
@@ -787,6 +788,10 @@ export class ChatOrchestrator {
       topic: this.lastUserMsg,
       purpose: "chat",
     });
+    const humanDesignBlock = await buildHdPromptContext({
+      characterId: this.characterId,
+      profileUserId: this.profileUserId,
+    });
 
     let sessionNumber = 1;
     if (this.profileUserId && this.dbOk) {
@@ -856,6 +861,7 @@ export class ChatOrchestrator {
               positionLabels,
               numerologyBlock,
               natalChartBlock,
+              humanDesignBlock,
             });
             systemPrompt += `\n\nСтиль мастера ${blogger.display_name}: ${blogger.style_notes ?? ""}\nБаза знаний:\n${knowledge}`;
             systemPrompt += `\n\n${buildPaidSpreadReadingExtras({
@@ -870,6 +876,7 @@ export class ChatOrchestrator {
               intention: this.periodSpreadScope ? null : this.resolvedIntention,
               numerologyBlock,
               natalChartBlock,
+              humanDesignBlock,
             });
             systemPrompt += `\n\nСтиль мастера ${blogger.display_name}: ${blogger.style_notes ?? ""}\nБаза знаний:\n${knowledge}`;
           }
@@ -895,6 +902,7 @@ export class ChatOrchestrator {
             positionLabels,
             numerologyBlock,
             natalChartBlock,
+            humanDesignBlock,
           })
         : buildChatPrompt(this.characterId, chatCtx, {
             sessionNumber,
@@ -903,6 +911,7 @@ export class ChatOrchestrator {
             intention: this.periodSpreadScope ? null : this.resolvedIntention,
             numerologyBlock,
             natalChartBlock,
+            humanDesignBlock,
           });
       if (usePremiumReading) {
         systemPrompt += `\n\n${buildPaidSpreadReadingExtras({

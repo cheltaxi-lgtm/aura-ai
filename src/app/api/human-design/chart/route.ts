@@ -10,6 +10,7 @@ import {
   HdInputError,
 } from "@/lib/services/human-design-service";
 import type { HdChartIdentity } from "@/lib/human-design";
+import { rememberHdChartFact } from "@/lib/human-design/memory";
 
 function hdErrorResponse(error: unknown) {
   if (error instanceof HdInputError) {
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const chart = await getOrComputeHdChart(identity, userId);
+    if (userId) rememberHdChartFact(userId, chart.chart, chart.id);
     return NextResponse.json({ chart, owned: Boolean(userId) });
   } catch (error) {
     return hdErrorResponse(error);

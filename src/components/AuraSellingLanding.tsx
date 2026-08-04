@@ -57,6 +57,7 @@ import LandingSocialProofStats, {
 } from "@/components/seo/LandingSocialProofStats";
 import EditorialHeroSection from "@/components/editorial/EditorialHeroSection";
 import EditorialTopicsSection from "@/components/editorial/EditorialTopicsSection";
+import EditorialBirthToolsSection from "@/components/editorial/EditorialBirthToolsSection";
 import EditorialSessionStepsSection from "@/components/editorial/EditorialSessionStepsSection";
 import EditorialStarterPackSection from "@/components/editorial/EditorialStarterPackSection";
 import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
@@ -563,6 +564,10 @@ export default function AuraSellingLanding({
 
       {showSellingSections && isEditorial && !isLoggedIn ? (
         <EditorialTopicsSection onTopic={handleTopic} />
+      ) : null}
+
+      {showSellingSections && isEditorial && !isLoggedIn ? (
+        <EditorialBirthToolsSection />
       ) : null}
 
       {!isLoggedIn ? <GuestTripletDraw startRequest={guestSpreadRequest} /> : null}

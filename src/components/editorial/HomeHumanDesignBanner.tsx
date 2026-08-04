@@ -1,30 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Sun } from "lucide-react";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 const CALCULATOR_HREF = "/dizayn-cheloveka/rasschitat";
 
 /** Homepage funnel entry for Human Design — free bodygraph, paid Evelina report. */
 export default function HomeHumanDesignBanner() {
   const { cost, formatRunes } = useRuneConfig();
-  const [enabled, setEnabled] = useState(false);
+  const { humanDesignEnabled, featuresLoaded } = usePlatformFeatures();
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/platform/features")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled) setEnabled(d?.humanDesignEnabled === true);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!enabled) return null;
+  if (!featuresLoaded || !humanDesignEnabled) return null;
 
   return (
     <section className="ritual-cta-banner" aria-labelledby="home-human-design-title">

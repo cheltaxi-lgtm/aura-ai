@@ -46,6 +46,10 @@ export default function HomeSeoContent() {
           Ленорман
         </Link>
         ,{" "}
+        <Link href="/dizayn-cheloveka" className="text-aura-gold hover:underline">
+          Дизайн Человека
+        </Link>
+        ,{" "}
         <Link href="/telegram" className="text-aura-gold hover:underline">
           Telegram-бот
         </Link>

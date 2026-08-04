@@ -14,6 +14,8 @@ export interface PlatformRecaptchaConfig {
 
 export interface PlatformFeatures {
   expertRegistrationEnabled: boolean;
+  /** Optional — older call sites construct features without it. */
+  humanDesignEnabled?: boolean;
   recaptcha: PlatformRecaptchaConfig;
 }
 
@@ -26,6 +28,7 @@ const FALLBACK_SCOPES = Object.fromEntries(
 
 const FALLBACK: PlatformFeatures = {
   expertRegistrationEnabled: true,
+  humanDesignEnabled: false,
   recaptcha: {
     configured: false,
     masterEnabled: false,
@@ -42,6 +45,7 @@ function parseFeatures(d: Record<string, unknown>): PlatformFeatures {
 
   return {
     expertRegistrationEnabled: d.expertRegistrationEnabled !== false,
+    humanDesignEnabled: d.humanDesignEnabled === true,
     recaptcha: {
       configured: recaptchaRaw.configured === true,
       masterEnabled: recaptchaRaw.masterEnabled === true,

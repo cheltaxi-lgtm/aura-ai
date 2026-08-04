@@ -18,9 +18,8 @@ export default function HdCabinet() {
 
   const load = useCallback(() => {
     fetch("/api/human-design/mine")
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : { enabled: true, charts: [] }))
       .then((d) => {
-        if (!d) return;
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
         setCharts(list);

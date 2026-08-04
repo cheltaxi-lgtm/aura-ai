@@ -31,6 +31,7 @@ import {
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
+import { rememberHdChartFact } from "@/lib/human-design/memory";
 
 export const maxDuration = 300;
 
@@ -169,6 +170,7 @@ export async function POST(request: NextRequest) {
 
     const reportText = text.trim() + REPORT_DISCLAIMER;
     await completeHdReport(pending.id, reportText, "openrouter");
+    rememberHdChartFact(userId, chart.chart, chart.id);
 
     const report = await getHdReportForChart(chart.id, userId);
     return NextResponse.json({ report, runeBalance: charge.newBalance });

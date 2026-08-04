@@ -36,6 +36,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   const [authenticated, setAuthenticated] = useState(false);
   const placeBoxRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefillDoneRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -43,6 +44,34 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       .then((d) => setAuthenticated(Boolean(d?.authenticated && !d?.needsProfile)))
       .catch(() => setAuthenticated(false));
   }, []);
+
+  // Prefill birth data from the cabinet profile + natal chart place.
+  useEffect(() => {
+    if (!authenticated || prefillDoneRef.current) return;
+    prefillDoneRef.current = true;
+    fetch("/api/human-design/prefill")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const p = d?.prefill;
+        if (!p) return;
+        if (typeof p.birthDate === "string" && p.birthDate) setBirthDate(p.birthDate);
+        if (typeof p.birthTime === "string" && p.birthTime) {
+          setBirthTime(p.birthTime.slice(0, 5));
+        } else {
+          setTimeUnknown(true);
+        }
+        if (p.place && typeof p.place.label === "string") {
+          setPlace(p.place);
+          setPlaceQuery(p.place.label);
+        } else if (typeof p.birthCity === "string" && p.birthCity.trim()) {
+          // City without coordinates: let the user confirm the suggestion.
+          setPlaceQuery(p.birthCity.trim());
+          searchPlaces(p.birthCity.trim());
+        }
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated]);
 
   // Restore the last computed chart (survives the login redirect round-trip).
   useEffect(() => {
@@ -67,8 +96,13 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fingerprint: stored }),
-      }).then(() => localStorage.removeItem(STORAGE_KEY));
+      }).then(() => {
+        localStorage.removeItem(STORAGE_KEY);
+        // Cabinet: the claimed chart now belongs to the user — refresh the list.
+        onChartCreated?.(result);
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated, result]);
 
   useEffect(() => {

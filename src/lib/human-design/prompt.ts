@@ -33,6 +33,53 @@ function crossNameRu(chart: HdChart): string {
   return names[index] ?? chart.cross.nameEn;
 }
 
+/** One-line digest for durable memory facts. */
+export function formatHdFactLine(chart: HdChart): string {
+  const typeMeta = TYPE_META[chart.type];
+  const profileName = PROFILE_NAMES_RU[chart.profile] ?? chart.profile;
+  const definition = DEFINITION_NAMES_RU[chart.definition] ?? chart.definition;
+  return (
+    `Дизайн Человека клиента: тип «${typeMeta.nameRu}» (стратегия — ${typeMeta.strategyRu}), ` +
+    `авторитет — ${AUTHORITY_NAMES_RU[chart.authority]}, профиль ${chart.profile} «${profileName}», ` +
+    `определённость — ${definition}, инкарнационный крест «${crossNameRu(chart)}» ` +
+    `(${CROSS_ANGLE_NAMES_RU[chart.cross.angle]}, ворота ${chart.cross.gates.join("/")}).`
+  );
+}
+
+/** Compact chat-context block (masters other than the HD report chat). */
+export function formatHdChatSummary(chart: HdChart): string {
+  const typeMeta = TYPE_META[chart.type];
+  const lines: string[] = [];
+  lines.push(`Тип: ${typeMeta.nameRu} — стратегия «${typeMeta.strategyRu}»`);
+  lines.push(`Авторитет: ${AUTHORITY_NAMES_RU[chart.authority]}`);
+  lines.push(
+    `Профиль: ${chart.profile} — ${PROFILE_NAMES_RU[chart.profile] ?? chart.profile}`
+  );
+  lines.push(`Определённость: ${DEFINITION_NAMES_RU[chart.definition] ?? chart.definition}`);
+  lines.push(
+    `Инкарнационный крест: «${crossNameRu(chart)}» (${CROSS_ANGLE_NAMES_RU[chart.cross.angle]})`
+  );
+  lines.push(
+    `Определённые центры: ${
+      chart.definedCenters.length
+        ? chart.definedCenters.map((c) => CENTER_NAMES_RU[c]).join(", ")
+        : "нет"
+    }`
+  );
+  if (!chart.timeKnown && chart.stability) {
+    const unstable: string[] = [];
+    if (!chart.stability.typeStable) unstable.push("тип");
+    if (!chart.stability.authorityStable) unstable.push("авторитет");
+    if (!chart.stability.profileStable) unstable.push("профиль");
+    if (unstable.length) {
+      lines.push(
+        `Время рождения неизвестно: ${unstable.join(", ")} могут отличаться — не утверждай их категорично.`
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
 /** Deterministic evidence block — the only facts the model may use. */
 export function formatHdEvidence(chart: HdChart): string {
   const typeMeta = TYPE_META[chart.type];

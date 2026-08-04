@@ -8,6 +8,7 @@ export const REPLACE_PREDICATES = new Set([
   "residence.current",
   "education.current",
   "goal.current",
+  "human_design.chart",
 ]);
 
 export const MULTI_PREDICATES = new Set([

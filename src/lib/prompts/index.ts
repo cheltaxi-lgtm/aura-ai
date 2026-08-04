@@ -184,6 +184,8 @@ export interface BuildPromptOptions {
   numerologyBlock?: string;
   /** Pre-built natal chart block for Shri Raj (server-computed). */
   natalChartBlock?: string;
+  /** Pre-built Human Design block for Эвелина (server-computed). */
+  humanDesignBlock?: string;
   /** Force thematic depth rules even without a catalog intention (photo / custom) */
   forceThematicReading?: boolean;
 }
@@ -271,6 +273,7 @@ export function buildSystemPrompt(
     persona,
     numerologyBlock,
     options.natalChartBlock ?? "",
+    options.humanDesignBlock ?? "",
     CONTEXT_RULES,
     // SPREAD_TRUTH_RULES is injected once by wrapSystemPrompt — do not repeat it here.
     ...(hasSpread ? [CARD_GROUNDED_READING_RULES] : []),
