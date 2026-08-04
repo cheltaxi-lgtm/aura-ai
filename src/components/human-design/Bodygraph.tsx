@@ -14,11 +14,12 @@ import {
   HD_GATE_ANCHORS,
 } from "./bodygraph-geometry";
 
-const COLOR_P = "#f2e7c9"; // personality — conscious (classic black → light on dark theme)
-const COLOR_D = "#e05555"; // design — unconscious red
+const COLOR_P = "#f2e7c9";
+const COLOR_D = "#e05555";
 const COLOR_BASE = "rgba(232, 199, 126, 0.10)";
 
 type GateActivity = { pLine?: number; dLine?: number };
+type LayerFilter = "all" | "p" | "d";
 
 interface TooltipState {
   x: number;
@@ -47,10 +48,19 @@ function halfColor(active: boolean, source: "p" | "d" | undefined): string {
   return source === "d" ? COLOR_D : COLOR_P;
 }
 
+/** Whether a half-channel segment is visible under the current layer filter. */
+function layerVisible(source: "p" | "d" | undefined, filter: LayerFilter): boolean {
+  if (!source) return true; // inactive segments always show as base
+  if (filter === "all") return true;
+  return source === filter;
+}
+
 export default function Bodygraph({ chart }: { chart: HdChart }) {
   const reduceMotion = useReducedMotion();
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [layer, setLayer] = useState<LayerFilter>("all");
+  const [highlightCenter, setHighlightCenter] = useState<HdCenterKey | null>(null);
 
   const gateActivity = useMemo(() => buildGateActivity(chart), [chart]);
   const definedCenters = useMemo(() => new Set(chart.definedCenters), [chart]);
@@ -129,6 +139,10 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
     img.src = url;
   }, []);
 
+  const centerOrder: HdCenterKey[] = [
+    "head", "ajna", "throat", "g", "heart", "spleen", "solar", "sacral", "root",
+  ];
+
   return (
     <div className="hd-bodygraph">
       <div className="hd-bodygraph__stage" onMouseLeave={() => setTooltip(null)}>
@@ -144,9 +158,26 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
               <stop offset="0%" stopColor="#e8c77e" />
               <stop offset="100%" stopColor="#a8843a" />
             </linearGradient>
+            <radialGradient id="hd-center-glow" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0%" stopColor="rgba(232, 199, 126, 0.55)" />
+              <stop offset="100%" stopColor="rgba(232, 199, 126, 0)" />
+            </radialGradient>
+            <filter id="hd-soft-glow" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="6" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
 
-          {/* Channels: two half-segments each for personality/design coloring */}
+          {/* Ambient orbital rings */}
+          <g aria-hidden="true" opacity={0.5}>
+            <circle cx={200} cy={348} r={172} fill="none" stroke="rgba(155,127,212,0.10)" strokeWidth={1} strokeDasharray="2 7" />
+            <circle cx={200} cy={348} r={232} fill="none" stroke="rgba(232,199,126,0.07)" strokeWidth={1} strokeDasharray="1 9" />
+          </g>
+
+          {/* Channels */}
           <g strokeLinecap="round">
             {HD_CHANNEL_SEGMENTS.map((seg, i) => {
               const aAct = gateActivity.get(seg.gates[0]);
@@ -154,6 +185,8 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
               const aSource = aAct?.pLine ? "p" : aAct?.dLine ? "d" : undefined;
               const bSource = bAct?.pLine ? "p" : bAct?.dLine ? "d" : undefined;
               const defined = definedChannels.has(seg.key);
+              const aVisible = layerVisible(aSource, layer);
+              const bVisible = layerVisible(bSource, layer);
               return (
                 <motion.g
                   key={seg.key}
@@ -161,15 +194,26 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.4, delay: reduceMotion ? 0 : i * 0.02 }}
                 >
+                  {defined && (
+                    <line
+                      x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
+                      stroke="rgba(232,199,126,0.35)"
+                      strokeWidth={9}
+                      filter="url(#hd-soft-glow)"
+                      opacity={aVisible && bVisible ? 0.8 : 0.15}
+                    />
+                  )}
                   <line
                     x1={seg.ax} y1={seg.ay} x2={seg.mx} y2={seg.my}
-                    stroke={halfColor(Boolean(aAct), aSource)}
+                    stroke={aVisible ? halfColor(Boolean(aAct), aSource) : COLOR_BASE}
                     strokeWidth={defined ? 5 : 3}
+                    opacity={aVisible ? 1 : 0.25}
                   />
                   <line
                     x1={seg.mx} y1={seg.my} x2={seg.bx} y2={seg.by}
-                    stroke={halfColor(Boolean(bAct), bSource)}
+                    stroke={bVisible ? halfColor(Boolean(bAct), bSource) : COLOR_BASE}
                     strokeWidth={defined ? 5 : 3}
+                    opacity={bVisible ? 1 : 0.25}
                   />
                   <line
                     x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
@@ -207,18 +251,47 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
 
           {/* Centers */}
           <g>
-            {Object.values(HD_CENTER_SHAPES).map((shape) => {
+            {Object.values(HD_CENTER_SHAPES).map((shape, i) => {
               const defined = definedCenters.has(shape.key);
+              const dimmed = highlightCenter !== null && highlightCenter !== shape.key;
               return (
-                <path
+                <motion.g
                   key={shape.key}
-                  d={shape.path}
-                  fill={defined ? "url(#hd-center-defined)" : "rgba(255,255,255,0.03)"}
-                  stroke={defined ? "rgba(255, 232, 168, 0.8)" : "rgba(232, 199, 126, 0.35)"}
-                  strokeWidth={1.5}
-                  onMouseEnter={() => showCenterTooltip(shape.key, shape.cx, shape.cy)}
-                  onClick={() => showCenterTooltip(shape.key, shape.cx, shape.cy)}
-                />
+                  initial={reduceMotion ? false : { opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: dimmed ? 0.25 : 1, scale: 1 }}
+                  transition={{ duration: 0.5, delay: reduceMotion ? 0 : 0.3 + i * 0.06 }}
+                  style={{ transformOrigin: `${shape.cx}px ${shape.cy}px` }}
+                >
+                  {defined && (
+                    <circle
+                      cx={shape.cx}
+                      cy={shape.cy}
+                      r={52}
+                      fill="url(#hd-center-glow)"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <path
+                    d={shape.path}
+                    fill={defined ? "url(#hd-center-defined)" : "rgba(255,255,255,0.03)"}
+                    stroke={defined ? "rgba(255, 232, 168, 0.9)" : "rgba(232, 199, 126, 0.35)"}
+                    strokeWidth={defined ? 2 : 1.5}
+                    filter={defined ? "url(#hd-soft-glow)" : undefined}
+                    onMouseEnter={() => showCenterTooltip(shape.key, shape.cx, shape.cy)}
+                    onClick={() => showCenterTooltip(shape.key, shape.cx, shape.cy)}
+                  />
+                  <text
+                    x={shape.cx}
+                    y={shape.cy + 3}
+                    textAnchor="middle"
+                    fontSize={8}
+                    fontWeight={600}
+                    fill={defined ? "#17131f" : "rgba(232,199,126,0.55)"}
+                    style={{ pointerEvents: "none", letterSpacing: "0.04em" }}
+                  >
+                    {CENTER_NAMES_RU[shape.key]}
+                  </text>
+                </motion.g>
               );
             })}
           </g>
@@ -226,14 +299,17 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
           {/* Gate labels */}
           <g fontFamily="system-ui, sans-serif" fontSize={9} textAnchor="middle">
             {HD_GATE_ANCHORS.map((anchor) => {
-              const active = gateActivity.has(anchor.gate);
               const a = gateActivity.get(anchor.gate);
+              const active = Boolean(a);
+              const source = a?.pLine ? "p" : a?.dLine ? "d" : undefined;
+              const visible = layerVisible(source, layer);
               return (
                 <g
                   key={anchor.gate}
                   onMouseEnter={() => showGateTooltip(anchor.gate, anchor.lx, anchor.ly)}
                   onClick={() => showGateTooltip(anchor.gate, anchor.lx, anchor.ly)}
                   className="hd-bodygraph__gate"
+                  opacity={visible ? 1 : 0.2}
                 >
                   <circle
                     cx={anchor.lx}
@@ -274,12 +350,58 @@ export default function Bodygraph({ chart }: { chart: HdChart }) {
         )}
       </div>
 
+      {/* Layer filter */}
+      <div className="hd-bodygraph__layers" role="group" aria-label="Фильтр активаций">
+        {(
+          [
+            ["all", "Вся карта"],
+            ["p", "Личность"],
+            ["d", "Дизайн"],
+          ] as [LayerFilter, string][]
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setLayer(key)}
+            className={`hd-bodygraph__layer-btn${layer === key ? " is-active" : ""}`}
+          >
+            {key !== "all" && (
+              <i style={{ background: key === "p" ? COLOR_P : COLOR_D }} />
+            )}
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Interactive centers legend */}
+      <div className="hd-bodygraph__centers-legend">
+        {centerOrder.map((key) => {
+          const defined = definedCenters.has(key);
+          const active = highlightCenter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onMouseEnter={() => setHighlightCenter(key)}
+              onMouseLeave={() => setHighlightCenter(null)}
+              onClick={() => setHighlightCenter(active ? null : key)}
+              className={`hd-bodygraph__center-chip${defined ? " is-defined" : ""}${active ? " is-active" : ""}`}
+            >
+              {CENTER_NAMES_RU[key]}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="hd-bodygraph__legend">
         <span className="hd-bodygraph__legend-item">
           <i style={{ background: COLOR_P }} /> Личность (сознательное)
         </span>
         <span className="hd-bodygraph__legend-item">
           <i style={{ background: COLOR_D }} /> Дизайн (бессознательное)
+        </span>
+        <span className="hd-bodygraph__legend-item">
+          <i className="hd-bodygraph__legend-swatch" /> Определённый центр
         </span>
         <button type="button" onClick={exportPng} className="hd-bodygraph__export">
           Скачать PNG

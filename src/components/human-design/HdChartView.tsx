@@ -11,6 +11,7 @@ import {
   TYPE_META,
 } from "@/lib/human-design";
 import Bodygraph from "./Bodygraph";
+import HdShareCard from "./HdShareCard";
 
 export interface HdChartPayload {
   id: string;
@@ -36,6 +37,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const typeMeta = TYPE_META[chart.type];
   const stability = chart.stability;
   const [copied, setCopied] = useState(false);
+  const [showShareCard, setShowShareCard] = useState(false);
 
   const share = async () => {
     const url = `${window.location.origin}/dizayn-cheloveka/karta/${payload.fingerprint}`;
@@ -104,11 +106,24 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
 
       <Bodygraph chart={chart} />
 
-      <div className="hd-print-hidden flex justify-center">
+      <div className="hd-print-hidden flex flex-wrap justify-center gap-2">
         <button type="button" onClick={() => void share()} className="hd-bodygraph__export">
           {copied ? "Ссылка скопирована" : "Поделиться картой"}
         </button>
+        <button
+          type="button"
+          onClick={() => setShowShareCard((v) => !v)}
+          className="hd-bodygraph__export"
+        >
+          {showShareCard ? "Скрыть карточку" : "Карточка для соцсетей"}
+        </button>
       </div>
+
+      {showShareCard && (
+        <div className="hd-print-hidden">
+          <HdShareCard chart={chart} subjectName={payload.subjectName} />
+        </div>
+      )}
     </div>
   );
 }

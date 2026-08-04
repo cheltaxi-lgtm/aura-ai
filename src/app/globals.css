@@ -8390,6 +8390,46 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
   @apply mt-0.5 text-[0.6875rem] leading-snug text-white/70;
 }
 
+.hd-bodygraph__layers {
+  @apply mt-3 flex items-center justify-center gap-2;
+}
+
+.hd-bodygraph__layer-btn {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1 text-[0.6875rem] text-white/60 transition hover:border-amber-400/40 hover:text-amber-100;
+}
+
+.hd-bodygraph__layer-btn.is-active {
+  @apply border-amber-400/60 text-amber-50;
+  background: rgba(201, 162, 74, 0.14);
+}
+
+.hd-bodygraph__layer-btn i {
+  @apply inline-block h-2 w-3 rounded-full;
+}
+
+.hd-bodygraph__centers-legend {
+  @apply mt-2 flex flex-wrap items-center justify-center gap-1.5;
+}
+
+.hd-bodygraph__center-chip {
+  @apply rounded-full border border-white/10 px-2.5 py-0.5 text-[0.625rem] text-white/45 transition hover:border-amber-400/40 hover:text-amber-100;
+}
+
+.hd-bodygraph__center-chip.is-defined {
+  @apply border-amber-500/40 text-amber-100/90;
+  background: rgba(201, 162, 74, 0.1);
+}
+
+.hd-bodygraph__center-chip.is-active {
+  @apply border-amber-300 text-amber-50;
+  box-shadow: 0 0 12px rgba(232, 199, 126, 0.35);
+}
+
+.hd-bodygraph__legend-swatch {
+  background: linear-gradient(135deg, #e8c77e, #a8843a);
+  box-shadow: 0 0 8px rgba(232, 199, 126, 0.6);
+}
+
 .hd-bodygraph__legend {
   @apply mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[0.6875rem] text-white/60;
 }
@@ -8405,6 +8445,47 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
 .hd-bodygraph__export {
   @apply rounded-full border border-amber-500/30 px-3 py-1 text-[0.6875rem] text-amber-100/90 transition hover:border-amber-400/50 hover:text-amber-50;
   background: rgba(201, 162, 74, 0.1);
+}
+
+/* ── HD share card ── */
+.hd-share-card-wrap {
+  @apply flex flex-col items-center gap-3;
+}
+
+.hd-share-card {
+  @apply w-full max-w-sm overflow-hidden rounded-3xl border border-amber-500/25 p-5;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(155, 127, 212, 0.14), transparent 70%),
+    linear-gradient(170deg, #1c1630 0%, #0c0a14 100%);
+  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.8);
+}
+
+.hd-share-card__head {
+  @apply mb-3 text-center;
+}
+
+.hd-share-card__brand {
+  @apply text-[0.625rem] uppercase tracking-[0.3em] text-amber-200/60;
+}
+
+.hd-share-card__name {
+  @apply mt-1 text-lg font-semibold text-amber-50;
+}
+
+.hd-share-card__graph {
+  @apply mx-auto block h-auto w-3/4;
+}
+
+.hd-share-card__facts {
+  @apply mt-4 grid grid-cols-3 gap-2 text-center;
+}
+
+.hd-share-card__facts span {
+  @apply block text-[0.5625rem] uppercase tracking-widest text-white/40;
+}
+
+.hd-share-card__facts strong {
+  @apply mt-0.5 block text-[0.6875rem] font-semibold leading-tight text-amber-100;
 }
 
 /* ── Human Design calculator + result panels ── */
@@ -8489,6 +8570,8 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
 
 @media print {
   .hd-bodygraph__export,
+  .hd-bodygraph__layers,
+  .hd-bodygraph__centers-legend,
   .hd-print-hidden {
     display: none !important;
   }
