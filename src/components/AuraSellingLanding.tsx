@@ -62,6 +62,7 @@ import EditorialStarterPackSection from "@/components/editorial/EditorialStarter
 import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import HomeDestinyMatrixBanner from "@/components/editorial/HomeDestinyMatrixBanner";
+import HomeHumanDesignBanner from "@/components/editorial/HomeHumanDesignBanner";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
 import { trackQuickQuestionClick } from "@/lib/seo/metrika";
 
@@ -573,11 +574,14 @@ export default function AuraSellingLanding({
       ) : null}
 
       {showQuickQuestionsBlock || (showSellingSections && isEditorial) ? (
-        <HomeDestinyMatrixBanner
-          isLoggedIn={isLoggedIn}
-          onOpenWithEvelina={isLoggedIn ? onOpenDestinyMatrixSession : undefined}
-          onOpenOwnedReport={isLoggedIn ? onOpenOwnedDestinyMatrixReport : undefined}
-        />
+        <>
+          <HomeDestinyMatrixBanner
+            isLoggedIn={isLoggedIn}
+            onOpenWithEvelina={isLoggedIn ? onOpenDestinyMatrixSession : undefined}
+            onOpenOwnedReport={isLoggedIn ? onOpenOwnedDestinyMatrixReport : undefined}
+          />
+          <HomeHumanDesignBanner />
+        </>
       ) : null}
 
       {onOpenRitual ? (
