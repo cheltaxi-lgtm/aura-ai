@@ -699,9 +699,12 @@ export function useChatActions(options: UseChatActionsOptions) {
         ) {
           try {
             const subjectId = matrixSubjectIdForReading;
+            // Child matrix must never fall back to the parent's profile birth date.
             const birthRaw =
               sessionSpreadMetaRef.current?.matrixBirthDate?.trim() ||
-              activeProfile.birthDate?.trim();
+              (metaNumerologToolId === "child_matrix"
+                ? ""
+                : activeProfile.birthDate?.trim());
             if (subjectId || birthRaw) {
               const toolQuery =
                 metaNumerologToolId === "destiny_matrix"

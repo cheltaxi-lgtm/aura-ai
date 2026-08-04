@@ -64,6 +64,10 @@ export interface NumerologEngineParams {
   /** When set, matrix paid path can load natal chart snapshot for «Небо». */
   userId?: string | null;
   toolId?: NumerologToolId;
+  /** Matrix subject kind — when not self, prose addresses the buyer about this person. */
+  subjectKind?: "self" | "child" | "partner" | "other" | null;
+  /** Display name of the person whose matrix is calculated (when ≠ buyer). */
+  subjectName?: string | null;
 }
 
 /** Keep only matrix-safe memory lines (drop Pythagorean / life-path leaks). */
@@ -248,6 +252,8 @@ export async function generateNumerologStreamReply(
         name: firstName,
         toolId: params.toolId,
         gender: params.gender,
+        subjectKind: params.subjectKind,
+        subjectName: params.subjectName,
         // Natal bridge + filtered memory — previously built then discarded.
         contextFacts: engineFacts,
         useLlm: "all",
@@ -398,6 +404,8 @@ export async function generateNumerologSessionReading(input: {
   birthTime?: string | null;
   birthCity?: string | null;
   userId?: string | null;
+  subjectKind?: "self" | "child" | "partner" | "other" | null;
+  subjectName?: string | null;
   onMatrixProgress?: (progress: {
     done: number;
     total: number;
@@ -456,6 +464,10 @@ export async function generateNumerologSessionReading(input: {
     birthCity: input.birthCity,
     userId: input.userId,
     toolId: input.toolId,
+    subjectKind:
+      input.subjectKind ??
+      (input.toolId === "child_matrix" ? "child" : undefined),
+    subjectName: input.subjectName,
     // Paid session: AI-only. completeNumerologProse walks paid → fallbackModels.
     allowEngineFallback: false,
   });

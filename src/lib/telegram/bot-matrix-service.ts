@@ -50,7 +50,6 @@ import {
   sanitizeReadingForClient,
 } from "@/lib/chat-reply-sanitize";
 import { forceFillMissingSections } from "@/lib/numerology/matrix-sectioned-reading";
-import { resolveClientGender } from "@/lib/russian-name-gender";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import { createHistoryEntry, getUserById } from "@/lib/users";
@@ -346,15 +345,16 @@ export async function botMatrixRun(
       : subject && subject.kind !== "self"
         ? "MATRIX_SUBJECT_REPORT"
         : "NUMEROLOGY_SESSION";
-  const userName =
-    normalizePersonDisplayName(
-      subject?.displayName || gate.user.name || gate.resolved.name
-    ) ||
-    subject?.displayName ||
+  const readerName =
+    normalizePersonDisplayName(gate.user.name || gate.resolved.name) ||
     gate.user.name ||
     gate.resolved.name ||
     "друг";
-  const diagram = buildMatrixDiagram(isoBirth, userName);
+  const subjectName =
+    normalizePersonDisplayName(subject?.displayName || "") ||
+    subject?.displayName?.trim() ||
+    readerName;
+  const diagram = buildMatrixDiagram(isoBirth, subjectName);
   const replace = Boolean(opts?.replace);
 
   const owned = subject?.id
@@ -494,7 +494,7 @@ export async function botMatrixRun(
       characterId: "numerolog",
       sessionId: session.id,
       profile: {
-        name: userName,
+        name: readerName,
         birthDate,
         mainQuestion: "Матрица судьбы",
       },
@@ -507,22 +507,35 @@ export async function botMatrixRun(
 
     const sessionResult = await generateNumerologSessionReading({
       toolId,
-      userName,
+      userName: readerName,
       birthDate,
-      fullName: userName,
+      fullName: readerName,
       gender: gate.user.gender,
       spreadNumbers: [],
       memoryBlock: numerologMemoryBlock,
       birthTime: gate.user.birth_time,
       birthCity: gate.user.birth_city,
       userId: profileUserId,
+      subjectKind: subject?.kind ?? "self",
+      subjectName,
     });
     const rawReading = sessionResult.reply?.trim() || "";
     let reading = sanitizeReadingForClient(rawReading) || rawReading;
     const matrix = destinyMatrix(birthDate);
     if (matrix && (!isUsableMatrixReading(reading) || !reading.trim())) {
-      const gender = resolveClientGender(gate.user.gender, userName);
-      reading = forceFillMissingSections(reading || "", matrix, userName, gender);
+      const { buildMatrixAudience } = await import("@/lib/numerology/matrix-audience");
+      reading = forceFillMissingSections(
+        reading || "",
+        matrix,
+        buildMatrixAudience({
+          subjectKind: subject?.kind ?? "self",
+          readerName,
+          readerGender: gate.user.gender,
+          subjectName,
+        }),
+        null,
+        toolId
+      );
       reading = sanitizeReadingForClient(reading) || reading;
     }
     if (!isUsableMatrixReading(reading) || !reading.trim()) {

@@ -276,6 +276,7 @@ export default function DestinyMatrixPreview() {
             costs={matrixSubjects.costs}
             onSelect={(id) => {
               setSelectedSubjectId(id);
+              if (!id) return;
               const subject = matrixSubjects.subjects.find((item) => item.id === id);
               if (!subject) return;
               setBirthDate(subject.birthDate);
@@ -295,6 +296,7 @@ export default function DestinyMatrixPreview() {
                 runCalculate(subject.birthDate, subject.displayName || name);
               }
             }}
+            onRemove={matrixSubjects.remove}
           />
         </div>
       ) : (

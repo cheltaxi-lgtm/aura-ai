@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { FlowStep } from "@/components/FlowStepper";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { loadGuestTriplet, clearGuestTriplet, GUEST_TRIPLET_KEY } from "@/lib/guest-triplet";
@@ -28,6 +28,7 @@ import {
   clearPendingMasterResume,
   hasGuestExplicitMasterResume,
   hasPendingServerProfile,
+  isStoredChatResumeFresh,
   markNeedsServerProfile,
   persistProfileData,
   persistStep,
@@ -227,8 +228,31 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     }
   }, []);
 
+  // Re-running full step bootstrap when profileUserId arrives / auth refreshes
+  // used to force FLOW_STEP=chat → masters and unmount ChatWindow mid-reading.
+  // Guest↔user still re-bootstraps; late profileUserId bind must not eject chat.
+  const bootstrappedAuthKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (authLoading) return;
+
+    const authKey = !isLoggedIn
+      ? "guest"
+      : authUser?.profileUserId
+        ? `user:${authUser.profileUserId}`
+        : "user:pending";
+    const prevAuthKey = bootstrappedAuthKeyRef.current;
+    if (prevAuthKey === authKey) return;
+    if (
+      flowBootstrapped &&
+      prevAuthKey?.startsWith("user:") &&
+      authKey.startsWith("user:")
+    ) {
+      bootstrappedAuthKeyRef.current = authKey;
+      if (authUser?.profileUserId) clearNeedsServerProfile();
+      return;
+    }
+    bootstrappedAuthKeyRef.current = authKey;
 
     const finishBootstrap = () => setFlowBootstrapped(true);
 
@@ -381,9 +405,12 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         } else if (effectiveStep === "chat") {
           const restoreMaster =
             savedMaster ?? localStorage.getItem(PENDING_MASTER_KEY);
-          // Stored FLOW_STEP=chat must not reopen the last reading on "/".
-          // Only explicit ?resume=chat deep links restore a chat session.
-          const allowChatRestore = params.get("resume") === "chat";
+          // Session continuity: fresh stored chat (reload / brief leave) or
+          // explicit ?resume=chat / ?step=chat. Stale chat must not hijack "/".
+          const allowChatRestore =
+            params.get("resume") === "chat" ||
+            urlStep === "chat" ||
+            isStoredChatResumeFresh();
           if (!allowChatRestore || !restoreMaster) {
             if (urlStep === "chat") {
               const cleaned = new URL(window.location.href);
@@ -427,7 +454,13 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
     }
 
     finishBootstrap();
-  }, [authLoading, isLoggedIn, authUser?.profileUserId, onRestoreChatMaster]);
+  }, [
+    authLoading,
+    isLoggedIn,
+    authUser?.profileUserId,
+    onRestoreChatMaster,
+    flowBootstrapped,
+  ]);
 
   useEffect(() => {
     if (authLoading || !isLoggedIn || !authUser?.sub) return;

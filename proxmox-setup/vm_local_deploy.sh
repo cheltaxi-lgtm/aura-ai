@@ -653,6 +653,31 @@ unset _CRON_SECRET _CRON_BODY _CRON_STATUS
 
 rm -rf .next-previous node_modules-previous
 DEPLOY_STATUS="success"
+
+# Bot→site bridge dies with "Связь с сайтом временно недоступна" when
+# telegram-bot/.env loses BOT_INTERNAL_SECRET (incomplete env / bad restore).
+# Heal from site .env.local without overwriting a healthy bot env.
+echo ">>> Ensure telegram bot site-bridge secret..."
+_BOT_ENV=/opt/aura-ai/telegram-bot/.env
+_BOT_SECRET="$(grep -E '^BOT_INTERNAL_SECRET=.' "$_BOT_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+_SITE_SECRET="$(grep -E '^BOT_INTERNAL_SECRET=.' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+if [ -n "$_SITE_SECRET" ] && [ -z "$_BOT_SECRET" ]; then
+  if [ -f /opt/aura-ai/hosting/restore-bot-env-on-server.sh ]; then
+    sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh
+    bash /opt/aura-ai/hosting/restore-bot-env-on-server.sh
+  else
+    echo "WARN: bot missing BOT_INTERNAL_SECRET and restore script absent"
+  fi
+elif [ -n "$_BOT_SECRET" ] && systemctl is-active --quiet zovus-telegram-bot.service; then
+  if ! curl -fsS --max-time 2 http://127.0.0.1:8787/health >/dev/null 2>&1; then
+    systemctl restart zovus-telegram-bot.service || true
+  fi
+  echo "bot_bridge_secret=ok"
+else
+  echo "bot_bridge_secret=$([ -n "$_BOT_SECRET" ] && echo present || echo missing)"
+fi
+unset _BOT_ENV _BOT_SECRET _SITE_SECRET
+
 if [ -f /opt/aura-ai/hosting/Caddyfile ]; then
   echo ">>> Sync Caddyfile..."
   sudo cp /opt/aura-ai/hosting/Caddyfile /etc/caddy/Caddyfile

@@ -139,6 +139,7 @@ import {
   LAST_MASTER_KEY,
   PENDING_MASTER_KEY,
   hasPendingServerProfile,
+  isStoredChatResumeFresh,
   persistStep,
   readStoredProfile,
 } from "@/lib/home-flow-storage";
@@ -1072,11 +1073,13 @@ export default function HomePage({
 
   // Proven by logs: step=masters can keep selectedCharacter=numerolog and the
   // ChatWindow branch ignores step — so home shows the matrix reading.
-  // Skip while FLOW_STEP is chat (open in flight / URL resume already stripped).
+  // Skip while FLOW_STEP is chat (open in flight / URL resume already stripped)
+  // or while a reading is still generating — never tear down mid-session.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (step !== "masters" && step !== "intro") return;
     if (!selectedCharacter) return;
+    if (readingInFlightRef.current) return;
     const resume = new URLSearchParams(window.location.search).get("resume");
     if (resume === "chat") return;
     if (localStorage.getItem(FLOW_STEP_KEY) === "chat") return;
@@ -1371,15 +1374,17 @@ export default function HomePage({
       }
       return;
     }
-    if (step !== "chat" || selectedCharacter) return;
+    // Prefer the sync ref — state lags one paint behind setSelectedCharacter during open.
+    if (step !== "chat" || selectedCharacter || selectedCharacterRef.current) return;
     if (pendingChatOptsRef.current) return;
     if (readingInFlightRef.current) return;
 
     const params = new URLSearchParams(window.location.search);
-    const urlStep = params.get("step");
-    const savedStep = localStorage.getItem(FLOW_STEP_KEY);
-    // Never restore a master from a leftover FLOW_STEP=chat — only ?resume=chat.
-    const allowChatRestore = params.get("resume") === "chat";
+    // Fresh stored chat = reload continuity; stale chat must not hijack landing.
+    const allowChatRestore =
+      params.get("resume") === "chat" ||
+      params.get("step") === "chat" ||
+      (localStorage.getItem(FLOW_STEP_KEY) === "chat" && isStoredChatResumeFresh());
 
     const masterId =
       localStorage.getItem(LAST_MASTER_KEY) ||

@@ -56,6 +56,7 @@ export default function NumerologCalculationPicker({
 }: NumerologCalculationPickerProps) {
   const [partnerDateError, setPartnerDateError] = useState("");
   const selected = getNumerologTool(selectedId);
+  const isChildMatrix = selectedId === "child_matrix";
   const showSubjectPicker =
     selectedId === "destiny_matrix" || selectedId === "child_matrix";
   const matrixSubjects = useMatrixSubjects({
@@ -67,6 +68,25 @@ export default function NumerologCalculationPicker({
     userBirthDate,
     userFullName
   );
+
+  const subjectPicker = showSubjectPicker ? (
+    <MatrixSubjectPicker
+      subjects={matrixSubjects.subjects}
+      selectedId={matrixSubjectId}
+      disabled={matrixSubjects.loading}
+      costs={matrixSubjects.costs}
+      allowKinds={isChildMatrix ? ["child"] : ["child", "partner", "other"]}
+      visibleKinds={isChildMatrix ? ["child"] : undefined}
+      defaultSelectSelf={!isChildMatrix}
+      forceCreateForm={isChildMatrix}
+      title={isChildMatrix ? "Данные ребёнка" : "Чья матрица"}
+      createButtonLabel={isChildMatrix ? "+ Добавить ребёнка" : undefined}
+      onSelect={(id) => onMatrixSubjectIdChange?.(id)}
+      onCreate={matrixSubjects.create}
+      onCreated={(subject) => onMatrixSubjectIdChange?.(subject.id)}
+      onRemove={matrixSubjects.remove}
+    />
+  ) : null;
 
   const handlePartnerDateChange = (value: string) => {
     let v = value.replace(/\D/g, "");
@@ -82,20 +102,8 @@ export default function NumerologCalculationPicker({
 
   return (
     <div className="numerolog-calc-picker space-y-4">
-      {showSubjectPicker ? (
-        <MatrixSubjectPicker
-          subjects={matrixSubjects.subjects}
-          selectedId={matrixSubjectId}
-          disabled={matrixSubjects.loading}
-          costs={matrixSubjects.costs}
-          allowKinds={
-            selectedId === "child_matrix" ? ["child"] : ["child", "partner", "other"]
-          }
-          onSelect={(id) => onMatrixSubjectIdChange?.(id)}
-          onCreate={matrixSubjects.create}
-          onCreated={(subject) => onMatrixSubjectIdChange?.(subject.id)}
-        />
-      ) : null}
+      {/* Adult matrix: picker above the grid. Child: below, so the form appears after the card is chosen. */}
+      {!isChildMatrix ? subjectPicker : null}
 
       <div className="numerolog-calc-picker__grid grid grid-cols-2 gap-2">
         {NUMEROLOG_SESSION_TOOLS.map((tool) => {
@@ -165,6 +173,8 @@ export default function NumerologCalculationPicker({
           );
         })}
       </div>
+
+      {isChildMatrix ? subjectPicker : null}
 
       {!hideSummaryPanel ? (
         <div className="numerolog-calc-picker__summary rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/25 via-black/20 to-transparent px-4 py-3.5">

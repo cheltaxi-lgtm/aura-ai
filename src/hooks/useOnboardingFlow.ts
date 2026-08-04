@@ -1084,11 +1084,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           sessionSpreadMetaRef.current?.matrixBirthDate?.trim() ||
           sessionSpreadMetaRef.current?.numerologToolParams?.matrixBirthDate?.trim() ||
           null;
+        // Child matrix must use the child's date only — never the parent profile.
         const birthDate =
           subjectBirth ||
-          getActiveProfile()?.birthDate ||
-          profile?.birthDate ||
-          null;
+          (toolId === "child_matrix"
+            ? null
+            : getActiveProfile()?.birthDate || profile?.birthDate || null);
         return {
           source: "numerolog" as const,
           cards: [],

@@ -413,7 +413,7 @@ export const NUMEROLOG_BIRTH_DATE_TOOLS = new Set<NumerologToolId>([
   "spread_three_numbers",
   "pythagoras",
   "destiny_matrix",
-  "child_matrix",
+  // child_matrix uses the child's subject birth date, not the parent profile.
   "matrix_compatibility",
   "matrix_year_forecast",
   "personal_year",

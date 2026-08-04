@@ -383,19 +383,40 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+    } else if (requestNumerologToolId === "child_matrix") {
+      return NextResponse.json(
+        {
+          error: "Для детской матрицы укажите ребёнка (имя и дату рождения).",
+          code: "matrix_subject_required",
+        },
+        { status: 400 }
+      );
     } else if (isMatrixBuyOnceTool) {
       // Legacy clients / reopen from history send no subject: treat as «Я».
       // Clients that target another person always send matrixSubjectId.
       resolvedMatrixSubject = await ensureSelfSubject(authed.profileUserId);
     }
 
+    if (
+      requestNumerologToolId === "child_matrix" &&
+      resolvedMatrixSubject &&
+      resolvedMatrixSubject.kind !== "child"
+    ) {
+      return NextResponse.json(
+        {
+          error: "Детская матрица считается только для профиля ребёнка.",
+          code: "matrix_subject_kind_mismatch",
+        },
+        { status: 400 }
+      );
+    }
+
     if (resolvedMatrixSubject) {
       birthDate = resolvedMatrixSubject.birthDate;
       birthTime = resolvedMatrixSubject.birthTime ?? undefined;
       birthCity = resolvedMatrixSubject.birthCity ?? undefined;
-      if (resolvedMatrixSubject.displayName?.trim()) {
-        userName = resolvedMatrixSubject.displayName.trim();
-      }
+      // Keep userName = buyer (address «ты»). Subject name is passed separately
+      // so prose does not speak as if the other person ordered their own matrix.
     }
   }
 
@@ -985,6 +1006,13 @@ export async function POST(request: NextRequest) {
             birthTime,
             birthCity,
             userId: authed.profileUserId,
+            subjectKind: resolvedMatrixSubject?.kind ??
+              (toolId === "child_matrix" ? "child" : "self"),
+            subjectName:
+              resolvedMatrixSubject?.displayName?.trim() ||
+              (resolvedMatrixSubject?.kind && resolvedMatrixSubject.kind !== "self"
+                ? null
+                : userName),
             onMatrixProgress:
               workerJobId && toolId === "destiny_matrix"
                 ? async (progress) => {
@@ -1051,12 +1079,23 @@ export async function POST(request: NextRequest) {
               const { forceFillMissingSections } = await import(
                 "@/lib/numerology/matrix-sectioned-reading"
               );
-              const { resolveClientGender } = await import("@/lib/russian-name-gender");
+              const { buildMatrixAudience } = await import(
+                "@/lib/numerology/matrix-audience"
+              );
               matrixContent = forceFillMissingSections(
                 matrixContent,
                 matrix,
-                userName,
-                resolveClientGender(gender, userName)
+                buildMatrixAudience({
+                  subjectKind:
+                    resolvedMatrixSubject?.kind ??
+                    (toolId === "child_matrix" ? "child" : "self"),
+                  readerName: userName,
+                  readerGender: gender,
+                  subjectName:
+                    resolvedMatrixSubject?.displayName?.trim() || userName,
+                }),
+                null,
+                toolId
               );
               matrixContent = sanitizeReadingForClient(matrixContent) || matrixContent;
             }

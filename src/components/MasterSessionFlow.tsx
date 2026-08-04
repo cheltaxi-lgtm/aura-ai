@@ -279,6 +279,12 @@ export default function MasterSessionFlow({
   const matrixOwned = matrixOwnership.owned;
   const matrixBuyOnceOwned =
     numerologFlow && selectedNumerologTool === "destiny_matrix" && matrixOwned;
+  const selectedMatrixSubject = matrixSubjectId
+    ? matrixSubjects.subjects.find((s) => s.id === matrixSubjectId) ?? null
+    : null;
+  const childMatrixSubjectReady =
+    selectedNumerologTool !== "child_matrix" ||
+    Boolean(selectedMatrixSubject && selectedMatrixSubject.kind === "child");
   const spreadCost = matrixBuyOnceOwned
     ? 0
     : numerologFlow
@@ -931,9 +937,12 @@ export default function MasterSessionFlow({
   const handleStartNew = async () => {
     if (!master) return;
     if (numerologFlow) {
+      if (selectedNumerologTool === "child_matrix" && !childMatrixSubjectReady) {
+        setDrawError("Укажите имя и дату рождения ребёнка.");
+        return;
+      }
       if (
         (selectedNumerologTool === "destiny_matrix" ||
-          selectedNumerologTool === "child_matrix" ||
           selectedNumerologTool === "matrix_year_forecast") &&
         !matrixSubjectId
       ) {
@@ -1152,6 +1161,7 @@ export default function MasterSessionFlow({
           <button
             type="button"
             disabled={
+              !childMatrixSubjectReady ||
               !numerologCalculationReady(
                 selectedNumerologTool,
                 numerologToolParams,
@@ -1160,9 +1170,12 @@ export default function MasterSessionFlow({
               )
             }
             onClick={() => {
+              if (selectedNumerologTool === "child_matrix" && !childMatrixSubjectReady) {
+                setDrawError("Укажите имя и дату рождения ребёнка.");
+                return;
+              }
               if (
                 (selectedNumerologTool === "destiny_matrix" ||
-                  selectedNumerologTool === "child_matrix" ||
                   selectedNumerologTool === "matrix_year_forecast") &&
                 !matrixSubjectId
               ) {
@@ -1608,7 +1621,14 @@ export default function MasterSessionFlow({
                     onSelect={(id) => {
                       setSelectedNumerologTool(id);
                       setNumerologToolParams({});
-                      if (id !== "destiny_matrix" && id !== "child_matrix") {
+                      if (id === "child_matrix") {
+                        const current = matrixSubjects.subjects.find(
+                          (s) => s.id === matrixSubjectId
+                        );
+                        if (!current || current.kind !== "child") {
+                          setMatrixSubjectId(null);
+                        }
+                      } else if (id !== "destiny_matrix") {
                         setMatrixSubjectId(null);
                       }
                     }}

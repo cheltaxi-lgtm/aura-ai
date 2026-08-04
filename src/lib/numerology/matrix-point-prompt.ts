@@ -122,12 +122,36 @@ export function formatMatrixFinaleKeys(matrix: DestinyMatrixResult): string {
 }
 
 /** Deterministic plain-language finale — no LLM mix-ups on year/purpose. */
-export function buildMatrixPlainFinale(name: string, matrix: DestinyMatrixResult): string {
+export function buildMatrixPlainFinale(
+  name: string,
+  matrix: DestinyMatrixResult,
+  opts?: { aboutOther?: boolean; subjectName?: string }
+): string {
   const body = getArcanaEntry(matrix.body.number);
   const purpose = getArcanaEntry(matrix.purpose.number);
   const money = getArcanaEntry(matrix.money.number);
   const year = getArcanaEntry(matrix.yearArcana.number);
   const who = name.trim() || "друг";
+  const subject = (opts?.subjectName ?? "").trim() || "этот человек";
+
+  if (opts?.aboutOther) {
+    return [
+      `${who}, ты смотришь матрицу ${subject}. Опора характера — ${
+        body?.title ?? matrix.body.arcanaName
+      } (${matrix.body.number}): ${body?.shortMeaning ?? matrix.body.arcanaMeaning}`,
+      `Зона комфорта — ${purpose?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}): ${
+        purpose?.purpose ?? matrix.comfort.arcanaMeaning
+      }`,
+      `Кармический хвост — ${matrix.karmicTail.map((p) => `${p.number} ${p.arcanaName}`).join(" → ")}.`,
+      `Деньги — через ${money?.title ?? matrix.money.arcanaName}: ${
+        money?.money ?? matrix.money.arcanaMeaning
+      }`,
+      `Узел периода — ${matrix.focusLabel}.`,
+      `Аркан этого года — ${year?.title ?? matrix.yearArcana.arcanaName} (${matrix.yearArcana.number}): ${
+        year?.shortMeaning ?? matrix.yearArcana.arcanaMeaning
+      } Это фон периода, а не замена другим точкам матрицы.`,
+    ].join("\n");
+  }
 
   return [
     `${who}, опора характера — ${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}): ${

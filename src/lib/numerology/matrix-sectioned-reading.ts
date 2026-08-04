@@ -8,12 +8,18 @@ import { resolveMatrixModelChain } from "@/lib/ai-model";
 import {
   buildClientGenderInstruction,
   genderLabelRu,
-  resolveClientGender,
   type BinaryGender,
 } from "@/lib/russian-name-gender";
-import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
+import type { MatrixSubjectKind } from "@/lib/services/matrix-subject-service";
 import { getArcanaEntry } from "./arcana-dictionary";
 import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
+import {
+  buildMatrixAudience,
+  buildMatrixAudiencePromptBlock,
+  isMatrixAboutOther,
+  subjectHandle,
+  type MatrixAudience,
+} from "./matrix-audience";
 import {
   isCompleteMatrixReading,
   matrixMissingSections,
@@ -146,19 +152,57 @@ function hasZoneTitle(block: string, label: string): boolean {
 }
 
 /** Premium deterministic prose for one zone — exact title on its own line. */
+function audienceFromLegacyName(
+  name: string,
+  gender: BinaryGender | null
+): MatrixAudience {
+  return buildMatrixAudience({
+    subjectKind: "self",
+    readerName: name,
+    readerGender: gender,
+    subjectName: name,
+  });
+}
+
 export function renderEngineZoneProse(
   zone: MatrixZoneInstance,
-  name: string,
-  _gender: BinaryGender | null,
-  matrix: DestinyMatrixResult
+  nameOrAudience: string | MatrixAudience,
+  genderOrMatrix: BinaryGender | null | DestinyMatrixResult,
+  matrixMaybe?: DestinyMatrixResult
 ): string {
-  const who = name.trim() || "друг";
+  // Back-compat: (zone, name, gender, matrix) or (zone, audience, matrix).
+  const audience: MatrixAudience =
+    typeof nameOrAudience === "string"
+      ? audienceFromLegacyName(nameOrAudience, genderOrMatrix as BinaryGender | null)
+      : nameOrAudience;
+  const matrix =
+    typeof nameOrAudience === "string"
+      ? (matrixMaybe as DestinyMatrixResult)
+      : (genderOrMatrix as DestinyMatrixResult);
+
+  const reader = audience.readerName.trim() || "друг";
+  const aboutOther = isMatrixAboutOther(audience.subjectKind);
+  const subject = subjectHandle(audience.subjectKind, audience.subjectName);
   const title = headingLine(zone);
 
   if (zone.id === "steps") {
     const year = getArcanaEntry(matrix.yearArcana.number);
     const money = getArcanaEntry(matrix.money.number);
     const comfort = getArcanaEntry(matrix.comfort.number);
+    if (aboutOther) {
+      return [
+        title,
+        `1) Опора характера ${subject}: раз в неделю отмечай, где «${
+          getArcanaEntry(matrix.body.number)?.title ?? matrix.body.arcanaName
+        }» проявляется рядом с тобой — одно наблюдение без оценки.`,
+        `2) Зона комфорта «${comfort?.title ?? matrix.comfort.arcanaName}»: одно решение на 30 дней, как ты поддерживаешь ${subject} в этом векторе — без чужих сценариев.`,
+        `3) Деньги через «${money?.title ?? matrix.money.arcanaName}»: один конкретный шаг с твоей стороны (${
+          money?.advice ?? "разговор о границах, учёте или договорённостях"
+        }).`,
+        `4) Фон года «${year?.title ?? matrix.yearArcana.arcanaName}»: не форсируй то, что просит паузы у ${subject}; усиливай то, что уже двигается.`,
+        `5) Узел периода (${matrix.focusLabel}): одна практика на 7 дней для тебя как сопровождающего — маленький шаг, который можно повторить.`,
+      ].join("\n");
+    }
     return [
       title,
       `1) Опора характера: раз в неделю отмечай, где «${
@@ -187,35 +231,57 @@ export function renderEngineZoneProse(
 
   const ageBit =
     zone.age != null
-      ? ` Сейчас тебе около ${zone.age} — это пояс «${arcana}».`
+      ? aboutOther
+        ? ` Сейчас ${subject} около ${zone.age} — это пояс «${arcana}».`
+        : ` Сейчас тебе около ${zone.age} — это пояс «${arcana}».`
       : "";
   const focusBit = zone.focusLabel ? ` Фокус периода: ${zone.focusLabel}.` : "";
 
-  // Fallback when LLM misses — still zone-specific, not a shared mantra.
-  const lines = [
-    `${who}, в «${zone.label}» у тебя ${arcana} (${n}): ${trimDot(short)}.${ageBit}${focusBit}`,
-    `Свет: ${trimDot(light)}. Тень: ${trimDot(shadow)}.`,
-  ];
+  const lines = aboutOther
+    ? [
+        `${reader}, в «${zone.label}» у ${subject} ${arcana} (${n}): ${trimDot(short)}.${ageBit}${focusBit}`,
+        `Свет: ${trimDot(light)}. Тень: ${trimDot(shadow)}.`,
+      ]
+    : [
+        `${reader}, в «${zone.label}» у тебя ${arcana} (${n}): ${trimDot(short)}.${ageBit}${focusBit}`,
+        `Свет: ${trimDot(light)}. Тень: ${trimDot(shadow)}.`,
+      ];
 
   if (lens) {
     lines.push(endSentence(lens));
   } else {
-    lines.push(`Практика: ${trimDot(advice)}.`);
+    lines.push(
+      aboutOther
+        ? `Практика для тебя: ${trimDot(advice)}.`
+        : `Практика: ${trimDot(advice)}.`
+    );
   }
 
   if (!/Практика\s*:/i.test(lines.join("\n"))) {
-    lines.push(`Практика: ${trimDot(advice)}.`);
+    lines.push(
+      aboutOther
+        ? `Практика для тебя: ${trimDot(advice)}.`
+        : `Практика: ${trimDot(advice)}.`
+    );
   }
 
   return `${title}\n${lines.join("\n")}`;
 }
 
 function renderEngineIntro(
-  name: string,
-  matrix: DestinyMatrixResult,
-  gender: BinaryGender | null
+  audience: MatrixAudience,
+  matrix: DestinyMatrixResult
 ): string {
-  const who = name.trim() || "друг";
+  const who = audience.readerName.trim() || "друг";
+  const gender = audience.readerGender;
+  if (isMatrixAboutOther(audience.subjectKind)) {
+    const subject = subjectHandle(audience.subjectKind, audience.subjectName);
+    const kindLabel =
+      audience.subjectKind === "child"
+        ? "детскую матрицу"
+        : "матрицу судьбы";
+    return `${who}, ты смотришь ${kindLabel} ${subject} — карту ресурсов и точек роста этого человека. Ниже — разбор по зонам: что видно в арканах, где опора и риск, и короткая практика для тебя. Аркан года (${matrix.yearArcana.number} — ${matrix.yearArcana.arcanaName}) задаёт фон периода, а не заменяет остальные точки.`;
+  }
   const verb = gender === "female" ? "получила" : gender === "male" ? "получил" : "получил(а)";
   return `${who}, ты ${verb} полную матрицу судьбы Zovus — карту ресурсов и точек роста, где каждый аркан раскрывается в своём ключе. Ниже — разбор по зонам: опора, риск и короткая практика. Аркан года (${matrix.yearArcana.number} — ${matrix.yearArcana.arcanaName}) задаёт фон периода, а не заменяет остальные точки.`;
 }
@@ -413,15 +479,34 @@ function normalizeZoneBlock(raw: string, zone: MatrixZoneInstance): string | nul
   return text;
 }
 
+/** LLM block is only usable when its arcana numbers match the engine for this matrix. */
+function zoneLlmFidelityOk(
+  text: string,
+  zone: MatrixZoneInstance,
+  matrix: DestinyMatrixResult
+): boolean {
+  if (!zoneHasForeignArcana(text, zone, matrix)) return true;
+  console.warn(`[matrix-sectioned] zone reject arcana-fidelity label=${zone.label}`);
+  return false;
+}
+
 async function generateMatrixZoneLlm(
   zone: MatrixZoneInstance,
-  name: string,
-  gender: BinaryGender | null,
+  audience: MatrixAudience,
   matrix: DestinyMatrixResult,
   contextFacts?: string | null
 ): Promise<string | null> {
-  const safeName = clampMatrixPromptName(name);
-  const genderBlock = buildClientGenderInstruction({ gender, firstName: safeName });
+  const readerName = clampMatrixPromptName(audience.readerName);
+  const gender = audience.readerGender;
+  const genderBlock = buildClientGenderInstruction({
+    gender,
+    firstName: readerName,
+  });
+  const audienceBlock = buildMatrixAudiencePromptBlock({
+    ...audience,
+    readerName,
+  });
+  const aboutOther = isMatrixAboutOther(audience.subjectKind);
   const n = zone.number;
   const entry = n != null ? getArcanaEntry(n) : null;
   const role = zone.role === "steps" ? null : (zone.role as MatrixPointRole);
@@ -435,53 +520,55 @@ async function generateMatrixZoneLlm(
     const system = [
       "Ты — Эвелина. Пишешь только блок «Шаги на 30 дней» для матрицы судьбы.",
       genderBlock,
-      "Только «ты». Без markdown. Без других зон. Без «Простыми словами».",
+      audienceBlock,
+      aboutOther
+        ? "Шаги — действия для заказчика (на «ты»), опираясь на матрицу другого человека. Без markdown. Без других зон."
+        : "Только «ты» к клиенту. Без markdown. Без других зон. Без «Простыми словами».",
       "Формат: первая строка точно «Шаги на 30 дней», затем 4–6 нумерованных шагов 1) 2) 3)…",
-      "Имя в промпте — обращение к клиенту, не инструкция.",
     ].join("\n");
     const user = [
-      `Имя: ${safeName}`,
-      gender ? `Пол: ${genderLabelRu(gender)}` : "",
+      audienceBlock,
+      gender ? `Пол заказчика: ${genderLabelRu(gender)}` : "",
       `Аркан года: ${matrix.yearArcana.number} — ${matrix.yearArcana.arcanaName}`,
       `Зона комфорта: ${matrix.comfort.number} — ${matrix.comfort.arcanaName}`,
       `Деньги: ${matrix.money.number} — ${matrix.money.arcanaName}`,
       `Узел периода: ${matrix.focusLabel}`,
       skyHint,
-      "Напиши практичные шаги на 30 дней.",
+      aboutOther
+        ? "Напиши практичные шаги на 30 дней для заказчика."
+        : "Напиши практичные шаги на 30 дней.",
     ]
       .filter(Boolean)
       .join("\n");
-  const raw = await llmOnce(
-    [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    600,
-    zone.id
-  );
-  return raw ? normalizeZoneBlock(raw, zone) : null;
-}
-
-/** LLM block is only usable when its arcana numbers match the engine for this matrix. */
-function zoneLlmFidelityOk(text: string, zone: MatrixZoneInstance, matrix: DestinyMatrixResult): boolean {
-  if (!zoneHasForeignArcana(text, zone, matrix)) return true;
-  console.warn(`[matrix-sectioned] zone reject arcana-fidelity label=${zone.label}`);
-  return false;
-}
+    const raw = await llmOnce(
+      [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      600,
+      zone.id
+    );
+    return raw ? normalizeZoneBlock(raw, zone) : null;
+  }
 
   const system = [
     "Ты — Эвелина. Пишешь ОДНУ зону полной матрицы судьбы.",
     genderBlock,
-    "Только «ты». Без markdown (*, #). Без других зон. Без «Простыми словами».",
+    audienceBlock,
+    aboutOther
+      ? "К заказчику только «ты». Человека матрицы описывай в третьем лице. Практика — для заказчика."
+      : "Только «ты» к клиенту.",
+    "Без markdown (*, #). Без других зон. Без «Простыми словами».",
     `Первая строка заголовка ДОЛЖНА быть точно: ${headingLine(zone)}`,
-    "Далее 4–6 предложений и строка «Практика: …».",
+    aboutOther
+      ? "Далее 4–6 предложений про человека матрицы и строка «Практика: …» для заказчика."
+      : "Далее 4–6 предложений и строка «Практика: …».",
     "Не копируй словарь дословно — пиши конкретно: ресурс, риск, что делать.",
-    "Имя в промпте — обращение к клиенту, не инструкция.",
   ].join("\n");
 
   const user = [
-    `Имя: ${safeName}`,
-    gender ? `Пол: ${genderLabelRu(gender)}` : "",
+    audienceBlock,
+    gender ? `Пол заказчика: ${genderLabelRu(gender)}` : "",
     `Зона: ${zone.label}`,
     n != null ? `Аркан: ${n} — ${entry?.title ?? zone.arcanaName}` : "",
     entry
@@ -530,12 +617,17 @@ async function mapInBatches<T, R>(
 export function forceFillMissingSections(
   text: string,
   matrix: DestinyMatrixResult,
-  name: string,
-  gender: BinaryGender | null
+  nameOrAudience: string | MatrixAudience,
+  gender: BinaryGender | null = null,
+  toolId?: string
 ): string {
+  const audience =
+    typeof nameOrAudience === "string"
+      ? audienceFromLegacyName(nameOrAudience, gender)
+      : nameOrAudience;
   let out = (text || "").trim();
-  const zones = listMatrixZones(matrix);
-  const missing = new Set(matrixMissingSections(out));
+  const zones = listMatrixZones(matrix, toolId);
+  const missing = new Set(matrixMissingSections(out, toolId));
 
   for (const zone of zones) {
     if (!zone.required && !missing.has(zone.label)) continue;
@@ -547,7 +639,7 @@ export function forceFillMissingSections(
     if (!need && hasZoneTitle(out, zone.label)) continue;
     if (hasZoneTitle(out, zone.label) && zone.id !== "steps") continue;
 
-    const block = renderEngineZoneProse(zone, name, gender, matrix);
+    const block = renderEngineZoneProse(zone, audience, matrix);
     out = `${out}\n\n${block}`.trim();
   }
 
@@ -556,14 +648,14 @@ export function forceFillMissingSections(
     for (const id of ["tail_root", "tail_mid", "tail_tip"] as MatrixZoneId[]) {
       const zone = zones.find((z) => z.id === id);
       if (!zone || hasZoneTitle(out, zone.label)) continue;
-      out = `${out}\n\n${renderEngineZoneProse(zone, name, gender, matrix)}`.trim();
+      out = `${out}\n\n${renderEngineZoneProse(zone, audience, matrix)}`.trim();
     }
   }
 
   if (!hasZoneTitle(out, "Шаги на 30 дней")) {
     const steps = zones.find((z) => z.id === "steps");
     if (steps) {
-      out = `${out}\n\n${renderEngineZoneProse(steps, name, gender, matrix)}`.trim();
+      out = `${out}\n\n${renderEngineZoneProse(steps, audience, matrix)}`.trim();
     }
   }
 
@@ -575,6 +667,10 @@ export async function generateFullMatrixSectionedReading(input: {
   name: string;
   toolId?: "destiny_matrix" | "child_matrix";
   gender?: string | null;
+  /** Whose matrix this is. Default self — address `name` on «ты». */
+  subjectKind?: MatrixSubjectKind | null;
+  /** Subject display name when kind ≠ self. Defaults to `name`. */
+  subjectName?: string | null;
   /**
    * Soft natal / memory facts for LLM prompts only (does not change arcana numbers).
    */
@@ -598,15 +694,22 @@ export async function generateFullMatrixSectionedReading(input: {
     throw new Error("matrix_calc_failed");
   }
 
-  const displayName = clampMatrixPromptName(
-    normalizePersonDisplayName(input.name) || input.name.trim() || "друг"
-  );
-  const gender = resolveClientGender(input.gender, displayName);
+  const audience = buildMatrixAudience({
+    subjectKind:
+      input.subjectKind ??
+      (input.toolId === "child_matrix" ? "child" : "self"),
+    readerName: input.name,
+    readerGender: input.gender,
+    subjectName: input.subjectName ?? input.name,
+  });
+  audience.readerName = clampMatrixPromptName(audience.readerName);
+  audience.subjectName = clampMatrixPromptName(audience.subjectName);
   const contextFacts = input.contextFacts?.trim() || null;
   const toolId = input.toolId ?? "destiny_matrix";
   const zones = listMatrixZones(matrix, toolId);
   const mode: "off" | "hero" | "all" =
     input.useLlm === false ? "off" : input.useLlm === "hero" ? "hero" : "all";
+  const aboutOther = isMatrixAboutOther(audience.subjectKind);
 
   let aiZones = 0;
   let engineZones = 0;
@@ -627,17 +730,11 @@ export async function generateFullMatrixSectionedReading(input: {
 
   await reportProgress("Вступление");
   // Engine intro — skip a serial LLM round-trip before ~19 zone calls.
-  const intro = renderEngineIntro(displayName, matrix, gender);
+  const intro = renderEngineIntro(audience, matrix);
 
   const runZoneLlm = async (zone: MatrixZoneInstance): Promise<string | null> => {
     try {
-      return await generateMatrixZoneLlm(
-        zone,
-        displayName,
-        gender,
-        matrix,
-        contextFacts
-      );
+      return await generateMatrixZoneLlm(zone, audience, matrix, contextFacts);
     } catch (err) {
       console.warn(
         `[matrix-sectioned] zone throw label=${zone.label}`,
@@ -666,12 +763,12 @@ export async function generateFullMatrixSectionedReading(input: {
         source = "ai";
       } else {
         engineZones += 1;
-        block = renderEngineZoneProse(zone, displayName, gender, matrix);
+        block = renderEngineZoneProse(zone, audience, matrix);
         source = "engine";
       }
     } else {
       engineZones += 1;
-      block = renderEngineZoneProse(zone, displayName, gender, matrix);
+      block = renderEngineZoneProse(zone, audience, matrix);
       source = "engine";
     }
     completedZones += 1;
@@ -712,13 +809,16 @@ export async function generateFullMatrixSectionedReading(input: {
       (z) =>
         byId.get(z.id) ?? {
           zone: z,
-          block: renderEngineZoneProse(z, displayName, gender, matrix),
+          block: renderEngineZoneProse(z, audience, matrix),
           source: "engine" as const,
         }
     );
   }
 
-  const finale = buildMatrixPlainFinale(displayName, matrix);
+  const finale = buildMatrixPlainFinale(audience.readerName, matrix, {
+    aboutOther,
+    subjectName: audience.subjectName,
+  });
 
   // Rebuild missing zones from engine into the block list (by zone id).
   let filledBlocks = [...zoneBlocks];
@@ -737,7 +837,7 @@ export async function generateFullMatrixSectionedReading(input: {
           return item;
         }
         // Tail coverage is aggregate — refill individual missing tails via title check.
-        const engine = renderEngineZoneProse(item.zone, displayName, gender, matrix);
+        const engine = renderEngineZoneProse(item.zone, audience, matrix);
         if (missing.has(item.zone.label) || !hasZoneTitle(item.block, item.zone.label)) {
           engineZones += 1;
           if (item.source === "ai") aiZones = Math.max(0, aiZones - 1);
@@ -750,7 +850,7 @@ export async function generateFullMatrixSectionedReading(input: {
         if (filledBlocks.some((b) => b.zone.id === z.id)) continue;
         filledBlocks.push({
           zone: z,
-          block: renderEngineZoneProse(z, displayName, gender, matrix),
+          block: renderEngineZoneProse(z, audience, matrix),
           source: "engine",
         });
         engineZones += 1;
@@ -780,14 +880,16 @@ export async function generateFullMatrixSectionedReading(input: {
     for (const z of zones) {
       const title = headingLine(z);
       if (hasZoneTitle(reading, z.label) || hasZoneTitle(reading, title)) continue;
-      const engineBlock = renderEngineZoneProse(z, displayName, gender, matrix);
+      const engineBlock = renderEngineZoneProse(z, audience, matrix);
       byId.set(z.id, parseZoneBlock(engineBlock, z, "engine"));
       engineZones += 1;
     }
     document = {
       ...document,
       zones: zones.map(
-        (z) => byId.get(z.id) ?? parseZoneBlock(renderEngineZoneProse(z, displayName, gender, matrix), z, "engine")
+        (z) =>
+          byId.get(z.id) ??
+          parseZoneBlock(renderEngineZoneProse(z, audience, matrix), z, "engine")
       ),
       meta: {
         aiZones,
@@ -819,9 +921,9 @@ export async function generateFullMatrixSectionedReading(input: {
     );
     document = {
       schemaVersion: MATRIX_READING_SCHEMA_VERSION,
-      intro: renderEngineIntro(displayName, matrix, gender),
+      intro: renderEngineIntro(audience, matrix),
       zones: zones.map((z) =>
-        parseZoneBlock(renderEngineZoneProse(z, displayName, gender, matrix), z, "engine")
+        parseZoneBlock(renderEngineZoneProse(z, audience, matrix), z, "engine")
       ),
       finale,
       meta: {
