@@ -250,6 +250,9 @@ const DEFAULTS = {
     enabled: false,
     ephemeris: "celestine",
   },
+  humanDesign: {
+    enabled: true,
+  },
   openrouter: {
     managementKey: "",
   },
@@ -370,6 +373,12 @@ export async function isJointReadingEnabled(): Promise<boolean> {
 export async function isNatalChartEnabled(): Promise<boolean> {
   const settings = await getSetting("natalChart");
   return settings.enabled === true;
+}
+
+export async function isHumanDesignEnabled(): Promise<boolean> {
+  if (process.env.HD_MODULE_ENABLED === "false") return false;
+  const settings = await getSetting("humanDesign");
+  return settings.enabled !== false;
 }
 
 export async function isExpertRegistrationEnabled(): Promise<boolean> {

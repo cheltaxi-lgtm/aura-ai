@@ -47,6 +47,10 @@ const PUBLIC_API_EXACT = new Set([
   "/api/photo-reading/client-log",
   "/api/influencer/register",
   "/api/intention-spread",
+  // Human Design public calculator (per-IP rate limits in handlers; chart is
+  // deterministic public data, paid routes stay auth-gated).
+  "/api/human-design/chart",
+  "/api/human-design/places",
   "/api/payment/webhook",
   "/api/payments/webhook",
   "/api/runes/webhook",

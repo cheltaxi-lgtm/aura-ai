@@ -1,0 +1,5 @@
+BEGIN;
+DROP TABLE IF EXISTS hd_report_messages;
+DROP TABLE IF EXISTS hd_reports;
+DROP TABLE IF EXISTS hd_charts;
+COMMIT;

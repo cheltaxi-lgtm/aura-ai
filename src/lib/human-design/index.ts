@@ -23,3 +23,9 @@ export {
   longitudeToActivation,
   solveDesignJd,
 } from "./calculate";
+export { hdFingerprint, type HdChartIdentity } from "./fingerprint";
+export {
+  buildHdAskSystemPrompt,
+  buildHdReportSystemPrompt,
+  formatHdEvidence,
+} from "./prompt";
