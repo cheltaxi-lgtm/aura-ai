@@ -24,6 +24,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const deleted = await sweepGuestPoolHdCharts(30, 500);
+  const deleted = await sweepGuestPoolHdCharts(30);
   return NextResponse.json({ deleted });
 }
