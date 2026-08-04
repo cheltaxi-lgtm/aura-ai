@@ -9,6 +9,7 @@ import {
   siteCabinet,
   siteHistory,
   siteHistoryDelete,
+  siteHumanDesign,
   siteNatal,
   siteNumerology,
   siteReading,
@@ -203,6 +204,40 @@ export async function showCabinetOverview(ctx: Context): Promise<void> {
     });
   } catch (err) {
     console.error("[cabinet] overview", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+export async function showHd(ctx: Context): Promise<void> {
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteHumanDesign(linked.user.telegram_user_id);
+    if (!data.ok || !data.hd) {
+      await ctx.reply(data.message || copy.hdEmpty, {
+        reply_markup: linkKb(data.url || data.linkUrl),
+      });
+      return;
+    }
+    const lines = [
+      copy.hdTitle,
+      "",
+      `Тип: ${data.hd.type}`,
+      `Стратегия: ${data.hd.strategy}`,
+      `Авторитет: ${data.hd.authority}`,
+      `Профиль: ${data.hd.profile}`,
+      `Определённых центров: ${data.hd.definedCenters} · активных ворот: ${data.hd.activeGates}`,
+      ...(data.hd.timeKnown
+        ? []
+        : ["", "Время рождения не указано — добавь его на сайте для точной карты."]),
+      "",
+      "Бодиграф, транзиты и разбор Эвелины — на сайте.",
+    ];
+    await ctx.reply(lines.join("\n"), {
+      reply_markup: linkKb(data.cabinetUrl || data.url),
+    });
+  } catch (err) {
+    console.error("[cabinet] human-design", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
   }
 }
@@ -1481,6 +1516,9 @@ export async function routeModuleCallback(ctx: Context, data: string): Promise<b
   switch (data) {
     case CB.modNatal:
       await showNatal(ctx);
+      return true;
+    case CB.modHd:
+      await showHd(ctx);
       return true;
     case CB.modMatrix:
       await showMatrix(ctx);

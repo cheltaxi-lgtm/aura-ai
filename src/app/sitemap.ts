@@ -17,6 +17,11 @@ import { getAllSuitHubSlugs } from "@/lib/seo/suit-hubs";
 import { getAllLenormandCombinationSlugs } from "@/lib/seo/lenormand-combinations";
 import { getAllRuneMeaningSlugs } from "@/lib/seo/rune-meanings";
 import { HD_PROFILE_SEO, HD_TYPE_SEO } from "@/lib/human-design/seo-content";
+import {
+  ALL_CHANNEL_SLUGS,
+  ALL_GATE_SLUGS,
+  CENTER_SEO_SLUGS,
+} from "@/lib/human-design/seo-entities";
 
 const ABOUT_PATHS = [
   "/about",
@@ -133,6 +138,27 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
+  const hdGatePages: MetadataRoute.Sitemap = ALL_GATE_SLUGS.map((gate) => ({
+    url: `${base}/dizayn-cheloveka/vorota/${gate}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.55,
+  }));
+
+  const hdChannelPages: MetadataRoute.Sitemap = ALL_CHANNEL_SLUGS.map((channel) => ({
+    url: `${base}/dizayn-cheloveka/kanaly/${channel}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.55,
+  }));
+
+  const hdCenterPages: MetadataRoute.Sitemap = CENTER_SEO_SLUGS.map((center) => ({
+    url: `${base}/dizayn-cheloveka/centry/${center}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.6,
+  }));
+
   const yearPages: MetadataRoute.Sitemap = FORECAST_YEARS.map((year) => ({
     url: `${base}/prognoz/${year}`,
     lastModified: now,
@@ -215,5 +241,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...runeMeaningPages,
     ...hdTypePages,
     ...hdProfilePages,
+    ...hdGatePages,
+    ...hdChannelPages,
+    ...hdCenterPages,
   ];
 }

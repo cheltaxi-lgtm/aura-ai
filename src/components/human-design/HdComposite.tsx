@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { HdChart } from "@/lib/human-design";
 import { CHANNELS, TYPE_META } from "@/lib/human-design";
 import Bodygraph from "./Bodygraph";
@@ -60,6 +60,53 @@ export default function HdComposite({ base, partner }: Props) {
   const partnerName =
     partner.subjectKind === "other" && partner.subjectName ? partner.subjectName : "Партнёр";
 
+  const [report, setReport] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const buyReport = async () => {
+    if (busy) return;
+    if (
+      !window.confirm(
+        "Эвелина подготовит разбор совместимости двух карт (списываются руны). Расчётные данные обеих карт будут переданы языковой модели. Продолжить?"
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/human-design/composite-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          baseChartId: base.id,
+          partnerChartId: partner.id,
+          aiDataUseAcknowledged: true,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        report?: { reportText?: string | null };
+        error?: string;
+        message?: string;
+      };
+      if (res.status === 402) {
+        setError(data.message ?? "Недостаточно рун для разбора совместимости.");
+        return;
+      }
+      if (!res.ok || !data.report?.reportText) {
+        setError(data.error ?? "Не удалось получить разбор. Попробуйте позже.");
+        return;
+      }
+      setReport(data.report.reportText);
+    } catch {
+      setError("Сеть недоступна. Попробуйте позже.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="hd-panel space-y-4">
       <div>
@@ -82,6 +129,42 @@ export default function HdComposite({ base, partner }: Props) {
         electromagneticChannels={electromagnetic}
         partnerGates={partnerOnlyGates}
       />
+
+      <div className="hd-print-hidden">
+        {!report && (
+          <button
+            type="button"
+            onClick={() => void buyReport()}
+            disabled={busy}
+            className="hd-bodygraph__export"
+          >
+            {busy ? "Эвелина готовит разбор…" : "Разбор совместимости от Эвелины"}
+          </button>
+        )}
+        {error && (
+          <p className="mt-2 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-200/90">
+            {error}
+          </p>
+        )}
+        {report && (
+          <div className="hd-report mt-4">
+            {report.split(/^## /m).map((section, i) => {
+              if (i === 0 && !section.startsWith("##")) {
+                return section.trim() ? <p key={i}>{section.trim()}</p> : null;
+              }
+              const [title, ...rest] = section.replace(/^## /, "").split("\n");
+              return (
+                <div key={i}>
+                  <h2>{title}</h2>
+                  {rest.join("\n").trim().split(/\n{2,}/).map((p, j) => (
+                    <p key={j}>{p}</p>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
 import { isRemindersEnabled, isWeeklyDigestEnabled } from "../flags.js";
 import { CB, reactivationKeyboard } from "../keyboards/index.js";
 import { withBlockDetect } from "../middleware/stack.js";
+import { siteHdDaily } from "../domain/site-client.js";
 
 export async function runReminderTick(bot: Bot): Promise<void> {
   if (isRemindersEnabled()) {
@@ -28,7 +29,18 @@ export async function runReminderTick(bot: Bot): Promise<void> {
         const target = mode === "morning" ? u.reminder_hour ?? 9 : u.reminder_hour ?? 20;
         if (hour !== target) continue;
         if (reminderAlreadySent(u.telegram_user_id, mode)) continue;
-        const text = mode === "morning" ? copy.reminderMorning : copy.reminderEvening;
+        let text: string = mode === "morning" ? copy.reminderMorning : copy.reminderEvening;
+        if (mode === "morning") {
+          // Best-effort HD transit digest; never blocks the base reminder.
+          try {
+            const { data } = await siteHdDaily(u.telegram_user_id);
+            if (data.ok && Array.isArray(data.lines) && data.lines.length) {
+              text = `${text}\n\n🧬 Дизайн Человека сегодня:\n${data.lines.join("\n")}`;
+            }
+          } catch {
+            /* site bridge down — send base reminder */
+          }
+        }
         await withBlockDetect(async () => {
           await bot.api.sendMessage(u.chat_id, text);
           markReminderSent(u.telegram_user_id, mode);

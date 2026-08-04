@@ -67,6 +67,7 @@ export const CB = {
   invite: "invite:switch",
   ctaResendPrefix: "cta:resend:",
   modNatal: "mod:natal",
+  modHd: "mod:hd",
   modMatrix: "mod:matrix",
   modRituals: "mod:rituals",
   modJoint: "mod:joint",
@@ -368,6 +369,7 @@ export function profileKeyboard(opts: {
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
   kb.text("📚 История", CB.profHist).row();
+  kb.text("🧬 Дизайн Человека", CB.modHd).row();
   kb.text("🪙 Руны", CB.profRunes).text("⚙️ Настройки", CB.profSettings).row();
   if (!opts.linked && opts.linkUrl) {
     webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, opts.linkUrl).row();

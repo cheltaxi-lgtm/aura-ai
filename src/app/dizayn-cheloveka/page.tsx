@@ -6,6 +6,15 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import { HD_PROFILE_SEO, HD_TYPE_SEO } from "@/lib/human-design/seo-content";
+import {
+  ALL_CHANNEL_SLUGS,
+  ALL_GATE_SLUGS,
+  CENTER_SEO_SLUGS,
+  centerSeo,
+  channelSeo,
+} from "@/lib/human-design/seo-entities";
+import { GATE_NAMES_RU } from "@/lib/human-design";
+import HdTransitToday from "@/components/human-design/HdTransitToday";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Дизайн Человека — рассчитать карту (бодиграф) бесплатно онлайн",
@@ -80,6 +89,10 @@ export default function HumanDesignHubPage() {
         </SeoTrackedCta>
       </div>
 
+      <div className="mt-8">
+        <HdTransitToday />
+      </div>
+
       <SeoSection title="Пять типов энергии">
         <p>
           Тип — фундамент Дизайна Человека: как ваша аура взаимодействует с миром и какая
@@ -117,6 +130,74 @@ export default function HumanDesignHubPage() {
             </li>
           ))}
         </ul>
+      </SeoSection>
+
+      <SeoSection title="Девять центров">
+        <p>
+          Центры — девять энергетических узлов бодиграфа. Определённый центр — ваша
+          стабильная сила, открытый — место гибкости и мудрости:
+        </p>
+        <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
+          {CENTER_SEO_SLUGS.map((slug) => {
+            const seo = centerSeo(slug);
+            if (!seo) return null;
+            return (
+              <li key={slug}>
+                <Link
+                  href={`/dizayn-cheloveka/centry/${slug}`}
+                  className="text-aura-gold underline-offset-4 transition hover:underline"
+                >
+                  {seo.name}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </SeoSection>
+
+      <SeoSection title="Шестьдесят четыре ворот и тридцать шесть каналов">
+        <p>
+          Ворота — 64 темы человеческого опыта, каналы — устойчивые потоки между
+          центрами. Найдите свои:
+        </p>
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm text-aura-gold underline-offset-4 hover:underline">
+            Все 64 ворота
+          </summary>
+          <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-4">
+            {ALL_GATE_SLUGS.map((gate) => (
+              <li key={gate}>
+                <Link
+                  href={`/dizayn-cheloveka/vorota/${gate}`}
+                  className="text-white/70 underline-offset-4 transition hover:text-amber-200 hover:underline"
+                >
+                  {gate} · {GATE_NAMES_RU[Number(gate)]}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm text-aura-gold underline-offset-4 hover:underline">
+            Все 36 каналов
+          </summary>
+          <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
+            {ALL_CHANNEL_SLUGS.map((key) => {
+              const seo = channelSeo(key);
+              if (!seo) return null;
+              return (
+                <li key={key}>
+                  <Link
+                    href={`/dizayn-cheloveka/kanaly/${key}`}
+                    className="text-white/70 underline-offset-4 transition hover:text-amber-200 hover:underline"
+                  >
+                    {key} · {seo.name}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
       </SeoSection>
 
       <SeoSection title="Как читать свою карту">

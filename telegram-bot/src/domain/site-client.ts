@@ -448,6 +448,34 @@ export async function siteCabinet(telegramUserId: number) {
   }>("/api/internal/bot/cabinet", { telegram_user_id: telegramUserId });
 }
 
+export async function siteHumanDesign(telegramUserId: number) {
+  return siteFetch<{
+    ok: boolean;
+    hd?: {
+      type: string;
+      strategy: string;
+      authority: string;
+      profile: string;
+      definedCenters: number;
+      activeGates: number;
+      timeKnown: boolean;
+    };
+    url?: string;
+    cabinetUrl?: string;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/human-design", { telegram_user_id: telegramUserId }, 60_000);
+}
+
+export async function siteHdDaily(telegramUserId: number) {
+  return siteFetch<{ ok: boolean; lines?: string[] | null }>(
+    "/api/internal/bot/hd-daily",
+    { telegram_user_id: telegramUserId },
+    20_000
+  );
+}
+
 export async function siteNatal(telegramUserId: number) {
   return siteFetch<{
     ok: boolean;

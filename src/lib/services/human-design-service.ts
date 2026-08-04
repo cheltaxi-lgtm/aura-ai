@@ -347,6 +347,85 @@ export async function failHdReport(reportId: string, error: string): Promise<voi
   );
 }
 
+export interface HdCompositeReportRow {
+  id: string;
+  baseChartId: string;
+  partnerChartId: string;
+  status: "pending" | "done" | "error";
+  reportText: string | null;
+  createdAt: string;
+}
+
+interface HdCompositeReportDbRow {
+  id: string;
+  base_chart_id: string;
+  partner_chart_id: string;
+  status: "pending" | "done" | "error";
+  report_text: string | null;
+  created_at: string;
+}
+
+function mapCompositeRow(r: HdCompositeReportDbRow): HdCompositeReportRow {
+  return {
+    id: r.id,
+    baseChartId: r.base_chart_id,
+    partnerChartId: r.partner_chart_id,
+    status: r.status,
+    reportText: r.report_text,
+    createdAt: r.created_at,
+  };
+}
+
+export async function getHdCompositeReport(
+  baseChartId: string,
+  partnerChartId: string,
+  userId: string
+): Promise<HdCompositeReportRow | null> {
+  const { rows } = await query<HdCompositeReportDbRow>(
+    `SELECT id, base_chart_id, partner_chart_id, status, report_text, created_at
+     FROM hd_composite_reports
+     WHERE base_chart_id = $1 AND partner_chart_id = $2 AND user_id = $3`,
+    [baseChartId, partnerChartId, userId]
+  );
+  return rows[0] ? mapCompositeRow(rows[0]) : null;
+}
+
+/** Idempotency via UNIQUE(base_chart_id, partner_chart_id): null = already exists. */
+export async function createPendingCompositeReport(params: {
+  baseChartId: string;
+  partnerChartId: string;
+  userId: string;
+  transactionId: string | null;
+}): Promise<HdCompositeReportRow | null> {
+  const { rows } = await query<HdCompositeReportDbRow>(
+    `INSERT INTO hd_composite_reports (base_chart_id, partner_chart_id, user_id, status, transaction_id)
+     VALUES ($1, $2, $3, 'pending', $4)
+     ON CONFLICT (base_chart_id, partner_chart_id) DO NOTHING
+     RETURNING id, base_chart_id, partner_chart_id, status, report_text, created_at`,
+    [params.baseChartId, params.partnerChartId, params.userId, params.transactionId]
+  );
+  return rows[0] ? mapCompositeRow(rows[0]) : null;
+}
+
+export async function completeCompositeReport(
+  reportId: string,
+  reportText: string,
+  model: string
+): Promise<void> {
+  await query(
+    `UPDATE hd_composite_reports SET status = 'done', report_text = $2, model = $3, updated_at = now()
+     WHERE id = $1`,
+    [reportId, reportText, model]
+  );
+}
+
+export async function failCompositeReport(reportId: string, error: string): Promise<void> {
+  await query(
+    `UPDATE hd_composite_reports SET status = 'error', error = $2, updated_at = now() WHERE id = $1`,
+    [reportId, error.slice(0, 500)]
+  );
+}
+
 export interface HdReportMessage {
   role: "user" | "assistant";
   content: string;

@@ -272,6 +272,9 @@ export const copy = {
   catalogAll: "Все расклады",
   natalEmpty: "Натальная карта ещё не построена. Заполните место и время рождения на сайте.",
   natalTitle: "Твоя натальная опора",
+  hdTitle: "Твой Дизайн Человека",
+  hdEmpty:
+    "Карта Дизайна Человека ещё не рассчитана. Заполните дату, время и место рождения на сайте — бодиграф построится автоматически.",
   matrixTitle: "Матрица судьбы",
   matrixNeedsBirth: "Нужна дата рождения в профиле на сайте — тогда матрица откроется и здесь.",
   matrixReportsEmpty: "Сохранённых отчётов пока нет. Можно получить матрицу ниже.",
@@ -483,6 +486,8 @@ export function collectBodyCopySamples(): string[] {
     copy.runesBalance(12),
     copy.natalEmpty,
     copy.natalTitle,
+    copy.hdTitle,
+    copy.hdEmpty,
     copy.matrixTitle,
     copy.matrixNeedsBirth,
     copy.matrixReportsEmpty,

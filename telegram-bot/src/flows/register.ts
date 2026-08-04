@@ -59,6 +59,7 @@ import {
   handleHistoryCallback,
   handleMatrixCallback,
   routeModuleCallback,
+  showHd,
   showHistory,
   showMatrix,
   showPhoto,
@@ -272,6 +273,7 @@ export function registerFlows(bot: Bot): void {
   bot.command("again", async (ctx) => handleAgain(ctx));
   bot.command("day", async (ctx) => handleDay(ctx));
   bot.command("daily", async (ctx) => handleDay(ctx));
+  bot.command("hd", async (ctx) => showHd(ctx));
   bot.command("profile", async (ctx) => showProfile(ctx));
   bot.command("history", async (ctx) => showHistory(ctx));
   bot.command("settings", async (ctx) => showSettings(ctx));
