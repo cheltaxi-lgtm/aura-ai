@@ -3,7 +3,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS hd_charts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   guest_id TEXT,
   birth_date DATE NOT NULL,
   birth_time TEXT,
@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_hd_charts_guest ON hd_charts(guest_id) WHERE gues
 CREATE TABLE IF NOT EXISTS hd_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   chart_id UUID NOT NULL REFERENCES hd_charts(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','error')),
   report_text TEXT,
   model TEXT,
