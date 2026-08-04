@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
           padding: 48,
         }}
       >
-        {chart && (
+        {chart && debug !== "nosquares" && (
           <div
             style={{
               display: "flex",
@@ -83,14 +83,14 @@ export async function GET(request: NextRequest) {
             ZOVUS · ДИЗАЙН ЧЕЛОВЕКА
           </div>
           <div style={{ fontSize: 64, fontWeight: 700, marginTop: 18, lineHeight: 1.1 }}>
-            {typeName}
+            {debug === "notext" ? "Дизайн Человека" : typeName}
           </div>
-          {chart && (
+          {chart && debug !== "notext" && (
             <div style={{ fontSize: 30, color: "rgba(245,230,184,0.85)", marginTop: 14 }}>
               Профиль {profile} · {profileName}
             </div>
           )}
-          {chart && (
+          {chart && debug !== "notext" && (
             <div style={{ fontSize: 26, color: "rgba(245,230,184,0.65)", marginTop: 8 }}>
               Авторитет: {authority}
             </div>
