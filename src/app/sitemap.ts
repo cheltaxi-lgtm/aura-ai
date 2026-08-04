@@ -16,6 +16,7 @@ import { getAllSeoZodiacSlugs } from "@/lib/seo/zodiac-signs";
 import { getAllSuitHubSlugs } from "@/lib/seo/suit-hubs";
 import { getAllLenormandCombinationSlugs } from "@/lib/seo/lenormand-combinations";
 import { getAllRuneMeaningSlugs } from "@/lib/seo/rune-meanings";
+import { HD_PROFILE_SEO, HD_TYPE_SEO } from "@/lib/human-design/seo-content";
 
 const ABOUT_PATHS = [
   "/about",
@@ -118,6 +119,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.5,
   }));
 
+  const hdTypePages: MetadataRoute.Sitemap = HD_TYPE_SEO.map((t) => ({
+    url: `${base}/dizayn-cheloveka/tipy/${t.slug}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+
+  const hdProfilePages: MetadataRoute.Sitemap = HD_PROFILE_SEO.map((p) => ({
+    url: `${base}/dizayn-cheloveka/profili/${p.slug}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.6,
+  }));
+
   const yearPages: MetadataRoute.Sitemap = FORECAST_YEARS.map((year) => ({
     url: `${base}/prognoz/${year}`,
     lastModified: now,
@@ -159,6 +174,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     staticPage("/numerology/name-compatibility", 0.55, "monthly"),
     staticPage("/numerology/destiny-matrix", 0.85, "weekly"),
     staticPage("/natalnaya-karta", 0.9, "weekly"),
+    staticPage("/dizayn-cheloveka", 0.9, "weekly"),
+    staticPage("/dizayn-cheloveka/rasschitat", 0.85, "weekly"),
     staticPage("/numerology/favorable-dates", 0.55, "monthly"),
     staticPage("/sovmestimost-znakov-zodiaka", 0.75, "monthly"),
     staticPage("/gadanie", 0.9),
@@ -196,5 +213,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...articlePages,
     ...lenormandCombinationPages,
     ...runeMeaningPages,
+    ...hdTypePages,
+    ...hdProfilePages,
   ];
 }

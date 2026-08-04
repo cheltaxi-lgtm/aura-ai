@@ -9,6 +9,7 @@ const DEFAULT_LINKS = [
   { href: "/runy", label: "Гадание на рунах" },
   { href: "/lenormand", label: "Ленорман" },
   { href: "/natalnaya-karta", label: "Натальная карта" },
+  { href: "/dizayn-cheloveka", label: "Дизайн Человека" },
   { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
   { href: "/prognoz", label: "Прогнозы" },
   { href: "/statyi", label: "Статьи" },

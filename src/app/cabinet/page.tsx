@@ -13,6 +13,7 @@ import {
 import { clearChatCache } from "@/lib/chat-cache";
 import { sortCabinetSessionsByDate } from "@/lib/cabinet-utils";
 import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
+import CabinetHumanDesign from "@/components/cabinet/CabinetHumanDesign";
 import CabinetProfilePanel, {
   type CabinetProfile as EditableCabinetProfile,
 } from "@/components/CabinetProfilePanel";
@@ -138,6 +139,7 @@ export default function CabinetPage() {
   const [editableProfile, setEditableProfile] = useState<EditableCabinetProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [natalChartEnabled, setNatalChartEnabled] = useState(false);
+  const [humanDesignEnabled, setHumanDesignEnabled] = useState(false);
   const [natalChartRefreshKey, setNatalChartRefreshKey] = useState(0);
   const sessionsOffset = useRef(0);
   const shopDeepLinkOpened = useRef(false);
@@ -224,10 +226,14 @@ export default function CabinetPage() {
   useEffect(() => {
     void fetch("/api/platform/features", { credentials: "include" })
       .then((res) => res.json())
-      .then((json: { natalChartEnabled?: boolean }) => {
+      .then((json: { natalChartEnabled?: boolean; humanDesignEnabled?: boolean }) => {
         setNatalChartEnabled(Boolean(json.natalChartEnabled));
+        setHumanDesignEnabled(Boolean(json.humanDesignEnabled));
       })
-      .catch(() => setNatalChartEnabled(false));
+      .catch(() => {
+        setNatalChartEnabled(false);
+        setHumanDesignEnabled(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -580,6 +586,7 @@ export default function CabinetPage() {
             <CabinetLoginMethods />
             <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
+            {humanDesignEnabled ? <CabinetHumanDesign /> : null}
             {stats ? <CabinetStatsGrid stats={stats} /> : null}
             {achievements ? (
               <CabinetAchievementsRow

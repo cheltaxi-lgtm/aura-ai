@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { HdChart } from "@/lib/human-design";
 import {
   AUTHORITY_NAMES_RU,
@@ -32,6 +33,22 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const { chart } = payload;
   const typeMeta = TYPE_META[chart.type];
   const stability = chart.stability;
+  const [copied, setCopied] = useState(false);
+
+  const share = async () => {
+    const url = `${window.location.origin}/dizayn-cheloveka/karta/${payload.fingerprint}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Моя карта Дизайна Человека", url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* user cancelled share sheet */
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -84,6 +101,12 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
       )}
 
       <Bodygraph chart={chart} />
+
+      <div className="hd-print-hidden flex justify-center">
+        <button type="button" onClick={() => void share()} className="hd-bodygraph__export">
+          {copied ? "Ссылка скопирована" : "Поделиться картой"}
+        </button>
+      </div>
     </div>
   );
 }

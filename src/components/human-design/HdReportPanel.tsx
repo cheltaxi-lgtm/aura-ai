@@ -188,13 +188,14 @@ export default function HdReportPanel({
       <div className="hd-panel">
         <div className="flex items-center justify-between gap-3">
           <p className="hd-panel__title">Разбор от Эвелины</p>
-          <button
-            type="button"
-            onClick={() => window.print()}
+          <a
+            href={`/cabinet/human-design/reports/${report.id}/print`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="hd-bodygraph__export hd-print-hidden"
           >
             Печать / PDF
-          </button>
+          </a>
         </div>
         <div className="hd-report mt-4">
           <ReactMarkdown>{report.reportText ?? ""}</ReactMarkdown>

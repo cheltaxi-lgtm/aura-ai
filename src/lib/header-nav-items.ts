@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   Sparkles,
   Star,
+  Sun,
   Users,
 } from "lucide-react";
 import { isAppShellSearchParam, isNativeCapacitorPlatform } from "@/lib/app-shell";
@@ -22,6 +23,11 @@ import {
 function navigateToDestinyMatrix() {
   if (typeof window === "undefined") return;
   window.location.assign("/numerology/destiny-matrix");
+}
+
+function navigateToHumanDesign() {
+  if (typeof window === "undefined") return;
+  window.location.assign("/dizayn-cheloveka");
 }
 
 const APK_URL =
@@ -137,6 +143,12 @@ export function buildHeaderNavSections(
           label: "Натальная карта",
           icon: Star,
           onClick: navigateToNatalChart,
+        },
+        {
+          id: "human-design",
+          label: "Дизайн Человека",
+          icon: Sun,
+          onClick: navigateToHumanDesign,
         },
         {
           id: "natal-compatibility",
