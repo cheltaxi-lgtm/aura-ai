@@ -46,12 +46,13 @@ import type {
 import { HD_ENGINE_VERSION } from "./types";
 
 /**
- * Kills only floating-point representation error (~0.004 mas), never real input.
+ * Kills only floating-point representation error, never real input.
  * Boundary rule (deterministic, verified in verify-human-design.mjs): a point
- * exactly on a cell boundary — or up to 1e-9° below it — belongs to the UPPER
- * cell; anything further below belongs to the lower one. 1e-9° ≈ 0.0036 mas is
- * five-plus orders of magnitude below the ephemeris precision (~1"), so this
- * never flips a real chart — it only stabilizes exact-boundary arithmetic.
+ * exactly on a cell boundary — or a hair below it — belongs to the UPPER
+ * cell; anything further below belongs to the lower one. The epsilon is in
+ * CELL-INDEX units, i.e. 1e-9 × cell size in degrees (5.625e-9° ≈ 0.02 mas at
+ * gate level, less at deeper levels) — five-plus orders of magnitude below
+ * the ephemeris precision (~1"), so it never flips a real chart.
  */
 const FP_EPSILON = 1e-9;
 
@@ -79,10 +80,11 @@ export function longitudeToActivation(
   body: HdBodyKey,
   longitude: number
 ): HdActivation {
+  if (!Number.isFinite(longitude)) throw new Error("HD_INVALID_LONGITUDE");
   const adjusted = normalize360(longitude - GATE_WHEEL_OFFSET);
   // Keep the un-wrapped index for sub-structure math: at the 360° wrap the
   // FP_EPSILON nudge can push floor() to 64, and using the modded index would
-  // compute withinGate ≈ 360° — a "franken-cell" (gate 1 with maxed line/
+  // compute withinGate ≈ 360° — a "franken-cell" (gate 25 with maxed line/
   // color/tone/base). Physically unreachable (~0.02 mas window) but incorrect.
   const rawIndex = Math.floor(adjusted / GATE_SIZE_DEG + FP_EPSILON);
   const gateIndex = rawIndex % 64;
@@ -445,7 +447,10 @@ function birthUtcMs(input: HdCalcInput, timeLabel: string): number {
     ...input,
     birthTime: timeLabel,
   });
-  const offsetHours = resolveBirthUtcOffsetHours(input.birthDate, timeLabel, input.timezone);
+  // Rebuild the date from parsed parts — a raw untrimmed birthDate would
+  // otherwise reach the tz resolver and throw a non-HD error.
+  const dateLabel = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const offsetHours = resolveBirthUtcOffsetHours(dateLabel, timeLabel, input.timezone);
   if (!Number.isFinite(offsetHours)) throw new Error("HD_INVALID_TIMEZONE");
   return Date.UTC(year, month - 1, day, hour, minute) - offsetHours * 3_600_000;
 }
@@ -466,25 +471,31 @@ export function calculateHdChart(input: HdCalcInput): HdChart {
 
   let stability: HdTimeStability | undefined;
   if (!timeKnown) {
-    // Hourly probes across the whole day. This is rigorous, not sampling:
-    // the slowest gate occupant (Moon, ≥ ~10 h per gate) cannot cross a gate
-    // boundary twice between probes, and any channel lives ≥ 1 h, so no
-    // type/authority/definition change can hide between adjacent probes.
+    // Hourly probes across the whole day, compared as a CHAIN (each probe vs
+    // the previous one; noon is a chain link). Any single gate-boundary
+    // crossing flips a link, so no type/authority/profile change can hide
+    // between probes: the fastest body (Moon, ≤ ~0.65°/h even at perigee)
+    // needs ≥ 8.7 h per 5.625° gate, and slower bodies need days.
     let typeStable = true;
     let authorityStable = true;
     let profileStable = true;
-    for (let minutes = 0; minutes < 24 * 60 && (typeStable || authorityStable || profileStable); minutes += 60) {
-      if (minutes === 12 * 60) continue; // noon is the reference core
+    let prev = computeCore(birthUtcMs(input, "00:00"));
+    for (
+      let minutes = 60;
+      minutes < 24 * 60 && (typeStable || authorityStable || profileStable);
+      minutes += 60
+    ) {
       const probe = computeCore(birthUtcMs(input, minutesToTimeLabel(minutes)));
-      if (probe.type !== core.type) typeStable = false;
-      if (probe.authority !== core.authority) authorityStable = false;
-      if (probe.profile !== core.profile) profileStable = false;
+      if (probe.type !== prev.type) typeStable = false;
+      if (probe.authority !== prev.authority) authorityStable = false;
+      if (probe.profile !== prev.profile) profileStable = false;
+      prev = probe;
     }
     if (typeStable || authorityStable || profileStable) {
       const dayEnd = computeCore(birthUtcMs(input, "23:59"));
-      if (dayEnd.type !== core.type) typeStable = false;
-      if (dayEnd.authority !== core.authority) authorityStable = false;
-      if (dayEnd.profile !== core.profile) profileStable = false;
+      if (dayEnd.type !== prev.type) typeStable = false;
+      if (dayEnd.authority !== prev.authority) authorityStable = false;
+      if (dayEnd.profile !== prev.profile) profileStable = false;
     }
     stability = { typeStable, authorityStable, profileStable };
   }

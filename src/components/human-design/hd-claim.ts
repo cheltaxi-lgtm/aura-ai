@@ -66,6 +66,11 @@ export async function claimAllPendingHdCharts(): Promise<string[]> {
       if (res.ok && data?.claimed) {
         clearHdClaimToken(fingerprint);
         claimed.push(fingerprint);
+      } else if (res.ok || (res.status >= 400 && res.status < 500)) {
+        // Definitive server answer (claimed:false, 404, 410…) — the token is
+        // dead (swept, already claimed elsewhere); keeping it only guarantees
+        // a doomed retry on every login. Network/5xx keep the token.
+        clearHdClaimToken(fingerprint);
       }
     } catch {
       /* network hiccup — keep the token for the next attempt */

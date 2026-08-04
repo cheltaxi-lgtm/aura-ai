@@ -27,6 +27,12 @@ interface PersonState {
   error: string | null;
 }
 
+/** Local (not UTC) date for the date-input max — UTC would allow "tomorrow" west of Greenwich. */
+function localTodayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 const EMPTY: PersonState = {
   name: "",
   birthDate: "",
@@ -43,11 +49,13 @@ const EMPTY: PersonState = {
 
 function PersonForm({
   title,
+  idPrefix,
   state,
   onChange,
   onCompute,
 }: {
   title: string;
+  idPrefix: string;
   state: PersonState;
   onChange: (patch: Partial<PersonState>) => void;
   onCompute: () => void;
@@ -94,8 +102,9 @@ function PersonForm({
       <p className="hd-field__label mb-3">{title}</p>
 
       <div className="hd-field mb-4">
-        <label className="hd-field__label">Имя</label>
+        <label htmlFor={`${idPrefix}-name`} className="hd-field__label">Имя</label>
         <input
+          id={`${idPrefix}-name`}
           type="text"
           value={state.name}
           onChange={(e) => onChange({ name: e.target.value })}
@@ -108,19 +117,21 @@ function PersonForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="hd-field">
-          <label className="hd-field__label">Дата рождения</label>
+          <label htmlFor={`${idPrefix}-date`} className="hd-field__label">Дата рождения</label>
           <input
+            id={`${idPrefix}-date`}
             type="date"
             value={state.birthDate}
             onChange={(e) => onChange({ birthDate: e.target.value })}
             className="hd-field__input"
             min="1900-01-01"
-            max={new Date().toISOString().slice(0, 10)}
+            max={localTodayIso()}
           />
         </div>
         <div className="hd-field">
-          <label className="hd-field__label">Время рождения</label>
+          <label htmlFor={`${idPrefix}-time`} className="hd-field__label">Время рождения</label>
           <input
+            id={`${idPrefix}-time`}
             type="time"
             value={state.birthTime}
             onChange={(e) => onChange({ birthTime: e.target.value })}
@@ -138,8 +149,9 @@ function PersonForm({
           </label>
         </div>
         <div className="hd-field relative sm:col-span-2" ref={boxRef}>
-          <label className="hd-field__label">Место рождения</label>
+          <label htmlFor={`${idPrefix}-place`} className="hd-field__label">Место рождения</label>
           <input
+            id={`${idPrefix}-place`}
             type="text"
             value={state.placeQuery}
             onChange={(e) => {
@@ -152,7 +164,7 @@ function PersonForm({
             autoComplete="off"
           />
           {state.placesOpen && state.suggestions.length > 0 && (
-            <div className="hd-places" role="listbox">
+            <div className="hd-places" role="listbox" aria-label="Варианты мест">
               {state.suggestions.map((s) => (
                 <button
                   key={`${s.label}-${s.latitude}`}
@@ -171,7 +183,7 @@ function PersonForm({
         </div>
       </div>
 
-      {state.error && <p className="mt-3 text-sm text-red-300">{state.error}</p>}
+      {state.error && <p role="alert" className="mt-3 text-sm text-red-300">{state.error}</p>}
 
       <button
         type="button"
@@ -282,8 +294,8 @@ export default function HdCompatibilityCalculator() {
   return (
     <div className="space-y-6">
       <div className="grid gap-5 lg:grid-cols-2">
-        <PersonForm title="Первый человек" state={a} onChange={(p) => setA((prev) => ({ ...prev, ...p }))} onCompute={() => void computeA()} />
-        <PersonForm title="Второй человек" state={b} onChange={(p) => setB((prev) => ({ ...prev, ...p }))} onCompute={() => void computeB()} />
+        <PersonForm title="Первый человек" idPrefix="hd-compat-a" state={a} onChange={(p) => setA((prev) => ({ ...prev, ...p }))} onCompute={() => void computeA()} />
+        <PersonForm title="Второй человек" idPrefix="hd-compat-b" state={b} onChange={(p) => setB((prev) => ({ ...prev, ...p }))} onCompute={() => void computeB()} />
       </div>
 
       {both && (

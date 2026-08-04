@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
 import type { HdBodyKey, HdCenterKey, HdChart } from "@/lib/human-design";
 import {
   CENTER_NAMES_RU,
@@ -136,9 +136,16 @@ export default function Bodygraph({
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [layer, setLayer] = useState<LayerFilter>("all");
   const [highlightCenter, setHighlightCenter] = useState<HdCenterKey | null>(null);
-  const [tilt, setTilt] = useState<{ rx: number; ry: number }>({ rx: 0, ry: 0 });
+  // Tilt as motion values: mousemove updates the transform without a React
+  // rerender of the whole SVG tree.
+  const tiltRx = useMotionValue(0);
+  const tiltRy = useMotionValue(0);
   const [fullscreen, setFullscreen] = useState(false);
   const [zoom, setZoom] = useState<ZoomState>({ k: 1, x: 0, y: 0 });
+  const zoomRef = useRef(zoom);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
   const dragRef = useRef<{ px: number; py: number; zx: number; zy: number } | null>(null);
 
   const clampZoom = useCallback((z: ZoomState): ZoomState => {
@@ -161,12 +168,28 @@ export default function Bodygraph({
     const stage = stageRef.current;
     if (!stage) return;
     const onWheel = (e: WheelEvent) => {
+      const z = zoomRef.current;
+      const next = clampZoom({ ...z, k: z.k + (e.deltaY < 0 ? 0.25 : -0.25) });
+      // Only trap the wheel when the zoom actually changes — at k=1 scrolling
+      // out must scroll the page, not jack it (the stage is a tall block).
+      if (next.k === z.k) return;
       e.preventDefault();
-      setZoom((z) => clampZoom({ ...z, k: z.k + (e.deltaY < 0 ? 0.25 : -0.25) }));
+      setTooltip(null); // anchor rect moves under zoom — drop the stale tooltip
+      setZoom(next);
     };
     stage.addEventListener("wheel", onWheel, { passive: false });
     return () => stage.removeEventListener("wheel", onWheel);
   }, [clampZoom]);
+
+  // Escape closes the tooltip (keyboard users otherwise get a stuck one).
+  useEffect(() => {
+    if (!tooltip) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTooltip(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [tooltip]);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -184,6 +207,7 @@ export default function Bodygraph({
   const onPanStart = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (zoom.k <= 1) return;
+      setTooltip(null); // anchor rect moves under pan — drop the stale tooltip
       dragRef.current = { px: e.clientX, py: e.clientY, zx: zoom.x, zy: zoom.y };
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     },
@@ -314,10 +338,16 @@ export default function Bodygraph({
       if (!rect) return;
       const px = (e.clientX - rect.left) / rect.width - 0.5;
       const py = (e.clientY - rect.top) / rect.height - 0.5;
-      setTilt({ rx: -py * 6, ry: px * 8 });
+      tiltRx.set(-py * 6);
+      tiltRy.set(px * 8);
     },
-    [reduceMotion]
+    [reduceMotion, tiltRx, tiltRy]
   );
+
+  const resetTilt = useCallback(() => {
+    tiltRx.set(0);
+    tiltRy.set(0);
+  }, [tiltRx, tiltRy]);
 
   const exportPng = useCallback(() => {
     const svg = svgRef.current;
@@ -327,6 +357,7 @@ export default function Bodygraph({
     const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const img = new Image();
+    img.onerror = () => URL.revokeObjectURL(url);
     img.onload = () => {
       const scale = 3;
       const canvas = document.createElement("canvas");
@@ -357,6 +388,10 @@ export default function Bodygraph({
   const designDate = formatDesignDate(chart.design.utcIso);
   const channelDrawDelay = 0.15;
   const centerIgniteDelay = channelDrawDelay + HD_CHANNEL_SEGMENTS.length * 0.03;
+
+  // Tilt (motion values, no rerender) + zoom (state) on the layout only —
+  // the toolbar and tooltip stay flat and readable.
+  const layoutTransform = useMotionTemplate`perspective(1200px) rotateX(${tiltRx}deg) rotateY(${tiltRy}deg) scale(${zoom.k}) translate(${zoom.x / zoom.k}px, ${zoom.y / zoom.k}px)`;
 
   const renderActivationColumn = (side: "p" | "d") => {
     const map = side === "p" ? personalityByBody : designByBody;
@@ -402,16 +437,13 @@ export default function Bodygraph({
         className={`hd-bodygraph__stage${zoom.k > 1 ? " is-pannable" : ""}`}
         onMouseLeave={() => {
           setTooltip(null);
-          setTilt({ rx: 0, ry: 0 });
+          resetTilt();
         }}
         onMouseMove={onTiltMove}
         onPointerDown={onPanStart}
         onPointerMove={onPanMove}
         onPointerUp={onPanEnd}
         onPointerCancel={onPanEnd}
-        style={{
-          transform: `perspective(1200px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
-        }}
       >
         <HdCosmos />
 
@@ -420,29 +452,28 @@ export default function Bodygraph({
           <button type="button" onClick={() => zoomBy(0.5)} aria-label="Приблизить" title="Приблизить">+</button>
           <button type="button" onClick={() => zoomBy(-0.5)} aria-label="Отдалить" title="Отдалить">−</button>
           {zoom.k > 1 && (
-            <button type="button" onClick={() => setZoom({ k: 1, x: 0, y: 0 })} title="Сбросить масштаб">⟲</button>
+            <button type="button" onClick={() => setZoom({ k: 1, x: 0, y: 0 })} aria-label="Сбросить масштаб" title="Сбросить масштаб">⟲</button>
           )}
           <button
             type="button"
             onClick={() => setFullscreen((v) => !v)}
+            aria-label={fullscreen ? "Свернуть (Esc)" : "На весь экран"}
             title={fullscreen ? "Свернуть (Esc)" : "На весь экран"}
           >
             {fullscreen ? "✕" : "⛶"}
           </button>
         </div>
 
-        <div
+        <motion.div
           className="hd-bodygraph__layout"
-          style={{
-            transform: `scale(${zoom.k}) translate(${zoom.x / zoom.k}px, ${zoom.y / zoom.k}px)`,
-          }}
+          style={{ transform: layoutTransform }}
         >
           {renderActivationColumn("d")}
 
           <svg
             ref={svgRef}
             viewBox="0 0 400 700"
-            role="img"
+            role="group"
             aria-label={`Бодиграф: ${chart.activeGates.length} активных ворот, ${chart.definedCenters.length} определённых центров`}
             className="hd-bodygraph__svg"
           >
@@ -596,6 +627,12 @@ export default function Bodygraph({
                       }}
                       onMouseLeave={() => setHighlightCenter(null)}
                       onClick={(e) => showTooltipFor(e.currentTarget, centerTooltipData(shape.key))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          showTooltipFor(e.currentTarget, centerTooltipData(shape.key));
+                        }
+                      }}
                       onFocus={(e) => {
                         showTooltipFor(e.currentTarget, centerTooltipData(shape.key));
                         setHighlightCenter(shape.key);
@@ -637,6 +674,12 @@ export default function Bodygraph({
                     key={anchor.gate}
                     onMouseEnter={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
                     onClick={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
+                    onKeyDown={(e) => {
+                      if (focusable && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate));
+                      }
+                    }}
                     onFocus={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
                     onBlur={hideTooltip}
                     tabIndex={focusable ? 0 : undefined}
@@ -701,12 +744,18 @@ export default function Bodygraph({
           </svg>
 
           {renderActivationColumn("p")}
-        </div>
+        </motion.div>
 
         {tooltip && (
           <div
             ref={tooltipRef}
             className={`hd-bodygraph__tooltip${tooltip.action ? " has-action" : ""}`}
+            onBlur={(e) => {
+              // Focus leaving the tooltip entirely (not into another child) closes it.
+              const next = e.relatedTarget as Node | null;
+              if (next && tooltipRef.current?.contains(next)) return;
+              setTooltip(null);
+            }}
             style={{
               left: `${tooltip.x}%`,
               top: `${tooltip.y}%`,
@@ -752,6 +801,7 @@ export default function Bodygraph({
             key={key}
             type="button"
             onClick={() => setLayer(key)}
+            aria-pressed={layer === key}
             className={`hd-bodygraph__layer-btn${layer === key ? " is-active" : ""}`}
           >
             {key !== "all" && (

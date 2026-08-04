@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import Link from "next/link";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 
 export default function SeoTrackedCta({
@@ -21,19 +21,16 @@ export default function SeoTrackedCta({
       ? "btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
       : "btn-luxe btn-luxe--md btn-luxe--ghost inline-flex";
 
-  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
+  // No preventDefault: client-side navigation keeps the JS context alive, so
+  // the metrika goal fires reliably — and ctrl/cmd+click, middle-click and
+  // "open in new tab" keep working (location.assign broke all of them).
+  const handleClick = () => {
     if (trackGoal) trackSeoEvent(trackGoal, trackParams);
-    window.location.assign(href);
   };
 
   return (
-    <a
-      href={href}
-      className={cls}
-      onClick={handleClick}
-    >
+    <Link href={href} className={cls} onClick={handleClick}>
       {children}
-    </a>
+    </Link>
   );
 }

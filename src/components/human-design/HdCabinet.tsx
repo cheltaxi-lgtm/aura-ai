@@ -24,17 +24,30 @@ export default function HdCabinet() {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+  // Monotonic load counter: a slow response must not clobber newer state
+  // (e.g. resurrect a just-deleted chart).
+  const loadSeq = useRef(0);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(() => {
+    const seq = ++loadSeq.current;
     fetch("/api/human-design/mine")
-      .then((r) => (r.ok ? r.json() : { enabled: true, charts: [] }))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => {
+        if (seq !== loadSeq.current) return;
+        setLoadError(false);
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
         setCharts(list);
         if (list[0] && !selectedIdRef.current) setSelectedId(list[0].id);
       })
-      .catch(() => setCharts([]));
+      .catch(() => {
+        if (seq !== loadSeq.current) return;
+        // Keep the previous list (if any) — an empty list would flash the
+        // "create your first chart" form over a transient network error.
+        setLoadError(true);
+        setCharts((prev) => prev ?? []);
+      });
   }, []);
 
   useEffect(() => {
@@ -68,6 +81,17 @@ export default function HdCabinet() {
 
   if (charts === null) {
     return <p className="text-sm text-white/50">Загружаем карты…</p>;
+  }
+
+  if (loadError && charts.length === 0) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-red-300/80">Не удалось загрузить карты. Проверьте соединение.</p>
+        <button type="button" onClick={load} className="hd-bodygraph__export">
+          Повторить
+        </button>
+      </div>
+    );
   }
 
   if (creating || charts.length === 0) {
@@ -208,13 +232,18 @@ export default function HdCabinet() {
                 </button>
               ))}
           </div>
-          {partnerId && (
-            <HdComposite
-              key={`${selected.id}:${partnerId}`}
-              base={selected}
-              partner={charts.find((c) => c.id === partnerId)!}
-            />
-          )}
+          {partnerId && (() => {
+            const partner = charts.find((c) => c.id === partnerId);
+            // The partner chip may disappear under us (deleted in another tab)
+            // — render nothing instead of crashing on a stale id.
+            return partner ? (
+              <HdComposite
+                key={`${selected.id}:${partnerId}`}
+                base={selected}
+                partner={partner}
+              />
+            ) : null;
+          })()}
         </div>
       )}
 

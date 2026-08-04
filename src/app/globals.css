@@ -8760,6 +8760,11 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
     transform: none !important;
   }
 
+  /* Tilt/zoom live on the layout now — flatten it for print too. */
+  .hd-bodygraph__layout {
+    transform: none !important;
+  }
+
   /* A4-friendly chart: dark strokes on white */
   .hd-bodygraph__svg .hd-ch-p {
     stroke: #1a1a1a !important;

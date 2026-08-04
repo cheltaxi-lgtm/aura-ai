@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
@@ -65,12 +66,12 @@ export default async function HdGatePage({
       <p className="mt-4 text-sm text-white/50">
         Центр:{" "}
         {centerSlug ? (
-          <a
+          <Link
             href={`/dizayn-cheloveka/centry/${centerSlug}`}
             className="text-amber-200/90 underline decoration-amber-500/40 underline-offset-4 hover:text-amber-100"
           >
             {CENTER_NAMES_RU[seo.center]}
-          </a>
+          </Link>
         ) : (
           CENTER_NAMES_RU[seo.center]
         )}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
@@ -59,13 +60,13 @@ export default async function HdChannelPage({
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-3">
           <dt className="text-[0.625rem] uppercase tracking-wider text-amber-100/50">Ворота</dt>
           <dd className="mt-1 font-semibold text-amber-50">
-            <a href={`/dizayn-cheloveka/vorota/${seo.gates[0]}`} className="hover:text-amber-200">
+            <Link href={`/dizayn-cheloveka/vorota/${seo.gates[0]}`} className="hover:text-amber-200">
               {seo.gates[0]} «{GATE_NAMES_RU[seo.gates[0]]}»
-            </a>
+            </Link>
             {" · "}
-            <a href={`/dizayn-cheloveka/vorota/${seo.gates[1]}`} className="hover:text-amber-200">
+            <Link href={`/dizayn-cheloveka/vorota/${seo.gates[1]}`} className="hover:text-amber-200">
               {seo.gates[1]} «{GATE_NAMES_RU[seo.gates[1]]}»
-            </a>
+            </Link>
           </dd>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-3">

@@ -62,7 +62,8 @@ export default function HdReportPanel({
   }, [authenticated, chartId]);
 
   useEffect(() => {
-    dialogEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // block:"nearest" — "end" would yank the whole page down on mobile.
+    dialogEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [dialog.length]);
 
   const buyReport = useCallback(async () => {
@@ -109,17 +110,20 @@ export default function HdReportPanel({
       const data = await res.json().catch(() => ({}));
       if (res.status === 402) {
         setDialog((prev) => prev.slice(0, -1));
+        setQuestion(q); // don't make the user retype
         setPaywall({ balance: Number(data.balance) || 0, required: Number(data.required) || askCost });
         return;
       }
       if (!res.ok || typeof data.answer !== "string") {
         setDialog((prev) => prev.slice(0, -1));
+        setQuestion(q);
         setError(hdApiErrorMessage(data, "Не удалось получить ответ."));
         return;
       }
       setDialog((prev) => [...prev, { role: "assistant", content: data.answer }]);
     } catch {
       setDialog((prev) => prev.slice(0, -1));
+      setQuestion(q);
       setError("Сеть недоступна. Попробуйте ещё раз.");
     } finally {
       setAsking(false);

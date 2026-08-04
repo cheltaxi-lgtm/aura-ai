@@ -20,6 +20,12 @@ interface PlaceSuggestion {
 
 const STORAGE_KEY = "hd:last-fingerprint";
 
+/** Local (not UTC) date for the date-input max — UTC would allow "tomorrow" west of Greenwich. */
+function localTodayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function readStoredFingerprint(): string | null {
   try {
     return localStorage.getItem(STORAGE_KEY);
@@ -287,7 +293,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     } finally {
       setLoading(false);
     }
-  }, [birthDate, birthTime, place, timeUnknown, subjectKind, subjectName]);
+  }, [birthDate, birthTime, place, timeUnknown, subjectKind, subjectName, onChartCreated]);
 
   if (result) {
     return (
@@ -409,7 +415,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
             onChange={(e) => setBirthDate(e.target.value)}
             className="hd-field__input"
             min="1900-01-01"
-            max={new Date().toISOString().slice(0, 10)}
+            max={localTodayIso()}
           />
           {birthDate && Number(birthDate.slice(0, 4)) < 1991 && (
             <p className="mt-1.5 text-[0.6875rem] leading-relaxed text-white/40">

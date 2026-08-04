@@ -34,6 +34,11 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
 
     let disposed = false;
     let cleanup: (() => void) | undefined;
+    // Renderer created mid-init: if a later step throws, it must still be
+    // disposed — otherwise the canvas + GL context leak until page unload.
+    let partialRenderer:
+      | { dispose(): void; forceContextLoss(): void; domElement: HTMLCanvasElement }
+      | undefined;
 
     void (async () => {
       try {
@@ -50,6 +55,7 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
         camera.position.set(0, 0.5, 13);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        partialRenderer = renderer;
         renderer.setSize(width, height);
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
         mount.appendChild(renderer.domElement);
@@ -237,11 +243,23 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
             else m?.dispose();
           });
           renderer.dispose();
+          renderer.forceContextLoss();
           if (renderer.domElement.parentNode === mount) {
             mount.removeChild(renderer.domElement);
           }
         };
       } catch {
+        try {
+          if (partialRenderer) {
+            if (partialRenderer.domElement.parentNode === mount) {
+              mount.removeChild(partialRenderer.domElement);
+            }
+            partialRenderer.dispose();
+            partialRenderer.forceContextLoss();
+          }
+        } catch {
+          /* best effort */
+        }
         if (!disposed) setFailed(true);
       }
     })();

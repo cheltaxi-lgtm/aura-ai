@@ -82,7 +82,11 @@ export interface HdChannelState {
 }
 
 export interface HdTimeStability {
-  /** Type/authority/profile identical across 00:00, 12:00 and 23:59 local. */
+  /**
+   * Type/authority/profile unchanged across the whole birth day, probed
+   * hourly (00:00…23:00 + 23:59 local) with adjacent-link comparison — a
+   * single gate-boundary crossing anywhere in the day flips the flag.
+   */
   typeStable: boolean;
   authorityStable: boolean;
   profileStable: boolean;
