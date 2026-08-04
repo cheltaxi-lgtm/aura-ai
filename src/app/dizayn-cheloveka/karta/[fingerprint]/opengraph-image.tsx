@@ -51,14 +51,11 @@ function bodygraphSvg(chart: HdChart): string {
     })
     .join("");
 
+  // No <text> in the SVG: resvg on the server has no system fonts and hangs.
   const gateCircles = HD_GATE_ANCHORS.map((a) => {
     const act = gates.get(a.gate);
     const fill = act ? (act === "d" ? COLOR_D : COLOR_P) : "#17131f";
-    const textFill = act ? "#17131f" : "rgba(232,199,126,0.7)";
-    return (
-      `<circle cx="${a.lx}" cy="${a.ly}" r="8" fill="${fill}" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>` +
-      `<text x="${a.lx}" y="${a.ly + 3}" font-family="sans-serif" font-size="9" font-weight="${act ? 700 : 400}" text-anchor="middle" fill="${textFill}">${a.gate}</text>`
-    );
+    return `<circle cx="${a.lx}" cy="${a.ly}" r="${act ? 6 : 3.5}" fill="${fill}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>`;
   }).join("");
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 700" width="360" height="630">${channels}${centers}${gateCircles}</svg>`;
