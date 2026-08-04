@@ -14,9 +14,19 @@ const HEIGHT = 630;
 
 export async function GET(request: NextRequest) {
   const fingerprint = request.nextUrl.searchParams.get("f") ?? "";
+  const debug = request.nextUrl.searchParams.get("debug");
   const chart = /^[0-9a-f]{64}$/.test(fingerprint)
     ? await getHdChartByFingerprint(fingerprint).catch(() => null)
     : null;
+
+  if (debug === "json") {
+    return Response.json({
+      found: Boolean(chart),
+      type: chart?.chart.type ?? null,
+      profile: chart?.chart.profile ?? null,
+      definedCenters: chart?.chart.definedCenters ?? null,
+    });
+  }
 
   const typeName = chart ? TYPE_META[chart.chart.type].nameRu : "Дизайн Человека";
   const profile = chart ? chart.chart.profile : "";
