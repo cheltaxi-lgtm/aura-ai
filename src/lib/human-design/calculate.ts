@@ -45,11 +45,19 @@ import type {
 } from "./types";
 import { HD_ENGINE_VERSION } from "./types";
 
-/** Kills only floating-point representation error (~0.004 mas), never real input. */
+/**
+ * Kills only floating-point representation error (~0.004 mas), never real input.
+ * Boundary rule (deterministic, verified in verify-human-design.mjs): a point
+ * exactly on a cell boundary — or up to 1e-9° below it — belongs to the UPPER
+ * cell; anything further below belongs to the lower one. 1e-9° ≈ 0.0036 mas is
+ * four orders of magnitude below the ephemeris precision (~1"), so this never
+ * flips a real chart — it only stabilizes exact-boundary arithmetic.
+ */
 const FP_EPSILON = 1e-9;
 
-const MIN_BIRTH_YEAR = 1900;
-const MAX_BIRTH_YEAR = 2050;
+export const HD_MIN_BIRTH_YEAR = 1900;
+/** Birth charts: no future dates. Transits may legitimately go further. */
+export const HD_MAX_BIRTH_YEAR = 2050;
 
 function normalize360(lon: number): number {
   return ((lon % 360) + 360) % 360;
@@ -381,8 +389,8 @@ function parseInput(input: HdCalcInput): {
   const month = Number(dateMatch[2]);
   const day = Number(dateMatch[3]);
   if (
-    year < MIN_BIRTH_YEAR ||
-    year > MAX_BIRTH_YEAR ||
+    year < HD_MIN_BIRTH_YEAR ||
+    year > HD_MAX_BIRTH_YEAR ||
     month < 1 ||
     month > 12 ||
     day < 1 ||

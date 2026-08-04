@@ -35,6 +35,11 @@ export default function HdCabinet() {
     load();
   }, [load]);
 
+  // A stale partner id must not survive switching/deleting the base chart.
+  useEffect(() => {
+    setPartnerId(null);
+  }, [selectedId]);
+
   // Refetch when the tab becomes visible — a chart computed in another tab
   // (public calculator) must appear without a manual reload.
   useEffect(() => {

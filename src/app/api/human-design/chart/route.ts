@@ -13,6 +13,7 @@ import {
   getHdChartByFingerprint,
   getOrComputeHdChart,
   HdInputError,
+  toPublicHdChartPayload,
 } from "@/lib/services/human-design-service";
 import type { HdChartIdentity } from "@/lib/human-design";
 import { forgetHdChartFact, rememberHdChartFact } from "@/lib/human-design/memory";
@@ -64,14 +65,25 @@ export async function POST(request: NextRequest) {
           name: typeof body.subjectName === "string" ? body.subjectName : null,
         }
       : { kind: "self" as const, name: null };
+  const claimToken =
+    typeof body.claimToken === "string" ? body.claimToken : null;
 
   try {
-    const chart = await getOrComputeHdChart(identity, userId, subject);
-    // Memory facts describe the client — only self charts belong there.
-    if (userId && chart.subjectKind === "self") {
-      rememberHdChartFact(userId, chart.chart, chart.id);
+    const { row, claimToken: grantedToken } = await getOrComputeHdChart(
+      identity,
+      userId,
+      subject,
+      claimToken
+    );
+    // Memory facts describe the client — only their own self charts belong there.
+    if (userId && row.userId === userId && row.subjectKind === "self") {
+      rememberHdChartFact(userId, row.chart, row.id);
     }
-    return NextResponse.json({ chart, owned: Boolean(userId) });
+    return NextResponse.json({
+      chart: toPublicHdChartPayload(row),
+      owned: Boolean(userId && row.userId === userId),
+      ...(grantedToken ? { claimToken: grantedToken } : {}),
+    });
   } catch (error) {
     return hdErrorResponse(error);
   }
@@ -97,7 +109,8 @@ export async function GET(request: NextRequest) {
   if (!chart) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
-  return NextResponse.json({ chart });
+  // Public capability URL: strip owner id, coordinates and timezone (PII).
+  return NextResponse.json({ chart: toPublicHdChartPayload(chart) });
 }
 
 /**
@@ -129,5 +142,11 @@ export async function DELETE(request: NextRequest) {
   if (deleted.subjectKind === "self") {
     forgetHdChartFact(resolved.profileUserId, deleted.id);
   }
-  return NextResponse.json({ ok: true, chartId: deleted.id, fingerprint: deleted.fingerprint });
+  return NextResponse.json({
+    ok: true,
+    chartId: deleted.id,
+    fingerprint: deleted.fingerprint,
+    // HD facts feed Evelina's chat context — the cabinet clears her cache.
+    characterKey: "numerolog",
+  });
 }

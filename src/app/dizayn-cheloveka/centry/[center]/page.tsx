@@ -77,6 +77,10 @@ export default async function HdCenterPage({
         <p>{seo.openBody}</p>
       </SeoSection>
 
+      <SeoSection title="Тема не-я: главная ловушка центра">
+        <p>{seo.notSelfBody}</p>
+      </SeoSection>
+
       <SeoSection title="Ворота этого центра">
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {gates.map((g) => (

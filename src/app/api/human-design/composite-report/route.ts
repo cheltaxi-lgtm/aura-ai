@@ -17,11 +17,15 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
+  attachCompositeReportTransaction,
   completeCompositeReport,
   createPendingCompositeReport,
+  deleteCompositeReportRow,
   failCompositeReport,
   getHdChartById,
   getHdCompositeReport,
+  isStalePendingComposite,
+  type HdCompositeReportRow,
 } from "@/lib/services/human-design-service";
 import {
   CHANNELS,
@@ -91,23 +95,33 @@ export async function POST(request: NextRequest) {
   if (existing?.status === "done" && existing.reportText) {
     return NextResponse.json({ report: existing, cached: true });
   }
-  if (existing?.status === "pending") {
+  if (existing?.status === "pending" && !isStalePendingComposite(existing)) {
     return NextResponse.json(
       { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
       { status: 409 }
     );
   }
+  // Stale pending with a recorded charge → crashed after payment: resume
+  // generation on the same row without charging twice.
+  const resumePaidPending =
+    existing?.status === "pending" &&
+    isStalePendingComposite(existing) &&
+    Boolean(existing.transactionId);
 
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
+  // Normalize at the prompt boundary too — rows stored before the storage-side
+  // normalization may still carry raw input (prompt-injection surface).
   const partnerName =
-    partner.subjectKind === "other" && partner.subjectName ? partner.subjectName : "Партнёр";
+    partner.subjectKind === "other" && partner.subjectName
+      ? normalizePersonDisplayName(partner.subjectName) || "Партнёр"
+      : "Партнёр";
   const user = await getUserById(userId).catch(() => null);
   const clientName =
     base.subjectKind === "other" && base.subjectName
-      ? base.subjectName
+      ? normalizePersonDisplayName(base.subjectName) || null
       : normalizePersonDisplayName(user?.name) || null;
 
   // Electromagnetic channels: defined only by the union of both charts.
@@ -155,25 +169,37 @@ export async function POST(request: NextRequest) {
     });
   };
 
+  let pending: HdCompositeReportRow | null = null;
+  let freshPending = false;
   try {
-    charge = await chargeRuneAction({ userId, action: "HD_REPORT", exempt });
+    if (resumePaidPending && existing) {
+      pending = existing;
+    } else {
+      // error / unpaid stale pending → start over (its charge was rolled back).
+      if (existing) await deleteCompositeReportRow(existing.id);
 
-    const pending = await createPendingCompositeReport({
-      baseChartId: base.id,
-      partnerChartId: partner.id,
-      userId,
-      transactionId: charge.transactionId ?? null,
-    });
-    if (!pending) {
-      await rollback();
-      const again = await getHdCompositeReport(base.id, partner.id, userId);
-      if (again?.status === "done" && again.reportText) {
-        return NextResponse.json({ report: again, cached: true });
+      // Insert BEFORE charging: a crash here leaves an unpaid placeholder that
+      // the recovery path later discards — never a paid orphan.
+      pending = await createPendingCompositeReport({
+        baseChartId: base.id,
+        partnerChartId: partner.id,
+        userId,
+        transactionId: null,
+      });
+      if (!pending) {
+        const again = await getHdCompositeReport(base.id, partner.id, userId);
+        if (again?.status === "done" && again.reportText) {
+          return NextResponse.json({ report: again, cached: true });
+        }
+        return NextResponse.json(
+          { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+          { status: 409 }
+        );
       }
-      return NextResponse.json(
-        { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
-        { status: 409 }
-      );
+      freshPending = true;
+
+      charge = await chargeRuneAction({ userId, action: "HD_REPORT", exempt });
+      await attachCompositeReportTransaction(pending.id, charge.transactionId ?? null);
     }
 
     const answer = await completeChat({
@@ -188,8 +214,15 @@ export async function POST(request: NextRequest) {
     });
 
     if (!answer || isRejectedLlmOutput(answer)) {
-      await failCompositeReport(pending.id, "empty_or_rejected");
       await rollback();
+      if (resumePaidPending) {
+        // Keep the paid pending row: the next attempt resumes it for free.
+        return NextResponse.json(
+          { error: "Модель не смогла подготовить разбор. Попробуйте ещё раз — оплата сохранена." },
+          { status: 502 }
+        );
+      }
+      await failCompositeReport(pending.id, "empty_or_rejected");
       return NextResponse.json(
         { error: "Модель не смогла подготовить разбор. Оплата возвращена.", refunded: true },
         { status: 502 }
@@ -199,11 +232,16 @@ export async function POST(request: NextRequest) {
     const text = answer.trim() + DISCLAIMER;
     await completeCompositeReport(pending.id, text, "openrouter");
     const done = await getHdCompositeReport(base.id, partner.id, userId);
-    return NextResponse.json({ report: done, cached: false, runeBalance: charge.newBalance });
+    return NextResponse.json({ report: done, cached: false, runeBalance: charge?.newBalance });
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[human-design] composite rollback failed");
     });
+    // Charge never happened → remove the unpaid placeholder so the next
+    // attempt starts clean instead of hitting CLAIM_BUSY.
+    if (freshPending && !charge && pending) {
+      await deleteCompositeReportRow(pending.id).catch(() => undefined);
+    }
     if (error instanceof InsufficientFundsError) {
       return NextResponse.json(
         {

@@ -23,6 +23,7 @@ import {
   CENTER_SEO_SLUGS,
 } from "@/lib/human-design/seo-entities";
 import { HD_PAIR_SLUGS } from "@/lib/human-design/seo-compatibility";
+import { isHumanDesignEnabled } from "@/lib/settings";
 
 const ABOUT_PATHS = [
   "/about",
@@ -47,9 +48,12 @@ function staticPage(path: string, priority: number, changeFrequency: MetadataRou
   };
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getAppUrl();
   const now = new Date();
+  // Kill-switch: disabled module must vanish from the sitemap (crawl budget +
+  // noindexed 404s stay consistent with the middleware gate).
+  const hdEnabled = await isHumanDesignEnabled().catch(() => true);
 
   const spreadPages: MetadataRoute.Sitemap = Object.values(SPREAD_REGISTRY)
     .filter((s) => s.seoSlug)
@@ -208,10 +212,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     staticPage("/numerology/name-compatibility", 0.55, "monthly"),
     staticPage("/numerology/destiny-matrix", 0.85, "weekly"),
     staticPage("/natalnaya-karta", 0.9, "weekly"),
-    staticPage("/dizayn-cheloveka", 0.9, "weekly"),
-    staticPage("/dizayn-cheloveka/rasschitat", 0.85, "weekly"),
-    staticPage("/dizayn-cheloveka/sovmestimost", 0.85, "weekly"),
-    staticPage("/dizayn-cheloveka/sovmestimost/rasschitat", 0.8, "weekly"),
+    ...(hdEnabled
+      ? [
+          staticPage("/dizayn-cheloveka", 0.9, "weekly"),
+          staticPage("/dizayn-cheloveka/rasschitat", 0.85, "weekly"),
+          staticPage("/dizayn-cheloveka/sovmestimost", 0.85, "weekly"),
+          staticPage("/dizayn-cheloveka/sovmestimost/rasschitat", 0.8, "weekly"),
+        ]
+      : []),
     staticPage("/numerology/favorable-dates", 0.55, "monthly"),
     staticPage("/sovmestimost-znakov-zodiaka", 0.75, "monthly"),
     staticPage("/gadanie", 0.9),
@@ -249,11 +257,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...articlePages,
     ...lenormandCombinationPages,
     ...runeMeaningPages,
-    ...hdTypePages,
-    ...hdProfilePages,
-    ...hdGatePages,
-    ...hdChannelPages,
-    ...hdCenterPages,
-    ...hdPairPages,
+    ...(hdEnabled
+      ? [
+          ...hdTypePages,
+          ...hdProfilePages,
+          ...hdGatePages,
+          ...hdChannelPages,
+          ...hdCenterPages,
+          ...hdPairPages,
+        ]
+      : []),
   ];
 }

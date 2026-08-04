@@ -20,6 +20,8 @@ export {
   calculateHdChart,
   computeTransits,
   hdAuthorityFromChannels,
+  HD_MAX_BIRTH_YEAR,
+  HD_MIN_BIRTH_YEAR,
   hdTypeFromChannels,
   longitudeToActivation,
   solveDesignJd,

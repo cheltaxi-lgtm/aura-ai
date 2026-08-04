@@ -21,11 +21,18 @@ export async function POST(request: NextRequest) {
   const rateLimited = await enforcePaidRouteRateLimit(resolved.profileUserId, "hd_claim");
   if (rateLimited) return rateLimited;
 
-  const body = (await request.json().catch(() => ({}))) as { fingerprint?: unknown };
+  const body = (await request.json().catch(() => ({}))) as {
+    fingerprint?: unknown;
+    claimToken?: unknown;
+  };
   if (typeof body.fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(body.fingerprint)) {
     return NextResponse.json({ error: "Некорректный идентификатор карты." }, { status: 400 });
   }
 
-  const claimed = await claimHdChart(body.fingerprint, resolved.profileUserId);
+  const claimed = await claimHdChart(
+    body.fingerprint,
+    resolved.profileUserId,
+    typeof body.claimToken === "string" ? body.claimToken : null
+  );
   return NextResponse.json({ ok: true, claimed });
 }

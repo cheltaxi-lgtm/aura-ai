@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
   }
 
   const chart = await getHdChartById(body.chartId);
-  if (!chart) {
+  // IDOR guard: insights are paid and chart-bound — owner only.
+  if (!chart || chart.userId !== userId) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
   const user = await getUserById(userId).catch(() => null);
   const clientName =
     chart.subjectKind === "other" && chart.subjectName
-      ? chart.subjectName
+      ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(user?.name) || null;
   const evidence = formatHdEvidence(chart.chart);
   const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));

@@ -1,6 +1,9 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ImageResponse } from "next/og";
 import { getHdChartByFingerprint } from "@/lib/services/human-design-service";
+import { isHumanDesignEnabled } from "@/lib/settings";
+import { clientIp } from "@/lib/api-guards";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import {
   AUTHORITY_NAMES_RU,
   PROFILE_NAMES_RU,
@@ -13,6 +16,20 @@ const WIDTH = 1200;
 const HEIGHT = 630;
 
 export async function GET(request: NextRequest) {
+  if (!(await isHumanDesignEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
+  // Rendering burns CPU (satori) — cap per IP like the other public HD routes.
+  const { allowed } = await checkRateLimit(
+    rateLimitKey("hd_og", clientIp(request)),
+    30,
+    60_000
+  );
+  if (!allowed) {
+    return NextResponse.json({ error: "rate_limit" }, { status: 429 });
+  }
+
   const fingerprint = request.nextUrl.searchParams.get("f") ?? "";
   const chart = /^[0-9a-f]{64}$/.test(fingerprint)
     ? await getHdChartByFingerprint(fingerprint).catch(() => null)

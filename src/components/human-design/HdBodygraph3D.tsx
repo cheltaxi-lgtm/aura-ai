@@ -196,7 +196,7 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
           }
           group.rotation.y += (targetRotY - group.rotation.y) * 0.06;
           group.rotation.x += (targetRotX - group.rotation.x) * 0.06;
-          group.position.y = Math.sin(t * 1.2) * 0.08;
+          group.position.y = reduceMotion ? 0 : Math.sin(t * 1.2) * 0.08;
           renderer.render(scene, camera);
           raf = requestAnimationFrame(animate);
         };

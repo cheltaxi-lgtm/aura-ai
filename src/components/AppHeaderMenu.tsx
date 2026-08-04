@@ -18,6 +18,7 @@ import { shouldUseAppShellClient } from "@/lib/app-shell";
 import { triggerAppHaptic } from "@/lib/app-haptics";
 import { buildHeaderNavSections } from "@/lib/header-nav-items";
 import type { HeaderNavItem } from "@/lib/header-nav-items";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import { OPEN_NOTIFICATIONS_EVENT } from "@/components/NotificationBell";
 import type { AuthUser } from "@/lib/useAuth";
 
@@ -102,6 +103,7 @@ export default function AppHeaderMenu({
     };
   }, [open]);
 
+  const { humanDesignEnabled, featuresLoaded } = usePlatformFeatures();
   const sections = buildHeaderNavSections(
     {
       photoNavLabel,
@@ -112,7 +114,7 @@ export default function AppHeaderMenu({
       onNavRitual,
       onStartReading,
     },
-    { isLoggedIn }
+    { isLoggedIn, humanDesignEnabled: !featuresLoaded || humanDesignEnabled }
   );
 
   const accountItems: AccountItem[] = [];

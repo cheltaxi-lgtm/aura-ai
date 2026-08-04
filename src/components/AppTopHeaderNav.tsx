@@ -9,6 +9,7 @@ import {
   type HeaderNavItem,
   type HeaderNavSection,
 } from "@/lib/header-nav-items";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 export type AppTopHeaderNavProps = {
   photoNavLabel: string;
@@ -31,7 +32,11 @@ export default function AppTopHeaderNav({ isLoggedIn = false, ...callbacks }: Ap
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
-  const sections = buildHeaderNavSections(callbacks, { isLoggedIn });
+  const { humanDesignEnabled, featuresLoaded } = usePlatformFeatures();
+  const sections = buildHeaderNavSections(callbacks, {
+    isLoggedIn,
+    humanDesignEnabled: !featuresLoaded || humanDesignEnabled,
+  });
 
   const close = useCallback(() => setOpen(false), []);
 

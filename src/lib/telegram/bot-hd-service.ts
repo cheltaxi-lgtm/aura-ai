@@ -86,7 +86,9 @@ export async function botHdSummary(telegramUserId: number) {
       };
     }
     try {
-      chartRow = await getOrComputeHdChart(identity, pid, { kind: "self", name: null });
+      chartRow = (
+        await getOrComputeHdChart(identity, pid, { kind: "self", name: null })
+      ).row;
     } catch {
       return {
         ok: false as const,

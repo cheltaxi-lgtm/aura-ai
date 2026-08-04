@@ -65,6 +65,8 @@ export type HeaderNavCallbacks = {
 
 export type BuildHeaderNavOptions = {
   isLoggedIn?: boolean;
+  /** Kill-switch from /api/platform/features — hides the HD nav entry. */
+  humanDesignEnabled?: boolean;
 };
 
 /** Grouped header navigation — shared by desktop dropdown and mobile sheet. */
@@ -72,7 +74,7 @@ export function buildHeaderNavSections(
   callbacks: HeaderNavCallbacks,
   options: BuildHeaderNavOptions = {}
 ): HeaderNavSection[] {
-  const { isLoggedIn = false } = options;
+  const { isLoggedIn = false, humanDesignEnabled = true } = options;
   const appRoutes = resolveAppRouteLinks();
 
   const sections: HeaderNavSection[] = [
@@ -144,12 +146,16 @@ export function buildHeaderNavSections(
           icon: Star,
           onClick: navigateToNatalChart,
         },
-        {
-          id: "human-design",
-          label: "Дизайн Человека",
-          icon: Sun,
-          onClick: navigateToHumanDesign,
-        },
+        ...(humanDesignEnabled
+          ? [
+              {
+                id: "human-design",
+                label: "Дизайн Человека",
+                icon: Sun,
+                onClick: navigateToHumanDesign,
+              } satisfies HeaderNavItem,
+            ]
+          : []),
         {
           id: "natal-compatibility",
           label: "Натальная совместимость",

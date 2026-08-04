@@ -9,6 +9,7 @@ import {
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
 import { fetchUserTokenVersionStatus } from "@/lib/token-version-gate";
+import { fetchHumanDesignEnabled } from "@/lib/hd-feature-gate";
 import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
 import { resolveBotHomeQueryRedirect } from "@/lib/seo/bot-query-redirect";
@@ -360,6 +361,20 @@ export async function middleware(request: NextRequest) {
       const clean = publicUrl(request, "/");
       clean.search = "";
       return NextResponse.redirect(clean, 301);
+    }
+  }
+
+  // Human Design kill-switch: public SEO pages must 404 (drop from the index),
+  // not silently render a broken calculator. API handlers check the flag too.
+  if (pathname.startsWith("/dizayn-cheloveka")) {
+    const hdEnabled = await fetchHumanDesignEnabled();
+    if (!hdEnabled) {
+      return withNoStore(
+        new NextResponse("<!doctype html><title>404</title><h1>Страница не найдена</h1>", {
+          status: 404,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        })
+      );
     }
   }
 

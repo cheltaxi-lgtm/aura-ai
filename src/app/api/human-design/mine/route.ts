@@ -5,7 +5,10 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { listHdChartsForUser } from "@/lib/services/human-design-service";
+import {
+  listHdChartsForUser,
+  toPublicHdChartPayload,
+} from "@/lib/services/human-design-service";
 
 export async function GET() {
   if (!(await isHumanDesignEnabled())) {
@@ -21,5 +24,8 @@ export async function GET() {
   if (rateLimited) return rateLimited;
 
   const charts = await listHdChartsForUser(resolved.profileUserId);
-  return NextResponse.json({ enabled: true, charts });
+  return NextResponse.json({
+    enabled: true,
+    charts: charts.map((c) => ({ ...toPublicHdChartPayload(c), createdAt: c.createdAt })),
+  });
 }

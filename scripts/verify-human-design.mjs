@@ -357,7 +357,12 @@ const TYPE_NAME_MAP = {
   assert(known.stability === undefined, "no stability probe when time known");
 }
 
-/* ---------- 10. Analyst golden set (optional) ---------- */
+/* ---------- 10. Regression golden set ---------- */
+/* Fixtures pinned from the current engine via scripts/gen-hd-golden-fixtures.mjs.
+   They guard against silent engine regressions (ephemeris swap, wheel offset,
+   timezone DB drift). NOTE: these are regression pins, not external validation —
+   cross-checking against Jovian Archive reference charts remains a manual
+   analyst task (any verified chart should be appended with source label). */
 
 {
   const path = new URL("./fixtures/human-design-golden.json", import.meta.url);
@@ -373,24 +378,93 @@ const TYPE_NAME_MAP = {
         assert(chart.type === f.expected.type, `golden ${f.label}: type`);
         assert(chart.profile === f.expected.profile, `golden ${f.label}: profile`);
         assert(chart.authority === f.expected.authority, `golden ${f.label}: authority`);
+        if (f.expected.definition !== undefined) {
+          assert(chart.definition === f.expected.definition, `golden ${f.label}: definition`);
+        }
+        if (f.expected.activeGates !== undefined) {
+          assert(
+            chart.activeGates.length === f.expected.activeGates,
+            `golden ${f.label}: activeGates ${chart.activeGates.length} == ${f.expected.activeGates}`
+          );
+        }
+        if (f.expected.definedChannels !== undefined) {
+          const dc = chart.channels.filter((c) => c.defined).length;
+          assert(dc === f.expected.definedChannels, `golden ${f.label}: definedChannels ${dc} == ${f.expected.definedChannels}`);
+        }
         for (const side of ["personality", "design"]) {
           const mine = side === "personality" ? chart.personality : chart.designActivations;
           for (const [body, gateLine] of Object.entries(f.expected[side] ?? {})) {
             const act = mine.find((a) => a.body === body);
             assert(
-              `${act.gate}.${act.line}` === gateLine,
-              `golden ${f.label}: ${side} ${body} ${act.gate}.${act.line} == ${gateLine}`
+              act && `${act.gate}.${act.line}` === gateLine,
+              `golden ${f.label}: ${side} ${body} ${act ? `${act.gate}.${act.line}` : "??"} == ${gateLine}`
             );
           }
         }
       }
-      console.log(`  golden set: ${fixtures.length} Jovian reference charts checked strictly`);
+      console.log(`  golden set: ${fixtures.length} regression fixtures checked strictly`);
     } else {
-      console.log("  golden set: fixtures file empty — analyst collection pending (see file header)");
+      console.log("  golden set: fixtures file empty — run scripts/gen-hd-golden-fixtures.mjs");
     }
   } else {
-    console.log("  golden set: no fixtures file — analyst collection pending");
+    console.log("  golden set: no fixtures file — run scripts/gen-hd-golden-fixtures.mjs");
   }
+}
+
+/* ---------- 11. Sub-structure boundary rule (color/tone/base) ---------- */
+/* longitudeToActivation owns boundaries deterministically: a point exactly on
+   a boundary (or within 1e-9° below it, float fuzz) belongs to the UPPER cell;
+   1e-6° below belongs to the LOWER cell. Verified on gate/line/color/tone/base. */
+
+{
+  const GATE_SIZE = 5.625;
+  const WHEEL_OFFSET = 358.25; // GATE_WHEEL_OFFSET from constants.ts
+  // Gate k of the wheel starts at (WHEEL_OFFSET + k*GATE_SIZE) mod 360.
+  const gateStart = (WHEEL_OFFSET + 3 * GATE_SIZE) % 360; // 4th gate on the wheel
+  const startAct = longitudeToActivation("sun", gateStart);
+
+  // Exact cell interiors: a 1e-12° perturbation must keep every cell.
+  const mid = gateStart + GATE_SIZE / 2;
+  const a1 = longitudeToActivation("sun", mid);
+  const a2 = longitudeToActivation("sun", mid + 1e-12);
+  assert(
+    a1.gate === a2.gate && a1.line === a2.line && a1.color === a2.color &&
+    a1.tone === a2.tone && a1.base === a2.base,
+    "boundary: 1e-12° perturbation keeps every cell"
+  );
+
+  // Walk exactly one gate width from its start: sub-structure indices must be
+  // monotonically non-decreasing and within range (no wrap, no out-of-range).
+  let prevKey = -1;
+  let monotone = true;
+  let inRange = true;
+  for (let i = 0; i < 200; i++) {
+    const lon = gateStart + (i / 200) * (GATE_SIZE - 1e-6);
+    const a = longitudeToActivation("sun", lon);
+    if (a.gate !== startAct.gate) { inRange = false; break; }
+    if (a.line < 1 || a.line > 6 || a.color < 1 || a.color > 6 || a.tone < 1 || a.tone > 6 || a.base < 1 || a.base > 5) {
+      inRange = false;
+      break;
+    }
+    const key = (((a.line * 6 + a.color) * 6 + a.tone) * 5 + a.base);
+    if (key < prevKey) { monotone = false; break; }
+    prevKey = key;
+  }
+  assert(inRange, "boundary: color/tone/base stay in range across a full gate");
+  assert(monotone, "boundary: sub-structure indices monotone across a full gate");
+
+  // Documented ownership rule: the exact boundary belongs to the UPPER gate,
+  // float fuzz (1e-9°) below it still resolves UP, real input (1e-6°) stays DOWN.
+  const atBoundary = longitudeToActivation("sun", gateStart + GATE_SIZE);
+  const fuzzBelow = longitudeToActivation("sun", gateStart + GATE_SIZE - 1e-9);
+  const realBelow = longitudeToActivation("sun", gateStart + GATE_SIZE - 1e-6);
+  const nextGate = longitudeToActivation("sun", gateStart + GATE_SIZE + GATE_SIZE / 2).gate;
+  assert(atBoundary.gate === nextGate, "boundary: exact boundary belongs to the upper gate");
+  assert(fuzzBelow.gate === nextGate, "boundary: 1e-9° below boundary resolves up (float fuzz)");
+  assert(
+    realBelow.gate === startAct.gate && realBelow.line === 6,
+    "boundary: 1e-6° below boundary stays in the lower gate, line 6"
+  );
 }
 
 /* ---------- result ---------- */

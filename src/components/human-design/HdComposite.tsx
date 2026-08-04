@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { HdChart } from "@/lib/human-design";
 import { CHANNELS, TYPE_META } from "@/lib/human-design";
 import Bodygraph from "./Bodygraph";
@@ -63,6 +63,13 @@ export default function HdComposite({ base, partner }: Props) {
   const [report, setReport] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Switching either chart must not show the previous pair's report.
+  useEffect(() => {
+    setReport(null);
+    setError(null);
+    setBusy(false);
+  }, [base.id, partner.id]);
 
   const buyReport = async () => {
     if (busy) return;

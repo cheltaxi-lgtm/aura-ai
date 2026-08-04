@@ -1,1 +1,322 @@
-[]
+[
+  {
+    "label": "moscow-1955-jpl-anchor",
+    "birthDate": "1955-02-10",
+    "birthTime": "03:00",
+    "timezone": "Europe/Moscow",
+    "expected": {
+      "type": "projector",
+      "profile": "2/4",
+      "authority": "mental",
+      "definition": "single",
+      "activeGates": 16,
+      "definedChannels": 1,
+      "personality": {
+        "sun": "49.2",
+        "earth": "4.2",
+        "moon": "6.5",
+        "mercury": "30.2",
+        "venus": "58.1",
+        "mars": "51.4",
+        "northNode": "58.1"
+      },
+      "design": {
+        "sun": "43.4",
+        "earth": "23.4",
+        "moon": "56.2",
+        "mercury": "28.2",
+        "venus": "43.4",
+        "mars": "13.4",
+        "northNode": "58.3"
+      }
+    }
+  },
+  {
+    "label": "moscow-1990-afternoon",
+    "birthDate": "1990-06-15",
+    "birthTime": "14:59",
+    "timezone": "Europe/Moscow",
+    "expected": {
+      "type": "manifestingGenerator",
+      "profile": "2/4",
+      "authority": "sacral",
+      "definition": "single",
+      "activeGates": 20,
+      "definedChannels": 2,
+      "personality": {
+        "sun": "12.2",
+        "earth": "11.2",
+        "moon": "63.4",
+        "mercury": "20.6",
+        "venus": "2.6",
+        "mars": "21.2",
+        "northNode": "19.1"
+      },
+      "design": {
+        "sun": "36.4",
+        "earth": "6.4",
+        "moon": "14.3",
+        "mercury": "36.2",
+        "venus": "19.3",
+        "mars": "41.3",
+        "northNode": "13.3"
+      }
+    }
+  },
+  {
+    "label": "newyork-1971-halloween-2359",
+    "birthDate": "1971-10-31",
+    "birthTime": "23:59",
+    "timezone": "America/New_York",
+    "expected": {
+      "type": "manifestingGenerator",
+      "profile": "1/3",
+      "authority": "sacral",
+      "definition": "single",
+      "activeGates": 20,
+      "definedChannels": 6,
+      "personality": {
+        "sun": "44.1",
+        "earth": "24.1",
+        "moon": "21.5",
+        "mercury": "43.4",
+        "venus": "14.1",
+        "mars": "30.3",
+        "northNode": "19.3"
+      },
+      "design": {
+        "sun": "33.3",
+        "earth": "19.3",
+        "moon": "26.6",
+        "mercury": "40.2",
+        "venus": "31.2",
+        "mars": "13.6",
+        "northNode": "13.2"
+      }
+    }
+  },
+  {
+    "label": "vladivostok-2000-midnight",
+    "birthDate": "2000-01-01",
+    "birthTime": "00:00",
+    "timezone": "Asia/Vladivostok",
+    "expected": {
+      "type": "manifestingGenerator",
+      "profile": "6/3",
+      "authority": "emotional",
+      "definition": "single",
+      "activeGates": 24,
+      "definedChannels": 5,
+      "personality": {
+        "sun": "58.6",
+        "earth": "52.6",
+        "moon": "28.1",
+        "mercury": "10.3",
+        "venus": "34.1",
+        "mars": "30.3",
+        "northNode": "31.3"
+      },
+      "design": {
+        "sun": "48.3",
+        "earth": "21.3",
+        "moon": "4.1",
+        "mercury": "50.4",
+        "venus": "29.4",
+        "mars": "26.5",
+        "northNode": "33.4"
+      }
+    }
+  },
+  {
+    "label": "kiev-1986-soviet-decree",
+    "birthDate": "1986-04-26",
+    "birthTime": "01:23",
+    "timezone": "Europe/Kiev",
+    "expected": {
+      "type": "generator",
+      "profile": "4/6",
+      "authority": "emotional",
+      "definition": "single",
+      "activeGates": 18,
+      "definedChannels": 3,
+      "personality": {
+        "sun": "27.4",
+        "earth": "28.4",
+        "moon": "43.6",
+        "mercury": "21.2",
+        "venus": "8.5",
+        "mars": "38.4",
+        "northNode": "3.4"
+      },
+      "design": {
+        "sun": "41.6",
+        "earth": "31.6",
+        "moon": "29.3",
+        "mercury": "41.3",
+        "venus": "19.2",
+        "mars": "14.3",
+        "northNode": "27.3"
+      }
+    }
+  },
+  {
+    "label": "montreal-1948-night",
+    "birthDate": "1948-04-09",
+    "birthTime": "00:15",
+    "timezone": "America/Montreal",
+    "expected": {
+      "type": "manifestor",
+      "profile": "5/1",
+      "authority": "splenic",
+      "definition": "single",
+      "activeGates": 21,
+      "definedChannels": 5,
+      "personality": {
+        "sun": "51.5",
+        "earth": "57.5",
+        "moon": "51.1",
+        "mercury": "25.3",
+        "venus": "20.6",
+        "mars": "7.6",
+        "northNode": "2.1"
+      },
+      "design": {
+        "sun": "61.1",
+        "earth": "62.1",
+        "moon": "41.3",
+        "mercury": "60.1",
+        "venus": "49.5",
+        "mars": "40.2",
+        "northNode": "23.3"
+      }
+    }
+  },
+  {
+    "label": "sydney-2010-solstice-noon",
+    "birthDate": "2010-12-21",
+    "birthTime": "12:00",
+    "timezone": "Australia/Sydney",
+    "expected": {
+      "type": "projector",
+      "profile": "1/3",
+      "authority": "splenic",
+      "definition": "single",
+      "activeGates": 18,
+      "definedChannels": 3,
+      "personality": {
+        "sun": "10.1",
+        "earth": "15.1",
+        "moon": "12.3",
+        "mercury": "11.5",
+        "venus": "1.1",
+        "mars": "38.1",
+        "northNode": "10.5"
+      },
+      "design": {
+        "sun": "46.3",
+        "earth": "25.3",
+        "moon": "21.1",
+        "mercury": "64.4",
+        "venus": "44.3",
+        "mars": "28.5",
+        "northNode": "58.5"
+      }
+    }
+  },
+  {
+    "label": "utc-1999-eve",
+    "birthDate": "1999-12-31",
+    "birthTime": "14:05",
+    "timezone": "UTC",
+    "expected": {
+      "type": "manifestingGenerator",
+      "profile": "6/3",
+      "authority": "emotional",
+      "definition": "single",
+      "activeGates": 24,
+      "definedChannels": 5,
+      "personality": {
+        "sun": "58.6",
+        "earth": "52.6",
+        "moon": "28.1",
+        "mercury": "10.3",
+        "venus": "34.1",
+        "mars": "30.3",
+        "northNode": "31.3"
+      },
+      "design": {
+        "sun": "48.3",
+        "earth": "21.3",
+        "moon": "4.1",
+        "mercury": "50.4",
+        "venus": "29.4",
+        "mars": "26.5",
+        "northNode": "33.4"
+      }
+    }
+  },
+  {
+    "label": "almaty-1975-morning",
+    "birthDate": "1975-07-01",
+    "birthTime": "06:30",
+    "timezone": "Asia/Almaty",
+    "expected": {
+      "type": "manifestingGenerator",
+      "profile": "6/2",
+      "authority": "sacral",
+      "definition": "single",
+      "activeGates": 20,
+      "definedChannels": 5,
+      "personality": {
+        "sun": "52.6",
+        "earth": "58.6",
+        "moon": "25.4",
+        "mercury": "45.1",
+        "venus": "4.5",
+        "mars": "3.4",
+        "northNode": "34.1"
+      },
+      "design": {
+        "sun": "21.2",
+        "earth": "48.2",
+        "moon": "9.5",
+        "mercury": "36.2",
+        "venus": "2.2",
+        "mars": "49.4",
+        "northNode": "34.3"
+      }
+    }
+  },
+  {
+    "label": "berlin-2024-leapday",
+    "birthDate": "2024-02-29",
+    "birthTime": "08:45",
+    "timezone": "Europe/Berlin",
+    "expected": {
+      "type": "manifestingGenerator",
+      "profile": "5/1",
+      "authority": "emotional",
+      "definition": "split",
+      "activeGates": 20,
+      "definedChannels": 4,
+      "personality": {
+        "sun": "37.5",
+        "earth": "40.5",
+        "moon": "28.1",
+        "mercury": "37.6",
+        "venus": "13.3",
+        "mars": "19.6",
+        "northNode": "51.1"
+      },
+      "design": {
+        "sun": "5.1",
+        "earth": "35.1",
+        "moon": "40.1",
+        "mercury": "10.6",
+        "venus": "50.4",
+        "mars": "9.2",
+        "northNode": "42.4"
+      }
+    }
+  }
+]

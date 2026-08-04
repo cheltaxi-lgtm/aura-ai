@@ -36,14 +36,28 @@ export default function HdReportPanel({
   const reportCost = cost("HD_REPORT");
   const askCost = cost("HD_ASK");
 
+  // Switching charts must not leak the previous chart's report/dialog state.
+  useEffect(() => {
+    setReport(null);
+    setDialog([]);
+    setError(null);
+    setQuestion("");
+    setPaywall(null);
+    setAcknowledged(false);
+  }, [chartId]);
+
   useEffect(() => {
     if (!authenticated) return;
+    let cancelled = false;
     fetch(`/api/human-design/report?chartId=${encodeURIComponent(chartId)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.report?.status === "done") setReport(d.report);
+        if (!cancelled && d?.report?.status === "done") setReport(d.report);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [authenticated, chartId]);
 
   useEffect(() => {
@@ -154,7 +168,11 @@ export default function HdReportPanel({
             для генерации разбора.
           </span>
         </label>
-        {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+        {error && (
+          <p className="mt-3 text-sm text-red-300" role="alert">
+            {error}
+          </p>
+        )}
         <button
           type="button"
           onClick={buyReport}
@@ -226,7 +244,11 @@ export default function HdReportPanel({
           </div>
         )}
 
-        {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+        {error && (
+          <p className="mt-3 text-sm text-red-300" role="alert">
+            {error}
+          </p>
+        )}
 
         <div className="mt-4 flex gap-2">
           <input

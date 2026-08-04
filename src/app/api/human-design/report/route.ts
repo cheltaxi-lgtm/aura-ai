@@ -17,12 +17,14 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
-  claimHdChart,
+  attachHdReportTransaction,
   completeHdReport,
   createPendingHdReport,
+  deleteHdReportRow,
   failHdReport,
   getHdChartById,
   getHdReportForChart,
+  isStalePendingReport,
 } from "@/lib/services/human-design-service";
 import {
   buildHdReportSystemPrompt,
@@ -66,15 +68,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Укажите карту." }, { status: 400 });
   }
 
-  let chart = await getHdChartById(body.chartId);
-  if (!chart) {
-    return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
-  }
-  // Unowned guest chart → first authenticated purchase attaches it (same rule as /claim).
-  if (!chart.userId) {
-    await claimHdChart(chart.fingerprint, userId);
-    chart = await getHdChartById(body.chartId);
-  }
+  const chart = await getHdChartById(body.chartId);
+  // Strict ownership: guest-pool charts are claimable only via the claim token
+  // (client runs the claim flow on login before the purchase).
   if (!chart || chart.userId !== userId) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
@@ -89,21 +85,28 @@ export async function POST(request: NextRequest) {
   if (existing?.status === "done" && existing.reportText) {
     return NextResponse.json({ report: existing, cached: true });
   }
-  if (existing?.status === "pending") {
+  if (existing?.status === "pending" && !isStalePendingReport(existing)) {
     return NextResponse.json(
       { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
       { status: 409 }
     );
   }
+  // Stale pending with a recorded charge → the process crashed AFTER payment:
+  // resume generation on the same row without charging twice.
+  const resumePaidPending =
+    existing?.status === "pending" &&
+    isStalePendingReport(existing) &&
+    Boolean(existing.transactionId);
 
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
   const user = await getUserById(userId).catch(() => null);
+  // Normalize legacy rows too — subjectName is interpolated into the prompt.
   const clientName =
     chart.subjectKind === "other" && chart.subjectName
-      ? chart.subjectName
+      ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(user?.name) || null;
   const evidence = formatHdEvidence(chart.chart);
   const systemPrompt = await wrapSystemPrompt(buildHdReportSystemPrompt(clientName));
@@ -127,25 +130,36 @@ export async function POST(request: NextRequest) {
     });
   };
 
+  let pending: { id: string } | null = null;
+  let freshPending = false;
   try {
-    charge = await chargeRuneAction({ userId, action: "HD_REPORT", exempt });
+    if (resumePaidPending && existing) {
+      pending = existing;
+    } else {
+      // error / unpaid stale pending → start over (its charge was rolled back).
+      if (existing) await deleteHdReportRow(existing.id);
 
-    // Idempotency: the unique chart_id index rejects a concurrent second purchase.
-    const pending = await createPendingHdReport({
-      chartId: chart.id,
-      userId,
-      transactionId: charge.transactionId ?? null,
-    });
-    if (!pending) {
-      await rollback();
-      const raced = await getHdReportForChart(chart.id, userId);
-      if (raced?.status === "done") {
-        return NextResponse.json({ report: raced, cached: true, refunded: true });
+      // Insert BEFORE charging: a crash here leaves an unpaid pending row that
+      // the recovery path above later discards — never a paid orphan.
+      pending = await createPendingHdReport({
+        chartId: chart.id,
+        userId,
+        transactionId: null,
+      });
+      if (!pending) {
+        const raced = await getHdReportForChart(chart.id, userId);
+        if (raced?.status === "done") {
+          return NextResponse.json({ report: raced, cached: true });
+        }
+        return NextResponse.json(
+          { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+          { status: 409 }
+        );
       }
-      return NextResponse.json(
-        { error: "Разбор уже генерируется. Оплата возвращена.", refunded: true },
-        { status: 409 }
-      );
+      freshPending = true;
+
+      charge = await chargeRuneAction({ userId, action: "HD_REPORT", exempt });
+      await attachHdReportTransaction(pending.id, charge.transactionId ?? null);
     }
 
     const text = await completeChat({
@@ -164,6 +178,13 @@ export async function POST(request: NextRequest) {
 
     if (!text || isRejectedLlmOutput(text)) {
       await rollback();
+      if (resumePaidPending) {
+        // Keep the paid pending row: the next attempt resumes it for free.
+        return NextResponse.json(
+          { error: "Модель не смогла создать разбор. Попробуйте ещё раз — оплата сохранена." },
+          { status: 502 }
+        );
+      }
       await failHdReport(pending.id, "invalid_model_output");
       return NextResponse.json(
         { error: "Модель не смогла создать разбор. Оплата возвращена.", refunded: true },
@@ -178,11 +199,16 @@ export async function POST(request: NextRequest) {
     }
 
     const report = await getHdReportForChart(chart.id, userId);
-    return NextResponse.json({ report, runeBalance: charge.newBalance });
+    return NextResponse.json({ report, runeBalance: charge?.newBalance });
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[human-design] billing rollback failed");
     });
+    // Charge never happened → the fresh pending row is an unpaid placeholder;
+    // remove it so the next attempt starts clean instead of hitting CLAIM_BUSY.
+    if (freshPending && !charge && pending) {
+      await deleteHdReportRow(pending.id).catch(() => undefined);
+    }
     if (error instanceof InsufficientFundsError) {
       return NextResponse.json(
         {

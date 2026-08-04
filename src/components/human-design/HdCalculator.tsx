@@ -12,6 +12,8 @@ interface PlaceSuggestion {
 }
 
 const STORAGE_KEY = "hd:last-fingerprint";
+/** Claim capability issued at guest-chart creation — proves the browser made it. */
+const claimTokenKey = (fingerprint: string) => `hd:claim-token:${fingerprint}`;
 
 interface HdCalculatorProps {
   /** Initial chart (e.g. restored from fingerprint in the cabinet). */
@@ -103,6 +105,12 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       setPlace(null);
       setPlaceQuery("");
     }
+    if (kind === "self") {
+      setSubjectName("");
+      // Returning from «другому» must restore the cabinet prefill, not leave
+      // the form empty (the one-shot prefill guard already fired).
+      prefillDoneRef.current = false;
+    }
   };
 
   const deleteMine = useCallback(
@@ -130,6 +138,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       if (localStorage.getItem(STORAGE_KEY) === chart.fingerprint) {
         localStorage.removeItem(STORAGE_KEY);
       }
+      localStorage.removeItem(claimTokenKey(chart.fingerprint));
       if (result?.id === chart.id) setResult(null);
       onChartDeleted?.(chart.id);
     },
@@ -150,20 +159,26 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Claim a guest chart after login.
+  // Claim a guest chart after login (token proves this browser created it).
   useEffect(() => {
     if (!authenticated || !result) return;
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored && stored === result.fingerprint) {
+      const claimToken = localStorage.getItem(claimTokenKey(stored));
       void fetch("/api/human-design/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fingerprint: stored }),
-      }).then(() => {
-        localStorage.removeItem(STORAGE_KEY);
-        // Cabinet: the claimed chart now belongs to the user — refresh the list.
-        onChartCreated?.(result);
-      });
+        body: JSON.stringify({ fingerprint: stored, claimToken }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d?.claimed) return; // not ours to claim — adopt happens on recompute
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(claimTokenKey(stored));
+          // Cabinet: the claimed chart now belongs to the user — refresh the list.
+          onChartCreated?.(result);
+        })
+        .catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated, result]);
@@ -215,6 +230,8 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     }
     setLoading(true);
     try {
+      // Recomputing the same data after login adopts the guest row via its token.
+      const storedFp = localStorage.getItem(STORAGE_KEY);
       const res = await fetch("/api/human-design/chart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -227,6 +244,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
           lon: place.longitude,
           subjectKind,
           subjectName: subjectKind === "other" ? subjectName.trim() : null,
+          claimToken: storedFp ? localStorage.getItem(claimTokenKey(storedFp)) : null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -240,6 +258,9 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
         prev.some((c) => c.id === payload.id) ? prev : [payload, ...prev]
       );
       localStorage.setItem(STORAGE_KEY, payload.fingerprint);
+      if (typeof data.claimToken === "string" && data.claimToken) {
+        localStorage.setItem(claimTokenKey(payload.fingerprint), data.claimToken);
+      }
       onChartCreated?.(payload);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
@@ -370,6 +391,12 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
             min="1900-01-01"
             max={new Date().toISOString().slice(0, 10)}
           />
+          {birthDate && Number(birthDate.slice(0, 4)) < 1991 && (
+            <p className="mt-1.5 text-[0.6875rem] leading-relaxed text-white/40">
+              Для рождений в СССР до 1991 года сверьте время с документами: действовали
+              декретные смещения, и исторические базы часовых поясов могут расходиться.
+            </p>
+          )}
         </div>
 
         <div className="hd-field">
@@ -410,11 +437,13 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
             autoComplete="off"
           />
           {placesOpen && suggestions.length > 0 && (
-            <div className="hd-places" role="listbox">
+            <div className="hd-places" role="listbox" aria-label="Варианты места рождения">
               {suggestions.map((s) => (
                 <button
                   key={`${s.label}-${s.latitude}`}
                   type="button"
+                  role="option"
+                  aria-selected={place?.label === s.label}
                   className="hd-places__item"
                   onClick={() => {
                     setPlace(s);
@@ -431,7 +460,11 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
         </div>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+      {error && (
+        <p className="mt-3 text-sm text-red-300" role="alert">
+          {error}
+        </p>
+      )}
 
       <button
         type="button"
