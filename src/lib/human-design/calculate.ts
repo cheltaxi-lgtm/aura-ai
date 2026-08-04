@@ -50,13 +50,17 @@ import { HD_ENGINE_VERSION } from "./types";
  * Boundary rule (deterministic, verified in verify-human-design.mjs): a point
  * exactly on a cell boundary — or up to 1e-9° below it — belongs to the UPPER
  * cell; anything further below belongs to the lower one. 1e-9° ≈ 0.0036 mas is
- * four orders of magnitude below the ephemeris precision (~1"), so this never
- * flips a real chart — it only stabilizes exact-boundary arithmetic.
+ * five-plus orders of magnitude below the ephemeris precision (~1"), so this
+ * never flips a real chart — it only stabilizes exact-boundary arithmetic.
  */
 const FP_EPSILON = 1e-9;
 
 export const HD_MIN_BIRTH_YEAR = 1900;
-/** Birth charts: no future dates. Transits may legitimately go further. */
+/**
+ * Sanity upper bound for direct engine input. The service layer is stricter
+ * and rejects any birth date after today — this cap only guards the engine
+ * against absurd input on paths that bypass validateHdInput.
+ */
 export const HD_MAX_BIRTH_YEAR = 2050;
 
 function normalize360(lon: number): number {
@@ -76,15 +80,23 @@ export function longitudeToActivation(
   longitude: number
 ): HdActivation {
   const adjusted = normalize360(longitude - GATE_WHEEL_OFFSET);
-  const gateIndex = Math.floor(adjusted / GATE_SIZE_DEG + FP_EPSILON) % 64;
+  // Keep the un-wrapped index for sub-structure math: at the 360° wrap the
+  // FP_EPSILON nudge can push floor() to 64, and using the modded index would
+  // compute withinGate ≈ 360° — a "franken-cell" (gate 1 with maxed line/
+  // color/tone/base). Physically unreachable (~0.02 mas window) but incorrect.
+  const rawIndex = Math.floor(adjusted / GATE_SIZE_DEG + FP_EPSILON);
+  const gateIndex = rawIndex % 64;
   const gate = GATE_ORDER[gateIndex]!;
-  const withinGate = adjusted - gateIndex * GATE_SIZE_DEG;
+  // Clamp at 0 on every level: a negative within-cell offset is only ever the
+  // FP_EPSILON nudge below a boundary, and letting it through cascades into
+  // out-of-range sub-cells (tone 0 → base 5 and the like).
+  const withinGate = Math.max(0, adjusted - rawIndex * GATE_SIZE_DEG);
   const line = Math.min(6, Math.floor(withinGate / LINE_SIZE_DEG + FP_EPSILON) + 1);
-  const withinLine = withinGate - (line - 1) * LINE_SIZE_DEG;
+  const withinLine = Math.max(0, withinGate - (line - 1) * LINE_SIZE_DEG);
   const color = Math.min(6, Math.floor(withinLine / COLOR_SIZE_DEG + FP_EPSILON) + 1);
-  const withinColor = withinLine - (color - 1) * COLOR_SIZE_DEG;
+  const withinColor = Math.max(0, withinLine - (color - 1) * COLOR_SIZE_DEG);
   const tone = Math.min(6, Math.floor(withinColor / TONE_SIZE_DEG + FP_EPSILON) + 1);
-  const withinTone = withinColor - (tone - 1) * TONE_SIZE_DEG;
+  const withinTone = Math.max(0, withinColor - (tone - 1) * TONE_SIZE_DEG);
   const base = Math.min(5, Math.floor(withinTone / BASE_SIZE_DEG + FP_EPSILON) + 1);
   return { body, longitude: normalize360(longitude), gate, line, color, tone, base };
 }
@@ -424,6 +436,10 @@ function parseInput(input: HdCalcInput): {
   };
 }
 
+function minutesToTimeLabel(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
 function birthUtcMs(input: HdCalcInput, timeLabel: string): number {
   const { year, month, day, hour, minute } = parseInput({
     ...input,
@@ -445,23 +461,37 @@ export function calculateHdChart(input: HdCalcInput): HdChart {
   const parsed = parseInput(input);
   const utcMs = birthUtcMs(input, parsed.timeLabel);
   const core = computeCore(utcMs);
+  // Whitespace-only time must behave as "time unknown", not as a known noon.
+  const timeKnown = Boolean(input.birthTime?.trim());
 
   let stability: HdTimeStability | undefined;
-  if (!input.birthTime) {
-    const dayStart = computeCore(birthUtcMs(input, "00:00"));
-    const dayEnd = computeCore(birthUtcMs(input, "23:59"));
-    stability = {
-      typeStable: dayStart.type === core.type && dayEnd.type === core.type,
-      authorityStable:
-        dayStart.authority === core.authority && dayEnd.authority === core.authority,
-      profileStable:
-        dayStart.profile === core.profile && dayEnd.profile === core.profile,
-    };
+  if (!timeKnown) {
+    // Hourly probes across the whole day. This is rigorous, not sampling:
+    // the slowest gate occupant (Moon, ≥ ~10 h per gate) cannot cross a gate
+    // boundary twice between probes, and any channel lives ≥ 1 h, so no
+    // type/authority/definition change can hide between adjacent probes.
+    let typeStable = true;
+    let authorityStable = true;
+    let profileStable = true;
+    for (let minutes = 0; minutes < 24 * 60 && (typeStable || authorityStable || profileStable); minutes += 60) {
+      if (minutes === 12 * 60) continue; // noon is the reference core
+      const probe = computeCore(birthUtcMs(input, minutesToTimeLabel(minutes)));
+      if (probe.type !== core.type) typeStable = false;
+      if (probe.authority !== core.authority) authorityStable = false;
+      if (probe.profile !== core.profile) profileStable = false;
+    }
+    if (typeStable || authorityStable || profileStable) {
+      const dayEnd = computeCore(birthUtcMs(input, "23:59"));
+      if (dayEnd.type !== core.type) typeStable = false;
+      if (dayEnd.authority !== core.authority) authorityStable = false;
+      if (dayEnd.profile !== core.profile) profileStable = false;
+    }
+    stability = { typeStable, authorityStable, profileStable };
   }
 
   return {
     engineVersion: HD_ENGINE_VERSION,
-    timeKnown: Boolean(input.birthTime),
+    timeKnown,
     timezone: input.timezone,
     birth: {
       date: input.birthDate,

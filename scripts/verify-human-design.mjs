@@ -176,7 +176,8 @@ for (const a of JPL_ANCHORS) {
 
 /* ---------- 5. Astronomy anchors ---------- */
 /* Equinox/solstice instants (UTC, NASA): apparent Sun = 0/90 deg by definition.
-   Engine uses mean equinox (no nutation), so allow 45 arcsec. */
+   Engine uses the mean equinox of date (nutation in longitude, up to ~17",
+   is not modelled), so allow 45 arcsec. */
 {
   const anchors = [
     ["2000-03-20T07:35:14Z", 0],
@@ -355,6 +356,33 @@ const TYPE_NAME_MAP = {
   );
   const known = calculateHdChart({ birthDate: "1990-06-15", birthTime: "14:59", timezone: "Europe/Moscow" });
   assert(known.stability === undefined, "no stability probe when time known");
+
+  // Whitespace-only time must behave as unknown time, not as a known noon.
+  const ws = calculateHdChart({ birthDate: "1990-06-15", birthTime: "  ", timezone: "Europe/Moscow" });
+  assert(ws.timeKnown === false && Boolean(ws.stability), "whitespace birthTime treated as unknown");
+
+  // Pinned probe outcomes: 1985-01-01 oscillates projector↔generator within
+  // the day (Moon-defined channel), 1985-01-16 keeps type+authority all day.
+  const unstableDay = calculateHdChart({ birthDate: "1985-01-01", birthTime: null, timezone: "Europe/Moscow" });
+  assert(unstableDay.stability?.typeStable === false, "probe: 1985-01-01 type unstable");
+  const stableDay = calculateHdChart({ birthDate: "1985-01-16", birthTime: null, timezone: "Europe/Moscow" });
+  assert(
+    stableDay.stability?.typeStable === true && stableDay.stability?.authorityStable === true,
+    "probe: 1985-01-16 type+authority stable"
+  );
+}
+
+/* ---------- 9b. Wheel-wrap cell ("franken-cell") regression ---------- */
+/* A longitude within FP_EPSILON below the 360° wrap resolves UP into the
+   first wheel gate — and must carry that gate's FIRST line/color/tone/base,
+   not clamped maxima computed from a ~360° within-gate offset. */
+{
+  const wrap = longitudeToActivation("sun", 358.25 - 1e-10);
+  assert(wrap.gate === 25, `wrap: gate 25 (got ${wrap.gate})`);
+  assert(
+    wrap.line === 1 && wrap.color === 1 && wrap.tone === 1 && wrap.base === 1,
+    `wrap: sub-structure 1/1/1/1 (got ${wrap.line}/${wrap.color}/${wrap.tone}/${wrap.base})`
+  );
 }
 
 /* ---------- 10. Regression golden set ---------- */
@@ -400,6 +428,12 @@ const TYPE_NAME_MAP = {
               `golden ${f.label}: ${side} ${body} ${act ? `${act.gate}.${act.line}` : "??"} == ${gateLine}`
             );
           }
+        }
+        if (f.expected.stability !== undefined) {
+          assert(
+            JSON.stringify(chart.stability) === JSON.stringify(f.expected.stability),
+            `golden ${f.label}: stability ${JSON.stringify(chart.stability)} == ${JSON.stringify(f.expected.stability)}`
+          );
         }
       }
       console.log(`  golden set: ${fixtures.length} regression fixtures checked strictly`);

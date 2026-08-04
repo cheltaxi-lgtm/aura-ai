@@ -1,6 +1,5 @@
 "use client";
 
-import { type MouseEvent } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -83,11 +82,6 @@ const SERVICE_DETAILS = [
   },
 ] as const;
 
-const go = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
-  event.preventDefault();
-  window.location.assign(href);
-};
-
 type LandingSeoHubProps = {
   rubPerRune?: number;
   readingPriceLabel?: string;
@@ -138,23 +132,23 @@ export default function LandingSeoHub({
         {compact ? (
           <nav className="landing-seo-hub__link-row" aria-label="Разделы сервиса">
             {SERVICES.map(({ href, label }) => (
-              <a key={href} href={href} onClick={go(href)} className="landing-seo-hub__link">
+              <Link key={href} href={href} className="landing-seo-hub__link">
                 {label}
-              </a>
+              </Link>
             ))}
           </nav>
         ) : (
           <ul className="landing-seo-hub__grid">
             {SERVICE_DETAILS.map(({ href, title, text, icon: Icon }) => (
               <li key={href}>
-                <a href={href} onClick={go(href)} className="landing-seo-hub__card group">
+                <Link href={href} className="landing-seo-hub__card group">
                   <span className="landing-seo-hub__card-icon" aria-hidden>
                     <Icon className="h-5 w-5" />
                   </span>
                   <h3 className="landing-seo-hub__card-title">{title}</h3>
                   <p className="landing-seo-hub__card-text">{text}</p>
                   <span className="landing-seo-hub__card-link">Подробнее →</span>
-                </a>
+                </Link>
               </li>
             ))}
           </ul>

@@ -310,19 +310,31 @@ export async function chargeForSession(
 
 /** Refund runes or free-question slot after failed LLM generation. */
 export async function rollbackCharge(params: RollbackChargeParams): Promise<number> {
+  return (await rollbackChargeEx(params)).balance;
+}
+
+/**
+ * Same as rollbackCharge but reports whether the refund actually landed, so
+ * API responses never claim "refunded: true" after a failed refund.
+ */
+export async function rollbackChargeEx(
+  params: RollbackChargeParams
+): Promise<{ balance: number; refunded: boolean }> {
   const {
     userId,
     cost,
-    wasFreeQuestion,
     transactionId,
     sessionId,
     slotReserved,
     actionType,
   } = params;
 
+  let refunded = false;
+
   if (slotReserved && sessionId) {
     try {
       await decrementQuestionCount(sessionId);
+      refunded = true;
     } catch (err) {
       console.error("[BillingService] slot rollback failed:", err);
     }
@@ -330,19 +342,21 @@ export async function rollbackCharge(params: RollbackChargeParams): Promise<numb
 
   if (cost > 0) {
     try {
-      return await refundRunes(
+      const balance = await refundRunes(
         userId,
         cost,
         "Возврат: ошибка генерации",
         actionType as RuneActionType | undefined,
         transactionId
       );
+      return { balance, refunded: true };
     } catch (err) {
       console.error("[BillingService] rune rollback failed:", err);
+      return { balance: await getRuneBalance(userId), refunded: false };
     }
   }
 
-  return getRuneBalance(userId);
+  return { balance: await getRuneBalance(userId), refunded };
 }
 
 /** Charge by configured action type (READING, QUESTION, etc.). */
@@ -400,6 +414,7 @@ export const BillingService = {
   chargeRuneAction,
   ensureSufficientRunes,
   rollbackCharge,
+  rollbackChargeEx,
   InsufficientFundsError,
 };
 

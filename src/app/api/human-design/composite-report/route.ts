@@ -27,6 +27,7 @@ import {
   getHdCompositeReport,
   isStalePendingComposite,
   lockStalePendingCompositeForResume,
+  toPublicHdCompositeReport,
   type HdCompositeReportRow,
 } from "@/lib/services/human-design-service";
 import {
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
 
   const existing = await getHdCompositeReport(base.id, partner.id, userId);
   if (existing?.status === "done" && existing.reportText) {
-    return NextResponse.json({ report: existing, cached: true });
+    return NextResponse.json({ report: toPublicHdCompositeReport(existing), cached: true });
   }
   if (existing?.status === "pending" && !isStalePendingComposite(existing)) {
     return NextResponse.json(
@@ -158,10 +159,11 @@ export async function POST(request: NextRequest) {
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
+  let refundLanded = false;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
     rollbackAttempted = true;
-    await BillingService.rollbackCharge({
+    const res = await BillingService.rollbackChargeEx({
       userId,
       cost: charge.spentRunes,
       wasFreeQuestion: charge.wasFreeQuestion,
@@ -169,6 +171,7 @@ export async function POST(request: NextRequest) {
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
+    refundLanded = res.refunded;
   };
 
   let pending: HdCompositeReportRow | null = null;
@@ -207,7 +210,7 @@ export async function POST(request: NextRequest) {
       if (!created) {
         const again = await getHdCompositeReport(base.id, partner.id, userId);
         if (again?.status === "done" && again.reportText) {
-          return NextResponse.json({ report: again, cached: true });
+          return NextResponse.json({ report: toPublicHdCompositeReport(again), cached: true });
         }
         return NextResponse.json(
           { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
@@ -240,7 +243,12 @@ export async function POST(request: NextRequest) {
       }
       await failCompositeReport(pending.id, "empty_or_rejected");
       return NextResponse.json(
-        { error: "Модель не смогла подготовить разбор. Оплата возвращена.", refunded: true },
+        {
+          error: refundLanded
+            ? "Модель не смогла подготовить разбор. Оплата возвращена."
+            : "Модель не смогла подготовить разбор. Если руны списались, они вернутся автоматически.",
+          refunded: refundLanded,
+        },
         { status: 502 }
       );
     }
@@ -248,7 +256,11 @@ export async function POST(request: NextRequest) {
     const text = answer.trim() + DISCLAIMER;
     await completeCompositeReport(pending.id, text, "openrouter");
     const done = await getHdCompositeReport(base.id, partner.id, userId);
-    return NextResponse.json({ report: done, cached: false, runeBalance: charge?.newBalance });
+    return NextResponse.json({
+      report: done ? toPublicHdCompositeReport(done) : null,
+      cached: false,
+      runeBalance: charge?.newBalance,
+    });
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[human-design] composite rollback failed");
@@ -269,7 +281,7 @@ export async function POST(request: NextRequest) {
     }
     console.warn("[human-design] composite report failed");
     return NextResponse.json(
-      { error: "Ошибка генерации разбора.", refunded: rollbackAttempted },
+      { error: "Ошибка генерации разбора.", refunded: refundLanded },
       { status: 502 }
     );
   }

@@ -45,10 +45,10 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const birthTimeRaw = typeof body.birthTime === "string" ? body.birthTime.trim() : "";
   const identity: HdChartIdentity = {
-    birthDate: typeof body.birthDate === "string" ? body.birthDate : "",
-    birthTime:
-      typeof body.birthTime === "string" && body.birthTime ? body.birthTime : null,
+    birthDate: typeof body.birthDate === "string" ? body.birthDate.trim() : "",
+    birthTime: birthTimeRaw || null,
     timezone: typeof body.timezone === "string" ? body.timezone : "",
     placeName: typeof body.placeName === "string" ? body.placeName : "",
     lat: Number(body.lat),

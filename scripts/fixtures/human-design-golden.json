@@ -318,5 +318,202 @@
         "northNode": "42.4"
       }
     }
+  },
+  {
+    "label": "rare-tripleSplit",
+    "birthDate": "1950-01-01",
+    "birthTime": "01:00",
+    "timezone": "America/New_York",
+    "expected": {
+      "type": "projector",
+      "profile": "1/3",
+      "authority": "splenic",
+      "definition": "tripleSplit",
+      "activeGates": 20,
+      "definedChannels": 3,
+      "personality": {
+        "sun": "38.1",
+        "earth": "39.1",
+        "moon": "20.5",
+        "mercury": "60.4",
+        "venus": "13.5",
+        "mars": "46.5",
+        "northNode": "21.4"
+      },
+      "design": {
+        "sun": "48.3",
+        "earth": "21.3",
+        "moon": "25.1",
+        "mercury": "18.5",
+        "venus": "14.1",
+        "mars": "7.5",
+        "northNode": "51.2"
+      }
+    }
+  },
+  {
+    "label": "rare-egoManifested",
+    "birthDate": "1950-01-02",
+    "birthTime": "19:00",
+    "timezone": "Europe/Moscow",
+    "expected": {
+      "type": "manifestor",
+      "profile": "3/5",
+      "authority": "egoManifested",
+      "definition": "split",
+      "activeGates": 19,
+      "definedChannels": 2,
+      "personality": {
+        "sun": "38.3",
+        "earth": "39.3",
+        "moon": "45.6",
+        "mercury": "60.6",
+        "venus": "13.5",
+        "mars": "46.5",
+        "northNode": "21.3"
+      },
+      "design": {
+        "sun": "48.5",
+        "earth": "21.5",
+        "moon": "51.1",
+        "mercury": "18.3",
+        "venus": "14.3",
+        "mars": "7.6",
+        "northNode": "51.2"
+      }
+    }
+  },
+  {
+    "label": "rare-quadrupleSplit",
+    "birthDate": "1950-02-24",
+    "birthTime": "01:00",
+    "timezone": "Europe/London",
+    "expected": {
+      "type": "generator",
+      "profile": "6/2",
+      "authority": "emotional",
+      "definition": "quadrupleSplit",
+      "activeGates": 21,
+      "definedChannels": 5,
+      "personality": {
+        "sun": "55.6",
+        "earth": "59.6",
+        "moon": "23.5",
+        "mercury": "19.5",
+        "venus": "41.2",
+        "mars": "48.1",
+        "northNode": "17.5"
+      },
+      "design": {
+        "sun": "9.2",
+        "earth": "16.2",
+        "moon": "25.1",
+        "mercury": "9.6",
+        "venus": "61.4",
+        "mars": "47.1",
+        "northNode": "51.1"
+      }
+    }
+  },
+  {
+    "label": "rare-egoProjected",
+    "birthDate": "1950-07-10",
+    "birthTime": "01:00",
+    "timezone": "Europe/London",
+    "expected": {
+      "type": "projector",
+      "profile": "3/5",
+      "authority": "egoProjected",
+      "definition": "single",
+      "activeGates": 20,
+      "definedChannels": 1,
+      "personality": {
+        "sun": "53.3",
+        "earth": "54.3",
+        "moon": "2.6",
+        "mercury": "53.1",
+        "venus": "35.4",
+        "mars": "48.4",
+        "northNode": "25.4"
+      },
+      "design": {
+        "sun": "51.5",
+        "earth": "57.5",
+        "moon": "54.6",
+        "mercury": "27.1",
+        "venus": "55.3",
+        "mars": "6.4",
+        "northNode": "17.4"
+      }
+    }
+  },
+  {
+    "label": "rare-reflector",
+    "birthDate": "1950-10-15",
+    "birthTime": "13:00",
+    "timezone": "Europe/Moscow",
+    "expected": {
+      "type": "reflector",
+      "profile": "1/3",
+      "authority": "lunar",
+      "definition": "none",
+      "activeGates": 20,
+      "definedChannels": 0,
+      "personality": {
+        "sun": "32.1",
+        "earth": "42.1",
+        "moon": "5.4",
+        "mercury": "48.1",
+        "venus": "48.5",
+        "mars": "5.3",
+        "northNode": "36.6"
+      },
+      "design": {
+        "sun": "62.3",
+        "earth": "61.3",
+        "moon": "33.3",
+        "mercury": "56.4",
+        "venus": "12.1",
+        "mars": "57.1",
+        "northNode": "25.3"
+      }
+    }
+  },
+  {
+    "label": "unknown-time-1985",
+    "birthDate": "1985-01-16",
+    "birthTime": null,
+    "timezone": "Europe/Moscow",
+    "expected": {
+      "type": "manifestingGenerator",
+      "profile": "6/2",
+      "authority": "sacral",
+      "definition": "split",
+      "activeGates": 16,
+      "definedChannels": 3,
+      "personality": {
+        "sun": "61.6",
+        "earth": "62.6",
+        "moon": "14.3",
+        "mercury": "58.3",
+        "venus": "63.2",
+        "mars": "63.6",
+        "northNode": "8.2"
+      },
+      "design": {
+        "sun": "50.2",
+        "earth": "3.2",
+        "moon": "64.4",
+        "mercury": "28.4",
+        "venus": "34.2",
+        "mars": "38.3",
+        "northNode": "8.4"
+      },
+      "stability": {
+        "typeStable": true,
+        "authorityStable": true,
+        "profileStable": false
+      }
+    }
   }
 ]

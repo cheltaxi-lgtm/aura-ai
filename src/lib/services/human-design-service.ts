@@ -51,6 +51,17 @@ export interface HdReportRow {
   createdAt: string;
 }
 
+/** Public wire shape: strips owner id, billing internals and model metadata. */
+export function toPublicHdReport(row: HdReportRow) {
+  return {
+    id: row.id,
+    chartId: row.chartId,
+    status: row.status,
+    reportText: row.reportText,
+    createdAt: row.createdAt,
+  };
+}
+
 interface HdChartDbRow {
   id: string;
   user_id: string | null;
@@ -139,8 +150,12 @@ export function validateHdInput(identity: HdChartIdentity): void {
     throw new HdInputError("Некорректная дата рождения.");
   }
   const year = Number(identity.birthDate.slice(0, 4));
-  // Births can't be in the future; the engine itself allows up to 2050 for transits.
-  if (year < HD_MIN_BIRTH_YEAR || year > new Date().getFullYear()) {
+  // Births can't be in the future — compare the full ISO date, not just the
+  // year, so "this December" is rejected too. The engine's own 2050 cap is a
+  // sanity bound for direct calculateHdChart callers.
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  if (year < HD_MIN_BIRTH_YEAR || identity.birthDate > todayIso) {
     throw new HdInputError("Дата рождения вне поддерживаемого диапазона.");
   }
   if (identity.birthTime !== null && !TIME_RE.test(identity.birthTime)) {
@@ -520,6 +535,16 @@ export interface HdCompositeReportRow {
   createdAt: string;
 }
 
+/** Public wire shape: strips billing internals. */
+export function toPublicHdCompositeReport(row: HdCompositeReportRow) {
+  return {
+    id: row.id,
+    status: row.status,
+    reportText: row.reportText,
+    createdAt: row.createdAt,
+  };
+}
+
 interface HdCompositeReportDbRow {
   id: string;
   base_chart_id: string;
@@ -609,6 +634,27 @@ export async function lockStalePendingCompositeForResume(reportId: string): Prom
     [reportId, STALE_PENDING_MS / 1000]
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Guest-pool hygiene: unclaimed guest charts (and their claim tokens) expire
+ * after `olderThanDays`. Owned charts are never touched. Cascades clean up
+ * any dependent rows via FK.
+ */
+export async function sweepGuestPoolHdCharts(
+  olderThanDays = 30,
+  limit = 500
+): Promise<number> {
+  const result = await query(
+    `DELETE FROM hd_charts
+     WHERE id IN (
+       SELECT id FROM hd_charts
+       WHERE user_id IS NULL AND created_at < now() - make_interval(days => $1)
+       LIMIT $2
+     )`,
+    [olderThanDays, limit]
+  );
+  return result.rowCount ?? 0;
 }
 
 export async function completeCompositeReport(

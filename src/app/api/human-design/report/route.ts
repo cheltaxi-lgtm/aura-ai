@@ -27,6 +27,7 @@ import {
   getHdReportForChart,
   isStalePendingReport,
   lockStalePendingReportForResume,
+  toPublicHdReport,
 } from "@/lib/services/human-design-service";
 import {
   buildHdReportSystemPrompt,
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
   const existing = await getHdReportForChart(chart.id, userId);
   if (existing?.status === "done" && existing.reportText) {
-    return NextResponse.json({ report: existing, cached: true });
+    return NextResponse.json({ report: toPublicHdReport(existing), cached: true });
   }
   if (existing?.status === "pending" && !isStalePendingReport(existing)) {
     return NextResponse.json(
@@ -119,10 +120,11 @@ export async function POST(request: NextRequest) {
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
+  let refundLanded = false;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
     rollbackAttempted = true;
-    await BillingService.rollbackCharge({
+    const res = await BillingService.rollbackChargeEx({
       userId,
       cost: charge.spentRunes,
       wasFreeQuestion: charge.wasFreeQuestion,
@@ -130,6 +132,7 @@ export async function POST(request: NextRequest) {
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
+    refundLanded = res.refunded;
   };
 
   let pending: { id: string } | null = null;
@@ -163,7 +166,7 @@ export async function POST(request: NextRequest) {
       if (!created) {
         const raced = await getHdReportForChart(chart.id, userId);
         if (raced?.status === "done") {
-          return NextResponse.json({ report: raced, cached: true });
+          return NextResponse.json({ report: toPublicHdReport(raced), cached: true });
         }
         return NextResponse.json(
           { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
@@ -199,7 +202,12 @@ export async function POST(request: NextRequest) {
       }
       await failHdReport(pending.id, "invalid_model_output");
       return NextResponse.json(
-        { error: "Модель не смогла создать разбор. Оплата возвращена.", refunded: true },
+        {
+          error: refundLanded
+            ? "Модель не смогла создать разбор. Оплата возвращена."
+            : "Модель не смогла создать разбор. Если руны списались, они вернутся автоматически.",
+          refunded: refundLanded,
+        },
         { status: 502 }
       );
     }
@@ -211,7 +219,10 @@ export async function POST(request: NextRequest) {
     }
 
     const report = await getHdReportForChart(chart.id, userId);
-    return NextResponse.json({ report, runeBalance: charge?.newBalance });
+    return NextResponse.json({
+      report: report ? toPublicHdReport(report) : null,
+      runeBalance: charge?.newBalance,
+    });
   } catch (error) {
     await rollback().catch(() => {
       console.warn("[human-design] billing rollback failed");
@@ -232,7 +243,7 @@ export async function POST(request: NextRequest) {
     }
     console.warn("[human-design] report failed");
     return NextResponse.json(
-      { error: "Ошибка генерации разбора.", refunded: rollbackAttempted },
+      { error: "Ошибка генерации разбора.", refunded: refundLanded },
       { status: 502 }
     );
   }
@@ -253,5 +264,5 @@ export async function GET(request: NextRequest) {
 
   const chartId = request.nextUrl.searchParams.get("chartId") ?? "";
   const report = await getHdReportForChart(chartId, resolved.profileUserId);
-  return NextResponse.json({ report });
+  return NextResponse.json({ report: report ? toPublicHdReport(report) : null });
 }

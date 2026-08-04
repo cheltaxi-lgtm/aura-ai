@@ -44,8 +44,13 @@ type GateActivity = { pLine?: number; dLine?: number; pBody?: HdBodyKey; dBody?:
 type LayerFilter = "all" | "p" | "d";
 
 interface TooltipState {
+  /** Anchor point in % of the stage box (zoom/tilt independent). */
   x: number;
   y: number;
+  /** Flip horizontally when the anchor hugs a side edge. */
+  flipX: "left" | "right" | null;
+  /** Show below the anchor when it hugs the top edge. */
+  flipY: boolean;
   title: string;
   lines: string[];
   action?: { label: string; run: () => void };
@@ -127,6 +132,7 @@ export default function Bodygraph({
   const reduceMotion = useReducedMotion();
   const svgRef = useRef<SVGSVGElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [layer, setLayer] = useState<LayerFilter>("all");
   const [highlightCenter, setHighlightCenter] = useState<HdCenterKey | null>(null);
@@ -227,8 +233,42 @@ export default function Bodygraph({
     return def?.nameRu ?? key;
   }, []);
 
-  const showGateTooltip = useCallback(
-    (gate: number, lx: number, ly: number) => {
+  /**
+   * Anchor the tooltip to the hovered/focused element's on-screen rect.
+   * getBoundingClientRect already includes zoom/pan/tilt transforms, so the
+   * tooltip stays glued to its element at any scale — and can flip inward at
+   * the stage edges instead of being clipped by overflow-hidden.
+   */
+  const showTooltipFor = useCallback(
+    (el: Element, data: { title: string; lines: string[]; action?: TooltipState["action"] }) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const sr = stage.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const x = ((r.left + r.width / 2 - sr.left) / sr.width) * 100;
+      const y = ((r.top + r.height / 2 - sr.top) / sr.height) * 100;
+      setTooltip({
+        x,
+        y,
+        flipX: x > 62 ? "left" : x < 38 ? "right" : null,
+        flipY: y < 22,
+        title: data.title,
+        lines: data.lines,
+        action: data.action,
+      });
+    },
+    []
+  );
+
+  const hideTooltip = useCallback((e?: React.FocusEvent | React.MouseEvent) => {
+    // Focus moving INTO the tooltip (its action button) must not hide it.
+    const next = e?.relatedTarget as Node | null;
+    if (next && tooltipRef.current?.contains(next)) return;
+    setTooltip(null);
+  }, []);
+
+  const gateTooltipData = useCallback(
+    (gate: number) => {
       const activity = gateActivity.get(gate);
       const lines: string[] = [];
       if (activity?.pLine) {
@@ -244,22 +284,15 @@ export default function Bodygraph({
       if (transitBody) {
         lines.push(`Транзит сейчас: ${BODY_NAMES_RU[transitBody]}`);
       }
-      setTooltip({
-        x: lx,
-        y: ly,
-        title: `Ворота ${gate} — ${GATE_NAMES_RU[gate] ?? ""}`,
-        lines,
-      });
+      return { title: `Ворота ${gate} — ${GATE_NAMES_RU[gate] ?? ""}`, lines };
     },
     [gateActivity, transits]
   );
 
-  const showCenterTooltip = useCallback(
-    (center: HdCenterKey, cx: number, cy: number) => {
+  const centerTooltipData = useCallback(
+    (center: HdCenterKey) => {
       const defined = definedCenters.has(center);
-      setTooltip({
-        x: cx,
-        y: cy,
+      return {
         title: CENTER_NAMES_RU[center],
         lines: [
           defined
@@ -269,7 +302,7 @@ export default function Bodygraph({
         action: onCenterInsight
           ? { label: "Разбор Эвелины", run: () => onCenterInsight(center) }
           : undefined,
-      });
+      };
     },
     [definedCenters, onCenterInsight]
   );
@@ -493,10 +526,8 @@ export default function Bodygraph({
                       x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
                       stroke="transparent"
                       strokeWidth={14}
-                      onMouseEnter={() =>
-                        setTooltip({
-                          x: seg.mx,
-                          y: seg.my,
+                      onMouseEnter={(e) =>
+                        showTooltipFor(e.currentTarget, {
                           title: `Канал ${seg.key} — ${channelName(seg.key)}`,
                           lines: [
                             defined
@@ -505,10 +536,8 @@ export default function Bodygraph({
                           ],
                         })
                       }
-                      onClick={() =>
-                        setTooltip({
-                          x: seg.mx,
-                          y: seg.my,
+                      onClick={(e) =>
+                        showTooltipFor(e.currentTarget, {
                           title: `Канал ${seg.key} — ${channelName(seg.key)}`,
                           lines: [
                             defined
@@ -557,12 +586,24 @@ export default function Bodygraph({
                       stroke={defined ? "rgba(255, 232, 168, 0.9)" : "rgba(232, 199, 126, 0.35)"}
                       strokeWidth={defined ? 2 : 1.5}
                       filter={defined ? "url(#hd-soft-glow)" : undefined}
-                      onMouseEnter={() => {
-                        showCenterTooltip(shape.key, shape.cx, shape.cy);
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`${CENTER_NAMES_RU[shape.key]}: ${defined ? "определён" : "открыт"}`}
+                      className="hd-bodygraph__center"
+                      onMouseEnter={(e) => {
+                        showTooltipFor(e.currentTarget, centerTooltipData(shape.key));
                         setHighlightCenter(shape.key);
                       }}
                       onMouseLeave={() => setHighlightCenter(null)}
-                      onClick={() => showCenterTooltip(shape.key, shape.cx, shape.cy)}
+                      onClick={(e) => showTooltipFor(e.currentTarget, centerTooltipData(shape.key))}
+                      onFocus={(e) => {
+                        showTooltipFor(e.currentTarget, centerTooltipData(shape.key));
+                        setHighlightCenter(shape.key);
+                      }}
+                      onBlur={(e) => {
+                        setHighlightCenter(null);
+                        hideTooltip(e);
+                      }}
                     />
                     <text
                       x={shape.cx}
@@ -590,11 +631,21 @@ export default function Bodygraph({
                 const glyph = a?.pBody ? BODY_GLYPH[a.pBody] : a?.dBody ? BODY_GLYPH[a.dBody] : null;
                 const transitBody = transits?.get(anchor.gate);
                 const partnerOnly = !active && (partnerGates?.has(anchor.gate) ?? false);
+                const focusable = active || Boolean(transitBody) || partnerOnly;
                 return (
                   <g
                     key={anchor.gate}
-                    onMouseEnter={() => showGateTooltip(anchor.gate, anchor.lx, anchor.ly)}
-                    onClick={() => showGateTooltip(anchor.gate, anchor.lx, anchor.ly)}
+                    onMouseEnter={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
+                    onClick={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
+                    onFocus={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
+                    onBlur={hideTooltip}
+                    tabIndex={focusable ? 0 : undefined}
+                    role={focusable ? "button" : undefined}
+                    aria-label={
+                      focusable
+                        ? `Ворота ${anchor.gate} — ${GATE_NAMES_RU[anchor.gate] ?? ""}${active ? ", активированы" : ""}`
+                        : undefined
+                    }
                     className="hd-bodygraph__gate"
                     opacity={visible ? 1 : 0.2}
                   >
@@ -654,10 +705,18 @@ export default function Bodygraph({
 
         {tooltip && (
           <div
+            ref={tooltipRef}
             className={`hd-bodygraph__tooltip${tooltip.action ? " has-action" : ""}`}
             style={{
-              left: `${(tooltip.x / 400) * 100}%`,
-              top: `${(tooltip.y / 700) * 100}%`,
+              left: `${tooltip.x}%`,
+              top: `${tooltip.y}%`,
+              transform: `translate(${
+                tooltip.flipX === "left"
+                  ? "calc(-100% + 14px)"
+                  : tooltip.flipX === "right"
+                    ? "-14px"
+                    : "-50%"
+              }, ${tooltip.flipY ? "14px" : "calc(-100% - 10px)"})`,
             }}
             role="status"
           >

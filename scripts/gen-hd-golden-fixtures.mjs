@@ -16,6 +16,15 @@ const CASES = [
   { label: "utc-1999-eve", birthDate: "1999-12-31", birthTime: "14:05", timezone: "UTC" },
   { label: "almaty-1975-morning", birthDate: "1975-07-01", birthTime: "06:30", timezone: "Asia/Almaty" },
   { label: "berlin-2024-leapday", birthDate: "2024-02-29", birthTime: "08:45", timezone: "Europe/Berlin" },
+  // Rare configurations (found by scripts/_find-hd-rare-configs.mjs) — pin the
+  // branches that the common population never executes.
+  { label: "rare-tripleSplit", birthDate: "1950-01-01", birthTime: "01:00", timezone: "America/New_York" },
+  { label: "rare-egoManifested", birthDate: "1950-01-02", birthTime: "19:00", timezone: "Europe/Moscow" },
+  { label: "rare-quadrupleSplit", birthDate: "1950-02-24", birthTime: "01:00", timezone: "Europe/London" },
+  { label: "rare-egoProjected", birthDate: "1950-07-10", birthTime: "01:00", timezone: "Europe/London" },
+  { label: "rare-reflector", birthDate: "1950-10-15", birthTime: "13:00", timezone: "Europe/Moscow" },
+  // Unknown birth time: noon chart + hourly stability probe pinned.
+  { label: "unknown-time-1985", birthDate: "1985-01-16", birthTime: null, timezone: "Europe/Moscow" },
 ];
 
 const BODIES = ["sun", "earth", "moon", "mercury", "venus", "mars", "northNode"];
@@ -43,6 +52,7 @@ const out = CASES.map((c) => {
       definedChannels: chart.channels.filter((ch) => ch.defined).length,
       personality: pick(chart.personality),
       design: pick(chart.designActivations),
+      ...(chart.stability ? { stability: chart.stability } : {}),
     },
   };
 });

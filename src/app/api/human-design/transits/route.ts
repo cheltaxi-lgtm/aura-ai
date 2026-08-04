@@ -10,8 +10,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
 
+  // Own bucket: transits polling must not eat the chart-compute allowance.
   const { allowed } = await checkRateLimit(
-    rateLimitKey("hd_chart_public", clientIp(request)),
+    rateLimitKey("hd_transits", clientIp(request)),
     30,
     60_000
   );

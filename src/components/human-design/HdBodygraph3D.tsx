@@ -167,6 +167,7 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
         let lastY = 0;
 
         const onDown = (e: PointerEvent) => {
+          if (!e.isPrimary) return;
           dragging = true;
           lastX = e.clientX;
           lastY = e.clientY;
@@ -183,6 +184,9 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
           dragging = false;
         };
         renderer.domElement.addEventListener("pointerdown", onDown);
+        // Browser takes over a vertical touch scroll → pointercancel; without
+        // this the chart would keep rotating from a stale drag state.
+        renderer.domElement.addEventListener("pointercancel", onUp);
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
 
@@ -217,18 +221,25 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
           cancelAnimationFrame(raf);
           observer.disconnect();
           renderer.domElement.removeEventListener("pointerdown", onDown);
+          renderer.domElement.removeEventListener("pointercancel", onUp);
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
-          renderer.dispose();
+          // Dispose every GPU resource — including Points (starfield), which
+          // instanceof-Mesh checks miss.
           scene.traverse((obj) => {
-            if (obj instanceof THREE.Mesh) {
-              obj.geometry.dispose();
-              const m = obj.material;
-              if (Array.isArray(m)) m.forEach((x) => x.dispose());
-              else m.dispose();
-            }
+            const res = obj as unknown as {
+              geometry?: { dispose(): void };
+              material?: { dispose(): void } | { dispose(): void }[];
+            };
+            res.geometry?.dispose();
+            const m = res.material;
+            if (Array.isArray(m)) m.forEach((x) => x.dispose());
+            else m?.dispose();
           });
-          mount.removeChild(renderer.domElement);
+          renderer.dispose();
+          if (renderer.domElement.parentNode === mount) {
+            mount.removeChild(renderer.domElement);
+          }
         };
       } catch {
         if (!disposed) setFailed(true);

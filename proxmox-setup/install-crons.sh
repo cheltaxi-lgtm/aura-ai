@@ -21,6 +21,7 @@ chmod 750 "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
          "$REPO/proxmox-setup/cron-cleanup-empty-sessions.sh" \
          "$REPO/proxmox-setup/cron-joint-reading-sweep.sh" \
          "$REPO/proxmox-setup/cron-guest-resume-expire.sh" \
+         "$REPO/proxmox-setup/cron-hd-guest-sweep.sh" \
          "$REPO/proxmox-setup/cron-natal-transits.sh" \
          "$REPO/proxmox-setup/install-crons.sh" 2>/dev/null || true
 
@@ -51,6 +52,8 @@ CLEANED="$(printf '%s\n' "$CURRENT" | sed "/${MARK_BEGIN}/,/${MARK_END}/d")"
   echo "20 5 * * * $REPO/proxmox-setup/cron-joint-reading-sweep.sh >> $LOG_DIR/joint-reading-sweep.log 2>&1"
   # Guest triplet resume TTL — expire unclaimed issued receipts — daily at 05:35 UTC.
   echo "35 5 * * * $REPO/proxmox-setup/cron-guest-resume-expire.sh >> $LOG_DIR/guest-resume-expire.log 2>&1"
+  # HD guest-pool TTL — delete unclaimed guest charts older than 30 days — daily at 05:50 UTC.
+  echo "50 5 * * * $REPO/proxmox-setup/cron-hd-guest-sweep.sh >> $LOG_DIR/hd-guest-sweep.log 2>&1"
   # Natal transit digest — hourly; route selects 09:00 in each birth-place timezone.
   echo "15 * * * * $REPO/proxmox-setup/cron-natal-transits.sh >> $LOG_DIR/natal-transits.log 2>&1"
   echo "$MARK_END"

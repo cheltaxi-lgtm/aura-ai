@@ -13,6 +13,12 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
     optimizePackageImports: ["lucide-react", "framer-motion"],
+    // Windows local builds: the static-gen worker thread intermittently dies
+    // with STATUS_STACK_BUFFER_OVERRUN (0xC0000409) on this box. Child-process
+    // workers avoid it. Linux CI/prod keep the faster default thread workers.
+    ...(process.platform === "win32"
+      ? { workerThreads: false, staticGenerationMaxConcurrency: 4 }
+      : {}),
   },
   images: {
     formats: ["image/avif", "image/webp"],

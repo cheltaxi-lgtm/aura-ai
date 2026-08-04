@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import HdCalculator from "./HdCalculator";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdComposite from "./HdComposite";
@@ -18,6 +18,12 @@ export default function HdCabinet() {
   const [enabled, setEnabled] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [partnerId, setPartnerId] = useState<string | null>(null);
+  // Read the current selection inside load() without depending on it —
+  // otherwise every chip click recreates load and refetches the whole list.
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const load = useCallback(() => {
     fetch("/api/human-design/mine")
@@ -26,10 +32,10 @@ export default function HdCabinet() {
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
         setCharts(list);
-        if (list[0] && !selectedId) setSelectedId(list[0].id);
+        if (list[0] && !selectedIdRef.current) setSelectedId(list[0].id);
       })
       .catch(() => setCharts([]));
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => {
     load();

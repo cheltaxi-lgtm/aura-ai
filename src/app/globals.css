@@ -8461,6 +8461,25 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
   cursor: pointer;
 }
 
+.hd-bodygraph__gate:focus-visible {
+  outline: none;
+}
+
+.hd-bodygraph__gate:focus-visible > circle {
+  stroke: rgba(255, 232, 168, 0.95);
+  stroke-width: 2;
+}
+
+.hd-bodygraph__center {
+  cursor: pointer;
+}
+
+.hd-bodygraph__center:focus-visible {
+  outline: none;
+  stroke: rgba(255, 232, 168, 1);
+  stroke-width: 3;
+}
+
 .hd-bodygraph__tooltip {
   @apply pointer-events-none absolute z-10 w-52 -translate-x-1/2 rounded-xl border border-amber-500/25 px-3 py-2;
   background: linear-gradient(180deg, rgba(24, 17, 40, 0.97), rgba(10, 8, 16, 0.98));
@@ -8593,7 +8612,9 @@ body.auth-recaptcha-hidden .grecaptcha-badge {
 
 .hd-3d__canvas {
   @apply h-[480px] w-full sm:h-[640px];
-  touch-action: none;
+  /* Vertical swipes scroll the page; horizontal drags rotate the chart.
+     "none" here trapped scroll on mobile — the canvas is a full-width block. */
+  touch-action: pan-y;
 }
 
 .hd-3d__hint {
