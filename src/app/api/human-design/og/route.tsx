@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { ImageResponse } from "next/og";
 import { getHdChartByFingerprint } from "@/lib/services/human-design-service";
 import {
@@ -7,30 +8,21 @@ import {
 } from "@/lib/human-design";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const alt = "Карта Дизайна Человека";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
 
-export default async function OpenGraphImage({
-  params,
-}: {
-  params: Promise<{ fingerprint: string }>;
-}) {
-  const { fingerprint } = await params;
-  console.error("[hd-og] start", fingerprint.slice(0, 8));
-  const chart = await getHdChartByFingerprint(fingerprint).catch((e) => {
-    console.error("[hd-og] db error", e?.message);
-    return null;
-  });
-  console.error("[hd-og] chart loaded", Boolean(chart));
+const WIDTH = 1200;
+const HEIGHT = 630;
+
+export async function GET(request: NextRequest) {
+  const fingerprint = request.nextUrl.searchParams.get("f") ?? "";
+  const chart = /^[0-9a-f]{64}$/.test(fingerprint)
+    ? await getHdChartByFingerprint(fingerprint).catch(() => null)
+    : null;
 
   const typeName = chart ? TYPE_META[chart.chart.type].nameRu : "Дизайн Человека";
   const profile = chart ? chart.chart.profile : "";
   const authority = chart ? AUTHORITY_NAMES_RU[chart.chart.authority] : "";
   const profileName = chart ? (PROFILE_NAMES_RU[chart.chart.profile] ?? "") : "";
 
-  console.error("[hd-og] rendering");
   return new ImageResponse(
     (
       <div
@@ -110,6 +102,10 @@ export default async function OpenGraphImage({
         </div>
       </div>
     ),
-    { ...size }
+    {
+      width: WIDTH,
+      height: HEIGHT,
+      headers: { "Cache-Control": "public, max-age=3600, s-maxage=86400" },
+    }
   );
 }

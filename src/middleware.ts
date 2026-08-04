@@ -52,6 +52,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/human-design/chart",
   "/api/human-design/places",
   "/api/human-design/transits",
+  "/api/human-design/og",
   "/api/payment/webhook",
   "/api/payments/webhook",
   "/api/runes/webhook",

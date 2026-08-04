@@ -23,6 +23,11 @@ export async function generateMetadata({
     title: `Карта Дизайна Человека: ${typeName}, профиль ${chart.chart.profile}`,
     description: `Бодиграф: ${typeName}, авторитет, профиль ${chart.chart.profile}, инкарнационный крест. Рассчитайте свою карту бесплатно.`,
     robots: { index: false, follow: true },
+    openGraph: {
+      title: `${typeName} · профиль ${chart.chart.profile}`,
+      description: "Карта Дизайна Человека на Zovus — рассчитайте свою бесплатно.",
+      images: [{ url: `/api/human-design/og?f=${fingerprint}`, width: 1200, height: 630 }],
+    },
   };
 }
 

@@ -1,5 +1,8 @@
 #!/bin/bash
-echo "--- port 3000 owner:"
-ss -tlnp | grep ':3000'
-echo "--- all next-server processes:"
-ps aux | grep -E 'next-server|next start' | grep -v grep
+find /opt/aura-ai/.next -path '*karta*' -name '*.meta' 2>/dev/null | head -10
+echo "---"
+find /opt/aura-ai/.next -path '*karta*' \( -name '*.body' -o -name '*.html' -o -name '*.rsc' \) 2>/dev/null | head -10
+echo "--- cache dir:"
+ls /opt/aura-ai/.next/server/app/dizayn-cheloveka/karta/ 2>/dev/null
+ls "/opt/aura-ai/.next/server/app/dizayn-cheloveka/karta/[fingerprint]/" 2>/dev/null
+ls "/opt/aura-ai/.next/server/app/dizayn-cheloveka/karta/[fingerprint]/opengraph-image/" 2>/dev/null
