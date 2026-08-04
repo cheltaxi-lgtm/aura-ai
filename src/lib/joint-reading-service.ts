@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "crypto";
-import { query } from "@/lib/db";
+import { query, queryClient, withTransaction } from "@/lib/db";
 import { generateReading } from "@/lib/chat-prompts";
 import { dispatchNotification } from "@/lib/notify";
 import { normalizeSpreadId, type SpreadId } from "@/lib/spreads";
@@ -408,6 +408,49 @@ export async function listJointReadingsForUser(userId: string, limit = 20): Prom
     [userId, limit]
   );
   return res.rows.map((row) => mapRow(row as Record<string, unknown>));
+}
+
+/**
+ * Hard-delete a joint reading for a participant (initiator or partner).
+ * Revokes private share links first. Runes are not refunded.
+ */
+export async function deleteJointReadingForUser(
+  token: string,
+  userId: string
+): Promise<JointReadingRow | null> {
+  const safeToken = token.trim();
+  if (!safeToken || safeToken.length > 128) return null;
+
+  return withTransaction(async (client) => {
+    const found = await queryClient<{ id: string } & Record<string, unknown>>(
+      client,
+      `SELECT * FROM joint_readings
+       WHERE token = $1
+         AND (initiator_user_id = $2 OR partner_user_id = $2)
+       FOR UPDATE`,
+      [safeToken, userId]
+    );
+    const row = found.rows[0];
+    if (!row) return null;
+
+    await queryClient(
+      client,
+      `UPDATE private_report_shares
+       SET revoked_at = COALESCE(revoked_at, NOW())
+       WHERE report_kind = 'relationship' AND report_id = $1`,
+      [row.id]
+    );
+
+    await queryClient(
+      client,
+      `DELETE FROM joint_readings
+       WHERE id = $1
+         AND (initiator_user_id = $2 OR partner_user_id = $2)`,
+      [row.id, userId]
+    );
+
+    return mapRow(row);
+  });
 }
 
 export async function ensureCombinedReading(row: JointReadingRow): Promise<JointReadingRow> {

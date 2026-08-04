@@ -242,6 +242,30 @@ export default function CabinetPage() {
     void fetchCabinet(0, false);
   }, [authLoading, authUser?.profileUserId, data?.needsOnboarding, fetchCabinet]);
 
+  /** Deep link: /cabinet?tab=history|runes|… */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (
+      tab === "profile" ||
+      tab === "history" ||
+      tab === "rituals" ||
+      tab === "diary" ||
+      tab === "memory" ||
+      tab === "runes"
+    ) {
+      setActiveTab(tab);
+      params.delete("tab");
+      const qs = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`
+      );
+    }
+  }, []);
+
   /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
   useEffect(() => {
     if (loading || authLoading || !authUser || !data) return;

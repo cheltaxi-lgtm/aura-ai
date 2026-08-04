@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Copy, Loader2, Users } from "lucide-react";
+import { Copy, Loader2, Trash2, Users } from "lucide-react";
 import {
   setJointReadingToken,
   setJointReadingRole,
@@ -77,6 +77,7 @@ export default function JointReadingTokenPage() {
   const [jointRetrySessionId, setJointRetrySessionId] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [creatingNew, setCreatingNew] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -569,6 +570,48 @@ export default function JointReadingTokenPage() {
         <p className="mt-8 text-center text-xs text-white/35">
           Ссылка действует до {new Date(data.expiresAt).toLocaleDateString("ru-RU")}
         </p>
+      ) : null}
+
+      {data.isLoggedIn &&
+      (data.viewerRole === "initiator" || data.viewerRole === "partner") ? (
+        <div className="mt-8 flex justify-center border-t border-white/8 pt-6">
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => {
+              void (async () => {
+                const who = `${labelA} и ${labelB}`;
+                if (
+                  !window.confirm(
+                    `Удалить совместный расклад (${who}) безвозвратно?\nПропадёт из кабинета у обоих участников, ссылка перестанет открываться. Руны не возвращаются.`
+                  )
+                ) {
+                  return;
+                }
+                setDeleting(true);
+                try {
+                  const res = await fetch(
+                    `/api/joint-reading/${encodeURIComponent(token)}`,
+                    { method: "DELETE", credentials: "include" }
+                  );
+                  if (!res.ok) {
+                    window.alert("Не удалось удалить расклад. Попробуйте ещё раз.");
+                    return;
+                  }
+                  router.replace("/cabinet?tab=history");
+                } catch {
+                  window.alert("Не удалось удалить расклад. Проверьте соединение.");
+                } finally {
+                  setDeleting(false);
+                }
+              })();
+            }}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-rose-300/20 px-3 text-xs text-rose-200/75 transition hover:border-rose-300/40 hover:text-rose-100 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            {deleting ? "Удаление…" : "Удалить из кабинета"}
+          </button>
+        </div>
       ) : null}
     </SeoPageShell>
   );

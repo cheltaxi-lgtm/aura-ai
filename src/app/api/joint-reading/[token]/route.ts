@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import {
+  deleteJointReadingForUser,
   getJointReadingByToken,
   resolveJointParticipantRole,
 } from "@/lib/joint-reading-service";
@@ -94,4 +95,34 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         ? sanitizeSynastryForClient(currentSynastry)
         : null,
   });
+}
+
+/** Participant (initiator or partner) deletes the joint reading from history. */
+export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
+
+  const authed = await requireProfileUserId();
+  if (!authed) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(
+    authed.profileUserId,
+    "joint_reading_delete"
+  );
+  if (rateLimited) return rateLimited;
+
+  const { token } = await params;
+  if (!token?.trim()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const deleted = await deleteJointReadingForUser(token, authed.profileUserId);
+  if (!deleted) {
+    return NextResponse.json({ error: "Расклад не найден." }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, token: deleted.token, id: deleted.id });
 }

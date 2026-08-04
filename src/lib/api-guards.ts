@@ -70,6 +70,7 @@ export const PAID_ROUTE_LIMITS = {
   joint_reading_create: { max: 10, windowMs: 60_000 },
   joint_reading_complete: { max: 10, windowMs: 60_000 },
   joint_reading_mine: { max: 30, windowMs: 60_000 },
+  joint_reading_delete: { max: 10, windowMs: 60_000 },
   /** Unauthenticated GET, polled every 3s by both participants — capped per-IP, generous enough for normal use. */
   joint_reading_view: { max: 40, windowMs: 60_000 },
   natal_chart_read: { max: 30, windowMs: 60_000 },
