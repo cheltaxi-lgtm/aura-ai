@@ -168,9 +168,17 @@ assert.throws(() => buildAppOAuthCompleteUrl("/auth/user/login"), /invalid_oauth
     "utf8"
   );
   assert.ok(bridgeRoute.includes('"Referrer-Policy": "no-referrer"'));
+  // Prefer origin-aware sanitize; accept legacy two-arg form as well.
   assert.ok(
-    bridgeRoute.includes('sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/")'),
+    bridgeRoute.includes("sanitizeReturnToWithOrigin(") ||
+      bridgeRoute.includes('sanitizeReturnTo(request.nextUrl.searchParams.get("to"), "/")'),
     "session bridge must use a web-safe fallback"
+  );
+  assert.ok(
+    bridgeRoute.includes('sanitizeReturnToWithOrigin(')
+      ? /sanitizeReturnToWithOrigin\([\s\S]*?["']\/["']\s*\)/.test(bridgeRoute)
+      : true,
+    "session bridge origin-aware sanitize must fall back to '/'"
   );
   assert.ok(
     !bridgeRoute.includes('destination.searchParams.set("app", "1")'),

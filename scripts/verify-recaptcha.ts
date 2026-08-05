@@ -46,8 +46,11 @@ const SERVER_SCOPE_FILES: Record<RecaptchaScope, string[]> = {
     "app/api/support/tickets/route.ts",
     "app/api/support/tickets/[id]/messages/route.ts",
   ],
+  partners: ["app/api/partners/leads/route.ts"],
   chat: ["app/api/chat/route.ts"],
   payments: ["app/api/payment/create/route.ts", "app/api/runes/purchase/route.ts"],
+  // share defaults off; create is auth + rate-limit gated (see check below).
+  share: [],
 };
 
 /** Client must attach token for each scope somewhere */
@@ -58,12 +61,14 @@ const CLIENT_SCOPE_HINTS: Record<RecaptchaScope, string[]> = {
   expertLogin: ["components/AuthForm.tsx"],
   adminLogin: ["components/admin/AdminLoginForm.tsx"],
   support: ["app/cabinet/support/page.tsx"],
+  partners: ["components/partners/PartnerInquiryForm.tsx"],
   chat: ["hooks/useChatActions.ts"],
   payments: [
     "components/Paywall.tsx",
     "components/PaywallModal.tsx",
     "components/RuneShopModal.tsx",
   ],
+  share: ["contexts/ShareContext.tsx"],
 };
 
 function checkStaticWiring() {
@@ -72,17 +77,38 @@ function checkStaticWiring() {
   for (const scope of RECAPTCHA_SCOPES) {
     ok(Boolean(RECAPTCHA_SCOPE_LABELS[scope]), `label for scope "${scope}"`);
 
-    for (const file of SERVER_SCOPE_FILES[scope]) {
-      const src = read(file);
-      const pattern = new RegExp(`enforceRecaptchaScope\\(\\s*["']${scope}["']`);
-      ok(pattern.test(src), `${file} calls enforceRecaptchaScope("${scope}", …)`);
+    const serverFiles = SERVER_SCOPE_FILES[scope];
+    if (!Array.isArray(serverFiles)) {
+      ok(false, `SERVER_SCOPE_FILES missing scope "${scope}"`);
+      continue;
     }
 
-    const clientHit = CLIENT_SCOPE_HINTS[scope].some((file) => {
+    if (scope === "share") {
+      // Default-off scope: auth + rate limit on create (not captcha).
+      const shareSrc = read("app/api/share/route.ts");
+      ok(
+        shareSrc.includes("requireProfileUserId") &&
+          shareSrc.includes("enforceShareCreateRateLimit"),
+        'share create is auth + rate-limit gated (captcha optional/off)'
+      );
+    } else {
+      for (const file of serverFiles) {
+        const src = read(file);
+        const pattern = new RegExp(`enforceRecaptchaScope\\(\\s*["']${scope}["']`);
+        ok(pattern.test(src), `${file} calls enforceRecaptchaScope("${scope}", …)`);
+      }
+    }
+
+    const clientHints = CLIENT_SCOPE_HINTS[scope];
+    if (!Array.isArray(clientHints) || clientHints.length === 0) {
+      ok(false, `CLIENT_SCOPE_HINTS missing scope "${scope}"`);
+      continue;
+    }
+    const clientHit = clientHints.some((file) => {
       const src = read(file);
       return src.includes(`"${scope}"`) || src.includes(`'${scope}'`);
     });
-    ok(clientHit, `client attaches token for "${scope}" (${CLIENT_SCOPE_HINTS[scope].join(", ")})`);
+    ok(clientHit, `client attaches token for "${scope}" (${clientHints.join(", ")})`);
   }
 
   // Detect swapped arguments: enforceRecaptchaScope(recaptchaToken, "scope"
@@ -177,7 +203,12 @@ const HTTP_CASES: HttpCase[] = [
     name: "user login",
     method: "POST",
     path: "/api/auth/user/login",
-    body: { email: "recaptcha-test@example.com", password: "wrong-password-xyz" },
+    body: {
+      email: "recaptcha-test@example.com",
+      password: "wrong-password-xyz",
+      ageConfirmed: true,
+      acceptedTerms: true,
+    },
     expectMissingCode: "recaptcha_failed",
   },
   {
@@ -185,7 +216,12 @@ const HTTP_CASES: HttpCase[] = [
     name: "expert login",
     method: "POST",
     path: "/api/auth/expert/login",
-    body: { email: "recaptcha-test@example.com", password: "wrong-password-xyz" },
+    body: {
+      email: "recaptcha-test@example.com",
+      password: "wrong-password-xyz",
+      ageConfirmed: true,
+      acceptedTerms: true,
+    },
     expectMissingCode: "recaptcha_failed",
   },
   {
@@ -365,6 +401,8 @@ async function checkHttpProbes() {
       {
         email: "recaptcha-test@example.com",
         password: "wrong-password-xyz",
+        ageConfirmed: true,
+        acceptedTerms: true,
         recaptchaToken: "invalid-token-for-test",
       },
       { "X-Forwarded-For": "203.0.113.250" }

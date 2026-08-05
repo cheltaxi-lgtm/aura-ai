@@ -68,6 +68,20 @@ jobs:
       - name: Guards
         run: npm run guards
 
+      # Unique checks formerly in the deleted CI workflow (not covered by invariants).
+      - name: Guardrails
+        run: npm run verify:guardrails
+
+      - name: Security verifies
+        run: |
+          npm run verify:oauth
+          npm run verify:account-deleted
+          npm run verify:guest-teaser-quality
+          npm run test:recaptcha
+
+      - name: Lint
+        run: npm run lint
+
       - name: Invariant tests (DB required, zero skips)
         run: |
           set +e

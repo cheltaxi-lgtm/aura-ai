@@ -95,6 +95,17 @@ This block does **not** fail preflight by itself. In GitHub Actions, skipped DB 
 
 ## CI
 
-`.github/workflows/preflight.yml` starts Postgres, runs `npm run migrate` + `npm run schema:diff`, sets `TEST_DATABASE_URL`, and fails if any invariant is skipped.
+`.github/workflows/preflight.yml` is the sole push/PR gate. It starts Postgres, runs `npm run migrate` + `npm run schema:diff`, typecheck, guards, `verify:guardrails`, security verifies (`verify:oauth`, `verify:account-deleted`, `verify:guest-teaser-quality`, `test:recaptcha`), lint, DB invariants (zero skips), and build.
+
+The former `.github/workflows/ci.yml` was removed: it duplicated install/build signal and stayed red on outdated harness checks. Unique security verifies moved here.
 
 Locally, `schema:diff` runs inside `preflight` only when `TEST_DATABASE_URL` (or `DATABASE_URL`) is set (`--if-test-db`).
+
+## Cursor hooks
+
+Project hooks in `.cursor/hooks.json` run **after file edits** (`afterFileEdit`):
+
+- `npm run typecheck`
+- `npm run guards`
+
+Build is intentionally omitted (too slow for every edit). Hooks require a Cursor build that supports project hooks (schema `version: 1`); unsupported clients ignore the file.
