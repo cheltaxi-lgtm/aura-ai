@@ -27,6 +27,7 @@ type VerifiedAuth = {
 /** API routes reachable without a valid JWT (handlers may still enforce their own rules). */
 const PUBLIC_API_EXACT = new Set([
   "/api/health",
+  "/api/pro/health",
   "/api/masters",
   "/api/platform/features",
   "/api/platform/status",
@@ -395,7 +396,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Zovus Pro (S0 dark): ENV kill-switch only — do not import modules/pro here.
+  // Zovus Pro: ENV kill-switch only — do not import modules/pro here.
+  // Dynamic env key avoids Next build-time inlining so flag flips work after restart.
   {
     const proPath =
       pathname === "/pro" ||
@@ -404,10 +406,8 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/r/") ||
       pathname === "/admin/pro" ||
       pathname.startsWith("/admin/pro/");
-    const proOn =
-      process.env.PRO_MODULE_ENABLED === "1" ||
-      process.env.PRO_MODULE_ENABLED === "true" ||
-      process.env.PRO_MODULE_ENABLED === "yes";
+    const proFlag = (process.env["PRO_MODULE_ENABLED"] || "").trim().toLowerCase();
+    const proOn = proFlag === "1" || proFlag === "true" || proFlag === "yes";
     if (proPath && !proOn) {
       if (pathname.startsWith("/api/")) {
         return withNoStore(NextResponse.json({ error: "Not found" }, { status: 404 }));

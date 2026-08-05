@@ -103,6 +103,20 @@ cd "$APP_DIR"
 npm ci
 [ -f data/geonames/cities.min.json ] || npm run build:geonames
 npm run migrate
+# Export PRO_* (and core) for Next middleware/build so kill-switch matches .env.local.
+if [ -f "$APP_DIR/.env.local" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ""|\#*) continue ;; esac
+    key=${line%%=*}
+    val=${line#*=}
+    case "$key" in
+      PRO_*|DATABASE_URL|AUTH_SECRET|NEXT_PUBLIC_APP_URL|TRUST_PROXY|COOKIE_SECURE)
+        export "${key}=${val}" || true
+        ;;
+    esac
+  done < "$APP_DIR/.env.local"
+  echo "Build env PRO_MODULE_ENABLED=${PRO_MODULE_ENABLED:-unset}"
+fi
 npm run build
 bash proxmox-setup/install-crons.sh
 
