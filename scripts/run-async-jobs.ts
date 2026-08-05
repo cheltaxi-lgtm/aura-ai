@@ -113,11 +113,13 @@ async function runJob(job: AsyncJobRow): Promise<void> {
       if (latest?.status === "completed" || latest?.status === "failed") return;
       const message =
         typeof data.error === "string" ? data.error : `HTTP ${response.status}`;
-      await failAsyncJobAndRefundIfCharged(
-        job.id,
-        message,
-        typeof data.code === "string" ? data.code : "generation_failed"
-      );
+      const codeFromBody =
+        typeof data.code === "string"
+          ? data.code
+          : message === "insufficient_runes" || response.status === 402
+            ? "insufficient_runes"
+            : "generation_failed";
+      await failAsyncJobAndRefundIfCharged(job.id, message, codeFromBody);
       return;
     }
     // Route is source of truth via trackWorkerJobCompleted; only complete if still running.

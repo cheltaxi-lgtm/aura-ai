@@ -73,6 +73,28 @@ if [ -f "$BOT_ENV_BACKUP" ]; then
   echo "Restored telegram-bot/.env"
 fi
 
+# Incomplete telegram-bot/.env (no BOT_INTERNAL_SECRET) makes every product
+# action reply "Связь с сайтом временно недоступна". Heal from site .env.local.
+_BOT_ENV="$APP_DIR/telegram-bot/.env"
+_SITE_ENV="$APP_DIR/.env.local"
+_BOT_SECRET="$(grep -E '^BOT_INTERNAL_SECRET=.' "$_BOT_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+_SITE_SECRET="$(grep -E '^BOT_INTERNAL_SECRET=.' "$_SITE_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+if [ -n "$_SITE_SECRET" ] && [ -z "$_BOT_SECRET" ]; then
+  if [ -x "$APP_DIR/hosting/restore-bot-env-on-server.sh" ] || [ -f "$APP_DIR/hosting/restore-bot-env-on-server.sh" ]; then
+    sed -i 's/\r$//' "$APP_DIR/hosting/restore-bot-env-on-server.sh" 2>/dev/null || true
+    bash "$APP_DIR/hosting/restore-bot-env-on-server.sh" || echo "WARN: restore-bot-env-on-server.sh failed" >&2
+  else
+    mkdir -p "$APP_DIR/telegram-bot"
+    touch "$_BOT_ENV"
+    printf '\nBOT_INTERNAL_SECRET=%s\nSITE_INTERNAL_BASE_URL=http://127.0.0.1:3000\n' "$_SITE_SECRET" >> "$_BOT_ENV"
+    chmod 600 "$_BOT_ENV"
+    echo "Injected BOT_INTERNAL_SECRET into telegram-bot/.env from site env"
+  fi
+elif [ -z "$_SITE_SECRET" ]; then
+  echo "WARN: site .env.local missing BOT_INTERNAL_SECRET — bot bridge will fail" >&2
+fi
+unset _BOT_ENV _SITE_ENV _BOT_SECRET _SITE_SECRET
+
 grep -q '^TRUST_PROXY=' "$APP_DIR/.env.local" \
   && sed -i 's|^TRUST_PROXY=.*|TRUST_PROXY=true|' "$APP_DIR/.env.local" \
   || echo 'TRUST_PROXY=true' >> "$APP_DIR/.env.local"
