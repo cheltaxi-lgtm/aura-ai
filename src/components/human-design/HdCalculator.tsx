@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import HdChartSlot from "./HdChartSlot";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdReportPanel from "./HdReportPanel";
 import { hdApiErrorMessage } from "./hd-errors";
@@ -388,13 +389,14 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
             Новый расчёт
           </button>
         </div>
-        <HdChartView key={result.id} payload={result} />
-        <HdReportPanel
-          key={result.id}
-          chartId={result.id}
-          authenticated={authenticated}
-          loginReturnTo={returnTo}
-        />
+        <HdChartSlot slotKey={result.id}>
+          <HdChartView payload={result} />
+          <HdReportPanel
+            chartId={result.id}
+            authenticated={authenticated}
+            loginReturnTo={returnTo}
+          />
+        </HdChartSlot>
       </div>
     );
   }

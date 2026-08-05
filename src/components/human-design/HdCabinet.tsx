@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import HdCalculator from "./HdCalculator";
+import HdChartSlot from "./HdChartSlot";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdComposite from "./HdComposite";
 import HdReportPanel from "./HdReportPanel";
@@ -29,6 +30,7 @@ export default function HdCabinet() {
   const [creating, setCreating] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  /** Composite replaces the main view — never stacks a second bodygraph under it. */
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const loadSeq = useRef(0);
   const [loadError, setLoadError] = useState(false);
@@ -91,6 +93,16 @@ export default function HdCabinet() {
     return otherCharts.find((c) => c.id === otherId) ?? otherCharts[0] ?? null;
   }, [otherCharts, otherId]);
 
+  const openFolder = (next: HdFolder) => {
+    setPartnerId(null);
+    setFolder(next);
+  };
+
+  const openOther = (id: string) => {
+    setPartnerId(null);
+    setOtherId(id);
+  };
+
   if (!enabled) {
     return (
       <p className="text-sm text-white/50">Модуль Дизайна Человека временно недоступен.</p>
@@ -121,7 +133,7 @@ export default function HdCabinet() {
             <button
               type="button"
               onClick={() => {
-                setFolder("self");
+                openFolder("self");
                 setCreating(false);
               }}
               className="hd-bodygraph__export"
@@ -136,6 +148,7 @@ export default function HdCabinet() {
             const kind = chart.subjectKind === "other" ? "other" : "self";
             setCreating(false);
             setCharts(null);
+            setPartnerId(null);
             setFolder(kind === "other" ? "others" : "self");
             if (kind === "other") setOtherId(chart.id);
             load();
@@ -166,6 +179,7 @@ export default function HdCabinet() {
       if (!res.ok) throw new Error("delete failed");
       const remaining = charts.filter((c) => c.id !== target.id);
       setCharts(remaining);
+      setPartnerId(null);
       if (target.subjectKind === "other") {
         const nextOther = remaining.find((c) => c.subjectKind === "other");
         setOtherId(nextOther?.id ?? null);
@@ -178,6 +192,18 @@ export default function HdCabinet() {
       setDeleting(false);
     }
   };
+
+  const partner =
+    partnerId && selfChart
+      ? otherCharts.find((c) => c.id === partnerId) ?? null
+      : null;
+
+  const slotKey =
+    folder === "self"
+      ? partner
+        ? `composite:${selfChart?.id}:${partner.id}`
+        : `self:${selfChart?.id ?? "none"}`
+      : `other:${activeOther?.id ?? "none"}`;
 
   return (
     <div className="space-y-5">
@@ -201,7 +227,7 @@ export default function HdCabinet() {
           type="button"
           role="tab"
           aria-selected={folder === "self"}
-          onClick={() => setFolder("self")}
+          onClick={() => openFolder("self")}
           className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
             folder === "self"
               ? "bg-amber-500/20 text-amber-50"
@@ -214,7 +240,7 @@ export default function HdCabinet() {
           type="button"
           role="tab"
           aria-selected={folder === "others"}
-          onClick={() => setFolder("others")}
+          onClick={() => openFolder("others")}
           className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
             folder === "others"
               ? "bg-amber-500/20 text-amber-50"
@@ -225,144 +251,154 @@ export default function HdCabinet() {
         </button>
       </div>
 
-      {/* ─── SELF FOLDER: only personal chart. Composite lives only here. ─── */}
-      {folder === "self" && (
-        <div role="tabpanel" key="folder-self" className="space-y-5">
-          {!selfChart ? (
-            <div className="space-y-3 rounded-2xl border border-white/10 px-4 py-6 text-center">
-              <p className="text-sm text-white/55">Личной карты ещё нет.</p>
-              <button
-                type="button"
-                onClick={() => setCreating(true)}
-                className="hd-bodygraph__export"
-              >
-                Рассчитать свою карту
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* key forces a full remount — prevents stacked bodygraphs on switch */}
-              <div key={`self-pane-${selfChart.id}`} className="space-y-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-amber-100/80">{hdChartChipLabel(selfChart)}</p>
-                  <button
-                    type="button"
-                    onClick={() => void deleteChart(selfChart)}
-                    disabled={deleting}
-                    className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
-                  >
-                    {deleting ? "Удаление…" : "Удалить"}
-                  </button>
-                </div>
-                <HdChartView payload={selfChart} />
-                {otherCharts.length > 0 && (
-                  <div className="hd-print-hidden space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-white/50">Композит с:</span>
-                      {otherCharts.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => setPartnerId(partnerId === c.id ? null : c.id)}
-                          className={`rounded-full border px-3 py-1 text-xs transition ${
-                            partnerId === c.id
-                              ? "border-violet-400/60 bg-violet-500/15 text-violet-100"
-                              : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40"
-                          }`}
-                        >
-                          {hdChartChipLabel(c)}
-                        </button>
-                      ))}
-                    </div>
-                    {partnerId && (() => {
-                      const partner = otherCharts.find((c) => c.id === partnerId);
-                      return partner ? (
-                        <HdComposite
-                          key={`${selfChart.id}:${partner.id}`}
-                          base={selfChart}
-                          partner={partner}
-                        />
-                      ) : null;
-                    })()}
-                  </div>
-                )}
-                <HdReportPanel
-                  chartId={selfChart.id}
-                  authenticated
-                  loginReturnTo="/cabinet/human-design"
-                />
-              </div>
-            </>
-          )}
+      {folder === "self" && selfChart && otherCharts.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-white/50">Показать:</span>
+          <button
+            type="button"
+            onClick={() => setPartnerId(null)}
+            className={`rounded-full border px-3 py-1 text-xs transition ${
+              !partnerId
+                ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
+                : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
+            }`}
+          >
+            Только моя
+          </button>
+          {otherCharts.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setPartnerId(c.id)}
+              className={`rounded-full border px-3 py-1 text-xs transition ${
+                partnerId === c.id
+                  ? "border-violet-400/60 bg-violet-500/15 text-violet-100"
+                  : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40"
+              }`}
+            >
+              Композит с {hdChartChipLabel(c)}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* ─── OTHERS FOLDER: never mount self chart / self composite here. ─── */}
-      {folder === "others" && (
-        <div role="tabpanel" key="folder-others" className="space-y-5">
-          {otherCharts.length === 0 || !activeOther ? (
-            <div className="space-y-3 rounded-2xl border border-white/10 px-4 py-6 text-center">
-              <p className="text-sm text-white/55">
-                Здесь только карты других людей. Вашей карты здесь нет.
+      {folder === "others" && otherCharts.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {otherCharts.map((c) => {
+            const active = c.id === activeOther?.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => openOther(c.id)}
+                className={`rounded-full border px-3.5 py-1.5 text-xs transition ${
+                  active
+                    ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
+                    : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
+                }`}
+              >
+                {hdChartChipLabel(c)}
+                <span className="ml-1.5 text-white/40">
+                  {TYPE_META[c.chart.type].nameRu}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Exactly one chart surface — never two bodygraphs at once. */}
+      <HdChartSlot slotKey={slotKey}>
+        {folder === "self" && selfChart && !partner && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-amber-100/80">{hdChartChipLabel(selfChart)}</p>
+              <button
+                type="button"
+                onClick={() => void deleteChart(selfChart)}
+                disabled={deleting}
+                className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
+              >
+                {deleting ? "Удаление…" : "Удалить"}
+              </button>
+            </div>
+            <HdChartView payload={selfChart} />
+            <HdReportPanel
+              chartId={selfChart.id}
+              authenticated
+              loginReturnTo="/cabinet/human-design"
+            />
+          </div>
+        )}
+
+        {folder === "self" && selfChart && partner && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-violet-100/80">
+                Композит: {hdChartChipLabel(selfChart)} + {hdChartChipLabel(partner)}
               </p>
               <button
                 type="button"
-                onClick={() => setCreating(true)}
+                onClick={() => setPartnerId(null)}
                 className="hd-bodygraph__export"
               >
-                Рассчитать другому
+                Закрыть композит
               </button>
             </div>
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-2">
-                {otherCharts.map((c) => {
-                  const active = c.id === activeOther.id;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setOtherId(c.id)}
-                      className={`rounded-full border px-3.5 py-1.5 text-xs transition ${
-                        active
-                          ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
-                          : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
-                      }`}
-                    >
-                      {hdChartChipLabel(c)}
-                      <span className="ml-1.5 text-white/40">
-                        {TYPE_META[c.chart.type].nameRu}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {activeOther.subjectKind === "other" &&
-                activeOther.id !== selfChart?.id && (
-                  <div key={`other-pane-${activeOther.id}`} className="space-y-5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm text-white/55">{hdChartChipLabel(activeOther)}</p>
-                      <button
-                        type="button"
-                        onClick={() => void deleteChart(activeOther)}
-                        disabled={deleting}
-                        className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
-                      >
-                        {deleting ? "Удаление…" : "Удалить"}
-                      </button>
-                    </div>
-                    <HdChartView payload={activeOther} />
-                    <HdReportPanel
-                      chartId={activeOther.id}
-                      authenticated
-                      loginReturnTo="/cabinet/human-design"
-                    />
-                  </div>
-                )}
-            </>
-          )}
-        </div>
-      )}
+            <HdComposite base={selfChart} partner={partner} />
+          </div>
+        )}
+
+        {folder === "self" && !selfChart && (
+          <div className="space-y-3 rounded-2xl border border-white/10 px-4 py-6 text-center">
+            <p className="text-sm text-white/55">Личной карты ещё нет.</p>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="hd-bodygraph__export"
+            >
+              Рассчитать свою карту
+            </button>
+          </div>
+        )}
+
+        {folder === "others" && activeOther && activeOther.subjectKind === "other" && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-white/55">{hdChartChipLabel(activeOther)}</p>
+              <button
+                type="button"
+                onClick={() => void deleteChart(activeOther)}
+                disabled={deleting}
+                className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
+              >
+                {deleting ? "Удаление…" : "Удалить"}
+              </button>
+            </div>
+            <HdChartView payload={activeOther} />
+            <HdReportPanel
+              chartId={activeOther.id}
+              authenticated
+              loginReturnTo="/cabinet/human-design"
+            />
+          </div>
+        )}
+
+        {folder === "others" && !activeOther && (
+          <div className="space-y-3 rounded-2xl border border-white/10 px-4 py-6 text-center">
+            <p className="text-sm text-white/55">
+              Здесь только карты других людей. Вашей карты здесь нет.
+            </p>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="hd-bodygraph__export"
+            >
+              Рассчитать другому
+            </button>
+          </div>
+        )}
+      </HdChartSlot>
     </div>
   );
 }
