@@ -40,6 +40,10 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
       | { dispose(): void; forceContextLoss(): void; domElement: HTMLCanvasElement }
       | undefined;
 
+    // Drop any leaked canvases from a previous effect that lost the race
+    // between async three.js import and React cleanup.
+    mount.replaceChildren();
+
     void (async () => {
       try {
         const THREE = await import("three");
@@ -58,6 +62,12 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
         partialRenderer = renderer;
         renderer.setSize(width, height);
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        if (disposed) {
+          renderer.dispose();
+          renderer.forceContextLoss();
+          return;
+        }
+        mount.replaceChildren();
         mount.appendChild(renderer.domElement);
 
         const group = new THREE.Group();
@@ -267,6 +277,8 @@ export default function HdBodygraph3D({ chart }: { chart: HdChart }) {
     return () => {
       disposed = true;
       cleanup?.();
+      // Async init may not have assigned cleanup yet — wipe the mount anyway.
+      mount.replaceChildren();
     };
   }, [chart, reduceMotion]);
 

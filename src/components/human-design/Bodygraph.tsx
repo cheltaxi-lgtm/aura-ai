@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
 import type { HdBodyKey, HdCenterKey, HdChart } from "@/lib/human-design";
 import {
@@ -130,6 +130,12 @@ export default function Bodygraph({
   onCenterInsight,
 }: BodygraphProps) {
   const reduceMotion = useReducedMotion();
+  // Unique per mount — two bodygraphs on one page must not share gradient ids
+  // or the browser paints both SVGs from the first defs block (ghost stacking).
+  const uid = useId().replace(/:/g, "");
+  const gradDefined = `hd-center-defined-${uid}`;
+  const gradGlow = `hd-center-glow-${uid}`;
+  const filterGlow = `hd-soft-glow-${uid}`;
   const svgRef = useRef<SVGSVGElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -147,6 +153,19 @@ export default function Bodygraph({
     zoomRef.current = zoom;
   }, [zoom]);
   const dragRef = useRef<{ px: number; py: number; zx: number; zy: number } | null>(null);
+
+  // Chart switch (same component instance / composite remount): drop overlay state.
+  const chartEpoch = `${chart.type}:${chart.profile}:${chart.activeGates.join(",")}`;
+  useEffect(() => {
+    setTooltip(null);
+    setLayer("all");
+    setHighlightCenter(null);
+    setFullscreen(false);
+    setZoom({ k: 1, x: 0, y: 0 });
+    tiltRx.set(0);
+    tiltRy.set(0);
+    document.body.style.overflow = "";
+  }, [chartEpoch, tiltRx, tiltRy]);
 
   const clampZoom = useCallback((z: ZoomState): ZoomState => {
     const k = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z.k));
@@ -478,15 +497,15 @@ export default function Bodygraph({
             className="hd-bodygraph__svg"
           >
             <defs>
-              <linearGradient id="hd-center-defined" x1="0" y1="0" x2="1" y2="1">
+              <linearGradient id={gradDefined} x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#e8c77e" />
                 <stop offset="100%" stopColor="#a8843a" />
               </linearGradient>
-              <radialGradient id="hd-center-glow" cx="0.5" cy="0.5" r="0.5">
+              <radialGradient id={gradGlow} cx="0.5" cy="0.5" r="0.5">
                 <stop offset="0%" stopColor="rgba(232, 199, 126, 0.55)" />
                 <stop offset="100%" stopColor="rgba(232, 199, 126, 0)" />
               </radialGradient>
-              <filter id="hd-soft-glow" x="-60%" y="-60%" width="220%" height="220%">
+              <filter id={filterGlow} x="-60%" y="-60%" width="220%" height="220%">
                 <feGaussianBlur stdDeviation="6" result="blur" />
                 <feMerge>
                   <feMergeNode in="blur" />
@@ -521,7 +540,7 @@ export default function Bodygraph({
                         x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
                         stroke="rgba(155,127,212,0.55)"
                         strokeWidth={11}
-                        filter="url(#hd-soft-glow)"
+                        filter={`url(#${filterGlow})`}
                       />
                     )}
                     {defined && (
@@ -529,7 +548,7 @@ export default function Bodygraph({
                         x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
                         stroke="rgba(232,199,126,0.35)"
                         strokeWidth={highlighted ? 12 : 9}
-                        filter="url(#hd-soft-glow)"
+                        filter={`url(#${filterGlow})`}
                         opacity={aVisible && bVisible ? 0.8 : 0.15}
                       />
                     )}
@@ -605,7 +624,7 @@ export default function Bodygraph({
                         cx={shape.cx}
                         cy={shape.cy}
                         r={52}
-                        fill="url(#hd-center-glow)"
+                        fill={`url(#${gradGlow})`}
                         aria-hidden="true"
                         animate={reduceMotion ? undefined : { opacity: [0.6, 1, 0.6] }}
                         transition={reduceMotion ? undefined : { duration: 4, repeat: Infinity, ease: "easeInOut", delay: i * 0.5 }}
@@ -613,10 +632,10 @@ export default function Bodygraph({
                     )}
                     <path
                       d={shape.path}
-                      fill={defined ? "url(#hd-center-defined)" : "rgba(255,255,255,0.03)"}
+                      fill={defined ? `url(#${gradDefined})` : "rgba(255,255,255,0.03)"}
                       stroke={defined ? "rgba(255, 232, 168, 0.9)" : "rgba(232, 199, 126, 0.35)"}
                       strokeWidth={defined ? 2 : 1.5}
-                      filter={defined ? "url(#hd-soft-glow)" : undefined}
+                      filter={defined ? `url(#${filterGlow})` : undefined}
                       tabIndex={0}
                       role="button"
                       aria-label={`${CENTER_NAMES_RU[shape.key]}: ${defined ? "определён" : "открыт"}`}

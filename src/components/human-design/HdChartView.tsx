@@ -49,12 +49,17 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const [insightError, setInsightError] = useState<string | null>(null);
   const [show3d, setShow3d] = useState(false);
 
-  // Defense in depth: callers key this component by chart id, but a paid
-  // center insight must never survive a chart switch even if one forgets.
+  // Defense in depth: callers key this component by chart id, but overlays
+  // must never survive a chart switch even if a parent forgets the key.
   useEffect(() => {
     setInsight(null);
     setInsightError(null);
     setInsightLoading(null);
+    setTransits(null);
+    setTransitsAt(null);
+    setShow3d(false);
+    setShowShareCard(false);
+    setCopied(false);
   }, [payload.id]);
 
   const toggleTransits = useCallback(async () => {
