@@ -10,17 +10,62 @@ import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  readRequestChargeIdempotencyKey,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
+import { createHash } from "node:crypto";
 import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { voiceTtsRuneCost } from "@/lib/rune-costs";
 import { reportError } from "@/lib/error-report";
+import {
+  getTtsResultCache,
+  setTtsResultCache,
+  ttsResultCacheKey,
+  type CachedTtsResult,
+} from "@/lib/tts-result-cache";
 
 export const maxDuration = 300;
 
 /** Hard cap — keeps provider spend bounded even with rune billing. */
 const MAX_REQUEST_CHARS = 4000;
+
+function ttsResponseFromCached(
+  cached: CachedTtsResult,
+  opts?: { spentRunes?: number; deduplicated?: boolean }
+) {
+  const headers: Record<string, string> = {
+    "Cache-Control": "private, max-age=86400",
+    "X-TTS-Provider": cached.provider,
+    ...(cached.model ? { "X-TTS-Model": cached.model } : {}),
+    ...(cached.parts && cached.parts.length > 1
+      ? { "X-TTS-Chunks": String(cached.parts.length) }
+      : {}),
+    ...(opts?.spentRunes ? { "X-TTS-Runes-Spent": String(opts.spentRunes) } : {}),
+    ...(opts?.deduplicated ? { "X-TTS-Deduplicated": "1" } : {}),
+  };
+
+  if (cached.parts && cached.parts.length > 1) {
+    return NextResponse.json(
+      {
+        parts: cached.parts.map((part) => Buffer.from(part).toString("base64")),
+        contentType: cached.contentType,
+        provider: cached.provider,
+        model: cached.model,
+        chunks: cached.parts.length,
+      },
+      { status: 200, headers }
+    );
+  }
+
+  return new NextResponse(new Uint8Array(cached.buffer), {
+    status: 200,
+    headers: {
+      ...headers,
+      "Content-Type": cached.contentType,
+    },
+  });
+}
 
 export async function GET() {
   const tts = await getSetting("tts");
@@ -55,9 +100,11 @@ export async function POST(request: NextRequest) {
 
   let text = "";
   let characterId = "veronika";
+  let bodyForIdem: { idempotencyKey?: unknown; requestId?: unknown } | null = null;
 
   try {
     const body = await request.json();
+    bodyForIdem = body && typeof body === "object" ? body : null;
     text = String(body.text ?? "").trim();
     characterId = await resolveApiCharacterId(body.characterId ?? characterId);
   } catch {
@@ -94,16 +141,23 @@ export async function POST(request: NextRequest) {
   const runeSettings = await getRuneSettings();
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
 
+  const unit = runeCostFromSettings(runeSettings, "VOICE_TTS");
+  const cost = voiceTtsRuneCost(text.length, unit);
+  const textDigest = createHash("sha256").update(text, "utf8").digest("hex").slice(0, 24);
+  const chargeIdemKey =
+    readRequestChargeIdempotencyKey(request, bodyForIdem) ??
+    `tts:${characterId}:${textDigest}:${cost}`;
+  const cacheKey = ttsResultCacheKey(profileUserId ?? auth.sub, chargeIdemKey);
+
   let billingCharge: BillingChargeResult | null = null;
 
   if (useRuneBilling && profileUserId) {
-    const unit = runeCostFromSettings(runeSettings, "VOICE_TTS");
-    const cost = voiceTtsRuneCost(text.length, unit);
     try {
       billingCharge = await BillingService.chargeForSession({
         userId: profileUserId,
         cost,
         actionType: "VOICE_TTS",
+        idempotencyKey: chargeIdemKey,
       });
     } catch (err) {
       if (err instanceof InsufficientFundsError) {
@@ -113,6 +167,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Same-process hit: serve memory cache (incl. after charge dedupe).
+  const preexisting = getTtsResultCache(cacheKey);
+  if (preexisting) {
+    return ttsResponseFromCached(preexisting, {
+      spentRunes: billingCharge?.spentRunes,
+      deduplicated: billingCharge?.deduplicated,
+    });
+  }
+
+  // Dedupe + empty process cache (other instance / reload): re-synthesize without
+  // charging again — audio is not persisted in DB; provider cost ≪ rune price.
   try {
     const result = await synthesizeSpeech(text, characterId);
     if (!result) {
@@ -125,41 +190,36 @@ export async function POST(request: NextRequest) {
           transactionId: billingCharge.transactionId,
         });
       }
+      if (billingCharge?.deduplicated) {
+        return NextResponse.json(
+          { reuse: true, code: "tts_deduplicated" },
+          {
+            status: 200,
+            headers: {
+              "Cache-Control": "private, max-age=86400",
+              "X-TTS-Deduplicated": "1",
+            },
+          }
+        );
+      }
       return NextResponse.json(
         { error: "Не удалось озвучить ответ", code: "browser_fallback" },
         { status: 502 }
       );
     }
 
-    const headers: Record<string, string> = {
-      "Cache-Control": "private, max-age=86400",
-      "X-TTS-Provider": result.provider,
-      ...(result.model ? { "X-TTS-Model": result.model } : {}),
-      ...(result.chunks && result.chunks > 1 ? { "X-TTS-Chunks": String(result.chunks) } : {}),
-      ...(billingCharge?.spentRunes
-        ? { "X-TTS-Runes-Spent": String(billingCharge.spentRunes) }
-        : {}),
+    const cached: CachedTtsResult = {
+      buffer: Buffer.from(result.buffer),
+      contentType: result.contentType,
+      provider: result.provider,
+      model: result.model,
+      parts: result.parts?.map((part) => Buffer.from(part)),
     };
+    setTtsResultCache(cacheKey, cached);
 
-    if (result.parts && result.parts.length > 1) {
-      return NextResponse.json(
-        {
-          parts: result.parts.map((part) => Buffer.from(part).toString("base64")),
-          contentType: result.contentType,
-          provider: result.provider,
-          model: result.model,
-          chunks: result.parts.length,
-        },
-        { status: 200, headers }
-      );
-    }
-
-    return new NextResponse(result.buffer, {
-      status: 200,
-      headers: {
-        ...headers,
-        "Content-Type": result.contentType,
-      },
+    return ttsResponseFromCached(cached, {
+      spentRunes: billingCharge?.spentRunes,
+      deduplicated: billingCharge?.deduplicated,
     });
   } catch (error) {
     console.error("TTS error:", error);
@@ -176,6 +236,18 @@ export async function POST(request: NextRequest) {
       } catch (refundErr) {
         console.error("TTS refund failed:", refundErr);
       }
+    }
+    if (billingCharge?.deduplicated) {
+      return NextResponse.json(
+        { reuse: true, code: "tts_deduplicated" },
+        {
+          status: 200,
+          headers: {
+            "Cache-Control": "private, max-age=86400",
+            "X-TTS-Deduplicated": "1",
+          },
+        }
+      );
     }
     return NextResponse.json(
       { error: "Озвучка временно недоступна", code: "browser_fallback" },

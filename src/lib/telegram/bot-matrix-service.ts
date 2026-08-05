@@ -322,6 +322,8 @@ export async function botMatrixRun(
       replaced: boolean;
       url: string;
       diagram: BotMatrixDiagram | null;
+      pending?: boolean;
+      message?: string;
     }
   | GateFail
 > {
@@ -461,6 +463,9 @@ export async function botMatrixRun(
         cost: tool.cost,
         actionType: chargeAction,
         description: `${subject?.kind === "child" ? "Детская" : "Полная"} матрица — разбор Эвелины`,
+        idempotencyKey: subject?.id
+          ? `tg-matrix:${subject.id}:${chargeAction}:${tool.cost}`
+          : undefined,
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
@@ -477,6 +482,51 @@ export async function botMatrixRun(
       }
       throw err;
     }
+  }
+
+  // Charge dedupe: never re-generate — reopen owned report or point to cabinet.
+  if (billingCharge?.deduplicated) {
+    const ownedAgain = subject?.id
+      ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
+      : await findOwnedMatrixReport(profileUserId, isoBirth, { toolId });
+    if (ownedAgain?.content?.trim() && isUsableMatrixReading(ownedAgain.content)) {
+      let sessionId = ownedAgain.sessionId?.trim() || "";
+      if (!sessionId) {
+        const session = await createSession(undefined, profileUserId);
+        sessionId = session.id;
+      }
+      const safeOwned = sanitizeReadingForClient(ownedAgain.content) || ownedAgain.content;
+      return {
+        ok: true,
+        action: "run",
+        reportId: ownedAgain.id,
+        sessionId,
+        content: safeOwned,
+        birthDate: isoBirth,
+        runeBalance,
+        charged: 0,
+        reused: true,
+        replaced: false,
+        diagram,
+        url: `${siteBase()}/?chat_session=${encodeURIComponent(sessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
+      };
+    }
+    return {
+      ok: true,
+      action: "run",
+      reportId: ownedAgain?.id ?? "",
+      sessionId: ownedAgain?.sessionId ?? "",
+      content: "",
+      pending: true,
+      birthDate: isoBirth,
+      runeBalance,
+      charged: 0,
+      reused: true,
+      replaced: false,
+      diagram,
+      message: "Разбор уже выполняется — откройте кабинет.",
+      url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
+    };
   }
 
   const session = await createSession(undefined, profileUserId);

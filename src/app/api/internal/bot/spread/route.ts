@@ -22,12 +22,14 @@ export async function POST(request: NextRequest) {
     telegram_user_id?: unknown;
     question?: unknown;
     intent_slug?: unknown;
+    client_event_id?: unknown;
   };
   try {
     body = (await request.json()) as {
       telegram_user_id?: unknown;
       question?: unknown;
       intent_slug?: unknown;
+      client_event_id?: unknown;
     };
   } catch {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
@@ -41,10 +43,16 @@ export async function POST(request: NextRequest) {
   const intentSlug =
     typeof body.intent_slug === "string" ? body.intent_slug.trim() : "";
   const question = typeof body.question === "string" ? body.question : "";
+  const clientEventId =
+    typeof body.client_event_id === "string"
+      ? body.client_event_id.trim()
+      : typeof body.client_event_id === "number"
+        ? String(body.client_event_id)
+        : undefined;
 
   const result = intentSlug
-    ? await botRunCatalogIntent({ telegramUserId, intentSlug })
-    : await botRunVeronikaSpread({ telegramUserId, question });
+    ? await botRunCatalogIntent({ telegramUserId, intentSlug, clientEventId })
+    : await botRunVeronikaSpread({ telegramUserId, question, clientEventId });
 
   if (!result.ok) {
     const status =

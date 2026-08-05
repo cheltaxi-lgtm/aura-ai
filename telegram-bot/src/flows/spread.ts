@@ -99,10 +99,19 @@ export async function runCatalogIntent(
     intent_slug: slug,
     channel: "site",
   });
+  const priorCatalog = getFlow(user.telegram_user_id);
+  const catalogEventId =
+    priorCatalog?.flow === "spread" &&
+    priorCatalog.step === "drawing" &&
+    priorCatalog.data.intentSlug === slug &&
+    typeof priorCatalog.data.clientEventId === "string"
+      ? priorCatalog.data.clientEventId
+      : String(ctx.update.update_id);
   setFlow(user.telegram_user_id, "spread", "drawing", {
     intentSlug: slug,
     question: questionHint || "",
     source: "catalog",
+    clientEventId: catalogEventId,
   });
   markIrreversible(ctx);
 
@@ -112,7 +121,7 @@ export async function runCatalogIntent(
 
   let result: Awaited<ReturnType<typeof siteCatalogSpread>>;
   try {
-    result = await siteCatalogSpread(user.telegram_user_id, slug);
+    result = await siteCatalogSpread(user.telegram_user_id, slug, catalogEventId);
   } catch (err) {
     console.error("[spread] catalog intent failed", err);
     clearFlow(user.telegram_user_id);
@@ -154,7 +163,19 @@ async function runSiteSpread(
   }
 
   track(user, "question_submitted", { source, question_len: validated.question.length, channel: "site" });
-  setFlow(user.telegram_user_id, "spread", "drawing", { question: validated.question, source });
+  const prior = getFlow(user.telegram_user_id);
+  const clientEventId =
+    prior?.flow === "spread" &&
+    prior.step === "drawing" &&
+    prior.data.question === validated.question &&
+    typeof prior.data.clientEventId === "string"
+      ? prior.data.clientEventId
+      : String(ctx.update.update_id);
+  setFlow(user.telegram_user_id, "spread", "drawing", {
+    question: validated.question,
+    source,
+    clientEventId,
+  });
   markIrreversible(ctx);
 
   await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
@@ -163,7 +184,7 @@ async function runSiteSpread(
 
   let result: Awaited<ReturnType<typeof siteSpread>>;
   try {
-    result = await siteSpread(user.telegram_user_id, validated.question);
+    result = await siteSpread(user.telegram_user_id, validated.question, clientEventId);
   } catch (err) {
     console.error("[spread] site call failed", err);
     clearFlow(user.telegram_user_id);

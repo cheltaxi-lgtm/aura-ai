@@ -2413,6 +2413,27 @@ export function useChatActions(options: UseChatActionsOptions) {
 
         setRetryDraft(null);
 
+        // Charge dedupe: first turn still in flight — keep user message, soft status, no fake LLM reply.
+        if (data.pending || data.reused) {
+          const statusText =
+            typeof data.message === "string" && data.message.trim()
+              ? data.message
+              : "Ответ уже формируется — дождитесь первого сообщения.";
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: replyId,
+              role: "assistant",
+              content: statusText,
+              timestamp: new Date(),
+            },
+          ]);
+          if (typeof data.sessionId === "string" && data.sessionId) {
+            localStorage.setItem("aura_session_id", data.sessionId);
+          }
+          return;
+        }
+
         const rawReply = data.reply ?? "Энергии сегодня нестабильны. Попробуйте позже.";
         const reply = stripMemoryLeakFromReply(rawReply) || rawReply;
 

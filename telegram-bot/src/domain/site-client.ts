@@ -228,19 +228,35 @@ type SiteSpreadOk = {
 };
 
 /** Free-text / chips: Veronika triplet, READING billing. */
-export async function siteSpread(telegramUserId: number, question: string) {
+export async function siteSpread(
+  telegramUserId: number,
+  question: string,
+  clientEventId?: string
+) {
   return siteFetch<SiteSpreadOk>(
     "/api/internal/bot/spread",
-    { telegram_user_id: telegramUserId, question },
+    {
+      telegram_user_id: telegramUserId,
+      question,
+      ...(clientEventId ? { client_event_id: clientEventId } : {}),
+    },
     120_000
   );
 }
 
 /** Catalog intent: full site geometry + INTENTION_SPREAD pricing. */
-export async function siteCatalogSpread(telegramUserId: number, intentSlug: string) {
+export async function siteCatalogSpread(
+  telegramUserId: number,
+  intentSlug: string,
+  clientEventId?: string
+) {
   return siteFetch<SiteSpreadOk>(
     "/api/internal/bot/spread",
-    { telegram_user_id: telegramUserId, intent_slug: intentSlug },
+    {
+      telegram_user_id: telegramUserId,
+      intent_slug: intentSlug,
+      ...(clientEventId ? { client_event_id: clientEventId } : {}),
+    },
     180_000
   );
 }

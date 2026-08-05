@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
   total_runes_purchased INTEGER NOT NULL DEFAULT 0,
   starter_runes_granted BOOLEAN NOT NULL DEFAULT FALSE,
   last_daily_bonus TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT users_rune_balance_nonneg CHECK (rune_balance >= 0)
 );
 
 -- === Durable async work ===
@@ -140,6 +141,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   guest_resume_fingerprint TEXT,
   guest_resume_reading_id UUID REFERENCES history(id) ON DELETE SET NULL,
   guest_resume_claimed_at TIMESTAMPTZ,
+  message_count INT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -182,12 +184,39 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_owner_character
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_character_created
   ON chat_messages (session_id, character_id, created_at ASC);
 
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_content_trgm
+  ON chat_messages USING GIN (content gin_trgm_ops);
+
+CREATE OR REPLACE FUNCTION sync_session_message_count() RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE sessions SET message_count = message_count + 1 WHERE id = NEW.session_id;
+    RETURN NEW;
+  ELSIF TG_OP = 'DELETE' THEN
+    UPDATE sessions SET message_count = GREATEST(0, message_count - 1) WHERE id = OLD.session_id;
+    RETURN OLD;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_chat_messages_count_insert ON chat_messages;
+CREATE TRIGGER trg_chat_messages_count_insert
+  AFTER INSERT ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION sync_session_message_count();
+
+DROP TRIGGER IF EXISTS trg_chat_messages_count_delete ON chat_messages;
+CREATE TRIGGER trg_chat_messages_count_delete
+  AFTER DELETE ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION sync_session_message_count();
+
 -- === SPEC: Payments ===
 CREATE TABLE IF NOT EXISTS payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id TEXT UNIQUE,
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  session_id UUID NOT NULL REFERENCES sessions(id),
+  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   yukassa_payment_id TEXT UNIQUE,
   yoomoney_operation_id TEXT UNIQUE,
   amount NUMERIC(10, 2) NOT NULL,
@@ -201,6 +230,8 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_payments_referrer ON payments(referrer_slug);
+CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);
+CREATE INDEX IF NOT EXISTS idx_payments_session_id ON payments(session_id);
 
 -- === Аккаунты (регистрация / ЛК) ===
 CREATE TABLE IF NOT EXISTS user_accounts (
@@ -413,6 +444,9 @@ CREATE TABLE IF NOT EXISTS rune_transactions (
   description     TEXT NOT NULL,
   action_type     TEXT,
   payment_id      TEXT,
+  idempotency_key TEXT,
+  -- Soft link to sessions.id (bot product dedupe resume; no FK).
+  result_session_id UUID,
   refund_of_transaction_id UUID REFERENCES rune_transactions(id) ON DELETE SET NULL,
   shown_receipt   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -433,10 +467,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_refund_once
   ON rune_transactions (refund_of_transaction_id)
   WHERE type = 'refund' AND refund_of_transaction_id IS NOT NULL;
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rune_transactions_spend_idempotency
+  ON rune_transactions (user_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_rune_transactions_result_session
+  ON rune_transactions (result_session_id)
+  WHERE result_session_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_rune_transactions_unshown
   ON rune_transactions (user_id, created_at DESC)
   WHERE shown_receipt = FALSE
     AND type IN ('purchase', 'achievement', 'daily_bonus', 'bonus');
+
+-- async_jobs is created earlier; attach spend FK once rune_transactions exists (101 / 077).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'async_jobs_charge_transaction_id_fkey'
+  ) THEN
+    ALTER TABLE async_jobs
+      ADD CONSTRAINT async_jobs_charge_transaction_id_fkey
+      FOREIGN KEY (charge_transaction_id)
+      REFERENCES rune_transactions(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS rune_packages (
   id          TEXT PRIMARY KEY,

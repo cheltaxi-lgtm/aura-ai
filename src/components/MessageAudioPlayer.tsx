@@ -193,7 +193,18 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
         const data = (await res.json()) as {
           parts?: string[];
           contentType?: string;
+          reuse?: boolean;
+          code?: string;
         };
+        // Server charge dedupe without audio body — play client cache, never error.
+        if (data.reuse || data.code === "tts_deduplicated" || res.headers.get("x-tts-deduplicated") === "1") {
+          if (hasTtsCache(cacheKey)) {
+            await playCached();
+            return;
+          }
+          setIsLoading(false);
+          return;
+        }
         if (!data.parts?.length) {
           setError("Не удалось озвучить ответ");
           return;
@@ -257,7 +268,7 @@ export default function MessageAudioPlayer({ text, characterId }: MessageAudioPl
           type="button"
           onClick={toggle}
           disabled={isLoading}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-aura-purple/20 text-aura-neon transition-colors hover:bg-aura-purple/40 disabled:opacity-50"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-aura-gold/20 text-aura-champagne transition-colors hover:bg-aura-gold/40 disabled:opacity-50"
           title={
             fromCache
               ? "Повтор из кэша (без повторной оплаты)"

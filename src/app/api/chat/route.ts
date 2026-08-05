@@ -49,6 +49,16 @@ export async function POST(request: NextRequest) {
     if (!billing.ok) return billing.response;
 
     billingHandle = billing.handle;
+    // Parallel double-submit: charge collapsed — do not burn a second LLM turn.
+    if (billing.handle.charge?.deduplicated) {
+      return NextResponse.json({
+        ok: true,
+        reused: true,
+        pending: true,
+        sessionId: billing.session?.id ?? null,
+        message: "Ответ уже формируется — дождитесь первого сообщения.",
+      });
+    }
     prep.orchestrator.applyBilling(billing.handle, billing.session);
 
     return await prep.orchestrator.run();

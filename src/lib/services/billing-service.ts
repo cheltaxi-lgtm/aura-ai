@@ -58,6 +58,8 @@ export type BillingChargeResult = {
   freeQuestionsRemaining?: number;
   /** rune_transactions.id when this charge wrote a ledger row (paid path only). */
   transactionId?: string;
+  /** True when an existing ledger row for the same idempotency key was reused (no second debit). */
+  deduplicated?: boolean;
 };
 
 export type ChargeForSessionParams = {
@@ -73,7 +75,84 @@ export type ChargeForSessionParams = {
   hasFullAccess?: boolean;
   reserveFreeSlot?: boolean;
   client?: PoolClient;
+  /**
+   * Optional caller-supplied idempotency key (Idempotency-Key / requestId).
+   * When omitted, a short-window deterministic fallback is derived so double-submit
+   * from legacy Capacitor clients still collapses (see CHARGE_IDEM_WINDOW_SEC).
+   */
+  idempotencyKey?: string;
 };
+
+/**
+ * Double-submit window for server-derived charge keys when the caller omits an
+ * explicit Idempotency-Key. Distinct intentional charges inside this window must
+ * pass distinct keys (or wait for the next bucket).
+ */
+export const CHARGE_IDEM_WINDOW_SEC = 30;
+
+const IDEM_KEY_MAX = 128;
+const IDEM_KEY_RE = /^[A-Za-z0-9_.:\-]+$/;
+
+/** Validate / normalize a caller key. Invalid → null (treated as absent) + warning. */
+export function normalizeChargeIdempotencyKey(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > IDEM_KEY_MAX || !IDEM_KEY_RE.test(trimmed)) {
+    console.warn("[billing] invalid idempotencyKey ignored", {
+      length: trimmed.length,
+      preview: trimmed.slice(0, 24),
+    });
+    return null;
+  }
+  return trimmed;
+}
+
+/** Deterministic fallback key from stable charge traits + time bucket (not a random nonce). */
+export function buildFallbackChargeIdempotencyKey(input: {
+  userId: string;
+  actionType: string;
+  sessionId?: string | null;
+  cost: number;
+  nowMs?: number;
+}): string {
+  const bucket = Math.floor(
+    (input.nowMs ?? Date.now()) / (CHARGE_IDEM_WINDOW_SEC * 1000)
+  );
+  const sessionPart = input.sessionId?.trim() || "-";
+  return `auto:${input.userId}:${input.actionType}:${sessionPart}:${input.cost}:${bucket}`;
+}
+
+/** Prefer Idempotency-Key header, then body.idempotencyKey / body.requestId. */
+export function readRequestChargeIdempotencyKey(
+  request: { headers: { get(name: string): string | null } },
+  body?: { idempotencyKey?: unknown; requestId?: unknown } | null
+): string | undefined {
+  const fromHeader = request.headers.get("Idempotency-Key");
+  const fromBody =
+    typeof body?.idempotencyKey === "string"
+      ? body.idempotencyKey
+      : typeof body?.requestId === "string"
+        ? body.requestId
+        : undefined;
+  return normalizeChargeIdempotencyKey(fromHeader) ??
+    normalizeChargeIdempotencyKey(fromBody) ??
+    undefined;
+}
+
+function resolveEffectiveChargeIdempotencyKey(
+  params: ChargeForSessionParams
+): string | null {
+  const explicit = normalizeChargeIdempotencyKey(params.idempotencyKey);
+  if (explicit) return explicit;
+  // Centralized phase-3.5 fallback so telegram/direct callers get double-click safety.
+  return buildFallbackChargeIdempotencyKey({
+    userId: params.userId,
+    actionType: params.actionType,
+    sessionId: params.sessionId,
+    cost: params.cost,
+  });
+}
 
 export type RollbackChargeParams = {
   userId: string;
@@ -113,14 +192,53 @@ async function logFreeQuestionSpend(
   );
 }
 
+async function findSpendByIdempotencyKey(
+  client: PoolClient,
+  userId: string,
+  idempotencyKey: string
+): Promise<{ id: string; amount: number; balance_after: number } | null> {
+  const { rows } = await queryClient<{
+    id: string;
+    amount: number;
+    balance_after: number;
+  }>(
+    client,
+    `SELECT id, amount, balance_after FROM rune_transactions
+     WHERE user_id = $1 AND idempotency_key = $2 AND type = 'spend'
+     LIMIT 1`,
+    [userId, idempotencyKey]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Insert spend ledger row. With idempotencyKey uses ON CONFLICT (DB unique index)
+ * like creditRunesFromPayment / payment_id — race-safe without SELECT-then-INSERT alone.
+ */
 async function logRuneSpend(
   client: PoolClient,
   userId: string,
   amount: number,
   balanceAfter: number,
   description: string,
-  actionType: string
-): Promise<string | undefined> {
+  actionType: string,
+  idempotencyKey: string | null
+): Promise<{ transactionId?: string; conflict: boolean }> {
+  if (idempotencyKey) {
+    const { rows } = await queryClient<{ id: string }>(
+      client,
+      `INSERT INTO rune_transactions
+         (user_id, type, amount, balance_after, description, action_type, idempotency_key)
+       VALUES ($1, 'spend', $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+       DO NOTHING
+       RETURNING id`,
+      [userId, -amount, balanceAfter, description, actionType, idempotencyKey]
+    );
+    if (!rows[0]) return { conflict: true };
+    return { transactionId: rows[0].id, conflict: false };
+  }
+
   const { rows } = await queryClient<{ id: string }>(
     client,
     `INSERT INTO rune_transactions
@@ -129,7 +247,7 @@ async function logRuneSpend(
      RETURNING id`,
     [userId, -amount, balanceAfter, description, actionType]
   );
-  return rows[0]?.id;
+  return { transactionId: rows[0]?.id, conflict: false };
 }
 
 async function reserveQuestionIndex(
@@ -190,6 +308,7 @@ async function executeChargeForSession(
     reserveFreeSlot = false,
   } = params;
 
+  const idempotencyKey = resolveEffectiveChargeIdempotencyKey(params);
   const balance = await lockUserRow(client, userId);
 
   if (exempt) {
@@ -201,6 +320,23 @@ async function executeChargeForSession(
       sessionId,
       slotReserved: false,
     };
+  }
+
+  // Fast path under user lock: prior successful spend with this key → no second debit.
+  if (idempotencyKey) {
+    const prior = await findSpendByIdempotencyKey(client, userId, idempotencyKey);
+    if (prior) {
+      return {
+        spentRunes: 0,
+        wasFreeQuestion: false,
+        newBalance: balance,
+        actionType,
+        sessionId,
+        slotReserved: false,
+        transactionId: prior.id,
+        deduplicated: true,
+      };
+    }
   }
 
   let slotReserved = false;
@@ -271,6 +407,7 @@ async function executeChargeForSession(
         [sessionId]
       );
     }
+    // No ledger row on failure — same key may retry and must error again, not "cached success".
     throw new InsufficientFundsError(balance, cost);
   }
 
@@ -281,7 +418,45 @@ async function executeChargeForSession(
       ? RUNE_ACTION_LABELS[actionType as RuneActionType]
       : actionType);
 
-  const transactionId = await logRuneSpend(client, userId, cost, newBalance, label, actionType);
+  const logged = await logRuneSpend(
+    client,
+    userId,
+    cost,
+    newBalance,
+    label,
+    actionType,
+    idempotencyKey
+  );
+
+  if (logged.conflict) {
+    // Race: another txn won the unique index — undo our debit and return the first spend.
+    await queryClient(
+      client,
+      `UPDATE users SET rune_balance = rune_balance + $2 WHERE id = $1`,
+      [userId, cost]
+    );
+    if (slotReserved && sessionId) {
+      await queryClient(
+        client,
+        `UPDATE sessions
+         SET free_questions_used = GREATEST(0, free_questions_used - 1), updated_at = NOW()
+         WHERE id = $1`,
+        [sessionId]
+      );
+    }
+    const prior = await findSpendByIdempotencyKey(client, userId, idempotencyKey!);
+    const restoredBalance = await lockUserRow(client, userId);
+    return {
+      spentRunes: 0,
+      wasFreeQuestion: false,
+      newBalance: restoredBalance,
+      actionType,
+      sessionId,
+      slotReserved: false,
+      transactionId: prior?.id,
+      deduplicated: true,
+    };
+  }
 
   return {
     spentRunes: cost,
@@ -292,7 +467,7 @@ async function executeChargeForSession(
     slotReserved,
     questionIndex,
     freeQuestionsRemaining,
-    transactionId,
+    transactionId: logged.transactionId,
   };
 }
 
@@ -369,6 +544,7 @@ export async function chargeRuneAction(params: {
   hasFullAccess?: boolean;
   reserveFreeSlot?: boolean;
   client?: PoolClient;
+  idempotencyKey?: string;
 }): Promise<BillingChargeResult> {
   const settings = await getRuneSettings();
   const cost = runeCostFromSettings(settings, params.action);
@@ -382,6 +558,7 @@ export async function chargeRuneAction(params: {
     hasFullAccess: params.hasFullAccess,
     reserveFreeSlot: params.reserveFreeSlot,
     client: params.client,
+    idempotencyKey: params.idempotencyKey,
   });
 }
 
@@ -535,6 +712,8 @@ export async function chargeChatBilling(
         freeQuestionLimit: freeLimit,
         hasFullAccess: sessionHasFullAccess,
         reserveFreeSlot: actionType === "QUESTION",
+        // Per chat turn: session + action + current question counter (stable for double-submit).
+        idempotencyKey: `chat:${session.id}:${actionType}:${session.free_questions_used}`,
       });
 
       questionIndex = charge.questionIndex ?? questionIndex;

@@ -253,11 +253,42 @@ export async function POST(request: NextRequest) {
           description: pricing.firstPhotoDiscount
             ? "Фото-расклад (первая скидка 50%)"
             : undefined,
+          sessionId,
+          idempotencyKey:
+            idempotencyKey ||
+            (sessionId ? `photo-reading:${sessionId}` : undefined),
         });
         billingCharge = charge;
         runeBalance = charge.newBalance;
         spentRunes = charge.spentRunes;
         await trackWorkerJobCharged(request, charge.transactionId);
+
+        // Dedupe under lock: never re-run vision — return cached analysis or pending resume.
+        if (charge.deduplicated) {
+          const existingAfterCharge = await findPhotoReadingEntry(
+            profileUserId,
+            photoSpreadKey,
+            idempotencyKey
+          );
+          if (existingAfterCharge && typeof existingAfterCharge.context_data.analysis === "string") {
+            const payload = photoReadingJsonFromContext(existingAfterCharge.context_data, {
+              historyId: existingAfterCharge.id,
+              runeBalance,
+              cached: true,
+            });
+            await trackWorkerJobCompleted(request, payload);
+            return NextResponse.json(payload);
+          }
+          const pendingPayload = {
+            pending: true,
+            reused: true,
+            sessionId: sessionId ?? null,
+            runeBalance,
+            message: "Фото-разбор уже выполняется — откройте сессию.",
+          };
+          await trackWorkerJobCompleted(request, pendingPayload);
+          return NextResponse.json(pendingPayload);
+        }
       } catch (err) {
         if (err instanceof InsufficientFundsError) {
           return insufficientFundsResponse(err);

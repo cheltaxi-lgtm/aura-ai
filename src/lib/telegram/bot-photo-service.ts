@@ -436,9 +436,58 @@ export async function botPhotoInterpret(input: {
           description: pricing.firstPhotoDiscount
             ? "Фото-расклад (первая скидка 50%)"
             : "Фото-расклад",
+          sessionId: resolvedSessionId,
+          // Prefer client/flow key — never a freshly minted session id.
+          idempotencyKey: input.idempotencyKey?.trim()
+            ? `tg-photo:${input.idempotencyKey.trim().slice(0, 80)}`
+            : undefined,
         });
         runeBalance = billingCharge.newBalance;
         spentRunes = billingCharge.spentRunes;
+
+        if (billingCharge.deduplicated) {
+          const existingAfter = await findPhotoReadingEntry(
+            profileUserId,
+            photoSpreadKey,
+            input.idempotencyKey
+          );
+          if (existingAfter && typeof existingAfter.context_data.analysis === "string") {
+            const payload = photoReadingJsonFromContext(existingAfter.context_data, {
+              historyId: existingAfter.id,
+              cached: true,
+            });
+            return {
+              ok: true as const,
+              action: "interpret" as const,
+              analysis: payload.analysis as string,
+              cards: (payload.detectedCards as string[]) || [],
+              sessionId: (payload.sessionId as string) || null,
+              historyId: existingAfter.id,
+              runeBalance,
+              charged: 0,
+              cached: true,
+              firstPhotoDiscount: Boolean(payload.firstPhotoDiscount),
+            };
+          }
+          return {
+            ok: true as const,
+            action: "interpret" as const,
+            analysis: "",
+            cards: [] as string[],
+            sessionId: resolvedSessionId || null,
+            historyId: null,
+            runeBalance,
+            charged: 0,
+            cached: false,
+            pending: true,
+            reused: true,
+            firstPhotoDiscount,
+            message: "Фото-разбор уже выполняется — откройте сессию на сайте.",
+            linkUrl: resolvedSessionId
+              ? `${siteBase()}/?chat_session=${encodeURIComponent(resolvedSessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=photo`
+              : `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=photo`,
+          };
+        }
       } catch (err) {
         if (err instanceof InsufficientFundsError) {
           return {

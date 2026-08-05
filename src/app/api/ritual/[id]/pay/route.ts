@@ -8,6 +8,7 @@ import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  readRequestChargeIdempotencyKey,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
@@ -18,12 +19,16 @@ import {
   markRitualPaidAndGenerating,
   ritualToClient,
 } from "@/lib/ritual-service";
+import {
+  isRitualPayAlreadyClaimed,
+  ritualPayAlreadyDonePayload,
+} from "@/lib/ritual-pay-idempotent";
 import { getUserById } from "@/lib/users";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 /** Charge runes and mark ritual as `generating`. Client calls `/regenerate` to build text. */
-export async function POST(_request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, context: RouteContext) {
   await ensureDb();
 
   const authed = await requireProfileUserId();
@@ -46,9 +51,19 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Idempotent replay: pay already claimed — return live ritual (never 400/409).
+  if (isRitualPayAlreadyClaimed(ritual.status)) {
+    const balance = await getRuneBalance(authed.profileUserId);
+    return NextResponse.json(
+      ritualPayAlreadyDonePayload(ritual, balance, ritualToClient(ritual))
+    );
+  }
+
   if (ritual.status !== "payment") {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
+
+  const clientIdem = readRequestChargeIdempotencyKey(request);
 
   const cost = ritual.rune_cost;
   const unlimited = await resolveUnlimitedAccess({
@@ -72,6 +87,8 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         cost,
         actionType: "ritual",
         description: `Обряд: ${label}`,
+        // Stable per ritual; client Idempotency-Key wins when present.
+        idempotencyKey: clientIdem ?? `ritual-pay:${id}`,
       });
     } catch (err) {
       if (err instanceof InsufficientFundsError) {
@@ -86,8 +103,15 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     transactionId: billingCharge?.transactionId ?? null,
   });
   if (!generating) {
-    // Race: another pay already claimed this ritual — refund our charge.
-    if (billingCharge) {
+    // Race / dedupe: another pay already claimed — resume, do not refund a no-op (spentRunes=0).
+    const latest = await getRitualById(id);
+    if (latest && isRitualPayAlreadyClaimed(latest.status)) {
+      const balance = await getRuneBalance(authed.profileUserId);
+      return NextResponse.json(
+        ritualPayAlreadyDonePayload(latest, balance, ritualToClient(latest))
+      );
+    }
+    if (billingCharge && billingCharge.spentRunes > 0 && !billingCharge.deduplicated) {
       await BillingService.rollbackCharge({
         userId: authed.profileUserId,
         cost: billingCharge.spentRunes,

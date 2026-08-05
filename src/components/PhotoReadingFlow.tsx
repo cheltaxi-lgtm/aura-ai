@@ -1195,6 +1195,45 @@ export default function PhotoReadingFlow({
         return;
       }
 
+      // Charge/job dedupe: first interpret still running — resume without fail UI.
+      if (data.pending || (data.reused && !String(data.analysis ?? data.reply ?? "").trim())) {
+        const pendingMsg =
+          typeof data.message === "string" && data.message.trim()
+            ? data.message
+            : "Разбор уже выполняется — дождитесь результата в сессии.";
+        setLoading(false);
+        setStreamingAnalysis("");
+        if (typeof data.runeBalance === "number") {
+          onRuneBalanceChange?.(data.runeBalance as number);
+        }
+        if (ritualActive) {
+          onSpreadRitualEnd?.();
+          ritualActive = false;
+        }
+        if (onContinueChat && typeof data.sessionId === "string" && data.sessionId) {
+          setStep("result");
+          setError("");
+          try {
+            await onContinueChat(masterId, {
+              analysis: "",
+              question: questionText,
+              detectedCards,
+              redrawSpread: redrawSpread ?? undefined,
+              sessionId: data.sessionId,
+            });
+          } catch {
+            setStep("confirm");
+            setError(pendingMsg);
+          }
+          trackPhotoReadingPhase("interpret_done", { cached: true, pending: true });
+          return;
+        }
+        setStep("confirm");
+        setError(pendingMsg);
+        trackPhotoReadingPhase("interpret_done", { cached: true, pending: true });
+        return;
+      }
+
       const analysis = String(data.analysis ?? data.reply ?? "");
       if (!analysis.trim()) {
         setStep("confirm");
@@ -1738,7 +1777,7 @@ export default function PhotoReadingFlow({
                     <Link
                       href={ritualUpsellHref}
                       onClick={() => trackPhotoReadingPhase("ritual_upsell")}
-                      className="block rounded-xl border border-aura-purple/25 bg-aura-purple/8 px-4 py-3 text-sm text-white/75 hover:border-aura-purple/40"
+                      className="block rounded-xl border border-aura-gold/25 bg-aura-gold/8 px-4 py-3 text-sm text-white/75 hover:border-aura-gold/40"
                     >
                       Расклад показал направление — усилите результат{" "}
                       <span className="text-aura-gold">обрядом →</span>

@@ -22,12 +22,13 @@ import {
 } from "@/lib/ai-generation-contract";
 import { resolveUnlimitedAccess, getUserReadingHistory, findCachedIntentionSpread } from "@/lib/accounts";
 import { getSetting } from "@/lib/settings";
-import { isRuneBillingActive } from "@/lib/rune-service";
+import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  readRequestChargeIdempotencyKey,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -620,6 +621,20 @@ export async function POST(request: NextRequest) {
   }
 
   if (asyncRequested && isAsyncJobWorkerConfigured()) {
+    // Fail fast on 402 before enqueue — otherwise the client ritual spins until
+    // the worker charges and fails with insufficient_runes.
+    const unlimitedForEnqueue = await resolveUnlimitedAccess({
+      accountId: authed.auth.sub,
+      profileUserId: authed.profileUserId,
+    });
+    const runeSettingsForEnqueue = await getRuneSettings();
+    if (isRuneBillingActive(authed.profileUserId, unlimitedForEnqueue, runeSettingsForEnqueue)) {
+      const spreadCost = resolveSpreadCost(spreadId, runeSettingsForEnqueue);
+      const balance = await getRuneBalance(authed.profileUserId);
+      if (balance < spreadCost) {
+        return insufficientRunesResponse(balance, spreadCost);
+      }
+    }
     return enqueuePaidAsyncJob({
       userId: authed.profileUserId,
       kind: "intention_spread",
@@ -764,6 +779,10 @@ export async function POST(request: NextRequest) {
         userId: authed.profileUserId,
         cost: spreadCost,
         actionType: "INTENTION_SPREAD",
+        sessionId,
+        idempotencyKey:
+          readRequestChargeIdempotencyKey(request, rawBody) ??
+          (sessionId ? `intention-spread:${sessionId}:${spreadId}` : undefined),
       });
       billingCharge = charge;
       runeBalance = charge.newBalance;
@@ -773,6 +792,55 @@ export async function POST(request: NextRequest) {
       }
       throw err;
     }
+  }
+
+  // Charge dedupe: never re-run LLM — return cached reading or a pending resume payload.
+  if (billingCharge?.deduplicated) {
+    const history = await getUserReadingHistory(authed.profileUserId);
+    const cached = findCachedIntentionSpread(
+      history,
+      characterId,
+      intention,
+      drawn.map((c) => ({ name: c.name })),
+      spreadId,
+      { sessionId, requireSessionId: intention === "custom" || Boolean(sessionId) }
+    );
+    if (cached?.reading && isAiCacheReusable(cached)) {
+      const cleaned = sanitizeReadingForClient(
+        cached.reading,
+        drawn.map((c) => c.name)
+      );
+      if (cleaned) {
+        const reusedPayload = {
+          reading: cleaned,
+          cards: drawn,
+          system,
+          intention,
+          spreadId,
+          sessionId: cached.sessionId ?? sessionId,
+          isPaid: true,
+          reused: true,
+          runeBalance,
+        };
+        await trackWorkerJobCompleted(request, reusedPayload);
+        return NextResponse.json(reusedPayload);
+      }
+    }
+    const pendingPayload = {
+      reading: "",
+      pending: true,
+      cards: drawn,
+      system,
+      intention,
+      spreadId,
+      sessionId,
+      isPaid: true,
+      reused: true,
+      runeBalance,
+      message: "Расклад уже выполняется — откройте сессию.",
+    };
+    await trackWorkerJobCompleted(request, pendingPayload);
+    return NextResponse.json(pendingPayload);
   }
 
   if (intention === "life_death") {

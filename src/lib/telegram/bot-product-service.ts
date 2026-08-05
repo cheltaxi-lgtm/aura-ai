@@ -2,7 +2,11 @@
  * Thin product surface for Telegram bot ↔ site parity.
  * Site Postgres remains source of truth; bot calls these via /api/internal/bot/*.
  */
-import { resolveUnlimitedAccess } from "@/lib/accounts";
+import {
+  findCachedIntentionSpread,
+  getUserReadingHistory,
+  resolveUnlimitedAccess,
+} from "@/lib/accounts";
 import { formatReversedCardName } from "@/lib/card-orientation";
 import { buildCharacterPrompt, generateReading } from "@/lib/chat-prompts";
 import {
@@ -29,12 +33,17 @@ import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist"
 import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { getCabinetSessions } from "@/lib/cabinet-data";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
-import { getRuneSettings } from "@/lib/rune-settings";
+import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { sanitizeReadingForClient, stripMemoryLeakFromReply } from "@/lib/chat-sanitize";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { createHistoryEntry, getUserById } from "@/lib/users";
 import { query } from "@/lib/db";
 import { botRunesShopUrl, resolveBotUser } from "@/lib/telegram/bot-resolve";
+import {
+  bindBotChargeSession,
+  buildBotProductChargeKey,
+  findSessionIdForBotCharge,
+} from "@/lib/telegram/bot-charge-idempotency";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
 import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
 import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
@@ -43,6 +52,13 @@ import { resolveSpreadCost } from "@/lib/spreads/spread-pricing";
 import type { SessionTopicId } from "@/lib/session-topics";
 
 const POSITIONS = ["Прошлое", "Настоящее", "Будущее"] as const;
+
+function siteBase(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "https://zovus.ru").replace(
+    /\/$/,
+    ""
+  );
+}
 
 export type BotCard = {
   id: number;
@@ -164,6 +180,10 @@ export type BotSpreadResult =
       spreadId?: string;
       cost?: number;
       intentSlug?: string;
+      reused?: boolean;
+      pending?: boolean;
+      message?: string;
+      linkUrl?: string;
     }
   | {
       ok: false;
@@ -190,6 +210,8 @@ function intentTopicHint(category: string, spreadId: string): SessionTopicId | n
 export async function botRunVeronikaSpread(input: {
   telegramUserId: number;
   question: string;
+  /** Sticky telegram/flow event id — never a freshly minted session id. */
+  clientEventId?: string;
 }): Promise<BotSpreadResult> {
   const resolved = await resolveBotUser(input.telegramUserId);
   if (!resolved.linked || !resolved.profileUserId) {
@@ -220,39 +242,36 @@ export async function botRunVeronikaSpread(input: {
     return { ok: false, error: "internal", message: "Слишком короткий вопрос." };
   }
 
-  const system = resolveMasterDeckSystem("veronika");
-  const cards = orientCards(drawSpread(system, 3));
-  const cardNames = cards.map((c) => formatReversedCardName(c.name, c.reversed));
-
-  const session = await createSession(undefined, profileUserId);
-  await updateSessionChatMeta(session.id, {
-    characterKey: "veronika",
-    intention: "custom",
-    spreadType: "new",
-    spreadId: "triplet",
-    cards: cardNames,
-  });
-
   const unlimited = await resolveUnlimitedAccess({
     accountId: resolved.accountId,
     profileUserId,
   });
   const runeSettings = await getRuneSettings();
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
+  const idempotencyKey = buildBotProductChargeKey({
+    kind: "veronika",
+    userId: profileUserId,
+    clientEventId: input.clientEventId,
+    content: question,
+  });
 
   let billingCharge: Awaited<ReturnType<typeof BillingService.chargeRuneAction>> | null = null;
   let runeBalance = await getRuneBalance(profileUserId);
   let charged = 0;
 
+  // Charge before createSession so a retry cannot mint a second session+debit.
   if (useRuneBilling) {
     try {
-      billingCharge = await BillingService.chargeRuneAction({
+      const readingCost = runeCostFromSettings(runeSettings, "READING");
+      billingCharge = await BillingService.chargeForSession({
         userId: profileUserId,
-        action: "READING",
+        cost: readingCost,
+        actionType: "READING",
+        idempotencyKey,
+        description: "Telegram: расклад Вероники",
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
-      await unlockSingleSession(session.id);
     } catch (err) {
       if (err instanceof InsufficientFundsError) {
         return {
@@ -266,6 +285,101 @@ export async function botRunVeronikaSpread(input: {
       }
       throw err;
     }
+  }
+
+  if (billingCharge?.deduplicated) {
+    const firstSessionId = await findSessionIdForBotCharge(billingCharge.transactionId);
+    if (firstSessionId) {
+      const history = await getUserReadingHistory(profileUserId);
+      const cached = history.find((h) => {
+        const ctx = h.context_data as {
+          sessionId?: string;
+          reading?: string;
+          interpretation?: string;
+        };
+        return (
+          ctx?.sessionId === firstSessionId &&
+          (typeof ctx.reading === "string" || typeof ctx.interpretation === "string")
+        );
+      });
+      const ctx = (cached?.context_data ?? {}) as {
+        reading?: string;
+        interpretation?: string;
+        cards?: string[];
+      };
+      const readingRaw = (ctx.reading || ctx.interpretation || "").trim();
+      if (readingRaw) {
+        const names = Array.isArray(ctx.cards) ? ctx.cards : [];
+        const reading = sanitizeReadingForClient(readingRaw, names) || readingRaw;
+        const cards = names.map((name, i) => ({
+          id: i,
+          name,
+          reversed: /\(перев/i.test(name),
+          position: i,
+          positionLabel: POSITIONS[i] ?? `Позиция ${i + 1}`,
+          meaning: "",
+        }));
+        return {
+          ok: true,
+          sessionId: firstSessionId,
+          cards,
+          reading,
+          runeBalance,
+          charged: 0,
+          free: true,
+          masterId: "veronika",
+          spreadId: "triplet",
+          reused: true,
+        };
+      }
+      return {
+        ok: true,
+        sessionId: firstSessionId,
+        cards: [],
+        reading: "",
+        pending: true,
+        runeBalance,
+        charged: 0,
+        free: true,
+        masterId: "veronika",
+        spreadId: "triplet",
+        reused: true,
+        message: "Разбор уже выполняется — откройте сессию на сайте.",
+        linkUrl: `${siteBase()}/?chat_session=${encodeURIComponent(firstSessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=product`,
+      };
+    }
+    return {
+      ok: true,
+      sessionId: "",
+      cards: [],
+      reading: "",
+      pending: true,
+      runeBalance,
+      charged: 0,
+      free: true,
+      masterId: "veronika",
+      spreadId: "triplet",
+      reused: true,
+      message: "Разбор уже выполняется — откройте кабинет.",
+      linkUrl: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=product`,
+    };
+  }
+
+  const system = resolveMasterDeckSystem("veronika");
+  const cards = orientCards(drawSpread(system, 3));
+  const cardNames = cards.map((c) => formatReversedCardName(c.name, c.reversed));
+
+  const session = await createSession(undefined, profileUserId);
+  await updateSessionChatMeta(session.id, {
+    characterKey: "veronika",
+    intention: "custom",
+    spreadType: "new",
+    spreadId: "triplet",
+    cards: cardNames,
+  });
+  await bindBotChargeSession(billingCharge?.transactionId, session.id);
+  if (billingCharge?.spentRunes) {
+    await unlockSingleSession(session.id);
   }
 
   const userName = normalizePersonDisplayNameOr(
@@ -409,6 +523,8 @@ export async function botRunVeronikaSpread(input: {
 export async function botRunCatalogIntent(input: {
   telegramUserId: number;
   intentSlug: string;
+  /** Sticky telegram/flow event id — never a freshly minted session id. */
+  clientEventId?: string;
 }): Promise<BotSpreadResult> {
   const resolved = await resolveBotUser(input.telegramUserId);
   if (!resolved.linked || !resolved.profileUserId) {
@@ -459,23 +575,11 @@ export async function botRunCatalogIntent(input: {
   }
 
   const spreadId = intent.spreadId;
-  const spread = getSpread(spreadId);
   const masterId = resolveIntentMasterId(intent);
   const topicHint = intentTopicHint(intent.category, spreadId);
   const positionLabels = resolveSpreadPositions(spreadId, topicHint).map((p) => p.label);
+  const spread = getSpread(spreadId);
   const cardCount = Math.max(1, spread.cardCount || positionLabels.length || 3);
-  const system = resolveSpreadDeckSystem(spreadId, masterId);
-  const cards = orientCards(drawSpread(system, cardCount), positionLabels);
-  const cardNames = cards.map((c) => formatReversedCardName(c.name, c.reversed));
-
-  const session = await createSession(undefined, profileUserId);
-  await updateSessionChatMeta(session.id, {
-    characterKey: masterId,
-    intention: "custom",
-    spreadType: "new",
-    spreadId,
-    cards: cardNames,
-  });
 
   const unlimited = await resolveUnlimitedAccess({
     accountId: resolved.accountId,
@@ -484,6 +588,12 @@ export async function botRunCatalogIntent(input: {
   const runeSettings = await getRuneSettings();
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
   const spreadCost = resolveSpreadCost(spreadId, runeSettings);
+  const idempotencyKey = buildBotProductChargeKey({
+    kind: "catalog",
+    userId: profileUserId,
+    clientEventId: input.clientEventId,
+    content: `${intent.slug}:${spreadId}`,
+  });
 
   let billingCharge: BillingChargeResult | null = null;
   let runeBalance = await getRuneBalance(profileUserId);
@@ -495,10 +605,11 @@ export async function botRunCatalogIntent(input: {
         userId: profileUserId,
         cost: spreadCost,
         actionType: "INTENTION_SPREAD",
+        idempotencyKey,
+        description: "Telegram: каталог раскладов",
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
-      await unlockSingleSession(session.id);
     } catch (err) {
       if (err instanceof InsufficientFundsError) {
         return {
@@ -512,6 +623,101 @@ export async function botRunCatalogIntent(input: {
       }
       throw err;
     }
+  }
+
+  if (billingCharge?.deduplicated) {
+    const firstSessionId = await findSessionIdForBotCharge(billingCharge.transactionId);
+    if (firstSessionId) {
+      const history = await getUserReadingHistory(profileUserId);
+      const cached = findCachedIntentionSpread(
+        history,
+        masterId,
+        "custom",
+        [],
+        spreadId,
+        { sessionId: firstSessionId, requireSessionId: true }
+      );
+      if (cached?.reading?.trim()) {
+        const reading =
+          sanitizeReadingForClient(
+            cached.reading,
+            (cached.tarotCards ?? []).map((c) => c.name)
+          ) || cached.reading;
+        const cards = (cached.tarotCards ?? []).map((c, i) => ({
+          id: i,
+          name: c.name,
+          reversed: false,
+          position: i,
+          positionLabel: positionLabels[i] ?? `Позиция ${i + 1}`,
+          meaning: c.meaning || "",
+        }));
+        return {
+          ok: true,
+          sessionId: firstSessionId,
+          cards,
+          reading,
+          runeBalance,
+          charged: 0,
+          free: true,
+          masterId,
+          spreadId,
+          cost: spreadCost,
+          intentSlug: intent.slug,
+          reused: true,
+        };
+      }
+      return {
+        ok: true,
+        sessionId: firstSessionId,
+        cards: [],
+        reading: "",
+        pending: true,
+        runeBalance,
+        charged: 0,
+        free: true,
+        masterId,
+        spreadId,
+        cost: spreadCost,
+        intentSlug: intent.slug,
+        reused: true,
+        message: "Разбор уже выполняется — откройте сессию на сайте.",
+        linkUrl: `${siteBase()}/?chat_session=${encodeURIComponent(firstSessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=product`,
+      };
+    }
+    return {
+      ok: true,
+      sessionId: "",
+      cards: [],
+      reading: "",
+      pending: true,
+      runeBalance,
+      charged: 0,
+      free: true,
+      masterId,
+      spreadId,
+      cost: spreadCost,
+      intentSlug: intent.slug,
+      reused: true,
+      message: "Разбор уже выполняется — откройте кабинет.",
+      linkUrl: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=product`,
+    };
+  }
+
+  const system = resolveSpreadDeckSystem(spreadId, masterId);
+  const cards = orientCards(drawSpread(system, cardCount), positionLabels);
+  const cardNames = cards.map((c) => formatReversedCardName(c.name, c.reversed));
+
+  const session = await createSession(undefined, profileUserId);
+  await updateSessionChatMeta(session.id, {
+    characterKey: masterId,
+    intention: "custom",
+    spreadType: "new",
+    spreadId,
+    cards: cardNames,
+  });
+  await bindBotChargeSession(billingCharge?.transactionId, session.id);
+  if (billingCharge?.spentRunes) {
+    await unlockSingleSession(session.id);
   }
 
   const userName = normalizePersonDisplayNameOr(user.name || resolved.name, "друг");

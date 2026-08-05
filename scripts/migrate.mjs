@@ -7,6 +7,11 @@
  *   node scripts/migrate.mjs --baseline — mark historical files through 063 as applied
  *   node scripts/migrate.mjs --status   — list applied / pending
  *
+ * Empty database: applies src/lib/schema.sql (canonical snapshot through
+ * SCHEMA_SQL_THROUGH), records those migrations in schema_migrations, then
+ * runs any newer files. Historical 001–063 never CREATE core tables (sessions
+ * etc.); they are ALTER-only and cannot bootstrap alone.
+ *
  * Env: DATABASE_URL (from .env.local or environment)
  */
 import fs from "fs";
@@ -17,10 +22,20 @@ import pg from "pg";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+const SCHEMA_SQL_PATH = path.join(ROOT, "src/lib/schema.sql");
+
 // Existing databases predate the migration ledger. Only migrations known to
 // have been represented by the historical schema may be baselined without
 // executing SQL. Never advance this cutoff for a newly shipped migration.
 const BASELINE_MAX_VERSION = 63;
+
+/**
+ * src/lib/schema.sql is hand-maintained as a full snapshot of the schema after
+ * this migration number (inclusive). Bump when schema.sql absorbs a new file.
+ */
+// Snapshot includes product schema through 100; 101+ always execute as SQL
+// (idempotent) so empty-DB migrate still exercises the newest align migration.
+const SCHEMA_SQL_THROUGH = 100;
 
 const SCHEMA_MIGRATIONS_DDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -93,35 +108,98 @@ function baselineFiles(files) {
   });
 }
 
-async function markBaseline(client, files) {
-  await ensureMigrationsTable(client);
-  const applied = await getAppliedVersions(client);
+function schemaSnapshotFiles(files) {
+  return files.filter((file) => {
+    const version = migrationNumber(file);
+    return version !== null && version <= SCHEMA_SQL_THROUGH;
+  });
+}
+
+/**
+ * Migrations that fail when schema.sql (final shape) is applied first, then
+ * migrate runs protected pending files. Safe to record as applied: target
+ * objects already exist in the snapshot / later migrations.
+ */
+function isSchemaFirstSatisfiedFailure(file, errMsg) {
+  const msg = String(errMsg ?? "");
+  if (
+    file.startsWith("072_migrate_numerology_report_history") &&
+    /no unique or exclusion constraint matching the ON CONFLICT/i.test(msg)
+  ) {
+    return true;
+  }
+  if (
+    file.startsWith("077_migrate_premium_ai_delivery") &&
+    /operator does not exist: uuid/i.test(msg)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+async function markVersions(client, files, label) {
   let inserted = 0;
-  const historical = baselineFiles(files);
-  for (const file of historical) {
-    if (applied.has(file)) continue;
-    await client.query(
+  for (const file of files) {
+    const { rowCount } = await client.query(
       "INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT (version) DO NOTHING",
       [file]
     );
-    inserted++;
-    console.log(`[baseline] marked ${file}`);
+    if (rowCount) {
+      inserted++;
+      console.log(`[${label}] marked ${file}`);
+    }
   }
-  const protectedPending = files.filter((file) => !historical.includes(file) && !applied.has(file));
+  return inserted;
+}
+
+async function markBaseline(client, files) {
+  await ensureMigrationsTable(client);
+  const historical = baselineFiles(files);
+  const inserted = await markVersions(client, historical, "baseline");
+  const protectedPending = files.filter(
+    (file) => !historical.includes(file)
+  );
+  const applied = await getAppliedVersions(client);
+  const stillPending = protectedPending.filter((f) => !applied.has(f));
   console.log(
     `Baseline complete: ${inserted} historical migration(s) recorded (cutoff ${String(BASELINE_MAX_VERSION).padStart(3, "0")}).`
   );
-  if (protectedPending.length > 0) {
+  if (stillPending.length > 0) {
     console.log(
-      `Protected pending migrations require SQL execution: ${protectedPending.join(", ")}`
+      `Protected pending migrations require SQL execution: ${stillPending.join(", ")}`
     );
+  }
+}
+
+async function bootstrapEmptyFromSchemaSql(client, files) {
+  if (!fs.existsSync(SCHEMA_SQL_PATH)) {
+    throw new Error(`schema.sql not found: ${SCHEMA_SQL_PATH}`);
+  }
+  console.log(
+    `[bootstrap] empty database — applying src/lib/schema.sql (snapshot through ${String(SCHEMA_SQL_THROUGH).padStart(3, "0")})`
+  );
+  const sql = fs.readFileSync(SCHEMA_SQL_PATH, "utf8");
+  await client.query(sql);
+
+  const snapshot = schemaSnapshotFiles(files);
+  const inserted = await markVersions(client, snapshot, "bootstrap");
+  console.log(
+    `[bootstrap] recorded ${inserted} migration(s) as applied (schema.sql snapshot).`
+  );
+  const pending = files.filter((f) => !snapshot.includes(f));
+  if (pending.length) {
+    console.log(`[bootstrap] pending after snapshot: ${pending.join(", ")}`);
   }
 }
 
 async function runMigrations(client, files, applied) {
   let ran = 0;
+  let softSkipped = 0;
+  // Mutate a working set so soft-skips are visible to later iterations.
+  const seen = new Set(applied);
+
   for (const file of files) {
-    if (applied.has(file)) {
+    if (seen.has(file)) {
       console.log(`[skip] ${file}`);
       continue;
     }
@@ -133,17 +211,32 @@ async function runMigrations(client, files, applied) {
     await client.query("BEGIN");
     try {
       await client.query(sql);
-      await client.query("INSERT INTO schema_migrations (version) VALUES ($1)", [file]);
+      await client.query("INSERT INTO schema_migrations (version) VALUES ($1)", [
+        file,
+      ]);
       await client.query("COMMIT");
       ran++;
+      seen.add(file);
       console.log(`[ok]   ${file}`);
     } catch (err) {
       await client.query("ROLLBACK");
+      if (isSchemaFirstSatisfiedFailure(file, err.message)) {
+        console.warn(
+          `[skip-satisfied] ${file}: ${err.message} (schema already at target; recording ledger)`
+        );
+        await client.query(
+          "INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT (version) DO NOTHING",
+          [file]
+        );
+        softSkipped++;
+        seen.add(file);
+        continue;
+      }
       console.error(`[fail] ${file}`);
       throw err;
     }
   }
-  return ran;
+  return { ran, softSkipped };
 }
 
 async function printStatus(client, files, applied) {
@@ -152,7 +245,9 @@ async function printStatus(client, files, applied) {
     console.log(`  ${applied.has(file) ? "✓" : "·"} ${file}`);
   }
   const pending = files.filter((f) => !applied.has(f)).length;
-  console.log(`Applied: ${applied.size}, pending: ${pending}, total: ${files.length}`);
+  console.log(
+    `Applied: ${applied.size}, pending: ${pending}, total: ${files.length}`
+  );
 }
 
 async function main() {
@@ -178,7 +273,7 @@ async function main() {
 
   try {
     await ensureMigrationsTable(client);
-    const applied = await getAppliedVersions(client);
+    let applied = await getAppliedVersions(client);
 
     if (statusOnly) {
       await printStatus(client, files, applied);
@@ -187,9 +282,22 @@ async function main() {
 
     if (baseline) {
       await markBaseline(client, files);
-      const afterBaseline = await getAppliedVersions(client);
-      const ran = await runMigrations(client, files, afterBaseline);
+      applied = await getAppliedVersions(client);
+      const { ran } = await runMigrations(client, files, applied);
       console.log(`Done: ${ran} protected pending migration(s) applied.`);
+      return;
+    }
+
+    // Truly empty DB: cannot run 001+ (ALTER-only). Bootstrap from schema.sql.
+    if (applied.size === 0 && !(await isDatabaseInitialized(client))) {
+      await bootstrapEmptyFromSchemaSql(client, files);
+      applied = await getAppliedVersions(client);
+      const { ran, softSkipped } = await runMigrations(client, files, applied);
+      console.log(
+        `Done: ${ran} migration(s) applied after bootstrap` +
+          (softSkipped ? `, ${softSkipped} skip-satisfied` : "") +
+          `.`
+      );
       return;
     }
 
@@ -203,14 +311,22 @@ async function main() {
         `Existing database with empty schema_migrations — baselining historical migrations through ${String(BASELINE_MAX_VERSION).padStart(3, "0")} (use --force to re-apply all).`
       );
       await markBaseline(client, files);
-      const afterBaseline = await getAppliedVersions(client);
-      const ran = await runMigrations(client, files, afterBaseline);
-      console.log(`Done: ${ran} protected pending migration(s) applied.`);
+      applied = await getAppliedVersions(client);
+      const { ran, softSkipped } = await runMigrations(client, files, applied);
+      console.log(
+        `Done: ${ran} protected pending migration(s) applied` +
+          (softSkipped ? `, ${softSkipped} skip-satisfied` : "") +
+          `.`
+      );
       return;
     }
 
-    const ran = await runMigrations(client, files, applied);
-    console.log(`Done: ${ran} migration(s) applied, ${files.length - ran - applied.size + ran} already up to date.`);
+    const { ran, softSkipped } = await runMigrations(client, files, applied);
+    console.log(
+      `Done: ${ran} migration(s) applied` +
+        (softSkipped ? `, ${softSkipped} skip-satisfied` : "") +
+        `, ledger size now tracked in schema_migrations.`
+    );
   } finally {
     await client.end();
   }
