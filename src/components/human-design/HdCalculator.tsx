@@ -315,45 +315,62 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     }
   }, [birthDate, birthTime, place, timeUnknown, subjectKind, subjectName, onChartCreated]);
 
+  const renderChipRow = (list: HdChartPayload[]) =>
+    list.map((c) => {
+      const active = result?.id === c.id;
+      return (
+        <span
+          key={c.id}
+          className={`inline-flex items-center overflow-hidden rounded-full border text-xs transition ${
+            active
+              ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
+              : "border-amber-300/25 bg-amber-300/5 text-amber-100/85 hover:border-amber-300/50 hover:bg-amber-300/15"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setResult(c);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="px-3.5 py-1.5"
+          >
+            {hdChartChipLabel(c)}
+          </button>
+          <button
+            type="button"
+            aria-label="Удалить карту"
+            title="Удалить карту"
+            onClick={() => void deleteMine(c)}
+            className="border-l border-amber-300/20 px-2 py-1.5 text-amber-100/50 transition hover:bg-red-500/15 hover:text-red-300"
+          >
+            ×
+          </button>
+        </span>
+      );
+    });
+
+  const selfMine = mine.filter((c) => c.subjectKind !== "other");
+  const otherMine = mine.filter((c) => c.subjectKind === "other");
+
   const mineChips =
     authenticated && mine.length > 0 ? (
-      <div className="hd-panel hd-print-hidden">
-        <p className="hd-field__label mb-3">Мои карты</p>
-        <div className="flex flex-wrap gap-2">
-          {mine.map((c) => {
-            const active = result?.id === c.id;
-            return (
-              <span
-                key={c.id}
-                className={`inline-flex items-center overflow-hidden rounded-full border text-xs transition ${
-                  active
-                    ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
-                    : "border-amber-300/25 bg-amber-300/5 text-amber-100/85 hover:border-amber-300/50 hover:bg-amber-300/15"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResult(c);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className="px-3.5 py-1.5"
-                >
-                  {hdChartChipLabel(c)}
-                </button>
-                <button
-                  type="button"
-                  aria-label="Удалить карту"
-                  title="Удалить карту"
-                  onClick={() => void deleteMine(c)}
-                  className="border-l border-amber-300/20 px-2 py-1.5 text-amber-100/50 transition hover:bg-red-500/15 hover:text-red-300"
-                >
-                  ×
-                </button>
-              </span>
-            );
-          })}
-        </div>
+      <div className="hd-panel hd-print-hidden space-y-4">
+        {selfMine.length > 0 && (
+          <div>
+            <p className="hd-field__label mb-2">Моя карта</p>
+            <div className="flex flex-wrap gap-2">{renderChipRow(selfMine)}</div>
+          </div>
+        )}
+        {otherMine.length > 0 && (
+          <div>
+            <p className="hd-field__label mb-1">Карты других людей</p>
+            <p className="mb-2 text-[0.6875rem] text-white/40">
+              Не ваша карта — сохранены из расчёта «другому человеку».
+            </p>
+            <div className="flex flex-wrap gap-2">{renderChipRow(otherMine)}</div>
+          </div>
+        )}
       </div>
     ) : null;
 

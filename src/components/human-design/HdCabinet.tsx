@@ -12,6 +12,10 @@ interface HdChartListItem extends HdChartPayload {
   createdAt: string;
 }
 
+function isOther(c: { subjectKind?: string | null }): boolean {
+  return c.subjectKind === "other";
+}
+
 export default function HdCabinet() {
   const [charts, setCharts] = useState<HdChartListItem[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -19,14 +23,10 @@ export default function HdCabinet() {
   const [enabled, setEnabled] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [partnerId, setPartnerId] = useState<string | null>(null);
-  // Read the current selection inside load() without depending on it —
-  // otherwise every chip click recreates load and refetches the whole list.
   const selectedIdRef = useRef<string | null>(null);
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
-  // Monotonic load counter: a slow response must not clobber newer state
-  // (e.g. resurrect a just-deleted chart).
   const loadSeq = useRef(0);
   const [loadError, setLoadError] = useState(false);
 
@@ -40,20 +40,18 @@ export default function HdCabinet() {
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
         list.sort((a, b) => {
-          const aSelf = a.subjectKind === "other" ? 1 : 0;
-          const bSelf = b.subjectKind === "other" ? 1 : 0;
+          const aSelf = isOther(a) ? 1 : 0;
+          const bSelf = isOther(b) ? 1 : 0;
           return aSelf - bSelf;
         });
         setCharts(list);
         if (list.length && !selectedIdRef.current) {
-          const selfChart = list.find((c) => c.subjectKind !== "other");
+          const selfChart = list.find((c) => !isOther(c));
           setSelectedId((selfChart ?? list[0]).id);
         }
       })
       .catch(() => {
         if (seq !== loadSeq.current) return;
-        // Keep the previous list (if any) — an empty list would flash the
-        // "create your first chart" form over a transient network error.
         setLoadError(true);
         setCharts((prev) => prev ?? []);
       });
@@ -63,13 +61,10 @@ export default function HdCabinet() {
     load();
   }, [load]);
 
-  // A stale partner id must not survive switching/deleting the base chart.
   useEffect(() => {
     setPartnerId(null);
   }, [selectedId]);
 
-  // Refetch when the tab becomes visible — a chart computed in another tab
-  // (public calculator) must appear without a manual reload.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") load();
@@ -114,7 +109,7 @@ export default function HdCabinet() {
               onClick={() => setCreating(false)}
               className="hd-bodygraph__export"
             >
-              Мои карты
+              К моей карте
             </button>
           )}
         </div>
@@ -122,8 +117,14 @@ export default function HdCabinet() {
           returnTo="/cabinet/human-design"
           onChartCreated={(chart) => {
             setCreating(false);
-            setSelectedId(chart.id);
             setCharts(null);
+            if (isOther(chart)) {
+              // Чужой расчёт не должен открываться вместо «моей» карты.
+              selectedIdRef.current = null;
+              setSelectedId(null);
+            } else {
+              setSelectedId(chart.id);
+            }
             load();
           }}
           onChartDeleted={(chartId) => {
@@ -135,7 +136,10 @@ export default function HdCabinet() {
     );
   }
 
-  const selected = charts.find((c) => c.id === selectedId) ?? charts[0]!;
+  const selfCharts = charts.filter((c) => !isOther(c));
+  const otherCharts = charts.filter((c) => isOther(c));
+  const selected = charts.find((c) => c.id === selectedId) ?? selfCharts[0] ?? charts[0]!;
+  const selectedIsOther = isOther(selected);
 
   const deleteSelected = async () => {
     const who = hdChartChipLabel(selected);
@@ -155,7 +159,7 @@ export default function HdCabinet() {
       if (!res.ok) throw new Error("delete failed");
       const remaining = charts.filter((c) => c.id !== selected.id);
       setCharts(remaining);
-      const nextSelf = remaining.find((c) => c.subjectKind !== "other");
+      const nextSelf = remaining.find((c) => !isOther(c));
       setSelectedId((nextSelf ?? remaining[0])?.id ?? null);
       if (remaining.length === 0) setCreating(true);
     } catch {
@@ -165,10 +169,28 @@ export default function HdCabinet() {
     }
   };
 
+  const chipBtn = (c: HdChartListItem, active: boolean) => (
+    <button
+      key={c.id}
+      type="button"
+      onClick={() => setSelectedId(c.id)}
+      className={`rounded-full border px-3.5 py-1.5 text-xs transition ${
+        active
+          ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
+          : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
+      }`}
+    >
+      {hdChartChipLabel(c)}
+      <span className="ml-1.5 text-white/40">{TYPE_META[c.chart.type].nameRu}</span>
+    </button>
+  );
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-bold">Дизайн Человека</h1>
+        <h1 className="font-display text-2xl font-bold">
+          {selectedIsOther ? "Карта другого человека" : "Моя карта"}
+        </h1>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -188,28 +210,39 @@ export default function HdCabinet() {
         </div>
       </div>
 
-      {charts.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {charts.map((c) => {
-            const active = c.id === selected.id;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelectedId(c.id)}
-                className={`rounded-full border px-3.5 py-1.5 text-xs transition ${
-                  active
-                    ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
-                    : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
-                }`}
-              >
-                {hdChartChipLabel(c)}
-                <span className="ml-1.5 text-white/40">
-                  {TYPE_META[c.chart.type].nameRu}
-                </span>
-              </button>
-            );
-          })}
+      {selfCharts.length > 0 && (
+        <div className="space-y-2">
+          {selfCharts.length > 1 || otherCharts.length > 0 ? (
+            <p className="text-[0.6875rem] uppercase tracking-wider text-amber-100/45">
+              Моя карта
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {selfCharts.map((c) => chipBtn(c, c.id === selected.id))}
+          </div>
+        </div>
+      )}
+
+      {otherCharts.length > 0 && (
+        <div className="space-y-2 border-t border-white/10 pt-4">
+          <p className="text-[0.6875rem] uppercase tracking-wider text-white/40">
+            Карты других людей
+          </p>
+          <p className="text-xs text-white/40">
+            Сохранены из расчётов «другому человеку» — это не ваша карта.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {otherCharts.map((c) => chipBtn(c, c.id === selected.id))}
+          </div>
+          {selectedIsOther && selfCharts[0] && (
+            <button
+              type="button"
+              onClick={() => setSelectedId(selfCharts[0]!.id)}
+              className="hd-bodygraph__export"
+            >
+              Вернуться к моей карте
+            </button>
+          )}
         </div>
       )}
 
@@ -238,8 +271,6 @@ export default function HdCabinet() {
           </div>
           {partnerId && (() => {
             const partner = charts.find((c) => c.id === partnerId);
-            // The partner chip may disappear under us (deleted in another tab)
-            // — render nothing instead of crashing on a stale id.
             return partner ? (
               <HdComposite
                 key={`${selected.id}:${partnerId}`}
