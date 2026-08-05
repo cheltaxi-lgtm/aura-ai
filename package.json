@@ -66,6 +66,7 @@
     "verify:natal-backend": "node scripts/verify-natal-backend.mjs",
     "verify:async-natal-jobs": "node scripts/verify-async-natal-jobs.mjs",
     "verify:ai-delivery": "node scripts/verify-ai-delivery.mjs && node scripts/verify-ai-delivery-invariants.mjs",
+    "verify:pro": "npx tsx scripts/pro-verify.ts",
     "test:e2e:natal": "playwright test",
     "test:e2e:memory": "playwright test tests/e2e/personal-memory.public.spec.ts --project=public-chromium",
     "test:e2e:guest-triplet": "playwright test --project=guest-triplet-mobile",

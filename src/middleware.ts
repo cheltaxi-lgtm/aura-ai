@@ -392,6 +392,32 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Zovus Pro (S0 dark): ENV kill-switch only — do not import modules/pro here.
+  {
+    const proPath =
+      pathname === "/pro" ||
+      pathname.startsWith("/pro/") ||
+      pathname.startsWith("/api/pro") ||
+      pathname.startsWith("/r/") ||
+      pathname === "/admin/pro" ||
+      pathname.startsWith("/admin/pro/");
+    const proOn =
+      process.env.PRO_MODULE_ENABLED === "1" ||
+      process.env.PRO_MODULE_ENABLED === "true" ||
+      process.env.PRO_MODULE_ENABLED === "yes";
+    if (proPath && !proOn) {
+      if (pathname.startsWith("/api/")) {
+        return withNoStore(NextResponse.json({ error: "Not found" }, { status: 404 }));
+      }
+      return withNoStore(
+        new NextResponse("<!doctype html><title>404</title><h1>Страница не найдена</h1>", {
+          status: 404,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        })
+      );
+    }
+  }
+
   const secretKey = resolveSecretKey();
   const natalWorkerRequest = isAuthenticatedNatalWorkerRequest(request, pathname);
 
