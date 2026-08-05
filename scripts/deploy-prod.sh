@@ -28,19 +28,49 @@ ssh "${SSH_OPTS[@]}" "$HOST" bash -s <<'REMOTE'
 set -euo pipefail
 APP_DIR="/opt/aura-ai"
 ENV_BACKUP="/tmp/aura-ai-env.local.bak"
+BOT_ENV_BACKUP="/tmp/aura-ai-telegram-bot.env.bak"
+STAGING="/tmp/aura-ai-staging"
+BOT_USER="aura-ai"
+BOT_GROUP="aura-ai"
 
 if [ -f "$APP_DIR/.env.local" ]; then
   cp "$APP_DIR/.env.local" "$ENV_BACKUP"
   echo "Backed up .env.local -> $ENV_BACKUP"
 fi
+if [ -f "$APP_DIR/telegram-bot/.env" ]; then
+  cp "$APP_DIR/telegram-bot/.env" "$BOT_ENV_BACKUP"
+  echo "Backed up telegram-bot/.env -> $BOT_ENV_BACKUP"
+fi
+
+# Stage first: install outage page + Caddy BEFORE wiping the live tree so
+# visitors see the premium stub instead of a broken hero / blank 502.
+rm -rf "$STAGING"
+mkdir -p "$STAGING"
+tar -xzf /tmp/aura-ai-deploy.tgz -C "$STAGING"
+# Tarball root is the repo folder name (aura-ai).
+STAGE_APP="$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+[ -n "$STAGE_APP" ] && [ -f "$STAGE_APP/package.json" ]
+sed -i 's/\r$//' "$STAGE_APP/hosting/install-maintenance-page.sh" 2>/dev/null || true
+bash "$STAGE_APP/hosting/install-maintenance-page.sh" "$STAGE_APP"
+
+systemctl stop aura-ai || true
+systemctl stop aura-ai-async-jobs || true
+systemctl stop zovus-telegram-bot || true
 
 rm -rf "$APP_DIR"
-tar -xzf /tmp/aura-ai-deploy.tgz -C /opt
+mv "$STAGE_APP" "$APP_DIR"
+rm -rf "$STAGING"
 chown -R root:root "$APP_DIR"
 
 if [ -f "$ENV_BACKUP" ]; then
   cp "$ENV_BACKUP" "$APP_DIR/.env.local"
   echo "Restored production .env.local"
+fi
+if [ -f "$BOT_ENV_BACKUP" ]; then
+  mkdir -p "$APP_DIR/telegram-bot"
+  cp "$BOT_ENV_BACKUP" "$APP_DIR/telegram-bot/.env"
+  chmod 600 "$APP_DIR/telegram-bot/.env"
+  echo "Restored telegram-bot/.env"
 fi
 
 grep -q '^TRUST_PROXY=' "$APP_DIR/.env.local" \
@@ -53,8 +83,59 @@ npm ci
 npm run migrate
 npm run build
 bash proxmox-setup/install-crons.sh
+
+# Async worker needs .env.async-jobs — wiped by rm -rf above. Without it,
+# intention/daily/natal jobs stay pending and the client ritual hangs forever.
+sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai-async-jobs.service hosting/install-maintenance-page.sh hosting/zovus-telegram-bot.service 2>/dev/null || true
+bash hosting/ensure-async-jobs-user.sh "$APP_DIR"
+install -D -m 0644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
+if [ -f hosting/zovus-telegram-bot.service ]; then
+  install -D -m 0644 hosting/zovus-telegram-bot.service /etc/systemd/system/zovus-telegram-bot.service
+fi
+systemctl daemon-reload
+systemctl reset-failed aura-ai-async-jobs 2>/dev/null || true
+systemctl reset-failed zovus-telegram-bot 2>/dev/null || true
+systemctl enable aura-ai-async-jobs
+systemctl enable zovus-telegram-bot 2>/dev/null || true
+
+# Bot unit runs as aura-ai; tree was chown'd root:root above. Create runtime
+# dirs and fix ownership before start (idempotent — safe if already correct).
+if [ -d "$APP_DIR/telegram-bot" ]; then
+  mkdir -p "$APP_DIR/telegram-bot/data" "$APP_DIR/telegram-bot/logs"
+  if id "$BOT_USER" >/dev/null 2>&1; then
+    chown -R "$BOT_USER:$BOT_GROUP" "$APP_DIR/telegram-bot"
+    chmod 600 "$APP_DIR/telegram-bot/.env" 2>/dev/null || true
+    echo "telegram-bot ownership -> ${BOT_USER}:${BOT_GROUP}"
+  else
+    echo "WARN: user $BOT_USER missing — bot may fail with EACCES on data/" >&2
+  fi
+  if [ -f "$APP_DIR/telegram-bot/package.json" ]; then
+    (cd "$APP_DIR/telegram-bot" && npm ci --legacy-peer-deps)
+    # npm ci as root may recreate node_modules as root — re-apply ownership.
+    if id "$BOT_USER" >/dev/null 2>&1; then
+      chown -R "$BOT_USER:$BOT_GROUP" "$APP_DIR/telegram-bot"
+    fi
+  fi
+fi
+
 systemctl restart aura-ai
+systemctl restart aura-ai-async-jobs
+systemctl restart zovus-telegram-bot || true
 systemctl is-active aura-ai
+if ! systemctl is-active --quiet aura-ai-async-jobs; then
+  echo "ERROR: aura-ai-async-jobs failed to start — spreads will hang" >&2
+  systemctl status aura-ai-async-jobs --no-pager -l | head -40 >&2
+  exit 1
+fi
+systemctl is-active aura-ai-async-jobs
+if systemctl list-unit-files zovus-telegram-bot.service >/dev/null 2>&1; then
+  if ! systemctl is-active --quiet zovus-telegram-bot; then
+    echo "ERROR: zovus-telegram-bot failed to start" >&2
+    systemctl status zovus-telegram-bot --no-pager -l | head -40 >&2
+    exit 1
+  fi
+  systemctl is-active zovus-telegram-bot
+fi
 REMOTE
 
 echo "==> Done. Check: curl -s -o /dev/null -w '%{http_code}' https://zovus.ru/api/health"

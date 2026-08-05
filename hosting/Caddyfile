@@ -26,4 +26,15 @@ zovus.ru {
 		header_up X-Forwarded-Proto {scheme}
 		header_up X-Forwarded-For {remote_host}
 	}
+
+	# Next is wiped/restarted during deploy — serve a premium static page from
+	# /var/www (outside /opt/aura-ai) so users never see a broken hero image / blank 502.
+	# Use status_code (not status) — otherwise the matcher never fires.
+	handle_errors 502 503 504 {
+		root * /var/www/zovus-maintenance
+		rewrite * /index.html
+		file_server
+		header Cache-Control "no-store"
+		header Retry-After "30"
+	}
 }
