@@ -5,6 +5,7 @@ import HdCalculator from "./HdCalculator";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdComposite from "./HdComposite";
 import HdReportPanel from "./HdReportPanel";
+import { hdChartChipLabel } from "./hd-labels";
 import { TYPE_META } from "@/lib/human-design";
 
 interface HdChartListItem extends HdChartPayload {
@@ -38,10 +39,13 @@ export default function HdCabinet() {
         setLoadError(false);
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
+        list.sort((a, b) => {
+          const aSelf = a.subjectKind === "other" ? 1 : 0;
+          const bSelf = b.subjectKind === "other" ? 1 : 0;
+          return aSelf - bSelf;
+        });
         setCharts(list);
         if (list.length && !selectedIdRef.current) {
-          // Prefer personal chart over the newest “other” so a partner
-          // calculation doesn’t steal the default focus.
           const selfChart = list.find((c) => c.subjectKind !== "other");
           setSelectedId((selfChart ?? list[0]).id);
         }
@@ -134,13 +138,10 @@ export default function HdCabinet() {
   const selected = charts.find((c) => c.id === selectedId) ?? charts[0]!;
 
   const deleteSelected = async () => {
-    const who =
-      selected.subjectKind === "other" && selected.subjectName
-        ? `«${selected.subjectName}»`
-        : "эту карту";
+    const who = hdChartChipLabel(selected);
     if (
       !window.confirm(
-        `Удалить карту ${who} безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему — из кабинета, истории и памяти мастеров.`
+        `Удалить карту «${who}» безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему — из кабинета, истории и памяти мастеров.`
       )
     ) {
       return;
@@ -154,7 +155,8 @@ export default function HdCabinet() {
       if (!res.ok) throw new Error("delete failed");
       const remaining = charts.filter((c) => c.id !== selected.id);
       setCharts(remaining);
-      setSelectedId(remaining[0]?.id ?? null);
+      const nextSelf = remaining.find((c) => c.subjectKind !== "other");
+      setSelectedId((nextSelf ?? remaining[0])?.id ?? null);
       if (remaining.length === 0) setCreating(true);
     } catch {
       window.alert("Не удалось удалить карту. Попробуйте ещё раз.");
@@ -186,7 +188,7 @@ export default function HdCabinet() {
         </div>
       </div>
 
-      {charts.length > 1 && (
+      {charts.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {charts.map((c) => {
             const active = c.id === selected.id;
@@ -201,11 +203,10 @@ export default function HdCabinet() {
                     : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
                 }`}
               >
-                {c.subjectKind === "other" && c.subjectName
-                  ? `${c.subjectName} · `
-                  : ""}
-                {c.birthDate.split("-").reverse().join(".")}
-                <span className="ml-1.5 text-white/40">{TYPE_META[c.chart.type].nameRu}</span>
+                {hdChartChipLabel(c)}
+                <span className="ml-1.5 text-white/40">
+                  {TYPE_META[c.chart.type].nameRu}
+                </span>
               </button>
             );
           })}
@@ -231,9 +232,7 @@ export default function HdCabinet() {
                       : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40"
                   }`}
                 >
-                  {c.subjectKind === "other" && c.subjectName
-                    ? c.subjectName
-                    : c.birthDate.split("-").reverse().join(".")}
+                  {hdChartChipLabel(c)}
                 </button>
               ))}
           </div>

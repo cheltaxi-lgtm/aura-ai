@@ -135,45 +135,38 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
     }
   };
 
+  const profileLabel = PROFILE_NAMES_RU[chart.profile] ?? "";
+  const definitionLabel = DEFINITION_NAMES_RU[chart.definition] ?? chart.definition;
+  const crossLabel = crossNameRu(chart);
+
   return (
     <div className="space-y-5">
-      <div className="hd-facts">
-        <div className="hd-fact">
-          <p className="hd-fact__label">Тип</p>
-          <p className="hd-fact__value">{typeMeta.nameRu}</p>
-          {stability && !stability.typeStable && (
-            <p className="hd-fact__sub">зависит от времени</p>
-          )}
-        </div>
-        <div className="hd-fact">
-          <p className="hd-fact__label">Стратегия</p>
-          <p className="hd-fact__value">{typeMeta.strategyRu}</p>
-        </div>
-        <div className="hd-fact">
-          <p className="hd-fact__label">Авторитет</p>
-          <p className="hd-fact__value">{AUTHORITY_NAMES_RU[chart.authority]}</p>
-          {stability && !stability.authorityStable && (
-            <p className="hd-fact__sub">зависит от времени</p>
-          )}
-        </div>
-        <div className="hd-fact">
-          <p className="hd-fact__label">Профиль</p>
-          <p className="hd-fact__value">
-            {chart.profile} · {PROFILE_NAMES_RU[chart.profile] ?? ""}
-          </p>
-          {stability && !stability.profileStable && (
-            <p className="hd-fact__sub">зависит от времени</p>
-          )}
-        </div>
-        <div className="hd-fact">
-          <p className="hd-fact__label">Определённость</p>
-          <p className="hd-fact__value">{DEFINITION_NAMES_RU[chart.definition] ?? chart.definition}</p>
-        </div>
-        <div className="hd-fact">
-          <p className="hd-fact__label">Инкарнационный крест</p>
-          <p className="hd-fact__value">{crossNameRu(chart)}</p>
-          <p className="hd-fact__sub">{CROSS_ANGLE_NAMES_RU[chart.cross.angle]}</p>
-        </div>
+      {/* Compact identity — not six lookalike cards stacking the viewport */}
+      <div className="hd-summary">
+        <p className="hd-summary__title">
+          {typeMeta.nameRu}
+          {stability && !stability.typeStable ? (
+            <span className="hd-summary__flag"> · время</span>
+          ) : null}
+        </p>
+        <p className="hd-summary__line">
+          {chart.profile}
+          {profileLabel ? ` · ${profileLabel}` : ""}
+          {" · "}
+          {AUTHORITY_NAMES_RU[chart.authority]}
+          {stability && !stability.authorityStable ? (
+            <span className="hd-summary__flag"> · время</span>
+          ) : null}
+        </p>
+        <p className="hd-summary__line hd-summary__line--muted">
+          {typeMeta.strategyRu}
+          {" · "}
+          {definitionLabel}
+          {" · "}
+          {crossLabel}
+          {" · "}
+          {CROSS_ANGLE_NAMES_RU[chart.cross.angle]}
+        </p>
       </div>
 
       {payload.timeUnknown && (
@@ -181,7 +174,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
           Время рождения не указано — расчёт выполнен на 12:00.
           {stability?.typeStable && stability?.authorityStable && stability?.profileStable
             ? " Тип, авторитет и профиль стабильны в течение всего дня, результат надёжен."
-            : " Некоторые параметры могут меняться в течение дня — они отмечены в карточках выше."}
+            : " Некоторые параметры могут меняться в течение дня — они отмечены словом «время» выше."}
         </p>
       )}
 
@@ -190,6 +183,37 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         transits={transits}
         onCenterInsight={(center) => void askCenterInsight(center)}
       />
+
+      {/* Print still gets the classic fact grid */}
+      <div className="hd-facts hd-facts--print-only">
+        <div className="hd-fact">
+          <p className="hd-fact__label">Тип</p>
+          <p className="hd-fact__value">{typeMeta.nameRu}</p>
+        </div>
+        <div className="hd-fact">
+          <p className="hd-fact__label">Стратегия</p>
+          <p className="hd-fact__value">{typeMeta.strategyRu}</p>
+        </div>
+        <div className="hd-fact">
+          <p className="hd-fact__label">Авторитет</p>
+          <p className="hd-fact__value">{AUTHORITY_NAMES_RU[chart.authority]}</p>
+        </div>
+        <div className="hd-fact">
+          <p className="hd-fact__label">Профиль</p>
+          <p className="hd-fact__value">
+            {chart.profile} · {profileLabel}
+          </p>
+        </div>
+        <div className="hd-fact">
+          <p className="hd-fact__label">Определённость</p>
+          <p className="hd-fact__value">{definitionLabel}</p>
+        </div>
+        <div className="hd-fact">
+          <p className="hd-fact__label">Инкарнационный крест</p>
+          <p className="hd-fact__value">{crossLabel}</p>
+          <p className="hd-fact__sub">{CROSS_ANGLE_NAMES_RU[chart.cross.angle]}</p>
+        </div>
+      </div>
 
       <div className="hd-print-hidden flex flex-wrap justify-center gap-2">
         <button
@@ -202,14 +226,31 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
             ? "Считаю небо…"
             : transits
               ? "Скрыть транзиты"
-              : "Транзиты сейчас"}
+              : "Транзиты"}
         </button>
         <button
           type="button"
           onClick={() => setShow3d((v) => !v)}
           className="hd-bodygraph__export"
         >
-          {show3d ? "Скрыть 3D" : "3D-бодиграф"}
+          {show3d ? "Скрыть 3D" : "3D"}
+        </button>
+        <button type="button" onClick={() => void share()} className="hd-bodygraph__export">
+          {copied ? "Ссылка скопирована" : "Поделиться"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowShareCard((v) => !v)}
+          className="hd-bodygraph__export"
+        >
+          {showShareCard ? "Скрыть карточку" : "Для соцсетей"}
+        </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="hd-bodygraph__export"
+        >
+          PDF
         </button>
       </div>
 
@@ -261,26 +302,6 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
           </button>
         </div>
       )}
-
-      <div className="hd-print-hidden flex flex-wrap justify-center gap-2">
-        <button type="button" onClick={() => void share()} className="hd-bodygraph__export">
-          {copied ? "Ссылка скопирована" : "Поделиться картой"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowShareCard((v) => !v)}
-          className="hd-bodygraph__export"
-        >
-          {showShareCard ? "Скрыть карточку" : "Карточка для соцсетей"}
-        </button>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="hd-bodygraph__export"
-        >
-          Печать / PDF
-        </button>
-      </div>
 
       {showShareCard && (
         <div className="hd-print-hidden">

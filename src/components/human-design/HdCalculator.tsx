@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdReportPanel from "./HdReportPanel";
 import { hdApiErrorMessage } from "./hd-errors";
+import { hdChartChipLabel } from "./hd-labels";
 import {
   claimAllPendingHdCharts,
   clearHdClaimToken,
@@ -94,7 +95,15 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     fetch("/api/human-design/mine")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (Array.isArray(d?.charts)) setMine(d.charts as HdChartPayload[]);
+        if (!Array.isArray(d?.charts)) return;
+        const list = d.charts as HdChartPayload[];
+        // Personal chart first so «Я» isn’t buried under partner chips.
+        list.sort((a, b) => {
+          const aSelf = a.subjectKind === "other" ? 1 : 0;
+          const bSelf = b.subjectKind === "other" ? 1 : 0;
+          return aSelf - bSelf;
+        });
+        setMine(list);
       })
       .catch(() => undefined);
   }, [authenticated]);
@@ -150,13 +159,10 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 
   const deleteMine = useCallback(
     async (chart: HdChartPayload) => {
-      const who =
-        chart.subjectKind === "other" && chart.subjectName
-          ? `«${chart.subjectName}»`
-          : "эту карту";
+      const who = hdChartChipLabel(chart);
       if (
         !window.confirm(
-          `Удалить карту ${who} безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему.`
+          `Удалить карту «${who}» безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему.`
         )
       ) {
         return;
@@ -169,12 +175,18 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
         window.alert("Не удалось удалить карту. Попробуйте ещё раз.");
         return;
       }
-      setMine((prev) => prev.filter((c) => c.id !== chart.id));
+      setMine((prev) => {
+        const remaining = prev.filter((c) => c.id !== chart.id);
+        if (result?.id === chart.id) {
+          const selfChart = remaining.find((c) => c.subjectKind !== "other");
+          setResult(selfChart ?? remaining[0] ?? null);
+        }
+        return remaining;
+      });
       if (readStoredFingerprint() === chart.fingerprint) {
         clearStoredFingerprint();
       }
       clearHdClaimToken(chart.fingerprint);
-      if (result?.id === chart.id) setResult(null);
       onChartDeleted?.(chart.id);
     },
     [result, onChartDeleted]
@@ -281,9 +293,17 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       }
       const payload = data.chart as HdChartPayload;
       setResult(payload);
-      setMine((prev) =>
-        prev.some((c) => c.id === payload.id) ? prev : [payload, ...prev]
-      );
+      setMine((prev) => {
+        const next = prev.some((c) => c.id === payload.id)
+          ? prev.map((c) => (c.id === payload.id ? payload : c))
+          : [payload, ...prev];
+        next.sort((a, b) => {
+          const aSelf = a.subjectKind === "other" ? 1 : 0;
+          const bSelf = b.subjectKind === "other" ? 1 : 0;
+          return aSelf - bSelf;
+        });
+        return [...next];
+      });
       storeFingerprint(payload.fingerprint);
       storeHdClaimToken(payload.fingerprint, data.claimToken);
       onChartCreated?.(payload);
@@ -295,13 +315,54 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     }
   }, [birthDate, birthTime, place, timeUnknown, subjectKind, subjectName, onChartCreated]);
 
+  const mineChips =
+    authenticated && mine.length > 0 ? (
+      <div className="hd-panel hd-print-hidden">
+        <p className="hd-field__label mb-3">Мои карты</p>
+        <div className="flex flex-wrap gap-2">
+          {mine.map((c) => {
+            const active = result?.id === c.id;
+            return (
+              <span
+                key={c.id}
+                className={`inline-flex items-center overflow-hidden rounded-full border text-xs transition ${
+                  active
+                    ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
+                    : "border-amber-300/25 bg-amber-300/5 text-amber-100/85 hover:border-amber-300/50 hover:bg-amber-300/15"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResult(c);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="px-3.5 py-1.5"
+                >
+                  {hdChartChipLabel(c)}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Удалить карту"
+                  title="Удалить карту"
+                  onClick={() => void deleteMine(c)}
+                  className="border-l border-amber-300/20 px-2 py-1.5 text-amber-100/50 transition hover:bg-red-500/15 hover:text-red-300"
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
   if (result) {
     return (
       <div className="space-y-5">
+        {mineChips}
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-white/55">
-            {payload_line(result)}
-          </p>
+          <p className="text-sm text-white/55">{payload_line(result)}</p>
           <button
             type="button"
             onClick={() => setResult(null)}
@@ -323,42 +384,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 
   return (
     <div className="space-y-5">
-      {authenticated && mine.length > 0 && (
-        <div className="hd-panel">
-          <p className="hd-field__label mb-3">Мои карты</p>
-          <div className="flex flex-wrap gap-2">
-            {mine.map((c) => (
-              <span
-                key={c.id}
-                className="inline-flex items-center overflow-hidden rounded-full border border-amber-300/25 bg-amber-300/5 text-xs text-amber-100/85 transition hover:border-amber-300/50 hover:bg-amber-300/15"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResult(c);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className="px-3.5 py-1.5"
-                >
-                  {c.subjectKind === "other" && c.subjectName
-                    ? `${c.subjectName} · `
-                    : ""}
-                  {c.birthDate.split("-").reverse().join(".")}
-                </button>
-                <button
-                  type="button"
-                  aria-label="Удалить карту"
-                  title="Удалить карту"
-                  onClick={() => void deleteMine(c)}
-                  className="border-l border-amber-300/20 px-2 py-1.5 text-amber-100/50 transition hover:bg-red-500/15 hover:text-red-300"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {mineChips}
 
       <div className="hd-panel">
         <div className="mb-4">
@@ -509,11 +535,6 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 }
 
 function payload_line(payload: HdChartPayload): string {
-  const date = payload.birthDate.split("-").reverse().join(".");
   const time = payload.timeUnknown ? "время неизвестно" : payload.birthTime;
-  const who =
-    payload.subjectKind === "other" && payload.subjectName
-      ? `${payload.subjectName} · `
-      : "";
-  return `${who}${date} · ${time} · ${payload.placeName}`;
+  return `${hdChartChipLabel(payload)} · ${time} · ${payload.placeName}`;
 }
