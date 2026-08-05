@@ -141,8 +141,25 @@
   @apply mt-0.5 text-[0.6875rem] leading-snug text-white/70;
 }
 
+.hd-bodygraph__chrome {
+  @apply mt-3 space-y-2;
+}
+
+.hd-bodygraph__more {
+  @apply rounded-2xl border border-white/10 px-3 py-2 text-xs text-white/55;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hd-bodygraph__more summary {
+  @apply cursor-pointer select-none text-amber-100/70 transition hover:text-amber-50;
+}
+
+.hd-bodygraph__more[open] summary {
+  @apply mb-2;
+}
+
 .hd-bodygraph__layers {
-  @apply mt-3 flex items-center justify-center gap-2;
+  @apply flex flex-wrap items-center justify-center gap-2;
 }
 
 .hd-bodygraph__layer-btn {
@@ -375,15 +392,7 @@
   @apply grid grid-cols-2 gap-2.5 sm:grid-cols-3;
 }
 
-.hd-facts--print-only {
-  display: none;
-}
-
 @media print {
-  .hd-facts--print-only {
-    display: grid;
-  }
-
   .hd-summary {
     display: none;
   }

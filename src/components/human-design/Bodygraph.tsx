@@ -789,76 +789,80 @@ export default function Bodygraph({
         )}
       </div>
 
-      <div className="hd-bodygraph__layers" role="group" aria-label="Фильтр активаций">
-        {(
-          [
-            ["all", "Вся карта"],
-            ["p", "Личность"],
-            ["d", "Дизайн"],
-          ] as [LayerFilter, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setLayer(key)}
-            aria-pressed={layer === key}
-            className={`hd-bodygraph__layer-btn${layer === key ? " is-active" : ""}`}
-          >
-            {key !== "all" && (
-              <i style={{ background: key === "p" ? COLOR_P : COLOR_D }} />
-            )}
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="hd-bodygraph__centers-legend">
-        {centerOrder.map((key) => {
-          const defined = definedCenters.has(key);
-          const active = highlightCenter === key;
-          return (
+      <div className="hd-bodygraph__chrome hd-print-hidden">
+        <div className="hd-bodygraph__layers" role="group" aria-label="Фильтр активаций">
+          {(
+            [
+              ["all", "Вся карта"],
+              ["p", "Личность"],
+              ["d", "Дизайн"],
+            ] as [LayerFilter, string][]
+          ).map(([key, label]) => (
             <button
               key={key}
               type="button"
-              onMouseEnter={() => setHighlightCenter(key)}
-              onMouseLeave={() => setHighlightCenter(null)}
-              onClick={() => setHighlightCenter(active ? null : key)}
-              className={`hd-bodygraph__center-chip${defined ? " is-defined" : ""}${active ? " is-active" : ""}`}
+              onClick={() => setLayer(key)}
+              aria-pressed={layer === key}
+              className={`hd-bodygraph__layer-btn${layer === key ? " is-active" : ""}`}
             >
-              {CENTER_NAMES_RU[key]}
+              {key !== "all" && (
+                <i style={{ background: key === "p" ? COLOR_P : COLOR_D }} />
+              )}
+              {label}
             </button>
-          );
-        })}
-      </div>
+          ))}
+          <button type="button" onClick={exportPng} className="hd-bodygraph__export">
+            PNG
+          </button>
+        </div>
 
-      <div className="hd-bodygraph__legend">
-        <span className="hd-bodygraph__legend-item">
-          <i style={{ background: COLOR_P }} /> Личность (сознательное)
-        </span>
-        <span className="hd-bodygraph__legend-item">
-          <i style={{ background: COLOR_D }} /> Дизайн (бессознательное)
-        </span>
-        <span className="hd-bodygraph__legend-item">
-          <i className="hd-bodygraph__legend-swatch" /> Определённый центр
-        </span>
-        {transits && (
-          <span className="hd-bodygraph__legend-item">
-            <i className="hd-bodygraph__legend-transit" /> Транзит сейчас
-          </span>
-        )}
-        {partnerGates && (
-          <span className="hd-bodygraph__legend-item">
-            <i style={{ background: "#9b7fd4" }} /> Ворота партнёра
-          </span>
-        )}
-        {electromagneticChannels && electromagneticChannels.size > 0 && (
-          <span className="hd-bodygraph__legend-item">
-            <i className="hd-bodygraph__legend-electro" /> Электромагнетика
-          </span>
-        )}
-        <button type="button" onClick={exportPng} className="hd-bodygraph__export hd-print-hidden">
-          Скачать PNG
-        </button>
+        <details className="hd-bodygraph__more">
+          <summary>Центры и легенда</summary>
+          <div className="hd-bodygraph__centers-legend">
+            {centerOrder.map((key) => {
+              const defined = definedCenters.has(key);
+              const active = highlightCenter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onMouseEnter={() => setHighlightCenter(key)}
+                  onMouseLeave={() => setHighlightCenter(null)}
+                  onClick={() => setHighlightCenter(active ? null : key)}
+                  className={`hd-bodygraph__center-chip${defined ? " is-defined" : ""}${active ? " is-active" : ""}`}
+                >
+                  {CENTER_NAMES_RU[key]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="hd-bodygraph__legend">
+            <span className="hd-bodygraph__legend-item">
+              <i style={{ background: COLOR_P }} /> Личность
+            </span>
+            <span className="hd-bodygraph__legend-item">
+              <i style={{ background: COLOR_D }} /> Дизайн
+            </span>
+            <span className="hd-bodygraph__legend-item">
+              <i className="hd-bodygraph__legend-swatch" /> Центр
+            </span>
+            {transits && (
+              <span className="hd-bodygraph__legend-item">
+                <i className="hd-bodygraph__legend-transit" /> Транзит
+              </span>
+            )}
+            {partnerGates && (
+              <span className="hd-bodygraph__legend-item">
+                <i style={{ background: "#9b7fd4" }} /> Партнёр
+              </span>
+            )}
+            {electromagneticChannels && electromagneticChannels.size > 0 && (
+              <span className="hd-bodygraph__legend-item">
+                <i className="hd-bodygraph__legend-electro" /> Электромагнетика
+              </span>
+            )}
+          </div>
+        </details>
       </div>
     </div>
   );

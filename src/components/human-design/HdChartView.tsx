@@ -184,8 +184,8 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         onCenterInsight={(center) => void askCenterInsight(center)}
       />
 
-      {/* Print still gets the classic fact grid */}
-      <div className="hd-facts hd-facts--print-only">
+      {/* Print still gets the classic fact grid; hidden on screen */}
+      <div className="hd-facts hidden print:grid">
         <div className="hd-fact">
           <p className="hd-fact__label">Тип</p>
           <p className="hd-fact__value">{typeMeta.nameRu}</p>
