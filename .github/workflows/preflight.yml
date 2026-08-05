@@ -1,0 +1,102 @@
+name: Preflight
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: auraai
+          POSTGRES_PASSWORD: auraai_secret
+          POSTGRES_DB: auraai_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U auraai -d auraai_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://auraai:auraai_secret@localhost:5432/auraai_test
+      DATABASE_URL: postgresql://auraai:auraai_secret@localhost:5432/auraai_ci_primary
+      AUTH_SECRET: ci-preflight-auth-secret-32chars!!
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify GeoNames artifact
+        run: test -s data/geonames/cities.min.json
+
+      - name: Require TEST_DATABASE_URL in CI
+        run: |
+          if [ -z "$TEST_DATABASE_URL" ]; then
+            echo "TEST_DATABASE_URL must be set in CI"
+            exit 1
+          fi
+
+      - name: Migrate test DB (honest chain / schema.sql bootstrap)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          until pg_isready -h localhost -U auraai -d auraai_test; do sleep 2; done
+          DATABASE_URL="$TEST_DATABASE_URL" npm run migrate
+          npm run schema:diff
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Guards
+        run: npm run guards
+
+      - name: Invariant tests (DB required, zero skips)
+        run: |
+          set +e
+          node scripts/run-invariant-tests.mjs --mode test
+          TEST_STATUS=$?
+          set -e
+          node -e "
+            const fs=require('fs');
+            const p='tests/invariants/.vitest-report.json';
+            const j=JSON.parse(fs.readFileSync(p,'utf8'));
+            const skipped=[];
+            function walk(n){
+              if(!n||typeof n!=='object')return;
+              if(Array.isArray(n)){n.forEach(walk);return;}
+              for(const a of (n.assertionResults||[])){
+                if(a.status==='skipped'||a.status==='pending') skipped.push(a.fullName||a.title);
+              }
+              for(const k of ['testResults','tests','suites']) if(n[k]) walk(n[k]);
+            }
+            walk(j);
+            if(skipped.length){
+              console.error('CI forbids skipped invariants:', skipped);
+              process.exit(1);
+            }
+            console.log('✓ CI: zero skipped invariants');
+          "
+          exit $TEST_STATUS
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192

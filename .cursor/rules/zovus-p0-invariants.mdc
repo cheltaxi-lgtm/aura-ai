@@ -1,0 +1,33 @@
+---
+description: Zovus P0 product invariants — guest continuity, billing authority, receipts
+alwaysApply: true
+---
+
+# Zovus P0 invariants
+
+These are non-negotiable product contracts. Breaking them is a release blocker.
+
+## Guest path (landing triplet)
+
+1. Flow: question → 3 cards → teaser → registration → **full reading of the SAME cards**.
+2. Post-auth redraw for an active guest receipt is **forbidden**.
+3. `/?ask&spread=1` **without** guest receipt = new SEO spread (allowed).
+4. `/?ask&spread=1` **with** active receipt = resume only; redraw prevented.
+5. Product-mode guest resume = authenticated resumed guest reading. It is **not** «Карта дня» and must not use daily UI.
+
+## Free entitlement / billing
+
+1. Free entitlement and billing are **server-authoritative only**.
+2. Browser UUID and client flags (`guestResume`, `isFree`, `billingExempt`, local balance caches) must **never** grant a free reading.
+3. Server decides free via receipt claim + DB status (`resolveGuestResumeFreeReading` / billing service).
+
+## Receipt security
+
+1. Receipt is issued **by the server before auth**.
+2. Token is opaque (not JWT); DB stores **hash only**, never the raw token.
+3. Claim uses dual-cookie binding: guest receipt cookie + `aura_session_claim` (session claim optional for clear-only after OAuth overwrite).
+
+## Capacitor cookie-loss
+
+1. On cookie loss: show **safe recovery UI**.
+2. **No** token-only `localStorage` fallback that can mint a free reading.

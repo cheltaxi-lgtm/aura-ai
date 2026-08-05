@@ -8,6 +8,7 @@
 /coverage
 /test-results/
 /playwright/.auth/
+tests/invariants/.vitest-report.json
 
 # next.js
 /.next/
@@ -68,4 +69,7 @@ deploy-sha.txt
 scripts/prod-journal.txt
 
 # Cursor-local state (chrome debug profiles run into hundreds of MB)
-.cursor/
+.cursor/*
+# Project rules must be versioned (P0 invariants / change discipline).
+!.cursor/rules/
+!.cursor/rules/**

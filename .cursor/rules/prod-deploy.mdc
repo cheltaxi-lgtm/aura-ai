@@ -1,0 +1,37 @@
+---
+description: Safe production deploy — never break async worker / env after wipe
+alwaysApply: true
+---
+
+# Production deploy safety (zovus / aura-ai)
+
+Deploys that wipe `/opt/aura-ai` can kill things that already worked. Treat deploy success as **app + worker + health + smoke**, not «build ok».
+
+## Canonical path
+
+- Prefer `scripts/deploy-prod.sh` (or full `hosting/deploy-on-server.sh` / `proxmox-setup/vm_local_deploy.sh`).
+- Do **not** hand-roll `rm -rf /opt/aura-ai` + only `systemctl restart aura-ai`.
+
+## After every wipe / extract
+
+1. **Before wipe:** install static outage page to `/var/www/zovus-maintenance` and reload Caddy (`hosting/install-maintenance-page.sh`). It must live **outside** `/opt/aura-ai` so `rm -rf` does not remove it. Caddy `handle_errors` serves it on 502/503/504 — never leave users with a broken hero image.
+2. Restore `.env.local` (secrets live outside git).
+3. Rebuild worker env: `bash hosting/ensure-async-jobs-user.sh /opt/aura-ai` (writes `.env.async-jobs`).
+4. Install/enable unit: `hosting/aura-ai-async-jobs.service`.
+5. Restart **both** `aura-ai` and `aura-ai-async-jobs`.
+6. Fail the deploy if `aura-ai-async-jobs` is not `active`.
+
+Without the worker, intention/daily/natal/joint jobs stay `pending` and the UI hangs on «Мастер готовит расшифровку…».
+
+## Post-deploy checks (required)
+
+```bash
+systemctl is-active aura-ai aura-ai-async-jobs
+curl -s -o /dev/null -w '%{http_code}' https://zovus.ru/api/health   # expect 200
+```
+
+Smoke: one short paid/async flow (e.g. intention spread). If ritual spins >30–40s with no result, check worker logs — not only Next.js.
+
+## When adding infra
+
+If a new process needs files under `/opt/aura-ai` or its own systemd unit, add restore/restart + health gate to `scripts/deploy-prod.sh` in the **same** change. Never leave it as a manual post-step.

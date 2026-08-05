@@ -1,0 +1,35 @@
+---
+description: Change discipline — callers, no silent deletes, server-provided decks, preflight
+alwaysApply: true
+---
+
+# Zovus change discipline
+
+## Before editing a function
+
+1. Grep every call site by name.
+2. List callers in the response before changing behavior.
+
+## Do not delete “unused” code
+
+The repo has dynamic route handlers, feature flags, and server-provided deck configs. Apparent unused code is often loaded indirectly — leave it unless you prove zero references including dynamic imports and string routes.
+
+## Deck size / pick count
+
+Always take deck size and pick count from **server-provided** parameters / registry. Never hardcode `78` / `36` / `24` as product truth in client session logic.
+
+## Motion
+
+Animations: only `transform` / `opacity`. Honor `prefers-reduced-motion` (Capacitor/WebView battery).
+
+## Timezones
+
+Use IANA timezone strings. Do not encode business rules as UTC offset integers or `getTimezoneOffset()` math.
+
+## Risky features
+
+Ship behind an ENV kill-switch, **default off**.
+
+## Verify
+
+After any change: run `npm run preflight` and fix failures before deploy.
