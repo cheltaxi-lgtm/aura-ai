@@ -21,7 +21,14 @@ type AccountResp = {
   code?: string;
 };
 
-const SPEC_HINT = "Таро, Астрология, Нумерология";
+const SPEC_OPTIONS = [
+  "Таро",
+  "Астрология",
+  "Нумерология",
+  "Матрица судьбы",
+  "Руны",
+  "Ленорман",
+] as const;
 
 export default function ProHomePage() {
   const [data, setData] = useState<AccountResp | null>(null);
@@ -29,7 +36,8 @@ export default function ProHomePage() {
   const [err, setErr] = useState<string | null>(null);
   const [unauth, setUnauth] = useState(false);
   const [displayName, setDisplayName] = useState("");
-  const [specializations, setSpecializations] = useState("");
+  const [specs, setSpecs] = useState<string[]>([]);
+  const [customSpec, setCustomSpec] = useState("");
   const [bio, setBio] = useState("");
 
   async function load() {
@@ -52,21 +60,32 @@ export default function ProHomePage() {
     void load();
   }, []);
 
+  function toggleSpec(name: string) {
+    setSpecs((prev) =>
+      prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name].slice(0, 12)
+    );
+  }
+
   async function apply() {
     setBusy(true);
     setErr(null);
-    const specs = specializations
+    const fromCustom = customSpec
       .split(/[,;]+/)
       .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, 12);
+      .filter(Boolean);
+    const specializations = [...new Set([...specs, ...fromCustom])].slice(0, 12);
+    if (!displayName.trim()) {
+      setBusy(false);
+      setErr("Укажите отображаемое имя");
+      return;
+    }
     const res = await fetch("/api/pro/account", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        displayName: displayName.trim() || "Практик",
-        specializations: specs,
+        displayName: displayName.trim(),
+        specializations,
         bio: bio.trim().slice(0, 2000) || undefined,
       }),
     });
@@ -86,117 +105,162 @@ export default function ProHomePage() {
 
   if (unauth) {
     return (
-      <ProShell title="Zovus Pro">
-        <p className="mb-4 max-w-lg text-sm text-gray-300">
-          Кабинет практика доступен после входа обычным аккаунтом Zovus.
-        </p>
-        <Link
-          href="/auth?returnTo=/pro"
-          className="btn-neon inline-flex px-6 py-2 text-sm"
-        >
-          Войти или создать аккаунт
-        </Link>
-        {err && <p className="mt-3 text-sm text-red-300">{err}</p>}
+      <ProShell variant="gate" title="Кабинет практика">
+        <div className="pro-gate__card">
+          <p className="pro-gate__lead">
+            Войдите обычным аккаунтом Zovus — затем подайте заявку в Pro.
+          </p>
+          <Link
+            href="/auth?returnTo=/pro"
+            className="btn-luxe btn-luxe--md btn-luxe--gold mt-6 inline-flex w-full justify-center"
+          >
+            Войти или создать аккаунт
+          </Link>
+          <p className="pro-gate__foot">
+            <Link href="/zovus-pro">Что такое Zovus Pro</Link>
+          </p>
+          {err && <p className="pro-gate__error">{err}</p>}
+        </div>
       </ProShell>
     );
   }
 
   if (err && !data) {
     return (
-      <ProShell>
-        <p className="text-sm text-red-300">{err}</p>
+      <ProShell variant="gate">
+        <div className="pro-gate__card">
+          <p className="pro-gate__error">{err}</p>
+        </div>
       </ProShell>
     );
   }
 
   if (!data) {
     return (
-      <ProShell>
-        <p className="text-sm text-gray-400">Загрузка…</p>
+      <ProShell variant="gate">
+        <div className="pro-gate__card pro-gate__card--loading">
+          <p className="pro-gate__lead">Загрузка…</p>
+        </div>
       </ProShell>
     );
   }
 
   if (!data.account) {
     return (
-      <ProShell title="Заявка в Pro">
-        <p className="mb-6 max-w-lg text-sm text-gray-300">
-          Кабинет для практикующих: клиенты, кейсы, черновики ИИ и выдача отчётов.
-          Доступ после одобрения (или allowlist).
-        </p>
-        <form
-          className="flex max-w-lg flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void apply();
-          }}
-        >
-          <div>
-            <label className="pro-label" htmlFor="pro-display-name">
-              Отображаемое имя
-            </label>
-            <input
-              id="pro-display-name"
-              className="pro-field"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Как вас видят клиенты"
-              maxLength={80}
-              required
-            />
-          </div>
-          <div>
-            <label className="pro-label" htmlFor="pro-specs">
-              Специализации
-            </label>
-            <input
-              id="pro-specs"
-              className="pro-field"
-              value={specializations}
-              onChange={(e) => setSpecializations(e.target.value)}
-              placeholder={SPEC_HINT}
-            />
-            <p className="mt-1 text-xs text-gray-500">Через запятую</p>
-          </div>
-          <div>
-            <label className="pro-label" htmlFor="pro-bio">
-              О практике
-            </label>
-            <textarea
-              id="pro-bio"
-              className="pro-field"
-              rows={4}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Кратко о подходе и опыте"
-              maxLength={2000}
-            />
-          </div>
-          <button type="submit" disabled={busy} className="btn-neon px-6 py-2 text-sm">
-            {busy ? "Отправка…" : "Подать заявку"}
-          </button>
-          {err && <p className="text-sm text-red-300">{err}</p>}
-          <p className="text-xs text-gray-500">
-            Подавая заявку, вы принимаете{" "}
-            <Link href="/offer-pro" className="text-aura-champagne/80 underline-offset-2 hover:underline">
-              оферту Zovus Pro
-            </Link>
-            .
+      <ProShell variant="gate" title="Заявка в Pro">
+        <div className="pro-gate__card">
+          <p className="pro-gate__lead">
+            Расскажите о практике. После одобрения откроются клиенты, кейсы и
+            выдача отчётов.
           </p>
-        </form>
+
+          <form
+            className="pro-apply"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void apply();
+            }}
+          >
+            <label className="pro-apply__field" htmlFor="pro-display-name">
+              <span className="pro-apply__label">Отображаемое имя</span>
+              <input
+                id="pro-display-name"
+                className="pro-apply__input"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Как вас видят клиенты"
+                maxLength={80}
+                autoComplete="name"
+                required
+              />
+            </label>
+
+            <fieldset className="pro-apply__field">
+              <legend className="pro-apply__label">Специализации</legend>
+              <div className="pro-apply__chips" role="group" aria-label="Специализации">
+                {SPEC_OPTIONS.map((name) => {
+                  const on = specs.includes(name);
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      className={
+                        on
+                          ? "pro-apply__chip pro-apply__chip--on"
+                          : "pro-apply__chip"
+                      }
+                      aria-pressed={on}
+                      onClick={() => toggleSpec(name)}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+              <input
+                className="pro-apply__input pro-apply__input--subtle"
+                value={customSpec}
+                onChange={(e) => setCustomSpec(e.target.value)}
+                placeholder="Другое — через запятую"
+                maxLength={120}
+              />
+            </fieldset>
+
+            <label className="pro-apply__field" htmlFor="pro-bio">
+              <span className="pro-apply__label">
+                О практике
+                <span className="pro-apply__optional">необязательно</span>
+              </span>
+              <textarea
+                id="pro-bio"
+                className="pro-apply__input pro-apply__textarea"
+                rows={4}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Кратко о подходе и опыте"
+                maxLength={2000}
+              />
+            </label>
+
+            {err && <p className="pro-gate__error">{err}</p>}
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="btn-luxe btn-luxe--md btn-luxe--gold w-full justify-center disabled:opacity-60"
+            >
+              {busy ? "Отправка…" : "Подать заявку"}
+            </button>
+
+            <p className="pro-gate__foot">
+              Нажимая кнопку, вы принимаете{" "}
+              <Link href="/offer-pro">оферту Zovus Pro</Link>.
+            </p>
+          </form>
+        </div>
       </ProShell>
     );
   }
 
   if (data.account.status === "pending") {
     return (
-      <ProShell title="Заявка на рассмотрении">
-        <div className="pro-panel max-w-lg">
-          <p className="text-sm text-gray-300">
-            Аккаунт <strong>{data.account.display_name || "Практик"}</strong> создан со
-            статусом <strong>на рассмотрении</strong>. После одобрения админом откроется
-            кабинет — мы пришлём письмо, если email указан в профиле.
+      <ProShell variant="gate" title="Заявка на рассмотрении">
+        <div className="pro-gate__card">
+          <div className="pro-gate__status">
+            <span className="pro-gate__status-dot" aria-hidden />
+            Ожидает одобрения
+          </div>
+          <p className="pro-gate__lead mt-4">
+            Профиль{" "}
+            <strong className="text-aura-ivory">
+              {data.account.display_name || "Практик"}
+            </strong>{" "}
+            создан. Когда админ откроет доступ, кабинет появится здесь — письмо
+            придёт на email аккаунта.
           </p>
+          <Link href="/" className="btn-ghost mt-6 inline-flex w-full justify-center py-2.5 text-sm">
+            На главную
+          </Link>
         </div>
       </ProShell>
     );
@@ -204,11 +268,13 @@ export default function ProHomePage() {
 
   if (data.account.status === "suspended" || data.account.status === "closed") {
     return (
-      <ProShell title="Доступ ограничен">
-        <p className="text-sm text-gray-300">
-          Статус аккаунта: <strong>{data.account.status}</strong>. Напишите в поддержку,
-          если это ошибка.
-        </p>
+      <ProShell variant="gate" title="Доступ ограничен">
+        <div className="pro-gate__card">
+          <p className="pro-gate__lead">
+            Статус аккаунта: <strong>{data.account.status}</strong>. Напишите в{" "}
+            <Link href="/cabinet/support">поддержку</Link>, если это ошибка.
+          </p>
+        </div>
       </ProShell>
     );
   }
@@ -217,34 +283,41 @@ export default function ProHomePage() {
     <ProShell title={data.account.display_name || "Кабинет"}>
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="pro-panel">
-          <p className="text-xs text-gray-500">Баланс ᚢ</p>
-          <p className="font-display text-2xl text-[#e8c77e]">
+          <p className="text-xs text-[var(--pro-faint)]">Баланс ᚢ</p>
+          <p className="font-display text-2xl text-aura-champagne">
             {data.runeBalance ?? "—"}
           </p>
-          <p className="mt-1 text-xs text-gray-500">режим {data.billingMode}</p>
+          <p className="mt-1 text-xs text-[var(--pro-faint)]">
+            режим {data.billingMode}
+          </p>
         </div>
         <div className="pro-panel">
-          <p className="text-xs text-gray-500">Usage (shadow / live)</p>
-          <p className="font-display text-2xl text-[#ede6da]">
+          <p className="text-xs text-[var(--pro-faint)]">Списания (shadow / live)</p>
+          <p className="font-display text-2xl text-aura-ivory">
             {data.usage?.shadowRunes ?? 0} / {data.usage?.liveRunes ?? 0}
           </p>
-          <p className="mt-1 text-xs text-gray-500">{data.usage?.events ?? 0} событий</p>
+          <p className="mt-1 text-xs text-[var(--pro-faint)]">
+            {data.usage?.events ?? 0} событий
+          </p>
         </div>
         <div className="pro-panel">
-          <p className="text-xs text-gray-500">Slug</p>
-          <p className="font-display text-lg text-[#ede6da]">
+          <p className="text-xs text-[var(--pro-faint)]">Slug</p>
+          <p className="font-display text-lg text-aura-ivory">
             {data.account.brand_slug || "—"}
           </p>
         </div>
       </div>
       <div className="mt-8 flex flex-wrap gap-3">
-        <Link href="/pro/clients" className="btn-neon px-5 py-2 text-sm">
+        <Link
+          href="/pro/clients"
+          className="btn-luxe btn-luxe--md btn-luxe--gold px-5"
+        >
           Клиенты
         </Link>
-        <Link href="/pro/case/new" className="btn-neon px-5 py-2 text-sm">
+        <Link href="/pro/case/new" className="btn-ghost px-5 py-2.5 text-sm">
           Новый кейс
         </Link>
-        <Link href="/pro/inbox" className="btn-neon px-5 py-2 text-sm">
+        <Link href="/pro/inbox" className="btn-ghost px-5 py-2.5 text-sm">
           Входящие
         </Link>
       </div>
