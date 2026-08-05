@@ -13,6 +13,9 @@ import {
   supportNewTicketAdminEmailHtml,
   supportReplyEmailHtml,
   welcomeEmailHtml,
+  proApplyAdminEmailHtml,
+  proApplyUserEmailHtml,
+  proApprovedEmailHtml,
 } from "@/lib/email/templates";
 
 export type EmailTemplateCategory = "transactional" | "reminder" | "marketing" | "support" | "admin";
@@ -159,6 +162,36 @@ export const EMAIL_TEMPLATE_REGISTRY: EmailTemplateDef[] = [
     previewHtml: () =>
       `<p>Тестовое письмо от админки Zovus (${new Date().toISOString()}).</p>`,
     previewSubject: "Zovus — тест почты",
+  },
+  {
+    id: "pro_apply_admin",
+    label: "Pro — заявка админу",
+    category: "admin",
+    description: "Новая заявка практика в Zovus Pro.",
+    previewHtml: () =>
+      proApplyAdminEmailHtml({
+        displayName: "Анна",
+        email: "anna@example.com",
+        status: "pending",
+        adminUrl: `${siteUrl()}/admin/pro`,
+      }),
+    previewSubject: "[Zovus Pro] Заявка: Анна",
+  },
+  {
+    id: "pro_apply_user",
+    label: "Pro — заявка принята",
+    category: "transactional",
+    description: "Подтверждение заявки практику (ожидание одобрения).",
+    previewHtml: () => proApplyUserEmailHtml("Анна", `${siteUrl()}/pro`),
+    previewSubject: "Zovus Pro — заявка принята",
+  },
+  {
+    id: "pro_approved",
+    label: "Pro — доступ открыт",
+    category: "transactional",
+    description: "Одобрение доступа к кабинету практика.",
+    previewHtml: () => proApprovedEmailHtml("Анна", `${siteUrl()}/pro`),
+    previewSubject: "Zovus Pro — доступ открыт",
   },
 ];
 

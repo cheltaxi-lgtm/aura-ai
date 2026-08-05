@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { Sparkles, Compass, ArrowRight } from "lucide-react";
+import { Sparkles, Compass, ArrowRight, BookOpen } from "lucide-react";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import {
   buildLoginHref,
@@ -90,11 +90,15 @@ function RoleCard({
 }
 
 export default function AuthPortalPage() {
-  const { expertRegistrationEnabled } = usePlatformFeatures();
+  const { expertRegistrationEnabled, proModuleEnabled } = usePlatformFeatures();
   const [userLoginHref, setUserLoginHref] = useState("/auth/user/login");
   const [userRegisterHref, setUserRegisterHref] = useState("/auth/user/register");
   const [expertLoginHref, setExpertLoginHref] = useState("/auth/expert/login");
   const [expertRegisterHref, setExpertRegisterHref] = useState("/auth/expert/register");
+  const [proLoginHref, setProLoginHref] = useState("/auth/user/login?returnTo=/pro");
+  const [proRegisterHref, setProRegisterHref] = useState(
+    "/auth/user/register?returnTo=/pro"
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -106,7 +110,20 @@ export default function AuthPortalPage() {
     setUserRegisterHref(buildRegisterHref(userReturn));
     setExpertLoginHref(buildLoginHref("/expert", "/expert"));
     setExpertRegisterHref(buildRegisterHref("/expert", "/expert"));
+    setProLoginHref(buildLoginHref("/pro"));
+    setProRegisterHref(buildRegisterHref("/pro"));
   }, []);
+
+  const cardCount =
+    1 + (expertRegistrationEnabled ? 1 : 0) + (proModuleEnabled ? 1 : 0);
+  const gridClass =
+    cardCount >= 3
+      ? "max-w-4xl sm:grid-cols-3"
+      : cardCount === 2
+        ? "max-w-2xl sm:grid-cols-2"
+        : "max-w-md";
+
+  let delayStep = 1;
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-5 py-12">
@@ -131,11 +148,7 @@ export default function AuthPortalPage() {
         <div className="lux-divider" />
       </div>
 
-      <div
-        className={`relative grid w-full gap-5 sm:gap-6 ${
-          expertRegistrationEnabled ? "max-w-2xl sm:grid-cols-2" : "max-w-md"
-        }`}
-      >
+      <div className={`relative grid w-full gap-5 sm:gap-6 ${gridClass}`}>
         <RoleCard
           icon={Compass}
           title="Гость салона"
@@ -143,7 +156,7 @@ export default function AuthPortalPage() {
           accent="champagne"
           loginHref={userLoginHref}
           registerHref={userRegisterHref}
-          delay={CARD_STAGGER}
+          delay={CARD_STAGGER * delayStep++}
         />
         {expertRegistrationEnabled ? (
           <RoleCard
@@ -153,7 +166,18 @@ export default function AuthPortalPage() {
             accent="gold"
             loginHref={expertLoginHref}
             registerHref={expertRegisterHref}
-            delay={CARD_STAGGER * 2}
+            delay={CARD_STAGGER * delayStep++}
+          />
+        ) : null}
+        {proModuleEnabled ? (
+          <RoleCard
+            icon={BookOpen}
+            title="Практик"
+            description="Zovus Pro — кабинет для работы с клиентами, кейсами и отчётами"
+            accent="gold"
+            loginHref={proLoginHref}
+            registerHref={proRegisterHref}
+            delay={CARD_STAGGER * delayStep++}
           />
         ) : null}
       </div>

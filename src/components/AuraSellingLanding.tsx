@@ -269,7 +269,7 @@ export default function AuraSellingLanding({
   const showQuickQuestionsBlock =
     !isGuestEditorial && (showHero || Boolean(afterQuickQuestions) || showLoggedInHome);
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
-  const { expertRegistrationEnabled } = usePlatformFeatures();
+  const { expertRegistrationEnabled, proModuleEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
   const [guestSpreadRequest, setGuestSpreadRequest] = useState<{
     id: number;
@@ -647,6 +647,27 @@ export default function AuraSellingLanding({
           showDisclaimer={false}
           className="aura-landing-masters"
         />
+      ) : null}
+
+      {showSellingSections && proModuleEnabled ? (
+        <section className="aura-landing-section">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-aura-champagne/70">
+              Для практиков
+            </p>
+            <h2 className="font-mystic-display aura-landing-section__title">Zovus Pro</h2>
+            <p className="aura-landing-section__subtitle mx-auto">
+              Кабинет для работы с клиентами и отчётами — отдельное пространство практика.
+            </p>
+            <Link
+              href="/zovus-pro"
+              className="btn-luxe btn-luxe--md btn-luxe--gold mt-6 inline-flex items-center gap-2"
+            >
+              Узнать о Pro
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
+        </section>
       ) : null}
 
       {showSellingSections && isEditorial ? (

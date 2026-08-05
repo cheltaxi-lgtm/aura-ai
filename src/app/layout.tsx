@@ -33,6 +33,7 @@ import "../styles/human-design.css";
 import "../styles/print.css";
 import "./app-shell.css";
 import "../styles/editorial-landing.css";
+import "../styles/pro.css";
 
 const inter = Inter({
   subsets: ["latin", "cyrillic"],

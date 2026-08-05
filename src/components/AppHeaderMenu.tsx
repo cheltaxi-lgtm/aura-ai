@@ -103,7 +103,7 @@ export default function AppHeaderMenu({
     };
   }, [open]);
 
-  const { humanDesignEnabled, featuresLoaded } = usePlatformFeatures();
+  const { humanDesignEnabled, proModuleEnabled, featuresLoaded } = usePlatformFeatures();
   const sections = buildHeaderNavSections(
     {
       photoNavLabel,
@@ -137,6 +137,14 @@ export default function AppHeaderMenu({
         window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATIONS_EVENT));
       },
     });
+    if (proModuleEnabled) {
+      accountItems.push({
+        id: "pro",
+        label: "Zovus Pro",
+        icon: <Sparkles className="h-4 w-4" aria-hidden />,
+        href: "/pro",
+      });
+    }
   } else if (authUser?.role === "admin") {
     accountItems.push({
       id: "admin",

@@ -17,6 +17,7 @@ export default function ProClientsPage() {
   const [alias, setAlias] = useState("");
   const [consent, setConsent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/pro/clients", { credentials: "include" });
@@ -31,6 +32,7 @@ export default function ProClientsPage() {
 
   async function create() {
     setErr(null);
+    setNotice(null);
     const res = await fetch("/api/pro/clients", {
       method: "POST",
       credentials: "include",
@@ -44,10 +46,13 @@ export default function ProClientsPage() {
     }
     setAlias("");
     setConsent(false);
+    setNotice("Клиент добавлен");
     await load();
   }
 
   async function makeIntake() {
+    setErr(null);
+    setNotice(null);
     const res = await fetch("/api/pro/intake", {
       method: "POST",
       credentials: "include",
@@ -56,55 +61,76 @@ export default function ProClientsPage() {
     });
     const json = await res.json();
     if (res.ok && json.url) {
-      await navigator.clipboard?.writeText(`${window.location.origin}${json.url}`);
-      alert(`Ссылка анкеты скопирована:\n${json.url}`);
+      const full = `${window.location.origin}${json.url}`;
+      try {
+        await navigator.clipboard?.writeText(full);
+        setNotice(`Ссылка анкеты скопирована: ${json.url}`);
+      } catch {
+        setNotice(`Ссылка анкеты: ${full}`);
+      }
     } else setErr(json.error || "Ошибка анкеты");
   }
 
   return (
     <ProShell title="Клиенты">
-      <div className="mb-6 flex flex-wrap items-end gap-3">
-        <label className="block text-sm text-gray-300">
-          Псевдоним
-          <input
-            className="mt-1 block w-56 rounded border border-[#c9a24a]/30 bg-black/30 px-3 py-2"
-            value={alias}
-            onChange={(e) => setAlias(e.target.value)}
-          />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-gray-300">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-          />
-          Согласие ПДн подтверждено
-        </label>
-        <button type="button" className="btn-neon px-4 py-2 text-sm" onClick={() => void create()}>
-          Добавить
-        </button>
-        <button
-          type="button"
-          className="rounded border border-[#c9a24a]/40 px-4 py-2 text-sm text-[#e8c77e]"
-          onClick={() => void makeIntake()}
-        >
-          Ссылка-анкета
-        </button>
+      <div className="pro-panel mb-6">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block text-sm">
+            <span className="pro-label">Псевдоним</span>
+            <input
+              className="pro-field w-56"
+              value={alias}
+              onChange={(e) => setAlias(e.target.value)}
+              placeholder="Как называть клиента"
+            />
+          </label>
+          <label className="flex items-center gap-2 pb-2 text-sm text-[var(--pro-muted,#bbb)]">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+            />
+            Согласие ПДн подтверждено
+          </label>
+          <button
+            type="button"
+            className="btn-primary px-4 py-2 text-sm"
+            onClick={() => void create()}
+          >
+            Добавить
+          </button>
+          <button
+            type="button"
+            className="btn-ghost px-4 py-2 text-sm"
+            onClick={() => void makeIntake()}
+          >
+            Ссылка-анкета
+          </button>
+        </div>
       </div>
       {err && <p className="mb-3 text-sm text-red-300">{err}</p>}
-      <ul className="space-y-2">
-        {clients.map((c) => (
-          <li key={c.id}>
-            <Link
-              href={`/pro/clients/${c.id}`}
-              className="flex items-center justify-between rounded border border-[#c9a24a]/15 px-4 py-3 hover:border-[#c9a24a]/40"
-            >
-              <span className="text-[#ede6da]">{c.alias}</span>
-              <span className="text-xs text-gray-500">{c.consent_state}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {notice && <p className="mb-3 text-sm text-aura-champagne">{notice}</p>}
+      {!clients.length && !err ? (
+        <p className="text-sm text-[var(--pro-faint,#888)]">
+          Пока нет клиентов — добавьте вручную или отправьте ссылку-анкету.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {clients.map((c) => (
+            <li key={c.id}>
+              <Link
+                href={`/pro/clients/${c.id}`}
+                className="pro-panel flex items-center justify-between transition-opacity hover:opacity-90"
+              >
+                <span className="text-[var(--pro-text,#ede6da)]">{c.alias}</span>
+                <span className="text-xs text-[var(--pro-faint,#888)]">
+                  {c.consent_state}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </ProShell>
   );
 }

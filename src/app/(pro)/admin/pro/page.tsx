@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AdminShell, { AdminTitle } from "@/components/admin/AdminShell";
 
 type Acc = {
   id: string;
@@ -39,17 +40,20 @@ export default function AdminProPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="font-display text-2xl text-[#ede6da]">Admin · Zovus Pro</h1>
-      {err && <p className="mt-3 text-sm text-red-300">{err}</p>}
-      <ul className="mt-6 space-y-3">
+    <AdminShell>
+      <AdminTitle
+        title="Zovus Pro"
+        subtitle="Заявки и статусы аккаунтов практиков"
+      />
+      {err && <p className="mb-4 text-sm text-red-300">{err}</p>}
+      <ul className="space-y-3">
         {accounts.map((a) => (
           <li
             key={a.id}
-            className="flex flex-wrap items-center justify-between gap-2 rounded border border-[#c9a24a]/20 px-4 py-3"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-aura-gold/20 bg-black/20 px-4 py-3"
           >
             <div>
-              <p className="text-[#ede6da]">{a.display_name || a.brand_slug}</p>
+              <p className="text-aura-ivory">{a.display_name || a.brand_slug}</p>
               <p className="text-xs text-gray-500">
                 {a.status} · {a.user_id}
               </p>
@@ -61,7 +65,7 @@ export default function AdminProPage() {
                   className="btn-neon px-3 py-1 text-xs"
                   onClick={() => void setStatus(a.id, "active")}
                 >
-                  Approve
+                  Одобрить
                 </button>
               )}
               {a.status === "active" && (
@@ -70,7 +74,7 @@ export default function AdminProPage() {
                   className="rounded border border-red-400/40 px-3 py-1 text-xs text-red-300"
                   onClick={() => void setStatus(a.id, "suspended")}
                 >
-                  Suspend
+                  Приостановить
                 </button>
               )}
               {a.status === "suspended" && (
@@ -79,13 +83,16 @@ export default function AdminProPage() {
                   className="btn-neon px-3 py-1 text-xs"
                   onClick={() => void setStatus(a.id, "active")}
                 >
-                  Restore
+                  Восстановить
                 </button>
               )}
             </div>
           </li>
         ))}
+        {!err && accounts.length === 0 ? (
+          <li className="text-sm text-gray-500">Пока нет заявок</li>
+        ) : null}
       </ul>
-    </main>
+    </AdminShell>
   );
 }

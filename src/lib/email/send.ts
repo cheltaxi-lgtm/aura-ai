@@ -26,6 +26,9 @@ export {
   supportNewTicketAdminEmailHtml,
   supportAutoReplyEmailHtml,
   partnerLeadAdminEmailHtml,
+  proApplyAdminEmailHtml,
+  proApplyUserEmailHtml,
+  proApprovedEmailHtml,
 } from "@/lib/email/templates";
 
 import type { SendEmailParams } from "@/lib/email/types";

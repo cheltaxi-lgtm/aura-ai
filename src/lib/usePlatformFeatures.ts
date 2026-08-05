@@ -20,6 +20,8 @@ export interface PlatformFeatures {
   jointReadingEnabled?: boolean;
   ritualsEnabled?: boolean;
   photoReadingEnabled?: boolean;
+  /** Zovus Pro practitioner module (ENV kill-switch). */
+  proModuleEnabled?: boolean;
   recaptcha: PlatformRecaptchaConfig;
 }
 
@@ -37,6 +39,7 @@ const FALLBACK: PlatformFeatures = {
   jointReadingEnabled: true,
   ritualsEnabled: true,
   photoReadingEnabled: true,
+  proModuleEnabled: false,
   recaptcha: {
     configured: false,
     masterEnabled: false,
@@ -60,6 +63,7 @@ function parseFeatures(d: Record<string, unknown>): PlatformFeatures {
     jointReadingEnabled: d.jointReadingEnabled !== false,
     ritualsEnabled: d.ritualsEnabled !== false,
     photoReadingEnabled: d.photoReadingEnabled !== false,
+    proModuleEnabled: d.proModuleEnabled === true,
     recaptcha: {
       configured: recaptchaRaw.configured === true,
       masterEnabled: recaptchaRaw.masterEnabled === true,

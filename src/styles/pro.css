@@ -1,0 +1,181 @@
+/**
+ * Zovus Pro — practitioner cabinet + public report/intake surfaces.
+ * Prefer CSS vars from tokens.css; keep motion to transform/opacity.
+ */
+
+.pro-shell {
+  --pro-accent: var(--color-accent, #c9a24a);
+  --pro-accent-light: var(--color-accent-light, #e8c77e);
+  --pro-text: var(--color-text, #ede6da);
+  --pro-muted: var(--color-text-muted, rgba(237, 230, 218, 0.62));
+  --pro-faint: var(--color-text-faint, rgba(237, 230, 218, 0.45));
+  --pro-border: var(--color-border, rgba(201, 162, 74, 0.2));
+  --pro-surface: var(--color-surface, #141210);
+  color: var(--pro-text);
+}
+
+.pro-shell__header {
+  border-bottom: 1px solid color-mix(in srgb, var(--pro-accent) 25%, transparent);
+}
+
+.pro-shell__eyebrow {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--pro-accent) 80%, transparent);
+}
+
+.pro-shell__title {
+  font-family: var(--font-display), Georgia, serif;
+  color: var(--pro-text);
+}
+
+.pro-shell__nav-link {
+  color: var(--pro-faint);
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.pro-shell__nav-link:hover {
+  color: var(--pro-text);
+}
+
+.pro-shell__nav-link--active {
+  color: var(--pro-accent-light);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.pro-panel {
+  border: 1px solid var(--pro-border);
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--pro-surface) 85%, transparent);
+  padding: 1rem 1.1rem;
+}
+
+.pro-field {
+  width: 100%;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid color-mix(in srgb, var(--pro-accent) 30%, transparent);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--pro-text);
+}
+
+.pro-field:focus {
+  outline: 2px solid var(--color-focus, rgba(201, 162, 74, 0.55));
+  outline-offset: 1px;
+}
+
+.pro-field::placeholder {
+  color: var(--pro-faint);
+}
+
+.pro-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--pro-muted);
+}
+
+.pro-public {
+  --pro-accent: var(--color-accent, #c9a24a);
+  --pro-accent-light: var(--color-accent-light, #e8c77e);
+  --pro-text: var(--color-text, #ede6da);
+  --pro-muted: var(--color-text-muted, rgba(237, 230, 218, 0.62));
+  --pro-faint: var(--color-text-faint, rgba(237, 230, 218, 0.45));
+  --pro-border: var(--color-border, rgba(201, 162, 74, 0.2));
+  color: var(--pro-text);
+}
+
+.pro-public__eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--pro-accent) 80%, transparent);
+}
+
+.pro-public__title {
+  font-family: var(--font-display), Georgia, serif;
+  color: var(--pro-text);
+}
+
+.pro-public__block-title {
+  font-family: var(--font-display), Georgia, serif;
+  color: var(--pro-accent-light);
+}
+
+.pro-marketing-hero {
+  position: relative;
+  min-height: min(88vh, 52rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 4.5rem 1.25rem 3rem;
+  overflow: hidden;
+}
+
+.pro-marketing-hero__glow {
+  pointer-events: none;
+  position: absolute;
+  inset: -20% 10% auto;
+  height: 55%;
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(201, 162, 74, 0.16),
+    transparent 70%
+  );
+  transform: translateZ(0);
+}
+
+.pro-marketing-hero__brand {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(2.75rem, 8vw, 4.5rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.05;
+  color: var(--color-text, #ede6da);
+}
+
+.pro-marketing-hero__brand span {
+  display: block;
+  font-size: 0.42em;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-accent-light, #e8c77e);
+  margin-bottom: 0.35em;
+}
+
+.pro-marketing-hero__lead {
+  margin-top: 1rem;
+  max-width: 28rem;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: var(--color-text-muted, rgba(237, 230, 218, 0.62));
+}
+
+.pro-marketing-section {
+  padding: 3rem 1.25rem;
+}
+
+.pro-marketing-section__title {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  color: var(--color-text, #ede6da);
+}
+
+.pro-marketing-section__text {
+  margin-top: 0.75rem;
+  max-width: 36rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--color-text-muted, rgba(237, 230, 218, 0.62));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pro-shell__nav-link {
+    transition: none;
+  }
+}

@@ -21,15 +21,13 @@ export default function ProShell({
 }) {
   const pathname = usePathname();
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8">
-      <header className="mb-8 border-b border-[#c9a24a]/25 pb-4">
-        <p className="font-display text-xs tracking-[0.2em] text-[#c9a24a]/80">
-          ZOVUS PRO
-        </p>
-        <h1 className="font-display mt-1 text-2xl text-[#ede6da]">
+    <div className="pro-shell mx-auto w-full max-w-5xl px-4 py-8">
+      <header className="pro-shell__header mb-8 pb-4">
+        <p className="pro-shell__eyebrow">Zovus Pro</p>
+        <h1 className="pro-shell__title mt-1 text-2xl">
           {title || "Кабинет практика"}
         </h1>
-        <nav className="mt-4 flex flex-wrap gap-3 text-sm">
+        <nav className="mt-4 flex flex-wrap gap-3 text-sm" aria-label="Разделы Pro">
           {NAV.map((item) => {
             const active =
               item.href === "/pro"
@@ -41,8 +39,8 @@ export default function ProShell({
                 href={item.href}
                 className={
                   active
-                    ? "text-[#e8c77e] underline underline-offset-4"
-                    : "text-gray-400 hover:text-[#ede6da]"
+                    ? "pro-shell__nav-link pro-shell__nav-link--active"
+                    : "pro-shell__nav-link"
                 }
               >
                 {item.label}

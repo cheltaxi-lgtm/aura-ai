@@ -19,6 +19,7 @@ import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
 import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
 import { EDITORIAL_FOOTER_TAGLINE, EDITORIAL_NAV } from "@/lib/editorial-landing-content";
 import { useAuth } from "@/lib/useAuth";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 export type SiteFooterVariant = "minimal" | "marketing";
 
@@ -39,6 +40,7 @@ function LegalDocsNav() {
       <LegalDocLink href="/privacy">ПДн</LegalDocLink>
       <LegalDocLink href="/terms">Соглашение</LegalDocLink>
       <LegalDocLink href="/offer">Оферта</LegalDocLink>
+      <LegalDocLink href="/offer-pro">Оферта Pro</LegalDocLink>
       <LegalDocLink href="/disclaimer">Отказ</LegalDocLink>
       <LegalDocLink href="/app">Приложение</LegalDocLink>
     </nav>
@@ -72,6 +74,7 @@ export default function SiteFooter({
 }) {
   const year = new Date().getFullYear();
   const { user, loading } = useAuth();
+  const { proModuleEnabled } = usePlatformFeatures();
   const isLoggedIn = !loading && Boolean(user);
   const telegramUrl = getBrandTelegramUrl();
   const telegramUsername = getBrandTelegramUsername();
@@ -185,6 +188,11 @@ export default function SiteFooter({
             <Link href="/auth/expert/register" className="editorial-footer__link">
               Стать мастером
             </Link>
+            {proModuleEnabled ? (
+              <Link href="/zovus-pro" className="editorial-footer__link">
+                Zovus Pro
+              </Link>
+            ) : null}
           </nav>
 
           <nav className="editorial-footer__col" aria-label="Сервисы">
@@ -204,6 +212,9 @@ export default function SiteFooter({
             <p className="editorial-footer__col-title">Документы</p>
             <LegalDocLink href="/offer" className="editorial-footer__link">
               Оферта
+            </LegalDocLink>
+            <LegalDocLink href="/offer-pro" className="editorial-footer__link">
+              Оферта Pro
             </LegalDocLink>
             <LegalDocLink href="/privacy" className="editorial-footer__link">
               Конфиденциальность

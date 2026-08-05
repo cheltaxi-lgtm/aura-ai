@@ -8,6 +8,7 @@ import { performClientLogout } from "@/lib/client-logout";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
 import { navigateToCabinet } from "@/lib/app-shell-nav";
 import type { AuthUser } from "@/lib/useAuth";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 type Anchor = { top: number; right: number; minWidth: number };
 
@@ -34,6 +35,7 @@ export default function AppTopHeaderAccount({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const { proModuleEnabled } = usePlatformFeatures();
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -179,6 +181,19 @@ export default function AppTopHeaderAccount({
                   </span>
                   <span>Личный кабинет</span>
                 </button>
+                {proModuleEnabled ? (
+                  <Link
+                    href="/pro"
+                    className="app-top-header-nav-panel__item"
+                    role="menuitem"
+                    onClick={close}
+                  >
+                    <span className="app-top-header-nav-panel__icon">
+                      <Sparkles className="h-4 w-4" aria-hidden />
+                    </span>
+                    <span>Zovus Pro</span>
+                  </Link>
+                ) : null}
               </div>
             ) : null}
 

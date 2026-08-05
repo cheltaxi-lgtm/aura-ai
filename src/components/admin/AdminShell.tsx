@@ -25,12 +25,14 @@ import {
   Handshake,
   Megaphone,
   Bot,
+  BookOpen,
 } from "lucide-react";
 
 const NAV_BASE = [
   { href: "/admin", label: "Дашборд", icon: LayoutDashboard },
   { href: "/admin/users", label: "Пользователи", icon: Users },
   { href: "/admin/experts", label: "Эзотерики", icon: Sparkles },
+  { href: "/admin/pro", label: "Pro", icon: BookOpen },
   { href: "/admin/influencers", label: "Блогеры", icon: Share2 },
   { href: "/admin/payments", label: "Платежи", icon: CreditCard },
   { href: "/admin/runes", label: "Руны", icon: Coins },

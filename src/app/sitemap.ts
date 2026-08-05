@@ -30,6 +30,7 @@ import {
   isPhotoReadingEnabled,
 } from "@/lib/settings";
 import { getRitualSettings, isRitualCatalogEnabled } from "@/lib/ritual-settings";
+import { isProModuleEnabled } from "@/modules/pro/config";
 
 const ABOUT_PATHS = [
   "/about",
@@ -70,6 +71,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const ritualsEnabled = ritualSettings
     ? isRitualCatalogEnabled(ritualSettings)
     : true;
+  const proEnabled = isProModuleEnabled();
 
   const spreadPages: MetadataRoute.Sitemap = Object.values(SPREAD_REGISTRY)
     .filter((s) => s.seoSlug)
@@ -255,6 +257,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPage("/faq", 0.5, "monthly"),
     staticPage("/telegram", 0.7, "weekly"),
     staticPage("/partners", 0.4, "monthly"),
+    ...(proEnabled ? [staticPage("/zovus-pro", 0.55, "monthly")] : []),
     ...ABOUT_PATHS.map((path) => staticPage(path, 0.45, "monthly")),
     ...LENORMAND_PATHS.map((path) => staticPage(path, 0.5, "monthly")),
   ];

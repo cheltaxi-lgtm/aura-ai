@@ -41,6 +41,9 @@ export default function LegalDocumentLayout({
         <LegalDocLink href="/offer" className="text-aura-ivory/50 hover:text-aura-champagne">
           Оферта
         </LegalDocLink>
+        <LegalDocLink href="/offer-pro" className="text-aura-ivory/50 hover:text-aura-champagne">
+          Оферта Pro
+        </LegalDocLink>
         <LegalDocLink href="/disclaimer" className="text-aura-ivory/50 hover:text-aura-champagne">
           Отказ от ответственности
         </LegalDocLink>

@@ -11,6 +11,7 @@ const MINIMAL_FOOTER_PREFIXES = [
   "/cabinet",
   "/auth",
   "/expert",
+  "/r/",
   "/session",
   "/tg",
   "/joint-reading/",
@@ -21,10 +22,17 @@ const MINIMAL_FOOTER_PREFIXES = [
   "/maintenance",
 ] as const;
 
+function isProAppPath(pathname: string): boolean {
+  // Exact /pro or /pro/... — not /zovus-pro marketing.
+  return pathname === "/pro" || pathname.startsWith("/pro/");
+}
+
 function useMarketingFooter(pathname: string | null): boolean {
   if (!pathname) return true;
   if (pathname === "/") return true;
   if (pathname === "/joint-reading") return true;
+  if (pathname === "/zovus-pro") return true;
+  if (isProAppPath(pathname)) return false;
   return !MINIMAL_FOOTER_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(prefix)
   );

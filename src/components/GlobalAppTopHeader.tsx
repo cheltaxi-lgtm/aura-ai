@@ -23,6 +23,12 @@ function isAdminPath(pathname: string | null): boolean {
   return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+/** Client report links — keep chrome out of the reading surface. */
+function isProPublicReportPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return pathname === "/r" || pathname.startsWith("/r/");
+}
+
 /** Single site chrome header for all public routes (admin excluded). */
 export default function GlobalAppTopHeader() {
   const pathname = usePathname();
@@ -36,7 +42,7 @@ export default function GlobalAppTopHeader() {
   }, []);
 
   useEffect(() => {
-    if (isAdminPath(pathname)) {
+    if (isAdminPath(pathname) || isProPublicReportPath(pathname)) {
       document.body.classList.remove("has-site-header");
       return;
     }
@@ -44,7 +50,7 @@ export default function GlobalAppTopHeader() {
     return () => document.body.classList.remove("has-site-header");
   }, [pathname]);
 
-  if (isAdminPath(pathname)) return null;
+  if (isAdminPath(pathname) || isProPublicReportPath(pathname)) return null;
 
   /* Pre-mount: paint the chrome shell immediately (SSR) so the header doesn't
      flash in after hydration; the portal swap reuses the same layout. */

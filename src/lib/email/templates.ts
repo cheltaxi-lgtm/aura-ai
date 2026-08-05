@@ -246,3 +246,41 @@ export function partnerLeadAdminEmailHtml(params: {
     "Уведомление о партнёрской заявке."
   );
 }
+
+export function proApplyAdminEmailHtml(params: {
+  displayName: string;
+  email: string;
+  status: string;
+  adminUrl: string;
+}): string {
+  return shell(
+    `<p>Новая заявка в Zovus Pro.</p>
+     <ul style="font-size:14px;line-height:1.7">
+       <li><strong>Имя:</strong> ${params.displayName.slice(0, 120)}</li>
+       <li><strong>Email:</strong> ${params.email.slice(0, 200)}</li>
+       <li><strong>Статус:</strong> ${params.status.slice(0, 40)}</li>
+     </ul>
+     ${cta(params.adminUrl, "Открыть в админке")}`,
+    "Уведомление о заявке практика."
+  );
+}
+
+export function proApplyUserEmailHtml(name: string, proUrl: string): string {
+  const safeName = name.trim() || "друг";
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Мы получили вашу заявку в Zovus Pro. После проверки откроем кабинет практика.</p>
+     ${cta(proUrl, "Открыть Pro")}`,
+    "Заявка в Zovus Pro."
+  );
+}
+
+export function proApprovedEmailHtml(name: string, proUrl: string): string {
+  const safeName = name.trim() || "друг";
+  return shell(
+    `<p>Здравствуйте, ${safeName}!</p>
+     <p>Доступ к Zovus Pro открыт. Можно вести клиентов, кейсы и выдавать отчёты.</p>
+     ${cta(proUrl, "Перейти в кабинет")}`,
+    "Одобрение доступа Zovus Pro."
+  );
+}

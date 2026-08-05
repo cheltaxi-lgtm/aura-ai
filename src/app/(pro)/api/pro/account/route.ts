@@ -6,6 +6,7 @@ import {
   requireUserAuth,
 } from "@/lib/require-auth";
 import { getRuneBalance } from "@/lib/rune-service";
+import { notifyProAccountApplied } from "@/lib/email/pro-notify";
 import { requireProPractitioner } from "@/modules/pro/auth";
 import { getProBillingMode } from "@/modules/pro/config";
 import {
@@ -47,6 +48,8 @@ export async function POST(req: Request) {
   }
   const body = (await req.json().catch(() => ({}))) as {
     displayName?: string;
+    specializations?: string[];
+    bio?: string;
     action?: string;
     onboarding?: {
       specializations?: string[];
@@ -76,9 +79,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, account: updated });
   }
 
+  const specs = Array.isArray(body.specializations)
+    ? body.specializations.filter((s): s is string => typeof s === "string")
+    : undefined;
+
   const result = await applyForProAccount({
     userId: profile.profileUserId,
     displayName: body.displayName ?? null,
+    specializations: specs,
+    bio: typeof body.bio === "string" ? body.bio : null,
   });
+
+  void notifyProAccountApplied({
+    profileUserId: profile.profileUserId,
+    accountId: String(result.account.id),
+    displayName: result.account.display_name,
+    status: result.account.status,
+    created: result.created,
+  });
+
   return NextResponse.json({ ok: true, ...result });
 }

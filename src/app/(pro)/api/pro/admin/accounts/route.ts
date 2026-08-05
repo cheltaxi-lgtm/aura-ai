@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { notifyProAccountApproved } from "@/lib/email/pro-notify";
 import { requireProEnabled } from "@/modules/pro/gate";
 import { listAccounts, setAccountStatus } from "@/modules/pro/db/accounts";
 
@@ -37,5 +38,11 @@ export async function PATCH(req: Request) {
   }
   const account = await setAccountStatus(body.id, body.status, admin.sub);
   if (!account) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (body.status === "active") {
+    void notifyProAccountApproved({
+      profileUserId: account.user_id,
+      displayName: account.display_name,
+    });
+  }
   return NextResponse.json({ ok: true, account });
 }

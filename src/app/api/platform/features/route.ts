@@ -9,6 +9,7 @@ import {
   isPhotoReadingEnabled,
 } from "@/lib/settings";
 import { getRitualSettings, isRitualCatalogEnabled } from "@/lib/ritual-settings";
+import { isProModuleEnabled } from "@/modules/pro/config";
 
 export async function GET() {
   const [
@@ -38,6 +39,7 @@ export async function GET() {
     humanDesignEnabled,
     photoReadingEnabled,
     ritualsEnabled: isRitualCatalogEnabled(ritualSettings),
+    proModuleEnabled: isProModuleEnabled(),
     oauthProviders,
     recaptcha: {
       configured: recaptcha.configured,

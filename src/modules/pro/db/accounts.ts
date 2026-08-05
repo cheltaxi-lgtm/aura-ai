@@ -49,6 +49,8 @@ export async function getAccountById(id: number | string): Promise<ProAccountRow
 export async function applyForProAccount(input: {
   userId: string;
   displayName?: string | null;
+  specializations?: string[];
+  bio?: string | null;
 }): Promise<{ account: ProAccountRow; created: boolean }> {
   const existing = await getAccountByUserId(input.userId);
   if (existing) return { account: existing, created: false };
@@ -56,6 +58,12 @@ export async function applyForProAccount(input: {
   const allowlisted = isProAllowlistedUser(input.userId);
   const status = allowlisted ? "active" : "pending";
   const display = (input.displayName || "Практик").trim().slice(0, 80);
+  const specs = (input.specializations || [])
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  const bio =
+    typeof input.bio === "string" ? input.bio.trim().slice(0, 2000) || null : null;
   let slug = slugify(display);
   const trialEnds = new Date();
   trialEnds.setUTCDate(trialEnds.getUTCDate() + proFreeTrialDays());
@@ -71,10 +79,18 @@ export async function applyForProAccount(input: {
     try {
       const { rows } = await proQuery<ProAccountRow>(
         `INSERT INTO pro.accounts
-           (user_id, status, tier, display_name, brand_slug, specializations, limits, onboarding_state)
-         VALUES ($1, $2, 'free_trial', $3, $4, '{}', $5::jsonb, '{}'::jsonb)
+           (user_id, status, tier, display_name, brand_slug, specializations, bio, limits, onboarding_state)
+         VALUES ($1, $2, 'free_trial', $3, $4, $5, $6, $7::jsonb, '{}'::jsonb)
          RETURNING *`,
-        [input.userId, status, display, candidate, JSON.stringify(limits)]
+        [
+          input.userId,
+          status,
+          display,
+          candidate,
+          specs,
+          bio,
+          JSON.stringify(limits),
+        ]
       );
       const account = rows[0]!;
       await proQuery(
