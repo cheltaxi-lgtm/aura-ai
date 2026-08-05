@@ -1,6 +1,5 @@
 /**
- * Pro cron registration. S0: empty — jobs must not register when module is off.
- * Callers must check isProModuleEnabled() before scheduling.
+ * Pro cron registration. Jobs listed only when module is enabled.
  */
 
 import { isProModuleEnabled } from "../config";
@@ -15,6 +14,5 @@ export type ProJobId =
 /** Returns job ids that may run. Always [] when PRO_MODULE_ENABLED=false. */
 export function listEnabledProJobs(): ProJobId[] {
   if (!isProModuleEnabled()) return [];
-  // S1+: return concrete job ids when handlers exist.
-  return [];
+  return ["expire-deliveries", "thread-close", "retention-purge"];
 }

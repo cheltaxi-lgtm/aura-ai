@@ -78,6 +78,8 @@ const PUBLIC_API_PREFIXES = [
   // /api/ads/link stays auth-gated. Handlers return 404 when ads.enabled=false.
   "/api/ads/t",
   "/api/ads/e",
+  // Zovus Pro public client surfaces (token-gated in handlers).
+  "/api/pro/public/",
 ] as const;
 
 /** Public joint-reading GETs only — mutating routes require JWT at middleware. */
@@ -277,6 +279,7 @@ function maintenanceBotHtmlResponse() {
 
 function requiredApiRole(pathname: string): AuthRole | null {
   if (pathname.startsWith("/api/admin/")) return "admin";
+  if (pathname.startsWith("/api/pro/admin/")) return "admin";
   if (pathname.startsWith("/api/expert/")) return "expert";
   return null;
 }

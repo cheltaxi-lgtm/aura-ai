@@ -1,46 +1,70 @@
 /**
  * Bridges to existing product capabilities.
- * S0: stubs with isAvailable() — no product side-effects.
+ * Real work lives here — domain/db must not import @/lib/* directly for engines.
  */
+
+import { searchBirthPlaces, resolveBirthPlace } from "@/lib/natal/geocode";
+import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
+import { isProAiEnabled, isProModuleEnabled } from "../config";
+import { chargeProAction, refundProAction, type ProChargeResult } from "../db/billing";
+import type { ProPricedAction } from "../pricing";
+import { generateCaseDraft, type DraftGenerateInput } from "../ai/draft";
 
 export type ProAdapter = {
   id: string;
   isAvailable(): boolean;
 };
 
-function envOn(name: string): boolean {
-  const raw = process.env[name]?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes";
-}
-
-/** LLM draft generation — off until PRO_AI_ENABLED. */
-export const aiAdapter: ProAdapter = {
+export const aiAdapter = {
   id: "ai",
-  isAvailable: () => envOn("PRO_MODULE_ENABLED") && envOn("PRO_AI_ENABLED"),
+  isAvailable: () => isProAiEnabled(),
+  generateDraft: generateCaseDraft,
 };
 
-/** Rune ledger billing — shadow/live controlled separately in S1. */
-export const billingAdapter: ProAdapter = {
+export const billingAdapter = {
   id: "billing",
-  isAvailable: () => envOn("PRO_MODULE_ENABLED"),
+  isAvailable: () => isProModuleEnabled(),
+  charge: (input: {
+    accountId: string | number;
+    userId: string;
+    action: ProPricedAction;
+    caseId?: string | number | null;
+    idempotencyKey: string;
+    description?: string;
+  }): Promise<ProChargeResult> => chargeProAction(input),
+  refund: refundProAction,
 };
 
-/** Geocoding / IANA tz for client birth data. */
-export const geocodeAdapter: ProAdapter = {
+export const geocodeAdapter = {
   id: "geocode",
-  isAvailable: () => envOn("PRO_MODULE_ENABLED"),
+  isAvailable: () => isProModuleEnabled(),
+  search: searchBirthPlaces,
+  resolve: resolveBirthPlace,
 };
 
-/** Natal engine. */
-export const natalAdapter: ProAdapter = {
+export const natalAdapter = {
   id: "natal",
-  isAvailable: () => envOn("PRO_MODULE_ENABLED"),
+  isAvailable: () => isProModuleEnabled(),
+  /** Lightweight birth payload for case input — full chart compute stays in product. */
+  summarizeInput(payload: Record<string, unknown>): Record<string, unknown> {
+    return {
+      birthDate: payload.birthDate ?? null,
+      birthTime: payload.birthTime ?? null,
+      birthPlace: payload.birthPlace ?? null,
+      latitude: payload.birthLat ?? payload.latitude ?? null,
+      longitude: payload.birthLon ?? payload.longitude ?? null,
+      timezone: payload.birthTz ?? payload.timezone ?? null,
+      tradition: payload.tradition === "vedic" ? "vedic" : "western",
+    };
+  },
 };
 
-/** Destiny matrix engine. */
-export const matrixAdapter: ProAdapter = {
+export const matrixAdapter = {
   id: "matrix",
-  isAvailable: () => envOn("PRO_MODULE_ENABLED"),
+  isAvailable: () => isProModuleEnabled(),
+  compute(birthDate: string) {
+    return destinyMatrix(birthDate);
+  },
 };
 
 export const PRO_ADAPTERS: readonly ProAdapter[] = [
@@ -50,3 +74,5 @@ export const PRO_ADAPTERS: readonly ProAdapter[] = [
   natalAdapter,
   matrixAdapter,
 ];
+
+export type { DraftGenerateInput };

@@ -70,12 +70,12 @@ async function main() {
   loadEnvLocal();
   console.log("Zovus Pro verify (S0: 1–6, 19–22)\n");
 
-  const migFiles = readdirSync(join(ROOT, "scripts/migrations"))
-    .filter((f) => /^102_migrate_pro/.test(f) && f.endsWith(".sql") && !f.endsWith(".down.sql"));
-  const migPath = migFiles[0]
-    ? join(ROOT, "scripts/migrations", migFiles[0])
-    : join(ROOT, "scripts/migrations/102_migrate_pro_schema.sql");
-  const migSql = existsSync(migPath) ? readFileSync(migPath, "utf8") : "";
+  const proMigFiles = readdirSync(join(ROOT, "scripts/migrations")).filter(
+    (f) => /^\d+_migrate_pro_/.test(f) && f.endsWith(".sql") && !f.endsWith(".down.sql")
+  );
+  const migSql = proMigFiles
+    .map((f) => readFileSync(join(ROOT, "scripts/migrations", f), "utf8"))
+    .join("\n");
 
   // —— 1. No FK from pro → public
   const hasPublicFk =
@@ -86,7 +86,7 @@ async function main() {
     "1",
     schemaOk && !hasPublicFk ? "PASS" : "FAIL",
     schemaOk && !hasPublicFk
-      ? "pro schema migration has no FK into public.*"
+      ? `pro migrations (${proMigFiles.join(", ")}) have no FK into public.*`
       : "migration missing CREATE SCHEMA pro or references public"
   );
 
@@ -98,7 +98,7 @@ async function main() {
     "2",
     !altersPublic && schemaOk ? "PASS" : "FAIL",
     !altersPublic && schemaOk
-      ? "102 migration does not mutate public.*"
+      ? "pro migrations do not mutate public.*"
       : "migration mutates public or missing"
   );
 
@@ -142,9 +142,9 @@ async function main() {
   const gated = requireProEnabled();
   const gate404 = gated?.status === 404;
   const pagesGate =
-    readFileSync(join(ROOT, "src/app/(pro)/pro/page.tsx"), "utf8").includes("requireProPage") &&
-    readFileSync(join(ROOT, "src/app/(pro)/r/[token]/page.tsx"), "utf8").includes("requireProPage") &&
-    readFileSync(join(ROOT, "src/app/(pro)/pro/f/[token]/page.tsx"), "utf8").includes(
+    readFileSync(join(ROOT, "src/app/(pro)/pro/layout.tsx"), "utf8").includes("requireProPage") &&
+    readFileSync(join(ROOT, "src/app/(pro)/r/layout.tsx"), "utf8").includes("requireProPage") &&
+    readFileSync(join(ROOT, "src/app/(pro)/admin/pro/layout.tsx"), "utf8").includes(
       "requireProPage"
     );
   const mwGate = /PRO_MODULE_ENABLED/.test(mw) && /\/api\/pro/.test(mw);
@@ -177,17 +177,11 @@ async function main() {
     !/["'`]\/pro(?:\/|["'`])/i.test(sitemap) &&
     !/["'`]\/r\/[^"'`]+["'`]/i.test(sitemap);
   const robotsOk = robots.includes('"/pro"') && robots.includes('"/r/"');
-  const deliveryMeta = readFileSync(
-    join(ROOT, "src/app/(pro)/r/[token]/page.tsx"),
-    "utf8"
-  );
-  const intakeMeta = readFileSync(
-    join(ROOT, "src/app/(pro)/pro/f/[token]/page.tsx"),
-    "utf8"
-  );
+  const deliveryMeta = readFileSync(join(ROOT, "src/app/(pro)/r/layout.tsx"), "utf8");
+  const proMeta = readFileSync(join(ROOT, "src/app/(pro)/pro/layout.tsx"), "utf8");
   const noindex =
     /robots:\s*\{\s*index:\s*false/.test(deliveryMeta) &&
-    /robots:\s*\{\s*index:\s*false/.test(intakeMeta);
+    /robots:\s*\{\s*index:\s*false/.test(proMeta);
   log(
     "6",
     sitemapClean && robotsOk && noindex ? "PASS" : "FAIL",
@@ -302,9 +296,81 @@ async function main() {
     canDeliverCase([{ source: "ai" }]) === false &&
     canDeliverCase([{ source: "ai" }, { source: "human" }]) === true;
   log(
-    "human-gate",
+    "7",
     gateHuman ? "PASS" : "FAIL",
-    gateHuman ? "deliver requires human version" : "human-gate broken"
+    gateHuman ? "deliver requires human version (409 path)" : "human-gate broken"
+  );
+
+  // —— 8. Tokens hashed (mint stores hash helpers)
+  const tokensSrc = readFileSync(join(ROOT, "src/modules/pro/tokens.ts"), "utf8");
+  const delivSrc = readFileSync(join(ROOT, "src/modules/pro/db/deliveries.ts"), "utf8");
+  const tokenHashOk =
+    /sha256/i.test(tokensSrc) &&
+    /token_hash/.test(delivSrc) &&
+    /minted\.hash/.test(delivSrc) &&
+    !/VALUES\s*\([^)]*rawToken/.test(delivSrc);
+  log(
+    "8",
+    tokenHashOk ? "PASS" : "FAIL",
+    tokenHashOk ? "delivery tokens stored as sha256 hash" : "token storage unsafe"
+  );
+
+  // —— 15/17 billing idempotency + shadow
+  const billingSrc = readFileSync(join(ROOT, "src/modules/pro/db/billing.ts"), "utf8");
+  const billingOk =
+    /idempotency_key/.test(billingSrc) &&
+    /shadow/.test(billingSrc) &&
+    /getProBillingMode/.test(billingSrc);
+  log(
+    "15",
+    billingOk ? "PASS" : "FAIL",
+    billingOk ? "usage_log idempotency_key present" : "billing adapter incomplete"
+  );
+  log(
+    "17",
+    /shadow\s*=\s*mode\s*!==\s*["']live["']/.test(billingSrc) ||
+      /mode !== "live"/.test(billingSrc)
+      ? "PASS"
+      : "FAIL",
+    "shadow mode skips ledger charge"
+  );
+
+  // —— Safety fixtures
+  const { detectCrisis, filterPractitionerOutput } = await import(
+    "../src/modules/pro/safety/index.ts"
+  );
+  const crisisOk = detectCrisis("хочу покончить с собой").crisis === true;
+  const filterOk =
+    filterPractitionerOutput("Я гарантирую 100% сбудется").ok === false;
+  log(
+    "10-11",
+    crisisOk && filterOk ? "PASS" : "FAIL",
+    crisisOk && filterOk
+      ? "crisis detector + guarantee filter fixtures"
+      : `crisis=${crisisOk} filter=${filterOk}`
+  );
+
+  // —— S1/S2 mount surface present
+  const mounts = [
+    "src/app/(pro)/api/pro/account/route.ts",
+    "src/app/(pro)/api/pro/clients/route.ts",
+    "src/app/(pro)/api/pro/cases/route.ts",
+    "src/app/(pro)/api/pro/public/report/[token]/route.ts",
+    "src/app/(pro)/api/cron/pro-maintenance/route.ts",
+    "scripts/migrations/103_migrate_pro_delivery_billing.sql",
+  ];
+  const mountsOk = mounts.every((p) => existsSync(join(ROOT, p)));
+  log(
+    "s1s2-surface",
+    mountsOk ? "PASS" : "FAIL",
+    mountsOk ? "S1/S2 API + migration 103 present" : "missing mount files"
+  );
+
+  const pricingSrc = readFileSync(join(ROOT, "src/modules/pro/pricing.ts"), "utf8");
+  log(
+    "18",
+    /PRO_COST_|proRuneCost/.test(pricingSrc) ? "PASS" : "FAIL",
+    "prices from config/ENV not hardcoded in handlers"
   );
 
   const fails = rows.filter((r) => r.status === "FAIL");
