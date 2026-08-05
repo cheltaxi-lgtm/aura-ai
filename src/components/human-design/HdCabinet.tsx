@@ -29,6 +29,8 @@ export default function HdCabinet() {
   }, [selectedId]);
   const loadSeq = useRef(0);
   const [loadError, setLoadError] = useState(false);
+  /** First paint of this visit must land on self, not a leftover «other». */
+  const initialSelectDone = useRef(false);
 
   const load = useCallback(() => {
     const seq = ++loadSeq.current;
@@ -39,15 +41,22 @@ export default function HdCabinet() {
         setLoadError(false);
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
-        list.sort((a, b) => {
-          const aSelf = isOther(a) ? 1 : 0;
-          const bSelf = isOther(b) ? 1 : 0;
-          return aSelf - bSelf;
-        });
+        list.sort((a, b) => Number(isOther(a)) - Number(isOther(b)));
         setCharts(list);
-        if (list.length && !selectedIdRef.current) {
-          const selfChart = list.find((c) => !isOther(c));
-          setSelectedId((selfChart ?? list[0]).id);
+
+        const selfChart = list.find((c) => !isOther(c));
+        const current = selectedIdRef.current
+          ? list.find((c) => c.id === selectedIdRef.current)
+          : undefined;
+
+        if (!initialSelectDone.current) {
+          initialSelectDone.current = true;
+          setSelectedId((selfChart ?? list[0])?.id ?? null);
+          return;
+        }
+
+        if (!current) {
+          setSelectedId((selfChart ?? list[0])?.id ?? null);
         }
       })
       .catch(() => {
@@ -106,7 +115,10 @@ export default function HdCabinet() {
           {charts.length > 0 && (
             <button
               type="button"
-              onClick={() => setCreating(false)}
+              onClick={() => {
+                initialSelectDone.current = false;
+                setCreating(false);
+              }}
               className="hd-bodygraph__export"
             >
               К моей карте
@@ -119,16 +131,21 @@ export default function HdCabinet() {
             setCreating(false);
             setCharts(null);
             if (isOther(chart)) {
-              // Чужой расчёт не должен открываться вместо «моей» карты.
+              // Re-run initial select → self.
+              initialSelectDone.current = false;
               selectedIdRef.current = null;
               setSelectedId(null);
             } else {
+              initialSelectDone.current = true;
               setSelectedId(chart.id);
             }
             load();
           }}
           onChartDeleted={(chartId) => {
-            if (chartId === selectedId) setSelectedId(null);
+            if (chartId === selectedId) {
+              initialSelectDone.current = false;
+              setSelectedId(null);
+            }
             load();
           }}
         />
@@ -140,9 +157,11 @@ export default function HdCabinet() {
   const otherCharts = charts.filter((c) => isOther(c));
   const selected = charts.find((c) => c.id === selectedId) ?? selfCharts[0] ?? charts[0]!;
   const selectedIsOther = isOther(selected);
+  const selfSelected = selfCharts.find((c) => c.id === selected.id) ?? null;
+  const otherSelected = selectedIsOther ? selected : null;
 
-  const deleteSelected = async () => {
-    const who = hdChartChipLabel(selected);
+  const deleteChart = async (target: HdChartListItem) => {
+    const who = hdChartChipLabel(target);
     if (
       !window.confirm(
         `Удалить карту «${who}» безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему — из кабинета, истории и памяти мастеров.`
@@ -153,14 +172,16 @@ export default function HdCabinet() {
     setDeleting(true);
     try {
       const res = await fetch(
-        `/api/human-design/chart?id=${encodeURIComponent(selected.id)}`,
+        `/api/human-design/chart?id=${encodeURIComponent(target.id)}`,
         { method: "DELETE", credentials: "include" }
       );
       if (!res.ok) throw new Error("delete failed");
-      const remaining = charts.filter((c) => c.id !== selected.id);
+      const remaining = charts.filter((c) => c.id !== target.id);
       setCharts(remaining);
-      const nextSelf = remaining.find((c) => !isOther(c));
-      setSelectedId((nextSelf ?? remaining[0])?.id ?? null);
+      if (selected.id === target.id) {
+        const nextSelf = remaining.find((c) => !isOther(c));
+        setSelectedId((nextSelf ?? remaining[0])?.id ?? null);
+      }
       if (remaining.length === 0) setCreating(true);
     } catch {
       window.alert("Не удалось удалить карту. Попробуйте ещё раз.");
@@ -185,75 +206,25 @@ export default function HdCabinet() {
     </button>
   );
 
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-bold">
-          {selectedIsOther ? "Карта другого человека" : "Моя карта"}
-        </h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void deleteSelected()}
-            disabled={deleting}
-            className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
-          >
-            {deleting ? "Удаление…" : "Удалить карту"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="hd-bodygraph__export"
-          >
-            Новая карта
-          </button>
-        </div>
+  const chartBlock = (payload: HdChartListItem) => (
+    <div className="space-y-5" key={`block-${payload.id}`}>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => void deleteChart(payload)}
+          disabled={deleting}
+          className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
+        >
+          {deleting ? "Удаление…" : "Удалить карту"}
+        </button>
       </div>
-
-      {selfCharts.length > 0 && (
-        <div className="space-y-2">
-          {selfCharts.length > 1 || otherCharts.length > 0 ? (
-            <p className="text-[0.6875rem] uppercase tracking-wider text-amber-100/45">
-              Моя карта
-            </p>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            {selfCharts.map((c) => chipBtn(c, c.id === selected.id))}
-          </div>
-        </div>
-      )}
-
-      {otherCharts.length > 0 && (
-        <div className="space-y-2 border-t border-white/10 pt-4">
-          <p className="text-[0.6875rem] uppercase tracking-wider text-white/40">
-            Карты других людей
-          </p>
-          <p className="text-xs text-white/40">
-            Сохранены из расчётов «другому человеку» — это не ваша карта.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {otherCharts.map((c) => chipBtn(c, c.id === selected.id))}
-          </div>
-          {selectedIsOther && selfCharts[0] && (
-            <button
-              type="button"
-              onClick={() => setSelectedId(selfCharts[0]!.id)}
-              className="hd-bodygraph__export"
-            >
-              Вернуться к моей карте
-            </button>
-          )}
-        </div>
-      )}
-
-      <HdChartView key={selected.id} payload={selected} />
-
-      {charts.length > 1 && (
+      <HdChartView key={payload.id} payload={payload} />
+      {charts.length > 1 && payload.id === selected.id && (
         <div className="hd-print-hidden space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-white/50">Композит с:</span>
             {charts
-              .filter((c) => c.id !== selected.id)
+              .filter((c) => c.id !== payload.id)
               .map((c) => (
                 <button
                   key={c.id}
@@ -273,21 +244,90 @@ export default function HdCabinet() {
             const partner = charts.find((c) => c.id === partnerId);
             return partner ? (
               <HdComposite
-                key={`${selected.id}:${partnerId}`}
-                base={selected}
+                key={`${payload.id}:${partnerId}`}
+                base={payload}
                 partner={partner}
               />
             ) : null;
           })()}
         </div>
       )}
-
       <HdReportPanel
-        key={selected.id}
-        chartId={selected.id}
+        key={`report-${payload.id}`}
+        chartId={payload.id}
         authenticated
         loginReturnTo="/cabinet/human-design"
       />
+    </div>
+  );
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold">Дизайн Человека</h1>
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="hd-bodygraph__export"
+        >
+          Новая карта
+        </button>
+      </div>
+
+      {/* Personal chart — bodygraph lives HERE, never under «others». */}
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <p className="text-[0.6875rem] uppercase tracking-wider text-amber-100/55">
+            Моя карта
+          </p>
+          {selfCharts.length === 0 && (
+            <p className="text-sm text-white/50">
+              Личной карты ещё нет — нажмите «Новая карта» и рассчитайте для себя.
+            </p>
+          )}
+          {selfCharts.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {selfCharts.map((c) => chipBtn(c, c.id === selected.id))}
+            </div>
+          )}
+        </div>
+        {selfSelected
+          ? chartBlock(selfSelected)
+          : selfCharts[0] && !selectedIsOther
+            ? chartBlock(selfCharts[0])
+            : selfCharts[0] && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(selfCharts[0]!.id)}
+                  className="hd-bodygraph__export"
+                >
+                  Открыть мою карту · {hdChartChipLabel(selfCharts[0])}
+                </button>
+              )}
+      </section>
+
+      {otherCharts.length > 0 && (
+        <section className="space-y-3 border-t border-white/10 pt-6">
+          <div className="space-y-1">
+            <p className="text-[0.6875rem] uppercase tracking-wider text-white/40">
+              Карты других людей
+            </p>
+            <p className="text-xs text-white/40">
+              Сохранены из расчёта «другому человеку». Не путать с вашей картой.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {otherCharts.map((c) => chipBtn(c, c.id === selected.id))}
+          </div>
+          {otherSelected ? (
+            chartBlock(otherSelected)
+          ) : (
+            <p className="text-xs text-white/35">
+              Выберите человека выше, чтобы открыть его бодиграф.
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
