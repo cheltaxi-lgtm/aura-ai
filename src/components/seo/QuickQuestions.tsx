@@ -28,6 +28,7 @@ const QUICK_INTENT_SLUGS = [
 const ENTRY_LINKS = [
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Натальная карта", href: "/natalnaya-karta" },
+  { label: "Дизайн Человека", href: "/dizayn-cheloveka" },
   { label: "Все расклады", href: "/rasklady" },
   { label: "Фото-расклад", href: "/photo-rasklad" },
   { label: "Таро онлайн", href: "/taro" },
@@ -36,6 +37,7 @@ const ENTRY_LINKS = [
   { label: "Нумерология", href: "/numerology" },
   { label: "Статьи", href: "/statyi" },
   { label: "Совместимость", href: "/joint-reading" },
+  { label: "Telegram-бот", href: "/telegram" },
   { label: "Карты Таро", href: "/cards" },
 ] as const;
 

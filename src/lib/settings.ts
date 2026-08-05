@@ -253,6 +253,9 @@ const DEFAULTS = {
   humanDesign: {
     enabled: true,
   },
+  photoReading: {
+    enabled: true,
+  },
   openrouter: {
     managementKey: "",
   },
@@ -321,6 +324,8 @@ export async function getAllSettings() {
     rituals,
     jointReading,
     natalChart,
+    humanDesign,
+    photoReading,
   ] = await Promise.all([
     getSetting("ai"),
     getSetting("aiDelivery"),
@@ -334,6 +339,8 @@ export async function getAllSettings() {
     getSetting("rituals"),
     getSetting("jointReading"),
     getSetting("natalChart"),
+    getSetting("humanDesign"),
+    getSetting("photoReading"),
   ]);
   return {
     ai,
@@ -348,6 +355,8 @@ export async function getAllSettings() {
     rituals,
     jointReading,
     natalChart,
+    humanDesign,
+    photoReading,
   };
 }
 
@@ -378,6 +387,11 @@ export async function isNatalChartEnabled(): Promise<boolean> {
 export async function isHumanDesignEnabled(): Promise<boolean> {
   if (process.env.HD_MODULE_ENABLED === "false") return false;
   const settings = await getSetting("humanDesign");
+  return settings.enabled !== false;
+}
+
+export async function isPhotoReadingEnabled(): Promise<boolean> {
+  const settings = await getSetting("photoReading");
   return settings.enabled !== false;
 }
 

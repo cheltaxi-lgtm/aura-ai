@@ -53,10 +53,15 @@ import {
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
+import { isPhotoReadingEnabled } from "@/lib/settings";
 
 export const maxDuration = 180;
 
 export async function POST(request: NextRequest) {
+  if (!(await isPhotoReadingEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
   const workerUserId = getAsyncJobWorkerUserId(request);
   let accountId: string;
   let accountName: string | undefined;

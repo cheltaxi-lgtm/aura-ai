@@ -48,7 +48,7 @@ export default async function HdCenterPage({
     .map(([g]) => Number(g));
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka" backLabel="Дизайн Человека">
+    <SeoPageShell backHref="/dizayn-cheloveka/centry" backLabel="Центры">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

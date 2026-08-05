@@ -20,10 +20,16 @@ interface NatalChartSettings {
   ephemeris: NatalEphemeris;
 }
 
+interface EnabledOnlySettings {
+  enabled: boolean;
+}
+
 const DEFAULT_NATAL_CHART_SETTINGS: NatalChartSettings = {
   enabled: false,
   ephemeris: "celestine",
 };
+
+const DEFAULT_ENABLED_MODULE: EnabledOnlySettings = { enabled: true };
 
 export default function AdminSettingsPage() {
   const [pricing, setPricing] = useState<Record<string, unknown>>({});
@@ -36,6 +42,12 @@ export default function AdminSettingsPage() {
   });
   const [natalChart, setNatalChart] = useState<NatalChartSettings>(
     DEFAULT_NATAL_CHART_SETTINGS
+  );
+  const [humanDesign, setHumanDesign] = useState<EnabledOnlySettings>(
+    DEFAULT_ENABLED_MODULE
+  );
+  const [photoReading, setPhotoReading] = useState<EnabledOnlySettings>(
+    DEFAULT_ENABLED_MODULE
   );
   const [aiDelivery, setAiDelivery] = useState<{
     enabledKinds: string[];
@@ -97,6 +109,14 @@ export default function AdminSettingsPage() {
               ? natal.ephemeris
               : "celestine",
         });
+        const hd = d.humanDesign as Partial<EnabledOnlySettings> | undefined;
+        setHumanDesign({
+          enabled: typeof hd?.enabled === "boolean" ? hd.enabled : true,
+        });
+        const photo = d.photoReading as Partial<EnabledOnlySettings> | undefined;
+        setPhotoReading({
+          enabled: typeof photo?.enabled === "boolean" ? photo.enabled : true,
+        });
         const delivery = d.aiDelivery as Partial<typeof aiDelivery> | undefined;
         setAiDelivery({
           enabledKinds: Array.isArray(delivery?.enabledKinds)
@@ -119,6 +139,8 @@ export default function AdminSettingsPage() {
       { section: "features", values: features },
       { section: "share", values: share },
       { section: "natalChart", values: natalChart },
+      { section: "humanDesign", values: humanDesign },
+      { section: "photoReading", values: photoReading },
       { section: "aiDelivery", values: aiDelivery },
     ];
     for (const patch of patches) {
@@ -229,7 +251,7 @@ export default function AdminSettingsPage() {
                 type="checkbox"
                 checked={Boolean(features[key])}
                 onChange={() => toggle(key)}
-                className="h-4 w-4 accent-aura-purple"
+                className="h-4 w-4 accent-aura-gold"
               />
             </label>
           ))}
@@ -262,7 +284,7 @@ export default function AdminSettingsPage() {
               onChange={() =>
                 setNatalChart((current) => ({ ...current, enabled: !current.enabled }))
               }
-              className="h-4 w-4 accent-aura-purple"
+              className="h-4 w-4 accent-aura-gold"
             />
           </label>
           <div>
@@ -294,6 +316,45 @@ export default function AdminSettingsPage() {
         </div>
 
         <div className="glass-panel space-y-4 p-6">
+          <h2 className="font-display text-lg text-white">Дизайн Человека</h2>
+          <p className="text-xs text-gray-500">
+            Публичный SEO-кластер /dizayn-cheloveka, калькулятор, кабинет и API.
+            Выключение убирает страницы из sitemap и отдаёт 404. Жёсткий kill-switch:
+            ENV HD_MODULE_ENABLED=false.
+          </p>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-gray-300">Включить модуль</span>
+            <input
+              type="checkbox"
+              checked={humanDesign.enabled}
+              onChange={() =>
+                setHumanDesign((current) => ({ ...current, enabled: !current.enabled }))
+              }
+              className="h-4 w-4 accent-aura-gold"
+            />
+          </label>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
+          <h2 className="font-display text-lg text-white">Фото-расклад</h2>
+          <p className="text-xs text-gray-500">
+            Публичная страница /photo-rasklad и API распознавания/интерпретации.
+            Выключение — 404 на SEO и Feature disabled на API.
+          </p>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-gray-300">Включить модуль</span>
+            <input
+              type="checkbox"
+              checked={photoReading.enabled}
+              onChange={() =>
+                setPhotoReading((current) => ({ ...current, enabled: !current.enabled }))
+              }
+              className="h-4 w-4 accent-aura-gold"
+            />
+          </label>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="font-display text-lg text-white">reCAPTCHA</h2>
@@ -307,7 +368,7 @@ export default function AdminSettingsPage() {
                 type="checkbox"
                 checked={recaptchaMaster}
                 onChange={() => toggle("recaptchaEnabled")}
-                className="h-4 w-4 accent-aura-purple"
+                className="h-4 w-4 accent-aura-gold"
               />
             </label>
           </div>
@@ -334,12 +395,97 @@ export default function AdminSettingsPage() {
                     disabled={!recaptchaMaster || isLockoutExempt}
                     checked={!isLockoutExempt && recaptchaScopes[scope] !== false}
                     onChange={() => toggleRecaptchaScope(scope)}
-                    className="h-4 w-4 accent-aura-purple disabled:opacity-40"
+                    className="h-4 w-4 accent-aura-gold disabled:opacity-40"
                   />
                 </label>
               );
             })}
           </div>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
+          <h2 className="font-display text-lg text-white">Персональная память</h2>
+          <p className="text-xs text-gray-500">
+            Rollout персональной памяти мастеров. Проценты — доля пользователей
+            (0–100). Без деплоя.
+          </p>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-gray-300">Выбор памяти в кабинете</span>
+            <input
+              type="checkbox"
+              checked={features.personalMemoryChoiceEnabled !== false}
+              onChange={() => toggle("personalMemoryChoiceEnabled")}
+              className="h-4 w-4 accent-aura-gold"
+            />
+          </label>
+          <div>
+            <label
+              htmlFor="personal-memory-rollout"
+              className="mb-1 block text-xs text-gray-500"
+            >
+              Rollout памяти, %
+            </label>
+            <input
+              id="personal-memory-rollout"
+              type="number"
+              min={0}
+              max={100}
+              value={Number(features.personalMemoryRolloutPercent ?? 100)}
+              onChange={(e) =>
+                setFeatures({
+                  ...features,
+                  personalMemoryRolloutPercent: Math.min(
+                    100,
+                    Math.max(0, Math.round(Number(e.target.value) || 0))
+                  ),
+                })
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-gray-300">Moat v2</span>
+            <input
+              type="checkbox"
+              checked={features.personalMemoryMoatV2Enabled !== false}
+              onChange={() => toggle("personalMemoryMoatV2Enabled")}
+              className="h-4 w-4 accent-aura-gold"
+            />
+          </label>
+          <div>
+            <label
+              htmlFor="personal-memory-moat-rollout"
+              className="mb-1 block text-xs text-gray-500"
+            >
+              Rollout Moat v2, %
+            </label>
+            <input
+              id="personal-memory-moat-rollout"
+              type="number"
+              min={0}
+              max={100}
+              value={Number(features.personalMemoryMoatV2RolloutPercent ?? 100)}
+              onChange={(e) =>
+                setFeatures({
+                  ...features,
+                  personalMemoryMoatV2RolloutPercent: Math.min(
+                    100,
+                    Math.max(0, Math.round(Number(e.target.value) || 0))
+                  ),
+                })
+              }
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            />
+          </div>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-gray-300">Draft capture</span>
+            <input
+              type="checkbox"
+              checked={features.personalMemoryDraftCaptureEnabled !== false}
+              onChange={() => toggle("personalMemoryDraftCaptureEnabled")}
+              className="h-4 w-4 accent-aura-gold"
+            />
+          </label>
         </div>
 
         <div className="glass-panel space-y-4 p-6">
@@ -356,7 +502,7 @@ export default function AdminSettingsPage() {
                 type="checkbox"
                 checked={spreadsMaster}
                 onChange={() => toggle("spreadsCatalogEnabled")}
-                className="h-4 w-4 accent-aura-purple"
+                className="h-4 w-4 accent-aura-gold"
               />
             </label>
           </div>
@@ -377,7 +523,7 @@ export default function AdminSettingsPage() {
                       disabled={!spreadsMaster || id === "triplet"}
                       checked={enabled}
                       onChange={() => toggleSpreadEnabled(id)}
-                      className="h-4 w-4 accent-aura-purple disabled:opacity-40"
+                      className="h-4 w-4 accent-aura-gold disabled:opacity-40"
                     />
                     <span className="text-sm text-gray-300">{SPREAD_ADMIN_LABELS[id]}</span>
                   </label>
@@ -429,7 +575,7 @@ export default function AdminSettingsPage() {
                           : [...aiDelivery.enabledKinds, kind],
                       });
                     }}
-                    className="h-4 w-4 accent-aura-purple"
+                    className="h-4 w-4 accent-aura-gold"
                   />
                 </label>
               );
@@ -501,7 +647,7 @@ export default function AdminSettingsPage() {
               type="checkbox"
               checked={share.enabled !== false}
               onChange={() => toggleShare("enabled")}
-              className="h-4 w-4 accent-aura-purple"
+              className="h-4 w-4 accent-aura-gold"
             />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -551,14 +697,14 @@ export default function AdminSettingsPage() {
                   type="checkbox"
                   checked={shareChannels[key] !== false}
                   onChange={() => toggleShareChannel(key)}
-                  className="h-4 w-4 accent-aura-purple"
+                  className="h-4 w-4 accent-aura-gold"
                 />
               </label>
             ))}
           </div>
         </div>
 
-        <button onClick={save} className="btn-neon w-fit px-6 py-2.5 text-sm">
+        <button onClick={save} className="btn-primary w-fit px-6 py-2.5 text-sm">
           {saved ? "Сохранено ✓" : "Сохранить"}
         </button>
       </div>

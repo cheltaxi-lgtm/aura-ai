@@ -5,10 +5,12 @@ import {
   BookOpen,
   Camera,
   Heart,
+  MessageCircle,
   Moon,
   Rows3,
   Sparkles,
   Stars,
+  Sun,
 } from "lucide-react";
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
 import RuneIcon, { RuneAmount } from "@/components/RuneIcon";
@@ -17,12 +19,14 @@ const SERVICES = [
   { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
   { href: "/rasklady", label: "Расклады Таро" },
   { href: "/natalnaya-karta", label: "Натальная карта" },
+  { href: "/dizayn-cheloveka", label: "Дизайн Человека" },
   { href: "/photo-rasklad", label: "Фото-расклад" },
   { href: "/numerology", label: "Нумерология" },
   { href: "/cards", label: "Значения карт" },
   { href: "/obryady", label: "Обряды" },
   { href: "/lenormand", label: "Ленорман" },
   { href: "/joint-reading", label: "Совместимость" },
+  { href: "/telegram", label: "Telegram-бот" },
 ] as const;
 
 const SERVICE_DETAILS = [
@@ -43,6 +47,12 @@ const SERVICE_DETAILS = [
     title: "Натальная карта",
     text: "Западная карта, джйотиш и личные периоды — расчёт по дате рождения с опорой на ваши данные.",
     icon: Stars,
+  },
+  {
+    href: "/dizayn-cheloveka",
+    title: "Дизайн Человека",
+    text: "Бесплатный бодиграф: тип, стратегия, авторитет и профиль по дате, времени и месту рождения.",
+    icon: Sun,
   },
   {
     href: "/photo-rasklad",
@@ -79,6 +89,12 @@ const SERVICE_DETAILS = [
     title: "Совместимость пары",
     text: "Расклад или числа для двоих: динамика связи и точки роста.",
     icon: Stars,
+  },
+  {
+    href: "/telegram",
+    title: "Telegram-бот",
+    text: "Карта дня, мастера и напоминания — прямо в мессенджере, без открытия сайта.",
+    icon: MessageCircle,
   },
 ] as const;
 

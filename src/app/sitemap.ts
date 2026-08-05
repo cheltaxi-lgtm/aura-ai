@@ -23,7 +23,13 @@ import {
   CENTER_SEO_SLUGS,
 } from "@/lib/human-design/seo-entities";
 import { HD_PAIR_SLUGS } from "@/lib/human-design/seo-compatibility";
-import { isHumanDesignEnabled } from "@/lib/settings";
+import {
+  isHumanDesignEnabled,
+  isJointReadingEnabled,
+  isNatalChartEnabled,
+  isPhotoReadingEnabled,
+} from "@/lib/settings";
+import { getRitualSettings, isRitualCatalogEnabled } from "@/lib/ritual-settings";
 
 const ABOUT_PATHS = [
   "/about",
@@ -51,9 +57,19 @@ function staticPage(path: string, priority: number, changeFrequency: MetadataRou
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getAppUrl();
   const now = new Date();
-  // Kill-switch: disabled module must vanish from the sitemap (crawl budget +
+  // Kill-switch: disabled modules must vanish from the sitemap (crawl budget +
   // noindexed 404s stay consistent with the middleware gate).
-  const hdEnabled = await isHumanDesignEnabled().catch(() => true);
+  const [hdEnabled, natalEnabled, jointEnabled, photoEnabled, ritualSettings] =
+    await Promise.all([
+      isHumanDesignEnabled().catch(() => true),
+      isNatalChartEnabled().catch(() => false),
+      isJointReadingEnabled().catch(() => true),
+      isPhotoReadingEnabled().catch(() => true),
+      getRitualSettings().catch(() => null),
+    ]);
+  const ritualsEnabled = ritualSettings
+    ? isRitualCatalogEnabled(ritualSettings)
+    : true;
 
   const spreadPages: MetadataRoute.Sitemap = Object.values(SPREAD_REGISTRY)
     .filter((s) => s.seoSlug)
@@ -80,12 +96,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  const ritualPages: MetadataRoute.Sitemap = Object.values(RITUAL_PAGE_SLUGS).map((slug) => ({
-    url: `${base}/obryady/${slug}`,
-    lastModified: now,
-    changeFrequency: "monthly" as const,
-    priority: 0.55,
-  }));
+  const ritualPages: MetadataRoute.Sitemap = ritualsEnabled
+    ? Object.values(RITUAL_PAGE_SLUGS).map((slug) => ({
+        url: `${base}/obryady/${slug}`,
+        lastModified: now,
+        changeFrequency: "monthly" as const,
+        priority: 0.55,
+      }))
+    : [];
 
   const cardPages: MetadataRoute.Sitemap = getAllTarotCardSeoSlugs().map((slug) => ({
     url: `${base}/cards/${slug}`,
@@ -203,19 +221,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPage("/prognoz", 0.85),
     staticPage("/rasklady", 0.85),
     staticPage("/rasklad", 0.7),
-    staticPage("/photo-rasklad", 0.7),
-    staticPage("/obryady", 0.65),
-    staticPage("/joint-reading", 0.6),
+    ...(photoEnabled ? [staticPage("/photo-rasklad", 0.7)] : []),
+    ...(ritualsEnabled ? [staticPage("/obryady", 0.65)] : []),
+    ...(jointEnabled ? [staticPage("/joint-reading", 0.6)] : []),
     staticPage("/numerology", 0.75),
     staticPage("/numerology/pythagoras-square", 0.55, "monthly"),
     staticPage("/numerology/compatibility", 0.55, "monthly"),
     staticPage("/numerology/name-compatibility", 0.55, "monthly"),
     staticPage("/numerology/destiny-matrix", 0.85, "weekly"),
-    staticPage("/natalnaya-karta", 0.9, "weekly"),
+    ...(natalEnabled ? [staticPage("/natalnaya-karta", 0.9, "weekly")] : []),
     ...(hdEnabled
       ? [
           staticPage("/dizayn-cheloveka", 0.9, "weekly"),
           staticPage("/dizayn-cheloveka/rasschitat", 0.85, "weekly"),
+          staticPage("/dizayn-cheloveka/tipy", 0.8, "weekly"),
+          staticPage("/dizayn-cheloveka/profili", 0.8, "weekly"),
+          staticPage("/dizayn-cheloveka/vorota", 0.75, "monthly"),
+          staticPage("/dizayn-cheloveka/kanaly", 0.75, "monthly"),
+          staticPage("/dizayn-cheloveka/centry", 0.75, "monthly"),
           staticPage("/dizayn-cheloveka/sovmestimost", 0.85, "weekly"),
           staticPage("/dizayn-cheloveka/sovmestimost/rasschitat", 0.8, "weekly"),
         ]

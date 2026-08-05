@@ -52,7 +52,7 @@ export default async function HdGatePage({
   const centerSlug = CENTER_SEO_SLUGS.find((s) => centerSeo(s)?.center === seo.center);
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka" backLabel="Дизайн Человека">
+    <SeoPageShell backHref="/dizayn-cheloveka/vorota" backLabel="Ворота">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

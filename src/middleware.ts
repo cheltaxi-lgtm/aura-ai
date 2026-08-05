@@ -9,7 +9,7 @@ import {
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
 import { fetchUserTokenVersionStatus } from "@/lib/token-version-gate";
-import { fetchHumanDesignEnabled } from "@/lib/hd-feature-gate";
+import { fetchPlatformFeatureFlags } from "@/lib/platform-feature-gate";
 import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
 import { resolveBotHomeQueryRedirect } from "@/lib/seo/bot-query-redirect";
@@ -364,17 +364,31 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Human Design kill-switch: public SEO pages must 404 (drop from the index),
-  // not silently render a broken calculator. API handlers check the flag too.
-  if (pathname.startsWith("/dizayn-cheloveka")) {
-    const hdEnabled = await fetchHumanDesignEnabled();
-    if (!hdEnabled) {
-      return withNoStore(
-        new NextResponse("<!doctype html><title>404</title><h1>Страница не найдена</h1>", {
-          status: 404,
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        })
-      );
+  // Product kill-switches: public SEO pages must 404 (drop from the index),
+  // not silently render a broken calculator. API handlers check flags too.
+  {
+    const needsFeatureGate =
+      pathname.startsWith("/dizayn-cheloveka") ||
+      pathname.startsWith("/natalnaya-karta") ||
+      pathname.startsWith("/obryady") ||
+      pathname.startsWith("/joint-reading") ||
+      pathname.startsWith("/photo-rasklad");
+    if (needsFeatureGate) {
+      const flags = await fetchPlatformFeatureFlags();
+      const gatedOff =
+        (pathname.startsWith("/dizayn-cheloveka") && !flags.humanDesignEnabled) ||
+        (pathname.startsWith("/natalnaya-karta") && !flags.natalChartEnabled) ||
+        (pathname.startsWith("/obryady") && !flags.ritualsEnabled) ||
+        (pathname.startsWith("/joint-reading") && !flags.jointReadingEnabled) ||
+        (pathname.startsWith("/photo-rasklad") && !flags.photoReadingEnabled);
+      if (gatedOff) {
+        return withNoStore(
+          new NextResponse("<!doctype html><title>404</title><h1>Страница не найдена</h1>", {
+            status: 404,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          })
+        );
+      }
     }
   }
 

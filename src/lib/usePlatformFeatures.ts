@@ -16,6 +16,10 @@ export interface PlatformFeatures {
   expertRegistrationEnabled: boolean;
   /** Optional — older call sites construct features without it. */
   humanDesignEnabled?: boolean;
+  natalChartEnabled?: boolean;
+  jointReadingEnabled?: boolean;
+  ritualsEnabled?: boolean;
+  photoReadingEnabled?: boolean;
   recaptcha: PlatformRecaptchaConfig;
 }
 
@@ -29,6 +33,10 @@ const FALLBACK_SCOPES = Object.fromEntries(
 const FALLBACK: PlatformFeatures = {
   expertRegistrationEnabled: true,
   humanDesignEnabled: false,
+  natalChartEnabled: false,
+  jointReadingEnabled: true,
+  ritualsEnabled: true,
+  photoReadingEnabled: true,
   recaptcha: {
     configured: false,
     masterEnabled: false,
@@ -45,7 +53,13 @@ function parseFeatures(d: Record<string, unknown>): PlatformFeatures {
 
   return {
     expertRegistrationEnabled: d.expertRegistrationEnabled !== false,
+    // HD defaults on in product; require explicit true from API (matches prior client parse).
     humanDesignEnabled: d.humanDesignEnabled === true,
+    // Natal is opt-in (platform default false).
+    natalChartEnabled: d.natalChartEnabled === true,
+    jointReadingEnabled: d.jointReadingEnabled !== false,
+    ritualsEnabled: d.ritualsEnabled !== false,
+    photoReadingEnabled: d.photoReadingEnabled !== false,
     recaptcha: {
       configured: recaptchaRaw.configured === true,
       masterEnabled: recaptchaRaw.masterEnabled === true,

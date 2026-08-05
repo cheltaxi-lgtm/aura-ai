@@ -32,10 +32,22 @@ export default function AppTopHeaderNav({ isLoggedIn = false, ...callbacks }: Ap
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
-  const { humanDesignEnabled, featuresLoaded } = usePlatformFeatures();
+  const {
+    humanDesignEnabled,
+    natalChartEnabled,
+    jointReadingEnabled,
+    ritualsEnabled,
+    photoReadingEnabled,
+    featuresLoaded,
+  } = usePlatformFeatures();
   const sections = buildHeaderNavSections(callbacks, {
     isLoggedIn,
-    humanDesignEnabled: !featuresLoaded || humanDesignEnabled,
+    // Until features load, keep previously-visible modules (avoid nav flash-hide).
+    humanDesignEnabled: !featuresLoaded || Boolean(humanDesignEnabled),
+    natalChartEnabled: !featuresLoaded || Boolean(natalChartEnabled),
+    jointReadingEnabled: !featuresLoaded || jointReadingEnabled !== false,
+    ritualsEnabled: !featuresLoaded || ritualsEnabled !== false,
+    photoReadingEnabled: !featuresLoaded || photoReadingEnabled !== false,
   });
 
   const close = useCallback(() => setOpen(false), []);

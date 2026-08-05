@@ -45,7 +45,7 @@ export default async function HdChannelPage({
   });
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka" backLabel="Дизайн Человека">
+    <SeoPageShell backHref="/dizayn-cheloveka/kanaly" backLabel="Каналы">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

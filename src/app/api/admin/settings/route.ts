@@ -22,6 +22,17 @@ function isValidNatalChartSettings(
   );
 }
 
+function isValidEnabledOnlySettings(
+  values: unknown
+): values is { enabled: boolean } {
+  if (!values || typeof values !== "object" || Array.isArray(values)) return false;
+  const settings = values as Record<string, unknown>;
+  return (
+    Object.keys(settings).every((key) => key === "enabled") &&
+    typeof settings.enabled === "boolean"
+  );
+}
+
 export async function GET() {
   const auth = await requireAdmin();
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -48,6 +59,8 @@ export async function PATCH(request: NextRequest) {
       "runes",
       "share",
       "natalChart",
+      "humanDesign",
+      "photoReading",
     ].includes(section)
   ) {
     return NextResponse.json({ error: "Invalid section" }, { status: 400 });
@@ -58,6 +71,18 @@ export async function PATCH(request: NextRequest) {
         error:
           "Invalid natalChart settings: enabled must be boolean and ephemeris must be celestine or natalengine",
       },
+      { status: 400 }
+    );
+  }
+  if (section === "humanDesign" && !isValidEnabledOnlySettings(values)) {
+    return NextResponse.json(
+      { error: "Invalid humanDesign settings: enabled must be boolean" },
+      { status: 400 }
+    );
+  }
+  if (section === "photoReading" && !isValidEnabledOnlySettings(values)) {
+    return NextResponse.json(
+      { error: "Invalid photoReading settings: enabled must be boolean" },
       { status: 400 }
     );
   }

@@ -5,8 +5,13 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { getLatestHistoryEntry } from "@/lib/users";
 import { syncPhotoReadingSession } from "@/lib/photo-session-sync";
 import { resolveApiCharacterId } from "@/lib/chat-sanitize";
+import { isPhotoReadingEnabled } from "@/lib/settings";
 
 export async function POST(request: NextRequest) {
+  if (!(await isPhotoReadingEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
   const auth = await requireUserAuth();
   if (!auth) {
     return NextResponse.json({ error: "auth_required" }, { status: 401 });

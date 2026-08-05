@@ -112,7 +112,14 @@ export default function HumanDesignHubPage() {
       <SeoSection title="Пять типов энергии">
         <p>
           Тип — фундамент Дизайна Человека: как ваша аура взаимодействует с миром и какая
-          стратегия снимает сопротивление. Выберите свой тип, чтобы узнать больше:
+          стратегия снимает сопротивление.{" "}
+          <Link
+            href="/dizayn-cheloveka/tipy"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Все типы
+          </Link>
+          :
         </p>
         <ul className="mt-3 space-y-2">
           {HD_TYPE_SEO.map((t) => (
@@ -132,7 +139,14 @@ export default function HumanDesignHubPage() {
       <SeoSection title="Двенадцать профилей">
         <p>
           Профиль — ваша роль и стиль жизни: две линии из шести, сознательная и
-          бессознательная. Все двенадцать профилей:
+          бессознательная.{" "}
+          <Link
+            href="/dizayn-cheloveka/profili"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Все профили
+          </Link>
+          :
         </p>
         <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
           {HD_PROFILE_SEO.map((p) => (
@@ -151,7 +165,14 @@ export default function HumanDesignHubPage() {
       <SeoSection title="Девять центров">
         <p>
           Центры — девять энергетических узлов бодиграфа. Определённый центр — ваша
-          стабильная сила, открытый — место гибкости и мудрости:
+          стабильная сила, открытый — место гибкости и мудрости.{" "}
+          <Link
+            href="/dizayn-cheloveka/centry"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Все центры
+          </Link>
+          :
         </p>
         <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
           {CENTER_SEO_SLUGS.map((slug) => {
@@ -174,7 +195,21 @@ export default function HumanDesignHubPage() {
       <SeoSection title="Шестьдесят четыре ворот и тридцать шесть каналов">
         <p>
           Ворота — 64 темы человеческого опыта, каналы — устойчивые потоки между
-          центрами. Найдите свои:
+          центрами.{" "}
+          <Link
+            href="/dizayn-cheloveka/vorota"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Все ворота
+          </Link>
+          {" · "}
+          <Link
+            href="/dizayn-cheloveka/kanaly"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Все каналы
+          </Link>
+          .
         </p>
         <details className="mt-3">
           <summary className="cursor-pointer text-sm text-aura-gold underline-offset-4 hover:underline">

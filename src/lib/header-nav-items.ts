@@ -65,8 +65,12 @@ export type HeaderNavCallbacks = {
 
 export type BuildHeaderNavOptions = {
   isLoggedIn?: boolean;
-  /** Kill-switch from /api/platform/features — hides the HD nav entry. */
+  /** Kill-switches from /api/platform/features. */
   humanDesignEnabled?: boolean;
+  natalChartEnabled?: boolean;
+  jointReadingEnabled?: boolean;
+  ritualsEnabled?: boolean;
+  photoReadingEnabled?: boolean;
 };
 
 /** Grouped header navigation — shared by desktop dropdown and mobile sheet. */
@@ -74,7 +78,14 @@ export function buildHeaderNavSections(
   callbacks: HeaderNavCallbacks,
   options: BuildHeaderNavOptions = {}
 ): HeaderNavSection[] {
-  const { isLoggedIn = false, humanDesignEnabled = true } = options;
+  const {
+    isLoggedIn = false,
+    humanDesignEnabled = true,
+    natalChartEnabled = true,
+    jointReadingEnabled = true,
+    ritualsEnabled = true,
+    photoReadingEnabled = true,
+  } = options;
   const appRoutes = resolveAppRouteLinks();
 
   const sections: HeaderNavSection[] = [
@@ -94,7 +105,7 @@ export function buildHeaderNavSections(
           icon: Sparkles,
           onClick: callbacks.onStartReading,
         },
-        ...(isLoggedIn
+        ...(isLoggedIn && jointReadingEnabled
           ? [
               {
                 id: "joint",
@@ -104,12 +115,16 @@ export function buildHeaderNavSections(
               } satisfies HeaderNavItem,
             ]
           : []),
-        {
-          id: "photo",
-          label: callbacks.photoNavLabel,
-          icon: Camera,
-          onClick: callbacks.onNavPhoto,
-        },
+        ...(photoReadingEnabled
+          ? [
+              {
+                id: "photo",
+                label: callbacks.photoNavLabel,
+                icon: Camera,
+                onClick: callbacks.onNavPhoto,
+              } satisfies HeaderNavItem,
+            ]
+          : []),
       ],
     },
     {
@@ -128,24 +143,32 @@ export function buildHeaderNavSections(
           icon: Layers,
           onClick: callbacks.onNavDecks,
         },
-        {
-          id: "ritual",
-          label: "Обряд",
-          icon: Flame,
-          onClick: callbacks.onNavRitual,
-        },
+        ...(ritualsEnabled
+          ? [
+              {
+                id: "ritual",
+                label: "Обряд",
+                icon: Flame,
+                onClick: callbacks.onNavRitual,
+              } satisfies HeaderNavItem,
+            ]
+          : []),
         {
           id: "destiny-matrix",
           label: "Матрица судьбы",
           icon: Hexagon,
           onClick: navigateToDestinyMatrix,
         },
-        {
-          id: "natal-chart",
-          label: "Натальная карта",
-          icon: Star,
-          onClick: navigateToNatalChart,
-        },
+        ...(natalChartEnabled
+          ? [
+              {
+                id: "natal-chart",
+                label: "Натальная карта",
+                icon: Star,
+                onClick: navigateToNatalChart,
+              } satisfies HeaderNavItem,
+            ]
+          : []),
         ...(humanDesignEnabled
           ? [
               {
@@ -156,12 +179,16 @@ export function buildHeaderNavSections(
               } satisfies HeaderNavItem,
             ]
           : []),
-        {
-          id: "natal-compatibility",
-          label: "Натальная совместимость",
-          icon: HeartHandshake,
-          onClick: navigateToNatalCompatibility,
-        },
+        ...(natalChartEnabled
+          ? [
+              {
+                id: "natal-compatibility",
+                label: "Натальная совместимость",
+                icon: HeartHandshake,
+                onClick: navigateToNatalCompatibility,
+              } satisfies HeaderNavItem,
+            ]
+          : []),
       ],
     },
     {

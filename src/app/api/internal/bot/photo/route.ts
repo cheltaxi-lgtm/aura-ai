@@ -5,6 +5,7 @@ import {
 } from "@/lib/telegram/bot-internal-auth";
 import { botPhotoAction } from "@/lib/telegram/bot-photo-service";
 import type { RedrawSpread } from "@/lib/photo-spread-redraw";
+import { isPhotoReadingEnabled } from "@/lib/settings";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -21,6 +22,10 @@ const ACTIONS = new Set([
 type PhotoAction = "pricing" | "list" | "get" | "delete" | "recognize" | "interpret";
 
 export async function POST(request: NextRequest) {
+  if (!(await isPhotoReadingEnabled())) {
+    return NextResponse.json({ ok: false, error: "feature_disabled" }, { status: 404 });
+  }
+
   const auth = assertBotInternalAuth(request);
   if (!auth.ok) {
     return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });

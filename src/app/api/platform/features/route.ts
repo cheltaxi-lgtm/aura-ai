@@ -1,16 +1,34 @@
 import { NextResponse } from "next/server";
 import { getRecaptchaScopesConfig } from "@/lib/recaptcha";
 import { listEnabledOAuthProviders } from "@/lib/oauth/config";
-import { getSetting, isHumanDesignEnabled, isJointReadingEnabled, isNatalChartEnabled } from "@/lib/settings";
+import {
+  getSetting,
+  isHumanDesignEnabled,
+  isJointReadingEnabled,
+  isNatalChartEnabled,
+  isPhotoReadingEnabled,
+} from "@/lib/settings";
+import { getRitualSettings, isRitualCatalogEnabled } from "@/lib/ritual-settings";
 
 export async function GET() {
-  const [features, recaptcha, oauthProviders, natalChartEnabled, jointReadingEnabled, humanDesignEnabled] = await Promise.all([
+  const [
+    features,
+    recaptcha,
+    oauthProviders,
+    natalChartEnabled,
+    jointReadingEnabled,
+    humanDesignEnabled,
+    photoReadingEnabled,
+    ritualSettings,
+  ] = await Promise.all([
     getSetting("features"),
     getRecaptchaScopesConfig(),
     Promise.resolve(listEnabledOAuthProviders()),
     isNatalChartEnabled(),
     isJointReadingEnabled(),
     isHumanDesignEnabled(),
+    isPhotoReadingEnabled(),
+    getRitualSettings(),
   ]);
 
   return NextResponse.json({
@@ -18,6 +36,8 @@ export async function GET() {
     natalChartEnabled,
     jointReadingEnabled,
     humanDesignEnabled,
+    photoReadingEnabled,
+    ritualsEnabled: isRitualCatalogEnabled(ritualSettings),
     oauthProviders,
     recaptcha: {
       configured: recaptcha.configured,

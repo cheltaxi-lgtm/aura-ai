@@ -11,6 +11,8 @@ const DEFAULT_LINKS = [
   { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/dizayn-cheloveka", label: "Дизайн Человека" },
   { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
+  { href: "/obryady", label: "Обряды" },
+  { href: "/joint-reading", label: "Совместный расклад" },
   { href: "/prognoz", label: "Прогнозы" },
   { href: "/statyi", label: "Статьи" },
   { href: "/faq", label: "FAQ" },

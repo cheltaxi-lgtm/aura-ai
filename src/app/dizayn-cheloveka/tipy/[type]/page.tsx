@@ -45,7 +45,7 @@ export default async function HdTypePage({
   });
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka" backLabel="Дизайн Человека">
+    <SeoPageShell backHref="/dizayn-cheloveka/tipy" backLabel="Типы">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

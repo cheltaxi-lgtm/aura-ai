@@ -33,11 +33,16 @@ import {
   MAX_PHOTO_CARDS,
   parseRecognitionConfidence,
 } from "@/lib/photo-reading-constants";
+import { isPhotoReadingEnabled } from "@/lib/settings";
 
 export const maxDuration = 120;
 
 /** Vision-only pass: recognize spread and build Aura redraw — billing gate, no persistence until interpret. */
 export async function POST(request: NextRequest) {
+  if (!(await isPhotoReadingEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
   const startedAt = Date.now();
   console.info("[photo-recognize] hit", {
     contentType: (request.headers.get("content-type") ?? "").slice(0, 64),
