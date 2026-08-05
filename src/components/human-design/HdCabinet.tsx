@@ -39,7 +39,12 @@ export default function HdCabinet() {
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
         setCharts(list);
-        if (list[0] && !selectedIdRef.current) setSelectedId(list[0].id);
+        if (list.length && !selectedIdRef.current) {
+          // Prefer personal chart over the newest “other” so a partner
+          // calculation doesn’t steal the default focus.
+          const selfChart = list.find((c) => c.subjectKind !== "other");
+          setSelectedId((selfChart ?? list[0]).id);
+        }
       })
       .catch(() => {
         if (seq !== loadSeq.current) return;

@@ -252,16 +252,36 @@ async function refreshChartIfEngineStale(row: HdChartDbRow): Promise<HdChartDbRo
   }
 }
 
+/**
+ * Update subject label on an owned chart.
+ * Never demote `self` → `other`: the same birth fingerprint is one row per
+ * owner, and recalculating “for someone else” with identical birth data must
+ * not hide the user’s personal chart in the cabinet / bot.
+ */
 async function relabelOwnedChart(
   row: HdChartDbRow,
   subjectKind: "self" | "other",
   subjectName: string | null
 ): Promise<HdChartDbRow> {
+  const currentKind = row.subject_kind === "other" ? "other" : "self";
+  let nextKind = subjectKind;
+  let nextName = subjectName;
+
+  if (currentKind === "self" && subjectKind === "other") {
+    // Keep personal ownership; optionally keep an existing empty name.
+    nextKind = "self";
+    nextName = null;
+  }
+
+  if (currentKind === nextKind && (row.subject_name ?? null) === (nextName ?? null)) {
+    return row;
+  }
+
   await query(
     "UPDATE hd_charts SET subject_kind = $2, subject_name = $3, updated_at = now() WHERE id = $1",
-    [row.id, subjectKind, subjectName]
+    [row.id, nextKind, nextName]
   );
-  return { ...row, subject_kind: subjectKind, subject_name: subjectName };
+  return { ...row, subject_kind: nextKind, subject_name: nextName };
 }
 
 /**
@@ -427,7 +447,47 @@ export async function getHdChartById(id: string): Promise<HdChartRow | null> {
   return rows[0] ? mapChartRow(rows[0]) : null;
 }
 
+/**
+ * If the user has no `self` chart but has an `other` row matching their
+ * profile birth date (common after a destructive relabel), restore the
+ * personal label. Idempotent.
+ */
+async function healDemotedSelfHdChart(userId: string): Promise<void> {
+  const hasSelf = await query<{ id: string }>(
+    `SELECT id FROM hd_charts
+     WHERE user_id = $1 AND COALESCE(subject_kind, 'self') <> 'other'
+     LIMIT 1`,
+    [userId]
+  );
+  if (hasSelf.rows[0]) return;
+
+  const profile = await query<{ birth_date: string }>(
+    `SELECT birth_date::text AS birth_date FROM users WHERE id = $1 LIMIT 1`,
+    [userId]
+  );
+  const birthDate = profile.rows[0]?.birth_date?.slice(0, 10);
+  if (!birthDate) return;
+
+  // Prefer the oldest matching chart — usually the original personal one.
+  const candidate = await query<{ id: string }>(
+    `SELECT id FROM hd_charts
+     WHERE user_id = $1 AND subject_kind = 'other' AND birth_date::text = $2
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [userId, birthDate]
+  );
+  if (!candidate.rows[0]) return;
+
+  await query(
+    `UPDATE hd_charts
+     SET subject_kind = 'self', subject_name = NULL, updated_at = now()
+     WHERE id = $1 AND user_id = $2`,
+    [candidate.rows[0].id, userId]
+  );
+}
+
 export async function listHdChartsForUser(userId: string): Promise<HdChartRow[]> {
+  await healDemotedSelfHdChart(userId);
   const { rows } = await query<HdChartDbRow>(
     "SELECT * FROM hd_charts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
     [userId]
