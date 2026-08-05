@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/post-edit-checks.mjs",
+        "timeout": 180
+      }
+    ]
+  }
+}

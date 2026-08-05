@@ -70,6 +70,9 @@ scripts/prod-journal.txt
 
 # Cursor-local state (chrome debug profiles run into hundreds of MB)
 .cursor/*
-# Project rules must be versioned (P0 invariants / change discipline).
+# Project rules / hooks must be versioned (P0 invariants / change discipline).
 !.cursor/rules/
 !.cursor/rules/**
+!.cursor/hooks.json
+!.cursor/hooks/
+!.cursor/hooks/**
