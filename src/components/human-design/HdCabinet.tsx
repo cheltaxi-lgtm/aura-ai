@@ -12,25 +12,22 @@ interface HdChartListItem extends HdChartPayload {
   createdAt: string;
 }
 
+type HdFolder = "self" | "others";
+
 function isOther(c: { subjectKind?: string | null }): boolean {
   return c.subjectKind === "other";
 }
 
 export default function HdCabinet() {
   const [charts, setCharts] = useState<HdChartListItem[] | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [folder, setFolder] = useState<HdFolder>("self");
+  const [otherId, setOtherId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [partnerId, setPartnerId] = useState<string | null>(null);
-  const selectedIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    selectedIdRef.current = selectedId;
-  }, [selectedId]);
   const loadSeq = useRef(0);
   const [loadError, setLoadError] = useState(false);
-  /** First paint of this visit must land on self, not a leftover «other». */
-  const initialSelectDone = useRef(false);
 
   const load = useCallback(() => {
     const seq = ++loadSeq.current;
@@ -41,23 +38,12 @@ export default function HdCabinet() {
         setLoadError(false);
         setEnabled(d.enabled !== false);
         const list = Array.isArray(d.charts) ? (d.charts as HdChartListItem[]) : [];
-        list.sort((a, b) => Number(isOther(a)) - Number(isOther(b)));
         setCharts(list);
-
-        const selfChart = list.find((c) => !isOther(c));
-        const current = selectedIdRef.current
-          ? list.find((c) => c.id === selectedIdRef.current)
-          : undefined;
-
-        if (!initialSelectDone.current) {
-          initialSelectDone.current = true;
-          setSelectedId((selfChart ?? list[0])?.id ?? null);
-          return;
-        }
-
-        if (!current) {
-          setSelectedId((selfChart ?? list[0])?.id ?? null);
-        }
+        setOtherId((prev) => {
+          if (prev && list.some((c) => c.id === prev && isOther(c))) return prev;
+          const firstOther = list.find((c) => isOther(c));
+          return firstOther?.id ?? null;
+        });
       })
       .catch(() => {
         if (seq !== loadSeq.current) return;
@@ -72,7 +58,7 @@ export default function HdCabinet() {
 
   useEffect(() => {
     setPartnerId(null);
-  }, [selectedId]);
+  }, [folder, otherId]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -116,7 +102,7 @@ export default function HdCabinet() {
             <button
               type="button"
               onClick={() => {
-                initialSelectDone.current = false;
+                setFolder("self");
                 setCreating(false);
               }}
               className="hd-bodygraph__export"
@@ -130,22 +116,11 @@ export default function HdCabinet() {
           onChartCreated={(chart) => {
             setCreating(false);
             setCharts(null);
-            if (isOther(chart)) {
-              // Re-run initial select → self.
-              initialSelectDone.current = false;
-              selectedIdRef.current = null;
-              setSelectedId(null);
-            } else {
-              initialSelectDone.current = true;
-              setSelectedId(chart.id);
-            }
+            setFolder(isOther(chart) ? "others" : "self");
+            if (isOther(chart)) setOtherId(chart.id);
             load();
           }}
-          onChartDeleted={(chartId) => {
-            if (chartId === selectedId) {
-              initialSelectDone.current = false;
-              setSelectedId(null);
-            }
+          onChartDeleted={() => {
             load();
           }}
         />
@@ -153,18 +128,16 @@ export default function HdCabinet() {
     );
   }
 
-  const selfCharts = charts.filter((c) => !isOther(c));
+  const selfChart = charts.find((c) => !isOther(c)) ?? null;
   const otherCharts = charts.filter((c) => isOther(c));
-  const selected = charts.find((c) => c.id === selectedId) ?? selfCharts[0] ?? charts[0]!;
-  const selectedIsOther = isOther(selected);
-  const selfSelected = selfCharts.find((c) => c.id === selected.id) ?? null;
-  const otherSelected = selectedIsOther ? selected : null;
+  const activeOther =
+    otherCharts.find((c) => c.id === otherId) ?? otherCharts[0] ?? null;
 
   const deleteChart = async (target: HdChartListItem) => {
     const who = hdChartChipLabel(target);
     if (
       !window.confirm(
-        `Удалить карту «${who}» безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему — из кабинета, истории и памяти мастеров.`
+        `Удалить карту «${who}» безвозвратно? Пропадут бодиграф, разбор Эвелины и переписка по нему.`
       )
     ) {
       return;
@@ -178,9 +151,10 @@ export default function HdCabinet() {
       if (!res.ok) throw new Error("delete failed");
       const remaining = charts.filter((c) => c.id !== target.id);
       setCharts(remaining);
-      if (selected.id === target.id) {
-        const nextSelf = remaining.find((c) => !isOther(c));
-        setSelectedId((nextSelf ?? remaining[0])?.id ?? null);
+      if (isOther(target)) {
+        const nextOther = remaining.find((c) => isOther(c));
+        setOtherId(nextOther?.id ?? null);
+        if (!nextOther) setFolder("self");
       }
       if (remaining.length === 0) setCreating(true);
     } catch {
@@ -190,55 +164,38 @@ export default function HdCabinet() {
     }
   };
 
-  const chipBtn = (c: HdChartListItem, active: boolean) => (
-    <button
-      key={c.id}
-      type="button"
-      onClick={() => setSelectedId(c.id)}
-      className={`rounded-full border px-3.5 py-1.5 text-xs transition ${
-        active
-          ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
-          : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
-      }`}
-    >
-      {hdChartChipLabel(c)}
-      <span className="ml-1.5 text-white/40">{TYPE_META[c.chart.type].nameRu}</span>
-    </button>
-  );
-
-  const chartBlock = (payload: HdChartListItem) => (
-    <div className="space-y-5" key={`block-${payload.id}`}>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+  const renderChart = (payload: HdChartListItem, allowComposite: boolean) => (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-white/55">{hdChartChipLabel(payload)}</p>
         <button
           type="button"
           onClick={() => void deleteChart(payload)}
           disabled={deleting}
           className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
         >
-          {deleting ? "Удаление…" : "Удалить карту"}
+          {deleting ? "Удаление…" : "Удалить"}
         </button>
       </div>
       <HdChartView key={payload.id} payload={payload} />
-      {charts.length > 1 && payload.id === selected.id && (
+      {allowComposite && selfChart && otherCharts.length > 0 && (
         <div className="hd-print-hidden space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-white/50">Композит с:</span>
-            {charts
-              .filter((c) => c.id !== payload.id)
-              .map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setPartnerId(partnerId === c.id ? null : c.id)}
-                  className={`rounded-full border px-3 py-1 text-xs transition ${
-                    partnerId === c.id
-                      ? "border-violet-400/60 bg-violet-500/15 text-violet-100"
-                      : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40"
-                  }`}
-                >
-                  {hdChartChipLabel(c)}
-                </button>
-              ))}
+            {(payload.id === selfChart.id ? otherCharts : [selfChart]).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setPartnerId(partnerId === c.id ? null : c.id)}
+                className={`rounded-full border px-3 py-1 text-xs transition ${
+                  partnerId === c.id
+                    ? "border-violet-400/60 bg-violet-500/15 text-violet-100"
+                    : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40"
+                }`}
+              >
+                {hdChartChipLabel(c)}
+              </button>
+            ))}
           </div>
           {partnerId && (() => {
             const partner = charts.find((c) => c.id === partnerId);
@@ -262,7 +219,7 @@ export default function HdCabinet() {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">Дизайн Человека</h1>
         <button
@@ -274,59 +231,102 @@ export default function HdCabinet() {
         </button>
       </div>
 
-      {/* Personal chart — bodygraph lives HERE, never under «others». */}
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <p className="text-[0.6875rem] uppercase tracking-wider text-amber-100/55">
-            Моя карта
-          </p>
-          {selfCharts.length === 0 && (
-            <p className="text-sm text-white/50">
-              Личной карты ещё нет — нажмите «Новая карта» и рассчитайте для себя.
-            </p>
-          )}
-          {selfCharts.length > 1 && (
-            <div className="flex flex-wrap gap-2">
-              {selfCharts.map((c) => chipBtn(c, c.id === selected.id))}
+      {/* Exclusive folders — only one pane mounts at a time. */}
+      <div
+        className="flex gap-1 rounded-2xl border border-white/10 p-1"
+        role="tablist"
+        aria-label="Папки карт"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={folder === "self"}
+          onClick={() => setFolder("self")}
+          className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+            folder === "self"
+              ? "bg-amber-500/20 text-amber-50"
+              : "text-white/50 hover:text-white/80"
+          }`}
+        >
+          Моя карта
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={folder === "others"}
+          onClick={() => setFolder("others")}
+          className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+            folder === "others"
+              ? "bg-amber-500/20 text-amber-50"
+              : "text-white/50 hover:text-white/80"
+          }`}
+        >
+          Другие{otherCharts.length > 0 ? ` · ${otherCharts.length}` : ""}
+        </button>
+      </div>
+
+      {folder === "self" && (
+        <div role="tabpanel" className="space-y-4">
+          {selfChart ? (
+            renderChart(selfChart, true)
+          ) : (
+            <div className="space-y-3 rounded-2xl border border-white/10 px-4 py-6 text-center">
+              <p className="text-sm text-white/55">Личной карты ещё нет.</p>
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="hd-bodygraph__export"
+              >
+                Рассчитать свою карту
+              </button>
             </div>
           )}
         </div>
-        {selfSelected
-          ? chartBlock(selfSelected)
-          : selfCharts[0] && !selectedIsOther
-            ? chartBlock(selfCharts[0])
-            : selfCharts[0] && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(selfCharts[0]!.id)}
-                  className="hd-bodygraph__export"
-                >
-                  Открыть мою карту · {hdChartChipLabel(selfCharts[0])}
-                </button>
-              )}
-      </section>
+      )}
 
-      {otherCharts.length > 0 && (
-        <section className="space-y-3 border-t border-white/10 pt-6">
-          <div className="space-y-1">
-            <p className="text-[0.6875rem] uppercase tracking-wider text-white/40">
-              Карты других людей
-            </p>
-            <p className="text-xs text-white/40">
-              Сохранены из расчёта «другому человеку». Не путать с вашей картой.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {otherCharts.map((c) => chipBtn(c, c.id === selected.id))}
-          </div>
-          {otherSelected ? (
-            chartBlock(otherSelected)
+      {folder === "others" && (
+        <div role="tabpanel" className="space-y-4">
+          {otherCharts.length === 0 ? (
+            <div className="space-y-3 rounded-2xl border border-white/10 px-4 py-6 text-center">
+              <p className="text-sm text-white/55">
+                Здесь карты людей, для которых вы считали бодиграф.
+              </p>
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="hd-bodygraph__export"
+              >
+                Рассчитать другому
+              </button>
+            </div>
           ) : (
-            <p className="text-xs text-white/35">
-              Выберите человека выше, чтобы открыть его бодиграф.
-            </p>
+            <>
+              <div className="flex flex-wrap gap-2">
+                {otherCharts.map((c) => {
+                  const active = c.id === activeOther?.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setOtherId(c.id)}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs transition ${
+                        active
+                          ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
+                          : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
+                      }`}
+                    >
+                      {hdChartChipLabel(c)}
+                      <span className="ml-1.5 text-white/40">
+                        {TYPE_META[c.chart.type].nameRu}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {activeOther && renderChart(activeOther, true)}
+            </>
           )}
-        </section>
+        </div>
       )}
     </div>
   );

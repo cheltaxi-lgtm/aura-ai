@@ -12,7 +12,11 @@ export default function CabinetHumanDesign() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.enabled === false) return;
-        setChartCount(Array.isArray(d?.charts) ? d.charts.length : 0);
+        const list = Array.isArray(d?.charts) ? d.charts : [];
+        // Count only personal charts — «other» people must not inflate «ваших».
+        setChartCount(
+          list.filter((c: { subjectKind?: string }) => c.subjectKind !== "other").length
+        );
       })
       .catch(() => setChartCount(0));
   }, []);
