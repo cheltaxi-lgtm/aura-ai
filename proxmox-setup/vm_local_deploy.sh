@@ -117,6 +117,8 @@ if [ -f "$TARBALL" ]; then
   rsync -a --delete --ignore-times \
     --exclude='.env.local' \
     --exclude='.env.async-jobs' \
+    --filter='P .env.async-jobs' \
+    --filter='P .env.local' \
     --exclude='public/releases/' \
     --exclude='public/scene-art/' \
     --exclude='.next/' \
@@ -549,10 +551,17 @@ curl -sS -o /dev/null -w "matrix_page=%{http_code}\n" http://127.0.0.1:3000/nume
 echo ">>> Activating natal async worker..."
 # App candidate is already live — worker/cron failures must not roll back .next
 # or abort the deploy (historically gpasswd/env sync exited 1 after activation).
+# Without .env.async-jobs the worker restart-loops and all async spreads/daily
+# readings hang in the UI (card pick appears "broken").
 set +e
 sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai.service hosting/aura-ai-async-jobs.service 2>/dev/null || true
 sudo bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
 _WORKER_ENSURE=$?
+# Belt-and-suspenders: ensure calls sync, but if it failed earlier the EnvironmentFile
+# can be missing and systemd reports Result=resources forever.
+sed -i 's/\r$//' hosting/sync-async-jobs-env.sh 2>/dev/null || true
+sudo bash hosting/sync-async-jobs-env.sh /opt/aura-ai
+_WORKER_SYNC=$?
 _PREV_UNIT_HASH="$(sha256sum /etc/systemd/system/aura-ai.service 2>/dev/null | awk '{print $1}')"
 sudo install -D -m 0644 hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 sudo install -D -m 0644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
@@ -574,13 +583,29 @@ else
   done
 fi
 curl -fsS http://127.0.0.1:3000/api/health >/dev/null
+sudo systemctl reset-failed aura-ai-async-jobs 2>/dev/null || true
 sudo systemctl enable aura-ai-async-jobs
 sudo systemctl restart aura-ai-async-jobs
+sleep 2
+if ! systemctl is-active --quiet aura-ai-async-jobs; then
+  echo "WARN: async worker inactive after restart — retrying env sync"
+  sudo bash hosting/sync-async-jobs-env.sh /opt/aura-ai || true
+  sudo systemctl reset-failed aura-ai-async-jobs 2>/dev/null || true
+  sudo systemctl restart aura-ai-async-jobs
+  sleep 2
+fi
 systemctl is-active aura-ai aura-ai-async-jobs
+if [ ! -f /opt/aura-ai/.env.async-jobs ] || ! systemctl is-active --quiet aura-ai-async-jobs; then
+  echo "ERROR: aura-ai-async-jobs is not healthy — spreads/daily readings will hang until fixed"
+  echo "ERROR: ensure=${_WORKER_ENSURE} sync=${_WORKER_SYNC} env_file=$([ -f /opt/aura-ai/.env.async-jobs ] && echo present || echo MISSING)"
+fi
 if [ "${_WORKER_ENSURE}" -ne 0 ]; then
   echo "WARN: ensure-async-jobs-user exited ${_WORKER_ENSURE} — app remains active"
 fi
-unset _WORKER_ENSURE _PREV_UNIT_HASH _NEW_UNIT_HASH
+if [ "${_WORKER_SYNC}" -ne 0 ]; then
+  echo "WARN: sync-async-jobs-env exited ${_WORKER_SYNC} — app remains active"
+fi
+unset _WORKER_ENSURE _WORKER_SYNC _PREV_UNIT_HASH _NEW_UNIT_HASH
 set -e
 
 echo ">>> Installing background crons (memory maintenance + proactive reminders)..."
@@ -661,18 +686,32 @@ echo ">>> Ensure telegram bot site-bridge secret..."
 _BOT_ENV=/opt/aura-ai/telegram-bot/.env
 _BOT_SECRET="$(grep -E '^BOT_INTERNAL_SECRET=.' "$_BOT_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
 _SITE_SECRET="$(grep -E '^BOT_INTERNAL_SECRET=.' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+# Heal wiped bot deps even when .env is already complete (rsync excludes
+# telegram-bot/node_modules, so a missing tree stays missing forever).
+if [ -f /opt/aura-ai/telegram-bot/package.json ] && [ ! -d /opt/aura-ai/telegram-bot/node_modules/grammy ]; then
+  echo ">>> telegram-bot node_modules missing — npm ci"
+  (cd /opt/aura-ai/telegram-bot && npm ci --legacy-peer-deps) || echo "WARN: bot npm ci failed"
+  chown -R aura-ai:aura-ai /opt/aura-ai/telegram-bot/node_modules 2>/dev/null || true
+fi
 if [ -n "$_SITE_SECRET" ] && [ -z "$_BOT_SECRET" ]; then
   if [ -f /opt/aura-ai/hosting/restore-bot-env-on-server.sh ]; then
     sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh
-    bash /opt/aura-ai/hosting/restore-bot-env-on-server.sh
+    # Must not abort a successful site deploy if the bot is briefly unhealthy.
+    bash /opt/aura-ai/hosting/restore-bot-env-on-server.sh || echo "WARN: bot env restore failed"
   else
     echo "WARN: bot missing BOT_INTERNAL_SECRET and restore script absent"
   fi
-elif [ -n "$_BOT_SECRET" ] && systemctl is-active --quiet zovus-telegram-bot.service; then
+elif [ -n "$_BOT_SECRET" ]; then
   if ! curl -fsS --max-time 2 http://127.0.0.1:8787/health >/dev/null 2>&1; then
+    systemctl reset-failed zovus-telegram-bot.service 2>/dev/null || true
     systemctl restart zovus-telegram-bot.service || true
+    sleep 2
   fi
-  echo "bot_bridge_secret=ok"
+  if curl -fsS --max-time 2 http://127.0.0.1:8787/health >/dev/null 2>&1; then
+    echo "bot_bridge_secret=ok"
+  else
+    echo "WARN: bot health check failed — site remains active"
+  fi
 else
   echo "bot_bridge_secret=$([ -n "$_BOT_SECRET" ] && echo present || echo missing)"
 fi

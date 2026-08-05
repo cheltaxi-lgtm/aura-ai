@@ -1950,7 +1950,7 @@ export default function MasterSessionFlow({
       </motion.div>
     </AnimatePresence>
     </BodyPortal>
-    {isOpen && step === "pick" && !numerologFlow && cardCount > 0 ? (
+    <BodyPortal active={isOpen && step === "pick" && !numerologFlow && cardCount > 0}>
       <MagicalSpreadTable
         tableSize={tableSize}
         cardCount={cardCount}
@@ -1967,7 +1967,7 @@ export default function MasterSessionFlow({
         onBack={goBack}
         tableCards={undefined}
       />
-    ) : null}
+    </BodyPortal>
     </>
   );
 }

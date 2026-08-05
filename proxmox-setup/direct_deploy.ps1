@@ -60,6 +60,11 @@ rsync -a --delete --ignore-times \
   --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
   --exclude='.env.local' \
   --exclude='.env.async-jobs' \
+  --filter='P .env.async-jobs' \
+  --filter='P .env.local' \
+  --filter='P telegram-bot/.env' \
+  --filter='P telegram-bot/data' \
+  --filter='P telegram-bot/node_modules' \
   --exclude='public/releases/' \
   --exclude='public/scene-art/' \
   --exclude='.next/' \
